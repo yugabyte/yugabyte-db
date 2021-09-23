@@ -34,4 +34,15 @@ public class AlertConfigurationTemplate {
 
   @ApiModelProperty(value = "Is alert threshold integer or floating point", accessMode = READ_ONLY)
   private boolean thresholdInteger;
+
+  @ApiModelProperty(value = "Is alert threshold read-only or configurable", accessMode = READ_ONLY)
+  private boolean thresholdReadOnly;
+
+  @ApiModelProperty(
+      value = "Is alert threshold condition read-only or configurable",
+      accessMode = READ_ONLY)
+  private boolean thresholdConditionReadOnly;
+
+  @ApiModelProperty(value = "Threshold unit name", accessMode = READ_ONLY)
+  private String thresholdUnitName;
 }

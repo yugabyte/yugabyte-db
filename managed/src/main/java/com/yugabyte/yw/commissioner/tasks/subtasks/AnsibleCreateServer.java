@@ -34,6 +34,8 @@ public class AnsibleCreateServer extends NodeTaskBase {
   public static class Params extends NodeTaskParams {
     // The VPC into which the node is to be provisioned.
     public String subnetId;
+    // The secondary subnet into which the node's network interface needs to be provisioned.
+    public String secondarySubnetId = null;
 
     public boolean assignPublicIP = true;
     public boolean assignStaticPublicIP = false;

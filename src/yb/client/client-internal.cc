@@ -288,6 +288,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE(CreateCDCStream);
 YB_CLIENT_SPECIALIZE_SIMPLE(DeleteCDCStream);
 YB_CLIENT_SPECIALIZE_SIMPLE(ListCDCStreams);
 YB_CLIENT_SPECIALIZE_SIMPLE(GetCDCStream);
+YB_CLIENT_SPECIALIZE_SIMPLE(UpdateCDCStream);
 YB_CLIENT_SPECIALIZE_SIMPLE(CreateTablegroup);
 YB_CLIENT_SPECIALIZE_SIMPLE(DeleteTablegroup);
 YB_CLIENT_SPECIALIZE_SIMPLE(ListTablegroups);
@@ -1244,7 +1245,8 @@ class GetTableSchemaRpc
                     YBTableInfo* info,
                     CoarseTimePoint deadline,
                     rpc::Messenger* messenger,
-                    rpc::ProxyCache* proxy_cache);
+                    rpc::ProxyCache* proxy_cache,
+                    master::GetTableSchemaResponsePB* resp_copy);
 
   std::string ToString() const override;
 
@@ -1257,7 +1259,8 @@ class GetTableSchemaRpc
                     YBTableInfo* info,
                     CoarseTimePoint deadline,
                     rpc::Messenger* messenger,
-                    rpc::ProxyCache* proxy_cache);
+                    rpc::ProxyCache* proxy_cache,
+                    master::GetTableSchemaResponsePB* resp_copy = nullptr);
 
   void CallRemoteMethod() override;
   void ProcessResponse(const Status& status) override;
@@ -1265,6 +1268,7 @@ class GetTableSchemaRpc
   StatusCallback user_cb_;
   master::TableIdentifierPB table_identifier_;
   YBTableInfo* info_;
+  master::GetTableSchemaResponsePB* resp_copy_;
 };
 
 // Gets all table schemas for a colocated tablet from the leader master. See ClientMasterRpc.
@@ -1432,6 +1436,8 @@ void ClientMasterRpc<Req, Resp>::Finished(const Status& status) {
   ProcessResponse(new_status);
 }
 
+} // namespace internal
+
 // Helper function to create YBTableInfo from GetTableSchemaResponsePB.
 Status CreateTableInfoFromTableSchemaResp(const GetTableSchemaResponsePB& resp, YBTableInfo* info) {
   std::unique_ptr<Schema> schema = std::make_unique<Schema>(Schema());
@@ -1441,7 +1447,7 @@ Status CreateTableInfoFromTableSchemaResp(const GetTableSchemaResponsePB& resp, 
   info->schema.set_is_compatible_with_previous_version(
       resp.is_compatible_with_previous_version());
   RETURN_NOT_OK(PartitionSchema::FromPB(resp.partition_schema(),
-                                        GetSchema(&info->schema),
+                                        internal::GetSchema(&info->schema),
                                         &info->partition_schema));
 
   info->table_name.GetFromTableIdentifierPB(resp.identifier());
@@ -1459,6 +1465,8 @@ Status CreateTableInfoFromTableSchemaResp(const GetTableSchemaResponsePB& resp, 
 
   return Status::OK();
 }
+
+namespace internal {
 
 GetTableSchemaRpc::GetTableSchemaRpc(YBClient* client,
                                      StatusCallback user_cb,
@@ -1478,9 +1486,11 @@ GetTableSchemaRpc::GetTableSchemaRpc(YBClient* client,
                                      YBTableInfo* info,
                                      CoarseTimePoint deadline,
                                      rpc::Messenger* messenger,
-                                     rpc::ProxyCache* proxy_cache)
+                                     rpc::ProxyCache* proxy_cache,
+                                     master::GetTableSchemaResponsePB* resp_copy)
     : GetTableSchemaRpc(
-          client, user_cb, ToTableIdentifierPB(table_id), info, deadline, messenger, proxy_cache) {}
+          client, user_cb, ToTableIdentifierPB(table_id), info, deadline, messenger, proxy_cache,
+          resp_copy) {}
 
 GetTableSchemaRpc::GetTableSchemaRpc(YBClient* client,
                                      StatusCallback user_cb,
@@ -1488,11 +1498,13 @@ GetTableSchemaRpc::GetTableSchemaRpc(YBClient* client,
                                      YBTableInfo* info,
                                      CoarseTimePoint deadline,
                                      rpc::Messenger* messenger,
-                                     rpc::ProxyCache* proxy_cache)
+                                     rpc::ProxyCache* proxy_cache,
+                                     master::GetTableSchemaResponsePB* resp_copy)
     : ClientMasterRpc(client, deadline, messenger, proxy_cache),
       user_cb_(std::move(user_cb)),
       table_identifier_(table_identifier),
-      info_(DCHECK_NOTNULL(info)) {
+      info_(DCHECK_NOTNULL(info)),
+      resp_copy_(resp_copy) {
   req_.mutable_table()->CopyFrom(table_identifier_);
 }
 
@@ -1514,6 +1526,9 @@ void GetTableSchemaRpc::ProcessResponse(const Status& status) {
   auto new_status = status;
   if (new_status.ok()) {
     new_status = CreateTableInfoFromTableSchemaResp(resp_, info_);
+    if (resp_copy_) {
+      resp_copy_->Swap(&resp_);
+    }
   }
   if (!new_status.ok()) {
     LOG(WARNING) << ToString() << " failed: " << new_status.ToString();
@@ -1905,7 +1920,8 @@ Status YBClient::Data::GetTableSchema(YBClient* client,
 Status YBClient::Data::GetTableSchema(YBClient* client,
                                       const TableId& table_id,
                                       CoarseTimePoint deadline,
-                                      YBTableInfo* info) {
+                                      YBTableInfo* info,
+                                      master::GetTableSchemaResponsePB* resp) {
   Synchronizer sync;
   auto rpc = rpc::StartRpc<GetTableSchemaRpc>(
       client,
@@ -1914,7 +1930,8 @@ Status YBClient::Data::GetTableSchema(YBClient* client,
       info,
       deadline,
       messenger_,
-      proxy_cache_.get());
+      proxy_cache_.get(),
+      resp);
   return sync.Wait();
 }
 
@@ -1930,7 +1947,8 @@ Status YBClient::Data::GetTableSchemaById(YBClient* client,
       info.get(),
       deadline,
       messenger_,
-      proxy_cache_.get());
+      proxy_cache_.get(),
+      nullptr);
   return Status::OK();
 }
 

@@ -8,8 +8,10 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.notNullValue;
+import static org.junit.Assert.fail;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.AlertTemplate;
@@ -22,18 +24,24 @@ import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.models.AlertConfiguration.Severity;
 import com.yugabyte.yw.models.AlertConfiguration.TargetType;
+import com.yugabyte.yw.models.common.Condition;
 import com.yugabyte.yw.models.common.Unit;
-import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
 import com.yugabyte.yw.models.filters.AlertConfigurationFilter;
+import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.function.Consumer;
-import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
@@ -49,8 +57,9 @@ public class AlertConfigurationTest extends FakeDBApplication {
   private Universe universe;
   private AlertDestination alertDestination;
 
-  private AlertService alertService = new AlertService();
-  private AlertDefinitionService alertDefinitionService = new AlertDefinitionService(alertService);
+  private final AlertService alertService = new AlertService();
+  private final AlertDefinitionService alertDefinitionService =
+      new AlertDefinitionService(alertService);
   private AlertConfigurationService alertConfigurationService;
 
   @Before
@@ -106,13 +115,9 @@ public class AlertConfigurationTest extends FakeDBApplication {
     AlertConfiguration configuration = createTestConfiguration();
 
     AlertConfigurationThreshold severeThreshold =
-        new AlertConfigurationThreshold()
-            .setCondition(AlertConfigurationThreshold.Condition.GREATER_THAN)
-            .setThreshold(90D);
+        new AlertConfigurationThreshold().setCondition(Condition.GREATER_THAN).setThreshold(90D);
     AlertConfigurationThreshold warningThreshold =
-        new AlertConfigurationThreshold()
-            .setCondition(AlertConfigurationThreshold.Condition.GREATER_THAN)
-            .setThreshold(80D);
+        new AlertConfigurationThreshold().setCondition(Condition.GREATER_THAN).setThreshold(80D);
     Map<AlertConfiguration.Severity, AlertConfigurationThreshold> thresholds =
         ImmutableMap.of(
             AlertConfiguration.Severity.SEVERE, severeThreshold,
@@ -197,6 +202,94 @@ public class AlertConfigurationTest extends FakeDBApplication {
   }
 
   @Test
+  public void testManageDefinitionsHandlesDuplicates() {
+    AlertConfiguration configuration = createTestConfiguration();
+
+    AlertDefinitionFilter definitionFilter =
+        AlertDefinitionFilter.builder()
+            .label(KnownAlertLabels.SOURCE_UUID, universe.universeUUID.toString())
+            .build();
+
+    List<AlertDefinition> universeDefinitions = alertDefinitionService.list(definitionFilter);
+
+    assertThat(universeDefinitions, hasSize(1));
+
+    AlertDefinition definition = universeDefinitions.get(0);
+    AlertDefinition duplicate =
+        new AlertDefinition()
+            .setCustomerUUID(customer.getUuid())
+            .setQuery(definition.getQuery())
+            .setConfigurationUUID(definition.getConfigurationUUID())
+            .setLabels(
+                definition
+                    .getLabels()
+                    .stream()
+                    .map(label -> new AlertDefinitionLabel(label.getName(), label.getValue()))
+                    .collect(Collectors.toList()));
+    alertDefinitionService.save(duplicate);
+
+    universeDefinitions = alertDefinitionService.list(definitionFilter);
+
+    assertThat(universeDefinitions, hasSize(2));
+
+    alertConfigurationService.save(configuration);
+
+    universeDefinitions = alertDefinitionService.list(definitionFilter);
+
+    // Duplicate definition was removed
+    assertThat(universeDefinitions, hasSize(1));
+  }
+
+  @Test
+  public void testUpdateFromMultipleThreads() throws InterruptedException {
+    AlertConfiguration configuration = createTestConfiguration();
+
+    AlertConfiguration configuration2 = createTestConfiguration();
+    configuration2.setTarget(
+        new AlertConfigurationTarget()
+            .setAll(false)
+            .setUuids(ImmutableSet.of(universe.getUniverseUUID())));
+
+    alertConfigurationService.save(configuration2);
+
+    AlertDefinitionFilter definitionFilter =
+        AlertDefinitionFilter.builder()
+            .configurationUuid(configuration.getUuid())
+            .configurationUuid(configuration2.getUuid())
+            .build();
+
+    List<AlertDefinition> universeDefinitions = alertDefinitionService.list(definitionFilter);
+
+    assertThat(universeDefinitions, hasSize(3));
+
+    Universe universe3 = ModelFactory.createUniverse("one more", customer.getCustomerId());
+    Universe universe4 = ModelFactory.createUniverse("another more", customer.getCustomerId());
+
+    ExecutorService executor = Executors.newFixedThreadPool(2);
+    List<Future<Void>> futures = new ArrayList<>();
+    for (int i = 0; i < 2; i++) {
+      futures.add(
+          executor.submit(
+              () -> {
+                alertConfigurationService.save(ImmutableList.of(configuration, configuration2));
+                return null;
+              }));
+    }
+    for (Future<Void> future : futures) {
+      try {
+        future.get();
+      } catch (ExecutionException e) {
+        fail("Exception occurred in worker: " + e);
+      }
+    }
+    executor.shutdown();
+
+    universeDefinitions = alertDefinitionService.list(definitionFilter);
+
+    assertThat(universeDefinitions, hasSize(5));
+  }
+
+  @Test
   public void testValidation() {
     UUID randomUUID = UUID.randomUUID();
 
@@ -229,6 +322,12 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     testValidationCreate(
         configuration ->
+            configuration.setTarget(
+                new AlertConfigurationTarget().setUuids(Collections.singleton(null))),
+        "Target UUIDs can't have null values");
+
+    testValidationCreate(
+        configuration ->
             configuration
                 .setTargetType(TargetType.PLATFORM)
                 .setTarget(new AlertConfigurationTarget().setUuids(ImmutableSet.of(randomUUID))),
@@ -247,6 +346,13 @@ public class AlertConfigurationTest extends FakeDBApplication {
     testValidationCreate(
         configuration -> configuration.setDestinationUUID(randomUUID),
         "Alert destination " + randomUUID + " is missing");
+
+    testValidationCreate(
+        configuration ->
+            configuration
+                .setDestinationUUID(alertDestination.getUuid())
+                .setDefaultDestination(true),
+        "Destination can't be filled in case default destination is selected");
 
     testValidationCreate(
         configuration -> configuration.setThresholdUnit(null), "Threshold unit is mandatory");
@@ -272,22 +378,19 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     testValidationUpdate(
         configuration -> configuration.setCustomerUUID(randomUUID).setDestinationUUID(null),
-        uuid -> "Can't change customer UUID for configuration " + uuid);
+        "Can't change customer UUID for configuration 'Memory Consumption'");
   }
 
   private void testValidationCreate(Consumer<AlertConfiguration> modifier, String expectedMessage) {
-    testValidation(modifier, uuid -> expectedMessage, true);
+    testValidation(modifier, expectedMessage, true);
   }
 
-  private void testValidationUpdate(
-      Consumer<AlertConfiguration> modifier, Function<UUID, String> expectedMessageGenerator) {
-    testValidation(modifier, expectedMessageGenerator, false);
+  private void testValidationUpdate(Consumer<AlertConfiguration> modifier, String expectedMessage) {
+    testValidation(modifier, expectedMessage, false);
   }
 
   private void testValidation(
-      Consumer<AlertConfiguration> modifier,
-      Function<UUID, String> expectedMessageGenerator,
-      boolean create) {
+      Consumer<AlertConfiguration> modifier, String expectedMessage, boolean create) {
     AlertConfiguration configuration = createTestConfiguration();
     if (create) {
       alertConfigurationService.delete(configuration.getUuid());
@@ -297,9 +400,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     assertThat(
         () -> alertConfigurationService.save(configuration),
-        thrown(
-            PlatformServiceException.class,
-            expectedMessageGenerator.apply(configuration.getUuid())));
+        thrown(PlatformServiceException.class, expectedMessage));
   }
 
   private AlertConfiguration createTestConfiguration() {
@@ -308,6 +409,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
             .createConfigurationTemplate(customer, AlertTemplate.MEMORY_CONSUMPTION)
             .getDefaultConfiguration();
     configuration.setDestinationUUID(alertDestination.getUuid());
+    configuration.setDefaultDestination(false);
     return alertConfigurationService.save(configuration);
   }
 
@@ -326,7 +428,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
         equalTo(
             new AlertConfigurationThreshold()
                 .setThreshold(90D)
-                .setCondition(AlertConfigurationThreshold.Condition.GREATER_THAN)));
+                .setCondition(Condition.GREATER_THAN)));
     assertThat(configuration.getThresholds().get(AlertConfiguration.Severity.WARNING), nullValue());
     assertThat(configuration.getUuid(), notNullValue());
     assertThat(configuration.getCreateTime(), notNullValue());

@@ -48,14 +48,21 @@ public class PauseUniverse extends UniverseTaskBase {
       // Update the universe DB with the update to be performed and set the
       // 'updateInProgress' flag to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(-1 /* expectedUniverseVersion */);
+      if (universe.getUniverseDetails().universePaused) {
+        String msg = "Unable to pause universe \"" + universe.name + "\" as it is already paused.";
+        log.error(msg);
+        throw new RuntimeException(msg);
+      }
+
+      preTaskActions();
 
       Set<NodeDetails> tserverNodes = new HashSet<>(universe.getTServers());
-      Set<NodeDetails> masterNodes = new HashSet<>(universe.getMasters());
-
       for (NodeDetails node : tserverNodes) {
         createTServerTaskForNode(node, "stop")
             .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
       }
+
+      Set<NodeDetails> masterNodes = new HashSet<>(universe.getMasters());
       createStopMasterTasks(masterNodes)
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
 
@@ -70,24 +77,18 @@ public class PauseUniverse extends UniverseTaskBase {
       // Run all the tasks.
       subTaskGroupQueue.run();
 
-      Universe.UniverseUpdater updater =
-          new Universe.UniverseUpdater() {
-            @Override
-            public void run(Universe universe) {
-              UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-              universeDetails.universePaused = true;
-              universe.setUniverseDetails(universeDetails);
-            }
-          };
-      saveUniverseDetails(updater);
+      saveUniverseDetails(
+          u -> {
+            UniverseDefinitionTaskParams universeDetails = u.getUniverseDetails();
+            universeDetails.universePaused = true;
+            u.setUniverseDetails(universeDetails);
+          });
 
-      unlockUniverseForUpdate();
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
-      // Run an unlock in case the task failed before getting to the unlock. It is okay if it
-      // errors out.
-      unlockUniverseForUpdate();
       throw t;
+    } finally {
+      unlockUniverseForUpdate();
     }
     log.info("Finished {} task.", getName());
   }

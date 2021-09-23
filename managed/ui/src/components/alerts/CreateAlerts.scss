@@ -85,11 +85,11 @@
 
   .add-destination-container {
     position: relative;
-    top: 40px
+    top: 40px;
   }
 
   .pd-0 {
-    padding: 0
+    padding: 0;
   }
 
   .alert-dest-add-link {
@@ -97,16 +97,16 @@
     margin-left: -2px;
     line-height: 37px;
     font-size: 15px;
-    font-weight: 500
+    font-weight: 500;
   }
 
-  .btn-group-radio{
+  .btn-group-radio {
     margin: 0 20px 15px 0;
     font-weight: 500;
     cursor: pointer;
   }
-  .react-bs-table-pagination{
-    .dropdown{
+  .react-bs-table-pagination {
+    .dropdown {
       max-width: 60px;
       display: flex;
     }
@@ -117,5 +117,16 @@
   margin-right: 0;
 }
 .hide-field {
-  display: none
+  display: none;
+}
+
+.alertDestinationDetail {
+  padding: 20px 10px 0px 10px;
+  h5{
+    margin-top: 30px;
+  }
+  label {
+    min-width: 30%;
+    float: left;
+  }
 }

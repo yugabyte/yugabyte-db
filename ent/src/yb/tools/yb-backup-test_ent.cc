@@ -15,26 +15,65 @@
 
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
 
+#include "yb/common/redis_constants_common.h"
 #include "yb/common/wire_protocol-test-util.h"
+
 #include "yb/client/client-test-util.h"
+#include "yb/client/session.h"
+#include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/ql-dml-test-base.h"
+#include "yb/client/yb_op.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/random_util.h"
 #include "yb/util/subprocess.h"
+#include "yb/yql/redis/redisserver/redis_parser.h"
 
 using std::unique_ptr;
 using std::vector;
 using std::string;
 using strings::Split;
 
+DEFINE_bool(verbose_yb_backup, false, "Add --verbose flag to yb_backup.py.");
+
 namespace yb {
 namespace tools {
 
 namespace helpers {
 YB_DEFINE_ENUM(TableOp, (kKeepTable)(kDropTable)(kDropDB));
+
+CHECKED_STATUS RedisGet(std::shared_ptr<client::YBSession> session,
+                        const std::shared_ptr<client::YBTable> table,
+                        const string& key,
+                        const string& value) {
+  auto get_op = std::make_shared<client::YBRedisReadOp>(table);
+  RETURN_NOT_OK(redisserver::ParseGet(get_op.get(), redisserver::RedisClientCommand({"get", key})));
+  RETURN_NOT_OK(session->ReadSync(get_op));
+  if (get_op->response().code() != RedisResponsePB_RedisStatusCode_OK) {
+    return STATUS_FORMAT(RuntimeError,
+                         "Redis get returned bad response code: $0",
+                         RedisResponsePB_RedisStatusCode_Name(get_op->response().code()));
+  }
+  if (get_op->response().string_response() != value) {
+    return STATUS_FORMAT(RuntimeError,
+                         "Redis get returned wrong value: $0 != $1",
+                         get_op->response().string_response(), value);
+  }
+  return Status::OK();
 }
+
+CHECKED_STATUS RedisSet(std::shared_ptr<client::YBSession> session,
+                        const std::shared_ptr<client::YBTable> table,
+                        const string& key,
+                        const string& value) {
+  auto set_op = std::make_shared<client::YBRedisWriteOp>(table);
+  RETURN_NOT_OK(redisserver::ParseSet(set_op.get(),
+                                      redisserver::RedisClientCommand({"set", key, value})));
+  RETURN_NOT_OK(session->ApplyAndFlush(set_op));
+  return Status::OK();
+}
+} // namespace helpers
 
 class YBBackupTest : public pgwrapper::PgCommandTestBase {
  protected:
@@ -81,7 +120,7 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
             << " --no_ssh"
             << " --no_auto_name";
 #if defined(__APPLE__)
-    command << " --mac" << " --verbose";
+    command << " --mac";
 #endif // defined(__APPLE__)
     string backup_cmd;
     for (const auto& a : args) {
@@ -89,6 +128,10 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
       if (a == "create" || a == "restore") {
         backup_cmd = a;
       }
+    }
+
+    if (FLAGS_verbose_yb_backup) {
+      command << " --verbose";
     }
 
     const auto command_str = command.str();
@@ -133,6 +176,7 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
     SetDbName(db); // Connecting to the recreated 'yugabyte' DB from the moment.
   }
 
+  void DoTestYEDISBackup(helpers::TableOp tableOp);
   void DoTestYSQLKeyspaceBackup(helpers::TableOp tableOp);
   void DoTestYSQLMultiSchemaKeyspaceBackup(helpers::TableOp tableOp);
 
@@ -153,6 +197,75 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYCQLKeyspaceBackup
       {"--backup_location", backup_dir, "--keyspace", "new_" + keyspace, "restore"}));
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+// 1. Insert abc -> 123
+// 2. Backup
+// 3. Insert abc -> 456 OR drop redis table
+// 4. Restore
+// 5. Validate abc -> 123
+void YBBackupTest::DoTestYEDISBackup(helpers::TableOp tableOp) {
+  ASSERT_TRUE(tableOp == helpers::TableOp::kKeepTable || tableOp == helpers::TableOp::kDropTable);
+
+  auto session = client_->NewSession();
+
+  // Create keyspace and table.
+  const client::YBTableName table_name(
+      YQL_DATABASE_REDIS, common::kRedisKeyspaceName, common::kRedisTableName);
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(common::kRedisKeyspaceName,
+                                                YQLDatabase::YQL_DATABASE_REDIS));
+  std::unique_ptr<yb::client::YBTableCreator> table_creator(client_->NewTableCreator());
+  ASSERT_OK(table_creator->table_name(table_name)
+                          .table_type(yb::client::YBTableType::REDIS_TABLE_TYPE)
+                          .Create());
+  ASSERT_OK(table_.Open(table_name, client_.get()));
+  auto table = table_->shared_from_this();
+
+  // Insert abc -> 123.
+  ASSERT_OK(helpers::RedisSet(session, table, "abc", "123"));
+
+  // Backup.
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir,
+       "--keyspace", common::kRedisKeyspaceName,
+       "--table", common::kRedisTableName,
+       "create"}));
+
+  if (tableOp == helpers::TableOp::kKeepTable) {
+    // Insert abc -> 456.
+    ASSERT_OK(helpers::RedisSet(session, table, "abc", "456"));
+    ASSERT_OK(helpers::RedisGet(session, table, "abc", "456"));
+  } else {
+    ASSERT_EQ(tableOp, helpers::TableOp::kDropTable);
+    // Delete table.
+    ASSERT_OK(client_->DeleteTable(table_name));
+    ASSERT_FALSE(ASSERT_RESULT(client_->TableExists(table_name)));
+  }
+
+  // Restore.
+  ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
+
+  if (tableOp == helpers::TableOp::kDropTable) {
+    // Refresh table variable to the one newly created by restore.
+    ASSERT_OK(table_.Open(table_name, client_.get()));
+    table = table_->shared_from_this();
+  }
+
+  // Validate abc -> 123.
+  ASSERT_TRUE(ASSERT_RESULT(client_->TableExists(table_name)));
+  ASSERT_OK(helpers::RedisGet(session, table, "abc", "123"));
+}
+
+// Exercise the CatalogManager::ImportTableEntry first code path where namespace ids and table ids
+// match.
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYEDISBackup)) {
+  DoTestYEDISBackup(helpers::TableOp::kKeepTable);
+}
+
+// Exercise the CatalogManager::ImportTableEntry second code path where, instead, table names match.
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYEDISBackupWithDropTable)) {
+  DoTestYEDISBackup(helpers::TableOp::kDropTable);
 }
 
 void YBBackupTest::DoTestYSQLKeyspaceBackup(helpers::TableOp tableOp) {
@@ -355,6 +468,89 @@ TEST_F(YBBackupTest,
 TEST_F(YBBackupTest,
        YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLMultiSchemaKeyspaceBackupWithDropDB)) {
   DoTestYSQLMultiSchemaKeyspaceBackup(helpers::TableOp::kDropDB);
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+// Create two schemas. Create a table with the same name and columns in each of them. Restore onto a
+// cluster where the schema names swapped. Restore should succeed because the tables are not found
+// in the ids check phase but later found in the names check phase.
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLSameIdDifferentSchemaName)) {
+  // Initialize data:
+  // - s1.mytbl: (1, 1)
+  // - s2.mytbl: (2, 2)
+  auto schemas = {"s1", "s2"};
+  for (const string& schema : schemas) {
+    ASSERT_NO_FATALS(CreateSchema(Format("CREATE SCHEMA $0", schema)));
+    ASSERT_NO_FATALS(CreateTable(
+        Format("CREATE TABLE $0.mytbl (k INT PRIMARY KEY, v INT)", schema)));
+    const string& substr = schema.substr(1, 1);
+    ASSERT_NO_FATALS(InsertOneRow(
+        Format("INSERT INTO $0.mytbl (k, v) VALUES ($1, $1)", schema, substr)));
+    ASSERT_NO_FATALS(RunPsqlCommand(
+        Format("SELECT k, v FROM $0.mytbl", schema),
+        Format(R"#(
+           k | v
+          ---+---
+           $0 | $0
+          (1 row)
+        )#", substr)));
+  }
+
+  // Do backup.
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+
+  // Add extra data to show that, later, restore actually happened. This is not the focus of the
+  // test, but it helps us figure out whether backup/restore is to blame in the event of a test
+  // failure.
+  for (const string& schema : schemas) {
+    ASSERT_NO_FATALS(InsertOneRow(
+        Format("INSERT INTO $0.mytbl (k, v) VALUES ($1, $1)", schema, 3)));
+    ASSERT_NO_FATALS(RunPsqlCommand(
+        Format("SELECT k, v FROM $0.mytbl ORDER BY k", schema),
+        Format(R"#(
+           k | v
+          ---+---
+           $0 | $0
+           3 | 3
+          (2 rows)
+        )#", schema.substr(1, 1))));
+  }
+
+  // Swap the schema names.
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      Format("ALTER SCHEMA $0 RENAME TO $1", "s1", "stmp"), "ALTER SCHEMA"));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      Format("ALTER SCHEMA $0 RENAME TO $1", "s2", "s1"), "ALTER SCHEMA"));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      Format("ALTER SCHEMA $0 RENAME TO $1", "stmp", "s2"), "ALTER SCHEMA"));
+
+  // Restore into the current "ysql.yugabyte" YSQL DB. Since we didn't drop anything, the ysql_dump
+  // step should fail to create anything, behaving as a no op. This means that the schema name swap
+  // will stay intact, as desired.
+  ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
+
+  // Check the table data. This is the main check of the test! Restore should make sure that schema
+  // names match.
+  //
+  // Table s1.mytbl was renamed to s2.mytbl: let's call the table id "x". Snapshot's table id x
+  // corresponds to s1.mytbl; active cluster's table id x corresponds to s2.mytbl. When importing
+  // snapshot s1.mytbl, we first look up table with id x and find active s2.mytbl. However, after
+  // checking s1 and s2 names mismatch, we disregard this attempt and move on to the second search,
+  // which matches names rather than ids. Then, we restore s1.mytbl snapshot to live s1.mytbl: the
+  // data on s1.mytbl will be (1, 1).
+  for (const string& schema : schemas) {
+    ASSERT_NO_FATALS(RunPsqlCommand(
+        Format("SELECT k, v FROM $0.mytbl", schema),
+        Format(R"#(
+           k | v
+          ---+---
+           $0 | $0
+          (1 row)
+        )#", schema.substr(1, 1))));
+  }
+
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
@@ -696,6 +892,33 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYCQLBackupWithDefi
     Partition::FromPB(tablets[i].partition(), &p);
     ASSERT_TRUE(partitions[i].BoundsEqualToPartition(p));
   }
+}
+
+class YBFailSnapshotTest: public YBBackupTest {
+  void SetUp() override {
+    YBBackupTest::SetUp();
+  }
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    pgwrapper::PgCommandTestBase::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back("--TEST_mark_snasphot_as_failed=true");
+  }
+};
+
+TEST_F(YBFailSnapshotTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestFailBackupRestore)) {
+  client::kv_table_test::CreateTable(
+      client::Transactional::kFalse, CalcNumTablets(3), client_.get(), &table_);
+  const string& keyspace = table_.name().namespace_name();
+  const string backup_dir = GetTempDir("backup");
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", keyspace, "create"}));
+  Status s = RunBackupCommand(
+    {"--backup_location", backup_dir, "--keyspace", "new_" + keyspace, "restore"});
+  ASSERT_NOK(s);
+  ASSERT_STR_CONTAINS(s.message().ToBuffer(), ", restoring failed!");
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
 }  // namespace tools

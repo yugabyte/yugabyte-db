@@ -3702,7 +3702,7 @@ static void YBRefreshCache()
 	YBPreloadRelCache();
 
 	/* Also invalidate the pggate cache. */
-	YBCPgInvalidateCache();
+	HandleYBStatus(YBCPgInvalidateCache());
 
 	/* Set the new ysql cache version. */
 	yb_catalog_cache_version = catalog_master_version;
@@ -4294,13 +4294,26 @@ yb_attempt_to_restart_on_error(int attempt,
 			yb_restart_portal(restart_data->portal_name);
 		}
 		YBRestoreOutputBufferPosition();
+
+		/*
+		 * The txn might or might not have performed writes. Reset the state in
+		 * either case to avoid checking/tracking if a write could have been
+		 * performed.
+		 */
+		YBCRestartWriteTransaction();
+
 		if (YBCIsRestartReadError(edata->yb_txn_errcode))
 		{
 			YBCRestartTransaction(false /* force_restart */);
 		}
 		else
 		{
-			YBCRestartWriteTransaction();
+			/*
+			 * Recreate the YB state for the transaction. This call preserves the
+			 * priority of the current YB transaction so that when we retry, we re-use
+			 * the same priority.
+			 */
+			YBCRecreateTransaction();
 			pg_usleep(yb_get_sleep_usecs_on_txn_conflict(attempt));
 		}
 	} else {
@@ -4310,58 +4323,80 @@ yb_attempt_to_restart_on_error(int attempt,
 	}
 }
 
-/*
- * Wraps exec_simple_query, attempting to transparently do read restarts when
- * possible. Accepts execution memory context to revert to in case of an error.
- */
+typedef void(*YBFunctor)(const void*);
+
 static void
-yb_exec_simple_query(const char* query_string, MemoryContext exec_context)
+yb_exec_query_wrapper(MemoryContext exec_context,
+                      YBQueryRestartData* restart_data,
+                      YBFunctor functor,
+                      const void* functor_context)
 {
-	YBQueryRestartData restart_data  = {
-	    .portal_name  = NULL,
-	    .query_string = query_string,
-	    .command_tag  = yb_parse_command_tag(query_string)
-	};
-	for (int attempt = 0;; ++attempt) {
+	for (int attempt = 0;; ++attempt)
+	{
+		YBSaveOutputBufferPosition(!yb_is_begin_transaction(restart_data->command_tag));
 		PG_TRY();
 		{
-			YBSaveOutputBufferPosition(
-				!yb_is_begin_transaction(restart_data.command_tag));
-			exec_simple_query(query_string);
+			(*functor)(functor_context);
 			return;
 		}
 		PG_CATCH();
 		{
-			yb_attempt_to_restart_on_error(attempt,
-										   &restart_data, exec_context);
+			YBResetOperationsBuffering();
+			yb_attempt_to_restart_on_error(attempt, restart_data, exec_context);
 		}
 		PG_END_TRY();
 	}
 }
 
+static void
+yb_exec_simple_query_impl(const void* query_string)
+{
+	exec_simple_query((const char*)query_string);
+}
+
 /*
- * Wraps exec_execute_message, attempting to transparently do read restarts when
- * possible. Accepts execution memory context to revert to in case of an error.
+ * Wraps exec_simple_query, attempting to transparently do restarts when possible.
+ * Accepts execution memory context to revert to in case of an error.
  */
 static void
-yb_exec_execute_message(const char* portal_name, long max_rows,
-						YBQueryRestartData* restart_data,
-						MemoryContext exec_context)
+yb_exec_simple_query(const char* query_string, MemoryContext exec_context)
 {
-	for (int attempt = 0;; ++attempt) {
-		PG_TRY();
-		{
-			YBSaveOutputBufferPosition(
-				!yb_is_begin_transaction(restart_data->command_tag));
-			exec_execute_message(portal_name, max_rows);
-			return;
-		}
-		PG_CATCH();
-		{
-			yb_attempt_to_restart_on_error(attempt, restart_data, exec_context);
-		}
-		PG_END_TRY();
-	}
+	YBQueryRestartData restart_data  = {
+		.portal_name  = NULL,
+		.query_string = query_string,
+		.command_tag  = yb_parse_command_tag(query_string)
+	};
+	yb_exec_query_wrapper(exec_context, &restart_data, &yb_exec_simple_query_impl, query_string);
+}
+
+typedef struct YBExecuteMessageFunctorContext
+{
+	const char* portal_name;
+	long max_rows;
+} YBExecuteMessageFunctorContext;
+
+static void
+yb_exec_execute_message_impl(const void* raw_ctx)
+{
+	const YBExecuteMessageFunctorContext* ctx = (const YBExecuteMessageFunctorContext*)(raw_ctx);
+	exec_execute_message(ctx->portal_name, ctx->max_rows);
+}
+
+/*
+ * Wraps exec_execute_message, attempting to transparently do restarts when possible.
+ * Accepts execution memory context to revert to in case of an error.
+ */
+static void
+yb_exec_execute_message(const char* portal_name,
+                        long max_rows,
+                        YBQueryRestartData* restart_data,
+                        MemoryContext exec_context)
+{
+  YBExecuteMessageFunctorContext ctx = {
+		.portal_name = portal_name,
+		.max_rows = max_rows
+	};
+	yb_exec_query_wrapper(exec_context, restart_data, &yb_exec_execute_message_impl, &ctx);
 }
 
 static void yb_report_cache_version_restart(const char* query, ErrorData *edata)

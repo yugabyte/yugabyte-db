@@ -1505,19 +1505,27 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
                           "See all tables &raquo;");
   (*output) << "  </tr>\n";
 
-  // Load Balancer State
-  {
-    IsLoadBalancerIdleRequestPB req;
-    IsLoadBalancerIdleResponsePB resp;
-    Status isIdle = master_->catalog_manager()->IsLoadBalancerIdle(&req, &resp);
+  // Load balancer status.
+  bool load_balancer_enabled = master_->catalog_manager()->IsLoadBalancerEnabled();
+  (*output) << Substitute(" <tr><td>$0<span class='yb-overview'>$1</span></td>"
+                          "<td><i class='fa $2' aria-hidden='true'> </i></td></tr>\n",
+                          "<i class='fa fa-tasks yb-dashboard-icon' aria-hidden='true'></i>",
+                          "Load Balancer Enabled",
+                          load_balancer_enabled ? "fa-check"
+                                                : "fa-times label label-danger");
+  if (load_balancer_enabled) {
+    IsLoadBalancedRequestPB req;
+    IsLoadBalancedResponsePB resp;
+    Status load_balanced = master_->catalog_manager()->IsLoadBalanced(&req, &resp);
 
     (*output) << Substitute(" <tr><td>$0<span class='yb-overview'>$1</span></td>"
                             "<td><i class='fa $2' aria-hidden='true'> </i></td></tr>\n",
                             "<i class='fa fa-tasks yb-dashboard-icon' aria-hidden='true'></i>",
                             "Is Load Balanced?",
-                            isIdle.ok() ? "fa-check"
-                                        : "fa-times label label-danger");
+                            load_balanced.ok() ? "fa-check"
+                                               : "fa-times label label-danger");
   }
+
   // Build version and type.
   (*output) << Substitute("  <tr><td>$0<span class='yb-overview'>$1</span></td><td>$2</td></tr>\n",
                           "<i class='fa fa-code-fork yb-dashboard-icon' aria-hidden='true'></i>",
@@ -2044,34 +2052,6 @@ void MasterPathHandlers::HandlePrettyLB(
   *output << "</div><!-- zone-level-row -->\n";
 }
 
-void MasterPathHandlers::HandleLBStatistics(
-  const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
-
-  // Displays a table of all tables for which load balancing has been skipped.
-  std::stringstream *output = &resp->output;
-  const auto tables = master_->catalog_manager()
-                              ->load_balancer()->GetAllTablesLoadBalancerSkipped();
-
-  *output << "<h3>Load balance skipped Tables</h3>\n";
-  *output << "<table class='table table-striped'>\n";
-  *output << "  <tr><th>Table Name</th><th>Table UUID</th><th>Table Type</th></tr>\n";
-
-  for (const auto& table : tables) {
-    if (table->is_system()) {
-      continue;
-    }
-    *output << Substitute(
-        "<tr><td><a href=\"/table?id=$0\">$1</a></td><td>$2</td><td>$3</td></tr>\n",
-        EscapeForHtmlToString(table->id()),
-        EscapeForHtmlToString(table->name()),
-        EscapeForHtmlToString(table->id()),
-        EscapeForHtmlToString(TableType_Name(table->GetTableType())));
-  }
-
-  *output << "</table>\n";
-
-}
-
 Status MasterPathHandlers::Register(Webserver* server) {
   bool is_styled = true;
   bool is_on_nav_bar = true;
@@ -2126,11 +2106,6 @@ Status MasterPathHandlers::Register(Webserver* server) {
   cb = std::bind(&MasterPathHandlers::HandleTabletReplicasPage, this, _1, _2);
   server->RegisterPathHandler(
       "/tablet-replication", "Tablet Replication Health",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
-      false);
-  cb = std::bind(&MasterPathHandlers::HandleLBStatistics, this, _1, _2);
-  server->RegisterPathHandler(
-      "/lb-statistics", "Load balancer Statistics",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
       false);
   cb = std::bind(&MasterPathHandlers::HandlePrettyLB, this, _1, _2);

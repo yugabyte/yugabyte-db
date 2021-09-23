@@ -20,6 +20,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -363,6 +364,24 @@ public class TestPgReadRestarts extends BasePgSQLTest {
     }.runTest();
   }
 
+  /**
+   * Doing SELECT func() where the sql func executes a DML statement internally.
+   * Read restarts should happen transparently.
+   */
+  @Test
+  public void selectFuncWithDml() throws Exception {
+    Statement stmt = connection.createStatement();
+    stmt.execute("CREATE FUNCTION update_test_rr() RETURNS void AS " +
+                 "$$ update test_rr set i=1 where i=0; " +
+                 "$$ LANGUAGE SQL");
+
+    new SelectWithDmlFuncTester(
+        getConnectionBuilder(),
+        "SELECT update_test_rr()",
+        getShortString()
+    ).runTest();
+  }
+
   //
   // Helpers methods
   //
@@ -457,22 +476,8 @@ public class TestPgReadRestarts extends BasePgSQLTest {
   }
 
   /**
-   * Performs generic testing of concurrent SELECT/INSERT by running several concurrent threads:
-   *
-   * <ul>
-   * <li>INSERT into table
-   * <li>Singular SELECT
-   * <li>Transaction with two SELECT whose result should match
-   * <ul>
-   * <li>(one thread per isolation level)
-   * </ul>
-   * </ul>
-   *
-   * Caller must specify both the means of creating/executing a query, as well as whether it's
-   * expected to get read restart errors while running each of these threads.
-   *
-   * For the transactional SELECTs, we're only checking for restart read error on first operation.
-   * If it happens in the second, that's always valid.
+   * Performs generic testing of concurrent INSERT with other queries by running several
+   * concurrent threads.
    */
   private abstract class ConcurrentInsertQueryTester<Stmt extends AutoCloseable> {
 
@@ -512,7 +517,7 @@ public class TestPgReadRestarts extends BasePgSQLTest {
           fail("Test timed out! Try increasing waiting time?");
         }
         try {
-          LOG.info("Waiting for SELECT threads");
+          LOG.info("Waiting for other threads");
           for (Future<?> future : futures) {
             future.get(SELECTS_AWAIT_TIME_SEC, TimeUnit.SECONDS);
           }
@@ -520,7 +525,7 @@ public class TestPgReadRestarts extends BasePgSQLTest {
           LOG.warn("Threads info:\n\n" + ThreadUtil.getAllThreadsInfo());
           // It's very likely that cause lies on a YB side (e.g. unexpected performance slowdown),
           // not in test.
-          fail("Waiting for SELECT threads timed out, this is unexpected!");
+          fail("Waiting for other threads timed out, this is unexpected!");
         }
       } finally {
         LOG.info("Shutting down executor service");
@@ -534,6 +539,24 @@ public class TestPgReadRestarts extends BasePgSQLTest {
     }
   }
 
+  /**
+   * Performs generic testing of concurrent SELECT/INSERT by running several concurrent threads:
+   *
+   * <ul>
+   * <li>INSERT into table
+   * <li>Singular SELECT
+   * <li>Transaction with two SELECT whose result should match
+   * <ul>
+   * <li>(one thread per isolation level)
+   * </ul>
+   * </ul>
+   *
+   * Caller must specify both the means of creating/executing a query, as well as whether it's
+   * expected to get read restart errors while running each of these threads.
+   *
+   * For the transactional SELECTs, we're only checking for restart read error on first operation.
+   * If it happens in the second, that's always valid.
+   */
   private abstract class ConcurrentInsertSelectTester<Stmt extends AutoCloseable>
       extends ConcurrentInsertQueryTester<Stmt>{
     /** Whether we expect errors to happen without transactions/in SNAPSHOT isolated transactions */
@@ -804,6 +827,57 @@ public class TestPgReadRestarts extends BasePgSQLTest {
       runnables.add(getRunnableThread(cb, execution, "ROLLBACK TO a"));
       runnables.add(getRunnableThread(cb, execution, "RELEASE a"));
       return runnables;
+    }
+  }
+
+  /** SelectWithDmlFuncTester tests kReadRestart retries in "SELECT func()" where func does DML */
+  private class SelectWithDmlFuncTester extends ConcurrentInsertQueryTester<Statement> {
+    private final String queryString;
+    public SelectWithDmlFuncTester(
+        ConnectionBuilder cb,
+        String queryString,
+        String valueToInsert) {
+      super(cb, valueToInsert);
+      this.queryString = queryString;
+    }
+
+    @Override
+    public List<Runnable> getRunnableThreads(ConnectionBuilder cb, Future<?> execution) {
+      return Arrays.<Runnable>asList(() -> {
+        int selectsAttempted = 0;
+        int selectsSucceeded = 0;
+        int selectsRestartRequired = 0;
+        int selectsConflictsDetected = 0;
+        try (Connection selectTxnConn = cb.withIsolationLevel(
+              IsolationLevel.REPEATABLE_READ).connect();
+              Statement stmt = selectTxnConn.createStatement()) {
+          for (/* No setup */; !execution.isDone(); ++selectsAttempted) {
+            if (Thread.interrupted()) return; // Skips all post-loop checks
+            try {
+              stmt.execute(queryString);
+              ++selectsSucceeded;
+            } catch (Exception ex) {
+              if (isRestartReadError(ex)) {
+                ++selectsRestartRequired;
+              } else if (ex.getMessage().toLowerCase().contains("conflict")) {
+                // A conflict can only occur when the read time of the UPDATE
+                // is the same as the write time of when a row was inserted.
+                ++selectsConflictsDetected;
+              } else {
+                throw ex;
+              }
+            }
+          }
+        } catch (Exception ex) {
+          fail("SELECT thread failed: " + ex.getMessage());
+        }
+        LOG.info(this.queryString +
+                  " selectsAttempted=" + selectsAttempted +
+                  " selectsSucceeded=" + selectsSucceeded +
+                  " selectsRestartRequired=" + selectsRestartRequired +
+                  " selectsConflictsDetected=" + selectsConflictsDetected);
+        assertTrue("selectsRestartRequired != 0", selectsRestartRequired == 0);
+      });
     }
   }
 }

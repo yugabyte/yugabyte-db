@@ -72,12 +72,12 @@ public class BackupsController extends AuthenticatedController {
     }
 
     // If either customer or user featureConfig has storageLocation hidden,
-    // mask the string in each backup
+    // mask the string in each backup.
     if (isStorageLocMasked) {
       for (Backup backup : backups) {
         BackupTableParams params = backup.getBackupInfo();
         String loc = params.storageLocation;
-        if (!loc.isEmpty()) {
+        if ((loc != null) && !loc.isEmpty()) {
           params.storageLocation = "**********";
         }
         backup.setBackupInfo(params);
@@ -96,8 +96,8 @@ public class BackupsController extends AuthenticatedController {
           message = "If there was a server or database issue when listing the backups",
           response = YBPError.class))
   public Result fetchBackupsByTaskUUID(UUID customerUUID, UUID universeUUID, UUID taskUUID) {
-    Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Customer.getOrBadRequest(customerUUID);
+    Universe.getOrBadRequest(universeUUID);
 
     List<Backup> backups = Backup.fetchAllBackupsByTaskUUID(taskUUID);
     return PlatformResults.withData(backups);
@@ -129,6 +129,7 @@ public class BackupsController extends AuthenticatedController {
     }
 
     taskParams.universeUUID = universeUUID;
+    taskParams.customerUuid = customerUUID;
 
     // Change the BackupTableParams in list to be "RESTORE" action type
     if (taskParams.backupList != null) {
@@ -152,7 +153,6 @@ public class BackupsController extends AuthenticatedController {
           BAD_REQUEST, "Restore table request must specify keyspace.");
     }
 
-    Backup newBackup = Backup.create(customerUUID, taskParams);
     UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, taskParams);
     LOG.info(
         "Submitted task to RESTORE table backup to {}.{} with config {} from {}, task uuid = {}.",
@@ -161,7 +161,6 @@ public class BackupsController extends AuthenticatedController {
         storageConfig.configName,
         taskParams.storageLocation,
         taskUUID);
-    newBackup.setTaskUUID(taskUUID);
     if (taskParams.getTableName() != null) {
       CustomerTask.create(
           customer,
@@ -277,6 +276,7 @@ public class BackupsController extends AuthenticatedController {
       LOG.info("Error while waiting for the backup task to get finished.");
     }
     backup.transitionState(BackupState.Stopped);
+    auditService().createAuditEntry(ctx(), request(), backup.taskUUID);
     return YBPSuccess.withMessage("Successfully stopped the backup process.");
   }
 

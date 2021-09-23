@@ -491,13 +491,17 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "delete_universe_replication", " <producer_universe_uuid>",
+      "delete_universe_replication", " <producer_universe_uuid> [ignore-errors]",
       [client](const CLIArguments& args) -> Status {
         if (args.size() < 1) {
           return ClusterAdminCli::kInvalidArguments;
         }
         const string producer_id = args[0];
-        RETURN_NOT_OK_PREPEND(client->DeleteUniverseReplication(producer_id),
+        bool ignore_errors = false;
+        if (args.size() >= 2 && args[1] == "ignore-errors") {
+          ignore_errors = true;
+        }
+        RETURN_NOT_OK_PREPEND(client->DeleteUniverseReplication(producer_id, ignore_errors),
                               Substitute("Unable to delete replication for universe $0",
                               producer_id));
         return Status::OK();

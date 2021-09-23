@@ -139,6 +139,8 @@ public enum TaskType {
 
   ChangeMasterConfig("subtasks.ChangeMasterConfig"),
 
+  ChangeAdminPassword("subtasks.ChangeAdminPassword"),
+
   CreateTable("subtasks.CreateTable"),
 
   DeleteNode("subtasks.DeleteNode"),

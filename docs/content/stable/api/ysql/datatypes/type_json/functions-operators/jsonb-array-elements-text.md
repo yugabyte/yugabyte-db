@@ -25,7 +25,7 @@ return value:      SETOF text
 
 This example uses the same JSON _array_ input that was used to illustrate `jsonb_array_elements()`.
 
-Notice that the JSON value _null_ becomes a genuine SQL `NULL`. However, SQL array comparison uses `IS NOT DISTINCT FROM` semantics, and not the semantics that the comparison of scalars uses. So the simple `ASSERT` that `elements = expected_elements` is `TRUE` is sufficient. See the section [Operators for comparing two arrays](../../..//type_array/functions-operators/comparison/).
+Notice that the JSON value _null_ becomes a genuine SQL `NULL`. However, SQL array comparison uses `IS NOT DISTINCT FROM` semantics, and not the semantics that the comparison of scalars uses. So the simple `ASSERT` that `elements = expected_elements` is `TRUE` is sufficient. See the section [Operators for comparing two arrays](../../../type_array/functions-operators/comparison/).
 
 ```plpgsql
 do $body$

@@ -173,7 +173,7 @@ CreateExecutorState(void)
 	 */
 	estate->es_yb_is_single_row_modify_txn = false;
 	estate->yb_conflict_slot = NULL;
-	estate->yb_exec_params.limit_count = -1;
+	estate->yb_exec_params.limit_count = 0;
 	estate->yb_exec_params.limit_offset = 0;
 	estate->yb_exec_params.limit_use_default = true;
 	estate->yb_exec_params.rowmark = -1;

@@ -168,6 +168,19 @@ components:
 
                 - job_name: "yugabyte"
                   metrics_path: "/prometheus-metrics"
+                  params:
+                    # Enable priority regex on all tables
+                    # URL encoding done by prometheus
+                    max_tables_metrics_breakdowns: ["0"]
+                    priority_regex:
+                      - "rocksdb_(number_db_(next|seek)
+                      |current_version_(sst_files_size|num_sst_files)\
+                      |db_[^_]+_micros|block_cache_(hit|miss)|bloom_filter_(checked|useful)\
+                      |stall_micros|flush_write_bytes|compact_[^_]+_bytes|compaction_times_micros\
+                      |numfiles_in_singlecompaction)|transaction_conflicts|expired_transactions\
+                      |log_(sync_latency|group_commit_latency|append_latency|bytes_logged\
+                      |reader_bytes_read|group_commit_latency_count|append_latency_count\
+                      |sync_latency_count|cache_size|cache_num_ops)|glog_[^_]+_messages"
                   file_sd_configs:
                     - files:
                       - '/opt/yugabyte/prometheus/targets/yugabyte.*.json'

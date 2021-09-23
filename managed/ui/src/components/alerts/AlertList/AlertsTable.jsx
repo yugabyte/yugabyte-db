@@ -57,7 +57,7 @@ export default function AlertsTable({ filters }) {
 
   useEffect(() => {
     resetPage();
-  }, [filters.targetStates, filters.severities, filters.groupTypes]);
+  }, [filters.states, filters.severities, filters.configurationTypes, filters.sourceName]);
 
   if (isLoading) return <YBLoading />;
 
@@ -125,7 +125,7 @@ export default function AlertsTable({ filters }) {
                 className="no-border"
                 dataAlign="left"
                 width={'30%'}
-                dataFormat={(cell) => findValueforlabel(cell, 'universe_name')}
+                dataFormat={(cell) => findValueforlabel(cell, 'source_name')}
               >
                 Source
               </TableHeaderColumn>

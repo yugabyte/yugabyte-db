@@ -35,8 +35,9 @@ namespace rocksdb {
 
 class SstFileReader {
  public:
-  explicit SstFileReader(const std::string& file_name, bool verify_checksum,
-                         bool output_hex);
+  SstFileReader(
+      const std::string& file_name, bool verify_checksum, OutputFormat format,
+      const DocDBKVFormatter& docdb_formatter = DocDBKVFormatter());
 
   Status ReadSequential(bool print_kv, uint64_t read_num, bool has_from,
                         const std::string& from_key, bool has_to,
@@ -75,7 +76,8 @@ class SstFileReader {
   std::string file_name_;
   uint64_t read_num_;
   bool verify_checksum_;
-  bool output_hex_;
+  OutputFormat output_format_ = OutputFormat::kRaw;
+  const DocDBKVFormatter& docdb_kv_formatter_;
   EnvOptions soptions_;
 
   Status init_result_;

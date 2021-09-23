@@ -15,13 +15,16 @@
           - server_type is defined
           - server_type in ["cluster-server"]
 
+# This is required to install backup utils using python setup scripts
 - name: Install Python on Ubuntu
   hosts: "{{ instance_search_pattern }}"
-  gather_facts: no
+  gather_facts: yes
   pre_tasks:
     - name: Verify and Install Python
-      raw: bash -c "test -e /usr/bin/python || (apt -qqy update && apt install -qqy python-minimal)"
-      when: ssh_user == "ubuntu"
+      raw: >
+        bash -c "test -e /usr/bin/python ||
+        (sudo apt -qqy update && sudo apt install -qqy python-minimal)"
+      when: ansible_distribution == "Ubuntu"
 
 - name: Provision server
   become: yes

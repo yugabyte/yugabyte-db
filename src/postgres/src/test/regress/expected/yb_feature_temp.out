@@ -375,3 +375,14 @@ EXPLAIN (COSTS OFF) SELECT a FROM temptest WHERE a = 1;
  Index Only Scan using temptest_pkey on temptest
    Index Cond: (a = 1)
 (2 rows)
+
+-- test temp table being used to update YB table.
+CREATE TABLE test1 (x int, y int, z int);
+INSERT INTO test1 VALUES (1, 2, 3);
+CREATE TEMP TABLE test2 as table test1;
+UPDATE test1 SET z = 2 FROM test2 WHERE test1.x = test2.x;
+SELECT * FROM test1;
+ x | y | z
+---+---+---
+ 1 | 2 | 2
+(1 row)

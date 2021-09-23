@@ -19,10 +19,10 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
-import com.yugabyte.yw.forms.TableDefinitionTaskParams;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
+import com.yugabyte.yw.forms.TableDefinitionTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.Backup;
@@ -230,7 +230,7 @@ public class TablesController extends AuthenticatedController {
     return PlatformResults.withData(ColumnDetails.YQLDataType.values());
   }
 
-  @ApiModel("Table information")
+  @ApiModel(description = "Table information response")
   @Builder
   static class TableInfoResp {
 
@@ -413,14 +413,13 @@ public class TablesController extends AuthenticatedController {
       throw new PlatformServiceException(
           BAD_REQUEST, "Missing StorageConfig UUID: " + taskParams.storageConfigUUID);
     }
-    CustomerConfig storageConfig =
-        CustomerConfig.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
+    CustomerConfig.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
     if (universe.getUniverseDetails().updateInProgress
         || universe.getUniverseDetails().backupInProgress) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
-              "Cannot run Backup task since the " + "universe %s is currently in a locked state.",
+              "Cannot run Backup task since the universe %s is currently in a locked state.",
               universeUUID.toString()));
     }
 
@@ -483,19 +482,19 @@ public class TablesController extends AuthenticatedController {
     Form<BackupTableParams> formData = formFactory.getFormDataOrBadRequest(BackupTableParams.class);
 
     BackupTableParams taskParams = formData.get();
-    CustomerConfig storageConfig =
-        CustomerConfig.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
+    CustomerConfig.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
     if (universe.getUniverseDetails().updateInProgress
         || universe.getUniverseDetails().backupInProgress) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
-              "Cannot run Backup task since the " + "universe %s is currently in a locked state.",
+              "Cannot run Backup task since the universe %s is currently in a locked state.",
               universeUUID.toString()));
     }
 
     taskParams.universeUUID = universeUUID;
     taskParams.tableUUID = tableUUID;
+    taskParams.customerUuid = customerUUID;
 
     if (taskParams.schedulingFrequency != 0L || taskParams.cronExpression != null) {
       Schedule schedule =
@@ -514,14 +513,12 @@ public class TablesController extends AuthenticatedController {
       auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
       return PlatformResults.withData(schedule);
     } else {
-      Backup backup = Backup.create(customerUUID, taskParams);
       UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, taskParams);
       LOG.info(
           "Submitted task to backup table {}:{}, task uuid = {}.",
           tableUUID,
           taskParams.getTableName(),
           taskUUID);
-      backup.setTaskUUID(taskUUID);
       CustomerTask.create(
           customer,
           taskParams.universeUUID,
@@ -536,7 +533,7 @@ public class TablesController extends AuthenticatedController {
           taskParams.getTableNames(),
           taskParams.getTableName());
       auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
-      return new YBPTask(taskUUID, backup.backupUUID).asResult();
+      return new YBPTask(taskUUID).asResult();
     }
   }
 

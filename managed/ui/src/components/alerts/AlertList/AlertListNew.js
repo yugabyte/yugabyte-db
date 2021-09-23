@@ -5,6 +5,9 @@ import AlertsTable from './AlertsTable';
 
 import './AlertListNew.scss';
 
+/**
+ * Whenever you change the keys of FILTER_TYPES, make sure you change it in the Alertable's useEffect to reset the page count.
+ */
 const FILTER_TYPES = {
   states: {
     label: 'Target State',
@@ -16,9 +19,9 @@ const FILTER_TYPES = {
     values: ['Severe', 'Warning']
   },
 
-  groupTypes: {
+  configurationTypes: {
     label: 'Group Type',
-    values: ['Customer', 'Universe']
+    values: ['Platform', 'Universe']
   }
 };
 
@@ -51,9 +54,9 @@ export class AlertListNew extends Component {
     });
   }
 
-  updateTargetName = (value) => {
+  updateSourceName = (value) => {
     const { filter_groups } = this.state;
-    filter_groups['targetName'] = value;
+    filter_groups['sourceName'] = value;
     this.setState({
       filter_groups
     });
@@ -113,7 +116,7 @@ export class AlertListNew extends Component {
                       <Col lg={12} lgOffset={1} className="noMargin">
                         <YBSelectWithLabel
                           options={universesList}
-                          onInputChanged={this.updateTargetName}
+                          onInputChanged={this.updateSourceName}
                         />
                       </Col>
                     </Row>

@@ -404,7 +404,7 @@ public class UniverseTest extends FakeDBApplication {
         universeJson.get("universeUUID").asText(),
         allOf(notNullValue(), equalTo(u.universeUUID.toString())));
     JsonNode clusterJson = universeJson.get("universeDetails").get("clusters").get(0);
-    assertTrue(clusterJson.get("userIntent").get("regionList").isNull());
+    assertTrue(!clusterJson.get("userIntent").has("regionList"));
     assertNull(clusterJson.get("regions"));
     assertNull(clusterJson.get("provider"));
   }
@@ -788,13 +788,9 @@ public class UniverseTest extends FakeDBApplication {
             ImmutableSet.of(NodeActionType.STOP, NodeActionType.REMOVE, NodeActionType.QUERY),
             allowedActions);
       } else if (nodeState == NodeDetails.NodeState.Stopped) {
-        assertEquals(
-            ImmutableSet.of(NodeActionType.START, NodeActionType.RELEASE, NodeActionType.QUERY),
-            allowedActions);
+        assertEquals(ImmutableSet.of(NodeActionType.START, NodeActionType.QUERY), allowedActions);
       } else if (nodeState == NodeDetails.NodeState.Removed) {
-        assertEquals(
-            ImmutableSet.of(NodeActionType.ADD, NodeActionType.RELEASE, NodeActionType.DELETE),
-            allowedActions);
+        assertEquals(ImmutableSet.of(NodeActionType.ADD, NodeActionType.RELEASE), allowedActions);
       } else if (nodeState == NodeDetails.NodeState.Decommissioned) {
         assertEquals(ImmutableSet.of(NodeActionType.ADD, NodeActionType.DELETE), allowedActions);
       } else {

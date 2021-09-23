@@ -7,22 +7,22 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
 import com.yugabyte.yw.common.alerts.AlertChannelParams;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
+import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Alert;
+import com.yugabyte.yw.models.AlertChannel;
 import com.yugabyte.yw.models.AlertConfiguration;
+import com.yugabyte.yw.models.AlertConfigurationTarget;
 import com.yugabyte.yw.models.AlertConfigurationThreshold;
 import com.yugabyte.yw.models.AlertDefinition;
-import com.yugabyte.yw.models.AlertConfigurationTarget;
-import com.yugabyte.yw.models.AlertLabel;
-import com.yugabyte.yw.models.AlertChannel;
 import com.yugabyte.yw.models.AlertDestination;
+import com.yugabyte.yw.models.AlertLabel;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
@@ -33,10 +33,10 @@ import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.Role;
+import com.yugabyte.yw.models.common.Condition;
 import com.yugabyte.yw.models.common.Unit;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
-
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
 import java.util.Collections;
@@ -83,7 +83,7 @@ public class ModelFactory {
   }
 
   public static Users testUser(Customer customer, String email, Role role) {
-    return Users.create(email, "password", role, customer.uuid);
+    return Users.create(email, "password", role, customer.uuid, false);
   }
 
   /*
@@ -287,18 +287,25 @@ public class ModelFactory {
             .setDescription("alertConfiguration description")
             .setCustomerUUID(customer.getUuid())
             .setTargetType(AlertConfiguration.TargetType.UNIVERSE)
-            .setTarget(
-                new AlertConfigurationTarget()
-                    .setUuids(ImmutableSet.of(universe.getUniverseUUID())))
-            .setTemplate(AlertTemplate.MEMORY_CONSUMPTION)
             .setThresholds(
                 ImmutableMap.of(
                     AlertConfiguration.Severity.SEVERE,
                     new AlertConfigurationThreshold()
-                        .setCondition(AlertConfigurationThreshold.Condition.GREATER_THAN)
+                        .setCondition(Condition.GREATER_THAN)
                         .setThreshold(1D)))
             .setThresholdUnit(Unit.PERCENT)
+            .setDefaultDestination(true)
             .generateUUID();
+    if (universe != null) {
+      configuration
+          .setTarget(
+              new AlertConfigurationTarget().setUuids(ImmutableSet.of(universe.getUniverseUUID())))
+          .setTemplate(AlertTemplate.MEMORY_CONSUMPTION);
+    } else {
+      configuration
+          .setTarget(new AlertConfigurationTarget().setAll(true))
+          .setTemplate(AlertTemplate.BACKUP_FAILURE);
+    }
     modifier.accept(configuration);
     configuration.save();
     return configuration;
@@ -320,8 +327,14 @@ public class ModelFactory {
             .setConfigurationUUID(configuration.getUuid())
             .setCustomerUUID(customer.getUuid())
             .setQuery("query {{ query_condition }} {{ query_threshold }}")
-            .setLabels(MetricLabelsBuilder.create().appendSource(universe).getDefinitionLabels())
             .generateUUID();
+    if (universe != null) {
+      alertDefinition.setLabels(
+          MetricLabelsBuilder.create().appendSource(universe).getDefinitionLabels());
+    } else {
+      alertDefinition.setLabels(
+          MetricLabelsBuilder.create().appendSource(customer).getDefinitionLabels());
+    }
     alertDefinition.save();
     return alertDefinition;
   }
@@ -358,28 +371,22 @@ public class ModelFactory {
             .setSeverity(AlertConfiguration.Severity.SEVERE)
             .setMessage("Universe on fire!")
             .generateUUID();
-    if (definition != null) {
-      AlertConfiguration configuration =
-          AlertConfiguration.db().find(AlertConfiguration.class, definition.getConfigurationUUID());
-      alert.setConfigurationUuid(definition.getConfigurationUUID());
-      alert.setConfigurationType(configuration.getTargetType());
-      alert.setDefinitionUuid(definition.getUuid());
-      List<AlertLabel> labels =
-          definition
-              .getEffectiveLabels(configuration, AlertConfiguration.Severity.SEVERE)
-              .stream()
-              .map(l -> new AlertLabel(l.getName(), l.getValue()))
-              .collect(Collectors.toList());
-      alert.setLabels(labels);
-    } else {
-      MetricLabelsBuilder labelsBuilder = MetricLabelsBuilder.create();
-      if (universe != null) {
-        labelsBuilder.appendSource(universe);
-      } else {
-        labelsBuilder.appendSource(customer);
-      }
-      alert.setLabels(labelsBuilder.getAlertLabels());
+    if (definition == null) {
+      AlertConfiguration configuration = createAlertConfiguration(customer, universe);
+      definition = createAlertDefinition(customer, universe, configuration);
     }
+    AlertConfiguration configuration =
+        AlertConfiguration.db().find(AlertConfiguration.class, definition.getConfigurationUUID());
+    alert.setConfigurationUuid(definition.getConfigurationUUID());
+    alert.setConfigurationType(configuration.getTargetType());
+    alert.setDefinitionUuid(definition.getUuid());
+    List<AlertLabel> labels =
+        definition
+            .getEffectiveLabels(configuration, AlertConfiguration.Severity.SEVERE)
+            .stream()
+            .map(l -> new AlertLabel(l.getName(), l.getValue()))
+            .collect(Collectors.toList());
+    alert.setLabels(labels);
     if (modifier != null) {
       modifier.accept(alert);
     }

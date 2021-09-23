@@ -85,20 +85,20 @@ You install Yugabyte Platform on a Kubernetes cluster as follows:
     The latest Helm Chart version and App version will be displayed:
 
     ```
-    NAME               	CHART VERSION	APP VERSION	DESRIPTION
-    yugabytedb/yugabyte	2.3.3        	2.3.3.0	YugabyteDB is the high-performance distributed ..
+    NAME                CHART VERSION APP VERSION DESCRIPTION
+    yugabytedb/yugabyte 2.9.0         2.9.0.0     YugabyteDB is the high-performance distributed ...
     ```
 
 4. Run the following `helm install` command to install Yugabyte Platform (`yugaware`) Helm chart:
 
     ```sh
-    helm install yw-test yugabytedb/yugaware --version 2.3.3 -n yb-platform --wait
+    helm install yw-test yugabytedb/yugaware --version 2.9.0 -n yb-platform --wait
     ```
 
 5. Optionally, set the TLS version for Nginx frontend by using `ssl_protocols` operational directive in the Helm installation, as follows:
 
     ```sh
-    helm install yw-test yugabytedb/yugaware --version 2.3.3 -n yb-platform --wait --set tls.sslProtocols="TLSv1.2"
+    helm install yw-test yugabytedb/yugaware --version 2.9.0 -n yb-platform --wait --set tls.sslProtocols="TLSv1.2"
     ```
 
 6. Use the following command to check the service:

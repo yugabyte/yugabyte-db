@@ -10,6 +10,10 @@
 
 package com.yugabyte.yw.controllers;
 
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+import static play.inject.Bindings.bind;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -43,14 +47,15 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-import com.yugabyte.yw.queries.QueryHelper;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.queries.QueryHelper;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import kamon.instrumentation.play.GuiceModule;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -68,9 +73,6 @@ import play.libs.Json;
 import play.modules.swagger.SwaggerModule;
 import play.test.Helpers;
 import play.test.WithApplication;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-import static play.inject.Bindings.bind;
 
 public class UniverseControllerTestBase extends WithApplication {
   protected static Commissioner mockCommissioner;
@@ -126,6 +128,7 @@ public class UniverseControllerTestBase extends WithApplication {
 
     return new GuiceApplicationBuilder()
         .disable(SwaggerModule.class)
+        .disable(GuiceModule.class)
         .configure((Map) Helpers.inMemoryDatabase())
         .overrides(bind(YBClientService.class).toInstance(mockService))
         .overrides(bind(Commissioner.class).toInstance(mockCommissioner))

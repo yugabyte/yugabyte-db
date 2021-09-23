@@ -4,7 +4,23 @@ import { Field } from 'redux-form';
 import { YBInputField, YBSelect } from '../../common/forms/fields';
 import '../CreateAlerts.scss';
 
-const required = (value) => (value ? undefined : 'This field is required.');
+const required = (value) => {
+  if (value === undefined || value === null || value === '') {
+    return 'This field is required.';
+  }
+  return undefined;
+};
+
+const MAX_SEVERITY_ALLOWED = 2;
+
+const detectDuplicateSeverity = (_, values) => {
+  const distinctValue = new Set(
+    values.ALERT_METRICS_CONDITION_POLICY.map((field) => field._SEVERITY)
+  );
+  return distinctValue.size !== values.ALERT_METRICS_CONDITION_POLICY.length
+    ? 'Duplicate severity is not allowed'
+    : undefined;
+};
 
 export class AlertsPolicy extends Component {
   /**
@@ -34,22 +50,16 @@ export class AlertsPolicy extends Component {
       Less than
     </option>
   ];
-  /**
-   * Push an enpty object if field array is empty.
-   */
-  componentDidMount() {
-    const { fields } = this.props;
-    if (fields.length === 0) {
-      this.props.fields.push({});
-    }
-  }
 
   /**
    * Add a new row in field array.
    * @param {Event} e
    */
   addRow = (e) => {
-    this.props.fields.push({});
+    const metric = this.props.currentMetric;
+    this.props.fields.push({
+      _CONDITION: metric.thresholds[Object.keys(metric.thresholds)[0]].condition
+    });
     e.preventDefault();
   };
 
@@ -64,24 +74,6 @@ export class AlertsPolicy extends Component {
   render() {
     const { fields, currentMetric } = this.props;
 
-    let metricUnit = '';
-
-    switch (currentMetric?.thresholdUnit) {
-      case 'MILLISECOND':
-        metricUnit = 'ms';
-        break;
-      case 'SECOND':
-        metricUnit = 'sec';
-        break;
-      case 'DAY':
-        metricUnit = 'day';
-        break;
-      case 'PERCENT':
-        metricUnit = '%';
-        break;
-      default:
-        metricUnit = '';
-    }
     return (
       <div className="condition-row-container">
         <Row>
@@ -96,7 +88,7 @@ export class AlertsPolicy extends Component {
                 name={`${instanceTypeItem}_SEVERITY`}
                 component={YBSelect}
                 insetError={true}
-                validate={required}
+                validate={[required, detectDuplicateSeverity]}
                 options={this.severityTypes}
               />
             </Col>
@@ -105,6 +97,7 @@ export class AlertsPolicy extends Component {
                 name={`${instanceTypeItem}_CONDITION`}
                 component={YBSelect}
                 insetError={true}
+                readOnlySelect={currentMetric?.thresholdConditionReadOnly}
                 validate={required}
                 options={this.conditionTypes}
               />
@@ -113,16 +106,17 @@ export class AlertsPolicy extends Component {
               <Field
                 name={`${instanceTypeItem}_THRESHOLD`}
                 component={YBInputField}
+                isReadOnly={currentMetric?.thresholdReadOnly}
                 validate={required}
               />
             </Col>
             <Col lg={1}>
               <div className="flex-container">
-                <p className="percent-text">{metricUnit}</p>
+                <p className="percent-text">{currentMetric?.thresholdUnitName}</p>
               </div>
             </Col>
             <Col lg={1}>
-              {fields.length > 1 ? (
+              {fields.length > 1 && !currentMetric?.thresholdReadOnly ? (
                 <i
                   className="fa fa-minus-circle on-prem-row-delete-btn"
                   onClick={() => this.removeRow(instanceTypeIdx)}
@@ -131,14 +125,18 @@ export class AlertsPolicy extends Component {
             </Col>
           </Row>
         ))}
-        <Row>
-          <Col lg={2}>
-            <a href="# " className="on-prem-add-link" onClick={this.addRow}>
-              <i className="fa fa-plus-circle fa-2x on-prem-row-add-btn" onClick={this.addRow} />
-              Add Severity
-            </a>
-          </Col>
-        </Row>
+        {currentMetric?.name &&
+        fields.length < MAX_SEVERITY_ALLOWED &&
+        !currentMetric.thresholdReadOnly ? (
+          <Row>
+            <Col lg={2}>
+              <a href="# " className="on-prem-add-link" onClick={this.addRow}>
+                <i className="fa fa-plus-circle fa-2x on-prem-row-add-btn" onClick={this.addRow} />
+                Add Severity
+              </a>
+            </Col>
+          </Row>
+        ) : null}
       </div>
     );
   }

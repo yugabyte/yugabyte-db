@@ -32,7 +32,7 @@ public class FakeApiHelper {
     Users user;
     if (customer == null) {
       customer = Customer.create("vc", "Valid Customer");
-      user = Users.create("foo@bar.com", "password", Role.Admin, customer.uuid);
+      user = Users.create("foo@bar.com", "password", Role.Admin, customer.uuid, false);
     }
     user = Users.find.query().where().eq("customer_uuid", customer.uuid).findOne();
     return user.createAuthToken();
@@ -112,14 +112,13 @@ public class FakeApiHelper {
    */
   public static Result routeWithYWErrHandler(Http.RequestBuilder requestBuilder, Application app)
       throws InterruptedException, ExecutionException, TimeoutException {
-    PlatformErrorHandler PlatformErrorHandler =
-        app.injector().instanceOf(PlatformErrorHandler.class);
+    YWErrorHandler YWErrorHandler = app.injector().instanceOf(YWErrorHandler.class);
     CompletableFuture<Result> future =
         CompletableFuture.supplyAsync(() -> route(app, requestBuilder));
     BiFunction<Result, Throwable, CompletionStage<Result>> f =
         (result, throwable) -> {
           if (throwable == null) return CompletableFuture.supplyAsync(() -> result);
-          return PlatformErrorHandler.onServerError(null, throwable);
+          return YWErrorHandler.onServerError(null, throwable);
         };
 
     return future.handleAsync(f).thenCompose(x -> x).get(20000, TimeUnit.MILLISECONDS);

@@ -15,9 +15,11 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.common.collect.ImmutableList;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -122,6 +124,9 @@ public class CloudQueryHelper extends DevopsBase {
     if (customPayload != null && !customPayload.isEmpty()) {
       commandArgs.add("--custom_payload");
       commandArgs.add(customPayload);
+    }
+    if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.internal.gcp_instances")) {
+      commandArgs.add("--gcp_internal");
     }
     return execAndParseCommandRegion(regionList.get(0).uuid, "instance_types", commandArgs);
   }

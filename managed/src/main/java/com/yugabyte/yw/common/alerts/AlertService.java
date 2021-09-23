@@ -68,21 +68,22 @@ public class AlertService {
         alerts
             .stream()
             .map(alert -> prepareForSave(alert, beforeAlertMap.get(alert.getUuid())))
+            .filter(alert -> filterForSave(alert, beforeAlertMap.get(alert.getUuid())))
             .peek(alert -> validate(alert, beforeAlertMap.get(alert.getUuid())))
             .collect(Collectors.groupingBy(alert -> alert.isNew() ? CREATE : UPDATE));
 
-    if (toCreateAndUpdate.containsKey(CREATE)) {
-      List<Alert> toCreate = toCreateAndUpdate.get(CREATE);
+    List<Alert> toCreate = toCreateAndUpdate.getOrDefault(CREATE, Collections.emptyList());
+    if (!toCreate.isEmpty()) {
       toCreate.forEach(Alert::generateUUID);
       Alert.db().saveAll(toCreate);
     }
 
-    if (toCreateAndUpdate.containsKey(UPDATE)) {
-      List<Alert> toUpdate = toCreateAndUpdate.get(UPDATE);
+    List<Alert> toUpdate = toCreateAndUpdate.getOrDefault(UPDATE, Collections.emptyList());
+    if (!toUpdate.isEmpty()) {
       Alert.db().updateAll(toUpdate);
     }
 
-    log.debug("{} alerts saved", alerts.size());
+    log.debug("{} alerts saved", toCreate.size() + toUpdate.size());
     return alerts;
   }
 
@@ -201,6 +202,13 @@ public class AlertService {
     return alert
         .setLabel(KnownAlertLabels.CUSTOMER_UUID, alert.getCustomerUUID().toString())
         .setLabel(KnownAlertLabels.SEVERITY, alert.getSeverity().name());
+  }
+
+  private boolean filterForSave(Alert alert, Alert before) {
+    if (before == null) {
+      return true;
+    }
+    return !alert.equals(before);
   }
 
   private void validate(Alert alert, Alert before) {

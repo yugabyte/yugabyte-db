@@ -30,39 +30,39 @@ import com.yugabyte.yw.common.AssertHelper;
 import com.yugabyte.yw.common.EmailFixtures;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.ValidatingFormFactory;
-import com.yugabyte.yw.common.alerts.AlertConfigurationService;
-import com.yugabyte.yw.common.alerts.AlertDefinitionService;
-import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
 import com.yugabyte.yw.common.alerts.AlertChannelParams;
 import com.yugabyte.yw.common.alerts.AlertChannelService;
 import com.yugabyte.yw.common.alerts.AlertChannelSlackParams;
+import com.yugabyte.yw.common.alerts.AlertConfigurationService;
+import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.alerts.AlertUtils;
-import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.alerts.SmtpData;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
+import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.forms.filters.AlertApiFilter;
 import com.yugabyte.yw.forms.filters.AlertConfigurationApiFilter;
 import com.yugabyte.yw.forms.filters.AlertTemplateApiFilter;
 import com.yugabyte.yw.forms.paging.AlertConfigurationPagedApiQuery;
 import com.yugabyte.yw.forms.paging.AlertPagedApiQuery;
 import com.yugabyte.yw.models.Alert;
-import com.yugabyte.yw.models.AlertConfiguration;
-import com.yugabyte.yw.models.AlertConfigurationThreshold;
-import com.yugabyte.yw.models.AlertDefinition;
-import com.yugabyte.yw.models.AlertConfiguration.SortBy;
-import com.yugabyte.yw.models.AlertConfigurationTarget;
 import com.yugabyte.yw.models.AlertChannel;
 import com.yugabyte.yw.models.AlertChannel.ChannelType;
+import com.yugabyte.yw.models.AlertConfiguration;
+import com.yugabyte.yw.models.AlertConfiguration.SortBy;
+import com.yugabyte.yw.models.AlertConfigurationTarget;
+import com.yugabyte.yw.models.AlertConfigurationThreshold;
+import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.AlertDestination;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.MetricKey;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.common.Condition;
 import com.yugabyte.yw.models.common.Unit;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -79,10 +79,10 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
-import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 import play.libs.Json;
 import play.mvc.Result;
@@ -97,8 +97,6 @@ public class AlertControllerTest extends FakeDBApplication {
   private String authToken;
 
   private Universe universe;
-
-  @Mock private ValidatingFormFactory formFactory;
 
   @InjectMocks private AlertController controller;
 
@@ -683,9 +681,9 @@ public class AlertControllerTest extends FakeDBApplication {
                     authToken));
     AssertHelper.assertBadRequest(
         result,
-        "Unable to delete default alert destination "
-            + destinationUUID
-            + ", make another destination default at first.");
+        "Unable to delete default alert destination '"
+            + createdDestination.getName()
+            + "', make another destination default at first.");
   }
 
   @Test
@@ -814,6 +812,9 @@ public class AlertControllerTest extends FakeDBApplication {
 
     JsonNode alertsJson = Json.parse(contentAsString(result));
     Alert acknowledged = Json.fromJson(alertsJson, Alert.class);
+    if (!alertsJson.has("nextNotificationTime")) {
+      acknowledged.setNextNotificationTime(null);
+    }
 
     initial.setState(Alert.State.ACKNOWLEDGED);
     initial.setAcknowledgedTime(acknowledged.getAcknowledgedTime());
@@ -880,7 +881,7 @@ public class AlertControllerTest extends FakeDBApplication {
             ImmutableMap.of(
                 AlertConfiguration.Severity.SEVERE,
                 new AlertConfigurationThreshold()
-                    .setCondition(AlertConfigurationThreshold.Condition.GREATER_THAN)
+                    .setCondition(Condition.GREATER_THAN)
                     .setThreshold(90D))));
     assertThat(
         template.getDurationSec(),
@@ -955,6 +956,20 @@ public class AlertControllerTest extends FakeDBApplication {
     assertThat(configurations.getEntities(), contains(configuration2, configuration3));
   }
 
+  @Ignore("See PLAT-545 why we cannot fail on unknown params")
+  public void testListConfigurations_unknown_filter_props() {
+    JsonNode badFilter =
+        Json.parse(
+            "{\n" + "\"jatin\": 3,\n" + "\"alexander\": \"bar\",\n" + "\"shashank\": null\n" + "}");
+    Result result =
+        doRequestWithAuthTokenAndBody(
+            "POST",
+            "/api/customers/" + customer.getUuid() + "/alert_configurations/list",
+            authToken,
+            Json.toJson(badFilter));
+    assertBadRequest(result, "unknown fields error");
+  }
+
   @Test
   public void testListConfigurations() {
     AlertConfiguration configuration2 = ModelFactory.createAlertConfiguration(customer, universe);
@@ -987,6 +1002,7 @@ public class AlertControllerTest extends FakeDBApplication {
     alertConfiguration.setUuid(null);
     alertConfiguration.setCreateTime(null);
     alertConfiguration.setDestinationUUID(destination.getUuid());
+    alertConfiguration.setDefaultDestination(false);
 
     Result result =
         doRequestWithAuthTokenAndBody(
@@ -1016,7 +1032,7 @@ public class AlertControllerTest extends FakeDBApplication {
             ImmutableMap.of(
                 AlertConfiguration.Severity.SEVERE,
                 new AlertConfigurationThreshold()
-                    .setCondition(AlertConfigurationThreshold.Condition.GREATER_THAN)
+                    .setCondition(Condition.GREATER_THAN)
                     .setThreshold(1D))));
     assertThat(configuration.getDurationSec(), equalTo(15));
     assertThat(configuration.getDestinationUUID(), equalTo(destination.getUuid()));
@@ -1035,13 +1051,14 @@ public class AlertControllerTest extends FakeDBApplication {
                     "/api/customers/" + customer.getUuid() + "/alert_configurations",
                     authToken,
                     Json.toJson(alertConfiguration)));
-    assertBadRequest(result, "Name field is mandatory");
+    assertBadRequest(result, "{\"name\":[\"error.required\"]}");
   }
 
   @Test
   public void testUpdateConfiguration() {
     AlertDestination destination = createAlertDestination(false);
     alertConfiguration.setDestinationUUID(destination.getUuid());
+    alertConfiguration.setDefaultDestination(false);
 
     Result result =
         doRequestWithAuthTokenAndBody(
@@ -1074,7 +1091,7 @@ public class AlertControllerTest extends FakeDBApplication {
                         + alertConfiguration.getUuid(),
                     authToken,
                     Json.toJson(alertConfiguration)));
-    assertBadRequest(result, "Target type field is mandatory");
+    assertBadRequest(result, "{\"targetType\":[\"error.required\"]}");
   }
 
   @Test

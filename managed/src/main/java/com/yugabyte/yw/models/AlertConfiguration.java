@@ -46,7 +46,7 @@ import play.data.validation.Constraints;
 @Data
 @Accessors(chain = true)
 @EqualsAndHashCode(callSuper = false)
-@ApiModel(description = "Alert configuration.")
+@ApiModel(description = "Alert configuration")
 public class AlertConfiguration extends Model {
 
   public enum SortBy implements PagedQuery.SortByIF {
@@ -95,12 +95,12 @@ public class AlertConfiguration extends Model {
 
   @Id
   @Column(nullable = false, unique = true)
-  @ApiModelProperty(value = "Configuration uuid", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Configuration UUID", accessMode = READ_ONLY)
   private UUID uuid;
 
   @Constraints.Required
   @Column(nullable = false)
-  @ApiModelProperty(value = "Customer uuid", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Customer UUID", accessMode = READ_ONLY)
   private UUID customerUUID;
 
   @Constraints.Required
@@ -140,7 +140,7 @@ public class AlertConfiguration extends Model {
   @Constraints.Required
   @Enumerated(EnumType.STRING)
   @Column(nullable = false)
-  @ApiModelProperty(value = "Thresholds unit", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Threshold unit", accessMode = READ_ONLY)
   private Unit thresholdUnit;
 
   @Constraints.Required
@@ -158,8 +158,11 @@ public class AlertConfiguration extends Model {
   @ApiModelProperty(value = "Is configured alerts raised or not", accessMode = READ_WRITE)
   private boolean active = true;
 
-  @ApiModelProperty(value = "Alert destination uuid", accessMode = READ_WRITE)
+  @ApiModelProperty(value = "Alert destination UUID", accessMode = READ_WRITE)
   private UUID destinationUUID;
+
+  @ApiModelProperty(value = "Is default destination used for this config", accessMode = READ_WRITE)
+  private boolean defaultDestination;
 
   private static final Finder<UUID, AlertConfiguration> find =
       new Finder<UUID, AlertConfiguration>(AlertConfiguration.class) {};
@@ -185,6 +188,19 @@ public class AlertConfiguration extends Model {
     }
     if (filter.getTemplate() != null) {
       query.eq("template", filter.getTemplate().name());
+    }
+    if (filter.getDestinationType() != null) {
+      switch (filter.getDestinationType()) {
+        case NO_DESTINATION:
+          query.eq("defaultDestination", false).isNull("destinationUUID");
+          break;
+        case DEFAULT_DESTINATION:
+          query.eq("defaultDestination", true);
+          break;
+        case SELECTED_DESTINATION:
+          query.isNotNull("destinationUUID");
+          break;
+      }
     }
     if (filter.getDestinationUuid() != null) {
       query.eq("destinationUUID", filter.getDestinationUuid());

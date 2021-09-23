@@ -20,9 +20,9 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
@@ -54,7 +54,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -557,11 +556,13 @@ public class NodeManager extends DevopsBase {
         extra_gflags.put("metric_node_name", taskParam.nodeName);
         // TODO: add a shared path to massage flags across different flavors of configure.
         String pgsqlProxyBindAddress = node.cloudInfo.private_ip;
+        String cqlProxyBindAddress = node.cloudInfo.private_ip;
 
         if (useHostname) {
           subcommand.add("--server_broadcast_addresses");
           subcommand.add(node.cloudInfo.private_ip);
           pgsqlProxyBindAddress = "0.0.0.0";
+          cqlProxyBindAddress = "0.0.0.0";
         }
 
         if (taskParam.enableYSQL) {
@@ -569,8 +570,29 @@ public class NodeManager extends DevopsBase {
           extra_gflags.put(
               "pgsql_proxy_bind_address",
               String.format("%s:%s", pgsqlProxyBindAddress, node.ysqlServerRpcPort));
+          if (taskParam.enableYSQLAuth) {
+            extra_gflags.put("ysql_enable_auth", "true");
+            extra_gflags.put("ysql_hba_conf_csv", "local all yugabyte trust");
+          } else {
+            extra_gflags.put("ysql_enable_auth", "false");
+          }
         } else {
           extra_gflags.put("enable_ysql", "false");
+        }
+
+        // For YCQL flag
+        if (taskParam.enableYCQL) {
+          extra_gflags.put("start_cql_proxy", "true");
+          extra_gflags.put(
+              "cql_proxy_bind_address",
+              String.format("%s:%s", cqlProxyBindAddress, node.yqlServerRpcPort));
+          if (taskParam.enableYCQLAuth) {
+            extra_gflags.put("use_cassandra_authentication", "true");
+          } else {
+            extra_gflags.put("use_cassandra_authentication", "false");
+          }
+        } else {
+          extra_gflags.put("start_cql_proxy", "false");
         }
 
         if (taskParam.getCurrentClusterType() == UniverseDefinitionTaskParams.ClusterType.PRIMARY
@@ -859,6 +881,28 @@ public class NodeManager extends DevopsBase {
     return subcommand;
   }
 
+  private Map<String, String> getAnsibleEnvVars(UUID universeUUID) {
+    Map<String, String> envVars = new HashMap<>();
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Config runtimeConfig = runtimeConfigFactory.forUniverse(universe);
+
+    envVars.put("ANSIBLE_STRATEGY", runtimeConfig.getString("yb.ansible.strategy"));
+    envVars.put(
+        "ANSIBLE_TIMEOUT", Integer.toString(runtimeConfig.getInt("yb.ansible.conn_timeout_secs")));
+    envVars.put(
+        "ANSIBLE_VERBOSITY", Integer.toString(runtimeConfig.getInt("yb.ansible.verbosity")));
+    if (runtimeConfig.getBoolean("yb.ansible.debug")) {
+      envVars.put("ANSIBLE_DEBUG", "True");
+    }
+    if (runtimeConfig.getBoolean("yb.ansible.diff_always")) {
+      envVars.put("ANSIBLE_DIFF_ALWAYS", "True");
+    }
+    envVars.put("ANSIBLE_LOCAL_TEMP", runtimeConfig.getString("yb.ansible.local_temp"));
+
+    LOG.trace("ansible env vars {}", envVars);
+    return envVars;
+  }
+
   public ShellResponse nodeCommand(NodeCommandType type, NodeTaskParams nodeTaskParam) {
     List<String> commandArgs = new ArrayList<>();
     UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
@@ -889,6 +933,7 @@ public class NodeManager extends DevopsBase {
           if (!(nodeTaskParam instanceof AnsibleCreateServer.Params)) {
             throw new RuntimeException("NodeTaskParams is not AnsibleCreateServer.Params");
           }
+          Config config = this.runtimeConfigFactory.forProvider(nodeTaskParam.getProvider());
           AnsibleCreateServer.Params taskParam = (AnsibleCreateServer.Params) nodeTaskParam;
           Common.CloudType cloudType = userIntent.providerType;
           if (!cloudType.equals(Common.CloudType.onprem)) {
@@ -897,7 +942,11 @@ public class NodeManager extends DevopsBase {
             commandArgs.add("--cloud_subnet");
             commandArgs.add(taskParam.subnetId);
 
-            Config config = this.runtimeConfigFactory.forProvider(nodeTaskParam.getProvider());
+            // Only create second NIC for cloud.
+            if (config.getBoolean("yb.cloud.enabled") && taskParam.secondarySubnetId != null) {
+              commandArgs.add("--cloud_subnet_secondary");
+              commandArgs.add(taskParam.secondarySubnetId);
+            }
 
             // Use case: cloud free tier instances.
             if (config.getBoolean("yb.cloud.enabled")) {
@@ -1035,7 +1084,7 @@ public class NodeManager extends DevopsBase {
 
           if (taskParam.isSystemdUpgrade) {
             // Cron to Systemd Upgrade
-            commandArgs.add("--reuse_host");
+            commandArgs.add("--skip_preprovision");
             commandArgs.add("--tags");
             commandArgs.add("systemd_upgrade");
             commandArgs.add("--systemd_services");
@@ -1250,7 +1299,8 @@ public class NodeManager extends DevopsBase {
           null,
           type.toString().toLowerCase(),
           commandArgs,
-          getCloudArgs(nodeTaskParam));
+          getCloudArgs(nodeTaskParam),
+          getAnsibleEnvVars(nodeTaskParam.universeUUID));
     } finally {
       if (bootScriptFile != null) {
         try {

@@ -15,8 +15,14 @@
 #include "yb/common/ybc-internal.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
+#include "yb/server/server_base_options.h"
+
+#include "yb/tserver/tserver_service.proxy.h"
+#include "yb/tserver/tserver_shared_mem.h"
+
 #include "yb/util/memory/mc_types.h"
 #include "yb/yql/pggate/pg_env.h"
+#include "yb/yql/pggate/pggate.h"
 #include "yb/yql/pggate/pggate_flags.h"
 
 namespace yb {
@@ -47,6 +53,64 @@ YBCPgMemctx GetCurrentToolYbMemctx() {
 // Currently it is not used in the tools and can be empty.
 static const YBCPgTypeEntity YBCEmptyTypeEntityTable[] = {};
 
+CHECKED_STATUS PrepareInitPgGateBackend() {
+  server::MasterAddresses master_addresses;
+  std::string resolved_str;
+  RETURN_NOT_OK(server::DetermineMasterAddresses(
+      "pggate_master_addresses", FLAGS_pggate_master_addresses, 0, &master_addresses,
+      &resolved_str));
+
+  auto endpoints = VERIFY_RESULT(server::ResolveMasterAddresses(master_addresses));
+
+  PgApiContext context;
+  struct Data {
+    boost::optional<tserver::TServerSharedObject> tserver_shared_object;
+    std::atomic<bool> flag{false};
+    CountDownLatch latch{1};
+    std::atomic<size_t> running{0};
+    Status failure;
+  };
+  static std::shared_ptr<Data> data = std::make_shared<Data>();
+  data->tserver_shared_object.emplace(VERIFY_RESULT(tserver::TServerSharedObject::Create()));
+  data->running = endpoints.size();
+  for (const auto& endpoint : endpoints) {
+    tserver::TabletServerServiceProxy proxy(context.proxy_cache.get(), HostPort(endpoint));
+    struct ReqData {
+      tserver::GetSharedDataRequestPB req;
+      tserver::GetSharedDataResponsePB resp;
+      rpc::RpcController controller;
+    };
+    auto req_data = std::make_shared<ReqData>();
+    req_data->controller.set_timeout(std::chrono::seconds(60));
+    proxy.GetSharedDataAsync(
+        req_data->req, &req_data->resp, &req_data->controller, [req_data] {
+      if (req_data->controller.status().ok()) {
+        bool expected = false;
+        if (data->flag.compare_exchange_strong(expected, true)) {
+          memcpy(pointer_cast<char*>(&**data->tserver_shared_object),
+                 req_data->resp.data().c_str(), req_data->resp.data().size());
+          data->latch.CountDown();
+        }
+      } else if (--data->running == 0) {
+        data->failure = req_data->controller.status();
+        data->latch.CountDown();
+      }
+    });
+  }
+
+  data->latch.Wait();
+  RETURN_NOT_OK(data->failure);
+
+  FLAGS_pggate_tserver_shm_fd = data->tserver_shared_object->GetFd();
+
+  YBCPgCallbacks callbacks;
+  callbacks.FetchUniqueConstraintName = &FetchUniqueConstraintName;
+  callbacks.GetCurrentYbMemctx = &GetCurrentToolYbMemctx;
+  YBCInitPgGateEx(YBCEmptyTypeEntityTable, 0, callbacks, &context);
+
+  return Status::OK();
+}
+
 } // anonymous namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -60,11 +124,10 @@ void YBCSetMasterAddresses(const char* hosts) {
 }
 
 YBCStatus YBCInitPgGateBackend() {
-  YBCPgCallbacks callbacks;
-  callbacks.FetchUniqueConstraintName = &FetchUniqueConstraintName;
-  callbacks.GetCurrentYbMemctx = &GetCurrentToolYbMemctx;
-  YBCInitPgGate(YBCEmptyTypeEntityTable, 0, callbacks);
-
+  auto status = PrepareInitPgGateBackend();
+  if (!status.ok()) {
+    return ToYBCStatus(status);
+  }
   return YBCPgInitSession(/* pg_env */ nullptr, /* database_name */ nullptr);
 }
 

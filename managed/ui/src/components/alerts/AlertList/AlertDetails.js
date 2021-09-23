@@ -39,7 +39,7 @@ export default class AlertDetails extends Component {
 
     if (!alertDetails) return null;
 
-    const universe_name = findValueforlabel(alertDetails.labels, 'universe_name');
+    const source_name = findValueforlabel(alertDetails.labels, 'source_name');
     return (
       <div id="universe-tab-panel-pane-queries" className={'alert-details'}>
         <div className={`side-panel`}>
@@ -65,8 +65,8 @@ export default class AlertDetails extends Component {
                 <Row className="marginTop">
                   <Col className="alert-label noLeftPadding" xs={6} md={6} lg={3}>
                     <h6 className="alert-label-header">Source</h6>
-                    <div title={universe_name} className="alert-label-value">
-                      {universe_name}
+                    <div title={source_name} className="alert-label-value">
+                      {source_name}
                     </div>
                   </Col>
                   <Col className="alert-label" xs={6} md={6} lg={3}>

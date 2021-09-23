@@ -138,8 +138,8 @@ void PgIndexBackfillTest::TestSimpleBackfill(const std::string& table_create_suf
 void PgIndexBackfillTest::TestRetainDeleteMarkers(const std::string& db_name) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
 
-  const std::string index_name = "ttt_idx";
-  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", index_name));
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
+  const auto index_name = "ttt_idx";
   ASSERT_OK(conn_->ExecuteFormat("CREATE INDEX $0 ON $1 (i ASC)", index_name, kTableName));
 
   // Verify that retain_delete_markers was set properly in the index table schema.
@@ -376,7 +376,7 @@ TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(Large)) {
   TestLargeBackfill(kNumRows);
   int expected_calls = cluster_->num_tablet_servers() * kTabletsPerServer;
   auto actual_calls = ASSERT_RESULT(TotalBackfillRpcCalls(cluster_.get()));
-  ASSERT_EQ(actual_calls, expected_calls);
+  ASSERT_GE(actual_calls, expected_calls);
 }
 
 class PgIndexBackfillTestChunking : public PgIndexBackfillTest {
@@ -419,17 +419,21 @@ class PgIndexBackfillTestThrottled : public PgIndexBackfillTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     PgIndexBackfillTest::UpdateMiniClusterOptions(options);
-    options->extra_tserver_flags.push_back("--ysql_prefetch_limit=128");
-    options->extra_tserver_flags.push_back("--backfill_index_write_batch_size=256");
+    options->extra_master_flags.push_back(
+        Format("--ysql_index_backfill_rpc_timeout_ms=$0", kBackfillRpcDeadlineLargeMs));
+
+    options->extra_tserver_flags.push_back("--ysql_prefetch_limit=100");
+    options->extra_tserver_flags.push_back("--backfill_index_write_batch_size=100");
     options->extra_tserver_flags.push_back(
         Format("--backfill_index_rate_rows_per_sec=$0", kBackfillRateRowsPerSec));
     options->extra_tserver_flags.push_back(
         Format("--num_concurrent_backfills_allowed=$0", kNumConcurrentBackfills));
   }
 
+ protected:
   const int kBackfillRateRowsPerSec = 100;
   const int kNumConcurrentBackfills = 1;
-  const int kBackfillRpcDeadlineMs = 10000;
+  const int kBackfillRpcDeadlineLargeMs = 10 * 60 * 1000;
 };
 
 // Set the backfill batch size and backfill rate
@@ -452,21 +456,36 @@ TEST_F_EX(
 
   auto avg_rpc_latency_usec = ASSERT_RESULT(AvgBackfillRpcLatencyInMicros(cluster_.get()));
   LOG(INFO) << "Avg backfill latency was " << avg_rpc_latency_usec << " us";
-  // --ysql_index_backfill_rpc_timeout was not set for this test.
-  // Check to ensure that we have picked a reasonable value for kBackfillRpcDeadlineMs
-  // such that BackfillRespectsDeadline will only succeed if throttling is implemented.
-  ASSERT_GT(avg_rpc_latency_usec, kBackfillRpcDeadlineMs * 1000);
+  ASSERT_LE(avg_rpc_latency_usec, kBackfillRpcDeadlineLargeMs * 1000);
 }
 
-class PgIndexBackfillTestDeadlines : public PgIndexBackfillTestThrottled {
+class PgIndexBackfillTestDeadlines : public PgIndexBackfillTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    PgIndexBackfillTestThrottled::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back("--ysql_disable_index_backfill=false");
     options->extra_master_flags.push_back(
-        Format("--ysql_index_backfill_rpc_timeout_ms=$0", kBackfillRpcDeadlineMs));
+        Format("--ysql_num_shards_per_tserver=$0", kTabletsPerServer));
     options->extra_master_flags.push_back(
-        Format("--backfill_index_timeout_grace_margin_ms=$0", kBackfillRpcDeadlineMs / 2));
+        Format("--ysql_index_backfill_rpc_timeout_ms=$0", kBackfillRpcDeadlineSmallMs));
+    options->extra_master_flags.push_back(
+        Format("--backfill_index_timeout_grace_margin_ms=$0", kBackfillRpcDeadlineSmallMs / 2));
+
+    options->extra_tserver_flags.push_back("--ysql_disable_index_backfill=false");
+    options->extra_tserver_flags.push_back(
+        Format("--ysql_num_shards_per_tserver=$0", kTabletsPerServer));
+    options->extra_tserver_flags.push_back("--ysql_prefetch_limit=100");
+    options->extra_tserver_flags.push_back("--backfill_index_write_batch_size=100");
+    options->extra_tserver_flags.push_back(
+        Format("--backfill_index_rate_rows_per_sec=$0", kBackfillRateRowsPerSec));
+    options->extra_tserver_flags.push_back(
+        Format("--num_concurrent_backfills_allowed=$0", kNumConcurrentBackfills));
   }
+
+ protected:
+  const int kBackfillRpcDeadlineSmallMs = 10000;
+  const int kBackfillRateRowsPerSec = 100;
+  const int kNumConcurrentBackfills = 1;
+  const int kTabletsPerServer = 1;
 };
 
 // Set the backfill batch size, backfill rate and a low timeout for backfill rpc.
@@ -479,14 +498,17 @@ TEST_F_EX(
   constexpr int kNumRows = 10000;
   TestLargeBackfill(kNumRows);
 
+  const size_t num_tablets = cluster_->num_tablet_servers() * kTabletsPerServer;
   const size_t min_expected_calls = static_cast<size_t>(
-      ceil(kNumRows / (kBackfillRpcDeadlineMs * kBackfillRateRowsPerSec * 0.001)));
+      ceil(kNumRows / (kBackfillRpcDeadlineSmallMs * kBackfillRateRowsPerSec * 0.001)));
+  ASSERT_GT(min_expected_calls, num_tablets);
   auto actual_calls = ASSERT_RESULT(TotalBackfillRpcCalls(cluster_.get()));
+  ASSERT_GE(actual_calls, num_tablets);
   ASSERT_GE(actual_calls, min_expected_calls);
 
   auto avg_rpc_latency_usec = ASSERT_RESULT(AvgBackfillRpcLatencyInMicros(cluster_.get()));
   LOG(INFO) << "Avg backfill latency was " << avg_rpc_latency_usec << " us";
-  ASSERT_LE(avg_rpc_latency_usec, kBackfillRpcDeadlineMs * 1000);
+  ASSERT_LE(avg_rpc_latency_usec, kBackfillRpcDeadlineSmallMs * 1000);
 }
 
 // Make sure that CREATE INDEX NONCONCURRENTLY doesn't use backfill.
@@ -532,12 +554,29 @@ TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(Nonconcurrent)) {
   ASSERT_EQ(info->schema.version(), 1);
 }
 
+class PgIndexBackfillTestSimultaneously : public PgIndexBackfillTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back(
+        Format("--ysql_pg_conf_csv=yb_index_state_flags_update_delay=$0",
+               kIndexStateFlagsUpdateDelay.ToMilliseconds()));
+  }
+ protected:
+#ifdef NDEBUG // release build; see issue #6238
+  const MonoDelta kIndexStateFlagsUpdateDelay = 5s;
+#else // NDEBUG
+  const MonoDelta kIndexStateFlagsUpdateDelay = 1s;
+#endif // NDEBUG
+};
+
 // Test simultaneous CREATE INDEX.
-// TODO(jason): update this when closing issue #6269.
-TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(CreateIndexSimultaneously)) {
+TEST_F_EX(PgIndexBackfillTest,
+          YB_DISABLE_TEST_IN_TSAN(CreateIndexSimultaneously),
+          PgIndexBackfillTestSimultaneously) {
   const std::string query = Format("SELECT * FROM $0 WHERE i = $1", kTableName, 7);
   constexpr int kNumRows = 10;
   constexpr int kNumThreads = 5;
+  int expected_schema_version = 0;
   TestThreadHolder thread_holder;
 
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
@@ -551,7 +590,9 @@ TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(CreateIndexSimultaneously)) 
     thread_holder.AddThreadFunctor([i, this, &statuses] {
       LOG(INFO) << "Begin thread " << i;
       PGConn create_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
-      statuses[i] = MoveStatus(create_conn.ExecuteFormat("CREATE INDEX ON $0 (i)", kTableName));
+      statuses[i] = MoveStatus(create_conn.ExecuteFormat(
+          "CREATE INDEX $0 ON $1 (i)",
+          kIndexName, kTableName));
     });
   }
   thread_holder.JoinAll();
@@ -563,15 +604,25 @@ TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(CreateIndexSimultaneously)) 
     if (status.ok()) {
       num_ok++;
       LOG(INFO) << "got ok status";
+      // Success index creations do two schema changes:
+      // - add index with INDEX_PERM_WRITE_AND_DELETE
+      // - transition to success INDEX_PERM_READ_WRITE_AND_DELETE
+      // TODO(jason): change this when closing #6218 because DO_BACKFILL permission will add another
+      // schema version.
+      expected_schema_version += 2;
     } else {
       ASSERT_TRUE(status.IsNetworkError()) << status;
       const std::string msg = status.message().ToBuffer();
+      const std::string relation_already_exists_msg = Format(
+          "relation \"$0\" already exists", kIndexName);
       const std::vector<std::string> allowed_msgs{
         "Catalog Version Mismatch",
         "Conflicts with higher priority transaction",
+        "Restart read required",
         "Transaction aborted",
         "Transaction metadata missing",
         "Unknown transaction, could be recently aborted",
+        relation_already_exists_msg,
       };
       ASSERT_TRUE(std::find_if(
           std::begin(allowed_msgs),
@@ -580,7 +631,16 @@ TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(CreateIndexSimultaneously)) 
             return msg.find(allowed_msg) != std::string::npos;
           }) != std::end(allowed_msgs))
         << status;
-      LOG(WARNING) << "ignoring conflict error: " << status.message().ToBuffer();
+      LOG(INFO) << "ignoring conflict error: " << status.message().ToBuffer();
+      if (msg.find("Restart read required") == std::string::npos
+          && msg.find(relation_already_exists_msg) == std::string::npos) {
+        // Failed index creations do two schema changes:
+        // - add index with INDEX_PERM_WRITE_AND_DELETE
+        // - remove index because of DDL transaction rollback ("Table transaction failed, deleting")
+        expected_schema_version += 2;
+      } else {
+        // If the DocDB index was never created in the first place, it incurs no schema changes.
+      }
     }
   }
   ASSERT_EQ(num_ok, 1) << "only one CREATE INDEX should succeed";
@@ -592,8 +652,7 @@ TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(CreateIndexSimultaneously)) 
         "SELECT indexname FROM pg_indexes WHERE tablename = '$0'", kTableName));
     ASSERT_EQ(PQntuples(res.get()), 1);
     const std::string actual = ASSERT_RESULT(GetString(res.get(), 0, 0));
-    const std::string expected = Format("$0_i_idx", kTableName);
-    ASSERT_EQ(actual, expected);
+    ASSERT_EQ(actual, kIndexName);
 
     // Check whether index is public using index scan.
     ASSERT_TRUE(ASSERT_RESULT(conn_->HasIndexScan(query)));
@@ -609,18 +668,17 @@ TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(CreateIndexSimultaneously)) 
     ASSERT_OK(client->GetTableSchemaById(table_id, table_info, sync.AsStatusCallback()));
     ASSERT_OK(sync.Wait());
 
-    // Check schema version.
-    //   Failed Threads = INDEX_PERM_WRITE_AND_DELETE + Transaction DDL Rollback
-    //   Success Thread = INDEX_PERM_WRITE_AND_DELETE + Transaction DDL Success
-    // TODO(jason): change this when closing #6218 because DO_BACKFILL permission will add another
-    // schema version.
-    ASSERT_EQ(table_info->schema.version(), kNumThreads * 2)
-        << "got indexed table schema version " << table_info->schema.version()
-        << ": expected " << kNumThreads * 2;
-
-    // Check number of DocDB indexes.
-    ASSERT_EQ(table_info->index_map.size(), 1)
-        << "found " << table_info->index_map.size() << " DocDB indexes: expected " << kNumThreads;
+    // Check number of DocDB indexes.  Normally, failed indexes should be cleaned up ("Table
+    // transaction failed, deleting"), but in the event of an unexpected issue, they may not be.
+    // (Not necessarily a fatal issue because the postgres schema is good.)
+    int num_docdb_indexes = table_info->index_map.size();
+    if (num_docdb_indexes > 1) {
+      LOG(INFO) << "found " << num_docdb_indexes << " DocDB indexes";
+      // These failed indexes not getting rolled back mean one less schema change each.  Therefore,
+      // adjust the expected schema version.
+      int num_failed_docdb_indexes = num_docdb_indexes - 1;
+      expected_schema_version -= num_failed_docdb_indexes;
+    }
 
     // Check index permissions.  Also collect orphaned DocDB indexes.
     int num_rwd = 0;
@@ -636,6 +694,14 @@ TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(CreateIndexSimultaneously)) 
     }
     ASSERT_EQ(num_rwd, 1)
         << "found " << num_rwd << " fully created (readable) DocDB indexes: expected " << 1;
+
+    // Check schema version.
+    ASSERT_EQ(table_info->schema.version(), expected_schema_version)
+        << "got indexed table schema version " << table_info->schema.version()
+        << ": expected " << expected_schema_version;
+    // At least one index must have tried to create but gotten aborted, resulting in +1 or +2
+    // catalog version bump.  The 2 below is for the successfully created index.
+    ASSERT_GT(expected_schema_version, 2);
   }
 
   LOG(INFO) << "Checking if index still works";

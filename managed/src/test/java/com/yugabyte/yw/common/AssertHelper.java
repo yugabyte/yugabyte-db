@@ -33,7 +33,7 @@ import java.util.List;
 import java.util.UUID;
 import org.junit.function.ThrowingRunnable;
 import play.libs.Json;
-import play.mvc.Result;;
+import play.mvc.Result;
 
 public class AssertHelper {
   public static void assertOk(Result result) {
@@ -47,7 +47,9 @@ public class AssertHelper {
 
   public static void assertInternalServerError(Result result, String errorStr) {
     assertEquals(INTERNAL_SERVER_ERROR, result.status());
-    assertErrorResponse(result, errorStr);
+    if (null != errorStr) {
+      assertErrorResponse(result, errorStr);
+    }
   }
 
   public static void assertUnauthorized(Result result, String errorStr) {
@@ -132,8 +134,8 @@ public class AssertHelper {
         .forEachRemaining(field -> assertEquals(expectedJson.get(field), actualJson.get(field)));
   }
 
-  public static void assertAuditEntry(int expectedNumEntries, UUID uuid) {
-    int actual = Audit.getAll(uuid).size();
+  public static void assertAuditEntry(int expectedNumEntries, UUID customerUUID) {
+    int actual = Audit.getAll(customerUUID).size();
     assertEquals(expectedNumEntries, actual);
   }
 

@@ -1,6 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.models;
 
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 import java.io.Serializable;
 import java.util.Objects;
 import java.util.UUID;
@@ -9,9 +11,10 @@ import javax.persistence.Entity;
 
 @Entity
 @Embeddable
+@ApiModel
 public class AccessKeyId implements Serializable {
-  public String keyCode;
-  public UUID providerUUID;
+  @ApiModelProperty public String keyCode;
+  @ApiModelProperty public UUID providerUUID;
 
   @Override
   public boolean equals(Object object) {

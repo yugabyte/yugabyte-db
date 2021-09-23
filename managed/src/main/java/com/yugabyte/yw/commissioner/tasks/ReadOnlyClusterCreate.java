@@ -48,6 +48,8 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
       // Set the 'updateInProgress' flag to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
+      preTaskActions();
+
       // Set the correct node names for all to-be-added nodes.
       setNodeNames(UniverseOpType.CREATE, universe);
 

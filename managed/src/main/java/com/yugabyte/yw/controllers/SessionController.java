@@ -23,23 +23,20 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
-import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
-import com.yugabyte.yw.common.alerts.impl.AlertConfigurationTemplate;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.forms.CustomerLoginFormData;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.forms.PasswordPolicyFormData;
-import com.yugabyte.yw.forms.SetSecurityFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
-import com.yugabyte.yw.models.AlertConfiguration;
+import com.yugabyte.yw.forms.SetSecurityFormData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
@@ -53,19 +50,15 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
-import javax.persistence.PersistenceException;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.input.ReversedLinesFileReader;
 import org.pac4j.core.profile.CommonProfile;
 import org.pac4j.core.profile.ProfileManager;
@@ -77,12 +70,11 @@ import org.slf4j.LoggerFactory;
 import play.Configuration;
 import play.Environment;
 import play.data.Form;
+import play.db.ebean.Transactional;
 import play.libs.Json;
 import play.libs.concurrent.HttpExecutionContext;
-import play.libs.ws.StandaloneWSResponse;
 import play.libs.ws.WSClient;
 import play.libs.ws.WSRequest;
-import play.mvc.Controller;
 import play.mvc.Http;
 import play.mvc.Http.Cookie;
 import play.mvc.Result;
@@ -90,7 +82,8 @@ import play.mvc.Results;
 import play.mvc.With;
 
 @Api(value = "Session management")
-public class SessionController extends Controller {
+@Slf4j
+public class SessionController extends AbstractPlatformController {
 
   public static final Logger LOG = LoggerFactory.getLogger(SessionController.class);
 
@@ -137,6 +130,7 @@ public class SessionController extends Controller {
   @ApiModel(description = "Session information")
   @RequiredArgsConstructor
   public static class SessionInfo {
+
     @ApiModelProperty(value = "Auth token")
     public final String authToken;
 
@@ -171,6 +165,7 @@ public class SessionController extends Controller {
 
   @Data
   static class CustomerCountResp {
+
     final int count;
   }
 
@@ -392,6 +387,7 @@ public class SessionController extends Controller {
   }
 
   @ApiOperation(value = "UI_ONLY", hidden = true, response = SessionInfo.class)
+  @Transactional
   public Result register() {
     CustomerRegisterFormData data =
         formFactory.getFormDataOrBadRequest(CustomerRegisterFormData.class).get();
@@ -426,39 +422,29 @@ public class SessionController extends Controller {
   }
 
   private SessionInfo registerCustomer(CustomerRegisterFormData data, boolean isSuper) {
-    try {
-      Customer cust = Customer.create(data.getCode(), data.getName());
-      Role role = Role.Admin;
-      if (isSuper) {
-        role = Role.SuperAdmin;
-      }
-      passwordPolicyService.checkPasswordPolicy(cust.getUuid(), data.getPassword());
-      alertDestinationService.createDefaultDestination(cust.uuid);
-
-      List<AlertConfiguration> alertConfigurations =
-          Arrays.stream(AlertTemplate.values())
-              .filter(AlertTemplate::isCreateForNewCustomer)
-              .map(
-                  template -> alertConfigurationService.createConfigurationTemplate(cust, template))
-              .map(AlertConfigurationTemplate::getDefaultConfiguration)
-              .collect(Collectors.toList());
-      alertConfigurationService.save(alertConfigurations);
-
-      Users user =
-          Users.create(
-              data.getEmail(), data.getPassword(), role, cust.uuid, /* Primary user*/ true);
-      String authToken = user.createAuthToken();
-      SessionInfo sessionInfo = new SessionInfo(authToken, null, cust.uuid, user.uuid);
-      response()
-          .setCookie(
-              Http.Cookie.builder(AUTH_TOKEN, authToken)
-                  .withSecure(ctx().request().secure())
-                  .build());
-      return sessionInfo;
-    } catch (PersistenceException pe) {
-      // TODO: This needs to be more granular exception handling
-      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Customer already registered.");
+    Customer cust = Customer.create(data.getCode(), data.getName());
+    Role role = Role.Admin;
+    if (isSuper) {
+      role = Role.SuperAdmin;
     }
+    passwordPolicyService.checkPasswordPolicy(cust.getUuid(), data.getPassword());
+
+    alertDestinationService.createDefaultDestination(cust.uuid);
+    alertConfigurationService.createDefaultConfigs(cust);
+
+    Users user = Users.createPrimary(data.getEmail(), data.getPassword(), role, cust.uuid);
+    String authToken = user.createAuthToken();
+    SessionInfo sessionInfo = new SessionInfo(authToken, null, user.customerUUID, user.uuid);
+    response()
+        .setCookie(
+            Http.Cookie.builder(AUTH_TOKEN, sessionInfo.authToken)
+                .withSecure(ctx().request().secure())
+                .build());
+    // When there is no authenticated user in context; we just pretend that the user
+    // created himself for auditing purpose.
+    ctx().args.putIfAbsent("user", user);
+    auditService().createAuditEntry(ctx(), request());
+    return sessionInfo;
   }
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
@@ -484,65 +470,76 @@ public class SessionController extends Controller {
   @ApiOperation(value = "UI_ONLY", hidden = true)
   @With(TokenAuthenticator.class)
   public CompletionStage<Result> proxyRequest(UUID universeUUID, String requestUrl) {
-    return CompletableFuture.supplyAsync(
-        () -> {
-          Universe universe = Universe.getOrBadRequest(universeUUID);
-          // Validate that the request is of <ip/hostname>:<port> format
-          Matcher matcher = PROXY_PATTERN.matcher(requestUrl);
-          if (!matcher.matches()) {
-            LOG.error("Request {} does not match expected pattern", requestUrl);
-            throw new PlatformServiceException(BAD_REQUEST, "Invalid proxy request");
-          }
 
-          // Extract host + port from request
-          String host = matcher.group(1);
-          String port = matcher.group(2);
-          String addr = String.format("%s:%s", host, port);
+    LOG.trace("proxyRequest for universe {} : {}", universeUUID, requestUrl);
 
-          // Validate that the proxy request is for a node from the specified universe
-          if (!universe.nodeExists(host, Integer.parseInt(port))) {
-            LOG.error("Universe {} does not contain node address {}", universeUUID, addr);
-            throw new PlatformServiceException(BAD_REQUEST, "Invalid proxy request");
-          }
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    // Validate that the request is of <ip/hostname>:<port> format
+    Matcher matcher = PROXY_PATTERN.matcher(requestUrl);
+    if (!matcher.matches()) {
+      LOG.error("Request {} does not match expected pattern", requestUrl);
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid proxy request");
+    }
 
-          // Add query params to proxied request
-          final String finalRequestUrl = apiHelper.buildUrl(requestUrl, request().queryString());
+    // Extract host + port from request
+    String host = matcher.group(1);
+    String port = matcher.group(2);
+    String addr = String.format("%s:%s", host, port);
 
-          // Make the request
-          Duration timeout =
-              runtimeConfigFactory.globalRuntimeConf().getDuration("yb.proxy_endpoint_timeout");
-          WSRequest request = ws.url("http://" + finalRequestUrl).setRequestTimeout(timeout);
-          CompletionStage<? extends StandaloneWSResponse> response = request.get();
-          StandaloneWSResponse r;
-          try {
-            r = response.toCompletableFuture().get(1, TimeUnit.MINUTES);
-          } catch (Exception e) {
-            LOG.error("Error proxying request: " + requestUrl, e);
-            throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
-          }
-          // Format the response body
-          if (r.getStatus() == 200) {
-            Result result;
-            String url = request.getUrl();
-            if (url.contains(".png") || url.contains(".ico") || url.contains("fontawesome")) {
-              result = ok(r.getBodyAsBytes().toArray());
-            } else {
-              result = ok(apiHelper.replaceProxyLinks(r.getBody(), universeUUID, addr));
-            }
+    // Validate that the proxy request is for a node from the specified universe
+    if (!universe.nodeExists(host, Integer.parseInt(port))) {
+      LOG.error("Universe {} does not contain node address {}", universeUUID, addr);
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid proxy request");
+    }
 
-            // Set response headers
-            for (Map.Entry<String, List<String>> entry : r.getHeaders().entrySet()) {
-              if (!entry.getKey().equals("Content-Length")
-                  && !entry.getKey().equals("Content-Type")) {
-                result = result.withHeader(entry.getKey(), String.join(",", entry.getValue()));
+    // Add query params to proxied request
+    final String finalRequestUrl = apiHelper.buildUrl(requestUrl, request().queryString());
+
+    // Make the request
+    Duration timeout =
+        runtimeConfigFactory.globalRuntimeConf().getDuration("yb.proxy_endpoint_timeout");
+    WSRequest request =
+        ws.url("http://" + finalRequestUrl)
+            .setRequestTimeout(timeout)
+            .addHeader(play.mvc.Http.HeaderNames.ACCEPT_ENCODING, "gzip");
+    // Accept-Encoding: gzip causes the master/tserver to typically return compressed responses,
+    // however Play doesn't return gzipped responses right now
+
+    return request
+        .get()
+        .handle(
+            (response, ex) -> {
+              if (null != ex) {
+                return internalServerError(ex.getMessage());
               }
-            }
 
-            return result.as(r.getContentType());
-          } else {
-            throw new PlatformServiceException(BAD_REQUEST, r.getStatusText());
-          }
-        },
-        ec.current());
+              // Format the response body
+              if (null != response && response.getStatus() == 200) {
+                Result result;
+                String url = request.getUrl();
+                if (url.contains(".png") || url.contains(".ico") || url.contains("fontawesome")) {
+                  result = ok(response.getBodyAsBytes().toArray());
+                } else {
+                  result = ok(apiHelper.replaceProxyLinks(response.getBody(), universeUUID, addr));
+                }
+
+                // Set response headers
+                for (Map.Entry<String, List<String>> entry : response.getHeaders().entrySet()) {
+                  if (!entry.getKey().equals(play.mvc.Http.HeaderNames.CONTENT_LENGTH)
+                      && !entry.getKey().equals(play.mvc.Http.HeaderNames.CONTENT_TYPE)
+                      && !entry.getKey().equals(play.mvc.Http.HeaderNames.TRANSFER_ENCODING)) {
+                    result = result.withHeader(entry.getKey(), String.join(",", entry.getValue()));
+                  }
+                }
+
+                return result.as(response.getContentType());
+              } else {
+                String errorMsg = "unknown error processing proxy request " + requestUrl;
+                if (null != response) {
+                  errorMsg = response.getStatusText();
+                }
+                return internalServerError(errorMsg);
+              }
+            });
   }
 }

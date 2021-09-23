@@ -81,6 +81,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     backupTableParams.universeUUID = defaultUniverse.universeUUID;
     customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST105");
     backupTableParams.storageConfigUUID = customerConfig.configUUID;
+    backupTableParams.customerUuid = defaultCustomer.uuid;
     defaultBackup = Backup.create(defaultCustomer.uuid, backupTableParams);
     defaultBackup.setTaskUUID(taskUUID);
   }
@@ -109,6 +110,36 @@ public class BackupsControllerTest extends FakeDBApplication {
     JsonNode resultJson = listBackups(UUID.randomUUID());
     assertEquals(0, resultJson.size());
     assertAuditEntry(0, defaultCustomer.uuid);
+  }
+
+  @Test
+  public void testListWithHiddenStorage() {
+    JsonNode features =
+        Json.parse(
+            "{\"universes\": { \"details\": { \"backups\": { \"storageLocation\": \"hidden\"}}}}");
+    defaultCustomer.upsertFeatures(features);
+    assertEquals(features, defaultCustomer.getFeatures());
+
+    BackupTableParams btp = new BackupTableParams();
+    btp.universeUUID = defaultUniverse.universeUUID;
+    btp.storageConfigUUID = UUID.randomUUID();
+    Backup backup = Backup.create(defaultCustomer.uuid, btp);
+    backup.setTaskUUID(taskUUID);
+    // Patching manually. The broken backups left from previous releases, currently we can't create
+    // such backups through API.
+    btp.storageLocation = null;
+    backup.setBackupInfo(btp);
+    backup.save();
+
+    JsonNode resultJson = listBackups(defaultUniverse.universeUUID);
+    assertEquals(2, resultJson.size());
+    assertValues(
+        resultJson,
+        "backupUUID",
+        ImmutableList.of(defaultBackup.backupUUID.toString(), backup.backupUUID.toString()));
+
+    // Only one storageLocation should be in values as null values are filtered.
+    assertValues(resultJson, "storageLocation", ImmutableList.of("**********"));
   }
 
   private JsonNode fetchBackupsbyTaskId(UUID universeUUID, UUID taskUUID) {
@@ -312,11 +343,6 @@ public class BackupsControllerTest extends FakeDBApplication {
     CustomerTask ct = CustomerTask.findByTaskUUID(fakeTaskUUID);
     assertNotNull(ct);
     assertEquals(Restore, ct.getType());
-    Backup backup = Backup.fetchAllBackupsByTaskUUID(fakeTaskUUID).get(0);
-    assertNotEquals(b.backupUUID, backup.backupUUID);
-    assertNotNull(backup);
-    assertEquals(backup.getBackupInfo().actionType, RESTORE);
-    assertEquals(backup.getBackupInfo().storageLocation, "s3://foo/bar");
     assertAuditEntry(1, defaultCustomer.uuid);
   }
 
@@ -406,6 +432,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     Result result = future.get();
     executorService.shutdown();
     assertEquals(200, result.status());
+    assertAuditEntry(1, defaultCustomer.uuid);
   }
 
   @Test

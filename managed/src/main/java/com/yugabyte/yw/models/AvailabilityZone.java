@@ -32,11 +32,11 @@ import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
 
 @Entity
-@ApiModel(description = "Availability Zone of regions.")
+@ApiModel(description = "Availability zone (AZ) for a region")
 public class AvailabilityZone extends Model {
 
   @Id
-  @ApiModelProperty(value = "AZ uuid", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "AZ UUID", accessMode = READ_ONLY)
   public UUID uuid;
 
   @Column(length = 25, nullable = false)
@@ -52,11 +52,13 @@ public class AvailabilityZone extends Model {
   @Column(nullable = false)
   @ManyToOne
   @JsonBackReference("region-zones")
-  @ApiModelProperty(value = "Region of AZ", example = "South east 1", required = true)
+  @ApiModelProperty(value = "AZ region", example = "South east 1", required = true)
   public Region region;
 
   @Column(nullable = false, columnDefinition = "boolean default true")
-  @ApiModelProperty(value = "AZ is active or not", accessMode = READ_ONLY)
+  @ApiModelProperty(
+      value = "AZ status. This value is `true` for an active AZ.",
+      accessMode = READ_ONLY)
   public Boolean active = true;
 
   public Boolean isActive() {
@@ -67,16 +69,20 @@ public class AvailabilityZone extends Model {
     this.active = active;
   }
 
-  @Column(length = 50)
-  @ApiModelProperty(value = "AZ Subnet", example = "subnet id")
+  @Column(length = 63)
+  @ApiModelProperty(value = "AZ subnet", example = "subnet id")
   public String subnet;
+
+  @Column(length = 63)
+  @ApiModelProperty(value = "AZ secondary subnet", example = "secondary subnet id")
+  public String secondarySubnet;
 
   @DbJson
   @Column(columnDefinition = "TEXT")
-  @ApiModelProperty(value = "AZ Config values")
+  @ApiModelProperty(value = "AZ configuration values")
   public Map<String, String> config;
 
-  @ApiModelProperty(value = "Kubernetes Config path", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Path to Kubernetes configuration file", accessMode = READ_ONLY)
   public String getKubeconfigPath() {
     Map<String, String> configMap = this.getConfig();
     return configMap.getOrDefault("KUBECONFIG", null);
@@ -106,12 +112,18 @@ public class AvailabilityZone extends Model {
 
   public static AvailabilityZone createOrThrow(
       Region region, String code, String name, String subnet) {
+    return createOrThrow(region, code, name, subnet, null);
+  }
+
+  public static AvailabilityZone createOrThrow(
+      Region region, String code, String name, String subnet, String secondarySubnet) {
     try {
       AvailabilityZone az = new AvailabilityZone();
       az.region = region;
       az.code = code;
       az.name = name;
       az.subnet = subnet;
+      az.secondarySubnet = secondarySubnet;
       az.save();
       return az;
     } catch (Exception e) {
@@ -142,7 +154,7 @@ public class AvailabilityZone extends Model {
         .orElseThrow(
             () ->
                 new RuntimeException(
-                    "AZ by code: " + code + " and provider " + provider.code + " NOT FOUND "));
+                    "AZ by code " + code + " and provider " + provider.code + " NOT FOUND "));
   }
 
   public static Optional<AvailabilityZone> maybeGetByCode(Provider provider, String code) {

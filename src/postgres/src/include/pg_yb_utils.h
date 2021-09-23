@@ -457,8 +457,39 @@ void YBCFillUniqueIndexNullAttribute(YBCPgYBTupleIdDescriptor* descr);
 /*
  * Check whether the given libc locale is supported in YugaByte mode.
  */
-bool IsYBSupportedLibcLocale(const char *localebuf);
+bool YBIsSupportedLibcLocale(const char *localebuf);
 
 void YBTestFailDdlIfRequested();
+
+char *YBDetailSorted(char *input);
+
+/*
+ * For given collation, type and value, setup collation info.
+ */
+void YBGetCollationInfo(
+	Oid collation_id,
+	const YBCPgTypeEntity *type_entity,
+	Datum datum,
+	bool is_null,
+	YBCPgCollationInfo *collation_info);
+
+/*
+ * Setup collation info in attr.
+ */
+void YBSetupAttrCollationInfo(YBCPgAttrValueDescriptor *attr);
+
+/*
+ * Check whether the collation is a valid non-C collation.
+ */
+bool YBIsCollationValidNonC(Oid collation_id);
+
+/*
+ * For the column 'attr_num' and its collation id, return the collation id that
+ * will be used to do collation encoding. For example, if the column 'attr_num'
+ * represents a non-key column, we do not need to store the collation key and
+ * this function will return InvalidOid which will disable collation encoding
+ * for the column string value.
+ */
+Oid YBEncodingCollation(YBCPgStatement handle, int attr_num, Oid attcollation);
 
 #endif /* PG_YB_UTILS_H */

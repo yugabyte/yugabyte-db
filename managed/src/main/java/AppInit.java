@@ -1,6 +1,5 @@
 // Copyright (c) YugaByte, Inc.
 
-import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.cloud.AWSInitializer;
@@ -11,6 +10,9 @@ import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.ExtraMigrationManager;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.YamlWrapper;
+import com.yugabyte.yw.common.alerts.AlertConfigurationService;
+import com.yugabyte.yw.common.alerts.AlertDestinationService;
+import com.yugabyte.yw.common.alerts.AlertsGarbageCollector;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.ExtraMigration;
@@ -25,7 +27,6 @@ import play.Application;
 import play.Configuration;
 import play.Environment;
 import play.Logger;
-import play.libs.Json;
 
 /** We will use this singleton to do actions specific to the app environment, like db seed etc. */
 @Singleton
@@ -42,9 +43,11 @@ public class AppInit {
       YamlWrapper yaml,
       ExtraMigrationManager extraMigrationManager,
       TaskGarbageCollector taskGC,
-      PlatformReplicationManager replicationManager)
+      PlatformReplicationManager replicationManager,
+      AlertsGarbageCollector alertsGC,
+      AlertConfigurationService alertConfigurationService,
+      AlertDestinationService alertDestinationService)
       throws ReflectiveOperationException {
-    Json.mapper().setSerializationInclusion(Include.NON_NULL);
     Logger.info("Yugaware Application has started");
     Configuration appConfig = application.configuration();
     String mode = appConfig.getString("yb.mode", "PLATFORM");
@@ -58,6 +61,9 @@ public class AppInit {
         List<?> all =
             yaml.load(environment.resourceAsStream("db_seed.yml"), application.classloader());
         Ebean.saveAll(all);
+        Customer customer = Customer.getAll().get(0);
+        alertDestinationService.createDefaultDestination(customer.uuid);
+        alertConfigurationService.createDefaultConfigs(customer);
       }
 
       if (mode.equals("PLATFORM")) {
@@ -114,6 +120,7 @@ public class AppInit {
 
       // Schedule garbage collection of old completed tasks in database.
       taskGC.start();
+      alertsGC.start();
 
       // Startup platform HA.
       replicationManager.init();

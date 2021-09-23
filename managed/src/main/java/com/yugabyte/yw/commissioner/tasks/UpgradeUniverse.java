@@ -45,9 +45,6 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
-import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-
-import java.util.ArrayList;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -119,7 +116,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
 
           // ResizeNode cannot change the number of volumes
           if (deviceInfo.numVolumes != null
-              && primIntent.deviceInfo.numVolumes != deviceInfo.numVolumes) {
+              && !deviceInfo.numVolumes.equals(primIntent.deviceInfo.numVolumes)) {
             throw new IllegalArgumentException(
                 "ResizeNode cannot change the number of volumes. It was "
                     + primIntent.deviceInfo.numVolumes
@@ -138,6 +135,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
                 Provider.getOrBadRequest(UUID.fromString(provider)),
                 Play.current().injector().instanceOf(Config.class),
                 Play.current().injector().instanceOf(ConfigHelper.class));
+        log.info(instanceTypes.toString());
         InstanceType newInstanceType =
             instanceTypes
                 .stream()
@@ -320,6 +318,8 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
       // Check if the combination of taskType and upgradeOption are compatible.
       verifyParams(universe, primIntent);
       taskParams().ybPrevSoftwareVersion = primIntent.ybSoftwareVersion;
+
+      preTaskActions();
 
       // Get the nodes that need to be upgraded.
       // Left element is master and right element is tserver.
@@ -530,20 +530,15 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     nodes.addAll(masterNodes);
     nodes.addAll(tServerNodes);
 
-    Integer currDiskSize =
+    UserIntent currUserIntent =
         Universe.getOrBadRequest(taskParams().universeUUID)
             .getUniverseDetails()
             .getPrimaryCluster()
-            .userIntent
-            .deviceInfo
-            .volumeSize;
+            .userIntent;
 
-    String currInstanceType =
-        Universe.getOrBadRequest(taskParams().universeUUID)
-            .getUniverseDetails()
-            .getPrimaryCluster()
-            .userIntent
-            .instanceType;
+    Integer currDiskSize = currUserIntent.deviceInfo.volumeSize;
+
+    String currInstanceType = currUserIntent.instanceType;
 
     // Todo: Add preflight checks here
 
@@ -594,9 +589,16 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
           createStopMasterTasks(new HashSet<NodeDetails>(Arrays.asList(node)))
               .setSubTaskGroupType(SubTaskGroupType.ChangeInstanceType);
 
-          createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ChangeInstanceType);
-          createChangeConfigTask(
-              node, false /* isAdd */, SubTaskGroupType.ChangeInstanceType, true /* useHostPort */);
+          // If RF is 1, we can just move forward, since there is no other master.
+          if (currUserIntent.replicationFactor != 1) {
+            createWaitForMasterLeaderTask()
+                .setSubTaskGroupType(SubTaskGroupType.ChangeInstanceType);
+            createChangeConfigTask(
+                node,
+                false /* isAdd */,
+                SubTaskGroupType.ChangeInstanceType,
+                true /* useHostPort */);
+          }
         }
 
         // Change the instance type
@@ -620,8 +622,10 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
                   new HashSet<NodeDetails>(Arrays.asList(node)), ServerType.MASTER)
               .setSubTaskGroupType(SubTaskGroupType.ChangeInstanceType);
 
-          // Add stopped master to the quorum.
-          createChangeConfigTask(node, true /* isAdd */, SubTaskGroupType.ConfigureUniverse);
+          if (currUserIntent.replicationFactor != 1) {
+            // Add stopped master to the quorum.
+            createChangeConfigTask(node, true /* isAdd */, SubTaskGroupType.ConfigureUniverse);
+          }
         }
 
         // Start the tserver process on this node.

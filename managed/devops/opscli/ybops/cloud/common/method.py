@@ -13,9 +13,11 @@ import glob
 import json
 import logging
 import os
+import random
+import re
+import string
 import sys
 import time
-import re
 
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.utils import get_ssh_host_port, wait_for_ssh, get_path_from_yb, \
@@ -85,6 +87,7 @@ class AbstractInstancesMethod(AbstractMethod):
     """
     YB_SERVER_TYPE = "cluster-server"
     SSH_USER = "centos"
+    INSTANCE_LOOKUP_RETRY_LIMIT = 120
 
     def __init__(self, base_command, name, required_host=True):
         super(AbstractInstancesMethod, self).__init__(base_command, name)
@@ -98,6 +101,10 @@ class AbstractInstancesMethod(AbstractMethod):
         self.parser.add_argument("--cloud_subnet",
                                  required=False,
                                  help="The VPC subnet id into which we want to provision")
+        self.parser.add_argument("--cloud_subnet_secondary",
+                                 required=False,
+                                 help="The VPC subnet id into which we want to provision "
+                                 "the secondary network interface")
         if self.required_host:
             self.parser.add_argument("search_pattern", default=None)
         else:
@@ -202,6 +209,33 @@ class AbstractInstancesMethod(AbstractMethod):
         })
         self.extra_vars.update(get_ssh_host_port(host_info, custom_ssh_port))
 
+    def wait_for_host(self, args, default_port=True):
+        logging.info("Waiting for instance {}".format(args.search_pattern))
+        host_lookup_count = 0
+        # Cache the result of the cloud call outside of the loop.
+        host_info = None
+
+        while host_lookup_count < self.INSTANCE_LOOKUP_RETRY_LIMIT:
+            if not host_info:
+                host_info = self.cloud.get_host_info(args)
+
+            if host_info:
+                self.extra_vars.update(
+                    get_ssh_host_port(host_info, args.custom_ssh_port, default_port=default_port))
+                if wait_for_ssh(self.extra_vars["ssh_host"],
+                                self.extra_vars["ssh_port"],
+                                self.extra_vars["ssh_user"],
+                                args.private_key_file):
+                    return host_info
+
+            sys.stdout.write('.')
+            sys.stdout.flush()
+            time.sleep(1)
+            host_lookup_count += 1
+
+        raise YBOpsRuntimeError("Timed out waiting for instance: '{0}'".format(
+            args.search_pattern))
+
 
 class ReplaceRootVolumeMethod(AbstractInstancesMethod):
     def __init__(self, base_command):
@@ -270,10 +304,8 @@ class CreateInstancesMethod(AbstractInstancesMethod):
     """Superclass for creating an instance.
 
     This class will create an instance, if one does not already exist with the same conditions,
-    such as name, region or zone, etc. It will also wait for this instance to become SSHable on
-    any of the valid YugaByte ports.
+    such as name, region or zone, etc.
     """
-    INSTANCE_LOOKUP_RETRY_LIMIT = 120
 
     def __init__(self, base_command):
         super(CreateInstancesMethod, self).__init__(base_command, "create")
@@ -317,30 +349,6 @@ class CreateInstancesMethod(AbstractInstancesMethod):
         self.update_ansible_vars_with_args(args)
         self.run_ansible_create(args)
 
-    def wait_for_host(self, args, default_port=True):
-        logging.info("Waiting for instance {}".format(args.search_pattern))
-        host_lookup_count = 0
-        # Cache the result of the cloud call outside of the loop.
-        host_info = None
-        while True:
-            host_lookup_count += 1
-            if not host_info:
-                host_info = self.cloud.get_host_info(args)
-            if host_info:
-                self.extra_vars.update(
-                    get_ssh_host_port(host_info, args.custom_ssh_port, default_port=default_port))
-                if wait_for_ssh(self.extra_vars["ssh_host"],
-                                self.extra_vars["ssh_port"],
-                                self.extra_vars["ssh_user"],
-                                args.private_key_file):
-                    return host_info
-            sys.stdout.write('.')
-            sys.stdout.flush()
-            time.sleep(1)
-            if host_lookup_count > self.INSTANCE_LOOKUP_RETRY_LIMIT:
-                raise YBOpsRuntimeError("Timed out waiting for instance: '{0}'".format(
-                    args.search_pattern))
-
 
 class ProvisionInstancesMethod(AbstractInstancesMethod):
     """Superclass for provisioning an instance.
@@ -362,7 +370,7 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         """
         super(ProvisionInstancesMethod, self).add_extra_args()
         self.parser.add_argument("--air_gap", action="store_true", help="Run airgapped install.")
-        self.parser.add_argument("--reuse_host", action="store_true", default=False)
+        self.parser.add_argument("--skip_preprovision", action="store_true", default=False)
         self.parser.add_argument("--local_package_path",
                                  required=False,
                                  help="Path to local directory with the prometheus tarball.")
@@ -391,10 +399,19 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
 
         self.update_ansible_vars_with_args(args)
 
-        self.preprovision(args)
+        self.extra_vars.update(get_ssh_host_port(host_info, args.custom_ssh_port,
+                                                 default_port=True))
 
-        if host_info:
-            self.extra_vars.update(get_ssh_host_port(host_info, args.custom_ssh_port))
+        # Check if secondary subnet is present. If so, configure it.
+        if host_info.get('secondary_subnet'):
+            self.cloud.configure_secondary_interface(
+                args, self.extra_vars, self.cloud.get_subnet_cidr(args,
+                                                                  host_info['secondary_subnet']))
+
+        if not args.skip_preprovision:
+            self.preprovision(args)
+
+        self.extra_vars.update(get_ssh_host_port(host_info, args.custom_ssh_port))
         if args.local_package_path:
             self.extra_vars.update({"local_package_path": args.local_package_path})
         if args.air_gap:
@@ -428,32 +445,10 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         if args.network is not None:
             self.extra_vars["network_name"] = args.network
 
-    def wait_for_host(self, args, default_port=True):
-        logging.info("Waiting for instance {}".format(args.search_pattern))
-        host_lookup_count = 0
-        # Cache the result of the cloud call outside of the loop.
-        host_info = None
-        while True:
-            host_lookup_count += 1
-            if not host_info:
-                host_info = self.cloud.get_host_info(args)
-            if host_info:
-                self.extra_vars.update(
-                    get_ssh_host_port(host_info, args.custom_ssh_port, default_port=default_port))
-                if wait_for_ssh(self.extra_vars["ssh_host"],
-                                self.extra_vars["ssh_port"],
-                                self.extra_vars["ssh_user"],
-                                args.private_key_file):
-                    return host_info
-            sys.stdout.write('.')
-            sys.stdout.flush()
-            time.sleep(1)
-            if host_lookup_count > self.INSTANCE_LOOKUP_RETRY_LIMIT:
-                raise YBOpsRuntimeError("Timed out waiting for instance: '{0}'".format(
-                    args.search_pattern))
-
     def preprovision(self, args):
         self.update_ansible_vars(args)
+        self.cloud.wait_for_ssh_port(
+            self.extra_vars["ssh_host"], args.search_pattern, self.extra_vars["ssh_port"])
         host_info = self.wait_for_host(args)
         ansible = self.cloud.setup_ansible(args)
         if (args.install_python):
@@ -483,7 +478,8 @@ class CreateRootVolumesMethod(AbstractInstancesMethod):
         self.create_method.preprocess_args(args)
 
     def callback(self, args):
-        args.search_pattern += "-{}".format(time.time()).replace('.', '-')
+        unique_string = ''.join(random.choice(string.ascii_lowercase) for i in range(6))
+        args.search_pattern = "{}-".format(unique_string) + args.search_pattern
         vid = self.create_master_volume(args)
         output = [vid]
         num_disks = int(args.num_disks) - 1
@@ -786,9 +782,9 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                     logging.info(
                         "Variables to download {} directly on the remote host added."
                         .format(args.package))
-                if args.gcs_remote_download:
+                elif args.gcs_remote_download:
                     gcs_credentials_json = args.gcs_credentials_json or \
-                                           os.getenv('GCS_CREDENTIALS_JSON')
+                        os.getenv('GCS_CREDENTIALS_JSON')
 
                     if gcs_credentials_json is None:
                         raise YBOpsRuntimeError("GCS credentials are not specified, nor found in " +

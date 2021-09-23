@@ -13,23 +13,24 @@ import com.yugabyte.yw.common.alerts.PlatformNotificationException;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertChannel;
 import com.yugabyte.yw.models.Customer;
-
 import java.io.IOException;
 import java.nio.charset.Charset;
-
 import okhttp3.HttpUrl;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
-
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnitRunner;
 
 @RunWith(MockitoJUnitRunner.class)
 public class AlertChannelSlackTest extends FakeDBApplication {
+
+  @Rule public ExpectedException exceptionGrabber = ExpectedException.none();
 
   private static final String SLACK_TEST_PATH = "/here/is/path";
 
@@ -65,8 +66,28 @@ public class AlertChannelSlackTest extends FakeDBApplication {
           equalTo(
               "{\"username\":\"Slack Bot\","
                   + "\"text\":\"*Yugabyte Platform Alert - <[test@customer.com][tc]>*\\n"
-                  + "Common failure for customer 'Source 1', state: firing\\n"
-                  + "Failure details:\\n\\nUniverse on fire!\",\"icon_url\":null}"));
+                  + "alertConfiguration Alert for test@customer.com is firing.\\n"
+                  + "\\nUniverse on fire!\",\"icon_url\":null}"));
+    }
+  }
+
+  @Test
+  public void testFailure() throws PlatformNotificationException, IOException {
+    try (MockWebServer server = new MockWebServer()) {
+      server.start();
+      HttpUrl baseUrl = server.url(SLACK_TEST_PATH);
+      server.enqueue(new MockResponse().setResponseCode(500).setBody("{\"error\":\"not_ok\"}"));
+
+      AlertChannel channel = new AlertChannel();
+      AlertChannelSlackParams params = new AlertChannelSlackParams();
+      params.username = "Slack Bot";
+      params.webhookUrl = baseUrl.toString();
+      channel.setParams(params);
+
+      Alert alert = ModelFactory.createAlert(defaultCustomer);
+
+      exceptionGrabber.expect(PlatformNotificationException.class);
+      ars.sendNotification(defaultCustomer, alert, channel);
     }
   }
 }

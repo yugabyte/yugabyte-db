@@ -275,10 +275,6 @@ YBCStatus YBCPgNewDropIndex(YBCPgOid database_oid,
                             bool if_exist,
                             YBCPgStatement *handle);
 
-YBCStatus YBCPgAsyncUpdateIndexPermissions(
-    const YBCPgOid database_oid,
-    const YBCPgOid indexed_table_oid);
-
 YBCStatus YBCPgExecPostponedDdlStmt(YBCPgStatement handle);
 
 YBCStatus YBCPgBackfillIndex(
@@ -323,6 +319,7 @@ YBCStatus YBCPgDmlBindColumnCondBetween(YBCPgStatement handle, int attr_num, YBC
     YBCPgExpr attr_value_end);
 YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle, int attr_num, int n_attr_values,
     YBCPgExpr *attr_values);
+YBCStatus YBCPgDmlGetColumnInfo(YBCPgStatement handle, int attr_num, YBCPgColumnInfo* info);
 
 // Binding Tables: Bind the whole table in a statement.  Do not use with BindColumn.
 YBCStatus YBCPgDmlBindTable(YBCPgStatement handle);
@@ -357,9 +354,7 @@ YBCStatus YBCPgBuildYBTupleId(const YBCPgYBTupleIdDescriptor* data, uint64_t *yb
 // Buffer write operations.
 YBCStatus YBCPgStartOperationsBuffering();
 YBCStatus YBCPgStopOperationsBuffering();
-YBCStatus YBCPgResetOperationsBuffering();
-YBCStatus YBCPgFlushBufferedOperations();
-void YBCPgDropBufferedOperations();
+void YBCPgResetOperationsBuffering();
 
 YBCStatus YBCPgNewSample(const YBCPgOid database_oid,
                          const YBCPgOid table_oid,
@@ -446,19 +441,25 @@ YBCStatus YBCPgRollbackSubTransaction(uint32_t id);
 // Expressions.
 
 // Column references.
-YBCStatus YBCPgNewColumnRef(YBCPgStatement stmt, int attr_num, const YBCPgTypeEntity *type_entity,
-                            const YBCPgTypeAttrs *type_attrs, YBCPgExpr *expr_handle);
+YBCStatus YBCPgNewColumnRef(
+    YBCPgStatement stmt, int attr_num, const YBCPgTypeEntity *type_entity,
+    bool collate_is_valid_non_c, const YBCPgTypeAttrs *type_attrs,
+    YBCPgExpr *expr_handle);
 
 // Constant expressions.
 // Construct an actual constant value.
-YBCStatus YBCPgNewConstant(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
-                           uint64_t datum, bool is_null, YBCPgExpr *expr_handle);
+YBCStatus YBCPgNewConstant(
+    YBCPgStatement stmt, const YBCPgTypeEntity *type_entity, bool collate_is_valid_non_c,
+    const char *collation_sortkey, uint64_t datum, bool is_null, YBCPgExpr *expr_handle);
 // Construct a virtual constant value.
-YBCStatus YBCPgNewConstantVirtual(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
-                                  YBCPgDatumKind datum_kind, YBCPgExpr *expr_handle);
+YBCStatus YBCPgNewConstantVirtual(
+    YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
+    YBCPgDatumKind datum_kind, YBCPgExpr *expr_handle);
 // Construct an operator expression on a constant.
-YBCStatus YBCPgNewConstantOp(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
-                             uint64_t datum, bool is_null, YBCPgExpr *expr_handle, bool is_gt);
+YBCStatus YBCPgNewConstantOp(
+    YBCPgStatement stmt, const YBCPgTypeEntity *type_entity, bool collate_is_valid_non_c,
+    const char *collation_sortkey, uint64_t datum, bool is_null, YBCPgExpr *expr_handle,
+    bool is_gt);
 
 // The following update functions only work for constants.
 // Overwriting the constant expression with new value.
@@ -471,9 +472,9 @@ YBCStatus YBCPgUpdateConstText(YBCPgExpr expr, const char *value, bool is_null);
 YBCStatus YBCPgUpdateConstChar(YBCPgExpr expr, const char *value, int64_t bytes, bool is_null);
 
 // Expressions with operators "=", "+", "between", "in", ...
-YBCStatus YBCPgNewOperator(YBCPgStatement stmt, const char *opname,
-                           const YBCPgTypeEntity *type_entity,
-                           YBCPgExpr *op_handle);
+YBCStatus YBCPgNewOperator(
+    YBCPgStatement stmt, const char *opname, const YBCPgTypeEntity *type_entity,
+    bool collate_is_valid_non_c, YBCPgExpr *op_handle);
 YBCStatus YBCPgOperatorAppendArg(YBCPgExpr op_handle, YBCPgExpr arg);
 
 YBCStatus YBCGetDocDBKeySize(uint64_t data, const YBCPgTypeEntity *typeentity,
@@ -547,6 +548,20 @@ YBCStatus YBCGetTabletServerHosts(YBCServerDescriptor **tablet_servers, int* num
 
 #ifdef __cplusplus
 }  // extern "C"
+#endif
+
+#ifdef __cplusplus
+namespace yb {
+namespace pggate {
+
+struct PgApiContext;
+
+void YBCInitPgGateEx(
+    const YBCPgTypeEntity *data_type_table, int count, YBCPgCallbacks pg_callbacks,
+    PgApiContext *context);
+
+} // namespace pggate
+} // namespace yb
 #endif
 
 #endif  // YB_YQL_PGGATE_YBC_PGGATE_H
