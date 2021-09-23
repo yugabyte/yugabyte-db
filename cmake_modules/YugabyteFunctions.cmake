@@ -215,28 +215,52 @@ endfunction()
 # Linker flags applied to both executables and shared libraries. We append this both to
 # CMAKE_EXE_LINKER_FLAGS and CMAKE_SHARED_LINKER_FLAGS after we finish making changes to this.
 # These flags apply to both YB and RocksDB parts of the codebase.
-function(ADD_LINKER_FLAGS FLAGS)
+#
+# This is an internal macro that modifies variables at the parent scope, which is really the parent
+# scope of the functions calling it, i.e. function caller's scope.
+macro(_ADD_LINKER_FLAGS_MACRO FLAGS)
   if ($ENV{YB_VERBOSE})
     message("Adding to linker flags: ${FLAGS}")
   endif()
+
+  # We must set these variables in both current and parent scope, because this macro can be called
+  # multiple times from the same function.
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${FLAGS}")
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${FLAGS}" PARENT_SCOPE)
+
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${FLAGS}")
   set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${FLAGS}" PARENT_SCOPE)
+endmacro()
+
+# Check if the given directory is not an empty string and also warn if it does not exist.
+function(_CHECK_LIB_DIR DIR_PATH DESCRIPTION)
+  if (DIR_PATH STREQUAL "")
+    message(FATAL_ERROR "Trying to add an empty ${DESCRIPTION}.")
+  endif()
+  if(NOT EXISTS "${DIR_PATH}")
+    message(
+      WARNING
+      "Adding a non-existent ${DESCRIPTION} '${DIR_PATH}'. "
+      "This might be OK in case the directory is created during the build.")
+  endif()
+endfunction()
+
+function(ADD_LINKER_FLAGS FLAGS)
+  _ADD_LINKER_FLAGS_MACRO("${FLAGS}")
 endfunction()
 
 function(ADD_GLOBAL_RPATH_ENTRY RPATH_ENTRY)
-  if (RPATH_ENTRY STREQUAL "")
-    message(FATAL_ERROR "Trying to add an empty rpath entry.")
-  endif()
-  if(NOT EXISTS "${RPATH_ENTRY}")
-    message(
-      WARNING
-      "Adding a non-existent rpath directory '${RPATH_ENTRY}'. This might be OK in case the "
-      "directory is created during the build.")
-  endif()
+  _CHECK_LIB_DIR("${RPATH_ENTRY}" "rpath entry")
   message("Adding a global rpath entry: ${RPATH_ENTRY}")
-  set(FLAGS "-Wl,-rpath,${RPATH_ENTRY}")
-  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${FLAGS}" PARENT_SCOPE)
-  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${FLAGS}" PARENT_SCOPE)
+  _ADD_LINKER_FLAGS_MACRO("-Wl,-rpath,${RPATH_ENTRY}")
+endfunction()
+
+# This is similar to ADD_GLOBAL_RPATH_ENTRY but also adds an -L<dir> linker flag.
+function(ADD_GLOBAL_RPATH_ENTRY_AND_LIB_DIR DIR_PATH)
+  _CHECK_LIB_DIR("${DIR_PATH}" "library directory and rpath entry")
+  message("Adding a library directory and global rpath entry: ${DIR_PATH}")
+  _ADD_LINKER_FLAGS_MACRO("-L${DIR_PATH}")
+  _ADD_LINKER_FLAGS_MACRO("-Wl,-rpath,${DIR_PATH}")
 endfunction()
 
 # CXX_YB_COMMON_FLAGS are flags that are common across the 'src/yb' portion of the codebase (but do
