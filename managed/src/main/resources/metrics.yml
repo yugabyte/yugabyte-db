@@ -2,7 +2,7 @@
 # Prometheus metrics query, and related params
 ---
 cpu_usage_user:
-  metric: "node_cpu"
+  metric: "node_cpu_seconds_total"
   function: "rate|avg"
   range : true
   operator: "* 100"
@@ -16,7 +16,7 @@ cpu_usage_user:
       ticksuffix: "&nbsp;%"
 
 cpu_usage_system:
-  metric: "node_cpu"
+  metric: "node_cpu_seconds_total"
   function: "rate|avg"
   range: true
   operator: "* 100"
@@ -34,7 +34,7 @@ disk_usage:
   function: "sum"
   operator: "/ 1073741824"
   filters:
-    saved_name: "node_filesystem_free|node_filesystem_size"
+    saved_name: "node_filesystem_free_bytes|node_filesystem_size_bytes"
     mountpoint: "/mnt/.*"
   group_by: saved_name
   layout:
@@ -43,12 +43,12 @@ disk_usage:
       type: "date"
     yaxis:
       alias:
-        "node_filesystem_free": "free"
-        "node_filesystem_size": "size"
+        "node_filesystem_free_bytes": "free"
+        "node_filesystem_size_bytes": "size"
       ticksuffix: "&nbsp;GB"
 
 cpu_usage:
-  metric: "node_cpu"
+  metric: "node_cpu_seconds_total"
   function: "rate|avg"
   range : true
   operator: "* 100"
@@ -67,7 +67,7 @@ disk_iops:
   function: "rate|sum without (device)|avg"
   range : true
   filters:
-    saved_name: "node_disk_reads_completed|node_disk_writes_completed"
+    saved_name: "node_disk_reads_completed_total|node_disk_writes_completed_total"
   group_by: "saved_name"
   layout:
     title: "Disk IOPS / Node"
@@ -75,8 +75,8 @@ disk_iops:
       type: "date"
     yaxis:
       alias:
-          "node_disk_writes_completed": "Writes"
-          "node_disk_reads_completed": "Reads"
+          "node_disk_writes_completed_total": "Writes"
+          "node_disk_reads_completed_total": "Reads"
 
 tserver_rpcs_per_sec_by_universe:
   metric: "rpc_latency_count"
@@ -97,7 +97,7 @@ memory_usage:
   function: "avg"
   operator: "/ 1073741824"
   filters:
-    saved_name: "node_memory_Cached|node_memory_Buffers|node_memory_MemFree"
+    saved_name: "node_memory_Cached_bytes|node_memory_Buffers_bytes|node_memory_MemFree_bytes"
   group_by: "saved_name"
   layout:
     title: "Memory Usage"
@@ -105,9 +105,9 @@ memory_usage:
       type: "date"
     yaxis:
       alias:
-        "node_memory_Cached": "cached"
-        "node_memory_Buffers": "buffered"
-        "node_memory_MemFree": "free"
+        "node_memory_Cached_bytes": "cached"
+        "node_memory_Buffers_bytes": "buffered"
+        "node_memory_MemFree_bytes": "free"
       ticksuffix: "&nbsp;GB"
 
 
@@ -209,7 +209,7 @@ network_bytes:
   function: "rate|avg"
   range : true
   filters:
-    saved_name: "node_network_receive_bytes|node_network_transmit_bytes"
+    saved_name: "node_network_receive_bytes_total|node_network_transmit_bytes_total"
     # Filter out devices starting with l, as a proxy for "lo", since we cannot model != "lo" ...
     device: "[^l].*"
   group_by: "saved_name"
@@ -219,15 +219,15 @@ network_bytes:
       type: "date"
     yaxis:
       alias:
-        "node_network_receive_bytes": "RX"
-        "node_network_transmit_bytes": "TX"
+        "node_network_receive_bytes_total": "RX"
+        "node_network_transmit_bytes_total": "TX"
 
 network_packets:
   metric: ""
   function: "rate|avg"
   range : true
   filters:
-    saved_name: "node_network_receive_packets|node_network_transmit_packets"
+    saved_name: "node_network_receive_packets_total|node_network_transmit_packets_total"
     # Filter out devices starting with l, as a proxy for "lo", since we cannot model != "lo" ...
     device: "[^l].*"
   group_by: "saved_name"
@@ -237,15 +237,15 @@ network_packets:
       type: "date"
     yaxis:
       alias:
-        "node_network_receive_packets": "RX"
-        "node_network_transmit_packets": "TX"
+        "node_network_receive_packets_total": "RX"
+        "node_network_transmit_packets_total": "TX"
 
 network_errors:
   metric: ""
   function: "rate|avg"
   range : true
   filters:
-    saved_name: "node_network_receive_errs|node_network_transmit_errs"
+    saved_name: "node_network_receive_errs_total|node_network_transmit_errs_total"
     # Filter out devices starting with l, as a proxy for "lo", since we cannot model != "lo" ...
     device: "[^l].*"
   group_by: "saved_name"
@@ -255,8 +255,8 @@ network_errors:
       type: "date"
     yaxis:
       alias:
-        "node_network_receive_errs": "RX"
-        "node_network_transmit_errs": "TX"
+        "node_network_receive_errs_total": "RX"
+        "node_network_transmit_errs_total": "TX"
 
 system_load_over_time:
   metric: ""
@@ -277,7 +277,7 @@ system_load_over_time:
 disk_bytes_per_second_per_node:
   metric: ""
   filters:
-    saved_name: "node_disk_bytes_read|node_disk_bytes_written"
+    saved_name: "node_disk_read_bytes_total|node_disk_written_bytes_total"
   group_by: "saved_name"
   range : true
   function: "rate|sum without (device)|avg"
@@ -287,8 +287,8 @@ disk_bytes_per_second_per_node:
       type: "date"
     yaxis:
       alias:
-        "node_disk_bytes_read": "Read"
-        "node_disk_bytes_written": "Write"
+        "node_disk_read_bytes_total": "Read"
+        "node_disk_written_bytes_total": "Write"
 
 node_clock_skew:
   metric: "hybrid_clock_skew"
