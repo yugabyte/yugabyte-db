@@ -47,7 +47,7 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
   // Find the column given the postgres attr number.
   Result<size_t> FindColumn(int attr_num) const;
 
-  CHECKED_STATUS GetColumnInfo(int16_t attr_number, bool *is_primary, bool *is_hash) const;
+  Result<YBCPgColumnInfo> GetColumnInfo(int16_t attr_number) const;
 
   bool IsHashPartitioned() const;
 

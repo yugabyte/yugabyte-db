@@ -477,7 +477,7 @@ void YBGetCollationInfo(
 /*
  * Setup collation info in attr.
  */
-void YBSetupAttrCollationInfo(YBCPgAttrValueDescriptor *attr);
+void YBSetupAttrCollationInfo(YBCPgAttrValueDescriptor *attr, const YBCPgColumnInfo *column_info);
 
 /*
  * Check whether the collation is a valid non-C collation.

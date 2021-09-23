@@ -285,10 +285,8 @@ class PgApiImpl {
   CHECKED_STATUS GetTableDesc(const PgObjectId& table_id,
                               PgTableDesc **handle);
 
-  CHECKED_STATUS GetColumnInfo(YBCPgTableDesc table_desc,
-                               int16_t attr_number,
-                               bool *is_primary,
-                               bool *is_hash);
+  Result<YBCPgColumnInfo> GetColumnInfo(YBCPgTableDesc table_desc,
+                                        int16_t attr_number);
 
   CHECKED_STATUS DmlModifiesRow(PgStatement *handle, bool *modifies_row);
 

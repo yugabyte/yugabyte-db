@@ -216,15 +216,13 @@ static Bitmapset *GetTablePrimaryKeyBms(Relation rel,
 			continue;
 		}
 
-		bool is_primary = false;
-		bool is_hash    = false;
+		YBCPgColumnInfo column_info = {0};
 		HandleYBTableDescStatus(YBCPgGetColumnInfo(ybc_tabledesc,
 		                                           attnum,
-		                                           &is_primary,
-		                                           &is_hash),
+												   &column_info),
 		                        ybc_tabledesc);
 
-		if (is_hash || is_primary)
+		if (column_info.is_hash || column_info.is_primary)
 		{
 			pkey = bms_add_member(pkey, attnum - minattr);
 		}
@@ -1762,7 +1760,15 @@ void YBGetCollationInfo(
 	}
 }
 
-void YBSetupAttrCollationInfo(YBCPgAttrValueDescriptor *attr) {
+static bool YBNeedCollationEncoding(const YBCPgColumnInfo *column_info) {
+  /* We only need collation encoding for range keys. */
+  return (column_info->is_primary && !column_info->is_hash);
+}
+
+void YBSetupAttrCollationInfo(YBCPgAttrValueDescriptor *attr, const YBCPgColumnInfo *column_info) {
+	if (attr->collation_id != InvalidOid && !YBNeedCollationEncoding(column_info)) {
+		attr->collation_id = InvalidOid;
+	}
 	YBGetCollationInfo(attr->collation_id, attr->type_entity, attr->datum,
 					   attr->is_null, &attr->collation_info);
 }
@@ -1794,7 +1800,7 @@ bool YBIsCollationValidNonC(Oid collation_id) {
 Oid YBEncodingCollation(YBCPgStatement handle, int attr_num, Oid attcollation) {
 	if (attcollation == InvalidOid)
 		return InvalidOid;
-	YBCPgColumnInfo column_info = {false, false};
+	YBCPgColumnInfo column_info = {0};
 	HandleYBStatus(YBCPgDmlGetColumnInfo(handle, attr_num, &column_info));
-	return column_info.is_primary ? attcollation : InvalidOid;
+	return YBNeedCollationEncoding(&column_info) ? attcollation : InvalidOid;
 }
