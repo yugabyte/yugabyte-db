@@ -38,16 +38,4 @@ menu:
     </a>
   </div>
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-   <a class="section-link icon-offset" href="spring-data-yugabytedb/">
-     <div class="head">
-       <img class="icon" src="/images/section_icons/api/ysql.png" aria-hidden="true" />
-       <div class="title">Spring Data YugabyteDB</div>
-     </div>
-     <div class="body">
-       Build your Spring applications using the Spring Data YugabyteDB module.
-     </div>
-   </a>
-  </div>
-
 </div>

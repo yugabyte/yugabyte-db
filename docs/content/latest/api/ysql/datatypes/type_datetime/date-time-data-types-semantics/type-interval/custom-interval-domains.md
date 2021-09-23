@@ -16,7 +16,7 @@ showAsideToc: true
 The code that this page presents is included in a larger set of useful reusable _date-time_ code. In particular, it also installs [User-defined _interval_ utility functions](../interval-utilities/). The custom _interval_ domains code depends on some of these utilities. See [Download the _.zip_ file to create the reusable code that this overall major section describes](../../../download-date-time-utilities/).
 {{< /tip >}}
 
-Each of the sections [The moment-moment overloads of the "-" operator](../interval-arithmetic/moment-moment-overloads-of-minus/) and [The moment-_interval overloads_ of the "+" and "-" operators](../interval-arithmetic/moment-interval-overloads-of-plus-and-minus/) makes the point that hybrid _interval_ arithmetic is dangerous and recommends that you should ensure that you create and use only _"pure months"_,  _"pure seconds"_, or _"pure days"_ _interval_ values. And they recommend the adoption of the approach that this section describes so that your good practise will be ensured by using its APIs rather than the native _interval_ functionality.
+Each of the sections [The moment-moment overloads of the "-" operator](../interval-arithmetic/moment-moment-overloads-of-minus/) and [The moment-_interval overloads_ of the "+" and "-" operators](../interval-arithmetic/moment-interval-overloads-of-plus-and-minus/) makes the point that hybrid _interval_ arithmetic is dangerous and recommends that you should ensure that you create and use only _"pure months"_,  _"pure seconds"_, or _"pure days"_ _interval_ values. And they recommend the adoption of the approach that this section describes so that your good practice will be ensured by using its APIs rather than the native _interval_ functionality.
 
 The basic idea is to create a user-defined domain for each of the three kinds of _"pure"_ _interval_, defining each with a constraint function that reinforces the purity—and then to implement appropriate functionality for each domain kind.
 
@@ -402,8 +402,8 @@ create function interval_days(t_finish in timestamptz, t_start in timestamptz)
   language plpgsql
 as $body$
 declare
-  d_finish constant date not null := t_finish;
-  d_start  constant date not null := t_start;
+  d_finish constant date not null := t_finish::date;
+  d_start  constant date not null := t_start::date;
   delta    constant int  not null := d_finish - d_start;
 begin
   call assert_interval_days_in_range(delta);

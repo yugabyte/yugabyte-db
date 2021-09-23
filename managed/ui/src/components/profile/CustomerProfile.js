@@ -23,6 +23,7 @@ export default class CustomerProfile extends Component {
   componentDidMount() {
     const { customer } = this.props;
     this.props.getCustomerUsers();
+    this.props.validateRegistration();
     if (isNonAvailable(customer.features, 'main.profile')) browserHistory.push('/');
   }
 

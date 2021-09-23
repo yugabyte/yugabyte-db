@@ -33,6 +33,7 @@
 #include "yb/util/oid_generator.h"
 #include "yb/util/result.h"
 
+#include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_env.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 
@@ -111,6 +112,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   // Constructors.
   PgSession(client::YBClient* client,
+            PgClient* pg_client,
             const string& database_name,
             scoped_refptr<PgTxnManager> pg_txn_manager,
             scoped_refptr<server::HybridClock> clock,
@@ -144,12 +146,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   CHECKED_STATUS DropDatabase(const std::string& database_name, PgOid database_oid);
   client::YBNamespaceAlterer *NewNamespaceAlterer(const std::string& namespace_name,
                                                   PgOid database_oid);
-
-  CHECKED_STATUS ReserveOids(PgOid database_oid,
-                             PgOid nexte_oid,
-                             uint32_t count,
-                             PgOid *begin_oid,
-                             PgOid *end_oid);
 
   CHECKED_STATUS GetCatalogMasterVersion(uint64_t *version);
 
@@ -208,7 +204,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
       bool wait = true);
   CHECKED_STATUS TruncateTable(const PgObjectId& table_id);
   CHECKED_STATUS BackfillIndex(const PgObjectId& table_id);
-  Result<PgTableDesc::ScopedRefPtr> LoadTable(const PgObjectId& table_id);
+  Result<PgTableDescPtr> LoadTable(const PgObjectId& table_id);
   void InvalidateTableCache(const PgObjectId& table_id);
 
   // Start operation buffering. Buffering must not be in progress.
@@ -216,9 +212,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Flush all pending buffered operation and stop further buffering.
   // Buffering must be in progress.
   CHECKED_STATUS StopOperationsBuffering();
-  // Stop further buffering. Buffering may be in any state,
-  // but pending buffered operations are not allowed.
-  CHECKED_STATUS ResetOperationsBuffering();
+  // Drop all pending buffered operations and stop further buffering. Buffering may be in any state.
+  void ResetOperationsBuffering();
 
   // Flush all pending buffered operations. Buffering mode remain unchanged.
   CHECKED_STATUS FlushBufferedOperations();
@@ -265,7 +260,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   // Smart driver functions.
   // -------------
-  CHECKED_STATUS ListTabletServers(YBCServerDescriptor **tablet_servers, int *numofservers);
+  Result<client::YBClient::TabletServersInfo> ListTabletServers();
 
   //------------------------------------------------------------------------------------------------
   // Access functions.
@@ -337,11 +332,13 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Sets the specified timeout in the rpc service.
   void SetTimeout(int timeout_ms);
 
-  CHECKED_STATUS AsyncUpdateIndexPermissions(const PgObjectId& indexed_table_id);
-
   CHECKED_STATUS SetActiveSubTransaction(SubTransactionId id);
 
   CHECKED_STATUS RollbackSubTransaction(SubTransactionId id);
+
+  PgClient& pg_client() const {
+    return pg_client_;
+  }
 
  private:
   using Flusher = std::function<Status(PgsqlOpBuffer, IsTransactionalSession)>;
@@ -402,6 +399,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // YBSession to execute operations.
   std::shared_ptr<client::YBSession> session_;
 
+  PgClient& pg_client_;
+
   // Connected database.
   std::string connected_database_;
 
@@ -420,7 +419,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Rowid generator.
   ObjectIdGenerator rowid_generator_;
 
-  std::unordered_map<TableId, std::shared_ptr<client::YBTable>> table_cache_;
+  std::unordered_map<PgObjectId, PgTableDescPtr, PgObjectIdHash> table_cache_;
   boost::unordered_set<PgForeignKeyReference> fk_reference_cache_;
   boost::unordered_set<PgForeignKeyReference> fk_reference_intent_;
 

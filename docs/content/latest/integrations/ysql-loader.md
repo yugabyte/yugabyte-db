@@ -31,8 +31,8 @@ Before starting the migration, ensure that you have the following:
   ysqlsh --host=<ip>
   ```
 
-  ```shell
-  # Create the database
+  ```sql
+  -- Create the database
   create database <name>;
   ```
 
@@ -44,15 +44,15 @@ Before starting the migration, ensure that you have the following:
 
     2. Start Docker by running the following command: 
   
-         ```shell
-       sudo systemctl start docker
-         ```
+        ```shell
+        sudo systemctl start docker
+        ```
 
     3. Verify the Docker installation by running the following command: 
   
-         ```shell
-       sudo docker run hello-world 
-         ```
+        ```shell
+        sudo docker run hello-world 
+        ```
   
   - Verify that the migration computer connects to the MySQL server over port 3306 by using the following command:
   
@@ -62,38 +62,37 @@ Before starting the migration, ensure that you have the following:
   
   - Grant the YSQL Loader IP the permissions to access the MySQL database using the following command:
   
-    ```shell
-    >GRANT ALL PRIVILEGES ON *.* TO 'root'@'<pgloader_instance_ip>' WITH GRANT OPTION;
+    ```sql
+    GRANT ALL PRIVILEGES ON *.* TO 'root'@'<pgloader_instance_ip>' WITH GRANT OPTION;
         
     flush PRIVILEGES;
     ```
   
   - Add a password for the IP and User combination using the following command:
   
-    ```shell
+    ```sql
     SET PASSWORD FOR 'root'@'<pgloader_instance_ip>' =
-    PASSWORD('<password>');
+        PASSWORD('<password>');
     ```
   
     If, after completing the preceding steps, you encounter "Failed to connect" error message, check the access permissions with your MySQL DBA:
   
   - Verify that YSQL Loader instance can reach the target YugabyeDB cluster and communicate with one of the YugabyteDB nodes across port 5433, as follows:
   
-    ```shell
+    ```sh
     telnet <YugabyteDB_node_ip> 5433
     ```
 
 - YSQL Loader itself, which you can install using Docker, as follows:
 
-  ```shell
+  ```sh
   docker pull yugabytedb/pgloader:v1.1   
-  docker run --rm --name pgloader yugabytedb/pgloader:v1.0 pgloader
-  --version
+  docker run --rm --name pgloader yugabytedb/pgloader:v1.0 pgloader --version
   ```
 
   Expect the following output:
 
-  ```
+  ```output
   pgloader version "3.6.3~devel"
   compiled with Clozure Common Lisp Version 1.11.5/v1.11.5
   (LinuxX8664)
@@ -101,43 +100,41 @@ Before starting the migration, ensure that you have the following:
 
   To obtain a list of YSQL Loader command flags, execute the following:
 
-  ```
+  ```sh
   docker pull yugabytedb/pgloader:v1.1
-  docker run --rm --name pgloader yugabytedb/pgloader:v1.1 pgloader
-  --help
+  docker run --rm --name pgloader yugabytedb/pgloader:v1.1 pgloader --help
   ```
 
 ## Using YSQL Loader
 
 You can use YSQL Loader to migrate both schema and data from MySQL, or to migrate only schema.
 
-A file containing a Docker command can help you to perform migration. For more information, see 
+A file containing a Docker command can help you to perform migration. <!-- For more information, see -->
 
-### How to migrate schema and data using Docker
+### Migrate schema and data using Docker
 
-You start migration by runnig Docker. Using Bash, you access the container and run the YSQL Loader command (`/usr/local/bin/pgloader`). Examples in this section use the Docker image that is based on CentOS 7, so the YSQL Loader command file is stored in the CentOS home directory and the Docker volume is used for mapping the configuration from the `/home/centos` directory to the Docker container directory. The Docker `–rm` flag ensures that the container is removed once YSQL Loader completes its tasks.
+You start migration by running Docker. Using Bash, you access the container and run the YSQL Loader command (`/usr/local/bin/pgloader`). Examples in this section use the Docker image that is based on CentOS 7, so the YSQL Loader command file is stored in the CentOS home directory and the Docker volume is used for mapping the configuration from the `/home/centos` directory to the Docker container directory. The Docker `–rm` flag ensures that the container is removed once YSQL Loader completes its tasks.
 
-```bash
-docker run --rm --name <name_for_container> -v <local_dir pgloader_config_dir>:<mount_path_in_container>
-yugabytedb/pgloader:v1.1 pgloader
-<mount_path_in_container>/<pgloader_config_file>
+```sh
+$ docker run --rm --name <name_for_container> \
+         -v <local_dir pgloader_config_dir>:<mount_path_in_container> \
+         yugabytedb/pgloader:v1.1 pgloader \
+         <mount_path_in_container>/<pgloader_config_file>
 ```
 
-The followingn is a sample YSQL Loader command:
+The following is a sample YSQL Loader command:
 
-```shell
+```nocopy.sh
 [root@ip-172-161-27-195 centos]# pwd
 /home/centos
 [root@ip-172-161-27-195 centos]# ls
 pgloader.conf
-[root@ip-172-161-27-195 centos]# docker run --rm --name pgloader1 -v
-/home/centos:/tmp yugabytedb/pgloader:v1.1 pgloader -v -L
-/tmp/pgloader.log /tmp/pgloader.conf
+[root@ip-172-161-27-195 centos]# docker run --rm --name pgloader1 -v /home/centos:/tmp yugabytedb/pgloader:v1.1 pgloader -v -L /tmp/pgloader.log /tmp/pgloader.conf
 ```
 
 An output similar to the following is produced when YSQL Loader is running:
 
-```
+```output
 2021-04-22T18:49:00.000672Z LOG pgloader version "3.6.3~devel"
 2021-04-22T18:49:00.264485Z LOG Migrating from #<MYSQL-CONNECTION mysql://root@172.161.20.87:3306/testdb #x302001D3B50D>
 2021-04-22T18:49:00.264662Z LOG Migrating into #<PGSQL-CONNECTION
@@ -150,8 +147,8 @@ You can also verify that YSQL Loader is running by executing `docker ps`:
 
 You can tail the log file specified in the docker command, as follows:
 
-```shell
-[centos@ip-172-161-27-195 ~]$tail -f pgloader.log
+```sh
+[centos@ip-172-161-27-195 ~]$ tail -f pgloader.log
 ```
 
 If you have access to Yugabyte Platform, you can check the status of YSQL Loader. To do this, you open Yugabyte Platform and navigate to its **Tables** section shown in the following illustration to see if the tables have started to load.
@@ -162,11 +159,11 @@ In addition, you can check the live queries by navigating to the **Queries** sec
 
 ![Migrating MySQL Blog Image 2](https://blog.yugabyte.com/wp-content/uploads/2021/06/Migrating-MySQL-Blog-Image-2.png)
 
-### How to use YSQL Loader command file
+### Use a YSQL Loader command file
 
 To load both schema and data from MySQL, use a file similar to the following:
 
-```shell
+```sql
 load database 
   from mysql://root:password@localhost:3306/northwind 
   into postgresql://yugabyte:yugabyte@localhost:5433/northwindmysql
@@ -178,7 +175,7 @@ You do not have to specify any other options in your command file, as they funct
 
 To migrate only schema, use a file similar to the following:
 
-```shell
+```sql
 load database 
   from mysql://root:password@localhost:3306/northwind 
   into postgresql://yugabyte:yugabyte@localhost:5433/northwindmysql
@@ -186,13 +183,13 @@ WITH
   max parallel create index=1, schema only;
 ```
 
-### How to modify DDL using command file
+### Modify the DDL using a command file
 
 You can modify the DDL by performing the following steps:
 
 1. Dump the DDL using a command file, as follows:
 
-   ```shell
+   ```sql
    load database 
      from mysql://root:password@localhost:3306/northwind 
      into postgresql://yugabyte:yugabyte@localhost:5433/northwindmysql
@@ -200,10 +197,11 @@ You can modify the DDL by performing the following steps:
      max parallel create index=1, dumpddl only;
    ```
    
-2. Modify the the `ddl.sql` DDL file and run it using the [ysqlsh](https://docs.yugabyte.com/latest/admin/ysqlsh/) command-line tool.  
-3. Provide the DDL file using a command file similar to the following:
+1. Modify the the `ddl.sql` DDL file and run it using the [ysqlsh](https://docs.yugabyte.com/latest/admin/ysqlsh/) command-line tool.
 
-   ```shell
+1. Provide the DDL file using a command file similar to the following:
+
+   ```sql
    load database 
     from mysql://root:password@localhost:3306/northwind 
     into postgresql://yugabyte:yugabyte@localhost:5433/northwindmysql
@@ -213,7 +211,7 @@ You can modify the DDL by performing the following steps:
 
 Alternatively, you can execute a command file similar to the following, in which case you do need to run the `ddl.sql` file using the ysqlsh tool:
 
-```shell
+```sql
 load database 
   from mysql://root:password@localhost:3306/northwind 
   into postgresql://yugabyte:yugabyte@localhost:5433/northwindmysql
@@ -224,7 +222,7 @@ BEFORE LOAD EXECUTE
   '/Users/myname/quicklisp/local-projects/pgloader/ddl.sql';
 ```
 
-## Validating migration
+## Validating the migration
 
 When YSQL Loader finishes the migration, you can see a summary of the migration steps, including the information on how long each step took and the number of rows inserted.
 

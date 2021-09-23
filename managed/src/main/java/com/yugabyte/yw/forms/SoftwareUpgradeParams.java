@@ -6,7 +6,7 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.Universe;
 import play.mvc.Http.Status;
 
@@ -34,17 +34,18 @@ public class SoftwareUpgradeParams extends UpgradeTaskParams {
     super.verifyParams(universe);
 
     if (upgradeOption == UpgradeOption.NON_RESTART_UPGRADE) {
-      throw new YWServiceException(Status.BAD_REQUEST, "Software upgrade cannot be non restart.");
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST, "Software upgrade cannot be non restart.");
     }
 
     if (ybSoftwareVersion == null || ybSoftwareVersion.isEmpty()) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           Status.BAD_REQUEST, "Invalid Yugabyte software version: " + ybSoftwareVersion);
     }
 
     if (ybSoftwareVersion.equals(
         universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion)) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           Status.BAD_REQUEST, "Software version is already: " + ybSoftwareVersion);
     }
   }

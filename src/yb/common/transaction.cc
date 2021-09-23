@@ -28,7 +28,12 @@ const std::string kTransactionsTableName = "transactions";
 const std::string kMetricsSnapshotsTableName = "metrics";
 
 TransactionStatusResult::TransactionStatusResult(TransactionStatus status_, HybridTime status_time_)
-    : status(status_), status_time(status_time_) {
+    : TransactionStatusResult(status_, status_time_, AbortedSubTransactionSet()) {}
+
+TransactionStatusResult::TransactionStatusResult(
+    TransactionStatus status_, HybridTime status_time_,
+    AbortedSubTransactionSet aborted_subtxn_set_)
+    : status(status_), status_time(status_time_), aborted_subtxn_set(aborted_subtxn_set_) {
   DCHECK(status == TransactionStatus::ABORTED || status_time.is_valid())
       << "Status: " << status << ", status_time: " << status_time;
 }

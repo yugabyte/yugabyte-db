@@ -7,7 +7,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.CertificateHelper;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Universe;
 import java.util.UUID;
@@ -47,17 +47,18 @@ public class CertsRotateParams extends UpgradeTaskParams {
     super.verifyParams(universe);
 
     if (upgradeOption == UpgradeOption.NON_RESTART_UPGRADE) {
-      throw new YWServiceException(Status.BAD_REQUEST, "Cert upgrade cannot be non restart.");
+      throw new PlatformServiceException(Status.BAD_REQUEST, "Cert upgrade cannot be non restart.");
     }
 
     // Make sure rootCA and clientRootCA respects the rootAndClientRootCASame property
     if (rootAndClientRootCASame != null
+        && rootAndClientRootCASame
         && rootCA != null
         && clientRootCA != null
-        && rootAndClientRootCASame != rootCA.equals(clientRootCA)) {
-      throw new YWServiceException(
+        && !rootCA.equals(clientRootCA)) {
+      throw new PlatformServiceException(
           Status.BAD_REQUEST,
-          "rootCA and clientRootCA values should follow rootAndClientRootCASame property.");
+          "RootCA and ClientRootCA cannot be different when rootAndClientRootCASame is true.");
     }
 
     // rootAndClientRootCASame is optional in request, if not present follow the existing flag
@@ -78,7 +79,7 @@ public class CertsRotateParams extends UpgradeTaskParams {
 
     // User cannot upgrade rootCA when there is no need for rootCA in the universe
     if (!isRootCARequired && rootCA != null && !rootCA.equals(currentRootCA)) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           Status.BAD_REQUEST,
           "rootCA is not required with the current TLS parameters and cannot upgrade.");
     }
@@ -87,7 +88,7 @@ public class CertsRotateParams extends UpgradeTaskParams {
     if (!isClientRootCARequired
         && clientRootCA != null
         && !clientRootCA.equals(currentClientRootCA)) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           Status.BAD_REQUEST,
           "clientRootCA is not required with the current TLS parameters and cannot upgrade.");
     }
@@ -99,7 +100,7 @@ public class CertsRotateParams extends UpgradeTaskParams {
     // This is invalid request because clientRootCA is null currently and
     // user is trying to update rootAndClientRootCASame without setting clientRootCA
     if (isClientRootCARequired && currentClientRootCA == null && clientRootCA == null) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           Status.BAD_REQUEST,
           "clientRootCA is required with the current TLS parameters and cannot upgrade.");
     }
@@ -109,7 +110,8 @@ public class CertsRotateParams extends UpgradeTaskParams {
       // needs to be done. Now check on what kind of upgrade it is, RootCert or ServerCert
       CertificateInfo rootCert = CertificateInfo.get(rootCA);
       if (rootCert == null) {
-        throw new YWServiceException(Status.BAD_REQUEST, "Certificate not present: " + rootCA);
+        throw new PlatformServiceException(
+            Status.BAD_REQUEST, "Certificate not present: " + rootCA);
       }
 
       switch (rootCert.certType) {
@@ -118,12 +120,12 @@ public class CertsRotateParams extends UpgradeTaskParams {
           break;
         case CustomCertHostPath:
           if (!userIntent.providerType.equals(CloudType.onprem)) {
-            throw new YWServiceException(
+            throw new PlatformServiceException(
                 Status.BAD_REQUEST,
                 "Certs of type CustomCertHostPath can only be used for on-prem universes.");
           }
           if (rootCert.getCustomCertInfo() == null) {
-            throw new YWServiceException(
+            throw new PlatformServiceException(
                 Status.BAD_REQUEST,
                 String.format(
                     "The certificate %s needs info. Update the cert and retry.", rootCert.label));
@@ -135,7 +137,7 @@ public class CertsRotateParams extends UpgradeTaskParams {
           }
           break;
         case CustomServerCert:
-          throw new YWServiceException(
+          throw new PlatformServiceException(
               Status.BAD_REQUEST, "rootCA cannot be of type CustomServerCert.");
       }
     } else {
@@ -156,7 +158,8 @@ public class CertsRotateParams extends UpgradeTaskParams {
       // needs to be done. Now check on what kind of upgrade it is, RootCert or ServerCert
       CertificateInfo clientRootCert = CertificateInfo.get(clientRootCA);
       if (clientRootCert == null) {
-        throw new YWServiceException(Status.BAD_REQUEST, "Certificate not present: " + rootCA);
+        throw new PlatformServiceException(
+            Status.BAD_REQUEST, "Certificate not present: " + rootCA);
       }
 
       switch (clientRootCert.certType) {
@@ -165,12 +168,12 @@ public class CertsRotateParams extends UpgradeTaskParams {
           break;
         case CustomCertHostPath:
           if (!userIntent.providerType.equals(CloudType.onprem)) {
-            throw new YWServiceException(
+            throw new PlatformServiceException(
                 Status.BAD_REQUEST,
                 "Certs of type CustomCertHostPath can only be used for on-prem universes.");
           }
           if (clientRootCert.getCustomCertInfo() == null) {
-            throw new YWServiceException(
+            throw new PlatformServiceException(
                 Status.BAD_REQUEST,
                 String.format(
                     "The certificate %s needs info. Update the cert and retry.",
@@ -185,7 +188,7 @@ public class CertsRotateParams extends UpgradeTaskParams {
           break;
         case CustomServerCert:
           if (clientRootCert.getCustomServerCertInfo() == null) {
-            throw new YWServiceException(
+            throw new PlatformServiceException(
                 Status.BAD_REQUEST,
                 String.format(
                     "The certificate %s needs info. Update the cert and retry.",
@@ -215,7 +218,13 @@ public class CertsRotateParams extends UpgradeTaskParams {
     // When there is no upgrade needs to be done, fail the request
     if (rootCARotationType == CertRotationType.None
         && clientRootCARotationType == CertRotationType.None) {
-      throw new YWServiceException(Status.BAD_REQUEST, "No changes in rootCA or clientRootCA.");
+      if (!(userIntent.enableNodeToNodeEncrypt
+          && userIntent.enableClientToNodeEncrypt
+          && !currentRootAndClientRootCASame
+          && rootAndClientRootCASame)) {
+        throw new PlatformServiceException(
+            Status.BAD_REQUEST, "No changes in rootCA or clientRootCA.");
+      }
     }
   }
 

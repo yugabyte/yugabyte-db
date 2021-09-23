@@ -7,14 +7,12 @@
  *
  *     https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
-
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.models.Universe;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -39,11 +37,14 @@ public class DeleteNodeFromUniverse extends UniverseTaskBase {
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
-      Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
+      lockUniverseForUpdate(taskParams().expectedUniverseVersion);
       log.info(
           "Delete Node with name {} from universe {}",
           taskParams().nodeName,
           taskParams().universeUUID);
+
+      preTaskActions();
+
       deleteNodeFromUniverseTask(taskParams().nodeName)
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeletingNode);
       // Set Universe Update Success to true, if delete node succeeds for now.

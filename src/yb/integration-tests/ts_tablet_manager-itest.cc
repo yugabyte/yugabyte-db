@@ -168,7 +168,7 @@ TEST_F(TsTabletManagerITest, TestReportNewLeaderOnLeaderChange) {
     vector<std::shared_ptr<TabletPeer> > cur_ts_tablet_peers;
     // The replicas may not have been created yet, so loop until we see them.
     while (true) {
-      ts->server()->tablet_manager()->GetTabletPeers(&cur_ts_tablet_peers);
+      cur_ts_tablet_peers = ts->server()->tablet_manager()->GetTabletPeers();
       if (!cur_ts_tablet_peers.empty()) break;
       SleepFor(MonoDelta::FromMilliseconds(10));
     }

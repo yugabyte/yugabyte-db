@@ -267,6 +267,8 @@ class YBClientBuilder {
 // This class is thread-safe.
 class YBClient {
  public:
+  using TabletServersInfo = std::vector<std::unique_ptr<yb::client::YBTabletServerPlacementInfo>>;
+
   ~YBClient();
 
   std::unique_ptr<YBTableCreator> NewTableCreator();
@@ -365,9 +367,6 @@ class YBClient {
       const IndexPermissions& target_index_permissions,
       const CoarseTimePoint deadline,
       const CoarseDuration max_wait = std::chrono::seconds(2));
-
-  // Trigger an async index permissions update after new YSQL index permissions are committed.
-  Status AsyncUpdateIndexPermissions(const TableId& indexed_table_id);
 
   // Namespace related methods.
 
@@ -522,15 +521,20 @@ class YBClient {
   // CDC Stream related methods.
 
   // Create a new CDC stream.
-  Result<CDCStreamId> CreateCDCStream(const TableId& table_id,
-                                      const std::unordered_map<std::string, std::string>& options);
+  Result<CDCStreamId> CreateCDCStream(
+      const TableId& table_id,
+      const std::unordered_map<std::string, std::string>& options,
+      const master::SysCDCStreamEntryPB::State& initial_state =
+          master::SysCDCStreamEntryPB::ACTIVE);
 
   void CreateCDCStream(const TableId& table_id,
                        const std::unordered_map<std::string, std::string>& options,
                        CreateCDCStreamCallback callback);
 
   // Delete multiple CDC streams.
-  CHECKED_STATUS DeleteCDCStream(const vector<CDCStreamId>& streams);
+  CHECKED_STATUS DeleteCDCStream(const vector<CDCStreamId>& streams,
+                                 bool force = false,
+                                 master::DeleteCDCStreamResponsePB* resp = nullptr);
 
   // Delete a CDC stream.
   CHECKED_STATUS DeleteCDCStream(const CDCStreamId& stream_id);
@@ -547,7 +551,11 @@ class YBClient {
                     std::shared_ptr<std::unordered_map<std::string, std::string>> options,
                     StdStatusCallback callback);
 
-  void DeleteTablet(const TabletId& tablet_id, StdStatusCallback callback);
+  void DeleteNotServingTablet(const TabletId& tablet_id, StdStatusCallback callback);
+
+  // Update a CDC stream's options.
+  CHECKED_STATUS UpdateCDCStream(const CDCStreamId& stream_id,
+                                 const master::SysCDCStreamEntryPB& new_entry);
 
   void GetTableLocations(
       const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,
@@ -562,9 +570,8 @@ class YBClient {
 
   CHECKED_STATUS ListTabletServers(std::vector<std::unique_ptr<YBTabletServer>>* tablet_servers);
 
-  CHECKED_STATUS ListLiveTabletServers(
-      std::vector<std::unique_ptr<YBTabletServerPlacementInfo>>* tablet_servers,
-      bool primary_only = false);
+  CHECKED_STATUS ListLiveTabletServers(TabletServersInfo* tablet_servers,
+                                       bool primary_only = false);
 
   // Sets local tserver and its proxy.
   void SetLocalTabletServer(const std::string& ts_uuid,
@@ -644,7 +651,8 @@ class YBClient {
   // TODO: should we offer an async version of this as well?
   // TODO: probably should have a configurable timeout in YBClientBuilder?
   CHECKED_STATUS OpenTable(const YBTableName& table_name, std::shared_ptr<YBTable>* table);
-  CHECKED_STATUS OpenTable(const TableId& table_id, std::shared_ptr<YBTable>* table);
+  CHECKED_STATUS OpenTable(const TableId& table_id, std::shared_ptr<YBTable>* table,
+                           master::GetTableSchemaResponsePB* resp = nullptr);
 
   Result<YBTablePtr> OpenTable(const TableId& table_id) {
     YBTablePtr result;
@@ -802,8 +810,10 @@ class YBClient {
   FRIEND_TEST(MasterFailoverTest, DISABLED_TestPauseAfterCreateTableIssued);
   FRIEND_TEST(MasterFailoverTestIndexCreation, TestPauseAfterCreateIndexIssued);
 
+  Result<YBTablePtr> CompleteTable(const YBTableInfo& info);
+
   friend std::future<Result<internal::RemoteTabletPtr>> LookupFirstTabletFuture(
-      const std::shared_ptr<const YBTable>& table);
+      YBClient* client, const YBTablePtr& table);
 
   YBClient();
 

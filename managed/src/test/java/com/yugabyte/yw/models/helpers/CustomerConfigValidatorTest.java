@@ -70,6 +70,8 @@ public class CustomerConfigValidatorTest {
         + "AWS_HOST_BASE, s3.amazonaws.com, true",
     // location - correct, aws_host_base - correct -> allowed
     "S3, BACKUP_LOCATION, s3://backups.yugabyte.com, AWS_HOST_BASE, s3.amazonaws.com, true",
+    // location - correct, aws_host_base(for S3 compatible storage) - correct -> allowed
+    "S3, BACKUP_LOCATION, s3://false, AWS_HOST_BASE, http://fake-localhost:9000, true",
     // location - correct, aws_host_base - correct -> allowed
     "S3, BACKUP_LOCATION, s3://backups.yugabyte.com/test/itest, "
         + "AWS_HOST_BASE, cloudstorage.onefs.dell.com, true",

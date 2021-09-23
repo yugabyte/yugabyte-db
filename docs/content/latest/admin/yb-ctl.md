@@ -470,6 +470,12 @@ To add a node with custom YB-Master flags:
 $ ./bin/yb-ctl add_node --master_flags "log_cache_size_limit_mb=128,log_min_seconds_to_retain=20"
 ```
 
+To handle flags whose value contains commas or equals, quote the whole key-value pair with double-quotes:
+
+```sh
+$ ./bin/yb-ctl create --tserver_flags 'ysql_enable_auth=false,"vmodule=tablet_service=1,pg_doc_op=1",ysql_prefetch_limit=1000'
+```
+
 ### Restart a cluster
 
 The `yb-ctl restart` command can be used to restart a cluster. Please note that if you restart the cluster, all custom defined flags and placement information will be lost. Nevertheless, you can pass the placement information and custom flags in the same way as they are passed in the `yb-ctl create` command.

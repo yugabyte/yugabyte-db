@@ -16,14 +16,14 @@ const AlertDestinationConfiguration = (props) => {
   const [destinationChannelList, setDestinationChannelList] = useState([]);
 
   const onInit = () => {
-    props.getAlertReceivers().then((receivers) => {
-      receivers = receivers.map((receiver) => {
+    props.getAlertChannels().then((channels) => {
+      channels = channels.map((channel) => {
         return {
-          value: receiver['uuid'],
-          label: receiver['name']
+          value: channel['uuid'],
+          label: channel['name']
         };
       });
-      setDestinationChannelList(receivers);
+      setDestinationChannelList(channels);
     });
   };
 
@@ -37,11 +37,11 @@ const AlertDestinationConfiguration = (props) => {
   const handleOnSubmit = (values) => {
     const payload = {
       name: '',
-      receivers: [],
-      defaultRoute: values['defaultRoute'] ? values['defaultRoute'] : false
+      channels: [],
+      defaultDestination: values['defaultDestination'] ? values['defaultDestination'] : false
     };
     payload.name = values['ALERT_DESTINATION_NAME'];
-    values['DESTINATION_CHANNEL_LIST'].forEach((channel) => payload.receivers.push(channel.value));
+    values['DESTINATION_CHANNEL_LIST'].forEach((channel) => payload.channels.push(channel.value));
     
     values.type === 'update'
       ? props.updateAlertDestination(payload, values.uuid).then((response) => {
@@ -86,7 +86,7 @@ const AlertDestinationConfiguration = (props) => {
           <Row>
             <Col md={6}>
               <div className="form-item-custom-label">Default Destination</div>
-              <Field name="defaultRoute" component={YBToggle} />
+              <Field name="defaultDestination" component={YBToggle} />
             </Col>
           </Row>
           <Row>

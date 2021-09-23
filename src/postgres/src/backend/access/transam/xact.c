@@ -1875,7 +1875,6 @@ YBStartTransaction(TransactionState s)
 
 	if (IsYugaByteEnabled())
 	{
-		YBResetOperationsBuffering();
 		YBInitializeTransaction();
 	}
 }
@@ -2053,12 +2052,6 @@ void
 YBCRestartWriteTransaction()
 {
 	/*
-	 * Disable the buffering of operations that was enabled during the execution
-	 * of the write.
-	 */
-	YBEndOperationsBuffering();
-
-	/*
 	 * Presence of triggers pushes additional snapshots. Pop all of them. Given
 	 * that we restart the writes only when we haven't sent any data back to the
 	 * user, removing all snapshots is safe.
@@ -2073,13 +2066,6 @@ YBCRestartWriteTransaction()
 	 */
 	AfterTriggerEndXact(false /* isCommit */);
 	AfterTriggerBeginXact();
-
-	/*
-	 * Recreate the YB state for the transaction. This call preserves the
-	 * priority of the current YB transaction so that when we retry, we re-use
-	 * the same priority.
-	 */
-	YBCRecreateTransaction();
 }
 
 /*

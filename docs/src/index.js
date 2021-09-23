@@ -151,8 +151,8 @@ $(document).ready(() => {
       let regExpCopy = /a^/;
       if (languageDescriptor) {
         // Then apply copy button
-        // Strip the prompt from SQL languages
-        if (['pgsql', 'plpgsql', 'postgres', 'postgresql', 'sql'].includes(languageDescriptor)) {
+        // Strip the prompt from CQL/SQL languages
+        if (['cassandra', 'cql', 'pgsql', 'plpgsql', 'postgres', 'postgresql', 'sql'].includes(languageDescriptor)) {
           if (element.textContent.match(/^[0-9a-z_.:@=^]{1,30}[>|#]\s/gm)) {
             regExpCopy = /^[0-9a-z_.:@=^]{1,30}[>|#]\s/gm;
           }
@@ -163,8 +163,11 @@ $(document).ready(() => {
           } else if (element.textContent.match(/^[0-9a-z_.:@=^]{1,30}[>|#]\s/gm)) {
             regExpCopy = /^[0-9a-z_.:@=^]{1,30}[>|#]\s/gm;
           }
-        // Don't add a copy button to blocks labeled "output"
-        } else if (['output'].includes(languageDescriptor)) {
+        // Don't add a copy button to language names that include "output" or "nocopy".
+        // For example, `output.xml` or `nocopy.java`.
+        } else if (languageDescriptor.includes('output')) {
+          return;
+        } else if (languageDescriptor.includes('nocopy')) {
           return;
         }
         const button = document.createElement('button');

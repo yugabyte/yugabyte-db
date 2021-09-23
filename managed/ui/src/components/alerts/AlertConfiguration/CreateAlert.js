@@ -19,6 +19,8 @@ import { connect } from 'react-redux';
 import '../CreateAlerts.scss';
 import { AlertsPolicy } from './AlertsPolicy';
 import { isNonEmptyArray } from '../../../utils/ObjectUtils';
+import { getAlertConfigByName } from '../../../actions/customers';
+import { toast } from 'react-toastify';
 
 const required = (value) => (value ? undefined : 'This field is required.');
 
@@ -35,26 +37,35 @@ const CreateAlert = (props) => {
     alertDestinations,
     updateAlertConfig
   } = props;
-  const [isAllUniversesDisabled, setIsAllUniversesDisabled] = useState(true);
-  const [alertDestionation, setAlertDesionation] = useState([]);
-  const [currentMetric, setCurrentMetric] = useState('PERCENT');
+  const [isAllUniversesDisabled, setIsAllUniversesDisabled] = useState(initialValues.ALERT_TARGET_TYPE==='allUniverses');
+  const [alertDestination, setAlertDestination] = useState([]);
+  const [currentMetric, setCurrentMetric] = useState(undefined);
 
   useEffect(() => {
     alertDestinations().then((res) => {
+      const defaultDestination = res.find(destination => destination.defaultDestination);
       res = res.map((destination, index) => (
         <option key={index} value={destination.uuid}>
           {destination.name}
         </option>
       ));
-      setAlertDesionation([<option key="i" />, ...res]);
+      setAlertDestination([
+        <option key="default" value='<default>'>Use Default ({defaultDestination.name})</option>,
+        <option key="empty" value='<empty>'>No Destination</option>,
+        ...res]);
     });
   }, [alertDestinations]);
+
+  useEffect(() => {
+    setCurrentMetric(initialValues.ALERT_METRICS_CONDITION ? metricsData.find((metric) =>
+      metric.template === initialValues.ALERT_METRICS_CONDITION) : undefined);
+  }, [metricsData, initialValues.ALERT_METRICS_CONDITION]);
 
   /**
    * Constant option for metrics condition.
    */
   const alertMetricsConditionList = [
-    <option key="default" value={null} />,
+    <option key="default" value={null}>Select Template</option>,
     ...metricsData.map((metric, i) => {
       return (
         <option key={i} value={metric.template}>
@@ -86,7 +97,23 @@ const CreateAlert = (props) => {
    */
   const handleMetricConditionChange = (value) => {
     const metric = metricsData.find((metric) => metric.template === value);
-    setCurrentMetric(metric.thresholdUnit);
+    setCurrentMetric(metric);
+    if (!metric) {
+      return;
+    }
+    const conditions = [];
+    // Setting up the threshold values.
+    Object.keys(metric.thresholds).forEach((policy) => {
+      conditions.push({
+        _SEVERITY: policy,
+        _CONDITION: metric.thresholds[policy].condition,
+        _THRESHOLD: metric.thresholds[policy].threshold
+      });
+    });
+    props.updateField('alertConfigForm', 'ALERT_METRICS_CONDITION_POLICY', conditions);
+    props.updateField('alertConfigForm', 'ALERT_METRICS_DURATION', metric.durationSec);
+    props.updateField('alertConfigForm', 'ALERT_CONFIGURATION_NAME', metric.name);
+    props.updateField('alertConfigForm', 'ALERT_CONFIGURATION_DESCRIPTION', metric.description);
   };
 
   /**
@@ -94,15 +121,24 @@ const CreateAlert = (props) => {
    * @param {Formvalues} values
    * TODO: Make an API call to submit the form by reformatting the payload.
    */
-  const handleOnSubmit = (values) => {
+  const handleOnSubmit = async (values) => {
     const cUUID = localStorage.getItem('customerId');
+
+    if(values.type !== 'update' || values['ALERT_CONFIGURATION_NAME'] !== initialValues['ALERT_CONFIGURATION_NAME']){
+      const alertListByName = await getAlertConfigByName(values['ALERT_CONFIGURATION_NAME'])
+      if(alertListByName.data.length !== 0){
+        toast.error(`Alert with name "${values['ALERT_CONFIGURATION_NAME']}" already exists!`)
+        return;
+      }
+    }
+
     const payload = {
       uuid: values.type === 'update' ? values.uuid : null,
       customerUUID: cUUID,
       createTime: values.type === 'update' ? initialValues.createTime : null,
       name: values['ALERT_CONFIGURATION_NAME'],
       description: values['ALERT_CONFIGURATION_DESCRIPTION'],
-      targetType: !enablePlatformAlert ? 'UNIVERSE' : 'CUSTOMER',
+      targetType: !enablePlatformAlert ? 'UNIVERSE' : 'PLATFORM',
       target: !enablePlatformAlert
         ? {
           all: isNonEmptyArray(values['ALERT_UNIVERSE_LIST']) ? false : true,
@@ -110,24 +146,24 @@ const CreateAlert = (props) => {
         }
         : { all: true },
       thresholds: '',
-      thresholdUnit: '',
+      thresholdUnit: currentMetric.thresholdUnit,
       template: values['ALERT_METRICS_CONDITION'] || 'REPLICATION_LAG',
       durationSec: values['ALERT_METRICS_DURATION'],
-      active: true,
-      routeUUID: values['ALERT_DESTINATION_LIST'],
-      defaultRoute: true
+      active: true
     };
 
-    // setting up the thresshold unit.
-    switch (values['ALERT_METRICS_CONDITION']) {
-      case 'MEMORY_CONSUMPTION':
-        payload.thresholdUnit = 'PERCENT';
+    switch (values['ALERT_DESTINATION_LIST']) {
+      case '<empty>':
+        payload.destinationUUID = null;
+        payload.defaultDestination = false;
         break;
-      case 'CLOCK_SKEW':
-        payload.thresholdUnit = 'MILLISECOND';
+      case '<default>':
+        payload.destinationUUID = null;
+        payload.defaultDestination = true;
         break;
       default:
-        payload.thresholdUnit = 'MILLISECOND';
+        payload.destinationUUID = values['ALERT_DESTINATION_LIST'];
+        payload.defaultDestination = false;
     }
 
     // Setting up the universe uuids.
@@ -156,7 +192,21 @@ const CreateAlert = (props) => {
   return (
     <form name="alertConfigForm" onSubmit={handleSubmit(handleOnSubmit)}>
       <Row className="config-section-header">
+        <Col md={12}>
+          <h4>Template</h4>
+        </Col>
         <Row>
+          <Col md={6}>
+            <Field
+              name="ALERT_METRICS_CONDITION"
+              component={YBSelectWithLabel}
+              validate={required}
+              options={alertMetricsConditionList}
+              onInputChanged={handleMetricConditionChange}
+            />
+          </Col>
+        </Row>
+        {currentMetric && (<Row>
           <Col md={6}>
             <div className="form-item-custom-label">Name</div>
             <Field
@@ -176,8 +226,8 @@ const CreateAlert = (props) => {
               isReadOnly={false}
             />
           </Col>
-        </Row>
-        {!enablePlatformAlert && (
+        </Row>)}
+        {currentMetric && !enablePlatformAlert && (
           <Row>
             <Col md={6}>
               <div className="form-item-custom-label">Target</div>
@@ -199,28 +249,20 @@ const CreateAlert = (props) => {
                 options={alertUniverseList}
                 hideSelectedOptions={false}
                 isMulti={true}
-                isDisabled={isAllUniversesDisabled}
+                validate={!isAllUniversesDisabled && required}
+                className={isAllUniversesDisabled ? 'hide-field' : ''}
               />
             </Col>
           </Row>
         )}
-        <hr />
-        <Row>
+        {currentMetric && (<hr />)}
+        {currentMetric && (<Row>
           <Col md={12}>
             <h4>Conditions</h4>
           </Col>
           <Row>
             <Col md={6}>
-              <div className="form-item-custom-label">Metrics</div>
-              <Field
-                name="ALERT_METRICS_CONDITION"
-                component={YBSelectWithLabel}
-                options={alertMetricsConditionList}
-                onInputChanged={handleMetricConditionChange}
-              />
-            </Col>
-            <Col md={3}>
-              <div className="form-item-custom-label">Duration</div>
+              <div className="form-item-custom-label">Duration, sec</div>
               <Field
                 name="ALERT_METRICS_DURATION"
                 component={YBTextInputWithLabel}
@@ -240,18 +282,17 @@ const CreateAlert = (props) => {
               </div>
             </Col>
           </Row>
-        </Row>
-        <Row className="actionBtnsMargin">
+        </Row>)}
+        {currentMetric && (<Row className="actionBtnsMargin">
           <Col md={6}>
-            <div className="form-item-custom-label">Destinations</div>
+            <div className="form-item-custom-label">Destination</div>
             <Field
               name="ALERT_DESTINATION_LIST"
               component={YBSelectWithLabel}
-              options={alertDestionation}
-              validate={required}
+              options={alertDestination}
             />
           </Col>
-        </Row>
+        </Row>)}
         <Row className="alert-action-button-container">
           <Col lg={6} lgOffset={6}>
             <YBButton
@@ -262,7 +303,8 @@ const CreateAlert = (props) => {
                 setInitialValues();
               }}
             />
-            <YBButton btnText="Save" btnType="submit" btnClass="btn btn-orange" />
+            {currentMetric &&
+              (<YBButton btnText="Save" btnType="submit" btnClass="btn btn-orange" />)}
           </Col>
         </Row>
       </Row>

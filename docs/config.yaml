@@ -34,6 +34,9 @@ params:
     apiKey: 12bc78d612b87db0163597f245889f18
   bigpicture:
     projectId: 1064
+  ui:
+    # https://github.com/gohugoio/hugo/issues/8918#issuecomment-903314696
+    sidebar_cache_limit: 1
 social: {}
 menu:
   main:

@@ -613,6 +613,7 @@ class AzureCloudAdmin():
     def get_instance_types(self, regions):
         # TODO: This regex probably should be refined? It returns a LOT of VMs right now.
         premium_regex_format = 'Standard_.*s'
+        burstable_prefix = 'Standard_B'
         regex = re.compile(premium_regex_format, re.IGNORECASE)
 
         all_vms = {}
@@ -622,7 +623,8 @@ class AzureCloudAdmin():
         for vm in vm_list:
             vm_size = vm.get("name")
             # We only care about VMs that support Premium storage. Promo is pricing special.
-            if (not regex.match(vm_size) or vm_size.endswith("Promo")):
+            if (vm_size.startswith(burstable_prefix) or not regex.match(vm_size)
+                    or vm_size.endswith("Promo")):
                 continue
             vm_info = self.parse_vm_info(vm)
             if vm_info["memSizeGb"] < MIN_MEM_SIZE_GB or vm_info["numCores"] < MIN_NUM_CORES:

@@ -144,7 +144,7 @@ class PgsqlReadOperation : public DocExprExecutor {
   //     SELECT ... WHERE ybctid = y2;
   //     SELECT ... WHERE ybctid = y3;
   //
-  // - Batch argument: The query condition is representd by many sets of values. For example, a
+  // - Batch argument: The query condition is represented by many sets of values. For example, a
   //   batch protobuf will carry many ybctids.
   //     SELECT ... WHERE ybctid IN (y1, y2, y3)
   Result<size_t> Execute(const common::YQLStorageIf& ql_storage,
@@ -177,7 +177,6 @@ class PgsqlReadOperation : public DocExprExecutor {
                                     CoarseTimePoint deadline,
                                     const ReadHybridTime& read_time,
                                     const Schema& schema,
-                                    bool unknown_ybctid_allowed,
                                     faststring *result_buffer,
                                     HybridTime *restart_read_ht);
 

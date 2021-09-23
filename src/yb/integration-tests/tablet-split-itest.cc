@@ -26,6 +26,7 @@
 #include "yb/client/transaction.h"
 #include "yb/client/txn-test-base.h"
 
+#include "yb/common/entity_ids_types.h"
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_value.h"
 
@@ -46,6 +47,7 @@
 #include "yb/integration-tests/redis_table_test_base.h"
 #include "yb/integration-tests/test_workload.h"
 
+#include "yb/integration-tests/twodc_test_base.h"
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.pb.h"
@@ -205,6 +207,13 @@ CHECKED_STATUS DoSplitTablet(master::CatalogManager* catalog_mgr, const tablet::
 
 } // namespace
 
+namespace {
+
+constexpr auto kRpcTimeout = 60s * kTimeMultiplier;
+constexpr auto kDefaultNumRows = 500;
+
+} // namespace
+
 template <class MiniClusterType>
 class TabletSplitITestBase : public client::TransactionTestBase<MiniClusterType> {
  public:
@@ -330,6 +339,20 @@ class TabletSplitITest : public TabletSplitITestBase<MiniCluster> {
     return SplitTabletAndValidate(split_hash_code, num_rows);
   }
 
+  Result<tserver::GetSplitKeyResponsePB> GetSplitKey(
+      const std::string& tablet_id) {
+    auto tserver = cluster_->mini_tablet_server(0);
+    auto ts_service_proxy = std::make_unique<tserver::TabletServerServiceProxy>(
+      proxy_cache_.get(), HostPort::FromBoundEndpoint(tserver->bound_rpc_addr()));
+    tserver::GetSplitKeyRequestPB req;
+    req.set_tablet_id(tablet_id);
+    rpc::RpcController controller;
+    controller.set_timeout(kRpcTimeout);
+    tserver::GetSplitKeyResponsePB resp;
+    ts_service_proxy->GetSplitKey(req, &resp, &controller);
+    return resp;
+  }
+
   Result<master::CatalogManager*> catalog_manager() {
     return CHECK_NOTNULL(VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->master())
         ->catalog_manager();
@@ -397,13 +420,6 @@ class TabletSplitITestWithIsolationLevel : public TabletSplitITest,
     TabletSplitITest::SetUp();
   }
 };
-
-namespace {
-
-constexpr auto kRpcTimeout = 60s * kTimeMultiplier;
-constexpr auto kDefaultNumRows = 500;
-
-} // namespace
 
 template <class MiniClusterType>
 Result<tserver::ReadRequestPB> TabletSplitITestBase<MiniClusterType>::CreateReadRequest(
@@ -1323,7 +1339,6 @@ TEST_F(TabletSplitITest, SplitTabletDuringReadWriteLoad) {
   ASSERT_EQ(workload.rows_read_empty(), 0);
 
   // TODO(tsplit): Check with different isolation levels.
-  // TODO(tsplit): Add more splits during writes, so we have tablets with split_depth > 1.
 
   ASSERT_OK(cluster_->RestartSync());
 }
@@ -1576,18 +1591,6 @@ class NotSupportedTabletSplitITest : public TabletSplitITest {
     return cluster;
   }
 };
-
-TEST_F(NotSupportedTabletSplitITest, SplittingWithPitr) {
-  // Schedule snapshots on this namespace.
-  auto id = ASSERT_RESULT(snapshot_util_->CreateSchedule(table_));
-
-  LOG(INFO) << "Scheduled a snapshot for table "
-            << table_.name().table_name() << " with schedule id "
-            << id;
-
-  // Try splitting this tablet.
-  ASSERT_RESULT(SplitTabletAndCheckForNotSupported(false /* restart_server */));
-}
 
 TEST_F(NotSupportedTabletSplitITest, SplittingWithCdcStream) {
   // Create a cdc stream for this tablet.
@@ -1964,16 +1967,7 @@ TEST_F(TabletSplitSingleServerITest, TabletServerGetSplitKey) {
   auto expected_middle_key_hash = CHECK_RESULT(docdb::DocKey::DecodeHash(middle_key));
 
   // Send RPC.
-  auto tserver = cluster_->mini_tablet_server(0);
-  auto ts_admin_service_proxy = std::make_unique<tserver::TabletServerAdminServiceProxy>(
-    proxy_cache_.get(), HostPort::FromBoundEndpoint(tserver->bound_rpc_addr()));
-  tserver::GetSplitKeyRequestPB req;
-  req.set_tablet_id(source_tablet_id);
-  req.set_dest_uuid(tablet_peer->permanent_uuid());
-  rpc::RpcController controller;
-  controller.set_timeout(kRpcTimeout);
-  tserver::GetSplitKeyResponsePB resp;
-  ASSERT_OK(ts_admin_service_proxy->GetSplitKey(req, &resp, &controller));
+  auto resp = ASSERT_RESULT(GetSplitKey(source_tablet_id));
 
   // Validate response.
   CHECK(!resp.has_error()) << resp.error().DebugString();
@@ -1982,6 +1976,30 @@ TEST_F(TabletSplitSingleServerITest, TabletServerGetSplitKey) {
   auto decoded_partition_key_hash = PartitionSchema::DecodeMultiColumnHashValue(
       resp.split_partition_key());
   CHECK_EQ(decoded_partition_key_hash, expected_middle_key_hash);
+}
+
+TEST_F(TabletSplitSingleServerITest, TabletServerOrphanedPostSplitData) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_disable_compactions) = true;
+  constexpr auto kNumRows = 2000;
+
+  auto source_tablet_id = CreateSingleTabletAndSplit(kNumRows);
+
+  // Try to call GetSplitKey RPC on each child tablet that resulted from the split above
+  const auto& peers = ListTableActiveTabletPeers(cluster_.get(), table_->id());
+  ASSERT_EQ(peers.size(), 2);
+
+  for (const auto& peer : peers) {
+      // Send RPC to child tablet.
+      auto resp = ASSERT_RESULT(GetSplitKey(peer->tablet_id()));
+
+      // Validate response
+      EXPECT_TRUE(resp.has_error());
+      EXPECT_TRUE(resp.error().has_status());
+      EXPECT_TRUE(resp.error().status().has_message());
+      EXPECT_EQ(resp.error().status().code(),
+                yb::AppStatusPB::ErrorCode::AppStatusPB_ErrorCode_ILLEGAL_STATE);
+      EXPECT_EQ(resp.error().status().message(), "Tablet has orphaned post-split data");
+  }
 }
 
 TEST_F(TabletSplitSingleServerITest, TabletServerSplitAlreadySplitTablet) {
@@ -2098,11 +2116,22 @@ class TabletSplitExternalMiniClusterITest : public TabletSplitITestBase<External
     return tablet_ids;
   }
 
-  CHECKED_STATUS WaitForTablets(int num_tablets, int tserver_idx) {
+  CHECKED_STATUS WaitForTabletsExcept(
+      int num_tablets, int tserver_idx, const TabletId& exclude_tablet) {
     return WaitFor([&]() -> Result<bool> {
       auto res = VERIFY_RESULT(GetTestTableTabletIds(tserver_idx));
-      return res.size() == num_tablets;
+      int count = 0;
+      for (auto& tablet_id : res) {
+        if (tablet_id != exclude_tablet) {
+          count++;
+        }
+      }
+      return count == num_tablets;
     }, 20s * kTimeMultiplier, Format("Waiting for tablet count: $0", num_tablets));
+  }
+
+  CHECKED_STATUS WaitForTablets(int num_tablets, int tserver_idx) {
+    return WaitForTabletsExcept(num_tablets, tserver_idx, "");
   }
 
   CHECKED_STATUS WaitForTablets(int num_tablets) {
@@ -2361,9 +2390,9 @@ TEST_F(TabletSplitExternalMiniClusterITest, RemoteBootstrapsFromNodeWithUncommit
   ASSERT_OK(cluster_->WaitForTabletsRunning(leader, 20s * kTimeMultiplier));
   ASSERT_OK(cluster_->WaitForTabletsRunning(server_to_bootstrap, 20s * kTimeMultiplier));
   CHECK_OK(server_to_kill->Restart());
-  ASSERT_OK(WaitForTablets(3, server_to_bootstrap_idx));
-  ASSERT_OK(WaitForTablets(3, leader_idx));
-  ASSERT_OK(WaitForTablets(3, server_to_kill_idx));
+  ASSERT_OK(WaitForTabletsExcept(2, server_to_bootstrap_idx, tablet_id));
+  ASSERT_OK(WaitForTabletsExcept(2, leader_idx, tablet_id));
+  ASSERT_OK(WaitForTabletsExcept(2, server_to_kill_idx, tablet_id));
 
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     return WriteRows().ok();

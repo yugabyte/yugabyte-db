@@ -2,13 +2,10 @@
 
 package com.yugabyte.yw.models;
 
-import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
-import static play.mvc.Http.Status.BAD_REQUEST;
-
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.EnumValue;
@@ -31,9 +28,12 @@ import javax.persistence.Id;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Entity
-@ApiModel(description = "Customers Task Information.")
+@ApiModel(
+    description = "Customer task information. A customer task has a _target_ and a _task type_.")
 public class CustomerTask extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(CustomerTask.class);
 
@@ -178,7 +178,25 @@ public class CustomerTask extends Model {
     StartMaster,
 
     @EnumValue("CreateAlertDefinitions")
-    CreateAlertDefinitions;
+    CreateAlertDefinitions,
+
+    @EnumValue("ExternalScript")
+    ExternalScript,
+
+    @EnumValue("CreateXClusterReplication")
+    CreateXClusterReplication,
+
+    @EnumValue("DeleteXClusterReplication")
+    DeleteXClusterReplication,
+
+    @EnumValue("EditXClusterReplication")
+    EditXClusterReplication,
+
+    @EnumValue("PauseXClusterReplication")
+    PauseXClusterReplication,
+
+    @EnumValue("ResumeXClusterReplication")
+    ResumeXClusterReplication;
 
     public String toString(boolean completed) {
       switch (this) {
@@ -236,6 +254,18 @@ public class CustomerTask extends Model {
           return completed ? "Started Master process on " : "Starting Master process on ";
         case CreateAlertDefinitions:
           return completed ? "Created alert definitions " : "Creating alert definitions ";
+        case ExternalScript:
+          return completed ? "Script execution completed " : "Script execution is running";
+        case CreateXClusterReplication:
+          return completed ? "Created xCluster replication " : "Creating xCluster replication ";
+        case DeleteXClusterReplication:
+          return completed ? "Deleted xCluster replication " : "Deleting xCluster replication ";
+        case EditXClusterReplication:
+          return completed ? "Edited xCluster replication " : "Editing xCluster replication ";
+        case PauseXClusterReplication:
+          return completed ? "Paused xCluster replication " : "Pausing xCluster replication ";
+        case ResumeXClusterReplication:
+          return completed ? "Resumed xCluster replication " : "Resuming xCluster replication ";
         default:
           return null;
       }
@@ -268,7 +298,7 @@ public class CustomerTask extends Model {
   // Use IDENTITY strategy because `customer_task.id` is a `bigserial` type; not a sequence.
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
-  @ApiModelProperty(value = "Customer task uuid", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Customer task UUID", accessMode = READ_ONLY)
   private Long id;
 
   public Long getId() {
@@ -277,7 +307,7 @@ public class CustomerTask extends Model {
 
   @Constraints.Required
   @Column(nullable = false)
-  @ApiModelProperty(value = "Customer uuid", accessMode = READ_ONLY, required = true)
+  @ApiModelProperty(value = "Customer UUID", accessMode = READ_ONLY, required = true)
   private UUID customerUUID;
 
   public UUID getCustomerUUID() {
@@ -286,11 +316,20 @@ public class CustomerTask extends Model {
 
   @Constraints.Required
   @Column(nullable = false)
-  @ApiModelProperty(value = "Task uuid", accessMode = READ_ONLY, required = true)
+  @ApiModelProperty(value = "Task UUID", accessMode = READ_ONLY, required = true)
   private UUID taskUUID;
 
   public UUID getTaskUUID() {
     return taskUUID;
+  }
+
+  @Constraints.Required
+  @Column(nullable = false)
+  @ApiModelProperty(value = "Task type", accessMode = READ_ONLY, required = true)
+  private TaskType type;
+
+  public TaskType getType() {
+    return type;
   }
 
   @Constraints.Required
@@ -313,16 +352,7 @@ public class CustomerTask extends Model {
 
   @Constraints.Required
   @Column(nullable = false)
-  @ApiModelProperty(value = "Task task type", accessMode = READ_ONLY, required = true)
-  private TaskType type;
-
-  public TaskType getType() {
-    return type;
-  }
-
-  @Constraints.Required
-  @Column(nullable = false)
-  @ApiModelProperty(value = "Task target uuid", accessMode = READ_ONLY, required = true)
+  @ApiModelProperty(value = "Task target UUID", accessMode = READ_ONLY, required = true)
   private UUID targetUUID;
 
   public UUID getTargetUUID() {
@@ -333,9 +363,9 @@ public class CustomerTask extends Model {
   @Column(nullable = false)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
   @ApiModelProperty(
-      value = "Create time",
+      value = "Creation time",
       accessMode = READ_ONLY,
-      example = "1624295187911",
+      example = "2021-06-17 15:00:05",
       required = true)
   private Date createTime;
 
@@ -345,7 +375,10 @@ public class CustomerTask extends Model {
 
   @Column
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
-  @ApiModelProperty(value = "Completion time", accessMode = READ_ONLY, example = "1624295187911")
+  @ApiModelProperty(
+      value = "Completion time (present only if a task has completed)",
+      accessMode = READ_ONLY,
+      example = "2021-06-17 15:00:05")
   private Date completionTime;
 
   public Date getCompletionTime() {
@@ -403,7 +436,7 @@ public class CustomerTask extends Model {
   public static CustomerTask getOrBadRequest(UUID customerUUID, UUID taskUUID) {
     CustomerTask customerTask = get(customerUUID, taskUUID);
     if (customerTask == null) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid Customer Task UUID: " + taskUUID);
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid Customer Task UUID: " + taskUUID);
     }
     return customerTask;
   }

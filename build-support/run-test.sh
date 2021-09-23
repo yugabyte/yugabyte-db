@@ -67,7 +67,10 @@ cleanup() {
     log "Failing test because we had to kill stuck process."
     exit_code=1
   fi
-  rm -rf "$TEST_TMPDIR"
+  if [[ -d $TEST_TMPDIR && $TEST_TMPDIR != "/" && $TEST_TMPDIR != "/tmp" ]]; then
+    echo "Removing the TEST_TMPDIR temporary directory: $TEST_TMPDIR"
+    rm -rf "$TEST_TMPDIR"
+  fi
 
   exit "$exit_code"
 }
@@ -106,7 +109,7 @@ echo "Test is running on host $HOSTNAME, arguments: $*"
 set_java_home
 set_test_invocation_id
 
-create_test_tmpdir
+ensure_test_tmp_dir_is_set
 
 trap cleanup EXIT
 

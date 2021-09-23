@@ -377,8 +377,7 @@ TEST_F(SnapshotTest, CreateSnapshot) {
   // Check tablet folders before the snapshot creation.
   for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
     MiniTabletServer* const ts = cluster_->mini_tablet_server(i);
-    vector<std::shared_ptr<TabletPeer> > ts_tablet_peers;
-    ts->server()->tablet_manager()->GetTabletPeers(&ts_tablet_peers);
+    auto ts_tablet_peers = ts->server()->tablet_manager()->GetTabletPeers();
 
     // Iterate through all available tablets (on this TabletServer).
     // There is only one table here (testtb).

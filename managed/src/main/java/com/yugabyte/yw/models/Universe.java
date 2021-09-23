@@ -10,7 +10,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.password.RedactingService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -60,7 +61,7 @@ public class Universe extends Model {
 
   private static void checkUniverseInCustomer(UUID universeUUID, Customer customer) {
     if (!customer.getUniverseUUIDs().contains(universeUUID)) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
               "Universe UUID: %s doesn't belong " + "to Customer UUID: %s",
@@ -195,7 +196,8 @@ public class Universe extends Model {
     universe.customerId = customerId;
     // Create the default universe details. This should be updated after creation.
     universe.universeDetails = taskParams;
-    universe.universeDetailsJson = Json.stringify(Json.toJson(universe.universeDetails));
+    universe.universeDetailsJson =
+        Json.stringify(RedactingService.filterSecretFields(Json.toJson(universe.universeDetails)));
     LOG.info("Created db entry for universe {} [{}]", universe.name, universe.universeUUID);
     LOG.debug(
         "Details for universe {} [{}] : [{}].",
@@ -250,7 +252,8 @@ public class Universe extends Model {
   public static Universe getOrBadRequest(UUID universeUUID) {
     return maybeGet(universeUUID)
         .orElseThrow(
-            () -> new YWServiceException(BAD_REQUEST, "Cannot find universe " + universeUUID));
+            () ->
+                new PlatformServiceException(BAD_REQUEST, "Cannot find universe " + universeUUID));
   }
 
   public static Optional<Universe> maybeGet(UUID universeUUID) {
@@ -397,7 +400,8 @@ public class Universe extends Model {
     return maybeGetNode(nodeName)
         .orElseThrow(
             () ->
-                new YWServiceException(BAD_REQUEST, "Invalid Node " + nodeName + " for Universe"));
+                new PlatformServiceException(
+                    BAD_REQUEST, "Invalid Node " + nodeName + " for Universe"));
   }
 
   /**
@@ -768,9 +772,11 @@ public class Universe extends Model {
     final String cert = getCertificateNodetoNode();
     final YBClientService ybService = Play.current().injector().instanceOf(YBClientService.class);
     final YBClient client = ybService.getClient(masterAddresses, cert);
-    final HostAndPort leaderMasterHostAndPort = client.getLeaderMasterHostAndPort();
-    ybService.closeClient(client, masterAddresses);
-    return leaderMasterHostAndPort;
+    try {
+      return client.getLeaderMasterHostAndPort();
+    } finally {
+      ybService.closeClient(client, masterAddresses);
+    }
   }
 
   /**

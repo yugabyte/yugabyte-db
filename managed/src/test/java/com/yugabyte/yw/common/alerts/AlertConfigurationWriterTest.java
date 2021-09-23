@@ -26,9 +26,10 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.AlertDefinition;
-import com.yugabyte.yw.models.AlertDefinitionGroup;
+import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.MetricKey;
 import com.yugabyte.yw.models.Universe;
@@ -54,7 +55,7 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
 
   @Mock private RuntimeConfigFactory configFactory;
 
-  private AlertDefinitionGroupService alertDefinitionGroupService;
+  private AlertConfigurationService alertConfigurationService;
 
   private AlertDefinitionService alertDefinitionService;
 
@@ -68,7 +69,7 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
 
   private MetricService metricService;
 
-  private AlertDefinitionGroup group;
+  private AlertConfiguration configuration;
 
   private AlertDefinition definition;
 
@@ -77,8 +78,8 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
     metricService = new MetricService();
     AlertService alertService = new AlertService();
     alertDefinitionService = new AlertDefinitionService(alertService);
-    alertDefinitionGroupService =
-        new AlertDefinitionGroupService(alertDefinitionService, configFactory);
+    alertConfigurationService =
+        new AlertConfigurationService(alertDefinitionService, configFactory);
     when(actorSystem.scheduler()).thenReturn(mock(Scheduler.class));
     when(globalConfig.getInt(AlertConfigurationWriter.CONFIG_SYNC_INTERVAL_PARAM)).thenReturn(1);
     when(configFactory.globalRuntimeConf()).thenReturn(globalConfig);
@@ -89,7 +90,7 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
             actorSystem,
             metricService,
             alertDefinitionService,
-            alertDefinitionGroupService,
+            alertConfigurationService,
             swamperHelper,
             queryHelper,
             configFactory);
@@ -97,17 +98,18 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
     customer = ModelFactory.testCustomer();
     universe = ModelFactory.createUniverse(customer.getCustomerId());
 
-    group = ModelFactory.createAlertDefinitionGroup(customer, universe);
-    definition = ModelFactory.createAlertDefinition(customer, universe, group);
+    configuration = ModelFactory.createAlertConfiguration(customer, universe);
+    definition = ModelFactory.createAlertDefinition(customer, universe, configuration);
   }
 
   @Test
   public void testSyncActiveDefinition() {
+    when(queryHelper.isPrometheusManagementEnabled()).thenReturn(true);
     configurationWriter.syncDefinitions();
 
     AlertDefinition expected = alertDefinitionService.get(definition.getUuid());
 
-    verify(swamperHelper, times(1)).writeAlertDefinition(group, expected);
+    verify(swamperHelper, times(1)).writeAlertDefinition(configuration, expected);
     verify(queryHelper, times(1)).postManagementCommand("reload");
 
     AssertHelper.assertMetricValue(
@@ -124,8 +126,9 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
 
   @Test
   public void testSyncNotActiveDefinition() {
-    group.setActive(false);
-    alertDefinitionGroupService.save(group);
+    when(queryHelper.isPrometheusManagementEnabled()).thenReturn(true);
+    configuration.setActive(false);
+    alertConfigurationService.save(configuration);
     definition = alertDefinitionService.save(definition);
 
     configurationWriter.syncDefinitions();
@@ -147,6 +150,7 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
 
   @Test
   public void testSyncExistingAndMissingDefinitions() {
+    when(queryHelper.isPrometheusManagementEnabled()).thenReturn(true);
     UUID missingDefinitionUuid = UUID.randomUUID();
     when(swamperHelper.getAlertDefinitionConfigUuids())
         .thenReturn(ImmutableList.of(missingDefinitionUuid));
@@ -154,7 +158,7 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
 
     AlertDefinition expected = alertDefinitionService.get(definition.getUuid());
 
-    verify(swamperHelper, times(1)).writeAlertDefinition(group, expected);
+    verify(swamperHelper, times(1)).writeAlertDefinition(configuration, expected);
     verify(swamperHelper, times(1)).removeAlertDefinition(missingDefinitionUuid);
     verify(queryHelper, times(1)).postManagementCommand("reload");
 
@@ -176,7 +180,8 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
 
   @Test
   public void testNothingToSync() {
-    alertDefinitionGroupService.delete(group.getUuid());
+    when(queryHelper.isPrometheusManagementEnabled()).thenReturn(true);
+    alertConfigurationService.delete(configuration.getUuid());
 
     configurationWriter.syncDefinitions();
 
@@ -206,5 +211,27 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
         metricService,
         MetricKey.builder().name(PlatformMetrics.ALERT_CONFIG_REMOVED.getMetricName()).build(),
         0.0);
+  }
+
+  @Test
+  public void testPrometheusManagementDisabled() {
+    when(queryHelper.isPrometheusManagementEnabled()).thenReturn(false);
+    configurationWriter.syncDefinitions();
+
+    AlertDefinition expected = alertDefinitionService.get(definition.getUuid());
+
+    verify(swamperHelper, times(1)).writeAlertDefinition(configuration, expected);
+    verify(queryHelper, never()).postManagementCommand("reload");
+
+    AssertHelper.assertMetricValue(
+        metricService,
+        MetricKey.builder()
+            .name(PlatformMetrics.ALERT_CONFIG_WRITER_STATUS.getMetricName())
+            .build(),
+        1.0);
+    AssertHelper.assertMetricValue(
+        metricService,
+        MetricKey.builder().name(PlatformMetrics.ALERT_CONFIG_WRITTEN.getMetricName()).build(),
+        1.0);
   }
 }

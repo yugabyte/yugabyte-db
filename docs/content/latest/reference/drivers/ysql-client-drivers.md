@@ -83,7 +83,7 @@ $ make install
 
 For details on installing and using Npgsql, see [Npgsql documentation](https://www.npgsql.org/doc/).
 
-To follow a tutorial on building a sample C# application with Npgsql, see [Build a C++ application](../../../quick-start/build-apps/csharp/ysql/).
+To follow a tutorial on building a sample C# application with Npgsql, see [Build a C# application](../../../quick-start/build-apps/csharp/ysql/).
 
 #### Install the driver
 
@@ -94,6 +94,14 @@ To install Npgsql in your Visual Studio project, follow the steps below.
 2. Right-click on **Packages** and click **Add Packages**.
 
 3. Search for `Npgsql` and click **Add Package**.
+
+{{< warning title="Warning" >}}
+On every new connection the NpgSQL driver also makes [extra system table queries to map types](https://github.com/npgsql/npgsql/issues/1486), which adds significant overhead. To turn off this behavior, set the following option in your connection string builder:
+
+```csharp
+connStringBuilder.ServerCompatibilityMode = ServerCompatibilityMode.NoTypeLoading;
+```
+{{< /warning >}}
 
 ## Go
 

@@ -16,9 +16,15 @@ import { YBPanelItem } from '../../panels';
 /**
  * This is the header for YB Panel Item.
  */
-const header = (onCreateAlert, enablePlatformAlert, handleMetricsCall, setInitialValues) => (
+const header = (
+  alertsCount,
+  onCreateAlert,
+  enablePlatformAlert,
+  handleMetricsCall,
+  setInitialValues
+) => (
   <>
-    <h2 className="table-container-title pull-left">Alert Configurations</h2>
+    <h5 className="table-container-title pull-left">{`${alertsCount} Alert Configurations`}</h5>
     <FlexContainer className="pull-right">
       <FlexShrink>
         <DropdownButton
@@ -41,9 +47,8 @@ const header = (onCreateAlert, enablePlatformAlert, handleMetricsCall, setInitia
 
           <MenuItem
             className="alert-config-list"
-            disabled
             onClick={() => {
-              handleMetricsCall('CUSTOMER');
+              handleMetricsCall('PLATFORM');
               onCreateAlert(true);
               enablePlatformAlert(true);
               setInitialValues({ ALERT_TARGET_TYPE: 'allUniverses' });
@@ -71,6 +76,7 @@ const payload = {
 export const AlertsList = (props) => {
   const [alertList, setAlertList] = useState([]);
   const [alertDestinationList, setAlertDestinationList] = useState([]);
+  const [defaultDestination, setDefaultDestination] = useState([]);
   const {
     alertConfigs,
     alertUniverseList,
@@ -84,7 +90,11 @@ export const AlertsList = (props) => {
     showDeleteModal,
     setInitialValues
   } = props;
-  const [options, setOptions] = useState({ noDataText: 'Loading...' });
+  const [options, setOptions] = useState({
+    noDataText: 'Loading...',
+    sortName: 'createTime',
+    sortOrder: 'desc'
+  });
 
   const onInit = () => {
     alertConfigs(payload).then((res) => {
@@ -93,6 +103,7 @@ export const AlertsList = (props) => {
     });
 
     alertDestinations().then((res) => {
+      setDefaultDestination(res.find(destination => destination.defaultDestination));
       setAlertDestinationList(res);
     });
   };
@@ -100,18 +111,26 @@ export const AlertsList = (props) => {
   useEffect(onInit, []);
 
   /**
-   * This method is used to congifure the routeUUID with its repsective
+   * This method is used to congifure the destinationUUID with its repsective
    * destination name.
    *
    * @param {string} cell Not in-use.
    * @param {object} row Respective details
    */
   const formatRoutes = (cell, row) => {
-    return alertDestinationList
-      .map((route) => {
-        return route.uuid === row.routeUUID ? route.name : null;
+    if (row.defaultDestination) {
+      return <span className="text-red text-regular"> Use Default ({defaultDestination.name})</span>;
+    }
+    const route = alertDestinationList
+      .map((destination) => {
+        return destination.uuid === row.destinationUUID ? destination.name : null;
       })
       .filter((res) => res !== null);
+
+    if (route.length > 0) {
+      return route;
+    }
+    return <span className="text-red text-regular"> No destination</span>;
   };
 
   /**
@@ -142,15 +161,15 @@ export const AlertsList = (props) => {
    * @param {object} row Respective row object.
    */
   const onEditAlertConfig = (row) => {
-    row.targetType === 'CUSTOMER' ? enablePlatformAlert(true) : enablePlatformAlert(false);
+    row.targetType === 'PLATFORM' ? enablePlatformAlert(true) : enablePlatformAlert(false);
 
     // setting up ALERT_DESTINATION_LIST.
     const destination = alertDestinationList
-      .map((route) => {
-        return route.uuid === row.routeUUID
+      .map((destination) => {
+        return destination.uuid === row.destinationUUID
           ? {
-            value: route.uuid,
-            label: route.name
+            value: destination.uuid,
+            label: destination.name
           }
           : null;
       })
@@ -170,7 +189,6 @@ export const AlertsList = (props) => {
     const univerList =
       isNonEmptyArray(row.target.uuids) &&
       row.target.uuids.map((list) => alertUniverseList.find((universe) => universe.value === list));
-
     // setting up the initial values.
     const initialVal = {
       type: 'update',
@@ -183,7 +201,8 @@ export const AlertsList = (props) => {
       ALERT_METRICS_CONDITION: row.template,
       ALERT_METRICS_DURATION: row.durationSec,
       ALERT_METRICS_CONDITION_POLICY: condition,
-      ALERT_DESTINATION_LIST: destination[0].value
+      ALERT_DESTINATION_LIST: destination[0]?.value,
+      thresholdUnit: row.thresholdUnit
     };
 
     setInitialValues(initialVal);
@@ -222,38 +241,40 @@ export const AlertsList = (props) => {
             <i className="fa fa-pencil"></i> Edit Alert
           </MenuItem>
 
-          <MenuItem onClick={() => showDeleteModal(row.name)}>
+          <MenuItem onClick={() => showDeleteModal(row?.uuid)}>
             <i className="fa fa-trash"></i> Delete Alert
           </MenuItem>
-
-          {
-            <YBConfirmModal
-              name="delete-alert-config"
-              title="Confirm Delete"
-              onConfirm={() => onDeleteConfig(row)}
-              currentModal={row.name}
-              visibleModal={visibleModal}
-              hideConfirmModal={closeModal}
-            >
-              Are you sure you want to delete {row.name} Alert Config?
-            </YBConfirmModal>
-          }
         </DropdownButton>
+        <YBConfirmModal
+          name="delete-alert-config"
+          title="Confirm Delete"
+          onConfirm={() => onDeleteConfig(row)}
+          currentModal={row?.uuid}
+          visibleModal={visibleModal}
+          hideConfirmModal={closeModal}
+        >
+          Are you sure you want to delete {row?.name} Alert Config?
+        </YBConfirmModal>
       </>
     );
   };
 
-  // TODO: This needs to be updated once the real data will come.
-  // For now, we're dealing with the mock data.
   return (
     <YBPanelItem
-      header={header(onCreateAlert, enablePlatformAlert, handleMetricsCall, setInitialValues)}
+      header={header(
+        alertList.length,
+        onCreateAlert,
+        enablePlatformAlert,
+        handleMetricsCall,
+        setInitialValues
+      )}
       body={
         <>
           <BootstrapTable
             className="backup-list-table middle-aligned-table"
             data={alertList}
             options={options}
+            pagination
           >
             <TableHeaderColumn dataField="uuid" isKey={true} hidden={true} />
             <TableHeaderColumn
@@ -280,12 +301,12 @@ export const AlertsList = (props) => {
               Severity
             </TableHeaderColumn>
             <TableHeaderColumn
-              dataField="routeUUID"
+              dataField="destinationUUID"
               dataFormat={formatRoutes}
               columnClassName="no-border name-column"
               className="no-border"
             >
-              Destinations
+              Destination
             </TableHeaderColumn>
             <TableHeaderColumn
               dataField="createTime"

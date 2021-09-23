@@ -78,6 +78,7 @@
 
 DEFINE_int64(web_log_bytes, 1024 * 1024,
     "The maximum number of bytes to display on the debug webserver's log page");
+DECLARE_int32(max_tables_metrics_breakdowns);
 TAG_FLAG(web_log_bytes, advanced);
 TAG_FLAG(web_log_bytes, runtime);
 
@@ -268,6 +269,9 @@ static void ParseRequestOptions(const Webserver::WebRequest& req,
   if (promethus_opts) {
     arg = FindWithDefault(req.parsed_args, "level", "debug");
     promethus_opts->level = MetricLevelFromName(arg);
+    promethus_opts->max_tables_metrics_breakdowns = std::stoi(FindWithDefault(req.parsed_args,
+      "max_tables_metrics_breakdowns", std::to_string(FLAGS_max_tables_metrics_breakdowns)));
+    promethus_opts->priority_regex = FindWithDefault(req.parsed_args, "priority_regex", "");
   }
 
   if (json_mode) {

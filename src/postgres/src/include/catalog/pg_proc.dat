@@ -958,6 +958,10 @@
 { oid => '9901', descr => 'lsm index access method handler',
   proname => 'ybcinhandler', provolatile => 'v', prorettype => 'index_am_handler',
   proargtypes => 'internal', prosrc => 'ybcinhandler' },
+{ oid => '8022', descr => 'ybgin index access method handler',
+  proname => 'ybginhandler', provolatile => 'v',
+  prorettype => 'index_am_handler', proargtypes => 'internal',
+  prosrc => 'ybginhandler' },
 
 { oid => '338', descr => 'validate an operator class',
   proname => 'amvalidate', provolatile => 'v', prorettype => 'bool',
