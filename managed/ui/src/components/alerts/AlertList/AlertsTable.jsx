@@ -10,6 +10,7 @@ import { YBButton } from '../../common/forms/fields';
 
 import './AlertsTable.scss';
 import { toast } from 'react-toastify';
+import { Label } from 'react-bootstrap';
 
 const DEFAULT_SORT_COLUMN = 'createTime';
 const DEFAULT_SORT_DIRECTION = 'DESC';
@@ -65,7 +66,8 @@ export default function AlertsTable({ filters }) {
 
   const setSortOptions = (sortType, sortDirection) => {
     resetPage();
-    setSortType(sortType);
+    let sortColumn = sortType === 'labels' ? 'sourceName' : sortType;
+    setSortType(sortColumn);
     setSortDirection(sortDirection.toUpperCase());
   };
 
@@ -116,6 +118,10 @@ export default function AlertsTable({ filters }) {
                     {cell}
                   </Link>
                 )}
+                options={{
+                  onSortChange: setSortOptions
+                }}
+                dataSort
               >
                 Name
               </TableHeaderColumn>
@@ -125,7 +131,18 @@ export default function AlertsTable({ filters }) {
                 className="no-border"
                 dataAlign="left"
                 width={'30%'}
-                dataFormat={(cell) => findValueforlabel(cell, 'source_name')}
+                dataFormat={(cell) => (
+                  <>
+                    {findValueforlabel(cell, 'source_name')}
+                    <Label className="configurationTypeLabel">
+                      {findValueforlabel(cell, 'configuration_type')}
+                    </Label>
+                  </>
+                )}
+                options={{
+                  onSortChange: setSortOptions
+                }}
+                dataSort
               >
                 Source
               </TableHeaderColumn>
