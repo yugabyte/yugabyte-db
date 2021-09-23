@@ -193,6 +193,9 @@ class MasterServiceImpl : public MasterServiceIf,
   void GetCDCStream(const GetCDCStreamRequestPB* req,
                     GetCDCStreamResponsePB* resp,
                     rpc::RpcContext rpc) override;
+  void UpdateCDCStream(const UpdateCDCStreamRequestPB *req,
+                       UpdateCDCStreamResponsePB* resp,
+                       rpc::RpcContext rpc) override;
 
   void ListMasters(const ListMastersRequestPB* req,
                    ListMastersResponsePB* resp,
