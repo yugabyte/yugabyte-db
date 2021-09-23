@@ -425,12 +425,8 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
     return STATUS_FORMAT(NotFound, "Table $0 not found", table_name);
   }
 
-  Result<std::vector<scoped_refptr<master::TabletInfo>>> GetTabletInfos(
-      const YBTableName& table_name) {
-    auto table_info = VERIFY_RESULT(GetTableInfo(table_name));
-    std::vector<scoped_refptr<master::TabletInfo>> tablets;
-    table_info->GetAllTablets(&tablets);
-    return tablets;
+  Result<master::TabletInfos> GetTabletInfos(const YBTableName& table_name) {
+    return VERIFY_RESULT(GetTableInfo(table_name))->GetTablets();
   }
 
   Status WaitForTableCreation(const YBTableName& table_name,

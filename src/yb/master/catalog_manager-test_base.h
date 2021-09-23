@@ -35,17 +35,20 @@ const int kDefaultNumReplicas = 3;
 const string kLivePlacementUuid = "live";
 const string kReadReplicaPlacementUuidPrefix = "rr_$0";
 
-scoped_refptr<TabletInfo> CreateTablet(
+inline scoped_refptr<TabletInfo> CreateTablet(
     const scoped_refptr<TableInfo>& table, const TabletId& tablet_id, const string& start_key,
-    const string& end_key) {
+    const string& end_key, uint64_t split_depth = 0) {
   scoped_refptr<TabletInfo> tablet = new TabletInfo(table, tablet_id);
   auto l = tablet->LockForWrite();
   PartitionPB* partition = l.mutable_data()->pb.mutable_partition();
   partition->set_partition_key_start(start_key);
   partition->set_partition_key_end(end_key);
   l.mutable_data()->pb.set_state(SysTabletsEntryPB::RUNNING);
+  if (split_depth) {
+    l.mutable_data()->pb.set_split_depth(split_depth);
+  }
 
-  table->AddTablet(tablet.get());
+  table->AddTablet(tablet);
   l.Commit();
   return tablet;
 }

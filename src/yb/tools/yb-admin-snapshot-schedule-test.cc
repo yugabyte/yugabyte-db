@@ -33,6 +33,8 @@
 #include "yb/util/tsan_util.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
+DECLARE_uint64(max_clock_skew_usec);
+
 namespace yb {
 namespace tools {
 
@@ -66,6 +68,15 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     auto out = VERIFY_RESULT(CallJsonAdmin("list_snapshots", "JSON"));
     rapidjson::Document result;
     result.CopyFrom(VERIFY_RESULT(Get(&out, "snapshots")).get(), result.GetAllocator());
+    return result;
+  }
+
+  Result<rapidjson::Document> ListTablets(
+      const client::YBTableName& table_name = client::kTableName) {
+    auto out = VERIFY_RESULT(CallJsonAdmin(
+        "list_tablets", "ycql." + table_name.namespace_name(), table_name.table_name(), "JSON"));
+    rapidjson::Document result;
+    result.CopyFrom(VERIFY_RESULT(Get(&out, "tablets")).get(), result.GetAllocator());
     return result;
   }
 
@@ -215,6 +226,28 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     SCHECK_EQ(VERIFY_RESULT(Get(out, "schedule_id")).get().GetString(), schedule_id, IllegalState,
               "Deleted wrong schedule");
     return Status::OK();
+  }
+
+  CHECKED_STATUS WaitTabletsCleaned(CoarseTimePoint deadline) {
+    return Wait([this, deadline]() -> Result<bool> {
+      size_t alive_tablets = 0;
+      for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+        auto proxy = cluster_->GetTServerProxy<tserver::TabletServerServiceProxy>(i);
+        tserver::ListTabletsRequestPB req;
+        tserver::ListTabletsResponsePB resp;
+        rpc::RpcController controller;
+        controller.set_deadline(deadline);
+        RETURN_NOT_OK(proxy->ListTablets(req, &resp, &controller));
+        for (const auto& tablet : resp.status_and_schema()) {
+          if (tablet.tablet_status().table_type() != TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+            LOG(INFO) << "Not yet deleted tablet: " << tablet.ShortDebugString();
+            ++alive_tablets;
+          }
+        }
+      }
+      LOG(INFO) << "Alive tablets: " << alive_tablets;
+      return alive_tablets == 0;
+    }, deadline, "Deleted tablet cleanup");
   }
 
   void TestUndeleteTable(bool restart_masters);
@@ -459,23 +492,7 @@ TEST_F(YbAdminSnapshotScheduleTest, CleanupDeletedTablets) {
   auto deadline = CoarseMonoClock::now() + kInterval + 10s;
 
   // Wait tablets deleted from tservers.
-  ASSERT_OK(Wait([this, deadline]() -> Result<bool> {
-    for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
-      auto proxy = cluster_->GetTServerProxy<tserver::TabletServerServiceProxy>(i);
-      tserver::ListTabletsRequestPB req;
-      tserver::ListTabletsResponsePB resp;
-      rpc::RpcController controller;
-      controller.set_deadline(deadline);
-      RETURN_NOT_OK(proxy->ListTablets(req, &resp, &controller));
-      for (const auto& tablet : resp.status_and_schema()) {
-        if (tablet.tablet_status().table_type() != TableType::TRANSACTION_STATUS_TABLE_TYPE) {
-          LOG(INFO) << "Not yet deleted tablet: " << tablet.ShortDebugString();
-          return false;
-        }
-      }
-    }
-    return true;
-  }, deadline, "Deleted tablet cleanup"));
+  ASSERT_OK(WaitTabletsCleaned(deadline));
 
   // Wait table marked as deleted.
   ASSERT_OK(Wait([this, deadline]() -> Result<bool> {
@@ -1155,11 +1172,8 @@ TEST_F(YbAdminSnapshotScheduleTest, RestoreAfterSplit) {
   Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
   ASSERT_OK(conn.ExecuteQueryFormat(insert_pattern, "after"));
 
-  auto out = ASSERT_RESULT(CallJsonAdmin(
-      "list_tablets", "ycql." + client::kTableName.namespace_name(),
-      client::kTableName.table_name(), "JSON"));
   {
-    auto tablets = ASSERT_RESULT(Get(&out, "tablets")).get().GetArray();
+    auto tablets = ASSERT_RESULT(ListTablets()).GetArray();
     ASSERT_EQ(tablets.Size(), 1);
     auto tablet_id = ASSERT_RESULT(Get(tablets[0], "id")).get().GetString();
     LOG(INFO) << "Tablet id: " << tablet_id;
@@ -1179,8 +1193,49 @@ TEST_F(YbAdminSnapshotScheduleTest, RestoreAfterSplit) {
   rows = ASSERT_RESULT(conn.ExecuteAndRenderToString(select_expr));
   ASSERT_EQ(rows, "1,final");
 
-  auto tablets = ASSERT_RESULT(Get(&out, "tablets")).get().GetArray();
+    auto tablets = ASSERT_RESULT(ListTablets()).GetArray();
   ASSERT_EQ(tablets.Size(), 1);
+}
+
+TEST_F(YbAdminSnapshotScheduleTest, ConsecutiveRestore) {
+  const auto retention = kInterval * 2;
+  auto schedule_id = ASSERT_RESULT(PrepareCql(kInterval, retention));
+
+  auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
+
+  std::this_thread::sleep_for(FLAGS_max_clock_skew_usec * 1us);
+
+  Timestamp time1(ASSERT_RESULT(WallClock()->Now()).time_point);
+  LOG(INFO) << "Time1: " << time1;
+
+  ASSERT_OK(conn.ExecuteQueryFormat(
+      "CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) WITH tablets = 1",
+      client::kTableName.table_name()));
+
+  auto insert_pattern = Format(
+      "INSERT INTO $0 (key, value) VALUES (1, '$$0')", client::kTableName.table_name());
+  ASSERT_OK(conn.ExecuteQueryFormat(insert_pattern, "before"));
+  Timestamp time2(ASSERT_RESULT(WallClock()->Now()).time_point);
+  ASSERT_OK(conn.ExecuteQueryFormat(insert_pattern, "after"));
+
+  auto select_expr = Format("SELECT * FROM $0", client::kTableName.table_name());
+  auto rows = ASSERT_RESULT(conn.ExecuteAndRenderToString(select_expr));
+  ASSERT_EQ(rows, "1,after");
+
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time1));
+
+  std::this_thread::sleep_for(3s * kTimeMultiplier);
+
+  ASSERT_NOK(conn.ExecuteAndRenderToString(select_expr));
+
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time2));
+
+  rows = ASSERT_RESULT(conn.ExecuteAndRenderToString(select_expr));
+  ASSERT_EQ(rows, "1,before");
+
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time1));
+
+  ASSERT_OK(WaitTabletsCleaned(CoarseMonoClock::now() + retention + kInterval));
 }
 
 }  // namespace tools

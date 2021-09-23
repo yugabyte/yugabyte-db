@@ -359,10 +359,7 @@ class TabletSplitITest : public TabletSplitITestBase<MiniCluster> {
   }
 
   Result<master::TabletInfos> GetTabletInfosForTable(const TableId& table_id) {
-    auto table_info = VERIFY_RESULT(catalog_manager())->GetTableInfo(table_id);
-    master::TabletInfos tablet_infos;
-    table_info->GetAllTablets(&tablet_infos);
-    return tablet_infos;
+    return VERIFY_RESULT(catalog_manager())->GetTableInfo(table_id)->GetTablets();
   }
 
   // By default we wait until all split tablets are cleanup. expected_split_tablets could be
@@ -843,8 +840,7 @@ template <class MiniClusterType>
 Result<scoped_refptr<master::TabletInfo>>
     TabletSplitITestBase<MiniClusterType>::GetSingleTestTabletInfo(
         master::CatalogManager* catalog_mgr) {
-  std::vector<scoped_refptr<master::TabletInfo>> tablet_infos;
-  catalog_mgr->GetTableInfo(this->table_->id())->GetAllTablets(&tablet_infos);
+  auto tablet_infos = catalog_mgr->GetTableInfo(this->table_->id())->GetTablets();
 
   SCHECK_EQ(tablet_infos.size(), 1, IllegalState, "Expect test table to have only 1 tablet");
   return tablet_infos.front();
@@ -1418,7 +1414,7 @@ TEST_F(TabletSplitITest, SplitSingleTabletWithLimit) {
       tablet->ForceRocksDBCompactInTest();
       auto table_info = ASSERT_RESULT(catalog_mgr->FindTable(table_id_pb));
 
-      expect_split = table_info->NumTablets() < FLAGS_tablet_split_limit_per_table;
+      expect_split = table_info->NumPartitions() < FLAGS_tablet_split_limit_per_table;
 
       if (expect_split) {
         ASSERT_OK(DoSplitTablet(catalog_mgr, *tablet));
@@ -1444,7 +1440,7 @@ TEST_F(TabletSplitITest, SplitSingleTabletWithLimit) {
   }, 60s * kTimeMultiplier, "Waiting for successful write"));
 
   auto table_info = ASSERT_RESULT(catalog_mgr->FindTable(table_id_pb));
-  ASSERT_EQ(table_info->NumTablets(), FLAGS_tablet_split_limit_per_table);
+  ASSERT_EQ(table_info->NumPartitions(), FLAGS_tablet_split_limit_per_table);
 }
 
 TEST_F(TabletSplitITest, SplitDuringReplicaOffline) {

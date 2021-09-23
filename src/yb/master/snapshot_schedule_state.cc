@@ -97,6 +97,7 @@ void SnapshotScheduleState::PrepareOperations(
 SnapshotScheduleOperation SnapshotScheduleState::MakeCreateSnapshotOperation(
     HybridTime last_snapshot_time) {
   creating_snapshot_id_ = TxnSnapshotId::GenerateRandom();
+  VLOG_WITH_PREFIX_AND_FUNC(4) << creating_snapshot_id_;
   return SnapshotScheduleOperation {
     .type = SnapshotScheduleOperationType::kCreateSnapshot,
     .schedule_id = id_,
@@ -122,6 +123,10 @@ void SnapshotScheduleState::SnapshotFinished(
     return;
   }
   creating_snapshot_id_ = TxnSnapshotId::Nil();
+}
+
+std::string SnapshotScheduleState::LogPrefix() const {
+  return Format("$0: ", id_);
 }
 
 } // namespace master
