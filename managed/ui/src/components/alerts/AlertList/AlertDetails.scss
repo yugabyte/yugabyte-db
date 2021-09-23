@@ -28,7 +28,9 @@
   .noLeftPadding {
     padding-left: 0;
   }
-
+  .noMarginBottom {
+    margin-bottom: 0 !important;
+  }
   .alert-message {
     font-size: 13px;
     max-height: 250px;
@@ -91,5 +93,8 @@
         position: absolute;
       }
     }
+  }
+  .universeLink {
+    text-decoration: underline;
   }
 }
