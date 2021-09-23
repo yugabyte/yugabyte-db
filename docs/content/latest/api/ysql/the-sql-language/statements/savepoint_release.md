@@ -57,7 +57,6 @@ The name of the savepoint you wish to release.
 
 ## Examples
 
-
 Begin a transaction and create a savepoint.
 
 ```plpgsql
@@ -77,7 +76,7 @@ If at this point, you attempt to rollback to `test`, it will be an error:
 ROLLBACK TO test;
 ```
 
-```
+```output
 ERROR:  savepoint "test" does not exist
 ```
 

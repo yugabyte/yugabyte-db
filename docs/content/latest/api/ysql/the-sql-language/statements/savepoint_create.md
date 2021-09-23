@@ -78,7 +78,7 @@ Now, check the rows in this table:
 SELECT * FROM sample;
 ```
 
-```
+```output
  k  | v  
 ----+----
   1 |  2
@@ -93,7 +93,7 @@ ROLLBACK TO test;
 SELECT * FROM sample;
 ```
 
-```
+```output
  k  | v  
 ----+----
   1 |  2
@@ -102,14 +102,13 @@ SELECT * FROM sample;
 
 We can even add a new row at this point. If we then commit the transaction, only the first and third row inserted will persist:
 
-
 ```plpgsql
 INSERT INTO sample(k, v) VALUES (5, 6);
 COMMIT;
 SELECT * FROM SAMPLE;
 ```
 
-```
+```output
  k  | v  
 ----+----
   1 |  2
