@@ -97,7 +97,7 @@ public class ChangeMasterConfig extends AbstractTaskBase {
     ChangeConfigResponse response = null;
     YBClientService.Config config = new YBClientService.Config(masterAddresses, certificate);
     config.setAdminOperationTimeout(YBCLIENT_ADMIN_OPERATION_TIMEOUT);
-    YBClient client = ybService.getClient(config);
+    YBClient client = ybService.getClientWithConfig(config);
     try {
       response =
           client.changeMasterConfig(
