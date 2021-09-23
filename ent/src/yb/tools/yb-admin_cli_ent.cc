@@ -126,6 +126,15 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
               }
               return ClusterAdminCli::kInvalidArguments;
             }));
+
+        for (auto table : tables) {
+          if (table.is_cql_namespace() && table.is_system()) {
+            return STATUS(InvalidArgument,
+                          "Cannot create snapshot of YCQL system table",
+                          table.table_name());
+          }
+        }
+
         RETURN_NOT_OK_PREPEND(client->CreateSnapshot(tables, true, timeout_secs),
                               Substitute("Unable to create snapshot of tables: $0",
                                          yb::ToString(tables)));
