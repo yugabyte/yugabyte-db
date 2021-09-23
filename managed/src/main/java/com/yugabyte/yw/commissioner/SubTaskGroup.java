@@ -130,7 +130,7 @@ public class SubTaskGroup implements Runnable {
     // Set up corresponding TaskInfo.
     TaskType taskType = TaskType.valueOf(task.getClass().getSimpleName());
     TaskInfo taskInfo = new TaskInfo(taskType);
-    taskInfo.setTaskDetails(task.getTaskDetails());
+    taskInfo.setTaskDetails(RedactingService.filterSecretFields(task.getTaskDetails()));
     // Set the owner info in the TaskInfo.
     String hostname = "";
     try {
