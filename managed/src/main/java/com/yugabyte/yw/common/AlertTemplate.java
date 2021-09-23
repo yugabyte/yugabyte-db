@@ -68,17 +68,17 @@ public enum AlertTemplate {
       "Memory Consumption",
       "Average node memory consumption percentage for 10 minutes is above threshold",
       "(max by (node_prefix)"
-          + "   (avg_over_time(node_memory_MemTotal{node_prefix=\"__nodePrefix__\"}[10m])) -"
+          + "   (avg_over_time(node_memory_MemTotal_bytes{node_prefix=\"__nodePrefix__\"}[10m])) -"
           + " max by (node_prefix)"
-          + "   (avg_over_time(node_memory_Buffers{node_prefix=\"__nodePrefix__\"}[10m])) -"
+          + "   (avg_over_time(node_memory_Buffers_bytes{node_prefix=\"__nodePrefix__\"}[10m])) -"
           + " max by (node_prefix)"
-          + "   (avg_over_time(node_memory_Cached{node_prefix=\"__nodePrefix__\"}[10m])) -"
+          + "   (avg_over_time(node_memory_Cached_bytes{node_prefix=\"__nodePrefix__\"}[10m])) -"
           + " max by (node_prefix)"
-          + "   (avg_over_time(node_memory_MemFree{node_prefix=\"__nodePrefix__\"}[10m])) -"
+          + "   (avg_over_time(node_memory_MemFree_bytes{node_prefix=\"__nodePrefix__\"}[10m])) -"
           + " max by (node_prefix)"
-          + "   (avg_over_time(node_memory_Slab{node_prefix=\"__nodePrefix__\"}[10m]))) /"
+          + "   (avg_over_time(node_memory_Slab_bytes{node_prefix=\"__nodePrefix__\"}[10m]))) /"
           + " (max by (node_prefix)"
-          + "   (avg_over_time(node_memory_MemTotal{node_prefix=\"__nodePrefix__\"}[10m])))"
+          + "   (avg_over_time(node_memory_MemTotal_bytes{node_prefix=\"__nodePrefix__\"}[10m])))"
           + " * 100 {{ query_condition }} {{ query_threshold }}",
       "Average memory usage for universe '{{ $labels.source_name }}'"
           + " is above {{ $labels.threshold }}%."
@@ -244,7 +244,7 @@ public enum AlertTemplate {
       "Average node CPU usage percentage for 30 minutes is above threshold",
       "count by(node_prefix) "
           + " ((100 - (avg by (node_prefix, instance)"
-          + " (avg_over_time(irate(node_cpu{job=\"node\",mode=\"idle\","
+          + " (avg_over_time(irate(node_cpu_seconds_total{job=\"node\",mode=\"idle\","
           + " node_prefix=\"__nodePrefix__\"}[1m])[30m:])) * 100)) "
           + "{{ query_condition }} {{ query_threshold }})",
       "Average node CPU usage for universe '{{ $labels.source_name }}'"
@@ -262,9 +262,9 @@ public enum AlertTemplate {
       "DB node disk usage",
       "Node Disk usage percentage is above threshold",
       "count by (node_prefix) (100 - (sum without (saved_name) "
-          + "(node_filesystem_free{mountpoint=~\"/mnt/.*\", node_prefix=\"__nodePrefix__\"}) "
+          + "(node_filesystem_free_bytes{mountpoint=~\"/mnt/.*\", node_prefix=\"__nodePrefix__\"}) "
           + "/ sum without (saved_name) "
-          + "(node_filesystem_size{mountpoint=~\"/mnt/.*\", node_prefix=\"__nodePrefix__\"}) "
+          + "(node_filesystem_size_bytes{mountpoint=~\"/mnt/.*\", node_prefix=\"__nodePrefix__\"}) "
           + "* 100) {{ query_condition }} {{ query_threshold }})",
       "Node disk usage for universe '{{ $labels.source_name }}'"
           + " is above {{ $labels.threshold }}% on {{ $value | printf \\\"%.0f\\\" }} node(s).",
