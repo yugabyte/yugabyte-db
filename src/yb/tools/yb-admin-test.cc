@@ -438,6 +438,19 @@ TEST_F(AdminCliTest, TestSnapshotCreation) {
   output = ASSERT_RESULT(CallAdmin("list_snapshots", "SHOW_DETAILS"));
   ASSERT_NE(output.find(extra_table.table_name()), string::npos);
   ASSERT_NE(output.find(kTableName.table_name()), string::npos);
+
+  // Snapshot creation should be blocked for CQL system tables (which are virtual) but not for
+  // redis system tables (which are not).
+  const auto result = CallAdmin("create_snapshot", "system", "peers");
+  ASSERT_FALSE(result.ok());
+  ASSERT_TRUE(result.status().IsRuntimeError());
+  ASSERT_NE(result.status().ToUserMessage().find(
+      "Error running create_snapshot: Invalid argument"), std::string::npos);
+  ASSERT_NE(result.status().ToUserMessage().find(
+      "Cannot create snapshot of YCQL system table: peers"), std::string::npos);
+
+  ASSERT_OK(CallAdmin("setup_redis_table"));
+  ASSERT_OK(CallAdmin("create_snapshot", "system_redis", "redis"));
 }
 
 TEST_F(AdminCliTest, GetIsLoadBalancerIdle) {
