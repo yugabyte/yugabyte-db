@@ -141,10 +141,14 @@ Datum YBCGetYBTupleIdFromSlot(TupleTableSlot *slot)
 Datum YBCGetYBTupleIdFromTuple(Relation rel,
 							   HeapTuple tuple,
 							   TupleDesc tupleDesc) {
+	Oid dboid = YBCGetDatabaseOid(rel);
+	Oid relid = RelationGetRelid(rel);
+	YBCPgTableDesc ybc_table_desc = NULL;
+	HandleYBStatus(YBCPgGetTableDesc(dboid, relid, &ybc_table_desc));
 	Bitmapset *pkey    = YBGetTableFullPrimaryKeyBms(rel);
 	AttrNumber minattr = YBSystemFirstLowInvalidAttributeNumber + 1;
 	YBCPgYBTupleIdDescriptor *descr = YBCCreateYBTupleIdDescriptor(
-		YBCGetDatabaseOid(rel), RelationGetRelid(rel), bms_num_members(pkey));
+		dboid, relid, bms_num_members(pkey));
 	YBCPgAttrValueDescriptor *next_attr = descr->attrs;
 	int col = -1;
 	while ((col = bms_next_member(pkey, col)) >= 0) {
@@ -167,7 +171,11 @@ Datum YBCGetYBTupleIdFromTuple(Relation rel,
 			next_attr->type_entity = NULL;
 			next_attr->collation_id = InvalidOid;
 		}
-		YBSetupAttrCollationInfo(next_attr);
+		YBCPgColumnInfo column_info = {0};
+		HandleYBTableDescStatus(YBCPgGetColumnInfo(ybc_table_desc,
+												   attnum,
+												   &column_info), ybc_table_desc);
+		YBSetupAttrCollationInfo(next_attr, &column_info);
 		++next_attr;
 	}
 	bms_free(pkey);
@@ -483,10 +491,13 @@ Oid YBCHeapInsertForDb(Oid dboid,
 static YBCPgYBTupleIdDescriptor*
 YBCBuildNonNullUniqueIndexYBTupleId(Relation unique_index, Datum *values)
 {
+	Oid dboid = YBCGetDatabaseOid(unique_index);
+	Oid relid = RelationGetRelid(unique_index);
+	YBCPgTableDesc ybc_table_desc = NULL;
+	HandleYBStatus(YBCPgGetTableDesc(dboid, relid, &ybc_table_desc));
 	TupleDesc tupdesc = RelationGetDescr(unique_index);
 	const int nattrs = IndexRelationGetNumberOfKeyAttributes(unique_index);
-	YBCPgYBTupleIdDescriptor* result = YBCCreateYBTupleIdDescriptor(
-		YBCGetDatabaseOid(unique_index), RelationGetRelid(unique_index), nattrs + 1);
+	YBCPgYBTupleIdDescriptor* result = YBCCreateYBTupleIdDescriptor(dboid, relid, nattrs + 1);
 	YBCPgAttrValueDescriptor *next_attr = result->attrs;
 	for (AttrNumber attnum = 1; attnum <= nattrs; ++attnum)
 	{
@@ -496,7 +507,11 @@ YBCBuildNonNullUniqueIndexYBTupleId(Relation unique_index, Datum *values)
 		next_attr->attr_num = attnum;
 		next_attr->datum = values[attnum - 1];
 		next_attr->is_null = false;
-		YBSetupAttrCollationInfo(next_attr);
+		YBCPgColumnInfo column_info = {0};
+		HandleYBTableDescStatus(YBCPgGetColumnInfo(ybc_table_desc,
+												   attnum,
+												   &column_info), ybc_table_desc);
+		YBSetupAttrCollationInfo(next_attr, &column_info);
 		++next_attr;
 	}
 	YBCFillUniqueIndexNullAttribute(result);

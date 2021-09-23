@@ -224,8 +224,7 @@ YBCStatus YBCPgGetTableDesc(YBCPgOid database_oid,
 
 YBCStatus YBCPgGetColumnInfo(YBCPgTableDesc table_desc,
                              int16_t attr_number,
-                             bool *is_primary,
-                             bool *is_hash);
+                             YBCPgColumnInfo *column_info);
 
 YBCStatus YBCPgGetTableProperties(YBCPgTableDesc table_desc,
                                   YBCPgTableProperties *properties);

@@ -89,8 +89,7 @@ static void ybcCheckPrimaryKeyAttribute(YbScanPlan      scan_plan,
 										YBCPgTableDesc  ybc_table_desc,
 										AttrNumber      attnum)
 {
-	bool is_primary = false;
-	bool is_hash    = false;
+	YBCPgColumnInfo column_info = {0};
 
 	/*
 	 * TODO(neil) We shouldn't need to upload YugaByte table descriptor here because the structure
@@ -102,16 +101,15 @@ static void ybcCheckPrimaryKeyAttribute(YbScanPlan      scan_plan,
 	 */
 	HandleYBTableDescStatus(YBCPgGetColumnInfo(ybc_table_desc,
 											   attnum,
-											   &is_primary,
-											   &is_hash), ybc_table_desc);
+											   &column_info), ybc_table_desc);
 
 	int idx = YBAttnumToBmsIndex(scan_plan->target_relation, attnum);
 
-	if (is_hash)
+	if (column_info.is_hash)
 	{
 		scan_plan->hash_key = bms_add_member(scan_plan->hash_key, idx);
 	}
-	if (is_primary)
+	if (column_info.is_primary)
 	{
 		scan_plan->primary_key = bms_add_member(scan_plan->primary_key, idx);
 	}
