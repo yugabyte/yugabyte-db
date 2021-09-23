@@ -284,11 +284,6 @@ YBClientBuilder& YBClientBuilder::add_master_server_addr(const string& addr) {
   return *this;
 }
 
-YBClientBuilder& YBClientBuilder::add_master_server_endpoint(const string& endpoint) {
-  data_->master_server_endpoint_ = endpoint;
-  return *this;
-}
-
 YBClientBuilder& YBClientBuilder::skip_master_flagfile(bool should_skip) {
   data_->skip_master_flagfile_ = should_skip;
   return *this;
@@ -380,7 +375,6 @@ Status YBClientBuilder::DoBuild(rpc::Messenger* messenger, std::unique_ptr<YBCli
   c->data_->metric_entity_ = data_->metric_entity_;
 
   c->data_->master_address_flag_name_ = data_->master_address_flag_name_;
-  c->data_->master_server_endpoint_ = data_->master_server_endpoint_;
   c->data_->master_address_sources_ = data_->master_address_sources_;
   c->data_->master_server_addrs_ = data_->master_server_addrs_;
   c->data_->skip_master_flagfile_ = data_->skip_master_flagfile_;
