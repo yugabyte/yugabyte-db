@@ -143,6 +143,7 @@ void SetProxyAddresses() {
   LOG(INFO) << "Using parsed rpc = " << FLAGS_rpc_bind_addresses;
   SetProxyAddress(&FLAGS_redis_proxy_bind_address, "YEDIS", RedisServer::kDefaultPort);
   SetProxyAddress(&FLAGS_cql_proxy_bind_address, "YCQL", CQLServer::kDefaultPort);
+  SetProxyAddress(&FLAGS_pgsql_proxy_bind_address, "YSQL", PgProcessConf::kDefaultPort);
 }
 
 int TabletServerMain(int argc, char** argv) {
