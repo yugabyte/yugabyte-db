@@ -41,6 +41,7 @@ DECLARE_bool(tablet_enable_ttl_file_filter);
 DECLARE_int32(rocksdb_base_background_compactions);
 DECLARE_int32(rocksdb_max_background_compactions);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
+DECLARE_uint64(rocksdb_max_file_size_for_compaction);
 DECLARE_bool(TEST_disable_adding_user_frontier_to_sst);
 DECLARE_bool(TEST_disable_getting_user_frontier_from_mem_table);
 
@@ -388,7 +389,7 @@ class CompactionTestWithFileExpiration : public CompactionTest {
   uint64_t GetNumFilesInDbs();
   uint64_t CountFilteredSSTFiles();
   uint64_t CountUnfilteredSSTFiles();
-  void ExecuteManualFlush();
+  void ExecuteManualCompaction();
   void WriteRecordsAllExpire();
   int table_ttl_to_use() override {
     return kTableTTLSec;
@@ -438,7 +439,7 @@ uint64_t CompactionTestWithFileExpiration::CountUnfilteredSSTFiles() {
   return num_sst_files_unfiltered;
 }
 
-void CompactionTestWithFileExpiration::ExecuteManualFlush() {
+void CompactionTestWithFileExpiration::ExecuteManualCompaction() {
   constexpr int kCompactionTimeoutSec = 60;
   const auto table_info = ASSERT_RESULT(FindTable(cluster_.get(), workload_->table_name()));
   ASSERT_OK(workload_->client().FlushTables(
@@ -458,7 +459,7 @@ void CompactionTestWithFileExpiration::WriteRecordsAllExpire() {
   LOG(INFO) << "Sleeping";
   SleepFor(MonoDelta::FromSeconds(2 * kTableTTLSec));
 
-  ExecuteManualFlush();
+  ExecuteManualCompaction();
   // Assert that the data size is all wiped up now.
   auto size_after_manual_compaction = GetTotalSizeOfDbs();
   auto files_after_compaction = GetNumFilesInDbs();
@@ -482,10 +483,35 @@ TEST_F(CompactionTestWithFileExpiration, FileExpirationAfterExpiry) {
   ASSERT_GT(num_sst_files, 0);
 }
 
+TEST_F(CompactionTestWithFileExpiration, ValueTTLOverridesTableTTL) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_enable_ttl_file_filter) = true;
+  SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
+  // Set the value-level TTL to too high to expire.
+  workload_->set_ttl(10000000);
+  rocksdb_listener_->Reset();
+
+  ASSERT_OK(WriteAtLeastFilesPerDb(10));
+  auto size_before_compaction = GetTotalSizeOfDbs();
+  auto files_before_compaction = GetNumFilesInDbs();
+  LOG(INFO) << "Total size before compaction: " << size_before_compaction <<
+      ", num files: " << files_before_compaction;
+
+  LOG(INFO) << "Sleeping";
+  SleepFor(MonoDelta::FromSeconds(2 * kTableTTLSec));
+
+  ExecuteManualCompaction();
+  // Assert that the data size is all wiped up now.
+  auto size_after_manual_compaction = GetTotalSizeOfDbs();
+  auto files_after_compaction = GetNumFilesInDbs();
+  LOG(INFO) << "Total size after compaction: " << size_after_manual_compaction <<
+      ", num files: " << files_after_compaction;
+  EXPECT_GT(size_after_manual_compaction, 0);
+  EXPECT_GT(files_after_compaction, 0);
+  ASSERT_EQ(CountFilteredSSTFiles(), 0);
+}
+
 TEST_F(CompactionTestWithFileExpiration, MixedExpiringAndNonExpiring) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_enable_ttl_file_filter) = true;
-  // Don't trigger compactions due to number of files written.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
   SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
 
   rocksdb_listener_->Reset();
@@ -501,7 +527,7 @@ TEST_F(CompactionTestWithFileExpiration, MixedExpiringAndNonExpiring) {
   rocksdb_listener_->Reset();
   ASSERT_OK(WriteAtLeastFilesPerDb(1));
 
-  ExecuteManualFlush();
+  ExecuteManualCompaction();
   // Assert that the data size is all wiped up now.
   size_t size_after_manual_compaction = GetTotalSizeOfDbs();
   uint64_t files_after_compaction = GetNumFilesInDbs();
@@ -512,6 +538,49 @@ TEST_F(CompactionTestWithFileExpiration, MixedExpiringAndNonExpiring) {
   EXPECT_GT(files_after_compaction, 0);
   EXPECT_LT(files_after_compaction, files_before_sleep);
   ASSERT_GT(CountFilteredSSTFiles(), 0);
+}
+
+TEST_F(CompactionTestWithFileExpiration, FileThatNeverExpires) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_enable_ttl_file_filter) = true;
+  const int kNumFilesToWrite = 10;
+  SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
+
+  rocksdb_listener_->Reset();
+  ASSERT_OK(WriteAtLeastFilesPerDb(kNumFilesToWrite));
+  auto size_to_expire = GetTotalSizeOfDbs();
+  auto files_to_expire = GetNumFilesInDbs();
+  LOG(INFO) << "Total size of " << files_to_expire <<
+      " files that should expire: " << size_to_expire;
+
+  LOG(INFO) << "Sleeping to expire files";
+  SleepFor(MonoDelta::FromSeconds(2 * kTableTTLSec));
+
+  // Set workload TTL to not expire.
+  workload_->set_ttl(docdb::kResetTTL);
+  rocksdb_listener_->Reset();
+  ASSERT_OK(WriteAtLeastFilesPerDb(1));
+  ExecuteManualCompaction();
+
+  auto filtered_sst_files = CountFilteredSSTFiles();
+  ASSERT_GT(filtered_sst_files, 0);
+
+  // Write 10 more files that would expire if not for the non-expiring file previously written.
+  rocksdb_listener_->Reset();
+  workload_->set_ttl(-1);
+  ASSERT_OK(WriteAtLeastFilesPerDb(kNumFilesToWrite));
+
+  LOG(INFO) << "Sleeping to expire files";
+  SleepFor(MonoDelta::FromSeconds(2 * kTableTTLSec));
+  ExecuteManualCompaction();
+
+  // Assert that there is still some data remaining, and that we haven't filtered any new files.
+  auto size_after_manual_compaction = GetTotalSizeOfDbs();
+  auto files_after_compaction = GetNumFilesInDbs();
+  LOG(INFO) << "Total size after compaction: " << size_after_manual_compaction <<
+      ", num files: " << files_after_compaction;
+  EXPECT_GT(size_after_manual_compaction, 0);
+  EXPECT_GT(files_after_compaction, 0);
+  ASSERT_EQ(filtered_sst_files, CountFilteredSSTFiles());
 }
 
 } // namespace tserver
