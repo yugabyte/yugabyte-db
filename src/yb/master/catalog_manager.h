@@ -933,17 +933,16 @@ class CatalogManager :
   CHECKED_STATUS CreateTableInMemory(const CreateTableRequestPB& req,
                                      const Schema& schema,
                                      const PartitionSchema& partition_schema,
-                                     const bool create_tablets,
                                      const NamespaceId& namespace_id,
                                      const NamespaceName& namespace_name,
                                      const vector<Partition>& partitions,
                                      IndexInfoPB* index_info,
-                                     vector<TabletInfo*>* tablets,
+                                     TabletInfos* tablets,
                                      CreateTableResponsePB* resp,
                                      scoped_refptr<TableInfo>* table) REQUIRES(mutex_);
-  CHECKED_STATUS CreateTabletsFromTable(const vector<Partition>& partitions,
-                                        const scoped_refptr<TableInfo>& table,
-                                        std::vector<TabletInfo*>* tablets) REQUIRES(mutex_);
+
+  Result<TabletInfos> CreateTabletsFromTable(const vector<Partition>& partitions,
+                                             const TableInfoPtr& table) REQUIRES(mutex_);
 
   // Helper for creating copartitioned table.
   CHECKED_STATUS CreateCopartitionedTable(const CreateTableRequestPB& req,
@@ -979,8 +978,8 @@ class CatalogManager :
   // Helper for creating the initial TabletInfo state.
   // Leaves the tablet "write locked" with the new info in the
   // "dirty" state field.
-  TabletInfo *CreateTabletInfo(TableInfo* table,
-                               const PartitionPB& partition) REQUIRES(mutex_);
+  TabletInfoPtr CreateTabletInfo(TableInfo* table,
+                                 const PartitionPB& partition) REQUIRES(mutex_);
 
   // Remove the specified entries from the protobuf field table_ids of a TabletInfo.
   Status RemoveTableIdsFromTabletInfo(
@@ -1213,7 +1212,7 @@ class CatalogManager :
   // the table we failed to create from the in-memory maps
   // ('table_names_map_', 'table_ids_map_', 'tablet_map_' below).
   CHECKED_STATUS AbortTableCreation(TableInfo* table,
-                                    const std::vector<TabletInfo*>& tablets,
+                                    const TabletInfos& tablets,
                                     const Status& s,
                                     CreateTableResponsePB* resp);
 
@@ -1249,7 +1248,7 @@ class CatalogManager :
   // Registers new split tablet with `partition` for the same table as `source_tablet_info` tablet.
   // Does not change any other tablets and their partitions.
   // Returns TabletInfo for registered tablet.
-  Result<TabletInfo*> RegisterNewTabletForSplit(
+  Result<TabletInfoPtr> RegisterNewTabletForSplit(
       TabletInfo* source_tablet_info, const PartitionPB& partition,
       TableInfo::WriteLock* table_write_lock);
 

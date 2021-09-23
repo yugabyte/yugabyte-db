@@ -743,8 +743,7 @@ void BackfillTable::Launch() {
 }
 
 void BackfillTable::LaunchComputeSafeTimeForRead() {
-  vector<scoped_refptr<TabletInfo>> tablets;
-  indexed_table_->GetAllTablets(&tablets);
+  auto tablets = indexed_table_->GetTablets();
 
   num_tablets_.store(tablets.size(), std::memory_order_release);
   tablets_pending_.store(tablets.size(), std::memory_order_release);
@@ -850,8 +849,7 @@ Status BackfillTable::UpdateSafeTime(const Status& s, HybridTime ht) {
 void BackfillTable::LaunchBackfill() {
   VLOG_WITH_PREFIX(1) << "launching backfill with timestamp: "
                       << read_time_for_backfill_;
-  vector<scoped_refptr<TabletInfo>> tablets;
-  indexed_table_->GetAllTablets(&tablets);
+  auto tablets = indexed_table_->GetTablets();
 
   num_tablets_.store(tablets.size(), std::memory_order_release);
   tablets_pending_.store(tablets.size(), std::memory_order_release);
@@ -994,8 +992,7 @@ Status BackfillTable::UpdateIndexPermissionsForIndexes() {
 }
 
 Status BackfillTable::ClearCheckpointStateInTablets() {
-  vector<scoped_refptr<TabletInfo>> tablets;
-  indexed_table_->GetAllTablets(&tablets);
+  auto tablets = indexed_table_->GetTablets();
   std::vector<TabletInfo*> tablet_ptrs;
   for (scoped_refptr<TabletInfo>& tablet : tablets) {
     tablet_ptrs.push_back(tablet.get());
@@ -1088,8 +1085,7 @@ Status BackfillTable::AllowCompactionsToGCDeleteMarkers(
 
 Status BackfillTable::SendRpcToAllowCompactionsToGCDeleteMarkers(
     const scoped_refptr<TableInfo> &table) {
-  vector<scoped_refptr<TabletInfo>> tablets;
-  table->GetAllTablets(&tablets);
+  auto tablets = table->GetTablets();
 
   for (const scoped_refptr<TabletInfo>& tablet : tablets) {
     RETURN_NOT_OK(SendRpcToAllowCompactionsToGCDeleteMarkers(tablet, table->id()));
