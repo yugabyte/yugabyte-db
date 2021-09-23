@@ -81,6 +81,11 @@ public class ReleaseControllerTest extends FakeDBApplication {
     return FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", uri, user.createAuthToken(), body);
   }
 
+  private Result deleteRelease(UUID customerUUID, String version) {
+    String uri = "/api/customers/" + customerUUID + "/releases/" + version;
+    return FakeApiHelper.doRequestWithAuthToken("DELETE", uri, user.createAuthToken());
+  }
+
   private void mockReleaseData(boolean multiple) {
     ImmutableMap<String, Object> data;
     if (multiple) {
@@ -418,6 +423,35 @@ public class ReleaseControllerTest extends FakeDBApplication {
   public void testRefreshReleaseReleaseManagerException() {
     doThrow(new RuntimeException("Some Error")).when(mockReleaseManager).importLocalReleases();
     Result result = assertYWSE(() -> refreshReleases(customer.uuid));
+    assertInternalServerError(result, "Some Error");
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testDeleteInvalidRelease() {
+    Result result = assertYWSE(() -> deleteRelease(customer.uuid, "0.0.1"));
+    verify(mockReleaseManager, times(1)).getReleaseByVersion("0.0.1");
+    assertBadRequest(result, "Invalid Release version: 0.0.1");
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testDeleteReleaseSuccess() {
+    ReleaseManager.ReleaseMetadata metadata = ReleaseManager.ReleaseMetadata.create("0.0.2");
+    when(mockReleaseManager.getReleaseByVersion("0.0.2")).thenReturn(metadata);
+    Result result = deleteRelease(customer.uuid, "0.0.2");
+    verify(mockReleaseManager, times(1)).getReleaseByVersion("0.0.2");
+    assertOk(result);
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testDeleteReleaseWithException() {
+    ReleaseManager.ReleaseMetadata metadata = ReleaseManager.ReleaseMetadata.create("0.0.3");
+    when(mockReleaseManager.getReleaseByVersion("0.0.3")).thenReturn(metadata);
+    doThrow(new RuntimeException("Some Error")).when(mockReleaseManager).removeRelease("0.0.3");
+    Result result = assertYWSE(() -> deleteRelease(customer.uuid, "0.0.3"));
+    verify(mockReleaseManager, times(1)).getReleaseByVersion("0.0.3");
     assertInternalServerError(result, "Some Error");
     assertAuditEntry(0, customer.uuid);
   }

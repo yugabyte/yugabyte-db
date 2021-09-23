@@ -6,6 +6,7 @@ import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 import com.google.inject.Inject;
 import com.yugabyte.yw.forms.ReleaseFormData;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.Universe;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.io.File;
@@ -23,6 +24,7 @@ import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.UUID;
 import javax.inject.Singleton;
 import javax.validation.Valid;
 import org.apache.commons.lang3.StringUtils;
@@ -327,6 +329,23 @@ public class ReleaseManager {
     configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareReleases, currentReleases);
   }
 
+  public void removeRelease(String version) {
+    Map<String, Object> currentReleases = getReleaseMetadata();
+    if (currentReleases.containsKey(version)) {
+      LOG.info("Removing release version {}", version);
+      currentReleases.remove(version);
+      configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareReleases, currentReleases);
+    }
+
+    String ybReleasesPath = appConfig.getString("yb.releases.path");
+    // delete specific release's directory recursively.
+    File releaseDirectory = new File(ybReleasesPath, version);
+    if (!Util.deleteDirectory(releaseDirectory)) {
+      String errorMsg = "Failed to delete release directory: " + releaseDirectory.getAbsolutePath();
+      throw new RuntimeException(errorMsg);
+    }
+  }
+
   public void importLocalReleases() {
     String ybReleasesPath = appConfig.getString("yb.releases.path");
     String ybReleasePath = appConfig.getString("yb.docker.release");
@@ -406,5 +425,9 @@ public class ReleaseManager {
 
   public Map<String, String> getReleases() {
     return (Map) configHelper.getConfig(CONFIG_TYPE);
+  }
+
+  public boolean getInUse(String version) {
+    return Universe.existsRelease(version);
   }
 }
