@@ -75,8 +75,7 @@ $ aws cloudformation describe-stacks \
 
 From this output, you will be able to get the VPC id and YugabyteDB admin URL.
 
-Because the stack creates a security group that restricts access to the database, you might need to update the security group inbound rules if you have trouble connecting to it. 
-if you have trouble connecting to the DB.
+Because the stack creates a security group that restricts access to the database, you might need to update the security group inbound rules if you have trouble connecting to the DB.
 
 ## AWS Console
 
