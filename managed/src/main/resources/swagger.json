@@ -7536,6 +7536,35 @@
       }
     },
     "/api/v1/customers/{cUUID}/releases/{name}" : {
+      "delete" : {
+        "description" : "",
+        "operationId" : "deleteRelease",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "path",
+          "name" : "name",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/ReleaseMetadata"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Delete a release",
+        "tags" : [ "Release management" ]
+      },
       "put" : {
         "description" : "",
         "operationId" : "updateRelease",

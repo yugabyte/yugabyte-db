@@ -28,6 +28,7 @@ import io.ebean.SqlUpdate;
 import io.ebean.annotation.DbJson;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.ConcurrentModificationException;
 import java.util.Date;
@@ -36,6 +37,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.HashSet;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.persistence.CascadeType;
@@ -819,8 +821,30 @@ public class Universe extends Model {
         .collect(Collectors.toSet());
   }
 
+  public static Set<Universe> universeDetailsIfReleaseExists(String version) {
+    Set<Universe> universes = new HashSet<Universe>();
+    Customer.getAll()
+        .forEach(customer -> universes.addAll(Customer.get(customer.getUuid()).getUniverses()));
+    Set<Universe> universesWithGivenRelease = new HashSet<Universe>();
+    for (Universe u : universes) {
+      List<Cluster> clusters = u.getUniverseDetails().clusters;
+      for (Cluster c : clusters) {
+        if (c.userIntent.ybSoftwareVersion != null
+            && c.userIntent.ybSoftwareVersion.equals(version)) {
+          universesWithGivenRelease.add(u);
+          break;
+        }
+      }
+    }
+    return universesWithGivenRelease;
+  }
+
   public static boolean existsCertificate(UUID certUUID, UUID customerUUID) {
     return universeDetailsIfCertsExists(certUUID, customerUUID).size() != 0;
+  }
+
+  public static boolean existsRelease(String version) {
+    return universeDetailsIfReleaseExists(version).size() != 0;
   }
 
   static boolean isUniversePaused(UUID uuid) {
