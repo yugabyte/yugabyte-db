@@ -128,17 +128,11 @@ std::string GetFsRoot(const MiniClusterOptions& options) {
 
 } // namespace
 
-MiniClusterOptions::MiniClusterOptions()
-    : num_masters(1),
-      num_tablet_servers(1) {
-}
-
 MiniCluster::MiniCluster(Env* env, const MiniClusterOptions& options)
     : env_(env),
       fs_root_(GetFsRoot(options)),
-      num_masters_initial_(options.num_masters),
-      num_ts_initial_(options.num_tablet_servers) {
-  mini_masters_.resize(num_masters_initial_);
+      options_(options) {
+  mini_masters_.resize(options_.num_masters);
 }
 
 MiniCluster::~MiniCluster() {
@@ -175,7 +169,7 @@ Status MiniCluster::Start(const std::vector<tserver::TabletServerOptions>& extra
   FLAGS_use_private_ip = "cloud";
 
   // This dictates the RF of newly created tables.
-  SetAtomicFlag(num_ts_initial_ >= 3 ? 3 : 1, &FLAGS_replication_factor);
+  SetAtomicFlag(options_.num_tablet_servers >= 3 ? 3 : 1, &FLAGS_replication_factor);
   FLAGS_memstore_size_mb = 16;
   // Default master args to make sure we don't wait to trigger new LB tasks upon master leader
   // failover.
@@ -185,12 +179,13 @@ Status MiniCluster::Start(const std::vector<tserver::TabletServerOptions>& extra
   RETURN_NOT_OK_PREPEND(StartMasters(),
                         "Couldn't start distributed masters");
 
-  if (!extra_tserver_options.empty() && extra_tserver_options.size() != num_ts_initial_) {
+  if (!extra_tserver_options.empty() &&
+      extra_tserver_options.size() != options_.num_tablet_servers) {
     return STATUS_SUBSTITUTE(InvalidArgument, "num tserver options: $0 doesn't match with num "
-        "tservers: $1", extra_tserver_options.size(), num_ts_initial_);
+        "tservers: $1", extra_tserver_options.size(), options_.num_tablet_servers);
   }
 
-  for (int i = 0; i < num_ts_initial_; i++) {
+  for (int i = 0; i < options_.num_tablet_servers; i++) {
     if (!extra_tserver_options.empty()) {
       RETURN_NOT_OK_PREPEND(AddTabletServer(extra_tserver_options[i]),
                             Substitute("Error adding TS $0", i));
@@ -201,7 +196,7 @@ Status MiniCluster::Start(const std::vector<tserver::TabletServerOptions>& extra
 
   }
 
-  RETURN_NOT_OK_PREPEND(WaitForTabletServerCount(num_ts_initial_),
+  RETURN_NOT_OK_PREPEND(WaitForTabletServerCount(options_.num_tablet_servers),
                         "Waiting for tablet servers to start");
 
   running_ = true;
@@ -209,14 +204,14 @@ Status MiniCluster::Start(const std::vector<tserver::TabletServerOptions>& extra
 }
 
 Status MiniCluster::StartMasters() {
-  CHECK_GE(master_rpc_ports_.size(), num_masters_initial_);
+  CHECK_GE(master_rpc_ports_.size(), options_.num_masters);
   EnsurePortsAllocated();
 
   LOG(INFO) << "Creating distributed mini masters. RPC ports: "
             << JoinInts(master_rpc_ports_, ", ");
 
-  if (mini_masters_.size() < num_masters_initial_) {
-    mini_masters_.resize(num_masters_initial_);
+  if (mini_masters_.size() < options_.num_masters) {
+    mini_masters_.resize(options_.num_masters);
   }
 
   bool started = false;
@@ -230,7 +225,7 @@ Status MiniCluster::StartMasters() {
     }
   });
 
-  for (int i = 0; i < num_masters_initial_; i++) {
+  for (int i = 0; i < options_.num_masters; i++) {
     mini_masters_[i] = std::make_shared<MiniMaster>(
         env_, GetMasterFsRoot(i), master_rpc_ports_[i], master_web_ports_[i], i);
     auto status = mini_masters_[i]->StartDistributedMaster(master_rpc_ports_);
@@ -296,8 +291,19 @@ Status MiniCluster::AddTabletServer(const tserver::TabletServerOptions& extra_op
 
   EnsurePortsAllocated(0 /* num_masters (will pick default) */, new_idx + 1);
   const uint16_t ts_rpc_port = tserver_rpc_ports_[new_idx];
-  gscoped_ptr<MiniTabletServer> tablet_server(
-    new MiniTabletServer(GetTabletServerFsRoot(new_idx), ts_rpc_port, extra_opts, new_idx));
+
+  std::shared_ptr<MiniTabletServer> tablet_server;
+  if (options_.num_drives == 1) {
+    tablet_server = std::make_shared<MiniTabletServer>(
+          GetTabletServerFsRoot(new_idx), ts_rpc_port, extra_opts, new_idx);
+  } else {
+    std::vector<std::string> dirs;
+    for (int i = 0; i < options_.num_drives; ++i) {
+      dirs.push_back(GetTabletServerDrive(new_idx, i));
+    }
+    tablet_server = std::make_shared<MiniTabletServer>(
+          dirs, dirs, ts_rpc_port, extra_opts, new_idx);
+  }
 
   // set the master addresses
   auto master_addr = std::make_shared<server::MasterAddresses>();
@@ -312,7 +318,7 @@ Status MiniCluster::AddTabletServer(const tserver::TabletServerOptions& extra_op
   tablet_server->options()->SetMasterAddresses(master_addr);
   tablet_server->options()->webserver_opts.port = tserver_web_ports_[new_idx];
   RETURN_NOT_OK(tablet_server->Start());
-  mini_tablet_servers_.push_back(shared_ptr<MiniTabletServer>(tablet_server.release()));
+  mini_tablet_servers_.push_back(tablet_server);
   return Status::OK();
 }
 
@@ -469,6 +475,13 @@ string MiniCluster::GetTabletServerFsRoot(int idx) {
   return JoinPathSegments(fs_root_, Substitute("ts-$0-root", idx + 1));
 }
 
+string MiniCluster::GetTabletServerDrive(int idx, int drive_index) {
+  if (options_.num_drives == 1) {
+    return GetTabletServerFsRoot(idx);
+  }
+  return JoinPathSegments(fs_root_, Substitute("ts-$0-drive-$1", idx + 1, drive_index + 1));
+}
+
 tserver::TSTabletManager* MiniCluster::GetTabletManager(int idx) {
   return mini_tablet_server(idx)->server()->tablet_manager();
 }
@@ -579,13 +592,13 @@ void MiniCluster::AllocatePortsForDaemonType(
 
 void MiniCluster::EnsurePortsAllocated(int new_num_masters, int new_num_tservers) {
   if (new_num_masters == 0) {
-    new_num_masters = std::max(num_masters_initial_, num_masters());
+    new_num_masters = std::max(options_.num_masters, num_masters());
   }
   AllocatePortsForDaemonType("master", new_num_masters, "RPC", &master_rpc_ports_);
   AllocatePortsForDaemonType("master", new_num_masters, "web", &master_web_ports_);
 
   if (new_num_tservers == 0) {
-    new_num_tservers = std::max(num_ts_initial_, num_tablet_servers());
+    new_num_tservers = std::max(options_.num_tablet_servers, num_tablet_servers());
   }
   AllocatePortsForDaemonType("tablet server", new_num_tservers, "RPC", &tserver_rpc_ports_);
   AllocatePortsForDaemonType("tablet server", new_num_tservers, "web", &tserver_web_ports_);

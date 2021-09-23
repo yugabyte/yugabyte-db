@@ -75,19 +75,19 @@ class TSTabletManager;
 }
 
 struct MiniClusterOptions {
-  MiniClusterOptions();
+  MiniClusterOptions() {}
 
   MiniClusterOptions(int num_masters, int num_tablet_servers)
       : num_masters(num_masters), num_tablet_servers(num_tablet_servers) {
   }
 
-  // Number of master servers.
-  // Default: 1
-  int num_masters;
+  int num_masters = 1;
 
   // Number of TS to start.
-  // Default: 1
-  int num_tablet_servers;
+  int num_tablet_servers = 1;
+
+  // Number of drives to use on TS. MiniCluster only.
+  int num_drives = 1;
 
   // Directory in which to store data.
   // Default: "", which auto-generates a unique path for this cluster.
@@ -186,6 +186,8 @@ class MiniCluster : public MiniClusterBase {
 
   std::string GetTabletServerFsRoot(int idx);
 
+  string GetTabletServerDrive(int idx, int drive_index);
+
   // The comma separated string of the master adresses host/ports from current list of masters.
   string GetMasterAddresses() const;
 
@@ -242,8 +244,7 @@ class MiniCluster : public MiniClusterBase {
 
   Env* const env_ = nullptr;
   const std::string fs_root_;
-  const int num_masters_initial_;
-  const int num_ts_initial_;
+  const MiniClusterOptions options_;
 
   Ports master_rpc_ports_;
   Ports master_web_ports_;

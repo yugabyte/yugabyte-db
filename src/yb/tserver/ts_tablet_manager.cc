@@ -1825,6 +1825,7 @@ void TSTabletManager::CreateReportedTabletPB(const TabletPeerPtr& tablet_peer,
     if (tablet_ptr != nullptr) {
       reported_tablet->set_should_disable_lb_move(tablet_ptr->ShouldDisableLbMove());
     }
+    reported_tablet->set_fs_data_dir(tablet_peer->tablet_metadata()->data_root_dir());
   }
 
   // We cannot get consensus state information unless the TabletPeer is running.

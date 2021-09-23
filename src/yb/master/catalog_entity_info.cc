@@ -56,12 +56,13 @@ namespace master {
 
 string TabletReplica::ToString() const {
   return Format("{ ts_desc: $0, state: $1, role: $2, member_type: $3, "
-                "should_disable_lb_move: $4, total_space_used: $5, time since update: $6ms }",
+                "should_disable_lb_move: $4, fs_data_dir: $5, "
+                "total_space_used: $6, time since update: $7ms }",
                 ts_desc->permanent_uuid(),
                 tablet::RaftGroupStatePB_Name(state),
                 consensus::RaftPeerPB_Role_Name(role),
                 consensus::RaftPeerPB::MemberType_Name(member_type),
-                should_disable_lb_move,
+                should_disable_lb_move, fs_data_dir,
                 drive_info.sst_files_size + drive_info.wal_files_size,
                 MonoTime::Now().GetDeltaSince(time_updated).ToMilliseconds());
 }
@@ -71,6 +72,7 @@ void TabletReplica::UpdateFrom(const TabletReplica& source) {
   role = source.role;
   member_type = source.member_type;
   should_disable_lb_move = source.should_disable_lb_move;
+  fs_data_dir = source.fs_data_dir;
   time_updated = MonoTime::Now();
 }
 

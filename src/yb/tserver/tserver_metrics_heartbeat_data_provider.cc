@@ -25,39 +25,13 @@ DEFINE_int32(tserver_heartbeat_metrics_interval_ms, 5000,
              "Interval (in milliseconds) at which tserver sends its metrics in a heartbeat to "
              "master.");
 
+DEFINE_bool(tserver_heartbeat_metrics_add_drive_data, true,
+            "Add drive data to metrics which tserver sends to master");
+
 using namespace std::literals;
 
 namespace yb {
 namespace tserver {
-
-void addTabletData(master::TabletPathInfoPB* path_info,
-                   const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
-                   uint64_t sst_file_size,
-                   uint64_t uncompressed_sst_file_size,
-                   std::unordered_map<std::string, master::ListTabletsOnPathPB*>* paths) {
-  std::string data_dir = tablet_peer->tablet_metadata()->data_root_dir();
-  const auto& tablet = tablet_peer->shared_tablet();
-  if (!tablet_peer->log_available() || !tablet || data_dir.empty()) {
-    return;
-  }
-  // Ignore WAL files when using another path
-  uint64 wal_file_size = data_dir == tablet_peer->log()->wal_dir() ?
-                          tablet_peer->log()->OnDiskSize() : 0;
-
-  auto list_tablets_on_path_it = paths->find(data_dir);
-  if (list_tablets_on_path_it == paths->end()) {
-    auto* list_tablets_on_path = path_info->add_list_path();
-    list_tablets_on_path->set_path_id(data_dir);
-    list_tablets_on_path_it = paths->emplace(data_dir, list_tablets_on_path).first;
-  }
-
-  auto* const tablet_on_path = list_tablets_on_path_it->second->add_tablet();
-  tablet_on_path->set_tablet_id(tablet_peer->tablet_id());
-  tablet_on_path->set_sst_file_size(sst_file_size);
-  tablet_on_path->set_wal_file_size(wal_file_size);
-  tablet_on_path->set_uncompressed_sst_file_size(uncompressed_sst_file_size);
-}
-
 
 TServerMetricsHeartbeatDataProvider::TServerMetricsHeartbeatDataProvider(TabletServer* server) :
   PeriodicalHeartbeatDataProvider(server,
@@ -76,10 +50,9 @@ void TServerMetricsHeartbeatDataProvider::DoAddData(
   uint64_t uncompressed_file_sizes = 0;
   uint64_t num_files = 0;
 
-  std::unordered_map<std::string, master::ListTabletsOnPathPB*> paths;
-  master::TabletPathInfoPB* path_info =
-      !req->has_tablet_report() || req->tablet_report().is_incremental() ?
-        req->mutable_tablet_path_info() : nullptr;
+  bool no_full_tablet_report = !req->has_tablet_report() || req->tablet_report().is_incremental();
+  bool should_add_tablet_data =
+      FLAGS_tserver_heartbeat_metrics_add_drive_data && no_full_tablet_report;
 
   for (const auto& tablet_peer : server().tablet_manager()->GetTabletPeers()) {
     if (tablet_peer) {
@@ -90,8 +63,14 @@ void TServerMetricsHeartbeatDataProvider::DoAddData(
         uncompressed_file_sizes += sizes.second;
         num_files += tablet->GetCurrentVersionNumSSTFiles();
 
-        if (path_info) {
-          addTabletData(path_info, tablet_peer, sizes.first, sizes.second, &paths);
+        if (should_add_tablet_data && tablet_peer->log_available() &&
+            tablet_peer->tablet_metadata()->tablet_data_state() ==
+              tablet::TabletDataState::TABLET_DATA_READY) {
+          auto tablet_metadata = req->add_storage_metadata();
+          tablet_metadata->set_tablet_id(tablet_peer->tablet_id());
+          tablet_metadata->set_sst_file_size(sizes.first);
+          tablet_metadata->set_wal_file_size(tablet_peer->log()->OnDiskSize());
+          tablet_metadata->set_uncompressed_sst_file_size(sizes.second);
         }
       }
     }

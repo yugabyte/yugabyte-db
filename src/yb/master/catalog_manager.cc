@@ -7273,6 +7273,9 @@ void CatalogManager::CreateNewReplicaForLocalMemory(TSDescriptor* ts_desc,
   if (report.has_should_disable_lb_move()) {
       new_replica->should_disable_lb_move = report.should_disable_lb_move();
   }
+  if (report.has_fs_data_dir()) {
+      new_replica->fs_data_dir = report.fs_data_dir();
+  }
   new_replica->state = report.state();
   new_replica->ts_desc = ts_desc;
   if (!ts_desc->registered_through_heartbeat()) {
@@ -9534,27 +9537,24 @@ Status CatalogManager::SysCatalogRespectLeaderAffinity() {
   return STATUS(NotFound, "Couldn't step down to a master in an affinitized zone");
 }
 
-void CatalogManager::ProcessTabletPathInfo(const std::string& ts_uuid,
-                                             const TabletPathInfoPB& info) {
-  for (const auto& path : info.list_path()) {
-    for (const auto& tablet_info : path.tablet()) {
-      const string& tablet_id = tablet_info.tablet_id();
-      scoped_refptr<TabletInfo> tablet;
-      {
-        SharedLock lock(mutex_);
-        tablet = FindPtrOrNull(*tablet_map_, tablet_id);
-      }
-      if (!tablet) {
-        LOG(WARNING) << Format("Tablet $0 not found", tablet_id);
-        continue;
-      }
-      TabletReplicaDriveInfo drive_info{path.path_id(),
-                                        tablet_info.sst_file_size(),
-                                        tablet_info.wal_file_size(),
-                                        tablet_info.uncompressed_sst_file_size()};
-      tablet->UpdateReplicaDriveInfo(ts_uuid, drive_info);
-    }
+void CatalogManager::ProcessTabletStorageMetadata(
+    const std::string& ts_uuid,
+    const TabletDriveStorageMetadataPB& storage_metadata) {
+  const string& tablet_id = storage_metadata.tablet_id();
+  scoped_refptr<TabletInfo> tablet;
+  {
+    SharedLock lock(mutex_);
+    tablet = FindPtrOrNull(*tablet_map_, tablet_id);
   }
+  if (!tablet) {
+    VLOG(1) << Format("Tablet $0 not found on ts $1", tablet_id, ts_uuid);
+    return;
+  }
+  TabletReplicaDriveInfo drive_info{
+        storage_metadata.sst_file_size(),
+        storage_metadata.wal_file_size(),
+        storage_metadata.uncompressed_sst_file_size()};
+  tablet->UpdateReplicaDriveInfo(ts_uuid, drive_info);
 }
 
 void CatalogManager::CheckTableDeleted(const TableInfoPtr& table) {

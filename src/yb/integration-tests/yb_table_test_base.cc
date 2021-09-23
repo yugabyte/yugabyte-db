@@ -55,6 +55,10 @@ int YBTableTestBase::num_tablet_servers() {
   return kDefaultNumTabletServers;
 }
 
+int YBTableTestBase::num_drives() {
+  return kDefaultNumDrives;
+}
+
 int YBTableTestBase::num_tablets() {
   return CalcNumTablets(num_tablet_servers());
 }

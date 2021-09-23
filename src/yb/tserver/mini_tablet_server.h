@@ -61,6 +61,10 @@ class MiniTabletServer {
       uint16_t rpc_port,
       int index = 0);
 
+  MiniTabletServer(const std::vector<std::string>& wal_paths,
+                   const std::vector<std::string>& data_paths,
+                   uint16_t rpc_port,
+                   const TabletServerOptions& extra_opts, int index = 0);
   MiniTabletServer(const std::string& fs_root, uint16_t rpc_port,
                    const TabletServerOptions& extra_opts, int index = 0);
   ~MiniTabletServer();
