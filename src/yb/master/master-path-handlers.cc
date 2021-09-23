@@ -817,8 +817,7 @@ void MasterPathHandlers::HandleHealthCheck(
         continue;
       }
 
-      TabletInfos tablets;
-      table->GetAllTablets(&tablets);
+      TabletInfos tablets = table->GetTablets();
 
       for (const auto& tablet : tablets) {
         auto replication_locations = tablet->GetReplicaLocations();
@@ -1097,7 +1096,7 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
   PartitionSchema partition_schema;
   NamespaceName keyspace_name;
   TableName table_name;
-  vector<scoped_refptr<TabletInfo> > tablets;
+  TabletInfos tablets;
   {
     auto l = table->LockForRead();
     keyspace_name = master_->catalog_manager()->GetNamespaceName(table->namespace_id());
@@ -1156,7 +1155,7 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
       *output << "Unable to decode partition schema: " << s.ToString();
       return;
     }
-    table->GetAllTablets(&tablets);
+    tablets = table->GetTablets();
   }
 
   HtmlOutputSchemaTable(schema, output);
@@ -1255,8 +1254,7 @@ std::vector<TabletInfoPtr> MasterPathHandlers::GetNonSystemTablets() {
     if (master_->catalog_manager()->IsSystemTable(*table.get())) {
       continue;
     }
-    TabletInfos ts;
-    table->GetAllTablets(&ts);
+    TabletInfos ts = table->GetTablets();
 
     for (TabletInfoPtr t : ts) {
       nonsystem_tablets.push_back(t);
@@ -2199,8 +2197,7 @@ void MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
       continue;
     }
 
-    TabletInfos tablets;
-    table->GetAllTablets(&tablets);
+    TabletInfos tablets = table->GetTablets();
     bool is_user_table = master_->catalog_manager()->IsUserCreatedTable(*table);
 
     for (const auto& tablet : tablets) {
@@ -2249,8 +2246,7 @@ Status MasterPathHandlers::CalculateTServerTree(TServerTree* tserver_tree) {
       continue;
     }
 
-    TabletInfos tablets;
-    table->GetAllTablets(&tablets);
+    TabletInfos tablets = table->GetTablets();
 
     for (const auto& tablet : tablets) {
       auto replica_locations = tablet->GetReplicaLocations();

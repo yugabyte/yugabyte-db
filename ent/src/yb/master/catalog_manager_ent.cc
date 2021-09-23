@@ -413,6 +413,7 @@ void CatalogManager::Submit(std::unique_ptr<tablet::Operation> operation, int64_
 Result<SysRowEntries> CatalogManager::CollectEntries(
     const google::protobuf::RepeatedPtrField<TableIdentifierPB>& table_identifiers,
     CollectFlags flags) {
+  RETURN_NOT_OK(CheckIsLeaderAndReady());
   SysRowEntries entries;
   std::unordered_set<NamespaceId> namespaces;
   auto tables = VERIFY_RESULT(CollectTables(table_identifiers, flags, &namespaces));
@@ -1374,7 +1375,7 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
       TRACE("Locking table");
       auto table_lock = table->LockForRead();
       RETURN_NOT_OK(table->GetSchema(&persisted_schema));
-      new_num_tablets = table->NumTablets();
+      new_num_tablets = table->NumPartitions();
     }
 
     // Ignore 'nullable' attribute - due to difference in implementation
@@ -1453,11 +1454,11 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
     }
   }
 
-  vector<scoped_refptr<TabletInfo>> new_tablets;
+  TabletInfos new_tablets;
   {
     TRACE("Locking table");
     auto table_lock = table->LockForRead();
-    table->GetAllTablets(&new_tablets);
+    new_tablets = table->GetTablets();
   }
 
   for (const scoped_refptr<TabletInfo>& tablet : new_tablets) {
@@ -1607,6 +1608,7 @@ Status CatalogManager::RestoreSysCatalog(
     RETURN_NOT_OK(state.ProcessPgCatalogRestores(
         pg_yb_catalog_version_schema, doc_db, tablet->doc_db(), &write_batch));
   }
+
   // Restore the other tables.
   RETURN_NOT_OK(state.PrepareWriteBatch(schema(), &write_batch));
 
@@ -1620,7 +1622,8 @@ Status CatalogManager::RestoreSysCatalog(
 }
 
 Status CatalogManager::VerifyRestoredObjects(const SnapshotScheduleRestoration& restoration) {
-  auto entries = VERIFY_RESULT(CollectEntriesForSnapshot(restoration.filter.tables().tables()));
+  auto entries = VERIFY_RESULT(CollectEntriesForSnapshot(
+      restoration.schedules[0].second.tables().tables()));
   auto objects_to_restore = restoration.non_system_objects_to_restore;
   VLOG_WITH_PREFIX(1) << "Objects to restore: " << AsString(objects_to_restore);
   for (const auto& entry : entries.entries()) {
@@ -2455,16 +2458,16 @@ Status CatalogManager::CleanUpDeletedCDCStreams(
   std::set<CDCStreamId> failed_streams;
   for (const auto& stream : streams) {
     LOG(INFO) << "Deleting rows for stream " << stream->id();
-    vector<scoped_refptr<TabletInfo>> tablets;
+    TabletInfos tablets;
     scoped_refptr<TableInfo> table;
     {
       TRACE("Acquired catalog manager lock");
       SharedLock lock(mutex_);
       table = FindPtrOrNull(*table_ids_map_, stream->table_id());
     }
-    // GetAllTablets locks lock_ in shared mode.
+    // GetTablets locks lock_ in shared mode.
     if (table) {
-      table->GetAllTablets(&tablets);
+      tablets = table->GetTablets();
     }
 
     for (const auto& tablet : tablets) {

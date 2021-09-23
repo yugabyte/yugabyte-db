@@ -259,7 +259,10 @@ TEST_F(SnapshotScheduleTest, RestoreSchema) {
 }
 
 TEST_F(SnapshotScheduleTest, RemoveNewTablets) {
-  auto schedule_id = ASSERT_RESULT(snapshot_util_->CreateSchedule(table_, WaitSnapshot::kTrue));
+  const auto kInterval = 5s * kTimeMultiplier;
+  const auto kRetention = kInterval * 2;
+  auto schedule_id = ASSERT_RESULT(snapshot_util_->CreateSchedule(
+      table_, WaitSnapshot::kTrue, kInterval, kRetention));
   auto before_index_ht = cluster_->mini_master(0)->master()->clock()->Now();
   CreateIndex(Transactional::kTrue, 1, false);
   auto after_time_ht = cluster_->mini_master(0)->master()->clock()->Now();
@@ -279,7 +282,7 @@ TEST_F(SnapshotScheduleTest, RemoveNewTablets) {
       }
     }
     return true;
-  }, 10s, "Cleanup obsolete tablets"));
+  }, kRetention + kInterval * 2, "Cleanup obsolete tablets"));
 }
 
 } // namespace client

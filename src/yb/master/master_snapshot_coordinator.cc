@@ -386,7 +386,19 @@ class MasterSnapshotCoordinator::Impl {
           FindSnapshotSchedule(snapshot.schedule_id()));
       LOG(INFO) << "Restore sys catalog from snapshot: " << snapshot.ToString() << ", schedule: "
                 << schedule_state.ToString() << " at " << restoration->restore_at;
-      restoration->filter = schedule_state.options().filter();
+      size_t this_idx = std::numeric_limits<size_t>::max();
+      for (const auto& snapshot_schedule : schedules_) {
+        if (snapshot_schedule->id() == snapshot.schedule_id()) {
+          this_idx = restoration->schedules.size();
+        }
+        restoration->schedules.emplace_back(
+            snapshot_schedule->id(), snapshot_schedule->options().filter());
+      }
+      if (this_idx == std::numeric_limits<size_t>::max()) {
+        return STATUS_FORMAT(IllegalState, "Cannot find schedule for restoration: $0",
+                             snapshot.schedule_id());
+      }
+      std::swap(restoration->schedules[0], restoration->schedules[this_idx]);
       if (leader_term >= 0) {
         postponed_restores_.push_back(restoration);
       }
@@ -736,12 +748,12 @@ class MasterSnapshotCoordinator::Impl {
   void TryDeleteSnapshot(SnapshotState* snapshot, PollSchedulesData* data) {
     auto delete_status = snapshot->TryStartDelete();
     if (!delete_status.ok()) {
-      VLOG(1) << "Unable to delete snapshot " << snapshot->id() << ": "
-              << delete_status << ", state: " << snapshot->ToString();
+      VLOG(1) << "Unable to delete snapshot " << snapshot->id() << "/" << snapshot->schedule_id()
+              << ": " << delete_status << ", state: " << snapshot->ToString();
       return;
     }
 
-    VLOG(1) << "Cleanup snapshot: " << snapshot->id();
+    VLOG(1) << "Cleanup snapshot: " << snapshot->id() << "/" << snapshot->schedule_id();
     data->delete_snapshots.push_back(snapshot->id());
   }
 
@@ -759,12 +771,18 @@ class MasterSnapshotCoordinator::Impl {
         auto range = index.equal_range(p->id());
         if (range.first != range.second) {
           --range.second;
+          for (; range.first != range.second; ++range.first) {
+            if ((**range.first).initial_state() != SysSnapshotEntryPB::DELETING) {
+              break;
+            }
+          }
           auto& first_snapshot = **range.first;
           data->schedule_min_restore_time[p->id()] =
               first_snapshot.previous_snapshot_hybrid_time()
                   ? first_snapshot.previous_snapshot_hybrid_time()
                   : first_snapshot.snapshot_hybrid_time();
           auto gc_limit = now.AddSeconds(-p->options().retention_duration_sec());
+          VLOG_WITH_FUNC(4) << "Gc limit: " << gc_limit;
           for (; range.first != range.second; ++range.first) {
             if ((**range.first).snapshot_hybrid_time() >= gc_limit) {
               break;
@@ -849,6 +867,7 @@ class MasterSnapshotCoordinator::Impl {
       const SnapshotScheduleOperation& operation, int64_t leader_term,
       const std::weak_ptr<Synchronizer>& synchronizer = std::weak_ptr<Synchronizer>()) {
     auto entries = VERIFY_RESULT(CollectEntries(operation.filter));
+    VLOG(2) << __func__ << "(" << AsString(operation) << ", " << leader_term << ")";
     RETURN_NOT_OK(SubmitCreate(
         entries, false, operation.schedule_id, operation.previous_snapshot_hybrid_time,
         operation.snapshot_id, leader_term,

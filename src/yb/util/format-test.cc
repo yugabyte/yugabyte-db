@@ -197,6 +197,4 @@ TEST(FormatTest, Time) {
   ASSERT_EQ("15.000s", out.str());
 }
 
-YB_DEFINE_ENUM(XXX, (xxx));
-
 } // namespace yb

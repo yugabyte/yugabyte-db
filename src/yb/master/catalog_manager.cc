@@ -1388,8 +1388,7 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
 
     // There might have been a failure after writing the table but before writing the tablets. As
     // a result, if we don't find any tablets, we try to create the tablets only again.
-    vector<scoped_refptr<TabletInfo>> tablets;
-    table->GetAllTablets(&tablets);
+    auto tablets = table->GetTablets();
     if (!tablets.empty()) {
       // Initialize the appropriate system tablet.
       DCHECK_EQ(1, tablets.size());
@@ -1405,8 +1404,6 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
     }
   }
 
-  vector<TabletInfo*> tablets;
-
   // Create partitions.
   vector<Partition> partitions;
   PartitionSchemaPB partition_schema_pb;
@@ -1415,6 +1412,8 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
   RETURN_NOT_OK(PartitionSchema::FromPB(partition_schema_pb, schema, &partition_schema));
   RETURN_NOT_OK(partition_schema.CreatePartitions(1, &partitions));
 
+  TabletInfos tablets;
+
   if (create_table) {
     // Fill in details for the system table.
     CreateTableRequestPB req;
@@ -1422,7 +1421,7 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
     req.set_table_type(TableType::YQL_TABLE_TYPE);
 
     RETURN_NOT_OK(CreateTableInMemory(
-        req, schema, partition_schema, true /* create_tablets */, namespace_id, namespace_name,
+        req, schema, partition_schema, namespace_id, namespace_name,
         partitions, nullptr, &tablets, nullptr, &table));
     // Mark the table as a system table.
     LOG_WITH_PREFIX(INFO) << "Inserted new " << namespace_name << "." << table_name
@@ -1434,7 +1433,7 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
                           << ToString(tablets);
   } else {
     // Still need to create the tablets.
-    RETURN_NOT_OK(CreateTabletsFromTable(partitions, table, &tablets));
+    tablets = VERIFY_RESULT(CreateTabletsFromTable(partitions, table));
   }
 
   DCHECK_EQ(1, tablets.size());
@@ -1443,7 +1442,7 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
 
   // Write Tablets to sys-tablets (in "running" state since we don't want the loadbalancer to
   // assign these tablets since this table is virtual).
-  for (TabletInfo *tablet : tablets) {
+  for (const auto& tablet : tablets) {
     tablet->mutable_metadata()->mutable_dirty()->pb.set_state(SysTabletsEntryPB::RUNNING);
   }
   RETURN_NOT_OK(sys_catalog_->Upsert(term, tablets));
@@ -1454,7 +1453,7 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
     table->mutable_metadata()->CommitMutation();
   }
 
-  for (TabletInfo *tablet : tablets) {
+  for (const auto& tablet : tablets) {
     tablet->mutable_metadata()->CommitMutation();
   }
   // Mark the table as a system table.
@@ -1684,7 +1683,7 @@ void CatalogManager::CompleteShutdown() {
 }
 
 Status CatalogManager::AbortTableCreation(TableInfo* table,
-                                          const vector<TabletInfo*>& tablets,
+                                          const TabletInfos& tablets,
                                           const Status& s,
                                           CreateTableResponsePB* resp) {
   LOG(WARNING) << s;
@@ -1694,7 +1693,7 @@ Status CatalogManager::AbortTableCreation(TableInfo* table,
   const NamespaceId table_namespace_id =
       table->mutable_metadata()->mutable_dirty()->pb.namespace_id();
   vector<string> tablet_ids_to_erase;
-  for (TabletInfo* tablet : tablets) {
+  for (const auto& tablet : tablets) {
     tablet_ids_to_erase.push_back(tablet->tablet_id());
   }
 
@@ -1710,7 +1709,7 @@ Status CatalogManager::AbortTableCreation(TableInfo* table,
   LockGuard lock(mutex_);
 
   // Call AbortMutation() manually, as otherwise the lock won't be released.
-  for (TabletInfo* tablet : tablets) {
+  for (const auto& tablet : tablets) {
     tablet->mutable_metadata()->AbortMutation();
   }
   table->mutable_metadata()->AbortMutation();
@@ -2071,9 +2070,7 @@ Status CatalogManager::CreateCopartitionedTable(const CreateTableRequestPB& req,
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
   }
 
-  scoped_refptr<TableInfo> this_table_info;
-  std::vector<TabletInfo *> tablets;
-  TabletInfos scoped_ref_tablets;
+  TableInfoPtr this_table_info;
   // Verify that the table does not exist.
   this_table_info = FindPtrOrNull(table_names_map_, {namespace_id, req.name()});
 
@@ -2096,7 +2093,7 @@ Status CatalogManager::CreateCopartitionedTable(const CreateTableRequestPB& req,
 
   // TODO: pass index_info for copartitioned index.
   RETURN_NOT_OK(CreateTableInMemory(
-      req, schema, partition_schema, false /* create_tablets */, namespace_id, namespace_name,
+      req, schema, partition_schema, namespace_id, namespace_name,
       partitions, nullptr, nullptr, resp, &this_table_info));
 
   TRACE("Inserted new table info into CatalogManager maps");
@@ -2106,9 +2103,8 @@ Status CatalogManager::CreateCopartitionedTable(const CreateTableRequestPB& req,
   // It will get committed at the end of this function.
   // Sanity check: the table should be in "preparing" state.
   CHECK_EQ(SysTablesEntryPB::PREPARING, this_table_info->metadata().dirty().pb.state());
-  parent_table_info->GetAllTablets(&scoped_ref_tablets);
-  for (auto tablet : scoped_ref_tablets) {
-    tablets.push_back(tablet.get());
+  TabletInfos tablets = parent_table_info->GetTablets();
+  for (auto tablet : tablets) {
     tablet->mutable_metadata()->StartMutation();
     tablet->mutable_metadata()->mutable_dirty()->pb.add_table_ids(this_table_info->id());
   }
@@ -2135,11 +2131,11 @@ Status CatalogManager::CreateCopartitionedTable(const CreateTableRequestPB& req,
   // Commit the in-memory state.
   this_table_info->mutable_metadata()->CommitMutation();
 
-  for (TabletInfo *tablet : tablets) {
+  for (const auto& tablet : tablets) {
     tablet->mutable_metadata()->CommitMutation();
   }
 
-  for (const auto& tablet : scoped_ref_tablets) {
+  for (const auto& tablet : tablets) {
     SendCopartitionTabletRequest(tablet, this_table_info);
   }
 
@@ -2258,7 +2254,7 @@ Status CatalogManager::ValidateSplitCandidate(const TabletInfo& tablet_info) {
         tablet_info.tablet_id());
   }
   if (FLAGS_tablet_split_limit_per_table != 0 &&
-      tablet_info.table()->NumTablets() >= FLAGS_tablet_split_limit_per_table) {
+      tablet_info.table()->NumPartitions() >= FLAGS_tablet_split_limit_per_table) {
     // TODO(tsplit): Avoid tablet server of scanning tablets for the tables that already
     //  reached the split limit of tablet #6220
     return STATUS_EC_FORMAT(IllegalState, MasterError(MasterErrorPB::REACHED_SPLIT_LIMIT),
@@ -2292,7 +2288,7 @@ bool CatalogManager::ShouldSplitValidCandidate(
     master_->ts_manager()->GetAllLiveDescriptors(&ts_descs, blacklist);
   }
   auto num_servers = ts_descs.size();
-  int64 num_tablets_per_server = tablet_info.table()->NumTablets() / num_servers;
+  int64 num_tablets_per_server = tablet_info.table()->NumPartitions() / num_servers;
 
   if (num_tablets_per_server < FLAGS_tablet_split_low_phase_shard_count_per_node) {
     return size > FLAGS_tablet_split_low_phase_size_threshold_bytes;
@@ -2340,7 +2336,7 @@ Status CatalogManager::DoSplitTablet(
       // Post-split tablet `i` has been already registered.
       new_tablet_ids[i] = source_tablet_lock->pb.split_tablet_ids(i);
     } else {
-      auto* new_tablet_info = VERIFY_RESULT(RegisterNewTabletForSplit(
+      auto new_tablet_info = VERIFY_RESULT(RegisterNewTabletForSplit(
           source_tablet_info.get(), new_tablets_partition[i], &source_table_lock));
 
       new_tablet_ids[i] = new_tablet_info->id();
@@ -2528,7 +2524,6 @@ Status CatalogManager::CreateYsqlSysTable(const CreateTableRequestPB* req,
 
   // Create table info in memory.
   scoped_refptr<TableInfo> table;
-  vector<TabletInfo*> tablets;
   scoped_refptr<TabletInfo> sys_catalog_tablet;
   {
     LockGuard lock(mutex_);
@@ -2549,7 +2544,7 @@ Status CatalogManager::CreateYsqlSysTable(const CreateTableRequestPB* req,
     }
 
     RETURN_NOT_OK(CreateTableInMemory(
-        *req, schema, partition_schema, false /* create_tablets */, namespace_id, namespace_name,
+        *req, schema, partition_schema, namespace_id, namespace_name,
         partitions, nullptr /* index_info */, nullptr /* tablets */, resp, &table));
 
     sys_catalog_tablet = tablet_map_->find(kSysCatalogTabletId)->second;
@@ -2571,7 +2566,7 @@ Status CatalogManager::CreateYsqlSysTable(const CreateTableRequestPB* req,
 
     Status s = sys_catalog_->Upsert(leader_ready_term(), sys_catalog_tablet);;
     if (PREDICT_FALSE(!s.ok())) {
-      return AbortTableCreation(table.get(), tablets, s.CloneAndPrepend(
+      return AbortTableCreation(table.get(), {}, s.CloneAndPrepend(
         "An error occurred while inserting to sys-tablets: "), resp);
     }
     table->set_is_system();
@@ -2584,7 +2579,7 @@ Status CatalogManager::CreateYsqlSysTable(const CreateTableRequestPB* req,
   table->mutable_metadata()->mutable_dirty()->pb.set_state(SysTablesEntryPB::RUNNING);
   Status s = sys_catalog_->Upsert(leader_ready_term(), table);;
   if (PREDICT_FALSE(!s.ok())) {
-    return AbortTableCreation(table.get(), tablets, s.CloneAndPrepend(
+    return AbortTableCreation(table.get(), {}, s.CloneAndPrepend(
       "An error occurred while inserting to sys-tablets: "), resp);
   }
   TRACE("Wrote table to system table");
@@ -3026,7 +3021,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
 
   scoped_refptr<TableInfo> table;
-  vector<TabletInfo*> tablets;
+  TabletInfos tablets;
   bool tablets_exist;
   bool tablegroup_tablets_exist = false;
 
@@ -3080,9 +3075,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
 
     RETURN_NOT_OK(CreateTableInMemory(
-        req, schema, partition_schema,
-        !tablets_exist && !tablegroup_tablets_exist /* create_tablets */, namespace_id,
-        namespace_name, partitions, &index_info, &tablets, resp, &table));
+        req, schema, partition_schema, namespace_id, namespace_name, partitions, &index_info,
+        (!tablets_exist && !tablegroup_tablets_exist) ? &tablets : nullptr, resp, &table));
 
     // Section is executed when a table is either the parent table or a user table in a tablegroup.
     // It additionally sets the table metadata (and tablet metadata if this is the parent table)
@@ -3092,8 +3086,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       if (tablegroup_tablets_exist) {
         // If the table is not a tablegroup parent table, it performs a lookup for the proper tablet
         // to place the table on as a child table.
-        scoped_refptr<TabletInfo> tablet =
-            tablegroup_tablet_ids_map_[ns->id()][req.tablegroup_id()];
+        auto tablet = tablegroup_tablet_ids_map_[ns->id()][req.tablegroup_id()];
         RSTATUS_DCHECK(
             tablet->colocated(), InternalError,
             "The tablet for tablegroup should be colocated.");
@@ -3104,7 +3097,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         tablet_lock.Commit();
 
         tablet->mutable_metadata()->StartMutation();
-        table->AddTablets(tablets);
+        table->AddTablet(tablet);
         tablegroup_ids_map_[req.tablegroup_id()]->AddChildTable(table->id());
       } else {
         // If the table is a tablegroup parent table, it creates a dummy tablet for the tablegroup
@@ -3121,7 +3114,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       table->mutable_metadata()->mutable_dirty()->pb.set_colocated(true);
       // if the tablet already exists, add the tablet to tablets
       if (tablets_exist) {
-        scoped_refptr<TabletInfo> tablet = colocated_tablet_ids_map_[ns->id()];
+        auto tablet = colocated_tablet_ids_map_[ns->id()];
         RSTATUS_DCHECK(
             tablet->colocated(), InternalError,
             "The tablet for colocated database should be colocated.");
@@ -3132,7 +3125,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         tablet_lock.Commit();
 
         tablet->mutable_metadata()->StartMutation();
-        table->AddTablets(tablets);
+        table->AddTablet(tablet);
       } else {  // Record the tablet
         RSTATUS_DCHECK_EQ(
             tablets.size(), 1, InternalError,
@@ -3171,28 +3164,24 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   if (!tablets_exist && !tablegroup_tablets_exist) {
     // Write Tablets to sys-tablets (in "preparing" state).
-    for (const TabletInfo *tablet : tablets) {
+    for (const auto& tablet : tablets) {
       CHECK_EQ(SysTabletsEntryPB::PREPARING, tablet->metadata().dirty().pb.state());
     }
   }
   s = sys_catalog_->Upsert(leader_ready_term(), table, tablets);
 
   if (PREDICT_FALSE(!s.ok())) {
-    return AbortTableCreation(table.get(), tablets,
-                              s.CloneAndPrepend(
-                                  Substitute("An error occurred while inserting to sys-tablets: $0",
-                                             s.ToString())),
-                              resp);
+    return AbortTableCreation(
+        table.get(), tablets, s.CloneAndPrepend("An error occurred while inserting to sys-tablets"),
+        resp);
   }
   TRACE("Wrote tablets to system table");
 
   s = sys_catalog_->Upsert(leader_ready_term(), table);;
   if (PREDICT_FALSE(!s.ok())) {
-    return AbortTableCreation(table.get(), tablets,
-                              s.CloneAndPrepend(
-                                  Substitute("An error occurred while inserting to sys-tablets: $0",
-                                             s.ToString())),
-                              resp);
+    return AbortTableCreation(
+        table.get(), tablets, s.CloneAndPrepend("An error occurred while inserting to sys-tablets"),
+        resp);
   }
   TRACE("Wrote table to system table");
 
@@ -3211,18 +3200,16 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
     s = AddIndexInfoToTable(indexed_table, index_info, resp);
     if (PREDICT_FALSE(!s.ok())) {
-      return AbortTableCreation(table.get(), tablets,
-                                s.CloneAndPrepend(
-                                    Substitute("An error occurred while inserting index info: $0",
-                                               s.ToString())),
-                                resp);
+      return AbortTableCreation(
+          table.get(), tablets, s.CloneAndPrepend("An error occurred while inserting index info"),
+          resp);
     }
   }
 
   // Commit the in-memory state.
   table->mutable_metadata()->CommitMutation();
 
-  for (TabletInfo *tablet : tablets) {
+  for (const auto& tablet : tablets) {
     tablet->mutable_metadata()->CommitMutation();
   }
 
@@ -3320,24 +3307,24 @@ Status CatalogManager::VerifyTablePgLayer(scoped_refptr<TableInfo> table, bool r
   return Status::OK();
 }
 
-Status CatalogManager::CreateTabletsFromTable(const vector<Partition>& partitions,
-                                              const scoped_refptr<TableInfo>& table,
-                                              std::vector<TabletInfo*>* tablets) {
+Result<TabletInfos> CatalogManager::CreateTabletsFromTable(const vector<Partition>& partitions,
+                                                           const TableInfoPtr& table) {
+  TabletInfos tablets;
   // Create the TabletInfo objects in state PREPARING.
   for (const Partition& partition : partitions) {
     PartitionPB partition_pb;
     partition.ToPB(&partition_pb);
-    tablets->push_back(CreateTabletInfo(table.get(), partition_pb));
+    tablets.push_back(CreateTabletInfo(table.get(), partition_pb));
   }
 
   // Add the table/tablets to the in-memory map for the assignment.
-  table->AddTablets(*tablets);
+  table->AddTablets(tablets);
   auto tablet_map_checkout = tablet_map_.CheckOut();
-  for (TabletInfo* tablet : *tablets) {
+  for (const TabletInfoPtr& tablet : tablets) {
     InsertOrDie(tablet_map_checkout.get_ptr(), tablet->tablet_id(), tablet);
   }
 
-  return Status::OK();
+  return tablets;
 }
 
 int CatalogManager::GetNumReplicasFromPlacementInfo(const PlacementInfoPB& placement_info) {
@@ -3424,12 +3411,11 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
 Status CatalogManager::CreateTableInMemory(const CreateTableRequestPB& req,
                                            const Schema& schema,
                                            const PartitionSchema& partition_schema,
-                                           const bool create_tablets,
                                            const NamespaceId& namespace_id,
                                            const NamespaceName& namespace_name,
                                            const std::vector<Partition>& partitions,
                                            IndexInfoPB* index_info,
-                                           std::vector<TabletInfo*>* tablets,
+                                           TabletInfos* tablets,
                                            CreateTableResponsePB* resp,
                                            scoped_refptr<TableInfo>* table) {
   // Add the new table in "preparing" state.
@@ -3437,7 +3423,7 @@ Status CatalogManager::CreateTableInMemory(const CreateTableRequestPB& req,
   const TableId& table_id = (*table)->id();
 
   VLOG_WITH_PREFIX_AND_FUNC(2)
-      << "Table: " << (**table).ToString() << ", create_tablets: " << create_tablets;
+      << "Table: " << (**table).ToString() << ", create_tablets: " << (tablets ? "YES" : "NO");
 
   auto table_ids_map_checkout = table_ids_map_.CheckOut();
   (*table_ids_map_checkout)[table_id] = *table;
@@ -3446,8 +3432,8 @@ Status CatalogManager::CreateTableInMemory(const CreateTableRequestPB& req,
     table_names_map_[{namespace_id, req.name()}] = *table;
   }
 
-  if (create_tablets) {
-    RETURN_NOT_OK(CreateTabletsFromTable(partitions, *table, tablets));
+  if (tablets) {
+    *tablets = VERIFY_RESULT(CreateTabletsFromTable(partitions, *table));
   }
 
   if (resp != nullptr) {
@@ -3813,9 +3799,9 @@ scoped_refptr<TableInfo> CatalogManager::CreateTableInfo(const CreateTableReques
   return table;
 }
 
-TabletInfo* CatalogManager::CreateTabletInfo(TableInfo* table,
-                                             const PartitionPB& partition) {
-  TabletInfo* tablet = new TabletInfo(table, GenerateIdUnlocked(SysRowEntry::TABLET));
+TabletInfoPtr CatalogManager::CreateTabletInfo(TableInfo* table,
+                                               const PartitionPB& partition) {
+  auto tablet = make_scoped_refptr<TabletInfo>(table, GenerateIdUnlocked(SysRowEntry::TABLET));
   VLOG_WITH_PREFIX_AND_FUNC(2)
       << "Table: " << table->ToString() << ", tablet: " << tablet->ToString();
 
@@ -3963,7 +3949,7 @@ Result<TableDescription> CatalogManager::DescribeTable(
                     MasterError(MasterErrorPB::TABLE_CREATION_IS_IN_PROGRESS));
     }
 
-    table_info->GetAllTablets(&result.tablet_infos);
+    result.tablet_infos = table_info->GetTablets();
 
     namespace_id = table_info->namespace_id();
   }
@@ -4042,9 +4028,7 @@ Status CatalogManager::TruncateTable(const TableId& table_id,
 }
 
 void CatalogManager::SendTruncateTableRequest(const scoped_refptr<TableInfo>& table) {
-  vector<scoped_refptr<TabletInfo>> tablets;
-  table->GetAllTablets(&tablets);
-  for (const scoped_refptr<TabletInfo>& tablet : tablets) {
+  for (const auto& tablet : table->GetTablets()) {
     SendTruncateTabletRequest(tablet);
   }
 }
@@ -5023,13 +5007,13 @@ Status CatalogManager::IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
   return Status::OK();
 }
 
-Result<TabletInfo*> CatalogManager::RegisterNewTabletForSplit(
+Result<TabletInfoPtr> CatalogManager::RegisterNewTabletForSplit(
     TabletInfo* source_tablet_info, const PartitionPB& partition,
     TableInfo::WriteLock* table_write_lock) {
   const auto tablet_lock = source_tablet_info->LockForRead();
 
   auto table = source_tablet_info->table();
-  TabletInfo* new_tablet;
+  TabletInfoPtr new_tablet;
   {
     LockGuard lock(mutex_);
     new_tablet = CreateTabletInfo(table.get(), partition);
@@ -7888,8 +7872,7 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
 
 CHECKED_STATUS CatalogManager::SendAlterTableRequest(const scoped_refptr<TableInfo>& table,
                                                      const AlterTableRequestPB* req) {
-  vector<scoped_refptr<TabletInfo>> tablets;
-  table->GetAllTablets(&tablets);
+  auto tablets = table->GetTablets();
 
   bool is_ysql_table_with_transaction_metadata =
       table->GetTableType() == TableType::PGSQL_TABLE_TYPE &&
@@ -7998,8 +7981,7 @@ Status CatalogManager::DeleteTabletsAndSendRequests(
     return Status::OK();
   }
 
-  vector<scoped_refptr<TabletInfo>> tablets;
-  table->GetAllTablets(&tablets, IncludeSplitTablets::kTrue);
+  auto tablets = table->GetTablets(IncludeInactive::kTrue);
 
   std::sort(tablets.begin(), tablets.end(), [](const auto& lhs, const auto& rhs) {
     return lhs->tablet_id() < rhs->tablet_id();
@@ -8062,7 +8044,7 @@ Status CatalogManager::DeleteTabletListAndSendRequests(
     } else {
       LOG(INFO) << "Deleting tablet " << tablet->tablet_id() << " ...";
       tablet_lock.mutable_data()->set_state(SysTabletsEntryPB::DELETED, deletion_msg);
-      tablet->table()->RemoveSplitTablet(tablet->id());
+      tablet->table()->RemoveTablet(tablet->id(), InactiveOnly::kTrue);
     }
     if (tablet_lock->ListedAsHidden() && !was_hidden) {
       marked_as_hidden.push_back(tablet);
@@ -8283,7 +8265,7 @@ void CatalogManager::HandleAssignCreatingTablet(TabletInfo* tablet,
 
   // The "tablet creation" was already sent, but we didn't receive an answer
   // within the timeout. So the tablet will be replaced by a new one.
-  TabletInfo *replacement;
+  TabletInfoPtr replacement;
   {
     LockGuard lock(mutex_);
     replacement = CreateTabletInfo(tablet->table().get(), old_info.pb.partition());
@@ -8311,8 +8293,8 @@ void CatalogManager::HandleAssignCreatingTablet(TabletInfo* tablet,
     Substitute("Replacement for $0", tablet->tablet_id()));
 
   deferred->modified_tablets.push_back(tablet);
-  deferred->modified_tablets.push_back(replacement);
-  deferred->needs_create_rpc.push_back(replacement);
+  deferred->modified_tablets.push_back(replacement.get());
+  deferred->needs_create_rpc.push_back(replacement.get());
   VLOG(1) << "Replaced tablet " << tablet->tablet_id()
           << " with " << replacement->tablet_id()
           << " (table " << tablet->table()->ToString() << ")";
@@ -8512,7 +8494,7 @@ Status CatalogManager::ProcessPendingAssignments(const TabletInfos& tablets) {
           current_table = tablet_to_remove.table;
           lock.Unlock();
         }
-        if (current_table->RemoveTablet(tablet_to_remove.partition_key_start)) {
+        if (current_table->RemoveTablet(tablet_to_remove.tablet_id)) {
           if (VLOG_IS_ON(1)) {
             if (!lock.locked()) {
               lock = current_table->LockForRead();
@@ -9163,7 +9145,7 @@ void CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {
   *out << "Tables:\n";
   for (const TableInfoMap::value_type& e : ids_copy) {
     TableInfo* t = e.second.get();
-    vector<scoped_refptr<TabletInfo>> table_tablets;
+    TabletInfos table_tablets;
     {
       auto l = t->LockForRead();
       const TableName& name = l->name();
@@ -9188,7 +9170,7 @@ void CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {
       *out << "  metadata: " << l->pb.ShortDebugString() << "\n";
 
       *out << "  tablets:\n";
-      t->GetAllTablets(&table_tablets);
+      table_tablets = t->GetTablets();
     }
     for (const scoped_refptr<TabletInfo>& tablet : table_tablets) {
       auto l_tablet = tablet->LockForRead();
@@ -9836,8 +9818,7 @@ Status CatalogManager::GetYQLPartitionsVTable(std::shared_ptr<SystemTablet>* tab
       std::make_pair(kSystemNamespaceId, kSystemPartitionsTableName));
   SCHECK(table != nullptr, NotFound, "YQL system.partitions table not found");
 
-  vector<scoped_refptr<TabletInfo>> tablets;
-  table->GetAllTablets(&tablets);
+  auto tablets = table->GetTablets();
   SCHECK(tablets.size() == 1, NotFound, "YQL system.partitions tablet not found");
   *tablet = std::dynamic_pointer_cast<SystemTablet>(
       VERIFY_RESULT(GetSystemTablet(tablets[0]->tablet_id())));

@@ -275,8 +275,7 @@ void MasterServiceImpl::GetTabletLocations(const GetTabletLocationsRequestPB* re
     auto tables = server_->catalog_manager()->GetTables(GetTablesMode::kAll);
     const auto& tablet_id = req->tablet_ids(0);
     for (const auto& table : tables) {
-      TabletInfos tablets;
-      table->GetAllTablets(&tablets);
+      TabletInfos tablets = table->GetTablets();
       for (const auto& tablet : tablets) {
         if (tablet->tablet_id() == tablet_id) {
           TableType table_type;

@@ -138,8 +138,7 @@ void CatalogManagerUtil::CalculateTxnLeaderMap(std::map<std::string, int>* txn_m
     if (!is_txn_table) {
       continue;
     }
-    TabletInfos tablets;
-    table->GetAllTablets(&tablets);
+    TabletInfos tablets = table->GetTablets();
     (*num_txn_tablets) += tablets.size();
     for (const auto& tablet : tablets) {
       auto replication_locations = tablet->GetReplicaLocations();

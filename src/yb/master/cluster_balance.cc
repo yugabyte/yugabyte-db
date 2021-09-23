@@ -617,9 +617,8 @@ void ClusterLoadBalancer::ResetTableStatePtr(const TableId& table_id, Options* o
 }
 
 Status ClusterLoadBalancer::AnalyzeTabletsUnlocked(const TableId& table_uuid) {
-  vector<scoped_refptr<TabletInfo>> tablets;
-  Status s = GetTabletsForTable(table_uuid, &tablets);
-  YB_RETURN_NOT_OK_PREPEND(s, "Skipping table " + table_uuid + "due to error: ");
+  auto tablets = VERIFY_RESULT_PREPEND(
+      GetTabletsForTable(table_uuid), "Skipping table " + table_uuid + "due to error: ");
 
   // Loop over tablet map to register the load that is already live in the cluster.
   for (const auto& tablet : tablets) {
@@ -1378,19 +1377,16 @@ const scoped_refptr<TableInfo> ClusterLoadBalancer::GetTableInfo(const TableId& 
   return catalog_manager_->GetTableInfoUnlocked(table_uuid);
 }
 
-const Status ClusterLoadBalancer::GetTabletsForTable(
-    const TableId& table_uuid, vector<scoped_refptr<TabletInfo>>* tablets) const {
-  scoped_refptr<TableInfo> table_info = GetTableInfo(table_uuid);
+Result<TabletInfos> ClusterLoadBalancer::GetTabletsForTable(const TableId& table_uuid) const {
+  auto table_info = GetTableInfo(table_uuid);
 
   if (table_info == nullptr) {
-    return STATUS(InvalidArgument,
-                  Substitute("Invalid UUID '$0' - no entry found in catalog manager table map.",
-                             table_uuid));
+    return STATUS_FORMAT(
+        InvalidArgument, "Invalid UUID '$0' - no entry found in catalog manager table map",
+        table_uuid);
   }
 
-  table_info->GetAllTablets(tablets);
-
-  return Status::OK();
+  return table_info->GetTablets();
 }
 
 const TableInfoMap& ClusterLoadBalancer::GetTableMap() const {

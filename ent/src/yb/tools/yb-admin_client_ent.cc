@@ -479,10 +479,11 @@ Result<TxnSnapshotId> ClusterAdminClient::SuitableSnapshotId(
           return VERIFY_RESULT(FullyDecodeTxnSnapshotId(snapshot.id()));
         }
       }
-    }
-    if (last_snapshot_time > restore_at) {
-      return STATUS_FORMAT(
-          IllegalState, "Cannot restore at $0, last snapshot: $1", restore_at, last_snapshot_time);
+      if (last_snapshot_time > restore_at) {
+        return STATUS_FORMAT(
+            IllegalState, "Cannot restore at $0, last snapshot: $1, snapshots: $2",
+            restore_at, last_snapshot_time, resp.schedules()[0].snapshots());
+      }
     }
     RpcController rpc;
     rpc.set_deadline(deadline);
