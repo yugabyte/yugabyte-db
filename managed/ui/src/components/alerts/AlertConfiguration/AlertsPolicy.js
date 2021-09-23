@@ -76,7 +76,7 @@ export class AlertsPolicy extends Component {
 
     return (
       <div className="condition-row-container">
-        <Row>
+        <Row className="marginBottom">
           <Col lg={2}>Severity</Col>
           <Col lg={2}>Condition</Col>
           <Col lg={5}>Threshold</Col>
@@ -113,15 +113,13 @@ export class AlertsPolicy extends Component {
             <Col lg={1}>
               <div className="flex-container">
                 <p className="percent-text">{currentMetric?.thresholdUnitName}</p>
+                {fields.length > 1 && !currentMetric?.thresholdReadOnly ? (
+                  <i
+                    className="fa fa-remove on-prem-row-delete-btn"
+                    onClick={() => this.removeRow(instanceTypeIdx)}
+                  />
+                ) : null}
               </div>
-            </Col>
-            <Col lg={1}>
-              {fields.length > 1 && !currentMetric?.thresholdReadOnly ? (
-                <i
-                  className="fa fa-minus-circle on-prem-row-delete-btn"
-                  onClick={() => this.removeRow(instanceTypeIdx)}
-                />
-              ) : null}
             </Col>
           </Row>
         ))}
