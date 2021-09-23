@@ -101,9 +101,9 @@ In particular, some list operations (insert at an index and remove elements) req
 
 ### Collections with many elements
 
-Each element inside a collection ends up as a [separate key value](../../architecture/docdb/persistence#ycql-collection-type-example) in DocDB adding per-element overhead. 
-If your collections are immutable, or you update the whole collection in full, consider using the `JSONB` data type. An alternative would also be to use ProtoBuf or FlatBuffers and store the serialized data in a `BLOB` column.
+Each element inside a collection ends up as a [separate key value](../../architecture/docdb/persistence#ycql-collection-type-example) in DocDB adding per-element overhead.
 
+If your collections are immutable, or you update the whole collection in full, consider using the `JSONB` data type. An alternative would also be to use ProtoBuf or FlatBuffers and store the serialized data in a `BLOB` column.
 
 ### Use `partition_hash` for large table scans
 
