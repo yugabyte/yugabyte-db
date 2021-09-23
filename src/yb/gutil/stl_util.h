@@ -988,6 +988,12 @@ template<typename T> T* release_ptr(T **ptr) {
   return tmp;
 }
 
+template <class Predicate, class Collection>
+void EraseIf(const Predicate& predicate, Collection* collection) {
+  collection->erase(std::remove_if(collection->begin(), collection->end(), predicate),
+                    collection->end());
+}
+
 template<typename T>
 std::set<T> VectorToSet(const std::vector<T>& v) {
   return std::set<T>(v.begin(), v.end());

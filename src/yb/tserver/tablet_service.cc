@@ -1267,22 +1267,34 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
       tablet_peers.push_back(tablet_peer);
     }
   }
-  for (const TabletPeerPtr& tablet_peer : tablet_peers) {
-    resp->set_failed_tablet_id(tablet_peer->tablet()->tablet_id());
-    auto tablet = tablet_peer->tablet();
-    if (req->is_compaction()) {
-      tablet->ForceRocksDBCompactInTest();
-    } else {
-      RETURN_UNKNOWN_ERROR_IF_NOT_OK(tablet->Flush(tablet::FlushMode::kAsync), resp, &context);
-    }
-    resp->clear_failed_tablet_id();
-  }
+  switch (req->operation()) {
+    case FlushTabletsRequestPB::FLUSH:
+      for (const auto& tablet_peer : tablet_peers) {
+        resp->set_failed_tablet_id(tablet_peer->tablet_id());
+        RETURN_UNKNOWN_ERROR_IF_NOT_OK(
+            tablet_peer->tablet()->Flush(tablet::FlushMode::kAsync), resp, &context);
+        resp->clear_failed_tablet_id();
+      }
 
-  // Wait for end of all flush operations.
-  for (const TabletPeerPtr& tablet_peer : tablet_peers) {
-    resp->set_failed_tablet_id(tablet_peer->tablet()->tablet_id());
-    RETURN_UNKNOWN_ERROR_IF_NOT_OK(tablet_peer->tablet()->WaitForFlush(), resp, &context);
-    resp->clear_failed_tablet_id();
+      // Wait for end of all flush operations.
+      for (const auto& tablet_peer : tablet_peers) {
+        resp->set_failed_tablet_id(tablet_peer->tablet()->tablet_id());
+        RETURN_UNKNOWN_ERROR_IF_NOT_OK(tablet_peer->tablet()->WaitForFlush(), resp, &context);
+        resp->clear_failed_tablet_id();
+      }
+      break;
+    case FlushTabletsRequestPB::COMPACT:
+      for (const auto& tablet_peer : tablet_peers) {
+        tablet_peer->tablet()->ForceRocksDBCompactInTest();
+      }
+      break;
+    case FlushTabletsRequestPB::LOG_GC:
+      for (const auto& tablet : tablet_peers) {
+        resp->set_failed_tablet_id(tablet->tablet_id());
+        RETURN_UNKNOWN_ERROR_IF_NOT_OK(tablet->RunLogGC(), resp, &context);
+        resp->clear_failed_tablet_id();
+      }
+      break;
   }
 
   context.RespondSuccess();
