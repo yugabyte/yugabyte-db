@@ -42,11 +42,11 @@ public class LocalYBClientService implements YBClientService {
 
   private YBClient getNewClient(String masterHPs, String certFile) {
     YBClientService.Config config = new YBClientService.Config(masterHPs, certFile);
-    return getClient(config);
+    return getClientWithConfig(config);
   }
 
   @Override
-  public YBClient getClient(Config config) {
+  public YBClient getClientWithConfig(Config config) {
     if (config == null || StringUtils.isBlank(config.getMasterHostPorts())) {
       return null;
     }
