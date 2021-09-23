@@ -104,7 +104,6 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       universe = Universe.getOrBadRequest(universe.universeUUID);
       checkIfNodesExist(universe);
       Cluster primaryCluster = taskParams().getPrimaryCluster();
-      log.info(primaryCluster.userIntent.ysqlPassword);
 
       // Check if nodes are able to be provisioned/configured properly.
       Map<NodeInstance, String> failedNodes = new HashMap<>();

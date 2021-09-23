@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner;
 import static com.yugabyte.yw.models.helpers.CommonUtils.getDurationSeconds;
 
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
+import com.yugabyte.yw.common.password.RedactingService;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.ScheduleTask;
@@ -125,7 +126,7 @@ public class TaskRunner implements Runnable {
     // Create a new task info object.
     taskInfo = new TaskInfo(taskType);
     // Set the task details.
-    taskInfo.setTaskDetails(task.getTaskDetails());
+    taskInfo.setTaskDetails(RedactingService.filterSecretFields(task.getTaskDetails()));
     // Set the owner info.
     String hostname = "";
     try {
