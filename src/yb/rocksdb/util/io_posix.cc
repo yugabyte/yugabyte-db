@@ -45,6 +45,7 @@
 #include "yb/rocksdb/util/posix_logger.h"
 #include "yb/rocksdb/util/sync_point.h"
 
+#include "yb/util/errno.h"
 #include "yb/util/file_system_posix.h"
 #include "yb/util/malloc.h"
 #include "yb/util/slice.h"
@@ -169,10 +170,7 @@ Status PosixMmapFile::MapNewRegion() {
       // fallback to posix_fallocate
       alloc_status = posix_fallocate(fd_, file_offset_, map_size_);
     }
-    if (alloc_status != 0) {
-      return STATUS(IOError, "Error allocating space to file : " + filename_ +
-                             "Error : " + strerror(alloc_status));
-    }
+    yb::LogFatalForFallocateFailure(alloc_status, errno);
   }
 
   TEST_KILL_RANDOM("PosixMmapFile::Append:1", rocksdb_kill_odds);
@@ -189,7 +187,7 @@ Status PosixMmapFile::MapNewRegion() {
   last_sync_ = base_;
   return Status::OK();
 #else
-  return STATUS(NotSupported, "This platform doesn't support fallocate()");
+  YB_LOG_FIRST_N(FATAL, 1) << "This platform does not support fallocate().";
 #endif
 }
 
@@ -343,11 +341,8 @@ Status PosixMmapFile::Allocate(uint64_t offset, uint64_t len) {
         fd_, fallocate_with_keep_size_ ? FALLOC_FL_KEEP_SIZE : 0,
           static_cast<off_t>(offset), static_cast<off_t>(len));
   }
-  if (alloc_status == 0) {
-    return Status::OK();
-  } else {
-    return STATUS_IO_ERROR(filename_, errno);
-  }
+  yb::LogFatalForFallocateFailure(alloc_status, errno);
+  return Status::OK();
 }
 #endif
 
@@ -475,11 +470,8 @@ Status PosixWritableFile::Allocate(uint64_t offset, uint64_t len) {
         fd_, fallocate_with_keep_size_ ? FALLOC_FL_KEEP_SIZE : 0,
         static_cast<off_t>(offset), static_cast<off_t>(len));
   }
-  if (alloc_status == 0) {
-    return Status::OK();
-  } else {
-    return STATUS_IO_ERROR(filename_, errno);
-  }
+  yb::LogFatalForFallocateFailure(alloc_status, errno);
+  return Status::OK();
 }
 
 Status PosixWritableFile::RangeSync(uint64_t offset, uint64_t nbytes) {
