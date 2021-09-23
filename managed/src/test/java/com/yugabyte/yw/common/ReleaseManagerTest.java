@@ -23,6 +23,7 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
 import java.io.File;
 import java.io.IOException;
+import java.lang.Object;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -94,6 +95,24 @@ public class ReleaseManagerTest extends FakeDBApplication {
                 versionPath, "yugabyte-" + version + "-helm.tar.gz", "Sample helm chart data");
           }
         });
+  }
+
+  @Test
+  public void testRemoveRelease() {
+    List<String> versions = ImmutableList.of("0.0.1");
+    createDummyReleases(versions, false, false, false, false);
+    Object metadata =
+        ReleaseManager.ReleaseMetadata.fromLegacy("0.0.1", "/path/to/yugabyte-0.0.1.tar.gz");
+    when(appConfig.getString("yb.releases.path")).thenReturn(TMP_STORAGE_PATH);
+    Map<String, Object> temp = new HashMap<String, Object>();
+    temp.put("0.0.1", metadata);
+    when(configHelper.getConfig(SoftwareReleases)).thenReturn(temp);
+    Map<String, ReleaseManager.ReleaseMetadata> releases =
+        releaseManager.getLocalReleases(TMP_STORAGE_PATH);
+    assertEquals(1, releases.size());
+    releaseManager.removeRelease("0.0.1");
+    releases = releaseManager.getLocalReleases(TMP_STORAGE_PATH);
+    assertEquals(0, releases.size());
   }
 
   @Test

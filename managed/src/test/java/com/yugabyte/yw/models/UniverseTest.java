@@ -634,6 +634,9 @@ public class UniverseTest extends FakeDBApplication {
     ModelFactory.createUniverse(defaultCustomer.getCustomerId(), certUUID);
     Set<Universe> universes = Universe.universeDetailsIfCertsExists(certUUID, defaultCustomer.uuid);
     assertEquals(universes.size(), 1);
+
+    universes = Universe.universeDetailsIfReleaseExists("");
+    assertEquals(universes.size(), 0);
   }
 
   private UserIntent getBaseIntent() {
