@@ -132,6 +132,10 @@ class YBTableName {
 
   bool is_system() const;
 
+  bool is_cql_namespace() const {
+    return namespace_type_ == YQL_DATABASE_CQL;
+  }
+
   bool is_redis_namespace() const {
     return namespace_type_ == YQL_DATABASE_REDIS;
   }
