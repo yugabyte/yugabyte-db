@@ -33,7 +33,7 @@ public interface YBClientService {
 
   YBClient getClient(String masterHostPorts, String certFile);
 
-  YBClient getClient(Config config);
+  YBClient getClientWithConfig(Config config);
 
   void closeClient(YBClient client, String masterHostPorts);
 }
