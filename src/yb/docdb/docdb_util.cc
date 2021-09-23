@@ -417,6 +417,8 @@ Status DocDBRocksDBUtil::ReinitDBOptions() {
   regular_db_options_.compaction_filter_factory =
       std::make_shared<docdb::DocDBCompactionFilterFactory>(
           retention_policy_, &KeyBounds::kNoBounds);
+  regular_db_options_.compaction_file_filter_factory =
+      compaction_file_filter_factory_;
   if (!regular_db_) {
     return Status::OK();
   }

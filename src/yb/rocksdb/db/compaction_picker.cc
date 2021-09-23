@@ -35,6 +35,7 @@
 
 #include <gflags/gflags.h>
 
+#include "yb/rocksdb/compaction_filter.h"
 #include "yb/rocksdb/db/column_family.h"
 #include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/util/log_buffer.h"
@@ -1231,8 +1232,22 @@ std::vector<std::vector<UniversalCompactionPicker::SortedRun>>
                                                    const ImmutableCFOptions& ioptions,
                                                    uint64_t max_file_size) {
   std::vector<std::vector<SortedRun>> ret(1);
+  std::unique_ptr<CompactionFileFilter> file_filter;
+  // CompactionFileFilterFactory is used to determine files that can be directly removed during
+  // compaction rather than requiring a full iteration through the files.
+  if (ioptions.compaction_file_filter_factory) {
+    // Compaction file filter factory only looks at files in Level 0.
+    file_filter =
+        ioptions.compaction_file_filter_factory->CreateCompactionFileFilter(vstorage.LevelFiles(0));
+  }
+
   for (FileMetaData* f : vstorage.LevelFiles(0)) {
-    if (f->fd.GetTotalFileSize() <= max_file_size) {
+    if (file_filter && file_filter->Filter(f) == FilterDecision::kDiscard) {
+      f->delete_after_compaction = true;
+    }
+    // Any files that can be directly removed during compaction can be included, even if they
+    // exceed the "max file size for compaction."
+    if (f->fd.GetTotalFileSize() <= max_file_size || f->delete_after_compaction) {
       ret.back().emplace_back(0, f, f->fd.GetTotalFileSize(), f->compensated_file_size,
           f->being_compacted);
     // If last sequence is empty it means that there are multiple too-large-to-compact files in
