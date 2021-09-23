@@ -135,39 +135,6 @@ struct LogAnchor {
   DISALLOW_COPY_AND_ASSIGN(LogAnchor);
 };
 
-// Helper class that will anchor the minimum log index recorded.
-class MinLogIndexAnchorer {
- public:
-  // Construct anchorer for specified registry that will register anchors with
-  // the specified owner name.
-  MinLogIndexAnchorer(LogAnchorRegistry* registry, std::string owner);
-
-  // The destructor will unregister the anchor if it is registered.
-  ~MinLogIndexAnchorer();
-
-  // If op_id is less than the minimum index registered so far, or if no indexes
-  // are currently registered, anchor on 'log_index'.
-  void AnchorIfMinimum(int64_t log_index);
-
-  // Un-anchors the earliest index (which is the only one tracked).
-  // If no minimum is known (no anchor registered), returns OK.
-  CHECKED_STATUS ReleaseAnchor();
-
-  // Returns the first recorded log index, kInvalidOpIdIndex if there's none.
-  int64_t minimum_log_index() const;
-
- private:
-  const scoped_refptr<LogAnchorRegistry> registry_;
-  const std::string owner_;
-  LogAnchor anchor_;
-
-  // The index currently anchored, or kInvalidOpIdIndex if no anchor has yet been registered.
-  int64_t minimum_log_index_;
-  mutable simple_spinlock lock_;
-
-  DISALLOW_COPY_AND_ASSIGN(MinLogIndexAnchorer);
-};
-
 } // namespace log
 } // namespace yb
 
