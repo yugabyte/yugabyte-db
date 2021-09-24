@@ -406,6 +406,32 @@ public class BackupsControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testDeleteFailedBackup() {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST6");
+    BackupTableParams bp = new BackupTableParams();
+    bp.storageConfigUUID = customerConfig.configUUID;
+    bp.universeUUID = defaultUniverse.universeUUID;
+    Backup backup = Backup.create(defaultCustomer.uuid, bp);
+    backup.transitionState(BackupState.Failed);
+    List<String> backupUUIDList = new ArrayList<>();
+    backupUUIDList.add(backup.backupUUID.toString());
+    UUID fakeTaskUUID = UUID.randomUUID();
+    ObjectNode resultNode = Json.newObject();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    ArrayNode arrayNode = resultNode.putArray("backupUUID");
+    for (String item : backupUUIDList) {
+      arrayNode.add(item);
+    }
+    Result result = deleteBackup(resultNode, null);
+    assertEquals(200, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    CustomerTask customerTask = CustomerTask.findByTaskUUID(fakeTaskUUID);
+    assertEquals(customerTask.getTargetUUID(), backup.getBackupInfo().universeUUID);
+    assertEquals(json.get("taskUUID").size(), 1);
+    assertAuditEntry(1, defaultCustomer.uuid);
+  }
+
+  @Test
   public void testStopBackup() throws IOException, InterruptedException, ExecutionException {
     ProcessBuilder processBuilderObject = new ProcessBuilder("test");
     Process process = processBuilderObject.start();
