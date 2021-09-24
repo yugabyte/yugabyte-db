@@ -25,16 +25,13 @@ import time
 from packaging import version
 
 from yb.common_util import (
-    YB_SRC_ROOT, get_thirdparty_dir, get_download_cache_dir, load_yaml_file, init_env, shlex_join,
+    YB_SRC_ROOT, get_thirdparty_dir, load_yaml_file, init_env, shlex_join,
     write_yaml_file
 )
 
-from downloadutil.downloader import Downloader
-from downloadutil.download_config import DownloadConfig
-
 
 FOSSA_VERSION_RE = re.compile(r'^(?:fossa-cli|spectrometer:) version ([^ ]+) .*$')
-MIN_FOSSA_CLI_VERSION = '1.1.7'
+MIN_FOSSA_CLI_VERSION = '2.15.19'
 
 
 def should_include_fossa_module(name: str) -> bool:
@@ -78,80 +75,32 @@ def main():
             f"fossa version too old: {fossa_version} "
             f"(expected {MIN_FOSSA_CLI_VERSION} or later)")
 
-    download_cache_path = get_download_cache_dir()
-    logging.info(f"Using the download cache directory {download_cache_path}")
-    download_config = DownloadConfig(
-        verbose=args.verbose,
-        cache_dir_path=download_cache_path
-    )
-    downloader = Downloader(download_config)
-
     fossa_yml_path = os.path.join(YB_SRC_ROOT, '.fossa-local.yml')
     fossa_yml_data = load_yaml_file(fossa_yml_path)
-    modules = fossa_yml_data['analyze']['modules']
-    # fossa v2.6.1 does not pick up project name from config file version 2 format.
-    # TODO: update to config file version 3
-    project_option = ["--project", fossa_yml_data['cli']['project']]
 
-    thirdparty_dir = get_thirdparty_dir()
-    fossa_modules_path = os.path.join(thirdparty_dir, 'fossa_modules.yml')
-
-    seen_urls = set()
+    #####################
+    # Removed logic to pull in thirdparty modules for fossa analysis.
+    # v3 does not handle module definitions the same way.
+    # Analysis of thirdparty dependencies will be revisited, and maybe done separately.
+    #####################
 
     start_time_sec = time.time()
-    if os.path.exists(fossa_modules_path):
-        thirdparty_fossa_modules_data = load_yaml_file(fossa_modules_path)
-        for thirdparty_module_data in thirdparty_fossa_modules_data:
-            fossa_module_data = thirdparty_module_data['fossa_module']
-            module_name = fossa_module_data['name']
-            if not should_include_fossa_module(module_name):
-                continue
-            fossa_module_yb_metadata = thirdparty_module_data['yb_metadata']
-            expected_sha256 = fossa_module_yb_metadata['sha256sum']
-            url = fossa_module_yb_metadata['url']
-            if url in seen_urls:
-                # Due to a bug in some versions of yugabyte-db-thirdparty scripts, as of 04/20/2021
-                # we may include the same dependency twice in the fossa_modules.yml file. We just
-                # skip the duplicates here.
-                continue
-            seen_urls.add(url)
+    effective_fossa_yml_path = os.path.join(YB_SRC_ROOT, '.fossa.yml')
+    write_yaml_file(fossa_yml_data, effective_fossa_yml_path)
 
-            logging.info(f"Adding module from {url}")
-            downloaded_path = downloader.download_url(
-                url,
-                download_parent_dir_path=None,  # Download to cache directly.
-                verify_checksum=True,
-                expected_sha256=expected_sha256
-            )
-            fossa_module_data['target'] = downloaded_path
-            modules.append(fossa_module_data)
-
-        # TODO: Once we move to v2 fossa, we may want to use fossa-dep.yml file instead of
-        #       re-writing the main file.
-        effective_fossa_yml_path = os.path.join(YB_SRC_ROOT, '.fossa.yml')
-        write_yaml_file(fossa_yml_data, effective_fossa_yml_path)
-
-        logging.info(f"Wrote the expanded FOSSA file to {effective_fossa_yml_path}")
-    else:
-        logging.warning(
-            f"File {fossa_modules_path} does not exist. Some C/C++ dependencies will be missing "
-            f"from FOSSA analysis.")
-
-        effective_fossa_yml_path = fossa_yml_path
-
+    logging.info(f"Wrote the {fossa_yml_path} FOSSA file to {effective_fossa_yml_path}")
     elapsed_time_sec = time.time() - start_time_sec
     logging.info("Generated the effective FOSSA configuration file in %.1f sec", elapsed_time_sec)
     logging.info(f"Running command: {shlex_join(fossa_cmd_line)})")
-    subprocess.check_call(fossa_cmd_line + project_option)
+    subprocess.check_call(fossa_cmd_line)
 
     # Platform project
     fossa_yml_plat_path = os.path.join(YB_SRC_ROOT, '.fossa-platform.yml')
     fossa_yml_plat_data = load_yaml_file(fossa_yml_plat_path)
-    project_plat_option = ["--project", fossa_yml_plat_data['cli']['project']]
-
     write_yaml_file(fossa_yml_plat_data, effective_fossa_yml_path)
-
-    subprocess.check_call(fossa_cmd_line + project_plat_option)
+    logging.info(f"Wrote the {fossa_yml_plat_path} FOSSA file to {effective_fossa_yml_path}")
+    logging.info(f"Running command: {shlex_join(fossa_cmd_line)})")
+    subprocess.check_call(fossa_cmd_line)
 
 
 if __name__ == '__main__':
