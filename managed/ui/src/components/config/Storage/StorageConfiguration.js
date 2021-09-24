@@ -5,7 +5,7 @@ import { Tab, Row, Col } from 'react-bootstrap';
 import _ from 'lodash';
 import { YBTabsPanel } from '../../panels';
 import { YBButton, YBTextInputWithLabel } from '../../common/forms/fields';
-import { withRouter } from 'react-router';
+import { browserHistory, withRouter } from 'react-router';
 import { Field, SubmissionError } from 'redux-form';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBLoading } from '../../common/indicators';
@@ -22,6 +22,8 @@ import {
   isNonEmptyArray
 } from '../../../utils/ObjectUtils';
 import { Formik } from 'formik';
+
+const DEFAULT_BACKUP_PATH = '/config/backup';
 
 const storageConfigTypes = {
   NFS: {
@@ -229,6 +231,15 @@ class StorageConfiguration extends Component {
     this.props.fetchCustomerConfigs();
   }
 
+  componentDidUpdate = (props) => {
+    const {
+      location: { pathname }
+    } = props;
+    if (pathname === DEFAULT_BACKUP_PATH) {
+      browserHistory.push(`${pathname}/${Object.keys(storageConfigTypes)[0].toLowerCase()}`);
+    }
+  };
+
   /**
    * This method will enable edit options for respective
    * backup config.
@@ -340,10 +351,7 @@ class StorageConfiguration extends Component {
       customerConfigs,
       initialValues
     } = this.props;
-    const {
-      iamRoleEnabled,
-      editingTab
-    } = this.state;
+    const { iamRoleEnabled, editingTab } = this.state;
     const activeTab = this.props.activeTab || Object.keys(storageConfigTypes)[0].toLowerCase();
     const config = this.getConfigByType(activeTab, customerConfigs);
 
