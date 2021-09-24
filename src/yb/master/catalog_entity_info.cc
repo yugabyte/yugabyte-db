@@ -353,6 +353,16 @@ void TableInfo::AddTablet(const TabletInfoPtr& tablet) {
   AddTabletUnlocked(tablet);
 }
 
+void TableInfo::ReplaceTablet(const TabletInfoPtr& old_tablet, const TabletInfoPtr& new_tablet) {
+  std::lock_guard<decltype(lock_)> l(lock_);
+  auto it = partitions_.find(old_tablet->metadata().dirty().pb.partition().partition_key_start());
+  if (it != partitions_.end() && it->second == old_tablet.get()) {
+    partitions_.erase(it);
+  }
+  AddTabletUnlocked(new_tablet);
+}
+
+
 void TableInfo::AddTablets(const TabletInfos& tablets) {
   std::lock_guard<decltype(lock_)> l(lock_);
   for (const auto& tablet : tablets) {
@@ -396,8 +406,9 @@ void TableInfo::AddTabletUnlocked(const TabletInfoPtr& tablet) {
   }
 
   auto it = p.first;
-  const auto old_split_depth = it->second->LockForRead()->pb.split_depth();
-  if (tablet_meta.split_depth() > old_split_depth) {
+  auto old_tablet_lock = it->second->LockForRead();
+  const auto old_split_depth = old_tablet_lock->pb.split_depth();
+  if (tablet_meta.split_depth() > old_split_depth || old_tablet_lock->is_deleted()) {
     VLOG(1) << "Replacing tablet " << it->second->tablet_id()
             << " (split_depth = " << old_split_depth << ")"
             << " with tablet " << tablet->tablet_id()
@@ -405,6 +416,10 @@ void TableInfo::AddTabletUnlocked(const TabletInfoPtr& tablet) {
     it->second = tablet.get();
     return;
   }
+
+  LOG_IF(DFATAL, tablet_meta.split_depth() == old_split_depth)
+      << "Two tablets with the same partition key start and split depth: "
+      << tablet_meta.ShortDebugString() << " and " << old_tablet_lock->pb.ShortDebugString();
 
   // TODO: can we assert that the replaced tablet is not in Running state?
   // May be a little tricky since we don't know whether to look at its committed or
@@ -480,7 +495,7 @@ bool TableInfo::AreAllTabletsDeleted() const {
 
 bool TableInfo::IsCreateInProgress() const {
   SharedLock<decltype(lock_)> l(lock_);
-  for (const auto& e : tablets_) {
+  for (const auto& e : partitions_) {
     auto tablet_info_lock = e.second->LockForRead();
     if (!tablet_info_lock->is_running() && tablet_info_lock->pb.split_depth() == 0) {
       return true;
