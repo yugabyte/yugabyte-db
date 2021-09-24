@@ -17,6 +17,8 @@
 
 #include <ldap.h>
 
+#include <boost/algorithm/string.hpp>
+
 #include "yb/common/ql_value.h"
 
 #include "yb/gutil/strings/escaping.h"
@@ -678,10 +680,26 @@ Result<LDAPHolder> InitializeLDAPConnection(const char *uris) {
   return ldap;
 }
 
+/*
+ * Return a newly allocated string copied from "pattern" with all
+ * occurrences of the placeholder "$username" replaced with "user_name".
+ */
+std::string FormatSearchFilter(const std::string& pattern, const std::string& user_name) {
+  return boost::replace_all_copy(pattern, "$username", user_name);
+}
+
 Result<bool> CheckLDAPAuth(const ql::AuthResponseRequest::AuthQueryParameters& params) {
-  VLOG(4) << "Attempting ldap_initialize() with " << FLAGS_ycql_ldap_server;
+  if (params.username.empty() || params.password.empty()) {
+    // Refer https://datatracker.ietf.org/doc/html/rfc4513#section-6.3.1 for details. Applications
+    // are required to explicitly have this check and can't rely on an LDAP server to report
+    // invalid credentials error.
+    return STATUS(InvalidArgument, "Empty username and/or password not allowed");
+  }
+
   if (FLAGS_ycql_ldap_server.empty())
     return STATUS(InvalidArgument, "LDAP server not specified");
+
+  VLOG(4) << "Attempting ldap_initialize() with " << FLAGS_ycql_ldap_server;
 
   const auto& uris = FLAGS_ycql_ldap_server;
   auto ldap = VERIFY_RESULT(InitializeLDAPConnection(uris.c_str()));
@@ -689,6 +707,11 @@ Result<bool> CheckLDAPAuth(const ql::AuthResponseRequest::AuthQueryParameters& p
   int r;
   std::string fulluser;
   if (!FLAGS_ycql_ldap_base_dn.empty()) {
+    if (FLAGS_ycql_ldap_bind_dn.empty() || FLAGS_ycql_ldap_bind_passwd.empty()) {
+      return STATUS(InvalidArgument,
+                    "Empty bind dn and/or bind password not allowed for search+bind mode");
+    }
+
     /*
     * First perform an LDAP search to find the DN for the user we are
     * trying to log in as.
@@ -733,10 +756,9 @@ Result<bool> CheckLDAPAuth(const ql::AuthResponseRequest::AuthQueryParameters& p
 
     std::string filter;
     /* Build a custom filter or a single attribute filter? */
-    // TODO(Piyush): Support the search filter mode
-    // if (FLAGS_ycql_ldap_search_filter)
-    //   filter = FormatSearchFilter(FLAGS_ycql_ldap_search_filter, params.username);
-    if (!FLAGS_ycql_ldap_search_attribute.empty()) {
+    if (!FLAGS_ycql_ldap_search_filter.empty()) {
+      filter = FormatSearchFilter(FLAGS_ycql_ldap_search_filter, params.username);
+    } else if (!FLAGS_ycql_ldap_search_attribute.empty()) {
       filter = "(" + FLAGS_ycql_ldap_search_attribute + "=" + params.username + ")";
     } else {
       filter = "(uid=" + params.username + ")";
@@ -854,8 +876,8 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessAuthResult(const string& saved_hash
     } else if (!*ldap_auth_result) {
       response = make_unique<ErrorResponse>(
           *request_, ErrorResponse::Code::BAD_CREDENTIALS,
-          "Failed to authenticate using LDAP: Provided username " + params.username +
-          " and/or password are incorrect");
+          "Failed to authenticate using LDAP: Provided username '" + params.username +
+          "' and/or password are incorrect");
     } else {
       authenticated = true;
       call_->ql_session()->set_current_role_name(params.username);
@@ -866,12 +888,12 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessAuthResult(const string& saved_hash
     // Username doesn't have a password, but one is required for authentication. Return an error.
     response = make_unique<ErrorResponse>(
         *request_, ErrorResponse::Code::BAD_CREDENTIALS,
-        "Provided username " + params.username + " and/or password are incorrect");
+        "Provided username '" + params.username + "' and/or password are incorrect");
   } else {
     if (!service_impl_->CheckPassword(params.password, saved_hash)) {
       response = make_unique<ErrorResponse>(
           *request_, ErrorResponse::Code::BAD_CREDENTIALS,
-          "Provided username " + params.username + " and/or password are incorrect");
+          "Provided username '" + params.username + "' and/or password are incorrect");
     } else if (!can_login) {
       response = make_unique<ErrorResponse>(
           *request_, ErrorResponse::Code::BAD_CREDENTIALS,
@@ -919,7 +941,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessResult(const ExecutedResult::Shared
           if (row_block->row_count() != 1) {
             response = make_unique<ErrorResponse>(
                 *request_, ErrorResponse::Code::BAD_CREDENTIALS,
-                "Provided username " + params.username + " and/or password are incorrect");
+                "Provided username '" + params.username + "' and/or password are incorrect");
           } else {
             const auto& row = row_block->row(0);
             const auto& schema = row_block->schema();
