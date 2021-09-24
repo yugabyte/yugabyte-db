@@ -282,7 +282,9 @@ public class Backup extends Model {
     // Or completed to deleted state.
     if ((this.state == BackupState.InProgress && this.state != newState)
         || (this.state == BackupState.Completed && newState == BackupState.Deleted)
-        || (this.state == BackupState.Completed && newState == BackupState.FailedToDelete)) {
+        || (this.state == BackupState.Completed && newState == BackupState.FailedToDelete)
+        || (this.state == BackupState.Failed && newState == BackupState.FailedToDelete)
+        || (this.state == BackupState.Failed && newState == BackupState.Deleted)) {
       this.state = newState;
       save();
     } else {
