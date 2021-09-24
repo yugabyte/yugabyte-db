@@ -31,12 +31,18 @@ showAsideToc: true
 
 </ul>
 
+{{< tip title="Yugabyte Cloud requires SSL" >}}
+
+Are you using Yugabyte Cloud? Install the [prerequisites](#prerequisites), then go to the [Use C# with SSL](#use-c-with-ssl) section.
+
+{{</ tip >}}
+
 ## Prerequisites
 
 This tutorial assumes that you have:
 
 - installed YugabyteDB, created a universe, and are able to interact with it using the YSQL shell (`ysqlsh`). If not, follow the steps in [Quick start](../../../../quick-start).
-- installed Visual Studio
+- installed Visual Studio.
 
 {{< warning title="Warning" >}}
 
@@ -126,7 +132,7 @@ Name  Age  Language
 John  35   CSharp
 ```
 
-## Create a sample C# application with SSL
+## Use C# with SSL
 
 The client driver supports several SSL modes, as follows:
 
@@ -147,15 +153,17 @@ The .NET Npgsql driver validates certificates differently from other PostgreSQL 
 
 {{< /note >}}
 
+### Create a sample C# application with SSL
+
 In Visual Studio, create a new project and choose **Console Application as template**. Follow the instructions to save the project.
 
-First, install the Npgsql driver in your Visual Studio project:
+First, install the Npgsql driver in your Visual Studio project, replacing the values in the `connStringBuilder` object as appropriate for your cluster::
 
 1. Open your Project Solution View
 1. Right-click on **Packages** and click **Add Packages**
 1. Search for `Npgsql` and click **Add Package**
 
-Next, copy the contents below to your `Program.cs` file:
+Next, copy the contents below to your `Program.cs` file, :
 
 ```csharp
 using System;
@@ -168,11 +176,11 @@ namespace Yugabyte_CSharp_Demo
        static void Main(string[] args)
        {
           var connStringBuilder = new NpgsqlConnectionStringBuilder();
-           connStringBuilder.Host = "331bd8e2-fe24-4d2f-84f0-6d0d49edc22b.cloudportal.yugabyte.com";
+           connStringBuilder.Host = "22420e3a-768b-43da-8dcb-xxxxxx.aws.ybdb.io";
            connStringBuilder.Port = 5433;
            connStringBuilder.SslMode = SslMode.Require;
-           connStringBuilder.Username = "<username>";
-           connStringBuilder.Password = "<password>";
+           connStringBuilder.Username = "admin";
+           connStringBuilder.Password = "xxxxxx";
            connStringBuilder.Database = "yugabyte";
            connStringBuilder.TrustServerCertificate = true;
            CRUD(connStringBuilder.ConnectionString);
@@ -194,7 +202,7 @@ namespace Yugabyte_CSharp_Demo
  
                NpgsqlCommand empInsertCmd = new NpgsqlCommand("INSERT INTO employee (id, name, age, language) VALUES (1, 'John', 35, 'CSharp');", conn);
                int numRows = empInsertCmd.ExecuteNonQuery();
-               Console.WriteLine("Inserted data (1, 'John', 35, 'CSharp')");
+               Console.WriteLine("Inserted data (1, 'John', 35, 'CSharp + SSL')");
  
                NpgsqlCommand empPrepCmd = new NpgsqlCommand("SELECT name, age, language FROM employee WHERE id = @EmployeeId", conn);
                empPrepCmd.Parameters.Add("@EmployeeId", NpgsqlTypes.NpgsqlDbType.Integer);
@@ -232,8 +240,8 @@ You should see the following as the output:
 
 ```output
 Created table Employee
-Inserted data (1, 'John', 35, 'CSharp')
+Inserted data (1, 'John', 35, 'CSharp + SSL')
 Query returned:
 Name  Age  Language
-John  35   CSharp
+John  35   CSharp + SSL
 ```
