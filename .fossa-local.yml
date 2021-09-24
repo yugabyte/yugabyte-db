@@ -6,24 +6,17 @@
 # To analyze and upload dependencies:
 # fossa analyze --debug
 
-version: 2
-cli:
-  server: https://app.fossa.com
-  fetcher: custom
-  project: git@github.com:yugabyte/yugabyte-db.git
-analyze:
-  modules:
-    - name: Yugabyte RPC Client
-      type: mvn
-      target: pom.xml
-      path: java
-      options:
-        cmd: |
-          set -euo pipefail -x
-          mvn --batch-mode dependency:tree
-    - name: PostgreSQL
-      type: raw
-      target: src/postgres
-    - name: YugabyteDB
-      type: raw
-      target: src/yb
+version: 3
+
+project:
+  id: yugabyte-db
+
+revision:
+  branch: master
+
+paths:
+  only:
+    - ./src
+    - ./java
+#  exclude:
+#    -
