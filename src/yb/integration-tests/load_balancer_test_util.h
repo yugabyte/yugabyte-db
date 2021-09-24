@@ -27,8 +27,8 @@ bool AreLoadsBalanced(const std::vector<uint32_t>& tserver_loads);
 
 // Checks that the loads of tservers specified in zero_load_tservers is 0 and
 // whether the remaining non-zero loads are balanced.
-bool AreLoadsAsExpected(const std::unordered_map<master::TabletServerId, int>& tserver_loads,
-                        const std::unordered_set<master::TabletServerId>& zero_load_tservers = {});
+bool AreLoadsAsExpected(const std::unordered_map<TabletServerId, int>& tserver_loads,
+                        const std::unordered_set<TabletServerId>& zero_load_tservers = {});
 
 }  // namespace integration_tests
 }  // namespace yb

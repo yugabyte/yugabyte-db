@@ -62,7 +62,6 @@ class NodeInstancePB;
 
 namespace master {
 
-typedef std::string TabletServerId;
 typedef std::unordered_set<HostPort, HostPortHash> BlacklistSet;
 
 // A callback that is called when the number of tablet servers reaches a certain number.
