@@ -148,6 +148,20 @@ SELECT * FROM test;
 
 -- test ALTER TABLE on a temp table
 
+ALTER TABLE test ADD COLUMN d int;
+
+ALTER TABLE test ADD CONSTRAINT uniq UNIQUE(d);
+
+INSERT INTO test (d) VALUES (1);
+
+INSERT INTO test (d) VALUES (1); -- should fail
+
+SELECT * FROM test;
+
+ALTER TABLE test DROP COLUMN d;
+
+DELETE FROM test;
+
 ALTER TABLE test ADD COLUMN b int;
 
 SELECT * FROM test;
