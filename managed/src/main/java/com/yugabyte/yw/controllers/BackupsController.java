@@ -226,7 +226,8 @@ public class BackupsController extends AuthenticatedController {
         LOG.info(
             "Can not delete {} backup as it is not present in the database.", backupUUID.asText());
       } else {
-        if (backup.state != Backup.BackupState.Completed) {
+        if (backup.state != Backup.BackupState.Completed
+            && backup.state != Backup.BackupState.Failed) {
           LOG.info("Can not delete {} backup as it is still in progress", uuid);
         } else {
           DeleteBackup.Params taskParams = new DeleteBackup.Params();
