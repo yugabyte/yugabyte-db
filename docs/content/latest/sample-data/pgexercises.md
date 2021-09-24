@@ -35,14 +35,14 @@ Follow the steps here to download and install the PgExercises sample database.
 
 To use the PgExercises sample database, you must have installed and configured YugabyteDB. To get up and running quickly, see [Quick Start](../../quick-start/).
 
-### 1. Download the SQL scripts
+### 1. Download the SQL scripts (Optional)
 
-You can download the PGExercise SQL scripts that is compatible with YugabyteDB from the [`sample` directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample).
-
-Here are the two files you’ll need.
+The PGExercise SQL scripts that are compatible with YugabyteDB reside in the [`sample` directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample).The following two files will be used for this exercise.
 
 - [`clubdata_ddl.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/clubdata_ddl.sql) — Creates the tables and other database objects
 - [`clubdata_data.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/clubdata_data.sql) — Loads the sample data
+
+Optionally, you can download them, but it is not necessary since they are all present under the `share` folder of the Yugabyte root directory.
 
 ### 2. Open the YSQL shell
 

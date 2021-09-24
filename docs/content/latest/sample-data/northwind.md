@@ -39,12 +39,14 @@ Follow the steps here to download and install the Northwind sample database.
 
 To use the Northwind sample database, you must have installed and configured YugabyteDB. To get up and running quickly, see [Quick Start](/latest/quick-start/).
 
-### 1. Download the SQL scripts
+### 1. Download the SQL scripts (Optional)
 
-You can download the Northwind database files, which are compatible with YugabyteDB, from the [`sample` directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample). Here are the two files you’ll need.
+The Northwind SQL scripts that are compatible with YugabyteDB reside in the [`sample` directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample). The following two files will be used for this exercise.
 
 - [northwind_ddl.sql](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/northwind_ddl.sql) — Creates tables and other database objects
 - [northwind_data.sql](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/northwind_data.sql) — Loads the sample data
+
+Optionally, you can download them, but it is not necessary since they are all present under the `share` folder of the Yugabyte root directory.
 
 ### 2. Open the YSQL shell
 
