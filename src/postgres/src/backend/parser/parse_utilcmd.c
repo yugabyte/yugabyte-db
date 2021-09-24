@@ -2146,6 +2146,16 @@ transformIndexConstraints(CreateStmtContext *cxt)
 	bms_free(oids_used);
 }
 
+static char
+ybcGetIndexedRelPersistence(IndexStmt* index, CreateStmtContext *cxt) {
+  /*
+   * Use persistence from relation info. It is available in case of 'ALTER TABLE' statement.
+   * Or use persistence from statement itself. This is a case when relation is not yet exists
+   * (i.e. 'CREATE TABLE' statement).
+   */
+  return cxt->rel ? cxt->rel->rd_rel->relpersistence : index->relation->relpersistence;
+}
+
 /*
  * transformIndexConstraint
  *		Transform one UNIQUE, PRIMARY KEY, or EXCLUDE constraint for
@@ -2187,7 +2197,7 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 
 	index->relation = cxt->relation;
 	index->accessMethod = constraint->access_method ? constraint->access_method :
-			(IsYugaByteEnabled() && index->relation->relpersistence != RELPERSISTENCE_TEMP
+			(IsYugaByteEnabled() && ybcGetIndexedRelPersistence(index, cxt) != RELPERSISTENCE_TEMP
 					? DEFAULT_YB_INDEX_TYPE
 					: DEFAULT_INDEX_TYPE);
 	index->options = constraint->options;

@@ -153,6 +153,20 @@ SELECT * FROM test;
 (0 rows)
 
 -- test ALTER TABLE on a temp table
+ALTER TABLE test ADD COLUMN d int;
+ALTER TABLE test ADD CONSTRAINT uniq UNIQUE(d);
+INSERT INTO test (d) VALUES (1);
+INSERT INTO test (d) VALUES (1); -- should fail
+ERROR:  duplicate key value violates unique constraint "uniq"
+DETAIL:  Key (d)=(1) already exists.
+SELECT * FROM test;
+ a | d
+---+---
+   | 1
+(1 row)
+
+ALTER TABLE test DROP COLUMN d;
+DELETE FROM test;
 ALTER TABLE test ADD COLUMN b int;
 SELECT * FROM test;
  a | b
