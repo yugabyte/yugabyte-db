@@ -60,8 +60,6 @@ CHECKED_STATUS PrepareInitPgGateBackend() {
       "pggate_master_addresses", FLAGS_pggate_master_addresses, 0, &master_addresses,
       &resolved_str));
 
-  auto endpoints = VERIFY_RESULT(server::ResolveMasterAddresses(master_addresses));
-
   PgApiContext context;
   struct Data {
     boost::optional<tserver::TServerSharedObject> tserver_shared_object;
@@ -72,30 +70,35 @@ CHECKED_STATUS PrepareInitPgGateBackend() {
   };
   static std::shared_ptr<Data> data = std::make_shared<Data>();
   data->tserver_shared_object.emplace(VERIFY_RESULT(tserver::TServerSharedObject::Create()));
-  data->running = endpoints.size();
-  for (const auto& endpoint : endpoints) {
-    tserver::TabletServerServiceProxy proxy(context.proxy_cache.get(), HostPort(endpoint));
-    struct ReqData {
-      tserver::GetSharedDataRequestPB req;
-      tserver::GetSharedDataResponsePB resp;
-      rpc::RpcController controller;
-    };
-    auto req_data = std::make_shared<ReqData>();
-    req_data->controller.set_timeout(std::chrono::seconds(60));
-    proxy.GetSharedDataAsync(
-        req_data->req, &req_data->resp, &req_data->controller, [req_data] {
-      if (req_data->controller.status().ok()) {
-        bool expected = false;
-        if (data->flag.compare_exchange_strong(expected, true)) {
-          memcpy(pointer_cast<char*>(&**data->tserver_shared_object),
-                 req_data->resp.data().c_str(), req_data->resp.data().size());
+  data->running = 0;
+  for (const auto& list : master_addresses) {
+    data->running += list.size();
+  }
+  for (const auto& list : master_addresses) {
+    for (const auto& host_port : list) {
+      tserver::TabletServerServiceProxy proxy(context.proxy_cache.get(), host_port);
+      struct ReqData {
+        tserver::GetSharedDataRequestPB req;
+        tserver::GetSharedDataResponsePB resp;
+        rpc::RpcController controller;
+      };
+      auto req_data = std::make_shared<ReqData>();
+      req_data->controller.set_timeout(std::chrono::seconds(60));
+      proxy.GetSharedDataAsync(
+          req_data->req, &req_data->resp, &req_data->controller, [req_data] {
+        if (req_data->controller.status().ok()) {
+          bool expected = false;
+          if (data->flag.compare_exchange_strong(expected, true)) {
+            memcpy(pointer_cast<char*>(&**data->tserver_shared_object),
+                   req_data->resp.data().c_str(), req_data->resp.data().size());
+            data->latch.CountDown();
+          }
+        } else if (--data->running == 0) {
+          data->failure = req_data->controller.status();
           data->latch.CountDown();
         }
-      } else if (--data->running == 0) {
-        data->failure = req_data->controller.status();
-        data->latch.CountDown();
-      }
-    });
+      });
+    }
   }
 
   data->latch.Wait();
