@@ -5,7 +5,7 @@ import { Tab, Row, Col } from 'react-bootstrap';
 import _ from 'lodash';
 import { YBTabsPanel } from '../../panels';
 import { YBButton, YBTextInputWithLabel } from '../../common/forms/fields';
-import { withRouter } from 'react-router';
+import { browserHistory, withRouter } from 'react-router';
 import { Field, SubmissionError } from 'redux-form';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBLoading } from '../../common/indicators';
@@ -24,6 +24,8 @@ import {
   isNonEmptyArray
 } from '../../../utils/ObjectUtils';
 import { Formik } from 'formik';
+
+const DEFAULT_BACKUP_PATH = '/config/backup';
 
 const storageConfigTypes = {
   NFS: {
@@ -71,15 +73,23 @@ const storageConfigTypes = {
 const getTabTitle = (configName) => {
   switch (configName) {
     case 'S3':
-      return <span><img src={awss3Logo} alt="AWS S3" className="s3-logo" /> Amazon S3</span>;
+      return (
+        <span>
+          <img src={awss3Logo} alt="AWS S3" className="s3-logo" /> Amazon S3
+        </span>
+      );
     case 'GCS':
       return (
         <span>
-          <img src={gcsLogo} alt="Google Cloud Storage" className="gcs-logo"/> Google Cloud Storage
+          <img src={gcsLogo} alt="Google Cloud Storage" className="gcs-logo" /> Google Cloud Storage
         </span>
       );
     case 'AZ':
-      return <span><img src={azureLogo} alt="Azure" className="azure-logo" /> Azure Storage</span>;
+      return (
+        <span>
+          <img src={azureLogo} alt="Azure" className="azure-logo" /> Azure Storage
+        </span>
+      );
     default:
       return (
         <span>
@@ -102,7 +112,6 @@ class StorageConfiguration extends Component {
   iamInstanceToggle = (event) => {
     this.setState({ iamRoleEnabled: event.target.checked });
   };
-
 
   getConfigByType = (name, customerConfigs) => {
     return customerConfigs?.data?.find((config) => config.name.toLowerCase() === name);
@@ -217,7 +226,7 @@ class StorageConfiguration extends Component {
       editingTab: false,
       iamRoleEnabled: false
     });
-  
+
     this.props.deleteCustomerConfig(configUUID).then(() => {
       this.props.reset(); // reset form to initial values
       this.props.fetchCustomerConfigs();
@@ -232,6 +241,14 @@ class StorageConfiguration extends Component {
     this.props.fetchCustomerConfigs();
   }
 
+  componentDidUpdate = (props) => {
+    const {
+      location: { pathname }
+    } = props;
+    if (pathname === DEFAULT_BACKUP_PATH) {
+      browserHistory.push(`${pathname}/${Object.keys(storageConfigTypes)[0].toLowerCase()}`);
+    }
+  };
   /**
    * This method will enable edit options for respective
    * backup config.
@@ -343,10 +360,7 @@ class StorageConfiguration extends Component {
       customerConfigs,
       initialValues
     } = this.props;
-    const {
-      iamRoleEnabled,
-      editingTab
-    } = this.state;
+    const { iamRoleEnabled, editingTab } = this.state;
     const activeTab = this.props.activeTab || Object.keys(storageConfigTypes)[0].toLowerCase();
     const config = this.getConfigByType(activeTab, customerConfigs);
 
