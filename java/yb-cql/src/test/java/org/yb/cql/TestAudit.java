@@ -111,7 +111,7 @@ public class TestAudit extends BaseCQLTest {
       assertAudit(
           new AuditLogEntry('E', "null", "LOGIN_ERROR", "AUTH",
               null /* batchId */, null /* keyspace */, null /* scope */,
-              "LOGIN FAILURE; Provided username user1 and/or password are incorrect"));
+              "LOGIN FAILURE; Provided username 'user1' and/or password are incorrect"));
     } catch (Exception ex) {
       throw ex;
     }

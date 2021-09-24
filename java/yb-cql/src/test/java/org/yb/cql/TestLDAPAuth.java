@@ -33,6 +33,7 @@ import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
 
 // TODO(Piyush): Test with TLS and LDAPS
+// TODO(Piyush): Reduce test time by force updating gflags instead of restarting cluster
 
 @RunWith(value=YBTestRunner.class)
 @CreateDS(name = "myDS",
@@ -40,7 +41,8 @@ import org.yb.YBTestRunner;
         @CreatePartition(name = "test", suffix = "dc=myorg,dc=com")
     })
 @CreateLdapServer(transports = {
-  @CreateTransport(protocol = "LDAP", address = "localhost", port=10389)})
+  @CreateTransport(protocol = "LDAP", address = "localhost", port=10389)},
+  allowAnonymousAccess = true) // We allow this to test if YCQL still blocks such a bind
 @ApplyLdifs({
   "dn: dc=myorg,dc=com",
   "objectClass: domain",
@@ -93,6 +95,11 @@ public class TestLDAPAuth extends BaseAuthenticationCQLTest {
   @ClassRule
   public static CreateLdapServerRule serverRule = new CreateLdapServerRule();
 
+  @Override
+  public int getTestMethodTimeoutSec() {
+    return 240;
+  }
+
   private void recreateMiniCluster(Map<String, String> extraTserverFlag) throws Exception {
     destroyMiniCluster();
     Map<String, String> tserverFlags = new HashMap<>();
@@ -121,6 +128,28 @@ public class TestLDAPAuth extends BaseAuthenticationCQLTest {
     session.execute("DROP ROLE 'testUser1'");
   }
 
+  void testUnauthenticatedAndAnonymousBinds() {
+    // Test Unauthenticated bind - non-empty username and empty password
+    // Refer: https://datatracker.ietf.org/doc/html/rfc4513#section-5.1.2
+    checkConnectivityWithMessage(true, "testUser1", "", ProtocolOptions.Compression.NONE,
+      true /* expectFailure */,
+      "Empty username and/or password not allowed");
+
+    // In below cases, with empty user name, since the user doesn't exist in cassandra, we error out
+    // at an earlier stage and hence the error is different from the one for empty password.
+
+    // Test Anonymous bind - empty username and empty password
+    // Refer: https://datatracker.ietf.org/doc/html/rfc4513#section-5.1.1
+    checkConnectivityWithMessage(true, "", "", ProtocolOptions.Compression.NONE,
+      true /* expectFailure */,
+      "Provided username '' and/or password are incorrect");
+
+    // Extra case - empty username and non-empty password
+    checkConnectivityWithMessage(true, "", "12345", ProtocolOptions.Compression.NONE,
+      true /* expectFailure */,
+      "Provided username '' and/or password are incorrect");
+  }
+
   @Test
   public void simpleBindMode() throws Exception {
     // Test with incorrect user prefix
@@ -132,8 +161,10 @@ public class TestLDAPAuth extends BaseAuthenticationCQLTest {
 
     checkConnectivityWithMessage(true, "testUser1", "12345", ProtocolOptions.Compression.NONE,
       true /* expectFailure */,
-      "Failed to authenticate using LDAP: Provided username testUser1 and/or password are " +
+      "Failed to authenticate using LDAP: Provided username 'testUser1' and/or password are " +
       "incorrect");
+
+    testUnauthenticatedAndAnonymousBinds();
 
     // Test with incorrect user suffix
     extraTserverFlagMap.clear();
@@ -144,8 +175,10 @@ public class TestLDAPAuth extends BaseAuthenticationCQLTest {
 
     checkConnectivityWithMessage(true, "testUser1", "12345", ProtocolOptions.Compression.NONE,
       true /* expectFailure */,
-      "Failed to authenticate using LDAP: Provided username testUser1 and/or password are " +
+      "Failed to authenticate using LDAP: Provided username 'testUser1' and/or password are " +
       "incorrect");
+
+    testUnauthenticatedAndAnonymousBinds();
 
     // Test with correct prefix and suffix
     extraTserverFlagMap.clear();
@@ -157,27 +190,24 @@ public class TestLDAPAuth extends BaseAuthenticationCQLTest {
     checkConnectivityWithMessage(true, "testUser1", "12345", ProtocolOptions.Compression.NONE,
       false /* expectFailure */, "");
 
-    // Incorrect username/password
+    // Incorrect password
     checkConnectivityWithMessage(true, "testUser1", "1234", ProtocolOptions.Compression.NONE,
       true /* expectFailure */,
-      "Failed to authenticate using LDAP: Provided username testUser1 and/or password are " +
+      "Failed to authenticate using LDAP: Provided username 'testUser1' and/or password are " +
       "incorrect");
 
+    // Incorrect user - no role is created for testUser2
     checkConnectivityWithMessage(true, "testUser2", "12345", ProtocolOptions.Compression.NONE,
       true /* expectFailure */,
-      "Provided username testUser2 and/or password are incorrect");
+      "Provided username 'testUser2' and/or password are incorrect");
 
-    checkConnectivityWithMessage(true, "testUser1", "", ProtocolOptions.Compression.NONE,
-      true /* expectFailure */,
-      "Failed to authenticate using LDAP: Internal error");
+    testUnauthenticatedAndAnonymousBinds();
 
     session.execute("DROP ROLE 'testUser1'");
   }
 
   @Test
-  public void searchBindMode() throws Exception {
-    session.execute("CREATE ROLE 'testUser1' WITH LOGIN = true");
-
+  public void searchBindModeWithSearchAttribute() throws Exception {
     // Test with incorrect bind user dn
     Map<String, String> extraTserverFlagMap = getTServerFlags();
     extraTserverFlagMap.put("ycql_ldap_bind_dn", "cn=dummy,ou=Users,dc=myorg,dc=com");
@@ -191,6 +221,8 @@ public class TestLDAPAuth extends BaseAuthenticationCQLTest {
       true, /* expectFailure */
       "could not perform initial LDAP bind for ldapbinddn 'cn=dummy,ou=Users,dc=myorg,dc=com'");
 
+    testUnauthenticatedAndAnonymousBinds();
+
     // Test with incorrect bind password
     extraTserverFlagMap.clear();
     extraTserverFlagMap.put("ycql_ldap_bind_dn", "cn=admin,ou=Users,dc=myorg,dc=com");
@@ -203,6 +235,8 @@ public class TestLDAPAuth extends BaseAuthenticationCQLTest {
     checkConnectivityWithMessage(true, "testUser1", "12345", ProtocolOptions.Compression.NONE,
       true, /* expectFailure */
       "could not perform initial LDAP bind for ldapbinddn 'cn=admin,ou=Users,dc=myorg,dc=com'");
+
+    testUnauthenticatedAndAnonymousBinds();
 
     // Test with non-existant base dn
     extraTserverFlagMap.clear();
@@ -219,7 +253,9 @@ public class TestLDAPAuth extends BaseAuthenticationCQLTest {
       "'ldap://localhost:10389': No such object LDAP diagnostics: " +
       "NO_SUCH_OBJECT: failed for MessageType : SEARCH_REQUEST");
 
-    // Test with incorrect incorrect search attribute
+    testUnauthenticatedAndAnonymousBinds();
+
+    // Test with incorrect search attribute
     extraTserverFlagMap.clear();
     extraTserverFlagMap.put("ycql_ldap_bind_dn", "cn=admin,ou=Users,dc=myorg,dc=com");
     extraTserverFlagMap.put("ycql_ldap_bind_passwd", "adminPasswd");
@@ -233,6 +269,8 @@ public class TestLDAPAuth extends BaseAuthenticationCQLTest {
       "LDAP user 'testUser1' does not exist. LDAP search for filter '(dummy=testUser1)' on " +
       "server 'ldap://localhost:10389' returned no entries.");
 
+    testUnauthenticatedAndAnonymousBinds();
+
     // Test with all correct - bind db, bind password, base dn, search attribute
     extraTserverFlagMap.clear();
     extraTserverFlagMap.put("ycql_ldap_bind_dn", "cn=admin,ou=Users,dc=myorg,dc=com");
@@ -245,16 +283,18 @@ public class TestLDAPAuth extends BaseAuthenticationCQLTest {
     // Test with incorrect user
     checkConnectivityWithMessage(true, "dummy", "12345", ProtocolOptions.Compression.NONE,
       true, /* expectFailure */
-      "Provided username dummy and/or password are incorrect");
+      "Provided username 'dummy' and/or password are incorrect");
 
-    // Test with incorrect user and password
+    // Test with incorrect password
     checkConnectivityWithMessage(true, "testUser1", "1234", ProtocolOptions.Compression.NONE,
       true, /* expectFailure */
-      "Failed to authenticate using LDAP: Provided username testUser1 and/or " +
+      "Failed to authenticate using LDAP: Provided username 'testUser1' and/or " +
       "password are incorrect");
 
     // Test with correct password
     checkConnectivity(true, "testUser1", "12345", false /* expectFailure */);
+
+    testUnauthenticatedAndAnonymousBinds();
 
     // Test with prefix of base dn
     extraTserverFlagMap.clear();
@@ -268,16 +308,209 @@ public class TestLDAPAuth extends BaseAuthenticationCQLTest {
     // Test with incorrect user
     checkConnectivityWithMessage(true, "dummy", "12345", ProtocolOptions.Compression.NONE,
       true, /* expectFailure */
-      "Provided username dummy and/or password are incorrect");
+      "Provided username 'dummy' and/or password are incorrect");
 
-    // Test with incorrect user password
+    // Test with incorrect password
     checkConnectivityWithMessage(true, "testUser1", "1234", ProtocolOptions.Compression.NONE,
       true, /* expectFailure */
-      "Failed to authenticate using LDAP: Provided username testUser1 and/or " +
+      "Failed to authenticate using LDAP: Provided username 'testUser1' and/or " +
       "password are incorrect");
 
     // Test with correct password
     checkConnectivity(true, "testUser1", "12345", false /* expectFailure */);
+
+    testUnauthenticatedAndAnonymousBinds();
+
+    session.execute("CREATE ROLE 'test*User1' WITH LOGIN = true");
+    // Test with user name that has characters that are not allowed
+    checkConnectivityWithMessage(true, "test*User1", "12345", ProtocolOptions.Compression.NONE,
+      true, /* expectFailure */
+      "invalid character in user name for LDAP authentication");
+
+    session.execute("CREATE ROLE 'testUserNonUnique' WITH LOGIN = true");
+    // Test with more than one user name matching search criteria
+    checkConnectivityWithMessage(true, "testUserNonUnique", "12345",
+      ProtocolOptions.Compression.NONE, true, /* expectFailure */
+      "LDAP user 'testUserNonUnique' is not unique, 2 entries exist.");
+  }
+
+  @Test
+  public void searchBindModeWithEmptyConfigArgs() throws Exception {
+    // Test search+bind mode with empty arguments for -
+    //   1. ycql_ldap_bind_dn
+    //   2. ycql_ldap_bind_passwd
+    //   3. both ycql_ldap_bind_dn and ycql_ldap_bind_passwd empty
+    Map<String, String> extraTserverFlagMap = getTServerFlags();
+
+    // Test with empty bind dn (all other flags have correct values)
+    extraTserverFlagMap.clear();
+    extraTserverFlagMap.put("ycql_ldap_bind_dn", "");
+    extraTserverFlagMap.put("ycql_ldap_bind_passwd", "adminPasswd");
+    extraTserverFlagMap.put("ycql_ldap_base_dn", "ou=Users,dc=myorg,dc=com");
+    extraTserverFlagMap.put("ycql_ldap_search_attribute", "cn");
+    recreateMiniCluster(extraTserverFlagMap);
+    session.execute("CREATE ROLE 'testUser1' WITH LOGIN = true");
+
+    // Test with correct username and password
+    checkConnectivityWithMessage(true, "testUser1", "12345", ProtocolOptions.Compression.NONE,
+      true /* expectFailure */,
+      "Empty bind dn and/or bind password not allowed for search+bind mode");
+
+    // Test with empty bind password (all other flags have correct values)
+    extraTserverFlagMap.clear();
+    extraTserverFlagMap.put("ycql_ldap_bind_dn", "cn=admin,ou=Users,dc=myorg,dc=com");
+    extraTserverFlagMap.put("ycql_ldap_bind_passwd", "");
+    extraTserverFlagMap.put("ycql_ldap_base_dn", "ou=Users,dc=myorg,dc=com");
+    extraTserverFlagMap.put("ycql_ldap_search_attribute", "cn");
+    recreateMiniCluster(extraTserverFlagMap);
+    session.execute("CREATE ROLE 'testUser1' WITH LOGIN = true");
+
+    checkConnectivityWithMessage(true, "testUser1", "12345", ProtocolOptions.Compression.NONE,
+      true /* expectFailure */,
+      "Empty bind dn and/or bind password not allowed for search+bind mode");
+
+    // Test with both empty bind user dn and empty bind password (all other flags have correct
+    // values)
+    extraTserverFlagMap.clear();
+    extraTserverFlagMap.put("ycql_ldap_bind_dn", "");
+    extraTserverFlagMap.put("ycql_ldap_bind_passwd", "");
+    extraTserverFlagMap.put("ycql_ldap_base_dn", "ou=Users,dc=myorg,dc=com");
+    extraTserverFlagMap.put("ycql_ldap_search_attribute", "cn");
+    recreateMiniCluster(extraTserverFlagMap);
+    session.execute("CREATE ROLE 'testUser1' WITH LOGIN = true");
+
+    checkConnectivityWithMessage(true, "testUser1", "12345", ProtocolOptions.Compression.NONE,
+      true /* expectFailure */,
+      "Empty bind dn and/or bind password not allowed for search+bind mode");
+  }
+
+  @Test
+  public void searchBindModeWithSearchFilter() throws Exception {
+    // Test with incorrect bind user dn
+    Map<String, String> extraTserverFlagMap = getTServerFlags();
+    extraTserverFlagMap.put("ycql_ldap_bind_dn", "cn=dummy,ou=Users,dc=myorg,dc=com");
+    extraTserverFlagMap.put("ycql_ldap_bind_passwd", "adminPasswd");
+    extraTserverFlagMap.put("ycql_ldap_base_dn", "ou=Users,dc=myorg,dc=com");
+    extraTserverFlagMap.put("ycql_ldap_search_filter", "(cn=$username)");
+    recreateMiniCluster(extraTserverFlagMap);
+    session.execute("CREATE ROLE 'testUser1' WITH LOGIN = true");
+
+    checkConnectivityWithMessage(true, "testUser1", "12345", ProtocolOptions.Compression.NONE,
+      true, /* expectFailure */
+      "could not perform initial LDAP bind for ldapbinddn 'cn=dummy,ou=Users,dc=myorg,dc=com'");
+
+    testUnauthenticatedAndAnonymousBinds();
+
+    // Test with incorrect bind password
+    extraTserverFlagMap.clear();
+    extraTserverFlagMap.put("ycql_ldap_bind_dn", "cn=admin,ou=Users,dc=myorg,dc=com");
+    extraTserverFlagMap.put("ycql_ldap_bind_passwd", "dummyPasswd");
+    extraTserverFlagMap.put("ycql_ldap_base_dn", "ou=Users,dc=myorg,dc=com");
+    extraTserverFlagMap.put("ycql_ldap_search_filter", "(cn=$username)");
+    recreateMiniCluster(extraTserverFlagMap);
+    session.execute("CREATE ROLE 'testUser1' WITH LOGIN = true");
+
+    checkConnectivityWithMessage(true, "testUser1", "12345", ProtocolOptions.Compression.NONE,
+      true, /* expectFailure */
+      "could not perform initial LDAP bind for ldapbinddn 'cn=admin,ou=Users,dc=myorg,dc=com'");
+
+    testUnauthenticatedAndAnonymousBinds();
+
+    // Test with non-existant base dn
+    extraTserverFlagMap.clear();
+    extraTserverFlagMap.put("ycql_ldap_bind_dn", "cn=admin,ou=Users,dc=myorg,dc=com");
+    extraTserverFlagMap.put("ycql_ldap_bind_passwd", "adminPasswd");
+    extraTserverFlagMap.put("ycql_ldap_base_dn", "ou=dummy,dc=myorg,dc=com");
+    extraTserverFlagMap.put("ycql_ldap_search_filter", "(cn=$username)");
+    recreateMiniCluster(extraTserverFlagMap);
+    session.execute("CREATE ROLE 'testUser1' WITH LOGIN = true");
+
+    checkConnectivityWithMessage(true, "testUser1", "12345", ProtocolOptions.Compression.NONE,
+      true, /* expectFailure */
+      "could not search LDAP for filter '(cn=testUser1)' on server " +
+      "'ldap://localhost:10389': No such object LDAP diagnostics: " +
+      "NO_SUCH_OBJECT: failed for MessageType : SEARCH_REQUEST");
+
+    testUnauthenticatedAndAnonymousBinds();
+
+    // Test with incorrect search filters
+    // Case 1: Incorrect tag instead of $username
+    extraTserverFlagMap.clear();
+    extraTserverFlagMap.put("ycql_ldap_bind_dn", "cn=admin,ou=Users,dc=myorg,dc=com");
+    extraTserverFlagMap.put("ycql_ldap_bind_passwd", "adminPasswd");
+    extraTserverFlagMap.put("ycql_ldap_base_dn", "ou=Users,dc=myorg,dc=com");
+    extraTserverFlagMap.put("ycql_ldap_search_filter", "(cn=$userna..)");
+    recreateMiniCluster(extraTserverFlagMap);
+    session.execute("CREATE ROLE 'testUser1' WITH LOGIN = true");
+
+    checkConnectivityWithMessage(true, "testUser1", "12345", ProtocolOptions.Compression.NONE,
+      true, /* expectFailure */
+      "LDAP user 'testUser1' does not exist. LDAP search for filter '(cn=$userna..)' on " +
+      "server 'ldap://localhost:10389' returned no entries.");
+
+    testUnauthenticatedAndAnonymousBinds();
+
+    // Case 2: Incorrect attribute used, correct $username tag
+    extraTserverFlagMap.put("ycql_ldap_search_filter", "(dummy=$username)");
+    recreateMiniCluster(extraTserverFlagMap);
+    session.execute("CREATE ROLE 'testUser1' WITH LOGIN = true");
+
+    checkConnectivityWithMessage(true, "testUser1", "12345", ProtocolOptions.Compression.NONE,
+      true, /* expectFailure */
+      "LDAP user 'testUser1' does not exist. LDAP search for filter '(dummy=testUser1)' on " +
+      "server 'ldap://localhost:10389' returned no entries.");
+
+    testUnauthenticatedAndAnonymousBinds();
+
+    // Test with all correct - bind db, bind password, base dn, search filter
+    extraTserverFlagMap.clear();
+    extraTserverFlagMap.put("ycql_ldap_bind_dn", "cn=admin,ou=Users,dc=myorg,dc=com");
+    extraTserverFlagMap.put("ycql_ldap_bind_passwd", "adminPasswd");
+    extraTserverFlagMap.put("ycql_ldap_base_dn", "ou=Users,dc=myorg,dc=com");
+    extraTserverFlagMap.put("ycql_ldap_search_filter", "(cn=$username)");
+    recreateMiniCluster(extraTserverFlagMap);
+    session.execute("CREATE ROLE 'testUser1' WITH LOGIN = true");
+
+    // Test with incorrect user
+    checkConnectivityWithMessage(true, "dummy", "12345", ProtocolOptions.Compression.NONE,
+      true, /* expectFailure */
+      "Provided username 'dummy' and/or password are incorrect");
+
+    // Test with incorrect password
+    checkConnectivityWithMessage(true, "testUser1", "1234", ProtocolOptions.Compression.NONE,
+      true, /* expectFailure */
+      "Failed to authenticate using LDAP: Provided username 'testUser1' and/or " +
+      "password are incorrect");
+
+    // Test with correct password
+    checkConnectivity(true, "testUser1", "12345", false /* expectFailure */);
+
+    testUnauthenticatedAndAnonymousBinds();
+
+    // Test with prefix of base dn
+    extraTserverFlagMap.clear();
+    extraTserverFlagMap.put("ycql_ldap_bind_dn", "cn=admin,ou=Users,dc=myorg,dc=com");
+    extraTserverFlagMap.put("ycql_ldap_bind_passwd", "adminPasswd");
+    extraTserverFlagMap.put("ycql_ldap_base_dn", "dc=myorg,dc=com");
+    extraTserverFlagMap.put("ycql_ldap_search_filter", "(cn=$username)");
+    recreateMiniCluster(extraTserverFlagMap);
+    session.execute("CREATE ROLE 'testUser1' WITH LOGIN = true");
+
+    // Test with incorrect user
+    checkConnectivityWithMessage(true, "dummy", "12345", ProtocolOptions.Compression.NONE,
+      true, /* expectFailure */
+      "Provided username 'dummy' and/or password are incorrect");
+
+    // Test with incorrect password
+    checkConnectivityWithMessage(true, "testUser1", "1234", ProtocolOptions.Compression.NONE,
+      true, /* expectFailure */
+      "Failed to authenticate using LDAP: Provided username 'testUser1' and/or " +
+      "password are incorrect");
+
+    // Test with correct password
+    checkConnectivity(true, "testUser1", "12345", false /* expectFailure */);
+
+    testUnauthenticatedAndAnonymousBinds();
 
     session.execute("CREATE ROLE 'test*User1' WITH LOGIN = true");
     // Test with user name that has characters that are not allowed
