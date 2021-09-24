@@ -420,7 +420,8 @@ class NodeChecker():
         matched = version == expected
         if not matched:
             return e.fill_and_return_entry(
-                ['Expected version {}, Actual version {}'.format(expected, version)],
+                ['Version from platform metadata {}, version reported by instance process {}'.
+                 format(expected, version)],
                 True)
         return e.fill_and_return_entry([version])
 
