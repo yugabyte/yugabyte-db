@@ -8279,7 +8279,7 @@ void CatalogManager::HandleAssignCreatingTablet(TabletInfo* tablet,
                << "the allowed timeout. Replacing with a new tablet "
                << replacement->tablet_id();
 
-  tablet->table()->AddTablet(replacement);
+  tablet->table()->ReplaceTablet(tablet, replacement);
   {
     LockGuard lock(mutex_);
     auto tablet_map_checkout = tablet_map_.CheckOut();

@@ -431,6 +431,9 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // Add a tablet to this table.
   void AddTablet(const TabletInfoPtr& tablet);
 
+  // Replace existing tablet with a new one.
+  void ReplaceTablet(const TabletInfoPtr& old_tablet, const TabletInfoPtr& new_tablet);
+
   // Add multiple tablets to this table.
   void AddTablets(const TabletInfos& tablets);
 
