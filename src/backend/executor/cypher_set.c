@@ -121,7 +121,7 @@ static HeapTuple update_entity_tuple(ResultRelInfo *resultRelInfo,
     lockmode = ExecUpdateLockMode(estate, resultRelInfo);
 
     lock_result = heap_lock_tuple(resultRelInfo->ri_RelationDesc, old_tuple,
-                                  GetCurrentCommandId(true), lockmode,
+                                  GetCurrentCommandId(false), lockmode,
                                   LockWaitBlock, false, &buffer, &hufd);
 
     if (lock_result == HeapTupleMayBeUpdated)
