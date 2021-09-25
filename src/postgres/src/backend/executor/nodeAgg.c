@@ -1532,6 +1532,7 @@ yb_agg_pushdown_supported(AggState *aggstate)
 	ForeignScanState *scan_state;
 	ListCell *lc_agg;
 	ListCell *lc_arg;
+	bool check_outer_plan;
 
 	/* Initially set pushdown supported to false. */
 	aggstate->yb_pushdown_supported = false;
@@ -1561,6 +1562,8 @@ yb_agg_pushdown_supported(AggState *aggstate)
 	/* No WHERE quals. */
 	if (scan_state->ss.ps.qual)
 		return;
+
+	check_outer_plan = false;
 
 	foreach(lc_agg, aggstate->aggs)
 	{
@@ -1633,6 +1636,7 @@ yb_agg_pushdown_supported(AggState *aggstate)
 			Oid type = InvalidOid;
 			if (IsA(tle->expr, Var))
 			{
+				check_outer_plan = true;
 				type = castNode(Var, tle->expr)->vartype;
 			}
 			else if (IsA(tle->expr, Const))
@@ -1656,6 +1660,31 @@ yb_agg_pushdown_supported(AggState *aggstate)
 			 * otherwise.
 			 */
 			if (!YbDataTypeIsValidForKey(type))
+				return;
+		}
+	}
+
+	if (check_outer_plan)
+	{
+		/*
+		 * Check outer plan to reject case such as:
+		 *   create table foo(c0 decimal);
+		 *   select sum(r) from (select random() as r from foo) as res;
+		 *   select sum(r) from (select (null=random())::int as r from foo) as res;
+		 * However check_outer_plan will be false for case such as:
+		 *   select sum(1) from (select random() as r from foo) as res;
+		 *   select sum(1) from (select (null=random())::int as r from foo) as res;
+		 * and pushdown will still be supported.
+		 * For simplicity, we do not try to match Var between aggref->args and outplan
+		 * targetlist and simply reject once we see any item that is not a simple column
+		 * reference.
+		 */
+		ListCell   *t;
+		foreach(t, outerPlanState(aggstate)->plan->targetlist)
+		{
+			TargetEntry *tle = lfirst_node(TargetEntry, t);
+
+			if (!IsA(tle->expr, Var) || IS_SPECIAL_VARNO(castNode(Var, tle->expr)->varno))
 				return;
 		}
 	}
