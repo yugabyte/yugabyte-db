@@ -180,6 +180,9 @@ CHECKED_STATUS PTUpdateStmt::Analyze(SemContext *sem_context) {
   // Analyze indexes for write operations.
   RETURN_NOT_OK(AnalyzeIndexesForWrites(sem_context));
 
+  if (update_properties_ != nullptr) {
+    RETURN_NOT_OK(update_properties_->Analyze(sem_context));
+  }
   // If returning a status we always return back the whole row.
   if (returns_status_) {
     AddRefForAllColumns();
