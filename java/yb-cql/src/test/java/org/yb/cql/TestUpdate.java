@@ -325,6 +325,18 @@ public class TestUpdate extends BaseCQLTest {
     assertQueryRowsUnorderedWithoutDups(
       String.format("SELECT * FROM %s", tableName),
       "Row[1, 1, {\"a\":null,\"b\":null,\"c\":null}, {\"a\":null,\"b\":null,\"c\":null}]");
+
+    // Test 11: UPDATE with unrecognized option
+    runInvalidStmt("update " + tableName +
+      " set v1->'a' = 'null', v1->'b' = 'null', v1->'c' = 'null'," +
+      " v2->'a' = 'null', v2->'b' = 'null', v2->'c' = 'null'" +
+      " where h = 1 and r = 1 WITH options = {'ignore_null': false};", "Unknown options property ");
+    runInvalidStmt("update " + tableName +
+      " set v1->'a' = 'null', v1->'b' = 'null', v1->'c' = 'null'," +
+      " v2->'a' = 'null', v2->'b' = 'null', v2->'c' = 'null'" +
+      " where h = 1 and r = 1 WITH options={'ignore_null_jsonb_attributes': true}" +
+      " and options={'ignore_null_jsonb_attributes':true};",
+      "Duplicate Update Property");
   }
 
   @Test
