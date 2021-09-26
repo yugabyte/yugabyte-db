@@ -454,6 +454,13 @@ remove_first(orafce_pipe *p, bool *found)
 		if (p->items == NULL && !p->registered)
 		{
 			ora_sfree(p->pipe_name);
+
+			if (p->creator)
+			{
+				ora_sfree(p->creator);
+				p->creator = NULL;
+			}
+
 			p->is_valid = false;
 		}
 
@@ -579,6 +586,13 @@ remove_pipe(text *pipe_name, bool purge)
 		{
 			ora_sfree(p->pipe_name);
 			p->is_valid = false;
+
+			if (p->creator)
+			{
+				ora_sfree(p->creator);
+				p->creator = NULL;
+			}
+
 		}
 	}
 }

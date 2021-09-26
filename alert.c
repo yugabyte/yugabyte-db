@@ -8,6 +8,7 @@
 #include "miscadmin.h"
 #include "string.h"
 #include "storage/lwlock.h"
+#include "storage/procarray.h"
 #include "utils/timestamp.h"
 
 #include "orafce.h"
@@ -42,6 +43,13 @@ extern LWLockId shmem_lockid;
 #endif
 
 #define TDAYS (1000*24*3600)
+
+static void unregister_event(int event_id, int sid);
+static char*find_and_remove_message_item(int message_id, int sid,
+							 bool all, bool remove_all,
+							 bool filter_message,
+							 int *sleep, char **event_name);
+
 
 
 /*
@@ -87,6 +95,64 @@ textcmpm(text *txt, char *str)
 	return 0;
 }
 
+/*
+ * this function is called when we know so session with sid is not valid
+ * anymore.
+ */
+static void
+purge_shared_alert_mem()
+{
+	int		i;
+
+#if PG_VERSION_NUM >= 90600
+
+	LWLockAcquire(ProcArrayLock, LW_SHARED);
+
+#endif
+
+	for (i = 0; i < MAX_LOCKS; i++)
+	{
+		PGPROC	   *proc;
+
+		if (locks[i].sid == NOT_USED)
+			continue;
+
+#if PG_VERSION_NUM < 90600
+
+		proc = BackendPidGetProc(locks[i].pid);
+
+#else
+
+		proc = BackendPidGetProcWithLock(locks[i].pid);
+
+#endif
+
+		if (proc == NULL)
+		{
+			int		j;
+			int		invalid_sid = locks[i].sid;
+
+			for (j = 0; j < MAX_EVENTS; j++)
+			{
+				if (events[j].event_name != NULL)
+				{
+					find_and_remove_message_item(j, invalid_sid,
+											false, true, true, NULL, NULL);
+					unregister_event(j, invalid_sid);
+				}
+			}
+
+			locks[i].sid = NOT_USED;
+		}
+	}
+
+#if PG_VERSION_NUM >= 90600
+
+	LWLockRelease(ProcArrayLock);
+
+#endif
+
+}
 
 /*
  * find or create event rec
@@ -112,10 +178,25 @@ find_lock(int sid, bool create)
 
 	if (create)
 	{
+		if (first_free == NOT_FOUND)
+		{
+			purge_shared_alert_mem();
+
+			for (i = 0; i < MAX_LOCKS; i++)
+			{
+				if (locks[i].sid == NOT_USED)
+				{
+					first_free = i;
+					break;
+				}
+			}
+		}
+
 		if (first_free != NOT_FOUND)
 		{
 			locks[first_free].sid = sid;
 			locks[first_free].echo = NULL;
+			locks[first_free].pid = MyProcPid;
 			session_lock = &locks[first_free];
 			return &locks[first_free];
 		}
@@ -475,7 +556,6 @@ create_message(text *event_name, text *message)
 								p->next_echo = echo;
 							}
 						}
-
 				}
 			}
 
@@ -598,18 +678,31 @@ dbms_alert_removeall(PG_FUNCTION_ARGS)
 	int cycle = 0;
 	float8 endtime;
 	float8 timeout = 2;
+	alert_lock *alck;
 
 	WATCH_PRE(timeout, endtime, cycle);
 	if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES,MAX_EVENTS,MAX_LOCKS,false))
 	{
 		for (i = 0; i < MAX_EVENTS; i++)
+		{
 			if (events[i].event_name != NULL)
 			{
 				find_and_remove_message_item(i, sid,
 								 false, true, true, NULL, NULL);
 				unregister_event(i, sid);
-
 			}
+		}
+
+		alck = find_lock(sid, false);
+		if (alck)
+		{
+			/* After all events unregistration, an echo field should NULL */
+			Assert(alck->echo == NULL);
+
+			alck->sid = NOT_USED;
+			session_lock = NULL;
+		}
+
 		LWLockRelease(shmem_lockid);
 		PG_RETURN_VOID();
 	}
