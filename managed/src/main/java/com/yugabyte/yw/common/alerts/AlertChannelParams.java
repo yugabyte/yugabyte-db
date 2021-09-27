@@ -5,6 +5,7 @@ package com.yugabyte.yw.common.alerts;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.annotation.JsonTypeInfo.As;
+import com.yugabyte.yw.common.BeanValidator;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
 
@@ -24,7 +25,7 @@ public class AlertChannelParams {
   // If null then template from the alert is used.
   public String textTemplate;
 
-  public void validate() throws PlatformValidationException {
+  public void validate(BeanValidator validator) {
     // Nothing to check yet.
   }
 }

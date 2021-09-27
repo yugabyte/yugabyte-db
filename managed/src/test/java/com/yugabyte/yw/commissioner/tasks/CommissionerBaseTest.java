@@ -21,14 +21,14 @@ import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.TableManager;
-import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
-import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
@@ -88,12 +88,12 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     defaultCustomer = ModelFactory.testCustomer();
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
     gcpProvider = ModelFactory.gcpProvider(defaultCustomer);
-    metricService = new MetricService();
-    alertService = new AlertService();
-    alertDefinitionService = new AlertDefinitionService(alertService);
-    SettableRuntimeConfigFactory configFactory = new SettableRuntimeConfigFactory(app.config());
-    alertConfigurationService =
-        new AlertConfigurationService(alertDefinitionService, configFactory);
+    metricService = app.injector().instanceOf(MetricService.class);
+    alertService = app.injector().instanceOf(AlertService.class);
+    alertDefinitionService = app.injector().instanceOf(AlertDefinitionService.class);
+    SettableRuntimeConfigFactory configFactory =
+        app.injector().instanceOf(SettableRuntimeConfigFactory.class);
+    alertConfigurationService = app.injector().instanceOf(AlertConfigurationService.class);
 
     when(mockBaseTaskDependencies.getApplication()).thenReturn(app);
     when(mockBaseTaskDependencies.getConfig()).thenReturn(app.config());

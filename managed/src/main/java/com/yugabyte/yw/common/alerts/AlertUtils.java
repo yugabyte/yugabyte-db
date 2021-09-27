@@ -9,7 +9,6 @@ import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.AlertChannel;
 import com.yugabyte.yw.models.AlertChannel.ChannelType;
 import com.yugabyte.yw.models.Customer;
-import java.lang.reflect.InvocationTargetException;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -74,27 +73,6 @@ public class AlertUtils {
         return AlertChannelSlackParams.class;
       default:
         return AlertChannelParams.class;
-    }
-  }
-
-  /**
-   * Creates an instance of a class descendant from AlertChannelParams. The class is specified by a
-   * value of the channelType parameter.
-   *
-   * @param channelType
-   * @return
-   */
-  public static AlertChannelParams createParamsInstance(ChannelType channelType) {
-    try {
-      return (AlertChannelParams)
-          getAlertParamsClass(channelType).getDeclaredConstructor().newInstance();
-    } catch (InstantiationException
-        | IllegalAccessException
-        | IllegalArgumentException
-        | InvocationTargetException
-        | NoSuchMethodException
-        | SecurityException e) {
-      return null;
     }
   }
 

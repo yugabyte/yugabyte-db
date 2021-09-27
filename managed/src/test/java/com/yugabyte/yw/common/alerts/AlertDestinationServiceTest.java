@@ -13,9 +13,8 @@ import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
-import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertChannel;
+import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertDestination;
 import com.yugabyte.yw.models.Customer;
 import java.util.ArrayList;
@@ -35,10 +34,7 @@ public class AlertDestinationServiceTest extends FakeDBApplication {
   private Customer defaultCustomer;
   private UUID customerUUID;
   private AlertChannel channel;
-  private AlertService alertService = new AlertService();
-  private AlertDefinitionService alertDefinitionService = new AlertDefinitionService(alertService);
-  private AlertConfigurationService alertConfigurationService;
-  private AlertChannelService alertChannelService;
+
   private AlertDestinationService alertDestinationService;
 
   @Before
@@ -47,12 +43,7 @@ public class AlertDestinationServiceTest extends FakeDBApplication {
     customerUUID = defaultCustomer.getUuid();
     channel = ModelFactory.createEmailChannel(customerUUID, "Test AlertChannel");
 
-    alertConfigurationService =
-        new AlertConfigurationService(
-            alertDefinitionService, new SettableRuntimeConfigFactory(app.config()));
-    alertChannelService = new AlertChannelService();
-    alertDestinationService =
-        new AlertDestinationService(alertChannelService, alertConfigurationService);
+    alertDestinationService = app.injector().instanceOf(AlertDestinationService.class);
   }
 
   @Test
@@ -131,9 +122,7 @@ public class AlertDestinationServiceTest extends FakeDBApplication {
             PlatformServiceException.class, () -> alertDestinationService.save(destination));
     assertThat(
         exception.getMessage(),
-        equalTo(
-            "Unable to create/update alert destination: Can't save alert destination"
-                + " without channels."));
+        equalTo("errorJson: {\"channels\":[\"size must be between 1 and 2147483647\"]}"));
   }
 
   @Test
@@ -177,8 +166,8 @@ public class AlertDestinationServiceTest extends FakeDBApplication {
     assertThat(
         exception.getMessage(),
         equalTo(
-            "Unable to create/update alert destination: Can't set the alert destination"
-                + " as non-default. Make another destination as default at first."));
+            "errorJson: {\"defaultDestination\":[\"can't set the alert destination "
+                + "as non-default - make another destination as default at first.\"]}"));
   }
 
   @Test
@@ -283,15 +272,13 @@ public class AlertDestinationServiceTest extends FakeDBApplication {
             });
     assertThat(
         exception.getMessage(),
-        equalTo(
-            "Unable to create/update alert destination: Alert destination"
-                + " with such name already exists."));
+        equalTo("errorJson: {\"name\":[\"alert destination with such name already exists.\"]}"));
   }
 
   @Test
   public void testSave_LongName_Fail() {
     StringBuilder longName = new StringBuilder();
-    while (longName.length() <= AlertDestination.MAX_NAME_LENGTH / 4) {
+    while (longName.length() <= 63) {
       longName.append(ALERT_DESTINATION_NAME);
     }
 
@@ -309,6 +296,6 @@ public class AlertDestinationServiceTest extends FakeDBApplication {
             });
     assertThat(
         exception.getMessage(),
-        equalTo("Unable to create/update alert destination: Name length (63) is exceeded."));
+        equalTo("errorJson: {\"name\":[\"size must be between 1 and 63\"]}"));
   }
 }

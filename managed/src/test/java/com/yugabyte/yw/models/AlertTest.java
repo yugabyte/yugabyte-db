@@ -38,7 +38,6 @@ import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 
@@ -52,7 +51,7 @@ public class AlertTest extends FakeDBApplication {
   private AlertConfiguration configuration;
   private AlertDefinition definition;
 
-  @InjectMocks private AlertService alertService;
+  private AlertService alertService;
 
   @Before
   public void setUp() {
@@ -60,6 +59,7 @@ public class AlertTest extends FakeDBApplication {
     universe = ModelFactory.createUniverse(cust1.getCustomerId());
     configuration = createAlertConfiguration(cust1, universe);
     definition = createDefinition();
+    alertService = app.injector().instanceOf(AlertService.class);
   }
 
   @Test

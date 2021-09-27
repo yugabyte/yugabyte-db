@@ -36,6 +36,8 @@ import javax.persistence.Enumerated;
 import javax.persistence.Id;
 import javax.persistence.OneToMany;
 import javax.persistence.Transient;
+import javax.validation.constraints.NotNull;
+import javax.validation.constraints.Size;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.experimental.Accessors;
@@ -93,10 +95,12 @@ public class Alert extends Model implements AlertLabelsProvider {
   @ApiModelProperty(value = "Alert UUID", accessMode = READ_ONLY)
   private UUID uuid;
 
+  @NotNull
   @Column(nullable = false)
-  @ApiModelProperty(value = "Cutomer UUID", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Customer UUID", accessMode = READ_ONLY)
   private UUID customerUUID;
 
+  @NotNull
   @Column(nullable = false)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
   @ApiModelProperty(value = "Alert creation timestamp", accessMode = READ_ONLY)
@@ -110,6 +114,7 @@ public class Alert extends Model implements AlertLabelsProvider {
   @ApiModelProperty(value = "Timestamp at which the alert was resolved", accessMode = READ_ONLY)
   private Date resolvedTime;
 
+  @NotNull
   @Enumerated(EnumType.STRING)
   @ApiModelProperty(value = "Alert configuration severity", accessMode = READ_ONLY)
   private AlertConfiguration.Severity severity;
@@ -123,16 +128,22 @@ public class Alert extends Model implements AlertLabelsProvider {
               + " else 0 end)")
   private Integer severityIndex;
 
+  @NotNull
+  @Size(min = 1, max = 1000)
   @ApiModelProperty(value = "The alert's name", accessMode = READ_ONLY)
   private String name;
 
+  @NotNull
+  @Size(min = 1)
   @Column(columnDefinition = "Text", nullable = false)
   @ApiModelProperty(value = "The alert's message text", accessMode = READ_ONLY)
   private String message;
 
+  @NotNull
   @ApiModelProperty(value = "The source of the alert", accessMode = READ_ONLY)
   private String sourceName;
 
+  @NotNull
   @Enumerated(EnumType.STRING)
   @ApiModelProperty(value = "The alert's state", accessMode = READ_ONLY)
   private State state = State.ACTIVE;
@@ -147,12 +158,15 @@ public class Alert extends Model implements AlertLabelsProvider {
               + " else 0 end)")
   private Integer stateIndex;
 
+  @NotNull
   @ApiModelProperty(value = "Alert definition UUID", accessMode = READ_ONLY)
   private UUID definitionUuid;
 
+  @NotNull
   @ApiModelProperty(value = "Alert configuration UUID", accessMode = READ_ONLY)
   private UUID configurationUuid;
 
+  @NotNull
   @ApiModelProperty(value = "Alert configuration type", accessMode = READ_ONLY)
   private AlertConfiguration.TargetType configurationType;
 

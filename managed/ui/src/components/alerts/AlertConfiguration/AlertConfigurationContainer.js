@@ -49,8 +49,7 @@ const mapDispatchToProps = (dispatch) => {
     alertConfigs: (payload) => {
       return dispatch(alertConfigs(payload)).then((response) => {
         if (response.error) {
-          const errorMessage = response.payload?.response?.data?.error || response.payload.message;
-          toast.error(errorMessage);
+          toast.error(createErrorMessage(response.payload));
           return;
         }
         return response.payload.data;
@@ -59,8 +58,7 @@ const mapDispatchToProps = (dispatch) => {
     alertDestinations: () => {
       return dispatch(alertDestinations()).then((response) => {
         if (response.error) {
-          const errorMessage = response.payload?.response?.data?.error || response.payload.message;
-          toast.error(errorMessage);
+          toast.error(createErrorMessage(response.payload));
           return;
         }
         return response.payload.data;
@@ -69,8 +67,7 @@ const mapDispatchToProps = (dispatch) => {
     getTargetMetrics: (payload) => {
       return dispatch(getTargetMetrics(payload)).then((response) => {
         if (response.error) {
-          const errorMessage = response.payload?.response?.data?.error || response.payload.message;
-          toast.error(errorMessage);
+          toast.error(createErrorMessage(response.payload));
           return;
         }
         return response.payload.data;
@@ -91,8 +88,7 @@ const mapDispatchToProps = (dispatch) => {
     createAlertChannel: (payload) => {
       return dispatch(createAlertChannel(payload)).then((response) => {
         if (response.error) {
-          const errorMessage = response.payload?.response?.data?.error || response.payload.message;
-          toast.error(errorMessage);
+          toast.error(createErrorMessage(response.payload));
         } else {
           toast.success('Successfully created the channel');
         }
@@ -102,8 +98,7 @@ const mapDispatchToProps = (dispatch) => {
     getAlertChannels: () => {
       return dispatch(getAlertChannels()).then((response) => {
         if (response.error) {
-          const errorMessage = response.payload?.response?.data?.error || response.payload.message;
-          toast.error(errorMessage);
+          toast.error(createErrorMessage(response.payload));
           return;
         }
         return response.payload.data;
@@ -112,9 +107,7 @@ const mapDispatchToProps = (dispatch) => {
     createAlertDestination: (payload) => {
       return dispatch(createAlertDestination(payload)).then((response) => {
         if (response.error) {
-          const errorMessage =
-            response.payload?.response?.data?.error.toString() || response.payload.message;
-          toast.error(errorMessage);
+          toast.error(createErrorMessage(response.payload));
         } else {
           toast.success('Successfully added the destination');
         }
@@ -124,8 +117,7 @@ const mapDispatchToProps = (dispatch) => {
     createAlertConfig: (payload) => {
       return dispatch(createAlertConfig(payload)).then((response) => {
         if (response.error) {
-          const errorMessage = response.payload?.response?.data?.error || response.payload.message;
-          toast.error(errorMessage);
+          toast.error(createErrorMessage(response.payload));
         } else {
           toast.success('Successfully added the alert configuration');
         }
@@ -135,8 +127,7 @@ const mapDispatchToProps = (dispatch) => {
     updateAlertConfig: (payload, uuid) => {
       return dispatch(updateAlertConfig(payload, uuid)).then((response) => {
         if (response.error) {
-          const errorMessage = response.payload?.response?.data?.error || response.payload.message;
-          toast.error(errorMessage);
+          toast.error(createErrorMessage(response.payload));
         } else {
           toast.success('Successfully updated the alert configuration');
         }
@@ -146,8 +137,7 @@ const mapDispatchToProps = (dispatch) => {
     updateAlertDestination: (payload, uuid) => {
       return dispatch(updateAlertDestination(payload, uuid)).then((response) => {
         if (response.error) {
-          const errorMessage = response.payload?.response?.data?.error || response.payload.message;
-          toast.error(errorMessage);
+          toast.error(createErrorMessage(response.payload));
         } else {
           toast.success('Successfully updated the destination');
         }
@@ -157,8 +147,7 @@ const mapDispatchToProps = (dispatch) => {
     deleteAlertDestination: (uuid) => {
       return dispatch(deleteAlertDestination(uuid)).then((response) => {
         if (response.error) {
-          const errorMessage = response.payload?.response?.data?.error || response.payload.message;
-          toast.error(errorMessage);
+          toast.error(createErrorMessage(response.payload));
           return;
         } else {
           toast.success('Successfully deleted the destination');
@@ -169,8 +158,7 @@ const mapDispatchToProps = (dispatch) => {
     deleteAlertConfig: (uuid) => {
       return dispatch(deleteAlertConfig(uuid)).then((response) => {
         if (response.error) {
-          const errorMessage = response.payload?.response?.data?.error || response.payload.message;
-          toast.error(errorMessage);
+          toast.error(createErrorMessage(response.payload));
           return;
         } else {
           toast.success('Successfully deleted the alert configuration');
@@ -201,5 +189,20 @@ const mapDispatchToProps = (dispatch) => {
     updateField: (form, field, newValue) => dispatch(change(form, field, newValue))
   };
 };
+
+const createErrorMessage = (payload) => {
+  const structuredError = payload?.response?.data?.error;
+  if (structuredError) {
+    if (typeof structuredError == 'string') {
+      return structuredError;
+    }
+    const message = Object.keys(structuredError).map(fieldName => {
+        const messages = structuredError[fieldName];
+        return fieldName + ": " + messages.join(', ');
+      }).join('\n');
+    return message;
+  }
+  return payload.message;
+}
 
 export default connect(mapStateToProps, mapDispatchToProps)(AlertConfiguration);

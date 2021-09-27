@@ -18,25 +18,20 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableList;
-import com.yugabyte.yw.common.alerts.AlertConfigurationService;
-import com.yugabyte.yw.common.alerts.AlertDefinitionService;
-import com.yugabyte.yw.common.alerts.AlertNotificationReport;
 import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
 import com.yugabyte.yw.common.alerts.AlertChannelManager;
 import com.yugabyte.yw.common.alerts.AlertChannelService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
-import com.yugabyte.yw.common.alerts.AlertService;
+import com.yugabyte.yw.common.alerts.AlertNotificationReport;
 import com.yugabyte.yw.common.alerts.AlertUtils;
-import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.alerts.PlatformNotificationException;
 import com.yugabyte.yw.common.alerts.impl.AlertChannelEmail;
-import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.Alert.State;
+import com.yugabyte.yw.models.AlertChannel;
 import com.yugabyte.yw.models.AlertChannel.ChannelType;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertDefinition;
-import com.yugabyte.yw.models.AlertChannel;
 import com.yugabyte.yw.models.AlertDestination;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Metric;
@@ -78,14 +73,6 @@ public class AlertManagerTest extends FakeDBApplication {
 
   @Mock private EmailHelper emailHelper;
 
-  private MetricService metricService;
-
-  private AlertService alertService;
-
-  private AlertDefinitionService alertDefinitionService;
-
-  private AlertConfigurationService alertConfigurationService;
-
   private AlertManager am;
 
   private AlertConfiguration configuration;
@@ -111,15 +98,8 @@ public class AlertManagerTest extends FakeDBApplication {
     configuration = ModelFactory.createAlertConfiguration(defaultCustomer, universe);
     definition = ModelFactory.createAlertDefinition(defaultCustomer, universe, configuration);
 
-    metricService = new MetricService();
-    alertService = new AlertService();
-    alertDefinitionService = new AlertDefinitionService(alertService);
-    alertConfigurationService =
-        new AlertConfigurationService(
-            alertDefinitionService, new SettableRuntimeConfigFactory(app.config()));
-    alertChannelService = new AlertChannelService();
-    alertDestinationService =
-        new AlertDestinationService(alertChannelService, alertConfigurationService);
+    alertChannelService = app.injector().instanceOf(AlertChannelService.class);
+    alertDestinationService = app.injector().instanceOf(AlertDestinationService.class);
     am =
         new AlertManager(
             emailHelper,

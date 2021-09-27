@@ -34,13 +34,9 @@ import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
 import com.yugabyte.yw.common.alerts.AlertChannelParams;
 import com.yugabyte.yw.common.alerts.AlertChannelService;
 import com.yugabyte.yw.common.alerts.AlertChannelSlackParams;
-import com.yugabyte.yw.common.alerts.AlertConfigurationService;
-import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
-import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.alerts.AlertUtils;
 import com.yugabyte.yw.common.alerts.SmtpData;
-import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.forms.filters.AlertApiFilter;
@@ -106,10 +102,6 @@ public class AlertControllerTest extends FakeDBApplication {
 
   private int alertDestinationIndex;
 
-  private MetricService metricService;
-  private AlertService alertService;
-  private AlertDefinitionService alertDefinitionService;
-  private AlertConfigurationService alertConfigurationService;
   private AlertChannelService alertChannelService;
   private AlertDestinationService alertDestinationService;
 
@@ -124,21 +116,10 @@ public class AlertControllerTest extends FakeDBApplication {
 
     universe = ModelFactory.createUniverse();
 
-    metricService = new MetricService();
-    alertService = new AlertService();
-    alertDefinitionService = new AlertDefinitionService(alertService);
-    alertConfigurationService =
-        new AlertConfigurationService(
-            alertDefinitionService, new SettableRuntimeConfigFactory(app.config()));
-    alertChannelService = new AlertChannelService();
-    alertDestinationService =
-        new AlertDestinationService(alertChannelService, alertConfigurationService);
+    alertChannelService = app.injector().instanceOf(AlertChannelService.class);
+    alertDestinationService = app.injector().instanceOf(AlertDestinationService.class);
     alertConfiguration = ModelFactory.createAlertConfiguration(customer, universe);
     alertDefinition = ModelFactory.createAlertDefinition(customer, universe, alertConfiguration);
-
-    controller.setMetricService(metricService);
-    controller.setAlertService(alertService);
-    controller.setAlertConfigurationService(alertConfigurationService);
   }
 
   private void checkEmptyAnswer(String url) {
@@ -221,7 +202,7 @@ public class AlertControllerTest extends FakeDBApplication {
                     data));
 
     AssertHelper.assertBadRequest(
-        result, "Email parameters: only one of defaultRecipients and recipients[] should be set.");
+        result, "{\"params\":[\"only one of defaultRecipients and recipients[] should be set.\"]}");
     checkEmptyAnswer("/api/customers/" + customer.getUuid() + "/alert_channels");
   }
 
@@ -311,7 +292,9 @@ public class AlertControllerTest extends FakeDBApplication {
                     authToken,
                     data));
     AssertHelper.assertBadRequest(
-        result, "Unable to create/update alert channel: Slack parameters: username is empty.");
+        result,
+        "{\"params.webhookUrl\":[\"may not be null\"],"
+            + "\"params.username\":[\"may not be null\"]}");
   }
 
   @Test
@@ -423,15 +406,9 @@ public class AlertControllerTest extends FakeDBApplication {
 
   private ObjectNode getAlertDestinationJson(boolean isDefault) {
     AlertChannel channel1 =
-        ModelFactory.createAlertChannel(
-            customer.getUuid(),
-            getAlertChannelName(),
-            AlertUtils.createParamsInstance(ChannelType.Email));
+        ModelFactory.createEmailChannel(customer.getUuid(), getAlertChannelName());
     AlertChannel channel2 =
-        ModelFactory.createAlertChannel(
-            customer.getUuid(),
-            getAlertChannelName(),
-            AlertUtils.createParamsInstance(ChannelType.Slack));
+        ModelFactory.createSlackChannel(customer.getUuid(), getAlertChannelName());
 
     ObjectNode data = Json.newObject();
     data.put("name", getAlertDestinationName())
@@ -622,8 +599,8 @@ public class AlertControllerTest extends FakeDBApplication {
                     Json.toJson(destination)));
     AssertHelper.assertBadRequest(
         result,
-        "Can't set the alert destination as non-default. Make another"
-            + " destination as default at first.");
+        "{\"defaultDestination\":[\"can't set the alert destination as non-default - "
+            + "make another destination as default at first.\"]}");
     destination.setDefaultDestination(true);
     assertThat(alertDestinationService.getDefaultDestination(customer.uuid), equalTo(destination));
   }
@@ -1051,7 +1028,7 @@ public class AlertControllerTest extends FakeDBApplication {
                     "/api/customers/" + customer.getUuid() + "/alert_configurations",
                     authToken,
                     Json.toJson(alertConfiguration)));
-    assertBadRequest(result, "{\"name\":[\"error.required\"]}");
+    assertBadRequest(result, "{\"name\":[\"may not be null\"]}");
   }
 
   @Test
@@ -1091,7 +1068,7 @@ public class AlertControllerTest extends FakeDBApplication {
                         + alertConfiguration.getUuid(),
                     authToken,
                     Json.toJson(alertConfiguration)));
-    assertBadRequest(result, "{\"targetType\":[\"error.required\"]}");
+    assertBadRequest(result, "{\"targetType\":[\"may not be null\"]}");
   }
 
   @Test

@@ -18,10 +18,6 @@ import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.alerts.AlertConfigurationService;
-import com.yugabyte.yw.common.alerts.AlertDefinitionService;
-import com.yugabyte.yw.common.alerts.AlertService;
-import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.models.AlertConfiguration.Severity;
 import com.yugabyte.yw.models.AlertConfiguration.TargetType;
 import com.yugabyte.yw.models.common.Condition;
@@ -57,11 +53,6 @@ public class AlertConfigurationTest extends FakeDBApplication {
   private Universe universe;
   private AlertDestination alertDestination;
 
-  private final AlertService alertService = new AlertService();
-  private final AlertDefinitionService alertDefinitionService =
-      new AlertDefinitionService(alertService);
-  private AlertConfigurationService alertConfigurationService;
-
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer("Customer");
@@ -74,9 +65,6 @@ public class AlertConfigurationTest extends FakeDBApplication {
             "My Route",
             Collections.singletonList(
                 ModelFactory.createEmailChannel(customer.getUuid(), "Test channel")));
-    alertConfigurationService =
-        new AlertConfigurationService(
-            alertDefinitionService, new SettableRuntimeConfigFactory(app.config()));
   }
 
   @Test
@@ -294,91 +282,101 @@ public class AlertConfigurationTest extends FakeDBApplication {
     UUID randomUUID = UUID.randomUUID();
 
     testValidationCreate(
-        configuration -> configuration.setCustomerUUID(null), "Customer UUID field is mandatory");
+        configuration -> configuration.setCustomerUUID(null),
+        "errorJson: {\"customerUUID\":[\"may not be null\"]}");
 
-    testValidationCreate(configuration -> configuration.setName(null), "Name field is mandatory");
+    testValidationCreate(
+        configuration -> configuration.setName(null),
+        "errorJson: {\"name\":[\"may not be null\"]}");
 
     testValidationCreate(
         configuration -> configuration.setName(StringUtils.repeat("a", 1001)),
-        "Name field can't be longer than 1000 characters");
+        "errorJson: {\"name\":[\"size must be between 1 and 1000\"]}");
 
     testValidationCreate(
-        configuration -> configuration.setTargetType(null), "Target type field is mandatory");
+        configuration -> configuration.setTargetType(null),
+        "errorJson: {\"targetType\":[\"may not be null\"]}");
 
     testValidationCreate(
-        configuration -> configuration.setTarget(null), "Target field is mandatory");
+        configuration -> configuration.setTarget(null),
+        "errorJson: {\"target\":[\"may not be null\"]}");
 
     testValidationCreate(
         configuration ->
             configuration.setTarget(
                 new AlertConfigurationTarget().setAll(true).setUuids(ImmutableSet.of(randomUUID))),
-        "Should select either all entries or particular UUIDs as target");
+        "errorJson: {\"target\":[\"should select either all entries or particular UUIDs\"]}");
 
     testValidationCreate(
         configuration ->
             configuration.setTarget(
                 new AlertConfigurationTarget().setUuids(ImmutableSet.of(randomUUID))),
-        "Universe(s) missing for uuid(s) " + randomUUID);
+        "errorJson: {\"target.uuids\":[\"universe(s) missing: " + randomUUID + "\"]}");
 
     testValidationCreate(
         configuration ->
             configuration.setTarget(
                 new AlertConfigurationTarget().setUuids(Collections.singleton(null))),
-        "Target UUIDs can't have null values");
+        "errorJson: {\"target.uuids\":[\"can't have null entries\"]}");
 
     testValidationCreate(
         configuration ->
             configuration
                 .setTargetType(TargetType.PLATFORM)
                 .setTarget(new AlertConfigurationTarget().setUuids(ImmutableSet.of(randomUUID))),
-        "PLATFORM configuration can't have target uuids");
+        "errorJson: {\"target.uuids\":[\"PLATFORM configuration can't have target uuids\"]}");
 
     testValidationCreate(
-        configuration -> configuration.setTemplate(null), "Template field is mandatory");
+        configuration -> configuration.setTemplate(null),
+        "errorJson: {\"template\":[\"may not be null\"]}");
 
     testValidationCreate(
         configuration -> configuration.setTemplate(AlertTemplate.ALERT_CONFIG_WRITING_FAILED),
-        "Target type should be consistent with template");
+        "errorJson: {\"\":[\"target type should be consistent with template\"]}");
 
     testValidationCreate(
-        configuration -> configuration.setThresholds(null), "Query thresholds are mandatory");
+        configuration -> configuration.setThresholds(null),
+        "errorJson: {\"thresholds\":[\"may not be null\"]}");
 
     testValidationCreate(
         configuration -> configuration.setDestinationUUID(randomUUID),
-        "Alert destination " + randomUUID + " is missing");
+        "errorJson: {\"destinationUUID\":[\"alert destination " + randomUUID + " is missing\"]}");
 
     testValidationCreate(
         configuration ->
             configuration
                 .setDestinationUUID(alertDestination.getUuid())
                 .setDefaultDestination(true),
-        "Destination can't be filled in case default destination is selected");
+        "errorJson: {\"\":[\"destination can't be filled "
+            + "in case default destination is selected\"]}");
 
     testValidationCreate(
-        configuration -> configuration.setThresholdUnit(null), "Threshold unit is mandatory");
+        configuration -> configuration.setThresholdUnit(null),
+        "errorJson: {\"thresholdUnit\":[\"may not be null\"]}");
 
     testValidationCreate(
         configuration -> configuration.setThresholdUnit(Unit.STATUS),
-        "Can't set threshold unit incompatible with alert definition template");
+        "errorJson: {\"thresholdUnit\":[\"incompatible with alert definition template\"]}");
 
     testValidationCreate(
         configuration -> configuration.getThresholds().get(Severity.SEVERE).setCondition(null),
-        "Threshold condition is mandatory");
+        "errorJson: {\"thresholds[SEVERE].condition\":[\"may not be null\"]}");
 
     testValidationCreate(
         configuration -> configuration.getThresholds().get(Severity.SEVERE).setThreshold(null),
-        "Threshold value is mandatory");
+        "errorJson: {\"thresholds[SEVERE].threshold\":[\"may not be null\"]}");
 
     testValidationCreate(
         configuration -> configuration.getThresholds().get(Severity.SEVERE).setThreshold(-100D),
-        "Threshold value can't be less than 0");
+        "errorJson: {\"thresholds[SEVERE].threshold\":[\"can't be less than 0\"]}");
 
     testValidationCreate(
-        configuration -> configuration.setDurationSec(-1), "Duration can't be less than 0");
+        configuration -> configuration.setDurationSec(-1),
+        "errorJson: {\"durationSec\":[\"must be greater than or equal to 0\"]}");
 
     testValidationUpdate(
         configuration -> configuration.setCustomerUUID(randomUUID).setDestinationUUID(null),
-        "Can't change customer UUID for configuration 'Memory Consumption'");
+        "errorJson: {\"customerUUID\":[\"can't change for configuration 'Memory Consumption'\"]}");
   }
 
   private void testValidationCreate(Consumer<AlertConfiguration> modifier, String expectedMessage) {

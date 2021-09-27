@@ -22,7 +22,6 @@ import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.alerts.AlertNotificationReport;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.alerts.AlertUtils;
-import com.yugabyte.yw.common.alerts.PlatformValidationException;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.models.Alert;
@@ -261,7 +260,7 @@ public class AlertManager {
     for (AlertChannel channel : channels) {
       try {
         alertChannelService.validate(channel);
-      } catch (PlatformValidationException e) {
+      } catch (PlatformServiceException e) {
         if (report.failuresByChannel(channel.getUuid()) == 0) {
           log.warn("Channel {} skipped: {}", channel.getUuid(), e.getMessage(), e);
         }
