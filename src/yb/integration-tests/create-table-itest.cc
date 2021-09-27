@@ -367,7 +367,7 @@ TEST_F(CreateTableITest, TableColocationRemoteBootstrapTest) {
   ASSERT_OK(
       client_->CreateNamespace("colocation_test", boost::none /* db */, "" /* creator */,
                                "" /* ns_id */, "" /* src_ns_id */,
-                               boost::none /* next_pg_oid */, boost::none /* txn */, true));
+                               boost::none /* next_pg_oid */, nullptr /* txn */, true));
 
   {
     string ns_id;
@@ -437,7 +437,7 @@ TEST_F(CreateTableITest, TablegroupRemoteBootstrapTest) {
 
   ASSERT_OK(client_->CreateNamespace(namespace_name, YQL_DATABASE_PGSQL, "" /* creator */,
                                      "" /* ns_id */, "" /* src_ns_id */,
-                                     boost::none /* next_pg_oid */, boost::none /* txn */, false));
+                                     boost::none /* next_pg_oid */, nullptr /* txn */, false));
 
   {
     auto namespaces = ASSERT_RESULT(client_->ListNamespaces(boost::none));

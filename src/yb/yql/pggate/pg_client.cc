@@ -16,6 +16,8 @@
 #include "yb/client/client-internal.h"
 #include "yb/client/table.h"
 
+#include "yb/rpc/poller.h"
+
 #include "yb/tserver/pg_client.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
@@ -24,6 +26,8 @@
 DECLARE_bool(use_node_hostname_for_local_tserver);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
 
+DEFINE_uint64(pg_client_heartbeat_interval_ms, 10000, "Pg client heartbeat interval in ms.");
+
 using namespace std::literals;
 
 namespace yb {
@@ -31,12 +35,15 @@ namespace pggate {
 
 class PgClient::Impl {
  public:
+  Impl() : heartbeat_poller_(std::bind(&Impl::Heartbeat, this, false)) {}
+
   ~Impl() {
     CHECK(!proxy_);
   }
 
-  void Start(rpc::ProxyCache* proxy_cache,
-             const tserver::TServerSharedObject& tserver_shared_object) {
+  CHECKED_STATUS Start(rpc::ProxyCache* proxy_cache,
+                       rpc::Scheduler* scheduler,
+                       const tserver::TServerSharedObject& tserver_shared_object) {
     CHECK_NOTNULL(&tserver_shared_object);
     MonoDelta resolve_cache_timeout;
     const auto& tserver_shared_data_ = *tserver_shared_object;
@@ -49,10 +56,66 @@ class PgClient::Impl {
     LOG(INFO) << "Using TServer host_port: " << host_port;
     proxy_ = std::make_unique<tserver::PgClientServiceProxy>(
         proxy_cache, host_port, nullptr /* protocol */, resolve_cache_timeout);
+
+    auto future = create_session_promise_.get_future();
+    Heartbeat(true);
+    RETURN_NOT_OK(future.get());
+    heartbeat_poller_.Start(scheduler, FLAGS_pg_client_heartbeat_interval_ms * 1ms - 1s);
+    return Status::OK();
   }
 
   void Shutdown() {
+    heartbeat_poller_.Shutdown();
     proxy_ = nullptr;
+  }
+
+  void Heartbeat(bool create) {
+    {
+      bool expected = false;
+      if (!heartbeat_running_.compare_exchange_strong(expected, true)) {
+        LOG(DFATAL) << "Heartbeat did not complete yet";
+        return;
+      }
+    }
+    tserver::PgHeartbeatRequestPB req;
+    req.set_create(create);
+    req.set_session_id(session_id_);
+    proxy_->HeartbeatAsync(
+        req, &heartbeat_resp_, PrepareHeartbeatController(),
+        [create, this] {
+      auto status = ResponseStatus(heartbeat_resp_);
+      heartbeat_running_ = false;
+      if (create) {
+        create_session_promise_.set_value(status);
+      } else if (!status.ok()) {
+        LOG(WARNING) << "Heartbeat failed: " << status;
+      }
+    });
+  }
+
+  CHECKED_STATUS AlterTable(tserver::PgAlterTableRequestPB* req, CoarseTimePoint deadline) {
+    tserver::PgAlterTableResponsePB resp;
+    req->set_session_id(session_id_);
+
+    RETURN_NOT_OK(proxy_->AlterTable(*req, &resp, PrepareAdminController(deadline)));
+    return ResponseStatus(resp);
+  }
+
+
+  CHECKED_STATUS CreateDatabase(tserver::PgCreateDatabaseRequestPB* req, CoarseTimePoint deadline) {
+    tserver::PgCreateDatabaseResponsePB resp;
+    req->set_session_id(session_id_);
+
+    RETURN_NOT_OK(proxy_->CreateDatabase(*req, &resp, PrepareAdminController(deadline)));
+    return ResponseStatus(resp);
+  }
+
+  CHECKED_STATUS CreateTable(tserver::PgCreateTableRequestPB* req, CoarseTimePoint deadline) {
+    tserver::PgCreateTableResponsePB resp;
+    req->set_session_id(session_id_);
+
+    RETURN_NOT_OK(proxy_->CreateTable(*req, &resp, PrepareAdminController(deadline)));
+    return ResponseStatus(resp);
   }
 
   Result<PgTableDescPtr> OpenTable(const PgObjectId& table_id) {
@@ -120,11 +183,25 @@ class PgClient::Impl {
 
   rpc::RpcController* PrepareAdminController(CoarseTimePoint deadline = CoarseTimePoint()) {
     controller_.Reset();
-    return SetupAdminController(&controller_);
+    return SetupAdminController(&controller_, deadline);
+  }
+
+  rpc::RpcController* PrepareHeartbeatController() {
+    heartbeat_controller_.Reset();
+    return SetupAdminController(
+        &heartbeat_controller_,
+        CoarseMonoClock::now() + FLAGS_pg_client_heartbeat_interval_ms * 1ms);
   }
 
   std::unique_ptr<tserver::PgClientServiceProxy> proxy_;
   rpc::RpcController controller_;
+  const uint64_t session_id_ = RandomUniformInt<uint64_t>();
+
+  rpc::Poller heartbeat_poller_;
+  std::atomic<bool> heartbeat_running_{false};
+  rpc::RpcController heartbeat_controller_;
+  tserver::PgHeartbeatResponsePB heartbeat_resp_;
+  std::promise<Status> create_session_promise_;
 };
 
 PgClient::PgClient() : impl_(new Impl) {
@@ -133,13 +210,26 @@ PgClient::PgClient() : impl_(new Impl) {
 PgClient::~PgClient() {
 }
 
-void PgClient::Start(
-    rpc::ProxyCache* proxy_cache, const tserver::TServerSharedObject& tserver_shared_object) {
-  impl_->Start(proxy_cache, tserver_shared_object);
+Status PgClient::Start(
+    rpc::ProxyCache* proxy_cache, rpc::Scheduler* scheduler,
+    const tserver::TServerSharedObject& tserver_shared_object) {
+  return impl_->Start(proxy_cache, scheduler, tserver_shared_object);
 }
 
 void PgClient::Shutdown() {
   impl_->Shutdown();
+}
+
+Status PgClient::AlterTable(tserver::PgAlterTableRequestPB* req, CoarseTimePoint deadline) {
+  return impl_->AlterTable(req, deadline);
+}
+
+Status PgClient::CreateDatabase(tserver::PgCreateDatabaseRequestPB* req, CoarseTimePoint deadline) {
+  return impl_->CreateDatabase(req, deadline);
+}
+
+Status PgClient::CreateTable(tserver::PgCreateTableRequestPB* req, CoarseTimePoint deadline) {
+  return impl_->CreateTable(req, deadline);
 }
 
 Result<PgTableDescPtr> PgClient::OpenTable(const PgObjectId& table_id) {
