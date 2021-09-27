@@ -1,8 +1,12 @@
 package com.yugabyte.yw.models;
 
+import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.ebean.Finder;
 import io.ebean.Model;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 import java.util.List;
 import java.util.UUID;
 import javax.persistence.Column;
@@ -27,6 +31,7 @@ import play.libs.Json;
               "target_table_id"
             }))
 @Entity
+@ApiModel(description = "Async replication relationship")
 public class AsyncReplicationRelationship extends Model {
 
   public static final Logger LOG = LoggerFactory.getLogger(AsyncReplicationRelationship.class);
@@ -37,28 +42,36 @@ public class AsyncReplicationRelationship extends Model {
   @Constraints.Required
   @Id
   @Column(nullable = false, unique = true)
+  @ApiModelProperty(value = "Replication relationship UUID")
   public UUID uuid;
 
   @ManyToOne
   @Constraints.Required
   @JoinColumn(name = "source_universe_uuid", nullable = false)
+  @JsonBackReference
+  @ApiModelProperty(value = "Source Universe")
   public Universe sourceUniverse;
 
   @Constraints.Required
   @Column(nullable = false)
+  @ApiModelProperty(value = "Source Universe table ID")
   public String sourceTableID;
 
   @ManyToOne
   @Constraints.Required
   @JoinColumn(name = "target_universe_uuid", nullable = false)
+  @JsonBackReference
+  @ApiModelProperty(value = "Target Universe")
   public Universe targetUniverse;
 
   @Constraints.Required
   @Column(nullable = false)
+  @ApiModelProperty(value = "Target Universe table ID")
   public String targetTableID;
 
   @Constraints.Required
   @Column(nullable = false)
+  @ApiModelProperty(value = "Replication status")
   public boolean active;
 
   public static AsyncReplicationRelationship create(
