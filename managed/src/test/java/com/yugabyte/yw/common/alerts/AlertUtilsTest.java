@@ -10,7 +10,6 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertChannel;
-import com.yugabyte.yw.models.AlertChannel.ChannelType;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.AlertLabel;
@@ -82,13 +81,6 @@ public class AlertUtilsTest extends FakeDBApplication {
     AlertChannel fromDb = AlertChannel.get(defaultCustomer.uuid, channel.getUuid());
     assertNotNull(fromDb);
     assertEquals(channel, fromDb);
-  }
-
-  @Test
-  public void testCreateParamsInstance() {
-    for (ChannelType channelType : ChannelType.values()) {
-      assertNotNull(AlertUtils.createParamsInstance(channelType));
-    }
   }
 
   @Test

@@ -10,7 +10,6 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo.As;
 import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
 import com.yugabyte.yw.common.alerts.AlertChannelParams;
 import com.yugabyte.yw.common.alerts.AlertChannelSlackParams;
-
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -25,19 +24,19 @@ import javax.persistence.Entity;
 import javax.persistence.FetchType;
 import javax.persistence.Id;
 import javax.persistence.ManyToMany;
+import javax.validation.Valid;
+import javax.validation.constraints.NotNull;
+import javax.validation.constraints.Size;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
 import lombok.experimental.Accessors;
-import play.data.validation.Constraints;
 
 @Data
 @Accessors(chain = true)
 @EqualsAndHashCode(callSuper = false)
 @Entity
 public class AlertChannel extends Model {
-
-  public static final int MAX_NAME_LENGTH = 255;
 
   /** These are the possible types of channels. */
   public enum ChannelType {
@@ -54,21 +53,22 @@ public class AlertChannel extends Model {
     PagerDuty,
   }
 
-  @Constraints.Required
   @Id
   @Column(nullable = false, unique = true)
   private UUID uuid;
 
-  @Constraints.Required
-  @Column(columnDefinition = "Text", length = MAX_NAME_LENGTH, nullable = false)
+  @NotNull
+  @Size(min = 1, max = 63)
+  @Column(columnDefinition = "Text", nullable = false)
   private String name;
 
-  @Constraints.Required
+  @NotNull
   @Column(nullable = false)
   @JsonProperty("customer_uuid")
   private UUID customerUUID;
 
-  @Constraints.Required
+  @NotNull
+  @Valid
   @Column(columnDefinition = "TEXT", nullable = false)
   @DbJson
   @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = As.PROPERTY, property = "channelType")

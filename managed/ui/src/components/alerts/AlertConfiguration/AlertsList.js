@@ -185,6 +185,8 @@ export const AlertsList = (props) => {
     });
 
     // setting up ALERT_TARGET_TYPE & ALERT_UNIVERSE_LIST.
+    const currentDestination = destination[0]?.value ? destination[0]?.value :
+      (row.defaultDestination ? '<default>' : '<empty>');
     const targetType = row.target.all ? 'allUniverses' : 'selectedUniverses';
     const univerList =
       isNonEmptyArray(row.target.uuids) &&
@@ -201,7 +203,7 @@ export const AlertsList = (props) => {
       ALERT_METRICS_CONDITION: row.template,
       ALERT_METRICS_DURATION: row.durationSec,
       ALERT_METRICS_CONDITION_POLICY: condition,
-      ALERT_DESTINATION_LIST: destination[0]?.value,
+      ALERT_DESTINATION_LIST: currentDestination,
       thresholdUnit: row.thresholdUnit
     };
 
