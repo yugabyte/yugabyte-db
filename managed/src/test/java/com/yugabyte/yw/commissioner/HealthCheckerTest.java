@@ -691,6 +691,7 @@ public class HealthCheckerTest extends FakeDBApplication {
     Cluster cluster = details.clusters.get(0);
 
     NodeDetails nd = new NodeDetails();
+    nd.nodeName = "test";
     nd.redisServerRpcPort = 1234;
     nd.placementUuid = cluster.uuid;
     nd.cloudInfo = new CloudSpecificInfo();
@@ -714,9 +715,40 @@ public class HealthCheckerTest extends FakeDBApplication {
 
     assertEquals(
         metric.getLabelValue(KnownAlertLabels.ERROR_MESSAGE),
-        String.format(
-            "Can't run health check for the universe due to missing IP address for node %s.",
-            nd.nodeName));
+        "Can't run health check for the universe due to unprovisioned node test.");
+  }
+
+  @Test
+  public void testCheckSingleUniverse_WithUnprovisionedNodeNoName_AlertSent() {
+    Universe u = setupUniverse("univ1");
+    UniverseDefinitionTaskParams details = u.getUniverseDetails();
+    Cluster cluster = details.clusters.get(0);
+
+    NodeDetails nd = new NodeDetails();
+    nd.redisServerRpcPort = 1234;
+    nd.placementUuid = cluster.uuid;
+    nd.cloudInfo = new CloudSpecificInfo();
+
+    details.nodeDetailsSet.add(nd);
+    setupAlertingData(null, true, false);
+
+    healthChecker.checkSingleUniverse(
+        new HealthChecker.CheckSingleUniverseParams(u, defaultCustomer, true, false, null));
+    verify(mockHealthManager, never()).runCommand(any(), any(), anyLong(), anyBoolean());
+
+    Metric metric =
+        AssertHelper.assertMetricValue(
+            metricService,
+            MetricKey.builder()
+                .customerUuid(defaultCustomer.getUuid())
+                .name(PlatformMetrics.HEALTH_CHECK_STATUS.getMetricName())
+                .targetUuid(u.getUniverseUUID())
+                .build(),
+            0.0);
+
+    assertEquals(
+        metric.getLabelValue(KnownAlertLabels.ERROR_MESSAGE),
+        String.format("Can't run health check for the universe due to unprovisioned node."));
   }
 
   @Test
