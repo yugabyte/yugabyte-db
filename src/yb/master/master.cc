@@ -249,7 +249,8 @@ Status Master::RegisterServices() {
       FLAGS_master_svc_queue_length,
       std::make_unique<tserver::PgClientServiceImpl>(
           client_future(), std::bind(&Master::TransactionPool, this),
-          metric_entity())));
+          metric_entity(),
+          &messenger()->scheduler())));
 
   return Status::OK();
 }
