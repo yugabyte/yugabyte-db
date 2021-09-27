@@ -815,6 +815,17 @@ public class AsyncYBClient implements AutoCloseable {
     return sendRpcToTablet(request);
   }
 
+  public Deferred<IsCreateXClusterReplicationDoneResponse> isCreateXClusterReplicationDone(
+    UUID sourceUniverseUUID) {
+    checkIsClosed();
+    IsCreateXClusterReplicationDoneRequest request =
+      new IsCreateXClusterReplicationDoneRequest(
+        this.masterTable,
+        sourceUniverseUUID);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
   public Deferred<AlterXClusterReplicationResponse> alterXClusterReplicationAddTables(
     UUID sourceUniverseUUID,
     List<String> sourceTableIDsToAdd) {
