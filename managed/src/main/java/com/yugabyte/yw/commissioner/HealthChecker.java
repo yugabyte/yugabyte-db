@@ -766,8 +766,8 @@ public class HealthChecker {
             params.customer,
             params.universe,
             String.format(
-                "Can't run health check for the universe due to missing IP address for node %s.",
-                nd.nodeName));
+                "Can't run health check for the universe due to unprovisioned node%s.",
+                nd.nodeName == null ? "" : " " + nd.nodeName));
         break;
       }
 
