@@ -1342,6 +1342,7 @@ export default class ClusterFields extends Component {
   render() {
     const {
       clusterType,
+      type,
       cloud,
       softwareVersions,
       accessKeys,
@@ -2331,7 +2332,7 @@ export default class ClusterFields extends Component {
             </Col>
           </Row>
           {this.state.enableYSQL && enableYSQLAuth}
-          { clusterType === 'primary' && this.state.enableYSQL && this.state.enableYSQLAuth && ysqlAuthPassword}
+          { clusterType === 'primary' && type === 'Create' && this.state.enableYSQL && this.state.enableYSQLAuth && ysqlAuthPassword}
           <Row>
             <Col sm={12} md={12} lg={6}>
               <div className="form-right-aligned-labels">
@@ -2340,7 +2341,7 @@ export default class ClusterFields extends Component {
             </Col>
           </Row>
           {this.state.enableYCQL && enableYCQLAuth}
-          { clusterType === 'primary' && this.state.enableYCQL && this.state.enableYCQLAuth && ycqlAuthPassword}
+          { clusterType === 'primary' && type === 'Create' && this.state.enableYCQL && this.state.enableYCQLAuth && ycqlAuthPassword}
           <Row>
             <Col sm={12} md={12} lg={6}>
               <div className="form-right-aligned-labels">
