@@ -41,7 +41,6 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.alerts.QueryAlerts;
-import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
@@ -83,7 +82,6 @@ public class SessionControllerTest {
     CallbackController mockCallbackController = mock(CallbackController.class);
     PlayCacheSessionStore mockSessionStore = mock(PlayCacheSessionStore.class);
     QueryAlerts mockQueryAlerts = mock(QueryAlerts.class);
-    PlatformMetricsProcessor mockPlatformMetricsProcessor = mock(PlatformMetricsProcessor.class);
     AlertConfigurationWriter mockAlertConfigurationWriter = mock(AlertConfigurationWriter.class);
     app =
         new GuiceApplicationBuilder()
@@ -97,8 +95,6 @@ public class SessionControllerTest {
             .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
             .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
             .overrides(bind(QueryAlerts.class).toInstance(mockQueryAlerts))
-            .overrides(
-                bind(PlatformMetricsProcessor.class).toInstance(mockPlatformMetricsProcessor))
             .overrides(
                 bind(AlertConfigurationWriter.class).toInstance(mockAlertConfigurationWriter))
             .build();

@@ -14,6 +14,7 @@ import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.alerts.AlertsGarbageCollector;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
+import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.ExtraMigration;
 import com.yugabyte.yw.models.InstanceType;
@@ -46,7 +47,8 @@ public class AppInit {
       PlatformReplicationManager replicationManager,
       AlertsGarbageCollector alertsGC,
       AlertConfigurationService alertConfigurationService,
-      AlertDestinationService alertDestinationService)
+      AlertDestinationService alertDestinationService,
+      PlatformMetricsProcessor platformMetricsProcessor)
       throws ReflectiveOperationException {
     Logger.info("Yugaware Application has started");
     Configuration appConfig = application.configuration();
@@ -121,6 +123,8 @@ public class AppInit {
       // Schedule garbage collection of old completed tasks in database.
       taskGC.start();
       alertsGC.start();
+
+      platformMetricsProcessor.start();
 
       // Startup platform HA.
       replicationManager.init();

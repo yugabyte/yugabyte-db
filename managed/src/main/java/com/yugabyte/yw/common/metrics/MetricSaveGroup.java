@@ -9,14 +9,16 @@
  */
 package com.yugabyte.yw.common.metrics;
 
+import com.yugabyte.yw.models.Metric;
+import com.yugabyte.yw.models.filters.MetricFilter;
 import java.util.List;
+import lombok.Builder;
+import lombok.Singular;
+import lombok.Value;
 
-public interface MetricsProvider {
-  List<MetricSaveGroup> getMetricGroups() throws Exception;
-
-  String getName();
-
-  default double statusValue(boolean status) {
-    return status ? MetricService.STATUS_OK : MetricService.STATUS_NOT_OK;
-  }
+@Value
+@Builder
+public class MetricSaveGroup {
+  @Singular List<Metric> metrics;
+  @Singular List<MetricFilter> cleanMetricFilters;
 }
