@@ -45,7 +45,7 @@ using yb::util::VarInt;
 using yb::FormatBytesAsStr;
 using yb::util::CompareUsingLessThan;
 using yb::util::FastAppendSignedVarIntToBuffer;
-using yb::util::FastDecodeSignedVarInt;
+using yb::util::FastDecodeSignedVarIntUnsafe;
 using yb::util::kInt32SignBitFlipMask;
 using yb::util::AppendBigEndianUInt64;
 using yb::util::AppendBigEndianUInt32;
@@ -928,7 +928,7 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
       {
         ColumnId dummy_column_id;
         ColumnId& column_id_ref = out ? out->column_id_val_ : dummy_column_id;
-        int64_t column_id_as_int64 = VERIFY_RESULT(FastDecodeSignedVarInt(slice));
+        int64_t column_id_as_int64 = VERIFY_RESULT(FastDecodeSignedVarIntUnsafe(slice));
         RETURN_NOT_OK(ColumnId::FromInt64(column_id_as_int64, &column_id_ref));
       }
 
