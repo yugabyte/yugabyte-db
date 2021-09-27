@@ -65,7 +65,7 @@ public class XClusterReplicationHandler {
         target.name);
 
     log.info(
-        "Created xCluster replication universe between source universe {} "
+        "Created xCluster replication config between source universe {} "
             + "and target universe {} for customer [{}]",
         params.sourceUniverseUUID,
         params.targetUniverseUUID,

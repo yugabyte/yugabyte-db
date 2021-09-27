@@ -231,7 +231,7 @@ public class SubTaskGroup implements Runnable {
         errorString =
             "Failed to execute task "
                 + StringUtils.abbreviate(taskInfo.getTaskDetails().toString(), 500)
-                + ", hit error "
+                + ", hit error:\n\n"
                 + StringUtils.abbreviateMiddle(e.getMessage(), "...", 3000)
                 + ".";
         log.error(
