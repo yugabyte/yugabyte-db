@@ -21,8 +21,6 @@ There are two approaches of integrating [YugabyteDB](https://github.com/yugabyte
 
 The Kafka Connect YugabyteDB source connector streams table updates in YugabyteDB to Kafka topics. It is based on YugabyteDB's Change Data Capture (CDC) feature. CDC allows the connector to simply subscribe to these table changes and then publish the changes to selected Kafka topics.
 
-For an example of the source connector in action, see [CDC to Kafka](../../../integrations/change-data-capture/cdc-kafka/) page.
-
 ## Kafka Connect YugabyteDB Sink Connector
 
 The Kafka Connect YugabyteDB Sink Connector delivers data from Kafka topics into YugabyteDB tables. The connector subscribes to specific topics in Kafka and then writes to specific tables in YugabyteDB as soon as new messages are received in the selected topics.
