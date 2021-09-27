@@ -280,4 +280,28 @@ public class BackupsControllerTest extends FakeDBApplication {
     assertEquals(json.get("taskUUID").size(), 1);
     assertAuditEntry(1, defaultCustomer.uuid);
   }
+
+  @Test
+  public void testDeleteFailedBackup() {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer);
+    BackupTableParams bp = new BackupTableParams();
+    bp.storageConfigUUID = customerConfig.configUUID;
+    bp.universeUUID = defaultUniverse.universeUUID;
+    Backup backup = Backup.create(defaultCustomer.uuid, bp);
+    backup.transitionState(BackupState.Failed);
+    List<String> backupUUIDList = new ArrayList<>();
+    backupUUIDList.add(backup.backupUUID.toString());
+    UUID fakeTaskUUID = UUID.randomUUID();
+    ObjectNode resultNode = Json.newObject();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    ArrayNode arrayNode = resultNode.putArray("backupUUID");
+    for (String item : backupUUIDList) {
+      arrayNode.add(item);
+    }
+    Result result = deleteBackup(resultNode, null);
+    assertEquals(200, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals(json.get("taskUUID").size(), 1);
+    assertAuditEntry(1, defaultCustomer.uuid);
+  }
 }

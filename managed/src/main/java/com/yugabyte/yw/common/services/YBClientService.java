@@ -8,7 +8,6 @@ import org.yb.client.YBClient;
 
 public interface YBClientService {
 
-
   public static class Config {
     private String masterHostPorts;
     private String certFile;

@@ -10,6 +10,18 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import static com.yugabyte.yw.models.Backup.BackupState.Completed;
+import static com.yugabyte.yw.models.Backup.BackupState.Deleted;
+import static com.yugabyte.yw.models.Backup.BackupState.FailedToDelete;
+import static com.yugabyte.yw.models.Backup.BackupState.InProgress;
+import static com.yugabyte.yw.models.Backup.BackupState.Failed;
+import static org.junit.Assert.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
@@ -43,7 +55,7 @@ public class DeleteBackupTest extends FakeDBApplication {
         ModelFactory.createBackup(defaultCustomer.uuid, universeUUID, s3StorageConfig.configUUID);
   }
 
-  // Test that only backups in Complete state can be deleted.
+  // Test that only backups in Complete state or Failed state can be deleted.
   // Otherwise the run of backup task is a no-op
   @Test
   public void invalid() {
@@ -61,7 +73,7 @@ public class DeleteBackupTest extends FakeDBApplication {
   }
 
   @Test
-  public void success() {
+  public void successWithCompletedBackup() {
     backup.transitionState(Completed);
     DeleteBackup.Params params = new DeleteBackup.Params();
     params.backupUUID = backup.backupUUID;
@@ -82,7 +94,28 @@ public class DeleteBackupTest extends FakeDBApplication {
   }
 
   @Test
-  public void failure() {
+  public void successWithFailedBackup() {
+    backup.transitionState(Failed);
+    DeleteBackup.Params params = new DeleteBackup.Params();
+    params.backupUUID = backup.backupUUID;
+    params.customerUUID = defaultCustomer.uuid;
+
+    ShellResponse shellResponse = new ShellResponse();
+    shellResponse.message = "{\"success\": true}";
+    shellResponse.code = 0;
+    when(mockTableManager.deleteBackup(any())).thenReturn(shellResponse);
+
+    DeleteBackup deleteBackupTask = AbstractTaskBase.createTask(DeleteBackup.class);
+    deleteBackupTask.initialize(params);
+    deleteBackupTask.run();
+
+    verify(mockTableManager, times(1)).deleteBackup(any());
+    Backup backup = Backup.get(params.customerUUID, params.backupUUID);
+    assertEquals(Deleted, backup.state);
+  }
+
+  @Test
+  public void failureWithCompletedBackup() {
     backup.transitionState(Completed);
     DeleteBackup.Params params = new DeleteBackup.Params();
     params.backupUUID = backup.backupUUID;
@@ -94,6 +127,27 @@ public class DeleteBackupTest extends FakeDBApplication {
     when(mockTableManager.deleteBackup(any())).thenReturn(shellResponse);
 
     DeleteBackup deleteBackupTask = new DeleteBackup();
+    deleteBackupTask.initialize(params);
+    deleteBackupTask.run();
+
+    verify(mockTableManager, times(1)).deleteBackup(any());
+    Backup backup = Backup.get(params.customerUUID, params.backupUUID);
+    assertEquals(FailedToDelete, backup.state);
+  }
+
+  @Test
+  public void failureWithFailedBackup() {
+    backup.transitionState(Failed);
+    DeleteBackup.Params params = new DeleteBackup.Params();
+    params.backupUUID = backup.backupUUID;
+    params.customerUUID = defaultCustomer.uuid;
+
+    ShellResponse shellResponse = new ShellResponse();
+    shellResponse.message = "{\"success\": false}";
+    shellResponse.code = 22;
+    when(mockTableManager.deleteBackup(any())).thenReturn(shellResponse);
+
+    DeleteBackup deleteBackupTask = AbstractTaskBase.createTask(DeleteBackup.class);
     deleteBackupTask.initialize(params);
     deleteBackupTask.run();
 
