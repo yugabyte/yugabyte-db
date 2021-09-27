@@ -20,6 +20,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.AlertTemplate;
+import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.alerts.impl.AlertConfigurationTemplate;
 import com.yugabyte.yw.common.concurrent.MultiKeyLock;
@@ -60,8 +61,6 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.collections.MapUtils;
-import org.apache.commons.lang3.StringUtils;
 
 @Singleton
 @Slf4j
@@ -69,6 +68,7 @@ public class AlertConfigurationService {
 
   private static final int MAX_NAME_LENGTH = 1000;
 
+  private final BeanValidator beanValidator;
   private final AlertDefinitionService alertDefinitionService;
   private final RuntimeConfigFactory runtimeConfigFactory;
   private final MultiKeyLock<AlertConfiguration> configUuidLock =
@@ -76,7 +76,10 @@ public class AlertConfigurationService {
 
   @Inject
   public AlertConfigurationService(
-      AlertDefinitionService alertDefinitionService, RuntimeConfigFactory runtimeConfigFactory) {
+      BeanValidator beanValidator,
+      AlertDefinitionService alertDefinitionService,
+      RuntimeConfigFactory runtimeConfigFactory) {
+    this.beanValidator = beanValidator;
     this.alertDefinitionService = alertDefinitionService;
     this.runtimeConfigFactory = runtimeConfigFactory;
   }
@@ -232,33 +235,19 @@ public class AlertConfigurationService {
     }
   }
 
-  // TODO: Remove many of these validations as annotations work now
   private void validate(AlertConfiguration configuration, AlertConfiguration before) {
-    if (configuration.getCustomerUUID() == null) {
-      throw new PlatformServiceException(BAD_REQUEST, "Customer UUID field is mandatory");
-    }
-    if (StringUtils.isEmpty(configuration.getName())) {
-      throw new PlatformServiceException(BAD_REQUEST, "Name field is mandatory");
-    }
-    if (configuration.getName().length() > MAX_NAME_LENGTH) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Name field can't be longer than " + MAX_NAME_LENGTH + " characters");
-    }
-    if (configuration.getTargetType() == null) {
-      throw new PlatformServiceException(BAD_REQUEST, "Target type field is mandatory");
-    }
-    if (configuration.getTarget() == null) {
-      throw new PlatformServiceException(BAD_REQUEST, "Target field is mandatory");
-    }
+    beanValidator.validate(configuration);
     AlertConfigurationTarget target = configuration.getTarget();
     if (target.isAll() != CollectionUtils.isEmpty(target.getUuids())) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Should select either all entries or particular UUIDs as target");
+      beanValidator
+          .error()
+          .forField("target", "should select either all entries or particular UUIDs")
+          .throwError();
     }
     if (!CollectionUtils.isEmpty(target.getUuids())) {
       boolean hasNulls = target.getUuids().stream().anyMatch(Objects::isNull);
       if (hasNulls) {
-        throw new PlatformServiceException(BAD_REQUEST, "Target UUIDs can't have null values");
+        beanValidator.error().forField("target.uuids", "can't have null entries").throwError();
       }
       switch (configuration.getTargetType()) {
         case UNIVERSE:
@@ -271,92 +260,103 @@ public class AlertConfigurationService {
           Set<UUID> missingUuids = new HashSet<>(configuration.getTarget().getUuids());
           missingUuids.removeAll(existingUuids);
           if (!missingUuids.isEmpty()) {
-            throw new PlatformServiceException(
-                BAD_REQUEST,
-                "Universe(s) missing for uuid(s) "
-                    + missingUuids.stream().map(UUID::toString).collect(Collectors.joining(", ")));
+            beanValidator
+                .error()
+                .forField(
+                    "target.uuids",
+                    "universe(s) missing: "
+                        + missingUuids
+                            .stream()
+                            .map(UUID::toString)
+                            .collect(Collectors.joining(", ")))
+                .throwError();
           }
           break;
         default:
-          throw new PlatformServiceException(
-              BAD_REQUEST,
-              configuration.getTargetType().name() + " configuration can't have target uuids");
+          beanValidator
+              .error()
+              .forField(
+                  "target.uuids",
+                  configuration.getTargetType().name() + " configuration can't have target uuids")
+              .throwError();
       }
     }
-    if (configuration.getTemplate() == null) {
-      throw new PlatformServiceException(BAD_REQUEST, "Template field is mandatory");
-    }
     if (configuration.getTemplate().getTargetType() != configuration.getTargetType()) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Target type should be consistent with template");
-    }
-    if (MapUtils.isEmpty(configuration.getThresholds())) {
-      throw new PlatformServiceException(BAD_REQUEST, "Query thresholds are mandatory");
+      beanValidator.error().global("target type should be consistent with template").throwError();
     }
     if (configuration.getDestinationUUID() != null) {
       if (AlertDestination.get(configuration.getCustomerUUID(), configuration.getDestinationUUID())
           == null) {
-        throw new PlatformServiceException(
-            BAD_REQUEST, "Alert destination " + configuration.getDestinationUUID() + " is missing");
+        beanValidator
+            .error()
+            .forField(
+                "destinationUUID",
+                "alert destination " + configuration.getDestinationUUID() + " is missing")
+            .throwError();
       }
       if (configuration.isDefaultDestination()) {
-        throw new PlatformServiceException(
-            BAD_REQUEST, "Destination can't be filled in case default destination is selected");
+        beanValidator
+            .error()
+            .forField("", "destination can't be filled in case default destination is selected")
+            .throwError();
       }
     }
-    if (configuration.getThresholdUnit() == null) {
-      throw new PlatformServiceException(BAD_REQUEST, "Threshold unit is mandatory");
-    }
     if (configuration.getThresholdUnit() != configuration.getTemplate().getDefaultThresholdUnit()) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Can't set threshold unit incompatible with alert definition template");
+      beanValidator
+          .error()
+          .forField("thresholdUnit", "incompatible with alert definition template")
+          .throwError();
     }
     configuration
         .getThresholds()
-        .values()
         .forEach(
-            threshold -> {
-              if (threshold.getCondition() == null) {
-                throw new PlatformServiceException(BAD_REQUEST, "Threshold condition is mandatory");
-              }
-              if (threshold.getThreshold() == null) {
-                throw new PlatformServiceException(BAD_REQUEST, "Threshold value is mandatory");
-              }
+            (severity, threshold) -> {
               if (threshold.getThreshold() < configuration.getTemplate().getThresholdMinValue()) {
-                throw new PlatformServiceException(
-                    BAD_REQUEST,
-                    "Threshold value can't be less than "
-                        + doubleToString(configuration.getTemplate().getThresholdMinValue()));
+                beanValidator
+                    .error()
+                    .forField(
+                        "thresholds[" + severity.name() + "].threshold",
+                        "can't be less than "
+                            + doubleToString(configuration.getTemplate().getThresholdMinValue()))
+                    .throwError();
               }
               if (threshold.getThreshold() > configuration.getTemplate().getThresholdMaxValue()) {
-                throw new PlatformServiceException(
-                    BAD_REQUEST,
-                    "Threshold value can't be greater than "
-                        + doubleToString(configuration.getTemplate().getThresholdMaxValue()));
+                beanValidator
+                    .error()
+                    .forField(
+                        "thresholds[" + severity.name() + "].threshold",
+                        "can't be greater than "
+                            + doubleToString(configuration.getTemplate().getThresholdMaxValue()))
+                    .throwError();
               }
             });
-    if (configuration.getDurationSec() == null || configuration.getDurationSec() < 0) {
-      throw new PlatformServiceException(BAD_REQUEST, "Duration can't be less than 0");
-    }
     if (before != null) {
       if (!configuration.getCustomerUUID().equals(before.getCustomerUUID())) {
-        throw new PlatformServiceException(
-            BAD_REQUEST,
-            "Can't change customer UUID for configuration '" + configuration.getName() + "'");
+        beanValidator
+            .error()
+            .forField(
+                "customerUUID", "can't change for configuration '" + configuration.getName() + "'")
+            .throwError();
       }
       if (!configuration.getTargetType().equals(before.getTargetType())) {
-        throw new PlatformServiceException(
-            BAD_REQUEST,
-            "Can't change target type for configuration '" + configuration.getName() + "'");
+        beanValidator
+            .error()
+            .forField(
+                "targetType", "can't change for configuration '" + configuration.getName() + "'")
+            .throwError();
       }
       if (!configuration.getCreateTime().equals(before.getCreateTime())) {
-        throw new PlatformServiceException(
-            BAD_REQUEST,
-            "Can't change create time for configuration '" + configuration.getName() + "'");
+        beanValidator
+            .error()
+            .forField(
+                "createTime", "can't change for configuration '" + configuration.getName() + "'")
+            .throwError();
       }
     } else if (!configuration.isNew()) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Can't update missing configuration '" + configuration.getName() + "'");
+      beanValidator
+          .error()
+          .forField("", "can't update missing configuration '" + configuration.getName() + "'")
+          .throwError();
     }
   }
 

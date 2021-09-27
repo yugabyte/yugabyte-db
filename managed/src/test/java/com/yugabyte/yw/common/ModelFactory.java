@@ -9,6 +9,7 @@ import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
 import com.yugabyte.yw.common.alerts.AlertChannelParams;
+import com.yugabyte.yw.common.alerts.AlertChannelSlackParams;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
@@ -407,10 +408,25 @@ public class ModelFactory {
   }
 
   public static AlertChannel createEmailChannel(UUID customerUUID, String name) {
+    return createAlertChannel(customerUUID, name, createEmailChannelParams());
+  }
+
+  public static AlertChannel createSlackChannel(UUID customerUUID, String name) {
+    return createAlertChannel(customerUUID, name, createSlackChannelParams());
+  }
+
+  public static AlertChannelEmailParams createEmailChannelParams() {
     AlertChannelEmailParams params = new AlertChannelEmailParams();
     params.recipients = Collections.singletonList("test@test.com");
     params.smtpData = EmailFixtures.createSmtpData();
-    return createAlertChannel(customerUUID, name, params);
+    return params;
+  }
+
+  public static AlertChannelSlackParams createSlackChannelParams() {
+    AlertChannelSlackParams params = new AlertChannelSlackParams();
+    params.username = "channel";
+    params.webhookUrl = "http://www.google.com";
+    return params;
   }
 
   public static AlertDestination createAlertDestination(
