@@ -420,9 +420,6 @@ void TableInfo::GetTabletsInRange(
     const std::string& partition_key_start, const std::string& partition_key_end,
     TabletInfos* ret, const int32_t max_returned_locations) const {
   SharedLock<decltype(lock_)> l(lock_);
-
-  LOG(INFO) << __func__ << ": " << AsString(partitions_);
-
   decltype(partitions_)::const_iterator it, it_end;
   if (partition_key_start.empty()) {
     it = partitions_.begin();

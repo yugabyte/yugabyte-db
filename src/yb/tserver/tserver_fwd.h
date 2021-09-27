@@ -28,6 +28,8 @@ class GetTransactionStatusResponsePB;
 class Heartbeater;
 class LocalTabletServer;
 class MetricsSnapshotter;
+class PgCreateColumnPB;
+class PgCreateTableRequestPB;
 class TSTabletManager;
 class TabletPeerLookupIf;
 class TabletServer;
