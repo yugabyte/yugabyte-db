@@ -19,6 +19,7 @@
 #include "yb/rpc/proxy.h"
 
 #include "yb/tserver/tserver_util_fwd.h"
+#include "yb/tserver/pg_client.pb.h"
 
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_env.h"
@@ -31,9 +32,16 @@ class PgClient {
   PgClient();
   ~PgClient();
 
-  void Start(rpc::ProxyCache* proxy_cache,
-             const tserver::TServerSharedObject& tserver_shared_object);
+  CHECKED_STATUS Start(rpc::ProxyCache* proxy_cache,
+                       rpc::Scheduler* scheduler,
+                       const tserver::TServerSharedObject& tserver_shared_object);
   void Shutdown();
+
+  CHECKED_STATUS AlterTable(tserver::PgAlterTableRequestPB* req, CoarseTimePoint deadline);
+
+  CHECKED_STATUS CreateDatabase(tserver::PgCreateDatabaseRequestPB* req, CoarseTimePoint deadline);
+
+  CHECKED_STATUS CreateTable(tserver::PgCreateTableRequestPB* req, CoarseTimePoint deadline);
 
   Result<PgTableDescPtr> OpenTable(const PgObjectId& table_id);
 

@@ -194,9 +194,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   CHECKED_STATUS DropSchema(const std::string& schema_name, bool if_exist);
 
   // API for table operations.
-  std::unique_ptr<client::YBTableCreator> NewTableCreator();
-  std::unique_ptr<client::YBTableAlterer> NewTableAlterer(const client::YBTableName& table_name);
-  std::unique_ptr<client::YBTableAlterer> NewTableAlterer(const string table_id);
   CHECKED_STATUS DropTable(const PgObjectId& table_id);
   CHECKED_STATUS DropIndex(
       const PgObjectId& index_id,

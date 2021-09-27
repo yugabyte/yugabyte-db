@@ -2438,7 +2438,7 @@ TEST_F(ClientTest, GetNamespaceInfo) {
                                      kPgsqlKeyspaceID,
                                      "" /* source_namespace_id */,
                                      boost::none /* next_pg_oid */,
-                                     boost::none /* txn */,
+                                     nullptr /* txn */,
                                      true /* colocated */));
 
   // CQL non-colocated.
@@ -2571,7 +2571,7 @@ TEST_F(ClientTest, ColocatedTablesLookupTablet) {
       common_table_name.namespace_id(),
       /* source_namespace_id =*/ "",
       /* next_pg_oid =*/ boost::none,
-      /* txn =*/ boost::none,
+      /* txn =*/ nullptr,
       /* colocated =*/ true));
 
   YBSchemaBuilder schemaBuilder;

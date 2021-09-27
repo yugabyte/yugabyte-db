@@ -588,7 +588,7 @@ Status PgSession::CreateDatabase(const string& database_name,
                                       source_database_oid != kPgInvalidOid
                                         ? GetPgsqlNamespaceId(source_database_oid) : "",
                                       next_oid,
-                                      transaction,
+                                      transaction.get_ptr(),
                                       colocated);
   return ret;
 }
@@ -830,18 +830,6 @@ Status PgSession::DeleteDBSequences(int64_t db_oid) {
 }
 
 //--------------------------------------------------------------------------------------------------
-
-unique_ptr<client::YBTableCreator> PgSession::NewTableCreator() {
-  return client_->NewTableCreator();
-}
-
-unique_ptr<client::YBTableAlterer> PgSession::NewTableAlterer(const YBTableName& table_name) {
-  return client_->NewTableAlterer(table_name);
-}
-
-unique_ptr<client::YBTableAlterer> PgSession::NewTableAlterer(const string table_id) {
-  return client_->NewTableAlterer(table_id);
-}
 
 Status PgSession::DropTable(const PgObjectId& table_id) {
   return client_->DeleteTable(table_id.GetYBTableId());

@@ -246,7 +246,9 @@ PgApiImpl::PgApiImpl(
   }
   async_client_init_.Start();
 
-  pg_client_.Start(proxy_cache_.get(), *DCHECK_NOTNULL(tserver_shared_object_));
+  CHECK_OK(pg_client_.Start(
+      proxy_cache_.get(), &messenger_holder_.messenger->scheduler(),
+      *DCHECK_NOTNULL(tserver_shared_object_)));
 }
 
 PgApiImpl::~PgApiImpl() {
@@ -568,7 +570,7 @@ Status PgApiImpl::NewCreateTable(const char *database_name,
       table_id, is_shared_table, if_not_exist, add_primary_key, colocated, tablegroup_oid,
       tablespace_oid);
   if (pg_txn_manager_->IsDdlMode()) {
-    stmt->AddTransaction(pg_txn_manager_->GetDdlTxnMetadata());
+    stmt->UseTransaction(VERIFY_RESULT(Copy(pg_txn_manager_->GetDdlTxnMetadata().get())));
   }
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
@@ -617,7 +619,7 @@ Status PgApiImpl::NewAlterTable(const PgObjectId& table_id,
                                 PgStatement **handle) {
   auto stmt = std::make_unique<PgAlterTable>(pg_session_, table_id);
   if (pg_txn_manager_->IsDdlMode()) {
-    stmt->AddTransaction(pg_txn_manager_->GetDdlTxnMetadata());
+    stmt->UseTransaction(VERIFY_RESULT(Copy(pg_txn_manager_->GetDdlTxnMetadata().get())));
   }
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
@@ -793,12 +795,13 @@ Status PgApiImpl::NewCreateIndex(const char *database_name,
                                  const PgObjectId& tablegroup_oid,
                                  const PgObjectId& tablespace_oid,
                                  PgStatement **handle) {
-  auto stmt = std::make_unique<PgCreateIndex>(
-      pg_session_, database_name, schema_name, index_name, index_id, base_table_id,
-      is_shared_index, is_unique_index, skip_index_backfill, if_not_exist, tablegroup_oid,
-      tablespace_oid);
+  auto stmt = std::make_unique<PgCreateTable>(
+      pg_session_, database_name, schema_name, index_name, index_id, is_shared_index,
+      if_not_exist, false /* add_primary_key */,
+      tablegroup_oid.IsValid() ? false : true /* colocated */, tablegroup_oid, tablespace_oid);
+  stmt->SetupIndex(base_table_id, is_unique_index, skip_index_backfill);
   if (pg_txn_manager_->IsDdlMode()) {
-    stmt->AddTransaction(pg_txn_manager_->GetDdlTxnMetadata());
+    stmt->UseTransaction(VERIFY_RESULT(Copy(pg_txn_manager_->GetDdlTxnMetadata().get())));
   }
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
@@ -813,7 +816,7 @@ Status PgApiImpl::CreateIndexAddColumn(PgStatement *handle, const char *attr_nam
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
 
-  return AddColumn(down_cast<PgCreateIndex*>(handle), attr_name, attr_num, attr_type,
+  return AddColumn(down_cast<PgCreateTable*>(handle), attr_name, attr_num, attr_type,
       is_hash, is_range, is_desc, is_nulls_first);
 }
 
@@ -821,7 +824,7 @@ Status PgApiImpl::CreateIndexSetNumTablets(PgStatement *handle, int32_t num_tabl
   SCHECK(PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_INDEX),
          InvalidArgument,
          "Invalid statement handle");
-  return down_cast<PgCreateIndex*>(handle)->SetNumTablets(num_tablets);
+  return down_cast<PgCreateTable*>(handle)->SetNumTablets(num_tablets);
 }
 
 Status PgApiImpl::ExecCreateIndex(PgStatement *handle) {
@@ -829,7 +832,7 @@ Status PgApiImpl::ExecCreateIndex(PgStatement *handle) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-  return down_cast<PgCreateIndex*>(handle)->Exec();
+  return down_cast<PgCreateTable*>(handle)->Exec();
 }
 
 Status PgApiImpl::NewDropIndex(const PgObjectId& index_id,
