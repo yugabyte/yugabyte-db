@@ -26,10 +26,9 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
-import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.AlertConfiguration;
+import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.MetricKey;
 import com.yugabyte.yw.models.Universe;
@@ -55,10 +54,6 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
 
   @Mock private RuntimeConfigFactory configFactory;
 
-  private AlertConfigurationService alertConfigurationService;
-
-  private AlertDefinitionService alertDefinitionService;
-
   private AlertConfigurationWriter configurationWriter;
 
   private Customer customer;
@@ -67,19 +62,12 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
 
   @Mock private Config globalConfig;
 
-  private MetricService metricService;
-
   private AlertConfiguration configuration;
 
   private AlertDefinition definition;
 
   @Before
   public void setUp() {
-    metricService = new MetricService();
-    AlertService alertService = new AlertService();
-    alertDefinitionService = new AlertDefinitionService(alertService);
-    alertConfigurationService =
-        new AlertConfigurationService(alertDefinitionService, configFactory);
     when(actorSystem.scheduler()).thenReturn(mock(Scheduler.class));
     when(globalConfig.getInt(AlertConfigurationWriter.CONFIG_SYNC_INTERVAL_PARAM)).thenReturn(1);
     when(configFactory.globalRuntimeConf()).thenReturn(globalConfig);

@@ -15,6 +15,7 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 import com.yugabyte.yw.models.common.Condition;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import javax.validation.constraints.NotNull;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.experimental.Accessors;
@@ -28,11 +29,13 @@ import lombok.experimental.Accessors;
         "Alert configuration threshold. Conditions can be either greater than a specified value, or less than a specified value.")
 public class AlertConfigurationThreshold {
 
+  @NotNull
   @ApiModelProperty(
       value = "Threshold condition (greater than, or less than)",
       accessMode = READ_WRITE)
   private Condition condition;
 
+  @NotNull
   @ApiModelProperty(value = "Threshold value", accessMode = READ_WRITE)
   private Double threshold;
 }

@@ -49,8 +49,6 @@ public class AlertsGarbageCollectorTest extends FakeDBApplication {
 
   private AlertsGarbageCollector alertsGarbageCollector;
 
-  private AlertService alertService = new AlertService();
-
   private Customer customer;
 
   @Before
@@ -60,6 +58,7 @@ public class AlertsGarbageCollectorTest extends FakeDBApplication {
     when(mockAppConfig.getDuration(AlertsGarbageCollector.YB_ALERT_GC_RESOLVED_RETENTION_DURATION))
         .thenReturn(Duration.of(2, ChronoUnit.MINUTES));
     when(actorSystem.scheduler()).thenReturn(mock(Scheduler.class));
+    AlertService alertService = app.injector().instanceOf(AlertService.class);
     alertsGarbageCollector =
         new AlertsGarbageCollector(
             executionContext, actorSystem, mockRuntimeConfigFactory, alertService);

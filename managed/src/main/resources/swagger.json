@@ -55,7 +55,7 @@
           "type" : "string"
         },
         "customerUUID" : {
-          "description" : "Cutomer UUID",
+          "description" : "Customer UUID",
           "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
@@ -74,11 +74,15 @@
         },
         "message" : {
           "description" : "The alert's message text",
+          "maxLength" : 2147483647,
+          "minLength" : 1,
           "readOnly" : true,
           "type" : "string"
         },
         "name" : {
           "description" : "The alert's name",
+          "maxLength" : 1000,
+          "minLength" : 1,
           "readOnly" : true,
           "type" : "string"
         },
@@ -144,7 +148,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "labels", "severityIndex", "stateIndex" ],
+      "required" : [ "configurationType", "configurationUuid", "createTime", "customerUUID", "definitionUuid", "labels", "message", "name", "severity", "severityIndex", "sourceName", "state", "stateIndex" ],
       "type" : "object"
     },
     "AlertApiFilter" : {
@@ -199,6 +203,8 @@
           "type" : "string"
         },
         "name" : {
+          "maxLength" : 63,
+          "minLength" : 1,
           "type" : "string"
         },
         "params" : {
@@ -209,7 +215,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "name", "params", "uuid" ],
+      "required" : [ "customer_uuid", "name", "params", "uuid" ],
       "type" : "object"
     },
     "AlertChannelEmailParams" : {
@@ -275,6 +281,8 @@
             "type" : "string"
           },
           "username" : {
+            "maxLength" : 2147483647,
+            "minLength" : 1,
             "type" : "string"
           },
           "webhookUrl" : {
@@ -320,10 +328,13 @@
         "durationSec" : {
           "description" : "Duration in seconds, while condition is met to raise an alert",
           "format" : "int32",
+          "minimum" : 0,
           "type" : "integer"
         },
         "name" : {
           "description" : "Name",
+          "maxLength" : 1000,
+          "minLength" : 1,
           "type" : "string"
         },
         "target" : {
@@ -362,6 +373,7 @@
           "type" : "string"
         }
       },
+      "required" : [ "active", "createTime", "customerUUID", "defaultDestination", "description", "durationSec", "name", "target", "targetType", "template", "thresholdUnit", "thresholds" ],
       "type" : "object"
     },
     "AlertConfigurationApiFilter" : {
@@ -504,10 +516,13 @@
         "durationSec" : {
           "description" : "Duration in seconds, while condition is met to raise an alert",
           "format" : "int32",
+          "minimum" : 0,
           "type" : "integer"
         },
         "name" : {
           "description" : "Name",
+          "maxLength" : 1000,
+          "minLength" : 1,
           "type" : "string"
         },
         "target" : {
@@ -578,6 +593,7 @@
           "type" : "string"
         }
       },
+      "required" : [ "active", "createTime", "customerUUID", "defaultDestination", "description", "durationSec", "name", "target", "targetType", "template", "thresholdUnit", "thresholds" ],
       "type" : "object"
     },
     "AlertConfigurationThreshold" : {
@@ -594,6 +610,7 @@
           "type" : "number"
         }
       },
+      "required" : [ "condition", "threshold" ],
       "type" : "object"
     },
     "AlertDefinition" : {
@@ -662,6 +679,8 @@
             "format" : "uuid",
             "type" : "string"
           },
+          "maxItems" : 2147483647,
+          "minItems" : 1,
           "readOnly" : true,
           "type" : "array"
         },
@@ -673,6 +692,8 @@
           "type" : "boolean"
         },
         "name" : {
+          "maxLength" : 63,
+          "minLength" : 1,
           "type" : "string"
         },
         "uuid" : {
@@ -680,7 +701,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "customerUUID", "defaultDestination", "name", "uuid" ],
+      "required" : [ "channels", "customerUUID", "defaultDestination", "name", "uuid" ],
       "type" : "object"
     },
     "AlertDestinationFormData" : {
