@@ -54,7 +54,7 @@ CHECKED_STATUS DecodeIntentDocHT(Slice* slice, DocHybridTime* doc_ht) {
 
 Status Value::DecodeTTL(rocksdb::Slice* slice, MonoDelta* ttl) {
   if (DecodeType(ValueType::kTtl, kMaxTtl, slice, ttl)) {
-    *ttl = MonoDelta::FromMilliseconds(VERIFY_RESULT(util::FastDecodeSignedVarInt(slice)));
+    *ttl = MonoDelta::FromMilliseconds(VERIFY_RESULT(util::FastDecodeSignedVarIntUnsafe(slice)));
   }
   return Status::OK();
 }
