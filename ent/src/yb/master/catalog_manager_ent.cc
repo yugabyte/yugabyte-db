@@ -3762,13 +3762,6 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
     // 'add_table'
     string alter_producer_id = req->producer_id() + ".ALTER";
 
-    // If user passed in bootstrap ids, check that there is a bootstrap id for every table.
-    if (req->producer_bootstrap_ids_to_add().size() > 0 &&
-      req->producer_table_ids_to_add().size() != req->producer_bootstrap_ids_to_add().size()) {
-      return STATUS(InvalidArgument, "Number of bootstrap ids must be equal to number of tables",
-        req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
-    }
-
     // Verify no 'alter' command running.
     scoped_refptr<UniverseReplicationInfo> alter_ri;
     {
@@ -3797,18 +3790,6 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
         }
       }
     }
-
-    // Map each table id to its corresponding bootstrap id.
-    std::unordered_map<TableId, std::string> table_id_to_bootstrap_id;
-    if (req->producer_bootstrap_ids_to_add().size() > 0) {
-      // Note: the call to SetupUniverseReplication will handle checking
-      // if all the table ids are unique.
-      for (int i = 0; i < req->producer_table_ids_to_add().size(); i++) {
-        table_id_to_bootstrap_id[req->producer_table_ids_to_add(i)]
-          = req->producer_bootstrap_ids_to_add(i);
-      }
-    }
-
     // Only add new tables.  Ignore tables that are currently being replicated.
     auto tid_iter = req->producer_table_ids_to_add();
     unordered_set<string> new_tables(tid_iter.begin(), tid_iter.end());
@@ -3834,12 +3815,6 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
         original_ri->LockForRead()->pb.producer_master_addresses());
     for (auto t : new_tables) {
       setup_req.add_producer_table_ids(t);
-
-      // Add bootstrap id to request if it exists.
-      auto bootstrap_id_lookup_result = table_id_to_bootstrap_id.find(t);
-      if (bootstrap_id_lookup_result != table_id_to_bootstrap_id.end()) {
-        setup_req.add_producer_bootstrap_ids(bootstrap_id_lookup_result->second);
-      }
     }
 
     // 2. run the 'setup_replication' pipeline on the ALTER Table
