@@ -6,6 +6,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.net.HostAndPort;
@@ -131,9 +132,11 @@ public class Universe extends Model {
   private UniverseDefinitionTaskParams universeDetails;
 
   @OneToMany(mappedBy = "sourceUniverse", cascade = CascadeType.ALL)
+  @JsonManagedReference
   public Set<AsyncReplicationRelationship> sourceAsyncReplicationRelationships;
 
   @OneToMany(mappedBy = "targetUniverse", cascade = CascadeType.ALL)
+  @JsonManagedReference
   public Set<AsyncReplicationRelationship> targetAsyncReplicationRelationships;
 
   public void setUniverseDetails(UniverseDefinitionTaskParams details) {

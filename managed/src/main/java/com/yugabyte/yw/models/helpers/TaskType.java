@@ -241,6 +241,8 @@ public enum TaskType {
 
   AsyncReplicationPlatformSync("subtasks.AsyncReplicationPlatformSync"),
 
+  AsyncReplicationSetup("subtasks.AsyncReplicationSetup"),
+
   ResetUniverseVersion("subtasks.ResetUniverseVersion"),
 
   AlterXClusterReplicationAddTables("subtasks.AlterXClusterReplicationAddTables"),

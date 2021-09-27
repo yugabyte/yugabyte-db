@@ -1278,6 +1278,13 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  public IsCreateXClusterReplicationDoneResponse isCreateXClusterReplicationDone(
+    UUID sourceUniverseUUID) throws Exception {
+    Deferred<IsCreateXClusterReplicationDoneResponse> d =
+      asyncClient.isCreateXClusterReplicationDone(sourceUniverseUUID);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
   public AlterXClusterReplicationResponse alterXClusterReplicationAddTables(
     UUID sourceUniverseUUID,
     List<String> sourceTableIDsToAdd) throws Exception {
