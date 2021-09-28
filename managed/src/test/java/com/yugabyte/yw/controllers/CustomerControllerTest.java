@@ -39,6 +39,7 @@ import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
@@ -125,6 +126,21 @@ public class CustomerControllerTest extends FakeDBApplication {
 
     String resultString = contentAsString(result);
     assertThat(resultString, allOf(notNullValue(), equalTo("Unable To Authenticate User")));
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testCustomerGETWithBadUUID() {
+    String authToken = user.createAuthToken();
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
+    Result result = route(fakeRequest("GET", baseRoute + "null").cookie(validCookie));
+    assertEquals(BAD_REQUEST, result.status());
+
+    JsonNode ybpError = Json.parse(contentAsString(result));
+    assertEquals(
+        Json.toJson(
+            new YBPError("Cannot parse parameter cUUID as UUID: Invalid UUID string: null")),
+        ybpError);
     assertAuditEntry(0, customer.uuid);
   }
 
