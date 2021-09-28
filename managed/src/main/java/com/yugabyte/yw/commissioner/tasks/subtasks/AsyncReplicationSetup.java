@@ -3,7 +3,6 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.XClusterReplicationTaskBase;
-import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.AsyncReplicationRelationship;
 import com.yugabyte.yw.models.Universe;
@@ -18,7 +17,6 @@ import org.yb.client.CreateXClusterReplicationResponse;
 import org.yb.client.IsCreateXClusterReplicationDoneResponse;
 import org.yb.client.YBClient;
 import org.yb.util.NetUtil;
-import play.api.Play;
 
 @Slf4j
 public class AsyncReplicationSetup extends XClusterReplicationTaskBase {
@@ -94,7 +92,7 @@ public class AsyncReplicationSetup extends XClusterReplicationTaskBase {
                   + doneResponse.getError().toString());
         }
 
-        Thread.sleep(1000);
+        Thread.sleep(getSleepMultiplier() * 1000);
         currentTime = System.currentTimeMillis();
         numAttempts++;
       }
