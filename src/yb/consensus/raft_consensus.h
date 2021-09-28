@@ -76,6 +76,7 @@ namespace rpc {
 class PeriodicTimer;
 }
 namespace consensus {
+
 class ConsensusMetadata;
 class Peer;
 class PeerProxyFactory;
@@ -251,7 +252,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   }
 
   Result<ReadOpsResult> ReadReplicatedMessagesForCDC(const yb::OpId& from,
-    int64_t* last_replicated_opid_index) override;
+    int64_t* last_replicated_opid_index,
+    const CoarseTimePoint deadline = CoarseTimePoint::max()) override;
 
   void UpdateCDCConsumerOpId(const yb::OpId& op_id) override;
 

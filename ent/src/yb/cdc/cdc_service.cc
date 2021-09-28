@@ -38,7 +38,9 @@
 #include "yb/client/session.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/client/yb_op.h"
+#include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/strings/join.h"
+#include "yb/rpc/rpc_context.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/tablet_server.h"
@@ -46,6 +48,7 @@
 #include "yb/tserver/service_util.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/monotime.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
@@ -84,6 +87,10 @@ DEFINE_int32(update_metrics_interval_ms, kUpdateIntervalMs,
 DEFINE_bool(enable_cdc_state_table_caching, true, "Enable caching the cdc_state table schema.");
 
 DEFINE_bool(enable_collect_cdc_metrics, true, "Enable collecting cdc metrics.");
+
+DEFINE_double(cdc_read_safe_deadline_ratio, .10,
+              "When the heartbeat deadline has this percentage of time remaining, "
+              "the master should halt tablet report processing so it can respond in time.");
 
 DECLARE_bool(enable_log_retention_by_op_idx);
 
@@ -127,6 +134,7 @@ CDCServiceImpl::~CDCServiceImpl() {
 }
 
 namespace {
+
 bool YsqlTableHasPrimaryKey(const client::YBSchema& schema) {
   for (const auto& col : schema.columns()) {
       if (col.order() == static_cast<int32_t>(PgSystemAttrNum::kYBRowId)) {
@@ -301,7 +309,6 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
   if (!CheckOnline(req, resp, &context)) {
     return;
   }
-
   YB_LOG_EVERY_N_SECS(INFO, 300) << "Received GetChanges request " << req->ShortDebugString();
 
   RPC_CHECK_AND_RETURN_ERROR(req->has_tablet_id(),
@@ -374,10 +381,29 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
   consensus::ReplicateMsgsHolder msgs_holder;
   MemTrackerPtr mem_tracker = GetMemTracker(tablet_peer, producer_tablet);
 
+  // Calculate deadline to be passed to GetChanges.
+  CoarseTimePoint get_changes_deadline = CoarseTimePoint::max();
+  if (deadline != CoarseTimePoint::max()) {
+    // Check if we are too close to calculate a safe deadline.
+    RPC_CHECK_AND_RETURN_ERROR(
+      deadline - CoarseMonoClock::Now() > 1ms,
+      STATUS(TimedOut, "Too close to rpc timeout to call GetChanges."),
+      resp->mutable_error(),
+      CDCErrorPB::INTERNAL_ERROR, context);
+
+    // Calculate a safe deadline so that CdcProducer::GetChanges times out
+    // 20% faster than CdcServiceImpl::GetChanges. This gives enough
+    // time (unless timeouts are unrealistically small) for CdcServiceImpl::GetChanges
+    // to finish post-processing and return the partial results without itself timing out.
+    const auto safe_deadline = deadline -
+      (FLAGS_cdc_read_rpc_timeout_ms * 1ms * FLAGS_cdc_read_safe_deadline_ratio);
+    get_changes_deadline = ToCoarse(MonoTime::FromUint64(safe_deadline.time_since_epoch().count()));
+  }
+
   // Read the latest changes from the Log.
   s = cdc::GetChanges(
       req->stream_id(), req->tablet_id(), op_id, *record->get(), tablet_peer, mem_tracker,
-      &msgs_holder, resp, &last_readable_index);
+      &msgs_holder, resp, &last_readable_index, get_changes_deadline);
   RPC_STATUS_RETURN_ERROR(
       s,
       resp->mutable_error(),
