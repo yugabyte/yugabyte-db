@@ -1,5 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
+#include <gflags/gflags_declare.h>
 #include <boost/lexical_cast.hpp>
 
 #include "yb/common/wire_protocol.h"
@@ -33,7 +34,9 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/monotime.h"
 #include "yb/util/slice.h"
+#include "yb/util/tsan_util.h"
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
@@ -58,6 +61,10 @@ DECLARE_uint64(log_segment_size_bytes);
 DECLARE_int32(update_metrics_interval_ms);
 DECLARE_bool(enable_collect_cdc_metrics);
 DECLARE_bool(cdc_enable_replicate_intents);
+DECLARE_bool(get_changes_honor_deadline);
+DECLARE_int32(cdc_read_rpc_timeout_ms);
+DECLARE_int32(TEST_get_changes_read_loop_delay_ms);
+DECLARE_double(cdc_read_safe_deadline_ratio);
 
 METRIC_DECLARE_entity(cdc);
 METRIC_DECLARE_gauge_int64(last_read_opid_index);
@@ -134,6 +141,9 @@ class CDCServiceTest : public YBMiniClusterTestBase<MiniCluster>,
   CHECKED_STATUS WriteToProxyWithRetries(
       const std::shared_ptr<tserver::TabletServerServiceProxy>& proxy,
       const tserver::WriteRequestPB& req, tserver::WriteResponsePB* resp, RpcController* rpc);
+  CHECKED_STATUS GetChangesWithRetries(
+      const GetChangesRequestPB& change_req, GetChangesResponsePB* change_resp,
+      int timeout_ms, int max_attempts = 3);
   tserver::MiniTabletServer* GetLeaderForTablet(const std::string& tablet_id);
   virtual int server_count() { return 1; }
   virtual int tablet_count() { return 1; }
@@ -329,6 +339,42 @@ Status CDCServiceTest::WriteToProxyWithRetries(
         return true;
       },
       MonoDelta::FromSeconds(10) * kTimeMultiplier, "Write test row");
+}
+
+Status CDCServiceTest::GetChangesWithRetries(
+  const GetChangesRequestPB& req,
+  GetChangesResponsePB* resp,
+  int timeout_ms,
+  int max_attempts) {
+  // Keep track of number of attempts.
+  int num_attempts = 0;
+
+  auto return_status = LoggedWaitFor(
+    [&]() -> Result<bool> {
+      // RpcController needs to be rebuilt every time since the deadline is constant.
+      RpcController rpc;
+      rpc.set_timeout(MonoDelta::FromMilliseconds(timeout_ms));
+
+      // Update return_status to be the status from the latest attempt.
+      auto s = cdc_proxy_->GetChanges(req, resp, &rpc);
+      ++num_attempts;
+
+      // Exit if we exhausted the number of attempts.
+      if (num_attempts >= max_attempts) {
+        return s.ok() ? s : STATUS_FORMAT(
+          TimedOut, "Tried calling GetChanges $0 times with no success.", num_attempts);
+      }
+
+      // Try again if we still have attempts left.
+      if (!s.ok()) {
+        return false;
+      }
+
+      return true;
+    },
+    MonoDelta::FromSeconds(5) * max_attempts * kTimeMultiplier, "Call GetChanges");
+
+  return return_status;
 }
 
 tserver::MiniTabletServer* CDCServiceTest::GetLeaderForTablet(const std::string& tablet_id) {
@@ -654,6 +700,64 @@ TEST_P(CDCServiceTest, TestGetChanges) {
     // Check the key deleted.
     ASSERT_NO_FATALS(AssertIntKey(change_resp.records(0).key(), 1));
   }
+}
+
+TEST_P(CDCServiceTest, TestGetChangesWithDeadline) {
+  CDCStreamId stream_id;
+  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id);
+  FLAGS_TEST_get_changes_read_loop_delay_ms = kTimeMultiplier;
+  FLAGS_log_segment_size_bytes = 100;
+  FLAGS_cdc_read_rpc_timeout_ms = 100 * kTimeMultiplier;
+  FLAGS_get_changes_honor_deadline = true;
+  FLAGS_cdc_read_safe_deadline_ratio = 0.30;
+
+  std::string tablet_id;
+  GetTablet(&tablet_id);
+
+  const auto& tserver = cluster_->mini_tablet_server(0)->server();
+  // Use proxy for to most accurately simulate normal requests.
+  const auto& proxy = tserver->proxy();
+
+  // Insert <num_records> test rows.
+  const int num_records = 500;
+  for (int i = 0; i < num_records; i++) {
+    WriteTestRow(i, i, Format("key$0", i), tablet_id, proxy);
+  }
+
+  // Get CDC changes. Note that the timeout value and read delay
+  // should ensure that some, but not all records are read.
+  GetChangesRequestPB change_req;
+  GetChangesResponsePB change_resp;
+
+  change_req.set_tablet_id(tablet_id);
+  change_req.set_stream_id(stream_id);
+  change_req.set_max_records(num_records);
+  change_req.mutable_from_checkpoint()->mutable_op_id()->set_index(0);
+  change_req.mutable_from_checkpoint()->mutable_op_id()->set_term(0);
+
+  SCOPED_TRACE(change_req.DebugString());
+  ASSERT_OK(GetChangesWithRetries(change_req, &change_resp,
+                                  FLAGS_cdc_read_rpc_timeout_ms));
+
+  SCOPED_TRACE(change_resp.DebugString());
+  ASSERT_FALSE(change_resp.has_error());
+
+  // Ensure that partial results are returned
+  ASSERT_GT(change_resp.records_size(), 0);
+  ASSERT_LT(change_resp.records_size(), num_records);
+
+  // Try again, but use a timeout value large enough such that
+  // all records should be read before timeout.
+  FLAGS_TEST_get_changes_read_loop_delay_ms = 0;
+  FLAGS_cdc_read_rpc_timeout_ms = 30 * 1000 * kTimeMultiplier;
+
+  ASSERT_OK(GetChangesWithRetries(change_req, &change_resp,
+                                  FLAGS_cdc_read_rpc_timeout_ms));
+  SCOPED_TRACE(change_resp.DebugString());
+  ASSERT_FALSE(change_resp.has_error());
+
+  // This time, we expect all records to be read.
+  ASSERT_EQ(change_resp.records_size(), num_records);
 }
 
 TEST_P(CDCServiceTest, TestGetChangesInvalidStream) {
