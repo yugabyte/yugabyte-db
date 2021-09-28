@@ -118,7 +118,7 @@ class Entry:
             EntryType.HAS_ERROR: self.has_error,
             EntryType.HAS_WARNING: self.has_warning
         }
-        if self.metric_value:
+        if self.metric_value is not None:
             j[EntryType.METRIC_VALUE] = self.metric_value
         if self.process:
             j[EntryType.PROCESS] = self.process
@@ -433,20 +433,8 @@ class NodeChecker():
         return self.check_yb_version(
             self.node, process, self.tserver_http_port, self.universe_version)
 
-    def check_for_fatal_logs(self, process):
-        logging.info("Checking for fatals on node {}".format(self.node))
-        e = self._new_entry("Fatal log files")
+    def check_logs_find_output(self, output):
         logs = []
-        process_dir = process.strip("yb-")
-        search_dir = YB_PROCESS_LOG_PATH_FORMAT.format(process_dir)
-        remote_cmd = (
-            'find {} {} -name "*FATAL*" -type f -printf "%T@ %p\\n" | sort -rn'.format(
-                search_dir,
-                '-mmin -{}'.format(FATAL_TIME_THRESHOLD_MINUTES)))
-        output = self._remote_check_output(remote_cmd)
-        if has_errors(output):
-            return e.fill_and_return_entry([output], True)
-
         if output:
             for line in output.strip().split('\n'):
                 splits = line.strip().split()
@@ -462,7 +450,40 @@ class NodeChecker():
                 logs.append('{} ({} old)'.format(
                     filename,
                     ''.join(seconds_to_human_readable_time(int(time.time() - int(epoch))))))
-        return e.fill_and_return_entry(logs, len(logs) > 0)
+        return logs
+
+    def check_for_error_logs(self, process):
+        logging.info("Checking for error logs on node {}".format(self.node))
+        e = self._new_entry("Error log files")
+        logs = []
+        process_name = process.strip("yb-")
+        search_dir = YB_PROCESS_LOG_PATH_FORMAT.format(process_name)
+
+        metric_value = 0
+        for log_severity in ["FATAL", "ERROR"]:
+            remote_cmd = ('find {} {} -name "*{}*" -type f -printf "%T@ %p\\n" | sort -rn'.format(
+                search_dir,
+                '-mmin -{}'.format(FATAL_TIME_THRESHOLD_MINUTES),
+                log_severity))
+            output = self._remote_check_output(remote_cmd)
+            if has_errors(output):
+                return e.fill_and_return_entry([output], True)
+
+            log_files = self.check_logs_find_output(output)
+
+            logs.extend(log_files)
+
+            # 0 = no error and fatal logs
+            # 1 = error logs only
+            # 2 = fatal logs only
+            # 3 = error and fatal logs
+            if len(log_files) > 0:
+                if log_severity == "ERROR":
+                    metric_value = metric_value + 1
+                if log_severity == "FATAL":
+                    metric_value = metric_value + 2
+
+        return e.fill_and_return_entry(logs, len(logs) > 0, metric_value)
 
     def check_for_core_files(self):
         logging.info("Checking for core files on node {}".format(self.node))
@@ -898,13 +919,13 @@ def main():
                         checker, "check_uptime_for_process", "yb-master")
                     if alert_enhancements_version:
                         coordinator.add_check(checker, "check_master_yb_version", "yb-master")
-                    coordinator.add_check(checker, "check_for_fatal_logs", "yb-master")
+                    coordinator.add_check(checker, "check_for_error_logs", "yb-master")
                 if node in tserver_nodes:
                     coordinator.add_check(
                         checker, "check_uptime_for_process", "yb-tserver")
                     if alert_enhancements_version:
                         coordinator.add_check(checker, "check_tserver_yb_version", "yb-tserver")
-                    coordinator.add_check(checker, "check_for_fatal_logs", "yb-tserver")
+                    coordinator.add_check(checker, "check_for_error_logs", "yb-tserver")
                     # Only need to check redis-cli/cqlsh for tserver nodes
                     # to be docker/k8s friendly.
                     if c.enable_ycql:

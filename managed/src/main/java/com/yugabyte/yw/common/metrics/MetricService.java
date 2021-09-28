@@ -64,7 +64,8 @@ public class MetricService {
           .thenComparing(MetricSourceKey::getSourceUuid);
   private static final Comparator<MetricKey> METRIC_KEY_COMPARATOR =
       Comparator.comparing(MetricKey::getSourceKey, METRIC_SOURCE_KEY_COMPARATOR)
-          .thenComparing(MetricKey::getSourceLabels);
+          .thenComparing(
+              MetricKey::getSourceLabels, Comparator.nullsFirst(Comparator.naturalOrder()));
   private final MultiKeyLock<MetricKey> metricKeyLock = new MultiKeyLock<>(METRIC_KEY_COMPARATOR);
 
   @Transactional
