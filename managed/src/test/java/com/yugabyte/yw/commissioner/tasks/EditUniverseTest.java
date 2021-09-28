@@ -2,50 +2,38 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
 import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType.EDIT;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.Matchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
-import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo.ModifyUniverseConfig;
-import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.util.List;
-import java.util.Map;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.runners.MockitoJUnitRunner;
 import org.yb.client.AbstractModifyMasterClusterConfig;
+import org.yb.client.ChangeConfigResponse;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
+import org.yb.client.ListTabletServersResponse;
 import org.yb.master.Master;
-import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class EditUniverseTest extends UniverseModifyBaseTest {
@@ -66,18 +54,27 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         Master.SysClusterConfigEntryPB.newBuilder().setVersion(1);
     GetMasterClusterConfigResponse mockConfigResponse =
         new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
-    ChangeMasterClusterConfigResponse mockChangeConfigResponse =
+    ChangeMasterClusterConfigResponse mockMasterChangeConfigResponse =
         new ChangeMasterClusterConfigResponse(1111, "", null);
+    ChangeConfigResponse mockChangeConfigResponse = mock(ChangeConfigResponse.class);
+    ListTabletServersResponse mockListTabletServersResponse = mock(ListTabletServersResponse.class);
+    when(mockListTabletServersResponse.getTabletServersCount()).thenReturn(10);
 
     try {
       when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
-      when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockChangeConfigResponse);
+      when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockMasterChangeConfigResponse);
+      when(mockClient.changeMasterConfig(anyString(), anyInt(), anyBoolean(), anyBoolean()))
+          .thenReturn(mockChangeConfigResponse);
+      when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean()))
+          .thenReturn(Boolean.TRUE);
+      when(mockClient.listTabletServers()).thenReturn(mockListTabletServersResponse);
     } catch (Exception e) {
     }
     mockWaits(mockClient);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
     when(mockClient.waitForLoadBalance(anyLong(), anyInt())).thenReturn(true);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+    when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
   }
 
   private TaskInfo submitTask(UniverseDefinitionTaskParams taskParams) {

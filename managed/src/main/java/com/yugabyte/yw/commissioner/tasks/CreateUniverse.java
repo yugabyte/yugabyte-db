@@ -59,7 +59,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
       // Set all the in-memory node names.
-      setNodeNames(UniverseOpType.CREATE, universe);
+      setNodeNames(universe);
 
       // Select master nodes.
       selectMasters();

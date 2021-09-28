@@ -47,7 +47,7 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
       // Set all the in-memory node names first.
-      setNodeNames(UniverseOpType.CREATE, universe);
+      setNodeNames(universe);
 
       PlacementInfo pi = taskParams().getPrimaryCluster().placementInfo;
 
