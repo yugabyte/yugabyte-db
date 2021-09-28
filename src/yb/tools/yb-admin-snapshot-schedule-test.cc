@@ -1173,7 +1173,8 @@ TEST_F(YbAdminSnapshotScheduleTest, RestoreAfterSplit) {
   ASSERT_OK(conn.ExecuteQueryFormat(insert_pattern, "after"));
 
   {
-    auto tablets = ASSERT_RESULT(ListTablets()).GetArray();
+    auto tablets_obj = ASSERT_RESULT(ListTablets());
+    auto tablets = tablets_obj.GetArray();
     ASSERT_EQ(tablets.Size(), 1);
     auto tablet_id = ASSERT_RESULT(Get(tablets[0], "id")).get().GetString();
     LOG(INFO) << "Tablet id: " << tablet_id;
@@ -1193,8 +1194,8 @@ TEST_F(YbAdminSnapshotScheduleTest, RestoreAfterSplit) {
   rows = ASSERT_RESULT(conn.ExecuteAndRenderToString(select_expr));
   ASSERT_EQ(rows, "1,final");
 
-    auto tablets = ASSERT_RESULT(ListTablets()).GetArray();
-  ASSERT_EQ(tablets.Size(), 1);
+  auto tablets_size = ASSERT_RESULT(ListTablets()).GetArray().Size();
+  ASSERT_EQ(tablets_size, 1);
 }
 
 TEST_F(YbAdminSnapshotScheduleTest, ConsecutiveRestore) {
