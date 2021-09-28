@@ -517,13 +517,12 @@ Status YBClient::DeleteTable(const YBTableName& table_name, bool wait) {
                             wait);
 }
 
-Status YBClient::DeleteTable(const string& table_id, bool wait) {
-  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+Status YBClient::DeleteTable(const string& table_id, bool wait, CoarseTimePoint deadline) {
   return data_->DeleteTable(this,
                             YBTableName(),
                             table_id,
                             false /* is_index_table */,
-                            deadline,
+                            PatchAdminDeadline(deadline),
                             nullptr /* indexed_table_name */,
                             wait);
 }
@@ -543,13 +542,13 @@ Status YBClient::DeleteIndexTable(const YBTableName& table_name,
 
 Status YBClient::DeleteIndexTable(const string& table_id,
                                   YBTableName* indexed_table_name,
-                                  bool wait) {
-  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+                                  bool wait,
+                                  CoarseTimePoint deadline) {
   return data_->DeleteTable(this,
                             YBTableName(),
                             table_id,
                             true /* is_index_table */,
-                            deadline,
+                            PatchAdminDeadline(deadline),
                             indexed_table_name,
                             wait);
 }
@@ -742,9 +741,7 @@ Status YBClient::CreateNamespace(const std::string& namespace_name,
     txn->ToPB(req.mutable_transaction());
   }
   req.set_colocated(colocated);
-  if (deadline == CoarseTimePoint()) {
-    deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
-  }
+  deadline = PatchAdminDeadline(deadline);
   Status s = data_->SyncLeaderMasterRpc<CreateNamespaceRequestPB, CreateNamespaceResponsePB>(
         deadline, req, &resp, nullptr, "CreateNamespace", &MasterServiceProxy::CreateNamespace);
   if (resp.has_error()) {
@@ -797,7 +794,8 @@ Status YBClient::IsCreateNamespaceInProgress(const std::string& namespace_name,
 
 Status YBClient::DeleteNamespace(const std::string& namespace_name,
                                  const boost::optional<YQLDatabase>& database_type,
-                                 const std::string& namespace_id) {
+                                 const std::string& namespace_id,
+                                 CoarseTimePoint deadline) {
   DeleteNamespaceRequestPB req;
   DeleteNamespaceResponsePB resp;
   req.mutable_namespace_()->set_name(namespace_name);
@@ -808,7 +806,7 @@ Status YBClient::DeleteNamespace(const std::string& namespace_name,
     req.set_database_type(*database_type);
     req.mutable_namespace_()->set_database_type(*database_type);
   }
-  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  deadline = PatchAdminDeadline(deadline);
   Status s = data_->SyncLeaderMasterRpc<DeleteNamespaceRequestPB, DeleteNamespaceResponsePB>(
       deadline, req, &resp, nullptr, "DeleteNamespace", &MasterServiceProxy::DeleteNamespace);
   if (resp.has_error()) {
@@ -1451,7 +1449,8 @@ void YBClient::GetTableLocations(
 }
 
 Status YBClient::TabletServerCount(int *tserver_count, bool primary_only, bool use_cache) {
-  int tserver_count_cached = data_->tserver_count_cached_.load(std::memory_order_acquire);
+  int tserver_count_cached = data_->tserver_count_cached_[primary_only].load(
+      std::memory_order_acquire);
   if (use_cache && tserver_count_cached > 0) {
     *tserver_count = tserver_count_cached;
     return Status::OK();
@@ -1461,69 +1460,64 @@ Status YBClient::TabletServerCount(int *tserver_count, bool primary_only, bool u
   ListTabletServersResponsePB resp;
   req.set_primary_only(primary_only);
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, ListTabletServers);
-  data_->tserver_count_cached_.store(resp.servers_size(), std::memory_order_release);
+  data_->tserver_count_cached_[primary_only].store(resp.servers_size(), std::memory_order_release);
   *tserver_count = resp.servers_size();
   return Status::OK();
 }
 
-Status YBClient::ListTabletServers(vector<std::unique_ptr<YBTabletServer>>* tablet_servers) {
+Result<std::vector<YBTabletServer>> YBClient::ListTabletServers() {
   ListTabletServersRequestPB req;
   ListTabletServersResponsePB resp;
+  std::vector<YBTabletServer> result;
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, ListTabletServers);
+  result.reserve(resp.servers_size());
   for (int i = 0; i < resp.servers_size(); i++) {
     const ListTabletServersResponsePB_Entry& e = resp.servers(i);
-    auto ts = std::make_unique<YBTabletServer>(
-        e.instance_id().permanent_uuid(),
-        DesiredHostPort(e.registration().common(), data_->cloud_info_pb_).host(),
-        e.registration().common().placement_uuid());
-    tablet_servers->push_back(std::move(ts));
+    result.push_back(YBTabletServer::FromPB(e, data_->cloud_info_pb_));
   }
-  return Status::OK();
+  return result;
 }
 
-Status YBClient::ListLiveTabletServers(TabletServersInfo* tablet_servers, bool primary_only) {
+Result<TabletServersInfo> YBClient::ListLiveTabletServers(bool primary_only) {
   ListLiveTabletServersRequestPB req;
-  if (primary_only) req.set_primary_only(true);
+  if (primary_only) {
+    req.set_primary_only(true);
+  }
   ListLiveTabletServersResponsePB resp;
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, ListLiveTabletServers);
 
+  TabletServersInfo result;
+  result.resize(resp.servers_size());
   for (int i = 0; i < resp.servers_size(); i++) {
     const ListLiveTabletServersResponsePB_Entry& entry = resp.servers(i);
-    CloudInfoPB cloud_info = entry.registration().common().cloud_info();
-    std::string cloud = "";
-    std::string region = "";
-    std::string zone = "";
-    int broadcast_sz = entry.registration().common().broadcast_addresses().size();
-    int private_ip_addresses_sz = entry.registration().common().private_rpc_addresses().size();
+    auto& out = result[i];
+    out.server = YBTabletServer::FromPB(entry, data_->cloud_info_pb_);
+    const CloudInfoPB& cloud_info = entry.registration().common().cloud_info();
 
-    const auto privateIp =
-        private_ip_addresses_sz > 0
-            ? entry.registration().common().private_rpc_addresses().Get(0).host()
-            : DesiredHostPort(entry.registration().common(), data_->cloud_info_pb_).host();
-
-    std::string publicIp = "";
-    if (broadcast_sz > 0) {
-      publicIp = entry.registration().common().broadcast_addresses().Get(0).host();
+    const auto& private_addresses = entry.registration().common().private_rpc_addresses();
+    if (!private_addresses.empty()) {
+      out.server.hostname = private_addresses.Get(0).host();
     }
 
-    bool isPrimary = !entry.isfromreadreplica();
+    const auto& broadcast_addresses = entry.registration().common().broadcast_addresses();
+    if (!broadcast_addresses.empty()) {
+      out.public_ip = broadcast_addresses.Get(0).host();
+    }
+
+    out.is_primary = !entry.isfromreadreplica();
     if (cloud_info.has_placement_cloud()) {
-      cloud = cloud_info.placement_cloud();
+      out.cloud = cloud_info.placement_cloud();
       if (cloud_info.has_placement_region()) {
-        region = cloud_info.placement_region();
+        out.region = cloud_info.placement_region();
       }
       if (cloud_info.has_placement_zone()) {
-        zone = cloud_info.placement_zone();
+        out.zone = cloud_info.placement_zone();
       }
     }
-
-    auto ts = std::make_unique<YBTabletServerPlacementInfo>(
-        entry.instance_id().permanent_uuid(), privateIp,
-        entry.registration().common().placement_uuid(), cloud, region, zone, isPrimary,
-        publicIp, entry.registration().common().pg_port());
-    tablet_servers->push_back(std::move(ts));
+    out.pg_port = entry.registration().common().pg_port();
   }
-  return Status::OK();
+
+  return result;
 }
 
 void YBClient::SetLocalTabletServer(const string& ts_uuid,
@@ -1996,6 +1990,13 @@ uint64_t YBClient::GetLatestObservedHybridTime() const {
 
 void YBClient::SetLatestObservedHybridTime(uint64_t ht_hybrid_time) {
   data_->UpdateLatestObservedHybridTime(ht_hybrid_time);
+}
+
+CoarseTimePoint YBClient::PatchAdminDeadline(CoarseTimePoint deadline) const {
+  if (deadline != CoarseTimePoint()) {
+    return deadline;
+  }
+  return CoarseMonoClock::Now() + default_admin_operation_timeout();
 }
 
 }  // namespace client

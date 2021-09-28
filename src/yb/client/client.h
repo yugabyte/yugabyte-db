@@ -236,6 +236,8 @@ class YBClientBuilder {
   DISALLOW_COPY_AND_ASSIGN(YBClientBuilder);
 };
 
+using TabletServersInfo = std::vector<YBTabletServerPlacementInfo>;
+
 // The YBClient represents a connection to a cluster. From the user
 // perspective, they should only need to create one of these in their
 // application, likely a singleton -- but it's not a singleton in YB in any
@@ -262,8 +264,6 @@ class YBClientBuilder {
 // This class is thread-safe.
 class YBClient {
  public:
-  using TabletServersInfo = std::vector<std::unique_ptr<yb::client::YBTabletServerPlacementInfo>>;
-
   ~YBClient();
 
   std::unique_ptr<YBTableCreator> NewTableCreator();
@@ -292,7 +292,8 @@ class YBClient {
   // Delete the specified table.
   // Set 'wait' to true if the call must wait for the table to be fully deleted before returning.
   CHECKED_STATUS DeleteTable(const YBTableName& table_name, bool wait = true);
-  CHECKED_STATUS DeleteTable(const std::string& table_id, bool wait = true);
+  CHECKED_STATUS DeleteTable(
+      const std::string& table_id, bool wait = true, CoarseTimePoint deadline = CoarseTimePoint());
 
   // Delete the specified index table.
   // Set 'wait' to true if the call must wait for the table to be fully deleted before returning.
@@ -302,7 +303,8 @@ class YBClient {
 
   CHECKED_STATUS DeleteIndexTable(const std::string& table_id,
                                   YBTableName* indexed_table_name = nullptr,
-                                  bool wait = true);
+                                  bool wait = true,
+                                  CoarseTimePoint deadline = CoarseTimePoint());
 
   // Flush or compact the specified tables.
   CHECKED_STATUS FlushTables(const std::vector<TableId>& table_ids,
@@ -401,7 +403,8 @@ class YBClient {
   // Delete namespace with the given name.
   CHECKED_STATUS DeleteNamespace(const std::string& namespace_name,
                                  const boost::optional<YQLDatabase>& database_type = boost::none,
-                                 const std::string& namespace_id = "");
+                                 const std::string& namespace_id = "",
+                                 CoarseTimePoint deadline = CoarseTimePoint());
 
   // Set 'delete_in_progress' to true if a DeleteNamespace operation is in-progress.
   CHECKED_STATUS IsDeleteNamespaceInProgress(const std::string& namespace_name,
@@ -564,10 +567,9 @@ class YBClient {
   CHECKED_STATUS TabletServerCount(int *tserver_count, bool primary_only = false,
       bool use_cache = false);
 
-  CHECKED_STATUS ListTabletServers(std::vector<std::unique_ptr<YBTabletServer>>* tablet_servers);
+  Result<std::vector<YBTabletServer>> ListTabletServers();
 
-  CHECKED_STATUS ListLiveTabletServers(TabletServersInfo* tablet_servers,
-                                       bool primary_only = false);
+  Result<TabletServersInfo> ListLiveTabletServers(bool primary_only = false);
 
   // Sets local tserver and its proxy.
   void SetLocalTabletServer(const std::string& ts_uuid,
@@ -810,6 +812,8 @@ class YBClient {
 
   friend std::future<Result<internal::RemoteTabletPtr>> LookupFirstTabletFuture(
       YBClient* client, const YBTablePtr& table);
+
+  CoarseTimePoint PatchAdminDeadline(CoarseTimePoint deadline) const;
 
   YBClient();
 

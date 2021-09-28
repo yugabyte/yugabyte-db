@@ -16,6 +16,8 @@
 
 #include <memory>
 
+#include <boost/preprocessor/seq/for_each.hpp>
+
 #include "yb/rpc/proxy.h"
 
 #include "yb/tserver/tserver_util_fwd.h"
@@ -27,6 +29,10 @@
 namespace yb {
 namespace pggate {
 
+#define YB_PG_CLIENT_SIMPLE_METHODS \
+    (AlterDatabase)(AlterTable)(BackfillIndex)(CreateDatabase)(CreateTable)(CreateTablegroup) \
+    (DropDatabase)(DropTablegroup)(TruncateTable)
+
 class PgClient {
  public:
   PgClient();
@@ -37,12 +43,6 @@ class PgClient {
                        const tserver::TServerSharedObject& tserver_shared_object);
   void Shutdown();
 
-  CHECKED_STATUS AlterTable(tserver::PgAlterTableRequestPB* req, CoarseTimePoint deadline);
-
-  CHECKED_STATUS CreateDatabase(tserver::PgCreateDatabaseRequestPB* req, CoarseTimePoint deadline);
-
-  CHECKED_STATUS CreateTable(tserver::PgCreateTableRequestPB* req, CoarseTimePoint deadline);
-
   Result<PgTableDescPtr> OpenTable(const PgObjectId& table_id);
 
   Result<master::GetNamespaceInfoResponsePB> GetDatabaseInfo(PgOid oid);
@@ -50,6 +50,24 @@ class PgClient {
   Result<std::pair<PgOid, PgOid>> ReserveOids(PgOid database_oid, PgOid next_oid, uint32_t count);
 
   Result<bool> IsInitDbDone();
+
+  Result<uint64_t> GetCatalogMasterVersion();
+
+  CHECKED_STATUS CreateSequencesDataTable();
+
+  Result<client::YBTableName> DropTable(
+      tserver::PgDropTableRequestPB* req, CoarseTimePoint deadline);
+
+  Result<int32> TabletServerCount(bool primary_only);
+
+  Result<client::TabletServersInfo> ListLiveTabletServers(bool primary_only);
+
+#define YB_PG_CLIENT_SIMPLE_METHOD_DECLARE(r, data, method) \
+  CHECKED_STATUS method(                             \
+      tserver::BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)* req, \
+      CoarseTimePoint deadline);
+
+  BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_SIMPLE_METHOD_DECLARE, ~, YB_PG_CLIENT_SIMPLE_METHODS);
 
  private:
   class Impl;

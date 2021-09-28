@@ -316,7 +316,11 @@ YB_CLIENT_SPECIALIZE_SIMPLE(IsDeleteNamespaceDone);
 YBClient::Data::Data()
     : leader_master_rpc_(rpcs_.InvalidHandle()),
       latest_observed_hybrid_time_(YBClient::kNoHybridTime),
-      id_(ClientId::GenerateRandom()) {}
+      id_(ClientId::GenerateRandom()) {
+  for(auto& cache : tserver_count_cached_) {
+    cache.store(0, std::memory_order_relaxed);
+  }
+}
 
 YBClient::Data::~Data() {
   rpcs_.Shutdown();

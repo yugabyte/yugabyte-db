@@ -110,21 +110,20 @@ Status PgDropDatabase::Exec() {
 PgAlterDatabase::PgAlterDatabase(PgSession::ScopedRefPtr pg_session,
                                const char *database_name,
                                PgOid database_oid)
-    : PgDdl(pg_session),
-      namespace_alterer_(pg_session_->NewNamespaceAlterer(database_name, database_oid)) {
+    : PgDdl(pg_session) {
+  req_.set_database_name(database_name);
+  req_.set_database_oid(database_oid);
 }
 
 PgAlterDatabase::~PgAlterDatabase() {
-  delete namespace_alterer_;
 }
 
 Status PgAlterDatabase::Exec() {
-  return namespace_alterer_->SetDatabaseType(YQL_DATABASE_PGSQL)->Alter();
+  return pg_session_->pg_client().AlterDatabase(&req_, DdlDeadline());
 }
 
-Status PgAlterDatabase::RenameDatabase(const char *newname) {
-  namespace_alterer_->RenameTo(newname);
-  return Status::OK();
+void PgAlterDatabase::RenameDatabase(const char *newname) {
+  req_.set_new_name(newname);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -135,50 +134,30 @@ PgCreateTablegroup::PgCreateTablegroup(PgSession::ScopedRefPtr pg_session,
                                        const char *database_name,
                                        const PgOid database_oid,
                                        const PgOid tablegroup_oid)
-    : PgDdl(pg_session),
-      database_name_(database_name),
-      database_oid_(database_oid),
-      tablegroup_oid_(tablegroup_oid) {
+    : PgDdl(pg_session) {
+  req_.set_database_name(database_name);
+  PgObjectId(database_oid, tablegroup_oid).ToPB(req_.mutable_tablegroup_id());
 }
 
 PgCreateTablegroup::~PgCreateTablegroup() {
 }
 
 Status PgCreateTablegroup::Exec() {
-  Status s = pg_session_->CreateTablegroup(database_name_, database_oid_, tablegroup_oid_);
-
-  if (PREDICT_FALSE(!s.ok())) {
-    if (s.IsAlreadyPresent()) {
-      return STATUS(InvalidArgument, "Duplicate tablegroup.");
-    }
-    if (s.IsNotFound()) {
-      return STATUS(InvalidArgument, "Database not found", database_name_);
-    }
-    return STATUS_FORMAT(
-        InvalidArgument, "Invalid table definition: $0",
-        s.ToString(false /* include_file_and_line */, false /* include_code */));
-  }
-
-  return Status::OK();
+  return pg_session_->pg_client().CreateTablegroup(&req_, DdlDeadline());
 }
 
 PgDropTablegroup::PgDropTablegroup(PgSession::ScopedRefPtr pg_session,
                                    const PgOid database_oid,
                                    const PgOid tablegroup_oid)
-    : PgDdl(pg_session),
-      database_oid_(database_oid),
-      tablegroup_oid_(tablegroup_oid) {
+    : PgDdl(pg_session) {
+  PgObjectId(database_oid, tablegroup_oid).ToPB(req_.mutable_tablegroup_id());
 }
 
 PgDropTablegroup::~PgDropTablegroup() {
 }
 
 Status PgDropTablegroup::Exec() {
-  Status s = pg_session_->DropTablegroup(database_oid_, tablegroup_oid_);
-  if (s.IsNotFound()) {
-    return Status::OK();
-  }
-  return s;
+  return pg_session_->pg_client().DropTablegroup(&req_, DdlDeadline());
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -307,15 +286,15 @@ Status PgDropTable::Exec() {
 
 PgTruncateTable::PgTruncateTable(PgSession::ScopedRefPtr pg_session,
                                  const PgObjectId& table_id)
-    : PgDdl(pg_session),
-      table_id_(table_id) {
+    : PgDdl(pg_session) {
+  table_id.ToPB(req_.mutable_table_id());
 }
 
 PgTruncateTable::~PgTruncateTable() {
 }
 
 Status PgTruncateTable::Exec() {
-  return pg_session_->TruncateTable(table_id_);
+  return pg_session_->pg_client().TruncateTable(&req_, DdlDeadline());
 }
 
 //--------------------------------------------------------------------------------------------------

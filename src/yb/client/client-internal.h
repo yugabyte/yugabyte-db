@@ -471,7 +471,7 @@ class YBClient::Data {
   simple_spinlock tablet_requests_mutex_;
   std::unordered_map<TabletId, TabletRequests> tablet_requests_;
 
-  std::atomic<int> tserver_count_cached_{0};
+  std::array<std::atomic<int>, 2> tserver_count_cached_;
 
   // The proxy for the node local tablet server.
   std::shared_ptr<tserver::TabletServerForwardServiceProxy> node_local_forward_proxy_;

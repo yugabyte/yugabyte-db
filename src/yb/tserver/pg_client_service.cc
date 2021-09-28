@@ -20,20 +20,17 @@
 
 #include "yb/client/client.h"
 #include "yb/client/table.h"
-#include "yb/client/table_alterer.h"
 #include "yb/client/table_creator.h"
+#include "yb/client/tablet_server.h"
 
-#include "yb/common/pg_system_attr.h"
 #include "yb/common/pg_types.h"
-
-#include "yb/docdb/doc_key.h"
 
 #include "yb/master/master.proxy.h"
 
 #include "yb/rpc/rpc_context.h"
 #include "yb/rpc/scheduler.h"
 
-#include "yb/tserver/pg_create_table.h"
+#include "yb/tserver/pg_client_session.h"
 
 #include "yb/util/net/net_util.h"
 
@@ -45,104 +42,23 @@ DEFINE_uint64(pg_client_session_expiration_ms, 60000,
 namespace yb {
 namespace tserver {
 
-class PgClientSession {
- public:
-  PgClientSession(client::YBClient* client, uint64_t id)
-      : client_(*client), id_(id) {
-  }
+namespace {
+//--------------------------------------------------------------------------------------------------
+// Constants used for the sequences data table.
+//--------------------------------------------------------------------------------------------------
+static constexpr const char* const kPgSequencesNamespaceName = "system_postgres";
+static constexpr const char* const kPgSequencesDataTableName = "sequences_data";
 
-  uint64_t id() const {
-    return id_;
-  }
+// Columns names and ids.
+static constexpr const char* const kPgSequenceDbOidColName = "db_oid";
 
-  CHECKED_STATUS CreateTable(
-      const PgCreateTableRequestPB& req, PgCreateTableResponsePB* resp, rpc::RpcContext* context) {
-    PgCreateTable helper(req);
-    RETURN_NOT_OK(helper.Prepare());
-    return helper.Exec(
-        &client(), VERIFY_RESULT(GetDdlTransactionMetadata(req.use_transaction())),
-        context->GetClientDeadline());
-  }
+static constexpr const char* const kPgSequenceSeqOidColName = "seq_oid";
 
-  CHECKED_STATUS CreateDatabase(
-      const PgCreateDatabaseRequestPB& req, PgCreateDatabaseResponsePB* resp,
-      rpc::RpcContext* context) {
-    return client().CreateNamespace(
-        req.database_name(),
-        YQL_DATABASE_PGSQL,
-        "" /* creator_role_name */,
-        GetPgsqlNamespaceId(req.database_oid()),
-        req.source_database_oid() != kPgInvalidOid
-            ? GetPgsqlNamespaceId(req.source_database_oid()) : "",
-        req.next_oid(),
-        VERIFY_RESULT(GetDdlTransactionMetadata(req.use_transaction())),
-        req.colocated(),
-        context->GetClientDeadline());
-  }
+static constexpr const char* const kPgSequenceLastValueColName = "last_value";
 
-  CHECKED_STATUS AlterTable(
-      const PgAlterTableRequestPB& req, PgAlterTableResponsePB* resp, rpc::RpcContext* context) {
-    auto alterer = client().NewTableAlterer(PgObjectId::FromPB(req.table_id()).GetYBTableId());
-    auto txn = VERIFY_RESULT(GetDdlTransactionMetadata(req.use_transaction()));
-    if (txn) {
-      alterer->part_of_transaction(txn);
-    }
-    for (const auto& add_column : req.add_columns()) {
-      auto yb_type = QLType::Create(static_cast<DataType>(add_column.attr_ybtype()));
-      alterer->AddColumn(add_column.attr_name())->Type(yb_type)->Order(add_column.attr_num());
-      // Do not set 'nullable' attribute as PgCreateTable::AddColumn() does not do it.
-    }
-    for (const auto& rename_column : req.rename_columns()) {
-      alterer->AlterColumn(rename_column.old_name())->RenameTo(rename_column.new_name());
-    }
-    for (const auto& drop_column : req.drop_columns()) {
-      alterer->DropColumn(drop_column);
-    }
-    if (!req.rename_table().table_name().empty()) {
-      client::YBTableName new_table_name(
-          YQL_DATABASE_PGSQL, req.rename_table().database_name(), req.rename_table().table_name());
-      alterer->RenameTo(new_table_name);
-    }
+static constexpr const char* const kPgSequenceIsCalledColName = "is_called";
 
-    alterer->timeout(context->GetClientDeadline() - CoarseMonoClock::now());
-    return alterer->Alter();
-  }
-
- private:
-  friend class PgClientSessionLocker;
-
-  Result<const TransactionMetadata*> GetDdlTransactionMetadata(
-      const TransactionMetadataPB& metadata) {
-    if (!metadata.has_transaction_id()) {
-      return nullptr;
-    }
-    last_txn_metadata_ = VERIFY_RESULT(TransactionMetadata::FromPB(metadata));
-    return &last_txn_metadata_;
-  }
-
-  client::YBClient& client() {
-    return client_;
-  }
-
-  client::YBClient& client_;
-  const uint64_t id_;
-
-  std::mutex mutex_;
-  TransactionMetadata last_txn_metadata_; // TODO(PG_CLIENT) Remove after migration.
-};
-
-class PgClientSessionLocker {
- public:
-  explicit PgClientSessionLocker(PgClientSession* session)
-      : session_(session), lock_(session->mutex_) {}
-
-  PgClientSession* operator->() const {
-    return session_;
-  }
- private:
-  PgClientSession* session_;
-  std::unique_lock<std::mutex> lock_;
-};
+} // namespace
 
 template <class T>
 class Expirable {
@@ -272,21 +188,92 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
-  CHECKED_STATUS CreateTable(
-      const PgCreateTableRequestPB& req, PgCreateTableResponsePB* resp, rpc::RpcContext* context) {
-    return VERIFY_RESULT(GetSession(req))->CreateTable(req, resp, context);
-  }
-
-  CHECKED_STATUS CreateDatabase(
-      const PgCreateDatabaseRequestPB& req, PgCreateDatabaseResponsePB* resp,
+  CHECKED_STATUS GetCatalogMasterVersion(
+      const PgGetCatalogMasterVersionRequestPB& req,
+      PgGetCatalogMasterVersionResponsePB* resp,
       rpc::RpcContext* context) {
-    return VERIFY_RESULT(GetSession(req))->CreateDatabase(req, resp, context);
+    uint64_t version;
+    RETURN_NOT_OK(client().GetYsqlCatalogMasterVersion(&version));
+    resp->set_version(version);
+    return Status::OK();
   }
 
-  CHECKED_STATUS AlterTable(
-      const PgAlterTableRequestPB& req, PgAlterTableResponsePB* resp, rpc::RpcContext* context) {
-    return VERIFY_RESULT(GetSession(req))->AlterTable(req, resp, context);
+  CHECKED_STATUS CreateSequencesDataTable(
+      const PgCreateSequencesDataTableRequestPB& req,
+      PgCreateSequencesDataTableResponsePB* resp,
+      rpc::RpcContext* context) {
+    const client::YBTableName table_name(YQL_DATABASE_PGSQL,
+                                         kPgSequencesDataNamespaceId,
+                                         kPgSequencesNamespaceName,
+                                         kPgSequencesDataTableName);
+    RETURN_NOT_OK(client().CreateNamespaceIfNotExists(kPgSequencesNamespaceName,
+                                                      YQLDatabase::YQL_DATABASE_PGSQL,
+                                                      "" /* creator_role_name */,
+                                                      kPgSequencesDataNamespaceId));
+
+    // Set up the schema.
+    client::YBSchemaBuilder schemaBuilder;
+    schemaBuilder.AddColumn(kPgSequenceDbOidColName)->HashPrimaryKey()->Type(yb::INT64)->NotNull();
+    schemaBuilder.AddColumn(kPgSequenceSeqOidColName)->HashPrimaryKey()->Type(yb::INT64)->NotNull();
+    schemaBuilder.AddColumn(kPgSequenceLastValueColName)->Type(yb::INT64)->NotNull();
+    schemaBuilder.AddColumn(kPgSequenceIsCalledColName)->Type(yb::BOOL)->NotNull();
+    client::YBSchema schema;
+    CHECK_OK(schemaBuilder.Build(&schema));
+
+    // Generate the table id.
+    PgObjectId oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
+
+    // Try to create the table.
+    auto table_creator(client().NewTableCreator());
+
+    auto status = table_creator->table_name(table_name)
+        .schema(&schema)
+        .table_type(yb::client::YBTableType::PGSQL_TABLE_TYPE)
+        .table_id(oid.GetYBTableId())
+        .hash_schema(YBHashSchema::kPgsqlHash)
+        .Create();
+    // If we could create it, then all good!
+    if (status.ok()) {
+      LOG(INFO) << "Table '" << table_name.ToString() << "' created.";
+      // If the table was already there, also not an error...
+    } else if (status.IsAlreadyPresent()) {
+      LOG(INFO) << "Table '" << table_name.ToString() << "' already exists";
+    } else {
+      // If any other error, report that!
+      LOG(ERROR) << "Error creating table '" << table_name.ToString() << "': " << status;
+      return status;
+    }
+    return Status::OK();
   }
+
+  CHECKED_STATUS TabletServerCount(
+      const PgTabletServerCountRequestPB& req, PgTabletServerCountResponsePB* resp,
+      rpc::RpcContext* context) {
+    int result = 0;
+    RETURN_NOT_OK(client().TabletServerCount(&result, req.primary_only(), /* use_cache= */ true));
+    resp->set_count(result);
+    return Status::OK();
+  }
+
+  CHECKED_STATUS ListLiveTabletServers(
+      const PgListLiveTabletServersRequestPB& req, PgListLiveTabletServersResponsePB* resp,
+      rpc::RpcContext* context) {
+    auto tablet_servers = VERIFY_RESULT(client().ListLiveTabletServers(req.primary_only()));
+    for (const auto& server : tablet_servers) {
+      server.ToPB(resp->mutable_servers()->Add());
+    }
+    return Status::OK();
+  }
+
+  #define PG_CLIENT_SESSION_METHOD_FORWARD(r, data, method) \
+  CHECKED_STATUS method( \
+      const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)& req, \
+      BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)* resp, \
+      rpc::RpcContext* context) { \
+    return VERIFY_RESULT(GetSession(req))->method(req, resp, context); \
+  }
+
+  BOOST_PP_SEQ_FOR_EACH(PG_CLIENT_SESSION_METHOD_FORWARD, ~, PG_CLIENT_SESSION_METHODS);
 
  private:
   client::YBClient& client() { return *client_future_.get(); }
