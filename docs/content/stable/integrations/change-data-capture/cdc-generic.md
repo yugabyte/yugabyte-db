@@ -1,3 +1,4 @@
+<!--
 ---
 title: Change Data Capture
 headerTitle: Change Data Capture
@@ -12,6 +13,7 @@ menu:
 isTocNested: true
 showAsideToc: true
 ---
+-->
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
