@@ -94,9 +94,9 @@ public class HealthChecker {
       ImmutableList.<PlatformMetrics>builder()
           .add(PlatformMetrics.HEALTH_CHECK_MASTER_DOWN)
           .add(PlatformMetrics.HEALTH_CHECK_MASTER_VERSION_MISMATCH)
-          .add(PlatformMetrics.HEALTH_CHECK_MASTER_FATAL_LOGS)
+          .add(PlatformMetrics.HEALTH_CHECK_MASTER_ERROR_LOGS)
           .add(PlatformMetrics.HEALTH_CHECK_TSERVER_DOWN)
-          .add(PlatformMetrics.HEALTH_CHECK_TSERVER_FATAL_LOGS)
+          .add(PlatformMetrics.HEALTH_CHECK_TSERVER_ERROR_LOGS)
           .add(PlatformMetrics.HEALTH_CHECK_TSERVER_CORE_FILES)
           .add(PlatformMetrics.HEALTH_CHECK_YSQLSH_CONNECTIVITY_ERROR)
           .add(PlatformMetrics.HEALTH_CHECK_CQLSH_CONNECTIVITY_ERROR)
@@ -126,7 +126,7 @@ public class HealthChecker {
 
   private static final String UPTIME_CHECK = "Uptime";
   private static final String VERSION_MISMATCH_CHECK = "YB Version";
-  private static final String FATAL_LOG_CHECK = "Fatal log files";
+  private static final String ERROR_LOG_CHECK = "Error log files";
   private static final String CQLSH_CONNECTIVITY_CHECK = "Connectivity with cqlsh";
   private static final String YSQLSH_CONNECTIVITY_CHECK = "Connectivity with ysqlsh";
   private static final String REDIS_CONNECTIVITY_CHECK = "Connectivity with redis-cli";
@@ -316,17 +316,11 @@ public class HealthChecker {
           if (!metricValueNode.isMissingNode()) {
             merticValue = metricValueNode.asDouble();
           }
-          PlatformMetrics nodeMetric = getNodeMetricByCheckName(checkName, isMaster);
           // Add node metric value if it's present in data node
-          // and we got metric name by check name.
-          if (nodeMetric != null && merticValue != null) {
-            metrics.add(
-                buildMetricTemplate(nodeMetric, u)
-                    .setKeyLabel(KnownAlertLabels.NODE_NAME, nodeName)
-                    .setValue(merticValue));
+          if (merticValue != null) {
+            metrics.addAll(getNodeMetrics(checkName, isMaster, u, nodeName, merticValue));
           }
-          if (PlatformMetrics.HEALTH_CHECK_MASTER_BOOT_TIME_SEC == nodeMetric
-              || PlatformMetrics.HEALTH_CHECK_TSERVER_BOOT_TIME_SEC == nodeMetric) {
+          if (checkName.equals(UPTIME_CHECK)) {
             // No boot time metric means the instance or the whole node is down
             // and this node shouldn't be counted in other error node count metrics.
             isInstanceUp = merticValue != null;
@@ -915,11 +909,11 @@ public class HealthChecker {
         } else {
           return PlatformMetrics.HEALTH_CHECK_TSERVER_VERSION_MISMATCH;
         }
-      case FATAL_LOG_CHECK:
+      case ERROR_LOG_CHECK:
         if (isMaster) {
-          return PlatformMetrics.HEALTH_CHECK_MASTER_FATAL_LOGS;
+          return PlatformMetrics.HEALTH_CHECK_MASTER_ERROR_LOGS;
         } else {
-          return PlatformMetrics.HEALTH_CHECK_TSERVER_FATAL_LOGS;
+          return PlatformMetrics.HEALTH_CHECK_TSERVER_ERROR_LOGS;
         }
       case CQLSH_CONNECTIVITY_CHECK:
         return PlatformMetrics.HEALTH_CHECK_CQLSH_CONNECTIVITY_ERROR;
@@ -948,27 +942,97 @@ public class HealthChecker {
     }
   }
 
-  private PlatformMetrics getNodeMetricByCheckName(String checkName, boolean isMaster) {
+  private List<Metric> getNodeMetrics(
+      String checkName, boolean isMaster, Universe universe, String nodeName, double metricValue) {
     switch (checkName) {
       case UPTIME_CHECK:
         if (isMaster) {
-          return PlatformMetrics.HEALTH_CHECK_MASTER_BOOT_TIME_SEC;
+          return Collections.singletonList(
+              buildNodeMetric(
+                  PlatformMetrics.HEALTH_CHECK_MASTER_BOOT_TIME_SEC,
+                  universe,
+                  nodeName,
+                  metricValue));
         } else {
-          return PlatformMetrics.HEALTH_CHECK_TSERVER_BOOT_TIME_SEC;
+          return Collections.singletonList(
+              buildNodeMetric(
+                  PlatformMetrics.HEALTH_CHECK_TSERVER_BOOT_TIME_SEC,
+                  universe,
+                  nodeName,
+                  metricValue));
+        }
+      case ERROR_LOG_CHECK:
+        // 1 or 3 == error logs exist == 0 status
+        double errorLogsValue = (metricValue + 1) % 2;
+        // 2 or 3 == fatal logs exist == 0 status
+        double fatalLogsValue = metricValue < 2 ? 1 : 0;
+        if (isMaster) {
+          return ImmutableList.of(
+              buildNodeMetric(
+                  PlatformMetrics.HEALTH_CHECK_NODE_MASTER_FATAL_LOGS,
+                  universe,
+                  nodeName,
+                  fatalLogsValue),
+              buildNodeMetric(
+                  PlatformMetrics.HEALTH_CHECK_NODE_MASTER_ERROR_LOGS,
+                  universe,
+                  nodeName,
+                  errorLogsValue));
+        } else {
+          return ImmutableList.of(
+              buildNodeMetric(
+                  PlatformMetrics.HEALTH_CHECK_NODE_TSERVER_FATAL_LOGS,
+                  universe,
+                  nodeName,
+                  fatalLogsValue),
+              buildNodeMetric(
+                  PlatformMetrics.HEALTH_CHECK_NODE_TSERVER_ERROR_LOGS,
+                  universe,
+                  nodeName,
+                  errorLogsValue));
         }
       case OPENED_FILE_DESCRIPTORS_CHECK:
-        return PlatformMetrics.HEALTH_CHECK_USED_FD_PCT;
+        return Collections.singletonList(
+            buildNodeMetric(
+                PlatformMetrics.HEALTH_CHECK_USED_FD_PCT, universe, nodeName, metricValue));
       case NODE_TO_NODE_CA_CERT_CHECK:
-        return PlatformMetrics.HEALTH_CHECK_N2N_CA_CERT_VALIDITY_DAYS;
+        return Collections.singletonList(
+            buildNodeMetric(
+                PlatformMetrics.HEALTH_CHECK_N2N_CA_CERT_VALIDITY_DAYS,
+                universe,
+                nodeName,
+                metricValue));
       case NODE_TO_NODE_CERT_CHECK:
-        return PlatformMetrics.HEALTH_CHECK_N2N_CERT_VALIDITY_DAYS;
+        return Collections.singletonList(
+            buildNodeMetric(
+                PlatformMetrics.HEALTH_CHECK_N2N_CERT_VALIDITY_DAYS,
+                universe,
+                nodeName,
+                metricValue));
       case CLIENT_TO_NODE_CA_CERT_CHECK:
-        return PlatformMetrics.HEALTH_CHECK_C2N_CA_CERT_VALIDITY_DAYS;
+        return Collections.singletonList(
+            buildNodeMetric(
+                PlatformMetrics.HEALTH_CHECK_C2N_CA_CERT_VALIDITY_DAYS,
+                universe,
+                nodeName,
+                metricValue));
       case CLIENT_TO_NODE_CERT_CHECK:
-        return PlatformMetrics.HEALTH_CHECK_C2N_CERT_VALIDITY_DAYS;
+        return Collections.singletonList(
+            buildNodeMetric(
+                PlatformMetrics.HEALTH_CHECK_C2N_CERT_VALIDITY_DAYS,
+                universe,
+                nodeName,
+                metricValue));
       default:
-        return null;
+        return Collections.emptyList();
     }
+  }
+
+  private Metric buildNodeMetric(
+      PlatformMetrics metric, Universe universe, String nodeName, double value) {
+    return buildMetricTemplate(metric, universe)
+        .setKeyLabel(KnownAlertLabels.NODE_NAME, nodeName)
+        .setValue(value);
   }
 
   @VisibleForTesting

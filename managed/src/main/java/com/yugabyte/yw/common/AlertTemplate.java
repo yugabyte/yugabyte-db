@@ -362,8 +362,12 @@ public enum AlertTemplate {
   DB_FATAL_LOGS(
       "DB fatal logs",
       "Fatal logs detected on DB Master/TServer instances",
-      "ybp_health_check_master_fatal_logs{universe_uuid=\"__universeUuid__\"} "
-          + "+ ybp_health_check_tserver_fatal_logs{universe_uuid=\"__universeUuid__\"} "
+      "sum by (universe_uuid) "
+          + "(ybp_health_check_node_master_fatal_logs"
+          + "{universe_uuid=\"__universeUuid__\"} < bool 1) "
+          + "+ sum by (universe_uuid) "
+          + "(ybp_health_check_node_tserver_fatal_logs"
+          + "{universe_uuid=\"__universeUuid__\"} < bool 1) "
           + "{{ query_condition }} {{ query_threshold }}",
       "Fatal logs detected for universe '{{ $labels.source_name }}'"
           + " on {{ $value | printf \\\"%.0f\\\" }} Master/TServer instance(s).",
@@ -372,6 +376,32 @@ public enum AlertTemplate {
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
           .defaultThreshold(SEVERE, 0D)
+          .defaultThresholdUnit(COUNT)
+          .thresholdUnitName("instance(s)")
+          .thresholdConditionReadOnly(true)
+          .build()),
+
+  DB_ERROR_LOGS(
+      "DB error logs",
+      "Error logs detected on DB Master/TServer instances",
+      "sum by (universe_uuid) "
+          + "(ybp_health_check_node_master_error_logs"
+          + "{universe_uuid=\"__universeUuid__\"} < bool 1 * "
+          + "ybp_health_check_node_master_fatal_logs"
+          + "{universe_uuid=\"__universeUuid__\"} == bool 1) "
+          + "+ sum by (universe_uuid) "
+          + "(ybp_health_check_node_tserver_error_logs"
+          + "{universe_uuid=\"__universeUuid__\"} < bool 1 * "
+          + "ybp_health_check_node_tserver_fatal_logs"
+          + "{universe_uuid=\"__universeUuid__\"} == bool 1) "
+          + "{{ query_condition }} {{ query_threshold }}",
+      "Error logs detected for universe '{{ $labels.source_name }}'"
+          + " on {{ $value | printf \\\"%.0f\\\" }} Master/TServer instance(s).",
+      15,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      TargetType.UNIVERSE,
+      ThresholdSettings.builder()
+          .defaultThreshold(WARNING, 0D)
           .defaultThresholdUnit(COUNT)
           .thresholdUnitName("instance(s)")
           .thresholdConditionReadOnly(true)
