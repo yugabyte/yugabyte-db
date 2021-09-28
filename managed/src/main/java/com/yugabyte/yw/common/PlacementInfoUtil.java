@@ -5,12 +5,11 @@ package com.yugabyte.yw.common;
 import static com.yugabyte.yw.common.Util.toBeAddedAzUuidToNumNodes;
 import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType.ASYNC;
 import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType.PRIMARY;
-import static java.util.stream.Collectors.groupingBy;
-import static java.util.stream.Collectors.toCollection;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.api.client.util.Objects;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
@@ -51,6 +50,7 @@ import java.util.Map.Entry;
 import java.util.Queue;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -1687,83 +1687,206 @@ public class PlacementInfoUtil {
     nodeDetailsSet.addAll(deltaNodesSet);
   }
 
+  public static class SelectMastersResult {
+    public static final SelectMastersResult NONE = new SelectMastersResult();
+    public Set<NodeDetails> addedMasters;
+    public Set<NodeDetails> removedMasters;
+
+    public SelectMastersResult() {
+      addedMasters = new HashSet<>();
+      removedMasters = new HashSet<>();
+    }
+  }
+
   /**
-   * Select masters according to region and zone. We create an ordered list of nodes: The nodes are
-   * selected per zone, with each zone itself being selected per region.
+   * Select masters according to given replication factor, regions and zones.<br>
+   * Step 1. Each region should have at least one master (replicationFactor >= number of regions).
+   * Placing one master into the biggest zone of each region.<br>
+   * Step 2. Trying to place one master into each zone which doesn't have masters yet.<br>
+   * Step 3. If some unallocated masters are left, placing them across all the zones proportionally
+   * to the number of free nodes in the zone. Step 4. Master-leader is always preserved.
+   *
+   * @param masterLeader IP-address of the master-leader.
+   * @param nodes List of nodes of a universe.
+   * @param replicationFactor Number of masters to place.
+   * @return Instance of type SelectMastersResult with two lists of nodes - where we need to start
+   *     and where we need to stop Masters. List of masters to be stopped doesn't include nodes
+   *     which are going to be removed completely.
    */
-  public static void selectMasters(Collection<NodeDetails> nodes, long numMastersToChoose) {
-    // Map to region to zone to nodes. Using a multi-level map ensures that even if zones names
-    // are similar across regions, there will be no conflict.
-    List<NodeDetails> validNodes =
-        nodes
-            .stream()
-            .filter(node -> node.state == NodeState.Live || node.state == NodeState.ToBeAdded)
-            .collect(Collectors.toList());
+  public static SelectMastersResult selectMasters(
+      String masterLeader, Collection<NodeDetails> nodes, int replicationFactor) {
 
-    Map<String, Map<String, LinkedList<NodeDetails>>> regionToZoneToNode =
-        validNodes
-            .stream()
-            .collect(
-                groupingBy(
-                    NodeDetails::getRegion,
-                    groupingBy(NodeDetails::getZone, toCollection(LinkedList::new))));
+    // Mapping nodes to pairs <region, zone>.
+    Map<RegionWithAz, List<NodeDetails>> zoneToNodes = new HashMap<>();
+    AtomicInteger numCandidates = new AtomicInteger(0);
+    nodes
+        .stream()
+        .filter(NodeDetails::isActive)
+        .forEach(
+            node -> {
+              RegionWithAz zone = new RegionWithAz(node.cloudInfo.region, node.cloudInfo.az);
+              zoneToNodes.computeIfAbsent(zone, z -> new ArrayList<>()).add(node);
+              numCandidates.incrementAndGet();
+            });
 
-    // Map to region to zone. This is used to populate the ordering of the region/zone pairs from
-    // which to select nodes.
-    Map<String, LinkedList<String>> regionToZone =
-        validNodes
-            .stream()
-            .collect(
-                groupingBy(
-                    node -> node.getRegion(),
-                    Collectors.mapping(
-                        node -> node.getZone(),
-                        Collectors.collectingAndThen(
-                            toCollection(HashSet::new), values -> new LinkedList(values)))));
-
-    int numCandidates = validNodes.size();
-
-    if (numMastersToChoose > numCandidates) {
+    if (replicationFactor > numCandidates.get()) {
       throw new IllegalStateException(
           "Could not pick "
-              + numMastersToChoose
+              + replicationFactor
               + " masters, only "
               + numCandidates
-              + " nodes available. Nodes info. "
+              + " nodes available. Nodes info: "
               + nodes);
     }
 
-    // Create a queue to order the region/zone pairs, so that we place one node in each region,
-    // and then when all regions have a node placed, the next time they'll use a different region/
-    // zone pairing.
-    Queue<Pair<String, String>> queue = new LinkedList<>();
-    while (!regionToZone.isEmpty()) {
-      Iterator<Entry<String, LinkedList<String>>> it = regionToZone.entrySet().iterator();
-      while (it.hasNext()) {
-        Entry<String, LinkedList<String>> entry = it.next();
-        String region = entry.getKey();
-        String zone = entry.getValue().pop();
-        queue.add(new Pair<>(region, zone));
-        if (entry.getValue().isEmpty()) {
-          it.remove();
-        }
+    // All pairs region-az.
+    List<RegionWithAz> zones = new ArrayList<>(zoneToNodes.keySet());
+    // Sorting zones - larger zones are going at first. If two zones have the
+    // same size, the priority has a zone which already has a master. This
+    // guarantees that initial seeding of masters (one per region) will use a zone
+    // which already has the master.
+    zones.sort(
+        Comparator.comparing(z -> zoneToNodes.get(z).size())
+            .thenComparing(z -> zoneToNodes.get(z).stream().filter(n -> n.isMaster).count())
+            .reversed());
+
+    // Prepare the masters allocation.
+    Map<RegionWithAz, Integer> allocatedMastersRgAz =
+        getIdealMasterAlloc(replicationFactor, zones, zoneToNodes, numCandidates.get());
+
+    SelectMastersResult result = new SelectMastersResult();
+    // Applying allocations.
+    for (RegionWithAz zone : zones) {
+      applyMastersSelection(
+          masterLeader,
+          zoneToNodes.get(zone),
+          allocatedMastersRgAz.get(zone),
+          result.addedMasters,
+          result.removedMasters);
+    }
+    LOG.info("selectMasters result: master-leader={}, nodes={}", masterLeader, nodes);
+    return result;
+  }
+
+  /**
+   * Makes actual allocation of masters.
+   *
+   * @param replicationFactor How many masters to allocate;
+   * @param zones List of <region, zones> pairs sorted by nodes count;
+   * @param zoneToNodes Map of <region, zones> pairs to a list of nodes in the zone;
+   * @param numCandidates Overall count of nodes across all the zones.
+   * @return Map of AZs and how many masters to allocate per each zone.
+   */
+  private static Map<RegionWithAz, Integer> getIdealMasterAlloc(
+      int replicationFactor,
+      List<RegionWithAz> zones,
+      Map<RegionWithAz, List<NodeDetails>> zoneToNodes,
+      int numCandidates) {
+
+    // Map with allocations per region+az.
+    Map<RegionWithAz, Integer> allocatedMastersRgAz = new HashMap<>();
+    // Map with allocations per region.
+    Set<String> regionsWithMaster = new HashSet<>();
+
+    // 1. Each region should have at least one master.
+    int mastersLeft = replicationFactor;
+    for (RegionWithAz zone : zones) {
+      if (!regionsWithMaster.contains(zone.first)) {
+        regionsWithMaster.add(zone.first);
+        allocatedMastersRgAz.put(zone, 1);
+        if (--mastersLeft == 0) break;
+      } else {
+        allocatedMastersRgAz.put(zone, 0);
       }
     }
 
-    // Now that we have the ordering of the region/zones, we place masters.
-    int mastersSelected = 0;
-    while (mastersSelected < numMastersToChoose) {
-      Pair<String, String> regionZone = queue.remove();
-      Map<String, LinkedList<NodeDetails>> zoneToNode = regionToZoneToNode.get(regionZone.first);
-      LinkedList<NodeDetails> nodeList = zoneToNode.get(regionZone.second);
-      NodeDetails node = nodeList.pop();
-      node.isMaster = true;
-      mastersSelected++;
-      // If the region/zone pair doesn't have a node remaining, we don't need
-      // to consider it again.
-      if (!nodeList.isEmpty()) {
-        queue.add(regionZone);
+    // 2. Each zone should have master if it doesn't.
+    for (RegionWithAz zone : zones) {
+      if (mastersLeft == 0) break;
+      if (allocatedMastersRgAz.get(zone) == 0) {
+        allocatedMastersRgAz.put(zone, 1);
+        mastersLeft--;
       }
+    }
+
+    // 3. Other masters are seeded proportionally.
+    if (mastersLeft > 0) {
+      // mastersPerNode = mastersLeft / freeNodesLeft
+      int mastersAssigned = replicationFactor - mastersLeft;
+      double mastersPerNode = (double) mastersLeft / (numCandidates - mastersAssigned);
+      for (RegionWithAz zone : zones) {
+        if (mastersLeft == 0) break;
+        int freeNodesInAZ = zoneToNodes.get(zone).size() - allocatedMastersRgAz.get(zone);
+        if (freeNodesInAZ > 0) {
+          int toAllocate = (int) Math.round(freeNodesInAZ * mastersPerNode);
+          mastersLeft -= toAllocate;
+          allocatedMastersRgAz.put(zone, allocatedMastersRgAz.get(zone) + toAllocate);
+        }
+      }
+
+      // One master could left because of the rounding error.
+      if (mastersLeft != 0) {
+        for (RegionWithAz zone : zones) {
+          if (zoneToNodes.get(zone).size() > allocatedMastersRgAz.get(zone)) {
+            allocatedMastersRgAz.put(zone, allocatedMastersRgAz.get(zone) + 1);
+            break;
+          }
+        }
+      }
+    }
+    return allocatedMastersRgAz;
+  }
+
+  /**
+   * Checks that we have exactly mastersCount masters in the group. If needed, excessive masters are
+   * removed or additional masters are added. States of the nodes are not checked - assumed that all
+   * the nodes are active.
+   *
+   * @param masterLeader
+   * @param nodes
+   * @param mastersCount
+   * @param mastersToAdd
+   * @param mastersToRemove
+   */
+  private static void applyMastersSelection(
+      String masterLeader,
+      List<NodeDetails> nodes,
+      int mastersCount,
+      Set<NodeDetails> mastersToAdd,
+      Set<NodeDetails> mastersToRemove) {
+    long existingMastersCount = nodes.stream().filter(node -> node.isMaster).count();
+    for (NodeDetails node : nodes) {
+      if (mastersCount == existingMastersCount) {
+        break;
+      }
+      if (existingMastersCount < mastersCount && !node.isMaster) {
+        node.isMaster = true;
+        existingMastersCount++;
+        mastersToAdd.add(node);
+      } else if (existingMastersCount > mastersCount
+          && node.isMaster
+          && !Objects.equal(masterLeader, node.cloudInfo.private_ip)) {
+        node.isMaster = false;
+        existingMastersCount--;
+        mastersToRemove.add(node);
+      }
+    }
+  }
+
+  public static void verifyMastersSelection(Collection<NodeDetails> nodes, int replicationFactor) {
+    int allocatedMasters =
+        (int)
+            nodes
+                .stream()
+                .filter(
+                    n ->
+                        (n.state == NodeState.Live || n.state == NodeState.ToBeAdded) && n.isMaster)
+                .count();
+    if (allocatedMasters != replicationFactor) {
+      throw new RuntimeException(
+          String.format(
+              "Wrong masters allocation detected. Expected masters %d, found %d. Nodes are %s",
+              replicationFactor, allocatedMasters, nodes));
     }
   }
 
@@ -2383,4 +2506,10 @@ public class PlacementInfoUtil {
                     && node.cloudInfo.az.equals(zone))
         .count();
   }
+
+  private static class RegionWithAz extends Pair<String, String> {
+    public RegionWithAz(String first, String second) {
+      super(first, second);
+    }
+  };
 }
