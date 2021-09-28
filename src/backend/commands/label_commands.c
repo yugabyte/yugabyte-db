@@ -93,6 +93,146 @@ static void range_var_callback_for_remove_relation(const RangeVar *rel,
                                                    Oid odl_rel_oid,
                                                    void *arg);
 
+
+
+PG_FUNCTION_INFO_V1(create_vlabel);
+
+/*
+ * This is a callback function
+ * This function will be called when the user will call SELECT create_vlabel.
+ * The function takes two parameters
+ * 1. Graph name
+ * 2. Label Name
+ * Function will create a vertex label
+ * Function returns an error if graph or label names or not provided
+*/
+
+Datum create_vlabel(PG_FUNCTION_ARGS)
+{
+    char *graph;
+    Name graph_name;
+    char *graph_name_str;
+
+    char *label;
+    Name label_name;
+    char *label_name_str;
+
+    // checking if user has not provided the graph name
+    if (PG_ARGISNULL(0))
+    {
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                errmsg("graph name must not be NULL")));
+    }
+
+    // checking if user has not provided the label name
+    if (PG_ARGISNULL(1))
+    {
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                errmsg("label name must not be NULL")));
+    }
+
+    graph_name = PG_GETARG_NAME(0);
+    label_name = PG_GETARG_NAME(1);
+
+    graph_name_str = NameStr(*graph_name);
+    label_name_str = NameStr(*label_name);
+
+    // Check if graph does not exist
+    if (!graph_exists(graph_name_str))
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_UNDEFINED_SCHEMA),
+                        errmsg("graph \"%s\" does not exist.", graph_name_str)));
+    }
+
+    // Check if label with the input name already exists
+    if (label_exists(label_name_str, get_graph_oid(graph_name_str)))
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_UNDEFINED_SCHEMA),
+                        errmsg("label \"%s\" already exists", label_name_str)));
+    }
+
+    //Create the default label tables
+    graph = graph_name->data;
+    label = label_name->data;
+    create_label(graph, label, LABEL_TYPE_VERTEX, NIL);
+
+    ereport(NOTICE,
+            (errmsg("VLabel \"%s\" has been created", NameStr(*label_name))));
+
+    PG_RETURN_VOID();
+}
+
+PG_FUNCTION_INFO_V1(create_elabel);
+
+/*
+ * This is a callback function
+ * This function will be called when the user will call SELECT create_elabel.
+ * The function takes two parameters
+ * 1. Graph name
+ * 2. Label Name
+ * Function will create an edge label
+ * Function returns an error if graph or label names or not provided
+*/
+
+Datum create_elabel(PG_FUNCTION_ARGS)
+{
+    char *graph;
+    Name graph_name;
+    char *graph_name_str;
+
+    char *label;
+    Name label_name;
+    char *label_name_str;
+
+    // checking if user has not provided the graph name
+    if (PG_ARGISNULL(0))
+    {
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                errmsg("graph name must not be NULL")));
+    }
+
+    // checking if user has not provided the label name
+    if (PG_ARGISNULL(1))
+    {
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                errmsg("label name must not be NULL")));
+    }
+
+    graph_name = PG_GETARG_NAME(0);
+    label_name = PG_GETARG_NAME(1);
+
+    graph_name_str = NameStr(*graph_name);
+    label_name_str = NameStr(*label_name);
+
+    // Check if graph does not exist
+    if (!graph_exists(graph_name_str))
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_UNDEFINED_SCHEMA),
+                        errmsg("graph \"%s\" does not exist.", graph_name_str)));
+    }
+
+    // Check if label with the input name already exists
+    if (label_exists(label_name_str, get_graph_oid(graph_name_str)))
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_UNDEFINED_SCHEMA),
+                        errmsg("label \"%s\" already exists", label_name_str)));
+    }
+
+    //Create the default label tables
+    graph = graph_name->data;
+    label = label_name->data;
+    create_label(graph, label, LABEL_TYPE_EDGE, NIL);
+
+    ereport(NOTICE,
+            (errmsg("ELabel \"%s\" has been created", NameStr(*label_name))));
+
+    PG_RETURN_VOID();
+}
+
 /*
  * For the new label, create an entry in ag_catalog.ag_label, create a
  * new table and sequence. Returns the oid from the new tuple in

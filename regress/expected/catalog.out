@@ -311,3 +311,94 @@ NOTICE:  graph "g" has been dropped
  
 (1 row)
 
+-- create labels
+SELECT create_graph('g');
+NOTICE:  graph "g" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT create_vlabel('g', 'n');
+NOTICE:  VLabel "n" has been created
+ create_vlabel 
+---------------
+ 
+(1 row)
+
+SELECT create_elabel('g', 'r');
+NOTICE:  ELabel "r" has been created
+ create_elabel 
+---------------
+ 
+(1 row)
+
+-- check if labels have been created or not
+SELECT * FROM ag_label;
+       name       | graph | id | kind |      relation      
+------------------+-------+----+------+--------------------
+ _ag_label_vertex | 17621 |  1 | v    | g._ag_label_vertex
+ _ag_label_edge   | 17621 |  2 | e    | g._ag_label_edge
+ n                | 17621 |  3 | v    | g.n
+ r                | 17621 |  4 | e    | g.r
+(4 rows)
+
+-- try to create duplicate labels
+SELECT create_vlabel('g', 'n');
+ERROR:  label "n" already exists
+SELECT create_elabel('g', 'r');
+ERROR:  label "r" already exists
+-- remove the labels that have been created
+SELECT drop_label('g', 'n', false);
+NOTICE:  label "g"."n" has been dropped
+ drop_label 
+------------
+ 
+(1 row)
+
+SELECT drop_label('g', 'r', false);
+NOTICE:  label "g"."r" has been dropped
+ drop_label 
+------------
+ 
+(1 row)
+
+-- check if labels have been deleted or not
+SELECT * FROM ag_label;
+       name       | graph | id | kind |      relation      
+------------------+-------+----+------+--------------------
+ _ag_label_vertex | 17621 |  1 | v    | g._ag_label_vertex
+ _ag_label_edge   | 17621 |  2 | e    | g._ag_label_edge
+(2 rows)
+
+-- try to remove labels that is not there
+SELECT drop_label('g', 'n');
+ERROR:  label "n" does not exist
+SELECT drop_label('g', 'r');
+ERROR:  label "r" does not exist
+-- Trying to call the functions with label null
+SELECT create_vlabel('g', NULL);
+ERROR:  label name must not be NULL
+SELECT create_elabel('g', NULL);
+ERROR:  label name must not be NULL
+-- Trying to call the functions with graph null
+SELECT create_vlabel(NULL, 'n');
+ERROR:  graph name must not be NULL
+SELECT create_elabel(NULL, 'r');
+ERROR:  graph name must not be NULL
+-- Trying to call the functions with both null
+SELECT create_vlabel(NULL, NULL);
+ERROR:  graph name must not be NULL
+SELECT create_elabel(NULL, NULL);
+ERROR:  graph name must not be NULL
+-- dropping the graph
+SELECT drop_graph('g', true);
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table g._ag_label_vertex
+drop cascades to table g._ag_label_edge
+NOTICE:  graph "g" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
