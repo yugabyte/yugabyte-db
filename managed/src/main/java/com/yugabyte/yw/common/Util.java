@@ -61,6 +61,7 @@ public class Util {
 
   public static final String DEFAULT_YSQL_USERNAME = "yugabyte";
   public static final String DEFAULT_YSQL_PASSWORD = "yugabyte";
+  public static final String DEFAULT_YSQL_ADMIN_ROLE_NAME = "yb_superuser";
   public static final String DEFAULT_YCQL_USERNAME = "cassandra";
   public static final String DEFAULT_YCQL_PASSWORD = "cassandra";
   public static final String YUGABYTE_DB = "yugabyte";
