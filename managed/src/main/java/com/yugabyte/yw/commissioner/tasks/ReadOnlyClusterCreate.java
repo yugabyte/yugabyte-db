@@ -46,7 +46,7 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
       preTaskActions();
 
       // Set the correct node names for all to-be-added nodes.
-      setNodeNames(UniverseOpType.CREATE, universe);
+      setNodeNames(universe);
 
       // Update the user intent.
       universe = writeUserIntentToUniverse(true);

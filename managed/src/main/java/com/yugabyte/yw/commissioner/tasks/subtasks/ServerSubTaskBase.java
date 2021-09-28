@@ -84,11 +84,7 @@ public abstract class ServerSubTaskBase extends AbstractTaskBase {
 
     if (node == null) {
       throw new IllegalArgumentException(
-          "Node "
-              + taskParams().nodeName
-              + " not found in "
-              + "universe "
-              + taskParams().universeUUID);
+          "Node " + taskParams().nodeName + " not found in universe " + taskParams().universeUUID);
     }
 
     if (taskParams().serverType != ServerType.TSERVER
@@ -105,8 +101,7 @@ public abstract class ServerSubTaskBase extends AbstractTaskBase {
       throw new IllegalArgumentException(
           "Task server type "
               + taskParams().serverType
-              + " is "
-              + "not for a node running tserver : "
+              + " is for a node running tserver: "
               + node.toString());
     }
 
@@ -114,8 +109,7 @@ public abstract class ServerSubTaskBase extends AbstractTaskBase {
       throw new IllegalArgumentException(
           "Task server type "
               + taskParams().serverType
-              + " is "
-              + "not for a node running master : "
+              + " is for a node running master: "
               + node.toString());
     }
   }

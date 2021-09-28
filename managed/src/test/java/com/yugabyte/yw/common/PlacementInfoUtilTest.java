@@ -19,10 +19,11 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
-import static org.mockito.Matchers.anyList;
-import static org.mockito.Matchers.anyMap;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -34,6 +35,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -59,9 +61,12 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
@@ -124,7 +129,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       Universe.saveDetails(univUuid, ApiUtils.mockUniverseUpdater(userIntent));
       universe = Universe.getOrBadRequest(univUuid);
       final Collection<NodeDetails> nodes = universe.getNodes();
-      PlacementInfoUtil.selectMasters(nodes, replFactor);
+
+      PlacementInfoUtil.selectMasters(null, nodes, replFactor);
       UniverseUpdater updater =
           universe -> {
             UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
@@ -483,17 +489,22 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
   }
 
   private void updateNodeCountInAZ(
-      UniverseDefinitionTaskParams udtp, int cloudIndex, int regionIndex, int azIndex, int change) {
-    udtp.getPrimaryCluster()
+      UniverseDefinitionTaskParams udtp,
+      int cloudIndex,
+      int change,
+      Predicate<PlacementAZ> filter) {
+    Optional<PlacementAZ> zone =
+        udtp.getPrimaryCluster()
             .placementInfo
             .cloudList
             .get(cloudIndex)
             .regionList
-            .get(regionIndex)
-            .azList
-            .get(azIndex)
-            .numNodesInAZ +=
-        change;
+            .stream()
+            .flatMap(r -> r.azList.stream())
+            .filter(filter)
+            .findFirst();
+    assertTrue(zone.isPresent());
+    zone.get().numNodesInAZ += change;
   }
 
   /**
@@ -528,7 +539,23 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       t.removeNodesAndVerify(nodes);
 
       udtp = universe.getUniverseDetails();
-      updateNodeCountInAZ(udtp, 0, 0, 0, -1);
+
+      // Don't remove node from the same availability zone, otherwise
+      // updateUniverseDefinition will rebuild a lot of nodes (by unknown reason).
+      List<UUID> zonesWithRemovedServers =
+          nodes
+              .stream()
+              .filter(node -> !node.isActive())
+              .map(node -> node.azUuid)
+              .collect(Collectors.toList());
+      updateNodeCountInAZ(
+          udtp,
+          0,
+          -1,
+          p -> {
+            return !zonesWithRemovedServers.contains(p.uuid);
+          });
+
       // Requires this flag to associate correct mode with update operation
       udtp.userAZSelected = true;
       primaryCluster = udtp.getPrimaryCluster();
@@ -536,6 +563,9 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       PlacementInfoUtil.updateUniverseDefinition(
           udtp, t.customer.getCustomerId(), primaryCluster.uuid, EDIT);
       nodes = udtp.nodeDetailsSet;
+
+      udtp = universe.getUniverseDetails();
+
       assertEquals(0, PlacementInfoUtil.getMastersToBeRemoved(nodes).size());
       assertEquals(0, PlacementInfoUtil.getMastersToProvision(nodes).size());
       assertEquals(2, PlacementInfoUtil.getTserversToBeRemoved(nodes).size());
@@ -1405,16 +1435,61 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     assertFalse(PlacementInfoUtil.isMultiAZ(k8sProviderNotMultiAZ));
   }
 
-  private void testSelectMasters(int rf, int numNodes, int numRegions, int numZonesPerRegion) {
+  @Test
+  // @formatter:off
+  @Parameters({
+    "1, 1, 1, 1",
+    "1, 3, 2, 2",
+    "3, 3, 2, 2",
+    "3, 3, 3, 3",
+    "3, 3, 1, 2",
+    "3, 3, 1, 3",
+    "3, 5, 2, 3",
+    "3, 7, 3, 1",
+    "3, 7, 3, 2",
+    "5, 5, 3, 3",
+    "5, 12, 3, 2",
+    "5, 12, 3, 3"
+  })
+  // @formatter:on
+  public void testSelectMasters(int rf, int numNodes, int numRegions, int numZonesPerRegion) {
     List<NodeDetails> nodes = new ArrayList<>();
+
+    int region = 0;
+    int zone = 0;
+    int usedZones = 0;
     for (int i = 0; i < numNodes; i++) {
-      String region = "region-" + (i % numRegions);
-      String zone = region + "-" + (i % (numRegions * numZonesPerRegion) / numRegions);
-      nodes.add(
+      String regionName = "region-" + region;
+      String zoneName = regionName + "-" + zone;
+      NodeDetails node =
           ApiUtils.getDummyNodeDetails(
-              i, NodeDetails.NodeState.ToBeAdded, false, true, "onprem", region, zone, null));
+              i,
+              NodeDetails.NodeState.ToBeAdded,
+              false,
+              true,
+              "onprem",
+              regionName,
+              zoneName,
+              null);
+      nodes.add(node);
+
+      // Adding by one zone to each region. Second zone is added only when all regions
+      // have one zone.
+      region++;
+      if (region >= numRegions) {
+        zone++;
+        region = 0;
+      }
+
+      usedZones++;
+      if (zone == numZonesPerRegion || usedZones == rf) {
+        region = 0;
+        zone = 0;
+        usedZones = 0;
+      }
     }
-    PlacementInfoUtil.selectMasters(nodes, rf);
+
+    PlacementInfoUtil.selectMasters(null, nodes, rf);
     int numMasters = 0;
     Set<String> regions = new HashSet<>();
     Set<String> zones = new HashSet<>();
@@ -1437,24 +1512,6 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     } else {
       assertEquals(zones.size(), totalZones);
     }
-  }
-
-  @Test
-  public void testSelectMasters() {
-    testSelectMasters(1, 1, 1, 1);
-    testSelectMasters(1, 3, 2, 2);
-
-    testSelectMasters(3, 3, 2, 2);
-    testSelectMasters(3, 3, 3, 3);
-    testSelectMasters(3, 3, 1, 2);
-    testSelectMasters(3, 3, 1, 3);
-    testSelectMasters(3, 5, 2, 3);
-    testSelectMasters(3, 7, 3, 1);
-    testSelectMasters(3, 7, 3, 2);
-
-    testSelectMasters(5, 5, 3, 3);
-    testSelectMasters(5, 12, 3, 2);
-    testSelectMasters(5, 12, 3, 3);
   }
 
   @Test
@@ -1536,5 +1593,186 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     config.put("KUBENAMESPACE", ns);
     assertEquals(ns, PlacementInfoUtil.getKubernetesNamespace(true, nodePrefix, az, config));
     assertEquals(ns, PlacementInfoUtil.getKubernetesNamespace(false, nodePrefix, az, config));
+  }
+
+  @Test
+  // @formatter:off
+  @Parameters({
+    // The parameter format is:
+    //   region - zone - nodes in zone - existing masters in zone - expected count of masters
+
+    // rf >= count of zones
+    // --------------------
+    // rf=3, 3 zones, 1-1-1 -> masters 1-1-1
+    "Case 1, 3, r1-az1-1-0-1;r1-az2-1-0-1;r1-az3-1-0-1, 0",
+    // rf=3, 3 zones, 3-3-3 -> masters 1-1-1
+    "Case 2, 3, r1-az1-3-0-1;r1-az2-3-0-1;r1-az3-3-0-1, 0",
+    // rf=5, 3 zones, 1-3-1 -> masters 1-3-1
+    "Case 3, 5, r1-az1-1-0-1;r1-az2-3-0-3;r1-az3-1-0-1, 0",
+    // rf=5, 3 zones, 14-14-7 -> masters 2-2-1
+    "Case 4, 5, r1-az1-14-0-2;r1-az2-14-0-2;r1-az3-7-0-1, 0",
+    // rf=5, 3 zones, 14-7-14 -> masters 2-1-2
+    "Case 5, 5, r1-az1-14-0-2;r1-az2-7-0-1;r1-az3-14-0-2, 0",
+    // rf=5, 3 zones, 7-14-14 -> masters 1-2-2
+    "Case 6, 5, r1-az1-7-0-1;r1-az2-14-0-2;r1-az3-14-0-2, 0",
+    // rf=7, 3 zones, 14-7-7 -> masters 3-2-2
+    "Case 7, 7, r1-az1-14-0-3;r1-az2-7-1-2;r1-az3-7-1-2, 0",
+    // rf=7, 3 zones, 7-14-7 -> masters 2-3-2
+    "Case 8, 7, r1-az1-7-1-2;r1-az2-14-0-3;r1-az3-7-1-2, 0",
+    // rf=7, 3 zones, 7-7-14 -> masters 3-2-2
+    "Case 9, 7, r1-az1-7-1-2;r1-az2-7-1-2;r1-az3-14-0-3, 0",
+
+    // rf < count of zones
+    // -------------------
+    // rf=3, 4 zones in 2 regions, r1:3-2-3, r2:3 -> 1-0-1, 1
+    "Case 10, 3, r1-az1-3-0-1;r1-az2-2-0-0;r1-az3-3-0-1;r2-az4-3-0-1, 0",
+    // rf=5, 4 zones in 2 regions, r1:4-2-3, r2:3 -> 2-1-1, 1
+    "Case 11, 5, r1-az1-4-0-2;r1-az2-2-0-1;r1-az3-3-0-1;r2-az4-3-0-1, 0",
+    // rf=5, 6 zones in 2 regions, r1:5-4-3, r2:2-2-1 -> 1-1-1, 1-1-0
+    "Case 12, 5, r1-az1-5-0-1;r1-az2-4-0-1;r1-az3-3-0-1;r2-az4-2-0-1;r2-az5-2-0-1;r2-az6-1-0-0, 0",
+    // rf=5, 6 zones in 3 regions, r1:5-4, r2:3-2, r3:1-1 -> 1-1, 1-1, 1-0
+    "Case 13, 5, r1-az1-5-0-1;r1-az2-4-0-1;r2-az3-3-0-1;r2-az4-2-0-1;r3-az5-1-0-1;r3-az6-1-0-0, 0",
+
+    // Checking that zones with already existing master are preferred in case of the same nodes
+    // count.
+    // rf=3, 6 zones in 2 regions, r1:3-1-1, r2:3-1-1 -> 1-0-0, 1-0-1
+    "Case 14, 3, r1-az1-3-0-1;r1-az2-1-0-0;r1-az3-1-0-0;r2-az4-3-0-1;r2-az5-1-0-0;r2-az6-1-1-1, 0",
+    "Case 15, 5, r1-az1-4-1-2;r1-az2-3-3-1;r1-az3-4-1-2, 2",
+
+    // Checking proportional masters seeding.
+    "Case 16, 6, r1-az1-15-1-3;r1-az2-10-2-2;r1-az3-5-3-1, 2",
+    "Case 17, 6, r1-az1-15-1-1;r1-az2-30-2-2;r1-az3-45-3-3, 0",
+  })
+  // @formatter:on
+  public void testSelectMasters_Extended(String name, int rf, String zones, int removedCount) {
+    String[] zoneDescr = zones.split(";");
+    List<NodeDetails> nodes = new ArrayList<NodeDetails>();
+    int index = 0;
+    Map<String, Integer> expected = new HashMap<>();
+    for (String descriptor : zoneDescr) {
+      String[] parts = descriptor.split("-");
+      String region = parts[0];
+      String zone = parts[1];
+      int count = Integer.parseInt(parts[2]);
+      int mastersCount = Integer.parseInt(parts[3]);
+      expected.put(region + "-" + zone, Integer.parseInt(parts[4]));
+      for (int i = 0; i < count; i++) {
+        nodes.add(
+            ApiUtils.getDummyNodeDetails(
+                index++,
+                NodeDetails.NodeState.ToBeAdded,
+                mastersCount-- > 0,
+                true,
+                "onprem",
+                region,
+                zone,
+                null));
+      }
+    }
+
+    SelectMastersResult selection = PlacementInfoUtil.selectMasters(null, nodes, rf);
+    PlacementInfoUtil.verifyMastersSelection(nodes, rf);
+
+    List<NodeDetails> masters =
+        nodes
+            .stream()
+            .filter(node -> node.isActive() && node.isMaster)
+            .collect(Collectors.toList());
+    assertEquals(rf, masters.size());
+    assertEquals(removedCount, selection.removedMasters.size());
+
+    for (NodeDetails node : masters) {
+      String key = node.cloudInfo.region + "-" + node.cloudInfo.az;
+      Integer value = expected.get(key);
+      if (value == null || value == 0) {
+        fail("Unexpected master found in " + key);
+      }
+      expected.put(key, value - 1);
+    }
+
+    for (Entry<String, Integer> entry : expected.entrySet()) {
+      if (entry.getValue() > 0) {
+        fail("Expected master not found in " + entry.getKey());
+      }
+    }
+  }
+
+  @Test
+  // @formatter:off
+  @Parameters({
+    "1, 1, 1, 1",
+    "1, 3, 2, 2",
+    "3, 3, 2, 2",
+    "3, 3, 3, 3",
+    "3, 3, 1, 2",
+    "3, 3, 1, 3",
+    "3, 5, 2, 3",
+    "3, 7, 3, 1",
+    "3, 7, 3, 2",
+    "5, 5, 3, 3",
+    "5, 12, 3, 2",
+    "5, 12, 3, 3"
+  })
+  // @formatter:on
+  public void testVerifyMastersSelection_WrongMastersCount_ExceptionIsThrown(
+      int rf, int numNodes, int numRegions, int numZonesPerRegion) {
+    List<NodeDetails> nodes = new ArrayList<>();
+
+    int region = 0;
+    int zone = 0;
+    int usedZones = 0;
+    for (int i = 0; i < numNodes; i++) {
+      String regionName = "region-" + region;
+      String zoneName = regionName + "-" + zone;
+      NodeDetails node =
+          ApiUtils.getDummyNodeDetails(
+              i,
+              i % 2 == 0 ? NodeDetails.NodeState.ToBeAdded : NodeDetails.NodeState.Live,
+              false,
+              true,
+              "onprem",
+              regionName,
+              zoneName,
+              null);
+      nodes.add(node);
+
+      // Adding by one zone to each region. Second zone is added only when all regions
+      // have one zone.
+      region++;
+      if (region >= numRegions) {
+        zone++;
+        region = 0;
+      }
+
+      usedZones++;
+      if (zone == numZonesPerRegion || usedZones == rf) {
+        region = 0;
+        zone = 0;
+        usedZones = 0;
+      }
+    }
+
+    PlacementInfoUtil.selectMasters(null, nodes, rf);
+    PlacementInfoUtil.verifyMastersSelection(nodes, rf);
+
+    // Updating node with state ToBeAdded.
+    nodes.get(0).isMaster = !nodes.get(0).isMaster;
+    assertThrows(
+        RuntimeException.class,
+        () -> {
+          PlacementInfoUtil.verifyMastersSelection(nodes, rf);
+        });
+    nodes.get(0).isMaster = !nodes.get(0).isMaster;
+
+    if (numNodes > 1) {
+      // Updating node with state Live.
+      nodes.get(1).isMaster = !nodes.get(1).isMaster;
+      assertThrows(
+          RuntimeException.class,
+          () -> {
+            PlacementInfoUtil.verifyMastersSelection(nodes, rf);
+          });
+      nodes.get(1).isMaster = !nodes.get(1).isMaster;
+    }
   }
 }

@@ -88,7 +88,7 @@ public class KubernetesWaitForPod extends AbstractTaskBase {
             break;
           }
           try {
-            TimeUnit.SECONDS.sleep(SLEEP_TIME);
+            TimeUnit.SECONDS.sleep(getSleepMultiplier() * SLEEP_TIME);
           } catch (InterruptedException ex) {
             // Do nothing
           }

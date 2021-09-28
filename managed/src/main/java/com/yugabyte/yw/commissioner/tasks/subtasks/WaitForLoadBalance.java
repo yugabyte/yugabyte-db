@@ -60,7 +60,7 @@ public class WaitForLoadBalance extends AbstractTaskBase {
     try {
       log.info("Running {}: hostPorts={}, numTservers={}.", getName(), hostPorts, numTservers);
       client = ybService.getClient(hostPorts, certificate);
-      TimeUnit.SECONDS.sleep(SLEEP_TIME);
+      TimeUnit.SECONDS.sleep(getSleepMultiplier() * SLEEP_TIME);
       ret = client.waitForLoadBalance(TIMEOUT_SERVER_WAIT_MS, numTservers);
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());

@@ -11,8 +11,8 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
-import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -29,6 +29,8 @@ import play.libs.Json;
 
 @Slf4j
 public abstract class AbstractTaskBase implements ITask {
+
+  private static final String SLEEP_DISABLED_PATH = "yb.tasks.disabled_timeouts";
 
   // The params for this task.
   protected ITaskParams taskParams;
@@ -162,5 +164,13 @@ public abstract class AbstractTaskBase implements ITask {
    */
   public static <T> T createTask(Class<T> taskClass) {
     return Play.current().injector().instanceOf(taskClass);
+  }
+
+  public int getSleepMultiplier() {
+    try {
+      return config.getBoolean(SLEEP_DISABLED_PATH) ? 0 : 1;
+    } catch (Exception e) {
+      return 1;
+    }
   }
 }

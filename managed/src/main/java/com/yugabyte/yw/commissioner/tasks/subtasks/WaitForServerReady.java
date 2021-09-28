@@ -50,7 +50,7 @@ public class WaitForServerReady extends ServerSubTaskBase {
 
   private void sleepFor(int waitTimeMs) {
     try {
-      Thread.sleep(waitTimeMs);
+      Thread.sleep(getSleepMultiplier() * waitTimeMs);
     } catch (InterruptedException ie) {
       // Do nothing
     }
