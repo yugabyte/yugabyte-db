@@ -24,6 +24,7 @@ import play.api.OptionalSourceMapper;
 import play.api.routing.Router;
 import play.http.DefaultHttpErrorHandler;
 import play.mvc.Http;
+import play.mvc.Http.RequestHeader;
 import play.mvc.Result;
 
 @Singleton
@@ -42,12 +43,23 @@ public final class YWErrorHandler extends DefaultHttpErrorHandler {
 
   @Override
   public CompletionStage<Result> onServerError(Http.RequestHeader request, Throwable exception) {
-    LOG.debug("YWErrorHandler invoked {} ", exception.getMessage());
+    LOG.debug("YWErrorHandler invoked {}", exception.getMessage());
     for (Throwable cause : Throwables.getCausalChain(exception)) {
       if (cause instanceof PlatformServiceException) {
         return CompletableFuture.completedFuture(((PlatformServiceException) cause).getResult());
       }
     }
     return super.onServerError(request, exception);
+  }
+
+  @Override
+  public CompletionStage<Result> onClientError(
+      RequestHeader request, int statusCode, String message) {
+    if (request.accepts("application/json")) {
+      LOG.trace("Json formatting client error {}: {}", statusCode, message);
+      return CompletableFuture.completedFuture(
+          new PlatformServiceException(statusCode, message).getResult());
+    }
+    return super.onClientError(request, statusCode, message);
   }
 }
