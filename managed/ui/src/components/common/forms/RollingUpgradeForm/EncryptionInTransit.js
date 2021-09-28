@@ -66,6 +66,10 @@ function getEncryptionComponent(
             component={YBFormToggle}
             onChange={(_, e) => {
               disableUniverseEncryption(values, inputName, e.target.checked, setFieldValue);
+              //If NodeToNode is disabled, disable rootAndClientRootCASame
+              if (inputName === 'enableNodeToNodeEncrypt' && !e.target.checked) {
+                setFieldValue('rootAndClientRootCASame', false);
+              }
             }}
           />
         </Col>
