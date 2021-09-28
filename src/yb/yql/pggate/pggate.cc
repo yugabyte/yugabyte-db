@@ -479,7 +479,8 @@ Status PgApiImpl::AlterDatabaseRenameDatabase(PgStatement *handle, const char *n
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-  return down_cast<PgAlterDatabase*>(handle)->RenameDatabase(newname);
+  down_cast<PgAlterDatabase*>(handle)->RenameDatabase(newname);
+  return Status::OK();
 }
 
 Status PgApiImpl::ExecAlterDatabase(PgStatement *handle) {
@@ -861,7 +862,9 @@ Status PgApiImpl::ExecPostponedDdlStmt(PgStatement *handle) {
 }
 
 Status PgApiImpl::BackfillIndex(const PgObjectId& table_id) {
-  return pg_session_->BackfillIndex(table_id);
+  tserver::PgBackfillIndexRequestPB req;
+  table_id.ToPB(req.mutable_table_id());
+  return pg_session_->pg_client().BackfillIndex(&req, CoarseTimePoint());
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -1455,7 +1458,7 @@ void PgApiImpl::SetTimeout(const int timeout_ms) {
   pg_session_->SetTimeout(timeout_ms);
 }
 
-Result<client::YBClient::TabletServersInfo> PgApiImpl::ListTabletServers() {
+Result<client::TabletServersInfo> PgApiImpl::ListTabletServers() {
   return pg_session_->ListTabletServers();
 }
 

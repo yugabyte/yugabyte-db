@@ -83,13 +83,13 @@ class PgAlterDatabase : public PgDdl {
 
   StmtOp stmt_op() const override { return StmtOp::STMT_ALTER_DATABASE; }
 
-  CHECKED_STATUS RenameDatabase(const char *newname);
+  void RenameDatabase(const char *newname);
 
   // Execute.
   CHECKED_STATUS Exec();
 
  private:
-  client::YBNamespaceAlterer* namespace_alterer_;
+  tserver::PgAlterDatabaseRequestPB req_;
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -110,9 +110,7 @@ class PgCreateTablegroup : public PgDdl {
   CHECKED_STATUS Exec();
 
  private:
-  const char *database_name_;
-  const PgOid database_oid_;
-  const PgOid tablegroup_oid_;
+  tserver::PgCreateTablegroupRequestPB req_;
 };
 
 class PgDropTablegroup : public PgDdl {
@@ -128,8 +126,7 @@ class PgDropTablegroup : public PgDdl {
   CHECKED_STATUS Exec();
 
  private:
-  const PgOid database_oid_;
-  const PgOid tablegroup_oid_;
+  tserver::PgDropTablegroupRequestPB req_;
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -222,7 +219,7 @@ class PgTruncateTable : public PgDdl {
   CHECKED_STATUS Exec();
 
  private:
-  const PgObjectId table_id_;
+  tserver::PgTruncateTableRequestPB req_;
 };
 
 class PgDropIndex : public PgDropTable {
