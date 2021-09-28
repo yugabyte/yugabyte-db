@@ -67,6 +67,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/threadpool.h"
@@ -658,12 +659,13 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
 Result<ReadOpsResult> PeerMessageQueue::ReadFromLogCache(int64_t after_index,
                                                          int64_t to_index,
                                                          int max_batch_size,
-                                                         const std::string& peer_uuid) {
+                                                         const std::string& peer_uuid,
+                                                         const CoarseTimePoint deadline) {
   DCHECK_LT(FLAGS_consensus_max_batch_size_bytes + 1_KB, FLAGS_rpc_max_message_size);
 
   // We try to get the follower's next_index from our log.
   // Note this is not using "term" and needs to change
-  auto result = log_cache_.ReadOps(after_index, to_index, max_batch_size);
+  auto result = log_cache_.ReadOps(after_index, to_index, max_batch_size, deadline);
   if (PREDICT_FALSE(!result.ok())) {
     auto s = result.status();
     if (PREDICT_TRUE(s.IsNotFound())) {
@@ -689,8 +691,10 @@ Result<ReadOpsResult> PeerMessageQueue::ReadFromLogCache(int64_t after_index,
 
 // Read majority replicated messages from cache for CDC.
 // CDC producer will use this to get the messages to send in response to cdc::GetChanges RPC.
-Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForCDC(const yb::OpId& last_op_id,
-                                                                     int64_t* repl_index) {
+Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForCDC(
+  const yb::OpId& last_op_id,
+  int64_t* repl_index,
+  const CoarseTimePoint deadline) {
   // The batch of messages read from cache.
 
   int64_t to_index;
@@ -717,7 +721,7 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForCDC(const yb::O
                              last_op_id.index;
 
   auto result = ReadFromLogCache(
-      after_op_index, to_index, FLAGS_consensus_max_batch_size_bytes, local_peer_uuid_);
+      after_op_index, to_index, FLAGS_consensus_max_batch_size_bytes, local_peer_uuid_, deadline);
   if (PREDICT_FALSE(!result.ok()) && PREDICT_TRUE(result.status().IsNotFound())) {
     LOG_WITH_PREFIX_UNLOCKED(INFO) << Format(
         "The logs from index $0 have been garbage collected and cannot be read ($1)",
