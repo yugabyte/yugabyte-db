@@ -56,6 +56,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
+#include "yb/util/monotime.h"
 #include "yb/util/size_literals.h"
 
 using namespace std::literals;
@@ -86,6 +87,8 @@ METRIC_DEFINE_gauge_int64(tablet, log_cache_size, "Log Cache Memory Usage",
 METRIC_DEFINE_counter(tablet, log_cache_disk_reads, "Log Cache Disk Reads",
                       yb::MetricUnit::kEntries,
                       "Amount of operations read from disk.");
+
+DECLARE_bool(get_changes_honor_deadline);
 
 namespace yb {
 namespace consensus {
@@ -243,13 +246,13 @@ Result<yb::OpId> LogCache::LookupOpId(int64_t op_index) const {
   {
     std::lock_guard<simple_spinlock> l(lock_);
 
-    // We sometimes try to look up OpIds that have never been written on the local node. In that
-    // case, don't try to read the op from the log reader, since it might actually race against the
-    // writing of the op.
+    // We sometimes try to look up OpIds that have never been written on
+    // the local node. In that case, don't try to read the op from the
+    // log reader, since it might actually race against the writing of the op.
     if (op_index >= next_sequential_op_index_) {
       return STATUS(Incomplete, Substitute("Op with index $0 is ahead of the local log "
-                                           "(next sequential op: $1)",
-                                           op_index, next_sequential_op_index_));
+                                          "(next sequential op: $1)",
+                                          op_index, next_sequential_op_index_));
     }
     auto iter = cache_.find(op_index);
     if (iter != cache_.end()) {
@@ -281,13 +284,13 @@ Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
 
 Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
                                         int64_t to_op_index,
-                                        int max_size_bytes) {
+                                        int max_size_bytes,
+                                        CoarseTimePoint deadline) {
   DCHECK_GE(after_op_index, 0);
 
   VLOG_WITH_PREFIX_UNLOCKED(4) << "ReadOps, after_op_index: " << after_op_index
                                << ", to_op_index: " << to_op_index
                                << ", max_size_bytes: " << max_size_bytes;
-
   ReadOpsResult result;
   result.preceding_op = VERIFY_RESULT(LookupOpId(after_op_index));
 
@@ -297,9 +300,19 @@ Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
       ? std::min(to_op_index + 1, next_sequential_op_index_)
       : next_sequential_op_index_;
 
+  // Remove the deadline if the GetChanges deadline feature is disabled.
+  if (!ANNOTATE_UNPROTECTED_READ(FLAGS_get_changes_honor_deadline)) {
+    deadline = CoarseTimePoint::max();
+  }
+
   // Return as many operations as we can, up to the limit.
   int64_t remaining_space = max_size_bytes;
   while (remaining_space >= 0 && next_index < to_index) {
+    // Stop reading if a deadline was specified and the deadline has been exceeded.
+    if (deadline != CoarseTimePoint::max() && CoarseMonoClock::Now() >= deadline) {
+      break;
+    }
+
     // If the messages the peer needs haven't been loaded into the queue yet, load them.
     MessageCache::const_iterator iter = cache_.lower_bound(next_index);
     if (iter == cache_.end() || iter->first != next_index) {
@@ -317,7 +330,7 @@ Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
       ReplicateMsgs raw_replicate_ptrs;
       RETURN_NOT_OK_PREPEND(
         log_->GetLogReader()->ReadReplicatesInRange(
-            next_index, up_to, remaining_space, &raw_replicate_ptrs),
+            next_index, up_to, remaining_space, &raw_replicate_ptrs, deadline),
         Substitute("Failed to read ops $0..$1", next_index, up_to));
       metrics_.disk_reads->IncrementBy(raw_replicate_ptrs.size());
       LOG_WITH_PREFIX_UNLOCKED(INFO)
@@ -360,7 +373,6 @@ Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
     }
   }
   result.have_more_messages = remaining_space < 0;
-
   return result;
 }
 

@@ -41,6 +41,7 @@
 #include "yb/consensus/log_index.h"
 #include "yb/consensus/opid_util.h"
 
+#include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/util.h"
@@ -52,6 +53,7 @@
 #include "yb/util/hexdump.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
 
@@ -86,6 +88,13 @@ DEFINE_test_flag(bool, record_segments_violate_max_time_policy, false,
 DEFINE_test_flag(bool, record_segments_violate_min_space_policy, false,
     "If set, everytime GetSegmentPrefixNotIncluding runs, segments that violate the max time "
     "policy will be appended to LogReader::segments_violate_min_space_policy_.");
+
+DEFINE_bool(get_changes_honor_deadline, true,
+            "Toggle whether to honor the deadline passed to log reader");
+
+DEFINE_test_flag(int32, get_changes_read_loop_delay_ms, 0,
+                 "Amount of time to sleep for between each iteration of the loop in "
+                 "ReadReplicatesInRange. This is used to test the return of partial results.");
 
 namespace yb {
 namespace log {
@@ -423,21 +432,35 @@ Status LogReader::ReadReplicatesInRange(
     const int64_t starting_at,
     const int64_t up_to,
     int64_t max_bytes_to_read,
-    ReplicateMsgs* replicates) const {
+    ReplicateMsgs* replicates,
+    CoarseTimePoint deadline) const {
   DCHECK_GT(starting_at, 0);
   DCHECK_GE(up_to, starting_at);
   DCHECK(log_index_) << "Require an index to random-read logs";
-
   ReplicateMsgs replicates_tmp;
   LogIndexEntry prev_index_entry;
   prev_index_entry.segment_sequence_number = -1;
   prev_index_entry.offset_in_segment = -1;
+
+  // Remove the deadline if the GetChanges deadline feature is disabled.
+  if (!ANNOTATE_UNPROTECTED_READ(FLAGS_get_changes_honor_deadline)) {
+    deadline = CoarseTimePoint::max();
+  }
 
   int64_t total_size = 0;
   bool limit_exceeded = false;
   faststring tmp_buf;
   LogEntryBatchPB batch;
   for (int64_t index = starting_at; index <= up_to && !limit_exceeded; index++) {
+    // Stop reading if a deadline was specified and the deadline has been exceeded.
+    if (deadline != CoarseTimePoint::max() && CoarseMonoClock::Now() >= deadline) {
+      break;
+    }
+
+    if (PREDICT_FALSE(FLAGS_TEST_get_changes_read_loop_delay_ms > 0)) {
+      SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_get_changes_read_loop_delay_ms));
+    }
+
     LogIndexEntry index_entry;
     RETURN_NOT_OK_PREPEND(log_index_->GetEntry(index, &index_entry),
                           Substitute("Failed to read log index for op $0", index));
@@ -449,6 +472,7 @@ Status LogReader::ReadReplicatesInRange(
     if (index == starting_at ||
         index_entry.segment_sequence_number != prev_index_entry.segment_sequence_number ||
         index_entry.offset_in_segment != prev_index_entry.offset_in_segment) {
+      // Make read operation.
       RETURN_NOT_OK(ReadBatchUsingIndexEntry(index_entry, &tmp_buf, &batch));
 
       // Sanity-check the property that a batch should only have increasing indexes.
