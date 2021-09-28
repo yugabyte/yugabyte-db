@@ -528,7 +528,7 @@ class PgApiImpl {
   // Sets the specified timeout in the rpc service.
   void SetTimeout(int timeout_ms);
 
-  Result<client::YBClient::TabletServersInfo> ListTabletServers();
+  Result<client::TabletServersInfo> ListTabletServers();
 
  private:
   // Control variables.

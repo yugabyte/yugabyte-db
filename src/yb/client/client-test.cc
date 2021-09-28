@@ -663,8 +663,7 @@ TEST_F(ClientTest, TestListTables) {
 }
 
 TEST_F(ClientTest, TestListTabletServers) {
-  std::vector<std::unique_ptr<YBTabletServer>> tss;
-  ASSERT_OK(client_->ListTabletServers(&tss));
+  auto tss = ASSERT_RESULT(client_->ListTabletServers());
   ASSERT_EQ(3, tss.size());
   set<string> actual_ts_uuids;
   set<string> actual_ts_hostnames;
@@ -673,9 +672,9 @@ TEST_F(ClientTest, TestListTabletServers) {
   for (int i = 0; i < tss.size(); ++i) {
     auto server = cluster_->mini_tablet_server(i)->server();
     expected_ts_uuids.insert(server->instance_pb().permanent_uuid());
-    actual_ts_uuids.insert(tss[i]->uuid());
+    actual_ts_uuids.insert(tss[i].uuid);
     expected_ts_hostnames.insert(server->options().broadcast_addresses[0].host());
-    actual_ts_hostnames.insert(tss[i]->hostname());
+    actual_ts_hostnames.insert(tss[i].hostname);
   }
   ASSERT_EQ(expected_ts_uuids, actual_ts_uuids);
   ASSERT_EQ(expected_ts_hostnames, actual_ts_hostnames);

@@ -190,10 +190,9 @@ TEST_F(KVTableTest, Restart) {
   ASSERT_NO_FATALS(CheckSampleKeysValues());
 
   // Wait until all tablet servers come up.
-  std::vector<std::unique_ptr<client::YBTabletServer>> tablet_servers;
+  std::vector<client::YBTabletServer> tablet_servers;
   do {
-    tablet_servers.clear();
-    ASSERT_OK(client_->ListTabletServers(&tablet_servers));
+    tablet_servers = ASSERT_RESULT(client_->ListTabletServers());
     if (tablet_servers.size() == num_tablet_servers()) {
       break;
     }

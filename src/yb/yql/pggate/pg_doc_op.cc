@@ -637,10 +637,7 @@ Status PgDocReadOp::PopulateParallelSelectCountOps() {
   // the following calculation needs to be refined before it can be used for all statements.
   parallelism_level_ = FLAGS_ysql_select_parallelism;
   if (parallelism_level_ < 0) {
-    // Auto.
-    int tserver_count = 0;
-    RETURN_NOT_OK(pg_session_->TabletServerCount(&tserver_count, true /* primary_only */,
-                                                 true /* use_cache */));
+    int tserver_count = VERIFY_RESULT(pg_session_->TabletServerCount(true /* primary_only */));
 
     // Establish lower and upper bounds on parallelism.
     int kMinParSelCountParallelism = 1;

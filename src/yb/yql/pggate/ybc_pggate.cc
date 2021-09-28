@@ -1049,14 +1049,15 @@ YBCStatus YBCGetTabletServerHosts(YBCServerDescriptor **servers, int *count) {
         YBCPAlloc(sizeof(YBCServerDescriptor) * servers_info.size()));
     YBCServerDescriptor *dest = *servers;
     for (const auto &info : servers_info) {
-      new (dest) YBCServerDescriptor{
-          .host = YBCPAllocStdString(info->hostname()),
-          .cloud = YBCPAllocStdString(info->cloud()),
-          .region = YBCPAllocStdString(info->region()),
-          .zone = YBCPAllocStdString(info->zone()),
-          .publicIp = YBCPAllocStdString(info->publicIp()),
-          .isPrimary = info->isPrimary(),
-          .pgPort = info->pg_port()};
+      new (dest) YBCServerDescriptor {
+        .host = YBCPAllocStdString(info.server.hostname),
+        .cloud = YBCPAllocStdString(info.cloud),
+        .region = YBCPAllocStdString(info.region),
+        .zone = YBCPAllocStdString(info.zone),
+        .public_ip = YBCPAllocStdString(info.public_ip),
+        .is_primary = info.is_primary,
+        .pg_port = info.pg_port
+      };
       ++dest;
     }
   }

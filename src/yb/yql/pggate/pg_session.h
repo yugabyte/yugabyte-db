@@ -144,8 +144,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
                                 const boost::optional<TransactionMetadata> transaction,
                                 const bool colocated);
   CHECKED_STATUS DropDatabase(const std::string& database_name, PgOid database_oid);
-  client::YBNamespaceAlterer *NewNamespaceAlterer(const std::string& namespace_name,
-                                                  PgOid database_oid);
 
   CHECKED_STATUS GetCatalogMasterVersion(uint64_t *version);
 
@@ -181,10 +179,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Operations on Tablegroup.
   //------------------------------------------------------------------------------------------------
 
-  CHECKED_STATUS CreateTablegroup(const std::string& database_name,
-                                  const PgOid database_oid,
-                                  PgOid tablegroup_oid);
-
   CHECKED_STATUS DropTablegroup(const PgOid database_oid,
                                 PgOid tablegroup_oid);
 
@@ -197,10 +191,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   CHECKED_STATUS DropTable(const PgObjectId& table_id);
   CHECKED_STATUS DropIndex(
       const PgObjectId& index_id,
-      client::YBTableName* indexed_table_name = nullptr,
-      bool wait = true);
-  CHECKED_STATUS TruncateTable(const PgObjectId& table_id);
-  CHECKED_STATUS BackfillIndex(const PgObjectId& table_id);
+      client::YBTableName* indexed_table_name = nullptr);
   Result<PgTableDescPtr> LoadTable(const PgObjectId& table_id);
   void InvalidateTableCache(const PgObjectId& table_id);
 
@@ -257,7 +248,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   // Smart driver functions.
   // -------------
-  Result<client::YBClient::TabletServersInfo> ListTabletServers();
+  Result<client::TabletServersInfo> ListTabletServers();
 
   //------------------------------------------------------------------------------------------------
   // Access functions.
@@ -323,8 +314,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   CHECKED_STATUS HandleResponse(const client::YBPgsqlOp& op, const PgObjectId& relation_id);
 
-  CHECKED_STATUS TabletServerCount(int *tserver_count, bool primary_only = false,
-      bool use_cache = false);
+  Result<int> TabletServerCount(bool primary_only = false);
 
   // Sets the specified timeout in the rpc service.
   void SetTimeout(int timeout_ms);

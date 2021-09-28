@@ -588,12 +588,12 @@ class MasterFailoverTestWithPlacement : public MasterFailoverTest {
 
   void AssertTserverHasPlacementUuid(
       const string& ts_uuid, const string& placement_uuid,
-      const std::vector<std::unique_ptr<YBTabletServer>>& tablet_servers) {
+      const std::vector<YBTabletServer>& tablet_servers) {
     auto it = std::find_if(tablet_servers.begin(), tablet_servers.end(), [&](const auto& ts) {
-        return ts->uuid() == ts_uuid;
+        return ts.uuid == ts_uuid;
     });
     ASSERT_TRUE(it != tablet_servers.end());
-    ASSERT_EQ((*it)->placement_uuid(), placement_uuid);
+    ASSERT_EQ(it->placement_uuid, placement_uuid);
   }
 
  protected:
@@ -636,8 +636,7 @@ TEST_F_EX(MasterFailoverTest, TestFailoverWithReadReplicas, MasterFailoverTestWi
     return tserver_count == 4;
   }, MonoDelta::FromSeconds(30), "Wait for tablet server count"));
 
-  std::vector<std::unique_ptr<YBTabletServer>> tablet_servers;
-  ASSERT_OK(client_->ListTabletServers(&tablet_servers));
+  const auto tablet_servers = ASSERT_RESULT(client_->ListTabletServers());
 
   ASSERT_NO_FATALS(AssertTserverHasPlacementUuid(live_ts_uuid, kLivePlacementUuid, tablet_servers));
   ASSERT_NO_FATALS(AssertTserverHasPlacementUuid(

@@ -24,8 +24,10 @@ namespace yb {
 namespace tserver {
 
 #define YB_PG_CLIENT_METHODS \
-    (Heartbeat)(AlterTable)(CreateDatabase)(CreateTable)(GetDatabaseInfo)(IsInitDbDone)(OpenTable) \
-    (ReserveOids)
+    (Heartbeat)(AlterDatabase)(AlterTable)(BackfillIndex)(CreateDatabase) \
+    (CreateSequencesDataTable)(CreateTable)(CreateTablegroup)(DropDatabase)(DropTable) \
+    (DropTablegroup)(GetCatalogMasterVersion)(GetDatabaseInfo)(IsInitDbDone) \
+    (ListLiveTabletServers)(OpenTable)(ReserveOids)(TabletServerCount)(TruncateTable)
 
 using TransactionPoolProvider = std::function<client::TransactionPool*()>;
 

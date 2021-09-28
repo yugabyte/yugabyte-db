@@ -1392,17 +1392,17 @@ yb_servers(PG_FUNCTION_ARGS)
     HeapTuple	tuple;
     int cntr = funcctx->call_cntr;
     YBCServerDescriptor *server = (YBCServerDescriptor *)funcctx->user_fctx + cntr;
-    bool is_primary = server->isPrimary;
+    bool is_primary = server->is_primary;
     const char *node_type = is_primary ? "primary" : "read_replica";
     // TODO: Remove hard coding of port and num_connections
     values[0] = CStringGetTextDatum(server->host);
-    values[1] = Int64GetDatum(server->pgPort);
+    values[1] = Int64GetDatum(server->pg_port);
     values[2] = Int64GetDatum(0);
     values[3] = CStringGetTextDatum(node_type);
     values[4] = CStringGetTextDatum(server->cloud);
     values[5] = CStringGetTextDatum(server->region);
     values[6] = CStringGetTextDatum(server->zone);
-    values[7] = CStringGetTextDatum(server->publicIp);
+    values[7] = CStringGetTextDatum(server->public_ip);
     memset(nulls, 0, sizeof(nulls));
     tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
     SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));

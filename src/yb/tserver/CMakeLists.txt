@@ -200,6 +200,7 @@ set(TSERVER_SRCS
   metrics_snapshotter.cc
   mini_tablet_server.cc
   pg_client_service.cc
+  pg_client_session.cc
   pg_create_table.cc
   remote_bootstrap_client.cc
   remote_bootstrap_file_downloader.cc

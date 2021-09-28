@@ -87,11 +87,11 @@ class YBSchema;
 class YBTableAlterer;
 class YBTableCreator;
 class YBTableName;
-class YBTabletServer;
-class YBTabletServerPlacementInfo;
 class UniverseKeyClient;
 
 struct YBTableInfo;
+struct YBTabletServer;
+struct YBTabletServerPlacementInfo;
 
 typedef std::function<void(std::vector<const TabletId*>*)> LocalTabletFilter;
 

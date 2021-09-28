@@ -713,9 +713,8 @@ Status LinkedListTester::VerifyLinkedListRemote(
   verifier.StartScanTimer();
 
   if (snapshot_hybrid_time.is_valid()) {
-    std::vector<std::unique_ptr<client::YBTabletServer>> servers;
-    RETURN_NOT_OK(client_->ListTabletServers(&servers));
-    const std::string down_ts = servers.front()->uuid();
+    const auto servers = VERIFY_RESULT(client_->ListTabletServers());
+    const auto& down_ts = servers.front().uuid;
     LOG(INFO) << "Calling callback on tserver " << down_ts;
     RETURN_NOT_OK(cb(down_ts));
   }
