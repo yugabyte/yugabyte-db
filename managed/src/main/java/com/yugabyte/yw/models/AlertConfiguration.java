@@ -11,7 +11,6 @@
 package com.yugabyte.yw.models;
 
 import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
-import static com.yugabyte.yw.models.helpers.CommonUtils.nowWithoutMillis;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 
@@ -121,7 +120,7 @@ public class AlertConfiguration extends Model {
   @Column(nullable = false)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
   @ApiModelProperty(value = "Creation time", accessMode = READ_ONLY)
-  private Date createTime = nowWithoutMillis();
+  private Date createTime;
 
   @NotNull
   @Enumerated(EnumType.STRING)

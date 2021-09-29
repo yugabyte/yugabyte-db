@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common.alerts;
 
+import static com.yugabyte.yw.models.helpers.CommonUtils.nowWithoutMillis;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
@@ -231,6 +232,7 @@ public class AlertDestinationServiceTest extends FakeDBApplication {
         alertConfigurationService
             .createConfigurationTemplate(defaultCustomer, AlertTemplate.MEMORY_CONSUMPTION)
             .getDefaultConfiguration();
+    configuration.setCreateTime(nowWithoutMillis());
     configuration.setDestinationUUID(destination.getUuid());
     configuration.save();
 

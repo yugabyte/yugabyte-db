@@ -232,6 +232,8 @@ public class AlertConfigurationService {
   private void prepareForSave(AlertConfiguration configuration, AlertConfiguration before) {
     if (before != null) {
       configuration.setCreateTime(before.getCreateTime());
+    } else {
+      configuration.setCreateTime(nowWithoutMillis());
     }
   }
 
