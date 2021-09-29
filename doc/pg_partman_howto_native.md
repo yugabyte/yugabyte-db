@@ -415,7 +415,8 @@ CREATE TABLE public.original_table (
     , col3 timestamptz DEFAULT now() not null
     , col4 text); 
 
-CREATE INDEX ON public.original_table (col3);
+CREATE INDEX CONCURRENTLY ON public.original_table (col3);
+
 
 INSERT INTO public.original_table (col2, col3, col4) VALUES ('stuff', generate_series(now() - '1 week'::interval, now(), '5 minutes'::interval), 'stuff');
 ```
@@ -428,6 +429,7 @@ CREATE TABLE public.new_partitioned_table (
     , col4 text) PARTITION BY RANGE (col3);
 
 CREATE INDEX ON public.new_partitioned_table (col3);
+
 ```
 You'll notice I did not set "col1" as a primary key here. That is because we cannot.
 ```
