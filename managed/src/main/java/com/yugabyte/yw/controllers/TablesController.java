@@ -49,6 +49,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.Builder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -433,7 +434,8 @@ public class TablesController extends AuthenticatedController {
     taskParams.universeUUID = universeUUID;
     taskParams.customerUUID = customerUUID;
 
-    validateTables(taskParams.tableUUIDList, universe);
+    validateTables(
+        taskParams.tableUUIDList, universe, taskParams.getKeyspace(), taskParams.backupType);
 
     if (taskParams.schedulingFrequency != 0L || taskParams.cronExpression != null) {
       Schedule schedule =
@@ -484,11 +486,15 @@ public class TablesController extends AuthenticatedController {
     // Validate universe UUID
     Universe universe = Universe.getOrBadRequest(universeUUID);
 
-    validateTables(Collections.singletonList(tableUUID), universe);
-
     Form<BackupTableParams> formData = formFactory.getFormDataOrBadRequest(BackupTableParams.class);
-
     BackupTableParams taskParams = formData.get();
+
+    validateTables(
+        Collections.singletonList(tableUUID),
+        universe,
+        taskParams.getKeyspace(),
+        taskParams.backupType);
+
     customerConfigService.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
     if (universe.getUniverseDetails().updateInProgress
         || universe.getUniverseDetails().backupInProgress) {
@@ -615,6 +621,59 @@ public class TablesController extends AuthenticatedController {
 
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
     return new YBPTask(taskUUID, tableUUID).asResult();
+  }
+
+  @VisibleForTesting
+  void validateTables(
+      List<UUID> tableUuids, Universe universe, String keyspace, TableType tableType) {
+
+    List<TableInfo> tableInfoList = getTableInfosOrEmpty(universe);
+    if (keyspace != null && tableUuids.isEmpty()) {
+      tableInfoList =
+          tableInfoList
+              .parallelStream()
+              .filter(tableInfo -> keyspace.equals(tableInfo.getNamespace().getName()))
+              .filter(tableInfo -> tableType.equals(tableInfo.getTableType()))
+              .collect(Collectors.toList());
+      if (tableInfoList.isEmpty()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Cannot initiate backup with empty Keyspace " + keyspace);
+      }
+      return;
+    }
+
+    if (keyspace == null) {
+      tableInfoList =
+          tableInfoList
+              .parallelStream()
+              .filter(tableInfo -> tableType.equals(tableInfo.getTableType()))
+              .collect(Collectors.toList());
+      if (tableInfoList.isEmpty()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "No tables to backup inside specified Universe "
+                + universe.universeUUID.toString()
+                + " and Table Type "
+                + tableType.name());
+      }
+      return;
+    }
+
+    // Match if the table is an index or ysql table.
+    for (TableInfo tableInfo : tableInfoList) {
+      if (tableUuids.contains(
+          getUUIDRepresentation(tableInfo.getId().toStringUtf8().replace("-", "")))) {
+        if (tableInfo.hasRelationType()
+            && tableInfo.getRelationType() == RelationType.INDEX_TABLE_RELATION) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "Cannot backup index table " + tableInfo.getName());
+        } else if (tableInfo.hasTableType()
+            && tableInfo.getTableType() == TableType.PGSQL_TABLE_TYPE) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "Cannot backup ysql table " + tableInfo.getName());
+        }
+      }
+    }
   }
 
   @VisibleForTesting

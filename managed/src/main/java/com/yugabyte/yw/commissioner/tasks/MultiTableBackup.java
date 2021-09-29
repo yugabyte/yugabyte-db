@@ -221,6 +221,10 @@ public class MultiTableBackup extends UniverseTaskBase {
           ybService.closeClient(client, masterAddresses);
         }
 
+        if (tablesToBackup.isEmpty()) {
+          throw new RuntimeException("Invalid Keyspace or no tables to backup");
+        }
+
         subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
         log.info("Successfully started scheduled backup of tables.");

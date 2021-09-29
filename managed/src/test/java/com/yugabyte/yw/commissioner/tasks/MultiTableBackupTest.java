@@ -185,6 +185,29 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
   }
 
   @Test
+  public void testMultiTablebackupInvalidKeyspace() {
+    Map<String, String> config = new HashMap<>();
+    config.put(Universe.TAKE_BACKUPS, "true");
+    defaultUniverse.updateConfig(config);
+    MultiTableBackup.Params backupTableParams = new MultiTableBackup.Params();
+    backupTableParams.universeUUID = defaultUniverse.universeUUID;
+    backupTableParams.customerUUID = defaultCustomer.uuid;
+    backupTableParams.setKeyspace("InvalidKeyspace");
+    backupTableParams.backupType = TableType.PGSQL_TABLE_TYPE;
+    backupTableParams.storageConfigUUID = UUID.randomUUID();
+    backupTableParams.tableUUIDList = new ArrayList<>();
+    backupTableParams.transactionalBackup = false;
+    MultiTableBackup multiTableBackupTask = UniverseTaskBase.createTask(MultiTableBackup.class);
+    multiTableBackupTask.initialize(backupTableParams);
+    try {
+      multiTableBackupTask.run();
+    } catch (RuntimeException e) {
+      assertEquals(e.getMessage(), "Invalid Keyspace or no tables to backup");
+    }
+    verify(mockTableManager, times(0)).createBackup(any());
+  }
+
+  @Test
   public void testTransactionalUniverseBackup() {
     Map<String, String> config = new HashMap<>();
     config.put(Universe.TAKE_BACKUPS, "true");
