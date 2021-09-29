@@ -6897,8 +6897,11 @@ Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& da
     // Populate tables and sys_table_ids.
     for (const TableInfoMap::value_type& entry : *table_ids_map_) {
       scoped_refptr<TableInfo> table = entry.second;
+      if (table->namespace_id() != database->id()) {
+        continue;
+      }
       auto l = table->LockForWrite();
-      if (l->namespace_id() != database->id() || l->started_deleting()) {
+      if (l->started_deleting()) {
         continue;
       }
       RSTATUS_DCHECK(
