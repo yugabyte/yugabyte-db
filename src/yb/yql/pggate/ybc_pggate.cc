@@ -261,13 +261,6 @@ YBCStatus YBCPgGetCatalogMasterVersion(uint64_t *version) {
   return ToYBCStatus(pgapi->GetCatalogMasterVersion(version));
 }
 
-void YBCPgInvalidateTableCache(
-    const YBCPgOid database_oid,
-    const YBCPgOid table_oid) {
-  const PgObjectId table_id(database_oid, table_oid);
-  pgapi->InvalidateTableCache(table_id);
-}
-
 YBCStatus YBCPgInvalidateTableCacheByTableId(const char *table_id) {
   if (table_id == NULL) {
     return ToYBCStatus(STATUS(InvalidArgument, "table_id is null"));
@@ -923,8 +916,8 @@ YBCStatus YBCPgCommitTransaction() {
   return ToYBCStatus(pgapi->CommitTransaction());
 }
 
-void YBCPgAbortTransaction() {
-  pgapi->AbortTransaction();
+YBCStatus YBCPgAbortTransaction() {
+  return ToYBCStatus(pgapi->AbortTransaction());
 }
 
 YBCStatus YBCPgSetTransactionIsolationLevel(int isolation) {

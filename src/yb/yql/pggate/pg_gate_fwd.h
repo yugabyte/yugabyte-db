@@ -18,6 +18,10 @@
 
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/common/common_fwd.h"
+
+#include "yb/util/strongly_typed_bool.h"
+
 namespace google {
 namespace protobuf {
 
@@ -37,6 +41,9 @@ using PgTableDescPtr = scoped_refptr<PgTableDesc>;
 
 class PgsqlOp;
 using PgsqlOpPtr = std::shared_ptr<PgsqlOp>;
+using PgsqlOps = std::vector<PgsqlOpPtr>;
+
+YB_STRONGLY_TYPED_BOOL(Commit);
 
 }  // namespace pggate
 }  // namespace yb

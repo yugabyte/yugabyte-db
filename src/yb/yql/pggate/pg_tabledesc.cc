@@ -33,8 +33,8 @@
 namespace yb {
 namespace pggate {
 
-PgTableDesc::PgTableDesc(const client::YBTablePtr& table)
-    : table_(table), table_partitions_(table_->GetVersionedPartitions()) {
+PgTableDesc::PgTableDesc(const PgObjectId& id, const client::YBTablePtr& table)
+    : id_(id), table_(table), table_partitions_(table_->GetVersionedPartitions()) {
 
   size_t idx = 0;
   for (const auto& column : schema().columns()) {
@@ -84,6 +84,10 @@ bool PgTableDesc::IsRangePartitioned() const {
 
 const std::vector<std::string>& PgTableDesc::GetPartitions() const {
   return table_partitions_->keys;
+}
+
+const std::string& PgTableDesc::LastPartition() const {
+  return table_partitions_->keys.back();
 }
 
 size_t PgTableDesc::GetPartitionCount() const {

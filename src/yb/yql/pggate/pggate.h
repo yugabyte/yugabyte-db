@@ -482,7 +482,7 @@ class PgApiImpl {
   CHECKED_STATUS ResetTransactionReadPoint();
   CHECKED_STATUS RestartReadPoint();
   CHECKED_STATUS CommitTransaction();
-  void AbortTransaction();
+  CHECKED_STATUS AbortTransaction();
   CHECKED_STATUS SetTransactionIsolationLevel(int isolation);
   CHECKED_STATUS SetTransactionReadOnly(bool read_only);
   CHECKED_STATUS SetTransactionDeferrable(bool deferrable);
