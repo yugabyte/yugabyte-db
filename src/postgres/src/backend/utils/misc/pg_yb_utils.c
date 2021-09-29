@@ -551,7 +551,7 @@ YBCAbortTransaction()
 		return;
 
 	if (YBTransactionsEnabled())
-		YBCPgAbortTransaction();
+		HandleYBStatus(YBCPgAbortTransaction());
 }
 
 void

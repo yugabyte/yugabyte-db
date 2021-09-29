@@ -619,8 +619,10 @@ class StrongConflictChecker {
       value_iter_hash_ = hash;
     }
     value_iter_.Seek(intent_key);
-    VLOG_WITH_PREFIX_AND_FUNC(4) << "Check conflicts in regular DB; Seek: "
-                                 << intent_key.ToDebugString() << ", strong: " << strong;
+    VLOG_WITH_PREFIX_AND_FUNC(4)
+        << "Overwrite; Seek: " << intent_key.ToDebugString() << " ("
+        << SubDocKey::DebugSliceToString(intent_key) << "), strong: " << strong << ", wait_policy: "
+        << AsString(wait_policy);
     // If we are resolving conflicts for writing a strong intent, look at records in regular RocksDB
     // with the same key as the intent's key (not including hybrid time) and any child keys. This is
     // because a strong intent indicates deletion or replacement of the entire subdocument tree and

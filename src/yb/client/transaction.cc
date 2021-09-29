@@ -104,8 +104,6 @@ Result<ChildTransactionData> ChildTransactionData::FromPB(const ChildTransaction
 
 YB_DEFINE_ENUM(MetadataState, (kMissing)(kMaybePresent)(kPresent));
 
-YBSubTransaction::YBSubTransaction() {}
-
 void YBSubTransaction::SetActiveSubTransaction(SubTransactionId id) {
   sub_txn_.subtransaction_id = id;
   highest_subtransaction_id_ = std::max(highest_subtransaction_id_, id);
@@ -366,8 +364,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
     ops_info->metadata = {
       .transaction = metadata_,
-      .subtransaction = subtransaction_opt_ != boost::none
-          ? boost::make_optional(subtransaction_opt_->get())
+      .subtransaction = subtransaction_.active()
+          ? boost::make_optional(subtransaction_.get())
           : boost::none,
     };
 
@@ -713,21 +711,18 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   void SetActiveSubTransaction(SubTransactionId id) {
-    if (subtransaction_opt_ == boost::none) {
-      subtransaction_opt_ = boost::make_optional(YBSubTransaction());
-    }
-    return subtransaction_opt_->SetActiveSubTransaction(id);
+    return subtransaction_.SetActiveSubTransaction(id);
   }
 
   CHECKED_STATUS RollbackSubTransaction(SubTransactionId id) {
     SCHECK(
-        subtransaction_opt_ != boost::none, InternalError,
+        subtransaction_.active(), InternalError,
         "Attempted to rollback to savepoint before creating any savepoints.");
-    return subtransaction_opt_->RollbackSubTransaction(id);
+    return subtransaction_.RollbackSubTransaction(id);
   }
 
   bool HasSubTransactionState() {
-    return subtransaction_opt_ != boost::none;
+    return subtransaction_.active();
   }
 
  private:
@@ -816,8 +811,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       return;
     }
 
-    if (subtransaction_opt_ != boost::none) {
-      subtransaction_opt_->get().aborted.ToPB(state.mutable_aborted()->mutable_set());
+    if (subtransaction_.active()) {
+      subtransaction_.get().aborted.ToPB(state.mutable_aborted()->mutable_set());
     }
 
     manager_->rpcs().RegisterAndStart(
@@ -1224,7 +1219,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   ConsistentReadPoint read_point_;
 
   // Metadata tracking savepoint-related state for the scope of this transaction.
-  boost::optional<YBSubTransaction> subtransaction_opt_ = boost::none;
+  YBSubTransaction subtransaction_;
 
   std::atomic<bool> requested_status_tablet_{false};
   internal::RemoteTabletPtr status_tablet_ GUARDED_BY(mutex_);
