@@ -329,6 +329,12 @@ PartitionKeyPtr FindPartitionStart(
   return PartitionKeyPtr(versioned_partitions, &versioned_partitions->keys[idx]);
 }
 
+std::string VersionedTablePartitionList::ToString() const {
+  auto key_transform = [](const Slice& key) {
+    return key.ToDebugHexString();
+  };
+  return Format("{ version: $0 keys: $1 }", version, CollectionToString(keys, key_transform));
+}
 
 } // namespace client
 } // namespace yb

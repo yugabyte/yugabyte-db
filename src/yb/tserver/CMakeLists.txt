@@ -195,6 +195,7 @@ set(TSERVER_SRCS
   pg_client_service.cc
   pg_client_session.cc
   pg_create_table.cc
+  pg_table_cache.cc
   read_query.cc
   remote_bootstrap_client.cc
   remote_bootstrap_file_downloader.cc

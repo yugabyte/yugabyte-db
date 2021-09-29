@@ -33,8 +33,8 @@ class PgUpdate : public PgDmlWrite {
   StmtOp stmt_op() const override { return StmtOp::STMT_UPDATE; }
 
  private:
-  std::unique_ptr<client::YBPgsqlWriteOp> AllocWriteOperation() const override {
-    return target_->NewPgsqlUpdate();
+  PgsqlWriteRequestPB::PgsqlStmtType stmt_type() const override {
+    return PgsqlWriteRequestPB::PGSQL_UPDATE;
   }
 };
 

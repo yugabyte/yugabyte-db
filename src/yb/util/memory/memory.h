@@ -987,6 +987,11 @@ std::shared_ptr<U> shared_from(U* u) {
   return std::static_pointer_cast<U>(u->shared_from_this());
 }
 
+template <class U>
+std::shared_ptr<U> FakeSharedPtr(U* u) {
+  return std::shared_ptr<U>(std::shared_ptr<U>(), u);
+}
+
 // Returns empty string if TCMalloc is not enabled.
 std::string TcMallocStats();
 

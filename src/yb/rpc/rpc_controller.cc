@@ -114,6 +114,14 @@ Result<Slice> RpcController::GetSidecar(int idx) const {
   return call_->GetSidecar(idx);
 }
 
+Result<SidecarPtr> RpcController::GetSidecarPtr(int idx) const {
+  return SidecarPtr(call_, VERIFY_RESULT(call_->GetSidecarPtr(idx)));
+}
+
+Result<SidecarHolder> RpcController::GetSidecarHolder(int idx) const {
+  return call_->GetSidecarHolder(idx);
+}
+
 void RpcController::set_timeout(const MonoDelta& timeout) {
   std::lock_guard<simple_spinlock> l(lock_);
   DCHECK(!call_ || call_->state() == RpcCallState::READY);

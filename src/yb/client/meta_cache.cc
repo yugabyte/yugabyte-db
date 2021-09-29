@@ -774,6 +774,15 @@ void LookupRpc::SendRpc() {
     return;
   }
 
+  // See YBClient::Data::SyncLeaderMasterRpc().
+  auto now = CoarseMonoClock::Now();
+  if (retrier().deadline() < now) {
+    Finished(STATUS_FORMAT(TimedOut, "Timed out after deadline expired, passed: $0",
+                           MonoDelta(now - retrier().start())));
+    return;
+  }
+  mutable_retrier()->PrepareController();
+
   ClientMasterRpcBase::SendRpc();
 }
 
@@ -1996,7 +2005,7 @@ void MetaCache::LookupTabletByKey(const std::shared_ptr<YBTable>& table,
   const auto table_partition_list = table->GetVersionedPartitions();
   const auto partition_start = client::FindPartitionStart(table_partition_list, partition_key);
   VLOG_WITH_PREFIX_AND_FUNC(5) << "Table: " << table->ToString()
-                    << ", partition_list_version: " << table_partition_list->version
+                    << ", table_partition_list: " << table_partition_list->ToString()
                     << ", partition_key: " << Slice(partition_key).ToDebugHexString()
                     << ", partition_start: " << Slice(*partition_start).ToDebugHexString();
 

@@ -89,7 +89,7 @@ class PgDml : public PgStatement {
 
   bool has_aggregate_targets();
 
-  bool has_doc_op() {
+  bool has_doc_op() const {
     return doc_op_ != nullptr;
   }
 

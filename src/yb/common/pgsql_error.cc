@@ -21,5 +21,15 @@ const std::string kPgsqlErrorCategoryName = "pgsql error";
 StatusCategoryRegisterer pgsql_error_category_registerer(
     StatusCategoryDescription::Make<PgsqlErrorTag>(&kPgsqlErrorCategoryName));
 
+const std::string kPgsqlRequestStatusCategoryName = "pgsql request status";
+
+StatusCategoryRegisterer pgsql_request_status_category_registerer(
+    StatusCategoryDescription::Make<PgsqlRequestStatusTag>(&kPgsqlRequestStatusCategoryName));
+
+const std::string kOpIndexCategoryName = "op index";
+
+StatusCategoryRegisterer op_index_category_registerer(
+    StatusCategoryDescription::Make<OpIndexTag>(&kOpIndexCategoryName));
+
 } // namespace
 } // namespace yb

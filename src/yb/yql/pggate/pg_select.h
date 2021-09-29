@@ -15,11 +15,7 @@
 #ifndef YB_YQL_PGGATE_PG_SELECT_H_
 #define YB_YQL_PGGATE_PG_SELECT_H_
 
-#include <list>
-
-#include "yb/gutil/ref_counted.h"
-
-#include "yb/yql/pggate/pg_select_index.h"
+#include "yb/yql/pggate/pg_dml_read.h"
 
 namespace yb {
 namespace pggate {
@@ -35,10 +31,14 @@ class PgSelect : public PgDmlRead {
   virtual ~PgSelect();
 
   // Prepare query before execution.
-  virtual CHECKED_STATUS Prepare();
+  CHECKED_STATUS Prepare() override;
 
   // Prepare secondary index if that index is used by this query.
   CHECKED_STATUS PrepareSecondaryIndex();
+
+  virtual Result<PgTableDescPtr> LoadTable();
+
+  virtual bool UseSecondaryIndex() const;
 };
 
 }  // namespace pggate

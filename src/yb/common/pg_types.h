@@ -32,6 +32,7 @@ struct PgObjectId {
 
   PgObjectId(PgOid db_oid, PgOid obj_oid)
       : database_oid(db_oid), object_oid(obj_oid) {}
+
   PgObjectId()
       : database_oid(kPgInvalidOid), object_oid(kPgInvalidOid) {}
 
@@ -75,6 +76,11 @@ struct PgObjectId {
   template <class PB>
   static PgObjectId FromPB(const PB& pb) {
     return PgObjectId(pb.database_oid(), pb.object_oid());
+  }
+
+  template <class PB>
+  static TableId GetYBTableIdFromPB(const PB& pb) {
+    return FromPB(pb).GetYBTableId();
   }
 };
 

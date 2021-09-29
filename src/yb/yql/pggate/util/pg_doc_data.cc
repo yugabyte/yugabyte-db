@@ -111,9 +111,14 @@ Status WriteColumn(const QLValuePB& col_value, faststring *buffer) {
 // Read Tuple Routine in DocDB Format (wire_protocol).
 //--------------------------------------------------------------------------------------------------
 
-void PgDocData::LoadCache(const string& cache, int64_t *total_row_count, Slice *cursor) {
+void PgDocData::LoadCache(const rpc::SidecarPtr& cache, int64_t *total_row_count, Slice *cursor) {
   // Setup the buffer to read the next set of tuples.
   CHECK(cursor->empty()) << "Existing cache is not yet fully read";
+  auto *sidecar = cache.get();
+  LoadCache(Slice(sidecar[0], sidecar[1]), total_row_count, cursor);
+}
+
+void PgDocData::LoadCache(const Slice& cache, int64_t *total_row_count, Slice *cursor) {
   *cursor = cache;
 
   // Read the number row_count in this set.

@@ -86,7 +86,7 @@ void PgDmlRead::PrepareBinds() {
   }
 
   for (auto& col : bind_.columns()) {
-    col.AllocPrimaryBindPB(read_req_);
+    col.AllocPrimaryBindPB(read_req_.get());
   }
 }
 
@@ -102,11 +102,11 @@ void PgDmlRead::SetForwardScan(const bool is_forward_scan) {
 // TODO(neil) WHERE clause is not yet supported. Revisit this function when it is.
 
 PgsqlExpressionPB *PgDmlRead::AllocColumnBindPB(PgColumn *col) {
-  return col->AllocBindPB(read_req_);
+  return col->AllocBindPB(read_req_.get());
 }
 
 PgsqlExpressionPB *PgDmlRead::AllocColumnBindConditionExprPB(PgColumn *col) {
-  return col->AllocBindConditionExprPB(read_req_);
+  return col->AllocBindConditionExprPB(read_req_.get());
 }
 
 PgsqlExpressionPB *PgDmlRead::AllocColumnAssignPB(PgColumn *col) {
@@ -161,10 +161,8 @@ Status PgDmlRead::ProcessEmptyPrimaryBinds() {
   bool miss_partition_columns = false;
   bool has_partition_columns = false;
 
-  const auto hash_columns_begin = bind_.columns().begin();
-  const auto hash_columns_end = hash_columns_begin + bind_->num_hash_key_columns();
-  for (auto it = hash_columns_begin; it != hash_columns_end; ++it) {
-    auto expr = it->bind_pb();
+  for (size_t index = 0; index != bind_->num_hash_key_columns(); ++index) {
+    auto expr = bind_.ColumnForIndex(index).bind_pb();
     // For IN clause expr->has_condition() returns 'true'.
     if (!expr || (!expr->has_condition() && (expr_binds_.find(expr) == expr_binds_.end()))) {
       miss_partition_columns = true;
@@ -182,10 +180,9 @@ Status PgDmlRead::ProcessEmptyPrimaryBinds() {
     VLOG(1) << "Full scan is needed";
     read_req_->clear_partition_column_values();
     // Reset binding of columns whose values has been deleted.
-    std::for_each(
-        hash_columns_begin,
-        hash_columns_end,
-        [](auto& column) { column.ResetBindPB(); });
+    for (size_t i = 0, end = bind_->num_hash_key_columns(); i != end; ++i) {
+      bind_.ColumnForIndex(i).ResetBindPB();
+    }
 
     // Move all range column binds (if any) into the 'condition_expr' field.
     preceding_key_column_missed = true;
@@ -193,10 +190,8 @@ Status PgDmlRead::ProcessEmptyPrimaryBinds() {
 
   int num_bound_range_columns = 0;
 
-  const auto range_columns_end = bind_.columns().begin() + bind_->num_columns();
-  const auto range_columns_begin = bind_.columns().begin() + bind_->num_hash_key_columns();
-  for (auto it = range_columns_begin; it < range_columns_end; ++it) {
-    auto& col = *it;
+  for (auto index = bind_->num_hash_key_columns(); index < bind_->num_key_columns(); ++index) {
+    auto& col = bind_.ColumnForIndex(index);
     auto expr = col.bind_pb();
     const auto expr_bind = expr ? expr_binds_.find(expr) : expr_binds_.end();
     // For IN clause expr->has_condition() returns 'true'.
@@ -229,10 +224,9 @@ Status PgDmlRead::ProcessEmptyPrimaryBinds() {
   range_column_values.DeleteSubrange(
       num_bound_range_columns, range_column_values.size() - num_bound_range_columns);
   // Reset binding of columns whose values has been deleted.
-  std::for_each(
-      range_columns_begin + num_bound_range_columns,
-      range_columns_end,
-      [](auto& column) { column.ResetBindPB(); });
+  for (size_t i = num_bound_range_columns, end = bind_->num_columns(); i != end; ++i) {
+    bind_.ColumnForIndex(i).ResetBindPB();
+  }
   return Status::OK();
 }
 
@@ -243,7 +237,7 @@ bool PgDmlRead::IsConcreteRowRead() const {
   // - ybctid is explicitly bound
   // - ybctid is used implicitly by using secondary index
   // - all hash and range key components are bound (Note: each key component can be bound only once)
-  return doc_op_ && bind_ &&
+  return has_doc_op() && bind_ &&
          (ybctid_bind_ ||
           (secondary_index_query_ && secondary_index_query_->has_doc_op()) ||
           (bind_->num_key_columns() ==
@@ -259,14 +253,14 @@ Status PgDmlRead::Exec(const PgExecParameters *exec_params) {
   SetColumnRefs();
 
   const auto row_mark_type = GetRowMarkType(exec_params);
-  if (doc_op_ &&
+  if (has_doc_op() &&
       !secondary_index_query_ &&
       IsValidRowMarkType(row_mark_type) &&
       CanBuildYbctidsFromPrimaryBinds()) {
     RETURN_NOT_OK(SubstitutePrimaryBindsWithYbctids(exec_params));
   } else {
     RETURN_NOT_OK(ProcessEmptyPrimaryBinds());
-    if (doc_op_) {
+    if (has_doc_op()) {
       if (row_mark_type == RowMarkType::ROW_MARK_KEYSHARE && !IsConcreteRowRead()) {
         // ROW_MARK_KEYSHARE creates a weak read intent on DocDB side. As a result it is only
         // applicable when the read operation reads a concrete row (by using ybctid or by specifying
@@ -293,7 +287,6 @@ Status PgDmlRead::Exec(const PgExecParameters *exec_params) {
     // scan read request to DocDB.  For this case, the index request is embedded inside the SELECT
     // request (PgsqlReadRequestPB::index_request).
     doc_op_->AbandonExecution();
-
   } else {
     // Update bind values for constants and placeholders.
     RETURN_NOT_OK(UpdateBindPBs());
@@ -457,21 +450,21 @@ Status PgDmlRead::BindColumnCondIn(int attr_num, int n_attr_values, PgExpr **att
       }
     }
   }
-
   return Status::OK();
 }
 
 Status PgDmlRead::SubstitutePrimaryBindsWithYbctids(const PgExecParameters* exec_params) {
   const auto ybctids = VERIFY_RESULT(BuildYbctidsFromPrimaryBinds());
-  std::vector<Slice> ybctidsAsSlice;
+  std::vector<Slice> ybctids_as_slice;
+  ybctids_as_slice.reserve(ybctids.size());
   for (const auto& ybctid : ybctids) {
-    ybctidsAsSlice.emplace_back(ybctid);
+    ybctids_as_slice.emplace_back(ybctid);
   }
   expr_binds_.clear();
   read_req_->clear_partition_column_values();
   read_req_->clear_range_column_values();
   RETURN_NOT_OK(doc_op_->ExecuteInit(exec_params));
-  return doc_op_->PopulateDmlByYbctidOps(&ybctidsAsSlice);
+  return doc_op_->PopulateDmlByYbctidOps(ybctids_as_slice);
 }
 
 // Function builds vector of ybctids from primary key binds.
@@ -483,7 +476,7 @@ Result<std::vector<std::string>> PgDmlRead::BuildYbctidsFromPrimaryBinds() {
   hashed_components.reserve(bind_->num_hash_key_columns());
   range_components.reserve(bind_->num_key_columns() - bind_->num_hash_key_columns());
   for (size_t i = 0; i < bind_->num_hash_key_columns(); ++i) {
-    auto& col = bind_.columns()[i];
+    auto& col = bind_.ColumnForIndex(i);
     hashed_components.push_back(VERIFY_RESULT(
         BuildKeyColumnValue(col, *col.bind_pb(), hashed_values.Add())));
   }
@@ -492,7 +485,7 @@ Result<std::vector<std::string>> PgDmlRead::BuildYbctidsFromPrimaryBinds() {
       hashed_components, hashed_values, bind_->partition_schema()));
 
   for (size_t i = bind_->num_hash_key_columns(); i < bind_->num_key_columns(); ++i) {
-    auto& col = bind_.columns()[i];
+    auto& col = bind_.ColumnForIndex(i);
     auto& expr = *col.bind_pb();
     // For IN clause expr->has_condition() returns 'true'.
     if (expr.has_condition()) {
@@ -504,7 +497,7 @@ Result<std::vector<std::string>> PgDmlRead::BuildYbctidsFromPrimaryBinds() {
         // Range key component has one and only one IN clause,
         // all remains components has explicit values. Add them as is.
         for (size_t j = i + 1; j < bind_->num_key_columns(); ++j) {
-          auto& suffix_col = bind_.columns()[j];
+          auto& suffix_col = bind_.ColumnForIndex(j);
           range_components.push_back(VERIFY_RESULT(
               BuildKeyColumnValue(suffix_col, *suffix_col.bind_pb())));
         }

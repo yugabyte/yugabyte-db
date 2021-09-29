@@ -143,9 +143,6 @@ YBCStatus YBCPgReserveOids(YBCPgOid database_oid,
 // Retrieve the protobuf-based catalog version (now deprecated for new clusters).
 YBCStatus YBCPgGetCatalogMasterVersion(uint64_t *version);
 
-void YBCPgInvalidateTableCache(
-    const YBCPgOid database_oid,
-    const YBCPgOid table_oid);
 YBCStatus YBCPgInvalidateTableCacheByTableId(const char *table_id);
 
 // TABLEGROUP --------------------------------------------------------------------------------------
@@ -451,7 +448,7 @@ YBCStatus YBCPgRestartTransaction();
 YBCStatus YBCPgResetTransactionReadPoint();
 YBCStatus YBCPgRestartReadPoint();
 YBCStatus YBCPgCommitTransaction();
-void YBCPgAbortTransaction();
+YBCStatus YBCPgAbortTransaction();
 YBCStatus YBCPgSetTransactionIsolationLevel(int isolation);
 YBCStatus YBCPgSetTransactionReadOnly(bool read_only);
 YBCStatus YBCPgSetTransactionDeferrable(bool deferrable);

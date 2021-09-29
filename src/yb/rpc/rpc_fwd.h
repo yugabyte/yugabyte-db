@@ -30,6 +30,10 @@
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
+
+class RefCntBuffer;
+class Slice;
+
 namespace rpc {
 
 class Acceptor;
@@ -140,6 +144,9 @@ YB_DEFINE_ENUM(InvokeCallbackMode,
     // On thread pool.
     (kThreadPoolNormal)
     (kThreadPoolHigh));
+
+using SidecarPtr = std::shared_ptr<const uint8_t*const>;
+using SidecarHolder = std::pair<RefCntBuffer, Slice>;
 
 } // namespace rpc
 } // namespace yb

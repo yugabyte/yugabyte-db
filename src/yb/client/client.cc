@@ -112,6 +112,8 @@
 
 #include "yb/yql/cql/ql/ptree/pt_option.h"
 
+using namespace std::literals;
+
 using yb::master::AlterTableRequestPB;
 using yb::master::CreateTablegroupRequestPB;
 using yb::master::CreateTablegroupResponsePB;
@@ -586,9 +588,10 @@ Status YBClient::TruncateTables(const vector<string>& table_ids, bool wait) {
   return data_->TruncateTables(this, table_ids, deadline, wait);
 }
 
-Status YBClient::BackfillIndex(const TableId& table_id, bool wait) {
-  auto deadline = (CoarseMonoClock::Now()
-                   + MonoDelta::FromMilliseconds(FLAGS_backfill_index_client_rpc_timeout_ms));
+Status YBClient::BackfillIndex(const TableId& table_id, bool wait, CoarseTimePoint deadline) {
+  if (deadline == CoarseTimePoint()) {
+    deadline = CoarseMonoClock::Now() + FLAGS_backfill_index_client_rpc_timeout_ms * 1ms;
+  }
   return data_->BackfillIndex(this, YBTableName(), table_id, deadline, wait);
 }
 

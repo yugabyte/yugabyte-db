@@ -880,6 +880,7 @@ string PartitionSchema::PartitionDebugString(const Partition& partition,
   if (hash_schema_) {
     switch (*hash_schema_) {
       case YBHashSchema::kRedisHash: FALLTHROUGH_INTENDED;
+      case YBHashSchema::kPgsqlHash: FALLTHROUGH_INTENDED;
       case YBHashSchema::kMultiColumnHash: {
         const string& pstart = partition.partition_key_start();
         const string& pend = partition.partition_key_end();
@@ -889,8 +890,6 @@ string PartitionSchema::PartitionDebugString(const Partition& partition,
                             Uint16ToHexString(hash_start), Uint16ToHexString(hash_end)));
         return s;
       }
-      case YBHashSchema::kPgsqlHash:
-        return "Pgsql Hash";
     }
   }
 

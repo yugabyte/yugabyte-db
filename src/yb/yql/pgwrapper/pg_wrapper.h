@@ -122,6 +122,10 @@ class PgSupervisor {
   void Stop();
   PgProcessState GetState();
 
+  const PgProcessConf& conf() const {
+    return conf_;
+  }
+
  private:
   CHECKED_STATUS ExpectStateUnlocked(PgProcessState state);
   CHECKED_STATUS StartServerUnlocked();

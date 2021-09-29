@@ -19,6 +19,8 @@
 #include "yb/client/tablet_server.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/rpc/poller.h"
 #include "yb/rpc/rpc_controller.h"
 
@@ -26,10 +28,14 @@
 #include "yb/tserver/pg_client.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
+#include "yb/util/logging.h"
+#include "yb/util/protobuf_util.h"
 #include "yb/util/result.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/shared_mem.h"
 #include "yb/util/status.h"
 
+#include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 
 DECLARE_bool(use_node_hostname_for_local_tserver);
@@ -42,6 +48,47 @@ using namespace std::literals;
 
 namespace yb {
 namespace pggate {
+
+namespace {
+
+// Adding this value to RPC call timeout, so postgres could detect timeout by it's own mechanism
+// and report it.
+const auto kExtraTimeout = 2s;
+
+struct PerformData {
+  PgsqlOps operations;
+  tserver::PgPerformResponsePB resp;
+  rpc::RpcController controller;
+  PerformCallback callback;
+
+  CHECKED_STATUS Process() {
+    auto& responses = *resp.mutable_responses();
+    SCHECK_EQ(implicit_cast<size_t>(responses.size()), operations.size(), RuntimeError,
+              Format("Wrong number of responses: $0, while $1 expected",
+                     responses.size(), operations.size()));
+    for (uint32_t i = 0; i != operations.size(); ++i) {
+      if (responses[i].has_rows_data_sidecar()) {
+        operations[i]->rows_data() = VERIFY_RESULT(
+            controller.GetSidecarPtr(responses[i].rows_data_sidecar()));
+      }
+      operations[i]->response() = std::move(responses[i]);
+    }
+    return Status::OK();
+  }
+};
+
+std::string PrettyFunctionName(const char* name) {
+  std::string result;
+  for (const char* ch = name; *ch; ++ch) {
+    if (!result.empty() && std::isupper(*ch)) {
+      result += ' ';
+    }
+    result += *ch;
+  }
+  return result;
+}
+
+} // namespace
 
 class PgClient::Impl {
  public:
@@ -72,7 +119,8 @@ class PgClient::Impl {
     auto future = create_session_promise_.get_future();
     Heartbeat(true);
     session_id_ = VERIFY_RESULT(future.get());
-    heartbeat_poller_.Start(scheduler, FLAGS_pg_client_heartbeat_interval_ms * 1ms - 1s);
+    LOG_WITH_PREFIX(INFO) << "Session id acquired";
+    heartbeat_poller_.Start(scheduler, FLAGS_pg_client_heartbeat_interval_ms * 1ms);
     return Status::OK();
   }
 
@@ -85,7 +133,7 @@ class PgClient::Impl {
     {
       bool expected = false;
       if (!heartbeat_running_.compare_exchange_strong(expected, true)) {
-        LOG(DFATAL) << "Heartbeat did not complete yet";
+        LOG_WITH_PREFIX(DFATAL) << "Heartbeat did not complete yet";
         return;
       }
     }
@@ -106,17 +154,26 @@ class PgClient::Impl {
       }
       heartbeat_running_ = false;
       if (!status.ok()) {
-        LOG(WARNING) << "Heartbeat failed: " << status;
+        LOG_WITH_PREFIX(WARNING) << "Heartbeat failed: " << status;
       }
     });
   }
 
-  Result<PgTableDescPtr> OpenTable(const PgObjectId& table_id) {
+  void SetTimeout(MonoDelta timeout) {
+    timeout_ = timeout + kExtraTimeout;
+  }
+
+  Result<PgTableDescPtr> OpenTable(
+      const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time) {
     tserver::PgOpenTableRequestPB req;
     req.set_table_id(table_id.GetYBTableId());
+    req.set_reopen(reopen);
+    if (invalidate_cache_time != CoarseTimePoint()) {
+      req.set_invalidate_cache_time_us(ToMicroseconds(invalidate_cache_time.time_since_epoch()));
+    }
     tserver::PgOpenTableResponsePB resp;
 
-    RETURN_NOT_OK(proxy_->OpenTable(req, &resp, PrepareAdminController()));
+    RETURN_NOT_OK(proxy_->OpenTable(req, &resp, PrepareController()));
     RETURN_NOT_OK(ResponseStatus(resp));
 
     client::YBTableInfo info;
@@ -126,8 +183,19 @@ class PgClient::Impl {
     partitions->version = resp.partitions().version();
     partitions->keys.assign(resp.partitions().keys().begin(), resp.partitions().keys().end());
 
-    return make_scoped_refptr<PgTableDesc>(std::make_shared<client::YBTable>(
-        info, std::move(partitions)));
+    return make_scoped_refptr<PgTableDesc>(
+        table_id, std::make_shared<client::YBTable>(info, std::move(partitions)));
+  }
+
+  CHECKED_STATUS FinishTransaction(Commit commit, DdlMode ddl_mode) {
+    tserver::PgFinishTransactionRequestPB req;
+    req.set_session_id(session_id_);
+    req.set_commit(commit);
+    req.set_ddl_mode(ddl_mode);
+    tserver::PgFinishTransactionResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->FinishTransaction(req, &resp, PrepareController()));
+    return ResponseStatus(resp);
   }
 
   Result<master::GetNamespaceInfoResponsePB> GetDatabaseInfo(uint32_t oid) {
@@ -136,9 +204,96 @@ class PgClient::Impl {
 
     tserver::PgGetDatabaseInfoResponsePB resp;
 
-    RETURN_NOT_OK(proxy_->GetDatabaseInfo(req, &resp, PrepareAdminController()));
+    RETURN_NOT_OK(proxy_->GetDatabaseInfo(req, &resp, PrepareController()));
     RETURN_NOT_OK(ResponseStatus(resp));
     return resp.info();
+  }
+
+  CHECKED_STATUS SetActiveSubTransaction(
+      SubTransactionId id, tserver::PgPerformOptionsPB* options) {
+    tserver::PgSetActiveSubTransactionRequestPB req;
+    req.set_session_id(session_id_);
+    if (options) {
+      options->Swap(req.mutable_options());
+    }
+    req.set_sub_transaction_id(id);
+
+    tserver::PgSetActiveSubTransactionResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->SetActiveSubTransaction(req, &resp, PrepareController()));
+    return ResponseStatus(resp);
+  }
+
+  CHECKED_STATUS RollbackSubTransaction(SubTransactionId id) {
+    tserver::PgRollbackSubTransactionRequestPB req;
+    req.set_session_id(session_id_);
+    req.set_sub_transaction_id(id);
+
+    tserver::PgRollbackSubTransactionResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->RollbackSubTransaction(req, &resp, PrepareController()));
+    return ResponseStatus(resp);
+  }
+
+  void PerformAsync(
+      tserver::PgPerformOptionsPB* options,
+      PgsqlOps* operations,
+      const PerformCallback& callback) {
+    tserver::PgPerformRequestPB req;
+    req.set_session_id(session_id_);
+    *req.mutable_options() = std::move(*options);
+    auto se = ScopeExit([&req] {
+      for (auto& op : *req.mutable_ops()) {
+        if (!op.release_read()) {
+          op.release_write();
+        }
+      }
+    });
+    PrepareOperations(&req, operations);
+
+    auto data = std::make_shared<PerformData>();
+    data->operations = std::move(*operations);
+    data->callback = callback;
+    data->controller.set_invoke_callback_mode(rpc::InvokeCallbackMode::kReactorThread);
+
+    proxy_->PerformAsync(req, &data->resp, SetupController(&data->controller), [data] {
+      PerformResult result;
+      result.status = data->controller.status();
+      if (result.status.ok()) {
+        result.status = ResponseStatus(data->resp);
+      }
+      if (result.status.ok()) {
+        result.status = data->Process();
+      }
+      if (result.status.ok() && data->resp.has_catalog_read_time()) {
+        result.catalog_read_time = ReadHybridTime::FromPB(data->resp.catalog_read_time());
+      }
+      data->callback(result);
+    });
+  }
+
+  void PrepareOperations(tserver::PgPerformRequestPB* req, PgsqlOps* operations) {
+    auto& ops = *req->mutable_ops();
+    ops.Reserve(narrow_cast<int>(operations->size()));
+    for (auto& op : *operations) {
+      auto* union_op = ops.Add();
+      if (op->is_read()) {
+        auto& read_op = down_cast<PgsqlReadOp&>(*op);
+        union_op->set_allocated_read(&read_op.read_request());
+        if (read_op.read_from_followers()) {
+          union_op->set_read_from_followers(true);
+        }
+      } else {
+        auto& write_op = down_cast<PgsqlWriteOp&>(*op);
+        if (write_op.write_time()) {
+          req->set_write_time(write_op.write_time().ToUint64());
+        }
+        union_op->set_allocated_write(&write_op.write_request());
+      }
+      if (op->read_time()) {
+        op->read_time().AddToPB(req->mutable_options());
+      }
+    }
   }
 
   Result<std::pair<PgOid, PgOid>> ReserveOids(PgOid database_oid, PgOid next_oid, uint32_t count) {
@@ -149,7 +304,7 @@ class PgClient::Impl {
 
     tserver::PgReserveOidsResponsePB resp;
 
-    RETURN_NOT_OK(proxy_->ReserveOids(req, &resp, PrepareAdminController()));
+    RETURN_NOT_OK(proxy_->ReserveOids(req, &resp, PrepareController()));
     RETURN_NOT_OK(ResponseStatus(resp));
     return std::pair<PgOid, PgOid>(resp.begin_oid(), resp.end_oid());
   }
@@ -158,7 +313,7 @@ class PgClient::Impl {
     tserver::PgIsInitDbDoneRequestPB req;
     tserver::PgIsInitDbDoneResponsePB resp;
 
-    RETURN_NOT_OK(proxy_->IsInitDbDone(req, &resp, PrepareAdminController()));
+    RETURN_NOT_OK(proxy_->IsInitDbDone(req, &resp, PrepareController()));
     RETURN_NOT_OK(ResponseStatus(resp));
     return resp.done();
   }
@@ -167,7 +322,7 @@ class PgClient::Impl {
     tserver::PgGetCatalogMasterVersionRequestPB req;
     tserver::PgGetCatalogMasterVersionResponsePB resp;
 
-    RETURN_NOT_OK(proxy_->GetCatalogMasterVersion(req, &resp, PrepareAdminController()));
+    RETURN_NOT_OK(proxy_->GetCatalogMasterVersion(req, &resp, PrepareController()));
     RETURN_NOT_OK(ResponseStatus(resp));
     return resp.version();
   }
@@ -176,7 +331,7 @@ class PgClient::Impl {
     tserver::PgCreateSequencesDataTableRequestPB req;
     tserver::PgCreateSequencesDataTableResponsePB resp;
 
-    RETURN_NOT_OK(proxy_->CreateSequencesDataTable(req, &resp, PrepareAdminController()));
+    RETURN_NOT_OK(proxy_->CreateSequencesDataTable(req, &resp, PrepareController()));
     return ResponseStatus(resp);
   }
 
@@ -184,7 +339,7 @@ class PgClient::Impl {
       tserver::PgDropTableRequestPB* req, CoarseTimePoint deadline) {
     req->set_session_id(session_id_);
     tserver::PgDropTableResponsePB resp;
-    RETURN_NOT_OK(proxy_->DropTable(*req, &resp, PrepareAdminController(deadline)));
+    RETURN_NOT_OK(proxy_->DropTable(*req, &resp, PrepareController(deadline)));
     RETURN_NOT_OK(ResponseStatus(resp));
     client::YBTableName result;
     if (resp.has_indexed_table()) {
@@ -198,12 +353,7 @@ class PgClient::Impl {
     tserver::PgBackfillIndexResponsePB resp;
     req->set_session_id(session_id_);
 
-    // Use backfill_index_client_rpc_timeout_ms rather than yb_client_admin_operation_timeout_sec.
-    controller_.Reset();
-    DCHECK(deadline == CoarseTimePoint());
-    controller_.set_timeout(FLAGS_backfill_index_client_rpc_timeout_ms * 1ms);
-
-    RETURN_NOT_OK(proxy_->BackfillIndex(*req, &resp, &controller_));
+    RETURN_NOT_OK(proxy_->BackfillIndex(*req, &resp, PrepareController(deadline)));
     return ResponseStatus(resp);
   }
 
@@ -215,7 +365,7 @@ class PgClient::Impl {
     tserver::PgTabletServerCountResponsePB resp;
     req.set_primary_only(primary_only);
 
-    RETURN_NOT_OK(proxy_->TabletServerCount(req, &resp, PrepareAdminController()));
+    RETURN_NOT_OK(proxy_->TabletServerCount(req, &resp, PrepareController()));
     RETURN_NOT_OK(ResponseStatus(resp));
     tablet_server_count_cache_[primary_only] = resp.count();
     return resp.count();
@@ -226,7 +376,7 @@ class PgClient::Impl {
     tserver::PgListLiveTabletServersResponsePB resp;
     req.set_primary_only(primary_only);
 
-    RETURN_NOT_OK(proxy_->ListLiveTabletServers(req, &resp, PrepareAdminController()));
+    RETURN_NOT_OK(proxy_->ListLiveTabletServers(req, &resp, PrepareController()));
     RETURN_NOT_OK(ResponseStatus(resp));
     client::TabletServersInfo result;
     result.reserve(resp.servers().size());
@@ -238,7 +388,7 @@ class PgClient::Impl {
 
   CHECKED_STATUS ValidatePlacement(const tserver::PgValidatePlacementRequestPB* req) {
     tserver::PgValidatePlacementResponsePB resp;
-    RETURN_NOT_OK(proxy_->ValidatePlacement(*req, &resp, PrepareAdminController()));
+    RETURN_NOT_OK(proxy_->ValidatePlacement(*req, &resp, PrepareController()));
     return ResponseStatus(resp);
   }
 
@@ -248,34 +398,42 @@ class PgClient::Impl {
       CoarseTimePoint deadline) { \
     tserver::BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB) resp; \
     req->set_session_id(session_id_); \
-    \
-    RETURN_NOT_OK(proxy_->method(*req, &resp, PrepareAdminController(deadline))); \
+    auto status = proxy_->method(*req, &resp, PrepareController(deadline)); \
+    if (!status.ok()) { \
+      if (status.IsTimedOut()) { \
+        return STATUS_FORMAT(TimedOut, "Timed out waiting for $0", PrettyFunctionName(__func__)); \
+      } \
+      return status; \
+    } \
     return ResponseStatus(resp); \
   }
 
   BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_SIMPLE_METHOD_IMPL, ~, YB_PG_CLIENT_SIMPLE_METHODS);
 
  private:
-  static rpc::RpcController* SetupAdminController(
+  std::string LogPrefix() const {
+    return Format("S $0: ", session_id_);
+  }
+
+  rpc::RpcController* SetupController(
       rpc::RpcController* controller, CoarseTimePoint deadline = CoarseTimePoint()) {
     if (deadline != CoarseTimePoint()) {
       controller->set_deadline(deadline);
     } else {
-      controller->set_timeout(FLAGS_yb_client_admin_operation_timeout_sec * 1s);
+      controller->set_timeout(timeout_);
     }
     return controller;
   }
 
-  rpc::RpcController* PrepareAdminController(CoarseTimePoint deadline = CoarseTimePoint()) {
+  rpc::RpcController* PrepareController(CoarseTimePoint deadline = CoarseTimePoint()) {
     controller_.Reset();
-    return SetupAdminController(&controller_, deadline);
+    return SetupController(&controller_, deadline);
   }
 
   rpc::RpcController* PrepareHeartbeatController() {
     heartbeat_controller_.Reset();
-    return SetupAdminController(
-        &heartbeat_controller_,
-        CoarseMonoClock::now() + FLAGS_pg_client_heartbeat_interval_ms * 1ms);
+    heartbeat_controller_.set_timeout(FLAGS_pg_client_heartbeat_interval_ms * 1ms - 1s);
+    return &heartbeat_controller_;
   }
 
   std::unique_ptr<tserver::PgClientServiceProxy> proxy_;
@@ -288,6 +446,7 @@ class PgClient::Impl {
   tserver::PgHeartbeatResponsePB heartbeat_resp_;
   std::promise<Result<uint64_t>> create_session_promise_;
   std::array<int, 2> tablet_server_count_cache_;
+  MonoDelta timeout_ = FLAGS_yb_client_admin_operation_timeout_sec * 1s;
 };
 
 PgClient::PgClient() : impl_(new Impl) {
@@ -306,8 +465,17 @@ void PgClient::Shutdown() {
   impl_->Shutdown();
 }
 
-Result<PgTableDescPtr> PgClient::OpenTable(const PgObjectId& table_id) {
-  return impl_->OpenTable(table_id);
+void PgClient::SetTimeout(MonoDelta timeout) {
+  impl_->SetTimeout(timeout);
+}
+
+Result<PgTableDescPtr> PgClient::OpenTable(
+    const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time) {
+  return impl_->OpenTable(table_id, reopen, invalidate_cache_time);
+}
+
+Status PgClient::FinishTransaction(Commit commit, DdlMode ddl_mode) {
+  return impl_->FinishTransaction(commit, ddl_mode);
 }
 
 Result<master::GetNamespaceInfoResponsePB> PgClient::GetDatabaseInfo(uint32_t oid) {
@@ -349,8 +517,24 @@ Result<client::TabletServersInfo> PgClient::ListLiveTabletServers(bool primary_o
   return impl_->ListLiveTabletServers(primary_only);
 }
 
+Status PgClient::SetActiveSubTransaction(
+    SubTransactionId id, tserver::PgPerformOptionsPB* options) {
+  return impl_->SetActiveSubTransaction(id, options);
+}
+
+Status PgClient::RollbackSubTransaction(SubTransactionId id) {
+  return impl_->RollbackSubTransaction(id);
+}
+
 Status PgClient::ValidatePlacement(const tserver::PgValidatePlacementRequestPB* req) {
   return impl_->ValidatePlacement(req);
+}
+
+void PgClient::PerformAsync(
+    tserver::PgPerformOptionsPB* options,
+    PgsqlOps* operations,
+    const PerformCallback& callback) {
+  impl_->PerformAsync(options, operations, callback);
 }
 
 #define YB_PG_CLIENT_SIMPLE_METHOD_DEFINE(r, data, method) \

@@ -64,7 +64,7 @@ void PgDmlWrite::PrepareColumns() {
   // Because DocDB API requires that primary columns must be listed in their created-order,
   // the slots for primary column bind expressions are allocated here in correct order.
   for (auto& col : target_.columns()) {
-    col.AllocPrimaryBindPB(write_req_);
+    col.AllocPrimaryBindPB(write_req_.get());
   }
 }
 
@@ -153,19 +153,24 @@ Status PgDmlWrite::SetWriteTime(const HybridTime& write_time) {
 }
 
 void PgDmlWrite::AllocWriteRequest() {
-  auto wop = AllocWriteOperation();
-  DCHECK(wop);
-  wop->set_is_single_row_txn(is_single_row_txn_);
-  write_req_ = wop->mutable_request();
-  doc_op_ = make_shared<PgDocWriteOp>(pg_session_, &target_, table_id_, std::move(wop));
+  auto write_op = std::make_shared<PgsqlWriteOp>(!is_single_row_txn_);
+
+  write_req_ = std::shared_ptr<PgsqlWriteRequestPB>(write_op, &write_op->write_request());
+  write_req_->set_stmt_type(stmt_type());
+  write_req_->set_client(YQL_CLIENT_PGSQL);
+  write_req_->set_table_id(table_id_.GetYBTableId());
+  write_req_->set_schema_version(target_->schema_version());
+  write_req_->set_stmt_id(reinterpret_cast<uint64_t>(write_req_.get()));
+
+  doc_op_ = std::make_shared<PgDocWriteOp>(pg_session_, &target_, table_id_, std::move(write_op));
 }
 
 PgsqlExpressionPB *PgDmlWrite::AllocColumnBindPB(PgColumn *col) {
-  return col->AllocBindPB(write_req_);
+  return col->AllocBindPB(write_req_.get());
 }
 
 PgsqlExpressionPB *PgDmlWrite::AllocColumnAssignPB(PgColumn *col) {
-  return col->AllocAssignPB(write_req_);
+  return col->AllocAssignPB(write_req_.get());
 }
 
 PgsqlExpressionPB *PgDmlWrite::AllocTargetPB() {

@@ -1492,7 +1492,9 @@ Result<bool> Tablet::HasScanReachedMaxPartitionKey(
     const PgsqlReadRequestPB& pgsql_read_request,
     const string& partition_key,
     size_t row_count) const {
-  if (metadata_->schema()->num_hash_key_columns() > 0) {
+  auto schema = metadata_->schema();
+
+  if (schema->num_hash_key_columns() > 0) {
     uint16_t next_hash_code = PartitionSchema::DecodeMultiColumnHashValue(partition_key);
     // For batched index lookup of ybctids, check if the current partition hash is lesser than
     // upper bound. If it is, we can then avoid paging. Paging of batched index lookup of ybctids
@@ -1506,26 +1508,25 @@ Result<bool> Tablet::HasScanReachedMaxPartitionKey(
           PartitionSchema::DecodeMultiColumnHashValue(pgsql_read_request.upper_bound().key());
       uint16_t partition_hash =
           PartitionSchema::DecodeMultiColumnHashValue(partition_key);
-          return pgsql_read_request.upper_bound().is_inclusive() ?
-            partition_hash > upper_bound_hash :
-            partition_hash >= upper_bound_hash;
+      return pgsql_read_request.upper_bound().is_inclusive() ?
+          partition_hash > upper_bound_hash :
+          partition_hash >= upper_bound_hash;
     }
     if (pgsql_read_request.has_max_hash_code() &&
         next_hash_code > pgsql_read_request.max_hash_code()) {
       return true;
     }
   } else if (pgsql_read_request.has_upper_bound()) {
-    docdb::DocKey partition_doc_key(*metadata_->schema());
+    docdb::DocKey partition_doc_key(*schema);
     VERIFY_RESULT(partition_doc_key.DecodeFrom(
         partition_key, docdb::DocKeyPart::kWholeDocKey, docdb::AllowSpecial::kTrue));
-    docdb::DocKey max_partition_doc_key(*metadata_->schema());
+    docdb::DocKey max_partition_doc_key(*schema);
     VERIFY_RESULT(max_partition_doc_key.DecodeFrom(
         pgsql_read_request.upper_bound().key(), docdb::DocKeyPart::kWholeDocKey,
         docdb::AllowSpecial::kTrue));
 
-    return pgsql_read_request.upper_bound().is_inclusive() ?
-      partition_doc_key.CompareTo(max_partition_doc_key) > 0 :
-      partition_doc_key.CompareTo(max_partition_doc_key) >= 0;
+    auto cmp = partition_doc_key.CompareTo(max_partition_doc_key);
+    return pgsql_read_request.upper_bound().is_inclusive() ? cmp > 0 : cmp >= 0;
   }
 
   return false;

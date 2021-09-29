@@ -14,6 +14,8 @@
 #ifndef YB_TSERVER_TSERVER_FWD_H
 #define YB_TSERVER_TSERVER_FWD_H
 
+#include <functional>
+
 #include "yb/tserver/backup.fwd.h"
 #include "yb/tserver/tserver.fwd.h"
 #include "yb/tserver/tserver_service.fwd.h"
@@ -21,17 +23,19 @@
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
+
+namespace client {
+
+class TransactionPool;
+
+}
+
 namespace tserver {
 
 class Heartbeater;
-class IsTabletServerReadyRequestPB;
-class IsTabletServerReadyResponsePB;
-class ListTabletsForTabletServerResponsePB;
-class ListTabletsForTabletServerResponsePB_Entry;
-class ListTabletsResponsePB;
-class ListTabletsResponsePB_StatusAndSchemaPB;
 class LocalTabletServer;
 class MetricsSnapshotter;
+class PgTableCache;
 class TSTabletManager;
 class TabletPeerLookupIf;
 class TabletServer;
@@ -47,6 +51,8 @@ class TabletServerPathHandlers;
 enum class TabletServerServiceRpcMethodIndexes;
 
 YB_STRONGLY_TYPED_BOOL(AllowSplitTablet);
+
+using TransactionPoolProvider = std::function<client::TransactionPool*()>;
 
 } // namespace tserver
 } // namespace yb

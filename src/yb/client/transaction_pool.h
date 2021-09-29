@@ -56,7 +56,7 @@ class TransactionPool {
 
   // Gets the last transaction returned by the pool. Only for testing, returns nullptr unless the
   // TEST_track_last_transaction gflag is set.
-  YBTransactionPtr GetLastTransaction();
+  YBTransactionPtr TEST_GetLastTransaction();
 
  private:
   class Impl;

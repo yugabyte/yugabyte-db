@@ -80,7 +80,7 @@ void YsqlTransactionDdl::VerifyTransaction(
       [this, rpc_handle, transaction_metadata, complete_callback]
           (Status status, const tserver::GetTransactionStatusResponsePB& resp) {
         auto retained = rpcs_.Unregister(rpc_handle);
-        TransactionReceived(transaction_metadata, complete_callback, status, resp);
+        TransactionReceived(transaction_metadata, complete_callback, std::move(status), resp);
       });
   (**rpc_handle).SendRpc();
 }
@@ -89,9 +89,6 @@ void YsqlTransactionDdl::TransactionReceived(
     const TransactionMetadata& transaction,
     std::function<Status(bool)> complete_callback,
     Status txn_status, const tserver::GetTransactionStatusResponsePB& resp) {
-  YB_LOG_EVERY_N_SECS(INFO, 1) << "TransactionReceived: " << txn_status.ToString()
-                               << " : " << resp.DebugString();
-
   if (!txn_status.ok()) {
     LOG(WARNING) << "Transaction Status attempt (" << transaction.ToString()
                  << ") failed with status " << txn_status;
@@ -111,7 +108,7 @@ void YsqlTransactionDdl::TransactionReceived(
     // #5981: Maybe have the same heuristic as above?
   } else {
     YB_LOG_EVERY_N_SECS(INFO, 1) << "Got Response for " << transaction.ToString()
-                                 << ": " << resp.DebugString();
+                                 << ", resp: " << resp.ShortDebugString();
     bool is_pending = (resp.status_size() == 0);
     for (int i = 0; i < resp.status_size() && !is_pending; ++i) {
       // NOTE: COMMITTED state is also "pending" because we need APPLIED.

@@ -27,6 +27,7 @@ set(PGGATE_SRCS
     pggate.cc
     pggate_thread_local_vars.cc
     pg_client.cc
+    pg_op.cc
     pg_sample.cc
     pg_session.cc
     pg_statement.cc

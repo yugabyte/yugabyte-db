@@ -553,7 +553,7 @@ Messenger::Messenger(const MessengerBuilder &bld)
       scheduler_(&io_thread_pool_.io_service()),
       normal_thread_pool_(new rpc::ThreadPool(name_, bld.queue_limit_, bld.workers_limit_)),
       resolver_(new DnsResolver(&io_thread_pool_.io_service())),
-      rpc_metrics_(new RpcMetrics(bld.metric_entity_)),
+      rpc_metrics_(std::make_shared<RpcMetrics>(bld.metric_entity_)),
       num_connections_to_server_(bld.num_connections_to_server_) {
 #ifndef NDEBUG
   creation_stack_trace_.Collect(/* skip_frames */ 1);

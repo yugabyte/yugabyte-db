@@ -380,7 +380,9 @@ Status TabletServer::RegisterServices() {
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
       FLAGS_svc_queue_length_default,
       std::make_unique<PgClientServiceImpl>(
-          tablet_manager_->client_future(), std::bind(&TabletServer::TransactionPool, this),
+          tablet_manager_->client_future(),
+          clock(),
+          std::bind(&TabletServer::TransactionPool, this),
           metric_entity(),
           &messenger()->scheduler())));
 

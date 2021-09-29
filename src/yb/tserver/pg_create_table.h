@@ -39,6 +39,10 @@ class PgCreateTable {
       client::YBClient* client, const TransactionMetadata* transaction_metadata,
       CoarseTimePoint deadline);
 
+  const PgObjectId& indexed_table_id() const {
+    return indexed_table_id_;
+  }
+
  private:
   CHECKED_STATUS AddColumn(const PgCreateColumnPB& req);
   void EnsureYBbasectidColumnCreated();

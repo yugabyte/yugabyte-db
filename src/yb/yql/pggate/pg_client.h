@@ -23,6 +23,8 @@
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/pg_types.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/common/transaction.h"
 
 #include "yb/master/master_fwd.h"
 
@@ -39,9 +41,18 @@
 namespace yb {
 namespace pggate {
 
+YB_STRONGLY_TYPED_BOOL(DdlMode);
+
 #define YB_PG_CLIENT_SIMPLE_METHODS \
     (AlterDatabase)(AlterTable)(CreateDatabase)(CreateTable)(CreateTablegroup) \
     (DropDatabase)(DropTablegroup)(TruncateTable)
+
+struct PerformResult {
+  Status status;
+  ReadHybridTime catalog_read_time;
+};
+
+using PerformCallback = std::function<void(const PerformResult&)>;
 
 class PgClient {
  public:
@@ -53,7 +64,12 @@ class PgClient {
                        const tserver::TServerSharedObject& tserver_shared_object);
   void Shutdown();
 
-  Result<PgTableDescPtr> OpenTable(const PgObjectId& table_id);
+  void SetTimeout(MonoDelta timeout);
+
+  Result<PgTableDescPtr> OpenTable(
+      const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time);
+
+  CHECKED_STATUS FinishTransaction(Commit commit, DdlMode ddl_mode);
 
   Result<master::GetNamespaceInfoResponsePB> GetDatabaseInfo(PgOid oid);
 
@@ -74,7 +90,16 @@ class PgClient {
 
   Result<client::TabletServersInfo> ListLiveTabletServers(bool primary_only);
 
+  CHECKED_STATUS SetActiveSubTransaction(
+      SubTransactionId id, tserver::PgPerformOptionsPB* options);
+  CHECKED_STATUS RollbackSubTransaction(SubTransactionId id);
+
   CHECKED_STATUS ValidatePlacement(const tserver::PgValidatePlacementRequestPB* req);
+
+  void PerformAsync(
+      tserver::PgPerformOptionsPB* options,
+      PgsqlOps* operations,
+      const PerformCallback& callback);
 
 #define YB_PG_CLIENT_SIMPLE_METHOD_DECLARE(r, data, method) \
   CHECKED_STATUS method(                             \
