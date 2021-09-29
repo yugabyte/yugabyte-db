@@ -49,6 +49,10 @@
 using namespace yb::size_literals;  // NOLINT.
 using namespace std::literals;
 
+static constexpr int32_t kMinBlockStartInterval = 1;
+static constexpr int32_t kDefaultBlockStartInterval = 16;
+static constexpr int32_t kMaxBlockStartInterval = 256;
+
 DEFINE_int32(rocksdb_max_background_flushes, -1, "Number threads to do background flushes.");
 DEFINE_bool(rocksdb_disable_compactions, false, "Disable rocksdb compactions.");
 DEFINE_bool(rocksdb_compaction_measure_io_stats, false, "Measure stats for rocksdb compactions.");
@@ -123,6 +127,9 @@ DEFINE_string(compression_type, "Snappy",
               "On-disk compression type to use in RocksDB."
               "By default, Snappy is used if supported.");
 
+DEFINE_int32(block_restart_interval, kDefaultBlockStartInterval,
+             "Controls the number of keys to look at for computing the diff encoding.");
+
 namespace yb {
 namespace {
 
@@ -148,8 +155,8 @@ Result<rocksdb::CompressionType> GetConfiguredCompressionType(const std::string&
       InvalidArgument, "Configured compression type $0 is not valid.", flag_value);
 }
 
-} // namespace
-} // namespace yb
+}  // namespace
+}  // namespace yb
 
 namespace {
 
@@ -164,7 +171,7 @@ bool CompressionTypeValidator(const char* flagname, const std::string& flag_comp
   return true;
 }
 
-} // namespace
+}  // namespace
 
 __attribute__((unused))
 DEFINE_validator(compression_type, &CompressionTypeValidator);
@@ -282,7 +289,7 @@ rocksdb::ReadOptions PrepareReadOptions(
   return read_opts;
 }
 
-} // namespace
+}  // namespace
 
 BoundedRocksDbIterator CreateRocksDBIterator(
     rocksdb::DB* rocksdb,
@@ -375,7 +382,7 @@ int32_t GetBaseBackgroundCompactions() {
   return FLAGS_rocksdb_base_background_compactions;
 }
 
-// Auto initialize some of the RocksDB flags that are defaulted to -1.
+// Auto initialize some of the RocksDB flags.
 void AutoInitFromRocksDBFlags(rocksdb::Options* options) {
   std::unique_lock<std::mutex> lock(rocksdb_flags_mutex);
 
@@ -387,6 +394,27 @@ void AutoInitFromRocksDBFlags(rocksdb::Options* options) {
 
   options->max_background_compactions = GetMaxBackgroundCompactions();
   options->base_background_compactions = GetBaseBackgroundCompactions();
+}
+
+void AutoInitFromBlockBasedTableOptions(rocksdb::BlockBasedTableOptions* table_options) {
+  std::unique_lock<std::mutex> lock(rocksdb_flags_mutex);
+
+  table_options->block_size = FLAGS_db_block_size_bytes;
+  table_options->filter_block_size = FLAGS_db_filter_block_size_bytes;
+  table_options->index_block_size = FLAGS_db_index_block_size_bytes;
+  table_options->min_keys_per_index_block = FLAGS_db_min_keys_per_index_block;
+
+  if (FLAGS_block_restart_interval < kMinBlockStartInterval) {
+      LOG(INFO) << "FLAGS_block_restart_interval was set to a very low value, overriding "
+                << "block_restart_interval to " << kDefaultBlockStartInterval << ".";
+      table_options->block_restart_interval = kDefaultBlockStartInterval;
+    } else if (FLAGS_block_restart_interval > kMaxBlockStartInterval) {
+      LOG(INFO) << "FLAGS_block_restart_interval was set to a very high value, overriding "
+                << "block_restart_interval to " << kMaxBlockStartInterval << ".";
+      table_options->block_restart_interval = kMaxBlockStartInterval;
+    } else {
+      table_options->block_restart_interval = FLAGS_block_restart_interval;
+    }
 }
 
 class HybridTimeFilteringIterator : public rocksdb::FilteringIterator {
@@ -442,12 +470,18 @@ PriorityThreadPool* GetGlobalPriorityThreadPool() {
   return &priority_thread_pool_for_compactions_and_flushes;
 }
 
-} // namespace
+}  // namespace
 
 rocksdb::Options TEST_AutoInitFromRocksDBFlags() {
   rocksdb::Options options;
   AutoInitFromRocksDBFlags(&options);
   return options;
+}
+
+rocksdb::BlockBasedTableOptions TEST_AutoInitFromRocksDbTableFlags() {
+  rocksdb::BlockBasedTableOptions blockBasedTableOptions;
+  AutoInitFromBlockBasedTableOptions(&blockBasedTableOptions);
+  return blockBasedTableOptions;
 }
 
 int32_t GetGlobalRocksDBPriorityThreadPoolSize() {
@@ -530,10 +564,8 @@ void InitRocksDBOptions(
     table_options.no_block_cache = true;
     table_options.cache_index_and_filter_blocks = false;
   }
-  table_options.block_size = FLAGS_db_block_size_bytes;
-  table_options.filter_block_size = FLAGS_db_filter_block_size_bytes;
-  table_options.index_block_size = FLAGS_db_index_block_size_bytes;
-  table_options.min_keys_per_index_block = FLAGS_db_min_keys_per_index_block;
+
+  AutoInitFromBlockBasedTableOptions(&table_options);
 
   // Set our custom bloom filter that is docdb aware.
   if (FLAGS_use_docdb_aware_bloom_filter) {
@@ -604,6 +636,7 @@ void InitRocksDBOptions(
 
   options->iterator_replacer = std::make_shared<rocksdb::IteratorReplacer>(&WrapIterator);
 }
+
 
 void SetLogPrefix(rocksdb::Options* options, const std::string& log_prefix) {
   options->log_prefix = log_prefix;
@@ -701,7 +734,7 @@ class RocksDBPatcherHelper {
   TrackedEdit add_edit_;
 };
 
-} // namespace
+}   // namespace
 
 class RocksDBPatcher::Impl {
  public:
@@ -811,5 +844,5 @@ Status ForceRocksDBCompact(rocksdb::DB* db) {
   return Status::OK();
 }
 
-}  // namespace docdb
-}  // namespace yb
+}   // namespace docdb
+}   // namespace yb
