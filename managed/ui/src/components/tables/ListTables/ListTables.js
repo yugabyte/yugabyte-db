@@ -238,7 +238,7 @@ class ListTableGrid extends Component {
     }
     const sortedListItems = _.sortBy(listItems, 'tableName');
     const tableListDisplay = (
-      <BootstrapTable data={sortedListItems}>
+      <BootstrapTable data={sortedListItems} pagination className="backup-list-table middle-aligned-table">
         <TableHeaderColumn dataField="tableID" isKey={true} hidden={true} />
         <TableHeaderColumn
           dataField={'tableName'}
