@@ -1122,6 +1122,8 @@ Status Tablet::ApplyRowOperations(
           : *operation->request();
   const KeyValueWriteBatchPB& put_batch = write_request.write_batch();
   if (metrics_) {
+    VLOG(3) << "Applying write batch (write_pairs=" << put_batch.write_pairs().size() << "): "
+            << put_batch.ShortDebugString();
     metrics_->rows_inserted->IncrementBy(put_batch.write_pairs().size());
   }
 
