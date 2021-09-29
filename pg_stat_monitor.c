@@ -1591,7 +1591,7 @@ pg_stat_monitor_reset(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("pg_stat_monitor: must be loaded via shared_preload_libraries")));
 	LWLockAcquire(pgss->lock, LW_EXCLUSIVE);
-	hash_entry_dealloc(-1);
+	hash_entry_dealloc(-1, -1);
 	hash_query_entryies_reset();
 #ifdef BENCHMARK
 	for (int i = STATS_START; i < STATS_END; ++i) {
@@ -2007,7 +2007,7 @@ get_next_wbucket(pgssSharedState *pgss)
 		bucket_id = (tv.tv_sec / PGSM_BUCKET_TIME) % PGSM_MAX_BUCKETS;
 		LWLockAcquire(pgss->lock, LW_EXCLUSIVE);
 		buf = pgss_qbuf[bucket_id];
-		hash_entry_dealloc(bucket_id);
+		hash_entry_dealloc(bucket_id, pgss->current_wbucket);
 		hash_query_entry_dealloc(bucket_id, buf);
 
 		snprintf(file_name, 1024, "%s.%d", PGSM_TEXT_FILE, (int)bucket_id);
