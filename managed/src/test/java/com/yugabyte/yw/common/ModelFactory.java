@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.models.helpers.CommonUtils.nowWithoutMillis;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
@@ -288,6 +290,7 @@ public class ModelFactory {
             .setDescription("alertConfiguration description")
             .setCustomerUUID(customer.getUuid())
             .setTargetType(AlertConfiguration.TargetType.UNIVERSE)
+            .setCreateTime(nowWithoutMillis())
             .setThresholds(
                 ImmutableMap.of(
                     AlertConfiguration.Severity.SEVERE,
