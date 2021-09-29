@@ -555,6 +555,7 @@ void AsyncCreateReplica::HandleResponse(int attempt) {
   }
 
   TransitionToCompleteState();
+  VLOG_WITH_PREFIX(1) << "TS " << permanent_uuid_ << ": complete on tablet " << tablet_id_;
 }
 
 bool AsyncCreateReplica::SendRequest(int attempt) {

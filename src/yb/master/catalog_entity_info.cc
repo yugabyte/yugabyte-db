@@ -115,7 +115,6 @@ class TabletInfo::LeaderChangeReporter {
   TSDescriptor* old_leader_;
 };
 
-
 TabletInfo::TabletInfo(const scoped_refptr<TableInfo>& table, TabletId tablet_id)
     : tablet_id_(std::move(tablet_id)),
       table_(table),
@@ -370,26 +369,6 @@ void TableInfo::AddTablets(const TabletInfos& tablets) {
   }
 }
 
-bool TableInfo::RemoveTablet(const TabletId& tablet_id, InactiveOnly inactive_only) {
-  std::lock_guard<decltype(lock_)> l(lock_);
-  auto it = tablets_.find(tablet_id);
-  if (it == tablets_.end()) {
-    return false;
-  }
-  bool result = false;
-  auto partitions_it = partitions_.find(
-      it->second->metadata().dirty().pb.partition().partition_key_start());
-  if (partitions_it != partitions_.end() && partitions_it->second == it->second) {
-    if (inactive_only) {
-      return false;
-    }
-    partitions_.erase(partitions_it);
-    result = true;
-  }
-  tablets_.erase(it);
-  return result;
-}
-
 void TableInfo::AddTabletUnlocked(const TabletInfoPtr& tablet) {
   const auto& dirty = tablet->metadata().dirty();
   const auto& tablet_meta = dirty.pb;
@@ -424,6 +403,41 @@ void TableInfo::AddTabletUnlocked(const TabletInfoPtr& tablet) {
   // TODO: can we assert that the replaced tablet is not in Running state?
   // May be a little tricky since we don't know whether to look at its committed or
   // uncommitted state.
+}
+
+bool TableInfo::RemoveTablet(const TabletId& tablet_id, InactiveOnly inactive_only) {
+  std::lock_guard<decltype(lock_)> l(lock_);
+  return RemoveTabletUnlocked(tablet_id, inactive_only);
+}
+
+bool TableInfo::RemoveTablets(const TabletInfos& tablets, InactiveOnly inactive_only) {
+  std::lock_guard<decltype(lock_)> l(lock_);
+  bool all_were_removed = true;
+  for (const auto& tablet : tablets) {
+    if (!RemoveTabletUnlocked(tablet->id(), inactive_only)) {
+      all_were_removed = false;
+    }
+  }
+  return all_were_removed;
+}
+
+bool TableInfo::RemoveTabletUnlocked(const TabletId& tablet_id, InactiveOnly inactive_only) {
+  auto it = tablets_.find(tablet_id);
+  if (it == tablets_.end()) {
+    return false;
+  }
+  bool result = false;
+  auto partitions_it = partitions_.find(
+      it->second->metadata().dirty().pb.partition().partition_key_start());
+  if (partitions_it != partitions_.end() && partitions_it->second == it->second) {
+    if (inactive_only) {
+      return false;
+    }
+    partitions_.erase(partitions_it);
+    result = true;
+  }
+  tablets_.erase(it);
+  return result;
 }
 
 void TableInfo::GetTabletsInRange(const GetTableLocationsRequestPB* req, TabletInfos* ret) const {
