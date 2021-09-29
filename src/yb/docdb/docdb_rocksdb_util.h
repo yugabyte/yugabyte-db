@@ -26,6 +26,7 @@
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/options.h"
+#include "yb/rocksdb/table.h"
 
 #include "yb/tablet/tablet_options.h"
 
@@ -107,6 +108,8 @@ std::unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
 CHECKED_STATUS ForceRocksDBCompact(rocksdb::DB* db);
 
 rocksdb::Options TEST_AutoInitFromRocksDBFlags();
+
+rocksdb::BlockBasedTableOptions TEST_AutoInitFromRocksDbTableFlags();
 
 // Initialize the RocksDB 'options'.
 // The 'statistics' object provided by the caller will be used by RocksDB to maintain the stats for
