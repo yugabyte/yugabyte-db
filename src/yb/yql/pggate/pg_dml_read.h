@@ -104,7 +104,7 @@ class PgDmlRead : public PgDml {
   void SetColumnRefs();
 
   // References mutable request from template operation of doc_op_.
-  PgsqlReadRequestPB *read_req_ = nullptr;
+  std::shared_ptr<PgsqlReadRequestPB> read_req_;
 
  private:
   // Indicates that current operation reads concrete row by specifying row's DocKey.
