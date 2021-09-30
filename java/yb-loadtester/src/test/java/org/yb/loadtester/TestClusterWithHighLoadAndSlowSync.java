@@ -19,7 +19,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 import org.yb.minicluster.MiniYBClusterBuilder;
-import org.yb.util.SanitizerUtil;
+import org.yb.util.BuildTypeUtil;
 
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestClusterWithHighLoadAndSlowSync extends TestClusterBase {
@@ -39,7 +39,7 @@ public class TestClusterWithHighLoadAndSlowSync extends TestClusterBase {
   public void startLoadTester() throws Exception {
     // Start the load tester.
     LOG.info("Using contact points for load tester: " + cqlContactPoints);
-    int nThreads =  SanitizerUtil.nonTsanVsTsan(16, 1);
+    int nThreads =  BuildTypeUtil.nonTsanVsTsan(16, 1);
     loadTesterRunnable = new LoadTester(WORKLOAD, cqlContactPoints, nThreads, nThreads);
     loadTesterThread = new Thread(loadTesterRunnable);
     loadTesterThread.start();

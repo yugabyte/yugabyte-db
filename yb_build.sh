@@ -1177,7 +1177,7 @@ fi
 configure_remote_compilation
 
 if "$java_lint"; then
-  log "--lint-java-code specified, only linting java code and then exiting."
+  log "--java-lint specified, only linting java code and then exiting."
   lint_java_code
   exit
 fi
@@ -1247,6 +1247,7 @@ fi
 # shellcheck disable=SC2119
 set_build_root
 
+find_or_download_ysql_snapshots
 find_or_download_thirdparty
 detect_toolchain
 find_make_or_ninja_and_update_cmake_opts

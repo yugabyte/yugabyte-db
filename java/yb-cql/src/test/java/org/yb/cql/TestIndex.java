@@ -33,7 +33,7 @@ import com.datastax.driver.core.exceptions.InvalidQueryException;
 import org.yb.minicluster.BaseMiniClusterTest;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.RocksDBMetrics;
-import org.yb.util.SanitizerUtil;
+import org.yb.util.BuildTypeUtil;
 import org.yb.util.TableProperties;
 
 import static org.yb.AssertionWrappers.assertEquals;
@@ -1444,9 +1444,9 @@ public class TestIndex extends BaseCQLTest {
 
   @Test
   public void testDropDuringWrite() throws Exception {
-    int numTables = SanitizerUtil.nonTsanVsTsan(5, 2);
-    int numTablets = SanitizerUtil.nonTsanVsTsan(6, 3);
-    int numThreads = SanitizerUtil.nonTsanVsTsan(10, 4);
+    int numTables = BuildTypeUtil.nonTsanVsTsan(5, 2);
+    int numTablets = BuildTypeUtil.nonTsanVsTsan(6, 3);
+    int numThreads = BuildTypeUtil.nonTsanVsTsan(10, 4);
     for (int i = 0; i != numTables; ++i) {
       String tableName = "index_test_" + i;
       String indexName = "index_" + i;

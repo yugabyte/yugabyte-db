@@ -25,7 +25,7 @@ import org.yb.YBTestRunner;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.util.MiscUtil;
 import org.yb.util.MiscUtil.ThrowingRunnable;
-import org.yb.util.SanitizerUtil;
+import org.yb.util.BuildTypeUtil;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -49,7 +49,7 @@ public class TestTransactionStatusTable extends BaseCQLTest {
 
   @Test
   public void testCreation() throws Throwable {
-    final int kTablesCount = SanitizerUtil.nonTsanVsTsan(4, 2);
+    final int kTablesCount = BuildTypeUtil.nonTsanVsTsan(4, 2);
     final CountDownLatch startSignal = new CountDownLatch(kTablesCount);
     List<ThrowingRunnable> cmds = new ArrayList<>();
     List<Session> sessions = new ArrayList<>();
@@ -70,7 +70,7 @@ public class TestTransactionStatusTable extends BaseCQLTest {
               new SimpleStatement(String.format(
                   "create table %s (k int primary key, v int) " +
                   "with transactions = {'enabled' : true};", tableName))
-              .setReadTimeoutMillis((int) SanitizerUtil.adjustTimeout(36000)));
+              .setReadTimeoutMillis((int) BuildTypeUtil.adjustTimeout(36000)));
           LOG.info("Created table " + tableName);
           session.execute(String.format("create index on %s (v);", tableName));
           LOG.info("Created index on " + tableName);
@@ -86,7 +86,7 @@ public class TestTransactionStatusTable extends BaseCQLTest {
           LOG.info("Checked selected data from " + tableName);
         });
       }
-      MiscUtil.runInParallel(cmds, startSignal, (int) SanitizerUtil.adjustTimeout(60));
+      MiscUtil.runInParallel(cmds, startSignal, (int) BuildTypeUtil.adjustTimeout(60));
       for (Session s : sessions) {
         s.close();
       }
