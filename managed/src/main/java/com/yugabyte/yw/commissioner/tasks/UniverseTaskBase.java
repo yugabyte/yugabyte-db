@@ -97,6 +97,7 @@ import org.yb.client.ModifyClusterConfigIncrementVersion;
 import org.yb.client.YBClient;
 import play.api.Play;
 import play.libs.Json;
+import org.slf4j.MDC;
 
 @Slf4j
 public abstract class UniverseTaskBase extends AbstractTaskBase {
@@ -325,6 +326,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   @Override
   public void initialize(ITaskParams params) {
     super.initialize(params);
+    if (taskParams().universeUUID != null) {
+      MDC.put("universe-id", taskParams().universeUUID.toString());
+    }
     // Create the threadpool for the subtasks to use.
     createThreadpool();
   }

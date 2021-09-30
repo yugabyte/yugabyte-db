@@ -1,24 +1,15 @@
 // Copyright (c) YugaByte, Inc.
 
 import com.google.inject.Inject;
-import java.util.ArrayList;
-import java.util.List;
 import play.filters.cors.CORSFilter;
 import play.filters.csrf.CSRFFilter;
-import play.http.HttpFilters;
-import play.mvc.EssentialFilter;
+import play.http.DefaultHttpFilters;
 
-public class Filters implements HttpFilters {
+public class Filters extends DefaultHttpFilters {
 
-  @Inject CORSFilter corsFilter;
-
-  @Inject CSRFFilter csrfFilter;
-
-  public List<EssentialFilter> getFilters() {
-    ArrayList<EssentialFilter> filters = new ArrayList<EssentialFilter>();
-    filters.add(csrfFilter.asJava());
-    filters.add(corsFilter.asJava());
-
-    return filters;
+  @Inject
+  public Filters(
+      CSRFFilter csrfFilter, CORSFilter corsFilter, RequestLoggingFilter requestLoggingFilter) {
+    super(csrfFilter, corsFilter, requestLoggingFilter);
   }
 }
