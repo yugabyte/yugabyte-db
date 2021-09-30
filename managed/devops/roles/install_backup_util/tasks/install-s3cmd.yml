@@ -10,6 +10,14 @@
     - set_fact:
         setuptools_package_path: "/usr/local/setuptools-44.1.1"
 
+    - set_fact:
+        prefix: "--prefix /usr"
+      when: ansible_os_family != "Debian"
+
+    - set_fact:
+        prefix: ""
+      when: ansible_os_family == "Debian"
+
     - name: s3cmd | Copy and unarchive setuptools from {{ package_path }}
       unarchive:
         src: "{{ package_path }}/setuptools-44.1.1.tar.gz"
@@ -58,22 +66,22 @@
         remote_src: "{{ is_remote }}"
 
     - name: s3cmd | Install setuptools
-      command: "chdir={{ setuptools_package_path }} python setup.py install"
+      command: "chdir={{ setuptools_package_path }} python setup.py install {{ prefix }}"
 
     - name: s3cmd | Install python magic
-      command: "chdir={{ python_magic_package_path }} python setup.py install"
+      command: "chdir={{ python_magic_package_path }} python setup.py install {{ prefix }}"
 
     - name: s3cmd | Install setuptools_scm
-      command: "chdir={{ setuptools_scm_package_path }} python setup.py install"
+      command: "chdir={{ setuptools_scm_package_path }} python setup.py install {{ prefix }}"
 
     - name: s3cmd | Build dateutil
       command: "chdir={{ python_dateutil_package_path }} python setup.py build"
 
     - name: s3cmd | Install dateutil
-      command: "chdir={{ python_dateutil_package_path }} python setup.py install"
+      command: "chdir={{ python_dateutil_package_path }} python setup.py install {{ prefix }}"
 
     - name: s3cmd | Install s3cmd
-      command: "chdir={{ s3cmd_package_path }} python setup.py install"
+      command: "chdir={{ s3cmd_package_path }} python setup.py install {{ prefix }}"
 
     - name: s3cmd | Create symlinks to {{ bin_path }}
       file:
@@ -81,3 +89,6 @@
         path: "{{ bin_path }}/s3cmd"
         state: link
         force: yes
+      # We don't want to symlink in Oracle Linux 8 because it can't find python dateutils.
+      # Need to use /usr/bin/s3cmd rather than /usr/local/bin/s3cmd linked to s3cmd_package_path
+      when: ansible_distribution != 'OracleLinux' or ansible_distribution_major_version != '8'
