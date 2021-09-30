@@ -39,7 +39,7 @@ import org.yb.BaseYBTest;
 import org.yb.client.YBClient.Condition;
 import org.yb.util.EnvAndSysPropertyUtil;
 import org.yb.util.RandomNumberUtil;
-import org.yb.util.SanitizerUtil;
+import org.yb.util.BuildTypeUtil;
 
 import java.io.*;
 import java.net.*;
@@ -353,7 +353,7 @@ public class TestUtils {
   }
 
   public static void waitFor(Condition condition, long timeoutMs, int sleepTime) throws Exception {
-    timeoutMs = SanitizerUtil.adjustTimeout(timeoutMs);
+    timeoutMs = BuildTypeUtil.adjustTimeout(timeoutMs);
     final long startTimeMs = System.currentTimeMillis();
     while (System.currentTimeMillis() - startTimeMs < timeoutMs && !condition.get()) {
       Thread.sleep(sleepTime);

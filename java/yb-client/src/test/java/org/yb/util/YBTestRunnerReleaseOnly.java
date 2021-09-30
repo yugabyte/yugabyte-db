@@ -14,17 +14,23 @@
  */
 package org.yb.util;
 
-import org.yb.YBParameterizedTestRunner;
+import org.junit.runners.model.InitializationError;
+import org.yb.YBTestRunner;
 
-public class YBParameterizedTestRunnerNonTsanOnly extends YBParameterizedTestRunner {
+/**
+ * Think twice if you really want to limit your tests this much!
+ * <p>
+ * Basically should only be used for using older YSQL snapshot, and should be removed after #10116.
+ */
+public class YBTestRunnerReleaseOnly extends YBTestRunner {
 
-  public YBParameterizedTestRunnerNonTsanOnly(Class<?> klass) throws Throwable {
+  public YBTestRunnerReleaseOnly(Class<?> klass) throws InitializationError {
     super(klass);
   }
 
   @Override
   public boolean shouldRunTests() {
-    return !BuildTypeUtil.isTSAN();
+    return BuildTypeUtil.isRelease();
   }
 
 }

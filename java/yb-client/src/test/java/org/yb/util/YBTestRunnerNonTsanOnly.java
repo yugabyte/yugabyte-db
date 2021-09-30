@@ -25,7 +25,7 @@ public class YBTestRunnerNonTsanOnly extends YBTestRunner {
 
   @Override
   public boolean shouldRunTests() {
-    return !SanitizerUtil.isTSAN();
+    return !BuildTypeUtil.isTSAN();
   }
 
 }
