@@ -146,7 +146,7 @@ hash_entry_alloc(pgssSharedState *pgss, pgssHashKey *key, int encoding)
 	entry = (pgssEntry *) hash_search(pgss_hash, key, HASH_ENTER_NULL, &found);
 	if (!found)
 	{
-		pgss->bucket_entry[pgss->current_wbucket]++;
+		pgss->bucket_entry[pg_atomic_read_u64(&pgss->current_wbucket)]++;
 		/* New entry, initialize it */
 		/* reset the statistics */
 		memset(&entry->counters, 0, sizeof(Counters));
@@ -236,22 +236,6 @@ hash_entry_dealloc(int new_bucket_id, int old_bucket_id)
 	pgssEntry		*entry = NULL;
 	List 			*pending_entries = NIL;
 	ListCell		*pending_entry;
-	
-	/*
-	 * During transition to a new bucket id, a rare but possible race
-	 * condition may happen while reading pgss->current_wbucket. If a
-	 * different thread/process updates pgss->current_wbucket before this
-	 * function is called, it may happen that old_bucket_id == new_bucket_id.
-	 * If that is the case, we adjust the old bucket id here instead of using
-	 * a lock in order to avoid the overhead.
-	 */
-	if (old_bucket_id != -1 && old_bucket_id == new_bucket_id)
-	{
-		if (old_bucket_id == 0)
-			old_bucket_id = PGSM_MAX_BUCKETS - 1;
-		else
-			old_bucket_id--;
-	}
 
 	hash_seq_init(&hash_seq, pgss_hash);
 	while ((entry = hash_seq_search(&hash_seq)) != NULL)
@@ -344,7 +328,7 @@ hash_entry_reset()
 	{
 		hash_search(pgss_hash, &entry->key, HASH_REMOVE, NULL);
 	}
-	pgss->current_wbucket = 0;
+	pg_atomic_write_u64(&pgss->current_wbucket, 0);
 	LWLockRelease(pgss->lock);
 }
 

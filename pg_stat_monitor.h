@@ -301,16 +301,16 @@ typedef struct pgssEntry
  */
 typedef struct pgssSharedState
 {
-	LWLock			*lock;				/* protects hashtable search/modification */
-	double			cur_median_usage;	/* current median usage in hashtable */
-	slock_t			mutex;				/* protects following fields only: */
-	Size			extent;				/* current extent of query file */
-	int64			n_writers;			/* number of active writers to query file */
-	uint64			current_wbucket;
-	uint64			prev_bucket_usec;
-	uint64			bucket_entry[MAX_BUCKETS];
-	int64			query_buf_size_bucket;
-	char			bucket_start_time[MAX_BUCKETS][60];   	/* start time of the bucket */
+	LWLock				*lock;				/* protects hashtable search/modification */
+	double				cur_median_usage;	/* current median usage in hashtable */
+	slock_t				mutex;				/* protects following fields only: */
+	Size				extent;				/* current extent of query file */
+	int64				n_writers;			/* number of active writers to query file */
+	pg_atomic_uint64	current_wbucket;
+	pg_atomic_uint64	prev_bucket_usec;
+	uint64				bucket_entry[MAX_BUCKETS];
+	int64				query_buf_size_bucket;
+	char				bucket_start_time[MAX_BUCKETS][60];   	/* start time of the bucket */
 } pgssSharedState;
 
 #define ResetSharedState(x) \
@@ -318,8 +318,8 @@ do { \
 		x->cur_median_usage = ASSUMED_MEDIAN_INIT; \
 		x->cur_median_usage = ASSUMED_MEDIAN_INIT; \
 		x->n_writers = 0; \
-		x->current_wbucket = 0; \
-		x->prev_bucket_usec = 0; \
+		pg_atomic_init_u64(&x->current_wbucket, 0); \
+		pg_atomic_init_u64(&x->prev_bucket_usec, 0); \
 		memset(&x->bucket_entry, 0, MAX_BUCKETS * sizeof(uint64)); \
 } while(0)
 
