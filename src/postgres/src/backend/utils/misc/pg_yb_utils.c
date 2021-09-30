@@ -1591,6 +1591,42 @@ yb_hash_code(PG_FUNCTION_ARGS)
 	PG_RETURN_UINT16(hashed_val);
 }
 
+Datum
+yb_table_properties(PG_FUNCTION_ARGS)
+{
+	Oid			relid = PG_GETARG_OID(0);
+	TupleDesc	tupdesc;
+	Datum		values[3];
+	bool		nulls[3];
+	YBCPgTableDesc ybc_tabledesc = NULL;
+	YBCPgTableProperties yb_table_properties;
+
+	HandleYBStatus(YBCPgGetTableDesc(MyDatabaseId, relid, &ybc_tabledesc));
+	HandleYBStatus(YBCPgGetTableProperties(ybc_tabledesc, &yb_table_properties));
+
+	tupdesc = CreateTemplateTupleDesc(3, false);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 1,
+					   "num_tablets", INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 2,
+					   "num_hash_key_columns", INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 3,
+					   "is_colocated", BOOLOID, -1, 0);
+	BlessTupleDesc(tupdesc);
+
+	values[0] = Int64GetDatum(yb_table_properties.num_tablets);
+	values[1] = Int64GetDatum(yb_table_properties.num_hash_key_columns);
+	values[2] = BoolGetDatum(yb_table_properties.is_colocated);
+	memset(nulls, 0, sizeof(nulls));
+
+	return HeapTupleGetDatum(heap_form_tuple(tupdesc, values, nulls));
+}
+
+Datum
+yb_is_database_colocated(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_BOOL(MyDatabaseColocated);
+}
+
 /*
  * This function serves mostly as a helper for YSQL migration to introduce
  * pg_yb_catalog_version table without breaking version continuity.
