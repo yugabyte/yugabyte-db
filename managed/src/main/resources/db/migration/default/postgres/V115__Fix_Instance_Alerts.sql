@@ -36,7 +36,7 @@ $$
            configuration_uuid in (select uuid from alert_configuration
              where template = alertTemplate and target_type = 'PLATFORM')
       LOOP
-        newQuery := replace(queryTemplate, '__customerUuid__', customerRecord.uuuid::text);
+        newQuery := replace(queryTemplate, '__customerUuid__', customerRecord.uuid::text);
         update alert_definition set query = newQuery, config_written = false where uuid = definitionRecord.uuid;
       END LOOP;
     END LOOP;
