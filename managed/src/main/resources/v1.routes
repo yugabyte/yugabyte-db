@@ -358,3 +358,7 @@ POST   /settings/ha/internal/upload                                            c
 POST   /customers/:cUUID/universes/:uniUUID/schedule_script                    com.yugabyte.yw.controllers.ScheduleScriptController.externalScriptSchedule(cUUID: java.util.UUID, uniUUID : java.util.UUID)
 PUT    /customers/:cUUID/universes/:uniUUID/stop_scheduled_script              com.yugabyte.yw.controllers.ScheduleScriptController.stopScheduledScript(cUUID: java.util.UUID, uniUUID : java.util.UUID)
 PUT    /customers/:cUUID/universes/:uniUUID/update_scheduled_script            com.yugabyte.yw.controllers.ScheduleScriptController.updateScheduledScript(cUUID: java.util.UUID, uniUUID : java.util.UUID)
+
+# Support Bundle API
+POST   /customers/:cUUID/universes/:uniUUID/support_bundle                     com.yugabyte.yw.controllers.SupportBundleController.createSupportBundle(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+GET    /customers/:cUUID/universes/:uniUUID/support_bundle/:sbUUID             com.yugabyte.yw.controllers.SupportBundleController.getSupportBundle(cUUID: java.util.UUID, uniUUID: java.util.UUID, sbUUID: java.util.UUID)

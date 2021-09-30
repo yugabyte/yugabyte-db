@@ -284,4 +284,8 @@ public class NodeDetails {
   public UUID getAzUuid() {
     return azUuid;
   }
+
+  public String getNodeName() {
+    return nodeName;
+  }
 }
