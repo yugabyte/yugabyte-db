@@ -3,7 +3,10 @@
 package com.yugabyte.yw.common;
 
 import io.ebean.Ebean;
+import static com.yugabyte.yw.models.CustomerTask.TaskType;
+
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -12,6 +15,8 @@ import javax.inject.Singleton;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import java.util.List;
+import java.util.UUID;
 
 @Singleton
 public class CustomerTaskManager {
@@ -33,6 +38,32 @@ public class CustomerTaskManager {
       taskInfo.save();
       // Mark customer task as completed
       customerTask.markAsCompleted();
+
+      if (customerTask.getTarget().equals(TargetType.Backup)
+          && customerTask.getType().equals(TaskType.Create)) {
+        // Make transition state false for inProgress backups
+        UUID taskUUID = taskInfo.getTaskUUID();
+        List<Backup> backupList = Backup.fetchAllBackupsByTaskUUID(taskUUID);
+        backupList
+            .stream()
+            .filter(backup -> backup.state.equals(Backup.BackupState.InProgress))
+            .forEach(backup -> backup.transitionState(Backup.BackupState.Failed));
+        // Create the update lambda.
+        Universe.UniverseUpdater updater =
+            universe -> {
+              UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+              if (universeDetails.backupInProgress) {
+                universeDetails.backupInProgress = false;
+              }
+              if (universeDetails.updateInProgress) {
+                universeDetails.updateInProgress = false;
+              }
+              universe.setUniverseDetails(universeDetails);
+            };
+
+        Universe.saveDetails(customerTask.getTargetUUID(), updater, false);
+        LOG.debug("Unlocked universe {} for backups.", customerTask.getTargetUUID());
+      }
 
       // Unlock the universe for future operations
       if (customerTask.getTarget().equals(TargetType.Universe)) {
