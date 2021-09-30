@@ -10,23 +10,17 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-package org.yb.pgsql;
 
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.yb.util.BuildTypeUtil;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+package org.yb.minicluster;
 
-// Runs the pg_regress test suite on YB code.
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
-public class TestPgRegressGin extends BasePgSQLTest {
-  @Override
-  public int getTestMethodTimeoutSec() {
-    return BuildTypeUtil.nonSanitizerVsSanitizer(360, 450);
-  }
+public enum YsqlSnapshotVersion {
+  /**
+   * Earliest supported snapshot (v2.0.9).
+   * <p>
+   * Note that because of #10116 this will ONLY work in release build!
+   */
+  EARLIEST,
 
-  @Test
-  public void testPgRegressGin() throws Exception {
-    runPgRegressTest("yb_gin_schedule");
-  }
+  /** Latest (current) snapshot. */
+  LATEST
 }

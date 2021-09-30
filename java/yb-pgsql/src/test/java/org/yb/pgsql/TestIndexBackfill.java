@@ -34,7 +34,7 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.yb.util.SanitizerUtil;
+import org.yb.util.BuildTypeUtil;
 import org.yb.util.ThreadUtil;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
@@ -42,7 +42,7 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
 public class TestIndexBackfill extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestIndexBackfill.class);
 
-  private static final int AWAIT_TIMEOUT_SEC = (int) SanitizerUtil.adjustTimeout(80);
+  private static final int AWAIT_TIMEOUT_SEC = (int) BuildTypeUtil.adjustTimeout(80);
 
   @Override
   protected Map<String, String> getMasterFlags() {

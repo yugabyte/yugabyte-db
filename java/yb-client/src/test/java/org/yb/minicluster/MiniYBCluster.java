@@ -76,6 +76,8 @@ public class MiniYBCluster implements AutoCloseable {
   private static final int[] TSERVER_CLIENT_FIXED_API_PORTS = new int[] { CQL_PORT,
       REDIS_PORT};
 
+  private static final String YSQL_SNAPSHOTS_DIR = "/opt/yb-build/ysql-sys-catalog-snapshots";
+
   // How often to push node list refresh events to CQL clients (in seconds)
   public static int CQL_NODE_LIST_REFRESH_SECS = 5;
 
@@ -94,7 +96,7 @@ public class MiniYBCluster implements AutoCloseable {
   private static final int YB_CLIENT_ADMIN_OPERATION_TIMEOUT_SEC = 120;
 
   // Timeout for waiting process to terminate.
-  private static final long PROCESS_TERMINATE_TIMEOUT_MS = SanitizerUtil.adjustTimeout(180 * 1000);
+  private static final long PROCESS_TERMINATE_TIMEOUT_MS = BuildTypeUtil.adjustTimeout(180 * 1000);
 
   // List of threads that print log messages.
   private final List<LogPrinter> logPrinters = new ArrayList<>();
@@ -170,9 +172,9 @@ public class MiniYBCluster implements AutoCloseable {
     this.certFile = certFile;
     this.clientCertFile = clientCertFile;
     this.clientKeyFile = clientKeyFile;
-    if (clusterParameters.pgTransactionsEnabled && !clusterParameters.startPgSqlProxy) {
+    if (clusterParameters.pgTransactionsEnabled && !clusterParameters.startYsqlProxy) {
       throw new AssertionError(
-          "Attempting to enable PostgreSQL transactions without enabling PostgreSQL API");
+          "Attempting to enable YSQL transactions without enabling YSQL API");
     }
     this.clientHost = clientHost;
     this.clientPort = clientPort;
@@ -231,7 +233,7 @@ public class MiniYBCluster implements AutoCloseable {
       commonFlags.add("--yb_test_name=" + testClassName);
     }
 
-    final long memoryLimit = SanitizerUtil.nonTsanVsTsan(
+    final long memoryLimit = BuildTypeUtil.nonTsanVsTsan(
         DAEMON_MEMORY_LIMIT_HARD_BYTES_NON_TSAN,
         DAEMON_MEMORY_LIMIT_HARD_BYTES_TSAN);
     commonFlags.add("--memory_limit_hard_bytes=" + memoryLimit);
@@ -254,11 +256,7 @@ public class MiniYBCluster implements AutoCloseable {
       commonFlags.add("--replication_factor=" + clusterParameters.replicationFactor);
     }
 
-    if (clusterParameters.startPgSqlProxy) {
-      commonFlags.add("--enable_ysql=true");
-    } else {
-      commonFlags.add("--enable_ysql=false");
-    }
+    commonFlags.add("--enable_ysql=" + clusterParameters.startYsqlProxy);
 
     return commonFlags;
   }
@@ -449,12 +447,35 @@ public class MiniYBCluster implements AutoCloseable {
                (envVarValue == null ? "not set" : envVarValue));
     }
     LOG.info("Starting {} masters...", numMasters);
+
+    if (clusterParameters.startYsqlProxy) {
+      applyYsqlSnapshot(clusterParameters.ysqlSnapshotVersion, masterFlags);
+    }
+
     startMasters(numMasters, baseDirPath, masterFlags);
 
     startSyncClientAndWaitForMasterLeader();
 
     LOG.info("Starting {} tablet servers...", numTservers);
     startTabletServers(numTservers, commonTserverFlags, perTserverFlags, tserverEnvVars);
+  }
+
+  private void applyYsqlSnapshot(YsqlSnapshotVersion ver, Map<String, String> masterFlags) {
+    switch (ver) {
+      case EARLIEST:
+        String filename = "initial_sys_catalog_snapshot_2.0.9.0";
+        File file = new File(YSQL_SNAPSHOTS_DIR, filename);
+        Preconditions.checkState(file.exists(),
+            "Snapshot %s is not found in %s, should've been downloaded by the build script!",
+            filename, YSQL_SNAPSHOTS_DIR);
+        masterFlags.put("initial_sys_catalog_snapshot_path", file.getAbsolutePath());
+        break;
+      case LATEST:
+        // NOOP, use default path
+        break;
+      default:
+        Preconditions.checkArgument(false, "Unknown snapshot version: %s", ver);
+    }
   }
 
   private void startTabletServers(
@@ -562,7 +583,7 @@ public class MiniYBCluster implements AutoCloseable {
         "--TEST_process_info_dir=" + getProcessInfoDir());
     addFlagsFromEnv(tsCmdLine, "YB_EXTRA_TSERVER_FLAGS");
 
-    if (clusterParameters.startPgSqlProxy) {
+    if (clusterParameters.startYsqlProxy) {
       tsCmdLine.addAll(Lists.newArrayList(
           "--pgsql_proxy_bind_address=" + tserverBindAddress + ":" + postgresPort
       ));
@@ -729,7 +750,7 @@ public class MiniYBCluster implements AutoCloseable {
       if (extraMasterFlags != null) {
         masterCmdLine.addAll(CommandUtil.flagsToArgs(extraMasterFlags));
       }
-      if (clusterParameters.startPgSqlProxy) {
+      if (clusterParameters.startYsqlProxy) {
         masterCmdLine.add("--master_auto_run_initdb");
       }
       final HostAndPort masterHostAndPort = HostAndPort.fromParts(masterBindAddress, masterRpcPort);

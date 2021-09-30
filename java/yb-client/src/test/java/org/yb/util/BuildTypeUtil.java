@@ -19,11 +19,11 @@ import org.yb.client.TestUtils;
 import java.util.Map;
 
 /**
- * Utility functions for ASAN/TSAN builds.
+ * Utility functions for various build types.
  */
-public final class SanitizerUtil {
+public final class BuildTypeUtil {
 
-  private SanitizerUtil() {
+  private BuildTypeUtil() {
   }
 
   public static boolean isTSAN() {
@@ -32,6 +32,10 @@ public final class SanitizerUtil {
 
   public static boolean isASAN() {
     return TestUtils.getBuildType().equals("asan");
+  }
+
+  public static boolean isRelease() {
+    return TestUtils.getBuildType().equals("release");
   }
 
   public static String getSanitizerOptionsEnvVarName() {

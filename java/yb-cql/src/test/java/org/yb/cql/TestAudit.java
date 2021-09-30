@@ -39,7 +39,7 @@ import org.yb.YBTestRunner;
 import org.yb.client.TestUtils;
 import org.yb.minicluster.LogErrorListener;
 import org.yb.minicluster.MiniYBDaemon;
-import org.yb.util.SanitizerUtil;
+import org.yb.util.BuildTypeUtil;
 
 import com.datastax.driver.core.BatchStatement;
 import com.datastax.driver.core.BoundStatement;
@@ -757,7 +757,7 @@ public class TestAudit extends BaseCQLTest {
 
     /** Retrieve the audit records added to the log since last call, discarding them. */
     public List<AuditLogEntry> popAll() throws Exception {
-      Thread.sleep(SanitizerUtil.adjustTimeout(200));
+      Thread.sleep(BuildTypeUtil.adjustTimeout(200));
       synchronized (storage) {
         List<AuditLogEntry> result = new ArrayList<>(storage);
         storage.clear();

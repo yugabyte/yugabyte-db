@@ -44,8 +44,9 @@ public class MiniYBClusterParameters {
   public boolean useIpWithCertificate = DEFAULT_USE_IP_WITH_CERTIFICATE;
   public int defaultTimeoutMs = 50000;
   public int replicationFactor = -1;
-  public boolean startPgSqlProxy = false;
+  public boolean startYsqlProxy = false;
   public boolean pgTransactionsEnabled = false;
+  public YsqlSnapshotVersion ysqlSnapshotVersion = YsqlSnapshotVersion.LATEST;
   public Optional<Integer> tserverHeartbeatTimeoutMsOpt = Optional.empty();
   public Optional<Integer> yqlSystemPartitionsVtableRefreshSecsOpt = Optional.empty();
 

@@ -38,7 +38,7 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.yb.util.SanitizerUtil;
+import org.yb.util.BuildTypeUtil;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
 /**
@@ -384,7 +384,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       runInvalidQuery(stmt, ddlSql, "DDL failed as requested");
 
       // Letting CatalogManagerBgTasks do the cleanup.
-      Thread.sleep(SanitizerUtil.adjustTimeout(5000));
+      Thread.sleep(BuildTypeUtil.adjustTimeout(5000));
 
       stmt.execute(ddlSql);
 
