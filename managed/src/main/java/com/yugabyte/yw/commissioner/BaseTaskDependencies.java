@@ -11,6 +11,7 @@ package com.yugabyte.yw.commissioner;
 
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.metrics.MetricService;

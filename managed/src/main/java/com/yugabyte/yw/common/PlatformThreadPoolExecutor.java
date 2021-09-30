@@ -8,7 +8,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-package com.yugabyte.yw.commissioner;
+package com.yugabyte.yw.common;
 
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Executors;
@@ -20,13 +20,14 @@ import com.google.common.util.concurrent.ForwardingBlockingQueue;
 
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
+import com.yugabyte.yw.common.logging.MDCAwareThreadPoolExecutor;
 
 /**
  * A subclass of ThreadPoolExecutor that adjusts its pool size depending on the number of tasks
  * before the tasks are queued when the max pool size is reached.
  */
 @Slf4j
-class PlatformThreadPoolExecutor extends ThreadPoolExecutor {
+class PlatformThreadPoolExecutor extends MDCAwareThreadPoolExecutor {
 
   PlatformThreadPoolExecutor(
       int corePoolSize,

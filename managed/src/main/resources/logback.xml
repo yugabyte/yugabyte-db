@@ -18,6 +18,17 @@
       <pattern>%date [%level] from %logger{0} in %thread - %message%n%xException</pattern>
     </encoder>
 
+    <if condition='property("cloud").equals("true")'>
+      <then>
+        <filter class="ch.qos.logback.core.filter.EvaluatorFilter">
+          <evaluator class="ch.qos.logback.classic.boolex.OnMarkerEvaluator">
+              <marker>consoleOnly</marker>
+          </evaluator>
+          <onMatch>DENY</onMatch>
+        </filter>
+      </then>
+    </if>
+
     <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
       <level>${APPLICATION_LOG_LEVEL:-DEBUG}</level>
     </filter>
@@ -48,6 +59,13 @@
             </pattern>
           </providers>
         </encoder>
+
+        <filter class="ch.qos.logback.core.filter.EvaluatorFilter">
+          <evaluator class="ch.qos.logback.classic.boolex.OnMarkerEvaluator">
+              <marker>fileOnly</marker>
+          </evaluator>
+          <onMatch>DENY</onMatch>
+        </filter>
       </then>
       <else>
         <encoder>
