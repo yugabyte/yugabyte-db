@@ -142,6 +142,7 @@ else
   unset preset_build_root
 fi
 
+find_or_download_ysql_snapshots
 find_or_download_thirdparty
 log_thirdparty_and_toolchain_details
 detect_toolchain

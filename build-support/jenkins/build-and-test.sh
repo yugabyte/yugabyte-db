@@ -265,6 +265,7 @@ export BUILD_ROOT
 
 "$YB_SRC_ROOT/yb_build.sh" --cmake-unit-tests
 
+find_or_download_ysql_snapshots
 find_or_download_thirdparty
 validate_thirdparty_dir
 detect_toolchain

@@ -14,8 +14,8 @@ package org.yb.pgsql;
 
 import static com.google.common.base.Preconditions.*;
 import static org.yb.AssertionWrappers.*;
-import static org.yb.util.SanitizerUtil.isASAN;
-import static org.yb.util.SanitizerUtil.isTSAN;
+import static org.yb.util.BuildTypeUtil.isASAN;
+import static org.yb.util.BuildTypeUtil.isTSAN;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
@@ -42,7 +42,7 @@ import org.yb.minicluster.*;
 import org.yb.minicluster.Metrics.YSQLStat;
 import org.yb.util.EnvAndSysPropertyUtil;
 import org.yb.util.MiscUtil.ThrowingCallable;
-import org.yb.util.SanitizerUtil;
+import org.yb.util.BuildTypeUtil;
 import org.yb.util.YBBackupUtil;
 import org.yb.util.YBBackupException;
 import org.yb.master.Master;
@@ -142,9 +142,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     if (TestUtils.isReleaseBuild()) {
       return 10000;
     } else if (TestUtils.IS_LINUX) {
-      if (SanitizerUtil.isASAN()) {
+      if (BuildTypeUtil.isASAN()) {
         return 20000;
-      } else if (SanitizerUtil.isTSAN()) {
+      } else if (BuildTypeUtil.isTSAN()) {
         return 45000;
       } else {
         // Linux debug builds.
@@ -177,9 +177,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     if (TestUtils.isReleaseBuild()) {
       return releaseRuntime;
     } else if (TestUtils.IS_LINUX) {
-      if (SanitizerUtil.isASAN()) {
+      if (BuildTypeUtil.isASAN()) {
         return asanRuntime;
-      } else if (SanitizerUtil.isTSAN()) {
+      } else if (BuildTypeUtil.isTSAN()) {
         return tsanRuntime;
       } else {
         // Linux debug builds.
@@ -232,7 +232,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected Map<String, String> getMasterFlags() {
     Map<String, String> flagMap = super.getMasterFlags();
     flagMap.put("client_read_write_timeout_ms",
-        String.valueOf(SanitizerUtil.adjustTimeout(120000)));
+        String.valueOf(BuildTypeUtil.adjustTimeout(120000)));
     flagMap.put("memory_limit_hard_bytes", String.valueOf(2L * 1024 * 1024 * 1024));
     return flagMap;
   }
@@ -250,7 +250,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
-    builder.enablePostgres(true);
+    builder.enableYsql(true);
   }
 
   @Before
@@ -368,6 +368,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     cleanUpCustomDatabases();
 
     cleanUpCustomEntities();
+
+    if (isClusterNeedsRecreation()) {
+      pgInitialized = false;
+    }
   }
 
   /**
@@ -447,6 +451,16 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       destroyMiniCluster();
       miniCluster = null;
     }
+  }
+
+  protected void recreateWithYsqlVersion(YsqlSnapshotVersion version) throws Exception {
+    destroyMiniCluster();
+    pgInitialized = false;
+    markClusterNeedsRecreation();
+    createMiniCluster((builder) -> {
+      builder.ysqlSnapshotVersion(version);
+    });
+    initPostgresBefore();
   }
 
   /**

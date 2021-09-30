@@ -22,7 +22,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.util.RandomNumberUtil;
-import org.yb.util.SanitizerUtil;
+import org.yb.util.BuildTypeUtil;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
 import java.sql.Array;
@@ -485,7 +485,7 @@ public class TestPgTransactions extends BasePgSQLTest {
 
       int numFirstWinners = 0;
       int numSecondWinners = 0;
-      final int totalIterations = SanitizerUtil.nonTsanVsTsan(300, 100);
+      final int totalIterations = BuildTypeUtil.nonTsanVsTsan(300, 100);
       for (int i = 1; i <= totalIterations; ++i) {
         LOG.info("Starting iteration: i=" + i);
         if (RandomUtils.nextBoolean()) {

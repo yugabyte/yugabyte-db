@@ -27,7 +27,7 @@ import com.datastax.driver.core.ResultSetFuture;
 import com.datastax.driver.core.Row;
 
 import org.yb.YBTestRunner;
-import org.yb.util.SanitizerUtil;
+import org.yb.util.BuildTypeUtil;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -563,8 +563,8 @@ public class TestTransaction extends BaseCQLTest {
       LOG.info("Initial restarts = {}, retries = {}", initialRestarts, initialRetries);
 
       // Keep reading until we have the desired number of restart requests and retries.
-      final int TOTAL_RESTARTS = SanitizerUtil.nonTsanVsTsan(10, 5);
-      final int TOTAL_RETRIES = SanitizerUtil.nonTsanVsTsan(10, 5);
+      final int TOTAL_RESTARTS = BuildTypeUtil.nonTsanVsTsan(10, 5);
+      final int TOTAL_RETRIES = BuildTypeUtil.nonTsanVsTsan(10, 5);
       int i = 0;
       while (true) {
         i++;
