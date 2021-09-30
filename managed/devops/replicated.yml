@@ -374,7 +374,6 @@ components:
               }
 
               yb {
-                cloud.enabled = false
                 devops.home = /opt/yugabyte/devops
                 metrics.host="{{repl HostPrivateIpAddress "prometheus" "prom/prometheus" }}"
                 storage.path = /opt/yugabyte/yugaware/data
