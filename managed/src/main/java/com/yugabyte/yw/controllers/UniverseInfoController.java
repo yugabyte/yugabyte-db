@@ -23,6 +23,7 @@ import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HealthCheck.Details;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.Universe;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
@@ -31,6 +32,8 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.InputStream;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -212,24 +215,27 @@ public class UniverseInfoController extends AuthenticatedController {
       produces = "application/x-compressed")
   public CompletionStage<Result> downloadNodeLogs(
       UUID customerUUID, UUID universeUUID, String nodeName) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    log.debug("Retrieving logs for " + nodeName);
+    NodeDetails node =
+        universe
+            .maybeGetNode(nodeName)
+            .orElseThrow(() -> new PlatformServiceException(NOT_FOUND, nodeName));
     return CompletableFuture.supplyAsync(
         () -> {
+          String storagePath =
+              runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path");
+          String tarFileName = node.cloudInfo.private_ip + "-logs.tar.gz";
+          Path targetFile = Paths.get(storagePath + "/" + tarFileName);
           File file =
-              universeInfoHandler.downloadNodeLogs(customerUUID, universeUUID, nodeName).toFile();
-          InputStream is = getInputStreamOrFail(file);
+              universeInfoHandler.downloadNodeLogs(customer, universe, node, targetFile).toFile();
+          InputStream is = Util.getInputStreamOrFail(file);
           file.delete(); // TODO: should this be done in finally?
           // return the file to client
           response().setHeader("Content-Disposition", "attachment; filename=" + file.getName());
           return ok(is).as("application/x-compressed");
         },
         ec.current());
-  }
-
-  private static InputStream getInputStreamOrFail(File file) {
-    try {
-      return new FileInputStream(file);
-    } catch (FileNotFoundException e) {
-      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
-    }
   }
 }
