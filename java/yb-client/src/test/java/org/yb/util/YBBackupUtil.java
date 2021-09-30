@@ -164,7 +164,7 @@ public final class YBBackupUtil {
 
     processCommand.addAll(Arrays.asList(args));
     final String output = runProcess(processCommand, defaultYbBackupTimeoutInSeconds);
-    LOG.info("yb_backup output: " + output);
+    LOG.info("yb-admin output: " + output);
 
     return output;
   }

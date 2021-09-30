@@ -64,13 +64,7 @@
 #include "fe_utils/connect.h"
 #include "fe_utils/string_utils.h"
 
-#include "yb/yql/pggate/ybc_pggate.h"
-#include "yb/yql/pggate/ybc_pggate_tool.h"
-
-/* Temporary disable YB calls in ASAN build due to linking issues. */
-#ifdef ADDRESS_SANITIZER
-#define DISABLE_YB_EXTENSIONS
-#endif
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 typedef struct
 {
@@ -296,14 +290,9 @@ static char *get_synchronized_snapshot(Archive *fout);
 static void setupDumpWorker(Archive *AHX);
 static TableInfo *getRootTableInfo(TableInfo *tbinfo);
 
-static void HandleYBStatus(YBCStatus status) {
-	if (status) {
-		/* Copy the message to the current memory context and free the YBCStatus. */
-		const char* msg_buf = DupYBStatusMessage(status, false);
-		YBCFreeStatus(status);
-		exit_horribly(NULL, "%s\n", msg_buf);
-	}
-}
+static void getYbTableProperties(Archive *fout, YBCPgTableProperties *properties,
+					   TableInfo *tbinfo);
+static bool isDatabaseColocated(Archive *fout);
 
 int
 main(int argc, char **argv)
@@ -481,7 +470,7 @@ main(int argc, char **argv)
 				numWorkers = atoi(optarg);
 				break;
 
-			case 'm':			/* YB master hosts */
+			case 'm':			/* DEPRECATED and NOT USED: YB master hosts */
 				dopt.master_hosts = pg_strdup(optarg);
 				break;
 
@@ -721,22 +710,11 @@ main(int argc, char **argv)
 	if (dopt.cparams.pghost == NULL || dopt.cparams.pghost[0] == '\0')
 		dopt.cparams.pghost = DefaultHost;
 
-#ifndef DISABLE_YB_EXTENSIONS
 	/*
-	 * While dumping create database statements, need to know whether the
-	 * database is colocated or not. Hence initialize PG gate backend.
+	 * DEPRECATED: Custom YB-Master host/port to use.
 	 */
-	if (dopt.include_yb_metadata || dopt.outputCreateDB)
-	{
-		if (dopt.master_hosts)
-			YBCSetMasterAddresses(dopt.master_hosts);
-		else
-			YBCSetMasterAddresses(dopt.cparams.pghost);
-
-		HandleYBStatus(YBCInit(progname, palloc, /* cstring_to_text_with_len_fn */ NULL));
-		HandleYBStatus(YBCInitPgGateBackend());
-	}
-#endif  /* DISABLE_YB_EXTENSIONS */
+	if (dopt.master_hosts)
+		write_msg(NULL, "WARNING: ignoring the deprecated argument --masters (-m)\n");
 
 	/*
 	 * Open the database using the Archiver, so it knows about it. Errors mean
@@ -988,11 +966,6 @@ main(int argc, char **argv)
 
 	CloseArchive(fout);
 
-#ifndef DISABLE_YB_EXTENSIONS
-	if (dopt.include_yb_metadata)
-		YBCShutdownPgGateBackend();
-#endif  /* DISABLE_YB_EXTENSIONS */
-
 	exit_nicely(0);
 }
 
@@ -1070,7 +1043,8 @@ help(const char *progname)
 	printf(_("  -w, --no-password        never prompt for password\n"));
 	printf(_("  -W, --password           force password prompt (should happen automatically)\n"));
 	printf(_("  --role=ROLENAME          do SET ROLE before dump\n"));
-	printf(_("  -m, --masters=HOST:PORT  comma-separated list of YB-Master hosts and ports\n"));
+	printf(_("  -m, --masters=HOST:PORT  DEPRECATED and NOT USED\n"
+			 "                           comma-separated list of YB-Master hosts and ports\n"));
 
 	printf(_("\nIf no database name is supplied, then the PGDATABASE environment\n"
 			 "variable value is used.\n\n"));
@@ -1177,11 +1151,9 @@ setup_connection(Archive *AH, const char *dumpencoding,
 			ExecuteSqlStatement(AH, "SET row_security = off");
 	}
 
-#ifndef DISABLE_YB_EXTENSIONS
 	if (dopt->include_yb_metadata) {
 		ExecuteSqlStatement(AH, "SET yb_format_funcs_include_yb_metadata = true");
 	}
-#endif  /* DISABLE_YB_EXTENSIONS */
 
 	/*
 	 * Start transaction-snapshot mode transaction to dump consistent data.
@@ -2736,10 +2708,6 @@ dumpDatabase(Archive *fout)
 				minmxid;
 	char	   *qdatname;
 
-#ifndef DISABLE_YB_EXTENSIONS
-	bool		isColocated;
-#endif  /* DISABLE_YB_EXTENSIONS */
-
 	if (g_verbose)
 		write_msg(NULL, "saving database definition\n");
 
@@ -2802,15 +2770,14 @@ dumpDatabase(Archive *fout)
 		appendStringLiteralAH(creaQry, ctype, fout);
 	}
 
-#ifndef DISABLE_YB_EXTENSIONS
-
-	HandleYBStatus(YBCPgIsDatabaseColocated(dopt->db_oid, &isColocated));
-	if (isColocated)
+	/*
+	 * While dumping create database statements, need to know whether the
+	 * database is colocated or not.
+	 */
+	if (isDatabaseColocated(fout))
 	{
 		appendPQExpBufferStr(creaQry, " colocated = true");
 	}
-
-#endif  /* DISABLE_YB_EXTENSIONS */
 
 	/*
 	 * Note: looking at dopt->outputNoTablespaces here is completely the wrong
@@ -15588,10 +15555,6 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 	int			j,
 				k;
 	PQExpBuffer yb_reloptions = createPQExpBuffer();
-#ifndef DISABLE_YB_EXTENSIONS
-	YBCPgTableDesc ybc_tabledesc = NULL;
-	YBCPgTableProperties yb_table_properties;
-#endif  /* DISABLE_YB_EXTENSIONS */
 
 	qrelname = pg_strdup(fmtId(tbinfo->dobj.name));
 	qualrelname = pg_strdup(fmtQualifiedDumpable(tbinfo));
@@ -15942,15 +15905,14 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		 * disabled, then the array will be empty ('{}').
 		 */
 		appendPQExpBuffer(yb_reloptions, "{");
-#ifndef DISABLE_YB_EXTENSIONS
 		if (dopt->include_yb_metadata &&
 			(tbinfo->relkind == RELKIND_RELATION || tbinfo->relkind == RELKIND_INDEX))
 		{
 			/* Get the table properties from YugaByte. */
-			HandleYBStatus(YBCPgGetTableDesc(dopt->db_oid, tbinfo->dobj.catId.oid, &ybc_tabledesc));
-			HandleYBStatus(YBCPgGetTableProperties(ybc_tabledesc, &yb_table_properties));
+			YBCPgTableProperties properties;
+			getYbTableProperties(fout, &properties, tbinfo);
 
-			if (yb_table_properties.is_colocated)
+			if (properties.is_colocated)
 			{
 				/* First check through reloptions to see if table_oid is already set. */
 				bool addtableoid = true;
@@ -15991,7 +15953,6 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			 * table reloptions.
 			 */
 		}
-#endif  /* DISABLE_YB_EXTENSIONS */
 		appendPQExpBuffer(yb_reloptions, "}");
 
 		if (nonemptyReloptions(tbinfo->reloptions) ||
@@ -16025,15 +15986,18 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 
 		destroyPQExpBuffer(yb_reloptions);
 
-#ifndef DISABLE_YB_EXTENSIONS
 		/* Additional properties for YB table or index. */
 		if (dopt->include_yb_metadata &&
 			(tbinfo->relkind == RELKIND_RELATION || tbinfo->relkind == RELKIND_INDEX))
 		{
-			if (yb_table_properties.num_hash_key_columns > 0)
+			/* Get the table properties from YugaByte. */
+			YBCPgTableProperties properties;
+			getYbTableProperties(fout, &properties, tbinfo);
+
+			if (properties.num_hash_key_columns > 0)
 				/* For hash-table. */
-				appendPQExpBuffer(q, "\nSPLIT INTO %u TABLETS", yb_table_properties.num_tablets);
-			else if (yb_table_properties.num_tablets > 1)
+				appendPQExpBuffer(q, "\nSPLIT INTO %u TABLETS", properties.num_tablets);
+			else if (properties.num_tablets > 1)
 			{
 				/* For range-table. */
 				fprintf(stderr, "Pre-split range tables are not supported yet.\n");
@@ -16041,7 +16005,6 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			}
 			/* else - single shard table - supported, no need to add anything */
 		}
-#endif  /* DISABLE_YB_EXTENSIONS */
 
 		/* Dump generic options if any */
 		if (ftoptions && ftoptions[0])
@@ -18622,4 +18585,54 @@ appendReloptionsArrayAH(PQExpBuffer buffer, const char *reloptions,
 								fout->std_strings);
 	if (!res)
 		write_msg(NULL, "WARNING: could not parse reloptions array\n");
+}
+
+/*
+ * Load the YB table properties from the YB server.
+ * The table is identified by the Relation OID.
+ *
+ * properties - this allocated struct will be filled by the function.
+ */
+static void
+getYbTableProperties(Archive *fout, YBCPgTableProperties *properties,
+					 TableInfo *tbinfo)
+{
+	PQExpBuffer query = createPQExpBuffer();
+
+	/* Retrieve the table properties from the YB server. */
+	appendPQExpBuffer(query,
+					  "SELECT * FROM yb_table_properties(%u)",
+					  tbinfo->dobj.catId.oid);
+	PGresult* res = ExecuteSqlQueryForSingleRow(fout, query->data);
+
+	int	i_num_tablets = PQfnumber(res, "num_tablets");
+	int	i_num_hash_key_columns = PQfnumber(res, "num_hash_key_columns");
+	int	i_is_colocated = PQfnumber(res, "is_colocated");
+
+	properties->num_tablets = atoi(PQgetvalue(res, 0, i_num_tablets));
+	properties->num_hash_key_columns = atoi(PQgetvalue(res, 0, i_num_hash_key_columns));
+	properties->is_colocated = (strcmp(PQgetvalue(res, 0, i_is_colocated), "t") == 0);
+
+	PQclear(res);
+	destroyPQExpBuffer(query);
+}
+
+/*
+ * Is the Database colocated on the YB server.
+ */
+static bool
+isDatabaseColocated(Archive *fout)
+{
+	PQExpBuffer query = createPQExpBuffer();
+
+	/* Retrieve the database property from the YB server. */
+	appendPQExpBuffer(query,
+					  "SELECT yb_is_database_colocated()");
+	PGresult* res = ExecuteSqlQueryForSingleRow(fout, query->data);
+
+	bool is_colocated = (strcmp(PQgetvalue(res, 0, 0), "t") == 0);
+
+	PQclear(res);
+	destroyPQExpBuffer(query);
+	return is_colocated;
 }
