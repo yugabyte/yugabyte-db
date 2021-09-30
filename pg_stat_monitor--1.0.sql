@@ -148,7 +148,7 @@ CREATE VIEW pg_stat_monitor AS SELECT
 	comments,
 	planid,
 	query_plan,
-	(SELECT query from pg_stat_monitor_internal(true) s where s.queryid = p.top_queryid) AS top_query,
+	(SELECT query from pg_stat_monitor_internal(true) s where s.queryid = p.top_queryid and s.bucket = p.bucket) AS top_query,
 	application_name,
 	string_to_array(relations, ',') AS relations,
 	cmd_type,
