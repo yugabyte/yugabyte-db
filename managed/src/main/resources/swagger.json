@@ -9398,6 +9398,74 @@
         "tags" : [ "ScheduleExternalScript" ]
       }
     },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/support_bundle" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "createSupportBundle",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "uniUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Create support bundle for specific universe",
+        "tags" : [ "Support Bundle management" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/support_bundle/{sbUUID}" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "getSupportBundle",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "uniUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "sbUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "produces" : [ "application/x-compressed" ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Download support bundle",
+        "tags" : [ "Support Bundle management" ]
+      }
+    },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/tables" : {
       "get" : {
         "description" : "Get a list of all tables in the specified universe",
@@ -10866,6 +10934,8 @@
     "name" : "ScheduleExternalScript"
   }, {
     "name" : "Session management"
+  }, {
+    "name" : "Support Bundle management"
   }, {
     "name" : "Table management"
   }, {

@@ -193,17 +193,8 @@ public class UniverseInfoHandler {
     }
   }
 
-  public Path downloadNodeLogs(UUID customerUUID, UUID universeUUID, String nodeName) {
-    Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
-    log.debug("Retrieving logs for " + nodeName);
-    NodeDetails node =
-        universe
-            .maybeGetNode(nodeName)
-            .orElseThrow(() -> new PlatformServiceException(NOT_FOUND, nodeName));
-    String storagePath = runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path");
-    String tarFileName = node.cloudInfo.private_ip + "-logs.tar.gz";
-    Path targetFile = Paths.get(storagePath + "/" + tarFileName);
+  public Path downloadNodeLogs(
+      Customer customer, Universe universe, NodeDetails node, Path targetFile) {
     ShellResponse response =
         nodeUniverseManager.downloadNodeLogs(node, universe, targetFile.toString());
 
@@ -211,5 +202,18 @@ public class UniverseInfoHandler {
       throw new PlatformServiceException(Http.Status.INTERNAL_SERVER_ERROR, response.message);
     }
     return targetFile;
+  }
+
+  Path downloadUniverseLogs(Customer customer, Universe universe, Path basePath) {
+    List<NodeDetails> nodes = universe.getNodes().stream().collect(Collectors.toList());
+
+    for (NodeDetails node : nodes) {
+      String nodeName = node.getNodeName();
+      Path nodeTargetFile = Paths.get(basePath.toString() + "/" + nodeName + ".tar.gz");
+      log.debug("Node target file {}", nodeTargetFile.toString());
+
+      Path targetFile = downloadNodeLogs(customer, universe, node, nodeTargetFile);
+    }
+    return basePath;
   }
 }

@@ -4,6 +4,7 @@ package com.yugabyte.yw.common;
 import static com.yugabyte.yw.common.PlacementInfoUtil.getNumMasters;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -20,7 +21,9 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.ApiModel;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileWriter;
+import java.io.InputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.net.InetAddress;
@@ -597,6 +600,14 @@ public class Util {
     } catch (UnknownHostException e) {
       LOG.error("Could not determine the host IP", e);
       return "";
+    }
+  }
+
+  public static InputStream getInputStreamOrFail(File file) {
+    try {
+      return new FileInputStream(file);
+    } catch (FileNotFoundException e) {
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
   }
 }
