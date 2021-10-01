@@ -14,11 +14,11 @@ import static com.yugabyte.yw.controllers.UniverseControllerRequestBinder.bindFo
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
+import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseResp;
-import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import io.swagger.annotations.Api;
@@ -79,9 +79,18 @@ public class UniverseClustersController extends AuthenticatedController {
       value = "Update Primary Cluster",
       notes =
           "This will update primary cluster of existing universe."
-              + "Just fill in the userIntent for PRIMARY cluster",
+              + "Use API to GET current universe. Lookup universeDetails attribute of the universe "
+              + "resource returned. Update the necessary field (e.g. numNodes) Use this "
+              + "updated universeDetails as request body. See https://github.com/yugabyte/"
+              + "yugabyte-db/blob/master/managed/api-examples/python-simple/edit-universe.ipynb",
       response = YBPTask.class,
       nickname = "updatePrimaryCluster")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "UniverseConfigureTaskParams",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.UniverseConfigureTaskParams",
+          required = true))
   public Result updatePrimaryCluster(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
@@ -97,12 +106,19 @@ public class UniverseClustersController extends AuthenticatedController {
     return new YBPTask(taskUUID, universeUUID).asResult();
   }
 
-  /** Takes UDTParams and update universe. Just fill in the userIntent for ASYNC cluster. */
   @ApiOperation(
       value = "Create ReadOnly Cluster",
-      notes = "This will add a readonly cluster to existing universe.",
+      notes =
+          "This will add a readonly cluster to existing universe. "
+              + "Just fill in the userIntent for ASYNC cluster.",
       response = YBPTask.class,
       nickname = "createReadOnlyCluster")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "UniverseConfigureTaskParams",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.UniverseDefinitionTaskParams",
+          required = true))
   public Result createReadOnlyCluster(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
@@ -142,9 +158,18 @@ public class UniverseClustersController extends AuthenticatedController {
       value = "Update Readonly Cluster",
       notes =
           "This will update readonly cluster of existing universe."
-              + "Just fill in the userIntent for ASYNC cluster",
+              + "Use API to GET current universe. Lookup universeDetails attribute of the universe "
+              + "resource returned. Update the necessary field (e.g. numNodes) Use this "
+              + "updated universeDetails as request body. See https://github.com/yugabyte/"
+              + "yugabyte-db/blob/master/managed/api-examples/python-simple/edit-universe.ipynb",
       response = YBPTask.class,
       nickname = "updateReadOnlyCluster")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "UniverseConfigureTaskParams",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.UniverseConfigureTaskParams",
+          required = true))
   public Result updateReadOnlyCluster(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);

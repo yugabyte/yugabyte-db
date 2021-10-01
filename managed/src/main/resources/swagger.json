@@ -7987,7 +7987,7 @@
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/clusters/primary" : {
       "put" : {
-        "description" : "This will update primary cluster of existing universe.Just fill in the userIntent for PRIMARY cluster",
+        "description" : "This will update primary cluster of existing universe.Use API to GET current universe. Lookup universeDetails attribute of the universe resource returned. Update the necessary field (e.g. numNodes) Use this updated universeDetails as request body. See https://github.com/yugabyte/yugabyte-db/blob/master/managed/api-examples/python-simple/edit-universe.ipynb",
         "operationId" : "updatePrimaryCluster",
         "parameters" : [ {
           "format" : "uuid",
@@ -8001,6 +8001,13 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "body",
+          "name" : "UniverseConfigureTaskParams",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/UniverseConfigureTaskParams"
+          }
         } ],
         "responses" : {
           "200" : {
@@ -8019,7 +8026,7 @@
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/clusters/read_only" : {
       "post" : {
-        "description" : "This will add a readonly cluster to existing universe.",
+        "description" : "This will add a readonly cluster to existing universe. Just fill in the userIntent for ASYNC cluster.",
         "operationId" : "createReadOnlyCluster",
         "parameters" : [ {
           "format" : "uuid",
@@ -8033,6 +8040,13 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "body",
+          "name" : "UniverseConfigureTaskParams",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/UniverseDefinitionTaskParams"
+          }
         } ],
         "responses" : {
           "200" : {
@@ -8049,7 +8063,7 @@
         "tags" : [ "UniverseClusterMutations" ]
       },
       "put" : {
-        "description" : "This will update readonly cluster of existing universe.Just fill in the userIntent for ASYNC cluster",
+        "description" : "This will update readonly cluster of existing universe.Use API to GET current universe. Lookup universeDetails attribute of the universe resource returned. Update the necessary field (e.g. numNodes) Use this updated universeDetails as request body. See https://github.com/yugabyte/yugabyte-db/blob/master/managed/api-examples/python-simple/edit-universe.ipynb",
         "operationId" : "updateReadOnlyCluster",
         "parameters" : [ {
           "format" : "uuid",
@@ -8063,6 +8077,13 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "body",
+          "name" : "UniverseConfigureTaskParams",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/UniverseConfigureTaskParams"
+          }
         } ],
         "responses" : {
           "200" : {
