@@ -386,7 +386,7 @@ export default class ClusterFields extends Component {
     let providerSelected = this.state.providerSelected;
     if (isNonEmptyObject(currentFormValues) && isNonEmptyString(currentFormValues.provider)) {
       providerSelected = currentFormValues.provider;
-      if (providerSelected && regions.data.length > 0) {
+      if (providerSelected && regions.data.length) {
         const providerRegions = regions.data &&
           regions.data.map(function (regionItem) {
           return { value: regionItem.uuid, label: regionItem.name };
@@ -1637,10 +1637,6 @@ export default class ClusterFields extends Component {
           subLabel={`Enable the ${providerCode} Time Sync functionality for the DB servers.`}
         />
       );
-    }
-
-    if (universeProviderList.length == 0) {
-      universeProviderList.unshift(<option key="" value=""></option>);
     }
 
     let universeRegionList = [];
