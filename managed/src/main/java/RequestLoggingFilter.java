@@ -11,6 +11,11 @@ import java.util.concurrent.CompletionStage;
 import java.util.function.Function;
 import com.typesafe.config.Config;
 
+/**
+ * This filter is used to inject a request ID into logging events. This is used in cloud to trace
+ * universe related operations all the way down to provisioning and configuration. Currently it's a
+ * no-op for non-cloud deployments.
+ */
 @Singleton
 public class RequestLoggingFilter extends Filter {
   private String requestIdHeader;

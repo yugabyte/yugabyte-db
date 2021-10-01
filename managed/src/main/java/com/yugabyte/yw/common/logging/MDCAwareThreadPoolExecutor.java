@@ -1,8 +1,5 @@
 package com.yugabyte.yw.common.logging;
 
-import org.slf4j.MDC;
-
-import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
