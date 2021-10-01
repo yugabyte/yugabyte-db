@@ -732,10 +732,10 @@ TEST_F(XClusterAdminCliTest, TestSetupUniverseReplicationFailsWithInvalidSchema)
   // Verify that error message has relevant information.
   ASSERT_TRUE(error_msg.find(producer_cluster_table->id() + "-BAD not found") != string::npos);
 
-  // Delete this universe info so we can try again.
-  ASSERT_OK(RunAdminToolCommand("delete_universe_replication", kProducerClusterId));
-
   // Now try with the correct table id.
+  // Note that SetupUniverseReplication should call DeleteUniverseReplication to
+  // clean up the environment on failure, so we don't need to explicitly call
+  // DeleteUniverseReplication here.
   ASSERT_NOK(RunAdminToolCommandAndGetErrorOutput(&error_msg,
                                                   "setup_universe_replication",
                                                   kProducerClusterId,
@@ -766,6 +766,85 @@ TEST_F(XClusterAdminCliTest, TestSetupUniverseReplicationFailsWithInvalidBootstr
   // Verify that error message has relevant information.
   ASSERT_TRUE(error_msg.find(
       "Could not find CDC stream: stream_id: \"fake-bootstrap-id\"") != string::npos);
+}
+
+TEST_F(XClusterAdminCliTest, TestSetupUniverseReplicationCleanupOnFailure) {
+  client::TableHandle producer_cluster_table;
+
+  // Create an identical table on the producer.
+  client::kv_table_test::CreateTable(
+      Transactional::kTrue, NumTablets(), producer_cluster_client_.get(), &producer_cluster_table);
+
+  string error_msg;
+  // Try to setup universe replication with a fake bootstrap id, should result in failure.
+  // ASSERT_NOK since this should fail. We should be able to make consecutive calls to
+  // SetupUniverseReplication without having to call DeleteUniverseReplication first.
+  ASSERT_NOK(RunAdminToolCommandAndGetErrorOutput(&error_msg,
+                                                  "setup_universe_replication",
+                                                  kProducerClusterId,
+                                                  producer_cluster_->GetMasterAddresses(),
+                                                  producer_cluster_table->id(),
+                                                  "fake-bootstrap-id"));
+
+  // Try to setup universe replication with fake producer master address.
+  ASSERT_NOK(RunAdminToolCommandAndGetErrorOutput(&error_msg,
+                                                  "setup_universe_replication",
+                                                  kProducerClusterId,
+                                                  "fake-producer-address",
+                                                  producer_cluster_table->id()));
+
+  // Try to setup universe replication with fake producer master address.
+  ASSERT_NOK(RunAdminToolCommandAndGetErrorOutput(&error_msg,
+                                                  "setup_universe_replication",
+                                                  kProducerClusterId,
+                                                  producer_cluster_->GetMasterAddresses(),
+                                                  "fake-producer-table-id"));
+
+  // Test when producer and local table have different schema.
+  client::TableHandle producer_cluster_table2;
+  client::TableHandle consumer_table2;
+  const YBTableName kTableName2(YQL_DATABASE_CQL, "my_keyspace", "different_schema_test_table");
+
+  client::kv_table_test::CreateTable(Transactional::kFalse, // Results in different schema!
+                                     NumTablets(),
+                                     producer_cluster_client_.get(),
+                                     &producer_cluster_table2,
+                                     kTableName2);
+  client::kv_table_test::CreateTable(Transactional::kTrue,
+                                     NumTablets(),
+                                     client_.get(),
+                                     &consumer_table2,
+                                     kTableName2);
+  ASSERT_NOK(RunAdminToolCommandAndGetErrorOutput(&error_msg,
+                                                  "setup_universe_replication",
+                                                  kProducerClusterId,
+                                                  producer_cluster_->GetMasterAddresses(),
+                                                  producer_cluster_table2->id()));
+
+  // Verify that the environment is cleaned up correctly after failure.
+  // A valid call to SetupUniverseReplication after the failure should succeed
+  // without us having to first call DeleteUniverseReplication.
+  ASSERT_OK(RunAdminToolCommandAndGetErrorOutput(&error_msg,
+                                                 "setup_universe_replication",
+                                                 kProducerClusterId,
+                                                 producer_cluster_->GetMasterAddresses(),
+                                                 producer_cluster_table->id()));
+  // Verify table is being replicated.
+  ASSERT_OK(CheckTableIsBeingReplicated({producer_cluster_table->id()}));
+
+  // Try calling SetupUniverseReplication again. This should fail as the producer
+  // is already present. However, in this case, DeleteUniverseReplication should
+  // not be called since the error was due to failing a sanity check.
+  ASSERT_NOK(RunAdminToolCommandAndGetErrorOutput(&error_msg,
+                                                  "setup_universe_replication",
+                                                  kProducerClusterId,
+                                                  producer_cluster_->GetMasterAddresses(),
+                                                  producer_cluster_table->id()));
+  // Verify the universe replication has not been deleted is still there.
+  ASSERT_OK(CheckTableIsBeingReplicated({producer_cluster_table->id()}));
+
+  // Delete universe.
+  ASSERT_OK(RunAdminToolCommand("delete_universe_replication", kProducerClusterId));
 }
 
 TEST_F(XClusterAdminCliTest, TestListCdcStreamsWithBootstrappedStreams) {
