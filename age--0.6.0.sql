@@ -3026,7 +3026,7 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 --
--- agtype - string matching (`STARTS WITH`, `ENDS WITH`, `CONTAINS`)
+-- agtype - string matching (`STARTS WITH`, `ENDS WITH`, `CONTAINS`, & =~)
 --
 
 CREATE FUNCTION ag_catalog.agtype_string_match_starts_with(agtype, agtype)
@@ -3050,6 +3050,13 @@ RETURNS agtype
 LANGUAGE c
 STABLE
 RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE FUNCTION ag_catalog.age_eq_tilde(agtype, agtype)
+RETURNS agtype
+LANGUAGE c
+STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 

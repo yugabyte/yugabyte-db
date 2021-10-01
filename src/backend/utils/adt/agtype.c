@@ -8218,3 +8218,66 @@ agtype_value *agtype_value_build_edge(graphid id, char *label, graphid end_id,
     /* return the result that was build (allocated) inside the result */
     return result.res;
 }
+
+PG_FUNCTION_INFO_V1(age_eq_tilde);
+/*
+ * Execution function for =~ aka regular expression comparisons
+ *
+ * Note: Everything must resolve to 2 agtype strings. All others types are
+ * errors.
+ */
+Datum age_eq_tilde(PG_FUNCTION_ARGS)
+{
+    agtype *agt_string = NULL;
+    agtype *agt_pattern = NULL;
+
+    /* if either are NULL return NULL */
+    if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
+    {
+        PG_RETURN_NULL();
+    }
+
+    /* extract the input */
+    agt_string = AG_GET_ARG_AGTYPE_P(0);
+    agt_pattern = AG_GET_ARG_AGTYPE_P(1);
+
+    /* they both need to scalars */
+    if (AGT_ROOT_IS_SCALAR(agt_string) && AGT_ROOT_IS_SCALAR(agt_pattern))
+    {
+        agtype_value *agtv_string;
+        agtype_value *agtv_pattern;
+
+        /* get the contents of each container */
+        agtv_string = get_ith_agtype_value_from_container(&agt_string->root, 0);
+        agtv_pattern = get_ith_agtype_value_from_container(&agt_pattern->root,
+                                                           0);
+        /* if either are agtype null, return NULL */
+        if (agtv_string->type == AGTV_NULL ||
+            agtv_pattern->type == AGTV_NULL)
+        {
+            PG_RETURN_NULL();
+        }
+
+        /* only strings can be compared, all others are errors */
+        if (agtv_string->type == AGTV_STRING &&
+            agtv_pattern->type == AGTV_STRING)
+        {
+            text *string = NULL;
+            text *pattern = NULL;
+            Datum result;
+
+            string = cstring_to_text_with_len(agtv_string->val.string.val,
+                                              agtv_string->val.string.len);
+            pattern = cstring_to_text_with_len(agtv_pattern->val.string.val,
+                                               agtv_pattern->val.string.len);
+
+            result = (DirectFunctionCall2Coll(textregexeq, C_COLLATION_OID,
+                                              PointerGetDatum(string),
+                                              PointerGetDatum(pattern)));
+            return boolean_to_agtype(DatumGetBool(result));
+        }
+    }
+    /* if we got here we have values that are invalid */
+    ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                    errmsg("agtype string values expected")));
+}

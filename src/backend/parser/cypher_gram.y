@@ -155,7 +155,7 @@
 %left '^'
 %nonassoc IN IS
 %right UNARY_MINUS
-%nonassoc STARTS ENDS CONTAINS
+%nonassoc CONTAINS ENDS EQ_TILDE STARTS
 %left '[' ']' '(' ')'
 %left '.'
 %left TYPECAST
@@ -1127,6 +1127,11 @@ expr:
             n->location = @2;
 
             $$ = (Node *)n;
+        }
+    | expr EQ_TILDE expr
+        {
+            $$ = make_function_expr(list_make1(makeString("eq_tilde")),
+                                    list_make2($1, $3), @2);
         }
     | expr '[' expr ']'
         {

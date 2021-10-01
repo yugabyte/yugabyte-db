@@ -344,7 +344,7 @@ SELECT * FROM cypher('expr', $$
 RETURN "abcdefghijklmnopqrstuvwxyz" CONTAINS "klmn"
 $$) AS r(result agtype);
 
--- these should fail
+-- these should return false
 SELECT * FROM cypher('expr', $$
 RETURN "abcdefghijklmnopqrstuvwxyz" STARTS WITH "bcde"
 $$) AS r(result agtype);
@@ -353,6 +353,43 @@ RETURN "abcdefghijklmnopqrstuvwxyz" ENDS WITH "vwxy"
 $$) AS r(result agtype);
 SELECT * FROM cypher('expr', $$
 RETURN "abcdefghijklmnopqrstuvwxyz" CONTAINS "klmo"
+$$) AS r(result agtype);
+-- these should return SQL NULL
+SELECT * FROM cypher('expr', $$
+RETURN "abcdefghijklmnopqrstuvwxyz" STARTS WITH NULL
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN "abcdefghijklmnopqrstuvwxyz" ENDS WITH NULL
+$$) AS r(result agtype);
+SELECT * FROM cypher('expr', $$
+RETURN "abcdefghijklmnopqrstuvwxyz" CONTAINS NULL
+$$) AS r(result agtype);
+
+--
+-- Test =~ aka regular expression comparisons
+--
+SELECT create_graph('regex');
+SELECT * FROM cypher('regex', $$
+CREATE (n:Person {name: 'John'}) RETURN n
+$$) AS r(result agtype);
+SELECT * FROM cypher('regex', $$
+CREATE (n:Person {name: 'Jeff'}) RETURN n
+$$) AS r(result agtype);
+SELECT * FROM cypher('regex', $$
+CREATE (n:Person {name: 'Joan'}) RETURN n
+$$) AS r(result agtype);
+
+SELECT * FROM cypher('regex', $$
+MATCH (n:Person) WHERE n.name =~ 'JoHn' RETURN n
+$$) AS r(result agtype);
+SELECT * FROM cypher('regex', $$
+MATCH (n:Person) WHERE n.name =~ '(?i)JoHn' RETURN n
+$$) AS r(result agtype);
+SELECT * FROM cypher('regex', $$
+MATCH (n:Person) WHERE n.name =~ 'Jo.n' RETURN n
+$$) AS r(result agtype);
+SELECT * FROM cypher('regex', $$
+MATCH (n:Person) WHERE n.name =~ 'J.*' RETURN n
 $$) AS r(result agtype);
 
 --
@@ -2188,6 +2225,7 @@ SELECT * FROM drop_graph('order_by', true);
 SELECT * FROM drop_graph('group_by', true);
 SELECT * FROM drop_graph('UCSC', true);
 SELECT * FROM drop_graph('expr', true);
+SELECT * FROM drop_graph('regex', true);
 
 --
 -- End of tests

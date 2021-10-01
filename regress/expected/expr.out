@@ -639,7 +639,7 @@ $$) AS r(result agtype);
  true
 (1 row)
 
--- these should fail
+-- these should return false
 SELECT * FROM cypher('expr', $$
 RETURN "abcdefghijklmnopqrstuvwxyz" STARTS WITH "bcde"
 $$) AS r(result agtype);
@@ -663,6 +663,99 @@ $$) AS r(result agtype);
 --------
  false
 (1 row)
+
+-- these should return SQL NULL
+SELECT * FROM cypher('expr', $$
+RETURN "abcdefghijklmnopqrstuvwxyz" STARTS WITH NULL
+$$) AS r(result agtype);
+ result 
+--------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+RETURN "abcdefghijklmnopqrstuvwxyz" ENDS WITH NULL
+$$) AS r(result agtype);
+ result 
+--------
+ 
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+RETURN "abcdefghijklmnopqrstuvwxyz" CONTAINS NULL
+$$) AS r(result agtype);
+ result 
+--------
+ 
+(1 row)
+
+--
+-- Test =~ aka regular expression comparisons
+--
+SELECT create_graph('regex');
+NOTICE:  graph "regex" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT * FROM cypher('regex', $$
+CREATE (n:Person {name: 'John'}) RETURN n
+$$) AS r(result agtype);
+                                       result                                       
+------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "Person", "properties": {"name": "John"}}::vertex
+(1 row)
+
+SELECT * FROM cypher('regex', $$
+CREATE (n:Person {name: 'Jeff'}) RETURN n
+$$) AS r(result agtype);
+                                       result                                       
+------------------------------------------------------------------------------------
+ {"id": 844424930131970, "label": "Person", "properties": {"name": "Jeff"}}::vertex
+(1 row)
+
+SELECT * FROM cypher('regex', $$
+CREATE (n:Person {name: 'Joan'}) RETURN n
+$$) AS r(result agtype);
+                                       result                                       
+------------------------------------------------------------------------------------
+ {"id": 844424930131971, "label": "Person", "properties": {"name": "Joan"}}::vertex
+(1 row)
+
+SELECT * FROM cypher('regex', $$
+MATCH (n:Person) WHERE n.name =~ 'JoHn' RETURN n
+$$) AS r(result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('regex', $$
+MATCH (n:Person) WHERE n.name =~ '(?i)JoHn' RETURN n
+$$) AS r(result agtype);
+                                       result                                       
+------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "Person", "properties": {"name": "John"}}::vertex
+(1 row)
+
+SELECT * FROM cypher('regex', $$
+MATCH (n:Person) WHERE n.name =~ 'Jo.n' RETURN n
+$$) AS r(result agtype);
+                                       result                                       
+------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "Person", "properties": {"name": "John"}}::vertex
+ {"id": 844424930131971, "label": "Person", "properties": {"name": "Joan"}}::vertex
+(2 rows)
+
+SELECT * FROM cypher('regex', $$
+MATCH (n:Person) WHERE n.name =~ 'J.*' RETURN n
+$$) AS r(result agtype);
+                                       result                                       
+------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "Person", "properties": {"name": "John"}}::vertex
+ {"id": 844424930131970, "label": "Person", "properties": {"name": "Jeff"}}::vertex
+ {"id": 844424930131971, "label": "Person", "properties": {"name": "Joan"}}::vertex
+(3 rows)
 
 --
 --Coearce to Postgres 3 int types (smallint, int, bigint)
@@ -5372,6 +5465,17 @@ drop cascades to table expr.v
 drop cascades to table expr.v1
 drop cascades to table expr.e1
 NOTICE:  graph "expr" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+SELECT * FROM drop_graph('regex', true);
+NOTICE:  drop cascades to 3 other objects
+DETAIL:  drop cascades to table regex._ag_label_vertex
+drop cascades to table regex._ag_label_edge
+drop cascades to table regex."Person"
+NOTICE:  graph "regex" has been dropped
  drop_graph 
 ------------
  

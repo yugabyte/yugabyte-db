@@ -337,10 +337,10 @@ NOTICE:  ELabel "r" has been created
 SELECT * FROM ag_label;
        name       | graph | id | kind |      relation      
 ------------------+-------+----+------+--------------------
- _ag_label_vertex | 17621 |  1 | v    | g._ag_label_vertex
- _ag_label_edge   | 17621 |  2 | e    | g._ag_label_edge
- n                | 17621 |  3 | v    | g.n
- r                | 17621 |  4 | e    | g.r
+ _ag_label_vertex | 17623 |  1 | v    | g._ag_label_vertex
+ _ag_label_edge   | 17623 |  2 | e    | g._ag_label_edge
+ n                | 17623 |  3 | v    | g.n
+ r                | 17623 |  4 | e    | g.r
 (4 rows)
 
 -- try to create duplicate labels
@@ -367,8 +367,8 @@ NOTICE:  label "g"."r" has been dropped
 SELECT * FROM ag_label;
        name       | graph | id | kind |      relation      
 ------------------+-------+----+------+--------------------
- _ag_label_vertex | 17621 |  1 | v    | g._ag_label_vertex
- _ag_label_edge   | 17621 |  2 | e    | g._ag_label_edge
+ _ag_label_vertex | 17623 |  1 | v    | g._ag_label_vertex
+ _ag_label_edge   | 17623 |  2 | e    | g._ag_label_edge
 (2 rows)
 
 -- try to remove labels that is not there
