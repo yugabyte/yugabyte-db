@@ -32,7 +32,7 @@ Result<std::unique_ptr<UniverseKeyManager>> UniverseKeyManager::FromKey(
 
 void UniverseKeyManager::SetUniverseKeys(const UniverseKeysPB& universe_keys) {
   {
-    std::lock_guard<std::mutex> l(mutex_);
+    std::unique_lock<std::mutex> l(mutex_);
     auto& keys_map = *universe_key_registry_.mutable_universe_keys();
     for (const auto& entry : universe_keys.map()) {
       auto encryption_params_res = EncryptionParams::FromSlice(entry.second);
@@ -50,7 +50,7 @@ void UniverseKeyManager::SetUniverseKeys(const UniverseKeysPB& universe_keys) {
 void UniverseKeyManager::SetUniverseKeyRegistry(
     const UniverseKeyRegistryPB& universe_key_registry) {
   {
-    std::lock_guard<std::mutex> l(mutex_);
+    std::unique_lock<std::mutex> l(mutex_);
     universe_key_registry_ = universe_key_registry;
     received_universe_keys_ = true;
   }
@@ -59,10 +59,13 @@ void UniverseKeyManager::SetUniverseKeyRegistry(
 
 Result<yb::EncryptionParamsPtr> UniverseKeyManager::GetUniverseParamsWithVersion(
     const UniverseKeyId& version_id) {
+  std::unique_lock<std::mutex> l(mutex_);
   auto it = universe_key_registry_.universe_keys().find(version_id);
   if (it == universe_key_registry_.universe_keys().end()) {
     if (universe_key_registry_.universe_keys().empty()) {
+      l.unlock();
       get_universe_keys_callback_();
+      l.lock();
       it = universe_key_registry_.universe_keys().find(version_id);
     }
     if (it == universe_key_registry_.universe_keys().end()) {
@@ -89,12 +92,12 @@ Result<UniverseKeyParams> UniverseKeyManager::GetLatestUniverseParams() {
 }
 
 bool UniverseKeyManager::IsEncryptionEnabled() {
-  std::lock_guard<std::mutex> l(mutex_);
+  std::unique_lock<std::mutex> l(mutex_);
   return universe_key_registry_.encryption_enabled();
 }
 
 bool UniverseKeyManager::ReceivedUniverseKeys() {
-  std::lock_guard<std::mutex> l(mutex_);
+  std::unique_lock<std::mutex> l(mutex_);
   return received_universe_keys_;
 }
 
