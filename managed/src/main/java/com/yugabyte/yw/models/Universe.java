@@ -44,6 +44,7 @@ import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.OneToMany;
 import javax.persistence.Table;
+import javax.persistence.Transient;
 import javax.persistence.UniqueConstraint;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -129,7 +130,7 @@ public class Universe extends Model {
   @Column(columnDefinition = "TEXT", nullable = false)
   private String universeDetailsJson;
 
-  private UniverseDefinitionTaskParams universeDetails;
+  @Transient private UniverseDefinitionTaskParams universeDetails;
 
   @OneToMany(mappedBy = "sourceUniverse", cascade = CascadeType.ALL)
   @JsonManagedReference
@@ -149,19 +150,6 @@ public class Universe extends Model {
 
   public UUID getUniverseUUID() {
     return universeUUID;
-  }
-
-  public String getDnsName() {
-    Provider p =
-        Provider.get(UUID.fromString(universeDetails.getPrimaryCluster().userIntent.provider));
-    if (p == null) {
-      return null;
-    }
-    String dnsSuffix = p.getHostedZoneName();
-    if (dnsSuffix == null) {
-      return null;
-    }
-    return String.format("%s.%s.%s", name, Customer.get(p.customerUUID).code, dnsSuffix);
   }
 
   public void resetVersion() {
@@ -286,9 +274,10 @@ public class Universe extends Model {
     return find.query().where().eq("name", universeName).findOne();
   }
 
-  public static Optional<Universe> maybeGetUniverseByName(String universeName) {
+  public static Optional<Universe> maybeGetUniverseByName(Long customerId, String universeName) {
     return find.query()
         .where()
+        .eq("customerId", customerId)
         .eq("name", universeName)
         .findOneOrEmpty()
         .map(Universe::fillUniverseDetails);

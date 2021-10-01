@@ -25,6 +25,7 @@ import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
+import com.yugabyte.yw.cloud.UniverseResourceDetails.Context;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.ApiUtils;
@@ -346,8 +347,9 @@ public class UniverseTest extends FakeDBApplication {
 
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
 
+    Context context = new Context(getApp().config(), u);
     UniverseResourceDetails resourceDetails =
-        UniverseResourceDetails.create(u.getUniverseDetails(), getApp().config());
+        UniverseResourceDetails.create(u.getUniverseDetails(), context);
     JsonNode universeJson = Json.toJson(new UniverseResp(u, null, resourceDetails));
     assertThat(
         universeJson.get("universeUUID").asText(),

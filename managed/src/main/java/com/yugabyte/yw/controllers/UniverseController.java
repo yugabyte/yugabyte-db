@@ -39,7 +39,7 @@ public class UniverseController extends AuthenticatedController {
     // Verify the customer is present.
     if (name != null) {
       LOG.info("Finding Universe with name {}.", name);
-      return PlatformResults.withData(universeCRUDHandler.findByName(name));
+      return PlatformResults.withData(universeCRUDHandler.findByName(customer, name));
     }
     return PlatformResults.withData(universeCRUDHandler.list(customer));
   }

@@ -16,15 +16,14 @@ import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
+import com.yugabyte.yw.cloud.UniverseResourceDetails.Context;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.PriceComponent;
 import com.yugabyte.yw.models.Provider;
@@ -32,16 +31,18 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Set;
+import java.util.function.BiConsumer;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import org.junit.Before;
 import org.junit.Test;
-import org.mockito.stubbing.OngoingStubbing;
 import play.libs.Json;
 
 public class UniverseResourceDetailsTest extends FakeDBApplication {
 
+  private Customer customer;
   private Provider provider;
   private Region region;
   private AvailabilityZone az;
@@ -55,34 +56,41 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
   private int diskIops = 4000;
   private int throughput = 1000;
   private NodeDetails sampleNodeDetails;
+  private Context context;
 
-  private Set<NodeDetails> setUpNodeDetailsSet(Iterator<NodeDetails> mockIterator) {
-    return setUpNodeDetailsSet(mockIterator, 3);
+  private Set<NodeDetails> setUpNodeDetailsSet() {
+    return setUpNodeDetailsSet(3);
+  }
+
+  private Set<NodeDetails> setUpNodeDetailsSet(int numNodes) {
+    return setUpNodeDetailsSet(numNodes, null);
   }
 
   private Set<NodeDetails> setUpNodeDetailsSet(
-      Iterator<NodeDetails> mockIterator, int numIterations) {
-    OngoingStubbing hasNextStubbing = when(mockIterator.hasNext());
-    for (int i = 0; i < numIterations; ++i) {
-      hasNextStubbing = hasNextStubbing.thenReturn(true);
-    }
-    hasNextStubbing.thenReturn(false);
-    OngoingStubbing nextStubbing = when(mockIterator.next());
-    for (int i = 0; i < numIterations; ++i) {
-      nextStubbing = nextStubbing.thenReturn(sampleNodeDetails); // return same node 3x
-    }
-    nextStubbing.thenReturn(null);
-    Set<NodeDetails> mockNodeDetailsSet = mock(HashSet.class);
-    when(mockNodeDetailsSet.iterator()).thenReturn(mockIterator);
-    return mockNodeDetailsSet;
+      int numNodes, BiConsumer<NodeDetails, Integer> modifier) {
+    return IntStream.range(0, numNodes)
+        .mapToObj(
+            i -> {
+              NodeDetails clone = Json.fromJson(Json.toJson(sampleNodeDetails), NodeDetails.class);
+              clone.nodeIdx = i;
+              if (modifier != null) {
+                modifier.accept(clone, i);
+              }
+              return clone;
+            })
+        .collect(Collectors.toSet());
   }
 
-  private UniverseDefinitionTaskParams setUpValidSSD(Iterator<NodeDetails> mockIterator) {
-    return setUpValidSSD(mockIterator, 3);
+  private UniverseDefinitionTaskParams setUpValidSSD() {
+    return setUpValidSSD(3);
+  }
+
+  private UniverseDefinitionTaskParams setUpValidSSD(int numNodes) {
+    return setUpValidSSD(numNodes, null);
   }
 
   private UniverseDefinitionTaskParams setUpValidSSD(
-      Iterator<NodeDetails> mockIterator, int numIterations) {
+      int numNodes, BiConsumer<NodeDetails, Integer> modifier) {
 
     // Set up instance type
     InstanceType.upsert(provider.uuid, testInstanceType, 10, 5.5, null);
@@ -100,12 +108,12 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
     UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
     params.upsertPrimaryCluster(userIntent, null);
     sampleNodeDetails.placementUuid = params.getPrimaryCluster().uuid;
-    params.nodeDetailsSet = setUpNodeDetailsSet(mockIterator, numIterations);
+    params.nodeDetailsSet = setUpNodeDetailsSet(numNodes, modifier);
+    context = new Context(null, customer, params);
     return params;
   }
 
-  private UniverseDefinitionTaskParams setUpValidEBS(
-      Iterator<NodeDetails> mockIterator, PublicCloudConstants.StorageType storageType) {
+  private UniverseDefinitionTaskParams setUpValidEBS(PublicCloudConstants.StorageType storageType) {
 
     // Set up instance type
     InstanceType.upsert(provider.uuid, testInstanceType, 10, 5.5, null);
@@ -159,13 +167,14 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
     UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
     params.upsertPrimaryCluster(userIntent, null);
     sampleNodeDetails.placementUuid = params.getPrimaryCluster().uuid;
-    params.nodeDetailsSet = setUpNodeDetailsSet(mockIterator);
+    params.nodeDetailsSet = setUpNodeDetailsSet();
 
+    context = new Context(null, customer, params);
     return params;
   }
 
   private UniverseDefinitionTaskParams setupSamplePriceDetails(
-      Iterator<NodeDetails> mockIterator, PublicCloudConstants.StorageType storageType) {
+      PublicCloudConstants.StorageType storageType) {
 
     // Set up instance type
     InstanceType.upsert(provider.uuid, testInstanceType, 10, 5.5, null);
@@ -192,13 +201,14 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
     UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
     params.upsertPrimaryCluster(userIntent, null);
     sampleNodeDetails.placementUuid = params.getPrimaryCluster().uuid;
-    params.nodeDetailsSet = setUpNodeDetailsSet(mockIterator);
+    params.nodeDetailsSet = setUpNodeDetailsSet();
+    context = new Context(null, customer, params);
 
     return params;
   }
 
   private UniverseDefinitionTaskParams setupNullPriceDetails(
-      Iterator<NodeDetails> mockIterator, PublicCloudConstants.StorageType storageType) {
+      PublicCloudConstants.StorageType storageType) {
 
     // Set up instance type
     InstanceType.upsert(provider.uuid, testInstanceType, 10, 5.5, null);
@@ -220,14 +230,16 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
     UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
     params.upsertPrimaryCluster(userIntent, null);
     sampleNodeDetails.placementUuid = params.getPrimaryCluster().uuid;
-    params.nodeDetailsSet = setUpNodeDetailsSet(mockIterator);
+    params.nodeDetailsSet = setUpNodeDetailsSet();
+    context = new Context(null, customer, params);
 
     return params;
   }
 
   @Before
   public void setUp() {
-    provider = ModelFactory.awsProvider(ModelFactory.testCustomer());
+    customer = ModelFactory.testCustomer();
+    provider = ModelFactory.awsProvider(customer);
     region = Region.create(provider, "region-1", "Region 1", "yb-image-1");
     az = AvailabilityZone.createOrThrow(region, "az-1", "PlacementAZ 1", "subnet-1");
     sampleNodeDetails = new NodeDetails();
@@ -242,23 +254,10 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
 
   @Test
   public void testCreate() throws Exception {
-    Iterator<NodeDetails> mockIterator = mock(Iterator.class);
-    UniverseDefinitionTaskParams params = setUpValidSSD(mockIterator, 6);
-
-    // Set up mockIterator to support 2 runs throw a foreach loop
-    when(mockIterator.hasNext())
-        .thenReturn(true)
-        .thenReturn(true)
-        .thenReturn(true)
-        .thenReturn(false)
-        .thenReturn(true)
-        .thenReturn(true)
-        .thenReturn(true)
-        .thenReturn(false);
-
+    UniverseDefinitionTaskParams params = setUpValidSSD(3);
+    Context context = new Context(getApp().config(), customer, params);
     UniverseResourceDetails details =
-        UniverseResourceDetails.create(params.nodeDetailsSet, params, getApp().config());
-    verify(mockIterator, times(6)).next();
+        UniverseResourceDetails.create(params.nodeDetailsSet, params, context);
 
     assertThat(details, notNullValue());
     assertThat(details.ebsPricePerHour, equalTo(0.0));
@@ -269,11 +268,10 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
   @Test
   public void testAddPriceToDetailsSSD() throws Exception {
     Iterator<NodeDetails> mockIterator = mock(Iterator.class);
-    UniverseDefinitionTaskParams params = setUpValidSSD(mockIterator);
+    UniverseDefinitionTaskParams params = setUpValidSSD();
 
     UniverseResourceDetails details = new UniverseResourceDetails();
-    details.addPrice(params);
-    verify(mockIterator, times(3)).next();
+    details.addPrice(params, context);
     assertThat(details.ebsPricePerHour, equalTo(0.0));
     double expectedPrice = Double.parseDouble(String.format("%.4f", 3 * instancePrice));
     assertThat(details.pricePerHour, equalTo(expectedPrice));
@@ -281,13 +279,10 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
 
   @Test
   public void testAddPriceToDetailsIO1() throws Exception {
-    Iterator<NodeDetails> mockIterator = mock(Iterator.class);
-    UniverseDefinitionTaskParams params =
-        setUpValidEBS(mockIterator, PublicCloudConstants.StorageType.IO1);
+    UniverseDefinitionTaskParams params = setUpValidEBS(PublicCloudConstants.StorageType.IO1);
 
     UniverseResourceDetails details = new UniverseResourceDetails();
-    details.addPrice(params);
-    verify(mockIterator, times(3)).next();
+    details.addPrice(params, context);
     double expectedEbsPrice =
         Double.parseDouble(
             String.format(
@@ -300,13 +295,10 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
 
   @Test
   public void testAddPriceToDetailsGP2() throws Exception {
-    Iterator<NodeDetails> mockIterator = mock(Iterator.class);
-    UniverseDefinitionTaskParams params =
-        setUpValidEBS(mockIterator, PublicCloudConstants.StorageType.GP2);
+    UniverseDefinitionTaskParams params = setUpValidEBS(PublicCloudConstants.StorageType.GP2);
 
     UniverseResourceDetails details = new UniverseResourceDetails();
-    details.addPrice(params);
-    verify(mockIterator, times(3)).next();
+    details.addPrice(params, context);
     double expectedEbsPrice =
         Double.parseDouble(String.format("%.4f", 3 * numVolumes * volumeSize * sizePrice));
     assertThat(details.ebsPricePerHour, equalTo(expectedEbsPrice));
@@ -317,14 +309,12 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
 
   @Test
   public void testAddPriceToDetailsGP3() throws Exception {
-    Iterator<NodeDetails> mockIterator = mock(Iterator.class);
-    UniverseDefinitionTaskParams params = setUpValidEBS(mockIterator, StorageType.GP3);
+    UniverseDefinitionTaskParams params = setUpValidEBS(StorageType.GP3);
 
     UniverseResourceDetails details = new UniverseResourceDetails();
     details.gp3FreePiops = 3000;
     details.gp3FreeThroughput = 125;
-    details.addPrice(params);
-    verify(mockIterator, times(3)).next();
+    details.addPrice(params, context);
     double expectedEbsPrice =
         Double.parseDouble(
             String.format(
@@ -342,22 +332,17 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
 
   @Test
   public void testAddPriceWithRemovingOneNode() throws Exception {
-    NodeDetails decommissioningNode =
-        Json.fromJson(Json.toJson(sampleNodeDetails).deepCopy(), NodeDetails.class);
-    decommissioningNode.state = ToBeRemoved;
-    Iterator<NodeDetails> mockIterator = mock(Iterator.class);
-    UniverseDefinitionTaskParams params = setUpValidSSD(mockIterator, 4);
-    OngoingStubbing nextStubbing = when(mockIterator.next());
-    for (int i = 0; i < 3; ++i) {
-      nextStubbing = nextStubbing.thenReturn(sampleNodeDetails); // return same node 3x
-    }
-    decommissioningNode.placementUuid = sampleNodeDetails.placementUuid;
-    nextStubbing = nextStubbing.thenReturn(decommissioningNode);
-    nextStubbing.thenReturn(null);
+    UniverseDefinitionTaskParams params =
+        setUpValidSSD(
+            4,
+            (node, index) -> {
+              if (index == 3) {
+                node.state = ToBeRemoved;
+              }
+            });
 
     UniverseResourceDetails details = new UniverseResourceDetails();
-    details.addPrice(params);
-    verify(mockIterator, times(4)).next();
+    details.addPrice(params, context);
     assertThat(details.ebsPricePerHour, equalTo(0.0));
     double expectedPrice = Double.parseDouble(String.format("%.4f", 3 * instancePrice));
     assertThat(details.pricePerHour, equalTo(expectedPrice));
@@ -365,13 +350,11 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
 
   @Test
   public void testAddCustomPriceDetails() {
-    Iterator<NodeDetails> mockIterator = mock(Iterator.class);
     UniverseDefinitionTaskParams params =
-        setupSamplePriceDetails(mockIterator, PublicCloudConstants.StorageType.GP2);
+        setupSamplePriceDetails(PublicCloudConstants.StorageType.GP2);
     params.getPrimaryCluster().userIntent.instanceType = "c4.large";
     UniverseResourceDetails details = new UniverseResourceDetails();
-    details.addPrice(params);
-    verify(mockIterator, times(3)).next();
+    details.addPrice(params, context);
     double expectedEbsPrice =
         Double.parseDouble(String.format("%.4f", 3 * numVolumes * volumeSize * sizePrice));
     assertThat(details.ebsPricePerHour, equalTo(expectedEbsPrice));
@@ -381,13 +364,11 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
 
   @Test
   public void testAddNullPriceDetails() {
-    Iterator<NodeDetails> mockIterator = mock(Iterator.class);
     UniverseDefinitionTaskParams params =
-        setupNullPriceDetails(mockIterator, PublicCloudConstants.StorageType.GP2);
+        setupNullPriceDetails(PublicCloudConstants.StorageType.GP2);
     params.getPrimaryCluster().userIntent.instanceType = "c4.large";
     UniverseResourceDetails details = new UniverseResourceDetails();
-    details.addPrice(params);
-    verify(mockIterator, times(3)).next();
+    details.addPrice(params, context);
     assertThat(details.ebsPricePerHour, equalTo(0.0));
     assertThat(details.pricePerHour, equalTo(0.0));
   }

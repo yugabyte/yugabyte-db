@@ -22,15 +22,26 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.InstanceTypeKey;
 import com.yugabyte.yw.models.PriceComponent;
+import com.yugabyte.yw.models.PriceComponentKey;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.ProviderAndRegion;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import lombok.Value;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -102,7 +113,7 @@ public class UniverseResourceDetails {
     this.numNodes += numNodes;
   }
 
-  public void addPrice(UniverseDefinitionTaskParams params) {
+  public void addPrice(UniverseDefinitionTaskParams params, Context context) {
 
     // Calculate price
     double hourlyPrice = 0.0;
@@ -112,17 +123,17 @@ public class UniverseResourceDetails {
       if (nodeDetails.placementUuid != null) {
         userIntent = params.getClusterByUuid(nodeDetails.placementUuid).userIntent;
       }
-      Provider provider = Provider.get(UUID.fromString(userIntent.provider));
+      Provider provider = context.getProvider(UUID.fromString(userIntent.provider));
       if (!nodeDetails.isActive()) {
         continue;
       }
-      Region region = Region.getByCode(provider, nodeDetails.cloudInfo.region);
+      Region region = context.getRegion(provider.uuid, nodeDetails.cloudInfo.region);
 
       if (region == null) {
         continue;
       }
       PriceComponent instancePrice =
-          PriceComponent.get(provider.uuid, region.code, userIntent.instanceType);
+          context.getPriceComponent(provider.uuid, region.code, userIntent.instanceType);
       if (instancePrice == null) {
         continue;
       }
@@ -181,8 +192,9 @@ public class UniverseResourceDetails {
     addEBSCostPerHour(Double.parseDouble(String.format("%.4f", hourlyEBSPrice)));
   }
 
-  public static UniverseResourceDetails create(UniverseDefinitionTaskParams params, Config config) {
-    return create(params.nodeDetailsSet, params, config);
+  public static UniverseResourceDetails create(
+      UniverseDefinitionTaskParams params, Context context) {
+    return create(params.nodeDetailsSet, params, context);
   }
 
   /**
@@ -194,7 +206,7 @@ public class UniverseResourceDetails {
    * @return a UniverseResourceDetails object containing info on the universe's resources.
    */
   public static UniverseResourceDetails create(
-      Collection<NodeDetails> nodes, UniverseDefinitionTaskParams params, Config config) {
+      Collection<NodeDetails> nodes, UniverseDefinitionTaskParams params, Context context) {
     UniverseResourceDetails details = new UniverseResourceDetails();
     for (Cluster cluster : params.clusters) {
       details.addNumNodes(cluster.userIntent.numNodes);
@@ -217,7 +229,8 @@ public class UniverseResourceDetails {
             && node.cloudInfo.instance_type != null) {
           details.addAz(node.cloudInfo.az);
           InstanceType instanceType =
-              InstanceType.get(UUID.fromString(userIntent.provider), node.cloudInfo.instance_type);
+              context.getInstanceType(
+                  UUID.fromString(userIntent.provider), node.cloudInfo.instance_type);
           if (instanceType == null) {
             LOG.error(
                 "Couldn't find instance type "
@@ -232,9 +245,110 @@ public class UniverseResourceDetails {
       }
     }
 
-    details.gp3FreePiops = config.getInt(GP3_FREE_PIOPS_PARAM);
-    details.gp3FreeThroughput = config.getInt(GP3_FREE_THROUGHPUT_PARAM);
-    details.addPrice(params);
+    details.gp3FreePiops = context.getConfig().getInt(GP3_FREE_PIOPS_PARAM);
+    details.gp3FreeThroughput = context.getConfig().getInt(GP3_FREE_THROUGHPUT_PARAM);
+    details.addPrice(params, context);
     return details;
+  }
+
+  @Value
+  public static class Context {
+    Config config;
+    Map<UUID, Provider> providerMap;
+    Map<ProviderAndRegion, Region> regionsMap;
+    Map<InstanceTypeKey, InstanceType> instanceTypeMap;
+    Map<PriceComponentKey, PriceComponent> priceComponentMap;
+
+    public Context(Config config, Universe universe) {
+      this(
+          config,
+          Customer.get(universe.customerId),
+          Collections.singletonList(universe.getUniverseDetails()));
+    }
+
+    public Context(Config config, Customer customer, UniverseDefinitionTaskParams universeParams) {
+      this(config, customer, Collections.singletonList(universeParams));
+    }
+
+    public Context(
+        Config config, Customer customer, Collection<UniverseDefinitionTaskParams> universeParams) {
+      this.config = config;
+      providerMap =
+          Provider.getAll(customer.getUuid())
+              .stream()
+              .collect(Collectors.toMap(provider -> provider.uuid, Function.identity()));
+
+      Set<InstanceTypeKey> instanceTypes =
+          universeParams
+              .stream()
+              .filter(ud -> ud.nodeDetailsSet != null)
+              .flatMap(
+                  ud ->
+                      ud.nodeDetailsSet
+                          .stream()
+                          .filter(NodeDetails::isActive)
+                          .filter(nodeDetails -> nodeDetails.cloudInfo != null)
+                          .filter(nodeDetails -> nodeDetails.cloudInfo.instance_type != null)
+                          .map(
+                              nodeDetails ->
+                                  new InstanceTypeKey()
+                                      .setProviderUuid(
+                                          UUID.fromString(
+                                              ud.getPrimaryCluster().userIntent.provider))
+                                      .setInstanceTypeCode(nodeDetails.cloudInfo.instance_type)))
+              .collect(Collectors.toSet());
+
+      instanceTypeMap =
+          InstanceType.findByKeys(instanceTypes)
+              .stream()
+              .collect(Collectors.toMap(InstanceType::getIdKey, Function.identity()));
+
+      Set<ProviderAndRegion> providersAndRegions =
+          universeParams
+              .stream()
+              .filter(ud -> ud.nodeDetailsSet != null)
+              .flatMap(
+                  ud ->
+                      ud.nodeDetailsSet
+                          .stream()
+                          .filter(NodeDetails::isActive)
+                          .filter(nodeDetails -> nodeDetails.cloudInfo != null)
+                          .filter(nodeDetails -> nodeDetails.cloudInfo.region != null)
+                          .map(
+                              nodeDetails ->
+                                  new ProviderAndRegion(
+                                      UUID.fromString(ud.getPrimaryCluster().userIntent.provider),
+                                      nodeDetails.getRegion())))
+              .collect(Collectors.toSet());
+
+      regionsMap =
+          Region.findByKeys(providersAndRegions)
+              .stream()
+              .collect(Collectors.toMap(ProviderAndRegion::from, Function.identity()));
+
+      priceComponentMap =
+          PriceComponent.findByProvidersAndRegions(providersAndRegions)
+              .stream()
+              .collect(Collectors.toMap(PriceComponent::getIdKey, Function.identity()));
+    }
+
+    public Provider getProvider(UUID uuid) {
+      return providerMap.get(uuid);
+    }
+
+    public Region getRegion(UUID providerUuid, String code) {
+      return regionsMap.get(new ProviderAndRegion(providerUuid, code));
+    }
+
+    public InstanceType getInstanceType(UUID providerUuid, String code) {
+      return instanceTypeMap.get(
+          new InstanceTypeKey().setProviderUuid(providerUuid).setInstanceTypeCode(code));
+    }
+
+    public PriceComponent getPriceComponent(
+        UUID providerUuid, String regionCode, String componentCode) {
+      return priceComponentMap.get(
+          PriceComponentKey.create(providerUuid, regionCode, componentCode));
+    }
   }
 }
