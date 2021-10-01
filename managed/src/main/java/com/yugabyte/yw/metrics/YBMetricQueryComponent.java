@@ -23,7 +23,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NavigableMap;
-import java.util.Optional;
 import java.util.TreeMap;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -353,11 +352,10 @@ public class YBMetricQueryComponent {
       if (nodePrefix.length >= 3) {
         universeName = nodePrefix[2];
       }
-      Optional<Universe> optUniverse = Universe.maybeGetUniverseByName(universeName);
-      if (!optUniverse.isPresent()) {
+      Universe universe = Universe.getUniverseByName(universeName);
+      if (universe == null) {
         return null;
       }
-      Universe universe = optUniverse.get();
       TServerMappings tserverMaps = getTservers(universe);
       CassandraConnection cc = null;
 

@@ -11,14 +11,20 @@ import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import io.ebean.Ebean;
+import io.ebean.ExpressionList;
 import io.ebean.Finder;
+import io.ebean.Junction;
 import io.ebean.Model;
 import io.ebean.SqlUpdate;
 import io.ebean.annotation.EnumValue;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -27,6 +33,7 @@ import javax.persistence.EmbeddedId;
 import javax.persistence.Entity;
 import javax.persistence.JoinColumn;
 import javax.persistence.ManyToOne;
+import org.apache.commons.collections.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
@@ -64,20 +71,24 @@ public class InstanceType extends Model {
   @JoinColumn(name = "provider_uuid", insertable = false, updatable = false)
   private Provider provider;
 
+  public InstanceTypeKey getIdKey() {
+    return idKey;
+  }
+
   public Provider getProvider() {
     if (this.provider == null) {
-      setProviderUuid(this.idKey.providerUuid);
+      setProviderUuid(this.idKey.getProviderUuid());
     }
     return this.provider;
   }
 
   public void setProvider(Provider aProvider) {
     provider = aProvider;
-    idKey.providerUuid = aProvider.uuid;
+    idKey.setProviderUuid(aProvider.uuid);
   }
 
   public UUID getProviderUuid() {
-    return this.idKey.providerUuid;
+    return this.idKey.getProviderUuid();
   }
 
   public void setProviderUuid(UUID providerUuid) {
@@ -95,11 +106,11 @@ public class InstanceType extends Model {
   }
 
   public String getInstanceTypeCode() {
-    return this.idKey.instanceTypeCode;
+    return this.idKey.getInstanceTypeCode();
   }
 
   public void setInstanceTypeCode(String code) {
-    idKey.instanceTypeCode = code;
+    idKey.setInstanceTypeCode(code);
   }
 
   @ApiModelProperty(value = "True if the instance is active", accessMode = READ_ONLY)
@@ -141,6 +152,10 @@ public class InstanceType extends Model {
     if (instanceType == null) {
       return instanceType;
     }
+    return populateDetails(instanceType);
+  }
+
+  private static InstanceType populateDetails(InstanceType instanceType) {
     // Since 'instanceTypeDetailsJson' can be null (populated externally), we need to populate these
     // fields explicitly.
     if (instanceType.instanceTypeDetailsJson == null
@@ -154,6 +169,27 @@ public class InstanceType extends Model {
               Json.parse(instanceType.instanceTypeDetailsJson), InstanceTypeDetails.class);
     }
     return instanceType;
+  }
+
+  public static List<InstanceType> findByKeys(Collection<InstanceTypeKey> keys) {
+    if (CollectionUtils.isEmpty(keys)) {
+      return Collections.emptyList();
+    }
+    Set<InstanceTypeKey> uniqueKeys = new HashSet<>(keys);
+    ExpressionList<InstanceType> query = find.query().where();
+    Junction<InstanceType> orExpr = query.or();
+    for (InstanceTypeKey key : uniqueKeys) {
+      Junction<InstanceType> andExpr = orExpr.and();
+      andExpr.eq("provider_uuid", key.getProviderUuid());
+      andExpr.eq("instance_type_code", key.getInstanceTypeCode());
+      orExpr.endAnd();
+    }
+    return query
+        .endOr()
+        .findList()
+        .stream()
+        .map(InstanceType::populateDetails)
+        .collect(Collectors.toList());
   }
 
   public static InstanceType getOrBadRequest(UUID providerUuid, String instanceTypeCode) {
