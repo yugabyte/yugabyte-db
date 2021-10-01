@@ -525,8 +525,8 @@ public class UniverseCRUDHandler {
     return universes;
   }
 
-  public List<UniverseResp> findByName(String name) {
-    return Universe.maybeGetUniverseByName(name)
+  public List<UniverseResp> findByName(Customer customer, String name) {
+    return Universe.maybeGetUniverseByName(customer.getCustomerId(), name)
         .map(
             value ->
                 Collections.singletonList(
