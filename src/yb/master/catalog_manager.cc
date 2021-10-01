@@ -433,6 +433,9 @@ DEFINE_test_flag(int32, slowdown_alter_table_rpcs_ms, 0,
 DEFINE_test_flag(bool, reject_delete_not_serving_tablet_rpc, false,
                  "Whether to reject DeleteNotServingTablet RPC.");
 
+DEFINE_test_flag(double, crash_after_creating_single_split_tablet, 0.0,
+                 "Crash inside CatalogManager::RegisterNewTabletForSplit after calling Upsert");
+
 namespace yb {
 namespace master {
 
@@ -2342,10 +2345,10 @@ Status CatalogManager::DoSplitTablet(
       new_tablet_ids[i] = source_tablet_lock->pb.split_tablet_ids(i);
     } else {
       auto new_tablet_info = VERIFY_RESULT(RegisterNewTabletForSplit(
-          source_tablet_info.get(), new_tablets_partition[i], &source_table_lock));
+          source_tablet_info.get(), new_tablets_partition[i],
+          &source_table_lock, &source_tablet_lock));
 
       new_tablet_ids[i] = new_tablet_info->id();
-      source_tablet_lock.mutable_data()->pb.add_split_tablet_ids(new_tablet_info->id());
     }
   }
   source_tablet_lock.Commit();
@@ -5006,7 +5009,7 @@ Status CatalogManager::IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
 
 Result<TabletInfoPtr> CatalogManager::RegisterNewTabletForSplit(
     TabletInfo* source_tablet_info, const PartitionPB& partition,
-    TableInfo::WriteLock* table_write_lock) {
+    TableInfo::WriteLock* table_write_lock, TabletInfo::WriteLock* tablet_write_lock) {
   const auto tablet_lock = source_tablet_info->LockForRead();
 
   auto table = source_tablet_info->table();
@@ -5033,14 +5036,10 @@ Result<TabletInfoPtr> CatalogManager::RegisterNewTabletForSplit(
     auto& table_pb = table_write_lock->mutable_data()->pb;
     table_pb.set_partition_list_version(table_pb.partition_list_version() + 1);
 
-    RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), table));
-    // If we crash here - we will have new partitions version with the same set of tablets which
-    // is harmless.
-    // If we first save new_tablet to syscatalog and then crash - we would have table with old
-    // partitions version, but new set of tablets which would break invariant that table partitions
-    // set is not changed within the same partitions version.
-    // TODO: rework this after https://github.com/yugabyte/yugabyte-db/issues/4912 is implemented.
-    RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), new_tablet));
+    tablet_write_lock->mutable_data()->pb.add_split_tablet_ids(new_tablet->id());
+    RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), table, new_tablet, source_tablet_info));
+
+    MAYBE_FAULT(FLAGS_TEST_crash_after_creating_single_split_tablet);
 
     table->AddTablet(new_tablet);
     // TODO: We use this pattern in other places, but what if concurrent thread accesses not yet
