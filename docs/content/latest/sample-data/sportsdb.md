@@ -40,7 +40,7 @@ The SportsDB SQL scripts that are compatible with YugabyteDB reside in the[`samp
 - [`sportsdb_fks.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/sportsdb_fks.sql) — Creates the foreign key constraints
 - [`sportsdb_indexes.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/sportsdb_indexes.sql) — Creates the indexes
 
-Optionally, you can download them, but it is not necessary since they are all present under the `share` folder of the Yugabyte root directory.
+If you've installed YugabyteDB, you can find the scripts in your installation's `share` folder.
 
 ### 2. Open the YSQL shell
 
