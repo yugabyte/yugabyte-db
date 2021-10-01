@@ -38,7 +38,7 @@ To install and use the Chinook sample database, you need to have installed and c
 
 Install the Chinook sample database
 
-### 1. Download the SQL scripts (Optional)
+### 1. Download the SQL scripts (optional)
 
 The Chinook SQL scripts that are compatible with YugabyteDB reside in the [`sample` directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample). The following three files will be used for this exercise. 
 

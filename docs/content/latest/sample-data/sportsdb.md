@@ -30,7 +30,7 @@ Follow the steps here to download and install the SportsDB sample database.
 
 To use the SportsDB sample database, you must have installed and configured YugabyteDB. To get up and running quickly, see [Quick Start](/latest/quick-start/).
 
-### 1. Download the SportsDB scripts (Optional)
+### 1. Download the SportsDB scripts (optional)
 
 The SportsDB SQL scripts that are compatible with YugabyteDB reside in the[`sample` directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample). The following five files will be used for this exercise.
 
