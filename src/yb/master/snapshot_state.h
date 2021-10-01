@@ -25,6 +25,8 @@
 
 #include "yb/tserver/tserver_fwd.h"
 
+#include "yb/util/async_task_tracker.h"
+
 namespace yb {
 namespace master {
 
@@ -74,6 +76,10 @@ class SnapshotState : public StateWithTablets {
     return version_;
   }
 
+  AsyncTaskTracker& CleanupTracker() {
+    return cleanup_tracker_;
+  }
+
   Result<tablet::CreateSnapshotData> SysCatalogSnapshotData(
       const tablet::SnapshotOperation& operation) const;
 
@@ -101,6 +107,7 @@ class SnapshotState : public StateWithTablets {
   SnapshotScheduleId schedule_id_;
   int64_t version_;
   bool delete_started_ = false;
+  AsyncTaskTracker cleanup_tracker_;
 };
 
 Result<docdb::KeyBytes> EncodedSnapshotKey(

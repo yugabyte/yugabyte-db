@@ -22,6 +22,8 @@
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_backup.pb.h"
 
+#include "yb/util/async_task_tracker.h"
+
 namespace yb {
 namespace master {
 
@@ -63,6 +65,10 @@ class SnapshotScheduleState {
     return options_;
   }
 
+  AsyncTaskTracker& CleanupTracker() {
+    return cleanup_tracker_;
+  }
+
   bool deleted() const;
 
   void PrepareOperations(
@@ -90,6 +96,8 @@ class SnapshotScheduleState {
   // When snapshot is being created for this schedule, this field contains id of this snapshot.
   // To prevent creating other snapshots during that time.
   TxnSnapshotId creating_snapshot_id_ = TxnSnapshotId::Nil();
+
+  AsyncTaskTracker cleanup_tracker_;
 };
 
 } // namespace master

@@ -78,7 +78,12 @@ void SnapshotScheduleState::PrepareOperations(
   auto delete_time = HybridTime::FromPB(options_.delete_time());
   if (delete_time) {
     // Check whether we are ready to cleanup deleted schedule.
-    if (now > delete_time.AddMilliseconds(FLAGS_snapshot_coordinator_cleanup_delay_ms)) {
+    if (now > delete_time.AddMilliseconds(FLAGS_snapshot_coordinator_cleanup_delay_ms) &&
+        !CleanupTracker().Started()) {
+      LOG_WITH_PREFIX(INFO) << "Snapshot Schedule " << id() << " cleanup started.";
+      if (!CleanupTracker().Start().ok()) {
+        LOG(DFATAL) << "Snapshot Schedule " << id() << " cleanup was already started previously.";
+      }
       operations->push_back(SnapshotScheduleOperation {
         .type = SnapshotScheduleOperationType::kCleanup,
         .schedule_id = id_,
