@@ -387,12 +387,8 @@ export default class ClusterFields extends Component {
     if (isNonEmptyObject(currentFormValues) && isNonEmptyString(currentFormValues.provider)) {
       providerSelected = currentFormValues.provider;
       if (providerSelected && regions.data.length) {
-        const providerRegions = regions.data &&
-          regions.data.map(function (regionItem) {
-          return { value: regionItem.uuid, label: regionItem.name };
-        });
         this.setState({
-          defaultRegion: providerRegions[0]
+          defaultRegion: { value: regions.data[0].uuid, label: regions.data[0].name }
         });
       }
     }
