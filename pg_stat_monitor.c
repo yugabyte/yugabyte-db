@@ -1545,6 +1545,7 @@ pgss_store(uint64 queryid,
 				out_of_memory = true;
 				break;
 			}
+			query_entry->state = kind;
 			entry = pgss_get_entry(bucketid, userid, dbid, queryid, ip, planid, appid);
 			if (entry == NULL)
 			{
@@ -2030,7 +2031,6 @@ get_next_wbucket(pgssSharedState *pgss)
 
 	if (update_bucket)
 	{
-		unsigned char *buf;
 		char          file_name[1024];
 		int            sec = 0;
 
@@ -2040,9 +2040,8 @@ get_next_wbucket(pgssSharedState *pgss)
 		prev_bucket_id = pg_atomic_exchange_u64(&pgss->current_wbucket, new_bucket_id);
 
 		LWLockAcquire(pgss->lock, LW_EXCLUSIVE);
-		buf = pgss_qbuf[new_bucket_id];
 		hash_entry_dealloc(new_bucket_id, prev_bucket_id);
-		hash_query_entry_dealloc(new_bucket_id, buf);
+		hash_query_entry_dealloc(new_bucket_id, prev_bucket_id, pgss_qbuf);
 
 		snprintf(file_name, 1024, "%s.%d", PGSM_TEXT_FILE, (int)new_bucket_id);
 		unlink(file_name);

@@ -379,7 +379,7 @@ HTAB *pgsm_get_plan_hash(void);
 void hash_entry_reset(void);
 void hash_query_entryies_reset(void);
 void hash_query_entries();
-void hash_query_entry_dealloc(int bucket, unsigned char *buf);
+void hash_query_entry_dealloc(int new_bucket_id, int old_bucket_id, unsigned char *query_buffer[]);
 bool hash_entry_dealloc(int new_bucket_id, int old_bucket_id);
 pgssEntry* hash_entry_alloc(pgssSharedState *pgss, pgssHashKey *key, int encoding);
 Size hash_memsize(void);
