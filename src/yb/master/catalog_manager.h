@@ -1255,7 +1255,7 @@ class CatalogManager :
   // Returns TabletInfo for registered tablet.
   Result<TabletInfoPtr> RegisterNewTabletForSplit(
       TabletInfo* source_tablet_info, const PartitionPB& partition,
-      TableInfo::WriteLock* table_write_lock);
+      TableInfo::WriteLock* table_write_lock, TabletInfo::WriteLock* tablet_write_lock);
 
   Result<scoped_refptr<TabletInfo>> GetTabletInfo(const TabletId& tablet_id);
 
