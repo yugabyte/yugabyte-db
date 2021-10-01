@@ -118,6 +118,9 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
 
   Result<HostPort> GetFirstRpcAddressForTS();
 
+  void CleanupEnvironmentOnSetupUniverseReplicationFailure(
+    const std::string& producer_uuid, const Status& failure_status);
+
   DISALLOW_COPY_AND_ASSIGN(ClusterAdminClient);
 };
 
