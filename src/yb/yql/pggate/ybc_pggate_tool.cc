@@ -59,10 +59,12 @@ CHECKED_STATUS PrepareInitPgGateBackend() {
   RETURN_NOT_OK(server::DetermineMasterAddresses(
       "pggate_master_addresses", FLAGS_pggate_master_addresses, 0, &master_addresses,
       &resolved_str));
+  LOG(INFO) << "Master addresses: " << AsString(master_addresses);
 
   PgApiContext context;
   struct Data {
     boost::optional<tserver::TServerSharedObject> tserver_shared_object;
+    HostPort reached_host_port;
     std::atomic<bool> flag{false};
     CountDownLatch latch{1};
     std::atomic<size_t> running{0};
@@ -85,12 +87,14 @@ CHECKED_STATUS PrepareInitPgGateBackend() {
       auto req_data = std::make_shared<ReqData>();
       req_data->controller.set_timeout(std::chrono::seconds(60));
       proxy.GetSharedDataAsync(
-          req_data->req, &req_data->resp, &req_data->controller, [req_data] {
+          req_data->req, &req_data->resp, &req_data->controller,
+          [req_data, host_port = host_port] {
         if (req_data->controller.status().ok()) {
           bool expected = false;
           if (data->flag.compare_exchange_strong(expected, true)) {
             memcpy(pointer_cast<char*>(&**data->tserver_shared_object),
                    req_data->resp.data().c_str(), req_data->resp.data().size());
+            data->reached_host_port = host_port;
             data->latch.CountDown();
           }
         } else if (--data->running == 0) {
@@ -105,6 +109,13 @@ CHECKED_STATUS PrepareInitPgGateBackend() {
   RETURN_NOT_OK(data->failure);
 
   FLAGS_pggate_tserver_shm_fd = data->tserver_shared_object->GetFd();
+
+  auto& shared_data = **data->tserver_shared_object;
+  shared_data.SetHostEndpoint(shared_data.endpoint(), data->reached_host_port.host());
+  LOG(INFO) << "Shared data fetched, endpoint: " << shared_data.endpoint()
+            << ", host: " << shared_data.host().ToBuffer()
+            << ", catalog version: " << shared_data.ysql_catalog_version()
+            << ", postgres_auth_key: " << shared_data.postgres_auth_key();
 
   YBCPgCallbacks callbacks;
   callbacks.FetchUniqueConstraintName = &FetchUniqueConstraintName;
