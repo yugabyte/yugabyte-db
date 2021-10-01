@@ -1013,7 +1013,8 @@ class YBBackup:
         if self.args.certs_dir:
             certs_env = {
                             'FLAGS_certs_dir': self.args.certs_dir,
-                            'FLAGS_use_node_to_node_encryption': 'true'
+                            'FLAGS_use_node_to_node_encryption': 'true',
+                            'FLAGS_use_node_hostname_for_local_tserver': 'true',
                         }
 
         run_at_ip = None
