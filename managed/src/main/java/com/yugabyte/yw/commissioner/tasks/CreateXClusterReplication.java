@@ -38,7 +38,7 @@ public class CreateXClusterReplication extends XClusterReplicationTaskBase {
       createResetUniverseVersionTask()
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
-      // Marks update of this universe as a success only if all the tasks before it succeeded.
+      // Marks update of this universe as a success
       createMarkUniverseUpdateSuccessTasks()
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 

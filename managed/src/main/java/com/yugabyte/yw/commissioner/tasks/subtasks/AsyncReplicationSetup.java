@@ -25,8 +25,6 @@ public class AsyncReplicationSetup extends XClusterReplicationTaskBase {
 
   public static final Logger LOG = LoggerFactory.getLogger(AsyncReplicationSetup.class);
 
-  public YBClientService ybService = null;
-
   private static final int POLL_TIMEOUT_SECONDS = 30;
 
   @Inject
@@ -37,7 +35,6 @@ public class AsyncReplicationSetup extends XClusterReplicationTaskBase {
   @Override
   public void initialize(ITaskParams params) {
     super.initialize(params);
-    ybService = Play.current().injector().instanceOf(YBClientService.class);
   }
 
   @Override
