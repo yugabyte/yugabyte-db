@@ -1815,7 +1815,8 @@ Datum _agtype_build_vertex(PG_FUNCTION_ARGS)
                  errmsg("_agtype_build_vertex() graphid cannot be NULL")));
 
     id = AG_GETARG_GRAPHID(0);
-    add_agtype(id, false, &result, GRAPHIDOID, false);
+    result.res = push_agtype_value(&result.parse_state, WAGT_VALUE,
+                                   integer_to_agtype_value(id));
 
     /* process label */
     result.res = push_agtype_value(&result.parse_state, WAGT_KEY,
@@ -1896,7 +1897,8 @@ Datum _agtype_build_edge(PG_FUNCTION_ARGS)
                  errmsg("_agtype_build_edge() graphid cannot be NULL")));
 
     id = AG_GETARG_GRAPHID(0);
-    add_agtype(id, false, &result, GRAPHIDOID, false);
+    result.res = push_agtype_value(&result.parse_state, WAGT_VALUE,
+                                   integer_to_agtype_value(id));
 
     /* process label */
     result.res = push_agtype_value(&result.parse_state, WAGT_KEY,
@@ -1920,7 +1922,8 @@ Datum _agtype_build_edge(PG_FUNCTION_ARGS)
                  errmsg("_agtype_build_edge() endid cannot be NULL")));
 
     end_id = AG_GETARG_GRAPHID(2);
-    add_agtype(end_id, false, &result, GRAPHIDOID, false);
+    result.res = push_agtype_value(&result.parse_state, WAGT_VALUE,
+                                   integer_to_agtype_value(end_id));
 
     /* process start_id */
     result.res = push_agtype_value(&result.parse_state, WAGT_KEY,
@@ -1932,7 +1935,8 @@ Datum _agtype_build_edge(PG_FUNCTION_ARGS)
                  errmsg("_agtype_build_edge() startid cannot be NULL")));
 
     start_id = AG_GETARG_GRAPHID(1);
-    add_agtype(start_id, false, &result, GRAPHIDOID, false);
+    result.res = push_agtype_value(&result.parse_state, WAGT_VALUE,
+                                   integer_to_agtype_value(start_id));
 
     /* process properties */
     result.res = push_agtype_value(&result.parse_state, WAGT_KEY,
