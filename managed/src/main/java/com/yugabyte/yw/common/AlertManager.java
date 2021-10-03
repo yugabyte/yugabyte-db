@@ -10,6 +10,7 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.models.helpers.CommonUtils.nowMinusWithoutMillis;
 import static com.yugabyte.yw.models.helpers.CommonUtils.nowPlusWithoutMillis;
 
 import com.google.common.annotations.VisibleForTesting;
@@ -129,6 +130,8 @@ public class AlertManager {
       result = sendNotification(alert, state, report);
       if (result == SendNotificationResult.FAILED_NO_RESCHEDULE) {
         // Failed, no reschedule is required.
+        alert.setNextNotificationTime(null);
+        alert.save();
         report.failAttempt();
         return false;
       }
@@ -136,6 +139,16 @@ public class AlertManager {
       alert.setNotificationAttemptTime(new Date());
       if (result == SendNotificationResult.FAILED_TO_RESCHEDULE) {
         alert.setNotificationsFailed(alert.getNotificationsFailed() + 1);
+
+        Date switchStateTime = getSwitchStateTime(alert);
+        if ((switchStateTime != null)
+            && switchStateTime.before(nowMinusWithoutMillis(1, ChronoUnit.DAYS))) {
+          log.trace("Unable to send notification for alert {}. Stop trying.", alert.getUuid());
+          alert.setNextNotificationTime(null);
+          alert.save();
+          return false;
+        }
+
         // For now using fixed delay before the notification repeat. Later the behavior
         // can be adjusted using an amount of failed attempts (using progressive value).
         alert.setNextNotificationTime(
@@ -163,6 +176,18 @@ public class AlertManager {
     return result == SendNotificationResult.SUCCEEDED;
   }
 
+  private Date getSwitchStateTime(Alert alert) {
+    switch (alert.getState()) {
+      case ACTIVE:
+        return alert.getCreateTime();
+      case ACKNOWLEDGED:
+        return alert.getAcknowledgedTime();
+      case RESOLVED:
+        return alert.getResolvedTime();
+    }
+    return null;
+  }
+
   public void sendNotifications() {
     AlertFilter filter =
         AlertFilter.builder()
@@ -178,9 +203,7 @@ public class AlertManager {
     AlertNotificationReport report = new AlertNotificationReport();
     for (Alert alert : toNotify) {
       try {
-        if (((alert.getNotifiedState() == null)
-                || (alert.getNotifiedState().ordinal() < State.ACTIVE.ordinal()))
-            && (alert.getState().ordinal() >= State.ACTIVE.ordinal())) {
+        if (alert.getNotifiedState() == null) {
           report.raiseAttempt();
           if (!sendNotificationForState(alert, State.ACTIVE, report)) {
             continue;
