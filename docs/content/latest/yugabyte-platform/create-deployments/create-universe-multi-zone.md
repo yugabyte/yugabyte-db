@@ -29,7 +29,7 @@ Generic</a>
 
 </ul>
 
-This section describes how to create a YugabyteDB universe using any cloud provider, except Kubernetes, in one geographic region across multiple availability zones.
+This document describes how to create a YugabyteDB universe using any cloud provider, except Kubernetes, in one geographic region across multiple availability zones.
 
 ## Prerequisites
 
@@ -51,7 +51,7 @@ To create a multi-zone universe using [Google Cloud provider (GCP)](../../config
 - Enter the region (**Oregon**).
 - Change the instance type (**n1-standard-8**).
 - Accept default values for all of the remaining fields (replication factor = 3, number of nodes = 3).
-- Click **Create**, as shown in the following illustration.
+- Click **Create**, as per the following illustration:
 
 ![Create Universe on GCP](/images/ee/create-univ-multi-zone.png)
 
@@ -61,31 +61,17 @@ The following illustration shows a newly-created universe in Pending state:
 
 ## Examine the universe
 
-The universe view consists of several tabs that provide different information about this universe.
+The **Universes** view allows you to examine various aspects of the universe:
 
-### The Overview tab
-
-The following illustration shows the **Overview** tab:
-
-![Detail for a Pending Universe](/images/ee/pending-univ-detail.png)
-
-### The Tasks tab 
-
-The following illustration shows the **Tasks** tab that provides information about the state of tasks currently running on the universe, as well as the tasks that have run in the past against this universe:
-
-![Tasks for a Pending Universe](/images/ee/pending-univ-tasks.png)
-
-### The Nodes tab
-
-The following illustration shows the **Nodes** tab that allows you to see a list of the underlying nodes for the universe:
-
-![Nodes for a Pending Universe](/images/ee/pending-univ-nodes.png)
-
-Note that in the preceding illustration, the cloud provider instances are still being created.
-
-You can use this tab to open the cloud provider's instances page. For example, in case of GCP, if you navigate to **Compute Engine > VM Instances** and search for instances that contain **helloworld1** in their name, you should see a list of instances similar to the following illustration:
-
-![Instances for a Pending Universe](/images/ee/multi-zone-universe-gcp-instances.png)
+- **Overview** provides the information on the current Yugabyte Platform version, the number of nodes included in the primary cluster, the cost associated with running the universe, the CPU and disk usage, the geographical location of the nodes, the operations per second and average latency, the number of different types of tables, as well as the health monitor.
+- **Tables** provides details about YSQL, YCQL, and YEDIS tables included in the universe.
+- **Nodes** provide details on nodes included in the universe and allows to perform actions on a specific node (connect, stop, remove, display live and slow queries, download logs). You can also use **Nodes** to open the cloud provider's instances page. For example, in case of GCP, if you navigate to **Compute Engine > VM Instances** and search for instances that contain the name of your universe in the instances name, you should see a list of instances.
+- **Metrics** displays graphs representing information on operations, latency, and other parameter for each type of node and server.
+- **Queries** displays details about live and slow queries that you can filter by column and text.
+- **Replication** provides information about replication in the universe.
+- **Tasks** provides details about the state of tasks running on the universe, as well as the tasks that have run in the past against this universe.
+- **Backups** displays information about scheduled backups, if any, and allows you to create, restore, and delete backups.
+- **Health** displays the detailed performance status of the nodes and components involved in their operation. **Health** also allows you to pause health check alerts.
 
 ## Connect to a database node
 
