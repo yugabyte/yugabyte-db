@@ -73,7 +73,7 @@ BEGIN
     start_time := DBMS_UTILITY.GET_TIME();
     PERFORM pg_sleep(2);
     end_time := DBMS_UTILITY.GET_TIME();
-    RAISE NOTICE 'Execution time: % seconds', round((end_time - start_time)::numeric/100, 0);
+    RAISE NOTICE 'Execution time: % seconds', trunc((end_time - start_time)::numeric/100);
 END
 $$;
 
