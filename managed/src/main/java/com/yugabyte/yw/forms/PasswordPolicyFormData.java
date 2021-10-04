@@ -14,6 +14,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yugabyte.yw.models.CustomerConfig;
+import javax.validation.constraints.Min;
 import play.data.validation.Constraints;
 
 /** This class will be used by the API and UI Form Elements to validate constraints are met */
@@ -23,30 +24,19 @@ import play.data.validation.Constraints;
             + " for upper case, lower case, digits and special characters")
 public class PasswordPolicyFormData implements Constraints.Validatable<String> {
 
-  @Constraints.Required(message = "Minimal length is required")
-  @Constraints.Min(value = 1, message = "Minimal length should be > 1")
+  @Min(value = 1)
   private int minLength = 8;
 
-  @Constraints.Required(message = "Minimal number of uppercase letters is required")
-  @Constraints.Min(
-      value = 0,
-      message = "Minimal number of uppercase letters should not be negative")
+  @Min(value = 0)
   private int minUppercase = 1;
 
-  @Constraints.Required(message = "Minimal number of lowercase letters is required")
-  @Constraints.Min(
-      value = 0,
-      message = "Minimal number of lowercase letters should not be negative")
+  @Min(value = 0)
   private int minLowercase = 1;
 
-  @Constraints.Required(message = "Minimal number of digits is required")
-  @Constraints.Min(value = 0, message = "Minimal number of digits should not be negative")
+  @Min(value = 0)
   private int minDigits = 1;
 
-  @Constraints.Required(message = "Minimal number of special characters is required")
-  @Constraints.Min(
-      value = 0,
-      message = "Minimal number of special characters should not be negative")
+  @Min(value = 0)
   private int minSpecialCharacters = 1;
 
   public int getMinLength() {

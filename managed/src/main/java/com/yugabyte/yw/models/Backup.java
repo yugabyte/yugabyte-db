@@ -292,27 +292,21 @@ public class Backup extends Model {
     }
   }
 
-  public static boolean existsStorageConfig(UUID customerConfigUUID) {
-    List<Backup> backupList =
-        find.query()
-            .where()
-            .or()
-            .eq("state", BackupState.Completed)
-            .eq("state", BackupState.InProgress)
-            .endOr()
-            .findList();
-    backupList =
-        backupList
-            .stream()
-            .filter(b -> b.getBackupInfo().storageConfigUUID.equals(customerConfigUUID))
-            .collect(Collectors.toList());
-    return backupList.size() != 0;
+  public static List<Backup> getInProgressAndCompleted(UUID customerUUID) {
+    return find.query()
+        .where()
+        .eq("customer_uuid", customerUUID)
+        .in("state", BackupState.InProgress, BackupState.Completed)
+        .or()
+        .eq("state", BackupState.Completed)
+        .eq("state", BackupState.InProgress)
+        .endOr()
+        .findList();
   }
 
-  public static Set<Universe> getAssociatedUniverses(UUID configUUID) {
+  public static Set<Universe> getAssociatedUniverses(UUID customerUUID, UUID configUUID) {
     Set<UUID> universeUUIDs = new HashSet<>();
-    List<Backup> backupList =
-        find.query().where().in("state", BackupState.Completed, BackupState.InProgress).findList();
+    List<Backup> backupList = getInProgressAndCompleted(customerUUID);
     backupList =
         backupList
             .stream()
