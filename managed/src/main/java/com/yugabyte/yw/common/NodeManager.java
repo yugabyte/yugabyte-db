@@ -816,7 +816,8 @@ public class NodeManager extends DevopsBase {
                       UUID.fromString(
                           universe.getUniverseDetails().getPrimaryCluster().userIntent.provider))
                   .getYbHome();
-          String certsNodeDir = yb_home_dir + "/yugabyte-tls-config";
+          String certsDir = yb_home_dir + "/yugabyte-tls-config";
+          String certsForClientDir = yb_home_dir + "/yugabyte-client-tls-config";
 
           if (UpgradeTaskParams.UpgradeTaskSubType.CopyCerts.name().equals(subType)) {
             if (taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt) {
@@ -833,10 +834,10 @@ public class NodeManager extends DevopsBase {
               gflags.put("use_client_to_server_encryption", clientToNodeString);
               gflags.put("allow_insecure_connections", "true");
               if (CertificateHelper.isRootCARequired(taskParam)) {
-                gflags.put("certs_dir", yb_home_dir + "/yugabyte-tls-config");
+                gflags.put("certs_dir", certsDir);
               }
               if (CertificateHelper.isClientRootCARequired(taskParam)) {
-                gflags.put("certs_for_client_dir", yb_home_dir + "/yugabyte-client-tls-config");
+                gflags.put("certs_for_client_dir", certsForClientDir);
               }
             } else if (taskParam.nodeToNodeChange < 0) {
               gflags.put("allow_insecure_connections", "true");
@@ -845,10 +846,10 @@ public class NodeManager extends DevopsBase {
               gflags.put("use_client_to_server_encryption", clientToNodeString);
               gflags.put("allow_insecure_connections", allowInsecureString);
               if (CertificateHelper.isRootCARequired(taskParam)) {
-                gflags.put("certs_dir", yb_home_dir + "/yugabyte-tls-config");
+                gflags.put("certs_dir", certsDir);
               }
               if (CertificateHelper.isClientRootCARequired(taskParam)) {
-                gflags.put("certs_for_client_dir", yb_home_dir + "/yugabyte-client-tls-config");
+                gflags.put("certs_for_client_dir", certsForClientDir);
               }
             }
 
@@ -864,7 +865,12 @@ public class NodeManager extends DevopsBase {
               gflags.put("use_node_to_node_encryption", nodeToNodeString);
               gflags.put("use_client_to_server_encryption", clientToNodeString);
               gflags.put("allow_insecure_connections", allowInsecureString);
-              gflags.put("certs_dir", certsNodeDir);
+              if (CertificateHelper.isRootCARequired(taskParam)) {
+                gflags.put("certs_dir", certsDir);
+              }
+              if (CertificateHelper.isClientRootCARequired(taskParam)) {
+                gflags.put("certs_for_client_dir", certsForClientDir);
+              }
             } else {
               LOG.warn("Round2 upgrade not required when there is no change in node-to-node");
             }
