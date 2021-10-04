@@ -712,7 +712,8 @@ public class NodeManagerTest extends FakeDBApplication {
 
           String yb_home_dir =
               Provider.getOrBadRequest(UUID.fromString(userIntent.provider)).getYbHome();
-          String certsNodeDir = yb_home_dir + "/yugabyte-tls-config";
+          String certsDir = yb_home_dir + "/yugabyte-tls-config";
+          String certsForClientDir = yb_home_dir + "/yugabyte-client-tls-config";
 
           String subType = configureParams.getProperty("taskSubType");
           if (UpgradeTaskParams.UpgradeTaskSubType.CopyCerts.name().equals(subType)) {
@@ -724,11 +725,11 @@ public class NodeManagerTest extends FakeDBApplication {
             if (configureParams.enableNodeToNodeEncrypt
                 || (configureParams.rootAndClientRootCASame
                     && configureParams.enableClientToNodeEncrypt)) {
-              gflags.put("certs_dir", yb_home_dir + "/yugabyte-tls-config");
+              gflags.put("certs_dir", certsDir);
             }
             if (!configureParams.rootAndClientRootCASame
                 && configureParams.enableClientToNodeEncrypt) {
-              gflags.put("certs_for_client_dir", yb_home_dir + "/yugabyte-client-tls-config");
+              gflags.put("certs_for_client_dir", certsForClientDir);
             }
             expectedCommand.addAll(getCertificatePaths(configureParams, yb_home_dir));
           } else if (UpgradeTaskParams.UpgradeTaskSubType.Round1GFlagsUpdate.name()
@@ -739,10 +740,10 @@ public class NodeManagerTest extends FakeDBApplication {
               gflags.put("use_client_to_server_encryption", clientToNodeString);
               gflags.put("allow_insecure_connections", "true");
               if (CertificateHelper.isRootCARequired(configureParams)) {
-                gflags.put("certs_dir", yb_home_dir + "/yugabyte-tls-config");
+                gflags.put("certs_dir", certsDir);
               }
               if (CertificateHelper.isClientRootCARequired(configureParams)) {
-                gflags.put("certs_for_client_dir", yb_home_dir + "/yugabyte-client-tls-config");
+                gflags.put("certs_for_client_dir", certsForClientDir);
               }
             } else if (configureParams.nodeToNodeChange < 0) {
               gflags.put("allow_insecure_connections", "true");
@@ -751,10 +752,10 @@ public class NodeManagerTest extends FakeDBApplication {
               gflags.put("use_client_to_server_encryption", clientToNodeString);
               gflags.put("allow_insecure_connections", allowInsecureString);
               if (CertificateHelper.isRootCARequired(configureParams)) {
-                gflags.put("certs_dir", yb_home_dir + "/yugabyte-tls-config");
+                gflags.put("certs_dir", certsDir);
               }
               if (CertificateHelper.isClientRootCARequired(configureParams)) {
-                gflags.put("certs_for_client_dir", yb_home_dir + "/yugabyte-client-tls-config");
+                gflags.put("certs_for_client_dir", certsForClientDir);
               }
             }
 
@@ -770,7 +771,12 @@ public class NodeManagerTest extends FakeDBApplication {
               gflags.put("use_node_to_node_encryption", nodeToNodeString);
               gflags.put("use_client_to_server_encryption", clientToNodeString);
               gflags.put("allow_insecure_connections", allowInsecureString);
-              gflags.put("certs_dir", certsNodeDir);
+              if (CertificateHelper.isRootCARequired(configureParams)) {
+                gflags.put("certs_dir", certsDir);
+              }
+              if (CertificateHelper.isClientRootCARequired(configureParams)) {
+                gflags.put("certs_for_client_dir", certsForClientDir);
+              }
             }
 
             expectedCommand.add("--replace_gflags");
