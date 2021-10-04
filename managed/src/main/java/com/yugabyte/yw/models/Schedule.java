@@ -19,7 +19,6 @@ import io.swagger.annotations.ApiModelProperty;
 import java.text.SimpleDateFormat;
 import java.util.List;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.EnumType;
@@ -180,28 +179,13 @@ public class Schedule extends Model {
     return find.query().where().eq("status", "Active").findList();
   }
 
-  public static boolean existsStorageConfig(UUID customerConfigUUID) {
-    List<Schedule> scheduleList =
-        find.query()
-            .where()
-            .or()
-            .eq("task_type", TaskType.BackupUniverse)
-            .eq("task_type", TaskType.MultiTableBackup)
-            .endOr()
-            .eq("status", "Active")
-            .findList();
-    // This should be safe to do since storageConfigUUID is a required constraint.
-    scheduleList =
-        scheduleList
-            .stream()
-            .filter(
-                s ->
-                    s.getTaskParams()
-                        .path("storageConfigUUID")
-                        .asText()
-                        .equals(customerConfigUUID.toString()))
-            .collect(Collectors.toList());
-    return scheduleList.size() != 0;
+  public static List<Schedule> getActiveBackupSchedules(UUID customerUUID) {
+    return find.query()
+        .where()
+        .eq("customer_uuid", customerUUID)
+        .eq("status", "Active")
+        .in("task_type", TaskType.BackupUniverse, TaskType.MultiTableBackup)
+        .findList();
   }
 
   public void setFailureCount(int count) {
