@@ -1829,6 +1829,52 @@
         "configName" : {
           "description" : "Config name",
           "example" : "backup20-01-2021",
+          "maxLength" : 50,
+          "minLength" : 1,
+          "type" : "string"
+        },
+        "configUUID" : {
+          "description" : "Config UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "customerUUID" : {
+          "description" : "Customer UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "data" : {
+          "description" : "Configuration data",
+          "example" : "{\"AWS_ACCESS_KEY_ID\": \"AK****************ZD\"}",
+          "type" : "object"
+        },
+        "name" : {
+          "description" : "Name",
+          "example" : "S3",
+          "maxLength" : 50,
+          "minLength" : 1,
+          "type" : "string"
+        },
+        "type" : {
+          "description" : "Config type",
+          "enum" : [ "STORAGE", "ALERTS", "CALLHOME", "PASSWORD_POLICY", "OTHER" ],
+          "example" : "STORAGE",
+          "type" : "string"
+        }
+      },
+      "required" : [ "configName", "customerUUID", "data", "name", "type" ],
+      "type" : "object"
+    },
+    "CustomerConfigUI" : {
+      "description" : "Customer configuration with additional information. Includes storage, alerts, password policy, and call-home level.",
+      "properties" : {
+        "configName" : {
+          "description" : "Config name",
+          "example" : "backup20-01-2021",
+          "maxLength" : 50,
+          "minLength" : 1,
           "type" : "string"
         },
         "configUUID" : {
@@ -1850,11 +1896,14 @@
         },
         "inUse" : {
           "description" : "True if there is an in use reference to the object",
+          "readOnly" : true,
           "type" : "boolean"
         },
         "name" : {
           "description" : "Name",
           "example" : "S3",
+          "maxLength" : 50,
+          "minLength" : 1,
           "type" : "string"
         },
         "type" : {
@@ -1872,7 +1921,7 @@
           "type" : "array"
         }
       },
-      "required" : [ "data" ],
+      "required" : [ "configName", "customerUUID", "data", "name", "type" ],
       "type" : "object"
     },
     "CustomerCountResp" : {
@@ -5947,7 +5996,7 @@
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "$ref" : "#/definitions/CustomerConfig"
+                "$ref" : "#/definitions/CustomerConfigUI"
               },
               "type" : "array"
             }

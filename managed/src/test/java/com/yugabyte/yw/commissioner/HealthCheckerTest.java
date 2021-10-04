@@ -20,6 +20,7 @@ import static org.mockito.Mockito.when;
 
 import akka.actor.ActorSystem;
 import akka.actor.Scheduler;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.AssertHelper;
@@ -212,7 +213,7 @@ public class HealthCheckerTest extends FakeDBApplication {
       // Setup alerting data.
       customerConfig = CustomerConfig.createAlertConfig(defaultCustomer.uuid, Json.toJson(data));
     } else {
-      customerConfig.data = Json.toJson(data);
+      customerConfig.data = (ObjectNode) Json.toJson(data);
       customerConfig.update();
     }
   }

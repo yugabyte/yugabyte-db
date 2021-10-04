@@ -38,6 +38,10 @@ public class BeanValidator {
   }
 
   public void validate(Object bean) {
+    validate(bean, StringUtils.EMPTY);
+  }
+
+  public void validate(Object bean, String fieldNamePrefix) {
     /* TODO It will not convert play constraints message codes (like `error.required`)
     to correct messages. Need work to make it work OR use javax.validation or
     hibernate validation annotations - which work out of the box. */
@@ -47,7 +51,7 @@ public class BeanValidator {
             .stream()
             .collect(
                 Collectors.groupingBy(
-                    e -> e.getPropertyPath().toString(),
+                    e -> getFieldName(e.getPropertyPath().toString(), fieldNamePrefix),
                     Collectors.mapping(ConstraintViolation::getMessage, toList())));
     if (!validationErrors.isEmpty()) {
       JsonNode errJson = Json.toJson(validationErrors);
@@ -55,11 +59,22 @@ public class BeanValidator {
     }
   }
 
+  private String getFieldName(String path, String prefix) {
+    if (StringUtils.isEmpty(prefix)) {
+      return path;
+    }
+    if (StringUtils.isEmpty(path)) {
+      return prefix;
+    }
+    return prefix + "." + path;
+  }
+
   public ErrorMessageBuilder error() {
     return new ErrorMessageBuilder();
   }
 
   public static class ErrorMessageBuilder {
+    int errorCode = BAD_REQUEST;
     Map<String, List<String>> validationErrors = new HashMap<>();
 
     public ErrorMessageBuilder forField(String fieldName, String message) {
@@ -71,9 +86,14 @@ public class BeanValidator {
       return forField(StringUtils.EMPTY, message);
     }
 
+    public ErrorMessageBuilder code(int errorCode) {
+      this.errorCode = errorCode;
+      return this;
+    }
+
     public void throwError() {
       JsonNode errJson = Json.toJson(validationErrors);
-      throw new PlatformServiceException(BAD_REQUEST, errJson);
+      throw new PlatformServiceException(errorCode, errJson);
     }
   }
 }

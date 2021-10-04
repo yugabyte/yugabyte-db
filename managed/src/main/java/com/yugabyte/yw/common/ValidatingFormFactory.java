@@ -45,8 +45,13 @@ public class ValidatingFormFactory {
     //      DataBinder dataBinder = new DataBinder(bean);
     //      dataBinder.setIgnoreUnknownFields(false);
     //      dataBinder.bind(new MutablePropertyValues(requestData));
-
-    T bean = Json.fromJson(jsonNode, clazz);
+    T bean;
+    try {
+      bean = Json.fromJson(jsonNode, clazz);
+    } catch (Exception e) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Failed to parse " + clazz.getSimpleName() + " object: " + e.getMessage());
+    }
     // Do this so that constraint get validated
     validator.validate(bean);
     return bean;

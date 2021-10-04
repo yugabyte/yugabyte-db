@@ -16,6 +16,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
@@ -25,9 +26,7 @@ import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.TableDefinitionTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
-import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Schedule;
@@ -69,16 +68,24 @@ import play.mvc.Result;
 public class TablesController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(TablesController.class);
 
-  @Inject Commissioner commissioner;
+  Commissioner commissioner;
 
-  // The YB client to use.
-  public YBClientService ybService;
+  private final YBClientService ybService;
 
-  @Inject MetricQueryHelper metricQueryHelper;
+  private final MetricQueryHelper metricQueryHelper;
+
+  private final CustomerConfigService customerConfigService;
 
   @Inject
-  public TablesController(YBClientService service) {
+  public TablesController(
+      Commissioner commissioner,
+      YBClientService service,
+      MetricQueryHelper metricQueryHelper,
+      CustomerConfigService customerConfigService) {
+    this.commissioner = commissioner;
     this.ybService = service;
+    this.metricQueryHelper = metricQueryHelper;
+    this.customerConfigService = customerConfigService;
   }
 
   @ApiOperation(
@@ -413,7 +420,7 @@ public class TablesController extends AuthenticatedController {
       throw new PlatformServiceException(
           BAD_REQUEST, "Missing StorageConfig UUID: " + taskParams.storageConfigUUID);
     }
-    CustomerConfig.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
+    customerConfigService.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
     if (universe.getUniverseDetails().updateInProgress
         || universe.getUniverseDetails().backupInProgress) {
       throw new PlatformServiceException(
@@ -482,7 +489,7 @@ public class TablesController extends AuthenticatedController {
     Form<BackupTableParams> formData = formFactory.getFormDataOrBadRequest(BackupTableParams.class);
 
     BackupTableParams taskParams = formData.get();
-    CustomerConfig.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
+    customerConfigService.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
     if (universe.getUniverseDetails().updateInProgress
         || universe.getUniverseDetails().backupInProgress) {
       throw new PlatformServiceException(

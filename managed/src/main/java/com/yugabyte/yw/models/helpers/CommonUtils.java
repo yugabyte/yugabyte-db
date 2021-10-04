@@ -96,7 +96,7 @@ public class CommonUtils {
    * @param config Config which could hold some data to mask.
    * @return Masked config
    */
-  public static JsonNode maskConfig(JsonNode config) {
+  public static ObjectNode maskConfig(ObjectNode config) {
     return processData(
         "$",
         config,
@@ -118,7 +118,7 @@ public class CommonUtils {
   @SuppressWarnings("unchecked")
   public static <T> T maskObject(T object) {
     try {
-      JsonNode updatedJson = CommonUtils.maskConfig(Json.toJson(object));
+      JsonNode updatedJson = CommonUtils.maskConfig((ObjectNode) Json.toJson(object));
       return Json.fromJson(updatedJson, (Class<T>) object.getClass());
     } catch (Exception e) {
       throw new PlatformServiceException(
@@ -131,7 +131,8 @@ public class CommonUtils {
   public static <T> T unmaskObject(T originalObject, T object) {
     try {
       JsonNode updatedJson =
-          CommonUtils.unmaskConfig(Json.toJson(originalObject), Json.toJson(object));
+          CommonUtils.unmaskJsonObject(
+              (ObjectNode) Json.toJson(originalObject), (ObjectNode) Json.toJson(object));
       return Json.fromJson(updatedJson, (Class<T>) object.getClass());
     } catch (Exception e) {
       throw new PlatformServiceException(
@@ -148,7 +149,7 @@ public class CommonUtils {
    * @param data The new config data.
    * @return Updated config (all masked fields are recovered).
    */
-  public static JsonNode unmaskConfig(JsonNode originalData, JsonNode data) {
+  public static ObjectNode unmaskJsonObject(ObjectNode originalData, ObjectNode data) {
     return originalData == null
         ? data
         : processData(
@@ -163,7 +164,7 @@ public class CommonUtils {
             });
   }
 
-  private static JsonNode processData(
+  private static ObjectNode processData(
       String path,
       JsonNode data,
       Predicate<String> selector,
@@ -171,18 +172,17 @@ public class CommonUtils {
     if (data == null) {
       return Json.newObject();
     }
-    JsonNode result = data.deepCopy();
+    ObjectNode result = data.deepCopy();
     for (Iterator<Entry<String, JsonNode>> it = result.fields(); it.hasNext(); ) {
       Entry<String, JsonNode> entry = it.next();
       if (entry.getValue().isObject()) {
-        ((ObjectNode) result)
-            .put(
-                entry.getKey(),
-                processData(path + "." + entry.getKey(), entry.getValue(), selector, getter));
+        result.put(
+            entry.getKey(),
+            processData(path + "." + entry.getKey(), entry.getValue(), selector, getter));
       }
       if (selector.test(entry.getKey())) {
-        ((ObjectNode) result)
-            .put(entry.getKey(), getter.apply(entry.getKey(), entry.getValue().textValue(), path));
+        result.put(
+            entry.getKey(), getter.apply(entry.getKey(), entry.getValue().textValue(), path));
       }
     }
     return result;

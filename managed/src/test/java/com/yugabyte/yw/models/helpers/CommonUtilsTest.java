@@ -85,16 +85,16 @@ public class CommonUtilsTest {
   @Test
   public void testUnmaskConfig() {
     ObjectNode config = prepareConfig();
-    JsonNode maskedData = CommonUtils.maskConfig(config);
+    ObjectNode maskedData = CommonUtils.maskConfig(config);
 
     // 1. No changes.
-    JsonNode unmaskedData = CommonUtils.unmaskConfig(config, maskedData);
+    JsonNode unmaskedData = CommonUtils.unmaskJsonObject(config, maskedData);
     assertThat(unmaskedData, equalTo(config));
 
     // 2. Two fields changed.
-    ((ObjectNode) maskedData).put("MY_KEY_DATA", "SENSITIVE_DATA_2");
-    ((ObjectNode) maskedData).put("MY_PASSWORD", "SENSITIVE_DATA_2");
-    unmaskedData = CommonUtils.unmaskConfig(config, maskedData);
+    maskedData.put("MY_KEY_DATA", "SENSITIVE_DATA_2");
+    maskedData.put("MY_PASSWORD", "SENSITIVE_DATA_2");
+    unmaskedData = CommonUtils.unmaskJsonObject(config, maskedData);
 
     assertValue(unmaskedData, "SOME_KEY", "SENSITIVE_DATA");
     assertValue(unmaskedData, "KEY_DATA", "SENSITIVE_DATA");

@@ -42,6 +42,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.protobuf.ByteString;
+import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeApiHelper;
@@ -49,10 +50,12 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.audit.AuditService;
+import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.TableDefinitionTaskParams;
+import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.CustomerTask;
@@ -120,7 +123,12 @@ public class TablesControllerTest extends FakeDBApplication {
     when(mockService.getClient(any(), any())).thenReturn(mockClient);
 
     auditService = new AuditService();
-    tablesController = new TablesController(mockService);
+    Commissioner commissioner = app.injector().instanceOf(Commissioner.class);
+    MetricQueryHelper metricQueryHelper = app.injector().instanceOf(MetricQueryHelper.class);
+    CustomerConfigService customerConfigService =
+        app.injector().instanceOf(CustomerConfigService.class);
+    tablesController =
+        new TablesController(commissioner, mockService, metricQueryHelper, customerConfigService);
     tablesController.setAuditService(auditService);
   }
 
