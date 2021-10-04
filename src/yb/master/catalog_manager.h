@@ -442,8 +442,9 @@ class CatalogManager :
                                rpc::RpcContext* rpc);
 
   // Delete CDC streams for a table.
-  virtual CHECKED_STATUS DeleteCDCStreamsForTable(const TableId& table_id);
-  virtual CHECKED_STATUS DeleteCDCStreamsForTables(const vector<TableId>& table_ids);
+  virtual CHECKED_STATUS DeleteCDCStreamsForTable(const TableId& table_id) EXCLUDES(mutex_);
+  virtual CHECKED_STATUS DeleteCDCStreamsForTables(const vector<TableId>& table_ids)
+      EXCLUDES(mutex_);
 
   virtual CHECKED_STATUS ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
                                               ChangeEncryptionInfoResponsePB* resp);
@@ -1141,6 +1142,7 @@ class CatalogManager :
     TableInfoPtr info;
     TableInfo::WriteLock write_lock;
     RepeatedBytes retained_by_snapshot_schedules;
+    bool remove_from_name_map;
   };
 
   // Delete the specified table in memory. The TableInfo, DeletedTableInfo and lock of the deleted
