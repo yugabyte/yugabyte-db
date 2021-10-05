@@ -126,7 +126,6 @@ export class AlertListNew extends Component {
 
   render() {
     const { filter_groups, universesList } = this.state;
-
     return (
       <div>
         <h2 className="content-title">Alerts</h2>

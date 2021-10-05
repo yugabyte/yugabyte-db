@@ -102,15 +102,15 @@ public class Alert extends Model implements AlertLabelsProvider {
 
   @NotNull
   @Column(nullable = false)
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
   @ApiModelProperty(value = "Alert creation timestamp", accessMode = READ_ONLY)
   private Date createTime = nowWithoutMillis();
 
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
   @ApiModelProperty(value = "Timestamp at which the alert was acknowledged", accessMode = READ_ONLY)
   private Date acknowledgedTime;
 
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
   @ApiModelProperty(value = "Timestamp at which the alert was resolved", accessMode = READ_ONLY)
   private Date resolvedTime;
 
@@ -174,11 +174,11 @@ public class Alert extends Model implements AlertLabelsProvider {
   private List<AlertLabel> labels;
 
   @ApiModelProperty(value = "Time of the last notification attempt", accessMode = READ_ONLY)
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
   private Date notificationAttemptTime;
 
   @ApiModelProperty(value = "Time of the next notification attempt", accessMode = READ_ONLY)
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
   private Date nextNotificationTime = nowWithoutMillis();
 
   @ApiModelProperty(value = "Count of failures to send a notification", accessMode = READ_ONLY)

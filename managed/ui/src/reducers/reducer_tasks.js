@@ -47,7 +47,7 @@ export default function (state = INITIAL_STATE, action) {
         ...state,
         customerTaskList: taskListResultArray.sort((a, b) => b.createTime - a.createTime)
       };
-    case FETCH_CUSTOMER_TASKS_FAILURE:      
+    case FETCH_CUSTOMER_TASKS_FAILURE:
       if ('data' in action.payload) {
         return { ...state, customerTaskList: action.payload.response.data.error };
       }

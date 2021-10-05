@@ -3,6 +3,7 @@
 import React, { Component } from 'react';
 import { ListGroup } from 'react-bootstrap';
 import { isObject } from 'lodash';
+<<<<<<< HEAD
 
 import { isNonEmptyArray } from '../../../utils/ObjectUtils';
 import { showOrRedirect } from '../../../utils/LayoutUtils';
@@ -10,6 +11,24 @@ import { YBUniverseItem } from '..';
 
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import './UniverseTable.scss';
+=======
+import { isNonEmptyArray, isNonEmptyObject } from '../../../utils/ObjectUtils';
+import './UniverseTable.scss';
+import { UniverseReadWriteMetrics } from '../../metrics';
+import { YBCost } from '../../common/descriptors';
+import { UniverseStatusContainer } from '../../universes';
+import { timeFormatter } from '../../../utils/TableFormatters';
+import {
+  getUniverseNodes,
+  getPlacementRegions,
+  getClusterProviderUUIDs,
+  getProviderMetadata,
+  isKubernetesUniverse
+} from '../../../utils/UniverseUtils';
+import { isAvailable, showOrRedirect } from '../../../utils/LayoutUtils';
+
+import pluralize from 'pluralize';
+>>>>>>> 449318693 ([PLAT-490] Platform: Display timezone with timestamp)
 
 export default class UniverseTable extends Component {
   componentDidMount() {

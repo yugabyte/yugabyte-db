@@ -7,6 +7,7 @@ import './MetricsPanel.scss';
 import Measure from 'react-measure';
 import _ from 'lodash';
 import { METRIC_FONT } from '../MetricsConfig';
+import moment from "moment";
 
 const Plotly = require('plotly.js/lib/core');
 
@@ -43,7 +44,7 @@ export default class MetricsPanelOverview extends Component {
           });
         }
       });
-      metric.layout.xaxis.hoverformat = '%H:%M:%S, %b %d, %Y';
+      metric.layout.xaxis.hoverformat = '%H:%M:%S, %b %d, %Y ' + moment().format('[UTC]ZZ');
       if (max === 0) max = 1.01;
       metric.layout.autosize = false;
       metric.layout.width = this.state.dimensions.width || 300;
@@ -126,6 +127,7 @@ export default class MetricsPanelOverview extends Component {
     if (isNonEmptyObject(metric)) {
       // TODO: send this data from backend.
       metric.data.forEach(function (data) {
+        data.hovertemplate = '%{data.name}: %{y} at %{x} <extra></extra>';
         if (data.y) {
           data.y.forEach(function (y) {
             y = parseFloat(y) * 1.25;
