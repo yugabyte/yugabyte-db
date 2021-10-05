@@ -2045,6 +2045,11 @@
           "description" : "Customer task type",
           "example" : "Delete",
           "type" : "string"
+        },
+        "typeName" : {
+          "description" : "Customer task type name",
+          "example" : "Software Upgrade",
+          "type" : "string"
         }
       },
       "type" : "object"

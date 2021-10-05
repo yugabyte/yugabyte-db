@@ -28,7 +28,7 @@ export default class TaskListTable extends Component {
     function typeFormatter(cell, row) {
       return (
         <span>
-          {row.type} {row.target}
+          {row.typeName} {row.target}
         </span>
       );
     }
