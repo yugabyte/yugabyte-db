@@ -1774,7 +1774,7 @@
         },
         "creationDate" : {
           "description" : "Creation time",
-          "example" : "2021-06-17 15:00:05",
+          "example" : "2021-06-17T15:00:05-0400",
           "format" : "date-time",
           "readOnly" : true,
           "type" : "string"
@@ -2036,13 +2036,13 @@
       "properties" : {
         "completionTime" : {
           "description" : "Customer task completion time",
-          "example" : "1624295417405",
+          "example" : "2021-06-17T15:00:05-0400",
           "format" : "date-time",
           "type" : "string"
         },
         "createTime" : {
           "description" : "Customer task creation time",
-          "example" : "1624295417405",
+          "example" : "2021-06-17T15:00:05-0400",
           "format" : "date-time",
           "type" : "string"
         },
