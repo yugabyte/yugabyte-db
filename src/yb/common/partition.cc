@@ -889,7 +889,7 @@ string PartitionSchema::PartitionDebugString(const Partition& partition,
     } else {
       s.append(Substitute("<decode-error: $0>", status.ToString()));
     }
-    s.append(", ")
+    s.append(", ");
 
     vector<string> end_components;
     Slice encoded_range_key_end = partition.range_key_end();
