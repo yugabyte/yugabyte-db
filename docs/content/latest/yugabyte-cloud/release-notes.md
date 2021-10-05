@@ -17,12 +17,9 @@ showAsideToc: true
 
 ### October 5, 2021
 
-- [Yugabyte Cloud Status](https://status.yugabyte.cloud/) page
-
 #### New features
 
-- Paid clusters (unlimited)
-- Invoicing
+- [Yugabyte Cloud Status](https://status.yugabyte.cloud/) page
 
 ### September 15, 2021
 
