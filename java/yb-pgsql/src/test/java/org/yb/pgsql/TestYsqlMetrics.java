@@ -15,6 +15,7 @@ package org.yb.pgsql;
 
 import static org.yb.AssertionWrappers.*;
 
+import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
 
@@ -25,6 +26,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.yb.util.YBTestRunnerNonTsanOnly;
+
+import org.yb.minicluster.MiniYBCluster;
 
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestYsqlMetrics extends BasePgSQLTest {
@@ -237,6 +240,74 @@ public class TestYsqlMetrics extends BasePgSQLTest {
       verifyStatementMetricRows(
         stmt, "DELETE FROM test",
         DELETE_STMT_METRIC, 1, 8);
+
+      // Testing catalog cache.
+      long miss_init = getMetricCounter(CATALOG_CACHE_MISSES_METRICS);
+      stmt.execute("SELECT ln(2)");
+      long miss1 = getMetricCounter(CATALOG_CACHE_MISSES_METRICS);
+
+      // Misses should strictly increase, we check that miss1 >= miss_init + 1.
+      assertGreaterThanOrEqualTo(
+          String.format("Expected misses to increase after " +
+                        "first function call. Before: %d, After %d",
+                        miss_init, miss1), miss1, miss_init+1);
+
+
+      // Lookups done to resolve ln should've been cached.
+      stmt.execute("SELECT ln(2)");
+      long miss2 = getMetricCounter(CATALOG_CACHE_MISSES_METRICS);
+      assertEquals(miss1, miss2);
+
+      // Invalidate the cached resolution for ln from another connection.
+      Connection connection2 = getConnectionBuilder().connect();
+      try (Statement stmt2 = connection2.createStatement()) {
+
+        long misses_before_second_cxn_call = getMetricCounter(CATALOG_CACHE_MISSES_METRICS);
+        assertGreaterThanOrEqualTo(
+            String.format("Misses shouldn't decrease after making a new " +
+                        "connection. Before: %d, After %d",
+                        miss2,
+                        misses_before_second_cxn_call),
+                        misses_before_second_cxn_call,
+                        miss2);
+
+        stmt2.execute("SELECT ln(2)");
+
+        // Making sure that miss counts from two different connections
+        // add onto each other.
+        long misses_after_second_cxn_call = getMetricCounter(CATALOG_CACHE_MISSES_METRICS);
+        assertGreaterThanOrEqualTo(
+            String.format("Expected misses to increase after " +
+                        "second connection's first cache miss. Before: %d, After %d",
+                        misses_before_second_cxn_call,
+                        misses_after_second_cxn_call),
+                        misses_after_second_cxn_call,
+                        misses_before_second_cxn_call+1);
+
+        // Make a type that should invalid cached resolution for ln.
+        stmt2.execute("CREATE TYPE ln AS (a INTEGER)");
+        long misses_post_invalidate_before = getMetricCounter(CATALOG_CACHE_MISSES_METRICS);
+
+        // Wait for catalog change to register, needed in debug mode.
+        Thread.sleep(5 * MiniYBCluster.TSERVER_HEARTBEAT_INTERVAL_MS);
+
+        // This should miss on the cache now and cause a master lookup.
+        stmt.execute("SELECT ln(2)");
+        long misses_post_invalidate_after = getMetricCounter(CATALOG_CACHE_MISSES_METRICS);
+        assertGreaterThanOrEqualTo(
+            String.format("Expected misses to increase after " +
+                        "cache invalidation. Before: %d, After %d",
+                        misses_post_invalidate_before,
+                        misses_post_invalidate_after),
+                        misses_post_invalidate_after,
+                        misses_post_invalidate_before+1);
+
+        stmt.execute("SELECT ln(2)");
+
+        // No misses should occur again.
+        long misses_post_invalidate_after2 = getMetricCounter(CATALOG_CACHE_MISSES_METRICS);
+        assertEquals(misses_post_invalidate_after, misses_post_invalidate_after2);
+      }
     }
   }
 
