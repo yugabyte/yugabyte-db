@@ -15,16 +15,17 @@
           - server_type is defined
           - server_type in ["cluster-server"]
 
-# This is required to install backup utils using python setup scripts
-- name: Install Python on Ubuntu
+
+# This is required to set locale to avoid bash warning message on GCP Ubuntu
+- name: Install Locale on GCP Ubuntu
   hosts: "{{ instance_search_pattern }}"
   gather_facts: yes
   pre_tasks:
-    - name: Verify and Install Python
-      raw: >
-        bash -c "test -e /usr/bin/python ||
-        (sudo apt -qqy update && sudo apt install -qqy python-minimal)"
-      when: ansible_distribution == "Ubuntu"
+    - name: Install Locale and generate en_US.UTF-8
+      raw: 'sudo apt-get update &&
+            sudo apt-get install -y locales &&
+            sudo locale-gen "en_US.UTF-8"'
+      when: ansible_distribution == "Ubuntu" and cloud_type == "gcp"
 
 - name: Provision server
   become: yes
