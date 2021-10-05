@@ -1,7 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 import React from 'react';
-import { FormattedDate } from 'react-intl';
-
+import moment from 'moment';
 import { isValidObject } from './ObjectUtils';
 import { YBFormattedNumber } from '../components/common/descriptors';
 import { YBLoadingCircleIcon } from '../components/common/indicators';
@@ -10,16 +9,7 @@ export function timeFormatter(cell) {
   if (!isValidObject(cell)) {
     return '<span>-</span>';
   } else {
-    return (
-      <FormattedDate
-        value={new Date(cell)}
-        year="numeric"
-        month="long"
-        day="2-digit"
-        hour="numeric"
-        minute="numeric"
-      />
-    );
+    return moment(cell).format('YYYY/MM/DD H:mm [UTC]ZZ');
   }
 }
 
