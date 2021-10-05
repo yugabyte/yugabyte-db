@@ -17,6 +17,5 @@ revision:
 paths:
   only:
     - ./managed
-#  exclude:
-#    - ./managed/devops
-#    - ./managed/docker
+  exclude:
+    - ./managed/src/test
