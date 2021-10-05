@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AsyncReplicationSetup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AsyncReplicationPlatformSync;
 import com.yugabyte.yw.commissioner.tasks.subtasks.BackupTable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.BackupUniverseKeys;
@@ -1496,6 +1497,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     task.initialize(params);
 
     SubTaskGroup subTaskGroup = new SubTaskGroup("LoadBalancerStateChange", executor);
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  public SubTaskGroup createAsyncReplicationSetupTask() {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("AsyncReplicationSetup", executor);
+    AsyncReplicationSetup task = createTask(AsyncReplicationSetup.class);
+    task.initialize(taskParams());
     subTaskGroup.addTask(task);
     subTaskGroupQueue.add(subTaskGroup);
     return subTaskGroup;

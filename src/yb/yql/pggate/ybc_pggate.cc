@@ -611,6 +611,10 @@ void YBCPgResetOperationsBuffering() {
   pgapi->ResetOperationsBuffering();
 }
 
+YBCStatus YBCPgFlushBufferedOperations() {
+  return ToYBCStatus(pgapi->FlushBufferedOperations());
+}
+
 YBCStatus YBCPgDmlExecWriteOp(YBCPgStatement handle, int32_t *rows_affected_count) {
   return ToYBCStatus(pgapi->DmlExecWriteOp(handle, rows_affected_count));
 }

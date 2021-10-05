@@ -4,11 +4,11 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
@@ -34,6 +34,7 @@ import io.swagger.annotations.Authorization;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import javax.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
@@ -45,7 +46,14 @@ public class BackupsController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(BackupsController.class);
   private static final int maxRetryCount = 5;
 
-  @Inject Commissioner commissioner;
+  private final Commissioner commissioner;
+  private final CustomerConfigService customerConfigService;
+
+  @Inject
+  public BackupsController(Commissioner commissioner, CustomerConfigService customerConfigService) {
+    this.commissioner = commissioner;
+    this.customerConfigService = customerConfigService;
+  }
 
   @ApiOperation(
       value = "List a customer's backups",
@@ -147,7 +155,7 @@ public class BackupsController extends AuthenticatedController {
       }
     }
     CustomerConfig storageConfig =
-        CustomerConfig.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
+        customerConfigService.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
     if (taskParams.getTableName() != null && taskParams.getKeyspace() == null) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Restore table request must specify keyspace.");

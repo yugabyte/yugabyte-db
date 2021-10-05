@@ -9,13 +9,13 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.DiskIncreaseFormData;
+import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.TlsConfigUpdateParams;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.forms.UpgradeParams;
-import com.yugabyte.yw.forms.PlatformResults;
-import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import io.swagger.annotations.Api;
@@ -45,9 +45,11 @@ public class UniverseUiOnlyController extends AuthenticatedController {
    */
   @Deprecated
   public Result getUniverseResourcesOld(UUID customerUUID) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
     UniverseDefinitionTaskParams taskParams =
         bindFormDataToTaskParams(request(), UniverseDefinitionTaskParams.class);
-    return PlatformResults.withData(universeInfoHandler.getUniverseResources(taskParams));
+
+    return PlatformResults.withData(universeInfoHandler.getUniverseResources(customer, taskParams));
   }
 
   /**
@@ -59,9 +61,9 @@ public class UniverseUiOnlyController extends AuthenticatedController {
   @Deprecated
   public Result find(UUID customerUUID, String name) {
     // Verify the customer with this universe is present.
-    Customer.getOrBadRequest(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
     LOG.info("Finding Universe with name {}.", name);
-    Optional<Universe> universe = Universe.maybeGetUniverseByName(name);
+    Optional<Universe> universe = Universe.maybeGetUniverseByName(customer.getCustomerId(), name);
     if (universe.isPresent()) {
       return PlatformResults.withData(Collections.singletonList(universe.get().universeUUID));
     }

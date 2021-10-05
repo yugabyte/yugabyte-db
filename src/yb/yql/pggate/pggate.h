@@ -396,6 +396,7 @@ class PgApiImpl {
   CHECKED_STATUS StartOperationsBuffering();
   CHECKED_STATUS StopOperationsBuffering();
   void ResetOperationsBuffering();
+  CHECKED_STATUS FlushBufferedOperations();
 
   //------------------------------------------------------------------------------------------------
   // Insert.

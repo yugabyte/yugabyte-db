@@ -407,8 +407,8 @@ Tablet::Tablet(const TabletInitData& data)
       mvcc_(
           MakeTabletLogPrefix(data.metadata->raft_group_id(), data.log_prefix_suffix), data.clock),
       tablet_options_(data.tablet_options),
-      pending_non_abortable_op_counter_("RocksDB abortable read/write operations"),
-      pending_abortable_op_counter_("RocksDB non-abortable read/write operations"),
+      pending_non_abortable_op_counter_("RocksDB non-abortable read/write operations"),
+      pending_abortable_op_counter_("RocksDB abortable read/write operations"),
       write_ops_being_submitted_counter_("Tablet schema"),
       client_future_(data.client_future),
       local_tablet_filter_(data.local_tablet_filter),
@@ -2435,7 +2435,7 @@ Result<PgsqlBackfillSpecPB> QueryPostgresToDoBackfill(
 }
 
 struct BackfillParams {
-  explicit BackfillParams(const CoarseTimePoint& deadline) {
+  explicit BackfillParams(const CoarseTimePoint deadline) {
     batch_size = GetAtomicFlag(&FLAGS_backfill_index_write_batch_size);
     rate_per_sec = GetAtomicFlag(&FLAGS_backfill_index_rate_rows_per_sec);
     auto grace_margin_ms = GetAtomicFlag(&FLAGS_backfill_index_timeout_grace_margin_ms);
@@ -2670,6 +2670,7 @@ Status Tablet::BackfillIndexes(
     size_t* number_of_rows_processed,
     std::string* backfilled_until,
     std::unordered_set<TableId>* failed_indexes) {
+  TRACE(__func__);
   if (PREDICT_FALSE(FLAGS_TEST_slowdown_backfill_by_ms > 0)) {
     TRACE("Sleeping for $0 ms", FLAGS_TEST_slowdown_backfill_by_ms);
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_slowdown_backfill_by_ms));
@@ -2680,8 +2681,8 @@ Status Tablet::BackfillIndexes(
   std::vector<yb::ColumnSchema> columns = GetColumnSchemasForIndex(indexes);
 
   Schema projection(columns, {}, schema()->num_key_columns());
-  auto iter =
-      VERIFY_RESULT(NewRowIterator(projection, ReadHybridTime::SingleTime(read_time)));
+  auto iter = VERIFY_RESULT(NewRowIterator(
+      projection, ReadHybridTime::SingleTime(read_time), "" /* table_id */, deadline));
   QLTableRow row;
   std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>> index_requests;
 
@@ -2702,6 +2703,7 @@ Status Tablet::BackfillIndexes(
   while (VERIFY_RESULT(iter->HasNext())) {
     if (index_requests.empty()) {
       *backfilled_until = VERIFY_RESULT(iter->GetTupleId()).ToBuffer();
+      MaybeSleepToThrottleBackfill(backfill_params.start_time, *number_of_rows_processed);
     }
 
     if (!CanProceedToBackfillMoreRows(backfill_params, *number_of_rows_processed)) {
@@ -2727,11 +2729,12 @@ Status Tablet::BackfillIndexes(
     }
 
     DVLOG(2) << "Building index for fetched row: " << row.ToString();
-    RETURN_NOT_OK(UpdateIndexInBatches(row, indexes, read_time, &index_requests, failed_indexes));
+    RETURN_NOT_OK(UpdateIndexInBatches(
+        row, indexes, read_time, backfill_params.modified_deadline, &index_requests,
+        failed_indexes));
 
     if (++(*number_of_rows_processed) % kProgressInterval == 0) {
       VLOG(1) << "Processed " << *number_of_rows_processed << " rows";
-      MaybeSleepToThrottleBackfill(backfill_params.start_time, *number_of_rows_processed);
     }
   }
 
@@ -2746,7 +2749,8 @@ Status Tablet::BackfillIndexes(
   }
 
   VLOG(1) << "Processed " << *number_of_rows_processed << " rows";
-  RETURN_NOT_OK(FlushWriteIndexBatch(read_time, &index_requests, failed_indexes));
+  RETURN_NOT_OK(FlushWriteIndexBatch(
+      read_time, backfill_params.modified_deadline, &index_requests, failed_indexes));
   MaybeSleepToThrottleBackfill(backfill_params.start_time, *number_of_rows_processed);
   *backfilled_until = resume_backfill_from;
   LOG(INFO) << "Done BackfillIndexes at " << read_time << " for " << AsString(index_ids)
@@ -2759,6 +2763,7 @@ Status Tablet::UpdateIndexInBatches(
     const QLTableRow& row,
     const std::vector<IndexInfo>& indexes,
     const HybridTime write_time,
+    const CoarseTimePoint deadline,
     std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
     std::unordered_set<TableId>* failed_indexes) {
   const QLTableRow& kEmptyRow = QLTableRow::empty_row();
@@ -2774,33 +2779,35 @@ Status Tablet::UpdateIndexInBatches(
   }
 
   // Update the index write op.
-  return FlushWriteIndexBatchIfRequired(
-      write_time, index_requests, failed_indexes);
+  return FlushWriteIndexBatchIfRequired(write_time, deadline, index_requests, failed_indexes);
 }
 
-Result<std::shared_ptr<YBSession>> Tablet::GetSessionForVerifyOrBackfill() {
+Result<std::shared_ptr<YBSession>> Tablet::GetSessionForVerifyOrBackfill(
+    const CoarseTimePoint deadline) {
   if (!client_future_.valid()) {
     return STATUS_FORMAT(IllegalState, "Client future is not set up for $0", tablet_id());
   }
 
   auto client = client_future_.get();
   auto session = std::make_shared<YBSession>(client);
-  session->SetTimeout(MonoDelta::FromMilliseconds(FLAGS_client_read_write_timeout_ms));
+  session->SetDeadline(deadline);
   return session;
 }
 
 Status Tablet::FlushWriteIndexBatchIfRequired(
     const HybridTime write_time,
+    const CoarseTimePoint deadline,
     std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
     std::unordered_set<TableId>* failed_indexes) {
   if (index_requests->size() < FLAGS_backfill_index_write_batch_size) {
     return Status::OK();
   }
-  return FlushWriteIndexBatch(write_time, index_requests, failed_indexes);
+  return FlushWriteIndexBatch(write_time, deadline, index_requests, failed_indexes);
 }
 
 Status Tablet::FlushWriteIndexBatch(
     const HybridTime write_time,
+    const CoarseTimePoint deadline,
     std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
     std::unordered_set<TableId>* failed_indexes) {
   if (!client_future_.valid()) {
@@ -2808,7 +2815,7 @@ Status Tablet::FlushWriteIndexBatch(
   } else if (!YBMetaDataCache()) {
     return STATUS(IllegalState, "Table metadata cache is not present for index update");
   }
-  std::shared_ptr<YBSession> session = VERIFY_RESULT(GetSessionForVerifyOrBackfill());
+  std::shared_ptr<YBSession> session = VERIFY_RESULT(GetSessionForVerifyOrBackfill(deadline));
   session->SetHybridTimeForWrite(write_time);
 
   std::unordered_set<
@@ -2950,7 +2957,8 @@ Status Tablet::VerifyTableConsistencyForCQL(
     std::unordered_map<TableId, uint64>* consistency_stats,
     std::string* verified_until) {
   Schema projection(columns, {}, schema()->num_key_columns());
-  auto iter = VERIFY_RESULT(NewRowIterator(projection, ReadHybridTime::SingleTime(read_time)));
+  auto iter = VERIFY_RESULT(NewRowIterator(
+      projection, ReadHybridTime::SingleTime(read_time), "" /* table_id */, deadline));
 
   if (!start_key.empty()) {
     VLOG(2) << "Starting verify index from " << b2a_hex(start_key);
@@ -2966,21 +2974,22 @@ Status Tablet::VerifyTableConsistencyForCQL(
   std::string resume_verified_from;
 
   int rows_verified = 0;
-  while (VERIFY_RESULT(iter->HasNext()) && rows_verified < num_rows) {
+  while (VERIFY_RESULT(iter->HasNext()) && rows_verified < num_rows &&
+         CoarseMonoClock::Now() < deadline) {
     resume_verified_from = VERIFY_RESULT(iter->GetTupleId()).ToBuffer();
     RETURN_NOT_OK(iter->NextRow(&row));
     VLOG(1) << "Verifying index for main table row: " << row.ToString();
 
     RETURN_NOT_OK(VerifyTableInBatches(
-        row, table_ids, read_time, is_main_table, &requests, &last_flushed_at, &failed_indexes,
-        consistency_stats));
+        row, table_ids, read_time, deadline, is_main_table, &requests, &last_flushed_at,
+        &failed_indexes, consistency_stats));
     if (++rows_verified % kProgressInterval == 0) {
       VLOG(1) << "Verified " << rows_verified << " rows";
     }
     *verified_until = resume_verified_from;
   }
-  return FlushVerifyBatchIfRequired(
-      true, read_time, &requests, &last_flushed_at, &failed_indexes, consistency_stats);
+  return FlushVerifyBatch(
+      read_time, deadline, &requests, &last_flushed_at, &failed_indexes, consistency_stats);
 }
 
 namespace {
@@ -3074,6 +3083,7 @@ Status Tablet::VerifyTableInBatches(
     const QLTableRow& row,
     const std::vector<TableId>& table_ids,
     const HybridTime read_time,
+    const CoarseTimePoint deadline,
     const bool is_main_table,
     std::vector<std::pair<const TableId, QLReadRequestPB>>* requests,
     CoarseTimePoint* last_flushed_at,
@@ -3097,22 +3107,32 @@ Status Tablet::VerifyTableInBatches(
   }
 
   return FlushVerifyBatchIfRequired(
-      false, read_time, requests, last_flushed_at, failed_indexes, consistency_stats);
+      read_time, deadline, requests, last_flushed_at, failed_indexes, consistency_stats);
 }
 
 Status Tablet::FlushVerifyBatchIfRequired(
-    bool force_flush,
     const HybridTime read_time,
+    const CoarseTimePoint deadline,
     std::vector<std::pair<const TableId, QLReadRequestPB>>* requests,
     CoarseTimePoint* last_flushed_at,
     std::unordered_set<TableId>* failed_indexes,
     std::unordered_map<TableId, uint64>* consistency_stats) {
-  if (!force_flush && requests->size() < FLAGS_verify_index_read_batch_size) {
+  if (requests->size() < FLAGS_verify_index_read_batch_size) {
     return Status::OK();
   }
+  return FlushVerifyBatch(
+      read_time, deadline, requests, last_flushed_at, failed_indexes, consistency_stats);
+}
 
+Status Tablet::FlushVerifyBatch(
+    const HybridTime read_time,
+    const CoarseTimePoint deadline,
+    std::vector<std::pair<const TableId, QLReadRequestPB>>* requests,
+    CoarseTimePoint* last_flushed_at,
+    std::unordered_set<TableId>* failed_indexes,
+    std::unordered_map<TableId, uint64>* consistency_stats) {
   std::vector<client::YBqlReadOpPtr> read_ops;
-  std::shared_ptr<YBSession> session = VERIFY_RESULT(GetSessionForVerifyOrBackfill());
+  std::shared_ptr<YBSession> session = VERIFY_RESULT(GetSessionForVerifyOrBackfill(deadline));
 
   auto client = client_future_.get();
   for (auto& pair : *requests) {
@@ -3148,6 +3168,7 @@ Status Tablet::FlushVerifyBatchIfRequired(
 
 ScopedRWOperationPause Tablet::PauseReadWriteOperations(
     const Abortable abortable, const Stop stop) {
+  VTRACE(1, LogPrefix());
   LOG_SLOW_EXECUTION(WARNING, 1000,
                      Substitute("$0Waiting for pending ops to complete", LogPrefix())) {
     return ScopedRWOperationPause(
@@ -3159,12 +3180,12 @@ ScopedRWOperationPause Tablet::PauseReadWriteOperations(
   FATAL_ERROR("Unreachable code -- the previous block must always return");
 }
 
-ScopedRWOperation Tablet::CreateAbortableScopedRWOperation(const CoarseTimePoint& deadline) const {
+ScopedRWOperation Tablet::CreateAbortableScopedRWOperation(const CoarseTimePoint deadline) const {
   return ScopedRWOperation(&pending_abortable_op_counter_, deadline);
 }
 
 ScopedRWOperation Tablet::CreateNonAbortableScopedRWOperation(
-    const CoarseTimePoint& deadline) const {
+    const CoarseTimePoint deadline) const {
   return ScopedRWOperation(&pending_non_abortable_op_counter_, deadline);
 }
 

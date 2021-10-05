@@ -174,7 +174,7 @@ Status Master::Init() {
 
   auto bound_addresses = rpc_server()->GetBoundAddresses();
   if (!bound_addresses.empty()) {
-    shared_object().SetHostEndpoint(bound_addresses.front(), "");
+    shared_object().SetHostEndpoint(bound_addresses.front(), get_hostname());
   }
 
   async_client_init_ = std::make_unique<client::AsyncClientInitialiser>(

@@ -16,8 +16,11 @@ import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.models.helpers.ProviderAndRegion;
 import io.ebean.Ebean;
+import io.ebean.ExpressionList;
 import io.ebean.Finder;
+import io.ebean.Junction;
 import io.ebean.Model;
 import io.ebean.Query;
 import io.ebean.RawSql;
@@ -26,9 +29,13 @@ import io.ebean.SqlUpdate;
 import io.ebean.annotation.DbJson;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import javax.persistence.CascadeType;
 import javax.persistence.Column;
@@ -36,6 +43,7 @@ import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.ManyToOne;
 import javax.persistence.OneToMany;
+import org.apache.commons.collections.CollectionUtils;
 import play.data.validation.Constraints;
 import play.libs.Json;
 
@@ -240,6 +248,22 @@ public class Region extends Model {
       throw new PlatformServiceException(BAD_REQUEST, "Invalid Provider/Region UUID");
     }
     return region;
+  }
+
+  public static List<Region> findByKeys(Collection<ProviderAndRegion> keys) {
+    if (CollectionUtils.isEmpty(keys)) {
+      return Collections.emptyList();
+    }
+    Set<ProviderAndRegion> uniqueKeys = new HashSet<>(keys);
+    ExpressionList<Region> query = find.query().where();
+    Junction<Region> orExpr = query.or();
+    for (ProviderAndRegion key : uniqueKeys) {
+      Junction<Region> andExpr = orExpr.and();
+      andExpr.eq("provider_UUID", key.getProviderUuid());
+      andExpr.eq("code", key.getRegionCode());
+      orExpr.endAnd();
+    }
+    return query.endOr().findList();
   }
 
   /** DEPRECATED: use {@link #getOrBadRequest(UUID, UUID, UUID)} */

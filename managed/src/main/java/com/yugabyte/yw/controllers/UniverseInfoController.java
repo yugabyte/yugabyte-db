@@ -15,6 +15,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.net.HostAndPort;
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
+import com.yugabyte.yw.cloud.UniverseResourceDetails.Context;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -82,9 +83,10 @@ public class UniverseInfoController extends AuthenticatedController {
               + "estimate for NodeDetailsSet in that.",
       response = UniverseResourceDetails.class)
   public Result getUniverseResources(UUID customerUUID, UUID universeUUID) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID);
     return PlatformResults.withData(
-        universeInfoHandler.getUniverseResources(universe.getUniverseDetails()));
+        universeInfoHandler.getUniverseResources(customer, universe.getUniverseDetails()));
   }
 
   @ApiOperation(
@@ -95,9 +97,11 @@ public class UniverseInfoController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
 
+    Context context =
+        new Context(
+            runtimeConfigFactory.globalRuntimeConf(), customer, universe.getUniverseDetails());
     return PlatformResults.withData(
-        UniverseResourceDetails.create(
-            universe.getUniverseDetails(), runtimeConfigFactory.globalRuntimeConf()));
+        UniverseResourceDetails.create(universe.getUniverseDetails(), context));
   }
 
   @ApiOperation(

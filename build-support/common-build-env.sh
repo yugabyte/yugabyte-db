@@ -1925,7 +1925,11 @@ find_or_download_ysql_snapshots() {
   local prefix="initial_sys_catalog_snapshot"
 
   mkdir -p "$YSQL_SNAPSHOTS_DIR_PARENT"
-  for ver in "2.0.9.0"; do # Just one snapshot for now
+
+  # Just one snapshot for now.
+  # (disabling a code checker error about a singular loop iteration)
+  # shellcheck disable=SC2043
+  for ver in "2.0.9.0"; do
     local name="${prefix}_${ver}"
     if [[ ! -d "$YSQL_SNAPSHOTS_DIR_PARENT/$name" ]]; then
       local url="${repo_url}/releases/download/v${ver}/${name}.tar.gz"

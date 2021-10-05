@@ -444,6 +444,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 extern void YBBeginOperationsBuffering();
 extern void YBEndOperationsBuffering();
 extern void YBResetOperationsBuffering();
+extern void YBFlushBufferedOperations();
 
 bool YBReadFromFollowersEnabled();
 
