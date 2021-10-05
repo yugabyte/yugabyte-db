@@ -10227,6 +10227,8 @@ validateForeignKeyConstraint(char *conname,
 	HeapTuple	tuple;
 	Trigger		trig;
 	Snapshot	snapshot;
+	MemoryContext oldcxt;
+	MemoryContext perTupCxt;
 
 	ereport(DEBUG1,
 			(errmsg("validating foreign key constraint \"%s\"", conname)));
@@ -10261,10 +10263,17 @@ validateForeignKeyConstraint(char *conname,
 	snapshot = RegisterSnapshot(GetLatestSnapshot());
 	scan = heap_beginscan(rel, snapshot, 0, NULL);
 
+	perTupCxt = AllocSetContextCreate(CurrentMemoryContext,
+									  "validateForeignKeyConstraint",
+									  ALLOCSET_SMALL_SIZES);
+	oldcxt = MemoryContextSwitchTo(perTupCxt);
+
 	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 	{
 		FunctionCallInfoData fcinfo;
 		TriggerData trigdata;
+
+		CHECK_FOR_INTERRUPTS();
 
 		/*
 		 * Make a call to the trigger function
@@ -10288,8 +10297,12 @@ validateForeignKeyConstraint(char *conname,
 		fcinfo.context = (Node *) &trigdata;
 
 		RI_FKey_check_ins(&fcinfo);
+
+		MemoryContextReset(perTupCxt);
 	}
 
+	MemoryContextSwitchTo(oldcxt);
+	MemoryContextDelete(perTupCxt);
 	heap_endscan(scan);
 	UnregisterSnapshot(snapshot);
 }
