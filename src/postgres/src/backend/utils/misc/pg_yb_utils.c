@@ -1005,7 +1005,6 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		case T_CreateTableGroupStmt:
 		case T_CreateTableSpaceStmt:
 		case T_CreatedbStmt:
-		case T_CompositeTypeStmt: // CREATE TYPE
 		case T_DefineStmt: // CREATE OPERATOR/AGGREGATE/COLLATION/etc
 		case T_CommentStmt: // COMMENT (create new comment)
 		case T_DiscardStmt: // DISCARD ALL/SEQUENCES/TEMP affects only objects of current connection
@@ -1040,6 +1039,7 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			return true;
 		}
 
+		case T_CompositeTypeStmt: // CREATE TYPE
 		case T_CreateAmStmt:
 		case T_CreateCastStmt:
 		case T_CreateConversionStmt:
@@ -1068,8 +1068,12 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			/*
 			 * Add objects that may reference/alter other objects so we need to increment the
 			 * catalog version to ensure the other objects' metadata is refreshed.
-			 * TODO: Investigate the cases above more closely as some may only need an increment
-			 *       if some options are set, while others may not need it at all.
+			 * This is either for:
+			 * 		- objects that may refresh/alter other objects, to maintain
+			 *		  such other objects' consistency and keep their metadata
+			 *		  fresh
+			 *		- objects where we have negative caching enabled in
+			 *		  order to correctly invalidate negative cache entries
 			 */
 			*is_breaking_catalog_change = false;
 			return true;
