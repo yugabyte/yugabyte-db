@@ -8,6 +8,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertValues;
 import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.models.CustomerTask.TaskType.Create;
+import static com.yugabyte.yw.models.CustomerTask.TaskType.GFlagsUpgrade;
 import static com.yugabyte.yw.models.CustomerTask.TaskType.UpgradeSoftware;
 import static com.yugabyte.yw.models.CustomerTask.TaskType.Update;
 import static org.hamcrest.CoreMatchers.allOf;
@@ -48,6 +49,8 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
+
+import org.hamcrest.MatcherAssert;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -140,6 +143,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     responseJson.put("target", targetName);
     responseJson.put("targetUUID", targetUUID.toString());
     responseJson.put("type", taskType.name());
+    responseJson.put("typeName", taskType.getFriendlyName());
     if (percentComplete == 100.0) {
       // Sleep 3 seconds so that the completed time is greater than
       // creation time.
@@ -398,6 +402,31 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     assertEquals(1, universeTasks.size());
     assertValues(universeTasks, "id", ImmutableList.of(taskUUID1.toString()));
     assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testFriendlyNames() {
+    String authToken = user.createAuthToken();
+    UUID taskUUID =
+        createTaskWithStatus(
+            universe.universeUUID,
+            CustomerTask.TargetType.Universe,
+            GFlagsUpgrade,
+            TaskType.GFlagsUpgrade,
+            "Foo",
+            "Success",
+            100.0);
+    Result result =
+        FakeApiHelper.doRequestWithAuthToken(
+            "GET", "/api/customers/" + customer.uuid + "/tasks", authToken);
+    CustomerTask ct =
+        CustomerTask.find.query().where().eq("task_uuid", taskUUID.toString()).findOne();
+    assertEquals(OK, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    JsonNode universeTasks = json.get(universe.universeUUID.toString());
+    assertTrue(universeTasks.isArray());
+    JsonNode task = universeTasks.get(0);
+    MatcherAssert.assertThat(task.get("typeName").asText(), equalTo("GFlags Upgrade"));
   }
 
   @Test

@@ -290,8 +290,12 @@ public class CustomerTask extends Model {
         case StartMaster:
           return "Start Master Process on";
         default:
-          return name();
+          return toFriendlyTypeName();
       }
+    }
+
+    private String toFriendlyTypeName() {
+      return name().replaceAll("([a-z]+)([A-Z]+)", "$1 $2");
     }
   }
 
