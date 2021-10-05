@@ -34,6 +34,7 @@
 #include "storage/shmem.h"
 #include "tcop/utility.h"
 #include "utils/builtins.h"
+#include "utils/catcache.h"
 #include "utils/datetime.h"
 #include "utils/syscache.h"
 #include "yb/server/pgsql_webserver_wrapper.h"
@@ -58,6 +59,7 @@ typedef enum statementType
 	Single_Shard_Transaction,
 	Transaction,
 	AggregatePushdown,
+	CatCacheMisses,
 	kMaxStatementType
 } statementType;
 int num_entries = kMaxStatementType;
@@ -95,6 +97,8 @@ static rpczEntry *rpcz = NULL;
 static MemoryContext ybrpczMemoryContext = NULL;
 PgBackendStatus **backendStatusArrayPointer = NULL;
 
+static long last_cache_misses_val = 0;
+
 void		_PG_init(void);
 /*
  * Variables used for storing the previous values of used hooks.
@@ -120,6 +124,7 @@ static void ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
                                  ParamListInfo params, QueryEnvironment *queryEnv,
                                  DestReceiver *dest, char *completionTag);
 static void ybpgm_Store(statementType type, uint64_t time, uint64_t rows);
+static void ybpgm_StoreCount(statementType type, uint64_t time, uint64_t count);
 
 /*
  * Function used for checking if the current statement is a top level statement.
@@ -175,6 +180,7 @@ set_metric_names(void)
          YSQL_METRIC_PREFIX "Single_Shard_Transactions");
   strcpy(ybpgm_table[Transaction].name, YSQL_METRIC_PREFIX "Transactions");
   strcpy(ybpgm_table[AggregatePushdown].name, YSQL_METRIC_PREFIX "AggregatePushdowns");
+  strcpy(ybpgm_table[CatCacheMisses].name, YSQL_METRIC_PREFIX "CatalogCacheMisses");
 }
 
 /*
@@ -565,14 +571,23 @@ ybpgm_ExecutorEnd(QueryDesc *queryDesc)
 	ybpgm_Store(type, time, rows_count);
 
 	if (!queryDesc->estate->es_yb_is_single_row_modify_txn)
-	  ybpgm_Store(Single_Shard_Transaction, time, rows_count);
+	ybpgm_Store(Single_Shard_Transaction, time, rows_count);
 
 	if (!is_inside_transaction_block)
-	  ybpgm_Store(Transaction, time, rows_count);
+	ybpgm_Store(Transaction, time, rows_count);
 
 	if (IsA(queryDesc->planstate, AggState) &&
-		castNode(AggState, queryDesc->planstate)->yb_pushdown_supported)
-	  ybpgm_Store(AggregatePushdown, time, rows_count);
+	castNode(AggState, queryDesc->planstate)->yb_pushdown_supported)
+	ybpgm_Store(AggregatePushdown, time, rows_count);
+
+	long current_cache_misses = GetCatCacheMisses();
+
+	/* Currently we set the time parameter to 0 as we don't have metrics
+	* for that available
+	* TODO: Get timing metrics for catalog cache misses
+	*/
+	ybpgm_StoreCount(CatCacheMisses, 0, current_cache_misses - last_cache_misses_val);
+	last_cache_misses_val = current_cache_misses;
   }
 
   IncStatementNestingLevel();
@@ -744,4 +759,12 @@ ybpgm_Store(statementType type, uint64_t time, uint64_t rows) {
   entry->total_time += time;
   entry->calls += 1;
   entry->rows += rows;
+}
+
+static void
+ybpgm_StoreCount(statementType type, uint64_t time, uint64_t count) {
+  struct ybpgmEntry *entry = &ybpgm_table[type];
+  entry->total_time += time;
+  entry->calls += count;
+  entry->rows += count;
 }

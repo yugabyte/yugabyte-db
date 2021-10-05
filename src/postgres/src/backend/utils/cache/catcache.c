@@ -81,6 +81,7 @@
 
 /* Cache management header --- pointer is NULL until created */
 static CatCacheHeader *CacheHdr = NULL;
+static long NumCatalogCacheMisses;
 
 static inline HeapTuple SearchCatCacheInternal(CatCache *cache,
 					   int nkeys,
@@ -1712,6 +1713,9 @@ SearchCatCacheMiss(CatCache *cache,
 	 */
 	relation = heap_open(cache->cc_reloid, AccessShareLock);
 
+	if (IsYugaByteEnabled())
+		NumCatalogCacheMisses++;
+
 	if (yb_debug_log_catcache_events)
 	{
 		StringInfoData buf;
@@ -1810,6 +1814,9 @@ SearchCatCacheMiss(CatCache *cache,
 			 *    current session only
 			 * 5. pg_attribute as `ALTER TABLE` is used to add new columns and it increments
 			 *    catalog version
+			 * 6. pg_type (TYPEOID and TYPENAMENSP) to avoid redundant
+			 *    master lookups while parsing functions that are checked to be
+			 *    possible type coercions
 			 */
 			Oid namespace_id = DatumGetObjectId(cur_skey[1].sk_argument);
 			bool allow_negative_entries = cache->id == CASTSOURCETARGET ||
@@ -1817,7 +1824,9 @@ SearchCatCacheMiss(CatCache *cache,
 			                              cache->id == STATEXTNAMENSP ||
 			                              cache->id == STATEXTOID ||
 			                              cache->id == ATTNUM ||
-			                              ((cache->id == RELNAMENSP || cache->id == TYPENAMENSP) &&
+			                              cache->id == TYPEOID ||
+			                              cache->id == TYPENAMENSP ||
+			                              ((cache->id == RELNAMENSP) &&
 			                               namespace_id == PG_CATALOG_NAMESPACE &&
 			                               !YBIsPreparingTemplates()) ||
 			                              isTempOrTempToastNamespace(namespace_id);
@@ -2562,4 +2571,10 @@ PrintCatCacheListLeakWarning(CatCList *list)
 	elog(WARNING, "cache reference leak: cache %s (%d), list %p has count %d",
 		 list->my_cache->cc_relname, list->my_cache->id,
 		 list, list->refcount);
+}
+
+long
+GetCatCacheMisses()
+{
+	return NumCatalogCacheMisses;
 }
