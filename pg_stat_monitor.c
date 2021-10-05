@@ -25,8 +25,10 @@
 PG_MODULE_MAGIC;
 
 #define BUILD_VERSION                   "0.9.2-beta1"
-#define PG_STAT_STATEMENTS_COLS         52  /* maximum of above */
+#define PG_STAT_STATEMENTS_COLS         53  /* maximum of above */
 #define PGSM_TEXT_FILE                  "/tmp/pg_stat_monitor_query"
+
+#define roundf(x,d) ((floor(((x)*pow(10,d))+.5))/pow(10,d))
 
 #define PGUNSIXBIT(val) (((val) & 0x3F) + '0')
 
@@ -1648,7 +1650,8 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 	char			     parentid_txt[32];
 	pgssSharedState      *pgss = pgsm_get_ss();
 	HTAB                 *pgss_hash = pgsm_get_hash();
-	char 				*query_txt = (char*) malloc(PGSM_QUERY_MAX_LEN);
+	char 				*query_txt = (char*) palloc0(PGSM_QUERY_MAX_LEN);
+	char 				*parent_query_txt = (char*) palloc0(PGSM_QUERY_MAX_LEN);
 
 	/* Safety check... */
 	if (!IsSystemInitialized())
@@ -1675,7 +1678,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
 		elog(ERROR, "pg_stat_monitor: return type must be a row type");
 
-	if (tupdesc->natts != 49)
+	if (tupdesc->natts != 50)
 		elog(ERROR, "pg_stat_monitor: incorrect number of output arguments, required %d", tupdesc->natts);
 
 	tupstore = tuplestore_begin_heap(true, false, work_mem);
@@ -1714,6 +1717,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		if (query_entry == NULL)
 			continue;
 
+
 		if (read_query(buf, bucketid, queryid, query_txt) == 0)
 		{
 			int len;
@@ -1734,6 +1738,16 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 			if (tmp.state == PGSS_FINISHED)
 				continue;
 		}
+        if (tmp.info.parentid != UINT64CONST(0))
+        {
+            int len = 0;
+            if (read_query(buf, bucketid, tmp.info.parentid, parent_query_txt) == 0)
+            {
+              len = read_query_buffer(bucketid, tmp.info.parentid, parent_query_txt);
+			        if (len != MAX_QUERY_BUFFER_BUCKET)
+				        snprintf(parent_query_txt, 32, "%s", "<insufficient disk/shared space>");
+            }
+        }
 		/* bucketid at column number 0 */
 		values[i++] = Int64GetDatumFast(bucketid);
 
@@ -1808,9 +1822,11 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		{
             snprintf(parentid_txt, 32, "%08lX",tmp.info.parentid);
             values[i++] = CStringGetTextDatum(parentid_txt);
+            values[i++] = CStringGetTextDatum(parent_query_txt);
         }
         else
         {
+            nulls[i++] = true;
             nulls[i++] = true;
         }
 
@@ -1880,23 +1896,23 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		values[i++] = Int64GetDatumFast(tmp.calls.calls);
 
 		/* total_time at column number 17 */
-		values[i++] = Float8GetDatumFast(tmp.time.total_time);
+		values[i++] = Float8GetDatumFast(roundf(tmp.time.total_time, 4));
 
 		/* min_time at column number 18 */
-		values[i++] = Float8GetDatumFast(tmp.time.min_time);
+		values[i++] = Float8GetDatumFast(roundf(tmp.time.min_time,4));
 
 		/* max_time at column number 19 */
-		values[i++] = Float8GetDatumFast(tmp.time.max_time);
+		values[i++] = Float8GetDatumFast(roundf(tmp.time.max_time,4));
 
 		/* mean_time at column number 20 */
-		values[i++] = Float8GetDatumFast(tmp.time.mean_time);
+		values[i++] = Float8GetDatumFast(roundf(tmp.time.mean_time,4));
 		if (tmp.calls.calls > 1)
 			stddev = sqrt(tmp.time.sum_var_time / tmp.calls.calls);
 		else
 			stddev = 0.0;
 
 		/* calls at column number 21 */
-		values[i++] = Float8GetDatumFast(stddev);
+		values[i++] = Float8GetDatumFast(roundf(stddev,4));
 
 		/* calls at column number 22 */
 		values[i++] = Int64GetDatumFast(tmp.calls.rows);
@@ -1912,23 +1928,23 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		values[i++] = Int64GetDatumFast(tmp.plancalls.calls);
 
 		/* total_time at column number 24 */
-		values[i++] = Float8GetDatumFast(tmp.plantime.total_time);
+		values[i++] = Float8GetDatumFast(roundf(tmp.plantime.total_time,4));
 
 		/* min_time at column number 25 */
-		values[i++] = Float8GetDatumFast(tmp.plantime.min_time);
+		values[i++] = Float8GetDatumFast(roundf(tmp.plantime.min_time,4));
 
 		/* max_time at column number 26 */
-		values[i++] = Float8GetDatumFast(tmp.plantime.max_time);
+		values[i++] = Float8GetDatumFast(roundf(tmp.plantime.max_time,4));
 
 		/* mean_time at column number 27 */
-		values[i++] = Float8GetDatumFast(tmp.plantime.mean_time);
+		values[i++] = Float8GetDatumFast(roundf(tmp.plantime.mean_time,4));
 		if (tmp.plancalls.calls > 1)
 			stddev = sqrt(tmp.plantime.sum_var_time / tmp.plancalls.calls);
 		else
 			stddev = 0.0;
 
 		/* calls at column number 28 */
-		values[i++] = Float8GetDatumFast(stddev);
+		values[i++] = Float8GetDatumFast(roundf(stddev,4));
 
 		/* blocks are from column number 29 - 40 */
 		values[i++] = Int64GetDatumFast(tmp.blocks.shared_blks_hit);
@@ -1948,10 +1964,10 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		values[i++] = IntArrayGetTextDatum(tmp.resp_calls, MAX_RESPONSE_BUCKET);
 
 		/* utime at column number 42 */
-		values[i++] = Float8GetDatumFast(tmp.sysinfo.utime);
+		values[i++] = Float8GetDatumFast(roundf(tmp.sysinfo.utime,4));
 
 		/* stime at column number 43 */
-		values[i++] = Float8GetDatumFast(tmp.sysinfo.stime);
+		values[i++] = Float8GetDatumFast(roundf(tmp.sysinfo.stime,4));
 		{
 			char		buf[256];
 			Datum		wal_bytes;
@@ -1980,7 +1996,8 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		}
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 	}
-	free(query_txt);
+	pfree(query_txt);
+	pfree(parent_query_txt);
 	/* clean up and return the tuplestore */
 	LWLockRelease(pgss->lock);
 
@@ -3018,7 +3035,6 @@ read_query(unsigned char *buf, uint64 bucketid, uint64 queryid, char * query)
 		memcpy(&query_id, &buf[rlen], sizeof (uint64)); /* query id */
 		if (query_id == queryid)
 			found = true;
-
 		rlen += sizeof (uint64);
 		if (buf_len <= rlen)
 			continue;
