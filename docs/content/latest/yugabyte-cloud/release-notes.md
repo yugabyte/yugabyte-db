@@ -15,6 +15,15 @@ showAsideToc: true
 
 ## Releases
 
+### October 5, 2021
+
+- [Yugabyte Cloud Status](https://status.yugabyte.cloud/) page
+
+#### New features
+
+- Paid clusters (unlimited)
+- Invoicing
+
 ### September 15, 2021
 
 #### New features

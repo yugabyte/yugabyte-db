@@ -35,12 +35,6 @@ Yugabyte bills for its services as follows:
 
 For information on Yugabyte Cloud pricing, refer to the [Yugabyte Cloud Standard Price List](https://www.yugabyte.com/yugabyte-cloud-standard-price-list/). For a description of how cluster configurations are costed, refer to [Cluster costs](../cloud-admin/cloud-billing-costs).
 
-<!--
-### Is support included in the base price?
-
-### What SLAs are guaranteed for support and service?
--->
-
 ### What are the differences between Free and Paid clusters?
 
 Use the **Free** cluster to get started with YugabyteDB. The free cluster is limited to a single node, and although not suitable for production workloads, the cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB. You can only have one Free cluster.
@@ -70,6 +64,26 @@ Currently self-service migration is not supported. Contact [Yugabyte Support](ht
 Refer to [Cloud provider regions](../release-notes#cloud-provider-regions) for a list currently supported regions.
 
 Yugabyte Cloud supports all the regions that have robust infrastructure and sufficient demand from customers. Regions where load balancers, certain VMs, or other resources are harder to obtain have not yet been added. We are continuously improving region coverage, so if there are any regions you would like us to support, reach out to [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
+
+## Support
+
+### Is support included in the base price?
+
+Support is provided for paid clusters. Refer to the [Yugabyte Cloud Support Services Terms and Conditions](https://www.yugabyte.com/yugabyte-cloud-support-services-terms-and-conditions/).
+
+Free and paid cluster customers can also use the [YugabyteDB Community Slack Channel](https://yugabyte-db.slack.com/).
+
+### Where can I find the support policy and Service Level Agreement (SLA) for Yugabyte Cloud?
+
+The Yugabyte Cloud SLA, terms of service, acceptable use policy, and more can be found on the [Yugabyte Legal](https://www.yugabyte.com/legal/) page.
+
+### How do I check the status of Yugabyte Cloud?
+
+The [Yugabyte Cloud Status](https://status.yugabyte.cloud/) page displays the current uptime status of Yugabyte Cloud and the [Yugabyte Support Portal](https://support.yugabyte.com/).
+
+The status page also provides notices of scheduled maintenace and current and past incidents.
+
+Subscribe to the status page by clicking **Subscribe to Updates**. Email notifications are sent when incidents are created, updated, and resolved.
 
 ### How do I connect to my cluster?
 

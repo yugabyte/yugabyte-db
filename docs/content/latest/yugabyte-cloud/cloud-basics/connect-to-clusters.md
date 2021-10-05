@@ -51,19 +51,7 @@ To connect to a cluster via Cloud Shell:
 
 1. Select the API to use (YSQL or YCQL) and click **Confirm**.
 
-    The shell is displayed in a separate browser page (`ysqlsh` output, followed by `ycqlsh`).
-
-    ```output
-    Password for user admin: 
-    ```
-
-    ```output
-    Warning: Cannot create directory at `/home/shell/.cassandra`. Command history will not be saved.
-
-    Password: 
-    ```
-
-    Cloud shell can take up to 30 seconds to be ready.
+    The shell is displayed in a separate browser page. Cloud shell can take up to 30 seconds to be ready.
 
 1. Enter the password for the user you specified.
 
