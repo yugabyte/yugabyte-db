@@ -370,6 +370,9 @@ class GraphPanelHeader extends Component {
               <FlexGrow>
                 <form name="GraphPanelFilterForm">
                   <div id="reportrange" className="pull-right">
+                    <div className="timezone">
+                      Timezone: {moment().format('[UTC]ZZ')}
+                    </div>
                     {datePicker}
                     <Dropdown id="graph-filter-dropdown" pullRight={true}>
                       {!universePaused &&

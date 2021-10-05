@@ -11,6 +11,7 @@ import { YBButton } from '../../common/forms/fields';
 import './AlertsTable.scss';
 import { toast } from 'react-toastify';
 import { Label } from 'react-bootstrap';
+import {timeFormatter} from "../../../utils/TableFormatters";
 
 const DEFAULT_SORT_COLUMN = 'createTime';
 const DEFAULT_SORT_DIRECTION = 'DESC';
@@ -150,6 +151,7 @@ export default function AlertsTable({ filters }) {
                 dataField="createTime"
                 columnClassName="no-border name-column"
                 className="no-border"
+                dataFormat={timeFormatter}
                 width={'20%'}
                 dataSort
               >
