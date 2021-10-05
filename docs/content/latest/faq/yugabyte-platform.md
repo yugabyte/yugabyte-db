@@ -26,14 +26,20 @@ YugaWare first needs to be installed on any machine. The next step is to configu
 
 **OS requirements**
 
-Only Linux-based systems are supported by Replicated at this point. This Linux OS should be 3.10+ kernel, 64-bit, and ready to run docker-engine 1.7.1 - 17.06.2-ce (with 17.06.2-ce being the recommended version). Some of the supported OS versions are:
+Only Linux-based operating systems are supported by Replicated at the moment. This Linux OS should be 3.10+ kernel, 64-bit, and ready to run docker-engine 1.7.1 - 17.06.2-ce (with 17.06.2-ce being the recommended version). Some of the supported OS versions are the following:
 
 - Ubuntu 16.04+
 - Red Hat Enterprise Linux 6.5+
 - CentOS 7+
 - Amazon AMI 2014.03 / 2014.09 / 2015.03 / 2015.09 / 2016.03 / 2016.09
 
-The complete list of operating systems supported by Replicated are listed [here](https://www.replicated.com/docs/distributing-an-application/supported-operating-systems/)
+For the complete list of operating systems supported by Replicated, see [Supported OS](https://www.replicated.com/docs/distributing-an-application/supported-operating-systems/).
+
+{{< note title="Note" >}}
+
+The preceding list of operating systems is only applicable to Yugabyte Platform. For a list of OSs supported by YugabyteDB, see [Prerequisites for Installing YugabyteDB](https://docs.yugabyte.com/latest/quick-start/install/linux/#prerequisites).
+
+{{< /note >}}
 
 **Permissions necessary for an Internet-connected host**
 
