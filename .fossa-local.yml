@@ -18,5 +18,18 @@ paths:
   only:
     - ./src
     - ./java
-#  exclude:
-#    -
+  exclude:
+    - ./src/postgres/src/bin/pg_test_fsync
+    - ./src/postgres/src/bin/pg_test_timing
+    - ./src/postgres/src/interfaces/ecpg/test
+    - ./src/postgres/src/interfaces/libpq/test
+    - ./src/postgres/src/test
+    - ./src/yb/integration-tests
+    - ./src/yb/yql/cql/ql/test
+    - ./java/yb-client/src/test
+    - ./java/yb-cql-4x/src/test
+    - ./java/yb-cql/src/test
+    - ./java/yb-jedis-tests
+    - ./java/yb-loadtester/src/test
+    - ./java/yb-multiapi/src/test
+    - ./java/yb-pgsql/src/test
