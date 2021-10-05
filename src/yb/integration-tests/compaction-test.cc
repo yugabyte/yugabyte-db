@@ -247,7 +247,10 @@ class CompactionTest : public YBTest {
   }
 
   void TestCompactionAfterTruncate();
-  void TestCompactionWithoutFrontiers(const int num_without_frontiers);
+  void TestCompactionWithoutFrontiers(
+      const int num_without_frontiers,
+      const int num_with_frontiers,
+      const bool trigger_manual_compaction);
 
   std::unique_ptr<MiniCluster> cluster_;
   std::unique_ptr<client::YBClient> client_;
@@ -283,37 +286,42 @@ void CompactionTest::TestCompactionAfterTruncate() {
       60s, "Waiting until we have number of SST files not higher than threshold ...", kWaitDelay));
 }
 
-void CompactionTest::TestCompactionWithoutFrontiers(const int num_without_frontiers) {
+void CompactionTest::TestCompactionWithoutFrontiers(
+    const int num_without_frontiers,
+    const int num_with_frontiers,
+    const bool trigger_manual_compaction) {
   // Write a number of files without frontiers
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_adding_user_frontier_to_sst) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_getting_user_frontier_from_mem_table) = true;
+  SetupWorkload(IsolationLevel::SNAPSHOT_ISOLATION);
   ASSERT_OK(WriteAtLeastFilesPerDb(num_without_frontiers));
-  // If the number of files to write without frontiers is less than the number to
-  // trigger compaction, then write the rest with frontiers.
-  if (num_without_frontiers < FLAGS_rocksdb_level0_file_num_compaction_trigger + 1) {
+  // If requested, write a number of files with frontiers second.
+  if (num_with_frontiers > 0) {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_adding_user_frontier_to_sst) = false;
-    const int num_with_frontiers =
-        (FLAGS_rocksdb_level0_file_num_compaction_trigger + 1) - num_without_frontiers;
+    rocksdb_listener_->Reset();
     ASSERT_OK(WriteAtLeastFilesPerDb(num_with_frontiers));
   }
 
+  // Trigger manual compaction if requested.
+  if (trigger_manual_compaction) {
+    constexpr int kCompactionTimeoutSec = 60;
+    const auto table_info = ASSERT_RESULT(FindTable(cluster_.get(), workload_->table_name()));
+    ASSERT_OK(workload_->client().FlushTables(
+      {table_info->id()}, false, kCompactionTimeoutSec, /* compaction */ true));
+  }
+  // Wait for the compaction.
   auto dbs = GetAllRocksDbs(cluster_.get());
   ASSERT_OK(LoggedWaitFor(
-      [&dbs] {
+      [&dbs, num_without_frontiers, num_with_frontiers] {
         for (auto* db : dbs) {
-          if (db->GetLiveFilesMetaData().size() >
-              FLAGS_rocksdb_level0_file_num_compaction_trigger) {
+          if (db->GetLiveFilesMetaData().size() >=
+              num_without_frontiers + num_with_frontiers) {
             return false;
           }
         }
         return true;
       },
-      60s,
-      "Waiting until we have number of SST files not higher than threshold ...",
-      kWaitDelay * kTimeMultiplier));
-  // reset FLAGS_TEST_disable_adding_user_frontier_to_sst
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_adding_user_frontier_to_sst) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_getting_user_frontier_from_mem_table) = false;
+      60s, "Waiting until we see fewer SST files than were written initially ...", kWaitDelay));
 }
 
 TEST_F(CompactionTest, CompactionAfterTruncate) {
@@ -326,16 +334,33 @@ TEST_F(CompactionTest, CompactionAfterTruncateTransactional) {
   TestCompactionAfterTruncate();
 }
 
-TEST_F(CompactionTest, CompactionWithoutAnyUserFrontiers) {
-  SetupWorkload(IsolationLevel::SNAPSHOT_ISOLATION);
-  // Create enough SST files without user frontiers to trigger compaction.
-  TestCompactionWithoutFrontiers(FLAGS_rocksdb_level0_file_num_compaction_trigger + 1);
+TEST_F(CompactionTest, AutomaticCompactionWithoutAnyUserFrontiers) {
+  constexpr int files_without_frontiers = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger)
+      = files_without_frontiers;
+  // Create all SST files without user frontiers.
+  TestCompactionWithoutFrontiers(files_without_frontiers, 0, false);
 }
 
-TEST_F(CompactionTest, CompactionWithSomeUserFrontiers) {
-  SetupWorkload(IsolationLevel::SNAPSHOT_ISOLATION);
+TEST_F(CompactionTest, AutomaticCompactionWithSomeUserFrontiers) {
+  constexpr int files_without_frontiers = 1;
+  constexpr int files_with_frontiers = 4;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger)
+      = files_without_frontiers + files_with_frontiers;
   // Create only one SST file without user frontiers.
-  TestCompactionWithoutFrontiers(1);
+  TestCompactionWithoutFrontiers(files_without_frontiers, files_with_frontiers, false);
+}
+
+TEST_F(CompactionTest, ManualCompactionWithoutAnyUserFrontiers) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
+  // Create all SST files without user frontiers.
+  TestCompactionWithoutFrontiers(5, 0, true);
+}
+
+TEST_F(CompactionTest, ManualCompactionWithSomeUserFrontiers) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
+  // Create only one SST file without user frontiers.
+  TestCompactionWithoutFrontiers(1, 5, true);
 }
 
 TEST_F(CompactionTest, ManualCompactionProducesOneFilePerDb) {
