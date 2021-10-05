@@ -94,6 +94,8 @@ PG_MODULE_MAGIC;
 #define HINT_LEADING			"Leading"
 #define HINT_SET				"Set"
 #define HINT_ROWS				"Rows"
+#define HINT_MEMOIZE			"Memoize"
+#define HINT_NOMEMOIZE			"NoMemoize"
 
 #define HINT_ARRAY_DEFAULT_INITSIZE 8
 
@@ -122,7 +124,8 @@ enum
 {
 	ENABLE_NESTLOOP = 0x01,
 	ENABLE_MERGEJOIN = 0x02,
-	ENABLE_HASHJOIN = 0x04
+	ENABLE_HASHJOIN = 0x04,
+	ENABLE_MEMOIZE	= 0x08
 } JOIN_TYPE_BITS;
 
 #define ENABLE_ALL_SCAN (ENABLE_SEQSCAN | ENABLE_INDEXSCAN | \
@@ -160,6 +163,8 @@ typedef enum HintKeyword
 	HINT_KEYWORD_SET,
 	HINT_KEYWORD_ROWS,
 	HINT_KEYWORD_PARALLEL,
+	HINT_KEYWORD_MEMOIZE,
+	HINT_KEYWORD_NOMEMOIZE,
 
 	HINT_KEYWORD_UNRECOGNIZED
 } HintKeyword;
@@ -186,7 +191,6 @@ typedef const char *(*HintParseFunction) (Hint *hint, HintState *hstate,
 										  Query *parse, const char *str);
 
 /* hint types */
-#define NUM_HINT_TYPE	6
 typedef enum HintType
 {
 	HINT_TYPE_SCAN_METHOD,
@@ -194,7 +198,10 @@ typedef enum HintType
 	HINT_TYPE_LEADING,
 	HINT_TYPE_SET,
 	HINT_TYPE_ROWS,
-	HINT_TYPE_PARALLEL
+	HINT_TYPE_PARALLEL,
+	HINT_TYPE_MEMOIZE,
+
+	NUM_HINT_TYPE
 } HintType;
 
 typedef enum HintTypeBitmap
@@ -368,11 +375,13 @@ struct HintState
 	JoinMethodHint **join_hints;		/* parsed join hints */
 	int				init_join_mask;		/* initial value join parameter */
 	List		  **join_hint_level;
+	List		  **memoize_hint_level;
 	LeadingHint	  **leading_hint;		/* parsed Leading hints */
 	SetHint		  **set_hints;			/* parsed Set hints */
 	GucContext		context;			/* which GUC parameters can we set? */
 	RowsHint	  **rows_hints;			/* parsed Rows hints */
 	ParallelHint  **parallel_hints;		/* parsed Parallel hints */
+	JoinMethodHint **memoize_hints;		/* parsed Memoize hints */
 };
 
 /*
@@ -452,6 +461,9 @@ static void ParallelHintDesc(ParallelHint *hint, StringInfo buf, bool nolf);
 static int ParallelHintCmp(const ParallelHint *a, const ParallelHint *b);
 static const char *ParallelHintParse(ParallelHint *hint, HintState *hstate,
 									 Query *parse, const char *str);
+
+static Hint *MemoizeHintCreate(const char *hint_str, const char *keyword,
+							   HintKeyword hint_keyword);
 
 static void quote_value(StringInfo buf, const char *value);
 
@@ -588,6 +600,8 @@ static const HintParser parsers[] = {
 	{HINT_SET, SetHintCreate, HINT_KEYWORD_SET},
 	{HINT_ROWS, RowsHintCreate, HINT_KEYWORD_ROWS},
 	{HINT_PARALLEL, ParallelHintCreate, HINT_KEYWORD_PARALLEL},
+	{HINT_MEMOIZE, MemoizeHintCreate, HINT_KEYWORD_MEMOIZE},
+	{HINT_NOMEMOIZE, MemoizeHintCreate, HINT_KEYWORD_NOMEMOIZE},
 
 	{NULL, NULL, HINT_KEYWORD_UNRECOGNIZED}
 };
@@ -944,6 +958,23 @@ ParallelHintDelete(ParallelHint *hint)
 }
 
 
+static Hint *
+MemoizeHintCreate(const char *hint_str, const char *keyword,
+				  HintKeyword hint_keyword)
+{
+	/*
+	 * MemoizeHintCreate shares the same struct with JoinMethodHint and the
+	 * only difference is the hint type.
+	 */
+	JoinMethodHint *hint =
+		(JoinMethodHint *)JoinMethodHintCreate(hint_str, keyword, hint_keyword);
+
+	hint->base.type = HINT_TYPE_MEMOIZE;
+
+	return (Hint *) hint;
+}
+
+
 static HintState *
 HintStateCreate(void)
 {
@@ -970,6 +1001,7 @@ HintStateCreate(void)
 	hstate->join_hints = NULL;
 	hstate->init_join_mask = 0;
 	hstate->join_hint_level = NULL;
+	hstate->memoize_hint_level = NULL;
 	hstate->leading_hint = NULL;
 	hstate->context = superuser() ? PGC_SUSET : PGC_USERSET;
 	hstate->set_hints = NULL;
@@ -1940,6 +1972,8 @@ create_hintstate(Query *parse, const char *hints)
 		hstate->num_hints[HINT_TYPE_SET]);
 	hstate->parallel_hints = (ParallelHint **) (hstate->rows_hints +
 		hstate->num_hints[HINT_TYPE_ROWS]);
+	hstate->memoize_hints = (JoinMethodHint **) (hstate->parallel_hints +
+		hstate->num_hints[HINT_TYPE_PARALLEL]);
 
 	return hstate;
 }
@@ -2102,6 +2136,10 @@ JoinMethodHintParse(JoinMethodHint *hint, HintState *hstate, Query *parse,
 			break;
 		case HINT_KEYWORD_NOHASHJOIN:
 			hint->enforce_mask = ENABLE_ALL_JOIN ^ ENABLE_HASHJOIN;
+			break;
+		case HINT_KEYWORD_MEMOIZE:
+		case HINT_KEYWORD_NOMEMOIZE:
+			/* nothing to do here */
 			break;
 		default:
 			hint_ereport(str, ("Unrecognized hint keyword \"%s\".", keyword));
@@ -2431,6 +2469,8 @@ get_current_join_mask()
 		mask |= ENABLE_MERGEJOIN;
 	if (enable_hashjoin)
 		mask |= ENABLE_HASHJOIN;
+	if (enable_memoize)
+		mask |= ENABLE_MEMOIZE;
 
 	return mask;
 }
@@ -2621,7 +2661,8 @@ setup_scan_method_enforcement(ScanMethodHint *scanhint, HintState *state)
 }
 
 static void
-set_join_config_options(unsigned char enforce_mask, GucContext context)
+set_join_config_options(unsigned char enforce_mask, bool set_memoize,
+						GucContext context)
 {
 	unsigned char	mask;
 
@@ -2634,6 +2675,9 @@ set_join_config_options(unsigned char enforce_mask, GucContext context)
 	SET_CONFIG_OPTION("enable_nestloop", ENABLE_NESTLOOP);
 	SET_CONFIG_OPTION("enable_mergejoin", ENABLE_MERGEJOIN);
 	SET_CONFIG_OPTION("enable_hashjoin", ENABLE_HASHJOIN);
+
+	if (set_memoize)
+		SET_CONFIG_OPTION("enable_memoize", ENABLE_MEMOIZE);
 
 	/*
 	 * Hash join may be rejected for the reason of estimated memory usage. Try
@@ -3811,6 +3855,30 @@ find_join_hint(Relids joinrelids)
 	return NULL;
 }
 
+
+/*
+ * Return memoize hint which matches given joinrelids.
+ */
+static JoinMethodHint *
+find_memoize_hint(Relids joinrelids)
+{
+	List	   *join_hint;
+	ListCell   *l;
+
+	join_hint = current_hint_state->memoize_hint_level[bms_num_members(joinrelids)];
+
+	foreach(l, join_hint)
+	{
+		JoinMethodHint *hint = (JoinMethodHint *) lfirst(l);
+
+		if (bms_equal(joinrelids, hint->joinrelids))
+			return hint;
+	}
+
+	return NULL;
+}
+
+
 static Relids
 OuterInnerJoinCreate(OuterInnerRels *outer_inner, LeadingHint *leading_hint,
 	PlannerInfo *root, List *initial_rels, HintState *hstate, int nbaserel)
@@ -3964,6 +4032,24 @@ transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
 
 		hstate->join_hint_level[hint->nrels] =
 			lappend(hstate->join_hint_level[hint->nrels], hint);
+	}
+
+	/* ditto for memoize hints */
+	for (i = 0; i < hstate->num_hints[HINT_TYPE_MEMOIZE]; i++)
+	{
+		JoinMethodHint *hint = hstate->join_hints[i];
+
+		if (!hint_state_enabled(hint) || hint->nrels > nbaserel)
+			continue;
+
+		hint->joinrelids = create_bms_of_relids(&(hint->base), root,
+									 initial_rels, hint->nrels, hint->relnames);
+
+		if (hint->joinrelids == NULL || hint->base.state == HINT_STATE_ERROR)
+			continue;
+
+		hstate->memoize_hint_level[hint->nrels] =
+			lappend(hstate->memoize_hint_level[hint->nrels], hint);
 	}
 
 	/*
@@ -4171,7 +4257,8 @@ transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
 
 	if (hint_state_enabled(lhint))
 	{
-		set_join_config_options(DISABLE_ALL_JOIN, current_hint_state->context);
+		set_join_config_options(DISABLE_ALL_JOIN, false,
+								current_hint_state->context);
 		return true;
 	}
 	return false;
@@ -4187,34 +4274,57 @@ static RelOptInfo *
 make_join_rel_wrapper(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 {
 	Relids			joinrelids;
-	JoinMethodHint *hint;
+	JoinMethodHint *join_hint;
+	JoinMethodHint *memoize_hint;
 	RelOptInfo	   *rel;
 	int				save_nestlevel;
 
 	joinrelids = bms_union(rel1->relids, rel2->relids);
-	hint = find_join_hint(joinrelids);
+	join_hint = find_join_hint(joinrelids);
+	memoize_hint = find_memoize_hint(joinrelids);
 	bms_free(joinrelids);
 
-	if (!hint)
-		return pg_hint_plan_make_join_rel(root, rel1, rel2);
+	/* reject non-matching hints */
+	if (join_hint && join_hint->inner_nrels != 0)
+		join_hint = NULL;
+	
+	if (memoize_hint && memoize_hint->inner_nrels != 0)
+		memoize_hint = NULL;
 
-	if (hint->inner_nrels == 0)
+	if (join_hint || memoize_hint)
 	{
 		save_nestlevel = NewGUCNestLevel();
 
-		set_join_config_options(hint->enforce_mask,
-								current_hint_state->context);
+		if (join_hint)
+			set_join_config_options(join_hint->enforce_mask, false,
+									current_hint_state->context);
 
-		rel = pg_hint_plan_make_join_rel(root, rel1, rel2);
-		hint->base.state = HINT_STATE_USED;
+		if (memoize_hint)
+		{
+			bool memoize =
+				memoize_hint->base.hint_keyword == HINT_KEYWORD_MEMOIZE;
+			set_config_option_noerror("enable_memoize",
+									  memoize ? "true" : "false",
+									  current_hint_state->context,
+									  PGC_S_SESSION, GUC_ACTION_SAVE,
+									  true, ERROR);
+		}
+	}
 
-		/*
-		 * Restore the GUC variables we set above.
-		 */
+	/* do the work */
+	rel = pg_hint_plan_make_join_rel(root, rel1, rel2);
+
+	/* Restore the GUC variables we set above. */
+	if (join_hint || memoize_hint)
+	{
+		if (join_hint)
+			join_hint->base.state = HINT_STATE_USED;
+
+		if (memoize_hint)
+			memoize_hint->base.state = HINT_STATE_USED;
+
 		AtEOXact_GUC(true, save_nestlevel);
 	}
-	else
-		rel = pg_hint_plan_make_join_rel(root, rel1, rel2);
 
 	return rel;
 }
@@ -4233,42 +4343,63 @@ add_paths_to_joinrel_wrapper(PlannerInfo *root,
 {
 	Relids			joinrelids;
 	JoinMethodHint *join_hint;
+	JoinMethodHint *memoize_hint;
 	int				save_nestlevel;
 
 	joinrelids = bms_union(outerrel->relids, innerrel->relids);
 	join_hint = find_join_hint(joinrelids);
+	memoize_hint = find_memoize_hint(joinrelids);
 	bms_free(joinrelids);
 
-	if (join_hint && join_hint->inner_nrels != 0)
+	/* reject the found hints if they don't match this join */
+	if (join_hint && join_hint->inner_nrels == 0)
+		join_hint = NULL;
+
+	if (memoize_hint && memoize_hint->inner_nrels == 0)
+		memoize_hint = NULL;
+
+	/* set up configuration if needed */
+	if (join_hint || memoize_hint)
 	{
 		save_nestlevel = NewGUCNestLevel();
 
-		if (bms_equal(join_hint->inner_joinrelids, innerrel->relids))
+		if (join_hint)
 		{
+			if (bms_equal(join_hint->inner_joinrelids, innerrel->relids))
+				set_join_config_options(join_hint->enforce_mask, false,
+										current_hint_state->context);
+			else
+				set_join_config_options(DISABLE_ALL_JOIN, false,
+										current_hint_state->context);
+		}
 
-			set_join_config_options(join_hint->enforce_mask,
-									current_hint_state->context);
+		if (memoize_hint)
+		{
+			bool memoize =
+				memoize_hint->base.hint_keyword == HINT_KEYWORD_MEMOIZE;
+			set_config_option_noerror("enable_memoize",
+									  memoize ? "true" : "false",
+									  current_hint_state->context,
+									  PGC_S_SESSION, GUC_ACTION_SAVE,
+									  true, ERROR);
+		}
+	}
 
-			add_paths_to_joinrel(root, joinrel, outerrel, innerrel, jointype,
-								 sjinfo, restrictlist);
+	/* generate paths */
+	add_paths_to_joinrel(root, joinrel, outerrel, innerrel, jointype,
+						 sjinfo, restrictlist);
+
+	/* restore GUC variables */
+	if (join_hint || memoize_hint)
+	{
+		if (join_hint)
 			join_hint->base.state = HINT_STATE_USED;
-		}
-		else
-		{
-			set_join_config_options(DISABLE_ALL_JOIN,
-									current_hint_state->context);
-			add_paths_to_joinrel(root, joinrel, outerrel, innerrel, jointype,
-								 sjinfo, restrictlist);
-		}
 
-		/*
-		 * Restore the GUC variables we set above.
-		 */
+		if (memoize_hint)
+			memoize_hint->base.state = HINT_STATE_USED;
+
 		AtEOXact_GUC(true, save_nestlevel);
 	}
-	else
-		add_paths_to_joinrel(root, joinrel, outerrel, innerrel, jointype,
-							 sjinfo, restrictlist);
 }
 
 static int
@@ -4331,6 +4462,8 @@ pg_hint_plan_join_search(PlannerInfo *root, int levels_needed,
 	current_hint_state->join_hint_level =
 		palloc0(sizeof(List *) * (nbaserel + 1));
 	join_method_hints = palloc0(sizeof(JoinMethodHint *) * (nbaserel + 1));
+	current_hint_state->memoize_hint_level =
+		palloc0(sizeof(List *) * (nbaserel + 1));
 
 	leading_hint_enable = transform_join_hints(current_hint_state,
 											   root, nbaserel,
@@ -4383,7 +4516,7 @@ pg_hint_plan_join_search(PlannerInfo *root, int levels_needed,
 	pfree(join_method_hints);
 
 	if (leading_hint_enable)
-		set_join_config_options(current_hint_state->init_join_mask,
+		set_join_config_options(current_hint_state->init_join_mask, true,
 								current_hint_state->context);
 
 	return rel;

@@ -10,7 +10,7 @@
 </head>
 
 <body>
-<h1 id="pg_hint_plan">pg_hint_plan 1.3 Appendices</h1>
+<h1 id="pg_hint_plan">pg_hint_plan 1.4 Appendices</h1>
 <div class="navigation">
   <a href="pg_hint_plan.html">pg_hint_plan</a> &gt;
   <a href="hint_list.html">Appendix A. Hints list</a>
@@ -70,6 +70,13 @@
   <td>Forces join order as specified.</td></tr>
 <tr><td nowrap>Leading(&lt;join pair&gt;)</td>
 	<td>Forces join order and directions as specified. A join pair is a pair of tables and/or other join pairs enclosed by parentheses, which can make a nested structure.</td>
+
+<tr><td rowspan="2">Behavior control on Join</td>
+  <td nowrap>Memoize(table table[ table...])</td>
+  <td nowrap>Allow the topmost join of a join among the specified tables to memoize the inner result. (Note that this doesn't enforce.)</td></tr>
+<tr><td nowrap>NoMemoize(table table[ table...])</td>
+  <td nowrap>Inhibit the topmost join of a join among the specified tables from memoizing the inner result.</td>
+</tr>
 
 <tr><td>Row number correction</td>
 	<td nowrap>Rows(table table[ table...] correction)</td>

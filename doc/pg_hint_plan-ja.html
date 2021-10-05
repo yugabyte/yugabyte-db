@@ -10,7 +10,7 @@
 </head>
 
 <body>
-<h1 id="pg_hint_plan">pg_hint_plan 1.3</h1>
+<h1 id="pg_hint_plan">pg_hint_plan 1.4</h1>
 <div class="navigation">
   <a href="pg_hint_plan-ja.html">pg_hint_plan</a>
 </div>
@@ -277,6 +277,24 @@ postgres-#  ORDER BY a.aid;
 <span class="strong">postgres=# /*+ Leading((t1 (t2 t3))) */</span> SELECT...
 </pre>
 <p>この書式では2つの要素を丸括弧で囲ったものがネストする形になっており、一つの括弧内では1つ目の要素が外部/駆動表、2番めの要素が内部/被駆動表として結合されます。</p>
+<h4>結合の挙動制御</h4>
+<p>あるオブジェクトの組み合わせ最上位結合の挙動を制御するヒント句のグループです。「Memoize」のみを含みます。</p>
+<p>Memoizeは最上位結合のインナープランの出力結果をキャッシングして高速化を試みる挙動を制御します。</p>
+<p>以下の例では、テーブルaとテーブルbの結合のインナー側(この例ではa側)のMemoizeを禁止します。</p>
+
+<pre>
+postgres=# /*+ NoMemoize(a b) */
+EXPLAIN SELECT * FROM a, b WHERE a.val = b.val;
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Hash Join  (cost=270.00..1412.50 rows=100000 width=16)
+   Hash Cond: (b.val = a.val)
+   ->  Seq Scan on b  (cost=0.00..15.00 rows=1000 width=8)
+   ->  Hash  (cost=145.00..145.00 rows=10000 width=8)
+         ->  Seq Scan on a  (cost=0.00..145.00 rows=10000 width=8)
+(5 行)
+</pre>
+
 <h4>見積もり件数補正</h4>
 <p>あるオブジェクトの結合結果の件数を補正できるヒント句のグループです。「Rows」のみを含みます。</p>
 <p>見積もり件数補正対象として指定できるオブジェクトは結合方式と同じです。補正できるのは結合結果の見積もり件数だけで、スキャンの見積もり件数を補正することはできません。</p>
