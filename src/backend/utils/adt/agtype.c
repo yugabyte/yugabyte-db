@@ -8281,3 +8281,63 @@ Datum age_eq_tilde(PG_FUNCTION_ARGS)
     ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                     errmsg("agtype string values expected")));
 }
+
+PG_FUNCTION_INFO_V1(age_relationships);
+/*
+ * Execution function to implement openCypher relationships() function
+ */
+Datum age_relationships(PG_FUNCTION_ARGS)
+{
+    agtype *agt_arg = NULL;
+    agtype_value *agtv_path = NULL;
+    agtype_in_state agis_result;
+    int i = 0;
+
+    /* check for null */
+    if (PG_ARGISNULL(0))
+    {
+        PG_RETURN_NULL();
+    }
+
+    agt_arg = AG_GET_ARG_AGTYPE_P(0);
+    /* check for a scalar object */
+    if (!AGT_ROOT_IS_SCALAR(agt_arg))
+    {
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("relationships() argument must resolve to a scalar value")));
+    }
+
+    /* get the potential path out of the array */
+    agtv_path = get_ith_agtype_value_from_container(&agt_arg->root, 0);
+
+    /* is it an agtype null? */
+    if (agtv_path->type == AGTV_NULL)
+    {
+            PG_RETURN_NULL();
+    }
+
+    /* verify that it is an agtype path */
+    if (agtv_path->type != AGTV_PATH)
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("relationships() argument must be a path")));
+
+    /* clear the result structure */
+    MemSet(&agis_result, 0, sizeof(agtype_in_state));
+
+    /* push the beginning of the array */
+    agis_result.res = push_agtype_value(&agis_result.parse_state,
+                                        WAGT_BEGIN_ARRAY, NULL);
+    /* push in each edge (every other entry) from the path */
+    for (i = 1; i < agtv_path->val.array.num_elems; i += 2)
+    {
+        agis_result.res = push_agtype_value(&agis_result.parse_state, WAGT_ELEM,
+                                            &agtv_path->val.array.elems[i]);
+    }
+
+    /* push the end of the array */
+    agis_result.res = push_agtype_value(&agis_result.parse_state,
+                                        WAGT_END_ARRAY, NULL);
+
+    /* convert the agtype_value to a datum to return to the caller */
+    PG_RETURN_POINTER(agtype_value_to_agtype(agis_result.res));
+}

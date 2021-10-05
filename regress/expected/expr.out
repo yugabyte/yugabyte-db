@@ -5378,6 +5378,62 @@ SELECT * FROM cypher('VLE', $$MATCH (u)-[*..5]-(v) RETURN u, v$$) AS (u agtype, 
 ERROR:  variable length relationships are not supported
 LINE 1: SELECT * FROM cypher('VLE', $$MATCH (u)-[*..5]-(v) RETURN u,...
                                                 ^
+-- list functions
+SELECT create_graph('list');
+NOTICE:  graph "list" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT * from cypher('list', $$CREATE p=()-[:knows]->() RETURN p$$) as (path agtype);
+                                                                                                                               path                                                                                                                                
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 281474976710657, "label": "", "properties": {}}::vertex, {"id": 844424930131969, "label": "knows", "end_id": 281474976710658, "start_id": 281474976710657, "properties": {}}::edge, {"id": 281474976710658, "label": "", "properties": {}}::vertex]::path
+(1 row)
+
+SELECT * from cypher('list', $$CREATE p=()-[:knows]->()-[:knows]->() RETURN p$$) as (path agtype);
+                                                                                                                                                                                                                             path                                                                                                                                                                                                                             
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 281474976710659, "label": "", "properties": {}}::vertex, {"id": 844424930131971, "label": "knows", "end_id": 281474976710660, "start_id": 281474976710659, "properties": {}}::edge, {"id": 281474976710660, "label": "", "properties": {}}::vertex, {"id": 844424930131970, "label": "knows", "end_id": 281474976710661, "start_id": 281474976710660, "properties": {}}::edge, {"id": 281474976710661, "label": "", "properties": {}}::vertex]::path
+(1 row)
+
+SELECT * from cypher('list', $$MATCH p=()-[]->() RETURN relationships(p)$$) as (relationships agtype);
+                                                        relationships                                                        
+-----------------------------------------------------------------------------------------------------------------------------
+ [{"id": 844424930131969, "label": "knows", "end_id": 281474976710658, "start_id": 281474976710657, "properties": {}}::edge]
+ [{"id": 844424930131971, "label": "knows", "end_id": 281474976710660, "start_id": 281474976710659, "properties": {}}::edge]
+ [{"id": 844424930131970, "label": "knows", "end_id": 281474976710661, "start_id": 281474976710660, "properties": {}}::edge]
+(3 rows)
+
+SELECT * from cypher('list', $$MATCH p=()-[]->()-[]->() RETURN relationships(p)$$) as (relationships agtype);
+                                                                                                                     relationships                                                                                                                      
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 844424930131971, "label": "knows", "end_id": 281474976710660, "start_id": 281474976710659, "properties": {}}::edge, {"id": 844424930131970, "label": "knows", "end_id": 281474976710661, "start_id": 281474976710660, "properties": {}}::edge]
+(1 row)
+
+-- should return nothing
+SELECT * from cypher('list', $$MATCH p=()-[]->()-[]->()-[]->() RETURN relationships(p)$$) as (relationships agtype);
+ relationships 
+---------------
+(0 rows)
+
+-- should return SQL NULL
+SELECT * from cypher('list', $$RETURN relationships(NULL)$$) as (relationships agtype);
+ relationships 
+---------------
+ 
+(1 row)
+
+-- should return an error
+SELECT * from cypher('list', $$MATCH (u) RETURN relationships([1,2,3])$$) as (relationships agtype);
+ERROR:  relationships() argument must resolve to a scalar value
+SELECT * from cypher('list', $$MATCH (u) RETURN relationships("string")$$) as (relationships agtype);
+ERROR:  relationships() argument must be a path
+SELECT * from cypher('list', $$MATCH (u) RETURN relationships(u)$$) as (relationships agtype);
+ERROR:  relationships() argument must be a path
+SELECT * from cypher('list', $$MATCH ()-[e]->() RETURN relationships(e)$$) as (relationships agtype);
+ERROR:  relationships() argument must be a path
 --
 -- Cleanup
 --
@@ -5476,6 +5532,17 @@ DETAIL:  drop cascades to table regex._ag_label_vertex
 drop cascades to table regex._ag_label_edge
 drop cascades to table regex."Person"
 NOTICE:  graph "regex" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+SELECT * FROM drop_graph('list', true);
+NOTICE:  drop cascades to 3 other objects
+DETAIL:  drop cascades to table list._ag_label_vertex
+drop cascades to table list._ag_label_edge
+drop cascades to table list.knows
+NOTICE:  graph "list" has been dropped
  drop_graph 
 ------------
  

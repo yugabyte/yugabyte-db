@@ -434,7 +434,6 @@ SELECT * FROM cypher('type_coercion', $$
 	RETURN 10000000000000000000
 $$) AS (i smallint);
 
-
 SELECT * FROM cypher('type_coercion', $$
 	RETURN 10000000000000000000
 $$) AS (i int);
@@ -2214,6 +2213,22 @@ SELECT * FROM cypher('VLE', $$MATCH (u)-[*0..1]-(v) RETURN u, v$$) AS (u agtype,
 SELECT * FROM cypher('VLE', $$MATCH (u)-[*..1]-(v) RETURN u, v$$) AS (u agtype, v agtype);
 SELECT * FROM cypher('VLE', $$MATCH (u)-[*..5]-(v) RETURN u, v$$) AS (u agtype, v agtype);
 
+-- list functions
+SELECT create_graph('list');
+SELECT * from cypher('list', $$CREATE p=()-[:knows]->() RETURN p$$) as (path agtype);
+SELECT * from cypher('list', $$CREATE p=()-[:knows]->()-[:knows]->() RETURN p$$) as (path agtype);
+SELECT * from cypher('list', $$MATCH p=()-[]->() RETURN relationships(p)$$) as (relationships agtype);
+SELECT * from cypher('list', $$MATCH p=()-[]->()-[]->() RETURN relationships(p)$$) as (relationships agtype);
+-- should return nothing
+SELECT * from cypher('list', $$MATCH p=()-[]->()-[]->()-[]->() RETURN relationships(p)$$) as (relationships agtype);
+-- should return SQL NULL
+SELECT * from cypher('list', $$RETURN relationships(NULL)$$) as (relationships agtype);
+-- should return an error
+SELECT * from cypher('list', $$MATCH (u) RETURN relationships([1,2,3])$$) as (relationships agtype);
+SELECT * from cypher('list', $$MATCH (u) RETURN relationships("string")$$) as (relationships agtype);
+SELECT * from cypher('list', $$MATCH (u) RETURN relationships(u)$$) as (relationships agtype);
+SELECT * from cypher('list', $$MATCH ()-[e]->() RETURN relationships(e)$$) as (relationships agtype);
+
 --
 -- Cleanup
 --
@@ -2226,6 +2241,7 @@ SELECT * FROM drop_graph('group_by', true);
 SELECT * FROM drop_graph('UCSC', true);
 SELECT * FROM drop_graph('expr', true);
 SELECT * FROM drop_graph('regex', true);
+SELECT * FROM drop_graph('list', true);
 
 --
 -- End of tests
