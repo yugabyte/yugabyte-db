@@ -35,6 +35,9 @@ public class CustomerTaskFormData {
   @ApiModelProperty(value = "Customer task type", example = "Delete")
   public String type;
 
+  @ApiModelProperty(value = "Customer task type name", example = "Software Upgrade")
+  public String typeName;
+
   @ApiModelProperty(value = "Customer task status", example = "Complete")
   public String status;
 
