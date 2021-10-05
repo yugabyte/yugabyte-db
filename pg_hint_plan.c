@@ -230,14 +230,6 @@ static unsigned int msgqno = 0;
 static char qnostr[32];
 static const char *current_hint_str = NULL;
 
-/*
- * However we usually take a hint stirng in post_parse_analyze_hook, we still
- * need to do so in planner_hook when client starts query execution from the
- * bind message on a prepared query. This variable prevent duplicate and
- * sometimes harmful hint string retrieval.
- */
-static bool current_hint_retrieved = false;
-
 /* common data for all hints. */
 struct Hint
 {
@@ -400,12 +392,6 @@ void		_PG_fini(void);
 static void push_hint(HintState *hstate);
 static void pop_hint(void);
 
-static void pg_hint_plan_post_parse_analyze(ParseState *pstate, Query *query);
-static void pg_hint_plan_ProcessUtility(PlannedStmt *pstmt,
-					const char *queryString,
-					ProcessUtilityContext context,
-					ParamListInfo params, QueryEnvironment *queryEnv,
-					DestReceiver *dest, QueryCompletion *qc);
 static PlannedStmt *pg_hint_plan_planner(Query *parse, const char *query_string,
 										 int cursorOptions,
 										 ParamListInfo boundParams);
@@ -489,8 +475,6 @@ static void make_rels_by_clauseless_joins(PlannerInfo *root,
 static bool has_join_restriction(PlannerInfo *root, RelOptInfo *rel);
 static void set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 								   RangeTblEntry *rte);
-static void set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
-									Index rti, RangeTblEntry *rte);
 RelOptInfo *pg_hint_plan_make_join_rel(PlannerInfo *root, RelOptInfo *rel1,
 									   RelOptInfo *rel2);
 
@@ -562,11 +546,9 @@ static const struct config_enum_entry parse_debug_level_options[] = {
 };
 
 /* Saved hook values in case of unload */
-static post_parse_analyze_hook_type prev_post_parse_analyze_hook = NULL;
 static planner_hook_type prev_planner = NULL;
 static join_search_hook_type prev_join_search = NULL;
 static set_rel_pathlist_hook_type prev_set_rel_pathlist = NULL;
-static ProcessUtility_hook_type prev_ProcessUtility_hook = NULL;
 
 /* Hold reference to currently active hint */
 static HintState *current_hint_state = NULL;
@@ -688,16 +670,12 @@ _PG_init(void)
 							 NULL);
 
 	/* Install hooks. */
-	prev_post_parse_analyze_hook = post_parse_analyze_hook;
-	post_parse_analyze_hook = pg_hint_plan_post_parse_analyze;
 	prev_planner = planner_hook;
 	planner_hook = pg_hint_plan_planner;
 	prev_join_search = join_search_hook;
 	join_search_hook = pg_hint_plan_join_search;
 	prev_set_rel_pathlist = set_rel_pathlist_hook;
 	set_rel_pathlist_hook = pg_hint_plan_set_rel_pathlist;
-	prev_ProcessUtility_hook = ProcessUtility_hook;
-	ProcessUtility_hook = pg_hint_plan_ProcessUtility;
 
 	/* setup PL/pgSQL plugin hook */
 	var_ptr = (PLpgSQL_plugin **) find_rendezvous_variable("PLpgSQL_plugin");
@@ -716,11 +694,9 @@ _PG_fini(void)
 	PLpgSQL_plugin	**var_ptr;
 
 	/* Uninstall hooks. */
-	post_parse_analyze_hook = prev_post_parse_analyze_hook;
 	planner_hook = prev_planner;
 	join_search_hook = prev_join_search;
 	set_rel_pathlist_hook = prev_set_rel_pathlist;
-	ProcessUtility_hook = prev_ProcessUtility_hook;
 
 	/* uninstall PL/pgSQL plugin hook */
 	var_ptr = (PLpgSQL_plugin **) find_rendezvous_variable("PLpgSQL_plugin");
@@ -1809,125 +1785,6 @@ get_hints_from_table(const char *client_query, const char *client_application)
 }
 
 /*
- * Get client-supplied query string. Addtion to that the jumbled query is
- * supplied if the caller requested. From the restriction of JumbleQuery, some
- * kind of query needs special amendments. Reutrns NULL if this query doesn't
- * change the current hint. This function returns NULL also when something
- * wrong has happend and let the caller continue using the current hints.
- */
-static const char *
-get_query_string(ParseState *pstate, Query *query, Query **jumblequery)
-{
-	const char *p = debug_query_string;
-
-	/*
-	 * If debug_query_string is set, it is the top level statement. But in some
-	 * cases we reach here with debug_query_string set NULL for example in the
-	 * case of DESCRIBE message handling or EXECUTE command. We may still see a
-	 * candidate top-level query in pstate in the case.
-	 */
-	if (pstate && pstate->p_sourcetext)
-		p = pstate->p_sourcetext;
-
-	/* We don't see a query string, return NULL */
-	if (!p)
-		return NULL;
-
-	if (jumblequery != NULL)
-		*jumblequery = query;
-
-	if (query->commandType == CMD_UTILITY)
-	{
-		Query *target_query = (Query *)query->utilityStmt;
-
-		/*
-		 * Some CMD_UTILITY statements have a subquery that we can hint on.
-		 * Since EXPLAIN can be placed before other kind of utility statements
-		 * and EXECUTE can be contained other kind of utility statements, these
-		 * conditions are not mutually exclusive and should be considered in
-		 * this order.
-		 */
-		if (IsA(target_query, ExplainStmt))
-		{
-			ExplainStmt *stmt = (ExplainStmt *)target_query;
-			
-			Assert(IsA(stmt->query, Query));
-			target_query = (Query *)stmt->query;
-
-			/* strip out the top-level query for further processing */
-			if (target_query->commandType == CMD_UTILITY &&
-				target_query->utilityStmt != NULL)
-				target_query = (Query *)target_query->utilityStmt;
-		}
-
-		if (IsA(target_query, DeclareCursorStmt))
-		{
-			DeclareCursorStmt *stmt = (DeclareCursorStmt *)target_query;
-			Query *query = (Query *)stmt->query;
-
-			/* the target must be CMD_SELECT in this case */
-			Assert(IsA(query, Query) && query->commandType == CMD_SELECT);
-			target_query = query;
-		}
-
-		if (IsA(target_query, CreateTableAsStmt))
-		{
-			CreateTableAsStmt  *stmt = (CreateTableAsStmt *) target_query;
-
-			Assert(IsA(stmt->query, Query));
-			target_query = (Query *) stmt->query;
-
-			/* strip out the top-level query for further processing */
-			if (target_query->commandType == CMD_UTILITY &&
-				target_query->utilityStmt != NULL)
-				target_query = (Query *)target_query->utilityStmt;
-		}
-
-		if (IsA(target_query, ExecuteStmt))
-		{
-			/*
-			 * Use the prepared query for EXECUTE. The Query for jumble
-			 * also replaced with the corresponding one.
-			 */
-			ExecuteStmt *stmt = (ExecuteStmt *)target_query;
-			PreparedStatement  *entry;
-
-			entry = FetchPreparedStatement(stmt->name, true);
-
-			if (entry->plansource->is_valid)
-			{
-				p = entry->plansource->query_string;
-				target_query = (Query *) linitial (entry->plansource->query_list);
-			}
-			else
-			{
-				/* igonre the hint for EXECUTE if invalidated */
-				p = NULL;
-				target_query = NULL;
-			}
-		}
-			
-		/* JumbleQuery accespts only a non-utility Query */
-		if (target_query &&
-			(!IsA(target_query, Query) ||
-			 target_query->utilityStmt != NULL))
-			target_query = NULL;
-
-		if (jumblequery)
-			*jumblequery = target_query;
-	}
-	/*
-	 * Return NULL if pstate is not of top-level query.  We don't need this
-	 * when jumble info is not requested or cannot do this when pstate is NULL.
-	 */
-	else if (!jumblequery && pstate && pstate->p_sourcetext != p &&
-			 strcmp(pstate->p_sourcetext, p) != 0)
-		p = NULL;
-
-	return p;
-}
-
-/*
  * Get hints from the head block comment in client-supplied query string.
  */
 static const char *
@@ -2842,31 +2699,24 @@ pop_hint(void)
  * Retrieve and store hint string from given query or from the hint table.
  */
 static void
-get_current_hint_string(ParseState *pstate, Query *query)
+get_current_hint_string(Query *query, const char *query_str)
 {
-	const char *query_str;
 	MemoryContext	oldcontext;
 
-	/* do nothing under hint table search */
+	/* do nothing while scanning hint table */
 	if (hint_inhibit_level > 0)
 		return;
 
-	/* We alredy have one, don't parse it again. */
-	if (current_hint_retrieved)
-		return;
-
-	/* Don't parse the current query hereafter */
-	current_hint_retrieved = true;
-
-	if (!pg_hint_plan_enable_hint)
+	/* Make sure trashing old hint string */
+	if (current_hint_str)
 	{
-		if (current_hint_str)
-		{
-			pfree((void *)current_hint_str);
-			current_hint_str = NULL;
-		}
-		return;
+		pfree((void *)current_hint_str);
+		current_hint_str = NULL;
 	}
+
+	/* Return if nothing to do. */
+	if (!pg_hint_plan_enable_hint || !query_str)
+		return;
 
 	/* increment the query number */
 	qnostr[0] = 0;
@@ -2877,121 +2727,71 @@ get_current_hint_string(ParseState *pstate, Query *query)
 	/* search the hint table for a hint if requested */
 	if (pg_hint_plan_enable_hint_table)
 	{
+		JumbleState	   *jstate;
 		int				query_len;
-		pgssJumbleState	jstate;
-		Query		   *jumblequery;
-		char		   *normalized_query = NULL;
+		char		   *normalized_query;
 
-		query_str = get_query_string(pstate, query, &jumblequery);
+		jstate = JumbleQuery(query, query_str);
 
-		/* If this query is not for hint, just return */
-		if (!query_str)
-			return;
-
-		/* clear the previous hint string */
-		if (current_hint_str)
-		{
-			pfree((void *)current_hint_str);
-			current_hint_str = NULL;
-		}
-		
-		if (jumblequery)
-		{
-			/*
-			 * XXX: normalization code is copied from pg_stat_statements.c.
-			 * Make sure to keep up-to-date with it.
-			 */
-			jstate.jumble = (unsigned char *) palloc(JUMBLE_SIZE);
-			jstate.jumble_len = 0;
-			jstate.clocations_buf_size = 32;
-			jstate.clocations = (pgssLocationLen *)
-				palloc(jstate.clocations_buf_size * sizeof(pgssLocationLen));
-			jstate.clocations_count = 0;
-
-			JumbleQuery(&jstate, jumblequery);
-
-			/*
-			 * Normalize the query string by replacing constants with '?'
-			 */
-			/*
-			 * Search hint string which is stored keyed by query string
-			 * and application name.  The query string is normalized to allow
-			 * fuzzy matching.
-			 *
-			 * Adding 1 byte to query_len ensures that the returned string has
-			 * a terminating NULL.
-			 */
-			query_len = strlen(query_str) + 1;
-			normalized_query =
-				generate_normalized_query(&jstate, query_str, 0, &query_len,
-										  GetDatabaseEncoding());
-
-			/*
-			 * find a hint for the normalized query. the result should be in
-			 * TopMemoryContext
-			 */
-			oldcontext = MemoryContextSwitchTo(TopMemoryContext);
-			current_hint_str =
-				get_hints_from_table(normalized_query, application_name);
-			MemoryContextSwitchTo(oldcontext);
-
-			if (debug_level > 1)
-			{
-				if (current_hint_str)
-					ereport(pg_hint_plan_debug_message_level,
-							(errmsg("pg_hint_plan[qno=0x%x]: "
-									"post_parse_analyze_hook: "
-									"hints from table: \"%s\": "
-									"normalized_query=\"%s\", "
-									"application name =\"%s\"",
-									qno, current_hint_str,
-									normalized_query, application_name),
-							 errhidestmt(msgqno != qno),
-							 errhidecontext(msgqno != qno)));
-				else
-					ereport(pg_hint_plan_debug_message_level,
-							(errmsg("pg_hint_plan[qno=0x%x]: "
-									"no match found in table:  "
-									"application name = \"%s\", "
-									"normalized_query=\"%s\"",
-									qno, application_name,
-									normalized_query),
-							 errhidestmt(msgqno != qno),
-							 errhidecontext(msgqno != qno)));
-
-				msgqno = qno;
-			}
-		}
-
-		/* retrun if we have hint here */
-		if (current_hint_str)
-			return;
-	}
-	else
-		query_str = get_query_string(pstate, query, NULL);
-
-	if (query_str)
-	{
 		/*
-		 * get hints from the comment. However we may have the same query
-		 * string with the previous call, but the extra comparison seems no
-		 * use..
+		 * Normalize the query string by replacing constants with '?'
 		 */
-		if (current_hint_str)
-			pfree((void *)current_hint_str);
+		/*
+		 * Search hint string which is stored keyed by query string
+		 * and application name.  The query string is normalized to allow
+		 * fuzzy matching.
+		 *
+		 * Adding 1 byte to query_len ensures that the returned string has
+		 * a terminating NULL.
+		 */
+		query_len = strlen(query_str) + 1;
+		normalized_query =
+			generate_normalized_query(jstate, query_str, 0, &query_len);
 
+		/*
+		 * find a hint for the normalized query. the result should be in
+		 * TopMemoryContext
+		 */
 		oldcontext = MemoryContextSwitchTo(TopMemoryContext);
-		current_hint_str = get_hints_from_comment(query_str);
+		current_hint_str =
+			get_hints_from_table(normalized_query, application_name);
 		MemoryContextSwitchTo(oldcontext);
+
+		if (debug_level > 1)
+		{
+			if (current_hint_str)
+				ereport(pg_hint_plan_debug_message_level,
+						(errmsg("pg_hint_plan[qno=0x%x]: "
+								"hints from table: \"%s\": "
+								"normalized_query=\"%s\", "
+								"application name =\"%s\"",
+								qno, current_hint_str,
+								normalized_query, application_name),
+						 errhidestmt(msgqno != qno),
+						 errhidecontext(msgqno != qno)));
+			else
+				ereport(pg_hint_plan_debug_message_level,
+						(errmsg("pg_hint_plan[qno=0x%x]: "
+								"no match found in table:  "
+								"application name = \"%s\", "
+								"normalized_query=\"%s\"",
+								qno, application_name,
+								normalized_query),
+						 errhidestmt(msgqno != qno),
+						 errhidecontext(msgqno != qno)));
+			
+			msgqno = qno;
+		}
+
+		/* retrun if we have hint string here */
+		if (current_hint_str)
+			return;
 	}
-	else
-	{
-		/*
-		 * Failed to get query. We would be in fetching invalidated
-		 * plancache. Try the next chance.
-		 */
-		current_hint_retrieved = false;
-	}
+
+	/* get hints from the comment */
+	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
+	current_hint_str = get_hints_from_comment(query_str);
+	MemoryContextSwitchTo(oldcontext);
 
 	if (debug_level > 1)
 	{
@@ -3012,44 +2812,6 @@ get_current_hint_string(ParseState *pstate, Query *query)
 					 errhidecontext(msgqno != qno)));
 		msgqno = qno;
 	}
-}
-
-/*
- * Retrieve hint string from the current query.
- */
-static void
-pg_hint_plan_post_parse_analyze(ParseState *pstate, Query *query)
-{
-	if (prev_post_parse_analyze_hook)
-		prev_post_parse_analyze_hook(pstate, query);
-
-	/* always retrieve hint from the top-level query string */
-	if (plpgsql_recurse_level == 0)
-		current_hint_retrieved = false;
-
-	get_current_hint_string(pstate, query);
-}
-
-/*
- * We need to reset current_hint_retrieved flag always when a command execution
- * is finished. This is true even for a pure utility command that doesn't
- * involve planning phase.
- */
-static void
-pg_hint_plan_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
-					ProcessUtilityContext context,
-					ParamListInfo params, QueryEnvironment *queryEnv,
-					DestReceiver *dest, QueryCompletion *qc)
-{
-	if (prev_ProcessUtility_hook)
-		prev_ProcessUtility_hook(pstmt, queryString, context, params, queryEnv,
-								 dest, qc);
-	else
-		standard_ProcessUtility(pstmt, queryString, context, params, queryEnv,
-								 dest, qc);
-
-	if (plpgsql_recurse_level == 0)
-		current_hint_retrieved = false;
 }
 
 /*
@@ -3082,27 +2844,14 @@ pg_hint_plan_planner(Query *parse, const char *query_string, int cursorOptions, 
 		goto standard_planner_proc;
 	}
 
-	/*
-	 * Support for nested plpgsql functions. This is quite ugly but this is the
-	 * only point I could find where I can get the query string.
-	 */
-	if (plpgsql_recurse_level > 0 &&
-		error_context_stack && error_context_stack->arg)
+	/* always retrieve hint from the top-level query string */
+	if (plpgsql_recurse_level == 0 && current_hint_str)
 	{
-		MemoryContext oldcontext;
-
-		oldcontext = MemoryContextSwitchTo(TopMemoryContext);
-		current_hint_str =
-			get_hints_from_comment((char *)error_context_stack->arg);
-		MemoryContextSwitchTo(oldcontext);
+		pfree((void *)current_hint_str);
+		current_hint_str = NULL;
 	}
 
-	/*
-	 * Query execution in extended protocol can be started without the analyze
-	 * phase. In the case retrieve hint string here.
-	 */
-	if (!current_hint_str)
-		get_current_hint_string(NULL, parse);
+	get_current_hint_string(parse, query_string);
 
 	/* No hint, go the normal way */
 	if (!current_hint_str)
@@ -3111,9 +2860,18 @@ pg_hint_plan_planner(Query *parse, const char *query_string, int cursorOptions, 
 	/* parse the hint into hint state struct */
 	hstate = create_hintstate(parse, pstrdup(current_hint_str));
 
-	/* run standard planner if the statement has not valid hint */
+	/* run standard planner if we're given with no valid hints */
 	if (!hstate)
+	{
+		/* forget invalid hint string */
+		if (current_hint_str)
+		{
+			pfree((void *)current_hint_str);
+			current_hint_str = NULL;
+		}
+		
 		goto standard_planner_proc;
+	}
 	
 	/*
 	 * Push new hint struct to the hint stack to disable previous hint context.
@@ -3201,7 +2959,6 @@ pg_hint_plan_planner(Query *parse, const char *query_string, int cursorOptions, 
 	{
 		pfree((void *)current_hint_str);
 		current_hint_str = NULL;
-		current_hint_retrieved = false;
 	}
 
 	/* Print hint in debug mode. */
@@ -3821,50 +3578,18 @@ setup_hint_enforcement(PlannerInfo *root, RelOptInfo *rel,
 		return 0;
 	}
 
-	/*
-	 * Forget about the parent of another subquery, but don't forget if the
-	 * inhTargetkind of the root is not INHKIND_NONE, which signals the root
-	 * contains only appendrel members. See inheritance_planner for details.
-	 *
-	 * (PG12.0) 428b260f87 added one more planning cycle for updates on
-	 * partitioned tables and hints set up in the cycle are overriden by the
-	 * second cycle. Since I didn't find no apparent distinction between the
-	 * PlannerRoot of the cycle and that of ordinary CMD_SELECT, pg_hint_plan
-	 * accepts both cycles and the later one wins. In the second cycle root
-	 * doesn't have inheritance information at all so use the parent_relid set
-	 * in the first cycle.
-	 */
-	if (root->inhTargetKind == INHKIND_NONE)
+	if (bms_num_members(rel->top_parent_relids) == 1)
 	{
-		if (root != current_hint_state->current_root)
-			current_hint_state->parent_relid = 0;
-
-		/* Find the parent for this relation other than the registered parent */
-		foreach (l, root->append_rel_list)
-		{
-			AppendRelInfo *appinfo = (AppendRelInfo *) lfirst(l);
-
-			if (appinfo->child_relid == rel->relid)
-			{
-				if (current_hint_state->parent_relid != appinfo->parent_relid)
-				{
-					new_parent_relid = appinfo->parent_relid;
-					current_hint_state->current_root = root;
-				}
-				break;
-			}
-		}
-
-		if (!l)
-		{
-			/*
-			 * This relation doesn't have a parent. Cancel
-			 * current_hint_state.
-			 */
-			current_hint_state->parent_relid = 0;
-			current_hint_state->parent_scan_hint = NULL;
-			current_hint_state->parent_parallel_hint = NULL;
-		}
+		new_parent_relid = bms_next_member(rel->top_parent_relids, -1);
+		current_hint_state->current_root = root;
+		Assert(new_parent_relid > 0);
+	}
+	else
+	{
+		/* This relation doesn't have a parent. Cancel current_hint_state. */
+		current_hint_state->parent_relid = 0;
+		current_hint_state->parent_scan_hint = NULL;
+		current_hint_state->parent_parallel_hint = NULL;
 	}
 
 	if (new_parent_relid > 0)
@@ -4858,58 +4583,6 @@ pg_hint_plan_set_rel_pathlist(PlannerInfo * root, RelOptInfo *rel,
 }
 
 /*
- * set_rel_pathlist
- *	  Build access paths for a base relation
- *
- * This function was copied and edited from set_rel_pathlist() in
- * src/backend/optimizer/path/allpaths.c in order not to copy other static
- * functions not required here.
- */
-static void
-set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
-				 Index rti, RangeTblEntry *rte)
-{
-	if (IS_DUMMY_REL(rel))
-	{
-		/* We already proved the relation empty, so nothing more to do */
-	}
-	else if (rte->inh)
-	{
-		/* It's an "append relation", process accordingly */
-		set_append_rel_pathlist(root, rel, rti, rte);
-	}
-	else
-	{
-		if (rel->rtekind == RTE_RELATION)
-		{
-			if (rte->relkind == RELKIND_RELATION)
-			{
-				if(rte->tablesample != NULL)
-					elog(ERROR, "sampled relation is not supported");
-
-				/* Plain relation */
-				set_plain_rel_pathlist(root, rel, rte);
-			}
-			else
-				elog(ERROR, "unexpected relkind: %c", rte->relkind);
-		}
-		else
-			elog(ERROR, "unexpected rtekind: %d", (int) rel->rtekind);
-	}
-
-	/*
-	 * Allow a plugin to editorialize on the set of Paths for this base
-	 * relation.  It could add new paths (such as CustomPaths) by calling
-	 * add_path(), or delete or modify paths added by the core code.
-	 */
-	if (set_rel_pathlist_hook)
-		(*set_rel_pathlist_hook) (root, rel, rti, rte);
-
-	/* Now find the cheapest of the paths for this rel */
-	set_cheapest(rel);
-}
-
-/*
  * stmt_beg callback is called when each query in PL/pgSQL function is about
  * to be executed.  At that timing, we save query string in the global variable
  * plpgsql_query_string to use it in planner hook.  It's safe to use one global
@@ -4944,6 +4617,14 @@ void plpgsql_query_erase_callback(ResourceReleasePhase phase,
 	/* Cancel plpgsql nest level*/
 	plpgsql_recurse_level = 0;
 }
+
+
+/* include core static functions */
+static void populate_joinrel_with_paths(PlannerInfo *root, RelOptInfo *rel1,
+										RelOptInfo *rel2, RelOptInfo *joinrel,
+										SpecialJoinInfo *sjinfo, List *restrictlist);
+static void set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
+									Index rti, RangeTblEntry *rte);
 
 #define standard_join_search pg_hint_plan_standard_join_search
 #define join_search_one_level pg_hint_plan_join_search_one_level

@@ -126,7 +126,7 @@ make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 	joinrel = build_join_rel(root, joinrelids, rel1, rel2, sjinfo,
 							 &restrictlist);
 
-	/* !!! START: HERE IS THE PART WHICH ADDED FOR PG_HINT_PLAN !!! */
+	/* !!! START: HERE IS THE PART WHICH IS ADDED FOR PG_HINT_PLAN !!! */
 	{
 		RowsHint   *rows_hint = NULL;
 		int			i;
@@ -202,7 +202,7 @@ make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 			
 		}
 	}
-	/* !!! END: HERE IS THE PART WHICH ADDED FOR PG_HINT_PLAN !!! */
+	/* !!! END: HERE IS THE PART WHICH IS ADDED FOR PG_HINT_PLAN !!! */
 
 	/*
 	 * If we've already proven this join is empty, we needn't consider any

@@ -172,7 +172,6 @@ SELECT * FROM settings;
  constraint_exclusion           | partition | Query Tuning / Other Planner Options
  cursor_tuple_fraction          | 0.1       | Query Tuning / Other Planner Options
  default_statistics_target      | 100       | Query Tuning / Other Planner Options
- force_parallel_mode            | off       | Query Tuning / Other Planner Options
  from_collapse_limit            | 8         | Query Tuning / Other Planner Options
  jit                            | on        | Query Tuning / Other Planner Options
  join_collapse_limit            | 8         | Query Tuning / Other Planner Options
@@ -190,6 +189,7 @@ SELECT * FROM settings;
  parallel_tuple_cost            | 0.1       | Query Tuning / Planner Cost Constants
  random_page_cost               | 4         | Query Tuning / Planner Cost Constants
  seq_page_cost                  | 1         | Query Tuning / Planner Cost Constants
+ enable_async_append            | on        | Query Tuning / Planner Method Configuration
  enable_bitmapscan              | on        | Query Tuning / Planner Method Configuration
  enable_gathermerge             | on        | Query Tuning / Planner Method Configuration
  enable_hashagg                 | on        | Query Tuning / Planner Method Configuration
@@ -198,6 +198,7 @@ SELECT * FROM settings;
  enable_indexonlyscan           | on        | Query Tuning / Planner Method Configuration
  enable_indexscan               | on        | Query Tuning / Planner Method Configuration
  enable_material                | on        | Query Tuning / Planner Method Configuration
+ enable_memoize                 | on        | Query Tuning / Planner Method Configuration
  enable_mergejoin               | on        | Query Tuning / Planner Method Configuration
  enable_nestloop                | on        | Query Tuning / Planner Method Configuration
  enable_parallel_append         | on        | Query Tuning / Planner Method Configuration
@@ -208,6 +209,6 @@ SELECT * FROM settings;
  enable_seqscan                 | on        | Query Tuning / Planner Method Configuration
  enable_sort                    | on        | Query Tuning / Planner Method Configuration
  enable_tidscan                 | on        | Query Tuning / Planner Method Configuration
-(47 rows)
+(48 rows)
 
 ANALYZE;

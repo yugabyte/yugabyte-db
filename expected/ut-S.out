@@ -5050,16 +5050,17 @@ error hint:
 
 -- No. S-3-8-4
 EXPLAIN (COSTS false) UPDATE s1.p1 SET c4 = c4 WHERE c1 = 1;
-         QUERY PLAN          
------------------------------
+            QUERY PLAN             
+-----------------------------------
  Update on p1
-   Update on p1
-   Update on p1c1 p1_1
-   ->  Seq Scan on p1
-         Filter: (c1 = 1)
-   ->  Seq Scan on p1c1 p1_1
-         Filter: (c1 = 1)
-(7 rows)
+   Update on p1 p1_1
+   Update on p1c1 p1_2
+   ->  Append
+         ->  Seq Scan on p1 p1_1
+               Filter: (c1 = 1)
+         ->  Seq Scan on p1c1 p1_2
+               Filter: (c1 = 1)
+(8 rows)
 
 /*+IndexScan(p1)*/
 EXPLAIN (COSTS false) UPDATE s1.p1 SET c4 = c4 WHERE c1 = 1;
@@ -5070,21 +5071,20 @@ not used hint:
 duplication hint:
 error hint:
 
-                 QUERY PLAN                 
---------------------------------------------
+                    QUERY PLAN                    
+--------------------------------------------------
  Update on p1
-   Update on p1
-   Update on p1c1 p1_1
-   ->  Index Scan using p1_i on p1
-         Index Cond: (c1 = 1)
-   ->  Index Scan using p1c1_i on p1c1 p1_1
-         Index Cond: (c1 = 1)
-(7 rows)
+   Update on p1 p1_1
+   Update on p1c1 p1_2
+   ->  Append
+         ->  Index Scan using p1_i on p1 p1_1
+               Index Cond: (c1 = 1)
+         ->  Index Scan using p1c1_i on p1c1 p1_2
+               Index Cond: (c1 = 1)
+(8 rows)
 
 /*+IndexScan(p1 p1_pkey)*/
 EXPLAIN (COSTS false) UPDATE s1.p1 SET c4 = c4 WHERE c1 = 1;
-LOG:  available indexes for IndexScan(p1): p1_pkey
-LOG:  available indexes for IndexScan(p1c1): p1c1_pkey
 LOG:  available indexes for IndexScan(p1): p1_pkey
 LOG:  available indexes for IndexScan(p1c1): p1c1_pkey
 LOG:  pg_hint_plan:
@@ -5094,16 +5094,17 @@ not used hint:
 duplication hint:
 error hint:
 
-                  QUERY PLAN                   
------------------------------------------------
+                     QUERY PLAN                      
+-----------------------------------------------------
  Update on p1
-   Update on p1
-   Update on p1c1 p1_1
-   ->  Index Scan using p1_pkey on p1
-         Index Cond: (c1 = 1)
-   ->  Index Scan using p1c1_pkey on p1c1 p1_1
-         Index Cond: (c1 = 1)
-(7 rows)
+   Update on p1 p1_1
+   Update on p1c1 p1_2
+   ->  Append
+         ->  Index Scan using p1_pkey on p1 p1_1
+               Index Cond: (c1 = 1)
+         ->  Index Scan using p1c1_pkey on p1c1 p1_2
+               Index Cond: (c1 = 1)
+(8 rows)
 
 ----
 ---- No. S-3-9 inheritance table number

@@ -20,8 +20,14 @@
  *        function.
  *
  *	static functions:
+ *	   set_rel_pathlist()
  *	   set_plain_rel_pathlist()
+ *	   set_tablesample_rel_pathlist
+ *	   set_foreign_pathlist()
  *	   set_append_rel_pathlist()
+ *	   set_function_pathlist()
+ *	   set_values_pathlist()
+ *	   set_tablefunc_pathlist()
  *	   create_plain_partial_paths()
  *
  * src/backend/optimizer/path/joinrels.c
@@ -47,9 +53,9 @@
  *-------------------------------------------------------------------------
  */
 
-static void populate_joinrel_with_paths(PlannerInfo *root, RelOptInfo *rel1,
-										RelOptInfo *rel2, RelOptInfo *joinrel,
-										SpecialJoinInfo *sjinfo, List *restrictlist);
+#include "access/tsmapi.h"
+#include "catalog/pg_operator.h"
+#include "foreign/fdwapi.h"
 
 /*
  * set_plain_rel_pathlist
@@ -79,6 +85,283 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 
 	/* Consider TID scans */
 	create_tidscan_paths(root, rel);
+}
+
+
+/*
+ * set_tablesample_rel_pathlist
+ *	  Build access paths for a sampled relation
+ */
+static void
+set_tablesample_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
+{
+	Relids		required_outer;
+	Path	   *path;
+
+	/*
+	 * We don't support pushing join clauses into the quals of a samplescan,
+	 * but it could still have required parameterization due to LATERAL refs
+	 * in its tlist or TABLESAMPLE arguments.
+	 */
+	required_outer = rel->lateral_relids;
+
+	/* Consider sampled scan */
+	path = create_samplescan_path(root, rel, required_outer);
+
+	/*
+	 * If the sampling method does not support repeatable scans, we must avoid
+	 * plans that would scan the rel multiple times.  Ideally, we'd simply
+	 * avoid putting the rel on the inside of a nestloop join; but adding such
+	 * a consideration to the planner seems like a great deal of complication
+	 * to support an uncommon usage of second-rate sampling methods.  Instead,
+	 * if there is a risk that the query might perform an unsafe join, just
+	 * wrap the SampleScan in a Materialize node.  We can check for joins by
+	 * counting the membership of all_baserels (note that this correctly
+	 * counts inheritance trees as single rels).  If we're inside a subquery,
+	 * we can't easily check whether a join might occur in the outer query, so
+	 * just assume one is possible.
+	 *
+	 * GetTsmRoutine is relatively expensive compared to the other tests here,
+	 * so check repeatable_across_scans last, even though that's a bit odd.
+	 */
+	if ((root->query_level > 1 ||
+		 bms_membership(root->all_baserels) != BMS_SINGLETON) &&
+		!(GetTsmRoutine(rte->tablesample->tsmhandler)->repeatable_across_scans))
+	{
+		path = (Path *) create_material_path(rel, path);
+	}
+
+	add_path(rel, path);
+
+	/* For the moment, at least, there are no other paths to consider */
+}
+
+
+/*
+ * set_foreign_pathlist
+ *		Build access paths for a foreign table RTE
+ */
+static void
+set_foreign_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
+{
+	/* Call the FDW's GetForeignPaths function to generate path(s) */
+	rel->fdwroutine->GetForeignPaths(root, rel, rte->relid);
+}
+
+
+/*
+ * set_function_pathlist
+ *		Build the (single) access path for a function RTE
+ */
+static void
+set_function_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
+{
+	Relids		required_outer;
+	List	   *pathkeys = NIL;
+
+	/*
+	 * We don't support pushing join clauses into the quals of a function
+	 * scan, but it could still have required parameterization due to LATERAL
+	 * refs in the function expression.
+	 */
+	required_outer = rel->lateral_relids;
+
+	/*
+	 * The result is considered unordered unless ORDINALITY was used, in which
+	 * case it is ordered by the ordinal column (the last one).  See if we
+	 * care, by checking for uses of that Var in equivalence classes.
+	 */
+	if (rte->funcordinality)
+	{
+		AttrNumber	ordattno = rel->max_attr;
+		Var		   *var = NULL;
+		ListCell   *lc;
+
+		/*
+		 * Is there a Var for it in rel's targetlist?  If not, the query did
+		 * not reference the ordinality column, or at least not in any way
+		 * that would be interesting for sorting.
+		 */
+		foreach(lc, rel->reltarget->exprs)
+		{
+			Var		   *node = (Var *) lfirst(lc);
+
+			/* checking varno/varlevelsup is just paranoia */
+			if (IsA(node, Var) &&
+				node->varattno == ordattno &&
+				node->varno == rel->relid &&
+				node->varlevelsup == 0)
+			{
+				var = node;
+				break;
+			}
+		}
+
+		/*
+		 * Try to build pathkeys for this Var with int8 sorting.  We tell
+		 * build_expression_pathkey not to build any new equivalence class; if
+		 * the Var isn't already mentioned in some EC, it means that nothing
+		 * cares about the ordering.
+		 */
+		if (var)
+			pathkeys = build_expression_pathkey(root,
+												(Expr *) var,
+												NULL,	/* below outer joins */
+												Int8LessOperator,
+												rel->relids,
+												false);
+	}
+
+	/* Generate appropriate path */
+	add_path(rel, create_functionscan_path(root, rel,
+										   pathkeys, required_outer));
+}
+
+
+/*
+ * set_values_pathlist
+ *		Build the (single) access path for a VALUES RTE
+ */
+static void
+set_values_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
+{
+	Relids		required_outer;
+
+	/*
+	 * We don't support pushing join clauses into the quals of a values scan,
+	 * but it could still have required parameterization due to LATERAL refs
+	 * in the values expressions.
+	 */
+	required_outer = rel->lateral_relids;
+
+	/* Generate appropriate path */
+	add_path(rel, create_valuesscan_path(root, rel, required_outer));
+}
+
+/*
+ * set_tablefunc_pathlist
+ *		Build the (single) access path for a table func RTE
+ */
+static void
+set_tablefunc_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
+{
+	Relids		required_outer;
+
+	/*
+	 * We don't support pushing join clauses into the quals of a tablefunc
+	 * scan, but it could still have required parameterization due to LATERAL
+	 * refs in the function expression.
+	 */
+	required_outer = rel->lateral_relids;
+
+	/* Generate appropriate path */
+	add_path(rel, create_tablefuncscan_path(root, rel,
+											required_outer));
+}
+
+
+/*
+ * set_rel_pathlist
+ *	  Build access paths for a base relation
+ */
+static void
+set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
+				 Index rti, RangeTblEntry *rte)
+{
+	if (IS_DUMMY_REL(rel))
+	{
+		/* We already proved the relation empty, so nothing more to do */
+	}
+	else if (rte->inh)
+	{
+		/* It's an "append relation", process accordingly */
+		set_append_rel_pathlist(root, rel, rti, rte);
+	}
+	else
+	{
+		switch (rel->rtekind)
+		{
+			case RTE_RELATION:
+				if (rte->relkind == RELKIND_FOREIGN_TABLE)
+				{
+					/* Foreign table */
+					set_foreign_pathlist(root, rel, rte);
+				}
+				else if (rte->tablesample != NULL)
+				{
+					/* Sampled relation */
+					set_tablesample_rel_pathlist(root, rel, rte);
+				}
+				else
+				{
+					/* Plain relation */
+					set_plain_rel_pathlist(root, rel, rte);
+				}
+				break;
+			case RTE_SUBQUERY:
+				/* Subquery --- fully handled during set_rel_size */
+				break;
+			case RTE_FUNCTION:
+				/* RangeFunction */
+				set_function_pathlist(root, rel, rte);
+				break;
+			case RTE_TABLEFUNC:
+				/* Table Function */
+				set_tablefunc_pathlist(root, rel, rte);
+				break;
+			case RTE_VALUES:
+				/* Values list */
+				set_values_pathlist(root, rel, rte);
+				break;
+			case RTE_CTE:
+				/* CTE reference --- fully handled during set_rel_size */
+				break;
+			case RTE_NAMEDTUPLESTORE:
+				/* tuplestore reference --- fully handled during set_rel_size */
+				break;
+			case RTE_RESULT:
+				/* simple Result --- fully handled during set_rel_size */
+				break;
+			default:
+				elog(ERROR, "unexpected rtekind: %d", (int) rel->rtekind);
+				break;
+		}
+	}
+
+	/*
+	 * Allow a plugin to editorialize on the set of Paths for this base
+	 * relation.  It could add new paths (such as CustomPaths) by calling
+	 * add_path(), or add_partial_path() if parallel aware.  It could also
+	 * delete or modify paths added by the core code.
+	 */
+	if (set_rel_pathlist_hook)
+		(*set_rel_pathlist_hook) (root, rel, rti, rte);
+
+	/*
+	 * If this is a baserel, we should normally consider gathering any partial
+	 * paths we may have created for it.  We have to do this after calling the
+	 * set_rel_pathlist_hook, else it cannot add partial paths to be included
+	 * here.
+	 *
+	 * However, if this is an inheritance child, skip it.  Otherwise, we could
+	 * end up with a very large number of gather nodes, each trying to grab
+	 * its own pool of workers.  Instead, we'll consider gathering partial
+	 * paths for the parent appendrel.
+	 *
+	 * Also, if this is the topmost scan/join rel (that is, the only baserel),
+	 * we postpone gathering until the final scan/join targetlist is available
+	 * (see grouping_planner).
+	 */
+	if (rel->reloptkind == RELOPT_BASEREL &&
+		bms_membership(root->all_baserels) != BMS_SINGLETON)
+		generate_useful_gather_paths(root, rel, false);
+
+	/* Now find the cheapest of the paths for this rel */
+	set_cheapest(rel);
+
+#ifdef OPTIMIZER_DEBUG
+	debug_print_rel(root, rel);
+#endif
 }
 
 
@@ -133,12 +416,6 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 		 */
 		if (IS_DUMMY_REL(childrel))
 			continue;
-
-		/* Bubble up childrel's partitioned children. */
-		if (rel->part_scheme)
-			rel->partitioned_child_rels =
-				list_concat(rel->partitioned_child_rels,
-							childrel->partitioned_child_rels);
 
 		/*
 		 * Child is live, so add it to the live_childrels list for use below.
@@ -219,10 +496,11 @@ standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
 		join_search_one_level(root, lev);
 
 		/*
-		 * Run generate_partitionwise_join_paths() and generate_gather_paths()
-		 * for each just-processed joinrel.  We could not do this earlier
-		 * because both regular and partial paths can get added to a
-		 * particular joinrel at multiple times within join_search_one_level.
+		 * Run generate_partitionwise_join_paths() and
+		 * generate_useful_gather_paths() for each just-processed joinrel.  We
+		 * could not do this earlier because both regular and partial paths
+		 * can get added to a particular joinrel at multiple times within
+		 * join_search_one_level.
 		 *
 		 * After that, we're done creating paths for the joinrel, so run
 		 * set_cheapest().
