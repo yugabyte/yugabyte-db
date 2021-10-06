@@ -28,9 +28,16 @@
 
 #include "yb/gutil/map-util.h"
 #include "yb/server/secure.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/string_util.h"
 #include "yb/util/thread.h"
+
+DEFINE_int32(cdc_consumer_handler_thread_pool_size, 0,
+             "Override the max thread pool size for CDCConsumerHandler, which is used by "
+             "CDCPollers. If set to 0, then the thread pool will use the default size (number of "
+             "cpus on the system).");
+TAG_FLAG(cdc_consumer_handler_thread_pool_size, advanced);
 
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_int32(cdc_write_rpc_timeout_ms);
@@ -90,7 +97,11 @@ Result<std::unique_ptr<CDCConsumer>> CDCConsumer::Create(
   RETURN_NOT_OK(yb::Thread::Create(
       "CDCConsumer", "Poll", &CDCConsumer::RunThread, cdc_consumer.get(),
       &cdc_consumer->run_trigger_poll_thread_));
-  RETURN_NOT_OK(ThreadPoolBuilder("CDCConsumerHandler").Build(&cdc_consumer->thread_pool_));
+  ThreadPoolBuilder cdc_consumer_thread_pool_builder("CDCConsumerHandler");
+  if (FLAGS_cdc_consumer_handler_thread_pool_size > 0) {
+    cdc_consumer_thread_pool_builder.set_max_threads(FLAGS_cdc_consumer_handler_thread_pool_size);
+  }
+  RETURN_NOT_OK(cdc_consumer_thread_pool_builder.Build(&cdc_consumer->thread_pool_));
   return cdc_consumer;
 }
 
