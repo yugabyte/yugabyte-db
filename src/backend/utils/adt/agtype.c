@@ -156,6 +156,10 @@ static agtype_value *integer_to_agtype_value(int64 int_value);
 static int64 get_int64_from_int_datums(Datum d, Oid type, char *funcname,
                                        bool *is_agnull);
 
+static agtype_iterator *get_next_object_key(agtype_iterator *it,
+                                             agtype_container *agtc,
+                                             agtype_value *key);
+
 PG_FUNCTION_INFO_V1(agtype_in);
 
 /*
@@ -8282,6 +8286,139 @@ Datum age_eq_tilde(PG_FUNCTION_ARGS)
     /* if we got here we have values that are invalid */
     ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                     errmsg("agtype string values expected")));
+}
+
+/* helper function to step through and retrieve keys from an object.
+ * borrowed and modified from get_next_object_pair() in agtype_vle.c
+*/
+static agtype_iterator *get_next_object_key(agtype_iterator *it,
+                                             agtype_container *agtc,
+                                             agtype_value *key)
+{
+    agtype_iterator_token itok;
+    agtype_value tmp;
+
+    /* verify input params */
+    Assert(agtc != NULL);
+    Assert(key != NULL);
+
+    /* check to see if the container is empty */
+    if (AGTYPE_CONTAINER_SIZE(agtc) == 0)
+    {
+        return NULL;
+    }
+
+    /* if the passed iterator is NULL, this is the first time, create it */
+    if (it == NULL)
+    {
+        /* initial the iterator */
+        it = agtype_iterator_init(agtc);
+        /* get the first token */
+        itok = agtype_iterator_next(&it, &tmp, false);
+        /* it should be WAGT_BEGIN_OBJECT */
+        Assert(itok == WAGT_BEGIN_OBJECT);
+    }
+
+    /* the next token should be a key or the end of the object */
+    itok = agtype_iterator_next(&it, &tmp, false);
+    Assert(itok == WAGT_KEY || WAGT_END_OBJECT);
+    /* if this is the end of the object return NULL */
+    if (itok == WAGT_END_OBJECT)
+    {
+        return NULL;
+    }
+
+    /* this should be the key, copy it */
+    if (itok == WAGT_KEY)
+    {
+        memcpy(key, &tmp, sizeof(agtype_value));
+    }
+
+    /*
+     * The next token should be a value but, it could be a begin tokens for
+     * arrays or objects. For those we just return NULL to ignore them.
+     */
+    itok = agtype_iterator_next(&it, &tmp, true);
+    Assert(itok == WAGT_VALUE);
+
+    /* return the iterator */
+    return it;
+}
+
+PG_FUNCTION_INFO_V1(age_keys);
+/*
+ * Execution function to implement openCypher keys() function
+ */
+Datum age_keys(PG_FUNCTION_ARGS)
+{
+    agtype *agt_arg = NULL;
+    agtype_value *agtv_result = NULL;
+    agtype_value obj_key = {0};
+    agtype_iterator *it = NULL;
+    agtype_parse_state *parse_state = NULL;
+
+    /* check for null */
+    if (PG_ARGISNULL(0))
+    {
+        PG_RETURN_NULL();
+    }
+
+    //needs to be a map, node, or relationship
+    agt_arg = AG_GET_ARG_AGTYPE_P(0);
+
+    /*
+     * check for a scalar object. edges and vertexes are scalar, objects are not
+     * scalar and will be handled separately
+     */
+    if (AGT_ROOT_IS_SCALAR(agt_arg))
+    {
+        agtv_result = get_ith_agtype_value_from_container(&agt_arg->root, 0);
+
+        /* is it an agtype null, return null if it is */
+        if (agtv_result->type == AGTV_NULL)
+            PG_RETURN_NULL();
+
+        /* check for proper agtype and extract the properties field */
+        if (agtv_result->type == AGTV_EDGE ||
+            agtv_result->type == AGTV_VERTEX)
+        {
+            agtv_result = get_agtype_value_object_value(agtv_result, "properties");
+
+            Assert(agtv_result != NULL);
+            Assert(agtv_result->type = AGTV_OBJECT);
+        }
+        else
+        {
+            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                    errmsg("keys() argument must be a vertex, edge, object or null")));
+        }
+
+        agt_arg = agtype_value_to_agtype(agtv_result);
+        agtv_result = NULL;
+    }
+    else if (!AGT_ROOT_IS_OBJECT(agt_arg))
+    {
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                errmsg("keys() argument must be a vertex, edge, object or null")));
+    }
+
+    /* push the beginning of the array */
+    agtv_result = push_agtype_value(&parse_state, WAGT_BEGIN_ARRAY, NULL);
+
+    /* populate the array with keys */
+    while ((it = get_next_object_key(it, &agt_arg->root, &obj_key)))
+    {
+        agtv_result = push_agtype_value(&parse_state, WAGT_ELEM, &obj_key);
+    }
+
+    /* push the end of the array*/
+    agtv_result = push_agtype_value(&parse_state, WAGT_END_ARRAY, NULL);
+
+    Assert(agtv_result != NULL);
+    Assert(agtv_result->type = AGTV_ARRAY);
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(agtv_result));
+
 }
 
 PG_FUNCTION_INFO_V1(age_relationships);

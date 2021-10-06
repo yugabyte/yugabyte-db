@@ -2213,7 +2213,27 @@ SELECT * FROM cypher('VLE', $$MATCH (u)-[*0..1]-(v) RETURN u, v$$) AS (u agtype,
 SELECT * FROM cypher('VLE', $$MATCH (u)-[*..1]-(v) RETURN u, v$$) AS (u agtype, v agtype);
 SELECT * FROM cypher('VLE', $$MATCH (u)-[*..5]-(v) RETURN u, v$$) AS (u agtype, v agtype);
 
--- list functions relationships(), range()
+-- list functions relationships(), range(), keys()
+SELECT create_graph('keys');
+-- keys()
+SELECT * FROM cypher('keys', $$CREATE ({name: 'hikaru utada', age: 38, job: 'singer'})-[:collaborated_with {song:"face my fears"}]->( {name: 'sonny moore', age: 33, stage_name: 'skrillex', job: 'producer'})$$) AS (result agtype);
+SELECT * FROM cypher('keys', $$CREATE ({name: 'alexander guy cook', age: 31, stage_name:"a. g. cook", job: 'producer'})$$) AS (result agtype);
+SELECT * FROM cypher('keys', $$CREATE ({name: 'keiko fuji', age: 62, job: 'singer'})$$) AS (result agtype);
+SELECT * FROM cypher('keys', $$MATCH (a),(b) WHERE a.name = 'hikaru utada' AND b.name = 'alexander guy cook' CREATE (a)-[:collaborated_with {song:"one last kiss"}]->(b)$$) AS (result agtype);
+SELECT * FROM cypher('keys', $$MATCH (a),(b) WHERE a.name = 'hikaru utada' AND b.name = 'keiko fuji' CREATE (a)-[:knows]->(b)$$) AS (result agtype);
+SELECT * FROM cypher('keys', $$MATCH (v) RETURN keys(v)$$) AS (vertex_keys agtype);
+SELECT * FROM cypher('keys', $$MATCH ()-[e]-() RETURN keys(e)$$) AS (edge_keys agtype);
+SELECT * FROM cypher('keys', $$RETURN keys({a:1,b:'two',c:[1,2,3]})$$) AS (keys agtype);
+
+--should return empty list
+SELECT * FROM cypher('keys', $$RETURN keys({})$$) AS (keys agtype);
+--should return sql null
+SELECT * FROM cypher('keys', $$RETURN keys(null)$$) AS (keys agtype);
+--should return error
+SELECT * from cypher('keys', $$RETURN keys([1,2,3])$$) as (keys agtype);
+SELECT * from cypher('keys', $$RETURN keys("string")$$) as (keys agtype);
+SELECT * from cypher('keys', $$MATCH u=()-[]-() RETURN keys(u)$$) as (keys agtype);
+
 SELECT create_graph('list');
 -- relationships()
 SELECT * from cypher('list', $$CREATE p=()-[:knows]->() RETURN p$$) as (path agtype);
@@ -2259,6 +2279,7 @@ SELECT * FROM drop_graph('group_by', true);
 SELECT * FROM drop_graph('UCSC', true);
 SELECT * FROM drop_graph('expr', true);
 SELECT * FROM drop_graph('regex', true);
+SELECT * FROM drop_graph('keys', true);
 SELECT * FROM drop_graph('list', true);
 
 --

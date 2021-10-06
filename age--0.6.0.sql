@@ -3333,6 +3333,17 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 --
+-- List functions -- return a list based on input
+--
+
+CREATE FUNCTION ag_catalog.age_keys(agtype)
+RETURNS agtype
+LANGUAGE c
+STABLE
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+--
 -- Trig functions - radian input
 --
 CREATE FUNCTION ag_catalog.age_sin(variadic "any")
