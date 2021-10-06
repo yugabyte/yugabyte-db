@@ -13,7 +13,9 @@ public class TlsConfigUpdateParams extends UpgradeTaskParams {
   public Boolean enableNodeToNodeEncrypt = false;
   public Boolean enableClientToNodeEncrypt = false;
   public UUID rootCA = null;
+  public Boolean createNewRootCA = false;
   public UUID clientRootCA = null;
+  public Boolean createNewClientRootCA = false;
   public Boolean rootAndClientRootCASame = null;
 
   public TlsConfigUpdateParams() {}
