@@ -147,15 +147,6 @@ static uint64 pgss_hash_string(const char *str, int len);
 char *unpack_sql_state(int sql_state);
 
 static void pgss_store_error(uint64 queryid, const char * query, ErrorData *edata);
-static pgssQueryEntry *pgss_store_query_info(uint64 bucketid,
-					  uint64 queryid,
-					  uint64 dbid,
-					  uint64 userid,
-					  uint64 ip,
-					  uint64 appid,
-					  const char *query,
-					  uint64 query_len,
-					  pgssStoreKind kind);
 
 static void pgss_store_utility(const char *query,
 					double total_time,
@@ -1314,40 +1305,6 @@ pgss_update_entry(pgssEntry *entry,
 	}
 }
 
-static pgssEntry*
-pgss_get_entry(uint64 bucket_id,
-			   uint64 userid,
-			   uint64 dbid,
-			   uint64 queryid,
-			   uint64 ip,
-			   uint64 planid,
-			   uint64 appid)
-{
-	pgssEntry       *entry;
-	pgssHashKey		key;
-	HTAB            *pgss_hash = pgsm_get_hash();
-	pgssSharedState *pgss = pgsm_get_ss();
-
-	key.bucket_id = bucket_id;
-	key.userid = userid;
-	key.dbid = MyDatabaseId;
-	key.queryid = queryid;
-	key.ip = pg_get_client_addr();
-	key.planid = planid;
-	key.appid = appid;
-
-	entry = (pgssEntry *) hash_search(pgss_hash, &key, HASH_FIND, NULL);
-	if(!entry)
-	{
-		 /* OK to create a new hashtable entry */
-		entry = hash_entry_alloc(pgss, &key, GetDatabaseEncoding());
-		if (entry == NULL)
-			return NULL;
-	}
-	Assert(entry);
-	return entry;
-}
-
 static void
 pgss_store_query(uint64 queryid,
                   const char * query,
@@ -1486,6 +1443,8 @@ pgss_store(uint64 queryid,
 			JumbleState *jstate,
 			pgssStoreKind kind)
 {
+	HTAB            *pgss_hash;
+	pgssHashKey     key;
 	pgssEntry       *entry;
 	pgssSharedState *pgss = pgsm_get_ss();
 	char            application_name[APPLICATIONNAME_LEN];
@@ -1495,12 +1454,10 @@ pgss_store(uint64 queryid,
 	uint64          prev_bucket_id;
     uint64          userid;
     int             con;
-	uint64          dbid;
-	uint64          ip;
 	uint64          planid;
 	uint64          appid;
 	char            comments[512] = "";
-	bool            out_of_memory = false;
+	size_t          query_len;
 
 	/*  Monitoring is disabled */
 	if (!PGSM_ENABLED)
@@ -1516,9 +1473,7 @@ pgss_store(uint64 queryid,
 	else
 		userid =  GetUserId();
 
-	dbid = MyDatabaseId;
 	application_name_len = pg_get_application_name(application_name);
-	ip = pg_get_client_addr();
 	planid = plan_info ? plan_info->planid: 0;
 	appid = djb2_hash((unsigned char *)application_name, application_name_len);
 
@@ -1530,63 +1485,74 @@ pgss_store(uint64 queryid,
 	if (bucketid != prev_bucket_id)
 		reset = true;
 
-	LWLockAcquire(pgss->lock, LW_EXCLUSIVE);
+	key.bucket_id = bucketid;
+	key.userid = userid;
+	key.dbid = MyDatabaseId;
+	key.queryid = queryid;
+	key.ip = pg_get_client_addr();
+	key.planid = planid;
+	key.appid = appid;
 
-	switch (kind)
+	pgss_hash = pgsm_get_hash();
+
+	LWLockAcquire(pgss->lock, LW_SHARED);
+
+	entry = (pgssEntry *) hash_search(pgss_hash, &key, HASH_FIND, NULL);
+	if (!entry)
 	{
-		case PGSS_PARSE:
-		case PGSS_PLAN:
-		{
-			pgssQueryEntry *query_entry;
-			query_entry = pgss_store_query_info(bucketid, queryid, dbid, userid, ip, appid, query, strlen(query), kind);
-			if (query_entry == NULL)
-				out_of_memory = true;
-			break;
-		}
-		case PGSS_ERROR:
-		case PGSS_EXEC:
-		case PGSS_FINISHED:
-		{
-			pgssQueryEntry *query_entry;
-			query_entry = pgss_store_query_info(bucketid, queryid, dbid, userid, ip, appid, query, strlen(query), kind);
-			if (query_entry == NULL)
-			{
-				out_of_memory = true;
-				break;
-			}
-			query_entry->state = kind;
-			entry = pgss_get_entry(bucketid, userid, dbid, queryid, ip, planid, appid);
-			if (entry == NULL)
-			{
-				out_of_memory = true;
-				break;
-			}
+		uint64 prev_qbuf_len;
 
-			if (jstate == NULL)
-				pgss_update_entry(entry,		/* entry */
-							bucketid,			/* bucketid */
-							queryid,			/* queryid */
-							query, 				/* query */
-							comments,			/* comments */
-							plan_info,			/* PlanInfo */
-							cmd_type,			/* CmdType */
-							sys_info,			/* SysInfo */
-							error_info,			/* ErrorInfo */
-							total_time,			/* total_time */
-							rows,				/* rows */
-							bufusage,			/* bufusage */
-							walusage,			/* walusage */
-							reset,				/* reset */
-							kind);				/* kind */
+		query_len = strlen(query);
+		if (query_len > PGSM_QUERY_MAX_LEN)
+			query_len = PGSM_QUERY_MAX_LEN;
+
+		/* Need exclusive lock to make a new hashtable entry - promote */
+		LWLockRelease(pgss->lock);
+		LWLockAcquire(pgss->lock, LW_EXCLUSIVE);
+
+		/*
+		 * Save current query buffer length, if we fail to add a new
+		 * new entry to the hash table then we must restore the
+		 * original length.
+		 */
+		memcpy(&prev_qbuf_len, pgss_qbuf[bucketid], sizeof(prev_qbuf_len));
+		if (!SaveQueryText(bucketid, queryid, pgss_qbuf[bucketid], query, query_len))
+		{
+			LWLockRelease(pgss->lock);
+			elog(DEBUG1, "pg_stat_monitor: insufficient shared space for query.");
+			return;
 		}
-		break;
-		case PGSS_NUMKIND:
-		case PGSS_INVALID:
-			break;
+
+		 /* OK to create a new hashtable entry */
+		entry = hash_entry_alloc(pgss, &key, GetDatabaseEncoding());
+		if (entry == NULL)
+		{
+			/* Restore previous query buffer length. */
+			memcpy(pgss_qbuf[bucketid], &prev_qbuf_len, sizeof(prev_qbuf_len));
+			LWLockRelease(pgss->lock);
+			elog(DEBUG1, "pg_stat_monitor: out of memory");
+			return;
+		}
 	}
+
+	if (jstate == NULL)
+		pgss_update_entry(entry,		/* entry */
+					bucketid,			/* bucketid */
+					queryid,			/* queryid */
+					query, 				/* query */
+					comments,			/* comments */
+					plan_info,			/* PlanInfo */
+					cmd_type,			/* CmdType */
+					sys_info,			/* SysInfo */
+					error_info,			/* ErrorInfo */
+					total_time,			/* total_time */
+					rows,				/* rows */
+					bufusage,			/* bufusage */
+					walusage,			/* walusage */
+					reset,				/* reset */
+					kind);				/* kind */
+
 	LWLockRelease(pgss->lock);
-	if (out_of_memory)
-		elog(DEBUG1, "pg_stat_monitor: out of memory");
 }
 /*
  * Reset all statement statistics.
@@ -1601,8 +1567,12 @@ pg_stat_monitor_reset(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("pg_stat_monitor: must be loaded via shared_preload_libraries")));
 	LWLockAcquire(pgss->lock, LW_EXCLUSIVE);
-	hash_entry_dealloc(-1, -1);
-	hash_query_entryies_reset();
+	hash_entry_dealloc(-1, -1, NULL);
+	/* Reset query buffers. */
+	for (size_t i = 0; i < MAX_BUCKETS; ++i)
+	{
+		*(uint64 *)pgss_qbuf[i] = 0;
+	}
 #ifdef BENCHMARK
 	for (int i = STATS_START; i < STATS_END; ++i) {
 		pg_hook_stats[i].min_time = 0;
@@ -1653,7 +1623,6 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 	MemoryContext	     oldcontext;
 	HASH_SEQ_STATUS      hash_seq;
 	pgssEntry		     *entry;
-	pgssQueryEntry		 *query_entry;
 	char			     parentid_txt[32];
 	pgssSharedState      *pgss = pgsm_get_ss();
 	HTAB                 *pgss_hash = pgsm_get_hash();
@@ -1713,16 +1682,12 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		uint64		  userid = entry->key.userid;
 		uint64        ip = entry->key.ip;
 		uint64        planid = entry->key.planid;
-		uint64        appid = entry->key.appid;
 		unsigned char *buf = pgss_qbuf[bucketid];
 #if PG_VERSION_NUM < 140000
 		bool 		  is_allowed_role = is_member_of_role(GetUserId(), DEFAULT_ROLE_READ_ALL_STATS);
 #else
 		bool 		  is_allowed_role = is_member_of_role(GetUserId(), ROLE_PG_READ_ALL_STATS);
 #endif
-		query_entry = hash_find_query_entry(bucketid, queryid, dbid, userid, ip, appid);
-		if (query_entry == NULL)
-			continue;
 
 		if (read_query(buf, bucketid, queryid, query_txt) == 0)
 		{
@@ -2063,8 +2028,7 @@ get_next_wbucket(pgssSharedState *pgss)
 		prev_bucket_id = pg_atomic_exchange_u64(&pgss->current_wbucket, new_bucket_id);
 
 		LWLockAcquire(pgss->lock, LW_EXCLUSIVE);
-		hash_entry_dealloc(new_bucket_id, prev_bucket_id);
-		hash_query_entry_dealloc(new_bucket_id, prev_bucket_id, pgss_qbuf);
+		hash_entry_dealloc(new_bucket_id, prev_bucket_id, pgss_qbuf);
 
 		snprintf(file_name, 1024, "%s.%d", PGSM_TEXT_FILE, (int)new_bucket_id);
 		unlink(file_name);
@@ -3067,42 +3031,6 @@ exit:
 		return -1;
 	}
 	return 0;
-}
-
-static pgssQueryEntry*
-pgss_store_query_info(uint64 bucketid,
-					  uint64 queryid,
-					  uint64 dbid,
-					  uint64 userid,
-					  uint64 ip,
-					  uint64 appid,
-					  const char *query,
-					  uint64 query_len,
-					  pgssStoreKind kind)
-{
-	pgssSharedState *pgss   = pgsm_get_ss();
-	unsigned char   *buf    = pgss_qbuf[pg_atomic_read_u64(&pgss->current_wbucket)];
-	pgssQueryEntry	*entry;
-
-	if (query_len > PGSM_QUERY_MAX_LEN)
-		query_len = PGSM_QUERY_MAX_LEN;
-
-	/* Already have query in the shared buffer, there
-	 * is no need to add that again.
-	 */
-	entry = hash_find_query_entry(bucketid, queryid, dbid, userid, ip, appid);
-	if (entry)
-		return entry;
-
-	entry = hash_create_query_entry(bucketid, queryid, dbid, userid, ip, appid);
-	if (!entry)
-		return NULL;
-	entry->state = kind;
-
-	if(!SaveQueryText(bucketid, queryid, buf, query, query_len))
-		return NULL;
-
-	return entry;
 }
 
 bool
