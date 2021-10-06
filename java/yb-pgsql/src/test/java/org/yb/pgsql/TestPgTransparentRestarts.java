@@ -99,7 +99,6 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flags = super.getTServerFlags();
     flags.put("ysql_output_buffer_size", String.valueOf(PG_OUTPUT_BUFFER_SIZE_BYTES));
-    flags.put("enable_pg_savepoints", "true");
     flags.put("ysql_sleep_before_retry_on_txn_conflict", "true");
     flags.put("ysql_max_write_restart_attempts", "5");
     return flags;
