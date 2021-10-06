@@ -5841,6 +5841,21 @@ Status CatalogManager::ProcessTabletReportBatch(
       continue;
     }
 
+    // Hide the tablet if it (or its table) has been hidden and the tablet hasn't.
+    if ((tablet_lock->is_hidden() ||
+        table_lock->started_hiding()) &&
+        report.has_is_hidden() &&
+        !report.is_hidden()) {
+      const string msg = tablet_lock->pb.state_msg();
+      LOG(INFO) << "Got report from hidden tablet " << tablet->ToString()
+                << " (" << msg << "): Sending hide request for this tablet";
+      auto task = std::make_shared<AsyncDeleteReplica>(
+          master_, AsyncTaskPool(), ts_desc->permanent_uuid(), table, tablet_id,
+          TABLET_DATA_DELETED, boost::none, msg);
+      task->set_hide_only(true);
+      rpcs->push_back(task);
+    }
+
     // 5. Process the report's consensus state.
     // The report will not have a committed_consensus_state if it is in the
     // middle of starting up, such as during tablet bootstrap.
