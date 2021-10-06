@@ -714,6 +714,9 @@ message ReportedTabletPB {
   optional bool should_disable_lb_move = 7;
 
   optional bytes fs_data_dir = 8;
+
+  // Is the tablet hidden.
+  optional bool is_hidden = 9;
 }
 
 // Sent by the tablet server to report the set of tablets hosted by that TS.

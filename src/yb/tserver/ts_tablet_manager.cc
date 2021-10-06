@@ -1853,6 +1853,9 @@ void TSTabletManager::CreateReportedTabletPB(const TabletPeerPtr& tablet_peer,
     *reported_tablet->mutable_committed_consensus_state() =
         consensus->ConsensusState(consensus::CONSENSUS_CONFIG_COMMITTED);
   }
+
+  // Set the hide status of the tablet.
+  reported_tablet->set_is_hidden(tablet_peer->tablet_metadata()->hidden());
 }
 
 void TSTabletManager::GenerateTabletReport(TabletReportPB* report, bool include_bootstrap) {
