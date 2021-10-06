@@ -1486,36 +1486,43 @@ pgss_store(uint64 queryid,
 			JumbleState *jstate,
 			pgssStoreKind kind)
 {
-	pgssEntry		*entry;
+	pgssEntry       *entry;
 	pgssSharedState *pgss = pgsm_get_ss();
-	char			application_name[APPLICATIONNAME_LEN];
-	int    			application_name_len = pg_get_application_name(application_name);
-	bool 			reset = false;
-	uint64 			bucketid;
-	uint64 			prev_bucket_id;
+	char            application_name[APPLICATIONNAME_LEN];
+	int             application_name_len;
+	bool            reset = false;
+	uint64          bucketid;
+	uint64          prev_bucket_id;
     uint64          userid;
     int             con;
-	uint64 			dbid = MyDatabaseId;
-	uint64 			ip = pg_get_client_addr();
-	uint64			planid = plan_info ? plan_info->planid: 0;
-	uint64			appid = djb2_hash((unsigned char *)application_name, application_name_len);
+	uint64          dbid;
+	uint64          ip;
+	uint64          planid;
+	uint64          appid;
 	char            comments[512] = "";
-	bool		out_of_memory = false;
+	bool            out_of_memory = false;
+
 	/*  Monitoring is disabled */
 	if (!PGSM_ENABLED)
 		return;
 
-	Assert(query != NULL);
-	if (kind == PGSS_ERROR)
-        GetUserIdAndSecContext((unsigned int *)&userid, &con);
-    else
-     userid =  GetUserId();
-
-    extract_query_comments(query, comments, sizeof(comments));
-
 	/* Safety check... */
 	if (!IsSystemInitialized() || !pgss_qbuf[pg_atomic_read_u64(&pgss->current_wbucket)])
 		return;
+
+	Assert(query != NULL);
+	if (kind == PGSS_ERROR)
+		GetUserIdAndSecContext((unsigned int *)&userid, &con);
+	else
+		userid =  GetUserId();
+
+	dbid = MyDatabaseId;
+	application_name_len = pg_get_application_name(application_name);
+	ip = pg_get_client_addr();
+	planid = plan_info ? plan_info->planid: 0;
+	appid = djb2_hash((unsigned char *)application_name, application_name_len);
+
+	extract_query_comments(query, comments, sizeof(comments));
 
 	prev_bucket_id = pg_atomic_read_u64(&pgss->current_wbucket);
 	bucketid = get_next_wbucket(pgss);
@@ -1716,7 +1723,6 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		query_entry = hash_find_query_entry(bucketid, queryid, dbid, userid, ip, appid);
 		if (query_entry == NULL)
 			continue;
-
 
 		if (read_query(buf, bucketid, queryid, query_txt) == 0)
 		{
