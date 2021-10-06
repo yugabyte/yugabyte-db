@@ -18,9 +18,21 @@ DATA = pg_hint_plan--*.sql
 
 EXTRA_CLEAN = sql/ut-fdw.sql expected/ut-fdw.out RPMS
 
+# Switch environment between standalone make and make check with
+# EXTRA_INSTALL from PostgreSQL tree
+# run the following command in the PG tree to run a regression test
+# loading this module.
+# $ make check EXTRA_INSTALL=<this directory> EXTRA_REGRESS_OPTS="--temp-config <this directory>/pg_hint_plan.conf"
+ifeq ($(wildcard $(DESTDIR)/../src/Makefile.global),)
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
+else
+subdir = `pwd`
+top_builddir = $(DESTDIR)/..
+include $(DESTDIR)/../src/Makefile.global
+include $(DESTDIR)/../contrib/contrib-global.mk
+endif
 
 STARBALL14 = pg_hint_plan14-$(HINTPLANVER).tar.gz
 STARBALLS = $(STARBALL14)
