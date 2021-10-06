@@ -218,13 +218,15 @@ public class TableManagerTest extends FakeDBApplication {
     cmd.add(PY_WRAPPER);
     cmd.add(BACKUP.getScript());
     cmd.add("--masters");
-    // TODO(bogdan): we do not have nodes to test this?
-
     cmd.add(testUniverse.getMasterAddresses());
+    // TODO(bogdan): we do not have nodes to test this?
 
     if (!isDelete) {
       cmd.add("--parallelism");
       cmd.add("8");
+      cmd.add("--ysql_port");
+      cmd.add(
+          Integer.toString(testUniverse.getUniverseDetails().communicationPorts.ysqlServerRpcPort));
 
       if (backupTableParams.tableNameList != null) {
         for (String tableName : backupTableParams.tableNameList) {
