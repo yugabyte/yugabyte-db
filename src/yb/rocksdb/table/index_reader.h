@@ -93,7 +93,7 @@ class BinarySearchIndexReader : public IndexReader {
       BlockIter* iter = nullptr,
       // Rest of parameters are ignored by BinarySearchIndexReader.
       TwoLevelIteratorState* state = nullptr, bool total_order_seek = true) override {
-    auto new_iter = index_block_->NewIterator(comparator_.get(), iter, true);
+    auto new_iter = index_block_->NewIndexIterator(comparator_.get(), iter, true);
     return iter ? nullptr : new_iter;
   }
 
@@ -139,7 +139,7 @@ class HashIndexReader : public IndexReader {
   InternalIterator* NewIterator(
       BlockIter* iter = nullptr, TwoLevelIteratorState* state = nullptr,
       bool total_order_seek = true) override {
-    auto new_iter = index_block_->NewIterator(comparator_.get(), iter, total_order_seek);
+    auto new_iter = index_block_->NewIndexIterator(comparator_.get(), iter, total_order_seek);
     return iter ? nullptr : new_iter;
   }
 

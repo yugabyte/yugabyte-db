@@ -308,6 +308,7 @@ class BlockBasedTable : public TableReader {
   static void SetupCacheKeyPrefix(Rep* rep, FileReaderWithCachePrefix* reader_with_cache_prefix);
 
   FileReaderWithCachePrefix* GetBlockReader(BlockType block_type);
+  KeyValueEncodingFormat GetKeyValueEncodingFormat(BlockType block_type);
 
   explicit BlockBasedTable(Rep* rep) : rep_(rep) {}
 

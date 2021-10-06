@@ -86,6 +86,10 @@ extern char* EncodeVarint64(char* dst, uint64_t value);
 // Lower-level versions of Get... that read directly from a character buffer
 // without any bounds checking.
 
+inline uint8_t DecodeFixed8(const char* ptr) {
+  return pointer_cast<const uint8_t*>(ptr)[0];
+}
+
 inline uint32_t DecodeFixed32(const char* ptr) {
   if (port::kLittleEndian) {
     // Load the raw bytes
@@ -163,6 +167,10 @@ inline void EncodeFixed64(char* buf, uint64_t value) {
   buf[6] = (value >> 48) & 0xff;
   buf[7] = (value >> 56) & 0xff;
 #endif
+}
+
+inline void PutFixed8(std::string* dst, uint8_t value) {
+  dst->push_back(value);
 }
 
 inline void PutFixed32(std::string* dst, uint32_t value) {

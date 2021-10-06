@@ -78,69 +78,72 @@ class BlockTest : public testing::Test {};
 
 // block test
 TEST_F(BlockTest, SimpleTest) {
-  Random rnd(301);
-  Options options = Options();
-  std::unique_ptr<InternalKeyComparator> ic;
-  ic.reset(new test::PlainInternalKeyComparator(options.comparator));
+  for (auto key_value_encoding_format : kKeyValueEncodingFormatList) {
+    Random rnd(301);
+    Options options = Options();
+    std::unique_ptr<InternalKeyComparator> ic;
+    ic.reset(new test::PlainInternalKeyComparator(options.comparator));
 
-  std::vector<std::string> keys;
-  std::vector<std::string> values;
-  BlockBuilder builder(16);
-  int num_records = 100000;
+    std::vector<std::string> keys;
+    std::vector<std::string> values;
+    BlockBuilder builder(16, key_value_encoding_format);
+    int num_records = 100000;
 
-  GenerateRandomKVs(&keys, &values, 0, num_records);
-  // add a bunch of records to a block
-  for (int i = 0; i < num_records; i++) {
-    builder.Add(keys[i], values[i]);
+    GenerateRandomKVs(&keys, &values, 0, num_records);
+    // add a bunch of records to a block
+    for (int i = 0; i < num_records; i++) {
+      builder.Add(keys[i], values[i]);
+    }
+
+    // read serialized contents of the block
+    Slice rawblock = builder.Finish();
+
+    // create block reader
+    BlockContents contents;
+    contents.data = rawblock;
+    contents.cachable = false;
+    Block reader(std::move(contents));
+
+    // read contents of block sequentially
+    int count = 0;
+    InternalIterator *iter = reader.NewIterator(options.comparator, key_value_encoding_format);
+    for (iter->SeekToFirst(); iter->Valid(); count++, iter->Next()) {
+
+      // read kv from block
+      Slice k = iter->key();
+      Slice v = iter->value();
+
+      // compare with lookaside array
+      ASSERT_EQ(k.ToString().compare(keys[count]), 0);
+      ASSERT_EQ(v.ToString().compare(values[count]), 0);
+    }
+    delete iter;
+
+    // read block contents randomly
+    iter = reader.NewIterator(options.comparator, key_value_encoding_format);
+    for (int i = 0; i < num_records; i++) {
+
+      // find a random key in the lookaside array
+      int index = rnd.Uniform(num_records);
+      Slice k(keys[index]);
+
+      // search in block for this key
+      iter->Seek(k);
+      ASSERT_TRUE(iter->Valid());
+      Slice v = iter->value();
+      ASSERT_EQ(v.ToString().compare(values[index]), 0);
+    }
+    delete iter;
   }
-
-  // read serialized contents of the block
-  Slice rawblock = builder.Finish();
-
-  // create block reader
-  BlockContents contents;
-  contents.data = rawblock;
-  contents.cachable = false;
-  Block reader(std::move(contents));
-
-  // read contents of block sequentially
-  int count = 0;
-  InternalIterator *iter = reader.NewIterator(options.comparator);
-  for (iter->SeekToFirst(); iter->Valid(); count++, iter->Next()) {
-
-    // read kv from block
-    Slice k = iter->key();
-    Slice v = iter->value();
-
-    // compare with lookaside array
-    ASSERT_EQ(k.ToString().compare(keys[count]), 0);
-    ASSERT_EQ(v.ToString().compare(values[count]), 0);
-  }
-  delete iter;
-
-  // read block contents randomly
-  iter = reader.NewIterator(options.comparator);
-  for (int i = 0; i < num_records; i++) {
-
-    // find a random key in the lookaside array
-    int index = rnd.Uniform(num_records);
-    Slice k(keys[index]);
-
-    // search in block for this key
-    iter->Seek(k);
-    ASSERT_TRUE(iter->Valid());
-    Slice v = iter->value();
-    ASSERT_EQ(v.ToString().compare(values[index]), 0);
-  }
-  delete iter;
 }
 
 // return the block contents
 BlockContents GetBlockContents(std::unique_ptr<BlockBuilder> *builder,
                                const std::vector<std::string> &keys,
                                const std::vector<std::string> &values,
+                               const KeyValueEncodingFormat key_value_encoding_format,
                                const int prefix_group_size = 1) {
-  builder->reset(new BlockBuilder(1 /* restart interval */));
+  builder->reset(new BlockBuilder(1 /* restart interval */, key_value_encoding_format));
 
   // Add only half of the keys
   for (size_t i = 0; i < keys.size(); ++i) {
@@ -155,7 +158,9 @@ BlockContents GetBlockContents(std::unique_ptr<BlockBuilder> *builder,
   return contents;
 }
 
-void CheckBlockContents(BlockContents contents, const int max_key,
+void CheckBlockContents(BlockContents contents,
+                        const KeyValueEncodingFormat key_value_encoding_format,
+                        const int max_key,
                         const std::vector<std::string> &keys,
                         const std::vector<std::string> &values) {
   const size_t prefix_size = 6;
@@ -169,8 +174,8 @@ void CheckBlockContents(BlockContents contents, const int max_key,
       NewFixedPrefixTransform(prefix_size));
 
   {
-    auto iter1 = reader1.NewIterator(nullptr);
-    auto iter2 = reader1.NewIterator(nullptr);
+    auto iter1 = reader1.NewIterator(nullptr, key_value_encoding_format);
+    auto iter2 = reader1.NewIterator(nullptr, key_value_encoding_format);
     reader1.SetBlockHashIndex(CreateBlockHashIndexOnTheFly(
         iter1, iter2, static_cast<uint32_t>(keys.size()), BytewiseComparator(),
         prefix_extractor.get()));
@@ -180,10 +185,10 @@ void CheckBlockContents(BlockContents contents, const int max_key,
   }
 
   std::unique_ptr<InternalIterator> hash_iter(
-      reader1.NewIterator(BytewiseComparator(), nullptr, false));
+      reader1.NewIterator(BytewiseComparator(), key_value_encoding_format, nullptr, false));
 
   std::unique_ptr<InternalIterator> regular_iter(
-      reader2.NewIterator(BytewiseComparator()));
+      reader2.NewIterator(BytewiseComparator(), key_value_encoding_format));
 
   // Seek existent keys
   for (size_t i = 0; i < keys.size(); i++) {
@@ -212,35 +217,45 @@ void CheckBlockContents(BlockContents contents, const int max_key,
 // In this test case, no two key share same prefix.
 TEST_F(BlockTest, SimpleIndexHash) {
   const int kMaxKey = 100000;
-  std::vector<std::string> keys;
-  std::vector<std::string> values;
-  GenerateRandomKVs(&keys, &values, 0 /* first key id */,
-                    kMaxKey /* last key id */, 2 /* step */,
-                    8 /* padding size (8 bytes randomly generated suffix) */);
 
-  std::unique_ptr<BlockBuilder> builder;
-  auto contents = GetBlockContents(&builder, keys, values);
+  for (auto key_value_encoding_format : kKeyValueEncodingFormatList) {
+    std::vector<std::string> keys;
+    std::vector<std::string> values;
+    GenerateRandomKVs(&keys, &values, 0 /* first key id */,
+                      kMaxKey /* last key id */, 2 /* step */,
+                      8 /* padding size (8 bytes randomly generated suffix) */);
 
-  CheckBlockContents(std::move(contents), kMaxKey, keys, values);
+    std::unique_ptr<BlockBuilder> builder;
+    auto contents = GetBlockContents(&builder, keys, values, key_value_encoding_format);
+
+    CheckBlockContents(
+        std::move(contents), key_value_encoding_format, kMaxKey, keys, values);
+  }
 }
 
 TEST_F(BlockTest, IndexHashWithSharedPrefix) {
   const int kMaxKey = 100000;
   // for each prefix, there will be 5 keys starts with it.
   const int kPrefixGroup = 5;
-  std::vector<std::string> keys;
-  std::vector<std::string> values;
-  // Generate keys with same prefix.
-  GenerateRandomKVs(&keys, &values, 0,  // first key id
-                    kMaxKey,            // last key id
-                    2,                  // step
-                    10,                 // padding size,
-                    kPrefixGroup);
 
-  std::unique_ptr<BlockBuilder> builder;
-  auto contents = GetBlockContents(&builder, keys, values, kPrefixGroup);
+  for (auto key_value_encoding_format : kKeyValueEncodingFormatList) {
+    std::vector<std::string> keys;
+    std::vector<std::string> values;
+    // Generate keys with same prefix.
+    GenerateRandomKVs(
+        &keys, &values, 0,  // first key id
+        kMaxKey,            // last key id
+        2,                  // step
+        10,                 // padding size,
+        kPrefixGroup);
 
-  CheckBlockContents(std::move(contents), kMaxKey, keys, values);
+    std::unique_ptr<BlockBuilder> builder;
+    auto contents =
+        GetBlockContents(&builder, keys, values, key_value_encoding_format, kPrefixGroup);
+
+    CheckBlockContents(
+        std::move(contents), key_value_encoding_format, kMaxKey, keys, values);
+  }
 }
 
 namespace {
@@ -249,8 +264,10 @@ std::string GetPaddedNum(int i) {
   return StringPrintf("%010d", i);
 }
 
-yb::Result<std::string> GetMiddleKey(const int num_keys, const int block_restart_interval) {
-  BlockBuilder builder(block_restart_interval);
+yb::Result<std::string> GetMiddleKey(
+    const KeyValueEncodingFormat key_value_encoding_format, const int num_keys,
+    const int block_restart_interval) {
+  BlockBuilder builder(block_restart_interval, key_value_encoding_format);
 
   for (int i = 1; i <= num_keys; ++i) {
     const auto padded_num = GetPaddedNum(i);
@@ -262,12 +279,14 @@ yb::Result<std::string> GetMiddleKey(const int num_keys, const int block_restart
   contents.cachable = false;
   Block reader(std::move(contents));
 
-  return VERIFY_RESULT(reader.GetMiddleKey()).ToString();
+  return VERIFY_RESULT(reader.GetMiddleKey(key_value_encoding_format)).ToString();
 }
 
 void CheckMiddleKey(
-    const int num_keys, const int block_restart_interval, const int expected_middle_key) {
-  const auto middle_key = ASSERT_RESULT(GetMiddleKey(num_keys, block_restart_interval));
+    const KeyValueEncodingFormat key_value_encoding_format, const int num_keys,
+    const int block_restart_interval, const int expected_middle_key) {
+  const auto middle_key =
+      ASSERT_RESULT(GetMiddleKey(key_value_encoding_format, num_keys, block_restart_interval));
   ASSERT_EQ(middle_key, "k" + GetPaddedNum(expected_middle_key)) << "For num_keys = " << num_keys;
 }
 
@@ -276,15 +295,28 @@ void CheckMiddleKey(
 TEST_F(BlockTest, GetMiddleKey) {
   const auto block_restart_interval = 1;
 
-  const auto empty_block_middle_key = GetMiddleKey(/* num_keys =*/ 0, block_restart_interval);
-  ASSERT_NOK(empty_block_middle_key) << empty_block_middle_key;
-  ASSERT_TRUE(empty_block_middle_key.status().IsIncomplete()) << empty_block_middle_key;
+  for (auto key_value_encoding_format : kKeyValueEncodingFormatList) {
+    const auto empty_block_middle_key =
+        GetMiddleKey(key_value_encoding_format, /* num_keys =*/0, block_restart_interval);
+    ASSERT_NOK(empty_block_middle_key) << empty_block_middle_key;
+    ASSERT_TRUE(empty_block_middle_key.status().IsIncomplete()) << empty_block_middle_key;
 
-  CheckMiddleKey(/* num_keys =*/ 1, block_restart_interval, /* expected_middle_key =*/ 1);
-  CheckMiddleKey(/* num_keys =*/ 2, block_restart_interval, /* expected_middle_key =*/ 1);
-  CheckMiddleKey(/* num_keys =*/ 3, block_restart_interval, /* expected_middle_key =*/ 2);
-  CheckMiddleKey(/* num_keys =*/ 15, block_restart_interval, /* expected_middle_key =*/ 8);
-  CheckMiddleKey(/* num_keys =*/ 16, block_restart_interval, /* expected_middle_key =*/ 8);
+    CheckMiddleKey(
+        key_value_encoding_format, /* num_keys = */ 1, block_restart_interval,
+        /* expected_middle_key = */ 1);
+    CheckMiddleKey(
+        key_value_encoding_format, /* num_keys = */ 2, block_restart_interval,
+        /* expected_middle_key = */ 1);
+    CheckMiddleKey(
+        key_value_encoding_format, /* num_keys = */ 3, block_restart_interval,
+        /* expected_middle_key = */ 2);
+    CheckMiddleKey(
+        key_value_encoding_format, /* num_keys = */ 15, block_restart_interval,
+        /* expected_middle_key = */ 8);
+    CheckMiddleKey(
+        key_value_encoding_format, /* num_keys = */ 16, block_restart_interval,
+        /* expected_middle_key = */ 8);
+  }
 }
 
 }  // namespace rocksdb

@@ -80,6 +80,23 @@ static inline const char* DecodeEntry(const char* p, const char* limit,
   return p;
 }
 
+// Decodes restart key size (key_size) and value size (value_size) starting at `p` and returns
+// pointer to the next byte after decoded data. Expects restart key to be stored fully without
+// reusing bytes from previous key (see BlockBuilder::Add for more details).
+// This function should not read at or beyond `limit`.
+// Returns nullptr in case of decode failure.
+static inline const char* DecodeRestartEntry(
+    const KeyValueEncodingFormat key_value_encoding_format, const char* p, const char* limit,
+    uint32_t* key_size, uint32_t* value_size) {
+  switch (key_value_encoding_format) {
+    case KeyValueEncodingFormat::kKeyDeltaEncodingSharedPrefix:
+      uint32_t shared_prefix_size;
+      auto* result = DecodeEntry(p, limit, &shared_prefix_size, key_size, value_size);
+      return result && (shared_prefix_size == 0) ? result : nullptr;
+  }
+  FATAL_INVALID_ENUM_VALUE(KeyValueEncodingFormat, key_value_encoding_format);
+}
+
 void BlockIter::Next() {
   assert(Valid());
   ParseNextKey();
@@ -106,14 +123,16 @@ void BlockIter::Prev() {
   } while (ParseNextKey() && NextEntryOffset() < original);
 }
 
-void BlockIter::Initialize(const Comparator* comparator, const char* data,
-                           uint32_t restarts, uint32_t num_restarts, BlockHashIndex* hash_index,
-                           BlockPrefixIndex* prefix_index) {
+void BlockIter::Initialize(
+    const Comparator* comparator, const char* data,
+    const KeyValueEncodingFormat key_value_encoding_format, uint32_t restarts,
+    uint32_t num_restarts, BlockHashIndex* hash_index, BlockPrefixIndex* prefix_index) {
   DCHECK(data_ == nullptr); // Ensure it is called only once
   DCHECK_GT(num_restarts, 0); // Ensure the param is valid
 
   comparator_ = comparator;
   data_ = data;
+  key_value_encoding_format_ = key_value_encoding_format;
   restarts_ = restarts;
   num_restarts_ = num_restarts;
   current_ = restarts_;
@@ -181,12 +200,16 @@ Status BadEntryInBlockError() {
 
 } // namespace
 
-void BlockIter::CorruptionError() {
+void BlockIter::SetError(const Status& error) {
   current_ = restarts_;
   restart_index_ = num_restarts_;
-  status_ = BadEntryInBlockError();
+  status_ = error;
   key_.Clear();
   value_.clear();
+}
+
+void BlockIter::CorruptionError() {
+  SetError(BadEntryInBlockError());
 }
 
 bool BlockIter::ParseNextKey() {
@@ -201,6 +224,18 @@ bool BlockIter::ParseNextKey() {
   }
 
   // Decode next entry
+  bool valid_encoding_type = false;
+  switch (key_value_encoding_format_) {
+    // TODO(delta_enc): after adding more encoding types, it will be handled here, for now we
+    // just have one and check that key_value_encoding_format_ is valid.
+    case KeyValueEncodingFormat::kKeyDeltaEncodingSharedPrefix:
+      valid_encoding_type = true;
+      break;
+  }
+  if (!valid_encoding_type) {
+    FATAL_INVALID_ENUM_VALUE(KeyValueEncodingFormat, key_value_encoding_format_);
+  }
+
   uint32_t shared, non_shared, value_length;
   p = DecodeEntry(p, limit, &shared, &non_shared, &value_length);
   if (p == nullptr || key_.Size() < shared) {
@@ -233,15 +268,15 @@ bool BlockIter::BinarySeek(const Slice& target, uint32_t left, uint32_t right,
   while (left < right) {
     uint32_t mid = (left + right + 1) / 2;
     uint32_t region_offset = GetRestartPoint(mid);
-    uint32_t shared, non_shared, value_length;
-    const char* key_ptr =
-        DecodeEntry(data_ + region_offset, data_ + restarts_, &shared,
-                    &non_shared, &value_length);
-    if (key_ptr == nullptr || (shared != 0)) {
+    uint32_t key_size, value_length;
+    const char* key_ptr = DecodeRestartEntry(
+        key_value_encoding_format_, data_ + region_offset, data_ + restarts_, &key_size,
+        &value_length);
+    if (key_ptr == nullptr) {
       CorruptionError();
       return false;
     }
-    Slice mid_key(key_ptr, non_shared);
+    Slice mid_key(key_ptr, key_size);
     int cmp = Compare(mid_key, target);
     if (cmp < 0) {
       // Key at "mid" is smaller than "target". Therefore all
@@ -264,14 +299,15 @@ bool BlockIter::BinarySeek(const Slice& target, uint32_t left, uint32_t right,
 // Return -1 if error.
 int BlockIter::CompareBlockKey(uint32_t block_index, const Slice& target) {
   uint32_t region_offset = GetRestartPoint(block_index);
-  uint32_t shared, non_shared, value_length;
-  const char* key_ptr = DecodeEntry(data_ + region_offset, data_ + restarts_,
-                                    &shared, &non_shared, &value_length);
-  if (key_ptr == nullptr || (shared != 0)) {
+  uint32_t key_size, value_length;
+  const char* key_ptr = DecodeRestartEntry(
+      key_value_encoding_format_, data_ + region_offset, data_ + restarts_, &key_size,
+      &value_length);
+  if (key_ptr == nullptr) {
     CorruptionError();
     return 1;  // Return target is smaller
   }
-  Slice block_key(key_ptr, non_shared);
+  Slice block_key(key_ptr, key_size);
   return Compare(block_key, target);
 }
 
@@ -377,8 +413,9 @@ Block::Block(BlockContents&& contents)
   }
 }
 
-InternalIterator* Block::NewIterator(const Comparator* cmp, BlockIter* iter,
-                                     bool total_order_seek) {
+InternalIterator* Block::NewIterator(
+    const Comparator* cmp, const KeyValueEncodingFormat key_value_encoding_format, BlockIter* iter,
+    bool total_order_seek) {
   if (size_ < kMinBlockSize) {
     if (iter != nullptr) {
       iter->SetStatus(BadBlockContentsError());
@@ -402,10 +439,10 @@ InternalIterator* Block::NewIterator(const Comparator* cmp, BlockIter* iter,
         total_order_seek ? nullptr : prefix_index_.get();
 
     if (iter != nullptr) {
-      iter->Initialize(cmp, data_, restart_offset_, num_restarts,
+      iter->Initialize(cmp, data_, key_value_encoding_format, restart_offset_, num_restarts,
                     hash_index_ptr, prefix_index_ptr);
     } else {
-      iter = new BlockIter(cmp, data_, restart_offset_, num_restarts,
+      iter = new BlockIter(cmp, data_, key_value_encoding_format, restart_offset_, num_restarts,
                            hash_index_ptr, prefix_index_ptr);
     }
   }
@@ -432,7 +469,8 @@ size_t Block::ApproximateMemoryUsage() const {
   return usage;
 }
 
-yb::Result<Slice> Block::GetMiddleKey() const {
+yb::Result<Slice> Block::GetMiddleKey(
+    const KeyValueEncodingFormat key_value_encoding_format) const {
   if (size_ < kMinBlockSize) {
     return BadBlockContentsError();
   } else if (size_ == kMinBlockSize) {
@@ -442,13 +480,14 @@ yb::Result<Slice> Block::GetMiddleKey() const {
   const auto restart_idx = (NumRestarts() - 1) / 2;
 
   const auto entry_offset = DecodeFixed32(data_ + restart_offset_ + restart_idx * sizeof(uint32_t));
-  uint32_t shared, non_shared, value_length;
-  const char* key_ptr = DecodeEntry(
-      data_ + entry_offset, data_ + restart_offset_, &shared, &non_shared, &value_length);
-  if (key_ptr == nullptr || (shared != 0)) {
+  uint32_t key_size, value_length;
+  const char* key_ptr = DecodeRestartEntry(
+      key_value_encoding_format, data_ + entry_offset, data_ + restart_offset_, &key_size,
+      &value_length);
+  if (key_ptr == nullptr) {
     return BadEntryInBlockError();
   }
-  return Slice(key_ptr, non_shared);
+  return Slice(key_ptr, key_size);
 }
 
 }  // namespace rocksdb

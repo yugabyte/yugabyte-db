@@ -19,7 +19,7 @@ namespace yb {
 
 Status InMemoryFileState::Read(uint64_t offset, size_t n, Slice* result, uint8_t* scratch) const {
   if (offset > size_) {
-    return STATUS(IOError, "Offset greater than file size.");
+    return STATUS_FORMAT(IOError, "Offset ($0) greater than file size ($1).", offset, size_);
   }
   const uint64_t available = size_ - offset;
   if (n > available) {
