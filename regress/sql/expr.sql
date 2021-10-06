@@ -2213,8 +2213,9 @@ SELECT * FROM cypher('VLE', $$MATCH (u)-[*0..1]-(v) RETURN u, v$$) AS (u agtype,
 SELECT * FROM cypher('VLE', $$MATCH (u)-[*..1]-(v) RETURN u, v$$) AS (u agtype, v agtype);
 SELECT * FROM cypher('VLE', $$MATCH (u)-[*..5]-(v) RETURN u, v$$) AS (u agtype, v agtype);
 
--- list functions
+-- list functions relationships(), range()
 SELECT create_graph('list');
+-- relationships()
 SELECT * from cypher('list', $$CREATE p=()-[:knows]->() RETURN p$$) as (path agtype);
 SELECT * from cypher('list', $$CREATE p=()-[:knows]->()-[:knows]->() RETURN p$$) as (path agtype);
 SELECT * from cypher('list', $$MATCH p=()-[]->() RETURN relationships(p)$$) as (relationships agtype);
@@ -2228,6 +2229,23 @@ SELECT * from cypher('list', $$MATCH (u) RETURN relationships([1,2,3])$$) as (re
 SELECT * from cypher('list', $$MATCH (u) RETURN relationships("string")$$) as (relationships agtype);
 SELECT * from cypher('list', $$MATCH (u) RETURN relationships(u)$$) as (relationships agtype);
 SELECT * from cypher('list', $$MATCH ()-[e]->() RETURN relationships(e)$$) as (relationships agtype);
+-- range()
+SELECT * from cypher('list', $$RETURN range(0, 10)$$) as (range agtype);
+SELECT * from cypher('list', $$RETURN range(0, 10, null)$$) as (range agtype);
+SELECT * from cypher('list', $$RETURN range(0, 10, 1)$$) as (range agtype);
+SELECT * from cypher('list', $$RETURN range(0, 10, 3)$$) as (range agtype);
+SELECT * from cypher('list', $$RETURN range(0, -10, -1)$$) as (range agtype);
+SELECT * from cypher('list', $$RETURN range(0, -10, -3)$$) as (range agtype);
+SELECT * from cypher('list', $$RETURN range(0, 10, 11)$$) as (range agtype);
+SELECT * from cypher('list', $$RETURN range(-20, 10, 5)$$) as (range agtype);
+-- should return an empty list []
+SELECT * from cypher('list', $$RETURN range(0, -10)$$) as (range agtype);
+SELECT * from cypher('list', $$RETURN range(0, 10, -1)$$) as (range agtype);
+SELECT * from cypher('list', $$RETURN range(-10, 10, -1)$$) as (range agtype);
+-- should return an error
+SELECT * from cypher('list', $$RETURN range(null, -10, -3)$$) as (range agtype);
+SELECT * from cypher('list', $$RETURN range(0, null, -3)$$) as (range agtype);
+SELECT * from cypher('list', $$RETURN range(0, -10.0, -3.0)$$) as (range agtype);
 
 --
 -- Cleanup

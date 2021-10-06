@@ -153,6 +153,8 @@ agtype *get_one_agtype_from_variadic_args(FunctionCallInfo fcinfo,
                                                  int variadic_offset,
                                                  int expected_nargs);
 static agtype_value *integer_to_agtype_value(int64 int_value);
+static int64 get_int64_from_int_datums(Datum d, Oid type, char *funcname,
+                                       bool *is_agnull);
 
 PG_FUNCTION_INFO_V1(agtype_in);
 
@@ -8332,6 +8334,185 @@ Datum age_relationships(PG_FUNCTION_ARGS)
     {
         agis_result.res = push_agtype_value(&agis_result.parse_state, WAGT_ELEM,
                                             &agtv_path->val.array.elems[i]);
+    }
+
+    /* push the end of the array */
+    agis_result.res = push_agtype_value(&agis_result.parse_state,
+                                        WAGT_END_ARRAY, NULL);
+
+    /* convert the agtype_value to a datum to return to the caller */
+    PG_RETURN_POINTER(agtype_value_to_agtype(agis_result.res));
+}
+
+/*
+ * Helper function to convert an integer type (PostgreSQL or agtype) datum into
+ * an int64. The function will flag if an agtype null was found. The function
+ * will error out on invalid information, printing out the funcname passed.
+ */
+static int64 get_int64_from_int_datums(Datum d, Oid type, char *funcname,
+                                       bool *is_agnull)
+{
+    int64 result = 0;
+
+    /* test for PG integer types */
+    if (type == INT2OID)
+    {
+        result = (int64) DatumGetInt16(d);
+    }
+    else if (type == INT4OID)
+    {
+        result = (int64) DatumGetInt32(d);
+    }
+    else if (type == INT8OID)
+    {
+        result = (int64) DatumGetInt64(d);
+    }
+    /* test for agtype integer */
+    else if (type == AGTYPEOID)
+    {
+        agtype *agt_arg = NULL;
+        agtype_value *agtv_value = NULL;
+        agtype_container *agtc = NULL;
+
+        /* get the agtype argument */
+        agt_arg = DATUM_GET_AGTYPE_P(d);
+
+        if (!AGT_ROOT_IS_SCALAR(agt_arg))
+        {
+            ereport(ERROR,
+                    (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                     errmsg("%s() only supports scalar arguments", funcname)));
+        }
+        /* check for agtype null*/
+        agtc = &agt_arg->root;
+        if (AGTE_IS_NULL(agtc->children[0]))
+        {
+            *is_agnull = true;
+            return 0;
+        }
+
+        /* extract it from the scalar array */
+        agtv_value = get_ith_agtype_value_from_container(&agt_arg->root, 0);
+
+        /* check for agtype integer */
+        if (agtv_value->type == AGTV_INTEGER)
+        {
+            result = agtv_value->val.int_value;
+        }
+        else
+        {
+            ereport(ERROR,
+                    (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                     errmsg("%s() unsupported argument type", funcname)));
+        }
+    }
+    else
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("%s() unsupported argument type", funcname)));
+    }
+
+    /* return the result */
+    *is_agnull = false;
+    return result;
+}
+
+PG_FUNCTION_INFO_V1(age_range);
+/*
+ * Execution function to implement openCypher range() function
+ */
+Datum age_range(PG_FUNCTION_ARGS)
+{
+    Datum *args = NULL;
+    bool *nulls = NULL;
+    Oid *types = NULL;
+    int nargs;
+    int64 start_idx = 0;
+    int64 end_idx = 0;
+    /* step defaults to 1 */
+    int64 step = 1;
+    bool is_agnull = false;
+    agtype_in_state agis_result;
+    int64 i = 0;
+
+    /* get the arguments */
+    nargs = extract_variadic_args(fcinfo, 0, false, &args, &types, &nulls);
+
+    /* throw an error if the number of args is not the expected number */
+    if (nargs != 2 && nargs != 3)
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("range(): invalid number of input parameters")));
+    }
+
+    /* check for NULL start and end input */
+    if (nulls[0] || nulls[1])
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("range(): neither start or end can be NULL")));
+    }
+
+    /* get the start index */
+    start_idx = get_int64_from_int_datums(args[0], types[0], "range",
+                                          &is_agnull);
+    if (is_agnull)
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("range(): start cannot be NULL")));
+    }
+
+    /* get the end index */
+    end_idx = get_int64_from_int_datums(args[1], types[1], "range", &is_agnull);
+    if (is_agnull)
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("range(): end cannot be NULL")));
+    }
+
+    /* get the step */
+    if (nargs == 3 && !nulls[2])
+    {
+        step = get_int64_from_int_datums(args[2], types[2], "range",
+                                         &is_agnull);
+        if (is_agnull)
+        {
+            step = 1;
+        }
+    }
+
+    /* the step cannot be zero */
+    if (step == 0)
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("range(): step cannot be zero")));
+    }
+
+    /* clear the result structure */
+    MemSet(&agis_result, 0, sizeof(agtype_in_state));
+
+    /* push the beginning of the array */
+    agis_result.res = push_agtype_value(&agis_result.parse_state,
+                                        WAGT_BEGIN_ARRAY, NULL);
+
+    /* push in each agtype integer in the range */
+    for (i = start_idx;
+         (step > 0 && i <= end_idx) || (step < 0 && i >= end_idx);
+         i += step)
+    {
+        agtype_value agtv;
+
+        /* build the integer */
+        agtv.type = AGTV_INTEGER;
+        agtv.val.int_value = i;
+        /* add the value to the array */
+        agis_result.res = push_agtype_value(&agis_result.parse_state, WAGT_ELEM,
+                                            &agtv);
     }
 
     /* push the end of the array */

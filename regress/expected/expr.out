@@ -5378,7 +5378,7 @@ SELECT * FROM cypher('VLE', $$MATCH (u)-[*..5]-(v) RETURN u, v$$) AS (u agtype, 
 ERROR:  variable length relationships are not supported
 LINE 1: SELECT * FROM cypher('VLE', $$MATCH (u)-[*..5]-(v) RETURN u,...
                                                 ^
--- list functions
+-- list functions relationships(), range()
 SELECT create_graph('list');
 NOTICE:  graph "list" has been created
  create_graph 
@@ -5386,6 +5386,7 @@ NOTICE:  graph "list" has been created
  
 (1 row)
 
+-- relationships()
 SELECT * from cypher('list', $$CREATE p=()-[:knows]->() RETURN p$$) as (path agtype);
                                                                                                                                path                                                                                                                                
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -5434,6 +5435,81 @@ SELECT * from cypher('list', $$MATCH (u) RETURN relationships(u)$$) as (relation
 ERROR:  relationships() argument must be a path
 SELECT * from cypher('list', $$MATCH ()-[e]->() RETURN relationships(e)$$) as (relationships agtype);
 ERROR:  relationships() argument must be a path
+-- range()
+SELECT * from cypher('list', $$RETURN range(0, 10)$$) as (range agtype);
+               range                
+------------------------------------
+ [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+(1 row)
+
+SELECT * from cypher('list', $$RETURN range(0, 10, null)$$) as (range agtype);
+               range                
+------------------------------------
+ [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+(1 row)
+
+SELECT * from cypher('list', $$RETURN range(0, 10, 1)$$) as (range agtype);
+               range                
+------------------------------------
+ [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+(1 row)
+
+SELECT * from cypher('list', $$RETURN range(0, 10, 3)$$) as (range agtype);
+    range     
+--------------
+ [0, 3, 6, 9]
+(1 row)
+
+SELECT * from cypher('list', $$RETURN range(0, -10, -1)$$) as (range agtype);
+                    range                     
+----------------------------------------------
+ [0, -1, -2, -3, -4, -5, -6, -7, -8, -9, -10]
+(1 row)
+
+SELECT * from cypher('list', $$RETURN range(0, -10, -3)$$) as (range agtype);
+      range      
+-----------------
+ [0, -3, -6, -9]
+(1 row)
+
+SELECT * from cypher('list', $$RETURN range(0, 10, 11)$$) as (range agtype);
+ range 
+-------
+ [0]
+(1 row)
+
+SELECT * from cypher('list', $$RETURN range(-20, 10, 5)$$) as (range agtype);
+             range             
+-------------------------------
+ [-20, -15, -10, -5, 0, 5, 10]
+(1 row)
+
+-- should return an empty list []
+SELECT * from cypher('list', $$RETURN range(0, -10)$$) as (range agtype);
+ range 
+-------
+ []
+(1 row)
+
+SELECT * from cypher('list', $$RETURN range(0, 10, -1)$$) as (range agtype);
+ range 
+-------
+ []
+(1 row)
+
+SELECT * from cypher('list', $$RETURN range(-10, 10, -1)$$) as (range agtype);
+ range 
+-------
+ []
+(1 row)
+
+-- should return an error
+SELECT * from cypher('list', $$RETURN range(null, -10, -3)$$) as (range agtype);
+ERROR:  range(): neither start or end can be NULL
+SELECT * from cypher('list', $$RETURN range(0, null, -3)$$) as (range agtype);
+ERROR:  range(): neither start or end can be NULL
+SELECT * from cypher('list', $$RETURN range(0, -10.0, -3.0)$$) as (range agtype);
+ERROR:  range() unsupported argument type
 --
 -- Cleanup
 --
