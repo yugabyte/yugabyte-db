@@ -25,9 +25,9 @@ import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
+import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.DiskIncreaseFormData;
 import com.yugabyte.yw.forms.TlsConfigUpdateParams;
@@ -1068,8 +1068,10 @@ public class UniverseCRUDHandler {
                 && taskParams.enableClientToNodeEncrypt != userIntent.enableClientToNodeEncrypt));
     boolean certsRotate =
         ((taskParams.rootCA != null && !taskParams.rootCA.equals(universeDetails.rootCA))
-            || (taskParams.clientRootCA != null
-                && !taskParams.clientRootCA.equals(universeDetails.clientRootCA)));
+                || (taskParams.clientRootCA != null
+                    && !taskParams.clientRootCA.equals(universeDetails.clientRootCA)))
+            || taskParams.createNewRootCA
+            || taskParams.createNewClientRootCA;
 
     if (taskParams.rootAndClientRootCASame == null) {
       throw new PlatformServiceException(
@@ -1078,7 +1080,9 @@ public class UniverseCRUDHandler {
 
     if (tlsToggle && certsRotate) {
       if ((universeDetails.rootCA == null && taskParams.rootCA != null)
-          || (universeDetails.clientRootCA == null && taskParams.clientRootCA != null)) {
+          || (universeDetails.rootCA == null && taskParams.createNewRootCA)
+          || (universeDetails.clientRootCA == null && taskParams.clientRootCA != null)
+          || (universeDetails.clientRootCA == null && taskParams.createNewClientRootCA)) {
         certsRotate = false;
       } else {
         throw new PlatformServiceException(
@@ -1109,8 +1113,12 @@ public class UniverseCRUDHandler {
       tlsToggleParams.enableClientToNodeEncrypt = taskParams.enableClientToNodeEncrypt;
       tlsToggleParams.allowInsecure =
           !(taskParams.enableNodeToNodeEncrypt || taskParams.enableClientToNodeEncrypt);
-      tlsToggleParams.rootCA = isRootCA ? taskParams.rootCA : null;
-      tlsToggleParams.clientRootCA = isClientRootCA ? taskParams.clientRootCA : null;
+      tlsToggleParams.rootCA =
+          isRootCA ? (!taskParams.createNewRootCA ? taskParams.rootCA : null) : null;
+      tlsToggleParams.clientRootCA =
+          isClientRootCA
+              ? (!taskParams.createNewClientRootCA ? taskParams.clientRootCA : null)
+              : null;
       tlsToggleParams.rootAndClientRootCASame = taskParams.rootAndClientRootCASame;
       tlsToggleParams.upgradeOption = taskParams.upgradeOption;
       tlsToggleParams.sleepAfterMasterRestartMillis = taskParams.sleepAfterMasterRestartMillis;
@@ -1129,6 +1137,22 @@ public class UniverseCRUDHandler {
               userIntent.enableNodeToNodeEncrypt,
               userIntent.enableClientToNodeEncrypt,
               taskParams.rootAndClientRootCASame);
+
+      if (isRootCA && taskParams.createNewRootCA) {
+        taskParams.rootCA =
+            CertificateHelper.createRootCA(
+                universeDetails.nodePrefix,
+                customer.uuid,
+                runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"));
+      }
+
+      if (isClientRootCA && taskParams.createNewClientRootCA) {
+        taskParams.clientRootCA =
+            CertificateHelper.createClientRootCA(
+                universeDetails.nodePrefix,
+                customer.uuid,
+                runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"));
+      }
 
       CertsRotateParams certsRotateParams = new CertsRotateParams();
       certsRotateParams.rootCA = isRootCA ? taskParams.rootCA : null;
