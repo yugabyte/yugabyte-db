@@ -17,6 +17,10 @@ jobs:
     compiler: clang11
     build_type: release
     architecture: aarch64
+  - os: centos8
+    compiler: clang11
+    build_type: debug
+    architecture: aarch64
   - os: centos7
     compiler: gcc5
     build_type: debug
