@@ -283,7 +283,6 @@ DECLARE_bool(consistent_restore);
 DECLARE_int32(rocksdb_level0_slowdown_writes_trigger);
 DECLARE_int32(rocksdb_level0_stop_writes_trigger);
 DECLARE_int64(apply_intents_task_injected_delay_ms);
-DECLARE_bool(enable_pg_savepoints);
 
 using namespace std::placeholders;
 
@@ -1297,14 +1296,9 @@ void SetupKeyValueBatch(WriteRequestPB* write_request, WriteRequestPB* batch_req
     write_request->mutable_write_batch()->mutable_transaction()->Swap(
         batch_request->mutable_write_batch()->mutable_transaction());
   }
-  if (FLAGS_enable_pg_savepoints) {
-    if (batch_request->write_batch().has_subtransaction()) {
-      write_request->mutable_write_batch()->mutable_subtransaction()->Swap(
-          batch_request->mutable_write_batch()->mutable_subtransaction());
-    }
-  } else {
-    DCHECK(!batch_request->write_batch().has_subtransaction())
-        << "Unexpected subtransaction metadata in write request without --enable_pg_savepoints";
+  if (batch_request->write_batch().has_subtransaction()) {
+    write_request->mutable_write_batch()->mutable_subtransaction()->Swap(
+        batch_request->mutable_write_batch()->mutable_subtransaction());
   }
   write_request->mutable_write_batch()->set_deprecated_may_have_metadata(true);
   if (batch_request->has_request_id()) {

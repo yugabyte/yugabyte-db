@@ -96,7 +96,6 @@ public class TestPgReadRestarts extends BasePgSQLTest {
     Map<String, String> flags = super.getTServerFlags();
     flags.put("ysql_output_buffer_size", String.valueOf(PG_OUTPUT_BUFFER_SIZE_BYTES));
     flags.put("ysql_max_write_restart_attempts", "0");
-    flags.put("enable_pg_savepoints", "true");
     return flags;
   }
 

@@ -2113,41 +2113,66 @@ insert into slave values(1);
 insert into slave values(2);	-- fails
 ERROR:  insert or update on table "slave" violates foreign key constraint "slave_f1_fkey"
 DETAIL:  Key (f1)=(2) is not present in table "master".
--- TODO(dmitry) Subtransactions are not yet supported.
--- create function trap_foreign_key(int) returns int as $$
--- begin
--- 	begin	-- start a subtransaction
--- 		insert into slave values($1);
--- 	exception
--- 		when foreign_key_violation then
--- 			raise notice 'caught foreign_key_violation';
--- 			return 0;
--- 	end;
--- 	return 1;
--- end$$ language plpgsql;
--- create function trap_foreign_key_2() returns int as $$
--- begin
--- 	begin	-- start a subtransaction
--- 		set constraints all immediate;
--- 	exception
--- 		when foreign_key_violation then
--- 			raise notice 'caught foreign_key_violation';
--- 			return 0;
--- 	end;
--- 	return 1;
--- end$$ language plpgsql;
--- select trap_foreign_key(1);
--- select trap_foreign_key(2);	-- detects FK violation
--- begin;
---  set constraints all deferred;
---  select trap_foreign_key(2);	-- should not detect FK violation
---  savepoint x;
---    set constraints all immediate; -- fails
---  rollback to x;
---  select trap_foreign_key_2();  -- detects FK violation
--- commit;				-- still fails
--- drop function trap_foreign_key(int);
--- drop function trap_foreign_key_2();
+create function trap_foreign_key(int) returns int as $$
+begin
+	begin	-- start a subtransaction
+		insert into slave values($1);
+	exception
+		when foreign_key_violation then
+			raise notice 'caught foreign_key_violation';
+			return 0;
+	end;
+	return 1;
+end$$ language plpgsql;
+create function trap_foreign_key_2() returns int as $$
+begin
+	begin	-- start a subtransaction
+		set constraints all immediate;
+	exception
+		when foreign_key_violation then
+			raise notice 'caught foreign_key_violation';
+			return 0;
+	end;
+	return 1;
+end$$ language plpgsql;
+select trap_foreign_key(1);
+ trap_foreign_key 
+------------------
+                1
+(1 row)
+
+select trap_foreign_key(2);	-- detects FK violation
+NOTICE:  caught foreign_key_violation
+ trap_foreign_key 
+------------------
+                0
+(1 row)
+
+begin;
+  set constraints all deferred;
+  select trap_foreign_key(2);	-- should not detect FK violation
+ trap_foreign_key 
+------------------
+                1
+(1 row)
+
+  savepoint x;
+    set constraints all immediate; -- fails
+ERROR:  insert or update on table "slave" violates foreign key constraint "slave_f1_fkey"
+DETAIL:  Key (f1)=(2) is not present in table "master".
+  rollback to x;
+  select trap_foreign_key_2();  -- detects FK violation
+NOTICE:  caught foreign_key_violation
+ trap_foreign_key_2 
+--------------------
+                  0
+(1 row)
+
+commit;				-- still fails
+ERROR:  insert or update on table "slave" violates foreign key constraint "slave_f1_fkey"
+DETAIL:  Key (f1)=(2) is not present in table "master".
+drop function trap_foreign_key(int);
+drop function trap_foreign_key_2();
 --
 -- Test proper snapshot handling in simple expressions
 --
@@ -4226,19 +4251,17 @@ end$$;
 BEGIN;
 create table public.stuffs (stuff text);
 SAVEPOINT a;
-ERROR:  SAVEPOINT <transaction> not supported yet
-LINE 1: SAVEPOINT a;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 select error2('nonexistent.stuffs');
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ERROR:  schema "nonexistent" does not exist
+CONTEXT:  SQL function "error1" statement 1
+PL/pgSQL function error2(text) line 3 at RETURN
 ROLLBACK TO a;
-ERROR:  ROLLBACK <transaction> not supported yet
-LINE 1: ROLLBACK TO a;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 select error2('public.stuffs');
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ error2 
+--------
+ stuffs
+(1 row)
+
 rollback;
 drop function error2(p_name_table text);
 drop function error1(text);
@@ -4277,23 +4300,29 @@ select cast_invoker(20150718);
 (1 row)
 
 savepoint s1;
-ERROR:  SAVEPOINT <transaction> not supported yet
-LINE 1: savepoint s1;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 select cast_invoker(20150718);
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ cast_invoker 
+--------------
+ 07-18-2015
+(1 row)
+
 select cast_invoker(-1); -- fails
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ERROR:  invalid input syntax for type date: "-1"
+CONTEXT:  SQL function "sql_to_date" statement 1
+PL/pgSQL function cast_invoker(integer) while casting return value to function's return type
 rollback to savepoint s1;
-ERROR:  ROLLBACK <transaction> not supported yet
-LINE 1: rollback to savepoint s1;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 select cast_invoker(20150719);
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ cast_invoker 
+--------------
+ 07-19-2015
+(1 row)
+
 select cast_invoker(20150720);
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ cast_invoker 
+--------------
+ 07-20-2015
+(1 row)
+
 commit;
 drop function cast_invoker(integer);
 drop function sql_to_date(integer) cascade;
