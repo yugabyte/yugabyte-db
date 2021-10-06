@@ -56,7 +56,6 @@ public class TestPgSavepoints extends BasePgSQLTest {
   protected Map<String, String> getTServerFlags() {
     // TODO(savepoints) -- enable by default.
     Map<String, String> flags = super.getTServerFlags();
-    flags.put("enable_pg_savepoints", "true");
     flags.put("txn_max_apply_batch_records", String.format("%d", LARGE_BATCH_ROW_THRESHOLD));
     return flags;
   }

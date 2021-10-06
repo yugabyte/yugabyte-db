@@ -313,7 +313,7 @@ YBSavepointsEnabled()
 	static int cached_value = -1;
 	if (cached_value == -1)
 	{
-		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_enable_pg_savepoints", false);
+		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_enable_pg_savepoints", true);
 	}
 	return IsYugaByteEnabled() && YBTransactionsEnabled() && cached_value;
 }
