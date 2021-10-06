@@ -69,7 +69,7 @@ Yugabyte Cloud supports all the regions that have robust infrastructure and suff
 
 ### Is support included in the base price?
 
-Support is provided for paid clusters. Refer to the [Yugabyte Cloud Support Services Terms and Conditions](https://www.yugabyte.com/yugabyte-cloud-support-services-terms-and-conditions/).
+Enterprise Support is included in the base price for paid clusters. Refer to the [Yugabyte Cloud Support Services Terms and Conditions](https://www.yugabyte.com/yugabyte-cloud-support-services-terms-and-conditions/).
 
 Free and paid cluster customers can also use the [YugabyteDB Community Slack Channel](https://yugabyte-db.slack.com/).
 
@@ -151,10 +151,6 @@ Applications
 : Before you can connect, your application has to be able to reach your Yugabyte Cloud. To add inbound network access from your application environment to Yugabyte Cloud, add the public IP addresses to the [cluster IP access list](../cloud-basics/add-connections), or use [VPC peering](../cloud-network/vpc-peers) to add private IP addresses.
 
 For more details, refer to [Connect to clusters](../cloud-basics/connect-to-clusters). 
-
-<!--
-### How do I migrate my database to Yugabyte Cloud
--->
 
 ## Backups
 
