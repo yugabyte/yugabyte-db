@@ -101,6 +101,10 @@ public class TableManager extends DevopsBase {
             || userIntent.tserverGFlags.getOrDefault("ysql_enable_auth", "false").equals("true")) {
           commandArgs.add("--ysql_enable_auth");
         }
+        commandArgs.add("--ysql_port");
+        commandArgs.add(
+            Integer.toString(universe.getUniverseDetails().communicationPorts.ysqlServerRpcPort));
+
         if (backupTableParams.actionType == BackupTableParams.ActionType.CREATE) {
           if (backupTableParams.tableUUIDList != null
               && !backupTableParams.tableUUIDList.isEmpty()) {
