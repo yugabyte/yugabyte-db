@@ -589,33 +589,26 @@ CREATE TYPE bogus AS ENUM('good');
 BEGIN;
 ALTER TYPE bogus ADD VALUE 'new';
 SAVEPOINT x;
-ERROR:  SAVEPOINT <transaction> not supported yet
-LINE 1: SAVEPOINT x;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 SELECT 'new'::bogus;  -- unsafe
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ERROR:  unsafe use of new value "new" of enum type bogus
+LINE 1: SELECT 'new'::bogus;
+               ^
+HINT:  New enum values must be committed before they can be used.
 ROLLBACK TO x;
-ERROR:  ROLLBACK <transaction> not supported yet
-LINE 1: ROLLBACK TO x;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 SELECT enum_first(null::bogus);  -- safe
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ enum_first 
+------------
+ good
+(1 row)
+
 SELECT enum_last(null::bogus);  -- unsafe
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ERROR:  unsafe use of new value "new" of enum type bogus
+HINT:  New enum values must be committed before they can be used.
 ROLLBACK TO x;
-ERROR:  ROLLBACK <transaction> not supported yet
-LINE 1: ROLLBACK TO x;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 SELECT enum_range(null::bogus);  -- unsafe
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ERROR:  unsafe use of new value "new" of enum type bogus
+HINT:  New enum values must be committed before they can be used.
 ROLLBACK TO x;
-ERROR:  ROLLBACK <transaction> not supported yet
-LINE 1: ROLLBACK TO x;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 COMMIT;
 SELECT 'new'::bogus;  -- now safe
  bogus
