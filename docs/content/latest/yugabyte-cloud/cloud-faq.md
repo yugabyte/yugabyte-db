@@ -85,39 +85,6 @@ The status page also provides notices of scheduled maintenace and current and pa
 
 Subscribe to the status page by clicking **Subscribe to Updates**. Email notifications are sent when incidents are created, updated, and resolved.
 
-### How do I connect to my cluster?
-
-You can connect to clusters in the following ways:
-
-Cloud Shell
-: Run the [ysqlsh](../../admin/ysqlsh) or [ycqlsh](../../admin/ycqlsh) shell from your browser to connect to and interact with your YugabyteDB database. Cloud shell does not require a CA certificate or any special network access configured.
-
-Client Shell
-: Connect to your YugabyteDB cluster using the YugabyteDB [ysqlsh](../../admin/ysqlsh) and [ycqlsh](../../admin/ycqlsh) client shells installed on your computer.
-
-: Before you can connect using a client shell, you need to have an IP allow list or VPC peer set up. Refer to [Assign IP Allow Lists](../cloud-basics/add-connections/).
-
-: You must be running the latest versions of the client shells. These are available in Yugabyte Client 2.6 or later, which you can download using the following command on Linux or macOS:
-
-    ```sh
-    $ curl -sSL https://downloads.yugabyte.com/get_clients.sh | bash
-    ```
-
-: Windows client shells require Docker:
-
-    ```sh
-    docker run -it yugabytedb/yugabyte-client ysqlsh -h <hostname> -p <port>
-    ```
-
-: Please check [cloud.yugabyte.com](https://cloud.yugabyte.com/) to see the latest version.
-
-Applications
-: Applications connect to and interact with YugabyteDB using API client libraries, also known as a client drivers. Before you can connect a application, you will need to install the correct driver. Clusters have SSL (encryption in-transit) enabled so make sure your driver details include SSL parameters. For information on available drivers, refer to [Build an application](../../quick-start/build-apps). 
-
-: Before you can connect, your application has to be able to reach your Yugabyte Cloud. To add inbound network access from your application environment to Yugabyte Cloud, add the public IP addresses to the [cluster IP access list](../cloud-basics/add-connections), or use [VPC peering](../cloud-network/vpc-peers) to add private IP addresses.
-
-For more details, refer to [Connect to clusters](../cloud-basics/connect-to-clusters). 
-
 ## Security
 
 ### How secure is my cluster?
@@ -151,6 +118,39 @@ Upgrades are automatically handled by Yugabyte. There are two types of upgrades:
 - Cloud console - During a maintenance window, Yugabyte Cloud console may be in read-only mode and not allow any edit changes. The upgrade has no impact on running clusters. Customers will be notified in advance of the maintenance schedule.
 
 - Cluster (yugabyteDB) version upgrade - To keep up with the latest bug fixes, improvements, and security fixes, Yugabyte will upgrade your cluster to the latest version. We will notify customers of any upcoming upgrade schedule via email and Slack. All database upgrades are done on a rolling basis to avoid any downtime. 
+
+### How do I connect to my cluster?
+
+You can connect to clusters in the following ways:
+
+Cloud Shell
+: Run the [ysqlsh](../../admin/ysqlsh) or [ycqlsh](../../admin/ycqlsh) shell from your browser to connect to and interact with your YugabyteDB database. Cloud shell does not require a CA certificate or any special network access configured.
+
+Client Shell
+: Connect to your YugabyteDB cluster using the YugabyteDB [ysqlsh](../../admin/ysqlsh) and [ycqlsh](../../admin/ycqlsh) client shells installed on your computer.
+
+: Before you can connect using a client shell, you need to have an IP allow list or VPC peer set up. Refer to [Assign IP Allow Lists](../cloud-basics/add-connections/).
+
+: You must be running the latest versions of the client shells. These are available in Yugabyte Client 2.6 or later, which you can download using the following command on Linux or macOS:
+
+    ```sh
+    $ curl -sSL https://downloads.yugabyte.com/get_clients.sh | bash
+    ```
+
+: Windows client shells require Docker:
+
+    ```sh
+    docker run -it yugabytedb/yugabyte-client ysqlsh -h <hostname> -p <port>
+    ```
+
+: Please check [cloud.yugabyte.com](https://cloud.yugabyte.com/) to see the latest version.
+
+Applications
+: Applications connect to and interact with YugabyteDB using API client libraries, also known as a client drivers. Before you can connect a application, you will need to install the correct driver. Clusters have SSL (encryption in-transit) enabled so make sure your driver details include SSL parameters. For information on available drivers, refer to [Build an application](../../quick-start/build-apps). 
+
+: Before you can connect, your application has to be able to reach your Yugabyte Cloud. To add inbound network access from your application environment to Yugabyte Cloud, add the public IP addresses to the [cluster IP access list](../cloud-basics/add-connections), or use [VPC peering](../cloud-network/vpc-peers) to add private IP addresses.
+
+For more details, refer to [Connect to clusters](../cloud-basics/connect-to-clusters). 
 
 <!--
 ### How do I migrate my database to Yugabyte Cloud
