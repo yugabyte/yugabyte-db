@@ -140,7 +140,11 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
 
     -- Do not create the child table if it's outside the bounds of the top parent. 
     IF v_sub_timestamp_min IS NOT NULL THEN
-        IF v_time < v_sub_timestamp_min OR v_time > v_sub_timestamp_max THEN
+        IF v_time < v_sub_timestamp_min OR v_time >= v_sub_timestamp_max THEN
+
+            RAISE DEBUG 'create_partition_time: p_parent_table: %, v_time: %, v_sub_timestamp_min: %, v_sub_timestamp_max: %'
+                    , p_parent_table, v_time, v_sub_timestamp_min, v_sub_timestamp_max;
+
             CONTINUE;
         END IF;
     END IF;
@@ -254,16 +258,16 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
                     , v_parent_tablename
                     , v_parent_schema
                     , v_partition_name
-                    , EXTRACT('epoch' FROM v_partition_timestamp_start)
-                    , EXTRACT('epoch' FROM v_partition_timestamp_end));
+                    , EXTRACT('epoch' FROM v_partition_timestamp_start)::bigint
+                    , EXTRACT('epoch' FROM v_partition_timestamp_end)::bigint);
             ELSIF v_epoch = 'milliseconds' THEN
                 EXECUTE format('ALTER TABLE %I.%I ATTACH PARTITION %I.%I FOR VALUES FROM (%L) TO (%L)'
                     , v_parent_schema
                     , v_parent_tablename
                     , v_parent_schema
                     , v_partition_name
-                    , EXTRACT('epoch' FROM v_partition_timestamp_start) * 1000
-                    , EXTRACT('epoch' FROM v_partition_timestamp_end) * 1000);
+                    , EXTRACT('epoch' FROM v_partition_timestamp_start)::bigint * 1000
+                    , EXTRACT('epoch' FROM v_partition_timestamp_end)::bigint * 1000);
             END IF;
             -- Create secondary, time-based constraint since native's constraint is already integer based
             EXECUTE format('ALTER TABLE %I.%I ADD CONSTRAINT %I CHECK (%s >= %L AND %4$s < %6$L)'
@@ -295,18 +299,18 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
                             , v_partition_name
                             , v_partition_name||'_partition_int_check'
                             , v_control
-                            , EXTRACT('epoch' from v_partition_timestamp_start)
+                            , EXTRACT('epoch' from v_partition_timestamp_start)::bigint
                             , v_control
-                            , EXTRACT('epoch' from v_partition_timestamp_end) );
+                            , EXTRACT('epoch' from v_partition_timestamp_end)::bigint );
         ELSIF v_epoch = 'milliseconds' THEN
             EXECUTE format('ALTER TABLE %I.%I ADD CONSTRAINT %I CHECK (%I >= %L AND %I < %L)'
                             , v_parent_schema
                             , v_partition_name
                             , v_partition_name||'_partition_int_check'
                             , v_control
-                            , EXTRACT('epoch' from v_partition_timestamp_start) * 1000
+                            , EXTRACT('epoch' from v_partition_timestamp_start)::bigint * 1000
                             , v_control
-                            , EXTRACT('epoch' from v_partition_timestamp_end) * 1000);
+                            , EXTRACT('epoch' from v_partition_timestamp_end)::bigint * 1000);
         END IF;
 
         EXECUTE format('ALTER TABLE %I.%I INHERIT %I.%I'
@@ -369,6 +373,7 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
             , sub_inherit_privileges
             , sub_constraint_valid
             , sub_subscription_refresh
+            , sub_date_trunc_interval
         FROM @extschema@.part_config_sub
         WHERE sub_parent = p_parent_table
     LOOP
@@ -387,7 +392,8 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
                 , p_epoch := %L
                 , p_template_table := %L
                 , p_jobmon := %L
-                , p_start_partition := %L )'
+                , p_start_partition := %L
+                , p_date_trunc_interval := %L )'
             , v_parent_schema||'.'||v_partition_name
             , v_row.sub_control
             , v_row.sub_partition_type
@@ -399,7 +405,8 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
             , v_row.sub_epoch
             , v_row.sub_template_table
             , v_row.sub_jobmon
-            , p_start_partition);
+            , p_start_partition
+            , v_row.sub_date_trunc_interval);
         
         RAISE DEBUG 'create_partition_time (create_parent loop): %', v_sql;
         EXECUTE v_sql;

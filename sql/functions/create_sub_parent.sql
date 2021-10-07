@@ -11,7 +11,8 @@ CREATE FUNCTION @extschema@.create_sub_parent(
     , p_epoch text DEFAULT 'none' 
     , p_upsert text DEFAULT ''
     , p_trigger_return_null boolean DEFAULT true
-    , p_jobmon boolean DEFAULT true) 
+    , p_jobmon boolean DEFAULT true
+    , p_date_trunc_interval text DEFAULT NULL)
 RETURNS boolean
     LANGUAGE plpgsql 
     AS $$
@@ -86,8 +87,8 @@ IF p_upsert <> '' THEN
     IF current_setting('server_version_num')::int < 90500 THEN
         RAISE EXCEPTION 'INSERT ... ON CONFLICT (UPSERT) feature is only supported in PostgreSQL 9.5 and later';
     END IF;
-    IF p_type = 'native' THEN
-        RAISE EXCEPTION 'Native partitioning does not currently support upsert. Use pg_partman''s partitioning methods instead if this is required';
+    IF p_type = 'native' AND current_setting('server_version_num')::int >= 110000 THEN
+        RAISE EXCEPTION 'The pg_partman upsert feature is not supported with native partitioning in PG11+. Use the built-in support for INSERT ON CONFLICT with native partitioning instead.';
     END IF;
 END IF;
 
@@ -111,7 +112,8 @@ INSERT INTO @extschema@.part_config_sub (
     , sub_upsert
     , sub_jobmon
     , sub_trigger_return_null
-    , sub_template_table)
+    , sub_template_table
+    , sub_date_trunc_interval)
 VALUES (
     p_top_parent
     , p_control
@@ -125,7 +127,8 @@ VALUES (
     , p_upsert
     , p_jobmon
     , p_trigger_return_null
-    , v_template_table);
+    , v_template_table
+    , p_date_trunc_interval);
 
 FOR v_row IN 
     -- Loop through all current children to turn them into partitioned tables
@@ -140,7 +143,7 @@ LOOP
     WHERE n.nspname = v_row.child_schema
     AND c.relname = v_row.child_tablename;
 
-    -- If both parent and sub-parent are the same partition type (time/id), ensure boundaries of sub-parent are within parent
+    -- If both parent and sub-parent are the same partition type (time/id), ensure intereval of sub-parent is less than parent
     IF (v_control_parent_type = 'time' AND v_control_sub_type = 'time') OR
        (v_control_parent_type = 'id' AND v_parent_epoch <> 'none' AND v_control_sub_type = 'id' AND p_epoch <> 'none') THEN
         CASE
@@ -171,9 +174,10 @@ LOOP
             EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
             RAISE EXCEPTION 'Sub-partition interval cannot be greater than or equal to the given parent interval';
         END IF;
-        IF v_child_interval = '1 week' AND v_parent_interval::interval > '1 week'::interval THEN
+        IF (v_child_interval = '1 week' AND v_parent_interval::interval > '1 week'::interval)
+            OR (p_date_trunc_interval = 'week') THEN
             EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
-            RAISE EXCEPTION 'Due to conflicting data boundaries between ISO weeks and any larger interval of time, pg_partman cannot support a sub-partition interval of weekly';
+            RAISE EXCEPTION 'Due to conflicting data boundaries between ISO weeks and any larger interval of time, pg_partman cannot support a sub-partition interval of weekly time periods';
         END IF;
 
     ELSIF v_control_parent_type = 'id' AND v_control_sub_type = 'id' AND v_parent_epoch = 'none' AND p_epoch = 'none' THEN
@@ -240,7 +244,8 @@ LOOP
                 , p_upsert := %L
                 , p_trigger_return_null := %L
                 , p_template_table := %L
-                , p_jobmon := %L)'
+                , p_jobmon := %L
+                , p_date_trunc_interval := %L)'
             , v_row.child_schema||'.'||v_row.child_tablename
             , p_control
             , p_type
@@ -254,7 +259,8 @@ LOOP
             , p_upsert
             , p_trigger_return_null
             , v_template_table
-            , p_jobmon);
+            , p_jobmon
+            , p_date_trunc_interval);
         EXECUTE v_sql;
     END IF; -- end recreate check
 

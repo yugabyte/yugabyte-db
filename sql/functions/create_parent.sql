@@ -13,7 +13,8 @@ CREATE FUNCTION @extschema@.create_parent(
     , p_publications text[] DEFAULT NULL
     , p_trigger_return_null boolean DEFAULT true
     , p_template_table text DEFAULT NULL
-    , p_jobmon boolean DEFAULT true) 
+    , p_jobmon boolean DEFAULT true
+    , p_date_trunc_interval text DEFAULT NULL)
 RETURNS boolean 
     LANGUAGE plpgsql 
     AS $$
@@ -87,8 +88,8 @@ IF p_upsert <> '' THEN
     IF current_setting('server_version_num')::int < 90500 THEN
         RAISE EXCEPTION 'INSERT ... ON CONFLICT (UPSERT) feature is only supported in PostgreSQL 9.5 and later';
     END IF;
-    IF p_type = 'native' THEN
-        RAISE EXCEPTION 'Native partitioning does not currently support upsert. Use pg_partman''s partitioning methods instead if this is required';
+    IF p_type = 'native' AND current_setting('server_version_num')::int >= 110000 THEN
+        RAISE EXCEPTION 'The pg_partman upsert feature is not supported with native partitioning in PG11+. Use the built-in support for INSERT ON CONFLICT with native partitioning instead.';
     END IF;
 END IF;
 
@@ -390,46 +391,63 @@ IF v_control_type = 'time' OR (v_control_type = 'id' AND p_epoch <> 'none') THEN
    -- First partition is either the min premake or p_start_partition
     v_start_time := COALESCE(p_start_partition::timestamptz, CURRENT_TIMESTAMP - (v_time_interval * p_premake));
 
-    IF v_time_interval >= '1 year' THEN
-        v_base_timestamp := date_trunc('year', v_start_time);
-        IF v_time_interval >= '10 years' THEN
-            v_base_timestamp := date_trunc('decade', v_start_time);
-            IF v_time_interval >= '100 years' THEN
-                v_base_timestamp := date_trunc('century', v_start_time);
-                IF v_time_interval >= '1000 years' THEN
-                    v_base_timestamp := date_trunc('millennium', v_start_time);
-                END IF; -- 1000
-            END IF; -- 100
-        END IF; -- 10
-    END IF; -- 1
 
     v_datetime_string := 'YYYY';
-    IF v_time_interval < '1 year' THEN
-        IF p_interval = 'quarterly' THEN
-            v_base_timestamp := date_trunc('quarter', v_start_time);
-            v_datetime_string = 'YYYY"q"Q';
+    IF p_date_trunc_interval IS NOT NULL THEN
+
+        v_base_timestamp := date_trunc(p_date_trunc_interval, v_start_time);
+
+        IF v_time_interval >= '1 day' THEN
+            v_datetime_string := v_datetime_string || '_MM_DD';
         ELSE
-            v_base_timestamp := date_trunc('month', v_start_time); 
-            v_datetime_string := v_datetime_string || '_MM';
+            v_datetime_string := v_datetime_string || '_MM_DD_HH24MISS';
         END IF;
-        IF v_time_interval < '1 month' THEN
-            IF p_interval = 'weekly' THEN
-                v_base_timestamp := date_trunc('week', v_start_time);
-                v_datetime_string := 'IYYY"w"IW';
-            ELSE 
-                v_base_timestamp := date_trunc('day', v_start_time);
-                v_datetime_string := v_datetime_string || '_DD';
+
+    ELSE
+
+        IF v_time_interval >= '1 year' THEN
+            v_base_timestamp := date_trunc('year', v_start_time);
+            IF v_time_interval >= '10 years' THEN
+                v_base_timestamp := date_trunc('decade', v_start_time);
+                IF v_time_interval >= '100 years' THEN
+                    v_base_timestamp := date_trunc('century', v_start_time);
+                    IF v_time_interval >= '1000 years' THEN
+                        v_base_timestamp := date_trunc('millennium', v_start_time);
+                    END IF; -- 1000
+                END IF; -- 100
+            END IF; -- 10
+        END IF; -- 1
+
+        IF v_time_interval < '1 year' THEN
+            IF p_interval = 'quarterly' THEN
+                v_base_timestamp := date_trunc('quarter', v_start_time);
+                v_datetime_string = 'YYYY"q"Q';
+            ELSE
+                v_base_timestamp := date_trunc('month', v_start_time); 
+                v_datetime_string := v_datetime_string || '_MM';
             END IF;
-            IF v_time_interval < '1 day' THEN
-                v_base_timestamp := date_trunc('hour', v_start_time);
-                v_datetime_string := v_datetime_string || '_HH24MI';
-                IF v_time_interval < '1 minute' THEN
-                    v_base_timestamp := date_trunc('minute', v_start_time);
-                    v_datetime_string := v_datetime_string || 'SS';
-                END IF; -- minute
-            END IF; -- day
-        END IF; -- month
-    END IF; -- year
+            IF v_time_interval < '1 month' THEN
+                IF p_interval = 'weekly' THEN
+                    v_base_timestamp := date_trunc('week', v_start_time);
+                    v_datetime_string := 'IYYY"w"IW';
+                ELSE 
+                    v_base_timestamp := date_trunc('day', v_start_time);
+                    v_datetime_string := v_datetime_string || '_DD';
+                END IF;
+                IF v_time_interval < '1 day' THEN
+                    v_base_timestamp := date_trunc('hour', v_start_time);
+                    v_datetime_string := v_datetime_string || '_HH24MI';
+                    IF v_time_interval < '1 minute' THEN
+                        v_base_timestamp := date_trunc('minute', v_start_time);
+                        v_datetime_string := v_datetime_string || 'SS';
+                    END IF; -- minute
+                END IF; -- day
+            END IF; -- month
+        END IF; -- year
+
+    END IF; -- end p_date_trunc_interval IF
+
+    RAISE DEBUG 'create_parent(): parent_table: %, v_base_timestamp: %', p_parent_table, v_base_timestamp;
 
     v_partition_time_array := array_append(v_partition_time_array, v_base_timestamp);
     LOOP
@@ -484,7 +502,7 @@ IF v_control_type = 'time' OR (v_control_type = 'id' AND p_epoch <> 'none') THEN
         , p_trigger_return_null
         , v_template_schema||'.'||v_template_tablename
         , p_publications
-        , v_inherit_privileges); 
+        , v_inherit_privileges);
 
     RAISE DEBUG 'create_parent: v_partition_time_array: %', v_partition_time_array;
 

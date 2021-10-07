@@ -42,7 +42,8 @@ SELECT bag_eq(
     'publications',
     'inherit_privileges',
     'constraint_valid',
-    'subscription_refresh'
+    'subscription_refresh',
+    'drop_cascade_fk'
   ]::TEXT[],
   'When adding a new column to part_config please ensure it is also added to the dump_partitioned_table_definition function'
 );

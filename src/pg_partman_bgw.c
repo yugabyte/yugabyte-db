@@ -27,6 +27,7 @@
 #include "utils/builtins.h"
 #include "utils/snapmgr.h"
 #include "tcop/utility.h"
+#include "commands/async.h"
 
 #if (PG_VERSION_NUM >= 100000)
 #include "utils/varlena.h"
@@ -519,6 +520,7 @@ void pg_partman_bgw_run_maint(Datum arg) {
     SPI_finish();
     PopActiveSnapshot();
     CommitTransactionCommand();
+    ProcessCompletedNotifies();
     pgstat_report_activity(STATE_IDLE, NULL);
     elog(DEBUG1, "pg_partman dynamic BGW shutting down gracefully for database %s.", dbname);
 

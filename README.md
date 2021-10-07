@@ -11,7 +11,9 @@ Optional retention policy can automatically drop partitions no longer needed for
 
 A background worker (BGW) process is included to automatically run partition maintenance without the need of an external scheduler (cron, etc) in most cases.
 
-All bug reports, feature requests and general questions can be directed to the Issues section on Github. Please feel free to post here no matter how minor you may feel your issue or question may be. - https://github.com/pgpartman/pg_partman/issues
+Bug reports & feature requests can be directed to the Issues section on Github - https://github.com/pgpartman/pg_partman/issues
+
+For questions, comments, or if you're just not sure where to post, please use the Discussions section on Github. Feel free to post here no matter how minor you may feel your issue or question may be - https://github.com/pgpartman/pg_partman/discussions
 
 If you're looking for a partitioning system that handles any range type beyond just time & serial, the new native partitioning features in PostgreSQL 10+ are likely the best method for the foreseeable future. If this is something critical to your environment, start planning your upgrades now!
 
@@ -60,6 +62,7 @@ As of version 4.1.0, pg_partman no longer requires a superuser to run for native
     GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA partman TO partman;
     GRANT EXECUTE ON ALL PROCEDURES IN SCHEMA partman TO partman;  -- PG11+ only
     GRANT ALL ON SCHEMA my_partition_schema TO partman;
+    GRANT TEMPORARY ON DATABASE mydb to partman; -- allow creation of temp tables to move data out of default 
 
 If you need the role to also be able to create schemas, you will need to grant create on the database as well. In general this shouldn't be required as long as you give the above role CREATE privileges on any pre-existing schemas that will contain partition sets.
 

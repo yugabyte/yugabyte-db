@@ -1,4 +1,4 @@
-CREATE FUNCTION @extschema@.drop_partition_time(p_parent_table text, p_retention interval DEFAULT NULL, p_keep_table boolean DEFAULT NULL, p_keep_index boolean DEFAULT NULL, p_retention_schema text DEFAULT NULL) RETURNS int
+CREATE FUNCTION @extschema@.drop_partition_time(p_parent_table text, p_retention interval DEFAULT NULL, p_keep_table boolean DEFAULT NULL, p_keep_index boolean DEFAULT NULL, p_retention_schema text DEFAULT NULL, p_reference_timestamp timestamptz DEFAULT CURRENT_TIMESTAMP) RETURNS int
     LANGUAGE plpgsql
     AS $$
 DECLARE
@@ -12,6 +12,7 @@ v_control                   text;
 v_control_type              text;
 v_count                     int;
 v_datetime_string           text;
+v_drop_cascade_fk           boolean;
 v_drop_count                int := 0;
 v_epoch                     text;
 v_index                     record;
@@ -30,7 +31,9 @@ v_retention_keep_index      boolean;
 v_retention_keep_table      boolean;
 v_retention_schema          text;
 v_row                       record;
+v_sql                       text;
 v_step_id                   bigint;
+v_sub_parent                text;
 
 BEGIN
 /*
@@ -134,6 +137,8 @@ FROM pg_catalog.pg_tables
 WHERE schemaname = split_part(p_parent_table, '.', 1)::name
 AND tablename = split_part(p_parent_table, '.', 2)::name;
 
+SELECT sub_parent INTO v_sub_parent FROM @extschema@.part_config_sub WHERE sub_parent = p_parent_table;
+
 -- Loop through child tables of the given parent
 -- Must go in ascending order to avoid dropping what may be the "last" partition in the set after dropping tables that match retention period
 FOR v_row IN 
@@ -144,11 +149,11 @@ LOOP
         , v_partition_interval::text
         , p_parent_table);
     -- Add one interval since partition names contain the start of the constraint period
-    IF v_retention < (CURRENT_TIMESTAMP - (v_partition_timestamp + v_partition_interval)) THEN
+    IF v_retention < (p_reference_timestamp - (v_partition_timestamp + v_partition_interval)) THEN
 
-        -- Do not allow final partition to be dropped
+        -- Do not allow final partition to be dropped if it is not a sub-partition parent
         SELECT count(*) INTO v_count FROM @extschema@.show_partitions(p_parent_table);
-        IF v_count = 1 THEN
+        IF v_count = 1 AND v_sub_parent IS NULL THEN
             RAISE WARNING 'Attempt to drop final partition in partition set % as part of retention policy. If you see this message multiple times for the same table, advise reviewing retention policy and/or data entry into the partition set. Also consider setting "infinite_time_partitions = true" if there are large gaps in data insertion.).', p_parent_table;
             CONTINUE;
         END IF;
@@ -193,7 +198,11 @@ LOOP
                 IF v_jobmon_schema IS NOT NULL THEN
                     v_step_id := add_step(v_job_id, format('Drop table %s.%s', v_row.partition_schemaname, v_row.partition_tablename));
                 END IF;
-                EXECUTE format('DROP TABLE %I.%I CASCADE', v_row.partition_schemaname, v_row.partition_tablename);
+                v_sql := 'DROP TABLE %I.%I';
+                IF v_drop_cascade_fk OR v_sub_parent IS NOT NULL THEN
+                    v_sql := v_sql || ' CASCADE';
+                END IF;
+                EXECUTE format(v_sql, v_row.partition_schemaname, v_row.partition_tablename);
                 IF v_jobmon_schema IS NOT NULL THEN
                     PERFORM update_step(v_step_id, 'OK', 'Done');
                 END IF;
@@ -294,5 +303,3 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
-
-

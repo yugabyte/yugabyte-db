@@ -2,6 +2,7 @@
 -- Additional tests: turn off pg_jobmon logging, UNLOGGED, PUBLIC role, start with higher number, inherit FK, inherit privileges
     -- Test using a pre-created template table and passing to create_parent. Should allow indexes to be made for initial children.
     -- Tests that foreign keys and normal indexes for PG10 use the template and for PG11 they use the parent. Also since this is id partitioning, we can use the partition key for primary key, so that should work from parent on PG11 as well.
+    -- TODO Uncomment default child tests when PG10 support is dropped
 
 \set ON_ERROR_ROLLBACK 1
 \set ON_ERROR_STOP true
@@ -61,40 +62,48 @@ SELECT has_table('partman_test', 'id_taptest_table_p3000000010', 'Check id_tapte
 SELECT has_table('partman_test', 'id_taptest_table_p3000000020', 'Check id_taptest_table_p3000000020 exists');
 SELECT has_table('partman_test', 'id_taptest_table_p3000000030', 'Check id_taptest_table_p3000000030 exists');
 SELECT has_table('partman_test', 'id_taptest_table_p3000000040', 'Check id_taptest_table_p3000000040 exists');
+--SELECT has_table('partman_test', 'id_taptest_table_default', 'Check id_taptest_table_default exists');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p3000000050', 'Check id_taptest_table_p3000000050 doesn''t exists yet');
 SELECT col_is_pk('partman_test', 'id_taptest_table_p3000000000', ARRAY['col1'], 'Check for primary key in id_taptest_table_p3000000000');
 SELECT col_is_pk('partman_test', 'id_taptest_table_p3000000010', ARRAY['col1'], 'Check for primary key in id_taptest_table_p3000000010');
 SELECT col_is_pk('partman_test', 'id_taptest_table_p3000000020', ARRAY['col1'], 'Check for primary key in id_taptest_table_p3000000020');
 SELECT col_is_pk('partman_test', 'id_taptest_table_p3000000030', ARRAY['col1'], 'Check for primary key in id_taptest_table_p3000000030');
 SELECT col_is_pk('partman_test', 'id_taptest_table_p3000000040', ARRAY['col1'], 'Check for primary key in id_taptest_table_p3000000040');
+--SELECT col_is_pk('partman_test', 'id_taptest_table_default', ARRAY['col1'], 'Check for primary key in id_taptest_table_default');
 SELECT col_is_fk('partman_test', 'id_taptest_table_p3000000000', 'col2', 'Check that foreign key was inherited to id_taptest_table_p3000000000');
 SELECT col_is_fk('partman_test', 'id_taptest_table_p3000000010', 'col2', 'Check that foreign key was inherited to id_taptest_table_p3000000010');
 SELECT col_is_fk('partman_test', 'id_taptest_table_p3000000020', 'col2', 'Check that foreign key was inherited to id_taptest_table_p3000000020');
 SELECT col_is_fk('partman_test', 'id_taptest_table_p3000000030', 'col2', 'Check that foreign key was inherited to id_taptest_table_p3000000030');
 SELECT col_is_fk('partman_test', 'id_taptest_table_p3000000040', 'col2', 'Check that foreign key was inherited to id_taptest_table_p3000000040');
+--SELECT col_is_fk('partman_test', 'id_taptest_table_default', 'col2', 'Check that foreign key was inherited to id_taptest_table_default');
 SELECT is_indexed('partman_test', 'id_taptest_table_p3000000000', 'col4', 'Check that unique index was inherited to id_taptest_table_p3000000000');
 SELECT is_indexed('partman_test', 'id_taptest_table_p3000000010', 'col4', 'Check that unique index was inherited to id_taptest_table_p3000000010');
 SELECT is_indexed('partman_test', 'id_taptest_table_p3000000020', 'col4', 'Check that unique index was inherited to id_taptest_table_p3000000020');
 SELECT is_indexed('partman_test', 'id_taptest_table_p3000000030', 'col4', 'Check that unique index was inherited to id_taptest_table_p3000000030');
 SELECT is_indexed('partman_test', 'id_taptest_table_p3000000040', 'col4', 'Check that unique index was inherited to id_taptest_table_p3000000040');
+--SELECT is_indexed('partman_test', 'id_taptest_table_default', 'col4', 'Check that unique index was inherited to id_taptest_table_default');
 SELECT table_privs_are('partman_test', 'id_taptest_table_p3000000000', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 'Check partman_basic privileges of id_taptest_table_p3000000000');
 SELECT table_privs_are('partman_test', 'id_taptest_table_p3000000010', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 'Check partman_basic privileges of id_taptest_table_p3000000010');
 SELECT table_privs_are('partman_test', 'id_taptest_table_p3000000020', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 'Check partman_basic privileges of id_taptest_table_p3000000020');
 SELECT table_privs_are('partman_test', 'id_taptest_table_p3000000030', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 'Check partman_basic privileges of id_taptest_table_p3000000030');
 SELECT table_privs_are('partman_test', 'id_taptest_table_p3000000040', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 'Check partman_basic privileges of id_taptest_table_p3000000040');
+--SELECT table_privs_are('partman_test', 'id_taptest_table_default', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 'Check partman_basic privileges of id_taptest_table_default');
 SELECT table_privs_are('partman_test', 'id_taptest_table_p3000000000', 'partman_revoke', ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'], 'Check partman_revoke privileges of id_taptest_table_p3000000000');
 SELECT table_privs_are('partman_test', 'id_taptest_table_p3000000010', 'partman_revoke', ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'], 'Check partman_revoke privileges of id_taptest_table_p3000000010');
 SELECT table_privs_are('partman_test', 'id_taptest_table_p3000000020', 'partman_revoke', ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'], 'Check partman_revoke privileges of id_taptest_table_p3000000020');
 SELECT table_privs_are('partman_test', 'id_taptest_table_p3000000030', 'partman_revoke', ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'], 'Check partman_revoke privileges of id_taptest_table_p3000000030');
 SELECT table_privs_are('partman_test', 'id_taptest_table_p3000000040', 'partman_revoke', ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'], 'Check partman_revoke privileges of id_taptest_table_p3000000040');
+--SELECT table_privs_are('partman_test', 'id_taptest_table_default', 'partman_revoke', ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'], 'Check partman_revoke privileges of id_taptest_table_default');
 SELECT results_eq('SELECT relpersistence::text FROM pg_catalog.pg_class WHERE oid::regclass = ''partman_test.id_taptest_table''::regclass', ARRAY['u'], 'Check that parent table is unlogged');
 SELECT results_eq('SELECT relpersistence::text FROM pg_catalog.pg_class WHERE oid::regclass = ''partman_test.id_taptest_table_p3000000000''::regclass', ARRAY['u'], 'Check that id_taptest_table_p3000000000 is unlogged');
 SELECT results_eq('SELECT relpersistence::text FROM pg_catalog.pg_class WHERE oid::regclass = ''partman_test.id_taptest_table_p3000000010''::regclass', ARRAY['u'], 'Check that id_taptest_table_p3000000010 is unlogged');
 SELECT results_eq('SELECT relpersistence::text FROM pg_catalog.pg_class WHERE oid::regclass = ''partman_test.id_taptest_table_p3000000020''::regclass', ARRAY['u'], 'Check that id_taptest_table_p3000000020 is unlogged');
 SELECT results_eq('SELECT relpersistence::text FROM pg_catalog.pg_class WHERE oid::regclass = ''partman_test.id_taptest_table_p3000000030''::regclass', ARRAY['u'], 'Check that id_taptest_table_p3000000030 is unlogged');
 SELECT results_eq('SELECT relpersistence::text FROM pg_catalog.pg_class WHERE oid::regclass = ''partman_test.id_taptest_table_p3000000040''::regclass', ARRAY['u'], 'Check that id_taptest_table_p3000000040 is unlogged');
+--SELECT results_eq('SELECT relpersistence::text FROM pg_catalog.pg_class WHERE oid::regclass = ''partman_test.id_taptest_table_default''::regclass', ARRAY['u'], 'Check that id_taptest_table_default is unlogged');
 
 SELECT is_empty('SELECT * FROM ONLY partman_test.id_taptest_table', 'Check that parent table has had data moved to partition');
+--SELECT is_empty('SELECT * FROM ONLY partman_test.id_taptest_table_default', 'Check that default table has no data');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table', ARRAY[9], 'Check count from parent table');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p3000000000', ARRAY[9], 'Check count from id_taptest_table_p3000000000');
 
@@ -150,6 +159,7 @@ SELECT table_privs_are('partman_test', 'id_taptest_table_p3000000010', 'partman_
 SELECT table_privs_are('partman_test', 'id_taptest_table_p3000000020', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 'Check partman_basic privileges of id_taptest_table_p3000000020');
 SELECT table_privs_are('partman_test', 'id_taptest_table_p3000000030', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 'Check partman_basic privileges of id_taptest_table_p3000000030');
 SELECT table_privs_are('partman_test', 'id_taptest_table_p3000000040', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 'Check partman_basic privileges of id_taptest_table_p3000000040');
+--SELECT table_privs_are('partman_test', 'id_taptest_table_default', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 'Check partman_basic privileges of id_taptest_table_default');
 SELECT table_privs_are('partman_test', 'id_taptest_table_p3000000050', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 'Check partman_basic privileges of id_taptest_table_p3000000050');
 SELECT table_privs_are('partman_test', 'id_taptest_table_p3000000050', 'partman_revoke', ARRAY['SELECT'], 'Check partman_revoke privileges of id_taptest_table_p3000000050');
 SELECT table_privs_are('partman_test', 'id_taptest_table_p3000000060', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 'Check partman_basic privileges of id_taptest_table_p3000000060');
@@ -172,6 +182,7 @@ SELECT table_privs_are('partman_test', 'id_taptest_table_p3000000040', 'partman_
 SELECT table_privs_are('partman_test', 'id_taptest_table_p3000000050', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE','DELETE'], 'Check partman_basic privileges of id_taptest_table_p3000000050');
 SELECT table_privs_are('partman_test', 'id_taptest_table_p3000000060', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE','DELETE'], 'Check partman_basic privileges of id_taptest_table_p3000000060');
 SELECT table_privs_are('partman_test', 'id_taptest_table_p3000000070', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE','DELETE'], 'Check partman_basic privileges of id_taptest_table_p3000000070');
+--SELECT table_privs_are('partman_test', 'id_taptest_table_default', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE','DELETE'], 'Check partman_basic privileges of id_taptest_table_default');
 SELECT table_privs_are('partman_test', 'id_taptest_table_p3000000000', 'partman_revoke', '{}'::text[], 'Check partman_revoke has no privileges on id_taptest_table_p3000000000');
 SELECT table_privs_are('partman_test', 'id_taptest_table_p3000000010', 'partman_revoke', '{}'::text[], 'Check partman_revoke has no privileges on id_taptest_table_p3000000010');
 SELECT table_privs_are('partman_test', 'id_taptest_table_p3000000020', 'partman_revoke', '{}'::text[], 'Check partman_revoke has no privileges on id_taptest_table_p3000000020');
@@ -180,6 +191,7 @@ SELECT table_privs_are('partman_test', 'id_taptest_table_p3000000040', 'partman_
 SELECT table_privs_are('partman_test', 'id_taptest_table_p3000000050', 'partman_revoke', '{}'::text[], 'Check partman_revoke has no privileges on id_taptest_table_p3000000050');
 SELECT table_privs_are('partman_test', 'id_taptest_table_p3000000060', 'partman_revoke', '{}'::text[], 'Check partman_revoke has no privileges on id_taptest_table_p3000000060');
 SELECT table_privs_are('partman_test', 'id_taptest_table_p3000000070', 'partman_revoke', '{}'::text[], 'Check partman_revoke has no privileges on id_taptest_table_p3000000070');
+--SELECT table_privs_are('partman_test', 'id_taptest_table_default', 'partman_revoke', '{}'::text[], 'Check partman_revoke has no privileges on id_taptest_table_default');
 SELECT table_owner_is ('partman_test', 'id_taptest_table_p3000000000', 'partman_owner', 'Check that ownership change worked for id_taptest_table_p3000000000');
 SELECT table_owner_is ('partman_test', 'id_taptest_table_p3000000010', 'partman_owner', 'Check that ownership change worked for id_taptest_table_p3000000010');
 SELECT table_owner_is ('partman_test', 'id_taptest_table_p3000000020', 'partman_owner', 'Check that ownership change worked for id_taptest_table_p3000000020');
@@ -188,6 +200,7 @@ SELECT table_owner_is ('partman_test', 'id_taptest_table_p3000000040', 'partman_
 SELECT table_owner_is ('partman_test', 'id_taptest_table_p3000000050', 'partman_owner', 'Check that ownership change worked for id_taptest_table_p3000000050');
 SELECT table_owner_is ('partman_test', 'id_taptest_table_p3000000060', 'partman_owner', 'Check that ownership change worked for id_taptest_table_p3000000060');
 SELECT table_owner_is ('partman_test', 'id_taptest_table_p3000000070', 'partman_owner', 'Check that ownership change worked for id_taptest_table_p3000000070');
+--SELECT table_owner_is ('partman_test', 'id_taptest_table_default', 'partman_owner', 'Check that ownership change worked for id_taptest_table_default');
 
 -- Max value is 38 above
 SELECT drop_partition_id('partman_test.id_taptest_table', '20', p_keep_table := false);

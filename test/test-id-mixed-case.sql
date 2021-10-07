@@ -23,6 +23,7 @@ CREATE TABLE "Partman_test"."ID-taptest_Table" (
 INSERT INTO "Partman_test"."ID-taptest_Table" ("COL1") VALUES (generate_series(1,50000));
 
 SELECT create_parent('Partman_test.ID-taptest_Table', 'COL1', 'partman', '10000', p_jobmon := false, p_premake := 2);
+UPDATE part_config SET drop_cascade_fk = TRUE WHERE parent_table = 'Partman_test.ID-taptest_Table';
 
 SELECT results_eq('SELECT partition_data_id(''Partman_test.ID-taptest_Table'', p_batch_count := 20)::int', ARRAY[50000], 'Check that partitioning function returns correct count of rows moved');
 SELECT is_empty('SELECT * FROM ONLY "Partman_test"."ID-taptest_Table"', 'Check that parent table has had data moved to partition');

@@ -1,3 +1,29 @@
+4.6.0
+NEW FEATURES
+============
+-- Support for PostgreSQL 14 added.
+
+-- Added p_drop_cascade option to undo_partition()/undo_partition_proc() to allow undoing sub-partition sets from parent tables higher in the inheritance tree. Only applies when p_keep_tables is set to false. Note this causes all child tables below a sub-partition parent to be dropped when that parent is dropped.
+
+-- Better support NOTIFY commands with the extension's built-in background worker. Thank you to @eisaev on Github for this fix.  (GitHub Issue #384).
+
+-- Deprecate pg_partman's specialized UPSERT support for native partitioning in PG11+. Raise error for users to use built-in INSERT ON CONFLICT feature instead.
+
+-- Added new optional parameter to drop_partition_time() to tell partman to use a different reference timestamp from which to determine which partitions should be affected. Thanks to @wesselvdv on Github for this feature (Github PR#386).
+
+BUG FIXES
+=========
+-- Better handle custom intervals that don't fall on typical datetime boundaries (monthly, daily, etc). Previously if you chose a custom interval that did not initially align on a typical boundary, pg_partman would always try and truncate the initial table's datetime start value to one of those typical boundaries. This could lead to child table constraints that were not expected. A new parameter to create_parent(), 'p_date_trunc_interval' has been added to allow you to tell pg_partman how to truncate the initial datetime value to better meet custom interval needs. This accepts any valid interval value that the built-in 'date_trunc()' function would accept. (Ex: 9 week interval starting on 2021-04-05 would need to be truncated by 'week' vs 'month'. Otherwise pg_partman would truncate by 'month' and the partitions would start on 2021-04-01 and result in unexpected child table boundaries).
+
+-- When dropping tables for retention, DROP...CASCADE is no longer the default. This avoids foreign key references TO the partition set getting dropped if any child table is dropped. Set the option "drop_cascade_fk" in part_config to allow the old behavior if desired. This cascade is only allowed with non-native, trigger-based partitioning and is not supported with sub-partitioning at this time.
+
+-- Fixed show_partition_info() to properly return boundary values no matter what custom interval may be used for the partition set. Update documentation to note that the show_partition_info() boundary results are INCLUSIVE for returned start values and EXCLUSIVE for returned end values.
+
+-- Fixed edge case in sub-partitioning where an additional subpartition child table could be created that is just outside the max boundary limit of its parent table boundaries. 
+
+-- Better handling of large interval values in ID partitioning (bigint). Thanks to @calebj on Github for reporting the issue and providing a fix (Github Issue #388).
+
+
 4.5.1
 NEW FEATURES
 ============

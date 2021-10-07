@@ -11,6 +11,7 @@ v_adv_lock                  boolean;
 v_control                   text;
 v_control_type              text;
 v_count                     int;
+v_drop_cascade_fk           boolean;
 v_drop_count                int := 0;
 v_index                     record;
 v_job_id                    bigint;
@@ -30,7 +31,9 @@ v_retention_keep_table      boolean;
 v_retention_schema          text;
 v_row                       record;
 v_row_max_id                record;
+v_sql                       text;
 v_step_id                   bigint;
+v_sub_parent                text;
 
 BEGIN
 /*
@@ -54,6 +57,7 @@ IF p_retention IS NULL THEN
         , retention_keep_index
         , retention_schema
         , jobmon
+        , drop_cascade_fk
     INTO
         v_partition_interval
         , v_partition_type
@@ -63,6 +67,7 @@ IF p_retention IS NULL THEN
         , v_retention_keep_index
         , v_retention_schema
         , v_jobmon
+        , v_drop_cascade_fk
     FROM @extschema@.part_config 
     WHERE parent_table = p_parent_table 
     AND retention IS NOT NULL;
@@ -79,6 +84,7 @@ ELSE -- Allow override of configuration options
         , retention_keep_index
         , retention_schema
         , jobmon
+        , drop_cascade_fk
     INTO
         v_partition_interval
         , v_partition_type
@@ -87,6 +93,7 @@ ELSE -- Allow override of configuration options
         , v_retention_keep_index
         , v_retention_schema
         , v_jobmon
+        , v_drop_cascade_fk
     FROM @extschema@.part_config 
     WHERE parent_table = p_parent_table;
     v_retention := p_retention;
@@ -136,6 +143,8 @@ LOOP
         END IF;
 END LOOP;
 
+SELECT sub_parent INTO v_sub_parent FROM @extschema@.part_config_sub WHERE sub_parent = p_parent_table;
+
 -- Loop through child tables of the given parent
 -- Must go in ascending order to avoid dropping what may be the "last" partition in the set after dropping tables that match retention period
 FOR v_row IN 
@@ -148,10 +157,10 @@ LOOP
     -- Add one interval since partition names contain the start of the constraint period
     IF v_retention <= (v_max - (v_partition_id + v_partition_interval)) THEN
 
-        -- Do not allow final partition to be dropped
+        -- Do not allow final partition to be dropped if it is not a sub-partition parent
         SELECT count(*) INTO v_count FROM @extschema@.show_partitions(p_parent_table);
-        IF v_count = 1 THEN
-            RAISE WARNING 'Attempt to drop final partition in partition set % as part of retention policy. Advise reviewing retention policy and/or data entry into the partition set.', p_parent_table;
+        IF v_count = 1 AND v_sub_parent IS NULL THEN
+            RAISE WARNING 'Attempt to drop final partition in partition set % as part of retention policy. If you see this message multiple times for the same table, advise reviewing retention policy and/or data entry into the partition set. Also consider setting "infinite_time_partitions = true" if there are large gaps in data insertion.).', p_parent_table;
             CONTINUE;
         END IF;
 
@@ -190,7 +199,11 @@ LOOP
                 IF v_jobmon_schema IS NOT NULL THEN
                     v_step_id := add_step(v_job_id, format('Drop table %s.%s', v_row.partition_schemaname, v_row.partition_tablename));
                 END IF;
-                EXECUTE format('DROP TABLE %I.%I CASCADE', v_row.partition_schemaname, v_row.partition_tablename);
+                v_sql := 'DROP TABLE %I.%I';
+                IF v_drop_cascade_fk OR v_sub_parent IS NOT NULL THEN
+                    v_sql := v_sql || ' CASCADE';
+                END IF;
+                EXECUTE format(v_sql, v_row.partition_schemaname, v_row.partition_tablename);
                 IF v_jobmon_schema IS NOT NULL THEN
                     PERFORM update_step(v_step_id, 'OK', 'Done');
                 END IF;

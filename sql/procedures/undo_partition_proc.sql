@@ -1,4 +1,15 @@
-CREATE PROCEDURE @extschema@.undo_partition_proc(p_parent_table text, p_interval text DEFAULT NULL, p_batch int DEFAULT NULL, p_wait int DEFAULT 1, p_target_table text DEFAULT NULL, p_keep_table boolean DEFAULT true, p_lock_wait int DEFAULT 0, p_lock_wait_tries int DEFAULT 10, p_quiet boolean DEFAULT false, p_ignored_columns text[] DEFAULT NULL) 
+CREATE PROCEDURE @extschema@.undo_partition_proc(
+    p_parent_table text
+    , p_interval text DEFAULT NULL
+    , p_batch int DEFAULT NULL
+    , p_wait int DEFAULT 1
+    , p_target_table text DEFAULT NULL
+    , p_keep_table boolean DEFAULT true
+    , p_lock_wait int DEFAULT 0
+    , p_lock_wait_tries int DEFAULT 10
+    , p_quiet boolean DEFAULT false
+    , p_ignored_columns text[] DEFAULT NULL
+    , p_drop_cascade boolean DEFAULT false)
     LANGUAGE plpgsql
     AS $$
 DECLARE
@@ -23,7 +34,7 @@ BEGIN
 
 v_adv_lock := pg_try_advisory_xact_lock(hashtext('pg_partman undo_partition_proc'), hashtext(p_parent_table));
 IF v_adv_lock = 'false' THEN
-    RAISE NOTICE 'Partman partition_data_proc already running for given parent table: %.', p_parent_table;
+    RAISE NOTICE 'Partman undo_partition_proc already running for given parent table: %.', p_parent_table;
     RETURN;
 END IF;
 
@@ -70,7 +81,10 @@ END IF;
 */
 
 v_sql := format('SELECT partitions_undone, rows_undone FROM %I.undo_partition (%L, p_keep_table := %L, p_lock_wait := %L'
-        , '@extschema@', p_parent_table, p_keep_table, p_lock_wait);
+        , '@extschema@'
+        , p_parent_table
+        , p_keep_table
+        , p_lock_wait);
 IF p_interval IS NOT NULL THEN
     v_sql := v_sql || format(', p_batch_interval := %L', p_interval);
 END IF;
@@ -79,6 +93,9 @@ IF p_target_table IS NOT NULL THEN
 END IF;
 IF p_ignored_columns IS NOT NULL THEN
     v_sql := v_sql || format(', p_ignored_columns := %L', p_ignored_columns);
+END IF;
+IF p_drop_cascade IS NOT NULL THEN
+    v_sql := v_sql || format(', p_drop_cascade := %L', p_drop_cascade);
 END IF;
 v_sql := v_sql || ')';
 RAISE DEBUG 'partition_data sql: %', v_sql;

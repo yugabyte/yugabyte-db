@@ -34,7 +34,8 @@ DECLARE
   v_publications TEXT[];
   v_inherit_privileges BOOLEAN; -- DEFAULT false
   v_constraint_valid BOOLEAN; -- DEFAULT true NOT NULL
-  v_subscription_refresh text;
+  v_subscription_refresh text; 
+  v_drop_cascade_fk boolean; -- DEFAULT false NOT NULL
 BEGIN
   SELECT
     pc.parent_table,
@@ -63,7 +64,8 @@ BEGIN
     pc.publications,
     pc.inherit_privileges,
     pc.constraint_valid, 
-    pc.subscription_refresh
+    pc.subscription_refresh,
+    pc.drop_cascade_fk
   INTO
     v_parent_table,
     v_control,
@@ -91,7 +93,8 @@ BEGIN
     v_publications,
     v_inherit_privileges,
     v_constraint_valid,
-    v_subscription_refresh
+    v_subscription_refresh,
+    v_drop_cascade_fk
   FROM @extschema@.part_config pc
   WHERE pc.parent_table = p_parent_table;
 
@@ -195,5 +198,4 @@ WHERE parent_table = %L;',
   );
 END
 $$;
-
 

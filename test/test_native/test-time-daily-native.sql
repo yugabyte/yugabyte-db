@@ -657,6 +657,7 @@ SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMES
 
 SELECT hasnt_table('partman', 'template_partman_test_time_taptest_table', 'Check that template table was dropped');
 
+DROP PUBLICATION partman_test_publication;
 
 SELECT * FROM finish();
 ROLLBACK;

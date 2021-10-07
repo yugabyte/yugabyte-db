@@ -52,7 +52,7 @@ IF v_jobmon_schema IS NOT NULL THEN
 END IF;
 
 FOR v_row IN 
-    SELECT partition_schemaname, partition_tablename FROM @extschema@.show_partitions(p_parent_table, 'ASC')
+    SELECT partition_schemaname, partition_tablename FROM @extschema@.show_partitions(p_parent_table, 'ASC', p_include_default := true)
 LOOP
     PERFORM @extschema@.apply_privileges(v_parent_schema, v_parent_tablename, v_row.partition_schemaname, v_row.partition_tablename, v_job_id);
 END LOOP;

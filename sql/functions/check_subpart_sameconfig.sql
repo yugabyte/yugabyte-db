@@ -21,7 +21,8 @@ CREATE FUNCTION @extschema@.check_subpart_sameconfig(p_parent_table text)
         , sub_template_table text
         , sub_inherit_privileges boolean
         , sub_constraint_valid boolean
-        , sub_subscription_refresh text)
+        , sub_subscription_refresh text
+        , sub_date_trunc_interval text)
     LANGUAGE sql STABLE
     SET search_path = @extschema@,pg_temp
 AS $$
@@ -72,6 +73,7 @@ AS $$
         , a.sub_inherit_privileges
         , a.sub_constraint_valid
         , a.sub_subscription_refresh
+        , a.sub_date_trunc_interval
     FROM @extschema@.part_config_sub a
     JOIN child_tables b on a.sub_parent = b.tablename;
 $$;

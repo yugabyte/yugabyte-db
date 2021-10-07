@@ -1,4 +1,15 @@
-CREATE FUNCTION @extschema@.undo_partition(p_parent_table text, p_batch_count int DEFAULT 1, p_batch_interval text DEFAULT NULL, p_keep_table boolean DEFAULT true, p_lock_wait numeric DEFAULT 0, p_target_table text DEFAULT NULL, p_ignored_columns text[] DEFAULT NULL, OUT partitions_undone int, OUT rows_undone bigint) RETURNS record
+CREATE FUNCTION @extschema@.undo_partition(
+    p_parent_table text
+    , p_batch_count int DEFAULT 1
+    , p_batch_interval text DEFAULT NULL
+    , p_keep_table boolean DEFAULT true
+    , p_lock_wait numeric DEFAULT 0
+    , p_target_table text DEFAULT NULL
+    , p_ignored_columns text[] DEFAULT NULL
+    , p_drop_cascade boolean DEFAULT false
+    , OUT partitions_undone int
+    , OUT rows_undone bigint) 
+    RETURNS record
     LANGUAGE plpgsql 
     AS $$
 DECLARE
@@ -308,7 +319,11 @@ LOOP
         END IF;
 
         IF p_keep_table = false THEN
-            EXECUTE format('DROP TABLE %I.%I', v_parent_schema, v_child_table);
+            v_sql := 'DROP TABLE %I.%I';
+            IF p_drop_cascade THEN
+                v_sql := v_sql || ' CASCADE';
+            END IF;
+            EXECUTE format(v_sql, v_parent_schema, v_child_table);
             IF v_jobmon_schema IS NOT NULL THEN
                 PERFORM update_step(v_step_id, 'OK', format('Child table DROPPED. Moved %s rows to target table', v_child_loop_total));
             END IF;
@@ -504,4 +519,5 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
+
 
