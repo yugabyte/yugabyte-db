@@ -54,7 +54,7 @@ DEFINE_string(key_file_pattern, "node.$0.key", "Pattern used for key file");
 
 DEFINE_string(cert_file_pattern, "node.$0.crt", "Pattern used for certificate file");
 
-DEFINE_bool(enable_stream_compression, false, "Whether it is allowed to use stream compression.");
+DEFINE_bool(enable_stream_compression, true, "Whether it is allowed to use stream compression.");
 
 namespace yb {
 namespace server {

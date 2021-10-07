@@ -123,6 +123,10 @@ std::string RefinedStream::ToString() const {
 }
 
 void RefinedStream::Cancelled(size_t handle) {
+  if (state_ == RefinedStreamState::kDisabled) {
+    lower_stream_->Cancelled(handle);
+    return;
+  }
   LOG_WITH_PREFIX(DFATAL) << "Cancel is not supported for proxy stream: " << handle;
 }
 
@@ -294,8 +298,8 @@ class SkipStreamReadBuffer : public StreamReadBuffer {
 };
 
 Result<size_t> RefinedStream::Read() {
-  auto& out_buffer = context_->ReadBuffer();
   for (;;) {
+    auto& out_buffer = context_->ReadBuffer();
     auto data_available_before_reading = read_buffer_.DataAvailable();
 
     if (upper_stream_bytes_to_skip_ > 0) {
