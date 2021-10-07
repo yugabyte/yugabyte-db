@@ -140,6 +140,7 @@ Result<rocksdb::CompressionType> GetConfiguredCompressionType(const std::string&
   const std::vector<rocksdb::CompressionType> kValidRocksDBCompressionTypes = {
     rocksdb::kNoCompression,
     rocksdb::kSnappyCompression,
+    rocksdb::kZlibCompression,
     rocksdb::kLZ4Compression
   };
   for (const auto& compression_type : kValidRocksDBCompressionTypes) {
