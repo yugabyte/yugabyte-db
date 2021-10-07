@@ -26,6 +26,17 @@
         (sudo apt -qqy update && sudo apt install -qqy python-minimal)"
       when: ansible_distribution == "Ubuntu"
 
+# This is required to set locale to avoid bash warning message on GCP Ubuntu
+- name: Install Locale on GCP Ubuntu
+  hosts: "{{ instance_search_pattern }}"
+  gather_facts: yes
+  pre_tasks:
+    - name: Install Locale and generate en_US.UTF-8
+      raw: 'sudo apt-get update &&
+            sudo apt-get install -y locales &&
+            sudo locale-gen "en_US.UTF-8"'
+      when: ansible_distribution == "Ubuntu" and cloud_type == "gcp"
+
 - name: Provision server
   become: yes
   become_method: sudo
