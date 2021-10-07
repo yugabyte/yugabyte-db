@@ -51,19 +51,7 @@ To connect to a cluster via Cloud Shell:
 
 1. Select the API to use (YSQL or YCQL) and click **Confirm**.
 
-    The shell is displayed in a separate browser page (`ysqlsh` output, followed by `ycqlsh`).
-
-    ```output
-    Password for user admin: 
-    ```
-
-    ```output
-    Warning: Cannot create directory at `/home/shell/.cassandra`. Command history will not be saved.
-
-    Password: 
-    ```
-
-    Cloud shell can take up to 30 seconds to be ready.
+    The shell is displayed in a separate browser page. Cloud shell can take up to 30 seconds to be ready.
 
 1. Enter the password for the user you specified.
 
@@ -130,7 +118,7 @@ You are now ready to [Create and explore a database](../create-databases/).
 
 ## Connect an application
 
-Applications connect to and interact with YugabyteDB using API client libraries, also known as client drivers. Before you can connect an application, you need to install the correct driver. For information on available drivers, refer to [Build an application](../../../quick-start/build-apps).
+Applications connect to and interact with YugabyteDB using API client libraries, also called client drivers. Before you can connect an application, you need to install the correct driver. For information on available drivers, refer to [Build an application](../../../quick-start/build-apps).
 
 For examples of connecting applications to Yugabyte Cloud, refer to [Tutorials and examples](../../cloud-develop/).
 
