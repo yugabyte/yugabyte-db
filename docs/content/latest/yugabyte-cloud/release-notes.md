@@ -15,12 +15,19 @@ showAsideToc: true
 
 ## Releases
 
+### October 5, 2021
+
+#### New features
+
+- The [Yugabyte Cloud Status](https://status.yugabyte.cloud/) page shows the current uptime status of Yugabyte Cloud and the [Yugabyte Support Portal](https://support.yugabyte.com/), along with maintenance notices and incident reports.
+- Review cluster activity on the [Activity](../cloud-clusters/monitor-activity) tab.
+
 ### September 15, 2021
 
 #### New features
 
-- Paid clusters (unlimited)
-- Invoicing
+- You can now [create Paid clusters](../cloud-basics/create-clusters). Paid clusters are suitable for production workloads, and support horizontal and vertical scaling, VPC peering, and scheduled and manual backups.
+- Set up a billing profile and payment methods and review invoices on the [Billing](../cloud-admin/cloud-billing-profile) tab.
 
 ### September 8, 2021
 
