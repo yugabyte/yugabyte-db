@@ -2446,11 +2446,25 @@ bool YBClient::Data::IsMultiMaster() {
   if (full_master_server_addrs_.size() > 1) {
     return true;
   }
-  // For single entry case, check if it is a list of host/ports.
-  std::vector<Endpoint> addrs;
-  const auto status = ParseAddressList(full_master_server_addrs_[0],
+
+  // For single entry case, first check if it is a list of hosts/ports.
+  std::vector<HostPort> host_ports;
+  auto status = HostPort::ParseStrings(full_master_server_addrs_[0],
                                        yb::master::kMasterDefaultPort,
-                                       &addrs);
+                                       &host_ports);
+  if (!status.ok()) {
+    // Will fail ResolveAddresses as well, so log error and return false early.
+    LOG(WARNING) << "Failure parsing address list: " << full_master_server_addrs_[0]
+                 << ": " << status;
+    return false;
+  }
+  if (host_ports.size() > 1) {
+    return true;
+  }
+
+  // If we only have one HostPort, check if it resolves to multiple endpoints.
+  std::vector<Endpoint> addrs;
+  status = host_ports[0].ResolveAddresses(&addrs);
   return status.ok() && (addrs.size() > 1);
 }
 
