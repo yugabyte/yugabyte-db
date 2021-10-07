@@ -334,13 +334,13 @@ NOTICE:  ELabel "r" has been created
 (1 row)
 
 -- check if labels have been created or not
-SELECT * FROM ag_label;
-       name       | graph | id | kind |      relation      
-------------------+-------+----+------+--------------------
- _ag_label_vertex | 17629 |  1 | v    | g._ag_label_vertex
- _ag_label_edge   | 17629 |  2 | e    | g._ag_label_edge
- n                | 17629 |  3 | v    | g.n
- r                | 17629 |  4 | e    | g.r
+SELECT name, id, kind, relation FROM ag_label;
+       name       | id | kind |      relation      
+------------------+----+------+--------------------
+ _ag_label_vertex |  1 | v    | g._ag_label_vertex
+ _ag_label_edge   |  2 | e    | g._ag_label_edge
+ n                |  3 | v    | g.n
+ r                |  4 | e    | g.r
 (4 rows)
 
 -- try to create duplicate labels
@@ -364,11 +364,11 @@ NOTICE:  label "g"."r" has been dropped
 (1 row)
 
 -- check if labels have been deleted or not
-SELECT * FROM ag_label;
-       name       | graph | id | kind |      relation      
-------------------+-------+----+------+--------------------
- _ag_label_vertex | 17629 |  1 | v    | g._ag_label_vertex
- _ag_label_edge   | 17629 |  2 | e    | g._ag_label_edge
+SELECT name, id, kind, relation FROM ag_label;
+       name       | id | kind |      relation      
+------------------+----+------+--------------------
+ _ag_label_vertex |  1 | v    | g._ag_label_vertex
+ _ag_label_edge   |  2 | e    | g._ag_label_edge
 (2 rows)
 
 -- try to remove labels that is not there

@@ -3748,6 +3748,14 @@ STRICT
 AS 'MODULE_PATHNAME';
 
 -- list functions
+CREATE FUNCTION ag_catalog.age_labels(agtype)
+RETURNS agtype
+LANGUAGE c
+STABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
 CREATE FUNCTION ag_catalog.age_relationships(agtype)
 RETURNS agtype
 LANGUAGE c

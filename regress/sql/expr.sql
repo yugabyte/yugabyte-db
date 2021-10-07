@@ -2266,7 +2266,16 @@ SELECT * from cypher('list', $$RETURN range(-10, 10, -1)$$) as (range agtype);
 SELECT * from cypher('list', $$RETURN range(null, -10, -3)$$) as (range agtype);
 SELECT * from cypher('list', $$RETURN range(0, null, -3)$$) as (range agtype);
 SELECT * from cypher('list', $$RETURN range(0, -10.0, -3.0)$$) as (range agtype);
-
+-- labels()
+SELECT * from cypher('list', $$CREATE (u:People {name: "John"}) RETURN u$$) as (Vertices agtype);
+SELECT * from cypher('list', $$CREATE (u:People {name: "Larry"}) RETURN u$$) as (Vertices agtype);
+SELECT * from cypher('list', $$CREATE (u:Cars {name: "G35"}) RETURN u$$) as (Vertices agtype);
+SELECT * from cypher('list', $$CREATE (u:Cars {name: "MR2"}) RETURN u$$) as (Vertices agtype);
+SELECT * from cypher('list', $$MATCH (u) RETURN labels(u), u$$) as (Labels agtype, Vertices agtype);
+-- should return SQL NULL
+SELECT * from cypher('list', $$RETURN labels(NULL)$$) as (Labels agtype);
+-- should return an error
+SELECT * from cypher('list', $$RETURN labels("string")$$) as (Labels agtype);
 --
 -- Cleanup
 --

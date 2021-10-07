@@ -5587,6 +5587,55 @@ SELECT * from cypher('list', $$RETURN range(0, null, -3)$$) as (range agtype);
 ERROR:  range(): neither start or end can be NULL
 SELECT * from cypher('list', $$RETURN range(0, -10.0, -3.0)$$) as (range agtype);
 ERROR:  range() unsupported argument type
+-- labels()
+SELECT * from cypher('list', $$CREATE (u:People {name: "John"}) RETURN u$$) as (Vertices agtype);
+                                      vertices                                       
+-------------------------------------------------------------------------------------
+ {"id": 1125899906842625, "label": "People", "properties": {"name": "John"}}::vertex
+(1 row)
+
+SELECT * from cypher('list', $$CREATE (u:People {name: "Larry"}) RETURN u$$) as (Vertices agtype);
+                                       vertices                                       
+--------------------------------------------------------------------------------------
+ {"id": 1125899906842626, "label": "People", "properties": {"name": "Larry"}}::vertex
+(1 row)
+
+SELECT * from cypher('list', $$CREATE (u:Cars {name: "G35"}) RETURN u$$) as (Vertices agtype);
+                                     vertices                                     
+----------------------------------------------------------------------------------
+ {"id": 1407374883553281, "label": "Cars", "properties": {"name": "G35"}}::vertex
+(1 row)
+
+SELECT * from cypher('list', $$CREATE (u:Cars {name: "MR2"}) RETURN u$$) as (Vertices agtype);
+                                     vertices                                     
+----------------------------------------------------------------------------------
+ {"id": 1407374883553282, "label": "Cars", "properties": {"name": "MR2"}}::vertex
+(1 row)
+
+SELECT * from cypher('list', $$MATCH (u) RETURN labels(u), u$$) as (Labels agtype, Vertices agtype);
+   labels   |                                       vertices                                       
+------------+--------------------------------------------------------------------------------------
+ [""]       | {"id": 281474976710657, "label": "", "properties": {}}::vertex
+ [""]       | {"id": 281474976710658, "label": "", "properties": {}}::vertex
+ [""]       | {"id": 281474976710659, "label": "", "properties": {}}::vertex
+ [""]       | {"id": 281474976710660, "label": "", "properties": {}}::vertex
+ [""]       | {"id": 281474976710661, "label": "", "properties": {}}::vertex
+ ["People"] | {"id": 1125899906842625, "label": "People", "properties": {"name": "John"}}::vertex
+ ["People"] | {"id": 1125899906842626, "label": "People", "properties": {"name": "Larry"}}::vertex
+ ["Cars"]   | {"id": 1407374883553281, "label": "Cars", "properties": {"name": "G35"}}::vertex
+ ["Cars"]   | {"id": 1407374883553282, "label": "Cars", "properties": {"name": "MR2"}}::vertex
+(9 rows)
+
+-- should return SQL NULL
+SELECT * from cypher('list', $$RETURN labels(NULL)$$) as (Labels agtype);
+ labels 
+--------
+ 
+(1 row)
+
+-- should return an error
+SELECT * from cypher('list', $$RETURN labels("string")$$) as (Labels agtype);
+ERROR:  labels() argument must be a vertex
 --
 -- Cleanup
 --
@@ -5703,10 +5752,12 @@ NOTICE:  graph "keys" has been dropped
 (1 row)
 
 SELECT * FROM drop_graph('list', true);
-NOTICE:  drop cascades to 3 other objects
+NOTICE:  drop cascades to 5 other objects
 DETAIL:  drop cascades to table list._ag_label_vertex
 drop cascades to table list._ag_label_edge
 drop cascades to table list.knows
+drop cascades to table list."People"
+drop cascades to table list."Cars"
 NOTICE:  graph "list" has been dropped
  drop_graph 
 ------------

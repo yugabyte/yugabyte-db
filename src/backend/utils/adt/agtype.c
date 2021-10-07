@@ -8288,9 +8288,10 @@ Datum age_eq_tilde(PG_FUNCTION_ARGS)
                     errmsg("agtype string values expected")));
 }
 
-/* helper function to step through and retrieve keys from an object.
+/*
+ * Helper function to step through and retrieve keys from an object.
  * borrowed and modified from get_next_object_pair() in agtype_vle.c
-*/
+ */
 static agtype_iterator *get_next_object_key(agtype_iterator *it,
                                              agtype_container *agtc,
                                              agtype_value *key)
@@ -8418,7 +8419,75 @@ Datum age_keys(PG_FUNCTION_ARGS)
     Assert(agtv_result->type = AGTV_ARRAY);
 
     PG_RETURN_POINTER(agtype_value_to_agtype(agtv_result));
+}
 
+PG_FUNCTION_INFO_V1(age_labels);
+/*
+ * Execution function to implement openCypher labels() function
+ *
+ * NOTE:
+ *
+ * This function is defined to return NULL on NULL input. So, no need to check
+ * for SQL NULL input.
+ */
+Datum age_labels(PG_FUNCTION_ARGS)
+{
+    agtype *agt_arg = NULL;
+    agtype_value *agtv_temp = NULL;
+    agtype_value *agtv_label = NULL;
+    agtype_in_state agis_result;
+
+    /* get the vertex argument */
+    agt_arg = AG_GET_ARG_AGTYPE_P(0);
+
+    /* verify it is a scalar */
+    if (!AGT_ROOT_IS_SCALAR(agt_arg))
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("labels() argument must resolve to a scalar value")));
+    }
+
+    /* is it an agtype null? */
+    if (AGTYPE_CONTAINER_IS_SCALAR(&agt_arg->root) &&
+        AGTE_IS_NULL((&agt_arg->root)->children[0]))
+    {
+        PG_RETURN_NULL();
+    }
+
+    /* get the potential vertex */
+    agtv_temp = get_ith_agtype_value_from_container(&agt_arg->root, 0);
+
+    /* verify that it is an agtype vertex */
+    if (agtv_temp->type != AGTV_VERTEX)
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("labels() argument must be a vertex")));
+    }
+
+    /* get the label from the vertex */
+    agtv_label = get_agtype_value_object_value(agtv_temp, "label");
+    /* it cannot be NULL */
+    Assert(agtv_label != NULL);
+
+    /* clear the result structure */
+    MemSet(&agis_result, 0, sizeof(agtype_in_state));
+
+    /* push the beginning of the array */
+    agis_result.res = push_agtype_value(&agis_result.parse_state,
+                                        WAGT_BEGIN_ARRAY, NULL);
+
+    /* push in the label */
+    agis_result.res = push_agtype_value(&agis_result.parse_state, WAGT_ELEM,
+                                        agtv_label);
+
+    /* push the end of the array */
+    agis_result.res = push_agtype_value(&agis_result.parse_state,
+                                        WAGT_END_ARRAY, NULL);
+
+    /* convert the agtype_value to a datum to return to the caller */
+    PG_RETURN_POINTER(agtype_value_to_agtype(agis_result.res));
 }
 
 PG_FUNCTION_INFO_V1(age_relationships);
@@ -8442,8 +8511,9 @@ Datum age_relationships(PG_FUNCTION_ARGS)
     /* check for a scalar object */
     if (!AGT_ROOT_IS_SCALAR(agt_arg))
     {
-        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                        errmsg("relationships() argument must resolve to a scalar value")));
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("relationships() argument must resolve to a scalar value")));
     }
 
     /* get the potential path out of the array */

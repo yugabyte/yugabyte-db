@@ -137,7 +137,7 @@ SELECT create_vlabel('g', 'n');
 SELECT create_elabel('g', 'r');
 
 -- check if labels have been created or not
-SELECT * FROM ag_label;
+SELECT name, id, kind, relation FROM ag_label;
 
 -- try to create duplicate labels
 SELECT create_vlabel('g', 'n');
@@ -148,7 +148,7 @@ SELECT drop_label('g', 'n', false);
 SELECT drop_label('g', 'r', false);
 
 -- check if labels have been deleted or not
-SELECT * FROM ag_label;
+SELECT name, id, kind, relation FROM ag_label;
 
 -- try to remove labels that is not there
 SELECT drop_label('g', 'n');
