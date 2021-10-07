@@ -15,6 +15,7 @@ import AlertDestinationConfiguration from './AlertDestinationConfiguration';
 import { AlertsList } from './AlertsList';
 import CreateAlert from './CreateAlert';
 import { getPromiseState } from '../../../utils/PromiseUtils';
+import { AlertDestinationChannels } from './AlertDestinationChannels';
 
 export const AlertConfiguration = (props) => {
   const [listView, setListView] = useState(false);
@@ -114,7 +115,17 @@ export const AlertConfiguration = (props) => {
             <AlertDestinations onAddAlertDestination={setAlertDestinationListView} {...props} />
           )}
         </Tab>
-
+        <Tab
+          eventKey="notificationChannels"
+          title={
+            <span>
+              <i className="fa fa-exchange tab-logo" aria-hidden="true"></i> Notification Channels
+            </span>
+          }
+          unmountOnExit
+        >
+          <AlertDestinationChannels {...props} />
+        </Tab>
         {/* Helath Check Tab */}
         <Tab
           eventKey="health-alerting"

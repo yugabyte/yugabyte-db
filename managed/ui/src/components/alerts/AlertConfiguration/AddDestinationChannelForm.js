@@ -2,16 +2,24 @@ import { Field } from 'formik';
 import React, { useState } from 'react';
 import { Col, Row } from 'react-bootstrap';
 import { YBModalForm } from '../../common/forms';
-import { YBFormInput, YBSelectWithLabel, YBToggle } from '../../common/forms/fields';
+import {
+  YBControlledSelectWithLabel,
+  YBFormInput,
+  YBToggle
+} from '../../common/forms/fields';
 import * as Yup from 'yup';
+
+import './AddDestinationChannelForm.scss';
 
 export const AddDestinationChannelForm = (props) => {
   const { visible, onHide, onError, defaultChannel } = props;
   const [channelType, setChannelType] = useState(defaultChannel);
-  const [customSMTP, setCustomSMTP] = useState(true);
-  const [defaultRecipients, setDefaultRecipients] = useState(false);
-
-  // TODO: Add option for pagerDuty oce API is avaialable
+  const [customSMTP, setCustomSMTP] = useState(props.customSmtp ? props.customSmtp : false);
+  const [defaultRecipients, setDefaultRecipients] = useState(
+    props.defaultRecipients ? props.defaultRecipients : false
+    );
+    
+  // TODO: Add option for pagerDuty once API is avaialable
   const channelTypeList = [
     <option key={1} value="email">
       Email
@@ -20,13 +28,12 @@ export const AddDestinationChannelForm = (props) => {
       Slack
     </option>
   ];
-
   /**
    * Hide the modal after setting the custom smtp flag to false.
    */
   const onModalHide = () => {
     setChannelType(defaultChannel);
-    setCustomSMTP(true);
+    setCustomSMTP(false);
     setDefaultRecipients(false);
     onHide();
   };
@@ -35,7 +42,7 @@ export const AddDestinationChannelForm = (props) => {
    * Create the payload based on channel type and add the channel.
    * @param {FormValues} values
    */
-  const handleAddDestination = (values) => {
+  const handleAddDestination = (values, setSubmitting) => {
     const payload = {
       name: '',
       params: {}
@@ -56,8 +63,10 @@ export const AddDestinationChannelForm = (props) => {
         } else {
           payload['params']['defaultRecipients'] = true;
         }
-        if (!customSMTP) {
+        if (customSMTP) {
           payload['params']['smtpData'] = values.smtpData;
+          payload['params']['smtpData']['useSSL'] = values.smtpData.useSSL || false;
+          payload['params']['smtpData']['useTLS'] = values.smtpData.useTLS || false;
         } else {
           payload['params']['defaultSmtpSettings'] = true;
         }
@@ -65,22 +74,32 @@ export const AddDestinationChannelForm = (props) => {
       default:
         break;
     }
-    try {
-      props.createAlertChannel(payload).then(() => {
-        props.getAlertChannels().then((channels) => {
-          channels = channels.map((channel) => {
-            return {
-              value: channel['uuid'],
-              label: channel['name']
-            };
-          });
-          props.updateDestinationChannel(channels);
-        });
-      });
-      onModalHide();
-    } catch (err) {
-      if (onError) {
+
+    if (props.type === 'edit') {
+      try {
+        props.editAlertChannel(values['uuid'], payload);
+        setSubmitting(false);
+      } catch (err) {
         onError();
+      }
+    } else {
+      try {
+        props.createAlertChannel(payload).then(() => {
+          props.getAlertChannels().then((channels) => {
+            channels = channels.map((channel) => {
+              return {
+                value: channel['uuid'],
+                label: channel['name']
+              };
+            });
+            props.updateDestinationChannel(channels);
+          });
+        });
+        onModalHide();
+      } catch (err) {
+        if (onError) {
+          onError();
+        }
       }
     }
   };
@@ -89,15 +108,15 @@ export const AddDestinationChannelForm = (props) => {
     const name = event.target.name;
     const value = event.target.checked;
     if (name === 'customSmtp') {
-      setCustomSMTP(!value);
+      setCustomSMTP(value);
     }
     if (name === 'defaultRecipients') {
       setDefaultRecipients(value);
     }
   };
 
-  const handleChannelTypeChange = (value) => {
-    setChannelType(value);
+  const handleChannelTypeChange = (event) => {
+    setChannelType(event.target.value);
   };
 
   const validationSchemaEmail = Yup.object().shape({
@@ -182,20 +201,27 @@ export const AddDestinationChannelForm = (props) => {
             </Row>
             <Row>
               <Col lg={12}>
-                <Field name="defaultRecipients">
-                  {({ field }) => (
-                    <YBToggle
-                      onToggle={handleOnToggle}
-                      name="defaultRecipients"
-                      input={{
-                        value: field.value,
-                        onChange: field.onChange
-                      }}
-                      label="Use Default Recipients"
-                    />
-                  )}
-                </Field>
-                <div hidden={defaultRecipients}>
+                <Row className="component-flex">
+                  <Col lg={1} className="noLeftPadding">
+                    <Field name="defaultRecipients">
+                      {({ field }) => (
+                        <YBToggle
+                          onToggle={handleOnToggle}
+                          name="defaultRecipients"
+                          input={{
+                            value: field.value,
+                            onChange: field.onChange
+                          }}
+                        />
+                      )}
+                    </Field>
+                  </Col>
+                  <Col lg={11} className="component-label">
+                    <strong>Use Default Recipients</strong>
+                  </Col>
+                </Row>
+
+                {!defaultRecipients && (
                   <Field
                     name="emailIds"
                     type="text"
@@ -203,97 +229,115 @@ export const AddDestinationChannelForm = (props) => {
                     placeholder="Enter email addressess"
                     component={YBFormInput}
                   />
-                </div>
+                )}
               </Col>
             </Row>
             <Row>
               <Col lg={12}>
-                <Field name="customSmtp">
-                  {({ field }) => (
-                    <YBToggle
-                      onToggle={handleOnToggle}
-                      name="customSmtp"
-                      input={{
-                        value: field.value,
-                        onChange: field.onChange
-                      }}
-                      label="Custom SMTP Configuration"
-                      subLabel="Whether or not to use custom SMTP Configuration."
+                <Row className="component-flex">
+                  <Col lg={1} className="noLeftPadding">
+                    <Field name="customSmtp">
+                      {({ field }) => (
+                        <YBToggle
+                          onToggle={handleOnToggle}
+                          name="customSmtp"
+                          input={{
+                            value: field.value,
+                            onChange: field.onChange
+                          }}
+                        />
+                      )}
+                    </Field>
+                  </Col>
+                  <Col lg={11} className="component-label">
+                    <strong>Custom SMTP Configuration</strong>
+                  </Col>
+                </Row>
+
+                {customSMTP && (
+                  <>
+                    <Field
+                      name="smtpData.smtpServer"
+                      type="text"
+                      component={YBFormInput}
+                      label="Server"
+                      placeholder="SMTP server address"
                     />
-                  )}
-                </Field>
-                <div hidden={customSMTP}>
-                  <Field
-                    name="smtpData.smtpServer"
-                    type="text"
-                    component={YBFormInput}
-                    label="Server"
-                    placeholder="SMTP server address"
-                  />
-                  <Field
-                    name="smtpData.smtpPort"
-                    type="text"
-                    component={YBFormInput}
-                    label="Port"
-                    placeholder="SMTP server port"
-                  />
-                  <Field
-                    name="smtpData.emailFrom"
-                    type="text"
-                    component={YBFormInput}
-                    label="Email From"
-                    placeholder="Send outgoing emails from"
-                  />
-                  <Field
-                    name="smtpData.smtpUsername"
-                    type="text"
-                    component={YBFormInput}
-                    label="Username"
-                    placeholder="SMTP server username"
-                  />
-                  <Field
-                    name="smtpData.smtpPassword"
-                    type="password"
-                    autoComplete="new-password"
-                    component={YBFormInput}
-                    label="Password"
-                    placeholder="SMTP server password"
-                  />
-                  <Row>
-                    <Col lg={6}>
-                      <Field name="smtpData.useSSL">
-                        {({ field }) => (
-                          <YBToggle
-                            onToggle={handleOnToggle}
-                            name="smtpData.useSSL"
-                            input={{
-                              value: field.value,
-                              onChange: field.onChange
-                            }}
-                            label="SSL"
-                            subLabel="Whether or not to use SSL."
-                          />
-                        )}
-                      </Field>
-                    </Col>
-                    <Col lg={6}>
-                      <Field name="smtpData.useTLS">
-                        {({ field }) => (
-                          <YBToggle
-                            onToggle={handleOnToggle}
-                            name="smtpData.useTLS"
-                            input={{
-                              value: field.value,
-                              onChange: field.onChange
-                            }}
-                            label="TLS"
-                            subLabel="Whether or not to use TLS."
-                          />
-                        )}
-                      </Field>
-                    </Col>
-                  </Row>
-                </div>
+                    <Field
+                      name="smtpData.smtpPort"
+                      type="text"
+                      component={YBFormInput}
+                      label="Port"
+                      placeholder="SMTP server port"
+                    />
+                    <Field
+                      name="smtpData.emailFrom"
+                      type="text"
+                      component={YBFormInput}
+                      label="Email From"
+                      placeholder="Send outgoing emails from"
+                    />
+                    <Field
+                      name="smtpData.smtpUsername"
+                      type="text"
+                      component={YBFormInput}
+                      label="Username"
+                      placeholder="SMTP server username"
+                    />
+                    <Field
+                      name="smtpData.smtpPassword"
+                      type="password"
+                      autoComplete="new-password"
+                      component={YBFormInput}
+                      label="Password"
+                      placeholder="SMTP server password"
+                    />
+                    <Row>
+                      <Col lg={6} className="noLeftPadding">
+                        <Row className="component-flex">
+                          <Col lg={3} className="noLeftPadding">
+                            <Field name="smtpData.useSSL">
+                              {({ field }) => (
+                                <YBToggle
+                                  onToggle={handleOnToggle}
+                                  name="smtpData.useSSL"
+                                  input={{
+                                    value: field.value,
+                                    onChange: field.onChange
+                                  }}
+                                />
+                              )}
+                            </Field>
+                          </Col>
+                          <Col lg={9} className="noLeftPadding component-label">
+                            <strong>Use SSL</strong>
+                          </Col>
+                        </Row>
+                      </Col>
+                      <Col lg={6} className="noLeftPadding">
+                        <Row className="component-flex">
+                          <Col lg={3} className="noLeftPadding">
+                            <Field name="smtpData.useTLS">
+                              {({ field }) => (
+                                <YBToggle
+                                  onToggle={handleOnToggle}
+                                  name="smtpData.useTLS"
+                                  input={{
+                                    value: field.value,
+                                    onChange: field.onChange
+                                  }}
+                                />
+                              )}
+                            </Field>
+                          </Col>
+                          <Col lg={9} className="noLeftPadding component-label">
+                            <strong>Use TLS</strong>
+                          </Col>
+                        </Row>
+                      </Col>
+                    </Row>
+                  </>
+                )}
               </Col>
             </Row>
           </>
@@ -306,29 +350,30 @@ export const AddDestinationChannelForm = (props) => {
   return (
     <YBModalForm
       formName="alertDestinationForm"
-      title="Create New Alert Channel"
+      title={`${props.type === 'edit' ? 'Edit' : 'Create new'} alert channel`}
       id="alert-destination-modal"
       visible={visible}
       onHide={onModalHide}
-      submitLabel="Create"
+      initialValues={props.editValues || {}}
+      submitLabel={props.type === 'edit' ? 'Edit' : 'Create'}
       validationSchema={channelType === 'email' ? validationSchemaEmail : validationSchemaSlack}
-      onFormSubmit={(values) => {
+      onFormSubmit={(values, { setSubmitting }) => {
         const payload = {
           ...values,
           CHANNEL_TYPE: channelType
         };
 
-        handleAddDestination(payload);
+        handleAddDestination(payload, setSubmitting);
       }}
     >
       <Row>
         <Row>
           <Col lg={8}>
             <div className="form-item-custom-label">Target</div>
-            <YBSelectWithLabel
+            <YBControlledSelectWithLabel
               name="CHANNEL_TYPE"
               options={channelTypeList}
-              value={channelType}
+              selectVal={channelType}
               onInputChanged={handleChannelTypeChange}
             />
           </Col>

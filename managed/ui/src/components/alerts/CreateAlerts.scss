@@ -8,7 +8,7 @@
     margin-top: 0;
   }
   .tab-content {
-    padding: 20px 30px;
+    padding: 30px 30px;
   }
 
   .percent-text {
@@ -50,7 +50,10 @@
     position: relative;
     top: 10px;
   }
-
+  .alert-dest-count{
+    margin-top: 50px;
+    margin-bottom: 20px;
+  }
   .alert-config-list {
     width: 220px;
   }
@@ -119,6 +122,9 @@
   }
   .marginBottom {
     margin-bottom: 8px !important;
+  }
+  .marginRight {
+    margin-right: 5px;
   }
 }
 .row {
