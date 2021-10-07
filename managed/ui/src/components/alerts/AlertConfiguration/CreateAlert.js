@@ -21,6 +21,7 @@ import { AlertsPolicy } from './AlertsPolicy';
 import { isNonEmptyArray } from '../../../utils/ObjectUtils';
 import { getAlertConfigByName } from '../../../actions/customers';
 import { toast } from 'react-toastify';
+import YBInfoTip from '../../common/descriptors/YBInfoTip';
 
 const required = (value) => (value ? undefined : 'This field is required.');
 
@@ -309,7 +310,11 @@ const CreateAlert = (props) => {
         {currentMetric && (
           <Row className="actionBtnsMargin">
             <Col md={6}>
-              <div className="form-item-custom-label">Destination</div>
+              <span className="form-item-custom-label marginRight">Destination</span>
+              <YBInfoTip
+                title="Destination"
+                content={`A destination consist of one or more channels. Whenever an Alert is triggered, it sends the related data to its designated destination.`}
+              />
               <Field
                 name="ALERT_DESTINATION_LIST"
                 component={YBSelectWithLabel}

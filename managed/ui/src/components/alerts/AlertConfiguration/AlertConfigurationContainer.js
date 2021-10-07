@@ -31,6 +31,7 @@ import {
 import { closeDialog, openDialog } from '../../../actions/modal';
 import { fetchUniverseList, fetchUniverseListResponse } from '../../../actions/universe';
 import { AlertConfiguration } from './AlertConfiguration';
+import { createErrorMessage } from './AlertUtils';
 
 const mapStateToProps = (state) => {
   return {
@@ -189,20 +190,5 @@ const mapDispatchToProps = (dispatch) => {
     updateField: (form, field, newValue) => dispatch(change(form, field, newValue))
   };
 };
-
-const createErrorMessage = (payload) => {
-  const structuredError = payload?.response?.data?.error;
-  if (structuredError) {
-    if (typeof structuredError == 'string') {
-      return structuredError;
-    }
-    const message = Object.keys(structuredError).map(fieldName => {
-        const messages = structuredError[fieldName];
-        return fieldName + ": " + messages.join(', ');
-      }).join('\n');
-    return message;
-  }
-  return payload.message;
-}
 
 export default connect(mapStateToProps, mapDispatchToProps)(AlertConfiguration);

@@ -12,22 +12,28 @@ import { YBConfirmModal } from '../../modals';
 import { YBPanelItem } from '../../panels';
 import { AlertDestinationDetails } from './AlertDestinationDetails';
 
+import './AlertDestinationConfiguration.scss';
 /**
  * This is the header for YB Panel Item.
  */
 const header = (destinationCount, onAddAlertDestination) => (
   <>
-    <h5 className="table-container-title pull-left">{`${destinationCount} Alert Destinations`}</h5>
-    <FlexContainer className="pull-right">
+    <FlexContainer>
       <FlexShrink>
-        <Button
-          bsClass="alert-config-actions btn btn-orange btn-config"
-          onClick={() => onAddAlertDestination(true)}
-        >
+        A destination consist of one or more{' '}
+        <a className="channel-link" href="/admin/alertConfig/notificationChannels" target="_self">
+          channels
+        </a>
+        <br />
+        Whenever an alert is triggered, it sends the related data to its designated destination.
+      </FlexShrink>
+      <FlexShrink className="pull-right">
+        <Button bsClass="btn btn-orange btn-config" onClick={() => onAddAlertDestination(true)}>
           Add Destination
         </Button>
       </FlexShrink>
     </FlexContainer>
+    <h5 className="table-container-title alert-dest-count pull-left">{`${destinationCount} Alert Destinations`}</h5>
   </>
 );
 
