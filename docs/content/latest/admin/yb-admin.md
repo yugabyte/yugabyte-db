@@ -1200,7 +1200,7 @@ To check if any tables are configured for replication, use [`list_cdc_streams`](
 
 **Syntax**
 
-Use the `set_master_addresses` subcommand to specify the producer master address list:
+Use the `set_master_addresses` subcommand to replace the producer master address list. Use this if the set of masters on the producer changes:
 
 ```sh
 yb-admin -master_addresses <master-addresses> \
@@ -1208,7 +1208,7 @@ yb-admin -master_addresses <master-addresses> \
     set_master_addresses <producer_master_addresses>
 ```
 
-Use the `add_table` subcommand to add one or more tables:
+Use the `add_table` subcommand to add one or more tables to the existing list:
 
 ```sh
 yb-admin -master_addresses <master-addresses> \
@@ -1216,7 +1216,7 @@ yb-admin -master_addresses <master-addresses> \
     add_table <table_id>[, <table_id>...]
 ```
 
-Use the `remove_table` subcommand to remove one or more tables:
+Use the `remove_table` subcommand to remove one or more tables to the existing list:
 
 ```sh
 yb-admin -master_addresses <master-addresses> \
