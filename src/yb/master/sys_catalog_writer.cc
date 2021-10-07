@@ -196,6 +196,8 @@ Status EnumerateSysCatalog(
     SCHECK_EQ(found_entry_type.int8_value(), entry_type, Corruption, "Found wrong entry type");
     RETURN_NOT_OK(value_map.GetValue(schema.column_id(entry_id_col_idx), &entry_id));
     RETURN_NOT_OK(value_map.GetValue(schema.column_id(metadata_col_idx), &metadata));
+    SCHECK_EQ(metadata.type(), InternalType::kBinaryValue, Corruption,
+              "System catalog snapshot is corrupted, or is built using different build type");
     RETURN_NOT_OK(callback(entry_id.binary_value(), metadata.binary_value()));
   }
 
