@@ -116,6 +116,7 @@ DECLARE_int32(min_backoff_ms_exponent);
 DECLARE_int32(max_backoff_ms_exponent);
 DECLARE_bool(TEST_force_master_lookup_all_tablets);
 DECLARE_double(TEST_simulate_lookup_timeout_probability);
+DECLARE_string(TEST_fail_to_fast_resolve_address);
 
 METRIC_DECLARE_counter(rpcs_queue_overflow);
 
@@ -179,13 +180,12 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     // Start minicluster and wait for tablet servers to connect to master.
     auto opts = MiniClusterOptions();
     opts.num_tablet_servers = 3;
+    opts.num_masters = NumMasters();
     cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
 
     // Connect to the cluster.
-    client_ = ASSERT_RESULT(YBClientBuilder()
-        .add_master_server_addr(yb::ToString(cluster_->mini_master()->bound_rpc_addr()))
-        .Build());
+    ASSERT_OK(InitClient());
 
     // Create a keyspace;
     ASSERT_OK(client_->CreateNamespace(kKeyspaceName));
@@ -207,6 +207,17 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
   static const YBTableName kTableName;
   static const YBTableName kTable2Name;
   static const YBTableName kTable3Name;
+
+  virtual int NumMasters() {
+    return 1;
+  }
+
+  virtual Status InitClient() {
+    client_ = VERIFY_RESULT(YBClientBuilder()
+        .add_master_server_addr(yb::ToString(cluster_->mini_master()->bound_rpc_addr()))
+        .Build());
+    return Status::OK();
+  }
 
   string GetFirstTabletId(YBTable* table) {
     GetTableLocationsRequestPB req;
@@ -2698,6 +2709,54 @@ TEST_F_EX(ClientTest, EmptiedBatcherFlush, ClientTestWithHashAndRangePk) {
   });
 
   thread_holder.JoinAll();
+}
+
+class ClientTestWithThreeMasters : public ClientTest {
+ protected:
+  int NumMasters() override {
+    return 3;
+  }
+
+  Status InitClient() override {
+    // Connect to the cluster using hostnames.
+    string master_addrs;
+    for (int i = 1; i <= NumMasters(); ++i) {
+      // TEST_RpcAddress is 1-indexed, but mini_master is 0-indexed.
+      master_addrs += server::TEST_RpcAddress(i, server::Private::kFalse) +
+                      ":" + yb::ToString(cluster_->mini_master(i - 1)->bound_rpc_addr().port());
+      if (i < NumMasters()) {
+        master_addrs += ",";
+      }
+    }
+
+    client_ = VERIFY_RESULT(YBClientBuilder()
+        .add_master_server_addr(master_addrs)
+        .Build());
+
+    return Status::OK();
+  }
+};
+
+TEST_F_EX(ClientTest, IsMultiMasterWithFailingHostnameResolution, ClientTestWithThreeMasters) {
+  google::FlagSaver flag_saver;
+  // TEST_RpcAddress is 1-indexed.
+  string hostname = server::TEST_RpcAddress(cluster_->LeaderMasterIdx() + 1,
+                                            server::Private::kFalse);
+
+  // Shutdown the master leader, and wait for new leader to get elected.
+  ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->Shutdown();
+  ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+
+  // Fail resolution of the old leader master's hostname.
+  FLAGS_TEST_fail_to_fast_resolve_address = hostname;
+  LOG(INFO) << "Setting FLAGS_TEST_fail_to_fast_resolve_address to: "
+            << FLAGS_TEST_fail_to_fast_resolve_address;
+
+  // Make a client request to the leader master, since that master is no longer the leader, we will
+  // check that we have a MultiMaster setup. That check should not fail even though one of the
+  // master addresses currently doesn't resolve. Thus, we should be able to find the new master
+  // leader and complete the request.
+  ASSERT_RESULT(client_->ListTables());
 }
 
 }  // namespace client
