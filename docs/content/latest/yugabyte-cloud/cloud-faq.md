@@ -71,7 +71,7 @@ Yugabyte Cloud supports all the regions that have robust infrastructure and suff
 
 Enterprise Support is included in the base price for paid clusters. Refer to the [Yugabyte Cloud Support Services Terms and Conditions](https://www.yugabyte.com/yugabyte-cloud-support-services-terms-and-conditions/).
 
-Free and paid cluster customers can also use the [YugabyteDB Community Slack Channel](https://yugabyte-db.slack.com/).
+Free and paid cluster customers can also use the [YugabyteDB Slack community](https://yugabyte-db.slack.com/).
 
 ### Where can I find the support policy and Service Level Agreement (SLA) for Yugabyte Cloud?
 
@@ -146,7 +146,7 @@ Client Shell
 : Please check [cloud.yugabyte.com](https://cloud.yugabyte.com/) to see the latest version.
 
 Applications
-: Applications connect to and interact with YugabyteDB using API client libraries, also known as a client drivers. Before you can connect a application, you will need to install the correct driver. Clusters have SSL (encryption in-transit) enabled so make sure your driver details include SSL parameters. For information on available drivers, refer to [Build an application](../../quick-start/build-apps). 
+: Applications connect to and interact with YugabyteDB using API client libraries, also called client drivers. Before you can connect an application, you need to install the correct driver. Clusters have SSL (encryption in-transit) enabled so make sure your driver details include SSL parameters. For information on available drivers, refer to [Build an application](../../quick-start/build-apps).
 
 : Before you can connect, your application has to be able to reach your Yugabyte Cloud. To add inbound network access from your application environment to Yugabyte Cloud, add the public IP addresses to the [cluster IP access list](../cloud-basics/add-connections), or use [VPC peering](../cloud-network/vpc-peers) to add private IP addresses.
 

@@ -118,7 +118,7 @@ You are now ready to [Create and explore a database](../create-databases/).
 
 ## Connect an application
 
-Applications connect to and interact with YugabyteDB using API client libraries, also known as client drivers. Before you can connect an application, you need to install the correct driver. For information on available drivers, refer to [Build an application](../../../quick-start/build-apps).
+Applications connect to and interact with YugabyteDB using API client libraries, also called client drivers. Before you can connect an application, you need to install the correct driver. For information on available drivers, refer to [Build an application](../../../quick-start/build-apps).
 
 For examples of connecting applications to Yugabyte Cloud, refer to [Tutorials and examples](../../cloud-develop/).
 
