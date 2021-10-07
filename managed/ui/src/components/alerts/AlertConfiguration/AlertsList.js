@@ -28,9 +28,10 @@ const header = (
     <FlexContainer className="pull-right">
       <FlexShrink>
         <DropdownButton
-          className="alert-config-actions btn btn-default"
+          className="alert-config-actions btn btn-orange"
           title="Create Alert Config"
           id="bg-nested-dropdown"
+          bsStyle="danger"
           pullRight
         >
           <MenuItem
@@ -103,7 +104,7 @@ export const AlertsList = (props) => {
     });
 
     alertDestinations().then((res) => {
-      setDefaultDestination(res.find(destination => destination.defaultDestination));
+      setDefaultDestination(res.find((destination) => destination.defaultDestination));
       setAlertDestinationList(res);
     });
   };
@@ -119,7 +120,9 @@ export const AlertsList = (props) => {
    */
   const formatRoutes = (cell, row) => {
     if (row.defaultDestination) {
-      return <span className="text-red text-regular"> Use Default ({defaultDestination.name})</span>;
+      return (
+        <span className="text-red text-regular"> Use Default ({defaultDestination.name})</span>
+      );
     }
     const route = alertDestinationList
       .map((destination) => {
@@ -168,9 +171,9 @@ export const AlertsList = (props) => {
       .map((destination) => {
         return destination.uuid === row.destinationUUID
           ? {
-            value: destination.uuid,
-            label: destination.name
-          }
+              value: destination.uuid,
+              label: destination.name
+            }
           : null;
       })
       .filter((res) => res !== null);
@@ -185,8 +188,11 @@ export const AlertsList = (props) => {
     });
 
     // setting up ALERT_TARGET_TYPE & ALERT_UNIVERSE_LIST.
-    const currentDestination = destination[0]?.value ? destination[0]?.value :
-      (row.defaultDestination ? '<default>' : '<empty>');
+    const currentDestination = destination[0]?.value
+      ? destination[0]?.value
+      : row.defaultDestination
+      ? '<default>'
+      : '<empty>';
     const targetType = row.target.all ? 'allUniverses' : 'selectedUniverses';
     const univerList =
       isNonEmptyArray(row.target.uuids) &&
