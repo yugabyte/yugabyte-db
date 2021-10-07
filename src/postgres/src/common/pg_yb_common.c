@@ -162,7 +162,7 @@ YBIsCollationEnabled()
 		 * The default value must be in sync with that of FLAGS_TEST_pg_collation_enabled.
 		 */
 		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_TEST_pg_collation_enabled",
-												  false /* default_value */);
+												  true /* default_value */);
 	}
 	return cached_value;
 #else
