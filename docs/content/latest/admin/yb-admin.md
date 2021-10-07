@@ -1216,7 +1216,7 @@ yb-admin -master_addresses <master-addresses> \
     add_table <table_id>[, <table_id>...]
 ```
 
-Use the `remove_table` subcommand to remove one or more tables to the existing list:
+Use the `remove_table` subcommand to remove one or more tables from the existing list:
 
 ```sh
 yb-admin -master_addresses <master-addresses> \
