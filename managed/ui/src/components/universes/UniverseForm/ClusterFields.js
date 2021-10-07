@@ -97,6 +97,7 @@ const GP3_MAX_THROUGHPUT = 1000;
 const GP3_IOPS_TO_MAX_DISK_THROUGHPUT = 4;
 
 const initialState = {
+  defaultRegion: {},
   universeName: '',
   instanceTypeSelected: '',
   azCheckState: true,
@@ -440,7 +441,7 @@ export default class ClusterFields extends Component {
   UNSAFE_componentWillReceiveProps(nextProps) {
     const {
       universe: { currentUniverse },
-      cloud: { nodeInstanceList, instanceTypes },
+      cloud: { nodeInstanceList, instanceTypes, regions },
       clusterType,
       formValues
     } = nextProps;
@@ -449,6 +450,11 @@ export default class ClusterFields extends Component {
     let providerSelected = this.state.providerSelected;
     if (isNonEmptyObject(currentFormValues) && isNonEmptyString(currentFormValues.provider)) {
       providerSelected = currentFormValues.provider;
+      if (providerSelected && regions.data.length) {
+        this.setState({
+          defaultRegion: { value: regions.data[0].uuid, label: regions.data[0].name }
+        });
+      }
     }
 
     if (
@@ -1916,8 +1922,6 @@ export default class ClusterFields extends Component {
       );
     }
 
-    universeProviderList.unshift(<option key="" value=""></option>);
-
     let universeRegionList = [];
     if (self.state.providerSelected) {
       universeRegionList =
@@ -2181,6 +2185,7 @@ export default class ClusterFields extends Component {
                   isMulti={true}
                   selectValChanged={this.regionListChanged}
                   providerSelected={currentProviderUUID}
+                  defaultValue={this.state.defaultRegion}
                 />
                 {clusterType === 'async'
                   ? [
