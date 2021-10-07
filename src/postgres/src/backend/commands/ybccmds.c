@@ -967,6 +967,15 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, YBCPgStatement handle,
 							errmsg("This ALTER TABLE command is not yet supported.")));
 				}
 			}
+			/*
+			 * Do not allow collation update because that requires different collation
+			 * encoding and therefore can cause on-disk changes.
+			 */
+			Oid cur_collation_id = attTup->attcollation;
+			Oid new_collation_id = GetColumnDefCollation(NULL, colDef, newTypId);
+			if (cur_collation_id != new_collation_id)
+				ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						errmsg("This ALTER TABLE command is not yet supported.")));
 			break;
 		}
 
