@@ -415,7 +415,8 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 							 "https://github.com/yugabyte/yugabyte-db/issues"),
 					 parser_errposition(pstate, dencoding->location)));
 
-		if (!YBIsCollationEnabled() && dcollate && dbcollate && strcmp(dbcollate, "C") != 0)
+		if (!(YBIsCollationEnabled() && kTestOnlyUseOSDefaultCollation) && dcollate &&
+			dbcollate && strcmp(dbcollate, "C") != 0)
 			ereport(YBUnsupportedFeatureSignalLevel(),
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("Value other than 'C' for lc_collate "

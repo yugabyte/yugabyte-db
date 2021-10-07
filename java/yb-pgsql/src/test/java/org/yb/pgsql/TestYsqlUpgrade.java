@@ -1202,9 +1202,9 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
         assertEquals(ver, migrationRow.getInt(0).intValue());
         assertEquals(0, migrationRow.getInt(1).intValue());
         assertTrue(migrationRow.getString(2).startsWith("V" + ver + "__"));
-        assertTrue("Expected migration timestamp to be at most 5 mins old!",
+        assertTrue("Expected migration timestamp to be at most 10 mins old!",
             migrationRow.getLong(3) != null &&
-                System.currentTimeMillis() - migrationRow.getLong(3) < 5 * 60 * 1000);
+                System.currentTimeMillis() - migrationRow.getLong(3) < 10 * 60 * 1000);
       }
     }
 
@@ -1421,8 +1421,8 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
   }
 
   private void runMigrations() throws Exception {
-    // Set migrations timeout to 3 min, adjusted
-    long timeoutMs = BuildTypeUtil.adjustTimeout(180 * 1000);
+    // Set migrations timeout to 6 min, adjusted
+    long timeoutMs = BuildTypeUtil.adjustTimeout(360 * 1000);
     List<String> lines = runProcess(
         TestUtils.findBinary("yb-admin"),
         "--master_addresses",

@@ -8,10 +8,9 @@ create table insertconflicttest(key int4, fruit text);
 -- named collations
 --
 create unique index op_index_key on insertconflicttest(key, fruit text_pattern_ops);
--- TODO(neil) NOT YET SUPPORTED collate
--- create unique index collation_index_key on insertconflicttest(key, fruit collate "C");
--- create unique index both_index_key on insertconflicttest(key, fruit collate "C" text_pattern_ops);
--- create unique index both_index_expr_key on insertconflicttest(key, lower(fruit) collate "C" text_pattern_ops);
+create unique index collation_index_key on insertconflicttest(key, fruit collate "C");
+create unique index both_index_key on insertconflicttest(key, fruit collate "C" text_pattern_ops);
+create unique index both_index_expr_key on insertconflicttest(key, lower(fruit) collate "C" text_pattern_ops);
 
 -- fails
 explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on conflict (key) do nothing;
@@ -29,13 +28,13 @@ explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on con
 explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on conflict (key, fruit text_pattern_ops) do nothing;
 -- Okay, arbitrates using both index where text_pattern_ops opclass does and
 -- does not appear.
--- explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on conflict (key, fruit collate "C") do nothing;
+explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on conflict (key, fruit collate "C") do nothing;
 -- Okay, but only accepts the single index where both opclass and collation are
 -- specified
--- explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on conflict (fruit collate "C" text_pattern_ops, key) do nothing;
+explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on conflict (fruit collate "C" text_pattern_ops, key) do nothing;
 -- Okay, but only accepts the single index where both opclass and collation are
 -- specified (plus expression variant)
--- explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on conflict (lower(fruit) collate "C", key, key) do nothing;
+explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on conflict (lower(fruit) collate "C", key, key) do nothing;
 -- Attribute appears twice, while not all attributes/expressions on attributes
 -- appearing within index definition match in terms of both opclass and
 -- collation.
@@ -51,25 +50,24 @@ explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on con
 -- cases.  It rolls with unique indexes where attributes redundantly appear
 -- multiple times, too (which is not tested here).
 explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on conflict (fruit, key, fruit text_pattern_ops, key) do nothing;
--- explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on conflict (lower(fruit) collate "C" text_pattern_ops, key, key) do nothing;
+explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on conflict (lower(fruit) collate "C" text_pattern_ops, key, key) do nothing;
 
 drop index op_index_key;
--- drop index collation_index_key;
--- drop index both_index_key;
--- drop index both_index_expr_key;
+drop index collation_index_key;
+drop index both_index_key;
+drop index both_index_expr_key;
 
--- TODO(neil) NOT YET SUPPORTED collate
 --
 -- Make sure that cross matching of attribute opclass/collation does not occur
 --
--- create unique index cross_match on insertconflicttest(lower(fruit) collate "C", upper(fruit) text_pattern_ops);
+create unique index cross_match on insertconflicttest(lower(fruit) collate "C", upper(fruit) text_pattern_ops);
 
 -- fails:
--- explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on conflict (lower(fruit) text_pattern_ops, upper(fruit) collate "C") do nothing;
+explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on conflict (lower(fruit) text_pattern_ops, upper(fruit) collate "C") do nothing;
 -- works:
--- explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on conflict (lower(fruit) collate "C", upper(fruit) text_pattern_ops) do nothing;
+explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on conflict (lower(fruit) collate "C", upper(fruit) text_pattern_ops) do nothing;
 
--- drop index cross_match;
+drop index cross_match;
 
 --
 -- Single key tests

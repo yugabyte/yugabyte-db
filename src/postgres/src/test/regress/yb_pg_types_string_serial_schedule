@@ -19,5 +19,8 @@ test: yb_pg_tstypes
 test: yb_pg_uuid
 test: yb_pg_tsearch
 
+test: yb_pg_collate
+test: yb_pg_collate_icu_utf8
+
 # TODO(neil) Must build postgres with --with-libxml
 # test: yb_pg_xml
