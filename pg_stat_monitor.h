@@ -294,6 +294,7 @@ typedef struct pgssEntry
 	Counters		counters;		/* the statistics for this query */
 	int				encoding;		/* query text encoding */
 	slock_t			mutex;			/* protects the counters only */
+	size_t			query_pos;      /* query location within query buffer */
 } pgssEntry;
 
 /*
@@ -361,7 +362,12 @@ typedef struct JumbleState
 
 /* Links to shared memory state */
 
-bool SaveQueryText(uint64 bucketid, uint64 queryid, unsigned char *buf, const char *query, uint64 query_len);
+bool SaveQueryText(uint64 bucketid,
+				   uint64 queryid,
+				   unsigned char *buf,
+				   const char *query,
+				   uint64 query_len,
+				   size_t *query_pos);
 
 /* guc.c */
 void init_guc(void);
@@ -385,7 +391,7 @@ pgssEntry* hash_entry_alloc(pgssSharedState *pgss, pgssHashKey *key, int encodin
 Size hash_memsize(void);
 
 int read_query_buffer(int bucket_id, uint64 queryid, char *query_txt);
-uint64 read_query(unsigned char *buf, uint64 bucketid, uint64 queryid, char * query);
+uint64 read_query(unsigned char *buf, uint64 queryid, char * query, size_t pos);
 pgssQueryEntry* hash_find_query_entry(uint64 bucket_id, uint64 queryid, uint64 dbid, uint64 userid, uint64 ip, uint64 appid);
 pgssQueryEntry* hash_create_query_entry(uint64 bucket_id, uint64 queryid, uint64 dbid, uint64 userid, uint64 ip, uint64 appid);
 void pgss_startup(void);

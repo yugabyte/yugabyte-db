@@ -1501,6 +1501,8 @@ pgss_store(uint64 queryid,
 	if (!entry)
 	{
 		uint64 prev_qbuf_len;
+		/* position in which the query's text was inserted into the query buffer. */
+		size_t qpos = 0;
 
 		query_len = strlen(query);
 		if (query_len > PGSM_QUERY_MAX_LEN)
@@ -1516,7 +1518,7 @@ pgss_store(uint64 queryid,
 		 * original length.
 		 */
 		memcpy(&prev_qbuf_len, pgss_qbuf[bucketid], sizeof(prev_qbuf_len));
-		if (!SaveQueryText(bucketid, queryid, pgss_qbuf[bucketid], query, query_len))
+		if (!SaveQueryText(bucketid, queryid, pgss_qbuf[bucketid], query, query_len, &qpos))
 		{
 			LWLockRelease(pgss->lock);
 			elog(DEBUG1, "pg_stat_monitor: insufficient shared space for query.");
@@ -1533,6 +1535,7 @@ pgss_store(uint64 queryid,
 			elog(DEBUG1, "pg_stat_monitor: out of memory");
 			return;
 		}
+		entry->query_pos = qpos;
 	}
 
 	if (jstate == NULL)
@@ -1689,7 +1692,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		bool 		  is_allowed_role = is_member_of_role(GetUserId(), ROLE_PG_READ_ALL_STATS);
 #endif
 
-		if (read_query(buf, bucketid, queryid, query_txt) == 0)
+		if (read_query(buf, queryid, query_txt, entry->query_pos) == 0)
 		{
 			int len;
 			len = read_query_buffer(bucketid, queryid, query_txt);
@@ -1709,16 +1712,16 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 			if (tmp.state == PGSS_FINISHED)
 				continue;
 		}
-        if (tmp.info.parentid != UINT64CONST(0))
-        {
-            int len = 0;
-            if (read_query(buf, bucketid, tmp.info.parentid, parent_query_txt) == 0)
-            {
-              len = read_query_buffer(bucketid, tmp.info.parentid, parent_query_txt);
-			        if (len != MAX_QUERY_BUFFER_BUCKET)
-				        snprintf(parent_query_txt, 32, "%s", "<insufficient disk/shared space>");
-            }
-        }
+		if (tmp.info.parentid != UINT64CONST(0))
+		{
+			int len = 0;
+			if (read_query(buf, tmp.info.parentid, parent_query_txt, 0) == 0)
+			{
+				len = read_query_buffer(bucketid, tmp.info.parentid, parent_query_txt);
+				if (len != MAX_QUERY_BUFFER_BUCKET)
+					snprintf(parent_query_txt, 32, "%s", "<insufficient disk/shared space>");
+			}
+		}
 		/* bucketid at column number 0 */
 		values[i++] = Int64GetDatumFast(bucketid);
 
@@ -2984,7 +2987,7 @@ intarray_get_datum(int32 arr[], int len)
 }
 
 uint64
-read_query(unsigned char *buf, uint64 bucketid, uint64 queryid, char * query)
+read_query(unsigned char *buf, uint64 queryid, char * query, size_t pos)
 {
 	bool found            = false;
 	uint64 query_id       = 0;
@@ -2996,6 +2999,27 @@ read_query(unsigned char *buf, uint64 bucketid, uint64 queryid, char * query)
 	if (buf_len <= 0)
 		goto exit;
 
+	/* If a position hint is given, try to locate the query directly. */
+	if (pos != 0 && (pos + sizeof(uint64) + sizeof(uint64)) < buf_len)
+	{
+		memcpy(&query_id, &buf[pos], sizeof(uint64));
+		if (query_id != queryid)
+			return 0;
+
+		pos += sizeof(uint64);
+
+		memcpy(&query_len, &buf[pos], sizeof(uint64)); /* query len */
+		pos += sizeof(uint64);
+
+		if (pos + query_len > buf_len) /* avoid reading past buffer's length. */
+			return 0;
+
+		memcpy(query, &buf[pos], query_len); /* Actual query */
+		query[query_len] = '\0';
+
+		return queryid;
+	}
+
 	rlen = sizeof (uint64); /* Move forwad to skip length bytes */
 	for(;;)
 	{
@@ -3005,6 +3029,7 @@ read_query(unsigned char *buf, uint64 bucketid, uint64 queryid, char * query)
 		memcpy(&query_id, &buf[rlen], sizeof (uint64)); /* query id */
 		if (query_id == queryid)
 			found = true;
+
 		rlen += sizeof (uint64);
 		if (buf_len <= rlen)
 			continue;
@@ -3034,7 +3059,12 @@ exit:
 }
 
 bool
-SaveQueryText(uint64 bucketid, uint64 queryid, unsigned char *buf, const char *query, uint64 query_len)
+SaveQueryText(uint64 bucketid,
+			  uint64 queryid,
+			  unsigned char *buf,
+			  const char *query,
+			  uint64 query_len,
+			  size_t *query_pos)
 {
 	uint64 buf_len = 0;
 
@@ -3058,6 +3088,8 @@ SaveQueryText(uint64 bucketid, uint64 queryid, unsigned char *buf, const char *q
 				break;
 		}
 	}
+
+	*query_pos = buf_len;
 
 	memcpy(&buf[buf_len], &queryid, sizeof (uint64)); /* query id */
 	buf_len += sizeof (uint64);
@@ -3293,7 +3325,7 @@ read_query_buffer(int bucket_id, uint64 queryid, char *query_txt)
 				break;
 		}
 		off += buf_len;
-		if (read_query(buf, bucket_id, queryid, query_txt))
+		if (read_query(buf, queryid, query_txt, 0))
 			break;
 	}
 	if (fd > 0)
