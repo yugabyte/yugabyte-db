@@ -56,6 +56,8 @@ export const GET_ALERTS_FAILURE = 'GET_ALERTS_FAILURE';
 
 export const CREATE_ALERT_CHANNEL = 'CREATE_ALERT_CHANNEL';
 export const CREATE_ALERT_CHANNEL_RESPONSE = 'CREATE_ALERT_CHANNEL_RESPONSE';
+export const UPDATE_ALERT_CHANNEL = 'UPDATE_ALERT_CHANNEL';
+export const DELETE_ALERT_CHANNEL = 'DELETE_ALERT_CHANNEL';
 
 export const CREATE_ALERT_DESTINATION = 'CREATE_ALERT_DESTINATION';
 export const CREATE_ALERT_DESTINATION_RESPONSE = 'CREATE_ALERT_DESTINATION_RESPONSE';
@@ -492,6 +494,24 @@ export function createAlertChannelResponse(response) {
   return {
     type: CREATE_ALERT_CHANNEL_RESPONSE,
     payload: response
+  };
+}
+
+export function updateAlertChannel(channelUUID, payload){
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.put(`${ROOT_URL}/customers/${cUUID}/alert_channels/${channelUUID}`, payload);
+  return {
+    type: UPDATE_ALERT_CHANNEL,
+    payload: request
+  };
+}
+
+export function deleteAlertChannel(channelUUID){
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.delete(`${ROOT_URL}/customers/${cUUID}/alert_channels/${channelUUID}`);
+  return {
+    type: DELETE_ALERT_CHANNEL,
+    payload: request
   };
 }
 
