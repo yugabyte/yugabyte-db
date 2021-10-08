@@ -24,6 +24,17 @@ namespace yb {
 
 class CqlTestBase : public MiniClusterTestWithClient<MiniCluster> {
  public:
+  static constexpr auto kDefaultNumMasters = 1;
+  static constexpr auto kDefaultNumTabletServers = 3;
+
+  virtual int num_masters() {
+    return kDefaultNumMasters;
+  }
+
+  virtual int num_tablet_servers() {
+    return kDefaultNumTabletServers;
+  }
+
   void SetUp() override;
 
  protected:

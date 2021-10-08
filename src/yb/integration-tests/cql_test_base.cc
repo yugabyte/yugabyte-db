@@ -24,7 +24,8 @@ void CqlTestBase::SetUp() {
   YBMiniClusterTestBase<MiniCluster>::SetUp();
 
   MiniClusterOptions options;
-  options.num_tablet_servers = 3;
+  options.num_masters = num_masters();
+  options.num_tablet_servers = num_tablet_servers();
   cluster_ = std::make_unique<MiniCluster>(env_.get(), options);
   ASSERT_OK(cluster_->Start());
 
