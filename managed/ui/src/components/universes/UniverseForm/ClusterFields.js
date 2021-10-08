@@ -1916,8 +1916,6 @@ export default class ClusterFields extends Component {
       );
     }
 
-    universeProviderList.unshift(<option key="" value=""></option>);
-
     let universeRegionList = [];
     if (self.state.providerSelected) {
       universeRegionList =
