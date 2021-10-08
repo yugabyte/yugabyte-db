@@ -845,8 +845,9 @@ DefineIndex(Oid relationId,
 	/*
 	 * Parse AM-specific options, convert to text array form, validate.
 	 */
-	reloptions = transformRelOptions((Datum) 0, stmt->options,
-									 NULL, NULL, false, false);
+	reloptions = ybTransformRelOptions((Datum) 0, stmt->options,
+										NULL, NULL, false, false,
+										IsYsqlUpgrade);
 
 	(void) index_reloptions(amoptions, reloptions, true);
 

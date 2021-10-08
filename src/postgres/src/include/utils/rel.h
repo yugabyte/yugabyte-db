@@ -363,8 +363,7 @@ typedef struct ViewOptions
 	bool		security_barrier;
 	int			check_option_offset;
 
-	/* YB additions. */
-	bool		rewrite_rule_oid;
+	bool		yb_use_initdb_acl;	/* initialize with default initdb-like permissions */
 } ViewOptions;
 
 /*

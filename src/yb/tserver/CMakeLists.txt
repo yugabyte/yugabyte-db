@@ -237,6 +237,7 @@ set(TSERVER_DEPS
   tablet
   yb_client
   yb_pggate_flags
+  ysql_upgrade
   ${TSERVER_LIB_EXTENSIONS})
 
 ADD_YB_LIBRARY(tserver

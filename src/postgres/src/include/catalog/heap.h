@@ -73,7 +73,8 @@ extern Oid heap_create_with_catalog(const char *relname,
 						 bool allow_system_table_mods,
 						 bool is_internal,
 						 Oid relrewrite,
-						 ObjectAddress *typaddress);
+						 ObjectAddress *typaddress,
+						 bool yb_use_initdb_acl);
 
 extern void heap_create_init_fork(Relation rel);
 
