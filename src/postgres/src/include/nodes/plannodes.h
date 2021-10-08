@@ -1196,6 +1196,11 @@ typedef struct PartitionPruneStepCombine
 	List	   *source_stepids;
 } PartitionPruneStepCombine;
 
+typedef struct PartitionPruneStepFuncOp
+{
+	PartitionPruneStep step;
+	List       *exprs;
+} PartitionPruneStepFuncOp;
 
 /*
  * Plan invalidation info
