@@ -81,7 +81,7 @@ using strings::Substitute;
 
 DEFINE_string(
     net_address_filter,
-    "ipv4_external,ipv4_all",
+    "ipv4_external,ipv4_all,ipv6_external,ipv6_non_link_local,ipv6_all",
     "Order in which to select ip addresses returned by the resolver"
     "Can be set to something like \"ipv4_all,ipv6_all\" to prefer IPv4 over "
     "IPv6 addresses."
