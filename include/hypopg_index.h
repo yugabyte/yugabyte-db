@@ -8,7 +8,7 @@
  * This program is open source, licensed under the PostgreSQL license.
  * For license terms, see the LICENSE file.
  *
- * Copyright (C) 2015-2018: Julien Rouhaud
+ * Copyright (C) 2015-2021: Julien Rouhaud
  *
  *-------------------------------------------------------------------------
 */
@@ -95,6 +95,8 @@ typedef struct hypoIndex
 	bool		amhasgetbitmap; /* does AM have amgetbitmap interface? */
 #if PG_VERSION_NUM >= 110000
 	bool		amcanparallel;	/* does AM support parallel scan? */
+	bool		amcaninclude;	/* does AM support columns included with clause
+								   INCLUDE? */
 #endif
 	bool		amcanunique;	/* does AM support UNIQUE indexes? */
 	bool		amcanmulticol;	/* does AM support multi-column indexes? */
@@ -120,6 +122,7 @@ PGDLLEXPORT Datum hypopg_get_indexdef(PG_FUNCTION_ARGS);
 PGDLLEXPORT Datum hypopg_reset_index(PG_FUNCTION_ARGS);
 
 extern explain_get_index_name_hook_type prev_explain_get_index_name_hook;
+hypoIndex *hypo_get_index(Oid indexId);
 const char *hypo_explain_get_index_name_hook(Oid indexId);
 
 void		hypo_injectHypotheticalIndex(PlannerInfo *root,

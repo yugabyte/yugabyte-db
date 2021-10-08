@@ -1,3 +1,9 @@
+hypopg (1.2.0-1) unstable; urgency=medium
+
+  * New upstream version.
+
+ -- Julien Rouhaud <rjuju123@gmail.com>  Fri, 26 Feb 2021 14:51:06 +0800
+
 hypopg (1.1.4-2) unstable; urgency=medium
 
   * Team upload for PostgreSQL 13.

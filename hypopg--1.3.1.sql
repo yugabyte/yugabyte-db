@@ -1,7 +1,7 @@
 -- This program is open source, licensed under the PostgreSQL License.
 -- For license terms, see the LICENSE file.
 --
--- Copyright (C) 2015-2018: Julien Rouhaud
+-- Copyright (C) 2015-2021: Julien Rouhaud
 
 -- complain if script is sourced in psql, rather than via CREATE EXTENSION
 \echo Use "CREATE EXTENSION hypopg" to load this file. \quit
@@ -40,17 +40,14 @@ CREATE FUNCTION hypopg(OUT indexname text, OUT indexrelid oid,
     LANGUAGE c COST 100
 AS '$libdir/hypopg', 'hypopg';
 
-CREATE FUNCTION hypopg_list_indexes(OUT indexrelid oid, OUT indexname text, OUT nspname name, OUT relname name, OUT amname name)
-    RETURNS SETOF record
+CREATE VIEW hypopg_list_indexes
 AS
-$_$
-    SELECT h.indexrelid, h.indexname, n.nspname, c.relname, am.amname
+    SELECT h.indexrelid, h.indexname AS index_name, n.nspname AS schema_name,
+    coalesce(c.relname, '<dropped>') AS table_name, am.amname AS am_name
     FROM hypopg() h
-    JOIN pg_class c ON c.oid = h.indrelid
-    JOIN pg_namespace n ON n.oid = c.relnamespace
-    JOIN pg_am am ON am.oid = h.amid
-$_$
-LANGUAGE sql;
+    LEFT JOIN pg_catalog.pg_class c ON c.oid = h.indrelid
+    LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+    LEFT JOIN pg_catalog.pg_am am ON am.oid = h.amid;
 
 CREATE FUNCTION
 hypopg_relation_size(IN indexid oid)

@@ -25,7 +25,7 @@ ANALYZE hypo;
 SELECT COUNT(*) AS nb
 FROM public.hypopg_create_index('SELECT 1;CREATE INDEX ON hypo(id); SELECT 2');
 
-SELECT nspname, relname, amname FROM public.hypopg_list_indexes();
+SELECT schema_name, table_name, am_name FROM public.hypopg_list_indexes;
 
 -- Should use hypothetical index
 SELECT COUNT(*) FROM do_explain('SELECT * FROM hypo WHERE id = 1') e
@@ -100,3 +100,18 @@ WHERE e ~ 'Index.*<\d+>btree_hypo.*';
 
 -- Deparse an index DDL, with almost every possible pathcode
 SELECT hypopg_get_indexdef(indexrelid) FROM hypopg_create_index('create index on hypo using btree(id desc, id desc nulls first, id desc nulls last, cast(md5(val) as bpchar)  bpchar_pattern_ops) with (fillfactor = 10) WHERE id < 1000 AND id +1 %2 = 3');
+
+-- Make sure the old Oid generator still works.  Test it while keeping existing
+-- entries, as both should be able to coexist.
+SET hypopg.use_real_oids = on;
+
+-- Should not use hypothetical index
+SELECT COUNT(*) FROM do_explain('SELECT * FROM hypo WHERE id = 1') e
+WHERE e ~ 'Index.*<\d+>btree_hypo.*';
+
+SELECT COUNT(*) AS nb
+FROM public.hypopg_create_index('CREATE INDEX ON hypo(id);');
+
+-- Should use hypothetical index
+SELECT COUNT(*) FROM do_explain('SELECT * FROM hypo WHERE id = 1') e
+WHERE e ~ 'Index.*<\d+>btree_hypo.*';

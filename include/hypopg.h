@@ -5,7 +5,7 @@
  * This program is open source, licensed under the PostgreSQL license.
  * For license terms, see the LICENSE file.
  *
- * Copyright (C) 2015-2018: Julien Rouhaud
+ * Copyright (C) 2015-2021: Julien Rouhaud
  *
  *-------------------------------------------------------------------------
 */
@@ -40,6 +40,11 @@
 #define LNEXT2(list, lc)	((lc)->next)
 #endif
 
+/* Backport of atooid macro */
+#if PG_VERSION_NUM < 100000
+#define atooid(x) ((Oid) strtoul((x), NULL, 10))
+#endif
+
 extern bool isExplain;
 
 /* GUC for enabling / disabling hypopg during EXPLAIN */
@@ -47,5 +52,6 @@ extern bool hypo_is_enabled;
 extern MemoryContext HypoMemoryContext;
 
 Oid			hypo_getNewOid(Oid relid);
+void		hypo_reset_fake_oids(void);
 
 #endif

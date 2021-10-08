@@ -1,6 +1,41 @@
 Changelog
 =========
 
+2021-06-21 version 1.3.1:
+-------------------------
+
+  **Miscellaneous**:
+
+  - Fix compatibility with PostgreSQL 14 beta 2
+
+2021-06-04 version 1.3.0:
+-------------------------
+
+  **New features**:
+
+  - Add support for hypothetical hash indexes (pg10+)
+
+2021-02-26 version 1.2.0:
+-------------------------
+
+  **New features**:
+
+  - Make hypopg work on standby servers using a new "fake" oid generator, that
+    borrows Oids in the FirstBootstrapObjectId / FirstNormalObjectId range
+    rather than real oids.  If necessary, the old behavior can still be used
+    with the new hypopg.use_real_oids configuration option.
+
+  **Bug fixes**
+
+  - Check if access methods support an INCLUDE clause to avoid creating invalid
+    hypothetical indexes.
+  - Display hypothetical indexes on dropped table in hypopg_list_indexes.
+
+  **Miscellaneous**
+
+  - Change hypopg_list_indexes() to view hypopg_list_indexes.
+  - Various documentation improvements.
+
 2020-06-24 version 1.1.4:
 -------------------------
 

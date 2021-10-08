@@ -6,7 +6,7 @@
  * This program is open source, licensed under the PostgreSQL license.
  * For license terms, see the LICENSE file.
  *
- * Copyright (c) 2008-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2008-2021, PostgreSQL Global Development Group
  *
  *-------------------------------------------------------------------------
  */
@@ -18,6 +18,29 @@
 	MAXALIGN_DOWN((BLCKSZ - \
 				MAXALIGN(SizeOfPageHeaderData + 3*sizeof(ItemIdData)) - \
 				MAXALIGN(sizeof(BTPageOpaqueData))) / 3)
+
+#if PG_VERSION_NUM >= 100000
+#include "access/hash.h"
+
+/* adapted from src/include/access/hash.h */
+#define HypoHashGetFillFactor(ffactor) \
+	(((fillfactor) == 0) ? HASH_DEFAULT_FILLFACTOR : (ffactor))
+
+#define HypoHashGetTargetPageUsage(ffactor) \
+	(BLCKSZ * HypoHashGetFillFactor(ffactor) / 100)
+
+#define HypoHashGetMaxBitmapSize() \
+	(BLCKSZ - \
+	 (MAXALIGN(SizeOfPageHeaderData) + MAXALIGN(sizeof(HashPageOpaqueData))))
+
+#define HypoHashMaxItemSize() \
+	MAXALIGN_DOWN(BLCKSZ - \
+				  SizeOfPageHeaderData - \
+				  sizeof(ItemIdData) - \
+				  MAXALIGN(sizeof(HashPageOpaqueData)))
+
+#endif
+
 
 extern List *build_index_tlist(PlannerInfo *root, IndexOptInfo *index,
 				  Relation heapRelation);
