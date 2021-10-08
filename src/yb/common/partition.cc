@@ -451,6 +451,18 @@ uint16_t PartitionSchema::DecodeMultiColumnHashValue(const string& partition_key
   return (bytes[0] << 8) | bytes[1];
 }
 
+string PartitionSchema::GetEncodedKeyPrefix(
+    const string& partition_key, const PartitionSchemaPB& partition_schema) {
+  if (partition_schema.has_hash_schema()) {
+    const auto doc_key_hash = PartitionSchema::DecodeMultiColumnHashValue(partition_key);
+    docdb::KeyBytes split_encoded_key_bytes;
+    docdb::DocKeyEncoderAfterTableIdStep(&split_encoded_key_bytes)
+      .Hash(doc_key_hash, std::vector<docdb::PrimitiveValue>());
+    return split_encoded_key_bytes.ToStringBuffer();
+  }
+  return partition_key;
+}
+
 Status PartitionSchema::IsValidHashPartitionRange(const string& partition_key_start,
                                                   const string& partition_key_end) {
   if (!IsValidHashPartitionKeyBound(partition_key_start) ||
