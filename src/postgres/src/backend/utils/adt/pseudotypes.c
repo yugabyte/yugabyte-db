@@ -27,6 +27,9 @@
 #include "utils/builtins.h"
 #include "utils/rangetypes.h"
 
+/* YB includes. */
+#include "miscadmin.h"
+
 
 /*
  * cstring_in		- input routine for pseudo-type CSTRING.
@@ -269,10 +272,17 @@ shell_out(PG_FUNCTION_ARGS)
  * pg_node_tree isn't really a pseudotype --- it's real enough to be a table
  * column --- but it presently has no operations of its own, and disallows
  * input too, so its I/O functions seem to fit here as much as anywhere.
+ *
+ * In YSQL upgrade mode we allow input for migrations purposes (e.g. when
+ * inserting into pg_proc), but we expect input to be taken directly from
+ * system catalog's dump and don't do validation.
  */
 Datum
 pg_node_tree_in(PG_FUNCTION_ARGS)
 {
+	if (IsYsqlUpgrade)
+		return textin(fcinfo);
+
 	/*
 	 * We disallow input of pg_node_tree values because the SQL functions that
 	 * operate on the type are not secure against malformed input.
