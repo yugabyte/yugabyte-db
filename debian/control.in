@@ -8,8 +8,8 @@ Standards-Version: 4.6.0
 Rules-Requires-Root: no
 Build-Depends: debhelper-compat (= 13), postgresql-all (>= 217~)
 Homepage: https://hypopg.readthedocs.io/
-Vcs-Browser: https://github.com/hypopg/hypopg
-Vcs-Git: https://github.com/hypopg/hypopg.git
+Vcs-Browser: https://github.com/HypoPG/hypopg
+Vcs-Git: https://github.com/HypoPG/hypopg.git
 
 Package: postgresql-PGVERSION-hypopg
 Architecture: any
