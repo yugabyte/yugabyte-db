@@ -338,6 +338,13 @@ message SplitTabletResponsePB {
   optional fixed64 propagated_hybrid_time = 2;
 }
 
+message UpgradeYsqlRequestPB {
+}
+
+message UpgradeYsqlResponsePB {
+  optional TabletServerErrorPB error = 1;
+}
+
 service TabletServerAdminService {
   // Create a new, empty tablet with the specified parameters. Only used for
   // brand-new tablets, not for "moves".
@@ -372,4 +379,6 @@ service TabletServerAdminService {
       returns (RemoveTableFromTabletResponsePB);
 
   rpc SplitTablet(SplitTabletRequestPB) returns (SplitTabletResponsePB);
+
+  rpc UpgradeYsql(UpgradeYsqlRequestPB) returns (UpgradeYsqlResponsePB);
 }

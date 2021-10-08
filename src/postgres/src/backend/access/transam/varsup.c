@@ -503,7 +503,6 @@ YbGetMaxAllocatedSystemOid()
 				BTEqualStrategyNumber, F_BOOLEQ,
 				BoolGetDatum(true));
 
-	pg_class = heap_open(RelationRelationId, AccessShareLock);
 	scan = heap_beginscan_catalog(pg_class, 2, key);
 
 	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)

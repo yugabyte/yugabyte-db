@@ -11164,17 +11164,14 @@ static void
 assign_ysql_upgrade_mode(bool newval, void *extra)
 {
 	/*
-	 * YSQL upgrade mode also enables/disables allowSystemTableMods
-	 * and yb_non_ddl_txn_for_sys_tables_allowed.
+	 * YSQL upgrade mode also enables/disables allowSystemTableMods.
+	 * Note that PG doesn't allow user to change it at runtime.
 	 *
-	 * Note that PG doesn't allow user to change allowSystemTableMods.
-	 *
-	 * Also note that while we reuse allowSystemTableMods to cut some
-	 * corners for YSQL upgrade, we do alter the semantics of it to
-	 * imitate tables created by initdb rather than created by user.
+	 * While we reuse allowSystemTableMods to cut some corners for
+	 * YSQL upgrade, we do alter the semantics of it to imitate tables
+	 * created by initdb rather than by user.
 	 */
 	allowSystemTableMods = newval;
-	yb_non_ddl_txn_for_sys_tables_allowed = newval;
 }
 
 static bool

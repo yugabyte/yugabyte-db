@@ -838,7 +838,15 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   RegisterJson("ddl_log", "", std::bind(&DdlLog, client, _1));
-}
+
+  Register(
+      "upgrade_ysql", "",
+      [client](const CLIArguments&) -> Status {
+        RETURN_NOT_OK_PREPEND(client->UpgradeYsql(),
+                              "Unable to upgrade YSQL cluster");
+        return Status::OK();
+      });
+} // NOLINT, prevents long function message
 
 Result<std::vector<client::YBTableName>> ResolveTableNames(
     ClusterAdminClientClass* client,

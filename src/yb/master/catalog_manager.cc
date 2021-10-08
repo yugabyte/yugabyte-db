@@ -7527,9 +7527,16 @@ Status CatalogManager::GetYsqlCatalogVersion(uint64_t* catalog_version,
                                              uint64_t* last_breaking_version) {
   auto table_info = GetTableInfo(kPgYbCatalogVersionTableId);
   if (table_info != nullptr) {
-    return sys_catalog_->ReadYsqlCatalogVersion(kPgYbCatalogVersionTableId,
-                                                catalog_version,
-                                                last_breaking_version);
+    RETURN_NOT_OK(sys_catalog_->ReadYsqlCatalogVersion(kPgYbCatalogVersionTableId,
+                                                       catalog_version,
+                                                       last_breaking_version));
+    // If the version is properly initialized, we're done.
+    if ((!catalog_version || *catalog_version > 0) &&
+        (!last_breaking_version || *last_breaking_version > 0)) {
+      return Status::OK();
+    }
+    // However, it's possible for a table to have no entries mid-migration or if migration fails.
+    // In this case we'd like to fall back to the legacy approach.
   }
 
   auto l = ysql_catalog_config_->LockForRead();

@@ -10324,4 +10324,9 @@
   prorettype => 'int8', proargtypes => '',
   prosrc => 'yb_mem_usage_sql_kb' },
 
+{ oid => '8029', descr => 'get current YSQL catalog version',
+  proname => 'yb_catalog_version', provolatile => 'v',
+  prorettype => 'int8', proargtypes => '',
+  prosrc => 'yb_catalog_version' },
+
 ]
