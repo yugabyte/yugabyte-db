@@ -23,22 +23,24 @@
 #include "yb/util/format.h"
 #include "yb/util/unique_lock.h"
 
-DEFINE_int32(process_split_tablet_candidates_interval_msec, 15000,
-             "The tick interval time for processing accumulated tablet split candidates.");
-DEFINE_int32(max_queued_split_candidates, 5,
+DEFINE_int32(process_split_tablet_candidates_interval_msec, 1000,
+             "The tick interval time for processing accumulated tablet split candidates. We will "
+             "initiate at most one new tablet split each interval. If there are no queued "
+             "candidates or we have too many outstanding splits on a given processing interval, "
+             "we will not initiate any new splits.");
+DEFINE_int32(max_queued_split_candidates, 10,
              "The max number of pending tablet split candidates we will hold onto. We potentially "
              "iterate through every candidate in the queue for each tablet we process in a tablet "
              "report so this size should be kept relatively small to avoid any issues.");
 
-DEFINE_bool(enable_automatic_tablet_splitting, false,
-            "If false, disables automatic tablet splitting driven from the yb-master side.");
+DECLARE_bool(enable_automatic_tablet_splitting);
 
 DEFINE_test_flag(bool, disable_split_tablet_candidate_processing, false,
                  "When true, do not process split tablet candidates.");
 
 DEFINE_int32(outstanding_tablet_split_limit, 5,
-             "Limit of the number of outstanding tablet splits. Limitation is "
-             "disabled if this value is set to 0.");
+             "Limit of the number of outstanding tablet splits. Limitation is disabled if this "
+             "value is set to 0.");
 
 constexpr int32 kHardLimitCandidateQueueSize = 100;
 

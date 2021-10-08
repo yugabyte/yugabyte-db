@@ -373,20 +373,20 @@ DEFINE_int64(tablet_split_size_threshold_bytes, 0,
              "splitting is disabled if this value is set to 0.");
 TAG_FLAG(tablet_split_size_threshold_bytes, hidden);
 
-DEFINE_int64(tablet_split_low_phase_shard_count_per_node, 1,
+DEFINE_int64(tablet_split_low_phase_shard_count_per_node, 8,
              "The per-node tablet count until which a table is splitting at the phase 1 threshold, "
              "as defined by tablet_split_low_phase_size_threshold_bytes.");
-DEFINE_int64(tablet_split_high_phase_shard_count_per_node, 32,
+DEFINE_int64(tablet_split_high_phase_shard_count_per_node, 24,
              "The per-node tablet count until which a table is splitting at the phase 2 threshold, "
              "as defined by tablet_split_high_phase_size_threshold_bytes.");
 
-DEFINE_int64(tablet_split_low_phase_size_threshold_bytes, 1_GB,
+DEFINE_int64(tablet_split_low_phase_size_threshold_bytes, 512_MB,
              "The tablet size threshold at which to split tablets in phase 1. "
              "See tablet_split_low_phase_shard_count_per_node.");
 DEFINE_int64(tablet_split_high_phase_size_threshold_bytes, 10_GB,
              "The tablet size threshold at which to split tablets in phase 2. "
              "See tablet_split_high_phase_shard_count_per_node.");
-DEFINE_int64(tablet_force_split_threshold_bytes, 50_GB,
+DEFINE_int64(tablet_force_split_threshold_bytes, 100_GB,
              "The tablet size threshold at which to split tablets regardless of how many tablets "
              "exist in the table already. This should be configured to prevent runaway whale "
              "tablets from forming in your cluster even if both automatic splitting phases have "
