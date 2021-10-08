@@ -130,7 +130,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
         String tmpFile = createTempFile("PRIVATE KEY DATA");
         Source<ByteString, ?> keyFile = FileIO.fromFile(new File(tmpFile));
         bodyData.add(
-            new Http.MultipartFormData.FilePart(
+            new Http.MultipartFormData.FilePart<>(
                 "keyFile", "test.pem", "application/octet-stream", keyFile));
       }
 
