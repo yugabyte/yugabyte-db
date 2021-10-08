@@ -74,6 +74,9 @@ class RpcServerBase {
   // FATALs if the server is not started.
   Endpoint first_rpc_address() const;
 
+  // Return the RPC addresses that this server has bound to.
+  const std::vector<Endpoint>& rpc_addresses() const;
+
   // Return the instance identifier of this server.
   // This may not be called until after the server is Initted.
   const NodeInstancePB& instance_pb() const;

@@ -213,6 +213,10 @@ RpcServerBase::~RpcServerBase() {
   }
 }
 
+const std::vector<Endpoint>& RpcServerBase::rpc_addresses() const {
+  return rpc_server_->GetBoundAddresses();
+}
+
 Endpoint RpcServerBase::first_rpc_address() const {
   const auto& addrs = rpc_server_->GetBoundAddresses();
   CHECK(!addrs.empty()) << "Not bound";

@@ -1528,7 +1528,9 @@ Status CatalogManager::CheckLocalHostInMasterAddresses() {
       return Status::OK();
     }
   } else {
-    local_addrs.push_back(local_hostport.address());
+    for (auto const &addr : master_->rpc_addresses()) {
+      local_addrs.push_back(addr.address());
+    }
   }
 
   auto resolved_addresses = VERIFY_RESULT(server::ResolveMasterAddresses(
