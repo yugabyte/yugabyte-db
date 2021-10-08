@@ -145,7 +145,7 @@ public class HealthCheckerTest extends FakeDBApplication {
     when(mockRuntimeConfig.getInt("yb.health.max_num_parallel_checks")).thenReturn(11);
 
     when(mockruntimeConfigFactory.forUniverse(any())).thenReturn(mockConfigUniverseScope);
-    when(mockConfigUniverseScope.hasPath("yb.health.logOutput")).thenReturn(false);
+    when(mockConfigUniverseScope.getBoolean("yb.health.logOutput")).thenReturn(false);
 
     // Finally setup the mocked instance.
     healthChecker =
