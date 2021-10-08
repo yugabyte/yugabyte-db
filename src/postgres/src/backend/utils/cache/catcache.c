@@ -23,7 +23,7 @@
 #include "access/tuptoaster.h"
 #include "access/valid.h"
 #include "access/xact.h"
-#include "access/ybcam.h"
+#include "access/yb_scan.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_operator.h"

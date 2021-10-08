@@ -318,7 +318,7 @@ class AddRegionList extends Component {
                                     <Col lg={7}>
                                       <Field
                                         name={`regionList[${regionIndex}].zoneList[${zoneIndex}].storageClasses`}
-                                        placeholder="standard"
+                                        placeholder="Storage Class for this Zone"
                                         component={YBFormInput}
                                         className={'kube-provider-input-field'}
                                       />
@@ -327,7 +327,7 @@ class AddRegionList extends Component {
                                       <YBInfoTip
                                         title="Storage Classes"
                                         content={
-                                          "Default is 'standard'. This field is accepts comma-delimited values."
+                                          "Default is '' (not specified). Will attempt to use Kubernetes cluster default."
                                         }
                                       />
                                     </Col>

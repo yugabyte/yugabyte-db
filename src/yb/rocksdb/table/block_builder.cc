@@ -57,9 +57,12 @@
 
 namespace rocksdb {
 
-BlockBuilder::BlockBuilder(int block_restart_interval, bool use_delta_encoding)
+BlockBuilder::BlockBuilder(
+    int block_restart_interval, const KeyValueEncodingFormat key_value_encoding_format,
+    const bool use_delta_encoding)
     : block_restart_interval_(block_restart_interval),
       use_delta_encoding_(use_delta_encoding),
+      key_value_encoding_format_(key_value_encoding_format),
       restarts_(),
       counter_(0),
       finished_(false) {
@@ -125,6 +128,15 @@ void BlockBuilder::Add(const Slice& key, const Slice& value) {
     restarts_.push_back(static_cast<uint32_t>(buffer_.size()));
     counter_ = 0;
   } else if (use_delta_encoding_) {
+    bool valid_encoding_format = false;
+    switch (key_value_encoding_format_) {
+      case KeyValueEncodingFormat::kKeyDeltaEncodingSharedPrefix:
+        valid_encoding_format = true;
+        break;
+    }
+    if (!valid_encoding_format) {
+      FATAL_INVALID_ENUM_VALUE(KeyValueEncodingFormat, key_value_encoding_format_);
+    }
     // See how much sharing to do with previous string
     const size_t min_length = std::min(last_key_piece.size(), key.size());
     while ((shared < min_length) && (last_key_piece[shared] == key[shared])) {

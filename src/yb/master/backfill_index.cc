@@ -113,7 +113,7 @@
 
 #include "yb/tserver/remote_bootstrap_client.h"
 
-DEFINE_int32(ysql_index_backfill_rpc_timeout_ms, 30 * 60 * 1000, // 30 min.
+DEFINE_int32(ysql_index_backfill_rpc_timeout_ms, 60 * 1000, // 1 min.
              "Timeout used by the master when attempting to backfill a YSQL tablet during index "
              "creation.");
 TAG_FLAG(ysql_index_backfill_rpc_timeout_ms, advanced);
@@ -277,16 +277,10 @@ Status MultiStageAlterTable::ClearFullyAppliedAndUpdateState(
   l.mutable_data()->pb.clear_fully_applied_schema_version();
   l.mutable_data()->pb.clear_fully_applied_indexes();
   l.mutable_data()->pb.clear_fully_applied_index_info();
-  if (update_state_to_running) {
-    l.mutable_data()->set_state(
-        SysTablesEntryPB::RUNNING, Substitute("Current schema version=$0", current_version));
-  } else {
-    l.mutable_data()->set_state(
-        SysTablesEntryPB::ALTERING, Substitute("Current schema version=$0", current_version));
-  }
+  auto new_state = update_state_to_running ? SysTablesEntryPB::RUNNING : SysTablesEntryPB::ALTERING;
+  l.mutable_data()->set_state(new_state, Format("Current schema version=$0", current_version));
 
-  Status s =
-      catalog_manager->sys_catalog_->Upsert(catalog_manager->leader_ready_term(), table);
+  Status s = catalog_manager->sys_catalog_->Upsert(catalog_manager->leader_ready_term(), table);
   if (!s.ok()) {
     LOG(WARNING) << "An error occurred while updating sys-tables: " << s.ToString()
                  << ". This master may not be the leader anymore.";
@@ -294,7 +288,8 @@ Status MultiStageAlterTable::ClearFullyAppliedAndUpdateState(
   }
 
   l.Commit();
-  LOG(INFO) << table->ToString() << " - Alter table completed version=" << current_version;
+  LOG(INFO) << table->ToString() << " - Alter table completed version=" << current_version
+            << ", state: " << SysTablesEntryPB::State_Name(new_state);
   return Status::OK();
 }
 
@@ -551,7 +546,7 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
 
     if (permissions_updated.ok() && *permissions_updated) {
       VLOG(1) << "Sending alter table request with updated permissions";
-      catalog_manager->SendAlterTableRequest(indexed_table);
+      RETURN_NOT_OK(catalog_manager->SendAlterTableRequest(indexed_table));
       return Status::OK();
     }
   }
@@ -748,8 +743,7 @@ void BackfillTable::Launch() {
 }
 
 void BackfillTable::LaunchComputeSafeTimeForRead() {
-  vector<scoped_refptr<TabletInfo>> tablets;
-  indexed_table_->GetAllTablets(&tablets);
+  auto tablets = indexed_table_->GetTablets();
 
   num_tablets_.store(tablets.size(), std::memory_order_release);
   tablets_pending_.store(tablets.size(), std::memory_order_release);
@@ -855,8 +849,7 @@ Status BackfillTable::UpdateSafeTime(const Status& s, HybridTime ht) {
 void BackfillTable::LaunchBackfill() {
   VLOG_WITH_PREFIX(1) << "launching backfill with timestamp: "
                       << read_time_for_backfill_;
-  vector<scoped_refptr<TabletInfo>> tablets;
-  indexed_table_->GetAllTablets(&tablets);
+  auto tablets = indexed_table_->GetTablets();
 
   num_tablets_.store(tablets.size(), std::memory_order_release);
   tablets_pending_.store(tablets.size(), std::memory_order_release);
@@ -990,7 +983,7 @@ Status BackfillTable::UpdateIndexPermissionsForIndexes() {
   indexed_table_->ClearIsBackfilling();
 
   VLOG(1) << "Sending alter table requests to the Indexed table";
-  master_->catalog_manager()->SendAlterTableRequest(indexed_table_);
+  RETURN_NOT_OK(master_->catalog_manager()->SendAlterTableRequest(indexed_table_));
   VLOG(1) << "DONE Sending alter table requests to the Indexed table";
 
   LOG(INFO) << "Done backfill on " << indexed_table_->ToString() << " setting permissions to "
@@ -999,8 +992,7 @@ Status BackfillTable::UpdateIndexPermissionsForIndexes() {
 }
 
 Status BackfillTable::ClearCheckpointStateInTablets() {
-  vector<scoped_refptr<TabletInfo>> tablets;
-  indexed_table_->GetAllTablets(&tablets);
+  auto tablets = indexed_table_->GetTablets();
   std::vector<TabletInfo*> tablet_ptrs;
   for (scoped_refptr<TabletInfo>& tablet : tablets) {
     tablet_ptrs.push_back(tablet.get());
@@ -1059,7 +1051,7 @@ Status BackfillTable::AllowCompactionsToGCDeleteMarkers(
     {
       VLOG(2) << __func__ << ": Trying to lock index table for Read";
       auto l = index_table_info->LockForRead();
-      is_ready = (l->pb.state() == SysTablesEntryPB::RUNNING);
+      is_ready = l->pb.state() == SysTablesEntryPB::RUNNING;
     }
     VLOG(2) << __func__ << ": Unlocked index table for Read";
   } while (!is_ready);
@@ -1093,8 +1085,7 @@ Status BackfillTable::AllowCompactionsToGCDeleteMarkers(
 
 Status BackfillTable::SendRpcToAllowCompactionsToGCDeleteMarkers(
     const scoped_refptr<TableInfo> &table) {
-  vector<scoped_refptr<TabletInfo>> tablets;
-  table->GetAllTablets(&tablets);
+  auto tablets = table->GetTablets();
 
   for (const scoped_refptr<TabletInfo>& tablet : tablets) {
     RETURN_NOT_OK(SendRpcToAllowCompactionsToGCDeleteMarkers(tablet, table->id()));

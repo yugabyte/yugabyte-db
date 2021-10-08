@@ -10,13 +10,16 @@
 
 package com.yugabyte.yw.common.alerts;
 
+import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
+
 import akka.actor.ActorSystem;
 import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.AlertDefinition;
-import com.yugabyte.yw.models.AlertDefinitionGroup;
+import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import java.util.ArrayList;
@@ -54,7 +57,7 @@ public class AlertConfigurationWriter {
 
   private final AlertDefinitionService alertDefinitionService;
 
-  private final AlertDefinitionGroupService alertDefinitionGroupService;
+  private final AlertConfigurationService alertConfigurationService;
 
   private final SwamperHelper swamperHelper;
 
@@ -68,7 +71,7 @@ public class AlertConfigurationWriter {
       ActorSystem actorSystem,
       MetricService metricService,
       AlertDefinitionService alertDefinitionService,
-      AlertDefinitionGroupService alertDefinitionGroupService,
+      AlertConfigurationService alertConfigurationService,
       SwamperHelper swamperHelper,
       MetricQueryHelper metricQueryHelper,
       RuntimeConfigFactory configFactory) {
@@ -76,7 +79,7 @@ public class AlertConfigurationWriter {
     this.executionContext = executionContext;
     this.metricService = metricService;
     this.alertDefinitionService = alertDefinitionService;
-    this.alertDefinitionGroupService = alertDefinitionGroupService;
+    this.alertConfigurationService = alertConfigurationService;
     this.swamperHelper = swamperHelper;
     this.metricQueryHelper = metricQueryHelper;
     this.configFactory = configFactory;
@@ -109,17 +112,20 @@ public class AlertConfigurationWriter {
   private SyncResult syncDefinition(UUID definitionUuid) {
     try {
       AlertDefinition definition = alertDefinitionService.get(definitionUuid);
-      AlertDefinitionGroup group =
-          definition != null ? alertDefinitionGroupService.get(definition.getGroupUUID()) : null;
-      if (definition == null || group == null || !group.isActive()) {
+      AlertConfiguration configuration =
+          definition != null
+              ? alertConfigurationService.get(definition.getConfigurationUUID())
+              : null;
+      if (definition == null || configuration == null || !configuration.isActive()) {
         swamperHelper.removeAlertDefinition(definitionUuid);
+        requiresReload.set(true);
         return SyncResult.REMOVED;
       }
       if (definition.isConfigWritten()) {
         LOG.info("Alert definition {} has config in sync", definitionUuid);
         return SyncResult.IN_SYNC;
       }
-      swamperHelper.writeAlertDefinition(group, definition);
+      swamperHelper.writeAlertDefinition(configuration, definition);
       definition.setConfigWritten(true);
       alertDefinitionService.save(definition);
       requiresReload.set(true);
@@ -151,24 +157,26 @@ public class AlertConfigurationWriter {
                 .collect(Collectors.toList()));
 
         metricService.setMetric(
-            metricService.buildMetricTemplate(PlatformMetrics.ALERT_CONFIG_SYNC_FAILED),
+            buildMetricTemplate(PlatformMetrics.ALERT_CONFIG_SYNC_FAILED),
             results.stream().filter(result -> result == SyncResult.FAILURE).count());
         metricService.setMetric(
-            metricService.buildMetricTemplate(PlatformMetrics.ALERT_CONFIG_WRITTEN),
+            buildMetricTemplate(PlatformMetrics.ALERT_CONFIG_WRITTEN),
             results.stream().filter(result -> result == SyncResult.SYNCED).count());
         metricService.setMetric(
-            metricService.buildMetricTemplate(PlatformMetrics.ALERT_CONFIG_REMOVED),
+            buildMetricTemplate(PlatformMetrics.ALERT_CONFIG_REMOVED),
             results.stream().filter(result -> result == SyncResult.REMOVED).count());
         if (requiresReload.get()) {
-          metricQueryHelper.postManagementCommand(MetricQueryHelper.MANAGEMENT_COMMAND_RELOAD);
+          if (metricQueryHelper.isPrometheusManagementEnabled()) {
+            metricQueryHelper.postManagementCommand(MetricQueryHelper.MANAGEMENT_COMMAND_RELOAD);
+          }
           requiresReload.compareAndSet(true, false);
         }
 
         metricService.setOkStatusMetric(
-            metricService.buildMetricTemplate(PlatformMetrics.ALERT_CONFIG_WRITER_STATUS));
+            buildMetricTemplate(PlatformMetrics.ALERT_CONFIG_WRITER_STATUS));
       } catch (Exception e) {
         metricService.setStatusMetric(
-            metricService.buildMetricTemplate(PlatformMetrics.ALERT_CONFIG_WRITER_STATUS),
+            buildMetricTemplate(PlatformMetrics.ALERT_CONFIG_WRITER_STATUS),
             "Error syncing alert definition configs " + e.getMessage());
         LOG.error("Error syncing alert definition configs", e);
       }

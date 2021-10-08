@@ -48,12 +48,14 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.queries.QueryHelper;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import kamon.instrumentation.play.GuiceModule;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -98,6 +100,7 @@ public class UniverseControllerTestBase extends WithApplication {
   protected PlayCacheSessionStore mockSessionStore;
   protected AlertConfigurationWriter mockAlertConfigurationWriter;
   protected Config mockRuntimeConfig;
+  protected QueryHelper mockQueryHelper;
   protected ReleaseManager mockReleaseManager;
 
   @Override
@@ -118,12 +121,14 @@ public class UniverseControllerTestBase extends WithApplication {
     mockRuntimeConfig = mock(Config.class);
     mockReleaseManager = mock(ReleaseManager.class);
     healthChecker = mock(HealthChecker.class);
+    mockQueryHelper = mock(QueryHelper.class);
 
     when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(false);
     when(mockRuntimeConfig.getBoolean("yb.security.use_oauth")).thenReturn(false);
 
     return new GuiceApplicationBuilder()
         .disable(SwaggerModule.class)
+        .disable(GuiceModule.class)
         .configure((Map) Helpers.inMemoryDatabase())
         .overrides(bind(YBClientService.class).toInstance(mockService))
         .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
@@ -143,6 +148,7 @@ public class UniverseControllerTestBase extends WithApplication {
                 .toInstance(new DummyRuntimeConfigFactoryImpl(mockRuntimeConfig)))
         .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager))
         .overrides(bind(HealthChecker.class).toInstance(healthChecker))
+        .overrides(bind(QueryHelper.class).toInstance(mockQueryHelper))
         .build();
   }
 
@@ -204,7 +210,7 @@ public class UniverseControllerTestBase extends WithApplication {
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer();
-    s3StorageConfig = ModelFactory.createS3StorageConfig(customer);
+    s3StorageConfig = ModelFactory.createS3StorageConfig(customer, "TEST25");
     user = ModelFactory.testUser(customer);
     ObjectNode kmsConfigReq =
         Json.newObject()

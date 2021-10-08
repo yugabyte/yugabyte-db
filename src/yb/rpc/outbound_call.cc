@@ -251,8 +251,8 @@ Status OutboundCall::SetRequestParam(
 
   RETURN_NOT_OK(SerializeMessage(
       message, &buffer_, /* additional_size */ 0, /* use_cached_size */ true, header_size));
-  if (method_metrics_ && method_metrics_->request_bytes) {
-    method_metrics_->request_bytes->IncrementBy(buffer_.size());
+  if (method_metrics_) {
+    IncrementCounterBy(method_metrics_->request_bytes, buffer_.size());
   }
   return Status::OK();
 }
@@ -383,8 +383,8 @@ void OutboundCall::SetResponse(CallResponse&& resp) {
   call_response_ = std::move(resp);
   Slice r(call_response_.serialized_response());
 
-  if (method_metrics_ && method_metrics_->response_bytes) {
-    method_metrics_->response_bytes->IncrementBy(r.size());
+  if (method_metrics_) {
+    IncrementCounterBy(method_metrics_->response_bytes, r.size());
   }
 
   if (call_response_.is_success()) {

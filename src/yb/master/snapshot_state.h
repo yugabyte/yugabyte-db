@@ -25,6 +25,8 @@
 
 #include "yb/tserver/tserver_fwd.h"
 
+#include "yb/util/async_task_tracker.h"
+
 namespace yb {
 namespace master {
 
@@ -74,6 +76,10 @@ class SnapshotState : public StateWithTablets {
     return version_;
   }
 
+  AsyncTaskTracker& CleanupTracker() {
+    return cleanup_tracker_;
+  }
+
   Result<tablet::CreateSnapshotData> SysCatalogSnapshotData(
       const tablet::SnapshotOperation& operation) const;
 
@@ -90,6 +96,7 @@ class SnapshotState : public StateWithTablets {
 
  private:
   bool IsTerminalFailure(const Status& status) override;
+  CHECKED_STATUS CheckDoneStatus(const Status& status) override;
 
   TxnSnapshotId id_;
   HybridTime snapshot_hybrid_time_;
@@ -98,8 +105,9 @@ class SnapshotState : public StateWithTablets {
   // When snapshot is taken as a part of snapshot schedule schedule_id_ will contain this
   // schedule id. Otherwise it will be nil.
   SnapshotScheduleId schedule_id_;
-  int version_;
+  int64_t version_;
   bool delete_started_ = false;
+  AsyncTaskTracker cleanup_tracker_;
 };
 
 Result<docdb::KeyBytes> EncodedSnapshotKey(

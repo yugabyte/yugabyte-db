@@ -68,6 +68,7 @@ namespace tablet {
 struct TransactionApplyData {
   int64_t leader_term = -1;
   TransactionId transaction_id = TransactionId::Nil();
+  AbortedSubTransactionSet aborted;
   OpId op_id;
   HybridTime commit_ht;
   HybridTime log_ht;
@@ -178,6 +179,8 @@ class TransactionParticipant : public TransactionStatusManager {
 
   HybridTime LocalCommitTime(const TransactionId& id) override;
 
+  boost::optional<CommitMetadata> LocalCommitData(const TransactionId& id) override;
+
   void RequestStatusAt(const StatusRequest& request) override;
 
   void Abort(const TransactionId& id, TransactionStatusCallback callback) override;
@@ -239,7 +242,8 @@ class TransactionParticipant : public TransactionStatusManager {
   // Waits until deadline, for txns to abort. If not, it returns a TimedOut.
   // After this call, there should be no active (non-aborted/committed) txn that
   // started before cutoff which is active on this tablet.
-  CHECKED_STATUS StopActiveTxnsPriorTo(HybridTime cutoff, CoarseTimePoint deadline);
+  CHECKED_STATUS StopActiveTxnsPriorTo(
+      HybridTime cutoff, CoarseTimePoint deadline, TransactionId* exclude_txn_id = nullptr);
 
   void IgnoreAllTransactionsStartedBefore(HybridTime limit);
 

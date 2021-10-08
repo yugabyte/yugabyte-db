@@ -225,6 +225,8 @@ class StatusErrorCodeImpl : public StatusErrorCode {
 
   static boost::optional<StatusErrorCodeImpl> FromStatus(const Status& status);
 
+  static boost::optional<Value> ValueFromStatus(const Status& status);
+
   uint8_t Category() const override {
     return kCategory;
   }
@@ -407,7 +409,7 @@ class STATUS_NODISCARD_CLASS Status {
   Status() {}
 
   // Returns true if the status indicates success.
-  bool ok() const { return state_ == nullptr; }
+  MUST_USE_RESULT bool ok() const { return state_ == nullptr; }
 
   // Declares set of Is* functions
   BOOST_PP_SEQ_FOR_EACH(YB_STATUS_FORWARD_MACRO, YB_STATUS_CODE_IS_FUNC, YB_STATUS_CODES)
@@ -568,6 +570,16 @@ boost::optional<StatusErrorCodeImpl<Tag>> StatusErrorCodeImpl<Tag>::FromStatus(
     return boost::none;
   }
   return StatusErrorCodeImpl<Tag>(Tag::Decode(error_data));
+}
+
+template <class Tag>
+boost::optional<typename StatusErrorCodeImpl<Tag>::Value> StatusErrorCodeImpl<Tag>::ValueFromStatus(
+    const Status& status) {
+  const auto* error_data = status.ErrorData(Tag::kCategory);
+  if (!error_data) {
+    return boost::none;
+  }
+  return Tag::Decode(error_data);
 }
 
 inline Status&& MoveStatus(Status&& status) {

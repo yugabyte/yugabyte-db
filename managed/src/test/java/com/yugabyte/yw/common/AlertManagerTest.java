@@ -2,10 +2,11 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
+import static com.yugabyte.yw.models.helpers.CommonUtils.nowMinusWithoutMillis;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
@@ -18,33 +19,31 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableList;
-import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
-import com.yugabyte.yw.common.alerts.AlertDefinitionService;
+import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
+import com.yugabyte.yw.common.alerts.AlertChannelManager;
+import com.yugabyte.yw.common.alerts.AlertChannelService;
+import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.alerts.AlertNotificationReport;
-import com.yugabyte.yw.common.alerts.AlertReceiverEmailParams;
-import com.yugabyte.yw.common.alerts.AlertReceiverManager;
-import com.yugabyte.yw.common.alerts.AlertRouteService;
-import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.alerts.AlertUtils;
-import com.yugabyte.yw.common.alerts.MetricService;
-import com.yugabyte.yw.common.alerts.YWNotificationException;
-import com.yugabyte.yw.common.alerts.impl.AlertReceiverEmail;
-import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
+import com.yugabyte.yw.common.alerts.PlatformNotificationException;
+import com.yugabyte.yw.common.alerts.impl.AlertChannelEmail;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.Alert.State;
+import com.yugabyte.yw.models.AlertChannel;
+import com.yugabyte.yw.models.AlertChannel.ChannelType;
+import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertDefinition;
-import com.yugabyte.yw.models.AlertDefinitionGroup;
-import com.yugabyte.yw.models.AlertReceiver;
-import com.yugabyte.yw.models.AlertRoute;
+import com.yugabyte.yw.models.AlertDestination;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.MetricKey;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
+import java.time.temporal.ChronoUnit;
 import java.util.Collections;
 import java.util.Date;
+import java.util.UUID;
 import javax.mail.MessagingException;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
@@ -66,27 +65,19 @@ public class AlertManagerTest extends FakeDBApplication {
 
   private static final String DEFAULT_EMAIL = "to@to.com";
 
-  private static final String ALERT_ROUTE_NAME = "Test AlertRoute";
+  private static final String ALERT_DESTINATION_NAME = "Test AlertDestination";
 
   private Customer defaultCustomer;
 
-  @Mock private AlertReceiverEmail emailReceiver;
+  @Mock private AlertChannelEmail emailChannel;
 
-  @Mock private AlertReceiverManager receiversManager;
+  @Mock private AlertChannelManager channelsManager;
 
   @Mock private EmailHelper emailHelper;
 
-  private MetricService metricService;
-
-  private AlertService alertService;
-
-  private AlertDefinitionService alertDefinitionService;
-
-  private AlertDefinitionGroupService alertDefinitionGroupService;
-
   private AlertManager am;
 
-  private AlertDefinitionGroup group;
+  private AlertConfiguration configuration;
 
   private AlertDefinition definition;
 
@@ -94,83 +85,45 @@ public class AlertManagerTest extends FakeDBApplication {
 
   private AlertNotificationReport report = new AlertNotificationReport();
 
-  private AlertRoute defaultRoute;
-  private AlertReceiver defaultReceiver;
+  private AlertDestination defaultDestination;
+  private AlertChannel defaultChannel;
 
-  private AlertRouteService alertRouteService;
+  private AlertChannelService alertChannelService;
+  private AlertDestinationService alertDestinationService;
 
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
-    when(receiversManager.get(AlertReceiver.TargetType.Email.name())).thenReturn(emailReceiver);
+    when(channelsManager.get(ChannelType.Email.name())).thenReturn(emailChannel);
 
     universe = ModelFactory.createUniverse();
-    group = ModelFactory.createAlertDefinitionGroup(defaultCustomer, universe);
-    definition = ModelFactory.createAlertDefinition(defaultCustomer, universe, group);
+    configuration = ModelFactory.createAlertConfiguration(defaultCustomer, universe);
+    definition = ModelFactory.createAlertDefinition(defaultCustomer, universe, configuration);
 
-    metricService = new MetricService();
-    alertService = new AlertService();
-    alertDefinitionService = new AlertDefinitionService(alertService);
-    alertDefinitionGroupService =
-        new AlertDefinitionGroupService(
-            alertDefinitionService, new SettableRuntimeConfigFactory(app.config()));
-    alertRouteService = new AlertRouteService(alertDefinitionGroupService);
+    alertChannelService = app.injector().instanceOf(AlertChannelService.class);
+    alertDestinationService = app.injector().instanceOf(AlertDestinationService.class);
     am =
         new AlertManager(
             emailHelper,
             alertService,
-            alertDefinitionGroupService,
-            alertRouteService,
-            receiversManager,
+            alertConfigurationService,
+            alertChannelService,
+            alertDestinationService,
+            channelsManager,
             metricService);
 
-    defaultRoute = alertRouteService.createDefaultRoute(defaultCustomer.uuid);
-    defaultReceiver = defaultRoute.getReceiversList().get(0);
+    defaultDestination = alertDestinationService.createDefaultDestination(defaultCustomer.uuid);
+    defaultChannel = defaultDestination.getChannelsList().get(0);
     when(emailHelper.getDestinations(defaultCustomer.getUuid()))
         .thenReturn(Collections.singletonList(DEFAULT_EMAIL));
   }
 
   @Test
-  public void testResolveAlerts() {
-    Alert alert = ModelFactory.createAlert(defaultCustomer, definition);
-
-    assertThat(alert.getState(), is(State.CREATED));
-    assertThat(alert.getTargetState(), is(State.ACTIVE));
-
-    am.transitionAlert(alert);
-
-    alert = alertService.get(alert.getUuid());
-
-    assertThat(alert.getState(), is(State.ACTIVE));
-    assertThat(alert.getTargetState(), is(State.ACTIVE));
-
-    AlertFilter alertFilter =
-        AlertFilter.builder()
-            .customerUuid(defaultCustomer.getUuid())
-            .definitionUuid(alert.getDefinitionUuid())
-            .build();
-    alertService.markResolved(alertFilter);
-
-    alert = alertService.get(alert.getUuid());
-
-    assertThat(alert.getState(), is(State.ACTIVE));
-    assertThat(alert.getTargetState(), is(State.RESOLVED));
-
-    am.transitionAlert(alert);
-
-    alert = alertService.get(alert.getUuid());
-
-    assertThat(alert.getState(), is(State.RESOLVED));
-    assertThat(alert.getTargetState(), is(State.RESOLVED));
-  }
-
-  @Test
   public void testSendNotification_MetricsSetOk() {
     metricService.setStatusMetric(
-        metricService.buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, defaultCustomer),
-        "Some error");
-    am.setReceiverStatusMetric(
-        PlatformMetrics.ALERT_MANAGER_RECEIVER_STATUS, defaultReceiver, "Some receiver error");
+        buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, defaultCustomer), "Some error");
+    am.setChannelStatusMetric(
+        PlatformMetrics.ALERT_MANAGER_CHANNEL_STATUS, defaultChannel, "Some channel error");
 
     Alert alert = ModelFactory.createAlert(defaultCustomer);
 
@@ -186,102 +139,124 @@ public class AlertManagerTest extends FakeDBApplication {
                 .build(),
             1.0);
     assertThat(amStatus.getLabelValue(KnownAlertLabels.ERROR_MESSAGE), nullValue());
-    Metric receiverStatus =
+    Metric channelStatus =
         AssertHelper.assertMetricValue(
             metricService,
             MetricKey.builder()
                 .customerUuid(defaultCustomer.getUuid())
-                .name(PlatformMetrics.ALERT_MANAGER_RECEIVER_STATUS.getMetricName())
-                .targetUuid(defaultReceiver.getUuid())
+                .name(PlatformMetrics.ALERT_MANAGER_CHANNEL_STATUS.getMetricName())
+                .targetUuid(defaultChannel.getUuid())
                 .build(),
             1.0);
-    assertThat(receiverStatus.getLabelValue(KnownAlertLabels.ERROR_MESSAGE), nullValue());
+    assertThat(channelStatus.getLabelValue(KnownAlertLabels.ERROR_MESSAGE), nullValue());
   }
 
   @Test
-  public void testSendNotification_FailureMetric() throws YWNotificationException {
+  public void testSendNotification_FailureMetric() throws PlatformNotificationException {
     Alert alert = ModelFactory.createAlert(defaultCustomer);
 
     ArgumentCaptor<Alert> captor = ArgumentCaptor.forClass(Alert.class);
-    doThrow(new YWNotificationException("test"))
-        .when(emailReceiver)
+    doThrow(new PlatformNotificationException("test"))
+        .when(emailChannel)
         .sendNotification(eq(defaultCustomer), captor.capture(), any());
     am.sendNotificationForState(alert, State.ACTIVE, report);
     assertThat(captor.getValue().getUuid(), equalTo(alert.getUuid()));
 
-    Metric receiverStatus =
+    Metric channelStatus =
         AssertHelper.assertMetricValue(
             metricService,
             MetricKey.builder()
                 .customerUuid(defaultCustomer.getUuid())
-                .name(PlatformMetrics.ALERT_MANAGER_RECEIVER_STATUS.getMetricName())
-                .targetUuid(defaultReceiver.getUuid())
+                .name(PlatformMetrics.ALERT_MANAGER_CHANNEL_STATUS.getMetricName())
+                .targetUuid(defaultChannel.getUuid())
                 .build(),
             0.0);
     assertThat(
-        receiverStatus.getLabelValue(KnownAlertLabels.ERROR_MESSAGE),
+        channelStatus.getLabelValue(KnownAlertLabels.ERROR_MESSAGE),
         equalTo("Error sending notification: test"));
   }
 
   @Test
-  public void testSendNotification_AlertWoDefinition_SendEmailOldManner()
-      throws YWNotificationException {
-    Alert alert = ModelFactory.createAlert(defaultCustomer, universe);
-    am.sendNotificationForState(alert, State.ACTIVE, report);
-
-    ArgumentCaptor<Alert> captor = ArgumentCaptor.forClass(Alert.class);
-    verify(emailReceiver, times(1)).sendNotification(eq(defaultCustomer), captor.capture(), any());
-    assertThat(captor.getValue().getUuid(), is(alert.getUuid()));
-  }
-
-  @Test
-  public void testSendNotification_NoRoutes() throws MessagingException {
-    Alert alert = ModelFactory.createAlert(defaultCustomer, definition);
-    am.sendNotificationForState(alert, State.ACTIVE, report);
-    verify(emailHelper, never()).sendEmail(any(), anyString(), anyString(), any(), any());
-  }
-
-  @Test
-  public void testSendNotification_TwoEmailRoutes()
-      throws MessagingException, YWNotificationException {
+  public void testSendNotification_NoDestinations() throws MessagingException {
+    configuration.setDefaultDestination(false);
+    alertConfigurationService.save(configuration);
     Alert alert = ModelFactory.createAlert(defaultCustomer, definition);
 
-    AlertReceiver receiver1 = ModelFactory.createEmailReceiver(defaultCustomer, "AlertReceiver 1");
-    AlertReceiver receiver2 = ModelFactory.createEmailReceiver(defaultCustomer, "AlertReceiver 2");
-    AlertRoute route =
-        ModelFactory.createAlertRoute(
-            defaultCustomer.uuid, ALERT_ROUTE_NAME, ImmutableList.of(receiver1, receiver2));
-    group.setRouteUUID(route.getUuid());
-    group.save();
-
     am.sendNotificationForState(alert, State.ACTIVE, report);
+
     verify(emailHelper, never()).sendEmail(any(), anyString(), anyString(), any(), any());
-    verify(emailReceiver, times(2)).sendNotification(any(), any(), any());
+    assertThat(alert.getNotificationsFailed(), equalTo(0));
+    assertThat(alert.getNextNotificationTime(), nullValue());
   }
 
   @Test
-  public void testDefaultRoute_IsUsed() throws YWNotificationException {
+  public void testSendNotification_NoConfig() throws MessagingException {
+    Alert alert = ModelFactory.createAlert(defaultCustomer, definition);
+    alert.setLabel(KnownAlertLabels.CONFIGURATION_UUID, UUID.randomUUID().toString());
+
+    am.sendNotificationForState(alert, State.ACTIVE, report);
+
+    verify(emailHelper, never()).sendEmail(any(), anyString(), anyString(), any(), any());
+    assertThat(alert.getNotificationsFailed(), equalTo(0));
+    assertThat(alert.getNextNotificationTime(), nullValue());
+  }
+
+  @Test
+  public void testSendNotification_DefaultDestinationMissing() throws MessagingException {
+    defaultDestination.setDefaultDestination(false);
+    defaultDestination.save();
+    Alert alert = ModelFactory.createAlert(defaultCustomer, definition);
+
+    am.sendNotificationForState(alert, State.ACTIVE, report);
+
+    verify(emailHelper, never()).sendEmail(any(), anyString(), anyString(), any(), any());
+    assertThat(alert.getNotificationsFailed(), equalTo(1));
+    assertThat(alert.getNextNotificationTime().after(new Date()), equalTo(true));
+  }
+
+  @Test
+  public void testSendNotification_TwoEmailDestinations()
+      throws MessagingException, PlatformNotificationException {
+    Alert alert = ModelFactory.createAlert(defaultCustomer, definition);
+
+    AlertChannel channel1 =
+        ModelFactory.createEmailChannel(defaultCustomer.getUuid(), "AlertChannel 1");
+    AlertChannel channel2 =
+        ModelFactory.createEmailChannel(defaultCustomer.getUuid(), "AlertChannel 2");
+    AlertDestination destination =
+        ModelFactory.createAlertDestination(
+            defaultCustomer.uuid, ALERT_DESTINATION_NAME, ImmutableList.of(channel1, channel2));
+    configuration.setDestinationUUID(destination.getUuid());
+    configuration.save();
+
+    am.sendNotificationForState(alert, State.ACTIVE, report);
+    verify(emailHelper, never()).sendEmail(any(), anyString(), anyString(), any(), any());
+    verify(emailChannel, times(2)).sendNotification(any(), any(), any());
+  }
+
+  @Test
+  public void testDefaultDestination_IsUsed() throws PlatformNotificationException {
     Alert alert = ModelFactory.createAlert(defaultCustomer, universe);
 
     am.sendNotificationForState(alert, State.ACTIVE, report);
-    ArgumentCaptor<AlertReceiver> receiverCaptor = ArgumentCaptor.forClass(AlertReceiver.class);
-    verify(emailReceiver, times(1)).sendNotification(any(), any(), receiverCaptor.capture());
+    ArgumentCaptor<AlertChannel> channelCaptor = ArgumentCaptor.forClass(AlertChannel.class);
+    verify(emailChannel, times(1)).sendNotification(any(), any(), channelCaptor.capture());
 
-    assertThat(AlertUtils.getJsonTypeName(receiverCaptor.getValue().getParams()), is("Email"));
-    AlertReceiverEmailParams params =
-        (AlertReceiverEmailParams) receiverCaptor.getValue().getParams();
+    assertThat(AlertUtils.getJsonTypeName(channelCaptor.getValue().getParams()), is("Email"));
+    AlertChannelEmailParams params = (AlertChannelEmailParams) channelCaptor.getValue().getParams();
     assertThat(params.recipients, nullValue());
     assertThat(params.defaultRecipients, is(true));
   }
 
   @Test
-  public void testDefaultRoute_EmptyRecipientsAlertResolved() throws YWNotificationException {
+  public void testDefaultDestination_EmptyRecipientsAlertResolved()
+      throws PlatformNotificationException {
     Alert alert = ModelFactory.createAlert(defaultCustomer, universe);
     when(emailHelper.getDestinations(defaultCustomer.getUuid()))
         .thenReturn(Collections.emptyList());
 
     am.sendNotificationForState(alert, State.ACTIVE, report);
-    verify(emailReceiver, never()).sendNotification(any(), any(), any());
+    verify(emailChannel, never()).sendNotification(any(), any(), any());
 
     Metric amStatus =
         AssertHelper.assertMetricValue(
@@ -295,7 +270,7 @@ public class AlertManagerTest extends FakeDBApplication {
     assertThat(
         amStatus.getLabelValue(KnownAlertLabels.ERROR_MESSAGE),
         equalTo(
-            "Unable to notify about alert(s) using default route, "
+            "Unable to notify about alert(s) using default destination, "
                 + "there are no recipients configured in the customer's profile."));
 
     // Restoring recipients.
@@ -303,7 +278,7 @@ public class AlertManagerTest extends FakeDBApplication {
         .thenReturn(Collections.singletonList(DEFAULT_EMAIL));
 
     am.sendNotificationForState(alert, State.ACTIVE, report);
-    verify(emailReceiver, times(1)).sendNotification(any(), any(), any());
+    verify(emailChannel, times(1)).sendNotification(any(), any(), any());
 
     amStatus =
         AssertHelper.assertMetricValue(
@@ -331,7 +306,7 @@ public class AlertManagerTest extends FakeDBApplication {
   @Test
   public void testSendNotifications_CountMatched(
       @Nullable State notifiedState, State currentState, int expectedCount)
-      throws YWNotificationException {
+      throws PlatformNotificationException {
     Alert alert = ModelFactory.createAlert(defaultCustomer, universe);
     alert
         .setState(currentState)
@@ -345,7 +320,7 @@ public class AlertManagerTest extends FakeDBApplication {
     am.sendNotifications();
 
     ArgumentCaptor<Alert> captor = ArgumentCaptor.forClass(Alert.class);
-    verify(emailReceiver, times(expectedCount))
+    verify(emailChannel, times(expectedCount))
         .sendNotification(eq(defaultCustomer), captor.capture(), any());
 
     if (expectedCount > 0) {
@@ -358,44 +333,8 @@ public class AlertManagerTest extends FakeDBApplication {
     }
   }
 
-  @Parameters({
-    // @formatter:off
-    "false, null, ACTIVE, true",
-    "true, null, ACTIVE, false",
-    "false, ACKNOWLEDGED, ACTIVE, false",
-    "false, null, ACKNOWLEDGED, false",
-    // @formatter:on
-  })
-  @TestCaseName(
-      "{method}(Last sent state:{2}, current state:{3}, has nextNotTime:{0}, "
-          + "sendNotif:{1}, reschedule expected:{4})")
   @Test
-  public void testScheduleAlertNotification(
-      boolean hasNextNotificationTime,
-      @Nullable State notifiedState,
-      State currentState,
-      boolean rescheduleExpected) {
-    Alert alert = ModelFactory.createAlert(defaultCustomer, universe);
-    alert
-        .setState(currentState)
-        .setDefinitionUuid(definition.getUuid())
-        .setNotifiedState(notifiedState);
-    Date prevDate = null;
-    if (hasNextNotificationTime) {
-      prevDate = new Date();
-      alert.setNextNotificationTime(prevDate);
-    }
-    alert.save();
-    am.scheduleAlertNotification(alert);
-    if (rescheduleExpected) {
-      assertThat(alert.getNextNotificationTime(), not(prevDate));
-    } else {
-      assertThat(alert.getNextNotificationTime(), is(prevDate));
-    }
-  }
-
-  @Test
-  public void testSendNotificationForState_WithAnotherState() throws YWNotificationException {
+  public void testSendNotificationForState_WithAnotherState() throws PlatformNotificationException {
     Alert alert = ModelFactory.createAlert(defaultCustomer, universe);
     alert.setState(State.RESOLVED);
     alert.save();
@@ -403,7 +342,30 @@ public class AlertManagerTest extends FakeDBApplication {
     am.sendNotificationForState(alert, State.ACTIVE, report);
 
     ArgumentCaptor<Alert> captor = ArgumentCaptor.forClass(Alert.class);
-    verify(emailReceiver, times(1)).sendNotification(eq(defaultCustomer), captor.capture(), any());
+    verify(emailChannel, times(1)).sendNotification(eq(defaultCustomer), captor.capture(), any());
     assertThat(captor.getValue().getState(), is(State.ACTIVE));
+  }
+
+  @Test
+  public void testSendNotificationForState_()
+      throws PlatformNotificationException, MessagingException {
+    Alert alert = ModelFactory.createAlert(defaultCustomer, definition);
+
+    defaultDestination.setDefaultDestination(false);
+    defaultDestination.save();
+
+    am.sendNotificationForState(alert, State.ACTIVE, report);
+
+    verify(emailHelper, never()).sendEmail(any(), anyString(), anyString(), any(), any());
+    assertThat(alert.getNotificationsFailed(), equalTo(1));
+    assertThat(alert.getNextNotificationTime().after(new Date()), equalTo(true));
+
+    alert = ModelFactory.createAlert(defaultCustomer, definition);
+    alert.setCreateTime(nowMinusWithoutMillis(2, ChronoUnit.DAYS));
+    am.sendNotificationForState(alert, State.ACTIVE, report);
+
+    verify(emailHelper, never()).sendEmail(any(), anyString(), anyString(), any(), any());
+    assertThat(alert.getNotificationsFailed(), equalTo(1));
+    assertThat(alert.getNextNotificationTime(), nullValue());
   }
 }

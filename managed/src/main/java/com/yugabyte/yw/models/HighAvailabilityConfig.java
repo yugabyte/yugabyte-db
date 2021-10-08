@@ -15,7 +15,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import io.ebean.Finder;
 import io.ebean.Model;
 import java.util.ArrayList;
@@ -138,7 +138,7 @@ public class HighAvailabilityConfig extends Model {
   public static Optional<HighAvailabilityConfig> getOrBadRequest(UUID uuid) {
     Optional<HighAvailabilityConfig> config = get(uuid);
     if (!config.isPresent()) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid config UUID");
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid config UUID");
     }
     return config;
   }

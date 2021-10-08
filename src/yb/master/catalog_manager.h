@@ -51,6 +51,7 @@
 #include "yb/common/partition.h"
 #include "yb/common/transaction.h"
 #include "yb/consensus/consensus.pb.h"
+#include "yb/client/client_fwd.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
@@ -725,6 +726,8 @@ class CatalogManager :
   Result<TableDescription> DescribeTable(
       const TableInfoPtr& table_info, bool succeed_if_create_in_progress);
 
+  Result<std::string> GetPgSchemaName(const TableInfoPtr& table_info);
+
   void AssertLeaderLockAcquiredForReading() const {
     leader_lock_.AssertAcquiredForReading();
   }
@@ -752,19 +755,25 @@ class CatalogManager :
     return *encryption_manager_;
   }
 
+  client::UniverseKeyClient& universe_key_client() {
+    return *universe_key_client_;
+  }
+
   CHECKED_STATUS SplitTablet(const TabletId& tablet_id) override;
 
   // Splits tablet specified in the request using middle of the partition as a split point.
   CHECKED_STATUS SplitTablet(
       const SplitTabletRequestPB* req, SplitTabletResponsePB* resp, rpc::RpcContext* rpc);
 
-  CHECKED_STATUS DeleteTablet(
-      const DeleteTabletRequestPB* req, DeleteTabletResponsePB* resp, rpc::RpcContext* rpc);
+  // Deletes a tablet that is no longer serving user requests. This would require that the tablet
+  // has been split and both of its children are now in RUNNING state and serving user requests
+  // instead.
+  CHECKED_STATUS DeleteNotServingTablet(
+      const DeleteNotServingTabletRequestPB* req, DeleteNotServingTabletResponsePB* resp,
+      rpc::RpcContext* rpc);
 
   CHECKED_STATUS DdlLog(
       const DdlLogRequestPB* req, DdlLogResponsePB* resp, rpc::RpcContext* rpc);
-
-  CHECKED_STATUS DeleteTablets(const std::vector<TabletId>& tablet_ids);
 
   // Test wrapper around protected DoSplitTablet method.
   CHECKED_STATUS TEST_SplitTablet(
@@ -773,6 +782,8 @@ class CatalogManager :
   CHECKED_STATUS TEST_SplitTablet(
       const TabletId& tablet_id, const std::string& split_encoded_key,
       const std::string& split_partition_key);
+
+  CHECKED_STATUS TEST_IncrementTablePartitionListVersion(const TableId& table_id);
 
   // Schedule a task to run on the async task thread pool.
   CHECKED_STATUS ScheduleTask(std::shared_ptr<RetryingTSRpcTask> task);
@@ -787,7 +798,8 @@ class CatalogManager :
 
   Result<std::vector<TableDescription>> CollectTables(
       const google::protobuf::RepeatedPtrField<TableIdentifierPB>& table_identifiers,
-      CollectFlags flags);
+      CollectFlags flags,
+      std::unordered_set<NamespaceId>* namespaces = nullptr);
 
   // Returns 'table_replication_info' itself if set. Else looks up placement info for its
   // 'tablespace_id'. If neither is set, returns the cluster level replication info.
@@ -798,7 +810,9 @@ class CatalogManager :
   Result<boost::optional<TablespaceId>> GetTablespaceForTable(
       const scoped_refptr<TableInfo>& table);
 
-  void ProcessTabletPathInfo(const std::string& ts_uuid, const TabletPathInfoPB& report);
+  void ProcessTabletStorageMetadata(
+      const std::string& ts_uuid,
+      const TabletDriveStorageMetadataPB& storage_metadata);
 
   void CheckTableDeleted(const TableInfoPtr& table);
 
@@ -865,6 +879,13 @@ class CatalogManager :
   // to true (under state_lock_).
   void LoadSysCatalogDataTask();
 
+  // This method checks that resource such as keyspace is available for GrantRevokePermission
+  // request.
+  // Since this method takes lock on mutex_, it is separated out of permissions manager
+  // so that the thread safety relationship between the two managers is easy to reason about.
+  CHECKED_STATUS CheckResource(const GrantRevokePermissionRequestPB* req,
+                               GrantRevokePermissionResponsePB* resp);
+
   // Generated the default entry for the cluster config, that is written into sys_catalog on very
   // first leader election of the cluster.
   //
@@ -917,17 +938,16 @@ class CatalogManager :
   CHECKED_STATUS CreateTableInMemory(const CreateTableRequestPB& req,
                                      const Schema& schema,
                                      const PartitionSchema& partition_schema,
-                                     const bool create_tablets,
                                      const NamespaceId& namespace_id,
                                      const NamespaceName& namespace_name,
                                      const vector<Partition>& partitions,
                                      IndexInfoPB* index_info,
-                                     vector<TabletInfo*>* tablets,
+                                     TabletInfos* tablets,
                                      CreateTableResponsePB* resp,
                                      scoped_refptr<TableInfo>* table) REQUIRES(mutex_);
-  CHECKED_STATUS CreateTabletsFromTable(const vector<Partition>& partitions,
-                                        const scoped_refptr<TableInfo>& table,
-                                        std::vector<TabletInfo*>* tablets) REQUIRES(mutex_);
+
+  Result<TabletInfos> CreateTabletsFromTable(const vector<Partition>& partitions,
+                                             const TableInfoPtr& table) REQUIRES(mutex_);
 
   // Helper for creating copartitioned table.
   CHECKED_STATUS CreateCopartitionedTable(const CreateTableRequestPB& req,
@@ -963,8 +983,8 @@ class CatalogManager :
   // Helper for creating the initial TabletInfo state.
   // Leaves the tablet "write locked" with the new info in the
   // "dirty" state field.
-  TabletInfo *CreateTabletInfo(TableInfo* table,
-                               const PartitionPB& partition) REQUIRES(mutex_);
+  TabletInfoPtr CreateTabletInfo(TableInfo* table,
+                                 const PartitionPB& partition) REQUIRES(mutex_);
 
   // Remove the specified entries from the protobuf field table_ids of a TabletInfo.
   Status RemoveTableIdsFromTabletInfo(
@@ -1093,8 +1113,8 @@ class CatalogManager :
   // updated to INDEX_PERM_WRITE_AND_DELETE state; followed by backfilling. Once
   // all the tablets have completed backfilling, the index will be updated
   // to be in INDEX_PERM_READ_WRITE_AND_DELETE state.
-  void SendAlterTableRequest(const scoped_refptr<TableInfo>& table,
-                             const AlterTableRequestPB* req = nullptr);
+  CHECKED_STATUS SendAlterTableRequest(const scoped_refptr<TableInfo>& table,
+                                       const AlterTableRequestPB* req = nullptr);
 
   // Start the background task to send the CopartitionTable() RPC to the leader for this
   // tablet.
@@ -1102,7 +1122,7 @@ class CatalogManager :
                                     const scoped_refptr<TableInfo>& table);
 
   // Starts the background task to send the SplitTablet RPC to the leader for the specified tablet.
-  void SendSplitTabletRequest(
+  CHECKED_STATUS SendSplitTabletRequest(
       const scoped_refptr<TabletInfo>& tablet, std::array<TabletId, kNumSplitParts> new_tablet_ids,
       const std::string& split_encoded_key, const std::string& split_partition_key);
 
@@ -1136,7 +1156,7 @@ class CatalogManager :
       rpc::RpcContext* rpc);
 
   // Request tablet servers to delete all replicas of the tablet.
-  void DeleteTabletReplicas(TabletInfo* tablet, const std::string& msg, bool hide_only);
+  void DeleteTabletReplicas(TabletInfo* tablet, const std::string& msg, HideOnly hide_only);
 
   // Returns error if and only if it is forbidden to both:
   // 1) Delete single tablet from table.
@@ -1197,7 +1217,7 @@ class CatalogManager :
   // the table we failed to create from the in-memory maps
   // ('table_names_map_', 'table_ids_map_', 'tablet_map_' below).
   CHECKED_STATUS AbortTableCreation(TableInfo* table,
-                                    const std::vector<TabletInfo*>& tablets,
+                                    const TabletInfos& tablets,
                                     const Status& s,
                                     CreateTableResponsePB* resp);
 
@@ -1210,6 +1230,9 @@ class CatalogManager :
 
   // Report metrics.
   void ReportMetrics();
+
+  // Reset metrics.
+  void ResetMetrics();
 
   // Conventional "T xxx P yyy: " prefix for logging.
   std::string LogPrefix() const;
@@ -1230,7 +1253,7 @@ class CatalogManager :
   // Registers new split tablet with `partition` for the same table as `source_tablet_info` tablet.
   // Does not change any other tablets and their partitions.
   // Returns TabletInfo for registered tablet.
-  Result<TabletInfo*> RegisterNewTabletForSplit(
+  Result<TabletInfoPtr> RegisterNewTabletForSplit(
       TabletInfo* source_tablet_info, const PartitionPB& partition,
       TableInfo::WriteLock* table_write_lock);
 
@@ -1291,6 +1314,10 @@ class CatalogManager :
     return SnapshotSchedulesToObjectIdsMap();
   }
 
+  Status DoDeleteNamespace(const DeleteNamespaceRequestPB* req,
+                           DeleteNamespaceResponsePB* resp,
+                           rpc::RpcContext* rpc);
+
   // TODO: the maps are a little wasteful of RAM, since the TableInfo/TabletInfo
   // objects have a copy of the string key. But STL doesn't make it
   // easy to make a "gettable set".
@@ -1299,7 +1326,6 @@ class CatalogManager :
   using MutexType = rw_spinlock;
   using SharedLock = NonRecursiveSharedLock<MutexType>;
   using LockGuard = std::lock_guard<MutexType>;
-  using UniqueLock = std::unique_lock<MutexType>;
   mutable MutexType mutex_;
 
   // Note: Namespaces and tables for YSQL databases are identified by their ids only and therefore
@@ -1452,6 +1478,8 @@ class CatalogManager :
   scoped_refptr<TasksTracker> jobs_tracker_;
 
   std::unique_ptr<EncryptionManager> encryption_manager_;
+
+  std::unique_ptr<client::UniverseKeyClient> universe_key_client_;
 
   // A pointer to the system.partitions tablet for the RebuildYQLSystemPartitions bg task.
   std::shared_ptr<SystemTablet> system_partitions_tablet_ = nullptr;

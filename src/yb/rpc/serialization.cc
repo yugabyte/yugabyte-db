@@ -32,6 +32,7 @@
 
 #include "yb/rpc/serialization.h"
 
+#include <google/protobuf/message.h>
 #include <google/protobuf/message_lite.h>
 #include <google/protobuf/io/coded_stream.h>
 #include <glog/logging.h>
@@ -60,10 +61,12 @@ Status SerializeMessage(const MessageLite& message,
                         bool use_cached_size,
                         size_t offset,
                         size_t* size) {
-
   if (PREDICT_FALSE(!message.IsInitialized())) {
-    return STATUS(InvalidArgument, "RPC argument missing required fields",
-        message.InitializationErrorString());
+    auto* full_message = dynamic_cast<const google::protobuf::Message*>(&message);
+    return STATUS_FORMAT(
+        InvalidArgument, "RPC argument missing required fields: $0$1",
+        message.InitializationErrorString(),
+        full_message ? Format(" ($0)", full_message->ShortDebugString()) : "");
   }
   int pb_size = use_cached_size ? message.GetCachedSize() : message.ByteSize();
   DCHECK_EQ(message.ByteSize(), pb_size);

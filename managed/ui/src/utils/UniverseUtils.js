@@ -103,6 +103,10 @@ export function getProviderMetadata(provider) {
 
 export function getClusterIndex(nodeDetails, clusters) {
   const cluster = clusters.find((cluster) => cluster.uuid === nodeDetails.placementUuid);
+  if (!cluster) {
+    // Move orphaned nodes to end of list
+    return Number.MAX_SAFE_INTEGER;
+  }
   return cluster.index;
 }
 
@@ -110,9 +114,9 @@ export function nodeComparisonFunction(nodeDetailsA, nodeDetailsB, clusters) {
   const aClusterIndex = getClusterIndex(nodeDetailsA, clusters);
   const bClusterIndex = getClusterIndex(nodeDetailsB, clusters);
   if (aClusterIndex !== bClusterIndex) {
-    return aClusterIndex > bClusterIndex;
+    return aClusterIndex - bClusterIndex;
   }
-  return nodeDetailsA.nodeIdx > nodeDetailsB.nodeIdx;
+  return nodeDetailsA.nodeIdx - nodeDetailsB.nodeIdx;
 }
 
 export function hasLiveNodes(universe) {
@@ -145,8 +149,8 @@ export const isOnpremUniverse = (universe) => {
   return isUniverseType(universe, 'onprem');
 };
 
-export const isAWSUniverse = (universe) => {
-  return isUniverseType(universe, 'aws');
+export const isPausableUniverse = (universe) => {
+  return isUniverseType(universe, 'aws') ||  isUniverseType(universe, 'gcp');
 };
 
 // Reads file and passes content into Promise.resolve

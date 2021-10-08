@@ -28,7 +28,7 @@ export default class TaskListTable extends Component {
     function typeFormatter(cell, row) {
       return (
         <span>
-          {row.type} {row.target}
+          {row.typeName} {row.target}
         </span>
       );
     }
@@ -36,6 +36,8 @@ export default class TaskListTable extends Component {
     const taskDetailLinkFormatter = function (cell, row) {
       if (row.status === 'Failure') {
         return <Link to={`/tasks/${row.id}`}>See Details</Link>;
+      } else if (row.type === 'UpgradeSoftware' && row.details != null){
+        return <span><code>{row.details.ybPrevSoftwareVersion}</code>{' => '}<code>{row.details.ybSoftwareVersion}</code></span>;
       } else {
         return <span />;
       }

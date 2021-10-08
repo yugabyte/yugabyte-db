@@ -36,12 +36,10 @@ DEFINE_bool(ysql_disable_index_backfill, false,
     "A kill switch to disable multi-stage backfill for YSQL indexes.");
 TAG_FLAG(ysql_disable_index_backfill, hidden);
 TAG_FLAG(ysql_disable_index_backfill, advanced);
-TAG_FLAG(ysql_disable_index_backfill, runtime);
 
-DEFINE_bool(enable_pg_savepoints, false,
-            "True to enable savepoints in YugaByte PostgreSQL API. This should eventually be set "
-            "to true by default.");
-TAG_FLAG(enable_pg_savepoints, unsafe);
+DEFINE_bool(enable_pg_savepoints, true,
+            "DEPRECATED -- Set to false to disable savepoints in YugaByte PostgreSQL API.");
+TAG_FLAG(enable_pg_savepoints, hidden);
 
 namespace yb {
 

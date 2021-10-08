@@ -2372,6 +2372,7 @@ public class TestBindVariable extends BaseCQLTest {
     LOG.info("End test");
   }
 
+/*
   @Test
   public void testTransactionUnboundArg() throws Exception {
     LOG.info("Start test: " + getCurrentTestMethodName());
@@ -2400,4 +2401,5 @@ public class TestBindVariable extends BaseCQLTest {
 
     LOG.info("End test: " + getCurrentTestMethodName());
   }
+*/
 }

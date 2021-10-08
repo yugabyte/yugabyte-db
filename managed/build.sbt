@@ -110,6 +110,8 @@ lazy val consoleSetting = settingKey[PlayInteractionMode]("custom console settin
 
 lazy val versionGenerate = taskKey[Int]("Add version_metadata.json file")
 
+lazy val compileJavaGenClient = taskKey[Int]("Compile generated Java code")
+
 // ------------------------------------------------------------------------------------------------
 // Main build.sbt script
 // ------------------------------------------------------------------------------------------------
@@ -117,8 +119,14 @@ lazy val versionGenerate = taskKey[Int]("Add version_metadata.json file")
 name := "yugaware"
 
 lazy val root = (project in file("."))
-  .enablePlugins(PlayJava, PlayEbean, SbtWeb, JavaAppPackaging)
+  .enablePlugins(PlayJava, PlayEbean, SbtWeb, JavaAppPackaging, JavaAgent)
   .disablePlugins(PlayLayoutPlugin)
+  .settings(commands += Command.command("deflake") { state =>
+    "test" :: "deflake" :: state
+  })
+  .settings(commands += Command.args("deflakeOne", "<arg>") { (state, args) =>
+    "testOnly " + args.mkString(" ") :: "deflakeOne " + args.mkString(" "):: state
+  })
 
 scalaVersion := "2.12.10"
 version := (sys.process.Process("cat version.txt").lineStream_!.head)
@@ -132,18 +140,20 @@ libraryDependencies ++= Seq(
   guice,
   "com.google.inject.extensions" % "guice-multibindings" % "4.2.3",
   "org.mockito" % "mockito-core" % "2.13.0",
-  "org.mindrot" % "jbcrypt" % "0.3m",
-  "org.postgresql" % "postgresql" % "9.4.1208",
+  "org.mindrot" % "jbcrypt" % "0.4",
+  "org.postgresql" % "postgresql" % "42.2.23",
   "commons-io" % "commons-io" % "2.4",
-  "org.apache.commons" % "commons-compress" % "1.20",
+  "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
+  "org.codehaus.janino" % "janino" % "3.1.6",
+  "org.apache.commons" % "commons-compress" % "1.21",
   "org.apache.httpcomponents" % "httpcore" % "4.4.5",
-  "org.apache.httpcomponents" % "httpclient" % "4.5.2",
+  "org.apache.httpcomponents" % "httpclient" % "4.5.13",
   "org.flywaydb" %% "flyway-play" % "4.0.0",
   // https://github.com/YugaByte/cassandra-java-driver/releases
   "com.yugabyte" % "cassandra-driver-core" % "3.8.0-yb-7",
-  "org.yaml" % "snakeyaml" % "1.17",
+  "org.yaml" % "snakeyaml" % "1.29",
   "org.bouncycastle" % "bcpkix-jdk15on" % "1.61",
-  "org.springframework.security" % "spring-security-core" % "5.1.6.RELEASE",
+  "org.springframework.security" % "spring-security-core" % "5.3.10.RELEASE",
   "com.amazonaws" % "aws-java-sdk-ec2" % "1.11.907",
   "com.amazonaws" % "aws-java-sdk-kms" % "1.11.638",
   "com.amazonaws" % "aws-java-sdk-iam" % "1.11.670",
@@ -166,14 +176,17 @@ libraryDependencies ++= Seq(
   "com.icegreen" % "greenmail" % "1.6.1" % Test,
   "com.icegreen" % "greenmail-junit4" % "1.6.1" % Test,
   "org.apache.velocity" % "velocity" % "1.7",
-  "org.apache.velocity" % "velocity-tools" % "2.0",
+  "org.apache.velocity" % "velocity-engine-core" % "2.3",
   "com.fasterxml.jackson.core" % "jackson-core" % "2.10.5",
   "com.jayway.jsonpath" % "json-path" % "2.4.0",
   "commons-io" % "commons-io" % "2.8.0",
   "commons-codec" % "commons-codec" % "1.15",
   "com.google.cloud" % "google-cloud-storage" % "1.115.0",
   "org.projectlombok" % "lombok" % "1.18.20",
-  "com.squareup.okhttp3" % "mockwebserver" % "4.9.1" % Test
+  "com.squareup.okhttp3" % "mockwebserver" % "4.9.1" % Test,
+  "io.kamon" %% "kamon-bundle" % "2.2.2",
+  "io.kamon" %% "kamon-prometheus" % "2.2.2",
+  "org.unix4j" % "unix4j-command" % "0.6"
 )
 // Clear default resolvers.
 appResolvers := None
@@ -284,6 +297,33 @@ versionGenerate := {
   status
 }
 
+compileJavaGenClient := {
+  val buildType = sys.env.get("BUILD_TYPE").getOrElse("release")
+  val status = Process("mvn install", new File(baseDirectory.value + "/client/java/generated")).!
+  status
+}
+
+// Generate a Java API client.
+lazy val javagen = project.in(file("client/java"))
+  .settings(
+    openApiInputSpec := "src/main/resources/swagger.json",
+    openApiGeneratorName := "java",
+    openApiOutputDir := "client/java/generated",
+    openApiValidateSpec := SettingDisabled,
+    openApiConfigFile := "client/java/openapi-java-config.json",
+
+  )
+
+// Generate a Python API client.
+lazy val pythongen = project.in(file("client/python"))
+  .settings(
+    openApiInputSpec := "src/main/resources/swagger.json",
+    openApiGeneratorName := "python",
+    openApiOutputDir := "client/python/generated",
+    openApiValidateSpec := SettingDisabled,
+    openApiConfigFile := "client/python/openapi-python-config.json"
+  )
+
 packageZipTarball.in(Universal) := packageZipTarball.in(Universal).dependsOn(versionGenerate).value
 
 runPlatformTask := {
@@ -302,14 +342,23 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.3-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.8-SNAPSHOT"
 
 libraryDependencies ++= Seq(
   // We wont use swagger-ui jar since we want to change some of the assets:
   //  "org.webjars" % "swagger-ui" % "3.43.0",
   "io.swagger" %% "swagger-play2" % "1.6.1",
   "io.swagger" %% "swagger-scala-module" % "1.0.5",
-  "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.9.8"
+  "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.9.10",
+  // Overrides mainly to address transitive deps in cassandra-driver-core and pac4j-oidc/oauth
+  "com.fasterxml.jackson.core" % "jackson-databind" % "2.9.10.8",
+  "io.netty" % "netty-handler" % "4.1.66.Final",
+  "io.netty" % "netty-codec-http" % "4.1.66.Final",
+  "io.netty" % "netty" % "3.10.6.Final",
+  "com.cronutils" % "cron-utils" % "9.1.5",
+  "com.nimbusds" % "nimbus-jose-jwt" % "9.11.3",
+  "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor" % "2.9.10",
+  "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % "2.9.10"
 )
 // https://mvnrepository.com/artifact/eu.unicredit/sbt-swagger-codegen-lib
 //libraryDependencies += "eu.unicredit" %% "sbt-swagger-codegen-lib" % "0.0.12"
@@ -382,12 +431,13 @@ val swaggerGen: TaskKey[Unit] = taskKey[Unit](
 swaggerGen := Def.taskDyn {
   // Consider generating this only in managedResources
   val file = (resourceDirectory in Compile).value / "swagger.json"
-  Def.task {
+  Def.sequential(
     (runMain in Test)
-      .toTask(s" com.yugabyte.yw.controllers.SwaggerGenTest $file")
-      .value
-    // TODO: Generate client libraries
-  }
+      .toTask(s" com.yugabyte.yw.controllers.SwaggerGenTest $file"),
+    (javagen / openApiGenerate),
+    compileJavaGenClient,
+    (pythongen / openApiGenerate)
+  )
 }.value
 
 // TODO: Should we trigger swagger gen on compile??

@@ -4,7 +4,8 @@ package com.yugabyte.yw.controllers;
 
 import com.yugabyte.yw.forms.AvailabilityZoneFormData;
 import com.yugabyte.yw.forms.AvailabilityZoneFormData.AvailabilityZoneData;
-import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Region;
 import io.swagger.annotations.Api;
@@ -23,7 +24,7 @@ import play.libs.Json;
 import play.mvc.Result;
 
 @Api(
-    value = "AvailabilityZone",
+    value = "Availability Zones",
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class AvailabilityZoneController extends AuthenticatedController {
 
@@ -32,10 +33,10 @@ public class AvailabilityZoneController extends AuthenticatedController {
   /**
    * GET endpoint for listing availability zones
    *
-   * @return JSON response with availability zone's
+   * @return JSON response with availability zones
    */
   @ApiOperation(
-      value = "listAZ",
+      value = "List availability zones",
       response = AvailabilityZone.class,
       responseContainer = "List",
       nickname = "listOfAZ")
@@ -44,7 +45,7 @@ public class AvailabilityZoneController extends AuthenticatedController {
 
     List<AvailabilityZone> zoneList =
         AvailabilityZone.find.query().where().eq("region", region).findList();
-    return YWResults.withData(zoneList);
+    return PlatformResults.withData(zoneList);
   }
 
   /**
@@ -53,14 +54,14 @@ public class AvailabilityZoneController extends AuthenticatedController {
    * @return JSON response of newly created region(s)
    */
   @ApiOperation(
-      value = "createAZ",
+      value = "Create an availability zone",
       response = AvailabilityZone.class,
       responseContainer = "Map",
       nickname = "createAZ")
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "azFormData",
-          value = "az form data",
+          value = "Availability zone form data",
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.AvailabilityZoneFormData",
           required = true))
@@ -77,7 +78,7 @@ public class AvailabilityZoneController extends AuthenticatedController {
       availabilityZones.put(az.code, az);
     }
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
-    return YWResults.withData(availabilityZones);
+    return PlatformResults.withData(availabilityZones);
   }
 
   /**
@@ -88,13 +89,16 @@ public class AvailabilityZoneController extends AuthenticatedController {
    * @param azUUID AvailabilityZone UUID
    * @return JSON response on whether or not delete region was successful or not.
    */
-  @ApiOperation(value = "deleteAZ", response = YWResults.YWSuccess.class, nickname = "deleteAZ")
+  @ApiOperation(
+      value = "Delete an availability zone",
+      response = YBPSuccess.class,
+      nickname = "deleteAZ")
   public Result delete(UUID customerUUID, UUID providerUUID, UUID regionUUID, UUID azUUID) {
     Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
     AvailabilityZone az = AvailabilityZone.getByRegionOrBadRequest(azUUID, regionUUID);
     az.setActiveFlag(false);
     az.update();
     auditService().createAuditEntry(ctx(), request());
-    return YWResults.YWSuccess.empty();
+    return YBPSuccess.empty();
   }
 }

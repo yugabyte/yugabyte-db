@@ -13,6 +13,8 @@
 
 #include "yb/util/strongly_typed_uuid.h"
 
+#include "yb/util/debug-util.h"
+
 namespace yb {
 
 namespace {

@@ -26,12 +26,15 @@ import java.util.regex.Pattern;
 import javax.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.Marker;
+import org.slf4j.MarkerFactory;
 
 @Singleton
 public class ShellProcessHandler {
   public static final Logger LOG = LoggerFactory.getLogger(ShellProcessHandler.class);
 
-  @Inject play.Configuration appConfig;
+  private final play.Configuration appConfig;
+  private final boolean cloudLoggingEnabled;
 
   static final Pattern ANSIBLE_FAIL_PAT =
       Pattern.compile(
@@ -40,6 +43,12 @@ public class ShellProcessHandler {
   static final Pattern ANSIBLE_FAILED_TASK_PAT =
       Pattern.compile("TASK.*?fatal.*?FAILED.*", Pattern.DOTALL);
   static final String ANSIBLE_IGNORING = "ignoring";
+
+  @Inject
+  public ShellProcessHandler(play.Configuration appConfig) {
+    this.appConfig = appConfig;
+    this.cloudLoggingEnabled = appConfig.getBoolean("yb.cloud.enabled");
+  }
 
   public ShellResponse run(
       List<String> command, Map<String, String> extraEnvVars, boolean logCmdOutput) {
@@ -81,6 +90,7 @@ public class ShellProcessHandler {
     File tempOutputFile = null;
     File tempErrorFile = null;
     long startMs = 0;
+    Process process = null;
     try {
       tempOutputFile = File.createTempFile("shell_process_out", "tmp");
       tempErrorFile = File.createTempFile("shell_process_err", "tmp");
@@ -98,7 +108,7 @@ public class ShellProcessHandler {
           tempOutputFile.getAbsolutePath(),
           tempErrorFile.getAbsolutePath());
 
-      Process process = pb.start();
+      process = pb.start();
       if (uuid != null) {
         Util.setPID(uuid, process);
       }
@@ -114,15 +124,23 @@ public class ShellProcessHandler {
           LOG.debug("Proc stdout for '{}' :", response.description);
         }
         StringBuilder processOutput = new StringBuilder();
+        Marker fileOnly = MarkerFactory.getMarker("fileOnly");
+        Marker consoleOnly = MarkerFactory.getMarker("consoleOnly");
+
         outputStream
             .lines()
             .forEach(
                 line -> {
                   processOutput.append(line).append("\n");
                   if (logCmdOutput) {
-                    LOG.debug(line);
+                    LOG.debug(fileOnly, line);
                   }
                 });
+
+        if (logCmdOutput && cloudLoggingEnabled && processOutput.length() > 0) {
+          LOG.debug(consoleOnly, processOutput.toString());
+        }
+
         if (logCmdOutput) {
           LOG.debug("Proc stderr for '{}' :", response.description);
         }
@@ -133,9 +151,14 @@ public class ShellProcessHandler {
                 line -> {
                   processError.append(line).append("\n");
                   if (logCmdOutput) {
-                    LOG.debug(line);
+                    LOG.debug(fileOnly, line);
                   }
                 });
+
+        if (logCmdOutput && cloudLoggingEnabled && processError.length() > 0) {
+          LOG.debug(consoleOnly, processError.toString());
+        }
+
         response.code = process.exitValue();
         response.message =
             (response.code == 0) ? processOutput.toString().trim() : processError.toString().trim();
@@ -149,6 +172,10 @@ public class ShellProcessHandler {
       response.code = -1;
       LOG.error("Exception running command '{}'", response.description, e);
       response.message = e.getMessage();
+      // Send a kill signal to ensure process is cleaned up in case of any failure.
+      if (process != null && process.isAlive()) {
+        process.destroyForcibly();
+      }
     } finally {
       if (startMs > 0) {
         response.durationMs = System.currentTimeMillis() - startMs;

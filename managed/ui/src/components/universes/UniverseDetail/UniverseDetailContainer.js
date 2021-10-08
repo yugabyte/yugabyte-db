@@ -82,6 +82,9 @@ const mapDispatchToProps = (dispatch) => {
     showRollingRestartModal: () => {
       dispatch(openDialog('rollingRestart'));
     },
+    showUpgradeSystemdModal: () => {
+      dispatch(openDialog('systemdUpgrade'));
+    },
     showToggleBackupModal: () => {
       dispatch(openDialog('toggleBackupModalForm'));
     },

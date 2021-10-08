@@ -13,7 +13,6 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
-import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
@@ -25,13 +24,11 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
 import org.mockito.runners.MockitoJUnitRunner;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class CloudCleanupTestTest extends CommissionerBaseTest {
-  @InjectMocks Commissioner commissioner;
 
   private UUID submitTask(List<String> regionList) {
     CloudCleanup.Params taskParams = new CloudCleanup.Params();

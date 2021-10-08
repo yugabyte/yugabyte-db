@@ -8,12 +8,10 @@ import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
@@ -35,14 +33,10 @@ import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnitRunner;
-import org.yb.client.GetMasterClusterConfigResponse;
-import org.yb.master.Master;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class GFlagsUpgradeTest extends UpgradeTaskTest {
-
-  @InjectMocks Commissioner commissioner;
 
   @InjectMocks GFlagsUpgrade gFlagsUpgrade;
 
@@ -76,6 +70,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
   @Before
   public void setUp() {
     super.setUp();
+
     gFlagsUpgrade.setUserTaskUUID(UUID.randomUUID());
   }
 
@@ -368,15 +363,6 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
 
   @Test
   public void testGFlagsUpgradeWithSameMasterFlags() {
-    Master.SysClusterConfigEntryPB.Builder configBuilder =
-        Master.SysClusterConfigEntryPB.newBuilder().setVersion(3);
-    try {
-      GetMasterClusterConfigResponse mockConfigResponse =
-          new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
-      when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
-      when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
-    } catch (Exception ignored) {
-    }
 
     // Simulate universe created with master flags and tserver flags.
     final Map<String, String> masterFlags = ImmutableMap.of("master-flag", "m123");
@@ -413,15 +399,6 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
 
   @Test
   public void testGFlagsUpgradeWithSameTserverFlags() {
-    Master.SysClusterConfigEntryPB.Builder configBuilder =
-        Master.SysClusterConfigEntryPB.newBuilder().setVersion(3);
-    try {
-      GetMasterClusterConfigResponse mockConfigResponse =
-          new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
-      when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
-      when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
-    } catch (Exception ignored) {
-    }
 
     // Simulate universe created with master flags and tserver flags.
     final Map<String, String> tserverFlags = ImmutableMap.of("tserver-flag", "m123");
@@ -457,28 +434,6 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
   @Test
   public void testRemoveFlags() {
     for (ServerType serverType : ImmutableList.of(MASTER, TSERVER)) {
-      if (serverType.equals(MASTER)) {
-        try {
-          Master.SysClusterConfigEntryPB.Builder configBuilder =
-              Master.SysClusterConfigEntryPB.newBuilder().setVersion(3);
-          GetMasterClusterConfigResponse mockConfigResponse =
-              new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
-          when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
-          when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
-        } catch (Exception ignored) {
-        }
-      } else if (serverType.equals(TSERVER)) {
-        try {
-          Master.SysClusterConfigEntryPB.Builder configBuilder =
-              Master.SysClusterConfigEntryPB.newBuilder().setVersion(4);
-          GetMasterClusterConfigResponse mockConfigResponse =
-              new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
-          when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
-          when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
-        } catch (Exception ignored) {
-        }
-      }
-
       // Simulate universe created with master flags and tserver flags.
       final Map<String, String> tserverFlags = ImmutableMap.of("tserver-flag", "t1");
       final Map<String, String> masterGFlags = ImmutableMap.of("master-flag", "m1");

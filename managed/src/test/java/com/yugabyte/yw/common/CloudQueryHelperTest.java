@@ -10,8 +10,10 @@ import static org.mockito.Matchers.anyString;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.typesafe.config.Config;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -32,6 +34,11 @@ public class CloudQueryHelperTest extends FakeDBApplication {
   @InjectMocks CloudQueryHelper cloudQueryHelper;
 
   @Mock ShellProcessHandler shellProcessHandler;
+
+  @Mock RuntimeConfigFactory runtimeConfigFactory;
+
+  @Mock Config mockConfig;
+
   private Customer defaultCustomer;
   private Provider defaultProvider;
   private Region defaultRegion;
@@ -49,6 +56,7 @@ public class CloudQueryHelperTest extends FakeDBApplication {
     defaultCustomer = ModelFactory.testCustomer();
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
     defaultRegion = Region.create(defaultProvider, "us-west-2", "US West 2", "yb-image");
+    when(runtimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
   }
 
   private JsonNode runCommand(UUID regionUUID, boolean mimicError, CommandType command) {

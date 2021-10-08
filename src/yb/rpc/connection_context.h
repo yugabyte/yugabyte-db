@@ -32,7 +32,17 @@ namespace rpc {
 
 typedef std::function<void()> IdleListener;
 
-class GrowableBufferAllocator;
+struct ProcessCallsResult {
+  size_t consumed = 0;
+  Slice buffer;
+  size_t bytes_to_skip = 0;
+
+  std::string ToString() const {
+    return Format(
+        "{ consumed: $0 buffer.size(): $1 bytes_to_skip: $2 }",
+        consumed, buffer.size(), bytes_to_skip);
+  }
+};
 
 // ConnectionContext class is used by connection for doing protocol
 // specific logic.
@@ -42,7 +52,7 @@ class ConnectionContext {
 
   // Split data into separate calls and invoke them.
   // Returns number of processed bytes.
-  virtual Result<ProcessDataResult> ProcessCalls(
+  virtual Result<ProcessCallsResult> ProcessCalls(
       const ConnectionPtr& connection, const IoVecs& data, ReadBufferFull read_buffer_full) = 0;
 
   // Dump information about status of this connection context to protobuf.

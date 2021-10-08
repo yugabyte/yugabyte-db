@@ -35,7 +35,7 @@ export class YBNewMultiSelect extends Component {
     const self = this;
     function onChange(val) {
       val = isMulti ? val : val.slice(-1);
-      if (isFunction(self.props.input.onChange)) {
+      if (isFunction(self.props.input?.onChange)) {
         self.props.input.onChange(val);
       }
       if (selectValChanged) {
@@ -57,7 +57,7 @@ export class YBNewMultiSelect extends Component {
         borderRadius: 7,
         boxShadow: 'inset 0 1px 1px rgba(0, 0, 0, .075)',
         fontSize: '14px',
-        height: 42
+        minHeight: 42
       }),
       placeholder: (provided) => ({
         ...provided,

@@ -119,11 +119,9 @@ shared_ptr<QLType> QLType::Create(DataType data_type) {
     case DataType::USER_DEFINED_TYPE:
       LOG(FATAL) << "Unsupported constructor for user-defined type";
       return nullptr;
-
-    default:
-      LOG(FATAL) << "Not supported datatype " << ToCQLString(data_type);
-      return nullptr;
   }
+  LOG(FATAL) << "Not supported datatype " << ToCQLString(data_type);
+  return nullptr;
 }
 
 bool QLType::IsValidPrimaryType(DataType type) {
@@ -262,7 +260,7 @@ const string QLType::ToCQLString(const DataType& datatype) {
     case DataType::UINT32: return "uint32";
     case DataType::UINT64: return "uint64";
   }
-  LOG (FATAL) << "Invalid datatype: " << datatype;
+  LOG(FATAL) << "Invalid datatype: " << datatype;
   return "Undefined Type";
 }
 

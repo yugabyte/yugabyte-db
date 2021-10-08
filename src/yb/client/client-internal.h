@@ -224,7 +224,8 @@ class YBClient::Data {
   CHECKED_STATUS GetTableSchema(YBClient* client,
                                 const TableId& table_id,
                                 CoarseTimePoint deadline,
-                                YBTableInfo* info);
+                                YBTableInfo* info,
+                                master::GetTableSchemaResponsePB* resp = nullptr);
   CHECKED_STATUS GetTableSchemaById(YBClient* client,
                                     const TableId& table_id,
                                     CoarseTimePoint deadline,
@@ -279,7 +280,7 @@ class YBClient::Data {
                     CoarseTimePoint deadline,
                     StdStatusCallback callback);
 
-  void DeleteTablet(
+  void DeleteNotServingTablet(
       YBClient* client, const TabletId& tablet_id, CoarseTimePoint deadline,
       StdStatusCallback callback);
 
@@ -400,10 +401,6 @@ class YBClient::Data {
   // This is initialized at client startup.
   std::unordered_set<std::string> local_host_names_;
 
-  // This is a REST endpoint from which the list of master hosts and ports can be queried. This
-  // takes precedence over both 'master_server_addrs_file_' and 'master_server_addrs_'.
-  std::string master_server_endpoint_;
-
   // Flag name to fetch master addresses from flagfile.
   std::string master_address_flag_name_;
   // This vector holds the list of master server addresses. Note that each entry in this vector
@@ -474,7 +471,7 @@ class YBClient::Data {
   simple_spinlock tablet_requests_mutex_;
   std::unordered_map<TabletId, TabletRequests> tablet_requests_;
 
-  std::atomic<int> tserver_count_cached_{0};
+  std::array<std::atomic<int>, 2> tserver_count_cached_;
 
   // The proxy for the node local tablet server.
   std::shared_ptr<tserver::TabletServerForwardServiceProxy> node_local_forward_proxy_;
@@ -502,6 +499,10 @@ Status RetryFunc(
     const std::string& timeout_msg,
     const std::function<Status(CoarseTimePoint, bool*)>& func,
     const CoarseDuration max_wait = std::chrono::seconds(2));
+
+// TODO(PgClient) Remove after removing YBTable from postgres.
+CHECKED_STATUS CreateTableInfoFromTableSchemaResp(
+    const master::GetTableSchemaResponsePB& resp, YBTableInfo* info);
 
 } // namespace client
 } // namespace yb

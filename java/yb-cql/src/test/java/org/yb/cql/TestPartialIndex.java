@@ -2654,4 +2654,34 @@ public class TestPartialIndex extends BaseCQLTest {
                              "Row[1, 1]");
     assertQueryRowsUnordered("select * from test where v = NULL");
   }
+
+  @Test
+  public void testPredicateInfoPresenceInSystemSchema() throws Exception {
+    // When partial indexes support more complex expressions, extend this test.
+
+    // Test an index_predicate with sub-expressions on columns of following data types -
+    // TINYINT, SMALLINT, INT/INTEGER, BIGINT, VARINT, BOOLEAN and TEXT along with following
+    // operators (when applicable) - =, !=, >, <, >=, <=
+    createTable(
+      String.format("create table test (h1 int, r1 int, " +
+          "v1 tinyint, v2 smallint, v3 int, v4 bigint, v5 varint, v6 boolean, v7 text," +
+          "primary key(h1, r1))"),
+      true /* strongConsistency */);
+    session.execute("create index idx on test (r1) where " +
+        "v1 >= -128 and v1 <= 127 and v1 > -127 and v1 < 126 and " +
+        "v2 >= -32768 and v2 <= 32767 and v2 > -32767 and v2 < 3276 and " +
+        "v3 >= -2147483648 and v3 <= 2147483647 and v3 > -2147483647 and v3 < 2147483646 and " +
+        "v4 >= -9223372036854775808 and v4 <= 9223372036854775807 and " +
+            "v4 > -9223372036854775807 and v4 < 9223372036854775806 and " +
+        "v5 >= -9999999999999999999 and v5 <= 9999999999999999999 and v5 > 1 and v5 < 2 and " +
+        "v6 = true and v7 != 'hello';");
+    assertQueryRowsUnordered("select options from system_schema.indexes where index_name = 'idx'",
+        "Row[{target=r1, h1, predicate=v1 >= -128 AND v1 <= 127 AND v1 > -127 AND v1 < 126 AND " +
+          "v2 >= -32768 AND v2 <= 32767 AND v2 > -32767 AND v2 < 3276 AND " +
+          "v3 >= -2147483648 AND v3 <= 2147483647 AND v3 > -2147483647 AND v3 < 2147483646 AND " +
+          "v4 >= -9223372036854775808 AND v4 <= 9223372036854775807 AND " +
+              "v4 > -9223372036854775807 AND v4 < 9223372036854775806 AND " +
+          "v5 >= -9999999999999999999 AND v5 <= 9999999999999999999 AND v5 > 1 AND v5 < 2 AND " +
+          "v6 = true AND v7 != 'hello'}]");
+  }
 }

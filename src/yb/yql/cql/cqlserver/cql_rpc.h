@@ -66,9 +66,9 @@ class CQLConnectionContext : public rpc::ConnectionContextWithCallId,
   }
 
   uint64_t ExtractCallId(rpc::InboundCall* call) override;
-  Result<rpc::ProcessDataResult> ProcessCalls(const rpc::ConnectionPtr& connection,
-                                              const IoVecs& bytes_to_process,
-                                              rpc::ReadBufferFull read_buffer_full) override;
+  Result<rpc::ProcessCallsResult> ProcessCalls(const rpc::ConnectionPtr& connection,
+                                               const IoVecs& bytes_to_process,
+                                               rpc::ReadBufferFull read_buffer_full) override;
   // Takes ownership of call_data content.
   CHECKED_STATUS HandleCall(
       const rpc::ConnectionPtr& connection, rpc::CallData* call_data) override;

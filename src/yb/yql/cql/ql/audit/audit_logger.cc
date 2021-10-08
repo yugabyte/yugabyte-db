@@ -646,7 +646,7 @@ Result<LogEntry> AuditLogger::CreateLogEntry(const Type& type,
     .operation     = std::move(operation),
     .error_message = std::move(error_message)
   };
-  return std::move(entry);
+  return entry;
 }
 
 Status AuditLogger::StartBatchRequest(int statements_count,

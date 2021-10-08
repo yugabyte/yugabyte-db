@@ -7,7 +7,6 @@ import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.mockito.Matchers.any;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -15,7 +14,6 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
@@ -34,23 +32,19 @@ import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
 import org.mockito.runners.MockitoJUnitRunner;
-import org.yb.client.GetMasterClusterConfigResponse;
-import org.yb.client.YBClient;
-import org.yb.master.Master;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class StopNodeInUniverseTest extends CommissionerBaseTest {
-  @InjectMocks Commissioner commissioner;
+
   Universe defaultUniverse;
   ShellResponse dummyShellResponse;
-  YBClient mockClient;
 
   @Before
   public void setUp() {
     super.setUp();
+
     Region region = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
     AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
     // create default universe
@@ -65,16 +59,6 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
         defaultUniverse.universeUUID,
         ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
 
-    mockClient = mock(YBClient.class);
-    Master.SysClusterConfigEntryPB.Builder configBuilder =
-        Master.SysClusterConfigEntryPB.newBuilder().setVersion(2);
-    GetMasterClusterConfigResponse mockConfigResponse =
-        new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
-    try {
-      when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
-    } catch (Exception e) {
-    }
-    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     dummyShellResponse = new ShellResponse();
     dummyShellResponse.message = "true";
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
@@ -142,7 +126,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
         assertEquals(taskType, tasks.get(0).getTaskType());
         JsonNode expectedResults = STOP_NODE_TASK_SEQUENCE_MASTER_RESULTS.get(position);
         List<JsonNode> taskDetails =
-            tasks.stream().map(t -> t.getTaskDetails()).collect(Collectors.toList());
+            tasks.stream().map(TaskInfo::getTaskDetails).collect(Collectors.toList());
         assertJsonEqual(expectedResults, taskDetails.get(0));
         position++;
       }
@@ -153,7 +137,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
         assertEquals(taskType, tasks.get(0).getTaskType());
         JsonNode expectedResults = STOP_NODE_TASK_EXPECTED_RESULTS.get(position);
         List<JsonNode> taskDetails =
-            tasks.stream().map(t -> t.getTaskDetails()).collect(Collectors.toList());
+            tasks.stream().map(TaskInfo::getTaskDetails).collect(Collectors.toList());
         assertJsonEqual(expectedResults, taskDetails.get(0));
         position++;
       }
@@ -169,7 +153,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     verify(mockNodeManager, times(3)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertEquals(subTasksByPosition.size(), STOP_NODE_TASK_SEQUENCE_MASTER.size());
     assertStopNodeSequence(subTasksByPosition, true);
   }
@@ -192,7 +176,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     verify(mockNodeManager, times(2)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertEquals(subTasksByPosition.size(), STOP_NODE_TASK_SEQUENCE.size());
     assertStopNodeSequence(subTasksByPosition, false);
   }

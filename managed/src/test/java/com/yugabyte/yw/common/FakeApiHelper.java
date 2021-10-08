@@ -13,6 +13,7 @@ import com.yugabyte.yw.controllers.HAAuthenticator;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
@@ -31,7 +32,7 @@ public class FakeApiHelper {
     Users user;
     if (customer == null) {
       customer = Customer.create("vc", "Valid Customer");
-      user = Users.create("foo@bar.com", "password", Role.Admin, customer.uuid);
+      user = Users.create("foo@bar.com", "password", Role.Admin, customer.uuid, false);
     }
     user = Users.find.query().where().eq("customer_uuid", customer.uuid).findOne();
     return user.createAuthToken();
@@ -44,6 +45,15 @@ public class FakeApiHelper {
   public static Result doRequestWithAuthToken(String method, String url, String authToken) {
     Http.RequestBuilder request =
         Helpers.fakeRequest(method, url).header("X-AUTH-TOKEN", authToken);
+    return route(request);
+  }
+
+  public static Result doRequestWithCustomHeaders(
+      String method, String url, Map<String, String> headers) {
+    Http.RequestBuilder request = Helpers.fakeRequest(method, url);
+    for (Map.Entry<String, String> headerEntry : headers.entrySet()) {
+      request.header(headerEntry.getKey(), headerEntry.getValue());
+    }
     return route(request);
   }
 
@@ -102,13 +112,13 @@ public class FakeApiHelper {
    */
   public static Result routeWithYWErrHandler(Http.RequestBuilder requestBuilder, Application app)
       throws InterruptedException, ExecutionException, TimeoutException {
-    YWErrorHandler ywErrorHandler = app.injector().instanceOf(YWErrorHandler.class);
+    YWErrorHandler YWErrorHandler = app.injector().instanceOf(YWErrorHandler.class);
     CompletableFuture<Result> future =
         CompletableFuture.supplyAsync(() -> route(app, requestBuilder));
     BiFunction<Result, Throwable, CompletionStage<Result>> f =
         (result, throwable) -> {
           if (throwable == null) return CompletableFuture.supplyAsync(() -> result);
-          return ywErrorHandler.onServerError(null, throwable);
+          return YWErrorHandler.onServerError(null, throwable);
         };
 
     return future.handleAsync(f).thenCompose(x -> x).get(20000, TimeUnit.MILLISECONDS);

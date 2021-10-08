@@ -22,6 +22,8 @@
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_backup.pb.h"
 
+#include "yb/util/async_task_tracker.h"
+
 namespace yb {
 namespace master {
 
@@ -33,6 +35,11 @@ struct SnapshotScheduleOperation {
   TxnSnapshotId snapshot_id;
   SnapshotScheduleFilterPB filter;
   HybridTime previous_snapshot_hybrid_time;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(
+        type, schedule_id, snapshot_id, filter, previous_snapshot_hybrid_time);
+  }
 };
 
 using SnapshotScheduleOperations = std::vector<SnapshotScheduleOperation>;
@@ -58,6 +65,10 @@ class SnapshotScheduleState {
     return options_;
   }
 
+  AsyncTaskTracker& CleanupTracker() {
+    return cleanup_tracker_;
+  }
+
   bool deleted() const;
 
   void PrepareOperations(
@@ -74,6 +85,8 @@ class SnapshotScheduleState {
   std::string ToString() const;
 
  private:
+  std::string LogPrefix() const;
+
   SnapshotScheduleOperation MakeCreateSnapshotOperation(HybridTime last_snapshot_time);
 
   SnapshotCoordinatorContext& context_;
@@ -83,6 +96,8 @@ class SnapshotScheduleState {
   // When snapshot is being created for this schedule, this field contains id of this snapshot.
   // To prevent creating other snapshots during that time.
   TxnSnapshotId creating_snapshot_id_ = TxnSnapshotId::Nil();
+
+  AsyncTaskTracker cleanup_tracker_;
 };
 
 } // namespace master

@@ -202,6 +202,9 @@ class MasterServiceImpl : public MasterServiceIf,
   void GetCDCStream(const GetCDCStreamRequestPB* req,
                     GetCDCStreamResponsePB* resp,
                     rpc::RpcContext rpc) override;
+  void UpdateCDCStream(const UpdateCDCStreamRequestPB *req,
+                       UpdateCDCStreamResponsePB* resp,
+                       rpc::RpcContext rpc) override;
 
   void ListMasters(const ListMastersRequestPB* req,
                    ListMastersResponsePB* resp,
@@ -326,8 +329,10 @@ class MasterServiceImpl : public MasterServiceIf,
   void SplitTablet(
       const SplitTabletRequestPB* req, SplitTabletResponsePB* resp, rpc::RpcContext rpc) override;
 
-  void DeleteTablet(
-      const DeleteTabletRequestPB* req, DeleteTabletResponsePB* resp, rpc::RpcContext rpc) override;
+  void DeleteNotServingTablet(
+      const DeleteNotServingTabletRequestPB* req,
+      DeleteNotServingTabletResponsePB* resp,
+      rpc::RpcContext rpc) override;
 
   void DdlLog(const DdlLogRequestPB* req, DdlLogResponsePB* resp, rpc::RpcContext rpc) override;
 

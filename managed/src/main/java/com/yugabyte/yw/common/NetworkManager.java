@@ -46,7 +46,7 @@ public class NetworkManager extends DevopsBase {
   public JsonNode cleanupOrFail(UUID regionUUID) {
     JsonNode response = execAndParseCommandRegion(regionUUID, "cleanup", Collections.emptyList());
     if (response.has("error")) {
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, response.get("error").asText());
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, response.get("error").asText());
     }
     return response;
   }

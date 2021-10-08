@@ -18,10 +18,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.net.HostAndPort;
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
+import com.yugabyte.yw.cloud.UniverseResourceDetails.Context;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -51,7 +52,8 @@ public class UniverseInfoHandler {
   @Inject private YBClientService ybService;
   @Inject private NodeUniverseManager nodeUniverseManager;
 
-  public UniverseResourceDetails getUniverseResources(UniverseDefinitionTaskParams taskParams) {
+  public UniverseResourceDetails getUniverseResources(
+      Customer customer, UniverseDefinitionTaskParams taskParams) {
     Set<NodeDetails> nodesInCluster;
     if (taskParams
         .getCurrentClusterType()
@@ -70,8 +72,9 @@ public class UniverseInfoHandler {
               .filter(n -> n.isInPlacement(taskParams.getReadOnlyClusters().get(0).uuid))
               .collect(Collectors.toSet());
     }
-    return UniverseResourceDetails.create(
-        nodesInCluster, taskParams, runtimeConfigFactory.globalRuntimeConf());
+    UniverseResourceDetails.Context context =
+        new Context(runtimeConfigFactory.globalRuntimeConf(), customer, taskParams);
+    return UniverseResourceDetails.create(nodesInCluster, taskParams, context);
   }
 
   public List<UniverseResourceDetails> universeListCost(Customer customer) {
@@ -79,15 +82,17 @@ public class UniverseInfoHandler {
     try {
       universeSet = customer.getUniverses();
     } catch (RuntimeException e) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST, "No universe found for customer with ID: " + customer.uuid);
     }
+    List<UniverseDefinitionTaskParams> taskParamsList =
+        universeSet.stream().map(Universe::getUniverseDetails).collect(Collectors.toList());
     List<UniverseResourceDetails> response = new ArrayList<>(universeSet.size());
+    Context context =
+        new Context(runtimeConfigFactory.globalRuntimeConf(), customer, taskParamsList);
     for (Universe universe : universeSet) {
       try {
-        response.add(
-            UniverseResourceDetails.create(
-                universe.getUniverseDetails(), runtimeConfigFactory.globalRuntimeConf()));
+        response.add(UniverseResourceDetails.create(universe.getUniverseDetails(), context));
       } catch (Exception e) {
         log.error("Could not add cost details for Universe with UUID: " + universe.universeUUID);
       }
@@ -101,9 +106,9 @@ public class UniverseInfoHandler {
       result = PlacementInfoUtil.getUniverseAliveStatus(universe, metricQueryHelper);
     } catch (RuntimeException e) {
       // TODO(API) dig deeper and find root cause of RuntimeException
-      throw new YWServiceException(BAD_REQUEST, e.getMessage());
+      throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
     }
-    if (result.has("error")) throw new YWServiceException(BAD_REQUEST, result.get("error"));
+    if (result.has("error")) throw new PlatformServiceException(BAD_REQUEST, result.get("error"));
     return result;
   }
 
@@ -116,7 +121,7 @@ public class UniverseInfoHandler {
       }
     } catch (RuntimeException e) {
       // TODO(API) dig deeper and find root cause of RuntimeException
-      throw new YWServiceException(BAD_REQUEST, e.getMessage());
+      throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
     }
     return detailsList;
   }
@@ -130,12 +135,12 @@ public class UniverseInfoHandler {
       client = ybService.getClient(hostPorts, certificate);
       HostAndPort leaderMasterHostAndPort = client.getLeaderMasterHostAndPort();
       if (leaderMasterHostAndPort == null) {
-        throw new YWServiceException(
+        throw new PlatformServiceException(
             BAD_REQUEST, "Leader master not found for universe " + universe.universeUUID);
       }
       return leaderMasterHostAndPort;
     } catch (RuntimeException e) {
-      throw new YWServiceException(BAD_REQUEST, e.getMessage());
+      throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
     } finally {
       ybService.closeClient(client, hostPorts);
     }
@@ -147,24 +152,29 @@ public class UniverseInfoHandler {
       resultNode = queryHelper.liveQueries(universe);
     } catch (NullPointerException e) {
       log.error("Universe does not have a private IP or DNS", e);
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, "Universe failed to fetch live queries");
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Universe failed to fetch live queries");
     } catch (Throwable t) {
       log.error("Error retrieving queries for universe", t);
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, t.getMessage());
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, t.getMessage());
     }
     return resultNode;
   }
 
-  public JsonNode getSlowQueries(Universe universe) {
+  public JsonNode getSlowQueries(Universe universe, String username, String password) {
     JsonNode resultNode;
     try {
-      resultNode = queryHelper.slowQueries(universe);
+      resultNode = queryHelper.slowQueries(universe, username, password);
+    } catch (IllegalArgumentException e) {
+      log.error(e.getMessage(), e);
+      throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
     } catch (NullPointerException e) {
       log.error("Universe does not have a private IP or DNS", e);
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, "Universe failed to fetch slow queries");
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Universe failed to fetch slow queries");
     } catch (Throwable t) {
       log.error("Error retrieving queries for universe", t);
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, t.getMessage());
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, t.getMessage());
     }
     return resultNode;
   }
@@ -174,11 +184,12 @@ public class UniverseInfoHandler {
       return queryHelper.resetQueries(universe);
     } catch (NullPointerException e) {
       // TODO: Investigate why catch NPE??
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, "Failed reach node, invalid IP or DNS.");
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Failed reach node, invalid IP or DNS.");
     } catch (Throwable t) {
       // TODO: Investigate why catch Throwable??
       log.error("Error resetting slow queries for universe", t);
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, t.getMessage());
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, t.getMessage());
     }
   }
 
@@ -189,7 +200,7 @@ public class UniverseInfoHandler {
     NodeDetails node =
         universe
             .maybeGetNode(nodeName)
-            .orElseThrow(() -> new YWServiceException(NOT_FOUND, nodeName));
+            .orElseThrow(() -> new PlatformServiceException(NOT_FOUND, nodeName));
     String storagePath = runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path");
     String tarFileName = node.cloudInfo.private_ip + "-logs.tar.gz";
     Path targetFile = Paths.get(storagePath + "/" + tarFileName);
@@ -197,7 +208,7 @@ public class UniverseInfoHandler {
         nodeUniverseManager.downloadNodeLogs(node, universe, targetFile.toString());
 
     if (response.code != 0) {
-      throw new YWServiceException(Http.Status.INTERNAL_SERVER_ERROR, response.message);
+      throw new PlatformServiceException(Http.Status.INTERNAL_SERVER_ERROR, response.message);
     }
     return targetFile;
   }

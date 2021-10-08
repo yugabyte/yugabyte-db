@@ -4,14 +4,17 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.forms.BackupTableParams;
-import com.yugabyte.yw.forms.YWResults;
-import com.yugabyte.yw.forms.YWResults.YWError;
+import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPError;
+import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.forms.PlatformResults.YBPTask;
+import com.yugabyte.yw.forms.PlatformResults.YBPTasks;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Customer;
@@ -31,6 +34,7 @@ import io.swagger.annotations.Authorization;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import javax.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
@@ -40,12 +44,19 @@ import play.mvc.Result;
 @Api(value = "Backups", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class BackupsController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(BackupsController.class);
-  private static int maxRetryCount = 5;
+  private static final int maxRetryCount = 5;
 
-  @Inject Commissioner commissioner;
+  private final Commissioner commissioner;
+  private final CustomerConfigService customerConfigService;
+
+  @Inject
+  public BackupsController(Commissioner commissioner, CustomerConfigService customerConfigService) {
+    this.commissioner = commissioner;
+    this.customerConfigService = customerConfigService;
+  }
 
   @ApiOperation(
-      value = "list Backups for a specific customer",
+      value = "List a customer's backups",
       response = Backup.class,
       responseContainer = "List",
       nickname = "ListOfBackups")
@@ -53,7 +64,7 @@ public class BackupsController extends AuthenticatedController {
       @io.swagger.annotations.ApiResponse(
           code = 500,
           message = "If there was a server or database issue when listing the backups",
-          response = YWError.class))
+          response = YBPError.class))
   public Result list(UUID customerUUID, UUID universeUUID) {
     List<Backup> backups = Backup.fetchByUniverseUUID(customerUUID, universeUUID);
     JsonNode custStorageLoc =
@@ -69,45 +80,45 @@ public class BackupsController extends AuthenticatedController {
     }
 
     // If either customer or user featureConfig has storageLocation hidden,
-    // mask the string in each backup
+    // mask the string in each backup.
     if (isStorageLocMasked) {
       for (Backup backup : backups) {
         BackupTableParams params = backup.getBackupInfo();
         String loc = params.storageLocation;
-        if (!loc.isEmpty()) {
+        if ((loc != null) && !loc.isEmpty()) {
           params.storageLocation = "**********";
         }
         backup.setBackupInfo(params);
       }
     }
-    return YWResults.withData(backups);
+    return PlatformResults.withData(backups);
   }
 
   @ApiOperation(
-      value = "list Backups for a specific task",
+      value = "List a task's backups",
       response = Backup.class,
       responseContainer = "List")
   @ApiResponses(
       @io.swagger.annotations.ApiResponse(
           code = 500,
           message = "If there was a server or database issue when listing the backups",
-          response = YWError.class))
+          response = YBPError.class))
   public Result fetchBackupsByTaskUUID(UUID customerUUID, UUID universeUUID, UUID taskUUID) {
-    Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Customer.getOrBadRequest(customerUUID);
+    Universe.getOrBadRequest(universeUUID);
 
     List<Backup> backups = Backup.fetchAllBackupsByTaskUUID(taskUUID);
-    return YWResults.withData(backups);
+    return PlatformResults.withData(backups);
   }
 
   @ApiOperation(
-      value = "restore Backups",
-      response = YWResults.YWTask.class,
+      value = "Restore from a backup",
+      response = YBPTask.class,
       responseContainer = "Restore")
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "backup",
-          value = "backup params of the backup to be restored",
+          value = "Parameters of the backup to be restored",
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.BackupTableParams",
           required = true))
@@ -122,10 +133,11 @@ public class BackupsController extends AuthenticatedController {
     taskParams.actionType = BackupTableParams.ActionType.RESTORE;
     if (taskParams.storageLocation == null && taskParams.backupList == null) {
       String errMsg = "Storage Location is required";
-      throw new YWServiceException(BAD_REQUEST, errMsg);
+      throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
 
     taskParams.universeUUID = universeUUID;
+    taskParams.customerUuid = customerUUID;
 
     // Change the BackupTableParams in list to be "RESTORE" action type
     if (taskParams.backupList != null) {
@@ -143,12 +155,12 @@ public class BackupsController extends AuthenticatedController {
       }
     }
     CustomerConfig storageConfig =
-        CustomerConfig.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
+        customerConfigService.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
     if (taskParams.getTableName() != null && taskParams.getKeyspace() == null) {
-      throw new YWServiceException(BAD_REQUEST, "Restore table request must specify keyspace.");
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Restore table request must specify keyspace.");
     }
 
-    Backup newBackup = Backup.create(customerUUID, taskParams);
     UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, taskParams);
     LOG.info(
         "Submitted task to RESTORE table backup to {}.{} with config {} from {}, task uuid = {}.",
@@ -157,7 +169,6 @@ public class BackupsController extends AuthenticatedController {
         storageConfig.configName,
         taskParams.storageLocation,
         taskUUID);
-    newBackup.setTaskUUID(taskUUID);
     if (taskParams.getTableName() != null) {
       CustomerTask.create(
           customer,
@@ -206,16 +217,16 @@ public class BackupsController extends AuthenticatedController {
     }
 
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
-    return new YWResults.YWTask(taskUUID).asResult();
+    return new YBPTask(taskUUID).asResult();
   }
 
-  @ApiOperation(value = "delete", response = YWResults.YWTask.class, nickname = "deleteBackups")
+  @ApiOperation(value = "Delete backups", response = YBPTasks.class, nickname = "deleteBackups")
   public Result delete(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     // TODO(API): Let's get rid of raw Json.
     // Create DeleteBackupReq in form package and bind to that
     ObjectNode formData = (ObjectNode) request().body().asJson();
-    List<UUID> taskUUIDList = new ArrayList<>();
+    List<YBPTask> taskList = new ArrayList<>();
     for (JsonNode backupUUID : formData.get("backupUUID")) {
       UUID uuid = UUID.fromString(backupUUID.asText());
       Backup backup = Backup.get(customerUUID, uuid);
@@ -223,7 +234,8 @@ public class BackupsController extends AuthenticatedController {
         LOG.info(
             "Can not delete {} backup as it is not present in the database.", backupUUID.asText());
       } else {
-        if (backup.state != Backup.BackupState.Completed) {
+        if (backup.state != Backup.BackupState.Completed
+            && backup.state != Backup.BackupState.Failed) {
           LOG.info("Can not delete {} backup as it is still in progress", uuid);
         } else {
           DeleteBackup.Params taskParams = new DeleteBackup.Params();
@@ -238,26 +250,30 @@ public class BackupsController extends AuthenticatedController {
               CustomerTask.TargetType.Backup,
               CustomerTask.TaskType.Delete,
               "Backup");
-          taskUUIDList.add(taskUUID);
+          taskList.add(new YBPTask(taskUUID, taskParams.backupUUID));
           auditService().createAuditEntry(ctx(), request(), taskUUID);
         }
       }
     }
-    return new YWResults.YWTasks(taskUUIDList).asResult();
+    return new YBPTasks(taskList).asResult();
   }
 
+  @ApiOperation(
+      value = "Stop a backup",
+      notes = "Stop an in-progress backup",
+      nickname = "stopBackup")
   public Result stop(UUID customerUUID, UUID backupUUID) {
     Customer.getOrBadRequest(customerUUID);
     Process process = Util.getProcessOrBadRequest(backupUUID);
     Backup backup = Backup.getOrBadRequest(customerUUID, backupUUID);
     if (backup.state != Backup.BackupState.InProgress) {
       LOG.info("The backup {} you are trying to stop is not in progress.", backupUUID);
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST, "The backup you are trying to stop is not in process.");
     }
     if (process == null) {
       LOG.info("The backup {} process you want to stop doesn't exist.", backupUUID);
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST, "The backup process you want to stop doesn't exist.");
     } else {
       process.destroyForcibly();
@@ -269,7 +285,8 @@ public class BackupsController extends AuthenticatedController {
       LOG.info("Error while waiting for the backup task to get finished.");
     }
     backup.transitionState(BackupState.Stopped);
-    return YWResults.YWSuccess.withMessage("Successfully stopped the backup process.");
+    auditService().createAuditEntry(ctx(), request(), backup.taskUUID);
+    return YBPSuccess.withMessage("Successfully stopped the backup process.");
   }
 
   private static void waitForTask(UUID taskUUID) throws InterruptedException {
@@ -283,7 +300,7 @@ public class BackupsController extends AuthenticatedController {
       Thread.sleep(1000);
       numRetries++;
     }
-    throw new YWServiceException(
+    throw new PlatformServiceException(
         BAD_REQUEST,
         "WaitFor task exceeded maxRetries! Task state is " + TaskInfo.get(taskUUID).getTaskState());
   }

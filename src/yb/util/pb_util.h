@@ -323,6 +323,9 @@ class ReadablePBContainerFile {
 Status ReadPBContainerFromPath(Env* env, const std::string& path,
                                google::protobuf::Message* msg);
 
+Status ReadPBContainerFromPath(Env* env, const std::string& path, const std::string& pb_type_name,
+                               google::protobuf::Message* msg);
+
 // Serialize a "containerized" protobuf to the given path.
 //
 // If create == NO_OVERWRITE and 'path' already exists, the function will fail.

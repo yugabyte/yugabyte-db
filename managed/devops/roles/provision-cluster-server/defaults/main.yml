@@ -8,4 +8,5 @@
 
 use_chrony: false
 air_gap: false
+systemd_option: false
 yb_home_dir: "/home/{{ user_name }}"

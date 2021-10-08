@@ -65,7 +65,7 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
         throw new RuntimeException(msg);
       }
 
-      if (currentNode.state != NodeState.Removed && currentNode.state != NodeState.Stopped) {
+      if (currentNode.state != NodeState.Removed) {
         String msg =
             "Node "
                 + taskParams().nodeName
@@ -77,8 +77,7 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
         throw new RuntimeException(msg);
       }
 
-      UserIntent userIntent =
-          universe.getUniverseDetails().getClusterByUuid(currentNode.placementUuid).userIntent;
+      preTaskActions();
 
       // Update Node State to BeingDecommissioned.
       createSetNodeStateTask(currentNode, NodeState.BeingDecommissioned)
@@ -93,6 +92,8 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
       createModifyBlackListTask(Arrays.asList(currentNode), false /* isAdd */)
           .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
 
+      UserIntent userIntent =
+          universe.getUniverseDetails().getClusterByUuid(currentNode.placementUuid).userIntent;
       boolean isOnprem = userIntent.providerType.equals(CloudType.onprem);
       if (instanceExists(taskParams()) || isOnprem) {
         Collection<NodeDetails> currentNodeDetails = new HashSet<>(Arrays.asList(currentNode));

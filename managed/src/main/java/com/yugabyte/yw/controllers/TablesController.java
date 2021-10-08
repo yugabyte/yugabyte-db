@@ -15,17 +15,18 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
+import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.TableDefinitionTaskParams;
-import com.yugabyte.yw.forms.YWResults;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
-import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Schedule;
@@ -61,30 +62,40 @@ import play.data.Form;
 import play.libs.Json;
 import play.mvc.Result;
 
-@Api(value = "Tables", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
+@Api(
+    value = "Table management",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class TablesController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(TablesController.class);
 
-  @Inject Commissioner commissioner;
+  Commissioner commissioner;
 
-  // The YB client to use.
-  public YBClientService ybService;
+  private final YBClientService ybService;
 
-  @Inject MetricQueryHelper metricQueryHelper;
+  private final MetricQueryHelper metricQueryHelper;
+
+  private final CustomerConfigService customerConfigService;
 
   @Inject
-  public TablesController(YBClientService service) {
+  public TablesController(
+      Commissioner commissioner,
+      YBClientService service,
+      MetricQueryHelper metricQueryHelper,
+      CustomerConfigService customerConfigService) {
+    this.commissioner = commissioner;
     this.ybService = service;
+    this.metricQueryHelper = metricQueryHelper;
+    this.customerConfigService = customerConfigService;
   }
 
   @ApiOperation(
-      value = "Create table in Yugabyte DB",
-      response = YWResults.YWTask.class,
+      value = "Create a YugabyteDB table",
+      response = YBPTask.class,
       nickname = "createTable")
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Table",
-        value = "Table Definition to be created",
+        value = "Table definition to be created",
         required = true,
         dataType = "com.yugabyte.yw.forms.TableDefinitionTaskParams",
         paramType = "body")
@@ -98,7 +109,7 @@ public class TablesController extends AuthenticatedController {
     TableDefinitionTaskParams taskParams = formData.get();
     // Submit the task to create the table.
     if (taskParams.tableDetails == null) {
-      throw new YWServiceException(BAD_REQUEST, "Table details can not be null.");
+      throw new PlatformServiceException(BAD_REQUEST, "Table details can not be null.");
     }
     TableDetails tableDetails = taskParams.tableDetails;
     UUID taskUUID = commissioner.submit(TaskType.CreateCassandraTable, taskParams);
@@ -126,18 +137,19 @@ public class TablesController extends AuthenticatedController {
         tableDetails.tableName);
 
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
-    return new YWResults.YWTask(taskUUID).asResult();
+    return new YBPTask(taskUUID).asResult();
   }
 
   @ApiOperation(
-      value = "Alter table in Yugabyte DB",
+      value = "Alter a YugabyteDB table",
+      nickname = "alterTable",
       response = Object.class,
       responseContainer = "Map")
   public Result alter(UUID cUUID, UUID uniUUID, UUID tableUUID) {
     return play.mvc.Results.TODO;
   }
 
-  @ApiOperation(value = "Drop table in Yugabyte DB", response = YWResults.YWTask.class)
+  @ApiOperation(value = "Drop a YugabyteDB table", nickname = "dropTable", response = YBPTask.class)
   public Result drop(UUID customerUUID, UUID universeUUID, UUID tableUUID) {
     // Validate customer UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -148,7 +160,7 @@ public class TablesController extends AuthenticatedController {
       String errMsg = "Expected error. Masters are not currently queryable.";
       LOG.warn(errMsg);
       // TODO: This should be temporary unavailable error and not a success!!
-      return YWResults.YWSuccess.withMessage(errMsg);
+      return YBPSuccess.withMessage(errMsg);
     }
     String certificate = universe.getCertificateNodetoNode();
     YBClient client = ybService.getClient(masterAddresses, certificate);
@@ -156,10 +168,10 @@ public class TablesController extends AuthenticatedController {
     try {
       schemaResponse = client.getTableSchemaByUUID(tableUUID.toString().replace("-", ""));
     } catch (Exception e) {
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
     if (schemaResponse == null) {
-      throw new YWServiceException(BAD_REQUEST, "No table for UUID: " + tableUUID);
+      throw new PlatformServiceException(BAD_REQUEST, "No table for UUID: " + tableUUID);
     }
     ybService.closeClient(client, masterAddresses);
     DeleteTableFromUniverse.Params taskParams = new DeleteTableFromUniverse.Params();
@@ -191,7 +203,7 @@ public class TablesController extends AuthenticatedController {
         taskParams.getFullName());
 
     auditService().createAuditEntry(ctx(), request(), taskUUID);
-    return new YWResults.YWTask(taskUUID).asResult();
+    return new YBPTask(taskUUID).asResult();
   }
 
   @ApiOperation(
@@ -213,25 +225,26 @@ public class TablesController extends AuthenticatedController {
     }
     result.put("primitives", primitives);
     result.put("collections", collections);
-    return YWResults.withRawData(result);
+    return PlatformResults.withRawData(result);
   }
 
   @ApiOperation(
-      value = "Get columns Types",
+      value = "List column types",
+      notes = "Get a list of all defined column types.",
       response = ColumnDetails.YQLDataType.class,
       responseContainer = "List")
   public Result getYQLDataTypes() {
-    return YWResults.withData(ColumnDetails.YQLDataType.values());
+    return PlatformResults.withData(ColumnDetails.YQLDataType.values());
   }
 
-  @ApiModel("TableInfo")
+  @ApiModel(description = "Table information response")
   @Builder
   static class TableInfoResp {
 
     @ApiModelProperty(value = "Table UUID", accessMode = READ_ONLY)
     public final UUID tableUUID;
 
-    @ApiModelProperty(value = "Key space")
+    @ApiModelProperty(value = "Keyspace")
     public final String keySpace;
 
     @ApiModelProperty(value = "Table type")
@@ -251,7 +264,9 @@ public class TablesController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "List of tables",
+      value = "List all tables",
+      nickname = "getAllTables",
+      notes = "Get a list of all tables in the specified universe",
       response = TableInfoResp.class,
       responseContainer = "List")
   public Result listTables(UUID customerUUID, UUID universeUUID) {
@@ -292,7 +307,7 @@ public class TablesController extends AuthenticatedController {
         tableInfoRespList.add(builder.build());
       }
     }
-    return YWResults.withData(tableInfoRespList);
+    return PlatformResults.withData(tableInfoRespList);
   }
 
   private boolean isSystemRedis(TableInfo table) {
@@ -322,12 +337,12 @@ public class TablesController extends AuthenticatedController {
       client = ybService.getClient(masterAddresses, certificate);
       response = client.getTablesList();
     } catch (Exception e) {
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     } finally {
       ybService.closeClient(client, masterAddresses);
     }
     if (response == null) {
-      throw new YWServiceException(BAD_REQUEST, "Table list can not be empty");
+      throw new PlatformServiceException(BAD_REQUEST, "Table list can not be empty");
     }
     return response;
   }
@@ -340,7 +355,10 @@ public class TablesController extends AuthenticatedController {
    * @param tableUUID UUID of the table to describe.
    * @return json-serialized description of the table.
    */
-  @ApiOperation(value = "Describe table", response = TableDefinitionTaskParams.class)
+  @ApiOperation(
+      value = "Describe a table",
+      nickname = "describeTable",
+      response = TableDefinitionTaskParams.class)
   public Result describe(UUID customerUUID, UUID universeUUID, UUID tableUUID) {
     // Validate customer UUID
     Customer.getOrBadRequest(customerUUID);
@@ -358,19 +376,23 @@ public class TablesController extends AuthenticatedController {
       GetTableSchemaResponse response =
           client.getTableSchemaByUUID(tableUUID.toString().replace("-", ""));
 
-      return YWResults.withData(createFromResponse(universe, tableUUID, response));
+      return PlatformResults.withData(createFromResponse(universe, tableUUID, response));
     } catch (IllegalArgumentException e) {
       LOG.error("Failed to get schema of table " + tableUUID + " in universe " + universeUUID, e);
-      throw new YWServiceException(BAD_REQUEST, e.getMessage());
+      throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
     } catch (Exception e) {
       LOG.error("Failed to get schema of table " + tableUUID + " in universe " + universeUUID, e);
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     } finally {
       ybService.closeClient(client, masterAddresses);
     }
   }
 
-  @ApiOperation(value = "Create multiple table backup", response = YWResults.YWTask.class)
+  @ApiOperation(
+      value = "Create a multi-table backup",
+      tags = {"Backups", "Table management"},
+      nickname = "createMultiTableBackup",
+      response = YBPTask.class)
   @ApiResponses(
       @ApiResponse(
           code = 200,
@@ -395,17 +417,16 @@ public class TablesController extends AuthenticatedController {
 
     MultiTableBackup.Params taskParams = formData.get();
     if (taskParams.storageConfigUUID == null) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST, "Missing StorageConfig UUID: " + taskParams.storageConfigUUID);
     }
-    CustomerConfig storageConfig =
-        CustomerConfig.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
+    customerConfigService.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
     if (universe.getUniverseDetails().updateInProgress
         || universe.getUniverseDetails().backupInProgress) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
-              "Cannot run Backup task since the " + "universe %s is currently in a locked state.",
+              "Cannot run Backup task since the universe %s is currently in a locked state.",
               universeUUID.toString()));
     }
 
@@ -428,7 +449,7 @@ public class TablesController extends AuthenticatedController {
           universeUUID,
           scheduleUUID);
       auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
-      return YWResults.withData(schedule);
+      return PlatformResults.withData(schedule);
     } else {
       UUID taskUUID = commissioner.submit(TaskType.MultiTableBackup, taskParams);
       LOG.info("Submitted task to universe {}, task uuid = {}.", universe.name, taskUUID);
@@ -441,11 +462,14 @@ public class TablesController extends AuthenticatedController {
           universe.name);
       LOG.info("Saved task uuid {} in customer tasks for universe {}", taskUUID, universe.name);
       auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
-      return new YWResults.YWTask(taskUUID).asResult();
+      return new YBPTask(taskUUID).asResult();
     }
   }
 
-  @ApiOperation(value = "Create table backup", response = YWResults.YWTask.class)
+  @ApiOperation(
+      value = "Create a single-table backup",
+      nickname = "createSingleTableBackup",
+      response = YBPTask.class)
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Backup",
@@ -465,19 +489,19 @@ public class TablesController extends AuthenticatedController {
     Form<BackupTableParams> formData = formFactory.getFormDataOrBadRequest(BackupTableParams.class);
 
     BackupTableParams taskParams = formData.get();
-    CustomerConfig storageConfig =
-        CustomerConfig.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
+    customerConfigService.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
     if (universe.getUniverseDetails().updateInProgress
         || universe.getUniverseDetails().backupInProgress) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
-              "Cannot run Backup task since the " + "universe %s is currently in a locked state.",
+              "Cannot run Backup task since the universe %s is currently in a locked state.",
               universeUUID.toString()));
     }
 
     taskParams.universeUUID = universeUUID;
     taskParams.tableUUID = tableUUID;
+    taskParams.customerUuid = customerUUID;
 
     if (taskParams.schedulingFrequency != 0L || taskParams.cronExpression != null) {
       Schedule schedule =
@@ -494,16 +518,14 @@ public class TablesController extends AuthenticatedController {
           taskParams.getTableName(),
           scheduleUUID);
       auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
-      return YWResults.withData(schedule);
+      return PlatformResults.withData(schedule);
     } else {
-      Backup backup = Backup.create(customerUUID, taskParams);
       UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, taskParams);
       LOG.info(
           "Submitted task to backup table {}:{}, task uuid = {}.",
           tableUUID,
           taskParams.getTableName(),
           taskUUID);
-      backup.setTaskUUID(taskUUID);
       CustomerTask.create(
           customer,
           taskParams.universeUUID,
@@ -518,7 +540,7 @@ public class TablesController extends AuthenticatedController {
           taskParams.getTableNames(),
           taskParams.getTableName());
       auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
-      return new YWResults.YWTask(taskUUID, backup.backupUUID).asResult();
+      return new YBPTask(taskUUID).asResult();
     }
   }
 
@@ -529,11 +551,15 @@ public class TablesController extends AuthenticatedController {
    * @param universeUUID UUID of the universe in which the table resides.
    * @param tableUUID UUID of the table to describe.
    */
-  @ApiOperation(value = "Bulk import table", response = YWResults.YWTask.class)
+  @ApiOperation(
+      value = "Bulk import data",
+      nickname = "bulkImportData",
+      notes = "Bulk import data into the specified table. This is currently AWS-only.",
+      response = YBPTask.class)
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Bulk import",
-        value = "Bulk data to be Imported",
+        value = "Bulk data to be imported",
         required = true,
         dataType = "com.yugabyte.yw.forms.BulkImportParams",
         paramType = "body")
@@ -549,7 +575,8 @@ public class TablesController extends AuthenticatedController {
     Common.CloudType cloudType =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
     if (cloudType != aws) {
-      throw new YWServiceException(BAD_REQUEST, "Bulk Import is currently only supported for AWS.");
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Bulk Import is currently only supported for AWS.");
     }
 
     Provider.getOrBadRequest(
@@ -560,7 +587,7 @@ public class TablesController extends AuthenticatedController {
     Form<BulkImportParams> formData = formFactory.getFormDataOrBadRequest(BulkImportParams.class);
     BulkImportParams taskParams = formData.get();
     if (taskParams.s3Bucket == null || !taskParams.s3Bucket.startsWith("s3://")) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST, "Invalid S3 Bucket provided: " + taskParams.s3Bucket);
     }
     taskParams.universeUUID = universeUUID;
@@ -587,7 +614,7 @@ public class TablesController extends AuthenticatedController {
         taskParams.getTableName());
 
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
-    return new YWResults.YWTask(taskUUID, tableUUID).asResult();
+    return new YBPTask(taskUUID, tableUUID).asResult();
   }
 
   @VisibleForTesting
@@ -603,11 +630,11 @@ public class TablesController extends AuthenticatedController {
           getUUIDRepresentation(tableInfo.getId().toStringUtf8().replace("-", "")))) {
         if (tableInfo.hasRelationType()
             && tableInfo.getRelationType() == RelationType.INDEX_TABLE_RELATION) {
-          throw new YWServiceException(
+          throw new PlatformServiceException(
               BAD_REQUEST, "Cannot backup index table " + tableInfo.getName());
         } else if (tableInfo.hasTableType()
             && tableInfo.getTableType() == TableType.PGSQL_TABLE_TYPE) {
-          throw new YWServiceException(
+          throw new PlatformServiceException(
               BAD_REQUEST, "Cannot backup ysql table " + tableInfo.getName());
         }
       }

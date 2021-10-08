@@ -1890,6 +1890,7 @@ TEST_F(OptionsParserTest, BlockBasedTableOptionsAllFieldsSettable) {
       BLACKLIST_ENTRY(BlockBasedTableOptions, flush_block_policy_factory),
       BLACKLIST_ENTRY(BlockBasedTableOptions, block_cache),
       BLACKLIST_ENTRY(BlockBasedTableOptions, block_cache_compressed),
+      BLACKLIST_ENTRY(BlockBasedTableOptions, data_block_key_value_encoding_format),
       BLACKLIST_ENTRY(BlockBasedTableOptions, filter_policy),
       BLACKLIST_ENTRY(BlockBasedTableOptions, supported_filter_policies),
   };
@@ -1932,6 +1933,7 @@ TEST_F(OptionsParserTest, DBOptionsAllFieldsSettable) {
       BLACKLIST_ENTRY(DBOptions, mem_tracker),
       BLACKLIST_ENTRY(DBOptions, block_based_table_mem_tracker),
       BLACKLIST_ENTRY(DBOptions, iterator_replacer),
+      BLACKLIST_ENTRY(DBOptions, compaction_file_filter_factory),
   };
 
   TestAllFieldsSettable<DBOptions>(kDBOptionsBlacklist);

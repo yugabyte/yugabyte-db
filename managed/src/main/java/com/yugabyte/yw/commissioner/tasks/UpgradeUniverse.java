@@ -30,6 +30,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateNodeDetails;
 import com.yugabyte.yw.common.CertificateHelper;
+import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeParams;
@@ -115,7 +116,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
 
           // ResizeNode cannot change the number of volumes
           if (deviceInfo.numVolumes != null
-              && primIntent.deviceInfo.numVolumes != deviceInfo.numVolumes) {
+              && !deviceInfo.numVolumes.equals(primIntent.deviceInfo.numVolumes)) {
             throw new IllegalArgumentException(
                 "ResizeNode cannot change the number of volumes. It was "
                     + primIntent.deviceInfo.numVolumes
@@ -132,7 +133,9 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
         List<InstanceType> instanceTypes =
             InstanceType.findByProvider(
                 Provider.getOrBadRequest(UUID.fromString(provider)),
-                Play.current().injector().instanceOf(Config.class));
+                Play.current().injector().instanceOf(Config.class),
+                Play.current().injector().instanceOf(ConfigHelper.class));
+        log.info(instanceTypes.toString());
         InstanceType newInstanceType =
             instanceTypes
                 .stream()
@@ -206,6 +209,12 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
         if (taskParams().ybSoftwareVersion.equals(primIntent.ybSoftwareVersion)) {
           throw new IllegalArgumentException(
               "Software version is already: " + taskParams().ybSoftwareVersion);
+        }
+        break;
+      case Systemd:
+        if (taskParams().upgradeOption != UpgradeParams.UpgradeOption.ROLLING_UPGRADE) {
+          throw new IllegalArgumentException(
+              "Systemd upgrade operation of a universe needs to be of type rolling upgrade.");
         }
         break;
       case Restart:
@@ -308,6 +317,9 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
 
       // Check if the combination of taskType and upgradeOption are compatible.
       verifyParams(universe, primIntent);
+      taskParams().ybPrevSoftwareVersion = primIntent.ybSoftwareVersion;
+
+      preTaskActions();
 
       // Get the nodes that need to be upgraded.
       // Left element is master and right element is tserver.
@@ -454,7 +466,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
 
               CreateRootVolumes.Params params = new CreateRootVolumes.Params();
               UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
-              fillSetupParamsForNode(params, userIntent, node);
+              fillCreateParamsForNode(params, userIntent, node);
               params.numVolumes = numVolumes;
               params.machineImage = machineImage;
               params.bootDisksPerZone = replacementRootVolumes;
@@ -518,20 +530,15 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     nodes.addAll(masterNodes);
     nodes.addAll(tServerNodes);
 
-    Integer currDiskSize =
+    UserIntent currUserIntent =
         Universe.getOrBadRequest(taskParams().universeUUID)
             .getUniverseDetails()
             .getPrimaryCluster()
-            .userIntent
-            .deviceInfo
-            .volumeSize;
+            .userIntent;
 
-    String currInstanceType =
-        Universe.getOrBadRequest(taskParams().universeUUID)
-            .getUniverseDetails()
-            .getPrimaryCluster()
-            .userIntent
-            .instanceType;
+    Integer currDiskSize = currUserIntent.deviceInfo.volumeSize;
+
+    String currInstanceType = currUserIntent.instanceType;
 
     // Todo: Add preflight checks here
 
@@ -582,9 +589,16 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
           createStopMasterTasks(new HashSet<NodeDetails>(Arrays.asList(node)))
               .setSubTaskGroupType(SubTaskGroupType.ChangeInstanceType);
 
-          createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ChangeInstanceType);
-          createChangeConfigTask(
-              node, false /* isAdd */, SubTaskGroupType.ChangeInstanceType, true /* useHostPort */);
+          // If RF is 1, we can just move forward, since there is no other master.
+          if (currUserIntent.replicationFactor != 1) {
+            createWaitForMasterLeaderTask()
+                .setSubTaskGroupType(SubTaskGroupType.ChangeInstanceType);
+            createChangeConfigTask(
+                node,
+                false /* isAdd */,
+                SubTaskGroupType.ChangeInstanceType,
+                true /* useHostPort */);
+          }
         }
 
         // Change the instance type
@@ -608,8 +622,10 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
                   new HashSet<NodeDetails>(Arrays.asList(node)), ServerType.MASTER)
               .setSubTaskGroupType(SubTaskGroupType.ChangeInstanceType);
 
-          // Add stopped master to the quorum.
-          createChangeConfigTask(node, true /* isAdd */, SubTaskGroupType.ConfigureUniverse);
+          if (currUserIntent.replicationFactor != 1) {
+            // Add stopped master to the quorum.
+            createChangeConfigTask(node, true /* isAdd */, SubTaskGroupType.ConfigureUniverse);
+          }
         }
 
         // Start the tserver process on this node.
@@ -635,6 +651,57 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     }
   }
 
+  // For systemd upgrades
+  public void createSystemdUpgradeTasks(
+      List<NodeDetails> masterNodes, List<NodeDetails> tServerNodes) {
+    Set<NodeDetails> nodes = new LinkedHashSet<>();
+    nodes.addAll(masterNodes);
+    nodes.addAll(tServerNodes);
+    SubTaskGroupType subGroupType = getTaskSubGroupType();
+
+    for (NodeDetails node : nodes) {
+      // Update node state to Stopping
+      createSetNodeStateTask(node, NodeDetails.NodeState.Stopping)
+          .setSubTaskGroupType(subGroupType);
+
+      List<NodeDetails> nodeList = Collections.singletonList(node);
+      ServerType processType = null;
+      if (node.isMaster) {
+        processType = ServerType.MASTER;
+      } else {
+        processType = ServerType.TSERVER;
+      }
+
+      // Stop yb-master and yb-tserver on node
+      if (node.isMaster) {
+        createServerControlTasks(nodeList, ServerType.MASTER, "stop")
+            .setSubTaskGroupType(subGroupType);
+      }
+      if (node.isTserver) {
+        createServerControlTasks(nodeList, ServerType.TSERVER, "stop")
+            .setSubTaskGroupType(subGroupType);
+      }
+      // Conditional Provisioning
+      createSetupServerTasks(nodeList, true /* isSystemdUpgrade */)
+          .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+      // Conditional Configuring
+      createConfigureServerTasks(nodeList, false, false, false, true /* isSystemdUpgrade */)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      subGroupType = SubTaskGroupType.ConfigureUniverse;
+
+      // Wait for server to get ready
+      createWaitForServersTasks(nodeList, processType).setSubTaskGroupType(subGroupType);
+      createWaitForServerReady(node, processType, getSleepTimeForProcess(processType))
+          .setSubTaskGroupType(subGroupType);
+      createWaitForKeyInMemoryTask(node).setSubTaskGroupType(subGroupType);
+
+      // Update node state to Live
+      createSetNodeStateTask(node, NodeDetails.NodeState.Live).setSubTaskGroupType(subGroupType);
+    }
+    // Persist systemd upgrade changes in the universe
+    createPersistSystemdUpgradeTask(true /* useSystemd */).setSubTaskGroupType(subGroupType);
+  }
+
   private void createUpgradeTasks(
       List<NodeDetails> masterNodes,
       List<NodeDetails> tServerNodes,
@@ -647,6 +714,11 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
 
     if (taskParams().taskType == UpgradeTaskType.ResizeNode) {
       createResizeNodeTasks(masterNodes, tServerNodes);
+      return;
+    }
+
+    if (taskParams().taskType == UpgradeTaskType.Systemd) {
+      createSystemdUpgradeTasks(masterNodes, tServerNodes);
       return;
     }
 
@@ -718,8 +790,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
 
         List<NodeDetails> nodeList = Collections.singletonList(node);
 
-        createSetupServerTasks(nodeList, true)
-            .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
+        createSetupServerTasks(nodeList).setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
         createConfigureServerTasks(nodeList, false /* isShell */, false, false)
             .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
 
@@ -924,6 +995,8 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
         return SubTaskGroupType.UpdatingGFlags;
       case Restart:
         return SubTaskGroupType.StoppingNodeProcesses;
+      case Systemd:
+        return SubTaskGroupType.SystemdUpgrade;
       case ToggleTls:
         return SubTaskGroupType.ToggleTls;
       default:

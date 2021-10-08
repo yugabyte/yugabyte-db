@@ -6,6 +6,7 @@ import static org.mockito.Mockito.when;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
@@ -34,6 +35,8 @@ public class ResetUniverseVersionTest extends FakeDBApplication {
     universe = ModelFactory.createUniverse("universe", defaultCustomer.getCustomerId());
 
     when(baseTaskDependencies.getRuntimeConfigFactory()).thenReturn(runtimeConfigFactory);
+    when(baseTaskDependencies.getExecutorFactory())
+        .thenReturn(app.injector().instanceOf(PlatformExecutorFactory.class));
 
     params = new UniverseDefinitionTaskParams();
     params.universeUUID = universe.universeUUID;

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001 and onwards Google, Inc.
+// Copyright 2001 and onwards Google, Inc.
 //
 // The following only applies to changes made to this file as part of YugaByte development.
 //
@@ -64,8 +64,8 @@
 // --                      MEMCASEIS
 // strcount                MEMCOUNT       (strcount is from strutil.h)
 
-#ifndef STRINGS_MEMUTIL_H_
-#define STRINGS_MEMUTIL_H_
+#ifndef YB_GUTIL_STRINGS_MEMUTIL_H
+#define YB_GUTIL_STRINGS_MEMUTIL_H
 
 #include <stddef.h>
 #include <string.h>      // to get the POSIX mem*() routines
@@ -86,8 +86,8 @@ char *mempbrk(const char *s, size_t slen, const char *accept);
 
 // This is for internal use only.  Don't call this directly
 template<bool case_sensitive>
-const char * int_memmatch(const char * phaystack, size_t haylen,
-                          const char * pneedle, size_t neelen);
+const char * int_memmatch(const char *phaystack, size_t haylen,
+                          const char *pneedle, size_t neelen);
 
 // These are the guys you can call directly
 inline const char * memstr(const char *phaystack, size_t haylen,
@@ -157,11 +157,11 @@ const char *memmatch(const char *phaystack, size_t haylen,
 
 inline int memcount(const char* buf, size_t len, char c) {
   int num = 0;
-  for (int i = 0; i < len; i++) {
+  for (size_t i = 0; i < len; i++) {
     if (buf[i] == c)
       num++;
   }
   return num;
 }
 
-#endif  // STRINGS_MEMUTIL_H_
+#endif  // YB_GUTIL_STRINGS_MEMUTIL_H

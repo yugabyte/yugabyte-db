@@ -336,7 +336,7 @@ public class PlatformReplicationHelper {
       return;
     }
 
-    LOG.debug("Garbage collecting {} backups", numBackups - numToRetain);
+    LOG.info("Garbage collecting {} backups", numBackups - numToRetain);
     backups.subList(0, numBackups - numToRetain).forEach(File::delete);
   }
 

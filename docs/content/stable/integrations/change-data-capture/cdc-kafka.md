@@ -1,3 +1,4 @@
+<!--
 ---
 title: Change data capture to Kafka
 headerTitle: Change data capture to Kafka
@@ -12,6 +13,7 @@ menu:
 isTocNested: true
 showAsideToc: true
 ---
+-->
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >

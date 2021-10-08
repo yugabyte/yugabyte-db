@@ -63,7 +63,7 @@ void CleanupAbortsTask::Run() {
   for (const TransactionId& transaction_id : transactions_to_cleanup_) {
     // If transaction is committed, no action required
     // TODO(dtxn) : Do batch processing of transactions,
-    // because LocalCommitTime will acquire lock per each call.
+    // because LocalCommitData will acquire lock per each call.
     auto commit_time = status_manager_.LocalCommitTime(transaction_id);
     if (commit_time.is_valid()) {
       transactions_to_cleanup_.erase(transaction_id);

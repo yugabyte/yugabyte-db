@@ -64,7 +64,7 @@
 #include "catalog/pg_type.h"
 #include "catalog/schemapg.h"
 #include "catalog/storage.h"
-#include "catalog/ybc_catalog_version.h"
+#include "catalog/yb_catalog_version.h"
 #include "commands/dbcommands.h"
 #include "commands/policy.h"
 #include "commands/trigger.h"
@@ -95,7 +95,7 @@
 #include "utils/tqual.h"
 
 #include "pg_yb_utils.h"
-#include "access/ybcam.h"
+#include "access/yb_scan.h"
 
 #define RELCACHE_INIT_FILEMAGIC		0x573266	/* version ID value */
 
@@ -548,6 +548,7 @@ RelationBuildTupleDesc(Relation relation)
 	AttrDefault *attrdef = NULL;
 	AttrMissing *attrmiss = NULL;
 	int			ndef = 0;
+	bool		index_ok;
 
 	/* copy some fields from pg_class row to rd_att */
 	relation->rd_att->tdtypeid = relation->rd_rel->reltype;
@@ -575,14 +576,17 @@ RelationBuildTupleDesc(Relation relation)
 	/*
 	 * Open pg_attribute and begin a scan.  Force heap scan if we haven't yet
 	 * built the critical relcache entries (this includes initdb and startup
-	 * without a pg_internal.init file).
+	 * without a pg_internal.init file), or we are building the tuple descriptor
+	 * of the pg_attribute_relid_attnum_index relation.
 	 */
+	index_ok = criticalRelcachesBuilt &&
+			  RelationGetRelid(relation) != AttributeRelidNumIndexId;
 	pg_attribute_desc = heap_open(AttributeRelationId, AccessShareLock);
 	pg_attribute_scan = systable_beginscan(pg_attribute_desc,
-	                                       AttributeRelidNumIndexId,
-	                                       criticalRelcachesBuilt,
-	                                       NULL,
-	                                       2, skey);
+										   AttributeRelidNumIndexId,
+										   index_ok,
+										   NULL,
+										   2, skey);
 
 	/*
 	 * add attribute data to relation->rd_att
@@ -1811,7 +1815,7 @@ RelationBuildDesc(Oid targetRelId, bool insertIt)
 	/*
 	 * find the tuple in pg_class corresponding to the given relation id
 	 */
-	pg_class_tuple = ScanPgRelation(targetRelId, true, false);
+	pg_class_tuple = ScanPgRelation(targetRelId, targetRelId != ClassOidIndexId, false);
 
 	/*
 	 * if no such tuple exists, return NULL
@@ -2943,7 +2947,8 @@ RelationReloadNailed(Relation relation)
 			relation->rd_isvalid = true;
 
 			pg_class_tuple = ScanPgRelation(RelationGetRelid(relation),
-											true, false);
+											RelationGetRelid(relation) != ClassOidIndexId,
+											false);
 			relp = (Form_pg_class) GETSTRUCT(pg_class_tuple);
 			memcpy(relation->rd_rel, relp, CLASS_TUPLE_SIZE);
 			heap_freetuple(pg_class_tuple);
@@ -4342,7 +4347,7 @@ RelationCacheInitializePhase3(void)
 	if (IsYugaByteEnabled())
 	{
 		YBCPgResetCatalogReadTime();
-		YBCGetMasterCatalogVersion(&yb_catalog_cache_version);
+		YbGetMasterCatalogVersion(&yb_catalog_cache_version);
 	}
 
 	/*
@@ -6259,7 +6264,7 @@ load_relcache_init_file(bool shared)
 		/* Else, still need to check with the master version to be sure. */
 		YBCPgResetCatalogReadTime();
 		uint64_t catalog_master_version = 0;
-		YBCGetMasterCatalogVersion(&catalog_master_version);
+		YbGetMasterCatalogVersion(&catalog_master_version);
 
 		/* File version does not match actual master version (i.e. too old) */
 		if (ybc_stored_cache_version != catalog_master_version)

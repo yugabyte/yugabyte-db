@@ -118,6 +118,11 @@ const initialState = {
   hasInstanceTypeChanged: false,
   useTimeSync: true,
   enableYSQL: true,
+  enableYSQLAuth: true,
+  ysqlPassword: '',
+  enableYCQL: true,
+  enableYCQLAuth: true,
+  ycqlPassword: '',
   enableIPV6: false,
   // By default, we don't want to expose the service.
   enableExposingService: EXPOSING_SERVICE_STATE_TYPES['Unexposed'],
@@ -125,10 +130,12 @@ const initialState = {
   enableNodeToNodeEncrypt: true,
   enableClientToNodeEncrypt: true,
   enableEncryptionAtRest: false,
+  useSystemd: false,
   customizePorts: false
 };
 
 export default class ClusterFields extends Component {
+
   constructor(props) {
     super(props);
     this.providerChanged = this.providerChanged.bind(this);
@@ -147,6 +154,9 @@ export default class ClusterFields extends Component {
     this.toggleAssignPublicIP = this.toggleAssignPublicIP.bind(this);
     this.toggleUseTimeSync = this.toggleUseTimeSync.bind(this);
     this.toggleEnableYSQL = this.toggleEnableYSQL.bind(this);
+    this.toggleEnableYSQLAuth = this.toggleEnableYSQLAuth.bind(this);
+    this.toggleEnableYCQL = this.toggleEnableYCQL.bind(this);
+    this.toggleEnableYCQLAuth = this.toggleEnableYCQLAuth.bind(this);
     this.toggleEnableIPV6 = this.toggleEnableIPV6.bind(this);
     this.toggleEnableExposingService = this.toggleEnableExposingService.bind(this);
     this.toggleEnableYEDIS = this.toggleEnableYEDIS.bind(this);
@@ -161,7 +171,10 @@ export default class ClusterFields extends Component {
     this.accessKeyChanged = this.accessKeyChanged.bind(this);
     this.hasFieldChanged = this.hasFieldChanged.bind(this);
     this.toggleCustomizePorts = this.toggleCustomizePorts.bind(this);
+    this.toggleUseSystemd = this.toggleUseSystemd.bind(this);
     this.validateUserTags = this.validateUserTags.bind(this);
+    this.validatePassword = this.validatePassword.bind(this);
+    this.validateConfirmPassword = this.validateConfirmPassword.bind(this);
 
     this.currentInstanceType = _.get(
       this.props.universe,
@@ -182,10 +195,30 @@ export default class ClusterFields extends Component {
           gcpInstanceWithEphemeralStorage: false
         };
       } else {
-        this.state = { ...initialState, isReadOnlyExists: false, editNotAllowed: false };
+        const {userIntent} = getPrimaryCluster(this.props.universe.currentUniverse.data.universeDetails.clusters);
+        this.state = {
+          ...initialState,
+          enableYSQL: userIntent.enableYSQL,
+          enableYSQLAuth: userIntent.enableYSQLAuth,
+          enableYCQL: userIntent.enableYCQL,
+          enableYCQLAuth: userIntent.enableYCQLAuth,
+          isReadOnlyExists: false,
+          editNotAllowed: false
+        };
       }
     } else {
-      this.state = initialState;
+      let tempState = this.props.formValues[this.props.clusterType];
+      if (tempState) {
+        tempState = {
+          ...initialState,
+          enableYSQL: tempState.enableYSQL,
+          enableYSQLAuth: tempState.enableYSQLAuth,
+          enableYCQL: tempState.enableYCQL,
+          enableYCQLAuth: tempState.enableYCQLAuth,
+          isReadOnlyExists: tempState.provider && this.props.type === 'Create' && this.props.clusterType === 'async'
+        }
+      }
+      this.state = tempState? tempState : initialState;
     }
   }
 
@@ -262,22 +295,40 @@ export default class ClusterFields extends Component {
       this.setState({ nodeSetViaAZList: true });
     }
 
-    const isEditReadOnlyFlow = type === 'Async' && this.state.isReadOnlyExists;
+    const isEditReadOnlyFlow = type === 'Async';
     if (type === 'Edit' || isEditReadOnlyFlow) {
       const primaryCluster = getPrimaryCluster(universeDetails.clusters);
       const readOnlyCluster = getReadOnlyCluster(universeDetails.clusters);
       const userIntent =
-        clusterType === 'async'
-          ? readOnlyCluster && {
+        clusterType === 'async' ?
+          readOnlyCluster ? (readOnlyCluster && {
               ...readOnlyCluster.userIntent,
               universeName: primaryCluster.userIntent.universeName
-            }
+            }) : (primaryCluster && {
+              ...primaryCluster.userIntent,
+              universeName: primaryCluster.userIntent.universeName
+            })
           : primaryCluster && primaryCluster.userIntent;
       const providerUUID = userIntent && userIntent.provider;
       const encryptionAtRestEnabled =
         universeDetails.encryptionAtRestConfig &&
         universeDetails.encryptionAtRestConfig.encryptionAtRestEnabled;
 
+      if (clusterType === 'async' && primaryCluster) {
+        // setting form fields when adding a Read replica
+        this.updateFormFields({
+          'async.assignPublicIP': userIntent.assignPublicIP,
+          'async.useTimeSync': userIntent.useTimeSync,
+          'async.enableYSQL': userIntent.enableYSQL,
+          'async.enableYSQLAuth': userIntent.enableYSQLAuth,
+          'async.enableYCQL': userIntent.enableYCQL,
+          'async.enableYCQLAuth': userIntent.enableYCQLAuth,
+          'async.enableYEDIS': userIntent.enableYEDIS,
+          'async.enableNodeToNodeEncrypt': userIntent.enableNodeToNodeEncrypt,
+          'async.enableClientToNodeEncrypt': userIntent.enableClientToNodeEncrypt,
+          'async.enableEncryptionAtRest': userIntent.enableEncryptionAtRest
+        });
+      }
       if (userIntent && providerUUID) {
         const storageType =
           userIntent.deviceInfo === null ? null : userIntent.deviceInfo.storageType;
@@ -291,6 +342,9 @@ export default class ClusterFields extends Component {
           assignPublicIP: userIntent.assignPublicIP,
           useTimeSync: userIntent.useTimeSync,
           enableYSQL: userIntent.enableYSQL,
+          enableYSQLAuth: userIntent.enableYSQLAuth,
+          enableYCQL: userIntent.enableYCQL,
+          enableYCQLAuth: userIntent.enableYCQLAuth,
           enableIPV6: userIntent.enableIPV6,
           enableExposingService: userIntent.enableExposingService,
           enableYEDIS: userIntent.enableYEDIS,
@@ -337,6 +391,18 @@ export default class ClusterFields extends Component {
           if (formValues[clusterType].enableYSQL) {
             // We would also default to whatever primary cluster's state for this one.
             this.setState({ enableYSQL: formValues['primary'].enableYSQL });
+          }
+          if (formValues[clusterType].enableYSQLAuth) {
+            // We would also default to whatever primary cluster's state for this one.
+            this.setState({ enableYSQLAuth: formValues['primary'].enableYSQLAuth });
+          }
+          if (formValues[clusterType].enableYCQL) {
+            // We would also default to whatever primary cluster's state for this one.
+            this.setState({ enableYCQL: formValues['primary'].enableYCQL });
+          }
+          if (formValues[clusterType].enableYCQLAuth) {
+            // We would also default to whatever primary cluster's state for this one.
+            this.setState({ enableYCQLAuth: formValues['primary'].enableYCQLAuth });
           }
           if (formValues[clusterType].enableIPV6) {
             // We would also default to whatever primary cluster's state for this one.
@@ -615,6 +681,8 @@ export default class ClusterFields extends Component {
     } else {
       this.props.handleHasFieldChanged(true);
     }
+
+    this.doAuthCheck();
   }
 
   numNodesChangedViaAzList(value) {
@@ -639,7 +707,7 @@ export default class ClusterFields extends Component {
         .join(',');
     }
     if (volumeDetail) {
-      let storageType = DEFAULT_STORAGE_TYPES[instanceTypeSelectedData.providerCode.toUpperCase()];
+      let storageType = this.state.deviceInfo.storageType ? this.state.deviceInfo.storageType : DEFAULT_STORAGE_TYPES[instanceTypeSelectedData.providerCode.toUpperCase()];
       if (instanceTypeSelectedData.providerCode === 'aws' &&
         isEphemeralAwsStorageInstance(instanceTypeCode)) {
         storageType = null;
@@ -758,14 +826,96 @@ export default class ClusterFields extends Component {
     }
   }
 
+  doAuthCheck() {
+    this.props.toggleDisableSubmit(!this.state.enableYSQL && !this.state.enableYCQL);
+  }
+
+  updateFormFields(obj) {
+    const { updateFormField} = this.props;
+    for (let x in obj) {
+      updateFormField(x, obj[x]);
+    }
+  }
+
   toggleEnableYSQL(event) {
-    const { updateFormField, clusterType } = this.props;
+    const { clusterType } = this.props;
     // Right now we only let primary cluster to update this flag, and
     // keep the async cluster to use the same value as primary.
     if (clusterType === 'primary') {
-      updateFormField('primary.enableYSQL', event.target.checked);
-      updateFormField('async.enableYSQL', event.target.checked);
-      this.setState({ enableYSQL: event.target.checked });
+      this.updateFormFields({
+        'primary.enableYSQL': event.target.checked,
+        'async.enableYSQL': event.target.checked,
+        'primary.enableYSQLAuth': event.target.checked,
+        'async.enableYSQLAuth': event.target.checked,
+        'primary.ysqlPassword': '',
+        'primary.ysqlConfirmPassword': ''
+      });
+      this.setState({
+        enableYSQL: event.target.checked,
+        enableYSQLAuth: event.target.checked,
+        ysqlPassword: '',
+        ysqlConfirmPassword: ''
+      });
+    }
+  }
+
+  toggleEnableYSQLAuth(event) {
+    const { clusterType } = this.props;
+    // Right now we only let primary cluster to update this flag, and
+    // keep the async cluster to use the same value as primary.
+    if (clusterType === 'primary') {
+      this.updateFormFields({
+        'primary.enableYSQLAuth': event.target.checked,
+        'async.enableYSQLAuth': event.target.checked,
+        'primary.ysqlPassword': '',
+        'primary.ysqlConfirmPassword': ''
+      });
+      this.setState({
+        enableYSQLAuth: event.target.checked,
+        ysqlPassword: '',
+        ysqlConfirmPassword: ''
+      });
+    }
+  }
+
+  toggleEnableYCQL(event) {
+    const { clusterType } = this.props;
+    // Right now we only let primary cluster to update this flag, and
+    // keep the async cluster to use the same value as primary.
+    if (clusterType === 'primary') {
+      this.updateFormFields({
+        'primary.enableYCQL': event.target.checked,
+        'async.enableYCQL': event.target.checked,
+        'primary.enableYCQLAuth': event.target.checked,
+        'async.enableYCQLAuth': event.target.checked,
+        'primary.ycqlPassword': '',
+        'primary.ycqlConfirmPassword': ''
+      });
+      this.setState({
+        enableYCQL: event.target.checked,
+        enableYCQLAuth: event.target.checked,
+        ycqlPassword: '',
+        ycqlConfirmPassword: ''
+      });
+    }
+  }
+
+  toggleEnableYCQLAuth(event) {
+    const { clusterType } = this.props;
+    // Right now we only let primary cluster to update this flag, and
+    // keep the async cluster to use the same value as primary.
+    if (clusterType === 'primary') {
+      this.updateFormFields({
+        'primary.enableYCQLAuth': event.target.checked,
+        'async.enableYCQLAuth': event.target.checked,
+        'primary.ycqlPassword': '',
+        'primary.ycqlConfirmPassword': ''
+      });
+      this.setState({
+        enableYCQLAuth: event.target.checked,
+        ysqlPassword: '',
+        ysqlConfirmPassword: ''
+      });
     }
   }
 
@@ -858,6 +1008,12 @@ export default class ClusterFields extends Component {
 
   toggleCustomizePorts(event) {
     this.setState({ customizePorts: event.target.checked });
+  }
+
+  toggleUseSystemd(event) {
+    const { updateFormField, clusterType } = this.props;
+    updateFormField(`${clusterType}.useSystemd`, event.target.checked);
+    this.setState({ useSystemd: event.target.checked });
   }
 
   handleAwsArnChange(event) {
@@ -1083,7 +1239,8 @@ export default class ClusterFields extends Component {
         deviceInfo: {},
         accessKeyCode: defaultAccessKeyCode,
         awsInstanceWithEphemeralStorage: false,
-        gcpInstanceWithEphemeralStorage: false
+        gcpInstanceWithEphemeralStorage: false,
+        isReadOnlyExists: providerUUID && this.props.type === 'Create' && this.props.clusterType === 'async'
       });
 
       this.props.getRegionListItems(providerUUID, true);
@@ -1142,6 +1299,20 @@ export default class ClusterFields extends Component {
     }
   }
 
+  validatePassword(value) {
+    if (value) {
+      const passwordValidationRegex = /^(?=.*[0-9])(?=.*[!@#$%^&*])(?=.*[a-z])(?=.*[A-Z])[a-zA-Z0-9!@#$%^&*]{8,256}$/;
+      return (passwordValidationRegex.test(value) ? undefined :
+      'Password must be 8 characters minimum and must contain at least 1 digit, 1 capital, 1 lowercase and one of the !@#$%^&* (special) characters.');
+    }
+    return value;
+  }
+
+  validateConfirmPassword(value, a, b, field) {
+    const passwordValue = this.props.primary[(field === 'primary.ysqlConfirmPassword')? 'ysqlPassword' : 'ycqlPassword'].input.value;
+    return value === passwordValue ? undefined : 'Password should match';
+  }
+
   /**
    * This method is used to disable the ClientToNodeTLS field initially.
    * Once the NodeToNode TLS is enabled, then ClientToNode TLS will be editable.
@@ -1171,6 +1342,7 @@ export default class ClusterFields extends Component {
   render() {
     const {
       clusterType,
+      type,
       cloud,
       softwareVersions,
       accessKeys,
@@ -1258,6 +1430,13 @@ export default class ClusterFields extends Component {
       })
     ];
     const isFieldReadOnly =
+      (
+        isNonEmptyObject(universe.currentUniverse.data) &&
+        (this.props.type === 'Edit' || (this.props.type === 'Async' && this.state.isReadOnlyExists))
+      ) || (
+        this.props.type === 'Create' && this.props.clusterType === 'async' && this.state.isReadOnlyExists
+      );
+    const isReadOnlyOnEdit =
       isNonEmptyObject(universe.currentUniverse.data) &&
       (this.props.type === 'Edit' || (this.props.type === 'Async' && this.state.isReadOnlyExists));
 
@@ -1270,7 +1449,7 @@ export default class ClusterFields extends Component {
         label="Provider"
         onInputChanged={this.providerChanged}
         options={universeProviderList}
-        readOnlySelect={isFieldReadOnly}
+        readOnlySelect={isReadOnlyOnEdit}
       />
     );
 
@@ -1430,6 +1609,11 @@ export default class ClusterFields extends Component {
     let assignPublicIP = <span />;
     let useTimeSync = <span />;
     let enableYSQL = <span />;
+    let enableYSQLAuth = <span />;
+    let ysqlAuthPassword = <span />;
+    let ycqlAuthPassword = <span />;
+    let enableYCQL = <span />;
+    let enableYCQLAuth = <span />;
     let enableYEDIS = <span />;
     let enableNodeToNodeEncrypt = <span />;
     let enableClientToNodeEncrypt = <span />;
@@ -1446,6 +1630,7 @@ export default class ClusterFields extends Component {
         currentProvider.code === 'onprem' ||
         currentProvider.code === 'kubernetes')
     ) {
+
       enableYSQL = (
         <Field
           name={`${clusterType}.enableYSQL`}
@@ -1457,6 +1642,116 @@ export default class ClusterFields extends Component {
           label="Enable YSQL"
           subLabel="Enable the YSQL API endpoint to run postgres compatible workloads."
         />
+      );
+      enableYSQLAuth = (
+        <Row>
+          <Col sm={12} md={12} lg={6}>
+            <div className="form-right-aligned-labels">
+              <Field
+                name={`${clusterType}.enableYSQLAuth`}
+                component={YBToggle}
+                isReadOnly={isFieldReadOnly}
+                disableOnChange={disableToggleOnChange}
+                checkedVal={this.state.enableYSQLAuth}
+                onToggle={this.toggleEnableYSQLAuth}
+                label="Enable YSQL Auth"
+                subLabel="Enable the YSQL password authentication."
+              />
+            </div>
+          </Col>
+        </Row>
+
+      );
+      ysqlAuthPassword = (
+        <Row>
+          <Col sm={12} md={6} lg={6}>
+            <div className="form-right-aligned-labels">
+            <Field
+              name={`${clusterType}.ysqlPassword`}
+              type="password"
+              component={YBTextInputWithLabel}
+              validate={this.validatePassword}
+              autoComplete="new-password"
+              label="YSQL Auth Password"
+              placeholder="Enter Password"
+            />
+            </div>
+          </Col>
+          <Col sm={12} md={6} lg={6}>
+            <div className="form-right-aligned-labels">
+            <Field
+              name={`${clusterType}.ysqlConfirmPassword`}
+              type="password"
+              component={YBTextInputWithLabel}
+              validate={this.validateConfirmPassword}
+              autoComplete="new-password"
+              label="Confirm Password"
+              placeholder="Confirm Password"
+            />
+            </div>
+          </Col>
+        </Row>
+      );
+
+      enableYCQL = (
+        <Field
+          name={`${clusterType}.enableYCQL`}
+          component={YBToggle}
+          isReadOnly={isFieldReadOnly}
+          disableOnChange={disableToggleOnChange}
+          checkedVal={this.state.enableYCQL}
+          onToggle={this.toggleEnableYCQL}
+          label="Enable YCQL"
+          subLabel="Enable the YCQL API endpoint to run cassandra compatible workloads."
+        />
+      );
+      enableYCQLAuth = (
+        <Row>
+          <Col sm={12} md={12} lg={6}>
+            <div className="form-right-aligned-labels">
+              <Field
+                name={`${clusterType}.enableYCQLAuth`}
+                component={YBToggle}
+                isReadOnly={isFieldReadOnly}
+                disableOnChange={disableToggleOnChange}
+                checkedVal={this.state.enableYCQLAuth}
+                onToggle={this.toggleEnableYCQLAuth}
+                label="Enable YCQL Auth"
+                subLabel="Enable the YCQL password authentication."
+              />
+            </div>
+          </Col>
+        </Row>
+      );
+      ycqlAuthPassword = (
+        <Row>
+          <Col sm={12} md={6} lg={6}>
+            <div className="form-right-aligned-labels">
+            <Field
+              name={`${clusterType}.ycqlPassword`}
+              type="password"
+              component={YBTextInputWithLabel}
+              validate={this.validatePassword}
+              autoComplete="new-password"
+              label="YCQL Auth Password"
+              placeholder="Enter Password"
+            />
+            </div>
+          </Col>
+          <Col sm={12} md={6} lg={6}>
+            <div className="form-right-aligned-labels">
+            <Field
+              name={`${clusterType}.ycqlConfirmPassword`}
+              type="password"
+              component={YBTextInputWithLabel}
+              validate={this.validateConfirmPassword}
+              autoComplete="new-password"
+              label="Confirm Password"
+              placeholder="Confirm Password"
+            />
+            </div>
+          </Col>
+        </Row>
       );
       enableYEDIS = (
         <Field
@@ -1612,7 +1907,7 @@ export default class ClusterFields extends Component {
         <Field
           name={`${clusterType}.useTimeSync`}
           component={YBToggle}
-          isReadOnly={isFieldReadOnly}
+          isReadOnly={isReadOnlyOnEdit}
           checkedVal={this.state.useTimeSync}
           onToggle={this.toggleUseTimeSync}
           label={`Use ${providerCode} Time Sync`}
@@ -2016,12 +2311,6 @@ export default class ClusterFields extends Component {
                 {selectTlsCert}
                 {assignPublicIP}
                 {useTimeSync}
-                {enableYSQL}
-                {enableYEDIS}
-                {enableNodeToNodeEncrypt}
-                {enableClientToNodeEncrypt}
-                {enableEncryptionAtRest}
-                <Field name={`${clusterType}.mountPoints`} component={YBTextInput} type="hidden" />
               </div>
             </Col>
             <Col sm={12} md={6} lg={4}>
@@ -2029,6 +2318,38 @@ export default class ClusterFields extends Component {
                 {iopsField}
                 {throughputField}
                 {selectEncryptionAtRestConfig}
+              </div>
+            </Col>
+          </Row>
+          {(currentProviderUUID && !this.state.enableYSQL && !this.state.enableYCQL) && (
+            <div className="has-error"><div className="help-block standard-error">Enable atleast one endpoint among YSQL and YCQL</div></div>
+          )}
+          <Row>
+            <Col sm={12} md={12} lg={6}>
+              <div className="form-right-aligned-labels">
+                {enableYSQL}
+              </div>
+            </Col>
+          </Row>
+          {this.state.enableYSQL && enableYSQLAuth}
+          { clusterType === 'primary' && type === 'Create' && this.state.enableYSQL && this.state.enableYSQLAuth && ysqlAuthPassword}
+          <Row>
+            <Col sm={12} md={12} lg={6}>
+              <div className="form-right-aligned-labels">
+                {enableYCQL}
+              </div>
+            </Col>
+          </Row>
+          {this.state.enableYCQL && enableYCQLAuth}
+          { clusterType === 'primary' && type === 'Create' && this.state.enableYCQL && this.state.enableYCQLAuth && ycqlAuthPassword}
+          <Row>
+            <Col sm={12} md={12} lg={6}>
+              <div className="form-right-aligned-labels">
+                {enableYEDIS}
+                {enableNodeToNodeEncrypt}
+                {enableClientToNodeEncrypt}
+                {enableEncryptionAtRest}
+                <Field name={`${clusterType}.mountPoints`} component={YBTextInput} type="hidden" />
               </div>
             </Col>
           </Row>
@@ -2119,6 +2440,24 @@ export default class ClusterFields extends Component {
               </Col>
             </Row>
           )}
+          {isDefinedNotNull(currentProvider) && (
+            <Row>
+              <Col md={12}>
+                <div className="form-right-aligned-labels">
+                  <Field
+                    name={`${clusterType}.useSystemd`}
+                    component={YBToggle}
+                    defaultChecked={false}
+                    disableOnChange={disableToggleOnChange}
+                    checkedVal={this.state.useSystemd}
+                    onToggle={this.toggleUseSystemd}
+                    label="Enable Systemd Services"
+                    isReadOnly={isFieldReadOnly}
+                  />
+                </div>
+              </Col>
+            </Row>
+          )}
           {isDefinedNotNull(currentProvider) && currentProvider.code !== 'kubernetes' && (
             <Row>
               <Col md={12}>
@@ -2197,7 +2536,7 @@ export default class ClusterFields extends Component {
               </Col>
             </Row>
           )}
-          {this.state.customizePorts && (
+          {this.state.customizePorts && this.state.enableYCQL && (
             <Row>
               <Col sm={3}>
                 <div className="form-right-aligned-labels">
