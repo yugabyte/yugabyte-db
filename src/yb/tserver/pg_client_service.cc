@@ -119,7 +119,17 @@ class PgClientServiceImpl::Impl {
 
   CHECKED_STATUS Heartbeat(
       const PgHeartbeatRequestPB& req, PgHeartbeatResponsePB* resp, rpc::RpcContext* context) {
-    return ResultToStatus(DoGetSession(req.session_id(), req.create()));
+    if (req.session_id()) {
+      return ResultToStatus(DoGetSession(req.session_id()));
+    }
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto session_id = ++session_serial_no_;
+    resp->set_session_id(session_id);
+    sessions_.emplace(
+        FLAGS_pg_client_session_expiration_ms * 1ms,
+        std::make_shared<PgClientSession>(&client(), session_id));
+    return Status::OK();
   }
 
   CHECKED_STATUS OpenTable(
@@ -279,31 +289,25 @@ class PgClientServiceImpl::Impl {
   client::YBClient& client() { return *client_future_.get(); }
 
   template <class Req>
-  Result<PgClientSessionLocker> GetSession(const Req& req, bool create = false) {
-    return GetSession(req.session_id(), create);
+  Result<PgClientSessionLocker> GetSession(const Req& req) {
+    return GetSession(req.session_id());
   }
 
-  Result<PgClientSession&> DoGetSession(uint64_t session_id, bool create) {
-    DCHECK_NE(session_id, 0);
+  Result<PgClientSession&> DoGetSession(uint64_t session_id) {
     std::lock_guard<std::mutex> lock(mutex_);
+    DCHECK_NE(session_id, 0);
     auto it = sessions_.find(session_id);
-    if (it != sessions_.end()) {
-      sessions_.modify(it, [](auto& session) {
-        session.Touch();
-      });
-      return *it->value();
-    }
-    if (!create) {
+    if (it == sessions_.end()) {
       return STATUS_FORMAT(InvalidArgument, "Unknown session: $0", session_id);
     }
-    it = sessions_.emplace(
-        FLAGS_pg_client_session_expiration_ms * 1ms,
-        std::make_unique<PgClientSession>(&client(), session_id)).first;
+    sessions_.modify(it, [](auto& session) {
+      session.Touch();
+    });
     return *it->value();
   }
 
-  Result<PgClientSessionLocker> GetSession(uint64_t session_id, bool create = false) {
-    return PgClientSessionLocker(&VERIFY_RESULT_REF(DoGetSession(session_id, create)));
+  Result<PgClientSessionLocker> GetSession(uint64_t session_id) {
+    return PgClientSessionLocker(&VERIFY_RESULT_REF(DoGetSession(session_id)));
   }
 
   void ScheduleCheckExpiredSessions(CoarseTimePoint now) REQUIRES(mutex_) {
@@ -334,7 +338,7 @@ class PgClientServiceImpl::Impl {
 
   class ExpirationTag;
 
-  using SessionsEntry = Expirable<std::unique_ptr<PgClientSession>>;
+  using SessionsEntry = Expirable<std::shared_ptr<PgClientSession>>;
   boost::multi_index_container<
       SessionsEntry,
       boost::multi_index::indexed_by<
@@ -351,6 +355,7 @@ class PgClientServiceImpl::Impl {
           >
       >
   > sessions_ GUARDED_BY(mutex_);
+  int64_t session_serial_no_ GUARDED_BY(mutex_) = 0;
 
   rpc::ScheduledTaskTracker check_expired_sessions_;
 };

@@ -62,7 +62,7 @@ class PgClient::Impl {
 
     auto future = create_session_promise_.get_future();
     Heartbeat(true);
-    RETURN_NOT_OK(future.get());
+    session_id_ = VERIFY_RESULT(future.get());
     heartbeat_poller_.Start(scheduler, FLAGS_pg_client_heartbeat_interval_ms * 1ms - 1s);
     return Status::OK();
   }
@@ -81,16 +81,22 @@ class PgClient::Impl {
       }
     }
     tserver::PgHeartbeatRequestPB req;
-    req.set_create(create);
-    req.set_session_id(session_id_);
+    if (!create) {
+      req.set_session_id(session_id_);
+    }
     proxy_->HeartbeatAsync(
         req, &heartbeat_resp_, PrepareHeartbeatController(),
-        [create, this] {
+        [this, create] {
       auto status = ResponseStatus(heartbeat_resp_);
-      heartbeat_running_ = false;
       if (create) {
-        create_session_promise_.set_value(status);
-      } else if (!status.ok()) {
+        if (!status.ok()) {
+          create_session_promise_.set_value(status);
+        } else {
+          create_session_promise_.set_value(heartbeat_resp_.session_id());
+        }
+      }
+      heartbeat_running_ = false;
+      if (!status.ok()) {
         LOG(WARNING) << "Heartbeat failed: " << status;
       }
     });
@@ -245,13 +251,13 @@ class PgClient::Impl {
 
   std::unique_ptr<tserver::PgClientServiceProxy> proxy_;
   rpc::RpcController controller_;
-  const uint64_t session_id_ = RandomUniformInt<uint64_t>();
+  uint64_t session_id_ = 0;
 
   rpc::Poller heartbeat_poller_;
   std::atomic<bool> heartbeat_running_{false};
   rpc::RpcController heartbeat_controller_;
   tserver::PgHeartbeatResponsePB heartbeat_resp_;
-  std::promise<Status> create_session_promise_;
+  std::promise<Result<uint64_t>> create_session_promise_;
   std::array<int, 2> tablet_server_count_cache_;
 };
 
