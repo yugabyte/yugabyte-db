@@ -100,7 +100,7 @@ public class RuntimeConfigEntry extends Model {
 
   @Transactional
   public static RuntimeConfigEntry upsertGlobal(String path, String value) {
-    return upsertInternal(GLOBAL_SCOPE_UUID, path, value, () -> ScopedRuntimeConfig.ensureGlobal());
+    return upsertInternal(GLOBAL_SCOPE_UUID, path, value, ScopedRuntimeConfig::ensureGlobal);
   }
 
   @Transactional

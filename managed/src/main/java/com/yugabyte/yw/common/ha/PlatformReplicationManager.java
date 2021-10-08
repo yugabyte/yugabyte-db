@@ -10,8 +10,6 @@
 
 package com.yugabyte.yw.common.ha;
 
-import static com.yugabyte.yw.common.ha.PlatformReplicationHelper.REPLICATION_FREQUENCY_KEY;
-
 import akka.actor.ActorSystem;
 import akka.actor.Cancellable;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -121,12 +119,9 @@ public class PlatformReplicationManager {
 
   public JsonNode setFrequencyStartAndEnable(Duration duration) {
     this.stop();
-    replicationHelper
-        .getRuntimeConfig()
-        .setValue(REPLICATION_FREQUENCY_KEY, String.format("%d ms", duration.toMillis()));
+    replicationHelper.setReplicationFrequency(duration);
     replicationHelper.setBackupScheduleEnabled(true);
     this.start();
-
     return this.getBackupInfo();
   }
 

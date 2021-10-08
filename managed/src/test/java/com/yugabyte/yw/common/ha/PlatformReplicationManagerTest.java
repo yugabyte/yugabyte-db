@@ -26,9 +26,7 @@ import akka.actor.ActorSystem;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.config.impl.RuntimeConfig;
-import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
-import io.ebean.Model;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import java.io.File;
 import java.net.URL;
 import java.nio.file.Path;
@@ -56,7 +54,7 @@ public class PlatformReplicationManagerTest extends TestCase {
 
   @Mock ShellProcessHandler shellProcessHandler;
 
-  @Mock SettableRuntimeConfigFactory mockRuntimeConfigFactory;
+  @Mock RuntimeConfigFactory mockRuntimeConfigFactory;
 
   @Mock PlatformReplicationHelper mockReplicationUtil;
 
@@ -74,6 +72,7 @@ public class PlatformReplicationManagerTest extends TestCase {
     when(mockReplicationUtil.getDBPort()).thenReturn(dbPort);
     when(mockReplicationUtil.getDBUser()).thenReturn(dbUsername);
     when(mockReplicationUtil.getDBPassword()).thenReturn(dbPassword);
+    when(mockReplicationUtil.isBackupScriptOutputEnabled()).thenReturn(false);
   }
 
   private List<String> getExpectedPlatformBackupCommandArgs(
@@ -137,19 +136,16 @@ public class PlatformReplicationManagerTest extends TestCase {
       expectedEnvVars.put(PlatformReplicationManager.DB_PASSWORD_ENV_VAR_KEY, dbPassword);
     }
 
-    RuntimeConfig<Model> config = new RuntimeConfig<>(mockConfig);
-
     when(shellProcessHandler.run(anyList(), anyMap(), anyBoolean()))
         .thenReturn(new ShellResponse());
-    when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(config);
+    when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
     mockReplicationUtil.shellProcessHandler = shellProcessHandler;
     doCallRealMethod()
         .when(mockReplicationUtil)
         .runCommand(any(PlatformReplicationManager.PlatformBackupParams.class));
-    when(mockReplicationUtil.getRuntimeConfig()).thenReturn(config);
     setupConfig(prometheusHost, dbUsername, dbPassword, dbHost, dbPort);
     PlatformReplicationManager backupManager =
-        spy(new PlatformReplicationManager(actorSystem, executionContext, mockReplicationUtil));
+        new PlatformReplicationManager(actorSystem, executionContext, mockReplicationUtil);
 
     List<String> expectedCommandArgs =
         getExpectedPlatformBackupCommandArgs(
@@ -187,9 +183,7 @@ public class PlatformReplicationManagerTest extends TestCase {
       String testAddr = "http://test.com";
       URL testUrl = new URL(testAddr);
       Path tmpDir = testFile1.toPath().getParent();
-      RuntimeConfig<Model> config = new RuntimeConfig<>(mockConfig);
-      when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(config);
-      when(mockReplicationUtil.getRuntimeConfig()).thenReturn(config);
+      when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
       when(mockReplicationUtil.getNumBackupsRetention()).thenReturn(Math.max(0, numToRetain));
       when(mockReplicationUtil.getReplicationDirFor(anyString())).thenReturn(tmpDir);
       doCallRealMethod().when(mockReplicationUtil).cleanupBackups(anyList(), anyInt());

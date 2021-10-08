@@ -1,10 +1,10 @@
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
+import static com.yugabyte.yw.common.AssertHelper.assertValue;
+import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.junit.Assert.assertEquals;
-import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
-import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
-import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static play.test.Helpers.contentAsString;
 
 import akka.stream.javadsl.FileIO;
@@ -34,9 +34,8 @@ import play.mvc.Result;
 public class ScheduleScriptControllerTest extends FakeDBApplication {
   private Customer defaultCustomer;
   private Universe defaultUniverse;
-  private Users defaultUser;
 
-  private String validScriptParam =
+  private final String validScriptParam =
       "{\"params1\" : \"val1\", \"params2\" : \"val2\", \"params3\": \"val3\"}";
 
   int OK = 200;
@@ -45,7 +44,7 @@ public class ScheduleScriptControllerTest extends FakeDBApplication {
   public void setUp() throws Exception {
     defaultCustomer = ModelFactory.testCustomer();
     defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
-    defaultUser = ModelFactory.testUser(defaultCustomer);
+    Users defaultUser = ModelFactory.testUser(defaultCustomer);
     new File(TestHelper.TMP_PATH).mkdirs();
   }
 
@@ -74,7 +73,7 @@ public class ScheduleScriptControllerTest extends FakeDBApplication {
       String tmpFile = createTempFile("User defined Script");
       Source<ByteString, ?> scriptFile = FileIO.fromFile(new File(tmpFile));
       bodyData.add(
-          new Http.MultipartFormData.FilePart(
+          new Http.MultipartFormData.FilePart<>(
               "script", "test.py", "application/octet-stream", scriptFile));
     }
     String url =
@@ -113,7 +112,7 @@ public class ScheduleScriptControllerTest extends FakeDBApplication {
             () ->
                 createScriptSchedule(
                     defaultUniverse.universeUUID, "5 * * * *", validScriptParam, null, true));
-    assertBadRequest(result, "Please provide a time limit in mins for script execution.");
+    assertBadRequest(result, "Please provide valid timeLimitMins for script execution.");
   }
 
   @Test
@@ -127,7 +126,7 @@ public class ScheduleScriptControllerTest extends FakeDBApplication {
                     validScriptParam,
                     "dummyValue",
                     true));
-    assertBadRequest(result, "Please provide a valid time limit in mins for script execution.");
+    assertBadRequest(result, "Please provide valid timeLimitMins for script execution.");
   }
 
   @Test
@@ -181,7 +180,7 @@ public class ScheduleScriptControllerTest extends FakeDBApplication {
     String tmpFile = createTempFile("User defined Script");
     Source<ByteString, ?> scriptFile = FileIO.fromFile(new File(tmpFile));
     bodyData.add(
-        new Http.MultipartFormData.FilePart(
+        new Http.MultipartFormData.FilePart<>(
             "script", "test.py", "application/octet-stream", scriptFile));
     String url =
         "/api/v1/customers/"

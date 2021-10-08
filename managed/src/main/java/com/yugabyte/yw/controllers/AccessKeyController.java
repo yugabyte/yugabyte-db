@@ -29,7 +29,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
 import play.libs.Json;
-import play.mvc.Http;
+import play.mvc.Http.MultipartFormData;
+import play.mvc.Http.MultipartFormData.FilePart;
 import play.mvc.Result;
 
 @Api(
@@ -91,10 +92,10 @@ public class AccessKeyController extends AuthenticatedController {
         providerUUID);
 
     // Check if a public/private key was uploaded as part of the request
-    Http.MultipartFormData multiPartBody = request().body().asMultipartFormData();
+    MultipartFormData<File> multiPartBody = request().body().asMultipartFormData();
     if (multiPartBody != null) {
-      Http.MultipartFormData.FilePart filePart = multiPartBody.getFile("keyFile");
-      File uploadedFile = (File) filePart.getFile();
+      FilePart<File> filePart = multiPartBody.getFile("keyFile");
+      File uploadedFile = filePart.getFile();
       if (keyType == null || uploadedFile == null) {
         throw new PlatformServiceException(BAD_REQUEST, "keyType and keyFile params required.");
       }
