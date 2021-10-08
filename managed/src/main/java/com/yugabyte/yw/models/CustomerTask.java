@@ -57,7 +57,10 @@ public class CustomerTask extends Model {
     Backup(false),
 
     @EnumValue("KMS Configuration")
-    KMSConfiguration(false);
+    KMSConfiguration(false),
+
+    @EnumValue("XCluster Configuration")
+    XClusterConfig(false);
 
     private final boolean universeTarget;
 
@@ -186,11 +189,20 @@ public class CustomerTask extends Model {
     @EnumValue("CreateXClusterReplication")
     CreateXClusterReplication,
 
+    @EnumValue("CreateXClusterConfig")
+    CreateXClusterConfig,
+
     @EnumValue("DeleteXClusterReplication")
     DeleteXClusterReplication,
 
+    @EnumValue("DeleteXClusterConfig")
+    DeleteXClusterConfig,
+
     @EnumValue("EditXClusterReplication")
     EditXClusterReplication,
+
+    @EnumValue("EditXClusterConfig")
+    EditXClusterConfig,
 
     @EnumValue("PauseXClusterReplication")
     PauseXClusterReplication,
