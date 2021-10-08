@@ -520,7 +520,7 @@ void TSTabletManager::CleanupCheckpoints() {
       auto tablets = fs_manager_->env()->GetChildren(table_dir, ExcludeDots::kTrue);
       if (!tablets.ok()) {
         LOG_WITH_PREFIX(WARNING)
-            << "Failed to get tablets in " << table_dir << ": " << tables.status();
+            << "Failed to get tablets in " << table_dir << ": " << tablets.status();
         continue;
       }
       for (const auto& tablet : *tablets) {
