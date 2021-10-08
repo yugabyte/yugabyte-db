@@ -156,8 +156,8 @@ Result<rocksdb::CompressionType> GetConfiguredCompressionType(const std::string&
       InvalidArgument, "Configured compression type $0 is not valid.", flag_value);
 }
 
-}  // namespace
-}  // namespace yb
+} // namespace
+} // namespace yb
 
 namespace {
 
@@ -172,7 +172,7 @@ bool CompressionTypeValidator(const char* flagname, const std::string& flag_comp
   return true;
 }
 
-}  // namespace
+} // namespace
 
 __attribute__((unused))
 DEFINE_validator(compression_type, &CompressionTypeValidator);
@@ -290,7 +290,7 @@ rocksdb::ReadOptions PrepareReadOptions(
   return read_opts;
 }
 
-}  // namespace
+} // namespace
 
 BoundedRocksDbIterator CreateRocksDBIterator(
     rocksdb::DB* rocksdb,
@@ -471,7 +471,7 @@ PriorityThreadPool* GetGlobalPriorityThreadPool() {
   return &priority_thread_pool_for_compactions_and_flushes;
 }
 
-}  // namespace
+} // namespace
 
 rocksdb::Options TEST_AutoInitFromRocksDBFlags() {
   rocksdb::Options options;
@@ -638,7 +638,6 @@ void InitRocksDBOptions(
   options->iterator_replacer = std::make_shared<rocksdb::IteratorReplacer>(&WrapIterator);
 }
 
-
 void SetLogPrefix(rocksdb::Options* options, const std::string& log_prefix) {
   options->log_prefix = log_prefix;
   options->info_log = std::make_shared<YBRocksDBLogger>(options->log_prefix);
@@ -735,7 +734,7 @@ class RocksDBPatcherHelper {
   TrackedEdit add_edit_;
 };
 
-}   // namespace
+} // namespace
 
 class RocksDBPatcher::Impl {
  public:
@@ -845,5 +844,5 @@ Status ForceRocksDBCompact(rocksdb::DB* db) {
   return Status::OK();
 }
 
-}   // namespace docdb
-}   // namespace yb
+} // namespace docdb
+} // namespace yb
