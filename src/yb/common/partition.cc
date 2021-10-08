@@ -817,7 +817,7 @@ string PartitionSchema::RangePartitionDebugString(const Partition& partition,
                                                   const Schema& schema) const {
   CHECK(!schema.num_hash_key_columns());
   std::string s;
-  s.append("range: [");
+  s.append("range: [(");
   if (partition.partition_key_start().empty()) {
     s.append("<start>");
   } else {
@@ -829,7 +829,7 @@ string PartitionSchema::RangePartitionDebugString(const Partition& partition,
   } else {
     s.append(docdb::DocKey::DebugSliceToString(partition.partition_key_end()));
   }
-  s.append(")");
+  s.append("))");
   return s;
 }
 
@@ -877,7 +877,7 @@ string PartitionSchema::PartitionDebugString(const Partition& partition,
     YBPartialRow start_row(&schema);
     YBPartialRow end_row(&schema);
 
-    s.append("range: [");
+    s.append("range: [(");
 
     vector<string> start_components;
     Slice encoded_range_key_start = partition.range_key_start();
@@ -889,7 +889,7 @@ string PartitionSchema::PartitionDebugString(const Partition& partition,
     } else {
       s.append(Substitute("<decode-error: $0>", status.ToString()));
     }
-    s.append(", ");
+    s.append("), (");
 
     vector<string> end_components;
     Slice encoded_range_key_end = partition.range_key_end();
@@ -900,7 +900,7 @@ string PartitionSchema::PartitionDebugString(const Partition& partition,
     } else {
       s.append(Substitute("<decode-error: $0>", status.ToString()));
     }
-    s.append(")");
+    s.append("))");
   }
 
   return s;
