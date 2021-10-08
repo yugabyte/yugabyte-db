@@ -17,19 +17,19 @@ showAsideToc: true
 
 Included here are the release notes for all releases in the v2.6 stable release series. Content will be added as new notable features and changes are available in the patch releases of the v2.6 stable release series.
 
-## v2.6.1.0 - Sept 3, 2021
+## v2.6.1.1 - Oct 8, 2021
 
-**Build:** `2.6.1.0-b49`
+**Build:** `2.6.1.1-b1`
 
 ### Downloads
 
-<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.6.1.0-darwin.tar.gz">
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.6.1.1-darwin.tar.gz">
   <button>
     <i class="fab fa-apple"></i><span class="download-text">macOS</span>
   </button>
 </a>
 &nbsp; &nbsp; &nbsp;
-<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.6.1.0-linux.tar.gz">
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.6.1.1-linux.tar.gz">
   <button>
     <i class="fab fa-linux"></i><span class="download-text">Linux</span>
   </button>
@@ -39,8 +39,26 @@ Included here are the release notes for all releases in the v2.6 stable release 
 ### Docker
 
 ```sh
-docker pull yugabytedb/yugabyte:2.6.1.0-b49
+docker pull yugabytedb/yugabyte:2.6.1.1-b1
 ```
+
+### Security update
+
+This release is a patch to v2.6.1.0, and addresses an LDAP authentication vulnerability in YCQL.
+
+**If you can't update to 2.6.1.1 immediately**, and you're running YugabyteDB 2.6.1.0 in conjunction with LDAP authentication for YCQL, disable LDAP authentication for YCQL by setting the `--ycql_use_ldap` flag to `false`, which reverts the authentication method to hashed password. YSQL is not affected.
+
+## v2.6.1.0 - Sept 3, 2021
+
+**Build:** `2.6.1.0-b49`
+
+{{< warning title="Use release 2.6.1.1" >}}
+
+The 2.6.1.0 release has been removed due to a security issue. Use [release 2.6.1.1](#v2-6-1-1-oct-8-2021) instead, which addresses the issue.
+
+**If you can't update to 2.6.1.1 immediately**, and you're running YugabyteDB 2.6.1.0 in conjunction with LDAP authentication for YCQL, disable LDAP authentication for YCQL by setting the `--ycql_use_ldap` flag to `false`, which reverts the authentication method to hashed password. YSQL is not affected.
+
+{{< /warning >}}
 
 ### Improvements
 
