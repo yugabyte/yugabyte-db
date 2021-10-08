@@ -10329,4 +10329,7 @@
   prorettype => 'int8', proargtypes => '',
   prosrc => 'yb_catalog_version' },
 
+{ oid => '8031', descr => 'is the given table stored in the local region',
+  proname => 'yb_is_local_table', prorettype => 'bool', proargtypes => 'oid',
+  prosrc => 'yb_is_local_table', provolatile => 's' },
 ]

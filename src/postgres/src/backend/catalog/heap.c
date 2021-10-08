@@ -302,6 +302,13 @@ heap_create(const char *relname,
 		case RELKIND_COMPOSITE_TYPE:
 		case RELKIND_FOREIGN_TABLE:
 		case RELKIND_PARTITIONED_TABLE:
+			if (IsYugaByteEnabled() && reltablespace != InvalidOid)
+			{
+				ereport(NOTICE,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("Custom tablespaces cannot be set for "
+								"partitioned tables and will be ignored.")));
+			}
 			create_storage = false;
 
 			/*

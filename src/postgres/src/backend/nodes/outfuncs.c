@@ -1070,6 +1070,16 @@ _outPartitionPruneStepOp(StringInfo str, const PartitionPruneStepOp *node)
 }
 
 static void
+_outPartitionPruneStepFuncOp(StringInfo str,
+							   const PartitionPruneStepFuncOp *node)
+{
+	WRITE_NODE_TYPE("PARTITIONPRUNESTEPFUNCOP");
+
+	WRITE_INT_FIELD(step.step_id);
+	WRITE_NODE_FIELD(exprs);
+}
+
+static void
 _outPartitionPruneStepCombine(StringInfo str, const PartitionPruneStepCombine *node)
 {
 	WRITE_NODE_TYPE("PARTITIONPRUNESTEPCOMBINE");

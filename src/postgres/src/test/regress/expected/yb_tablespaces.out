@@ -446,7 +446,11 @@ DROP DATABASE colocation_test;
 -- Fail, cannot set tablespaces for temp tables.
 CREATE TEMPORARY TABLE temptest (a INT) TABLESPACE x;
 ERROR:  cannot set tablespaces for temporary tables
+-- Verify that tablespaces cannot be set on partitioned tables.
+CREATE TABLE list_partitioned (partkey char) PARTITION BY LIST(partkey) TABLESPACE x;
+NOTICE:  Custom tablespaces cannot be set for partitioned tables and will be ignored.
 -- Cleanup.
+DROP TABLE list_partitioned;
 DROP TABLESPACE x;
 /*
 Testing to make sure that an index on a "near" tablespace whose placements are
@@ -507,3 +511,5 @@ EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE id = 5;
 DROP TABLE foo;
 DROP TABLESPACE far;
 DROP TABLESPACE near;
+DROP TABLESPACE regionlocal;
+DROP TABLESPACE cloudlocal;

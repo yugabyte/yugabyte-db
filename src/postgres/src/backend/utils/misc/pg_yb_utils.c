@@ -1561,6 +1561,27 @@ yb_catalog_version(PG_FUNCTION_ARGS)
 	PG_RETURN_UINT64(version);
 }
 
+Datum
+yb_is_local_table(PG_FUNCTION_ARGS)
+{
+	Oid tableOid = PG_GETARG_OID(0);
+
+	/* Fetch required info about the relation */
+	Relation relation = relation_open(tableOid, NoLock);
+	Oid tablespaceId = relation->rd_rel->reltablespace;
+	bool isTempTable =
+		(relation->rd_rel->relpersistence == RELPERSISTENCE_TEMP);
+	RelationClose(relation);
+
+	/* Temp tables are local. */
+	if (isTempTable)
+	{
+			PG_RETURN_BOOL(true);
+	}
+	GeolocationDistance distance = get_tablespace_distance(tablespaceId);
+	PG_RETURN_BOOL(distance == REGION_LOCAL || distance == ZONE_LOCAL);
+}
+
 /*---------------------------------------------------------------------------*/
 /* Deterministic DETAIL order                                                */
 /*---------------------------------------------------------------------------*/

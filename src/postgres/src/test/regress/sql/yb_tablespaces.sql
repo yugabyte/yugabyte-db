@@ -237,7 +237,10 @@ DROP DATABASE colocation_test;
 
 -- Fail, cannot set tablespaces for temp tables.
 CREATE TEMPORARY TABLE temptest (a INT) TABLESPACE x;
+-- Verify that tablespaces cannot be set on partitioned tables.
+CREATE TABLE list_partitioned (partkey char) PARTITION BY LIST(partkey) TABLESPACE x;
 -- Cleanup.
+DROP TABLE list_partitioned;
 DROP TABLESPACE x;
 
 /*
@@ -274,3 +277,5 @@ EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE id = 5;
 DROP TABLE foo;
 DROP TABLESPACE far;
 DROP TABLESPACE near;
+DROP TABLESPACE regionlocal;
+DROP TABLESPACE cloudlocal;
