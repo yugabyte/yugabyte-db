@@ -398,7 +398,7 @@ public enum AlertTemplate {
       "Error logs detected for universe '{{ $labels.source_name }}'"
           + " on {{ $value | printf \\\"%.0f\\\" }} Master/TServer instance(s).",
       15,
-      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      EnumSet.noneOf(DefinitionSettings.class),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
           .defaultThreshold(WARNING, 0D)
