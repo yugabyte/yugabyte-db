@@ -2,7 +2,9 @@ Source: hypopg
 Section: database
 Priority: optional
 Maintainer: Julien Rouhaud <rjuju123@gmail.com>
-Standards-Version: 4.5.0
+Uploaders:
+ Christoph Berg <myon@debian.org>,
+Standards-Version: 4.6.0
 Rules-Requires-Root: no
 Build-Depends: debhelper-compat (= 13), postgresql-all (>= 217~)
 Homepage: https://hypopg.readthedocs.io/
