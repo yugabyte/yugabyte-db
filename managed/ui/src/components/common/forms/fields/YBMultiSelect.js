@@ -31,7 +31,7 @@ export class YBNewMultiSelect extends Component {
   }
 
   render() {
-    const { input, options, isMulti, isReadOnly, defaultValue, selectValChanged, ...otherProps } = this.props;
+    const { input, options, isMulti, isReadOnly, selectValChanged, ...otherProps } = this.props;
     const self = this;
     function onChange(val) {
       val = isMulti ? val : val.slice(-1);
@@ -87,7 +87,6 @@ export class YBNewMultiSelect extends Component {
       <Select
         className="Select"
         styles={customStyles}
-        value={defaultValue}
         {...input}
         options={options}
         disabled={isReadOnly}
