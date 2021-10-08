@@ -393,10 +393,18 @@ class ExternalMiniCluster : public MiniClusterBase {
   // state.
   CHECKED_STATUS WaitForTabletsRunning(ExternalTabletServer* ts, const MonoDelta& timeout);
 
+  Result<tserver::ListTabletsResponsePB> ListTablets(ExternalTabletServer* ts);
+
   Result<std::vector<tserver::ListTabletsForTabletServerResponsePB::Entry>> GetTablets(
       ExternalTabletServer* ts);
 
   Result<std::vector<TabletId>> GetTabletIds(ExternalTabletServer* ts);
+
+  Result<tserver::GetSplitKeyResponsePB> GetSplitKey(const std::string& tablet_id);
+
+  CHECKED_STATUS FlushTabletsOnSingleTServer(
+      ExternalTabletServer* ts, const std::vector<yb::TabletId> tablet_ids,
+      bool is_compaction);
 
   CHECKED_STATUS WaitForTSToCrash(const ExternalTabletServer* ts,
                           const MonoDelta& timeout = MonoDelta::FromSeconds(60));

@@ -1423,6 +1423,55 @@ Result<std::vector<ListTabletsForTabletServerResponsePB::Entry>> ExternalMiniClu
   return result;
 }
 
+Result<tserver::GetSplitKeyResponsePB> ExternalMiniCluster::GetSplitKey(
+    const std::string& tablet_id) {
+  for (int i = 0; i < this->num_tablet_servers(); i++) {
+    auto tserver = this->tablet_server(i);
+    auto ts_service_proxy = std::make_unique<tserver::TabletServerServiceProxy>(
+        proxy_cache_.get(), tserver->bound_rpc_addr());
+    tserver::GetSplitKeyRequestPB req;
+    req.set_tablet_id(tablet_id);
+    rpc::RpcController controller;
+    controller.set_timeout(10s * kTimeMultiplier);
+    tserver::GetSplitKeyResponsePB resp;
+    RETURN_NOT_OK(ts_service_proxy->GetSplitKey(req, &resp, &controller));
+    if (!resp.has_error()) {
+      return resp;
+    }
+  }
+  return STATUS(IllegalState, "GetSplitKey failed on all TServers");
+}
+
+Status ExternalMiniCluster::FlushTabletsOnSingleTServer(
+    ExternalTabletServer* ts, const std::vector<yb::TabletId> tablet_ids,
+    bool is_compaction) {
+  tserver::FlushTabletsRequestPB req;
+  tserver::FlushTabletsResponsePB resp;
+  rpc::RpcController controller;
+  controller.set_timeout(10s * kTimeMultiplier);
+
+  req.set_dest_uuid(ts->uuid());
+  req.set_operation(is_compaction ? tserver::FlushTabletsRequestPB::COMPACT
+                                  : tserver::FlushTabletsRequestPB::FLUSH);
+  for (const auto& tablet_id : tablet_ids) {
+    req.add_tablet_ids(tablet_id);
+  }
+
+  auto ts_admin_service_proxy = std::make_unique<tserver::TabletServerAdminServiceProxy>(
+    proxy_cache_.get(), ts->bound_rpc_addr());
+  return ts_admin_service_proxy->FlushTablets(req, &resp, &controller);
+}
+
+Result<tserver::ListTabletsResponsePB> ExternalMiniCluster::ListTablets(ExternalTabletServer* ts) {
+  rpc::RpcController rpc;
+  ListTabletsRequestPB req;
+  ListTabletsResponsePB resp;
+  rpc.set_timeout(opts_.timeout);
+  TabletServerServiceProxy proxy(proxy_cache_.get(), ts->bound_rpc_addr());
+  RETURN_NOT_OK(proxy.ListTablets(req, &resp, &rpc));
+  return resp;
+}
+
 Result<std::vector<std::string>> ExternalMiniCluster::GetTabletIds(ExternalTabletServer* ts) {
   auto tablets = VERIFY_RESULT(GetTablets(ts));
   std::vector<std::string> result;

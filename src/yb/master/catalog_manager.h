@@ -1262,8 +1262,8 @@ class CatalogManager :
   Result<scoped_refptr<TabletInfo>> GetTabletInfo(const TabletId& tablet_id);
 
   CHECKED_STATUS DoSplitTablet(
-      const scoped_refptr<TabletInfo>& source_tablet_info, const std::string& split_encoded_key,
-      const std::string& split_partition_key);
+      const scoped_refptr<TabletInfo>& source_tablet_info, std::string split_encoded_key,
+      std::string split_partition_key);
 
   // Splits tablet using specified split_hash_code as a split point.
   CHECKED_STATUS DoSplitTablet(
