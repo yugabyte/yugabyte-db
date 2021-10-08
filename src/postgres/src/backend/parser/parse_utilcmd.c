@@ -2078,14 +2078,18 @@ transformIndexConstraints(CreateStmtContext *cxt)
 
 		index = lfirst(lc);
 
-		/*
-		 * For system tables, we need to check not just a presence of
-		 * table_oid option but also it's correctness.
-		 * Even though index creation would do that anyway, we do this ahead
-		 * to spare DocDB from rolling back table creation.
-		 */
-		if (IsYugaByteEnabled() && cxt->isSystem && IsYsqlUpgrade)
+		if (IsYsqlUpgrade && cxt->isSystem)
 		{
+			if (index->idxname == NULL)
+				elog(ERROR, "system indexes must have an explicit name "
+							"(exactly as defined in indexing.h header file!)");
+
+			/*
+			 * For system tables, we need to check not just a presence of
+			 * table_oid option but also it's correctness.
+			 * Even though index creation would do that anyway, we do this ahead
+			 * to spare DocDB from rolling back table creation.
+			 */
 			Oid oid = GetTableOidFromRelOptions(
 				index->options,
 				cxt->tablespaceOid,

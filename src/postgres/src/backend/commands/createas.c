@@ -146,8 +146,7 @@ create_ctas_internal(List *attrList, IntoClause *into)
 		/* StoreViewQuery scribbles on tree, so make a copy */
 		Query	   *query = (Query *) copyObject(into->viewQuery);
 
-		StoreViewQuery(intoRelationAddr.objectId, query, false,
-					   InvalidOid /* yb_rule_id */);
+		StoreViewQuery(intoRelationAddr.objectId, query, false);
 		CommandCounterIncrement();
 	}
 

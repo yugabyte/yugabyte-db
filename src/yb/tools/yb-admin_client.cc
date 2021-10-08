@@ -67,6 +67,7 @@
 #include "yb/gutil/strings/numbers.h"
 
 #include "yb/consensus/consensus.proxy.h"
+#include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
 DEFINE_bool(wait_if_no_leader_master, false,
@@ -108,6 +109,9 @@ using rpc::MessengerBuilder;
 using rpc::RpcController;
 using strings::Substitute;
 using tserver::TabletServerServiceProxy;
+using tserver::TabletServerAdminServiceProxy;
+using tserver::UpgradeYsqlRequestPB;
+using tserver::UpgradeYsqlResponsePB;
 
 using consensus::ConsensusServiceProxy;
 using consensus::LeaderStepDownRequestPB;
@@ -1841,6 +1845,41 @@ Result<rapidjson::Document> ClusterAdminClient::DdlLog() {
   }
   result.AddMember("log", json_entries, result.GetAllocator());
   return result;
+}
+
+Status ClusterAdminClient::UpgradeYsql() {
+  // Pick some alive TServer.
+  RepeatedPtrField<ListTabletServersResponsePB::Entry> servers;
+  RETURN_NOT_OK(ListTabletServers(&servers));
+  boost::optional<HostPortPB> ts_rpc_addr;
+  for (const ListTabletServersResponsePB::Entry& server : servers) {
+    if (!server.has_alive() || !server.alive()) {
+      continue;
+    }
+
+    if (!server.has_registration() ||
+        server.registration().common().private_rpc_addresses().empty()) {
+      continue;
+    }
+
+    ts_rpc_addr.emplace(server.registration().common().private_rpc_addresses(0));
+    break;
+  }
+  if (!ts_rpc_addr.has_value()) {
+    return STATUS(IllegalState, "Couldn't find alive tablet server to connect to");
+  }
+
+  TabletServerAdminServiceProxy ts_admin_proxy(proxy_cache_.get(), HostPortFromPB(*ts_rpc_addr));
+
+  UpgradeYsqlRequestPB req;
+  const auto resp = VERIFY_RESULT(InvokeRpc(&TabletServerAdminServiceProxy::UpgradeYsql,
+                                            &ts_admin_proxy, req));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  cout << "YSQL successfully upgraded to the latest version" << endl;
+  return Status::OK();
 }
 
 Status ClusterAdminClient::ChangeBlacklist(const std::vector<HostPort>& servers, bool add,

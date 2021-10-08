@@ -3691,7 +3691,7 @@ static void YBRefreshCache()
 	YBCPgResetCatalogReadTime();
 	/* Get the latest syscatalog version from the master */
 	uint64_t catalog_master_version = 0;
-	YbGetMasterCatalogVersion(&catalog_master_version);
+	YbGetMasterCatalogVersion(&catalog_master_version, false /* can_use_cache */);
 
 	/* Need to execute some (read) queries internally so start a local txn. */
 	start_xact_command();
@@ -3753,7 +3753,7 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata, bool consider_retry,
 	 */
 	YBCPgResetCatalogReadTime();
 	uint64_t catalog_master_version = 0;
-	YbGetMasterCatalogVersion(&catalog_master_version);
+	YbGetMasterCatalogVersion(&catalog_master_version, true /* can_use_cache */);
 	const bool need_global_cache_refresh = yb_catalog_cache_version != catalog_master_version;
 	if (!(need_global_cache_refresh || need_table_cache_refresh))
 		return;

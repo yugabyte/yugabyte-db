@@ -953,8 +953,8 @@ CatalogCacheInitializeCache(CatCache *cache)
 
 	CatalogCacheInitializeCache_DEBUG1;
 
-	// skip for TableGroupRelationId if not in snapshot
-	// TODO: remove this (as well as the include) when initdb upgrade is enabled
+	// Skip for TableGroupRelationId if not in snapshot
+	// (possible if using an older non-upgraded cluster state)
 	if (cache->cc_reloid == TableGroupRelationId && !TablegroupCatalogExists)
 		return;
 	relation = heap_open(cache->cc_reloid, AccessShareLock);
@@ -1805,6 +1805,7 @@ SearchCatCacheMiss(CatCache *cache,
 			 *    statistics in DocDB/YSQL yet.
 			 * 3. pg_class (RELNAMENSP), pg_type (TYPENAMENSP)
 			 *    but only for system tables since users cannot create system tables in YSQL.
+			 *    This is violated in YSQL upgrade, but doing so will force cache refresh.
 			 * 4. Caches within temporary namespaces as data in this namespaces can be changed by
 			 *    current session only
 			 * 5. pg_attribute as `ALTER TABLE` is used to add new columns and it increments

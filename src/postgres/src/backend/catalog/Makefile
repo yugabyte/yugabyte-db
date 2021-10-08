@@ -48,7 +48,7 @@ CATALOG_HEADERS := \
 	pg_default_acl.h pg_init_privs.h pg_seclabel.h pg_shseclabel.h \
 	pg_collation.h pg_partitioned_table.h pg_range.h pg_transform.h \
 	pg_sequence.h pg_publication.h pg_publication_rel.h pg_subscription.h \
-	pg_subscription_rel.h pg_yb_catalog_version.h
+	pg_subscription_rel.h pg_yb_catalog_version.h pg_yb_migration.h
 
 GENERATED_HEADERS := $(CATALOG_HEADERS:%.h=%_d.h) schemapg.h
 
@@ -67,7 +67,7 @@ POSTGRES_BKI_DATA = $(addprefix $(top_srcdir)/src/include/catalog/,\
 	pg_namespace.dat pg_opclass.dat pg_operator.dat pg_opfamily.dat \
 	pg_pltemplate.dat pg_proc.dat pg_range.dat pg_tablespace.dat \
 	pg_ts_config.dat pg_ts_config_map.dat pg_ts_dict.dat pg_ts_parser.dat \
-	pg_ts_template.dat pg_type.dat pg_yb_catalog_version.dat \
+	pg_ts_template.dat pg_type.dat pg_yb_catalog_version.dat pg_yb_migration.dat \
 	)
 
 # location of Catalog.pm

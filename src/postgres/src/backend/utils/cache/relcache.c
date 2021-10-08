@@ -2688,6 +2688,12 @@ RelationIdGetRelation(Oid relationId)
 	}
 
 	/*
+	 * This would lead to an infinite recursion and should never be possible.
+	 */
+	if (relationId == RelationRelationId)
+		elog(FATAL, "pg_class cache is queried before it's initalized!");
+
+	/*
 	 * no reldesc in the cache, so have RelationBuildDesc() build one and add
 	 * it.
 	 */
@@ -4347,7 +4353,7 @@ RelationCacheInitializePhase3(void)
 	if (IsYugaByteEnabled())
 	{
 		YBCPgResetCatalogReadTime();
-		YbGetMasterCatalogVersion(&yb_catalog_cache_version);
+		YbGetMasterCatalogVersion(&yb_catalog_cache_version, false /* can_use_cache */);
 	}
 
 	/*
@@ -6264,7 +6270,7 @@ load_relcache_init_file(bool shared)
 		/* Else, still need to check with the master version to be sure. */
 		YBCPgResetCatalogReadTime();
 		uint64_t catalog_master_version = 0;
-		YbGetMasterCatalogVersion(&catalog_master_version);
+		YbGetMasterCatalogVersion(&catalog_master_version, false /* can_use_cache */);
 
 		/* File version does not match actual master version (i.e. too old) */
 		if (ybc_stored_cache_version != catalog_master_version)

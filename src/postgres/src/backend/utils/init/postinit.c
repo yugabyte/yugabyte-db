@@ -773,6 +773,13 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 		PerformAuthentication(MyProcPort);
 		InitializeSessionUserId(username, useroid);
 		am_superuser = superuser();
+
+		/*
+		 * In YSQL upgrade mode (uses tserver auth method), we allow connecting to
+		 * databases with disabled connections (normally it's just template0).
+		 */
+		override_allow_connections = override_allow_connections ||
+									 MyProcPort->yb_is_tserver_auth_method;
 	}
 
 	/*

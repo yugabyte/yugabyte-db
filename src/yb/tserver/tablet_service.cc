@@ -97,6 +97,7 @@
 #include "yb/tserver/service_util.h"
 
 #include "yb/yql/pggate/util/pg_doc_data.h"
+#include "yb/yql/pgwrapper/ysql_upgrade.h"
 
 using namespace std::literals;  // NOLINT
 
@@ -239,6 +240,8 @@ DEFINE_test_flag(bool, disable_post_split_tablet_rbs_check, false,
 
 DEFINE_test_flag(double, fail_tablet_split_probability, 0.0,
                  "Probability of failing in TabletServiceAdminImpl::SplitTablet.");
+
+DECLARE_int32(heartbeat_interval_ms);
 
 double TEST_delay_create_transaction_probability = 0;
 
@@ -1542,6 +1545,27 @@ void TabletServiceAdminImpl::SplitTablet(
 
   leader_tablet_peer.peer->Submit(std::move(state), leader_tablet_peer.leader_term);
 }
+
+void TabletServiceAdminImpl::UpgradeYsql(
+    const UpgradeYsqlRequestPB* req,
+    UpgradeYsqlResponsePB* resp,
+    rpc::RpcContext context) {
+  LOG(INFO) << "Starting YSQL upgrade";
+
+  pgwrapper::YsqlUpgradeHelper upgrade_helper(server_->pgsql_proxy_bind_address(),
+                                              server_->GetSharedMemoryPostgresAuthKey(),
+                                              FLAGS_heartbeat_interval_ms);
+  const auto status = upgrade_helper.Upgrade();
+  if (!status.ok()) {
+    LOG(INFO) << "YSQL upgrade failed: " << status;
+    SetupErrorAndRespond(resp->mutable_error(), status, &context);
+    return;
+  }
+
+  LOG(INFO) << "YSQL upgrade done successfully";
+  context.RespondSuccess();
+}
+
 
 bool EmptyWriteBatch(const docdb::KeyValueWriteBatchPB& write_batch) {
   return write_batch.write_pairs().empty() && write_batch.apply_external_transactions().empty();

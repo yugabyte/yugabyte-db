@@ -45,6 +45,15 @@ ADD_YB_LIBRARY(pg_wrapper_test_base
 
 target_link_libraries(pg_wrapper_test_base integration-tests)
 
+set(YSQL_UPGRADE_SRCS
+    ysql_upgrade.cc)
+set(YSQL_UPGRADE_DEPS
+    yb_pgwrapper
+    pq_utils)
+ADD_YB_LIBRARY(ysql_upgrade
+               SRCS ${YSQL_UPGRADE_SRCS}
+               DEPS ${YSQL_UPGRADE_DEPS})
+
 set(YB_TEST_LINK_LIBS yb_pgwrapper yb_client ql-dml-test-base pg_wrapper_test_base
    ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(pg_index_backfill-test)
@@ -80,3 +89,10 @@ endif()
 add_dependencies(
   initial_sys_catalog_snapshot
   ${CREATE_INITIAL_SYS_CATALOG_SNAPSHOT_TARGET_NAME} yb-master yb-tserver postgres)
+
+file(
+  REMOVE_RECURSE ${YB_BUILD_ROOT}/share/ysql_migrations)
+file(
+  COPY        ysql_migrations
+  DESTINATION ${YB_BUILD_ROOT}/share
+  FILE_PERMISSIONS OWNER_READ)

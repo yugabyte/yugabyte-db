@@ -1021,17 +1021,25 @@ index_create(Relation heapRelation,
 	indexRelation->rd_rel->relispartition = OidIsValid(parentIndexRelid);
 
 	/*
+	 * YSQL upgrade notes:
+	 * -------------------
 	 * At this point, reloptions no longer affects the index
 	 * creation process, the only remaining use for them is to be
-	 * stored in pg_class.
+	 * stored in pg_class. ybTransformRelOptions has already
+	 * removed all temporary reloptions.
 	 *
-	 * For YSQL upgrade, we want system indexes to not have
-	 * reloptions stored to imitate BKI processing, so we can safely
-	 * remove them now.
+	 * We want system tables and indexes to not have any reloptions
+	 * stored to imitate BKI processing, so we don't allow any reloption
+	 * not removed by ybTransformRelOptions.
 	 */
-	if (IsCatalogRelation(heapRelation) && IsYsqlUpgrade)
+	if (IsYsqlUpgrade && IsCatalogRelation(heapRelation) &&
+		reloptions != (Datum) 0)
 	{
-		reloptions = (Datum) 0;
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("unsuppored reloptions were used for a system index "
+				        "during YSQL upgrade"),
+				 errhint("Only a small subset is allowed due to BKI restrictions.")));
 	}
 
 	/*

@@ -895,6 +895,11 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         elems.add(rs.getObject(i));
         columnNames.add(rs.getMetaData().getColumnLabel(i));
       }
+      // Pre-initialize stuff while connection is still available
+      for (Object el : elems) {
+        if (el instanceof PgArray)
+          ((PgArray) el).getArray();
+      }
       return new Row(elems, columnNames);
     }
 
@@ -1002,11 +1007,16 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
 
     @Override
-    public Row clone() throws CloneNotSupportedException {
-      Row clone = (Row) super.clone();
-      clone.elems = new ArrayList<>(this.elems);
-      clone.columnNames = new ArrayList<>(this.columnNames);
-      return clone;
+    public Row clone() {
+      try {
+        Row clone = (Row) super.clone();
+        clone.elems = new ArrayList<>(this.elems);
+        clone.columnNames = new ArrayList<>(this.columnNames);
+        return clone;
+      } catch (CloneNotSupportedException ex) {
+        // Not possible
+        throw new RuntimeException(ex);
+      }
     }
 
     //
@@ -1133,6 +1143,14 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
+  protected List<Row> deepCopyRows(List<Row> rows) {
+    List<Row> copy = new ArrayList<>();
+    for (Row row : rows) {
+      copy.add(row.clone());
+    }
+    return copy;
+  }
+
   protected Set<Row> getRowSet(ResultSet rs) throws SQLException {
     Set<Row> rows = new HashSet<>();
     while (rs.next()) {
@@ -1154,20 +1172,21 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
-  protected static boolean runSystemTableQuery(Statement stmt, String query) throws SQLException {
-    return systemTableQueryHelper(stmt, () -> stmt.execute(query));
+  protected static int executeSystemTableDml(
+      Statement stmt, String dml) throws SQLException {
+    return systemTableQueryHelper(stmt, () -> stmt.executeUpdate(dml));
   }
 
-  protected static List<Row> executeSystemTableQuery(
-        Statement stmt, String query) throws SQLException {
+  protected static List<Row> getSystemTableRowsList(
+      Statement stmt, String query) throws SQLException {
     return systemTableQueryHelper(stmt, () -> {
-      try (ResultSet result = stmt.executeQuery(query)){
+      try (ResultSet result = stmt.executeQuery(query)) {
         return getRowList(result);
       }
     });
   }
 
-  private  static <T> T systemTableQueryHelper(
+  private static <T> T systemTableQueryHelper(
       Statement stmt, ThrowingCallable<T, SQLException> callable) throws SQLException {
     String allow_non_ddl_pattern = "SET yb_non_ddl_txn_for_sys_tables_allowed=%d";
     stmt.execute(String.format(allow_non_ddl_pattern, 1));
@@ -1199,6 +1218,25 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return rows;
   }
 
+  /**
+   * Checks that collections are of the same sizes, printing unexpected and missing rows otherwise.
+   */
+  protected <T> void assertCollectionSizes(
+      String errorPrefix,
+      Collection<T> expected,
+      Collection<T> actual) {
+    if (expected.size() != actual.size()) {
+      List<T> unexpected = new ArrayList<>(actual);
+      unexpected.removeAll(expected);
+      List<T> missing = new ArrayList<>(expected);
+      missing.removeAll(actual);
+      fail(errorPrefix + "Collection length mismatch: expected<" + expected.size()
+          + "> but was:<" + actual.size() + ">"
+          + "\nUnexpected rows: " + unexpected
+          + "\nMissing rows:    " + missing);
+    }
+  }
+
   /** Better alternative to assertEquals that provides more mismatch details. */
   protected void assertRows(List<Row> expected, List<Row> actual) {
     assertRows(null, expected, actual);
@@ -1207,7 +1245,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   /** Better alternative to assertEquals that provides more mismatch details. */
   protected void assertRows(String messagePrefix, List<Row> expected, List<Row> actual) {
     String fullPrefix = StringUtils.isEmpty(messagePrefix) ? "" : (messagePrefix + ": ");
-    assertEquals(fullPrefix + "Collection length mismatch:", expected.size(), actual.size());
+    assertCollectionSizes(fullPrefix, expected, actual);
     for (int i = 0; i < expected.size(); ++i) {
       assertRow(fullPrefix + "Mismatch at row " + (i + 1) + ": ", expected.get(i), actual.get(i));
     }
@@ -1367,6 +1405,14 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
                            e.getMessage(), errorSubstring));
       }
     }
+  }
+
+  protected void runInvalidSystemQuery(Statement stmt, String query, String errorSubstring)
+      throws Exception {
+    systemTableQueryHelper(stmt, () -> {
+      runInvalidQuery(stmt, query, errorSubstring);
+      return 0;
+    });
   }
 
   /**

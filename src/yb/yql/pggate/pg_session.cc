@@ -881,12 +881,7 @@ Result<bool> PgSession::ShouldHandleTransactionally(const client::YBPgsqlOp& op)
     SCHECK(has_non_ddl_txn, IllegalState, "Transactional operation requires transaction");
     return true;
   }
-  // Previously, yb_non_ddl_txn_for_sys_tables_allowed flag caused CREATE VIEW to fail with
-  // read restart error because subsequent cache refresh used an outdated txn to read from the
-  // system catalog,
-  // As a quick fix, we prevent yb_non_ddl_txn_for_sys_tables_allowed from affecting reads.
-  if (pg_txn_manager_->IsDdlMode() || (yb_non_ddl_txn_for_sys_tables_allowed && has_non_ddl_txn
-                                       && op.type() == YBOperation::Type::PGSQL_WRITE)) {
+  if (pg_txn_manager_->IsDdlMode() || (yb_non_ddl_txn_for_sys_tables_allowed && has_non_ddl_txn)) {
     return true;
   }
   if (op.type() == YBOperation::Type::PGSQL_WRITE) {

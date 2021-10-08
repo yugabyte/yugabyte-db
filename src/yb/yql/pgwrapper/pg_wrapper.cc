@@ -305,12 +305,10 @@ Result<string> WritePgHbaConfig(const PgProcessConf& conf) {
   }
 
   // Add comments to the hba config file noting the internally hardcoded config line.
-  if (!FLAGS_ysql_disable_index_backfill) {
-    lines.insert(lines.begin(), {
-          "# Internal configuration:",
-          "# local all postgres yb-tserver-key",
-        });
-  }
+  lines.insert(lines.begin(), {
+      "# Internal configuration:",
+      "# local all postgres yb-tserver-key",
+  });
 
   const auto conf_path = JoinPathSegments(conf.data_dir, "ysql_hba.conf");
   RETURN_NOT_OK(WriteConfigFile(conf_path, lines));

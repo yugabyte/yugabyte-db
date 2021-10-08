@@ -572,6 +572,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	/* YB variables. */
 	Oid			rowTypeId = InvalidOid;
 	bool		relisshared = false;
+	bool		use_initdb_acl = false;
 
 	/*
 	 * Truncate relname to appropriate length (probably a waste of time, as
@@ -885,6 +886,22 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	/* Handles WITH (row_type_oid = x). */
 	rowTypeId = GetRowTypeOidFromRelOptions(stmt->options);
 
+	if (relkind == RELKIND_RELATION)
+	{
+		use_initdb_acl = IsYsqlUpgrade && IsSystemNamespace(namespaceId);
+	}
+	else
+	{
+		/* Handles WITH (use_initdb_acl = x). */
+		use_initdb_acl = YbGetUseInitdbAclFromRelOptions(stmt->options);
+		if (use_initdb_acl && !(IsYsqlUpgrade && IsSystemNamespace(namespaceId)))
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("use_initdb_acl cannot be used outside of YSQL upgrade for pg_catalog")));
+		}
+	}
+
 	/*
 	 * Create the relation.  Inherited defaults and constraints are passed in
 	 * for immediate handling --- since they don't need parsing, they can be
@@ -912,7 +929,8 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 										  allowSystemTableMods,
 										  false,
 										  InvalidOid,
-										  typaddress);
+										  typaddress,
+										  use_initdb_acl);
 
 	/*
 	 * We must bump the command counter to make the newly-created relation

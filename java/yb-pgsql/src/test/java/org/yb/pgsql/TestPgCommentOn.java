@@ -33,7 +33,7 @@ public class TestPgCommentOn extends BasePgSQLTest {
       statement.execute("CREATE TABLE test(id serial PRIMARY KEY)");
       statement.execute("CREATE SEQUENCE some_sequence");
       statement.execute("CREATE VIEW some_view AS SELECT 'Hello World!';");
-      long largeObjectId = executeSystemTableQuery(
+      long largeObjectId = getSystemTableRowsList(
         statement, "SELECT lo_create(0)").get(0).getLong(0);
 
       // Exercise

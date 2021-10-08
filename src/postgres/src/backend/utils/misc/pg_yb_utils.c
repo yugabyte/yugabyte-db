@@ -24,6 +24,8 @@
  *-------------------------------------------------------------------------
  */
 
+#include "pg_yb_utils.h"
+
 #include <assert.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -31,39 +33,32 @@
 #include "c.h"
 #include "postgres.h"
 #include "miscadmin.h"
+#include "access/htup.h"
+#include "access/htup_details.h"
 #include "access/sysattr.h"
+#include "access/tupdesc.h"
 #include "access/xact.h"
-#include "utils/lsyscache.h"
-#include "utils/pg_locale.h"
-#include "utils/rel.h"
-#include "catalog/pg_database.h"
-#include "utils/builtins.h"
+#include "executor/ybcExpr.h"
 #include "catalog/pg_collation_d.h"
+#include "catalog/pg_database.h"
 #include "catalog/pg_type.h"
 #include "catalog/catalog.h"
 #include "catalog/yb_catalog_version.h"
-#include "commands/dbcommands.h"
-#include "funcapi.h"
-
-#include "pg_yb_utils.h"
 #include "catalog/yb_type.h"
+#include "commands/dbcommands.h"
+#include "common/pg_yb_common.h"
+#include "lib/stringinfo.h"
+#include "tcop/utility.h"
+#include "utils/builtins.h"
+#include "utils/datum.h"
+#include "utils/lsyscache.h"
+#include "utils/pg_locale.h"
+#include "utils/rel.h"
+#include "fmgr.h"
+#include "funcapi.h"
 
 #include "yb/common/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
-#include "common/pg_yb_common.h"
-#include "executor/ybcExpr.h"
-
-#include "utils/resowner_private.h"
-
-#include "fmgr.h"
-#include "access/htup.h"
-#include "access/htup_details.h"
-#include "access/tupdesc.h"
-
-#include "tcop/utility.h"
-#include "utils/datum.h"
-
-#include "lib/stringinfo.h"
 
 uint64_t yb_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 
@@ -1010,7 +1005,6 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		case T_CreateTableGroupStmt:
 		case T_CreateTableSpaceStmt:
 		case T_CreatedbStmt:
-		case T_ViewStmt: // CREATE VIEW
 		case T_CompositeTypeStmt: // CREATE TYPE
 		case T_DefineStmt: // CREATE OPERATOR/AGGREGATE/COLLATION/etc
 		case T_CommentStmt: // COMMENT (create new comment)
@@ -1022,6 +1016,25 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			 * Simple add objects are not breaking changes, and they do not even require
 			 * a version increment because we do not do any negative caching for them.
 			 */
+			*is_catalog_version_increment = false;
+			*is_breaking_catalog_change = false;
+			return true;
+		}
+		case T_ViewStmt: // CREATE VIEW
+		{
+			/*
+			 * For system catalog additions we need to force cache refresh
+			 * because of negative caching of pg_class and pg_type
+			 * (see SearchCatCacheMiss).
+			 * Concurrent transaction needs not to be aborted though.
+			 */
+			if (IsYsqlUpgrade &&
+				YbIsSystemNamespaceByName(castNode(ViewStmt, parsetree)->view->schemaname))
+			{
+				*is_breaking_catalog_change = false;
+				return true;
+			}
+
 			*is_catalog_version_increment = false;
 			*is_breaking_catalog_change = false;
 			return true;
@@ -1075,9 +1088,23 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			 * underway need not abort.
 			 */
 			if (stmt->partbound != NULL) {
-					*is_breaking_catalog_change = false;
-					return true;
+				*is_breaking_catalog_change = false;
+				return true;
 			}
+
+			/*
+			 * For system catalog additions we need to force cache refresh
+			 * because of negative caching of pg_class and pg_type
+			 * (see SearchCatCacheMiss).
+			 * Concurrent transaction needs not to be aborted though.
+			 */
+			if (IsYsqlUpgrade &&
+				YbIsSystemNamespaceByName(stmt->relation->schemaname))
+			{
+				*is_breaking_catalog_change = false;
+				return true;
+			}
+
 			foreach (lc, stmt->constraints)
 			{
 				Constraint *con = lfirst(lc);
@@ -1490,6 +1517,18 @@ yb_hash_code(PG_FUNCTION_ARGS)
 	/* hash the contents of the buffer and return */
 	uint16_t hashed_val = YBCCompoundHash(arg_buf, total_bytes);
 	PG_RETURN_UINT16(hashed_val);
+}
+
+/*
+ * This function serves mostly as a helper for YSQL migration to introduce
+ * pg_yb_catalog_version table without breaking version continuity.
+ */
+Datum
+yb_catalog_version(PG_FUNCTION_ARGS)
+{
+	uint64_t version;
+	YbGetMasterCatalogVersion(&version, true /* can_use_cache */);
+	PG_RETURN_UINT64(version);
 }
 
 /*---------------------------------------------------------------------------*/

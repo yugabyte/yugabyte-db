@@ -107,7 +107,7 @@ class PGConn {
       CoarseTimePoint deadline,
       bool simple_query_protocol = false);
 
-  CHECKED_STATUS Execute(const std::string& command);
+  CHECKED_STATUS Execute(const std::string& command, bool show_query_in_error = true);
 
   template <class... Args>
   CHECKED_STATUS ExecuteFormat(const std::string& format, Args&&... args) {
