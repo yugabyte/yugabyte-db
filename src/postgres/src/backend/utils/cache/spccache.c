@@ -45,21 +45,12 @@ static HTAB *TableSpaceCacheHash = NULL;
 typedef struct
 {
 	Oid			oid;			/* lookup key - must be first */
-	union Opts_t 
+	union Opts_t
 	{
 		TableSpaceOpts *pg_opts;
 		YBTableSpaceOpts *yb_opts;
 	} opts; 					/* options, or NULL if none */
 } TableSpaceCacheEntry;
-
-typedef enum GeolocationDistance {
-  ZONE_LOCAL,
-  REGION_LOCAL,
-  CLOUD_LOCAL,
-  INTER_CLOUD,
-  UNKNOWN
-} GeolocationDistance;
-
 
 /*
  * InvalidateTableSpaceCacheCallback
@@ -202,32 +193,32 @@ get_tablespace(Oid spcid)
 
 /*
  * get_tablespace_distance
- * 
- *		Returns a GeolocationDistance indicating how far away a given 
+ *
+ *		Returns a GeolocationDistance indicating how far away a given
  *		tablespace is from the current node.
  */
 GeolocationDistance get_tablespace_distance(Oid spcid)
 {
 	Assert(IsYugaByteEnabled());
     if (spcid == InvalidOid)
-       return UNKNOWN;
+       return UNKNOWN_DISTANCE;
 
 	TableSpaceCacheEntry *spc = get_tablespace(spcid);
-	if (spc->opts.yb_opts == NULL) 
+	if (spc->opts.yb_opts == NULL)
 	{
-		return UNKNOWN;
+		return UNKNOWN_DISTANCE;
 	}
 
 	/*
-	 * The tablespace options json is stored as a payload after the header 
-	 * information in memory address pointed to by spc->opts.yb_opts. In other 
-	 * words, the json is stored sizeof(YBTableSpaceOpts) bytes after the 
+	 * The tablespace options json is stored as a payload after the header
+	 * information in memory address pointed to by spc->opts.yb_opts. In other
+	 * words, the json is stored sizeof(YBTableSpaceOpts) bytes after the
 	 * memory adddress in spc->opts.yb_opts
 	 */
-	text *tsp_options_json = cstring_to_text((const char *) 
+	text *tsp_options_json = cstring_to_text((const char *)
 								(spc->opts.yb_opts + 1));
 
-	text *placement_array = json_get_value(tsp_options_json, 
+	text *placement_array = json_get_value(tsp_options_json,
 											"placement_blocks");
 	const int length = get_json_array_length(placement_array);
 	char *keys[4] = {"cloud", "region", "zone", "min_num_replicas"};
@@ -238,7 +229,7 @@ GeolocationDistance get_tablespace_distance(Oid spcid)
 	if (current_cloud == NULL || current_region == NULL || current_zone == NULL)
 	{
 		/* no placement info specified, so nothing to do */
-		return UNKNOWN;
+		return UNKNOWN_DISTANCE;
 	}
 
 	GeolocationDistance farthest = ZONE_LOCAL;
@@ -253,7 +244,7 @@ GeolocationDistance get_tablespace_distance(Oid spcid)
 			json_get_denormalized_value(json_element, keys[1]));
 		const char *tsp_zone = text_to_cstring(
 			json_get_denormalized_value(json_element, keys[2]));
-		
+
 
 		/* are the current cloud and the given cloud the same */
 		if (strcmp(tsp_cloud, current_cloud) == 0)
@@ -264,7 +255,7 @@ GeolocationDistance get_tablespace_distance(Oid spcid)
 				/* are the current cloud and the given zone the same */
 				if (strcmp(tsp_zone, current_zone) == 0)
 				{
-					current_dist = ZONE_LOCAL; 
+					current_dist = ZONE_LOCAL;
 				}
 				else
 				{
@@ -287,23 +278,23 @@ GeolocationDistance get_tablespace_distance(Oid spcid)
 
 /*
  * get_yb_tablespace_cost
- * 
+ *
  *		Costs per-tuple access on a given tablespace. Currently we score a
- *		placement option in a tablespace by assigning a cost based on its 
+ *		placement option in a tablespace by assigning a cost based on its
  *		distance that is denoted by a GeolocationDistance. The computed cost
  *		is stored in yb_tsp_cost. Returns false iff geolocation costing is
  *		disabled or a NULL pointer was passed in for yb_tsp_cost.
  */
-bool get_yb_tablespace_cost(Oid spcid, double *yb_tsp_cost) 
+bool get_yb_tablespace_cost(Oid spcid, double *yb_tsp_cost)
 {
-	if (!yb_enable_geolocation_costing) 
+	if (!yb_enable_geolocation_costing)
 	{
 		return false;
 	}
 
 	Assert(IsYugaByteEnabled());
 
-	if (!yb_tsp_cost) 
+	if (!yb_tsp_cost)
 	{
 		return false;
 	}
@@ -312,7 +303,7 @@ bool get_yb_tablespace_cost(Oid spcid, double *yb_tsp_cost)
 	double cost;
 	switch (distance)
 	{
-		case UNKNOWN:
+		case UNKNOWN_DISTANCE:
 			switch_fallthrough();
 		case INTER_CLOUD:
 			cost = yb_intercloud_cost;
@@ -349,7 +340,7 @@ get_tablespace_page_costs(Oid spcid,
 
 	if (spc_random_page_cost)
 	{
-		if (!spc->opts.pg_opts || spc->opts.pg_opts->random_page_cost < 0 
+		if (!spc->opts.pg_opts || spc->opts.pg_opts->random_page_cost < 0
 			|| IsYugaByteEnabled())
 			*spc_random_page_cost = random_page_cost;
 		else
@@ -358,7 +349,7 @@ get_tablespace_page_costs(Oid spcid,
 
 	if (spc_seq_page_cost)
 	{
-		if (!spc->opts.pg_opts || spc->opts.pg_opts->seq_page_cost < 0 
+		if (!spc->opts.pg_opts || spc->opts.pg_opts->seq_page_cost < 0
 			|| IsYugaByteEnabled())
 			*spc_seq_page_cost = seq_page_cost;
 		else

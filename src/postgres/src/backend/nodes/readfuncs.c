@@ -2393,6 +2393,17 @@ _readPartitionPruneStepOp(void)
 	READ_DONE();
 }
 
+static PartitionPruneStepFuncOp *
+_readPartitionPruneStepFuncOp(void)
+{
+	READ_LOCALS(PartitionPruneStepFuncOp);
+
+	READ_INT_FIELD(step.step_id);
+	READ_NODE_FIELD(exprs);
+
+	READ_DONE();
+}
+
 static PartitionPruneStepCombine *
 _readPartitionPruneStepCombine(void)
 {

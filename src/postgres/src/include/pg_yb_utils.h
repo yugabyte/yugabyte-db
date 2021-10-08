@@ -74,6 +74,15 @@ extern uint64_t YBGetActiveCatalogCacheVersion();
 
 extern void YBResetCatalogVersion();
 
+typedef enum GeolocationDistance {
+    ZONE_LOCAL,
+    REGION_LOCAL,
+    CLOUD_LOCAL,
+    INTER_CLOUD,
+    UNKNOWN_DISTANCE
+} GeolocationDistance;
+
+extern GeolocationDistance get_tablespace_distance (Oid tablespaceoid);
 /*
  * Checks whether YugaByte functionality is enabled within PostgreSQL.
  * This relies on pgapi being non-NULL, so probably should not be used
