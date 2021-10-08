@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: pgexercises
     parent: sample-data
-    weight: 2753
+    weight: 300
 isTocNested: true
 showAsideToc: true
 ---

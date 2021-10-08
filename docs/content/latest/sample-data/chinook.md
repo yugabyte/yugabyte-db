@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: chinook
     parent: sample-data
-    weight: 2751
+    weight: 100
 isTocNested: true
 showAsideToc: true
 ---
@@ -32,11 +32,15 @@ For details, here's the entity relationship diagram of the Chinook data model.
 
 ![Chinook ER diagram](/images/sample-data/chinook/chinook-er-diagram.png)
 
-## Before you begin
+## Install the Chinook sample database
 
-To install and use the Chinook sample database, you need to have installed and configured YugabyteDB. To get up and running quickly, see [Quick Start](/latest/quick-start/).
+### Before you begin
 
-Install the Chinook sample database
+You can install and use the Chinook sample database using either a local installation of YugabyteDB, or be connected to a cluster in Yugabyte Cloud.
+
+To get up and running quickly with YugabyteDB, refer to [Quick Start](/latest/quick-start/).
+
+To connect to your Yugabyte Cloud cluster using `ysqlsh`, refer to [Client Shell](../connect-to-clusters#connect-via-client-shell).
 
 ### 1. Download the SQL scripts (optional)
 
@@ -46,7 +50,7 @@ The Chinook SQL scripts that are compatible with YugabyteDB reside in the [`samp
 - [`chinook_genres_artists_albums.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/chinook_genres_artists_albums.sql) — Loads artist and album information
 - [`chinook_songs.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/chinook_songs.sql) — Loads individual song information
 
-If you've installed YugabyteDB, you can find the scripts in your installation's `share` folder.
+If you've installed YugabyteDB or the YugabyteDB client shells, you can find the scripts in your installation's `share` folder.
 
 ### 2. Open the YSQL shell
 
@@ -56,7 +60,7 @@ To open the YSQL shell, run the `ysqlsh` command from the YugabyteDB root direct
 $ ./bin/ysqlsh
 ```
 
-```
+```output
 ysqlsh (11.2)
 Type "help" for help.
 yugabyte=#
@@ -82,7 +86,7 @@ Connect to the `chinook` database.
 yugabyte=# \c chinook
 ```
 
-```
+```output
 You are now connected to database "chinook" as user "yugabyte".
 chinook=#
 ```
@@ -123,7 +127,7 @@ Now verify that you have data by running a simple `SELECT` statement to pull som
 chinook=# SELECT "Name", "Composer" FROM "Track" LIMIT 10;
 ```
 
-```
+```output
               Name               |                          Composer
 ---------------------------------+------------------------------------------------------------
  Boa Noite                       |

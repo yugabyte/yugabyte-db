@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: northwind
     parent: sample-data
-    weight: 2752
+    weight: 200
 isTocNested: true
 showAsideToc: true
 ---

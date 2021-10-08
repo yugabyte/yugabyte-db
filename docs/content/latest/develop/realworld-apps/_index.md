@@ -40,15 +40,4 @@ The following examples illustrate how real-world, end-to-end applications can be
     </a>
   </div>
 
-   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="retail-analytics/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/apps/e-commerce.png" aria-hidden="true" />
-        <div class="title">Retail Analytics</div>
-      </div>
-      <div class="body">
-          Ad-hoc analytics of retail sales data using YugabyteDB's YSQL API.
-      </div>
-    </a>
-  </div>
 </div>

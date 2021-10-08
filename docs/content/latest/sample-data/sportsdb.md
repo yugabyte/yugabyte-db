@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: sportsdb
     parent: sample-data
-    weight: 2754
+    weight: 400
 isTocNested: true
 showAsideToc: true
 ---

@@ -1,22 +1,31 @@
 ---
-title: Retail analytics example application
-headerTitle: Retail analytics sample application
+title: Retail analytics sample database
+headerTitle: Retail analytics sample database
 linkTitle: Retail Analytics
-description: Run this retail analytics sample application on YugabyteDB and explore YSQL.
+description: Explore this retail analytics sample database on YugabyteDB using YSQL.
 aliases:
   - /develop/realworld-apps/retail-analytics/
 menu:
   latest:
     identifier: retail-analytics
-    parent: realworld-apps
-    weight: 584
+    parent: sample-data
+    weight: 500
 isTocNested: true
 showAsideToc: true
 ---
 
+## About the Retail Analytics database
+
+The Retail Analytics dataset includes sample data in the following tables:
+
+- **Products**: Product information
+- **Users**: Customers who have bought products
+- **Orders**: Orders made by customers
+- **Reviews**: Product reviews
+
 ## 1. Start local cluster
 
-Follow [Quick Start](../../../quick-start/) instructions to run a local YugabyteDB cluster. Test the YSQL API as [documented](../../../quick-start/explore/ysql/) so that you can confirm that you have the YSQL service running on `localhost:5433`. 
+Follow [Quick Start](../quick-start/) instructions to run a local YugabyteDB cluster. Test the YSQL API as [documented](../../../quick-start/explore/ysql/) so that you can confirm that you have the YSQL service running on `localhost:5433`. 
 
 ## 2. Load data
 
@@ -40,7 +49,7 @@ $ tar zxvf sample-data.tgz
 $ ls data/
 ```
 
-```
+```output
 orders.sql  products.sql  reviews.sql users.sql
 ```
 
@@ -50,7 +59,7 @@ orders.sql  products.sql  reviews.sql users.sql
 $ ./bin/ysqlsh
 ```
 
-```
+```output
 ysqlsh (11.2)
 Type "help" for help.
 
@@ -84,22 +93,22 @@ yugabyte=# \i 'schema.sql';
 Now load the data into the tables.
 
 ```plpgsql
-yugabyte=# \i 'data/products.sql'
+\i 'data/products.sql'
 ```
 
 ```plpgsql
-yugabyte=# \i 'data/users.sql'
+\i 'data/users.sql'
 ```
 
 ```plpgsql
-yugabyte=# \i 'data/orders.sql'
+\i 'data/orders.sql'
 ```
 
 ```plpgsql
 yugabyte=# \i 'data/reviews.sql'
 ```
 
-## 3. Run queries
+## Explore the Retail Analytics sample database
 
 ### How are users signing up for my site?
 
@@ -107,7 +116,7 @@ yugabyte=# \i 'data/reviews.sql'
 yb_demo=# SELECT DISTINCT(source) FROM users;
 ```
 
-```
+```output
 source
 -----------
  Facebook
@@ -127,7 +136,7 @@ yb_demo=# SELECT source, count(*) AS num_user_signups
           ORDER BY num_user_signups DESC;
 ```
 
-```
+```output
 source     | num_user_signups
 -----------+------------------
  Facebook  |              512
@@ -147,7 +156,7 @@ yb_demo=# SELECT source, ROUND(SUM(orders.total)) AS total_sales
           ORDER BY total_sales DESC;
 ```
 
-```
+```output
 source     | total_sales
 -----------+-------------
  Facebook  |      333454
@@ -164,7 +173,7 @@ source     | total_sales
 yb_demo=# SELECT MIN(price), MAX(price), AVG(price) FROM products;
 ```
 
-```
+```output
 min               |       max        |       avg
 ------------------+------------------+------------------
  15.6919436739704 | 98.8193368436819 | 55.7463996679207
@@ -190,7 +199,7 @@ Now that the view is created, you can see it in our list of relations.
 yb_demo=# \d
 ```
 
-```
+```output
 List of relations
  Schema |   Name   | Type  |  Owner
 --------+----------+-------+----------
@@ -207,7 +216,7 @@ yb_demo=# SELECT source, total_sales * 100.0 / (SELECT SUM(total_sales) FROM cha
           FROM channel WHERE source='Facebook';
 ```
 
-```
+```output
 source    |  percent_sales
 ----------+------------------
  Facebook | 20.9018954710909
