@@ -2200,6 +2200,13 @@ class TabletSplitExternalMiniClusterITest : public TabletSplitITestBase<External
     return tablet_ids;
   }
 
+  CHECKED_STATUS FlushTabletsOnSingleTServer(
+      int tserver_idx, const std::vector<yb::TabletId> tablet_ids, bool is_compaction) {
+    auto tserver = cluster_->tablet_server(tserver_idx);
+    RETURN_NOT_OK(cluster_->FlushTabletsOnSingleTServer(tserver, tablet_ids, is_compaction));
+    return Status::OK();
+  }
+
   Result<std::set<TabletId>> GetTestTableTabletIds() {
     std::set<TabletId> tablet_ids;
     for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
@@ -2209,6 +2216,37 @@ class TabletSplitExternalMiniClusterITest : public TabletSplitITestBase<External
       }
     }
     return tablet_ids;
+  }
+
+  Result<vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB>> ListTablets(int tserver_idx) {
+    vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB> tablets;
+    std::set<TabletId> tablet_ids;
+    auto res = VERIFY_RESULT(cluster_->ListTablets(cluster_->tablet_server(tserver_idx)));
+    for (const auto& tablet : res.status_and_schema()) {
+      auto tablet_id = tablet.tablet_status().tablet_id();
+      if (tablet.tablet_status().table_name() == table_->name().table_name() &&
+          tablet_ids.find(tablet_id) == tablet_ids.end()) {
+        tablets.push_back(tablet);
+        tablet_ids.insert(tablet_id);
+      }
+    }
+    return tablets;
+  }
+
+  Result<vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB>> ListTablets() {
+    vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB> tablets;
+    std::set<TabletId> tablet_ids;
+    for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
+      auto res = VERIFY_RESULT(ListTablets(i));
+      for (const auto& tablet : res) {
+        auto tablet_id = tablet.tablet_status().tablet_id();
+        if (tablet_ids.find(tablet_id) == tablet_ids.end()) {
+            tablets.push_back(tablet);
+            tablet_ids.insert(tablet_id);
+        }
+      }
+    }
+    return tablets;
   }
 
   CHECKED_STATUS WaitForTabletsExcept(
@@ -2236,6 +2274,61 @@ class TabletSplitExternalMiniClusterITest : public TabletSplitITestBase<External
     }, 20s * kTimeMultiplier, Format("Waiting for tablet count: $0", num_tablets));
   }
 
+  CHECKED_STATUS SplitTabletCrashMaster(bool change_split_boundary, string* split_partition_key) {
+    CreateSingleTablet();
+    int key = 1, num_rows = 2000;
+    RETURN_NOT_OK(WriteRows(num_rows, key));
+    key += num_rows;
+    RETURN_NOT_OK(client_->FlushTables({table_->id()}, false, 30, false));
+    auto tablet_id = CHECK_RESULT(GetOnlyTabletId());
+
+    RETURN_NOT_OK(cluster_->SetFlagOnMasters(
+      "TEST_crash_after_creating_single_split_tablet", "1.0"));
+    // Split tablet should crash before creating either tablet
+    if (split_partition_key) {
+      auto res = VERIFY_RESULT(cluster_->GetSplitKey(tablet_id));
+      *split_partition_key = res.split_partition_key();
+    }
+    RETURN_NOT_OK(SplitTablet(tablet_id));
+    auto status = WaitForTablets(3);
+    if (status.ok()) {
+      return STATUS(IllegalState, "Tablet should not have split");
+    }
+
+    RETURN_NOT_OK(RestartAllMasters(cluster_.get()));
+    RETURN_NOT_OK(cluster_->SetFlagOnMasters(
+      "TEST_crash_after_creating_single_split_tablet", "0.0"));
+    RETURN_NOT_OK(cluster_->SetFlagOnMasters(
+      "TEST_select_all_tablets_for_split", "true"));
+
+    if (change_split_boundary) {
+      RETURN_NOT_OK(WriteRows(num_rows * 2, key));
+      for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+        RETURN_NOT_OK(FlushTabletsOnSingleTServer(i, {tablet_id}, false));
+      }
+    }
+
+    // Wait for tablet split to complete
+    auto raft_heartbeat_roundtrip_time = FLAGS_raft_heartbeat_interval_ms * 2ms;
+    RETURN_NOT_OK(LoggedWaitFor(
+      [this, tablet_id]() -> Result<bool> {
+        auto status = SplitTablet(tablet_id);
+        if (!status.ok()) {
+          return false;
+        }
+        return WaitForTablets(3).ok();
+      },
+      5 * raft_heartbeat_roundtrip_time * kTimeMultiplier
+      + 2ms * FLAGS_tserver_heartbeat_metrics_interval_ms,
+      Format("Wait for tablet to be split: $0", tablet_id)));
+
+    // Wait for parent tablet clean up
+    std::this_thread::sleep_for(5 * raft_heartbeat_roundtrip_time * kTimeMultiplier);
+    RETURN_NOT_OK(WaitForTablets(2));
+
+    return Status::OK();
+  }
+
   Result<TabletId> GetOnlyTabletId(int tserver_idx) {
     auto tablet_ids = VERIFY_RESULT(GetTestTableTabletIds(tserver_idx));
     if (tablet_ids.size() != 1) {
@@ -2256,6 +2349,7 @@ class TabletSplitExternalMiniClusterITest : public TabletSplitITestBase<External
 TEST_F(TabletSplitExternalMiniClusterITest, Simple) {
   CreateSingleTablet();
   CHECK_OK(WriteRows());
+  ASSERT_OK(client_->FlushTables({table_->id()}, false, 30, false));
   auto tablet_id = CHECK_RESULT(GetOnlyTabletId());
   CHECK_OK(SplitTablet(tablet_id));
   ASSERT_OK(WaitForTablets(3));
@@ -2265,32 +2359,38 @@ TEST_F(TabletSplitExternalMiniClusterITest, CrashMasterDuringSplit) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) =
     FLAGS_heartbeat_interval_ms + 1000;
 
-  CreateSingleTablet();
-  CHECK_OK(WriteRows());
-  auto tablet_id = CHECK_RESULT(GetOnlyTabletId());
+  ASSERT_OK(SplitTabletCrashMaster(false, nullptr));
+}
 
-  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_crash_after_creating_single_split_tablet", "1.0"));
-  // Split tablet should crash before creating either tablet
-  ASSERT_NOK(SplitTablet(tablet_id));
+TEST_F(TabletSplitExternalMiniClusterITest, CrashMasterCheckConsistentPartitionKeys) {
+  // Tests that when master crashes during a split and a new split key is used
+  // we will revert to an older boundary used by the inital split
+  // Used to validate the fix for: https://github.com/yugabyte/yugabyte-db/issues/8148
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) =
+    FLAGS_heartbeat_interval_ms + 1000;
 
-  ASSERT_OK(RestartAllMasters(cluster_.get()));
-  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_crash_after_creating_single_split_tablet", "0.0"));
-  // Wait for tablet split to complete
-  auto raft_heartbeat_roundtrip_time = FLAGS_raft_heartbeat_interval_ms * 2ms;
-  ASSERT_OK(LoggedWaitFor(
-    [this, tablet_id]() -> Result<bool> {
-      return this->SplitTablet(tablet_id).ok();
-    },
-    5 * raft_heartbeat_roundtrip_time * kTimeMultiplier
-    + 2ms * FLAGS_tserver_heartbeat_metrics_interval_ms,
-    Format("Wait for tablet to be split: $0", tablet_id)));
-  ASSERT_OK(WaitForTablets(3));
+  string split_partition_key;
+  ASSERT_OK(SplitTabletCrashMaster(true, &split_partition_key));
+
+  auto tablets = CHECK_RESULT(ListTablets());
+  ASSERT_EQ(tablets.size(), 2);
+  auto part = tablets.at(0).tablet_status().partition();
+  auto part2 = tablets.at(1).tablet_status().partition();
+
+  // check that both partitions have the same boundary
+  if (part.partition_key_end() == part2.partition_key_start() && part.partition_key_end() != "") {
+    ASSERT_EQ(part.partition_key_end(), split_partition_key);
+  } else {
+    ASSERT_EQ(part.partition_key_start(), split_partition_key);
+    ASSERT_EQ(part2.partition_key_end(), split_partition_key);
+  }
 }
 
 TEST_F(TabletSplitExternalMiniClusterITest, FaultedSplitNodeRejectsRemoteBootstrap) {
   constexpr int kTabletSplitInjectDelayMs = 20000 * kTimeMultiplier;
   CreateSingleTablet();
   ASSERT_OK(WriteRows());
+  ASSERT_OK(client_->FlushTables({table_->id()}, false, 30, false));
   const auto tablet_id = CHECK_RESULT(GetOnlyTabletId());
 
   const auto leader_idx = CHECK_RESULT(cluster_->GetTabletLeaderIndex(tablet_id));
@@ -2343,6 +2443,7 @@ TEST_F(TabletSplitExternalMiniClusterITest, CrashesAfterChildLogCopy) {
 
   CreateSingleTablet();
   CHECK_OK(WriteRows());
+  ASSERT_OK(client_->FlushTables({table_->id()}, false, 30, false));
   const auto tablet_id = CHECK_RESULT(GetOnlyTabletId());
 
   // We will fault one of the non-leader servers after it performs a WAL Log copy from parent to
@@ -2417,6 +2518,7 @@ TEST_F(TabletSplitRemoteBootstrapEnabledTest, TestSplitAfterFailedRbsCreatesDire
 
   CreateSingleTablet();
   ASSERT_OK(WriteRows());
+  ASSERT_OK(client_->FlushTables({table_->id()}, false, 30, false));
   const auto tablet_id = CHECK_RESULT(GetOnlyTabletId());
 
   const auto leader_idx = CHECK_RESULT(cluster_->GetTabletLeaderIndex(tablet_id));
@@ -2485,10 +2587,16 @@ TEST_F(TabletSplitExternalMiniClusterITest, RemoteBootstrapsFromNodeWithUncommit
   CHECK_OK(cluster_->WaitForTSToCrash(server_to_bootstrap));
 
   CreateSingleTablet();
-  CHECK_OK(WriteRows());
-
   const auto other_server_idx = *other_servers.begin();
   const auto tablet_id = CHECK_RESULT(GetOnlyTabletId(other_server_idx));
+
+  CHECK_OK(WriteRows());
+  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+    if (i != server_to_bootstrap_idx) {
+      ASSERT_OK(FlushTabletsOnSingleTServer(i, {tablet_id}, false));
+    }
+  }
+
   const auto leader_idx = CHECK_RESULT(cluster_->GetTabletLeaderIndex(tablet_id));
   const auto server_to_kill_idx = 3 - leader_idx - server_to_bootstrap_idx;
   auto server_to_kill = cluster_->tablet_server(server_to_kill_idx);

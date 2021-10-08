@@ -248,6 +248,11 @@ class PartitionSchema {
 
   static bool IsValidHashPartitionKeyBound(const string& partition_key);
 
+  // Encoded (sub)doc keys that belong to partition with partition_key lower bound
+  // are starting with this prefix or greater than it
+  static std::string GetEncodedKeyPrefix(
+    const std::string& partition_key, const PartitionSchemaPB& partition_schema);
+
   // YugaByte partition creation
   // Creates the set of table partitions using multi column hash schema. In this schema, we divide
   // the [0, max_partition_key] range into the requested number of intervals.
