@@ -110,9 +110,15 @@ public enum TaskType {
 
   CreateXClusterReplication("CreateXClusterReplication"),
 
+  CreateXClusterConfig("CreateXClusterConfig"),
+
   DeleteXClusterReplication("DeleteXClusterReplication"),
 
+  DeleteXClusterConfig("DeleteXClusterConfig"),
+
   EditXClusterReplication("EditXClusterReplication"),
+
+  EditXClusterConfig("EditXClusterConfig"),
 
   PauseOrResumeXClusterReplication("PauseOrResumeXClusterReplication"),
 

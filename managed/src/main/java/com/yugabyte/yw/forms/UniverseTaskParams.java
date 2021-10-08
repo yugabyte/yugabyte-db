@@ -6,6 +6,7 @@ import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.KeyType;
 import com.yugabyte.yw.models.AsyncReplicationRelationship;
+import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.ebean.annotation.EnumValue;
@@ -223,6 +224,32 @@ public class UniverseTaskParams extends AbstractTaskParams {
         .stream()
         .map(AsyncReplicationConfig::convert)
         .collect(Collectors.toList());
+  }
+
+  @JsonProperty(value = "targetXClusterConfigs", access = JsonProperty.Access.READ_ONLY)
+  @ApiModelProperty(value = "The target universe's xcluster replication relationships")
+  public List<UUID> getTargetXClusterConfigs() {
+    if (universeUUID == null) {
+      return new ArrayList<>();
+    }
+    return new ArrayList<>(
+        XClusterConfig.getByTargetUniverseUUID(universeUUID)
+            .stream()
+            .map(xClusterConfig -> xClusterConfig.uuid)
+            .collect(Collectors.toList()));
+  }
+
+  @JsonProperty(value = "sourceXClusterConfigs", access = JsonProperty.Access.READ_ONLY)
+  @ApiModelProperty(value = "The source universe's xcluster replication relationships")
+  public List<UUID> getSourceXClusterConfigs() {
+    if (universeUUID == null) {
+      return new ArrayList<>();
+    }
+    return new ArrayList<>(
+        XClusterConfig.getBySourceUniverseUUID(universeUUID)
+            .stream()
+            .map(xClusterConfig -> xClusterConfig.uuid)
+            .collect(Collectors.toList()));
   }
 
   // Which user to run the node exporter service on nodes with
