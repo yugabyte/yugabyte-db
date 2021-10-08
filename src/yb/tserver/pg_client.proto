@@ -49,11 +49,11 @@ service PgClientService {
 
 message PgHeartbeatRequestPB {
   uint64 session_id = 1;
-  bool create = 2;
 }
 
 message PgHeartbeatResponsePB {
   AppStatusPB status = 1;
+  uint64 session_id = 2;
 }
 
 message PgObjectIdPB {
