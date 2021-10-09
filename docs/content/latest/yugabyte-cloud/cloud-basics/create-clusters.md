@@ -84,7 +84,7 @@ If you are creating a **Paid** cluster, set the following additional options:
   - vCPU/Node - enter the number of virtual CPUs per node.
   - Disk size/Node - enter the disk size per node in GB.
 
-The cluster costs are estimated automatically under **Cost**. For information on how clusters are costed, refer to [Cluster costs](../cloud-admin/cloud-billing-costs/). 
+The cluster costs are estimated automatically under **Cost**. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/). 
 
 Paid clusters support both horizontal and vertical scaling; you can change the cluster configuration after the cluster is created using the **Edit Configuration** settings. Refer to [Configure clusters](../../cloud-clusters/configure-clusters#infrastructure). 
 

@@ -34,7 +34,7 @@ To scale the cluster:
 1. Click **Edit Infrastructure** to display the **Edit Infrastructure** dialog.
 1. Enter the number of nodes, vCPUs, and disk size in GB for the cluster.
     \
-    The estimated new cost for the cluster is updated dynamically.
+    **Cost** displays the estimated new cost for the cluster; **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
 
 1. Click **Save** when you are done.
 
