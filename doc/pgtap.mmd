@@ -51,7 +51,10 @@ Synopsis
 Installation
 ============
 
-For the impatient, to install pgTAP into a PostgreSQL database, just do this:
+pgTAP must be installed on a host with PostgreSQL server running; it cannot
+be installed remotely.
+
+To install pgTAP into a PostgreSQL database, just do this:
 
     make
     make install
@@ -97,6 +100,15 @@ You need to run the test suite using a super user, such as the default
 "postgres" super user:
 
     make installcheck PGUSER=postgres
+
+If you encounter an error such as:
+
+    ERROR: Missing extensions required for testing: citext isn ltree
+
+Install the PostgreSQL
+[Additional Supplied Modules](https://www.postgresql.org/docs/current/contrib.html),
+which are required to run the tests. If you used a package management system
+such as RPM to install PostgreSQL, install the `-contrib` package.
 
 Once pgTAP is installed, you can add it to a database by connecting as a super
 user and running:

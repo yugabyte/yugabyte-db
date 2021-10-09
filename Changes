@@ -21,6 +21,9 @@ Revision history for pgTAP
 * Removed straggler references to Postgres 9.0 and earlier, including conditional
   tests.
 * Updated all relevant URLs to use https instead of http.
+* Added instructions to install the extension on a host with PostgreSQL running
+  and with the contrib modules installed. Thanks to F. Eugene Aumson for the
+  report (#276).
 
 1.1.0 2019-11-25T19:05:38Z
 --------------------------

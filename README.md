@@ -12,6 +12,9 @@ documentation in `doc/pgtap.mmd` or
 [![PGXN version](https://badge.fury.io/pg/pgtap.svg)](https://badge.fury.io/pg/pgtap)
 [![Build Status](https://travis-ci.org/theory/pgtap.png)](https://travis-ci.org/theory/pgtap)
 
+pgTAP must be installed on a host with PostgreSQL server running; it cannot
+be installed remotely.
+
 To build it, just do this:
 
     make
@@ -58,6 +61,15 @@ You need to run the test suite using a super user, such as the default
 "postgres" super user:
 
     make installcheck PGUSER=postgres
+
+If you encounter an error such as:
+
+    ERROR: Missing extensions required for testing: citext isn ltree
+
+Install the PostgreSQL
+[Additional Supplied Modules](https://www.postgresql.org/docs/current/contrib.html),
+which are required to run the tests. If you used a package management system
+such as RPM to install PostgreSQL, install the `-contrib` package.
 
 Once pgTAP is installed, you can add it to a database by connecting as a super
 user and running:
