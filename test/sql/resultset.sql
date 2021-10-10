@@ -981,11 +981,20 @@ SELECT * FROM check_test(
     false,
     'results_eq(values, values) mismatch',
     '',
-    CASE WHEN pg_version_num() < 80400 THEN '    Results differ beginning at row 1:' ELSE '    Number of columns or their types differ between the queries:' END || '
+    CASE WHEN pg_version_num() >= 90200 THEN
+      '    Number of columns or their types differ between the queries:
         have: (1,foo)
-        want: (foo,1)'
+        want: (foo,1)
+        ERROR: cannot compare dissimilar column types integer and text at record column 1'
+    ELSE
+      '    Number of columns or their types differ between the queries:
+        have: (1,foo)
+        want: (foo,1)
+        ERROR: details not available in pg <= 9.1'
+    END
 );
 
+-- Handle failure due to more subtle column mismatch
 SELECT * FROM check_test(
     results_eq(
         'VALUES (1, ''foo''::varchar), (2, ''bar''::varchar)',
@@ -994,7 +1003,13 @@ SELECT * FROM check_test(
     false,
     'results_eq(values, values) subtle mismatch',
     '',
-    '    Number of columns or their types differ between the queries'
+    CASE WHEN pg_version_num() >= 90200 THEN
+      '    Number of columns or their types differ between the queries
+        ERROR: cannot compare dissimilar column types character varying and text at record column 2'
+    ELSE
+      '    Number of columns or their types differ between the queries
+        ERROR: details not available in pg <= 9.1'
+    END
 );
 
 SELECT * FROM check_test(
@@ -1005,21 +1020,35 @@ SELECT * FROM check_test(
     false,
     'results_eq(values, values) integer type mismatch',
     '',
-    '    Number of columns or their types differ between the queries'
+    CASE WHEN pg_version_num() >= 90200 THEN
+      '    Number of columns or their types differ between the queries
+        ERROR: cannot compare dissimilar column types integer and bigint at record column 1'
+    ELSE
+      '    Number of columns or their types differ between the queries
+        ERROR: details not available in pg <= 9.1'
+    END
 );
 
 -- Handle failure due to column count mismatch.
 SELECT * FROM check_test(
     results_eq(
         'SELECT pk from dubs ORDER BY pk LIMIT 2',
-        'SELECT name, pk from dubs ORDER BY pk LIMIT 2'
+        'SELECT pk, name from dubs ORDER BY pk LIMIT 2'
     ),
     false,
     'results_eq(values, values) fail column count',
     '',
-    CASE WHEN pg_version_num() < 80400 THEN '    Results differ beginning at row 1:' ELSE '    Number of columns or their types differ between the queries:' END || '
+    CASE WHEN pg_version_num() >= 90200 THEN
+      '    Number of columns or their types differ between the queries:
         have: (1)
-        want: (foo,1)'
+        want: (1,foo)
+        ERROR: cannot compare record types with different numbers of columns'
+    ELSE
+      '    Number of columns or their types differ between the queries:
+        have: (1)
+        want: (1,foo)
+        ERROR: details not available in pg <= 9.1'
+    END
 );
 
 -- Compare with cursors.
@@ -2135,9 +2164,17 @@ SELECT * FROM check_test(
     false,
     'results_ne(values, values) mismatch',
     '',
-    '    Columns differ between queries:
+    CASE WHEN pg_version_num() >= 90200 THEN
+      '    Number of columns or their types differ between the queries:
         have: (1,foo)
-        want: (foo,1)'
+        want: (foo,1)
+        ERROR: cannot compare dissimilar column types integer and text at record column 1'
+    ELSE
+      '    Number of columns or their types differ between the queries:
+        have: (1,foo)
+        want: (foo,1)
+        ERROR: details not available in pg <= 9.1'
+    END
 );
 
 -- Handle failure due to subtle column mismatch.
@@ -2149,20 +2186,32 @@ SELECT * FROM check_test(
     false,
     'results_ne(values, values) subtle mismatch',
     '',
-    '    Columns differ between queries:
-        have: (1,foo)
-        want: (1,foo)'
+    CASE WHEN pg_version_num() >= 90200 THEN
+      '    Number of columns or their types differ between the queries
+        ERROR: cannot compare dissimilar column types character varying and text at record column 2'
+    ELSE
+      '    Number of columns or their types differ between the queries
+        ERROR: details not available in pg <= 9.1'
+    END
 );
 
 -- Handle failure due to column count mismatch.
 SELECT * FROM check_test(
-    results_ne( 'VALUES (1), (2)', 'VALUES (''foo'', 1), (''bar'', 2)' ),
+    results_ne( 'VALUES (1), (2)', 'VALUES (1, ''foo''), (2, ''bar'')' ),
     false,
     'results_ne(values, values) fail column count',
     '',
-    '    Columns differ between queries:
+    CASE WHEN pg_version_num() >= 90200 THEN
+      '    Number of columns or their types differ between the queries:
         have: (1)
-        want: (foo,1)'
+        want: (1,foo)
+        ERROR: cannot compare record types with different numbers of columns'
+    ELSE
+      '    Number of columns or their types differ between the queries:
+        have: (1)
+        want: (1,foo)
+        ERROR: details not available in pg <= 9.1'
+    END
 );
 
 -- Compare with cursors.

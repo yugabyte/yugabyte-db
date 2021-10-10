@@ -22,3 +22,21 @@
              END;
  
              -- Always raise an exception to rollback any changes.
+--- sql/pgtap.sql
++++ sql/pgtap.sql
+@@ -6906,7 +6906,6 @@
+     RETURN ok( true, $3 );
+ EXCEPTION
+     WHEN datatype_mismatch THEN
+-        GET STACKED DIAGNOSTICS err_msg = MESSAGE_TEXT;
+         RETURN ok( false, $3 ) || E'\n' || diag(
+             E'    Number of columns or their types differ between the queries' ||
+             CASE WHEN have_rec::TEXT = want_rec::text THEN '' ELSE E':\n' ||
+@@ -7060,7 +7059,6 @@
+     RETURN ok( false, $3 );
+ EXCEPTION
+     WHEN datatype_mismatch THEN
+-        GET STACKED DIAGNOSTICS err_msg = MESSAGE_TEXT;
+         RETURN ok( false, $3 ) || E'\n' || diag(
+             E'    Number of columns or their types differ between the queries' ||
+             CASE WHEN have_rec::TEXT = want_rec::text THEN '' ELSE E':\n' ||

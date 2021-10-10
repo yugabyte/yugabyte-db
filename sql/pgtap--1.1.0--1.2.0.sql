@@ -37,6 +37,91 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- results_eq( cursor, cursor, description )
+CREATE OR REPLACE FUNCTION results_eq( refcursor, refcursor, text )
+RETURNS TEXT AS $$
+DECLARE
+    have       ALIAS FOR $1;
+    want       ALIAS FOR $2;
+    have_rec   RECORD;
+    want_rec   RECORD;
+    have_found BOOLEAN;
+    want_found BOOLEAN;
+    rownum     INTEGER := 1;
+    err_msg    text := 'details not available in pg <= 9.1';
+BEGIN
+    FETCH have INTO have_rec;
+    have_found := FOUND;
+    FETCH want INTO want_rec;
+    want_found := FOUND;
+    WHILE have_found OR want_found LOOP
+        IF have_rec IS DISTINCT FROM want_rec OR have_found <> want_found THEN
+            RETURN ok( false, $3 ) || E'\n' || diag(
+                '    Results differ beginning at row ' || rownum || E':\n' ||
+                '        have: ' || CASE WHEN have_found THEN have_rec::text ELSE 'NULL' END || E'\n' ||
+                '        want: ' || CASE WHEN want_found THEN want_rec::text ELSE 'NULL' END
+            );
+        END IF;
+        rownum = rownum + 1;
+        FETCH have INTO have_rec;
+        have_found := FOUND;
+        FETCH want INTO want_rec;
+        want_found := FOUND;
+    END LOOP;
+
+    RETURN ok( true, $3 );
+EXCEPTION
+    WHEN datatype_mismatch THEN
+        GET STACKED DIAGNOSTICS err_msg = MESSAGE_TEXT;
+        RETURN ok( false, $3 ) || E'\n' || diag(
+            E'    Number of columns or their types differ between the queries' ||
+            CASE WHEN have_rec::TEXT = want_rec::text THEN '' ELSE E':\n' ||
+                '        have: ' || CASE WHEN have_found THEN have_rec::text ELSE 'NULL' END || E'\n' ||
+                '        want: ' || CASE WHEN want_found THEN want_rec::text ELSE 'NULL' END
+            END || E'\n        ERROR: ' || err_msg
+        );
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION results_ne( refcursor, refcursor, text )
+RETURNS TEXT AS $$
+DECLARE
+    have       ALIAS FOR $1;
+    want       ALIAS FOR $2;
+    have_rec   RECORD;
+    want_rec   RECORD;
+    have_found BOOLEAN;
+    want_found BOOLEAN;
+    err_msg    text := 'details not available in pg <= 9.1';
+BEGIN
+    FETCH have INTO have_rec;
+    have_found := FOUND;
+    FETCH want INTO want_rec;
+    want_found := FOUND;
+    WHILE have_found OR want_found LOOP
+        IF have_rec IS DISTINCT FROM want_rec OR have_found <> want_found THEN
+            RETURN ok( true, $3 );
+        ELSE
+            FETCH have INTO have_rec;
+            have_found := FOUND;
+            FETCH want INTO want_rec;
+            want_found := FOUND;
+        END IF;
+    END LOOP;
+    RETURN ok( false, $3 );
+EXCEPTION
+    WHEN datatype_mismatch THEN
+        GET STACKED DIAGNOSTICS err_msg = MESSAGE_TEXT;
+        RETURN ok( false, $3 ) || E'\n' || diag(
+            E'    Number of columns or their types differ between the queries' ||
+            CASE WHEN have_rec::TEXT = want_rec::text THEN '' ELSE E':\n' ||
+                '        have: ' || CASE WHEN have_found THEN have_rec::text ELSE 'NULL' END || E'\n' ||
+                '        want: ' || CASE WHEN want_found THEN want_rec::text ELSE 'NULL' END
+            END || E'\n        ERROR: ' || err_msg
+        );
+END;
+$$ LANGUAGE plpgsql;
+=======
 -- hasnt_operator( left_type, schema, name, right_type, return_type, description )
 CREATE OR REPLACE FUNCTION hasnt_operator ( NAME, NAME, NAME, NAME, NAME, TEXT )
 RETURNS TEXT AS $$
@@ -176,50 +261,3 @@ RETURNS TEXT AS $$
          NOT _op_exists($1, $2, NULL ),
         'Right operator ' || $2 || '(' || $1 || ',NONE) should not exist'
     );
-=======
--- isnt_member_of( role, members[], description )
-CREATE OR REPLACE FUNCTION isnt_member_of( NAME, NAME[], TEXT )
-RETURNS TEXT AS $$
-DECLARE
-    extra text[];
-BEGIN
-    IF NOT _has_role($1) THEN
-        RETURN fail( $3 ) || E'\n' || diag (
-            '    Role ' || quote_ident($1) || ' does not exist'
-        );
-    END IF;
-
-    SELECT ARRAY(
-        SELECT quote_ident($2[i])
-          FROM generate_series(1, array_upper($2, 1)) s(i)
-          LEFT JOIN pg_catalog.pg_roles r ON rolname = $2[i]
-         WHERE r.oid = ANY ( _grolist($1) )
-         ORDER BY s.i
-    ) INTO extra;
-    IF extra[1] IS NULL THEN
-        RETURN ok( true, $3 );
-    END IF;
-    RETURN ok( false, $3 ) || E'\n' || diag(
-        '    Members, who should not be in ' || quote_ident($1) || E' role:\n        ' ||
-        array_to_string( extra, E'\n        ')
-    );
-END;
-$$ LANGUAGE plpgsql;
-
--- isnt_member_of( role, member, description )
-CREATE OR REPLACE FUNCTION isnt_member_of( NAME, NAME, TEXT )
-RETURNS TEXT AS $$
-    SELECT isnt_member_of( $1, ARRAY[$2], $3 );
-$$ LANGUAGE SQL;
-
--- isnt_member_of( role, members[] )
-CREATE OR REPLACE FUNCTION isnt_member_of( NAME, NAME[] )
-RETURNS TEXT AS $$
-    SELECT isnt_member_of( $1, $2, 'Should not have members of role ' || quote_ident($1) );
-$$ LANGUAGE SQL;
-
--- isnt_member_of( role, member )
-CREATE OR REPLACE FUNCTION isnt_member_of( NAME, NAME )
-RETURNS TEXT AS $$
-    SELECT isnt_member_of( $1, ARRAY[$2] );
-$$ LANGUAGE SQL;

@@ -306,6 +306,8 @@ add_exclude() {
     fi
 }
 
+add_exclude 9.1 9.2 test/sql/resultset.sql
+add_exclude 9.1 9.2 test/sql/valueset.sql
 add_exclude 9.1 9.2 test/sql/throwtap.sql
 add_exclude 9.4 9.5 test/sql/policy.sql test/sql/throwtap.sql 
 add_exclude 9.6 10 test/sql/partitions.sql

@@ -33,6 +33,8 @@ Revision history for pgTAP
   the pull request (#250).
 * Added `hasnt_operator()`, `hasnt_leftop()`, `hasnt_rightop()` (#38). Thanks to
   Wolfgang Walther for the pull request (#251).
+* Improve output of results_eq and results_ne when number of columns or their
+  types are different (#37).
 
 1.1.0 2019-11-25T19:05:38Z
 --------------------------
