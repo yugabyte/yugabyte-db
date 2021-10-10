@@ -12,6 +12,10 @@ CREATE TABLE public.sometab(
     myint NUMERIC(8),
     UNIQUE (numb, myint)
 );
+-- This table has no unique index
+CREATE TABLE public.uniqueless(
+    id INT PRIMARY KEY
+);
 RESET client_min_messages;
 
 /****************************************************************************/
@@ -42,18 +46,18 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    has_unique( 'pg_catalog', 'pg_class', 'pg_catalog.pg_class should have a unique constraint' ),
+    has_unique( 'public', 'uniqueless', 'public.uniqueless should have a unique constraint' ),
     false,
     'has_unique( schema, table, description ) fail',
-    'pg_catalog.pg_class should have a unique constraint',
+    'public.uniqueless should have a unique constraint',
     ''
 );
 
 SELECT * FROM check_test(
-    has_unique( 'pg_class', 'pg_class should have a unique constraint' ),
+    has_unique( 'uniqueless', 'uniqueless should have a unique constraint' ),
     false,
     'has_unique( table, description ) fail',
-    'pg_class should have a unique constraint',
+    'uniqueless should have a unique constraint',
     ''
 );
 

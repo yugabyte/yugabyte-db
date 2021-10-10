@@ -134,7 +134,7 @@ EXCLUDE_TEST_FILES += test/sql/policy.sql
 endif
 
 # Partition tests tests not supported by 9.x and earlier.
-ifeq ($(shell echo $(VERSION) | grep -qE "[89][.]" && echo yes || echo no),yes)
+ifeq ($(shell echo $(VERSION) | grep -qE "^[89][.]" && echo yes || echo no),yes)
 EXCLUDE_TEST_FILES += test/sql/partitions.sql
 endif
 

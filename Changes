@@ -18,12 +18,14 @@ Revision history for pgTAP
   identifier. Thanks to Matt DeLuco for the report (#216)!
 * Fixed the `col_not_null()` drop statements in the uninstall script. Thanks
   to Kyle L. Jensen for the report (#252).
-* Removed straggler references to Postgres 9.0 and earlier, including conditional
-  tests.
+* Removed straggler references to Postgres 9.0 and earlier, including
+  conditional tests.
 * Updated all relevant URLs to use https instead of http.
 * Added instructions to install the extension on a host with PostgreSQL running
   and with the contrib modules installed. Thanks to F. Eugene Aumson for the
   report (#276).
+* Fixed test failures due to changes in PostgreSQL 14. Thanks to Christoph Berg
+  for the report (#277).
 
 1.1.0 2019-11-25T19:05:38Z
 --------------------------

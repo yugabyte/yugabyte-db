@@ -15,12 +15,37 @@ AS 'BEGIN RETURN TRUE; END;' LANGUAGE plpgsql IMMUTABLE;
 CREATE FUNCTION public.pet () RETURNS SETOF BOOL
 AS 'BEGIN RETURN NEXT TRUE; RETURN; END;' LANGUAGE plpgsql STABLE;
 
-CREATE AGGREGATE public.tap_accum (
-    sfunc    = array_append,
-    basetype = anyelement,
-    stype    = anyarray,
-    initcond = '{}'
-);
+DO $$
+BEGIN
+    IF pg_version_num() >= 140000 THEN
+        CREATE AGGREGATE public.tap_accum (
+            sfunc    = array_append,
+            basetype = anycompatible,
+            stype    = anycompatiblearray,
+            initcond = '{}'
+        );
+        CREATE FUNCTION atype()
+        RETURNS text AS 'SELECT ''anycompatiblearray''::text'
+        LANGUAGE SQL IMMUTABLE;
+        CREATE FUNCTION etype()
+        RETURNS text AS 'SELECT ''anycompatible''::text'
+        LANGUAGE SQL IMMUTABLE;
+    ELSE
+        CREATE AGGREGATE public.tap_accum (
+            sfunc    = array_append,
+            basetype = anyelement,
+            stype    = anyarray,
+            initcond = '{}'
+        );
+        CREATE FUNCTION atype()
+        RETURNS text AS 'SELECT ''anyarray''::text'
+        LANGUAGE SQL IMMUTABLE;
+        CREATE FUNCTION etype()
+        RETURNS text AS 'SELECT ''anyelement''::text'
+        LANGUAGE SQL IMMUTABLE;
+    END IF;
+END;
+$$;
 
 /****************************************************************************/
 -- Test has_function().
@@ -105,10 +130,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    has_function( 'array_cat', ARRAY['anyarray','anyarray'] ),
+    has_function( 'array_cat', ARRAY[atype(), atype()] ),
     true,
     'simple array function',
-    'Function array_cat(anyarray, anyarray) should exist',
+    'Function array_cat(' || atype() || ', ' || atype() || ') should exist',
     ''
 );
 
@@ -265,10 +290,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    hasnt_function( 'array_cat', ARRAY['anyarray','anyarray'] ),
+    hasnt_function( 'array_cat', ARRAY[atype(), atype()] ),
     false,
     'simple array function',
-    'Function array_cat(anyarray, anyarray) should not exist',
+    'Function array_cat(' || atype() || ', ' || atype() || ') should not exist',
     ''
 );
 
@@ -1018,7 +1043,7 @@ SELECT * FROM check_test(
 /****************************************************************************/
 -- Test is_aggregate() and isnt_aggregate().
 SELECT * FROM check_test(
-    is_aggregate( 'public', 'tap_accum', ARRAY['anyelement'], 'whatever' ),
+    is_aggregate( 'public', 'tap_accum', ARRAY[etype()], 'whatever' ),
     true,
     'is_aggregate(schema, func, arg, desc)',
     'whatever',
@@ -1026,7 +1051,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    isnt_aggregate( 'public', 'tap_accum', ARRAY['anyelement'], 'whatever' ),
+    isnt_aggregate( 'public', 'tap_accum', ARRAY[etype()], 'whatever' ),
     false,
     'isnt_aggregate(schema, func, arg, desc)',
     'whatever',
@@ -1034,18 +1059,18 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    is_aggregate( 'public', 'tap_accum', ARRAY['anyelement'] ),
+    is_aggregate( 'public', 'tap_accum', ARRAY[etype()] ),
     true,
     'is_aggregate(schema, func, arg)',
-    'Function public.tap_accum(anyelement) should be an aggregate function',
+    'Function public.tap_accum(' || etype() || ') should be an aggregate function',
     ''
 );
 
 SELECT * FROM check_test(
-    isnt_aggregate( 'public', 'tap_accum', ARRAY['anyelement'] ),
+    isnt_aggregate( 'public', 'tap_accum', ARRAY[etype()] ),
     false,
     'isnt_aggregate(schema, func, arg)',
-    'Function public.tap_accum(anyelement) should not be an aggregate function',
+    'Function public.tap_accum(' || etype() || ') should not be an aggregate function',
     ''
 );
 
@@ -1114,7 +1139,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    is_aggregate( 'public', 'tap_accum', ARRAY['anyelement'], 'whatever' ),
+    is_aggregate( 'public', 'tap_accum', ARRAY[etype()], 'whatever' ),
     true,
     'is_aggregate(schema, func, arg, desc)',
     'whatever',
@@ -1122,7 +1147,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    isnt_aggregate( 'public', 'tap_accum', ARRAY['anyelement'], 'whatever' ),
+    isnt_aggregate( 'public', 'tap_accum', ARRAY[etype()], 'whatever' ),
     false,
     'isnt_aggregate(schema, func, arg, desc)',
     'whatever',
@@ -1130,18 +1155,18 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    is_aggregate( 'public', 'tap_accum', ARRAY['anyelement'] ),
+    is_aggregate( 'public', 'tap_accum', ARRAY[etype()] ),
     true,
     'is_aggregate(schema, func, arg)',
-    'Function public.tap_accum(anyelement) should be an aggregate function',
+    'Function public.tap_accum(' || etype() || ') should be an aggregate function',
     ''
 );
 
 SELECT * FROM check_test(
-    isnt_aggregate( 'public', 'tap_accum', ARRAY['anyelement'] ),
+    isnt_aggregate( 'public', 'tap_accum', ARRAY[etype()] ),
     false,
     'isnt_aggregate(schema, func, arg)',
-    'Function public.tap_accum(anyelement) should not be an aggregate function',
+    'Function public.tap_accum(' || etype() || ') should not be an aggregate function',
     ''
 );
 
@@ -1210,7 +1235,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    is_aggregate( 'tap_accum', ARRAY['anyelement'], 'whatever' ),
+    is_aggregate( 'tap_accum', ARRAY[etype()], 'whatever' ),
     true,
     'is_aggregate(func, arg, desc)',
     'whatever',
@@ -1218,7 +1243,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    isnt_aggregate( 'tap_accum', ARRAY['anyelement'], 'whatever' ),
+    isnt_aggregate( 'tap_accum', ARRAY[etype()], 'whatever' ),
     false,
     'isnt_aggregate(func, arg, desc)',
     'whatever',
@@ -1226,18 +1251,18 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    is_aggregate( 'tap_accum', ARRAY['anyelement'] ),
+    is_aggregate( 'tap_accum', ARRAY[etype()] ),
     true,
     'is_aggregate(func, arg)',
-    'Function tap_accum(anyelement) should be an aggregate function',
+    'Function tap_accum(' || etype() || ') should be an aggregate function',
     ''
 );
 
 SELECT * FROM check_test(
-    isnt_aggregate( 'tap_accum', ARRAY['anyelement'] ),
+    isnt_aggregate( 'tap_accum', ARRAY[etype()] ),
     false,
     'isnt_aggregate(func, arg)',
-    'Function tap_accum(anyelement) should not be an aggregate function',
+    'Function tap_accum(' || etype() || ') should not be an aggregate function',
     ''
 );
 

@@ -12,6 +12,10 @@ CREATE TABLE public.sometab(
     numb  NUMERIC(10, 2),
     myint NUMERIC(8)
 );
+-- This table has no pk
+CREATE TABLE public.pkless(
+    id INT NOT NULL UNIQUE
+);
 CREATE SCHEMA hide;
 CREATE TABLE hide.hidesometab(
     id    INT NOT NULL PRIMARY KEY,
@@ -66,18 +70,18 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    has_pk( 'pg_catalog', 'pg_class', 'pg_catalog.pg_class should have a pk' ),
+    has_pk( 'public', 'pkless', 'public.pkless should have a pk' ),
     false,
     'has_pk( schema, table, description ) fail',
-    'pg_catalog.pg_class should have a pk',
+    'public.pkless should have a pk',
     ''
 );
 
 SELECT * FROM check_test(
-    has_pk( 'pg_class', 'pg_class should have a pk' ),
+    has_pk( 'pkless', 'pkless should have a pk' ),
     false,
     'has_pk( table, description ) fail',
-    'pg_class should have a pk',
+    'pkless should have a pk',
     ''
 );
 
@@ -109,18 +113,18 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    hasnt_pk( 'pg_catalog', 'pg_class', 'pg_catalog.pg_class should not have a pk' ),
+    hasnt_pk( 'public', 'pkless', 'public.pkless should not have a pk' ),
     true,
     'hasnt_pk( schema, table, description ) pass',
-    'pg_catalog.pg_class should not have a pk',
+    'public.pkless should not have a pk',
     ''
 );
 
 SELECT * FROM check_test(
-    hasnt_pk( 'pg_class', 'pg_class should not have a pk' ),
+    hasnt_pk( 'pkless', 'pkless should not have a pk' ),
     true,
     'hasnt_pk( table, description ) pass',
-    'pg_class should not have a pk',
+    'pkless should not have a pk',
     ''
 );
 

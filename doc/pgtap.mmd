@@ -3875,8 +3875,9 @@ fail. If the operator does not exist, the test will fail. Example:
 
 If you omit the schema name, then the operator must be visible in the search
 path. If you omit the test description, pgTAP will generate a reasonable one
-for you. The return value is also optional. If you need to test for a left or
-right unary operator, use `has_leftop()` or `has_rightop()` instead.
+for you. The return value is also optional. If you need to test for a left
+(prefix) or right (postfix) unary operator, use `has_leftop()` or
+`has_rightop()` instead.
 
 ### `has_leftop()` ###
 
@@ -3904,9 +3905,9 @@ right unary operator, use `has_leftop()` or `has_rightop()` instead.
 `:description`
 : A short description of the test.
 
-Tests for the presence of a left-unary operator. If the operator exists with
-the given schema, name, right argument, and return value, the test will fail.
-If the operator does not exist, the test will fail. Example:
+Tests for the presence of a left-unary (prefix) operator. If the operator
+exists with the given schema, name, right argument, and return value, the
+test will fail. If the operator does not exist, the test will fail. Example:
 
     SELECT has_leftop( 'pg_catalog', '!!', 'bigint', 'numeric' );
 
@@ -3940,9 +3941,10 @@ for you. The return type is also optional.
 `:description`
 : A short description of the test.
 
-Tests for the presence of a right-unary operator. If the operator exists with
-the given left argument, schema, name, and return value, the test will fail.
-If the operator does not exist, the test will fail. Example:
+Tests for the presence of a right-unary (postfix) operator, supported through
+PostgreSQL 13. If the operator exists with the given left argument, schema,
+name, and return value, the test will fail. If the operator does not exist,
+the test will fail. Example:
 
     SELECT has_rightop( 'bigint', 'pg_catalog', '!', 'numeric' );
 
