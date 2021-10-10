@@ -2,7 +2,9 @@ version: "3"
 
 services:
   test:
-    build: .
+    build:
+      context: .
+      args: [pgtag]
     volumes:
       - ../:/pgtap
       - postgres:/var/lib/postgresql/data

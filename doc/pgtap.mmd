@@ -152,18 +152,29 @@ You can use it to run the test suite as a database super user like so:
 
     make test PGUSER=postgres
 
-To run the tests in a local docker environment for development, run:
+To run the tests in a local docker environment using the latest version
+of PostgreSQL, run:
 
     cd test
-    docker-compose build test
+    docker compose build test
     # start the postgres server in a docker container in the background
-    docker-compose up -d test
+    docker compose up -d test
     # run the regression tests
-    docker-compose exec test make install installcheck
-    # run the tests with pg_proove
+    docker compose exec test make install installcheck
+    # run the tests with pg_prove
     # "run" builds and installs pgTAP, runs "CREATE EXTENSION"
     # and then runs make test
-    docker-compose exec test run
+    docker compose exec test run
+    # Shut down the postgres container
+    docker compose down
+
+To test with a different version of PostgreSQL, set the environment variable
+`$pgtag` to one of the [PostgreSQL Docker](https://hub.docker.com/_/postgres)
+tags:
+
+    export pgtag=12-alpine
+
+Then run the above commands.
 
 Adding pgTAP to a Database
 --------------------------

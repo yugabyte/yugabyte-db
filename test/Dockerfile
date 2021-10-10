@@ -1,8 +1,9 @@
-FROM postgres:13.0-alpine
+ARG pgtag
+FROM postgres:${pgtag:-alpine}
 ENV POSTGRES_HOST_AUTH_METHOD trust
 
 RUN apk --no-cache add make perl-dev patch \
- && cpan TAP::Parser::SourceHandler::pgTAP
+ && cpan -T TAP::Parser::SourceHandler::pgTAP
 ENV PGUSER postgres
 
 WORKDIR /pgtap
