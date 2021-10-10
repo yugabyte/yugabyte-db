@@ -152,6 +152,19 @@ You can use it to run the test suite as a database super user like so:
 
     make test PGUSER=postgres
 
+To run the tests in a local docker environment for development, run:
+
+    cd test
+    docker-compose build test
+    # start the postgres server in a docker container in the background
+    docker-compose up -d test
+    # run the regression tests
+    docker-compose exec test make install installcheck
+    # run the tests with pg_proove
+    # "run" builds and installs pgTAP, runs "CREATE EXTENSION"
+    # and then runs make test
+    docker-compose exec test run
+
 Adding pgTAP to a Database
 --------------------------
 

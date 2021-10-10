@@ -28,6 +28,8 @@ Revision history for pgTAP
   for the report (#277).
 * Added `isnt_member_of()` (#38, #204). Thanks to Wolfgang Walther for the
   pull request (#249).
+* Added docker files for local test environment. Thanks to Wolfgang Walther for
+  the pull request (#250).
 
 1.1.0 2019-11-25T19:05:38Z
 --------------------------
