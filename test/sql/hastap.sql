@@ -1657,7 +1657,7 @@ SELECT * FROM check_test(
 -- Test hasnt_leftop().
 
 SELECT * FROM check_test(
-  hasnt_leftop( 'pg_catalog', '!!', 'bigint', 'numeric', 'desc' ),
+  hasnt_leftop( 'pg_catalog', '+', 'bigint', 'bigint', 'desc' ),
   false,
   'hasnt_leftop( schema, name, right, result, desc ) fail',
   'desc',
@@ -1665,15 +1665,15 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-  hasnt_leftop( 'pg_catalog', '!!', 'bigint', 'numeric'::name ),
+  hasnt_leftop( 'pg_catalog', '+', 'bigint', 'bigint'::name ),
   false,
   'hasnt_leftop( schema, name, right, result ) fail',
-  'Left operator pg_catalog.!!(NONE,bigint) RETURNS numeric should not exist',
+  'Left operator pg_catalog.+(NONE,bigint) RETURNS bigint should not exist',
   ''
 );
 
 SELECT * FROM check_test(
-  hasnt_leftop( '!!', 'bigint', 'numeric', 'desc' ),
+  hasnt_leftop( '+', 'bigint', 'bigint', 'desc' ),
   false,
   'hasnt_leftop( name, right, result, desc ) fail',
   'desc',
@@ -1681,15 +1681,15 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-  hasnt_leftop( '!!', 'bigint', 'numeric'::name ),
+  hasnt_leftop( '+', 'bigint', 'bigint'::name ),
   false,
   'hasnt_leftop( name, right, result ) fail',
-  'Left operator !!(NONE,bigint) RETURNS numeric should not exist',
+  'Left operator +(NONE,bigint) RETURNS bigint should not exist',
   ''
 );
 
 SELECT * FROM check_test(
-  hasnt_leftop( '!!', 'bigint', 'desc' ),
+  hasnt_leftop( '+', 'bigint', 'desc' ),
   false,
   'hasnt_leftop( name, right, desc ) fail',
   'desc',
@@ -1697,15 +1697,15 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-  hasnt_leftop( '!!', 'bigint' ),
+  hasnt_leftop( '+', 'bigint' ),
   false,
   'hasnt_leftop( name, right ) fail',
-  'Left operator !!(NONE,bigint) should not exist',
+  'Left operator +(NONE,bigint) should not exist',
   ''
 );
 
 SELECT * FROM check_test(
-  hasnt_leftop( 'pg_catalog', '!!', 'text', 'numeric', 'desc' ),
+  hasnt_leftop( 'pg_catalog', '+', 'text', 'bigint', 'desc' ),
   true,
   'hasnt_leftop( schema, name, right, result, desc )',
   'desc',
@@ -1713,15 +1713,15 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-  hasnt_leftop( 'pg_catalog', '!!', 'text', 'numeric'::name ),
+  hasnt_leftop( 'pg_catalog', '+', 'text', 'bigint'::name ),
   true,
   'hasnt_leftop( schema, name, right, result )',
-  'Left operator pg_catalog.!!(NONE,text) RETURNS numeric should not exist',
+  'Left operator pg_catalog.+(NONE,text) RETURNS bigint should not exist',
   ''
 );
 
 SELECT * FROM check_test(
-  hasnt_leftop( '!!', 'text', 'numeric', 'desc' ),
+  hasnt_leftop( '+', 'text', 'bigint', 'desc' ),
   true,
   'hasnt_leftop( name, right, result, desc )',
   'desc',
@@ -1729,15 +1729,15 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-  hasnt_leftop( '!!', 'text', 'numeric'::name ),
+  hasnt_leftop( '+', 'text', 'bigint'::name ),
   true,
   'hasnt_leftop( name, right, result )',
-  'Left operator !!(NONE,text) RETURNS numeric should not exist',
+  'Left operator +(NONE,text) RETURNS bigint should not exist',
   ''
 );
 
 SELECT * FROM check_test(
-  hasnt_leftop( '!!', 'text', 'desc' ),
+  hasnt_leftop( '+', 'text', 'desc' ),
   true,
   'hasnt_leftop( name, right, desc )',
   'desc',
@@ -1745,17 +1745,17 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-  hasnt_leftop( '!!', 'text' ),
+  hasnt_leftop( '+', 'text' ),
   true,
   'hasnt_leftop( name, right )',
-  'Left operator !!(NONE,text) should not exist',
+  'Left operator +(NONE,text) should not exist',
   ''
 );
 
 /****************************************************************************/
 -- Test has_rightop().
 
-CREATE FUNCTION test_rightop() RETURNS SETOF TEXT LANGUAGE plpgsql AS $$
+CREATE FUNCTION test_has_rightop() RETURNS SETOF TEXT LANGUAGE plpgsql AS $$
 DECLARE
     tap record;
 BEGIN
@@ -1857,7 +1857,7 @@ BEGIN
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
     ELSE
         -- PostgreSQL 14 dropped support for postfix operators, so mock the
-        -- output for the test to pass.
+        -- output for the tests to pass.
         FOR tap IN SELECT * FROM (VALUES
             ('has_rightop( left, schema, name, result, desc ) should pass'),
             ('has_rightop( left, schema, name, result, desc ) should have the proper description'),
@@ -1899,107 +1899,156 @@ BEGIN
     END IF;
 END;
 $$;
-SELECT * FROM test_rightop();
-
+SELECT * FROM test_has_rightop();
 
 /****************************************************************************/
 -- Test hasnt_rightop().
 
-SELECT * FROM check_test(
-  hasnt_rightop( 'bigint', 'pg_catalog', '!', 'numeric', 'desc' ),
-  false,
-  'hasnt_rightop( left, schema, name, result, desc ) fail',
-  'desc',
-  ''
-);
+CREATE FUNCTION test_hasnt_rightop() RETURNS SETOF TEXT LANGUAGE plpgsql AS $$
+DECLARE
+    tap record;
+BEGIN
+    IF pg_version_num() < 140000 THEN
+        FOR tap IN SELECT * FROM check_test(
+            hasnt_rightop( 'bigint', 'pg_catalog', '!', 'numeric', 'desc' ),
+            false,
+            'hasnt_rightop( left, schema, name, result, desc ) fail',
+            'desc',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
-SELECT * FROM check_test(
-  hasnt_rightop( 'bigint', 'pg_catalog', '!', 'numeric'::name ),
-  false,
-  'hasnt_rightop( left, schema, name, result ) fail',
-  'Right operator pg_catalog.!(bigint,NONE) RETURNS numeric should not exist',
-  ''
-);
+        FOR tap IN SELECT * FROM check_test(
+            hasnt_rightop( 'bigint', 'pg_catalog', '!', 'numeric'::name ),
+            false,
+            'hasnt_rightop( left, schema, name, result ) fail',
+            'Right operator pg_catalog.!(bigint,NONE) RETURNS numeric should not exist',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
-SELECT * FROM check_test(
-  hasnt_rightop( 'bigint', '!', 'numeric', 'desc' ),
-  false,
-  'hasnt_rightop( left, name, result, desc ) fail',
-  'desc',
-  ''
-);
+        FOR tap IN SELECT * FROM check_test(
+            hasnt_rightop( 'bigint', '!', 'numeric', 'desc' ),
+            false,
+            'hasnt_rightop( left, name, result, desc ) fail',
+            'desc',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
-SELECT * FROM check_test(
-  hasnt_rightop( 'bigint', '!', 'numeric'::name ),
-  false,
-  'hasnt_rightop( left, name, result ) fail',
-  'Right operator !(bigint,NONE) RETURNS numeric should not exist',
-  ''
-);
+        FOR tap IN SELECT * FROM check_test(
+            hasnt_rightop( 'bigint', '!', 'numeric'::name ),
+            false,
+            'hasnt_rightop( left, name, result ) fail',
+            'Right operator !(bigint,NONE) RETURNS numeric should not exist',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
-SELECT * FROM check_test(
-  hasnt_rightop( 'bigint', '!', 'desc' ),
-  false,
-  'hasnt_rightop( left, name, desc ) fail',
-  'desc',
-  ''
-);
+        FOR tap IN SELECT * FROM check_test(
+            hasnt_rightop( 'bigint', '!', 'desc' ),
+            false,
+            'hasnt_rightop( left, name, desc ) fail',
+            'desc',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
-SELECT * FROM check_test(
-  hasnt_rightop( 'bigint', '!' ),
-  false,
-  'hasnt_rightop( left, name ) fail',
-  'Right operator !(bigint,NONE) should not exist',
-  ''
-);
+        FOR tap IN SELECT * FROM check_test(
+            hasnt_rightop( 'bigint', '!' ),
+            false,
+            'hasnt_rightop( left, name ) fail',
+            'Right operator !(bigint,NONE) should not exist',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
-SELECT * FROM check_test(
-  hasnt_rightop( 'text', 'pg_catalog', '!', 'numeric', 'desc' ),
-  true,
-  'hasnt_rightop( left, schema, name, result, desc )',
-  'desc',
-  ''
-);
+        FOR tap IN SELECT * FROM check_test(
+            hasnt_rightop( 'text', 'pg_catalog', '!', 'numeric', 'desc' ),
+            true,
+            'hasnt_rightop( left, schema, name, result, desc )',
+            'desc',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
-SELECT * FROM check_test(
-  hasnt_rightop( 'text', 'pg_catalog', '!', 'numeric'::name ),
-  true,
-  'hasnt_rightop( left, schema, name, result )',
-  'Right operator pg_catalog.!(text,NONE) RETURNS numeric should not exist',
-  ''
-);
+        FOR tap IN SELECT * FROM check_test(
+            hasnt_rightop( 'text', 'pg_catalog', '!', 'numeric'::name ),
+            true,
+            'hasnt_rightop( left, schema, name, result )',
+            'Right operator pg_catalog.!(text,NONE) RETURNS numeric should not exist',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
-SELECT * FROM check_test(
-  hasnt_rightop( 'text', '!', 'numeric', 'desc' ),
-  true,
-  'hasnt_rightop( left, name, result, desc )',
-  'desc',
-  ''
-);
+        FOR tap IN SELECT * FROM check_test(
+            hasnt_rightop( 'text', '!', 'numeric', 'desc' ),
+            true,
+            'hasnt_rightop( left, name, result, desc )',
+            'desc',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
-SELECT * FROM check_test(
-  hasnt_rightop( 'text', '!', 'numeric'::name ),
-  true,
-  'hasnt_rightop( left, name, result )',
-  'Right operator !(text,NONE) RETURNS numeric should not exist',
-  ''
-);
+        FOR tap IN SELECT * FROM check_test(
+            hasnt_rightop( 'text', '!', 'numeric'::name ),
+            true,
+            'hasnt_rightop( left, name, result )',
+            'Right operator !(text,NONE) RETURNS numeric should not exist',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
-SELECT * FROM check_test(
-  hasnt_rightop( 'text', '!', 'desc' ),
-  true,
-  'hasnt_rightop( left, name, desc )',
-  'desc',
-  ''
-);
+        FOR tap IN SELECT * FROM check_test(
+            hasnt_rightop( 'text', '!', 'desc' ),
+            true,
+            'hasnt_rightop( left, name, desc )',
+            'desc',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
-SELECT * FROM check_test(
-  hasnt_rightop( 'text', '!' ),
-  true,
-  'hasnt_rightop( left, name )',
-  'Right operator !(text,NONE) should not exist',
-  ''
-);
+        FOR tap IN SELECT * FROM check_test(
+            hasnt_rightop( 'text', '!' ),
+            true,
+            'hasnt_rightop( left, name )',
+            'Right operator !(text,NONE) should not exist',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+    ELSE
+        -- PostgreSQL 14 dropped support for postfix operators, so mock the
+        -- output for the tests to pass.
+        FOR tap IN SELECT * FROM (VALUES
+            ('hasnt_rightop( left, schema, name, result, desc ) fail should fail'),
+            ('hasnt_rightop( left, schema, name, result, desc ) fail should have the proper description'),
+            ('hasnt_rightop( left, schema, name, result, desc ) fail should have the proper diagnostics'),
+            ('hasnt_rightop( left, schema, name, result ) fail should fail'),
+            ('hasnt_rightop( left, schema, name, result ) fail should have the proper description'),
+            ('hasnt_rightop( left, schema, name, result ) fail should have the proper diagnostics'),
+            ('hasnt_rightop( left, name, result, desc ) fail should fail'),
+            ('hasnt_rightop( left, name, result, desc ) fail should have the proper description'),
+            ('hasnt_rightop( left, name, result, desc ) fail should have the proper diagnostics'),
+            ('hasnt_rightop( left, name, result ) fail should fail'),
+            ('hasnt_rightop( left, name, result ) fail should have the proper description'),
+            ('hasnt_rightop( left, name, result ) fail should have the proper diagnostics'),
+            ('hasnt_rightop( left, name, desc ) fail should fail'),
+            ('hasnt_rightop( left, name, desc ) fail should have the proper description'),
+            ('hasnt_rightop( left, name, desc ) fail should have the proper diagnostics'),
+            ('hasnt_rightop( left, name ) fail should fail'),
+            ('hasnt_rightop( left, name ) fail should have the proper description'),
+            ('hasnt_rightop( left, name ) fail should have the proper diagnostics'),
+            ('hasnt_rightop( left, schema, name, result, desc ) should pass'),
+            ('hasnt_rightop( left, schema, name, result, desc ) should have the proper description'),
+            ('hasnt_rightop( left, schema, name, result, desc ) should have the proper diagnostics'),
+            ('hasnt_rightop( left, schema, name, result ) should pass'),
+            ('hasnt_rightop( left, schema, name, result ) should have the proper description'),
+            ('hasnt_rightop( left, schema, name, result ) should have the proper diagnostics'),
+            ('hasnt_rightop( left, name, result, desc ) should pass'),
+            ('hasnt_rightop( left, name, result, desc ) should have the proper description'),
+            ('hasnt_rightop( left, name, result, desc ) should have the proper diagnostics'),
+            ('hasnt_rightop( left, name, result ) should pass'),
+            ('hasnt_rightop( left, name, result ) should have the proper description'),
+            ('hasnt_rightop( left, name, result ) should have the proper diagnostics'),
+            ('hasnt_rightop( left, name, desc ) should pass'),
+            ('hasnt_rightop( left, name, desc ) should have the proper description'),
+            ('hasnt_rightop( left, name, desc ) should have the proper diagnostics'),
+            ('hasnt_rightop( left, name ) should pass'),
+            ('hasnt_rightop( left, name ) should have the proper description'),
+            ('hasnt_rightop( left, name ) should have the proper diagnostics')
+        ) AS A(b) LOOP RETURN NEXT pass(tap.b); END LOOP;
+    END IF;
+END;
+$$;
+SELECT * FROM test_hasnt_rightop();
 
 /****************************************************************************/
 -- Test has_language() and hasnt_language().
