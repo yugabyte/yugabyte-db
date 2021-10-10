@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(896);
+SELECT plan(1004);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -1456,6 +1456,105 @@ SELECT * FROM check_test(
 );
 
 /****************************************************************************/
+-- Test hasnt_operator().
+
+SELECT * FROM check_test(
+  hasnt_operator( 'integer', 'pg_catalog', '<=', 'integer', 'boolean', 'desc' ),
+  false,
+  'hasnt_operator( left, schema, name, right, result, desc ) fail',
+  'desc',
+  ''
+);
+
+SELECT * FROM check_test(
+  hasnt_operator( 'integer', 'pg_catalog', '<=', 'integer', 'boolean'::name ),
+  false,
+  'hasnt_operator( left, schema, name, right, result ) fail',
+  'Operator pg_catalog.<=(integer,integer) RETURNS boolean should not exist',
+  ''
+);
+
+SELECT * FROM check_test(
+  hasnt_operator( 'integer', '<=', 'integer', 'boolean', 'desc' ),
+  false,
+  'hasnt_operator( left, name, right, result, desc ) fail',
+  'desc',
+  ''
+);
+
+SELECT * FROM check_test(
+  hasnt_operator( 'integer', '<=', 'integer', 'boolean'::name ),
+  false,
+  'hasnt_operator( left, name, right, result ) fail',
+  'Operator <=(integer,integer) RETURNS boolean should not exist',
+  ''
+);
+
+SELECT * FROM check_test(
+  hasnt_operator( 'integer', '<=', 'integer', 'desc' ),
+  false,
+  'hasnt_operator( left, name, right, desc ) fail',
+  'desc',
+  ''
+);
+
+SELECT * FROM check_test(
+  hasnt_operator( 'integer', '<=', 'integer'::name ),
+  false,
+  'hasnt_operator( left, name, right ) fail',
+  'Operator <=(integer,integer) should not exist',
+  ''
+);
+
+SELECT * FROM check_test(
+  hasnt_operator( 'integer', 'pg_catalog', '<=', 'text', 'boolean', 'desc' ),
+  true,
+  'hasnt_operator( left, schema, name, right, result, desc )',
+  'desc',
+  ''
+);
+
+SELECT * FROM check_test(
+  hasnt_operator( 'integer', 'pg_catalog', '<=', 'text', 'boolean'::name ),
+  true,
+  'hasnt_operator( left, schema, name, right, result )',
+  'Operator pg_catalog.<=(integer,text) RETURNS boolean should not exist',
+  ''
+);
+
+SELECT * FROM check_test(
+  hasnt_operator( 'integer', '<=', 'text', 'boolean', 'desc' ),
+  true,
+  'hasnt_operator( left, name, right, result, desc )',
+  'desc',
+  ''
+);
+
+SELECT * FROM check_test(
+  hasnt_operator( 'integer', '<=', 'text', 'boolean'::name ),
+  true,
+  'hasnt_operator( left, name, right, result )',
+  'Operator <=(integer,text) RETURNS boolean should not exist',
+  ''
+);
+
+SELECT * FROM check_test(
+  hasnt_operator( 'integer', '<=', 'text', 'desc' ),
+  true,
+  'hasnt_operator( left, name, right, desc )',
+  'desc',
+  ''
+);
+
+SELECT * FROM check_test(
+  hasnt_operator( 'integer', '<=', 'text'::name ),
+  true,
+  'hasnt_operator( left, name, right )',
+  'Operator <=(integer,text) should not exist',
+  ''
+);
+
+/****************************************************************************/
 -- Test has_leftop().
 
 SELECT * FROM check_test(
@@ -1551,6 +1650,105 @@ SELECT * FROM check_test(
   false,
   'has_leftop( name, right ) fail',
   'Left operator +(NONE,text) should exist',
+  ''
+);
+
+/****************************************************************************/
+-- Test hasnt_leftop().
+
+SELECT * FROM check_test(
+  hasnt_leftop( 'pg_catalog', '!!', 'bigint', 'numeric', 'desc' ),
+  false,
+  'hasnt_leftop( schema, name, right, result, desc ) fail',
+  'desc',
+  ''
+);
+
+SELECT * FROM check_test(
+  hasnt_leftop( 'pg_catalog', '!!', 'bigint', 'numeric'::name ),
+  false,
+  'hasnt_leftop( schema, name, right, result ) fail',
+  'Left operator pg_catalog.!!(NONE,bigint) RETURNS numeric should not exist',
+  ''
+);
+
+SELECT * FROM check_test(
+  hasnt_leftop( '!!', 'bigint', 'numeric', 'desc' ),
+  false,
+  'hasnt_leftop( name, right, result, desc ) fail',
+  'desc',
+  ''
+);
+
+SELECT * FROM check_test(
+  hasnt_leftop( '!!', 'bigint', 'numeric'::name ),
+  false,
+  'hasnt_leftop( name, right, result ) fail',
+  'Left operator !!(NONE,bigint) RETURNS numeric should not exist',
+  ''
+);
+
+SELECT * FROM check_test(
+  hasnt_leftop( '!!', 'bigint', 'desc' ),
+  false,
+  'hasnt_leftop( name, right, desc ) fail',
+  'desc',
+  ''
+);
+
+SELECT * FROM check_test(
+  hasnt_leftop( '!!', 'bigint' ),
+  false,
+  'hasnt_leftop( name, right ) fail',
+  'Left operator !!(NONE,bigint) should not exist',
+  ''
+);
+
+SELECT * FROM check_test(
+  hasnt_leftop( 'pg_catalog', '!!', 'text', 'numeric', 'desc' ),
+  true,
+  'hasnt_leftop( schema, name, right, result, desc )',
+  'desc',
+  ''
+);
+
+SELECT * FROM check_test(
+  hasnt_leftop( 'pg_catalog', '!!', 'text', 'numeric'::name ),
+  true,
+  'hasnt_leftop( schema, name, right, result )',
+  'Left operator pg_catalog.!!(NONE,text) RETURNS numeric should not exist',
+  ''
+);
+
+SELECT * FROM check_test(
+  hasnt_leftop( '!!', 'text', 'numeric', 'desc' ),
+  true,
+  'hasnt_leftop( name, right, result, desc )',
+  'desc',
+  ''
+);
+
+SELECT * FROM check_test(
+  hasnt_leftop( '!!', 'text', 'numeric'::name ),
+  true,
+  'hasnt_leftop( name, right, result )',
+  'Left operator !!(NONE,text) RETURNS numeric should not exist',
+  ''
+);
+
+SELECT * FROM check_test(
+  hasnt_leftop( '!!', 'text', 'desc' ),
+  true,
+  'hasnt_leftop( name, right, desc )',
+  'desc',
+  ''
+);
+
+SELECT * FROM check_test(
+  hasnt_leftop( '!!', 'text' ),
+  true,
+  'hasnt_leftop( name, right )',
+  'Left operator !!(NONE,text) should not exist',
   ''
 );
 
@@ -1703,6 +1901,105 @@ END;
 $$;
 SELECT * FROM test_rightop();
 
+
+/****************************************************************************/
+-- Test hasnt_rightop().
+
+SELECT * FROM check_test(
+  hasnt_rightop( 'bigint', 'pg_catalog', '!', 'numeric', 'desc' ),
+  false,
+  'hasnt_rightop( left, schema, name, result, desc ) fail',
+  'desc',
+  ''
+);
+
+SELECT * FROM check_test(
+  hasnt_rightop( 'bigint', 'pg_catalog', '!', 'numeric'::name ),
+  false,
+  'hasnt_rightop( left, schema, name, result ) fail',
+  'Right operator pg_catalog.!(bigint,NONE) RETURNS numeric should not exist',
+  ''
+);
+
+SELECT * FROM check_test(
+  hasnt_rightop( 'bigint', '!', 'numeric', 'desc' ),
+  false,
+  'hasnt_rightop( left, name, result, desc ) fail',
+  'desc',
+  ''
+);
+
+SELECT * FROM check_test(
+  hasnt_rightop( 'bigint', '!', 'numeric'::name ),
+  false,
+  'hasnt_rightop( left, name, result ) fail',
+  'Right operator !(bigint,NONE) RETURNS numeric should not exist',
+  ''
+);
+
+SELECT * FROM check_test(
+  hasnt_rightop( 'bigint', '!', 'desc' ),
+  false,
+  'hasnt_rightop( left, name, desc ) fail',
+  'desc',
+  ''
+);
+
+SELECT * FROM check_test(
+  hasnt_rightop( 'bigint', '!' ),
+  false,
+  'hasnt_rightop( left, name ) fail',
+  'Right operator !(bigint,NONE) should not exist',
+  ''
+);
+
+SELECT * FROM check_test(
+  hasnt_rightop( 'text', 'pg_catalog', '!', 'numeric', 'desc' ),
+  true,
+  'hasnt_rightop( left, schema, name, result, desc )',
+  'desc',
+  ''
+);
+
+SELECT * FROM check_test(
+  hasnt_rightop( 'text', 'pg_catalog', '!', 'numeric'::name ),
+  true,
+  'hasnt_rightop( left, schema, name, result )',
+  'Right operator pg_catalog.!(text,NONE) RETURNS numeric should not exist',
+  ''
+);
+
+SELECT * FROM check_test(
+  hasnt_rightop( 'text', '!', 'numeric', 'desc' ),
+  true,
+  'hasnt_rightop( left, name, result, desc )',
+  'desc',
+  ''
+);
+
+SELECT * FROM check_test(
+  hasnt_rightop( 'text', '!', 'numeric'::name ),
+  true,
+  'hasnt_rightop( left, name, result )',
+  'Right operator !(text,NONE) RETURNS numeric should not exist',
+  ''
+);
+
+SELECT * FROM check_test(
+  hasnt_rightop( 'text', '!', 'desc' ),
+  true,
+  'hasnt_rightop( left, name, desc )',
+  'desc',
+  ''
+);
+
+SELECT * FROM check_test(
+  hasnt_rightop( 'text', '!' ),
+  true,
+  'hasnt_rightop( left, name )',
+  'Right operator !(text,NONE) should not exist',
+  ''
+);
 
 /****************************************************************************/
 -- Test has_language() and hasnt_language().

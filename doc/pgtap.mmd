@@ -3893,7 +3893,7 @@ cast does *not* exist.
 
 Tests for the presence of a binary operator. If the operator exists with the
 given schema, name, left and right arguments, and return value, the test will
-fail. If the operator does not exist, the test will fail. Example:
+pass. If the operator does not exist, the test will fail. Example:
 
     SELECT has_operator( 'integer', 'pg_catalog', '<=', 'integer', 'boolean' );
 
@@ -3902,6 +3902,38 @@ path. If you omit the test description, pgTAP will generate a reasonable one
 for you. The return value is also optional. If you need to test for a left
 (prefix) or right (postfix) unary operator, use `has_leftop()` or
 `has_rightop()` instead.
+
+### `hasnt_operator()` ###
+
+    SELECT hasnt_operator( :left_type, :schema, :name, :right_type, :return_type, :description );
+    SELECT hasnt_operator( :left_type, :schema, :name, :right_type, :return_type );
+    SELECT hasnt_operator( :left_type, :name, :right_type, :return_type, :description );
+    SELECT hasnt_operator( :left_type, :name, :right_type, :return_type );
+    SELECT hasnt_operator( :left_type, :name, :right_type, :description );
+    SELECT hasnt_operator( :left_type, :name, :right_type );
+
+**Parameters**
+
+`:left_type`
+: Data type of the left operand.
+
+`:schema`
+: Schema in which to find the operator.
+
+`:name`
+: Name of the operator.
+
+`:right_type`
+: Data type of the right operand.
+
+`:return_type`
+: Data type of the return value.
+
+`:description`
+: A short description of the test.
+
+This function is the inverse of `has_operator()`. The test passes if the
+specified operator does *not* exist.
 
 ### `has_leftop()` ###
 
@@ -3939,6 +3971,35 @@ If you omit the schema name, then the operator must be visible in the search
 path. If you omit the test description, pgTAP will generate a reasonable one
 for you. The return type is also optional.
 
+### `hasnt_leftop()` ###
+
+    SELECT hasnt_leftop( :schema, :name, :type, :return_type, :description );
+    SELECT hasnt_leftop( :schema, :name, :type, :return_type );
+    SELECT hasnt_leftop( :name, :type, :return_type, :description );
+    SELECT hasnt_leftop( :name, :type, :return_type );
+    SELECT hasnt_leftop( :name, :type, :description );
+    SELECT hasnt_leftop( :name, :type );
+
+**Parameters**
+
+`:schema`
+: Schema in which to find the operator.
+
+`:name`
+: Name of the operator.
+
+`:type`
+: Data type of the operand.
+
+`:return_type`
+: Data type of the return value.
+
+`:description`
+: A short description of the test.
+
+This function is the inverse of `has_leftop()`. The test passes if the
+specified operator does *not* exist.
+
 ### `has_rightop()` ###
 
     SELECT has_rightop( :schema, :name, :type, :return_type, :description );
@@ -3975,6 +4036,35 @@ the test will fail. Example:
 If you omit the schema name, then the operator must be visible in the search
 path. If you omit the test description, pgTAP will generate a reasonable one
 for you. The return type is also optional.
+
+### `hasnt_rightop()` ###
+
+    SELECT hasnt_rightop( :schema, :name, :type, :return_type, :description );
+    SELECT hasnt_rightop( :schema, :name, :type, :return_type );
+    SELECT hasnt_rightop( :name, :type, :return_type, :description );
+    SELECT hasnt_rightop( :name, :type, :return_type );
+    SELECT hasnt_rightop( :name, :type, :description );
+    SELECT hasnt_rightop( :name, :type );
+
+**Parameters**
+
+`:schema`
+: Schema in which to find the operator.
+
+`:name`
+: Name of the operator.
+
+`:type`
+: Data type of the operand.
+
+`:return_type`
+: Data type of the return value.
+
+`:description`
+: A short description of the test.
+
+This function is the inverse of `hasnt_rightop()`. The test passes if the
+specified operator does *not* exist.
 
 ### `has_opclass()` ###
 

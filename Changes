@@ -30,6 +30,8 @@ Revision history for pgTAP
   pull request (#249).
 * Added docker files for local test environment. Thanks to Wolfgang Walther for
   the pull request (#250).
+* Added `hasnt_operator()`, `hasnt_leftop()`, `hasnt_rightop()` (#38). Thanks to
+  Wolfgang Walther for the pull request (#251).
 
 1.1.0 2019-11-25T19:05:38Z
 --------------------------

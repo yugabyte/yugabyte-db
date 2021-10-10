@@ -4328,6 +4328,54 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE SQL;
 
+-- hasnt_operator( left_type, schema, name, right_type, return_type, description )
+CREATE OR REPLACE FUNCTION hasnt_operator ( NAME, NAME, NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _op_exists($1, $2, $3, $4, $5 ), $6 );
+$$ LANGUAGE SQL;
+
+-- hasnt_operator( left_type, schema, name, right_type, return_type )
+CREATE OR REPLACE FUNCTION hasnt_operator ( NAME, NAME, NAME, NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+         NOT _op_exists($1, $2, $3, $4, $5 ),
+        'Operator ' || quote_ident($2) || '.' || $3 || '(' || $1 || ',' || $4
+        || ') RETURNS ' || $5 || ' should not exist'
+    );
+$$ LANGUAGE SQL;
+
+-- hasnt_operator( left_type, name, right_type, return_type, description )
+CREATE OR REPLACE FUNCTION hasnt_operator ( NAME, NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _op_exists($1, $2, $3, $4 ), $5 );
+$$ LANGUAGE SQL;
+
+-- hasnt_operator( left_type, name, right_type, return_type )
+CREATE OR REPLACE FUNCTION hasnt_operator ( NAME, NAME, NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+         NOT _op_exists($1, $2, $3, $4 ),
+        'Operator ' ||  $2 || '(' || $1 || ',' || $3
+        || ') RETURNS ' || $4 || ' should not exist'
+    );
+$$ LANGUAGE SQL;
+
+-- hasnt_operator( left_type, name, right_type, description )
+CREATE OR REPLACE FUNCTION hasnt_operator ( NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _op_exists($1, $2, $3 ), $4 );
+$$ LANGUAGE SQL;
+
+-- hasnt_operator( left_type, name, right_type )
+CREATE OR REPLACE FUNCTION hasnt_operator ( NAME, NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+         NOT _op_exists($1, $2, $3 ),
+        'Operator ' ||  $2 || '(' || $1 || ',' || $3
+        || ') should not exist'
+    );
+$$ LANGUAGE SQL;
+
 -- has_leftop( schema, name, right_type, return_type, description )
 CREATE OR REPLACE FUNCTION has_leftop ( NAME, NAME, NAME, NAME, TEXT )
 RETURNS TEXT AS $$
@@ -4371,6 +4419,52 @@ RETURNS TEXT AS $$
     SELECT ok(
          _op_exists(NULL, $1, $2 ),
         'Left operator ' || $1 || '(NONE,' || $2 || ') should exist'
+    );
+$$ LANGUAGE SQL;
+
+-- hasnt_leftop( schema, name, right_type, return_type, description )
+CREATE OR REPLACE FUNCTION hasnt_leftop ( NAME, NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _op_exists(NULL, $1, $2, $3, $4), $5 );
+$$ LANGUAGE SQL;
+
+-- hasnt_leftop( schema, name, right_type, return_type )
+CREATE OR REPLACE FUNCTION hasnt_leftop ( NAME, NAME, NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+         NOT _op_exists(NULL, $1, $2, $3, $4 ),
+        'Left operator ' || quote_ident($1) || '.' || $2 || '(NONE,'
+        || $3 || ') RETURNS ' || $4 || ' should not exist'
+    );
+$$ LANGUAGE SQL;
+
+-- hasnt_leftop( name, right_type, return_type, description )
+CREATE OR REPLACE FUNCTION hasnt_leftop ( NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _op_exists(NULL, $1, $2, $3), $4 );
+$$ LANGUAGE SQL;
+
+-- hasnt_leftop( name, right_type, return_type )
+CREATE OR REPLACE FUNCTION hasnt_leftop ( NAME, NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+         NOT _op_exists(NULL, $1, $2, $3 ),
+        'Left operator ' || $1 || '(NONE,' || $2 || ') RETURNS ' || $3 || ' should not exist'
+    );
+$$ LANGUAGE SQL;
+
+-- hasnt_leftop( name, right_type, description )
+CREATE OR REPLACE FUNCTION hasnt_leftop ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _op_exists(NULL, $1, $2), $3 );
+$$ LANGUAGE SQL;
+
+-- hasnt_leftop( name, right_type )
+CREATE OR REPLACE FUNCTION hasnt_leftop ( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+         NOT _op_exists(NULL, $1, $2 ),
+        'Left operator ' || $1 || '(NONE,' || $2 || ') should not exist'
     );
 $$ LANGUAGE SQL;
 
@@ -4418,6 +4512,53 @@ RETURNS TEXT AS $$
     SELECT ok(
          _op_exists($1, $2, NULL ),
         'Right operator ' || $2 || '(' || $1 || ',NONE) should exist'
+    );
+$$ LANGUAGE SQL;
+
+-- hasnt_rightop( left_type, schema, name, return_type, description )
+CREATE OR REPLACE FUNCTION hasnt_rightop ( NAME, NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _op_exists( $1, $2, $3, NULL, $4), $5 );
+$$ LANGUAGE SQL;
+
+-- hasnt_rightop( left_type, schema, name, return_type )
+CREATE OR REPLACE FUNCTION hasnt_rightop ( NAME, NAME, NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+         NOT _op_exists($1, $2, $3, NULL, $4 ),
+        'Right operator ' || quote_ident($2) || '.' || $3 || '('
+        || $1 || ',NONE) RETURNS ' || $4 || ' should not exist'
+    );
+$$ LANGUAGE SQL;
+
+-- hasnt_rightop( left_type, name, return_type, description )
+CREATE OR REPLACE FUNCTION hasnt_rightop ( NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _op_exists( $1, $2, NULL, $3), $4 );
+$$ LANGUAGE SQL;
+
+-- hasnt_rightop( left_type, name, return_type )
+CREATE OR REPLACE FUNCTION hasnt_rightop ( NAME, NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+         NOT _op_exists($1, $2, NULL, $3 ),
+        'Right operator ' || $2 || '('
+        || $1 || ',NONE) RETURNS ' || $3 || ' should not exist'
+    );
+$$ LANGUAGE SQL;
+
+-- hasnt_rightop( left_type, name, description )
+CREATE OR REPLACE FUNCTION hasnt_rightop ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _op_exists( $1, $2, NULL), $3 );
+$$ LANGUAGE SQL;
+
+-- hasnt_rightop( left_type, name )
+CREATE OR REPLACE FUNCTION hasnt_rightop ( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+         NOT _op_exists($1, $2, NULL ),
+        'Right operator ' || $2 || '(' || $1 || ',NONE) should not exist'
     );
 $$ LANGUAGE SQL;
 

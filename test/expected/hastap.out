@@ -1,5 +1,5 @@
 \unset ECHO
-1..896
+1..1004
 ok 1 - has_tablespace(non-existent tablespace) should fail
 ok 2 - has_tablespace(non-existent tablespace) should have the proper description
 ok 3 - has_tablespace(non-existent tablespace) should have the proper diagnostics
@@ -512,387 +512,495 @@ ok 509 - has_operator( left, name, right, desc ) fail should have the proper dia
 ok 510 - has_operator( left, name, right ) fail should fail
 ok 511 - has_operator( left, name, right ) fail should have the proper description
 ok 512 - has_operator( left, name, right ) fail should have the proper diagnostics
-ok 513 - has_leftop( schema, name, right, result, desc ) should pass
-ok 514 - has_leftop( schema, name, right, result, desc ) should have the proper description
-ok 515 - has_leftop( schema, name, right, result, desc ) should have the proper diagnostics
-ok 516 - has_leftop( schema, name, right, result ) should pass
-ok 517 - has_leftop( schema, name, right, result ) should have the proper description
-ok 518 - has_leftop( schema, name, right, result ) should have the proper diagnostics
-ok 519 - has_leftop( name, right, result, desc ) should pass
-ok 520 - has_leftop( name, right, result, desc ) should have the proper description
-ok 521 - has_leftop( name, right, result, desc ) should have the proper diagnostics
-ok 522 - has_leftop( name, right, result ) should pass
-ok 523 - has_leftop( name, right, result ) should have the proper description
-ok 524 - has_leftop( name, right, result ) should have the proper diagnostics
-ok 525 - has_leftop( name, right, desc ) should pass
-ok 526 - has_leftop( name, right, desc ) should have the proper description
-ok 527 - has_leftop( name, right, desc ) should have the proper diagnostics
-ok 528 - has_leftop( name, right ) should pass
-ok 529 - has_leftop( name, right ) should have the proper description
-ok 530 - has_leftop( name, right ) should have the proper diagnostics
-ok 531 - has_leftop( schema, name, right, result, desc ) fail should fail
-ok 532 - has_leftop( schema, name, right, result, desc ) fail should have the proper description
-ok 533 - has_leftop( schema, name, right, result, desc ) fail should have the proper diagnostics
-ok 534 - has_leftop( schema, name, right, result ) fail should fail
-ok 535 - has_leftop( schema, name, right, result ) fail should have the proper description
-ok 536 - has_leftop( schema, name, right, result ) fail should have the proper diagnostics
-ok 537 - has_leftop( name, right, result, desc ) fail should fail
-ok 538 - has_leftop( name, right, result, desc ) fail should have the proper description
-ok 539 - has_leftop( name, right, result, desc ) fail should have the proper diagnostics
-ok 540 - has_leftop( name, right, result ) fail should fail
-ok 541 - has_leftop( name, right, result ) fail should have the proper description
-ok 542 - has_leftop( name, right, result ) fail should have the proper diagnostics
-ok 543 - has_leftop( name, right, desc ) fail should fail
-ok 544 - has_leftop( name, right, desc ) fail should have the proper description
-ok 545 - has_leftop( name, right, desc ) fail should have the proper diagnostics
-ok 546 - has_leftop( name, right ) fail should fail
-ok 547 - has_leftop( name, right ) fail should have the proper description
-ok 548 - has_leftop( name, right ) fail should have the proper diagnostics
-ok 549 - has_rightop( left, schema, name, result, desc ) should pass
-ok 550 - has_rightop( left, schema, name, result, desc ) should have the proper description
-ok 551 - has_rightop( left, schema, name, result, desc ) should have the proper diagnostics
-ok 552 - has_rightop( left, schema, name, result ) should pass
-ok 553 - has_rightop( left, schema, name, result ) should have the proper description
-ok 554 - has_rightop( left, schema, name, result ) should have the proper diagnostics
-ok 555 - has_rightop( left, name, result, desc ) should pass
-ok 556 - has_rightop( left, name, result, desc ) should have the proper description
-ok 557 - has_rightop( left, name, result, desc ) should have the proper diagnostics
-ok 558 - has_rightop( left, name, result ) should pass
-ok 559 - has_rightop( left, name, result ) should have the proper description
-ok 560 - has_rightop( left, name, result ) should have the proper diagnostics
-ok 561 - has_rightop( left, name, desc ) should pass
-ok 562 - has_rightop( left, name, desc ) should have the proper description
-ok 563 - has_rightop( left, name, desc ) should have the proper diagnostics
-ok 564 - has_rightop( left, name ) should pass
-ok 565 - has_rightop( left, name ) should have the proper description
-ok 566 - has_rightop( left, name ) should have the proper diagnostics
-ok 567 - has_rightop( left, schema, name, result, desc ) fail should fail
-ok 568 - has_rightop( left, schema, name, result, desc ) fail should have the proper description
-ok 569 - has_rightop( left, schema, name, result, desc ) fail should have the proper diagnostics
-ok 570 - has_rightop( left, schema, name, result ) fail should fail
-ok 571 - has_rightop( left, schema, name, result ) fail should have the proper description
-ok 572 - has_rightop( left, schema, name, result ) fail should have the proper diagnostics
-ok 573 - has_rightop( left, name, result, desc ) fail should fail
-ok 574 - has_rightop( left, name, result, desc ) fail should have the proper description
-ok 575 - has_rightop( left, name, result, desc ) fail should have the proper diagnostics
-ok 576 - has_rightop( left, name, result ) fail should fail
-ok 577 - has_rightop( left, name, result ) fail should have the proper description
-ok 578 - has_rightop( left, name, result ) fail should have the proper diagnostics
-ok 579 - has_rightop( left, name, desc ) fail should fail
-ok 580 - has_rightop( left, name, desc ) fail should have the proper description
-ok 581 - has_rightop( left, name, desc ) fail should have the proper diagnostics
-ok 582 - has_rightop( left, name ) fail should fail
-ok 583 - has_rightop( left, name ) fail should have the proper description
-ok 584 - has_rightop( left, name ) fail should have the proper diagnostics
-ok 585 - has_language(language) should pass
-ok 586 - has_language(language) should have the proper description
-ok 587 - has_language(language) should have the proper diagnostics
-ok 588 - has_language(language, desc) should pass
-ok 589 - has_language(language, desc) should have the proper description
-ok 590 - has_language(language, desc) should have the proper diagnostics
-ok 591 - has_language(nonexistent language) should fail
-ok 592 - has_language(nonexistent language) should have the proper description
-ok 593 - has_language(nonexistent language) should have the proper diagnostics
-ok 594 - has_language(nonexistent language, desc) should fail
-ok 595 - has_language(nonexistent language, desc) should have the proper description
-ok 596 - has_language(nonexistent language, desc) should have the proper diagnostics
-ok 597 - hasnt_language(language) should fail
-ok 598 - hasnt_language(language) should have the proper description
-ok 599 - hasnt_language(language) should have the proper diagnostics
-ok 600 - hasnt_language(language, desc) should fail
-ok 601 - hasnt_language(language, desc) should have the proper description
-ok 602 - hasnt_language(language, desc) should have the proper diagnostics
-ok 603 - hasnt_language(nonexistent language) should pass
-ok 604 - hasnt_language(nonexistent language) should have the proper description
-ok 605 - hasnt_language(nonexistent language) should have the proper diagnostics
-ok 606 - hasnt_language(nonexistent language, desc) should pass
-ok 607 - hasnt_language(nonexistent language, desc) should have the proper description
-ok 608 - hasnt_language(nonexistent language, desc) should have the proper diagnostics
-ok 609 - language_is_trusted(language, desc) should pass
-ok 610 - language_is_trusted(language, desc) should have the proper description
-ok 611 - language_is_trusted(language, desc) should have the proper diagnostics
-ok 612 - language_is_trusted(language) should pass
-ok 613 - language_is_trusted(language) should have the proper description
-ok 614 - language_is_trusted(language) should have the proper diagnostics
-ok 615 - language_is_trusted(language, desc) fail should fail
-ok 616 - language_is_trusted(language, desc) fail should have the proper description
-ok 617 - language_is_trusted(language, desc) fail should have the proper diagnostics
-ok 618 - language_is_trusted(language, desc) non-existent should fail
-ok 619 - language_is_trusted(language, desc) non-existent should have the proper description
-ok 620 - language_is_trusted(language, desc) non-existent should have the proper diagnostics
-ok 621 - has_opclass( schema, name, desc ) should pass
-ok 622 - has_opclass( schema, name, desc ) should have the proper description
-ok 623 - has_opclass( schema, name, desc ) should have the proper diagnostics
-ok 624 - has_opclass( schema, name ) should pass
-ok 625 - has_opclass( schema, name ) should have the proper description
-ok 626 - has_opclass( schema, name ) should have the proper diagnostics
-ok 627 - has_opclass( name, desc ) should pass
-ok 628 - has_opclass( name, desc ) should have the proper description
-ok 629 - has_opclass( name, desc ) should have the proper diagnostics
-ok 630 - has_opclass( name ) should pass
-ok 631 - has_opclass( name ) should have the proper description
-ok 632 - has_opclass( name ) should have the proper diagnostics
-ok 633 - has_opclass( schema, name, desc ) fail should fail
-ok 634 - has_opclass( schema, name, desc ) fail should have the proper description
-ok 635 - has_opclass( schema, name, desc ) fail should have the proper diagnostics
-ok 636 - has_opclass( name, desc ) fail should fail
-ok 637 - has_opclass( name, desc ) fail should have the proper description
-ok 638 - has_opclass( name, desc ) fail should have the proper diagnostics
-ok 639 - hasnt_opclass( schema, name, desc ) should fail
-ok 640 - hasnt_opclass( schema, name, desc ) should have the proper description
-ok 641 - hasnt_opclass( schema, name, desc ) should have the proper diagnostics
-ok 642 - hasnt_opclass( schema, name ) should fail
-ok 643 - hasnt_opclass( schema, name ) should have the proper description
-ok 644 - hasnt_opclass( schema, name ) should have the proper diagnostics
-ok 645 - hasnt_opclass( name, desc ) should fail
-ok 646 - hasnt_opclass( name, desc ) should have the proper description
-ok 647 - hasnt_opclass( name, desc ) should have the proper diagnostics
-ok 648 - hasnt_opclass( name ) should fail
-ok 649 - hasnt_opclass( name ) should have the proper description
-ok 650 - hasnt_opclass( name ) should have the proper diagnostics
-ok 651 - hasnt_opclass( schema, name, desc ) fail should pass
-ok 652 - hasnt_opclass( schema, name, desc ) fail should have the proper description
-ok 653 - hasnt_opclass( schema, name, desc ) fail should have the proper diagnostics
-ok 654 - hasnt_opclass( name, desc ) fail should pass
-ok 655 - hasnt_opclass( name, desc ) fail should have the proper description
-ok 656 - hasnt_opclass( name, desc ) fail should have the proper diagnostics
-ok 657 - domain_type_is(schema, domain, schema, type, desc) should pass
-ok 658 - domain_type_is(schema, domain, schema, type, desc) should have the proper description
-ok 659 - domain_type_is(schema, domain, schema, type, desc) should have the proper diagnostics
-ok 660 - domain_type_is(schema, domain, schema, type) should pass
-ok 661 - domain_type_is(schema, domain, schema, type) should have the proper description
-ok 662 - domain_type_is(schema, domain, schema, type) should have the proper diagnostics
-ok 663 - domain_type_is(schema, domain, schema, type, desc) fail should fail
-ok 664 - domain_type_is(schema, domain, schema, type, desc) fail should have the proper description
-ok 665 - domain_type_is(schema, domain, schema, type, desc) fail should have the proper diagnostics
-ok 666 - domain_type_is(schema, nondomain, schema, type, desc) should fail
-ok 667 - domain_type_is(schema, nondomain, schema, type, desc) should have the proper description
-ok 668 - domain_type_is(schema, nondomain, schema, type, desc) should have the proper diagnostics
-ok 669 - domain_type_is(schema, type, schema, type, desc) fail should fail
-ok 670 - domain_type_is(schema, type, schema, type, desc) fail should have the proper description
-ok 671 - domain_type_is(schema, type, schema, type, desc) fail should have the proper diagnostics
-ok 672 - domain_type_is(schema, domain, type, desc) should pass
-ok 673 - domain_type_is(schema, domain, type, desc) should have the proper description
-ok 674 - domain_type_is(schema, domain, type, desc) should have the proper diagnostics
-ok 675 - domain_type_is(schema, domain, type) should pass
-ok 676 - domain_type_is(schema, domain, type) should have the proper description
-ok 677 - domain_type_is(schema, domain, type) should have the proper diagnostics
-ok 678 - domain_type_is(schema, domain, type, desc) fail should fail
-ok 679 - domain_type_is(schema, domain, type, desc) fail should have the proper description
-ok 680 - domain_type_is(schema, domain, type, desc) fail should have the proper diagnostics
-ok 681 - domain_type_is(schema, nondomain, type, desc) should fail
-ok 682 - domain_type_is(schema, nondomain, type, desc) should have the proper description
-ok 683 - domain_type_is(schema, nondomain, type, desc) should have the proper diagnostics
-ok 684 - domain_type_is(schema, type, type, desc) fail should fail
-ok 685 - domain_type_is(schema, type, type, desc) fail should have the proper description
-ok 686 - domain_type_is(schema, type, type, desc) fail should have the proper diagnostics
-ok 687 - domain_type_is(domain, type, desc) should pass
-ok 688 - domain_type_is(domain, type, desc) should have the proper description
-ok 689 - domain_type_is(domain, type, desc) should have the proper diagnostics
-ok 690 - domain_type_is(domain, type) should pass
-ok 691 - domain_type_is(domain, type) should have the proper description
-ok 692 - domain_type_is(domain, type) should have the proper diagnostics
-ok 693 - domain_type_is(domain, type, desc) fail should fail
-ok 694 - domain_type_is(domain, type, desc) fail should have the proper description
-ok 695 - domain_type_is(domain, type, desc) fail should have the proper diagnostics
-ok 696 - domain_type_is(nondomain, type, desc) should fail
-ok 697 - domain_type_is(nondomain, type, desc) should have the proper description
-ok 698 - domain_type_is(nondomain, type, desc) should have the proper diagnostics
-ok 699 - domain_type_is(type, type, desc) fail should fail
-ok 700 - domain_type_is(type, type, desc) fail should have the proper description
-ok 701 - domain_type_is(type, type, desc) fail should have the proper diagnostics
-ok 702 - domain_type_isnt(schema, domain, schema, type, desc) should pass
-ok 703 - domain_type_isnt(schema, domain, schema, type, desc) should have the proper description
-ok 704 - domain_type_isnt(schema, domain, schema, type, desc) should have the proper diagnostics
-ok 705 - domain_type_isnt(schema, domain, schema, type) should pass
-ok 706 - domain_type_isnt(schema, domain, schema, type) should have the proper description
-ok 707 - domain_type_isnt(schema, domain, schema, type) should have the proper diagnostics
-ok 708 - domain_type_isnt(schema, domain, schema, type, desc) fail should fail
-ok 709 - domain_type_isnt(schema, domain, schema, type, desc) fail should have the proper description
-ok 710 - domain_type_isnt(schema, domain, schema, type, desc) fail should have the proper diagnostics
-ok 711 - domain_type_isnt(schema, nondomain, schema, type, desc) should fail
-ok 712 - domain_type_isnt(schema, nondomain, schema, type, desc) should have the proper description
-ok 713 - domain_type_isnt(schema, nondomain, schema, type, desc) should have the proper diagnostics
-ok 714 - domain_type_isnt(schema, type, schema, type, desc) should fail
-ok 715 - domain_type_isnt(schema, type, schema, type, desc) should have the proper description
-ok 716 - domain_type_isnt(schema, type, schema, type, desc) should have the proper diagnostics
-ok 717 - domain_type_isnt(schema, domain, type, desc) should pass
-ok 718 - domain_type_isnt(schema, domain, type, desc) should have the proper description
-ok 719 - domain_type_isnt(schema, domain, type, desc) should have the proper diagnostics
-ok 720 - domain_type_isnt(schema, domain, type) should pass
-ok 721 - domain_type_isnt(schema, domain, type) should have the proper description
-ok 722 - domain_type_isnt(schema, domain, type) should have the proper diagnostics
-ok 723 - domain_type_isnt(schema, domain, type, desc) fail should fail
-ok 724 - domain_type_isnt(schema, domain, type, desc) fail should have the proper description
-ok 725 - domain_type_isnt(schema, domain, type, desc) fail should have the proper diagnostics
-ok 726 - domain_type_isnt(schema, nondomain, type, desc) should fail
-ok 727 - domain_type_isnt(schema, nondomain, type, desc) should have the proper description
-ok 728 - domain_type_isnt(schema, nondomain, type, desc) should have the proper diagnostics
-ok 729 - domain_type_isnt(schema, type, type, desc) should fail
-ok 730 - domain_type_isnt(schema, type, type, desc) should have the proper description
-ok 731 - domain_type_isnt(schema, type, type, desc) should have the proper diagnostics
-ok 732 - domain_type_isnt(domain, type, desc) should pass
-ok 733 - domain_type_isnt(domain, type, desc) should have the proper description
-ok 734 - domain_type_isnt(domain, type, desc) should have the proper diagnostics
-ok 735 - domain_type_isnt(domain, type) should pass
-ok 736 - domain_type_isnt(domain, type) should have the proper description
-ok 737 - domain_type_isnt(domain, type) should have the proper diagnostics
-ok 738 - domain_type_isnt(domain, type, desc) fail should fail
-ok 739 - domain_type_isnt(domain, type, desc) fail should have the proper description
-ok 740 - domain_type_isnt(domain, type, desc) fail should have the proper diagnostics
-ok 741 - domain_type_isnt(nondomain, type, desc) should fail
-ok 742 - domain_type_isnt(nondomain, type, desc) should have the proper description
-ok 743 - domain_type_isnt(nondomain, type, desc) should have the proper diagnostics
-ok 744 - domain_type_isnt(type, type, desc) should fail
-ok 745 - domain_type_isnt(type, type, desc) should have the proper description
-ok 746 - domain_type_isnt(type, type, desc) should have the proper diagnostics
-ok 747 - has_relation(non-existent relation) should fail
-ok 748 - has_relation(non-existent relation) should have the proper description
-ok 749 - has_relation(non-existent relation) should have the proper diagnostics
-ok 750 - has_relation(non-existent schema, tab) should fail
-ok 751 - has_relation(non-existent schema, tab) should have the proper description
-ok 752 - has_relation(non-existent schema, tab) should have the proper diagnostics
-ok 753 - has_relation(sch, non-existent relation, desc) should fail
-ok 754 - has_relation(sch, non-existent relation, desc) should have the proper description
-ok 755 - has_relation(sch, non-existent relation, desc) should have the proper diagnostics
-ok 756 - has_relation(tab, desc) should pass
-ok 757 - has_relation(tab, desc) should have the proper description
-ok 758 - has_relation(tab, desc) should have the proper diagnostics
-ok 759 - has_relation(sch, tab, desc) should pass
-ok 760 - has_relation(sch, tab, desc) should have the proper description
-ok 761 - has_relation(sch, tab, desc) should have the proper diagnostics
-ok 762 - has_relation(sch, view, desc) should pass
-ok 763 - has_relation(sch, view, desc) should have the proper description
-ok 764 - has_relation(sch, view, desc) should have the proper diagnostics
-ok 765 - has_relation(type, desc) should pass
-ok 766 - has_relation(type, desc) should have the proper description
-ok 767 - has_relation(type, desc) should have the proper diagnostics
-ok 768 - hasnt_relation(non-existent relation) should pass
-ok 769 - hasnt_relation(non-existent relation) should have the proper description
-ok 770 - hasnt_relation(non-existent relation) should have the proper diagnostics
-ok 771 - hasnt_relation(non-existent schema, tab) should pass
-ok 772 - hasnt_relation(non-existent schema, tab) should have the proper description
-ok 773 - hasnt_relation(non-existent schema, tab) should have the proper diagnostics
-ok 774 - hasnt_relation(sch, non-existent tab, desc) should pass
-ok 775 - hasnt_relation(sch, non-existent tab, desc) should have the proper description
-ok 776 - hasnt_relation(sch, non-existent tab, desc) should have the proper diagnostics
-ok 777 - hasnt_relation(tab, desc) should fail
-ok 778 - hasnt_relation(tab, desc) should have the proper description
-ok 779 - hasnt_relation(tab, desc) should have the proper diagnostics
-ok 780 - hasnt_relation(sch, tab, desc) should fail
-ok 781 - hasnt_relation(sch, tab, desc) should have the proper description
-ok 782 - hasnt_relation(sch, tab, desc) should have the proper diagnostics
-ok 783 - has_foreign_table(non-existent table) should fail
-ok 784 - has_foreign_table(non-existent table) should have the proper description
-ok 785 - has_foreign_table(non-existent table) should have the proper diagnostics
-ok 786 - has_foreign_table(non-existent schema, tab) should fail
-ok 787 - has_foreign_table(non-existent schema, tab) should have the proper description
-ok 788 - has_foreign_table(non-existent schema, tab) should have the proper diagnostics
-ok 789 - has_foreign_table(non-existent table, desc) should fail
-ok 790 - has_foreign_table(non-existent table, desc) should have the proper description
-ok 791 - has_foreign_table(non-existent table, desc) should have the proper diagnostics
-ok 792 - has_foreign_table(sch, non-existent table, desc) should fail
-ok 793 - has_foreign_table(sch, non-existent table, desc) should have the proper description
-ok 794 - has_foreign_table(sch, non-existent table, desc) should have the proper diagnostics
-ok 795 - has_foreign_table(tab, desc) should pass
-ok 796 - has_foreign_table(tab, desc) should have the proper description
-ok 797 - has_foreign_table(tab, desc) should have the proper diagnostics
-ok 798 - has_foreign_table(sch, tab, desc) should pass
-ok 799 - has_foreign_table(sch, tab, desc) should have the proper description
-ok 800 - has_foreign_table(sch, tab, desc) should have the proper diagnostics
-ok 801 - has_foreign_table(sch, view, desc) should fail
-ok 802 - has_foreign_table(sch, view, desc) should have the proper description
-ok 803 - has_foreign_table(sch, view, desc) should have the proper diagnostics
-ok 804 - has_foreign_table(type, desc) should fail
-ok 805 - has_foreign_table(type, desc) should have the proper description
-ok 806 - has_foreign_table(type, desc) should have the proper diagnostics
-ok 807 - hasnt_foreign_table(non-existent table) should pass
-ok 808 - hasnt_foreign_table(non-existent table) should have the proper description
-ok 809 - hasnt_foreign_table(non-existent table) should have the proper diagnostics
-ok 810 - hasnt_foreign_table(non-existent schema, tab) should pass
-ok 811 - hasnt_foreign_table(non-existent schema, tab) should have the proper description
-ok 812 - hasnt_foreign_table(non-existent schema, tab) should have the proper diagnostics
-ok 813 - hasnt_foreign_table(non-existent table, desc) should pass
-ok 814 - hasnt_foreign_table(non-existent table, desc) should have the proper description
-ok 815 - hasnt_foreign_table(non-existent table, desc) should have the proper diagnostics
-ok 816 - hasnt_foreign_table(sch, non-existent tab, desc) should pass
-ok 817 - hasnt_foreign_table(sch, non-existent tab, desc) should have the proper description
-ok 818 - hasnt_foreign_table(sch, non-existent tab, desc) should have the proper diagnostics
-ok 819 - hasnt_foreign_table(tab, desc) should fail
-ok 820 - hasnt_foreign_table(tab, desc) should have the proper description
-ok 821 - hasnt_foreign_table(tab, desc) should have the proper diagnostics
-ok 822 - hasnt_foreign_table(sch, tab, desc) should fail
-ok 823 - hasnt_foreign_table(sch, tab, desc) should have the proper description
-ok 824 - hasnt_foreign_table(sch, tab, desc) should have the proper diagnostics
-ok 825 - has_materialized_view(non-existent materialized_view) should fail
-ok 826 - has_materialized_view(non-existent materialized_view) should have the proper description
-ok 827 - has_materialized_view(non-existent materialized_view) should have the proper diagnostics
-ok 828 - has_materialized_view(non-existent materialized_view, desc) should fail
-ok 829 - has_materialized_view(non-existent materialized_view, desc) should have the proper description
-ok 830 - has_materialized_view(non-existent materialized_view, desc) should have the proper diagnostics
-ok 831 - has_materialized_view(sch, non-existent materialized_view, desc) should fail
-ok 832 - has_materialized_view(sch, non-existent materialized_view, desc) should have the proper description
-ok 833 - has_materialized_view(sch, non-existent materialized_view, desc) should have the proper diagnostics
-ok 834 - has_materialized_view(materialized_view, desc) should pass
-ok 835 - has_materialized_view(materialized_view, desc) should have the proper description
-ok 836 - has_materialized_view(materialized_view, desc) should have the proper diagnostics
-ok 837 - has_materialized_view(sch, materialized_view, desc) should pass
-ok 838 - has_materialized_view(sch, materialized_view, desc) should have the proper description
-ok 839 - has_materialized_view(sch, materialized_view, desc) should have the proper diagnostics
-ok 840 - hasnt_materialized_view(non-existent materialized_view) should pass
-ok 841 - hasnt_materialized_view(non-existent materialized_view) should have the proper description
-ok 842 - hasnt_materialized_view(non-existent materialized_view) should have the proper diagnostics
-ok 843 - hasnt_materialized_view(non-existent materialized_view, desc) should pass
-ok 844 - hasnt_materialized_view(non-existent materialized_view, desc) should have the proper description
-ok 845 - hasnt_materialized_view(non-existent materialized_view, desc) should have the proper diagnostics
-ok 846 - hasnt_materialized_view(sch, non-existent materialized_view, desc) should pass
-ok 847 - hasnt_materialized_view(sch, non-existent materialized_view, desc) should have the proper description
-ok 848 - hasnt_materialized_view(sch, non-existent materialized_view, desc) should have the proper diagnostics
-ok 849 - hasnt_materialized_view(materialized_view, desc) should fail
-ok 850 - hasnt_materialized_view(materialized_view, desc) should have the proper description
-ok 851 - hasnt_materialized_view(materialized_view, desc) should have the proper diagnostics
-ok 852 - hasnt_materialized_view(sch, materialized_view, desc) should fail
-ok 853 - hasnt_materialized_view(sch, materialized_view, desc) should have the proper description
-ok 854 - hasnt_materialized_view(sch, materialized_view, desc) should have the proper diagnostics
-ok 855 - is_partitioned(non-existent part) should fail
-ok 856 - is_partitioned(non-existent part) should have the proper description
-ok 857 - is_partitioned(non-existent part) should have the proper diagnostics
-ok 858 - is_partitioned(non-existent part, desc) should fail
-ok 859 - is_partitioned(non-existent part, desc) should have the proper description
-ok 860 - is_partitioned(non-existent part, desc) should have the proper diagnostics
-ok 861 - is_partitioned(sch, non-existent part, desc) should fail
-ok 862 - is_partitioned(sch, non-existent part, desc) should have the proper description
-ok 863 - is_partitioned(sch, non-existent part, desc) should have the proper diagnostics
-ok 864 - is_partitioned(sch, part, desc) should pass
-ok 865 - is_partitioned(sch, part, desc) should have the proper description
-ok 866 - is_partitioned(sch, part, desc) should have the proper diagnostics
-ok 867 - is_partitioned(sch, part) should pass
-ok 868 - is_partitioned(sch, part) should have the proper description
-ok 869 - is_partitioned(sch, part) should have the proper diagnostics
-ok 870 - is_partitioned(part, desc) should pass
-ok 871 - is_partitioned(part, desc) should have the proper description
-ok 872 - is_partitioned(part, desc) should have the proper diagnostics
-ok 873 - is_partitioned(part) should pass
-ok 874 - is_partitioned(part) should have the proper description
-ok 875 - is_partitioned(part) should have the proper diagnostics
-ok 876 - isnt_partitioned(non-existent part) should pass
-ok 877 - isnt_partitioned(non-existent part) should have the proper description
-ok 878 - isnt_partitioned(non-existent part) should have the proper diagnostics
-ok 879 - isnt_partitioned(non-existent part, desc) should pass
-ok 880 - isnt_partitioned(non-existent part, desc) should have the proper description
-ok 881 - isnt_partitioned(non-existent part, desc) should have the proper diagnostics
-ok 882 - isnt_partitioned(sch, non-existent part, desc) should pass
-ok 883 - isnt_partitioned(sch, non-existent part, desc) should have the proper description
-ok 884 - isnt_partitioned(sch, non-existent part, desc) should have the proper diagnostics
-ok 885 - isnt_partitioned(sch, part, desc) should fail
-ok 886 - isnt_partitioned(sch, part, desc) should have the proper description
-ok 887 - isnt_partitioned(sch, part, desc) should have the proper diagnostics
-ok 888 - isnt_partitioned(sch, part) should fail
-ok 889 - isnt_partitioned(sch, part) should have the proper description
-ok 890 - isnt_partitioned(sch, part) should have the proper diagnostics
-ok 891 - isnt_partitioned(part, desc) should fail
-ok 892 - isnt_partitioned(part, desc) should have the proper description
-ok 893 - isnt_partitioned(part, desc) should have the proper diagnostics
-ok 894 - isnt_partitioned(part) should fail
-ok 895 - isnt_partitioned(part) should have the proper description
-ok 896 - isnt_partitioned(part) should have the proper diagnostics
+ok 513 - hasnt_operator( left, schema, name, right, result, desc ) fail should fail
+ok 514 - hasnt_operator( left, schema, name, right, result, desc ) fail should have the proper description
+ok 515 - hasnt_operator( left, schema, name, right, result, desc ) fail should have the proper diagnostics
+ok 516 - hasnt_operator( left, schema, name, right, result ) fail should fail
+ok 517 - hasnt_operator( left, schema, name, right, result ) fail should have the proper description
+ok 518 - hasnt_operator( left, schema, name, right, result ) fail should have the proper diagnostics
+ok 519 - hasnt_operator( left, name, right, result, desc ) fail should fail
+ok 520 - hasnt_operator( left, name, right, result, desc ) fail should have the proper description
+ok 521 - hasnt_operator( left, name, right, result, desc ) fail should have the proper diagnostics
+ok 522 - hasnt_operator( left, name, right, result ) fail should fail
+ok 523 - hasnt_operator( left, name, right, result ) fail should have the proper description
+ok 524 - hasnt_operator( left, name, right, result ) fail should have the proper diagnostics
+ok 525 - hasnt_operator( left, name, right, desc ) fail should fail
+ok 526 - hasnt_operator( left, name, right, desc ) fail should have the proper description
+ok 527 - hasnt_operator( left, name, right, desc ) fail should have the proper diagnostics
+ok 528 - hasnt_operator( left, name, right ) fail should fail
+ok 529 - hasnt_operator( left, name, right ) fail should have the proper description
+ok 530 - hasnt_operator( left, name, right ) fail should have the proper diagnostics
+ok 531 - hasnt_operator( left, schema, name, right, result, desc ) should pass
+ok 532 - hasnt_operator( left, schema, name, right, result, desc ) should have the proper description
+ok 533 - hasnt_operator( left, schema, name, right, result, desc ) should have the proper diagnostics
+ok 534 - hasnt_operator( left, schema, name, right, result ) should pass
+ok 535 - hasnt_operator( left, schema, name, right, result ) should have the proper description
+ok 536 - hasnt_operator( left, schema, name, right, result ) should have the proper diagnostics
+ok 537 - hasnt_operator( left, name, right, result, desc ) should pass
+ok 538 - hasnt_operator( left, name, right, result, desc ) should have the proper description
+ok 539 - hasnt_operator( left, name, right, result, desc ) should have the proper diagnostics
+ok 540 - hasnt_operator( left, name, right, result ) should pass
+ok 541 - hasnt_operator( left, name, right, result ) should have the proper description
+ok 542 - hasnt_operator( left, name, right, result ) should have the proper diagnostics
+ok 543 - hasnt_operator( left, name, right, desc ) should pass
+ok 544 - hasnt_operator( left, name, right, desc ) should have the proper description
+ok 545 - hasnt_operator( left, name, right, desc ) should have the proper diagnostics
+ok 546 - hasnt_operator( left, name, right ) should pass
+ok 547 - hasnt_operator( left, name, right ) should have the proper description
+ok 548 - hasnt_operator( left, name, right ) should have the proper diagnostics
+ok 549 - has_leftop( schema, name, right, result, desc ) should pass
+ok 550 - has_leftop( schema, name, right, result, desc ) should have the proper description
+ok 551 - has_leftop( schema, name, right, result, desc ) should have the proper diagnostics
+ok 552 - has_leftop( schema, name, right, result ) should pass
+ok 553 - has_leftop( schema, name, right, result ) should have the proper description
+ok 554 - has_leftop( schema, name, right, result ) should have the proper diagnostics
+ok 555 - has_leftop( name, right, result, desc ) should pass
+ok 556 - has_leftop( name, right, result, desc ) should have the proper description
+ok 557 - has_leftop( name, right, result, desc ) should have the proper diagnostics
+ok 558 - has_leftop( name, right, result ) should pass
+ok 559 - has_leftop( name, right, result ) should have the proper description
+ok 560 - has_leftop( name, right, result ) should have the proper diagnostics
+ok 561 - has_leftop( name, right, desc ) should pass
+ok 562 - has_leftop( name, right, desc ) should have the proper description
+ok 563 - has_leftop( name, right, desc ) should have the proper diagnostics
+ok 564 - has_leftop( name, right ) should pass
+ok 565 - has_leftop( name, right ) should have the proper description
+ok 566 - has_leftop( name, right ) should have the proper diagnostics
+ok 567 - has_leftop( schema, name, right, result, desc ) fail should fail
+ok 568 - has_leftop( schema, name, right, result, desc ) fail should have the proper description
+ok 569 - has_leftop( schema, name, right, result, desc ) fail should have the proper diagnostics
+ok 570 - has_leftop( schema, name, right, result ) fail should fail
+ok 571 - has_leftop( schema, name, right, result ) fail should have the proper description
+ok 572 - has_leftop( schema, name, right, result ) fail should have the proper diagnostics
+ok 573 - has_leftop( name, right, result, desc ) fail should fail
+ok 574 - has_leftop( name, right, result, desc ) fail should have the proper description
+ok 575 - has_leftop( name, right, result, desc ) fail should have the proper diagnostics
+ok 576 - has_leftop( name, right, result ) fail should fail
+ok 577 - has_leftop( name, right, result ) fail should have the proper description
+ok 578 - has_leftop( name, right, result ) fail should have the proper diagnostics
+ok 579 - has_leftop( name, right, desc ) fail should fail
+ok 580 - has_leftop( name, right, desc ) fail should have the proper description
+ok 581 - has_leftop( name, right, desc ) fail should have the proper diagnostics
+ok 582 - has_leftop( name, right ) fail should fail
+ok 583 - has_leftop( name, right ) fail should have the proper description
+ok 584 - has_leftop( name, right ) fail should have the proper diagnostics
+ok 585 - hasnt_leftop( schema, name, right, result, desc ) fail should fail
+ok 586 - hasnt_leftop( schema, name, right, result, desc ) fail should have the proper description
+ok 587 - hasnt_leftop( schema, name, right, result, desc ) fail should have the proper diagnostics
+ok 588 - hasnt_leftop( schema, name, right, result ) fail should fail
+ok 589 - hasnt_leftop( schema, name, right, result ) fail should have the proper description
+ok 590 - hasnt_leftop( schema, name, right, result ) fail should have the proper diagnostics
+ok 591 - hasnt_leftop( name, right, result, desc ) fail should fail
+ok 592 - hasnt_leftop( name, right, result, desc ) fail should have the proper description
+ok 593 - hasnt_leftop( name, right, result, desc ) fail should have the proper diagnostics
+ok 594 - hasnt_leftop( name, right, result ) fail should fail
+ok 595 - hasnt_leftop( name, right, result ) fail should have the proper description
+ok 596 - hasnt_leftop( name, right, result ) fail should have the proper diagnostics
+ok 597 - hasnt_leftop( name, right, desc ) fail should fail
+ok 598 - hasnt_leftop( name, right, desc ) fail should have the proper description
+ok 599 - hasnt_leftop( name, right, desc ) fail should have the proper diagnostics
+ok 600 - hasnt_leftop( name, right ) fail should fail
+ok 601 - hasnt_leftop( name, right ) fail should have the proper description
+ok 602 - hasnt_leftop( name, right ) fail should have the proper diagnostics
+ok 603 - hasnt_leftop( schema, name, right, result, desc ) should pass
+ok 604 - hasnt_leftop( schema, name, right, result, desc ) should have the proper description
+ok 605 - hasnt_leftop( schema, name, right, result, desc ) should have the proper diagnostics
+ok 606 - hasnt_leftop( schema, name, right, result ) should pass
+ok 607 - hasnt_leftop( schema, name, right, result ) should have the proper description
+ok 608 - hasnt_leftop( schema, name, right, result ) should have the proper diagnostics
+ok 609 - hasnt_leftop( name, right, result, desc ) should pass
+ok 610 - hasnt_leftop( name, right, result, desc ) should have the proper description
+ok 611 - hasnt_leftop( name, right, result, desc ) should have the proper diagnostics
+ok 612 - hasnt_leftop( name, right, result ) should pass
+ok 613 - hasnt_leftop( name, right, result ) should have the proper description
+ok 614 - hasnt_leftop( name, right, result ) should have the proper diagnostics
+ok 615 - hasnt_leftop( name, right, desc ) should pass
+ok 616 - hasnt_leftop( name, right, desc ) should have the proper description
+ok 617 - hasnt_leftop( name, right, desc ) should have the proper diagnostics
+ok 618 - hasnt_leftop( name, right ) should pass
+ok 619 - hasnt_leftop( name, right ) should have the proper description
+ok 620 - hasnt_leftop( name, right ) should have the proper diagnostics
+ok 621 - has_rightop( left, schema, name, result, desc ) should pass
+ok 622 - has_rightop( left, schema, name, result, desc ) should have the proper description
+ok 623 - has_rightop( left, schema, name, result, desc ) should have the proper diagnostics
+ok 624 - has_rightop( left, schema, name, result ) should pass
+ok 625 - has_rightop( left, schema, name, result ) should have the proper description
+ok 626 - has_rightop( left, schema, name, result ) should have the proper diagnostics
+ok 627 - has_rightop( left, name, result, desc ) should pass
+ok 628 - has_rightop( left, name, result, desc ) should have the proper description
+ok 629 - has_rightop( left, name, result, desc ) should have the proper diagnostics
+ok 630 - has_rightop( left, name, result ) should pass
+ok 631 - has_rightop( left, name, result ) should have the proper description
+ok 632 - has_rightop( left, name, result ) should have the proper diagnostics
+ok 633 - has_rightop( left, name, desc ) should pass
+ok 634 - has_rightop( left, name, desc ) should have the proper description
+ok 635 - has_rightop( left, name, desc ) should have the proper diagnostics
+ok 636 - has_rightop( left, name ) should pass
+ok 637 - has_rightop( left, name ) should have the proper description
+ok 638 - has_rightop( left, name ) should have the proper diagnostics
+ok 639 - has_rightop( left, schema, name, result, desc ) fail should fail
+ok 640 - has_rightop( left, schema, name, result, desc ) fail should have the proper description
+ok 641 - has_rightop( left, schema, name, result, desc ) fail should have the proper diagnostics
+ok 642 - has_rightop( left, schema, name, result ) fail should fail
+ok 643 - has_rightop( left, schema, name, result ) fail should have the proper description
+ok 644 - has_rightop( left, schema, name, result ) fail should have the proper diagnostics
+ok 645 - has_rightop( left, name, result, desc ) fail should fail
+ok 646 - has_rightop( left, name, result, desc ) fail should have the proper description
+ok 647 - has_rightop( left, name, result, desc ) fail should have the proper diagnostics
+ok 648 - has_rightop( left, name, result ) fail should fail
+ok 649 - has_rightop( left, name, result ) fail should have the proper description
+ok 650 - has_rightop( left, name, result ) fail should have the proper diagnostics
+ok 651 - has_rightop( left, name, desc ) fail should fail
+ok 652 - has_rightop( left, name, desc ) fail should have the proper description
+ok 653 - has_rightop( left, name, desc ) fail should have the proper diagnostics
+ok 654 - has_rightop( left, name ) fail should fail
+ok 655 - has_rightop( left, name ) fail should have the proper description
+ok 656 - has_rightop( left, name ) fail should have the proper diagnostics
+ok 657 - hasnt_rightop( left, schema, name, result, desc ) fail should fail
+ok 658 - hasnt_rightop( left, schema, name, result, desc ) fail should have the proper description
+ok 659 - hasnt_rightop( left, schema, name, result, desc ) fail should have the proper diagnostics
+ok 660 - hasnt_rightop( left, schema, name, result ) fail should fail
+ok 661 - hasnt_rightop( left, schema, name, result ) fail should have the proper description
+ok 662 - hasnt_rightop( left, schema, name, result ) fail should have the proper diagnostics
+ok 663 - hasnt_rightop( left, name, result, desc ) fail should fail
+ok 664 - hasnt_rightop( left, name, result, desc ) fail should have the proper description
+ok 665 - hasnt_rightop( left, name, result, desc ) fail should have the proper diagnostics
+ok 666 - hasnt_rightop( left, name, result ) fail should fail
+ok 667 - hasnt_rightop( left, name, result ) fail should have the proper description
+ok 668 - hasnt_rightop( left, name, result ) fail should have the proper diagnostics
+ok 669 - hasnt_rightop( left, name, desc ) fail should fail
+ok 670 - hasnt_rightop( left, name, desc ) fail should have the proper description
+ok 671 - hasnt_rightop( left, name, desc ) fail should have the proper diagnostics
+ok 672 - hasnt_rightop( left, name ) fail should fail
+ok 673 - hasnt_rightop( left, name ) fail should have the proper description
+ok 674 - hasnt_rightop( left, name ) fail should have the proper diagnostics
+ok 675 - hasnt_rightop( left, schema, name, result, desc ) should pass
+ok 676 - hasnt_rightop( left, schema, name, result, desc ) should have the proper description
+ok 677 - hasnt_rightop( left, schema, name, result, desc ) should have the proper diagnostics
+ok 678 - hasnt_rightop( left, schema, name, result ) should pass
+ok 679 - hasnt_rightop( left, schema, name, result ) should have the proper description
+ok 680 - hasnt_rightop( left, schema, name, result ) should have the proper diagnostics
+ok 681 - hasnt_rightop( left, name, result, desc ) should pass
+ok 682 - hasnt_rightop( left, name, result, desc ) should have the proper description
+ok 683 - hasnt_rightop( left, name, result, desc ) should have the proper diagnostics
+ok 684 - hasnt_rightop( left, name, result ) should pass
+ok 685 - hasnt_rightop( left, name, result ) should have the proper description
+ok 686 - hasnt_rightop( left, name, result ) should have the proper diagnostics
+ok 687 - hasnt_rightop( left, name, desc ) should pass
+ok 688 - hasnt_rightop( left, name, desc ) should have the proper description
+ok 689 - hasnt_rightop( left, name, desc ) should have the proper diagnostics
+ok 690 - hasnt_rightop( left, name ) should pass
+ok 691 - hasnt_rightop( left, name ) should have the proper description
+ok 692 - hasnt_rightop( left, name ) should have the proper diagnostics
+ok 693 - has_language(language) should pass
+ok 694 - has_language(language) should have the proper description
+ok 695 - has_language(language) should have the proper diagnostics
+ok 696 - has_language(language, desc) should pass
+ok 697 - has_language(language, desc) should have the proper description
+ok 698 - has_language(language, desc) should have the proper diagnostics
+ok 699 - has_language(nonexistent language) should fail
+ok 700 - has_language(nonexistent language) should have the proper description
+ok 701 - has_language(nonexistent language) should have the proper diagnostics
+ok 702 - has_language(nonexistent language, desc) should fail
+ok 703 - has_language(nonexistent language, desc) should have the proper description
+ok 704 - has_language(nonexistent language, desc) should have the proper diagnostics
+ok 705 - hasnt_language(language) should fail
+ok 706 - hasnt_language(language) should have the proper description
+ok 707 - hasnt_language(language) should have the proper diagnostics
+ok 708 - hasnt_language(language, desc) should fail
+ok 709 - hasnt_language(language, desc) should have the proper description
+ok 710 - hasnt_language(language, desc) should have the proper diagnostics
+ok 711 - hasnt_language(nonexistent language) should pass
+ok 712 - hasnt_language(nonexistent language) should have the proper description
+ok 713 - hasnt_language(nonexistent language) should have the proper diagnostics
+ok 714 - hasnt_language(nonexistent language, desc) should pass
+ok 715 - hasnt_language(nonexistent language, desc) should have the proper description
+ok 716 - hasnt_language(nonexistent language, desc) should have the proper diagnostics
+ok 717 - language_is_trusted(language, desc) should pass
+ok 718 - language_is_trusted(language, desc) should have the proper description
+ok 719 - language_is_trusted(language, desc) should have the proper diagnostics
+ok 720 - language_is_trusted(language) should pass
+ok 721 - language_is_trusted(language) should have the proper description
+ok 722 - language_is_trusted(language) should have the proper diagnostics
+ok 723 - language_is_trusted(language, desc) fail should fail
+ok 724 - language_is_trusted(language, desc) fail should have the proper description
+ok 725 - language_is_trusted(language, desc) fail should have the proper diagnostics
+ok 726 - language_is_trusted(language, desc) non-existent should fail
+ok 727 - language_is_trusted(language, desc) non-existent should have the proper description
+ok 728 - language_is_trusted(language, desc) non-existent should have the proper diagnostics
+ok 729 - has_opclass( schema, name, desc ) should pass
+ok 730 - has_opclass( schema, name, desc ) should have the proper description
+ok 731 - has_opclass( schema, name, desc ) should have the proper diagnostics
+ok 732 - has_opclass( schema, name ) should pass
+ok 733 - has_opclass( schema, name ) should have the proper description
+ok 734 - has_opclass( schema, name ) should have the proper diagnostics
+ok 735 - has_opclass( name, desc ) should pass
+ok 736 - has_opclass( name, desc ) should have the proper description
+ok 737 - has_opclass( name, desc ) should have the proper diagnostics
+ok 738 - has_opclass( name ) should pass
+ok 739 - has_opclass( name ) should have the proper description
+ok 740 - has_opclass( name ) should have the proper diagnostics
+ok 741 - has_opclass( schema, name, desc ) fail should fail
+ok 742 - has_opclass( schema, name, desc ) fail should have the proper description
+ok 743 - has_opclass( schema, name, desc ) fail should have the proper diagnostics
+ok 744 - has_opclass( name, desc ) fail should fail
+ok 745 - has_opclass( name, desc ) fail should have the proper description
+ok 746 - has_opclass( name, desc ) fail should have the proper diagnostics
+ok 747 - hasnt_opclass( schema, name, desc ) should fail
+ok 748 - hasnt_opclass( schema, name, desc ) should have the proper description
+ok 749 - hasnt_opclass( schema, name, desc ) should have the proper diagnostics
+ok 750 - hasnt_opclass( schema, name ) should fail
+ok 751 - hasnt_opclass( schema, name ) should have the proper description
+ok 752 - hasnt_opclass( schema, name ) should have the proper diagnostics
+ok 753 - hasnt_opclass( name, desc ) should fail
+ok 754 - hasnt_opclass( name, desc ) should have the proper description
+ok 755 - hasnt_opclass( name, desc ) should have the proper diagnostics
+ok 756 - hasnt_opclass( name ) should fail
+ok 757 - hasnt_opclass( name ) should have the proper description
+ok 758 - hasnt_opclass( name ) should have the proper diagnostics
+ok 759 - hasnt_opclass( schema, name, desc ) fail should pass
+ok 760 - hasnt_opclass( schema, name, desc ) fail should have the proper description
+ok 761 - hasnt_opclass( schema, name, desc ) fail should have the proper diagnostics
+ok 762 - hasnt_opclass( name, desc ) fail should pass
+ok 763 - hasnt_opclass( name, desc ) fail should have the proper description
+ok 764 - hasnt_opclass( name, desc ) fail should have the proper diagnostics
+ok 765 - domain_type_is(schema, domain, schema, type, desc) should pass
+ok 766 - domain_type_is(schema, domain, schema, type, desc) should have the proper description
+ok 767 - domain_type_is(schema, domain, schema, type, desc) should have the proper diagnostics
+ok 768 - domain_type_is(schema, domain, schema, type) should pass
+ok 769 - domain_type_is(schema, domain, schema, type) should have the proper description
+ok 770 - domain_type_is(schema, domain, schema, type) should have the proper diagnostics
+ok 771 - domain_type_is(schema, domain, schema, type, desc) fail should fail
+ok 772 - domain_type_is(schema, domain, schema, type, desc) fail should have the proper description
+ok 773 - domain_type_is(schema, domain, schema, type, desc) fail should have the proper diagnostics
+ok 774 - domain_type_is(schema, nondomain, schema, type, desc) should fail
+ok 775 - domain_type_is(schema, nondomain, schema, type, desc) should have the proper description
+ok 776 - domain_type_is(schema, nondomain, schema, type, desc) should have the proper diagnostics
+ok 777 - domain_type_is(schema, type, schema, type, desc) fail should fail
+ok 778 - domain_type_is(schema, type, schema, type, desc) fail should have the proper description
+ok 779 - domain_type_is(schema, type, schema, type, desc) fail should have the proper diagnostics
+ok 780 - domain_type_is(schema, domain, type, desc) should pass
+ok 781 - domain_type_is(schema, domain, type, desc) should have the proper description
+ok 782 - domain_type_is(schema, domain, type, desc) should have the proper diagnostics
+ok 783 - domain_type_is(schema, domain, type) should pass
+ok 784 - domain_type_is(schema, domain, type) should have the proper description
+ok 785 - domain_type_is(schema, domain, type) should have the proper diagnostics
+ok 786 - domain_type_is(schema, domain, type, desc) fail should fail
+ok 787 - domain_type_is(schema, domain, type, desc) fail should have the proper description
+ok 788 - domain_type_is(schema, domain, type, desc) fail should have the proper diagnostics
+ok 789 - domain_type_is(schema, nondomain, type, desc) should fail
+ok 790 - domain_type_is(schema, nondomain, type, desc) should have the proper description
+ok 791 - domain_type_is(schema, nondomain, type, desc) should have the proper diagnostics
+ok 792 - domain_type_is(schema, type, type, desc) fail should fail
+ok 793 - domain_type_is(schema, type, type, desc) fail should have the proper description
+ok 794 - domain_type_is(schema, type, type, desc) fail should have the proper diagnostics
+ok 795 - domain_type_is(domain, type, desc) should pass
+ok 796 - domain_type_is(domain, type, desc) should have the proper description
+ok 797 - domain_type_is(domain, type, desc) should have the proper diagnostics
+ok 798 - domain_type_is(domain, type) should pass
+ok 799 - domain_type_is(domain, type) should have the proper description
+ok 800 - domain_type_is(domain, type) should have the proper diagnostics
+ok 801 - domain_type_is(domain, type, desc) fail should fail
+ok 802 - domain_type_is(domain, type, desc) fail should have the proper description
+ok 803 - domain_type_is(domain, type, desc) fail should have the proper diagnostics
+ok 804 - domain_type_is(nondomain, type, desc) should fail
+ok 805 - domain_type_is(nondomain, type, desc) should have the proper description
+ok 806 - domain_type_is(nondomain, type, desc) should have the proper diagnostics
+ok 807 - domain_type_is(type, type, desc) fail should fail
+ok 808 - domain_type_is(type, type, desc) fail should have the proper description
+ok 809 - domain_type_is(type, type, desc) fail should have the proper diagnostics
+ok 810 - domain_type_isnt(schema, domain, schema, type, desc) should pass
+ok 811 - domain_type_isnt(schema, domain, schema, type, desc) should have the proper description
+ok 812 - domain_type_isnt(schema, domain, schema, type, desc) should have the proper diagnostics
+ok 813 - domain_type_isnt(schema, domain, schema, type) should pass
+ok 814 - domain_type_isnt(schema, domain, schema, type) should have the proper description
+ok 815 - domain_type_isnt(schema, domain, schema, type) should have the proper diagnostics
+ok 816 - domain_type_isnt(schema, domain, schema, type, desc) fail should fail
+ok 817 - domain_type_isnt(schema, domain, schema, type, desc) fail should have the proper description
+ok 818 - domain_type_isnt(schema, domain, schema, type, desc) fail should have the proper diagnostics
+ok 819 - domain_type_isnt(schema, nondomain, schema, type, desc) should fail
+ok 820 - domain_type_isnt(schema, nondomain, schema, type, desc) should have the proper description
+ok 821 - domain_type_isnt(schema, nondomain, schema, type, desc) should have the proper diagnostics
+ok 822 - domain_type_isnt(schema, type, schema, type, desc) should fail
+ok 823 - domain_type_isnt(schema, type, schema, type, desc) should have the proper description
+ok 824 - domain_type_isnt(schema, type, schema, type, desc) should have the proper diagnostics
+ok 825 - domain_type_isnt(schema, domain, type, desc) should pass
+ok 826 - domain_type_isnt(schema, domain, type, desc) should have the proper description
+ok 827 - domain_type_isnt(schema, domain, type, desc) should have the proper diagnostics
+ok 828 - domain_type_isnt(schema, domain, type) should pass
+ok 829 - domain_type_isnt(schema, domain, type) should have the proper description
+ok 830 - domain_type_isnt(schema, domain, type) should have the proper diagnostics
+ok 831 - domain_type_isnt(schema, domain, type, desc) fail should fail
+ok 832 - domain_type_isnt(schema, domain, type, desc) fail should have the proper description
+ok 833 - domain_type_isnt(schema, domain, type, desc) fail should have the proper diagnostics
+ok 834 - domain_type_isnt(schema, nondomain, type, desc) should fail
+ok 835 - domain_type_isnt(schema, nondomain, type, desc) should have the proper description
+ok 836 - domain_type_isnt(schema, nondomain, type, desc) should have the proper diagnostics
+ok 837 - domain_type_isnt(schema, type, type, desc) should fail
+ok 838 - domain_type_isnt(schema, type, type, desc) should have the proper description
+ok 839 - domain_type_isnt(schema, type, type, desc) should have the proper diagnostics
+ok 840 - domain_type_isnt(domain, type, desc) should pass
+ok 841 - domain_type_isnt(domain, type, desc) should have the proper description
+ok 842 - domain_type_isnt(domain, type, desc) should have the proper diagnostics
+ok 843 - domain_type_isnt(domain, type) should pass
+ok 844 - domain_type_isnt(domain, type) should have the proper description
+ok 845 - domain_type_isnt(domain, type) should have the proper diagnostics
+ok 846 - domain_type_isnt(domain, type, desc) fail should fail
+ok 847 - domain_type_isnt(domain, type, desc) fail should have the proper description
+ok 848 - domain_type_isnt(domain, type, desc) fail should have the proper diagnostics
+ok 849 - domain_type_isnt(nondomain, type, desc) should fail
+ok 850 - domain_type_isnt(nondomain, type, desc) should have the proper description
+ok 851 - domain_type_isnt(nondomain, type, desc) should have the proper diagnostics
+ok 852 - domain_type_isnt(type, type, desc) should fail
+ok 853 - domain_type_isnt(type, type, desc) should have the proper description
+ok 854 - domain_type_isnt(type, type, desc) should have the proper diagnostics
+ok 855 - has_relation(non-existent relation) should fail
+ok 856 - has_relation(non-existent relation) should have the proper description
+ok 857 - has_relation(non-existent relation) should have the proper diagnostics
+ok 858 - has_relation(non-existent schema, tab) should fail
+ok 859 - has_relation(non-existent schema, tab) should have the proper description
+ok 860 - has_relation(non-existent schema, tab) should have the proper diagnostics
+ok 861 - has_relation(sch, non-existent relation, desc) should fail
+ok 862 - has_relation(sch, non-existent relation, desc) should have the proper description
+ok 863 - has_relation(sch, non-existent relation, desc) should have the proper diagnostics
+ok 864 - has_relation(tab, desc) should pass
+ok 865 - has_relation(tab, desc) should have the proper description
+ok 866 - has_relation(tab, desc) should have the proper diagnostics
+ok 867 - has_relation(sch, tab, desc) should pass
+ok 868 - has_relation(sch, tab, desc) should have the proper description
+ok 869 - has_relation(sch, tab, desc) should have the proper diagnostics
+ok 870 - has_relation(sch, view, desc) should pass
+ok 871 - has_relation(sch, view, desc) should have the proper description
+ok 872 - has_relation(sch, view, desc) should have the proper diagnostics
+ok 873 - has_relation(type, desc) should pass
+ok 874 - has_relation(type, desc) should have the proper description
+ok 875 - has_relation(type, desc) should have the proper diagnostics
+ok 876 - hasnt_relation(non-existent relation) should pass
+ok 877 - hasnt_relation(non-existent relation) should have the proper description
+ok 878 - hasnt_relation(non-existent relation) should have the proper diagnostics
+ok 879 - hasnt_relation(non-existent schema, tab) should pass
+ok 880 - hasnt_relation(non-existent schema, tab) should have the proper description
+ok 881 - hasnt_relation(non-existent schema, tab) should have the proper diagnostics
+ok 882 - hasnt_relation(sch, non-existent tab, desc) should pass
+ok 883 - hasnt_relation(sch, non-existent tab, desc) should have the proper description
+ok 884 - hasnt_relation(sch, non-existent tab, desc) should have the proper diagnostics
+ok 885 - hasnt_relation(tab, desc) should fail
+ok 886 - hasnt_relation(tab, desc) should have the proper description
+ok 887 - hasnt_relation(tab, desc) should have the proper diagnostics
+ok 888 - hasnt_relation(sch, tab, desc) should fail
+ok 889 - hasnt_relation(sch, tab, desc) should have the proper description
+ok 890 - hasnt_relation(sch, tab, desc) should have the proper diagnostics
+ok 891 - has_foreign_table(non-existent table) should fail
+ok 892 - has_foreign_table(non-existent table) should have the proper description
+ok 893 - has_foreign_table(non-existent table) should have the proper diagnostics
+ok 894 - has_foreign_table(non-existent schema, tab) should fail
+ok 895 - has_foreign_table(non-existent schema, tab) should have the proper description
+ok 896 - has_foreign_table(non-existent schema, tab) should have the proper diagnostics
+ok 897 - has_foreign_table(non-existent table, desc) should fail
+ok 898 - has_foreign_table(non-existent table, desc) should have the proper description
+ok 899 - has_foreign_table(non-existent table, desc) should have the proper diagnostics
+ok 900 - has_foreign_table(sch, non-existent table, desc) should fail
+ok 901 - has_foreign_table(sch, non-existent table, desc) should have the proper description
+ok 902 - has_foreign_table(sch, non-existent table, desc) should have the proper diagnostics
+ok 903 - has_foreign_table(tab, desc) should pass
+ok 904 - has_foreign_table(tab, desc) should have the proper description
+ok 905 - has_foreign_table(tab, desc) should have the proper diagnostics
+ok 906 - has_foreign_table(sch, tab, desc) should pass
+ok 907 - has_foreign_table(sch, tab, desc) should have the proper description
+ok 908 - has_foreign_table(sch, tab, desc) should have the proper diagnostics
+ok 909 - has_foreign_table(sch, view, desc) should fail
+ok 910 - has_foreign_table(sch, view, desc) should have the proper description
+ok 911 - has_foreign_table(sch, view, desc) should have the proper diagnostics
+ok 912 - has_foreign_table(type, desc) should fail
+ok 913 - has_foreign_table(type, desc) should have the proper description
+ok 914 - has_foreign_table(type, desc) should have the proper diagnostics
+ok 915 - hasnt_foreign_table(non-existent table) should pass
+ok 916 - hasnt_foreign_table(non-existent table) should have the proper description
+ok 917 - hasnt_foreign_table(non-existent table) should have the proper diagnostics
+ok 918 - hasnt_foreign_table(non-existent schema, tab) should pass
+ok 919 - hasnt_foreign_table(non-existent schema, tab) should have the proper description
+ok 920 - hasnt_foreign_table(non-existent schema, tab) should have the proper diagnostics
+ok 921 - hasnt_foreign_table(non-existent table, desc) should pass
+ok 922 - hasnt_foreign_table(non-existent table, desc) should have the proper description
+ok 923 - hasnt_foreign_table(non-existent table, desc) should have the proper diagnostics
+ok 924 - hasnt_foreign_table(sch, non-existent tab, desc) should pass
+ok 925 - hasnt_foreign_table(sch, non-existent tab, desc) should have the proper description
+ok 926 - hasnt_foreign_table(sch, non-existent tab, desc) should have the proper diagnostics
+ok 927 - hasnt_foreign_table(tab, desc) should fail
+ok 928 - hasnt_foreign_table(tab, desc) should have the proper description
+ok 929 - hasnt_foreign_table(tab, desc) should have the proper diagnostics
+ok 930 - hasnt_foreign_table(sch, tab, desc) should fail
+ok 931 - hasnt_foreign_table(sch, tab, desc) should have the proper description
+ok 932 - hasnt_foreign_table(sch, tab, desc) should have the proper diagnostics
+ok 933 - has_materialized_view(non-existent materialized_view) should fail
+ok 934 - has_materialized_view(non-existent materialized_view) should have the proper description
+ok 935 - has_materialized_view(non-existent materialized_view) should have the proper diagnostics
+ok 936 - has_materialized_view(non-existent materialized_view, desc) should fail
+ok 937 - has_materialized_view(non-existent materialized_view, desc) should have the proper description
+ok 938 - has_materialized_view(non-existent materialized_view, desc) should have the proper diagnostics
+ok 939 - has_materialized_view(sch, non-existent materialized_view, desc) should fail
+ok 940 - has_materialized_view(sch, non-existent materialized_view, desc) should have the proper description
+ok 941 - has_materialized_view(sch, non-existent materialized_view, desc) should have the proper diagnostics
+ok 942 - has_materialized_view(materialized_view, desc) should pass
+ok 943 - has_materialized_view(materialized_view, desc) should have the proper description
+ok 944 - has_materialized_view(materialized_view, desc) should have the proper diagnostics
+ok 945 - has_materialized_view(sch, materialized_view, desc) should pass
+ok 946 - has_materialized_view(sch, materialized_view, desc) should have the proper description
+ok 947 - has_materialized_view(sch, materialized_view, desc) should have the proper diagnostics
+ok 948 - hasnt_materialized_view(non-existent materialized_view) should pass
+ok 949 - hasnt_materialized_view(non-existent materialized_view) should have the proper description
+ok 950 - hasnt_materialized_view(non-existent materialized_view) should have the proper diagnostics
+ok 951 - hasnt_materialized_view(non-existent materialized_view, desc) should pass
+ok 952 - hasnt_materialized_view(non-existent materialized_view, desc) should have the proper description
+ok 953 - hasnt_materialized_view(non-existent materialized_view, desc) should have the proper diagnostics
+ok 954 - hasnt_materialized_view(sch, non-existent materialized_view, desc) should pass
+ok 955 - hasnt_materialized_view(sch, non-existent materialized_view, desc) should have the proper description
+ok 956 - hasnt_materialized_view(sch, non-existent materialized_view, desc) should have the proper diagnostics
+ok 957 - hasnt_materialized_view(materialized_view, desc) should fail
+ok 958 - hasnt_materialized_view(materialized_view, desc) should have the proper description
+ok 959 - hasnt_materialized_view(materialized_view, desc) should have the proper diagnostics
+ok 960 - hasnt_materialized_view(sch, materialized_view, desc) should fail
+ok 961 - hasnt_materialized_view(sch, materialized_view, desc) should have the proper description
+ok 962 - hasnt_materialized_view(sch, materialized_view, desc) should have the proper diagnostics
+ok 963 - is_partitioned(non-existent part) should fail
+ok 964 - is_partitioned(non-existent part) should have the proper description
+ok 965 - is_partitioned(non-existent part) should have the proper diagnostics
+ok 966 - is_partitioned(non-existent part, desc) should fail
+ok 967 - is_partitioned(non-existent part, desc) should have the proper description
+ok 968 - is_partitioned(non-existent part, desc) should have the proper diagnostics
+ok 969 - is_partitioned(sch, non-existent part, desc) should fail
+ok 970 - is_partitioned(sch, non-existent part, desc) should have the proper description
+ok 971 - is_partitioned(sch, non-existent part, desc) should have the proper diagnostics
+ok 972 - is_partitioned(sch, part, desc) should pass
+ok 973 - is_partitioned(sch, part, desc) should have the proper description
+ok 974 - is_partitioned(sch, part, desc) should have the proper diagnostics
+ok 975 - is_partitioned(sch, part) should pass
+ok 976 - is_partitioned(sch, part) should have the proper description
+ok 977 - is_partitioned(sch, part) should have the proper diagnostics
+ok 978 - is_partitioned(part, desc) should pass
+ok 979 - is_partitioned(part, desc) should have the proper description
+ok 980 - is_partitioned(part, desc) should have the proper diagnostics
+ok 981 - is_partitioned(part) should pass
+ok 982 - is_partitioned(part) should have the proper description
+ok 983 - is_partitioned(part) should have the proper diagnostics
+ok 984 - isnt_partitioned(non-existent part) should pass
+ok 985 - isnt_partitioned(non-existent part) should have the proper description
+ok 986 - isnt_partitioned(non-existent part) should have the proper diagnostics
+ok 987 - isnt_partitioned(non-existent part, desc) should pass
+ok 988 - isnt_partitioned(non-existent part, desc) should have the proper description
+ok 989 - isnt_partitioned(non-existent part, desc) should have the proper diagnostics
+ok 990 - isnt_partitioned(sch, non-existent part, desc) should pass
+ok 991 - isnt_partitioned(sch, non-existent part, desc) should have the proper description
+ok 992 - isnt_partitioned(sch, non-existent part, desc) should have the proper diagnostics
+ok 993 - isnt_partitioned(sch, part, desc) should fail
+ok 994 - isnt_partitioned(sch, part, desc) should have the proper description
+ok 995 - isnt_partitioned(sch, part, desc) should have the proper diagnostics
+ok 996 - isnt_partitioned(sch, part) should fail
+ok 997 - isnt_partitioned(sch, part) should have the proper description
+ok 998 - isnt_partitioned(sch, part) should have the proper diagnostics
+ok 999 - isnt_partitioned(part, desc) should fail
+ok 1000 - isnt_partitioned(part, desc) should have the proper description
+ok 1001 - isnt_partitioned(part, desc) should have the proper diagnostics
+ok 1002 - isnt_partitioned(part) should fail
+ok 1003 - isnt_partitioned(part) should have the proper description
+ok 1004 - isnt_partitioned(part) should have the proper diagnostics
