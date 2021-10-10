@@ -219,7 +219,7 @@ SELECT * FROM check_test(
 -- Test is_member_of().
 CREATE OR REPLACE FUNCTION addmember() RETURNS SETOF TEXT AS $$
 BEGIN
-    EXECUTE 'ALTER GROUP meanies ADD USER ' || current_user;
+    EXECUTE 'ALTER GROUP meanies ADD USER ' || quote_ident(current_user);
     RETURN;
 END;
 $$ LANGUAGE PLPGSQL;    

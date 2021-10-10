@@ -71,7 +71,7 @@ SELECT * FROM check_test(
     db_owner_is(current_database(), current_user),
 	true,
     'db_owner_is(db, user)',
-    'Database ' || quote_ident(current_database()) || ' should be owned by ' || current_user,
+    'Database ' || quote_ident(current_database()) || ' should be owned by ' || quote_ident(current_user),
     ''
 );
 
@@ -141,7 +141,7 @@ SELECT * FROM check_test(
     relation_owner_is('public', 'sometab', current_user),
 	true,
     'relation_owner_is(sch, tab, user)',
-    'Relation public.sometab should be owned by ' || current_user,
+    'Relation public.sometab should be owned by ' || quote_ident(current_user),
     ''
 );
 
@@ -173,7 +173,7 @@ SELECT * FROM check_test(
     relation_owner_is('sometab', current_user),
 	true,
     'relation_owner_is(tab, user)',
-    'Relation sometab should be owned by ' || current_user,
+    'Relation sometab should be owned by ' || quote_ident(current_user),
     ''
 );
 
@@ -199,7 +199,7 @@ SELECT * FROM check_test(
     relation_owner_is('public', 'apart', current_user),
 	true,
     'relation_owner_is(sch, part, user)',
-    'Relation public.apart should be owned by ' || current_user,
+    'Relation public.apart should be owned by ' || quote_ident(current_user),
     ''
 );
 
@@ -231,7 +231,7 @@ SELECT * FROM check_test(
     relation_owner_is('apart', current_user),
 	true,
     'relation_owner_is(part, user)',
-    'Relation apart should be owned by ' || current_user,
+    'Relation apart should be owned by ' || quote_ident(current_user),
     ''
 );
 
@@ -257,7 +257,7 @@ SELECT * FROM check_test(
     relation_owner_is('public', 'someseq', current_user),
 	true,
     'relation_owner_is(sch, seq, user)',
-    'Relation public.someseq should be owned by ' || current_user,
+    'Relation public.someseq should be owned by ' || quote_ident(current_user),
     ''
 );
 
@@ -289,7 +289,7 @@ SELECT * FROM check_test(
     relation_owner_is('someseq', current_user),
 	true,
     'relation_owner_is(seq, user)',
-    'Relation someseq should be owned by ' || current_user,
+    'Relation someseq should be owned by ' || quote_ident(current_user),
     ''
 );
 
@@ -315,7 +315,7 @@ SELECT * FROM check_test(
     table_owner_is('public', 'sometab', current_user),
 	true,
     'table_owner_is(sch, tab, user)',
-    'Table public.sometab should be owned by ' || current_user,
+    'Table public.sometab should be owned by ' || quote_ident(current_user),
     ''
 );
 
@@ -347,7 +347,7 @@ SELECT * FROM check_test(
     table_owner_is('sometab', current_user),
 	true,
     'table_owner_is(tab, user)',
-    'Table sometab should be owned by ' || current_user,
+    'Table sometab should be owned by ' || quote_ident(current_user),
     ''
 );
 
@@ -407,7 +407,7 @@ SELECT * FROM check_test(
     view_owner_is('public', 'someview', current_user),
 	true,
     'view_owner_is(sch, view, user)',
-    'View public.someview should be owned by ' || current_user,
+    'View public.someview should be owned by ' || quote_ident(current_user),
     ''
 );
 
@@ -439,7 +439,7 @@ SELECT * FROM check_test(
     view_owner_is('someview', current_user),
 	true,
     'view_owner_is(view, user)',
-    'View someview should be owned by ' || current_user,
+    'View someview should be owned by ' || quote_ident(current_user),
     ''
 );
 
@@ -482,7 +482,7 @@ SELECT * FROM check_test(
     sequence_owner_is('public', 'someseq', current_user),
 	true,
     'sequence_owner_is(sch, sequence, user)',
-    'Sequence public.someseq should be owned by ' || current_user,
+    'Sequence public.someseq should be owned by ' || quote_ident(current_user),
     ''
 );
 
@@ -514,7 +514,7 @@ SELECT * FROM check_test(
     sequence_owner_is('someseq', current_user),
 	true,
     'sequence_owner_is(sequence, user)',
-    'Sequence someseq should be owned by ' || current_user,
+    'Sequence someseq should be owned by ' || quote_ident(current_user),
     ''
 );
 
@@ -557,7 +557,7 @@ SELECT * FROM check_test(
     composite_owner_is('public', 'sometype', current_user),
 	true,
     'composite_owner_is(sch, composite, user)',
-    'Composite type public.sometype should be owned by ' || current_user,
+    'Composite type public.sometype should be owned by ' || quote_ident(current_user),
     ''
 );
 
@@ -589,7 +589,7 @@ SELECT * FROM check_test(
     composite_owner_is('sometype', current_user),
 	true,
     'composite_owner_is(composite, user)',
-    'Composite type sometype should be owned by ' || current_user,
+    'Composite type sometype should be owned by ' || quote_ident(current_user),
     ''
 );
 
@@ -643,7 +643,7 @@ BEGIN
             foreign_table_owner_is('public', 'my_fdw', current_user),
 	        true,
             'foreign_table_owner_is(sch, tab, user)',
-            'Foreign table public.my_fdw should be owned by ' || current_user,
+            'Foreign table public.my_fdw should be owned by ' || quote_ident(current_user),
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
@@ -675,7 +675,7 @@ BEGIN
             foreign_table_owner_is('my_fdw', current_user),
 	        true,
             'foreign_table_owner_is(tab, user)',
-            'Foreign table my_fdw should be owned by ' || current_user,
+            'Foreign table my_fdw should be owned by ' || quote_ident(current_user),
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
@@ -798,7 +798,7 @@ SELECT * FROM check_test(
     function_owner_is('public', 'somefunction', ARRAY['integer'], current_user),
 	true,
     'function_owner_is(sch, function, args[integer], user)',
-    'Function public.somefunction(integer) should be owned by ' || current_user,
+    'Function public.somefunction(integer) should be owned by ' || quote_ident(current_user),
     ''
 );
 
@@ -814,7 +814,7 @@ SELECT * FROM check_test(
     function_owner_is('public', 'test_fdw', '{}'::NAME[], current_user),
 	true,
     'function_owner_is(sch, function, args[], user)',
-    'Function public.test_fdw() should be owned by ' || current_user,
+    'Function public.test_fdw() should be owned by ' || quote_ident(current_user),
     ''
 );
 
@@ -830,7 +830,7 @@ SELECT * FROM check_test(
     function_owner_is('somefunction', ARRAY['integer'], current_user),
 	true,
     'function_owner_is(function, args[integer], user)',
-    'Function somefunction(integer) should be owned by ' || current_user,
+    'Function somefunction(integer) should be owned by ' || quote_ident(current_user),
     ''
 );
 
@@ -846,7 +846,7 @@ SELECT * FROM check_test(
     function_owner_is('test_fdw', '{}'::NAME[], current_user),
 	true,
     'function_owner_is(function, args[], user)',
-    'Function test_fdw() should be owned by ' || current_user,
+    'Function test_fdw() should be owned by ' || quote_ident(current_user),
     ''
 );
 
@@ -942,7 +942,7 @@ SELECT * FROM check_test(
     index_owner_is('someschema', 'anothertab', 'idx_name', current_user),
 	true,
     'index_owner_is(schema, table, index, user)',
-    'Index idx_name ON someschema.anothertab should be owned by ' || current_user,
+    'Index idx_name ON someschema.anothertab should be owned by ' || quote_ident(current_user),
     ''
 );
 
@@ -999,7 +999,7 @@ SELECT * FROM check_test(
     index_owner_is('sometab', 'idx_hey', current_user),
 	true,
     'index_owner_is(table, index, user)',
-    'Index idx_hey ON sometab should be owned by ' || current_user,
+    'Index idx_hey ON sometab should be owned by ' || quote_ident(current_user),
     ''
 );
 
@@ -1213,7 +1213,7 @@ SELECT * FROM check_test(
     type_owner_is('someschema', 'us_postal_code', current_user),
 	true,
     'type_owner_is(schema, type, user)',
-    'Type someschema.us_postal_code should be owned by ' || current_user,
+    'Type someschema.us_postal_code should be owned by ' || quote_ident(current_user),
     ''
 );
 
@@ -1262,7 +1262,7 @@ SELECT * FROM check_test(
     type_owner_is('sometype', current_user),
 	true,
     'type_owner_is(type, user)',
-    'Type sometype should be owned by ' || current_user,
+    'Type sometype should be owned by ' || quote_ident(current_user),
     ''
 );
 
@@ -1308,7 +1308,7 @@ BEGIN
             materialized_view_owner_is('public', 'somemview', current_user),
             true,
             'materialized_view_owner_is(sch, materialized_view, user)',
-            'Materialized view public.somemview should be owned by ' || current_user,
+            'Materialized view public.somemview should be owned by ' || quote_ident(current_user),
             ''
         ) AS b LOOP
                     RETURN NEXT tap.b;
@@ -1348,7 +1348,7 @@ BEGIN
             materialized_view_owner_is('somemview', current_user),
             true,
             'materialized_view_owner_is(view, user)',
-            'Materialized view somemview should be owned by ' || current_user,
+            'Materialized view somemview should be owned by ' || quote_ident(current_user),
             ''
         ) AS b LOOP
                     RETURN NEXT tap.b;
@@ -1400,7 +1400,7 @@ BEGIN
             view_owner_is('public', 'someview', current_user),
             true,
             'materialized_view_owner_is(sch, materialized_view, user)',
-            'View public.someview should be owned by ' || current_user,
+            'View public.someview should be owned by ' || quote_ident(current_user),
             ''
         ) AS b LOOP
                     RETURN NEXT tap.b;
@@ -1440,7 +1440,7 @@ BEGIN
             view_owner_is('someview', current_user),
             true,
             'materialized_view_owner_is(view, user)',
-            'View someview should be owned by ' || current_user,
+            'View someview should be owned by ' || quote_ident(current_user),
             ''
         ) AS b LOOP
                     RETURN NEXT tap.b;

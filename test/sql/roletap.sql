@@ -103,7 +103,7 @@ SELECT * FROM check_test(
     'roles_are(roles, desc) extras',
     'whatever',
     '    Extra roles:
-        ' || current_role
+        ' || quote_ident(current_role)
 );
 
 SELECT * FROM check_test(
@@ -112,7 +112,7 @@ SELECT * FROM check_test(
     'roles_are(roles, desc) missing and extras',
     'whatever',
     '    Extra roles:
-        ' || current_role || '
+        ' || quote_ident(current_role) || '
     Missing roles:
         __howdy__'
 );

@@ -51,7 +51,7 @@ SELECT * FROM check_test(
     table_privs_are( 'ha', 'sometab', current_user, _table_privs() ),
     true,
     'table_privs_are(sch, tab, role, privs)',
-    'Role ' || current_user || ' should be granted '
+    'Role ' || quote_ident(current_user) || ' should be granted '
          || array_to_string(_table_privs(), ', ') || ' on table ha.sometab' ,
     ''
 );
@@ -60,7 +60,7 @@ SELECT * FROM check_test(
     table_privs_are( 'LOL', 'ATable', current_user, _table_privs() ),
     true,
     'table_privs_are(LOL, ATable, role, privs)',
-    'Role ' || current_user || ' should be granted '
+    'Role ' || quote_ident(current_user) || ' should be granted '
          || array_to_string(_table_privs(), ', ') || ' on table "LOL"."ATable"' ,
     ''
 );
@@ -85,7 +85,7 @@ SELECT * FROM check_test(
     table_privs_are( 'sometab', current_user, _table_privs() ),
     true,
     'table_privs_are(tab, role, privs)',
-    'Role ' || current_user || ' should be granted '
+    'Role ' || quote_ident(current_user) || ' should be granted '
          || array_to_string(_table_privs(), ', ') || ' on table sometab' ,
     ''
 );
@@ -94,7 +94,7 @@ SELECT * FROM check_test(
     table_privs_are( 'ATable', current_user, _table_privs() ),
     true,
     'table_privs_are(ATable, role, privs)',
-    'Role ' || current_user || ' should be granted '
+    'Role ' || quote_ident(current_user) || ' should be granted '
          || array_to_string(_table_privs(), ', ') || ' on table "ATable"' ,
     ''
 );
@@ -214,7 +214,7 @@ SELECT * FROM check_test(
     database_privs_are( current_database(), current_user, _db_privs() ),
     true,
     'database_privs_are(db, role, privs, desc)',
-    'Role ' || current_user || ' should be granted '
+    'Role ' || quote_ident(current_user) || ' should be granted '
          || array_to_string(_db_privs(), ', ') || ' on database ' || quote_ident( current_database() ),
     ''
 );
@@ -304,7 +304,7 @@ SELECT * FROM check_test(
     ),
     true,
     'function_privs_are(sch, func, args, role, privs)',
-    'Role ' || current_user || ' should be granted EXECUTE on function public.foo(integer, text)'
+    'Role ' || quote_ident(current_user) || ' should be granted EXECUTE on function public.foo(integer, text)'
     ''
 );
 
@@ -315,7 +315,7 @@ SELECT * FROM check_test(
     ),
     true,
     'function_privs_are(LOL, DoIt, args, role, privs)',
-    'Role ' || current_user || ' should be granted EXECUTE on function "LOL"."DoIt"(integer, text)'
+    'Role ' || quote_ident(current_user) || ' should be granted EXECUTE on function "LOL"."DoIt"(integer, text)'
     ''
 );
 
@@ -348,7 +348,7 @@ SELECT * FROM check_test(
     ),
     true,
     'function_privs_are(func, args, role, privs)',
-    'Role ' || current_user || ' should be granted EXECUTE on function foo(integer, text)'
+    'Role ' || quote_ident(current_user) || ' should be granted EXECUTE on function foo(integer, text)'
     ''
 );
 
@@ -359,7 +359,7 @@ SELECT * FROM check_test(
     ),
     true,
     'function_privs_are(DoIt, args, role, privs)',
-    'Role ' || current_user || ' should be granted EXECUTE on function "DoIt"(integer, text)'
+    'Role ' || quote_ident(current_user) || ' should be granted EXECUTE on function "DoIt"(integer, text)'
     ''
 );
 
@@ -550,7 +550,7 @@ SELECT * FROM check_test(
     language_privs_are( 'plpgsql', current_user, '{USAGE}' ),
     true,
     'language_privs_are(lang, role, privs, desc)',
-    'Role ' || current_user || ' should be granted USAGE on language plpgsql',
+    'Role ' || quote_ident(current_user) || ' should be granted USAGE on language plpgsql',
     ''
 );
 
@@ -615,7 +615,7 @@ SELECT * FROM check_test(
     schema_privs_are( current_schema(), current_user, ARRAY['CREATE', 'USAGE'] ),
     true,
     'schema_privs_are(schema, role, privs, desc)',
-    'Role ' || current_user || ' should be granted '
+    'Role ' || quote_ident(current_user) || ' should be granted '
          || array_to_string(ARRAY['CREATE', 'USAGE'], ', ') || ' on schema ' || current_schema(),
     ''
 );
@@ -624,7 +624,7 @@ SELECT * FROM check_test(
     schema_privs_are( 'LOL', current_user, ARRAY['CREATE', 'USAGE'] ),
     true,
     'schema_privs_are(LOL, role, privs, desc)',
-    'Role ' || current_user || ' should be granted '
+    'Role ' || quote_ident(current_user) || ' should be granted '
          || array_to_string(ARRAY['CREATE', 'USAGE'], ', ') || ' on schema "LOL"',
     ''
 );
@@ -695,7 +695,7 @@ SELECT * FROM check_test(
     tablespace_privs_are( 'pg_default', current_user, '{CREATE}' ),
     true,
     'tablespace_privs_are(tablespace, role, privs, desc)',
-    'Role ' || current_user || ' should be granted CREATE on tablespace pg_default',
+    'Role ' || quote_ident(current_user) || ' should be granted CREATE on tablespace pg_default',
     ''
 );
 
@@ -773,7 +773,7 @@ BEGIN
             sequence_privs_are( 'ha', 'someseq', current_user, ARRAY['USAGE', 'SELECT', 'UPDATE'] ),
             true,
             'sequence_privs_are(sch, seq, role, privs)',
-            'Role ' || current_user || ' should be granted '
+            'Role ' || quote_ident(current_user) || ' should be granted '
                 || array_to_string(ARRAY['USAGE', 'SELECT', 'UPDATE'], ', ')
                 || ' on sequence ha.someseq' ,
             ''
@@ -783,7 +783,7 @@ BEGIN
             sequence_privs_are( 'LOL', 'ASeq', current_user, ARRAY['USAGE', 'SELECT', 'UPDATE'] ),
             true,
             'sequence_privs_are(sch, seq, role, privs)',
-            'Role ' || current_user || ' should be granted '
+            'Role ' || quote_ident(current_user) || ' should be granted '
                 || array_to_string(ARRAY['USAGE', 'SELECT', 'UPDATE'], ', ')
                 || ' on sequence "LOL"."ASeq"' ,
             ''
@@ -813,7 +813,7 @@ BEGIN
             sequence_privs_are( 'someseq', current_user, ARRAY['USAGE', 'SELECT', 'UPDATE'] ),
             true,
             'sequence_privs_are(seq, role, privs)',
-            'Role ' || current_user || ' should be granted '
+            'Role ' || quote_ident(current_user) || ' should be granted '
                 || array_to_string(ARRAY['USAGE', 'SELECT', 'UPDATE'], ', ')
                 || ' on sequence someseq' ,
             ''
@@ -823,7 +823,7 @@ BEGIN
             sequence_privs_are( 'ASeq', current_user, ARRAY['USAGE', 'SELECT', 'UPDATE'] ),
             true,
             'sequence_privs_are(seq, role, privs)',
-            'Role ' || current_user || ' should be granted '
+            'Role ' || quote_ident(current_user) || ' should be granted '
                 || array_to_string(ARRAY['USAGE', 'SELECT', 'UPDATE'], ', ')
                 || ' on sequence "ASeq"' ,
             ''
@@ -1085,7 +1085,7 @@ BEGIN
             ] ),
             true,
             'any_column_privs_are(sch, tab, role, privs)',
-            'Role ' || current_user || ' should be granted '
+            'Role ' || quote_ident(current_user) || ' should be granted '
                 || array_to_string(ARRAY['INSERT', 'REFERENCES', 'SELECT', 'UPDATE'], ', ')
                 || ' on any column in ha.sometab' ,
             ''
@@ -1107,7 +1107,7 @@ BEGIN
             ] ),
             true,
             'any_column_privs_are(tab, role, privs)',
-            'Role ' || current_user || ' should be granted '
+            'Role ' || quote_ident(current_user) || ' should be granted '
                 || array_to_string(ARRAY['INSERT', 'REFERENCES', 'SELECT', 'UPDATE'], ', ')
                 || ' on any column in sometab' ,
             ''
@@ -1345,7 +1345,7 @@ BEGIN
             ] ),
             true,
             'column_privs_are(sch, tab, col, role, privs)',
-            'Role ' || current_user || ' should be granted '
+            'Role ' || quote_ident(current_user) || ' should be granted '
                 || array_to_string(ARRAY['INSERT', 'REFERENCES', 'SELECT', 'UPDATE'], ', ')
                 || ' on column ha.sometab.id' ,
             ''
@@ -1357,7 +1357,7 @@ BEGIN
             ] ),
             true,
             'column_privs_are(LOL, ATable, AColumn, role, privs)',
-            'Role ' || current_user || ' should be granted '
+            'Role ' || quote_ident(current_user) || ' should be granted '
                 || array_to_string(ARRAY['INSERT', 'REFERENCES', 'SELECT', 'UPDATE'], ', ')
                 || ' on column "LOL"."ATable"."AColumn"' ,
             ''
@@ -1389,7 +1389,7 @@ BEGIN
             ] ),
             true,
             'column_privs_are(tab, col, role, privs)',
-            'Role ' || current_user || ' should be granted '
+            'Role ' || quote_ident(current_user) || ' should be granted '
                 || array_to_string(ARRAY['INSERT', 'REFERENCES', 'SELECT', 'UPDATE'], ', ')
                 || ' on column sometab.id' ,
                 ''
@@ -1401,7 +1401,7 @@ BEGIN
             ] ),
             true,
             'column_privs_are(tab, col, role, privs)',
-            'Role ' || current_user || ' should be granted '
+            'Role ' || quote_ident(current_user) || ' should be granted '
                 || array_to_string(ARRAY['INSERT', 'REFERENCES', 'SELECT', 'UPDATE'], ', ')
                 || ' on column "ATable"."AColumn"' ,
                 ''
@@ -1668,7 +1668,7 @@ BEGIN
             fdw_privs_are( 'dummy', current_user, '{USAGE}' ),
             true,
             'fdw_privs_are(fdw, role, privs, desc)',
-            'Role ' || current_user || ' should be granted USAGE on FDW dummy',
+            'Role ' || quote_ident(current_user) || ' should be granted USAGE on FDW dummy',
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
@@ -1676,7 +1676,7 @@ BEGIN
             fdw_privs_are( 'SomeFDW', current_user, '{USAGE}' ),
             true,
             'fdw_privs_are(SomeFDW, role, privs, desc)',
-            'Role ' || current_user || ' should be granted USAGE on FDW "SomeFDW"',
+            'Role ' || quote_ident(current_user) || ' should be granted USAGE on FDW "SomeFDW"',
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
@@ -1826,7 +1826,7 @@ BEGIN
             server_privs_are( 'foo', current_user, '{USAGE}' ),
             true,
             'server_privs_are(server, role, privs, desc)',
-            'Role ' || current_user || ' should be granted USAGE on server foo',
+            'Role ' || quote_ident(current_user) || ' should be granted USAGE on server foo',
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
@@ -1834,7 +1834,7 @@ BEGIN
             server_privs_are( 'SomeServer', current_user, '{USAGE}' ),
             true,
             'server_privs_are(SomeServer, role, privs, desc)',
-            'Role ' || current_user || ' should be granted USAGE on server "SomeServer"',
+            'Role ' || quote_ident(current_user) || ' should be granted USAGE on server "SomeServer"',
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
