@@ -216,6 +216,7 @@ class DocDBRocksDBUtil {
   std::shared_ptr<ManualHistoryRetentionPolicy> retention_policy_ {
       std::make_shared<ManualHistoryRetentionPolicy>() };
   std::shared_ptr<rocksdb::CompactionFileFilterFactory> compaction_file_filter_factory_;
+  std::shared_ptr<std::function<uint64_t()>> max_file_size_for_compaction_;
 
   rocksdb::WriteOptions write_options_;
   Schema schema_;
