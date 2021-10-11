@@ -12,7 +12,6 @@
 package com.yugabyte.yw.scheduler;
 
 import static com.cronutils.model.CronType.UNIX;
-
 import akka.actor.ActorSystem;
 import com.cronutils.model.Cron;
 import com.cronutils.model.definition.CronDefinitionBuilder;
@@ -28,6 +27,7 @@ import com.yugabyte.yw.commissioner.tasks.BackupUniverse;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RunExternalScript;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -39,7 +39,12 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -183,13 +188,66 @@ public class Scheduler {
       }
       Map<Customer, List<Backup>> expiredBackups = Backup.getExpiredBackups();
       expiredBackups.forEach(
-          (customer, backups) ->
-              backups.forEach(backup -> this.runDeleteBackupTask(customer, backup)));
+          (customer, backups) -> {
+            deleteExpiredBackupsForCustomer(customer, backups);
+          });
     } catch (Exception e) {
       LOG.error("Error Running scheduler thread", e);
     } finally {
       running.set(false);
     }
+  }
+
+  private void deleteExpiredBackupsForCustomer(Customer customer, List<Backup> expiredBackups) {
+    Map<UUID, List<Backup>> expiredBackupsPerSchedule = new HashMap<>();
+    List<Backup> backupsToDelete = new ArrayList<>();
+    expiredBackups.forEach(
+        backup -> {
+          UUID scheduleUUID = backup.getScheduleUUID();
+          if (scheduleUUID == null) {
+            backupsToDelete.add(backup);
+          } else {
+            if (!expiredBackupsPerSchedule.containsKey(scheduleUUID)) {
+              expiredBackupsPerSchedule.put(scheduleUUID, new ArrayList<>());
+            }
+            expiredBackupsPerSchedule.get(scheduleUUID).add(backup);
+          }
+        });
+    for (UUID scheduleUUID : expiredBackupsPerSchedule.keySet()) {
+      backupsToDelete.addAll(
+          getBackupsToDeleteForSchedule(
+              customer.getUuid(), scheduleUUID, expiredBackupsPerSchedule.get(scheduleUUID)));
+    }
+
+    for (Backup backup : backupsToDelete) {
+      this.runDeleteBackupTask(customer, backup);
+    }
+  }
+
+  private List<Backup> getBackupsToDeleteForSchedule(
+      UUID customerUUID, UUID scheduleUUID, List<Backup> expiredBackups) {
+    List<Backup> backupsToDelete = new ArrayList<Backup>();
+    int minNumBackupsToRetain = Util.MIN_NUM_BACKUPS_TO_RETAIN,
+        totalBackupsCount = Backup.fetchAllBackupsByScheduleUUID(customerUUID, scheduleUUID).size();
+    Schedule schedule = Schedule.getOrBadRequest(scheduleUUID);
+    if (schedule.getTaskParams().has("minNumBackupsToRetain")) {
+      minNumBackupsToRetain = schedule.getTaskParams().get("minNumBackupsToRetain").intValue();
+    }
+
+    int numBackupsToDelete =
+        Math.min(expiredBackups.size(), Math.max(0, totalBackupsCount - minNumBackupsToRetain));
+    Collections.sort(
+        expiredBackups,
+        new Comparator<Backup>() {
+          @Override
+          public int compare(Backup b1, Backup b2) {
+            return b1.getCreateTime().compareTo(b2.getCreateTime());
+          }
+        });
+    for (int i = 0; i < Math.min(numBackupsToDelete, expiredBackups.size()); i++) {
+      backupsToDelete.add(expiredBackups.get(i));
+    }
+    return backupsToDelete;
   }
 
   private void runBackupTask(Schedule schedule, boolean alreadyRunning) {

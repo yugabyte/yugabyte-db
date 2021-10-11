@@ -245,6 +245,19 @@ public class ModelFactory {
     return Backup.create(customerUUID, params);
   }
 
+  public static Backup createExpiredBackupWithScheduleUUID(
+      UUID customerUUID, UUID universeUUID, UUID configUUID, UUID scheduleUUID) {
+    BackupTableParams params = new BackupTableParams();
+    params.storageConfigUUID = configUUID;
+    params.universeUUID = universeUUID;
+    params.setKeyspace("foo");
+    params.setTableName("bar");
+    params.tableUUID = UUID.randomUUID();
+    params.scheduleUUID = scheduleUUID;
+    params.timeBeforeDelete = -100L;
+    return Backup.create(customerUUID, params);
+  }
+
   public static Backup createBackupWithExpiry(
       UUID customerUUID, UUID universeUUID, UUID configUUID) {
     BackupTableParams params = new BackupTableParams();
