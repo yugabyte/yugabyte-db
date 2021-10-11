@@ -15,6 +15,7 @@
 #include "yb/client/table_alterer.h"
 #include "yb/client/transaction_pool.h"
 
+#include "yb/common/table_properties_constants.h"
 #include "yb/docdb/compaction_file_filter.h"
 #include "yb/gutil/integral_types.h"
 #include "yb/integration-tests/test_workload.h"
@@ -376,7 +377,7 @@ TEST_F(CompactionTest, ManualCompactionProducesOneFilePerDb) {
   }
 }
 
-TEST_F(CompactionTest, FilesOverMaxSizeDoNotGetAutoCompacted) {
+TEST_F(CompactionTest, FilesOverMaxSizeWithTableTTLDoNotGetAutoCompacted) {
   #ifndef NDEBUG
     rocksdb::SyncPoint::GetInstance()->LoadDependency({
         {"UniversalCompactionPicker::PickCompaction:SkippingCompaction",
@@ -391,7 +392,10 @@ TEST_F(CompactionTest, FilesOverMaxSizeDoNotGetAutoCompacted) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_file_size_for_compaction) = 10_KB;
 
   SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
+  // Change the table to have a default time to live.
+  ASSERT_OK(ChangeTableTTL(workload_->table_name(), 1000));
   ASSERT_OK(WriteAtLeastFilesPerDb(kNumFilesToWrite));
+
   auto dbs = GetAllRocksDbs(cluster_.get(), false);
   TEST_SYNC_POINT("CompactionTest::FilesOverMaxSizeDoNotGetAutoCompacted:WaitNoCompaction");
 
@@ -405,18 +409,37 @@ TEST_F(CompactionTest, FilesOverMaxSizeDoNotGetAutoCompacted) {
   #endif // NDEBUG
 }
 
-TEST_F(CompactionTest, FilesOverMaxSizeStillGetManualCompacted) {
+TEST_F(CompactionTest, FilesOverMaxSizeWithTableTTLStillGetManualCompacted) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_file_size_for_compaction) = 10_KB;
 
   SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
+  // Change the table to have a default time to live.
+  ASSERT_OK(ChangeTableTTL(workload_->table_name(), 1000));
   ASSERT_OK(WriteAtLeastFilesPerDb(10));
 
   ASSERT_OK(ExecuteManualCompaction());
+  ASSERT_OK(WaitForNumCompactionsPerDb(1));
 
   auto dbs = GetAllRocksDbs(cluster_.get(), false);
   for (auto* db : dbs) {
     ASSERT_EQ(db->GetCurrentVersionNumSSTFiles(), 1);
+  }
+}
+
+TEST_F(CompactionTest, MaxFileSizeIgnoredIfNoTableTTL) {
+  const int kNumFilesToWrite = 10;
+  // Auto compactions will be triggered every kNumFilesToWrite files written.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = kNumFilesToWrite;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_file_size_for_compaction) = 10_KB;
+
+  SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
+  ASSERT_OK(WriteAtLeastFilesPerDb(kNumFilesToWrite));
+  ASSERT_OK(WaitForNumCompactionsPerDb(1));
+
+  auto dbs = GetAllRocksDbs(cluster_.get(), false);
+  for (auto* db : dbs) {
+    ASSERT_LT(db->GetCurrentVersionNumSSTFiles(), kNumFilesToWrite);
   }
 }
 
@@ -495,6 +518,7 @@ class CompactionTestWithFileExpiration : public CompactionTest {
  public:
   void SetUp() override {
     CompactionTest::SetUp();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_enable_ttl_file_filter) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
     // Disable automatic compactions, but continue to allow manual compactions.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_base_background_compactions) = 0;
@@ -593,14 +617,12 @@ TEST_F(CompactionTestWithFileExpiration, CompactionNoFileExpiration) {
 }
 
 TEST_F(CompactionTestWithFileExpiration, FileExpirationAfterExpiry) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_enable_ttl_file_filter) = true;
   WriteRecordsAllExpire();
   auto num_sst_files = CountFilteredSSTFiles();
   ASSERT_GT(num_sst_files, 0);
 }
 
 TEST_F(CompactionTestWithFileExpiration, ValueTTLOverridesTableTTL) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_enable_ttl_file_filter) = true;
   SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
   // Set the value-level TTL to too high to expire.
   workload_->set_ttl(10000000);
@@ -623,7 +645,6 @@ TEST_F(CompactionTestWithFileExpiration, ValueTTLOverridesTableTTL) {
 }
 
 TEST_F(CompactionTestWithFileExpiration, MixedExpiringAndNonExpiring) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_enable_ttl_file_filter) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
   SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
 
@@ -653,7 +674,6 @@ TEST_F(CompactionTestWithFileExpiration, MixedExpiringAndNonExpiring) {
 }
 
 TEST_F(CompactionTestWithFileExpiration, FileThatNeverExpires) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_enable_ttl_file_filter) = true;
   const int kNumFilesToWrite = 10;
   SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
 
@@ -693,7 +713,6 @@ TEST_F(CompactionTestWithFileExpiration, FileThatNeverExpires) {
 
 TEST_F(CompactionTestWithFileExpiration, ShouldNotExpireDueToHistoryRetention) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 1000000;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_enable_ttl_file_filter) = true;
   SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
 
   ASSERT_OK(WriteAtLeastFilesPerDb(10));
@@ -714,7 +733,6 @@ TEST_F(CompactionTestWithFileExpiration, ShouldNotExpireDueToHistoryRetention) {
 }
 
 TEST_F(CompactionTestWithFileExpiration, TableTTLChangesWillChangeWhetherFilesExpire) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_enable_ttl_file_filter) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
   SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
   // Change the table TTL to a large value that won't expire.

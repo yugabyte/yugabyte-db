@@ -282,6 +282,7 @@ DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_bool(consistent_restore);
 DECLARE_int32(rocksdb_level0_slowdown_writes_trigger);
 DECLARE_int32(rocksdb_level0_stop_writes_trigger);
+DECLARE_uint64(rocksdb_max_file_size_for_compaction);
 DECLARE_int64(apply_intents_task_injected_delay_ms);
 
 using namespace std::placeholders;
@@ -575,6 +576,15 @@ auto MakeMemTableFlushFilterFactory(const F& f) {
   return std::make_shared<MemTableFlushFilterFactoryType>(f);
 }
 
+template <class F>
+auto MakeMaxFileSizeWithTableTTLFunction(const F& f) {
+  // Trick to get type of max_file_size_for_compaction field.
+  typedef typename decltype(
+      static_cast<rocksdb::Options*>(nullptr)->max_file_size_for_compaction)::element_type
+      MaxFileSizeWithTableTTLFunction;
+  return std::make_shared<MaxFileSizeWithTableTTLFunction>(f);
+}
+
 Result<bool> Tablet::IntentsDbFlushFilter(const rocksdb::MemTable& memtable) {
   VLOG_WITH_PREFIX(4) << __func__;
 
@@ -684,6 +694,16 @@ Status Tablet::OpenKeyValueTablet() {
     rocksdb_options.compaction_file_filter_factory =
         std::make_shared<docdb::DocDBCompactionFileFilterFactory>(retention_policy_, clock());
   }
+
+  // Use a function that checks the table TTL before returning a value for max file size
+  // for compactions.
+  rocksdb_options.max_file_size_for_compaction = MakeMaxFileSizeWithTableTTLFunction([this] {
+    if (FLAGS_rocksdb_max_file_size_for_compaction > 0 &&
+        retention_policy_->GetRetentionDirective().table_ttl != docdb::Value::kMaxTtl) {
+      return FLAGS_rocksdb_max_file_size_for_compaction;
+    }
+    return std::numeric_limits<uint64_t>::max();
+  });
 
   rocksdb_options.disable_auto_compactions = true;
   rocksdb_options.level0_slowdown_writes_trigger = std::numeric_limits<int>::max();

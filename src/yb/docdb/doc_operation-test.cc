@@ -11,6 +11,7 @@
 // under the License.
 //
 
+#include <locale>
 #include <thread>
 
 #include "yb/common/common.pb.h"
@@ -114,6 +115,22 @@ class DiscardUntilFileFilterFactory : public rocksdb::CompactionFileFilterFactor
  private:
   const int64_t last_to_discard_;
 };
+
+// MakeMaxFileSizeFunction will create a function that returns the
+// rocksdb_max_file_size_for_compaction flag if it is set to a positive number, and returns
+// the max uint64 otherwise. It does NOT take the schema's table TTL into consideration.
+auto MakeMaxFileSizeFunction() {
+  // Trick to get type of max_file_size_for_compaction field.
+  typedef typename decltype(
+      static_cast<rocksdb::Options*>(nullptr)->max_file_size_for_compaction)::element_type
+      MaxFileSizeFunction;
+  return std::make_shared<MaxFileSizeFunction>([]{
+    if (FLAGS_rocksdb_max_file_size_for_compaction > 0) {
+      return FLAGS_rocksdb_max_file_size_for_compaction;
+    }
+    return std::numeric_limits<uint64_t>::max();
+  });
+}
 
 } // namespace
 
@@ -313,6 +330,13 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
     Slice data(rows_data.data(), rows_data.size());
     EXPECT_OK(row_block.Deserialize(YQL_CLIENT_CQL, &data));
     return row_block;
+  }
+
+  void SetMaxFileSizeForCompaction(const uint64_t max_size) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_file_size_for_compaction) = max_size;
+    // Make a function that will always use rocksdb_max_file_size_for_compaction.
+    // Normally, max_file_size_for_compaction is only used for tables with TTL.
+    max_file_size_for_compaction_ = MakeMaxFileSizeFunction();
   }
 };
 
@@ -1140,7 +1164,7 @@ TEST_F(DocOperationTest, MaxFileSizeForCompaction) {
   rocksdb()->GetLiveFilesMetaData(&files);
   ASSERT_EQ(kTotalBatches, files.size());
 
-  FLAGS_rocksdb_max_file_size_for_compaction = 100_KB;
+  SetMaxFileSizeForCompaction(100_KB);
   ASSERT_OK(ReinitDBOptions());
 
   WaitCompactionsDone(rocksdb());
@@ -1157,7 +1181,7 @@ TEST_F(DocOperationTest, MaxFileSizeWithWritesTrigger) {
   const int kTotalBatches = 20;
   GenerateFiles(kTotalBatches, this);
 
-  FLAGS_rocksdb_max_file_size_for_compaction = 100_KB;
+  SetMaxFileSizeForCompaction(100_KB);
   ASSERT_OK(ReinitDBOptions());
 
   WaitCompactionsDone(rocksdb());
@@ -1190,7 +1214,7 @@ TEST_F(DocOperationTest, MaxFileSizeIgnoredWithFileFilter) {
   ASSERT_EQ(kNumFilesToWrite, files.size());
   ASSERT_EQ(kExpectedBigFiles, CountBigFiles(files, kMaxFileSize));
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_file_size_for_compaction) = kMaxFileSize;
+  SetMaxFileSizeForCompaction(kMaxFileSize);
 
   // Use a filter factory that will expire every file.
   compaction_file_filter_factory_ =
@@ -1229,7 +1253,7 @@ TEST_F(DocOperationTest, EarlyFilesFilteredBeforeBigFile) {
   auto last_to_discard =
       rocksdb::TableFileNameToNumber(files[files.size() - kNumFilesToExpire].name);
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_file_size_for_compaction) = kMaxFileSize;
+  SetMaxFileSizeForCompaction(kMaxFileSize);
 
   // Use a filter factory that will expire every three files.
   compaction_file_filter_factory_ =
