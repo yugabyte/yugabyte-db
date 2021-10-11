@@ -1389,7 +1389,7 @@ std::unique_ptr<Compaction> UniversalCompactionPicker::PickCompaction(
   std::vector<std::vector<SortedRun>> sorted_runs = CalculateSortedRuns(
       *vstorage,
       ioptions_,
-      mutable_cf_options.max_file_size_for_compaction);
+      mutable_cf_options.MaxFileSizeForCompaction());
 
   for (const auto& block : sorted_runs) {
     auto result = DoPickCompaction(cf_name, mutable_cf_options, vstorage, log_buffer, block);

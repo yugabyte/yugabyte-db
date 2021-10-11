@@ -625,11 +625,6 @@ void InitRocksDBOptions(
     options->level0_stop_writes_trigger = std::numeric_limits<int>::max();
   }
 
-  uint64_t max_file_size_for_compaction = FLAGS_rocksdb_max_file_size_for_compaction;
-  if (max_file_size_for_compaction != 0) {
-    options->max_file_size_for_compaction = max_file_size_for_compaction;
-  }
-
   options->max_write_buffer_number = FLAGS_rocksdb_max_write_buffer_number;
 
   options->memtable_factory = std::make_shared<rocksdb::SkipListFactory>(

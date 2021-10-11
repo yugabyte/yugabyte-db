@@ -1884,11 +1884,11 @@ void VersionStorageInfo::CalculateBaseBytes(const ImmutableCFOptions& ioptions,
   // Special logic to set number of sorted runs.
   // It is to match the previous behavior when all files are in L0.
   int num_l0_count = 0;
-  if (options.max_file_size_for_compaction == std::numeric_limits<uint64_t>::max()) {
+  if (options.MaxFileSizeForCompaction() == std::numeric_limits<uint64_t>::max()) {
     num_l0_count = static_cast<int>(files_[0].size());
   } else {
     for (const auto& file : files_[0]) {
-      if (file->fd.GetTotalFileSize() <= options.max_file_size_for_compaction) {
+      if (file->fd.GetTotalFileSize() <= options.MaxFileSizeForCompaction()) {
         ++num_l0_count;
       }
     }

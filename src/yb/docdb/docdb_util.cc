@@ -419,6 +419,8 @@ Status DocDBRocksDBUtil::ReinitDBOptions() {
           retention_policy_, &KeyBounds::kNoBounds);
   regular_db_options_.compaction_file_filter_factory =
       compaction_file_filter_factory_;
+  regular_db_options_.max_file_size_for_compaction =
+      max_file_size_for_compaction_;
   if (!regular_db_) {
     return Status::OK();
   }
