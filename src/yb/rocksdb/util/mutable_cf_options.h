@@ -99,13 +99,15 @@ struct MutableCFOptions {
         max_sequential_skip_in_iterations(0),
         paranoid_file_checks(false),
         compaction_measure_io_stats(false),
-        max_file_size_for_compaction(std::numeric_limits<uint64_t>::max()) {}
+        max_file_size_for_compaction(nullptr) {}
 
   // Must be called after any change to MutableCFOptions
   void RefreshDerivedOptions(const ImmutableCFOptions& ioptions);
 
   // Get the max file size in a given level.
   uint64_t MaxFileSizeForLevel(int level) const;
+  // Get the max file size for compaction.
+  uint64_t MaxFileSizeForCompaction() const;
   // Returns maximum total overlap bytes with grandparent
   // level (i.e., level+2) before we stop building a single
   // file in level->level+1 compaction.
@@ -155,7 +157,7 @@ struct MutableCFOptions {
   uint64_t max_sequential_skip_in_iterations;
   bool paranoid_file_checks;
   bool compaction_measure_io_stats;
-  uint64_t max_file_size_for_compaction;
+  std::shared_ptr<std::function<uint64_t()>> max_file_size_for_compaction;
 
   // Derived options
   // Per-level target file size.
