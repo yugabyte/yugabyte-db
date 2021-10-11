@@ -346,4 +346,13 @@ public class Backup extends Model {
     }
     return universes;
   }
+
+  public static List<Backup> fetchAllBackupsByScheduleUUID(UUID customerUUID, UUID scheduleUUID) {
+    return find.query()
+        .where()
+        .eq("customer_uuid", customerUUID)
+        .eq("schedule_uuid", scheduleUUID)
+        .eq("state", BackupState.Completed)
+        .findList();
+  }
 }
