@@ -10,7 +10,8 @@
 
 import json
 
-from ybops.cloud.common.method import (AbstractAccessMethod, AbstractMethod,
+from ybops.cloud.common.method import (AbstractInstancesMethod, AbstractAccessMethod,
+                                       AbstractMethod,
                                        ChangeInstanceTypeMethod, CreateInstancesMethod,
                                        CreateRootVolumesMethod, DestroyInstancesMethod,
                                        ProvisionInstancesMethod, ReplaceRootVolumeMethod)
@@ -288,3 +289,29 @@ class GcpChangeInstanceTypeMethod(ChangeInstanceTypeMethod):
     def _host_info(self, args, host_info):
         args.private_ip = host_info["private_ip"]
         return args
+
+
+class GcpResumeInstancesMethod(AbstractInstancesMethod):
+    def __init__(self, base_command):
+        super(GcpResumeInstancesMethod, self).__init__(base_command,  "resume")
+
+    def add_extra_args(self):
+        super(GcpResumeInstancesMethod, self).add_extra_args()
+        self.parser.add_argument("--node_ip", default=None,
+                                 help="The ip of the instance to resume.")
+
+    def callback(self, args):
+        self.cloud.start_instance(args, args.custom_ssh_port)
+
+
+class GcpPauseInstancesMethod(AbstractInstancesMethod):
+    def __init__(self, base_command):
+        super(GcpPauseInstancesMethod, self).__init__(base_command, "pause")
+
+    def add_extra_args(self):
+        super(GcpPauseInstancesMethod, self).add_extra_args()
+        self.parser.add_argument("--node_ip", default=None,
+                                 help="The ip of the instance to pause.")
+
+    def callback(self, args):
+        self.cloud.stop_instance(args)
