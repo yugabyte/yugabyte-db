@@ -27,7 +27,7 @@ import { isEmptyObject, isNonEmptyObject } from '../../../utils/ObjectUtils';
 import {
   isOnpremUniverse,
   isKubernetesUniverse,
-  isAWSUniverse,
+  isPausableUniverse,
   isUniverseType
 } from '../../../utils/UniverseUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
@@ -697,7 +697,7 @@ class UniverseDetail extends Component {
                       */
                       }
 
-                      {isAWSUniverse(currentUniverse?.data) &&
+                      {isPausableUniverse(currentUniverse?.data) &&
                         !isEphemeralAwsStorage &&
                         (featureFlags.test['pausedUniverse'] ||
                           featureFlags.released['pausedUniverse']) && (
