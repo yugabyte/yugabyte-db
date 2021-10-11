@@ -674,15 +674,14 @@ class GoogleCloudAdmin():
         return pricing_map
 
     @gcp_request_limit_retry
-    def get_instances(self, zone, instance_name, get_all=False, filters=None):
+    def get_instances(self, zone, instance_name, get_all=False):
         # TODO: filter should work to do (zone eq args.zone), but it doesn't right now...
-        if not filters:
-            filters = "(status eq RUNNING)"
+        filter = "(status eq RUNNING)"
         if instance_name is not None:
-            filters += " (name eq {})".format(instance_name)
+            filter += " (name eq {})".format(instance_name)
         instances = self.compute.instances().aggregatedList(
             project=self.project,
-            filter=filters,
+            filter=filter,
             maxResults=(LIST_MAX_RESULTS if get_all else 1)).execute()
         instances = instances.get("items", [])
         if zone is not None:
