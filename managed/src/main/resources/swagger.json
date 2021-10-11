@@ -1108,6 +1108,11 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "minNumBackupsToRetain" : {
+          "description" : "Minimum number of backups to retain for a particular backup schedule",
+          "format" : "int32",
+          "type" : "integer"
+        },
         "nodeDetailsSet" : {
           "description" : "Node details",
           "items" : {
@@ -2483,6 +2488,11 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "minNumBackupsToRetain" : {
+          "description" : "Minimum number of backups to retain for a particular backup schedule",
+          "format" : "int32",
+          "type" : "integer"
+        },
         "nodeDetailsSet" : {
           "description" : "Node details",
           "items" : {
@@ -2678,6 +2688,11 @@
           "description" : "KMS configuration UUID",
           "format" : "uuid",
           "type" : "string"
+        },
+        "minNumBackupsToRetain" : {
+          "description" : "Minimum number of backups to retain for a particular backup schedule",
+          "format" : "int32",
+          "type" : "integer"
         },
         "nodeDetailsSet" : {
           "description" : "Node details",
