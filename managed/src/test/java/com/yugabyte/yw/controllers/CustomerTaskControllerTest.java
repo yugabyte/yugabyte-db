@@ -9,8 +9,8 @@ import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.models.CustomerTask.TaskType.Create;
 import static com.yugabyte.yw.models.CustomerTask.TaskType.GFlagsUpgrade;
-import static com.yugabyte.yw.models.CustomerTask.TaskType.UpgradeSoftware;
 import static com.yugabyte.yw.models.CustomerTask.TaskType.Update;
+import static com.yugabyte.yw.models.CustomerTask.TaskType.UpgradeSoftware;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.equalTo;
@@ -34,9 +34,8 @@ import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
-import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
-import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
@@ -49,7 +48,6 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
-
 import org.hamcrest.MatcherAssert;
 import org.junit.Before;
 import org.junit.Test;
@@ -68,7 +66,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
 
   @Mock private RuntimeConfig<Model> config;
 
-  @Mock SettableRuntimeConfigFactory mockRuntimeConfigFactory;
+  @Mock RuntimeConfigFactory mockRuntimeConfigFactory;
 
   @InjectMocks private CustomerTaskController controller;
 

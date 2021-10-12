@@ -636,9 +636,13 @@ main(int argc, char **argv)
 
 	if (dopt.dump_inserts && dopt.oids)
 	{
-		write_msg(NULL, "options --inserts/--column-inserts and -o/--oids cannot be used together\n");
-		write_msg(NULL, "(The INSERT command cannot set OIDs.)\n");
-		exit_nicely(1);
+		write_msg(NULL, "WARNING: INSERT command cannot set OIDs: you won't be able to apply the dump!\n");
+
+		if (!dopt.column_inserts)
+		{
+			write_msg(NULL, "if you still want to dump inserts with OIDs, use --column-inserts\n");
+			exit_nicely(1);
+		}
 	}
 
 	if (dopt.if_exists && !dopt.outputClean)
@@ -1975,7 +1979,8 @@ dumpTableData_insert(Archive *fout, void *dcontext)
 	int			field;
 
 	appendPQExpBuffer(q, "DECLARE _pg_dump_cursor CURSOR FOR "
-					  "SELECT * FROM ONLY %s",
+					  "SELECT %s * FROM ONLY %s",
+					  (tdinfo->oids && tbinfo->hasoids) ? "oid, ": "",
 					  fmtQualifiedDumpable(tbinfo));
 	if (tdinfo->filtercond)
 		appendPQExpBuffer(q, " %s", tdinfo->filtercond);

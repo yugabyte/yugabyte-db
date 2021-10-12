@@ -1840,8 +1840,8 @@ TEST_F(AutomaticTabletSplitITest, AutomaticTabletSplittingWaitsForAllPeersCompac
       }
 
       // Wait for a potential split to get triggered
-      std::this_thread::sleep_for(std::chrono::milliseconds(
-        2 * (FLAGS_catalog_manager_bg_task_wait_ms * 2 + FLAGS_raft_heartbeat_interval_ms * 2)));
+      std::this_thread::sleep_for(
+        2 * (FLAGS_catalog_manager_bg_task_wait_ms * 2ms + FLAGS_raft_heartbeat_interval_ms * 2ms));
     }
 
     // Now that all peers have been compacted, we expect this tablet to get split.
@@ -2183,6 +2183,9 @@ class TabletSplitExternalMiniClusterITest : public TabletSplitITestBase<External
     rpc.set_timeout(30s * kTimeMultiplier);
 
     RETURN_NOT_OK(cluster_->master_proxy()->SplitTablet(req, &resp, &rpc));
+    if (resp.has_error()) {
+      RETURN_NOT_OK(StatusFromPB(resp.error().status()));
+    }
     return Status::OK();
   }
 
@@ -2255,6 +2258,32 @@ TEST_F(TabletSplitExternalMiniClusterITest, Simple) {
   CHECK_OK(WriteRows());
   auto tablet_id = CHECK_RESULT(GetOnlyTabletId());
   CHECK_OK(SplitTablet(tablet_id));
+  ASSERT_OK(WaitForTablets(3));
+}
+
+TEST_F(TabletSplitExternalMiniClusterITest, CrashMasterDuringSplit) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) =
+    FLAGS_heartbeat_interval_ms + 1000;
+
+  CreateSingleTablet();
+  CHECK_OK(WriteRows());
+  auto tablet_id = CHECK_RESULT(GetOnlyTabletId());
+
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_crash_after_creating_single_split_tablet", "1.0"));
+  // Split tablet should crash before creating either tablet
+  ASSERT_NOK(SplitTablet(tablet_id));
+
+  ASSERT_OK(RestartAllMasters(cluster_.get()));
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_crash_after_creating_single_split_tablet", "0.0"));
+  // Wait for tablet split to complete
+  auto raft_heartbeat_roundtrip_time = FLAGS_raft_heartbeat_interval_ms * 2ms;
+  ASSERT_OK(LoggedWaitFor(
+    [this, tablet_id]() -> Result<bool> {
+      return this->SplitTablet(tablet_id).ok();
+    },
+    5 * raft_heartbeat_roundtrip_time * kTimeMultiplier
+    + 2ms * FLAGS_tserver_heartbeat_metrics_interval_ms,
+    Format("Wait for tablet to be split: $0", tablet_id)));
   ASSERT_OK(WaitForTablets(3));
 }
 

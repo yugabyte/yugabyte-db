@@ -33,13 +33,11 @@ typedef enum YbCatalogVersionType
 
 extern YbCatalogVersionType yb_catalog_version_type;
 
-extern void YbSetCatalogVersionType();
-
-/* The latest catalog version from the master leader. */
-extern void YbGetMasterCatalogVersion(uint64_t *version);
-
-/* The catalog version caches by the local tserver. */
-extern bool YbGetLocalTserverCatalogVersion(uint64_t *version);
+/*
+ * Get the latest catalog version from the master leader.
+ * can_use_cache should be false during PG cache init/refresh.
+ */
+extern void YbGetMasterCatalogVersion(uint64_t *version, bool can_use_cache);
 
 /* Send a request to increment the master catalog version. */
 extern bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change);

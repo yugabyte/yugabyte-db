@@ -433,6 +433,9 @@ DEFINE_test_flag(int32, slowdown_alter_table_rpcs_ms, 0,
 DEFINE_test_flag(bool, reject_delete_not_serving_tablet_rpc, false,
                  "Whether to reject DeleteNotServingTablet RPC.");
 
+DEFINE_test_flag(double, crash_after_creating_single_split_tablet, 0.0,
+                 "Crash inside CatalogManager::RegisterNewTabletForSplit after calling Upsert");
+
 namespace yb {
 namespace master {
 
@@ -2342,10 +2345,10 @@ Status CatalogManager::DoSplitTablet(
       new_tablet_ids[i] = source_tablet_lock->pb.split_tablet_ids(i);
     } else {
       auto new_tablet_info = VERIFY_RESULT(RegisterNewTabletForSplit(
-          source_tablet_info.get(), new_tablets_partition[i], &source_table_lock));
+          source_tablet_info.get(), new_tablets_partition[i],
+          &source_table_lock, &source_tablet_lock));
 
       new_tablet_ids[i] = new_tablet_info->id();
-      source_tablet_lock.mutable_data()->pb.add_split_tablet_ids(new_tablet_info->id());
     }
   }
   source_tablet_lock.Commit();
@@ -4307,14 +4310,6 @@ Status CatalogManager::DeleteTableInternal(
                                     true /* update_indexed_table */, schedules_to_tables_map,
                                     &tables, resp, rpc));
 
-  // Delete any CDC streams that are set up on this table.
-  TRACE("Deleting CDC streams on table");
-  // table_id for the requested table will be added to the end of the response.
-  RSTATUS_DCHECK_GE(resp->deleted_table_ids_size(), 1, IllegalState,
-       "DeleteTableInMemory expected to add the index id to resp");
-  RETURN_NOT_OK(
-      DeleteCDCStreamsForTable(resp->deleted_table_ids(resp->deleted_table_ids_size() - 1)));
-
   // Update the in-memory state.
   TRACE("Committing in-memory state");
   unordered_set<TableId> sys_table_ids;
@@ -4325,16 +4320,42 @@ Status CatalogManager::DeleteTableInternal(
     table.write_lock.Commit();
   }
 
+  // Delete any CDC streams that are set up on this table, after releasing the Table lock.
+  TRACE("Deleting CDC streams on table");
+  // table_id for the requested table will be added to the end of the response.
+  RSTATUS_DCHECK_GE(resp->deleted_table_ids_size(), 1, IllegalState,
+      "DeleteTableInMemory expected to add the index id to resp");
+  RETURN_NOT_OK(
+      DeleteCDCStreamsForTable(resp->deleted_table_ids(resp->deleted_table_ids_size() - 1)));
+
   if (PREDICT_FALSE(FLAGS_catalog_manager_inject_latency_in_delete_table_ms > 0)) {
     LOG(INFO) << "Sleeping in CatalogManager::DeleteTable for " <<
         FLAGS_catalog_manager_inject_latency_in_delete_table_ms << " ms";
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_catalog_manager_inject_latency_in_delete_table_ms));
   }
 
+  // Update the internal table maps. Exclude Postgres tables which are not in the name map.
+  // Also exclude hidden tables, that were already removed from this map.
+  if (std::any_of(tables.begin(), tables.end(), [](auto& t) { return t.remove_from_name_map; })) {
+    TRACE("Removing tables from by-name map");
+    LockGuard lock(mutex_);
+    for (const auto& table : tables) {
+      if (table.remove_from_name_map) {
+        TableInfoByNameMap::key_type key = {table.info->namespace_id(), table.info->name()};
+        if (table_names_map_.erase(key) != 1) {
+          LOG(WARNING) << "Could not remove table from map: " << key.first << "." << key.second;
+        }
+      }
+    }
+    // We commit another map to increment its version and reset cache.
+    // Since table_name_map_ does not have version.
+    table_ids_map_.Commit();
+  }
+
   for (const auto& table : tables) {
-    LOG(INFO)
-        << "Deleting table: " << table.info->name() << ", retained by: "
-        << AsString(table.retained_by_snapshot_schedules, &TryFullyDecodeUuid);
+    LOG(INFO) << "Deleting table: " << table.info->name() << ", retained by: "
+              << AsString(table.retained_by_snapshot_schedules, &TryFullyDecodeUuid);
+
     // Send a DeleteTablet() request to each tablet replica in the table.
     RETURN_NOT_OK(DeleteTabletsAndSendRequests(table.info, table.retained_by_snapshot_schedules));
     // Send a RemoveTableFromTablet() request to each colocated parent tablet replica in the table.
@@ -4416,6 +4437,8 @@ Status CatalogManager::DeleteTableInMemory(
   auto data = DeletingTableData {
     .info = table,
     .write_lock = table->LockForWrite(),
+    .retained_by_snapshot_schedules = RepeatedBytes(),
+    .remove_from_name_map = false
   };
   auto& l = data.write_lock;
   // table_id for the requested table will be added to the end of the response.
@@ -4441,7 +4464,8 @@ Status CatalogManager::DeleteTableInMemory(
     }
   }
 
-  bool was_hiding = l->started_hiding();
+  // Determine if we have to remove from the name map here before we change the table state.
+  data.remove_from_name_map = l.data().table_type() != PGSQL_TABLE_TYPE && !l->started_hiding();
 
   TRACE("Updating metadata on disk");
   // Update the metadata for the on-disk state.
@@ -4476,20 +4500,6 @@ Status CatalogManager::DeleteTableInMemory(
     s = s.CloneAndPrepend("An error occurred while updating sys tables");
     LOG(WARNING) << s;
     return CheckIfNoLongerLeaderAndSetupError(s, resp);
-  }
-
-  // Update the internal table maps.
-  // Exclude Postgres tables which are not in the name map.
-  // Also exclude hidden tables, that were already removed from this map.
-  if (l.data().table_type() != PGSQL_TABLE_TYPE && !was_hiding) {
-    TRACE("Removing from by-name map");
-    LockGuard lock(mutex_);
-    if (table_names_map_.erase({l->namespace_id(), l->name()}) != 1) {
-      PANIC_RPC(rpc, "Could not remove table from map, name=" + table->ToString());
-    }
-    // We commit another map to increment its version and reset cache.
-    // Since table_name_map_ does not have version.
-    table_ids_map_.Commit();
   }
 
   // For regular (indexed) table, delete all its index tables if any. Else for index table, delete
@@ -5006,7 +5016,7 @@ Status CatalogManager::IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
 
 Result<TabletInfoPtr> CatalogManager::RegisterNewTabletForSplit(
     TabletInfo* source_tablet_info, const PartitionPB& partition,
-    TableInfo::WriteLock* table_write_lock) {
+    TableInfo::WriteLock* table_write_lock, TabletInfo::WriteLock* tablet_write_lock) {
   const auto tablet_lock = source_tablet_info->LockForRead();
 
   auto table = source_tablet_info->table();
@@ -5033,14 +5043,10 @@ Result<TabletInfoPtr> CatalogManager::RegisterNewTabletForSplit(
     auto& table_pb = table_write_lock->mutable_data()->pb;
     table_pb.set_partition_list_version(table_pb.partition_list_version() + 1);
 
-    RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), table));
-    // If we crash here - we will have new partitions version with the same set of tablets which
-    // is harmless.
-    // If we first save new_tablet to syscatalog and then crash - we would have table with old
-    // partitions version, but new set of tablets which would break invariant that table partitions
-    // set is not changed within the same partitions version.
-    // TODO: rework this after https://github.com/yugabyte/yugabyte-db/issues/4912 is implemented.
-    RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), new_tablet));
+    tablet_write_lock->mutable_data()->pb.add_split_tablet_ids(new_tablet->id());
+    RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), table, new_tablet, source_tablet_info));
+
+    MAYBE_FAULT(FLAGS_TEST_crash_after_creating_single_split_tablet);
 
     table->AddTablet(new_tablet);
     // TODO: We use this pattern in other places, but what if concurrent thread accesses not yet
@@ -6944,15 +6950,6 @@ Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& da
   // Remove the system tables from the system catalog TabletInfo.
   RETURN_NOT_OK(RemoveTableIdsFromTabletInfo(sys_tablet_info, sys_table_ids));
 
-  // Batch remove all relevant CDC streams. Handle before we delete the tables they reference.
-  TRACE("Deleting CDC streams on table");
-  vector<TableId> id_list;
-  id_list.reserve(tables.size());
-  for (auto &table_and_lock : tables) {
-    id_list.push_back(table_and_lock.first->id());
-  }
-  RETURN_NOT_OK(DeleteCDCStreamsForTables(id_list));
-
   // Set all table states to DELETING as one batch RPC call.
   TRACE("Sending delete table batch RPC to sys catalog");
   vector<TableInfo *> tables_rpc;
@@ -6980,6 +6977,15 @@ Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& da
     l.Commit();
     table->AbortTasks();
   }
+
+  // Batch remove all relevant CDC streams, handle after releasing Table locks.
+  TRACE("Deleting CDC streams on table");
+  vector<TableId> id_list;
+  id_list.reserve(tables.size());
+  for (auto &table_and_lock : tables) {
+    id_list.push_back(table_and_lock.first->id());
+  }
+  RETURN_NOT_OK(DeleteCDCStreamsForTables(id_list));
 
   // Send a DeleteTablet() RPC request to each tablet replica in the table.
   for (auto &table_and_lock : tables) {
@@ -7527,9 +7533,16 @@ Status CatalogManager::GetYsqlCatalogVersion(uint64_t* catalog_version,
                                              uint64_t* last_breaking_version) {
   auto table_info = GetTableInfo(kPgYbCatalogVersionTableId);
   if (table_info != nullptr) {
-    return sys_catalog_->ReadYsqlCatalogVersion(kPgYbCatalogVersionTableId,
-                                                catalog_version,
-                                                last_breaking_version);
+    RETURN_NOT_OK(sys_catalog_->ReadYsqlCatalogVersion(kPgYbCatalogVersionTableId,
+                                                       catalog_version,
+                                                       last_breaking_version));
+    // If the version is properly initialized, we're done.
+    if ((!catalog_version || *catalog_version > 0) &&
+        (!last_breaking_version || *last_breaking_version > 0)) {
+      return Status::OK();
+    }
+    // However, it's possible for a table to have no entries mid-migration or if migration fails.
+    // In this case we'd like to fall back to the legacy approach.
   }
 
   auto l = ysql_catalog_config_->LockForRead();
