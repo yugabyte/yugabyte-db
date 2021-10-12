@@ -17,6 +17,12 @@ showAsideToc: true
 
 Included here are the release notes for all releases in the v2.6 stable release series. Content will be added as new notable features and changes are available in the patch releases of the v2.6 stable release series.
 
+{{< warning title="Use version 2.6.2.0 or later" >}}
+Release v2.6.1.0 contains an LDAP authentication vulnerability in YCQL. _YSQL is not affected._
+
+If you're running v2.6.1.0 and can't upgrade immediately, see the note in the [Version 2.6.1.0 section](#v2-6-1-0-sept-3-2021) for mitigation instructions.
+{{< /warning >}}
+
 ## v2.6.2.0 - Oct 12, 2021
 
 **Build:** `2.6.2.0-b36`
@@ -102,6 +108,12 @@ N/A
 N/A
 
 ## v2.6.1.0 - Sept 3, 2021
+
+{{< warning title="Use version 2.6.2.0 or later" >}}
+Release v2.6.1.0 contains an LDAP authentication vulnerability in YCQL. _YSQL is not affected._
+
+**If you can't update to 2.6.2.0 immediately**, and you're running YugabyteDB 2.6.1.0 in conjunction with LDAP authentication for YCQL, disable LDAP authentication for YCQL by setting the `--ycql_use_ldap` flag to `false`, which reverts the authentication method to hashed password.
+{{< /warning >}}
 
 **Build:** `2.6.1.0-b49`
 
