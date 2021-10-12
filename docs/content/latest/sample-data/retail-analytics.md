@@ -23,37 +23,33 @@ The Retail Analytics dataset includes sample data in the following tables:
 - **Orders**: Orders made by customers
 - **Reviews**: Product reviews
 
-## 1. Start local cluster
+## Install the Retail Analytics sample database
 
-Follow [Quick Start](../quick-start/) instructions to run a local YugabyteDB cluster. Test the YSQL API as [documented](../../../quick-start/explore/ysql/) so that you can confirm that you have the YSQL service running on `localhost:5433`. 
+Follow the steps here to download and install the Retail Analytics sample database.
 
-## 2. Load data
+### Before you begin
 
-### Download the sample schema
+You can install and use the Retail Analytics sample database using either a local installation of YugabyteDB, or when connected to a cluster in Yugabyte Cloud. In either case, you use the YugabyteDB SQL shell ([ysqlsh](../../admin/ysqlsh/)), which provides a CLI for interacting with YugabyteDB using [YSQL](../../api/ysql/).
 
-```sh
-$ wget https://raw.githubusercontent.com/yugabyte/yb-sql-workshop/master/query-using-bi-tools/schema.sql
-```
+To get up and running quickly with YugabyteDB, refer to [Quick Start](/latest/quick-start/).
 
-### Download the sample data
+To connect to your Yugabyte Cloud cluster using `ysqlsh`, refer to [Client Shell](../../yugabyte-cloud/cloud-basics/connect-to-clusters/#connect-via-client-shell).
 
-```sh
-$ wget https://github.com/yugabyte/yb-sql-workshop/raw/master/query-using-bi-tools/sample-data.tgz
-```
+### 1. Download the SQL scripts (optional)
 
-```sh
-$ tar zxvf sample-data.tgz
-```
+The Retail Analytics SQL scripts that are compatible with YugabyteDB reside in the [`sample` directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample). The following files will be used for this exercise:
 
-```sh
-$ ls data/
-```
+- [`schema.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/schema.sql) — Creates the tables and constraints
+- [`orders.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/orders.sql) — Loads product orders
+- [`products.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/products.sql) — Loads products
+- [`reviews.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/reviews.sql) — Loads product reviews
+- [`users.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/users.sql) — Loads customer information
 
-```output
-orders.sql  products.sql  reviews.sql users.sql
-```
+If you've installed YugabyteDB or the YugabyteDB client shells, you can find the scripts in your installation's `share` folder.
 
-### Connect to YugabyteDB using ysqlsh
+### 2. Open the YSQL shell
+
+To open the YSQL shell, run the `ysqlsh` command from the `yugabyte` or `yugabyte-client` root directory.
 
 ```sh
 $ ./bin/ysqlsh
@@ -66,7 +62,7 @@ Type "help" for help.
 yugabyte=#
 ```
 
-### Create a database
+### 3. Create a database
 
 You can do this as shown below.
 
@@ -82,7 +78,7 @@ yugabyte=# GRANT ALL ON DATABASE yb_demo to yugabyte;
 yugabyte=# \c yb_demo;
 ```
 
-### Load data
+### 4. Load data
 
 First create the four tables necessary to store the data.
 
@@ -93,19 +89,10 @@ yugabyte=# \i 'schema.sql';
 Now load the data into the tables.
 
 ```plpgsql
-\i 'data/products.sql'
-```
-
-```plpgsql
-\i 'data/users.sql'
-```
-
-```plpgsql
-\i 'data/orders.sql'
-```
-
-```plpgsql
-yugabyte=# \i 'data/reviews.sql'
+\i 'data/products.sql';
+\i 'data/users.sql';
+\i 'data/orders.sql';
+\i 'data/reviews.sql';
 ```
 
 ## Explore the Retail Analytics sample database

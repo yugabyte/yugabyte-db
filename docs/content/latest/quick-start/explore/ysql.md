@@ -51,7 +51,7 @@ After [creating a local cluster](../../create-local-cluster/), you can start exp
 
 Your YugabyteDB installation includes [sample datasets](../../../sample-data/) you can use to test out YugabyteDB. These are located in the `share` directory. The datasets are provided in the form of SQL script files. (The datasets are also available in the [sample directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample)). This exercise uses the [Retail Analytics](../../../sample-data/retail-analytics/) dataset.
 
-The following files will be used:
+The following files are used:
 
 - [schema.sql](https://github.com/yugabyte/yugabyte-db/tree/master/sample/schema.sql) — Database schema, creates tables and other database objects
 - [orders.sql](https://github.com/yugabyte/yugabyte-db/tree/master/sample/orders.sql) — Orders table
@@ -172,7 +172,7 @@ You should see an output which looks like the following:
 (1 row)
 ```
 
-Now let us run a query to select the `id`, `title`, `category` and `price` columns for the first five products.
+Next, run a query to select the `id`, `title`, `category` and `price` columns for the first five products.
 
 ```plpgsql
 yb_demo=# SELECT id, title, category, price, rating
@@ -180,7 +180,7 @@ yb_demo=# SELECT id, title, category, price, rating
           LIMIT 5;
 ```
 
-You should see an output like the following:
+You should see output like the following:
 
 ```output
  id  |           title            | category |      price       | rating 

@@ -28,7 +28,11 @@ Follow the steps here to download and install the SportsDB sample database.
 
 ### Before you begin
 
-To use the SportsDB sample database, you must have installed and configured YugabyteDB. To get up and running quickly, see [Quick Start](/latest/quick-start/).
+You can install and use the SportsDB sample database using either a local installation of YugabyteDB, or when connected to a cluster in Yugabyte Cloud. In either case, you use the YugabyteDB SQL shell ([ysqlsh](../../admin/ysqlsh/)), which provides a CLI for interacting with YugabyteDB using [YSQL](../../api/ysql/).
+
+To get up and running quickly with YugabyteDB, refer to [Quick Start](/latest/quick-start/).
+
+To connect to your Yugabyte Cloud cluster using `ysqlsh`, refer to [Client Shell](../../yugabyte-cloud/cloud-basics/connect-to-clusters/#connect-via-client-shell).
 
 ### 1. Download the SportsDB scripts (optional)
 
@@ -40,19 +44,20 @@ The SportsDB SQL scripts that are compatible with YugabyteDB reside in the[`samp
 - [`sportsdb_fks.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/sportsdb_fks.sql) — Creates the foreign key constraints
 - [`sportsdb_indexes.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/sportsdb_indexes.sql) — Creates the indexes
 
-If you've installed YugabyteDB, you can find the scripts in your installation's `share` folder.
+If you've installed YugabyteDB or the YugabyteDB client shells, you can find the scripts in your installation's `share` folder.
 
 ### 2. Open the YSQL shell
 
-To open the Yugabyte SQL (YSQL) shell, run the `ysqlsh` command from the YugabyteDB root directory.
+To open the YSQL shell, run the `ysqlsh` command from the `yugabyte` or `yugabyte-client` root directory.
 
 ```sh
 $ ./bin/ysqlsh
 ```
 
-```
+```output
 ysqlsh (11.2)
 Type "help" for help.
+
 yugabyte=#
 ```
 
@@ -76,7 +81,7 @@ Connect to the `sportsdb` database.
 yugabyte=# \c sportsdb
 ```
 
-```
+```output
 You are now connected to database "sportsdb" as user "yugabyte".
 sportsdb=#
 ```

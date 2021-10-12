@@ -41,7 +41,7 @@ Using the `ysqlsh` shell, you can interact with your YugabyteDB database using t
 
 Your YugabyteDB client shell installation includes sample datasets you can use to test out YugabyteDB. These are located in the `share` directory. The datasets are provided in the form of SQL script files. (The datasets are also available in the [sample directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample)). This exercise uses the [Retail Analytics](../../../sample-data/retail-analytics/) dataset.
 
-The following files will be used:
+The following files are used:
 
 - [schema.sql](https://github.com/yugabyte/yugabyte-db/tree/master/sample/schema.sql) — Database schema, creates tables and other database objects
 - [orders.sql](https://github.com/yugabyte/yugabyte-db/tree/master/sample/orders.sql) — Orders table

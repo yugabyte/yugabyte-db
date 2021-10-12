@@ -33,28 +33,33 @@ Follow the steps here to download and install the PgExercises sample database.
 
 ### Before you begin
 
-To use the PgExercises sample database, you must have installed and configured YugabyteDB. To get up and running quickly, see [Quick Start](../../quick-start/).
+You can install and use the PgExercises sample database using either a local installation of YugabyteDB, or when connected to a cluster in Yugabyte Cloud. In either case, you use the YugabyteDB SQL shell ([ysqlsh](../../admin/ysqlsh/)), which provides a CLI for interacting with YugabyteDB using [YSQL](../../api/ysql/).
+
+To get up and running quickly with YugabyteDB, refer to [Quick Start](/latest/quick-start/).
+
+To connect to your Yugabyte Cloud cluster using `ysqlsh`, refer to [Client Shell](../../yugabyte-cloud/cloud-basics/connect-to-clusters/#connect-via-client-shell).
 
 ### 1. Download the SQL scripts (optional)
 
-The PGExercise SQL scripts that are compatible with YugabyteDB reside in the [`sample` directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample).The following two files will be used for this exercise.
+The PGExercise SQL scripts that are compatible with YugabyteDB reside in the [`sample` directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample). The following two files will be used for this exercise.
 
 - [`clubdata_ddl.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/clubdata_ddl.sql) — Creates the tables and other database objects
 - [`clubdata_data.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/clubdata_data.sql) — Loads the sample data
 
-If you've installed YugabyteDB, you can find the scripts in your installation's `share` folder.
+If you've installed YugabyteDB or the YugabyteDB client shells, you can find the scripts in your installation's `share` folder.
 
 ### 2. Open the YSQL shell
 
-To open the YSQL shell, run the `ysqlsh` command from the YugabyteDB root directory.
+To open the YSQL shell, run the `ysqlsh` command from the `yugabyte` or `yugabyte-client` root directory.
 
 ```sh
 $ ./bin/ysqlsh
 ```
 
-```
+```output
 ysqlsh (11.2)
 Type "help" for help.
+
 yugabyte=#
 ```
 
@@ -78,7 +83,7 @@ Connect to the `exercises` database.
 yugabyte=# \c exercises
 ```
 
-```
+```output
 You are now connected to database "exercises" as user "yugabyte".
 exercises=#
 ```

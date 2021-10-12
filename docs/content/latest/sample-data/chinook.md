@@ -34,13 +34,15 @@ For details, here's the entity relationship diagram of the Chinook data model.
 
 ## Install the Chinook sample database
 
+Follow the steps here to download and install the Chinook sample database.
+
 ### Before you begin
 
-You can install and use the Chinook sample database using either a local installation of YugabyteDB, or be connected to a cluster in Yugabyte Cloud.
+You can install and use the Chinook sample database using either a local installation of YugabyteDB, or when connected to a cluster in Yugabyte Cloud. In either case, you use the YugabyteDB SQL shell ([ysqlsh](../../admin/ysqlsh/)), which provides a CLI for interacting with YugabyteDB using [YSQL](../../api/ysql/).
 
 To get up and running quickly with YugabyteDB, refer to [Quick Start](/latest/quick-start/).
 
-To connect to your Yugabyte Cloud cluster using `ysqlsh`, refer to [Client Shell](../connect-to-clusters#connect-via-client-shell).
+To connect to your Yugabyte Cloud cluster using `ysqlsh`, refer to [Client Shell](../../yugabyte-cloud/cloud-basics/connect-to-clusters/#connect-via-client-shell).
 
 ### 1. Download the SQL scripts (optional)
 
@@ -54,7 +56,7 @@ If you've installed YugabyteDB or the YugabyteDB client shells, you can find the
 
 ### 2. Open the YSQL shell
 
-To open the YSQL shell, run the `ysqlsh` command from the YugabyteDB root directory.
+To open the YSQL shell, run the `ysqlsh` command from the `yugabyte` or `yugabyte-client` root directory.
 
 ```sh
 $ ./bin/ysqlsh
