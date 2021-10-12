@@ -2235,9 +2235,21 @@ SELECT * from cypher('keys', $$RETURN keys("string")$$) as (keys agtype);
 SELECT * from cypher('keys', $$MATCH u=()-[]-() RETURN keys(u)$$) as (keys agtype);
 
 SELECT create_graph('list');
+SELECT * from cypher('list', $$CREATE p=({name:"rick"})-[:knows]->({name:"morty"}) RETURN p$$) as (path agtype);
+SELECT * from cypher('list', $$CREATE p=({name:'rachael'})-[:knows]->({name:'monica'})-[:knows]->({name:'phoebe'}) RETURN p$$) as (path agtype);
+-- nodes()
+SELECT * from cypher('list', $$MATCH p=()-[]->() RETURN nodes(p)$$) as (nodes agtype);
+SELECT * from cypher('list', $$MATCH p=()-[]->()-[]->() RETURN nodes(p)$$) as (nodes agtype);
+-- should return nothing
+SELECT * from cypher('list', $$MATCH p=()-[]->()-[]->()-[]->() RETURN nodes(p)$$) as (nodes agtype);
+-- should return SQL NULL
+SELECT * from cypher('list', $$RETURN nodes(NULL)$$) as (nodes agtype);
+-- should return an error
+SELECT * from cypher('list', $$MATCH (u) RETURN nodes([1,2,3])$$) as (nodes agtype);
+SELECT * from cypher('list', $$MATCH (u) RETURN nodes("string")$$) as (nodes agtype);
+SELECT * from cypher('list', $$MATCH (u) RETURN nodes(u)$$) as (nodes agtype);
+SELECT * from cypher('list', $$MATCH (u)-[]->() RETURN nodes(u)$$) as (nodes agtype);
 -- relationships()
-SELECT * from cypher('list', $$CREATE p=()-[:knows]->() RETURN p$$) as (path agtype);
-SELECT * from cypher('list', $$CREATE p=()-[:knows]->()-[:knows]->() RETURN p$$) as (path agtype);
 SELECT * from cypher('list', $$MATCH p=()-[]->() RETURN relationships(p)$$) as (relationships agtype);
 SELECT * from cypher('list', $$MATCH p=()-[]->()-[]->() RETURN relationships(p)$$) as (relationships agtype);
 -- should return nothing
