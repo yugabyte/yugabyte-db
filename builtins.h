@@ -262,6 +262,7 @@ extern PGDLLEXPORT Datum dbms_random_value_range(PG_FUNCTION_ARGS);
 /* from utility.c */
 extern PGDLLEXPORT Datum dbms_utility_format_call_stack0(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum dbms_utility_format_call_stack1(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dbms_utility_get_time(PG_FUNCTION_ARGS);
 
 /* from oraguc.c */
 extern void PGDLLEXPORT _PG_init(void);
