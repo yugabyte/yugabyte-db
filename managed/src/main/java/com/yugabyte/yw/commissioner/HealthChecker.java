@@ -728,11 +728,8 @@ public class HealthChecker {
         Provider.get(UUID.fromString(details.getPrimaryCluster().userIntent.provider));
 
     // Check if it should log the output of the command.
-    Boolean shouldLogOutput = false; // Default value.
-    if (runtimeConfigFactory.forUniverse(params.universe).hasPath("yb.health.logOutput")) {
-      shouldLogOutput =
-          runtimeConfigFactory.forUniverse(params.universe).getBoolean("yb.health.logOutput");
-    }
+    boolean shouldLogOutput =
+        runtimeConfigFactory.forUniverse(params.universe).getBoolean("yb.health.logOutput");
 
     // Exit without calling script if the universe is in the "updating" state.
     // Doing the check before the Python script is executed.
