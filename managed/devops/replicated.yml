@@ -300,6 +300,11 @@ components:
 
                 location / {
                   proxy_pass http://{{repl HostPrivateIpAddress "app" "yugabyte/yugaware" }}:{{repl ContainerExposedPort "app" "yugabyte/yugaware" "9000" }};
+                  location ~ /settings/ha/internal/upload$ {
+                    # HA backp upload endpoint needs to allow bigger request size
+                    # Broaden the location match regex to cover more endpoints as needed
+                    client_max_body_size {{repl ConfigOption "upload_size"}};
+                  }
                 }
               }
         ports:
@@ -360,6 +365,11 @@ config:
         help_text: When enabled we will listen to https
         type: bool
         default: "0"
+      - name: upload_size
+        title: Maximum Request Size
+        help_text: Maximum size of the file uploads allowed by Yugabyte Platform.
+        type: text
+        default: "10G"
       - name: tls_version
         title: TLS Versions
         help_text: TLS version support for Platform HTTPS frontend
