@@ -224,9 +224,11 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
     }
 
     safe_time_left = CoarseMonoClock::Now() + (FLAGS_heartbeat_rpc_timeout_ms * 1ms / 2);
-    if (rpc.GetClientDeadline() > safe_time_left && req->has_tablet_path_info()) {
-      server_->catalog_manager()->ProcessTabletPathInfo(
-            ts_desc.get()->permanent_uuid(), req->tablet_path_info());
+    if (rpc.GetClientDeadline() > safe_time_left) {
+      for (const auto& storage_metadata : req->storage_metadata()) {
+        server_->catalog_manager()->ProcessTabletStorageMetadata(
+              ts_desc.get()->permanent_uuid(), storage_metadata);
+      }
     }
 
     // Only set once. It may take multiple heartbeats to receive a full tablet report.
@@ -273,8 +275,7 @@ void MasterServiceImpl::GetTabletLocations(const GetTabletLocationsRequestPB* re
     auto tables = server_->catalog_manager()->GetTables(GetTablesMode::kAll);
     const auto& tablet_id = req->tablet_ids(0);
     for (const auto& table : tables) {
-      TabletInfos tablets;
-      table->GetAllTablets(&tablets);
+      TabletInfos tablets = table->GetTablets();
       for (const auto& tablet : tablets) {
         if (tablet->tablet_id() == tablet_id) {
           TableType table_type;
@@ -394,7 +395,7 @@ BOOST_PP_SEQ_FOR_EACH(
     (IsLoadBalancerIdle)
     (AreLeadersOnPreferredOnly)
     (SplitTablet)
-    (DeleteTablet)
+    (DeleteNotServingTablet)
     (DdlLog)
 )
 
@@ -436,7 +437,8 @@ BOOST_PP_SEQ_FOR_EACH(
     (CreateCDCStream)
     (DeleteCDCStream)
     (ListCDCStreams)
-    (GetCDCStream));
+    (GetCDCStream)
+    (UpdateCDCStream));
 
 // ------------------------------------------------------------------------------------------------
 // Miscellaneous

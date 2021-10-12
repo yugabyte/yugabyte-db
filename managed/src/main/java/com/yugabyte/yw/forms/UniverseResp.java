@@ -13,30 +13,59 @@ package com.yugabyte.yw.forms;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
+import com.yugabyte.yw.cloud.UniverseResourceDetails.Context;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.CertificateHelper;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.Yaml;
 import play.Play;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
-@ApiModel(description = "Universe Resp")
+// TODO is this description accurate?
+//
+@ApiModel(description = "Universe-creation response")
 public class UniverseResp {
 
   public static final Logger LOG = LoggerFactory.getLogger(UniverseResp.class);
 
   public static UniverseResp create(Universe universe, UUID taskUUID, Config config) {
+    UniverseResourceDetails.Context context = new Context(config, universe);
     UniverseResourceDetails resourceDetails =
-        UniverseResourceDetails.create(universe.getUniverseDetails(), config);
+        UniverseResourceDetails.create(universe.getUniverseDetails(), context);
     return new UniverseResp(universe, taskUUID, resourceDetails);
+  }
+
+  public static List<UniverseResp> create(
+      Customer customer, List<Universe> universeList, Config config) {
+    List<UniverseDefinitionTaskParams> universeDefinitionTaskParams =
+        universeList.stream().map(Universe::getUniverseDetails).collect(Collectors.toList());
+    UniverseResourceDetails.Context context =
+        new Context(config, customer, universeDefinitionTaskParams);
+    return universeList
+        .stream()
+        .map(
+            universe ->
+                new UniverseResp(
+                    universe,
+                    null,
+                    customer,
+                    context.getProvider(
+                        UUID.fromString(
+                            universe.getUniverseDetails().getPrimaryCluster().userIntent.provider)),
+                    UniverseResourceDetails.create(universe.getUniverseDetails(), context)))
+        .collect(Collectors.toList());
   }
 
   @ApiModelProperty(value = "Universe UUID")
@@ -45,22 +74,22 @@ public class UniverseResp {
   @ApiModelProperty(value = "Universe name")
   public final String name;
 
-  @ApiModelProperty(value = "Creation time")
+  @ApiModelProperty(value = "Universe creation date")
   public final String creationDate;
 
-  @ApiModelProperty(value = "Version")
+  @ApiModelProperty(value = "Universe version")
   public final int version;
 
   @ApiModelProperty(value = "DNS name")
   public final String dnsName;
 
-  @ApiModelProperty(value = "Universe Resources", dataType = "java.util.Map")
+  @ApiModelProperty(value = "Universe resource details")
   public final UniverseResourceDetails resources;
 
-  @ApiModelProperty(value = "Universe Details", dataType = "java.util.Map")
+  @ApiModelProperty(value = "Universe details")
   public final UniverseDefinitionTaskParamsResp universeDetails;
 
-  @ApiModelProperty(value = "Universe config")
+  @ApiModelProperty(value = "Universe configuration")
   public final Map<String, String> universeConfig;
 
   @ApiModelProperty(value = "Task UUID")
@@ -78,11 +107,26 @@ public class UniverseResp {
   }
 
   public UniverseResp(Universe entity, UUID taskUUID, UniverseResourceDetails resources) {
+    this(
+        entity,
+        taskUUID,
+        Customer.get(entity.customerId),
+        Provider.getOrBadRequest(
+            UUID.fromString(entity.getUniverseDetails().getPrimaryCluster().userIntent.provider)),
+        resources);
+  }
+
+  public UniverseResp(
+      Universe entity,
+      UUID taskUUID,
+      Customer customer,
+      Provider provider,
+      UniverseResourceDetails resources) {
     universeUUID = entity.universeUUID;
     name = entity.name;
     creationDate = entity.creationDate.toString();
     version = entity.version;
-    dnsName = entity.getDnsName();
+    dnsName = getDnsName(customer, provider);
     universeDetails = new UniverseDefinitionTaskParamsResp(entity.getUniverseDetails(), entity);
     this.taskUUID = taskUUID;
     this.resources = resources;
@@ -94,6 +138,17 @@ public class UniverseResp {
   @ApiModelProperty(value = "Price")
   public Double getPricePerHour() {
     return resources == null ? null : resources.pricePerHour;
+  }
+
+  public String getDnsName(Customer customer, Provider provider) {
+    if (provider == null) {
+      return null;
+    }
+    String dnsSuffix = provider.getHostedZoneName();
+    if (dnsSuffix == null) {
+      return null;
+    }
+    return String.format("%s.%s.%s", name, customer, dnsSuffix);
   }
 
   /** Returns the command to run the sample apps in the universe. */

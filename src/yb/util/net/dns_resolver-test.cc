@@ -85,7 +85,7 @@ class DnsResolverTest : public YBTest {
 TEST_F(DnsResolverTest, TestResolution) {
   auto future = resolver_.ResolveFuture("localhost");
   ASSERT_EQ(future.wait_for(1s), std::future_status::ready);
-  auto addr = ASSERT_RESULT(future.get());
+  auto addr = ASSERT_RESULT(Copy(future.get()));
   LOG(INFO) << "Address: " << addr;
   if (addr.is_v4()) {
     EXPECT_TRUE(HasPrefixString(ToString(addr), "127."));

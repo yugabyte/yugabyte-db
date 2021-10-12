@@ -67,9 +67,11 @@ DataType InternalToDataType(InternalType internal_type) {
       return DataType::VARINT;
     case InternalType::kFrozenValue:
       return DataType::FROZEN;
-    default:
-      LOG(FATAL) << "Internal error: unsupported type " << internal_type;
+    case InternalType::VALUE_NOT_SET:
+    case InternalType::kVirtualValue:
+      break;
   }
+  LOG(FATAL) << "Internal error: unsupported type " << internal_type;
   return DataType::NULL_VALUE_TYPE;
 }
 

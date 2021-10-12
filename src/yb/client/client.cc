@@ -34,7 +34,6 @@
 
 #include <algorithm>
 #include <mutex>
-#include <set>
 #include <unordered_map>
 #include <vector>
 #include <iostream>
@@ -78,12 +77,6 @@
 #include "yb/util/crypt.h"
 
 using yb::master::AlterTableRequestPB;
-using yb::master::AlterTableRequestPB_Step;
-using yb::master::AlterTableResponsePB;
-using yb::master::CreateTableRequestPB;
-using yb::master::CreateTableResponsePB;
-using yb::master::DeleteTableRequestPB;
-using yb::master::DeleteTableResponsePB;
 using yb::master::CreateTablegroupRequestPB;
 using yb::master::CreateTablegroupResponsePB;
 using yb::master::DeleteTablegroupRequestPB;
@@ -92,10 +85,6 @@ using yb::master::ListTablegroupsRequestPB;
 using yb::master::ListTablegroupsResponsePB;
 using yb::master::GetNamespaceInfoRequestPB;
 using yb::master::GetNamespaceInfoResponsePB;
-using yb::master::GetTableSchemaRequestPB;
-using yb::master::GetTableSchemaResponsePB;
-using yb::master::GetColocatedTabletSchemaRequestPB;
-using yb::master::GetColocatedTabletSchemaResponsePB;
 using yb::master::GetTableLocationsRequestPB;
 using yb::master::GetTableLocationsResponsePB;
 using yb::master::GetTabletLocationsRequestPB;
@@ -117,8 +106,6 @@ using yb::master::ListLiveTabletServersResponsePB;
 using yb::master::ListLiveTabletServersResponsePB_Entry;
 using yb::master::CreateNamespaceRequestPB;
 using yb::master::CreateNamespaceResponsePB;
-using yb::master::AlterNamespaceRequestPB;
-using yb::master::AlterNamespaceResponsePB;
 using yb::master::DeleteNamespaceRequestPB;
 using yb::master::DeleteNamespaceResponsePB;
 using yb::master::ListNamespacesRequestPB;
@@ -137,14 +124,10 @@ using yb::master::DeleteUDTypeRequestPB;
 using yb::master::DeleteUDTypeResponsePB;
 using yb::master::DeleteRoleRequestPB;
 using yb::master::DeleteRoleResponsePB;
-using yb::master::DeleteTabletRequestPB;
-using yb::master::DeleteTabletResponsePB;
 using yb::master::GetPermissionsRequestPB;
 using yb::master::GetPermissionsResponsePB;
 using yb::master::GrantRevokeRoleRequestPB;
 using yb::master::GrantRevokeRoleResponsePB;
-using yb::master::ListUDTypesRequestPB;
-using yb::master::ListUDTypesResponsePB;
 using yb::master::GetUDTypeInfoRequestPB;
 using yb::master::GetUDTypeInfoResponsePB;
 using yb::master::GrantRevokePermissionResponsePB;
@@ -162,16 +145,9 @@ using yb::master::DeleteCDCStreamRequestPB;
 using yb::master::DeleteCDCStreamResponsePB;
 using yb::master::GetCDCStreamRequestPB;
 using yb::master::GetCDCStreamResponsePB;
-using yb::master::ListCDCStreamsRequestPB;
-using yb::master::ListCDCStreamsResponsePB;
-using yb::master::TSInfoPB;
+using yb::master::UpdateCDCStreamRequestPB;
+using yb::master::UpdateCDCStreamResponsePB;
 using yb::rpc::Messenger;
-using yb::rpc::MessengerBuilder;
-using yb::rpc::RpcController;
-using yb::tserver::NoOpRequestPB;
-using yb::tserver::NoOpResponsePB;
-using yb::util::kBcryptHashSize;
-using std::set;
 using std::string;
 using std::vector;
 using google::protobuf::RepeatedPtrField;
@@ -308,11 +284,6 @@ YBClientBuilder& YBClientBuilder::add_master_server_addr(const string& addr) {
   return *this;
 }
 
-YBClientBuilder& YBClientBuilder::add_master_server_endpoint(const string& endpoint) {
-  data_->master_server_endpoint_ = endpoint;
-  return *this;
-}
-
 YBClientBuilder& YBClientBuilder::skip_master_flagfile(bool should_skip) {
   data_->skip_master_flagfile_ = should_skip;
   return *this;
@@ -404,7 +375,6 @@ Status YBClientBuilder::DoBuild(rpc::Messenger* messenger, std::unique_ptr<YBCli
   c->data_->metric_entity_ = data_->metric_entity_;
 
   c->data_->master_address_flag_name_ = data_->master_address_flag_name_;
-  c->data_->master_server_endpoint_ = data_->master_server_endpoint_;
   c->data_->master_address_sources_ = data_->master_address_sources_;
   c->data_->master_server_addrs_ = data_->master_server_addrs_;
   c->data_->skip_master_flagfile_ = data_->skip_master_flagfile_;
@@ -547,13 +517,12 @@ Status YBClient::DeleteTable(const YBTableName& table_name, bool wait) {
                             wait);
 }
 
-Status YBClient::DeleteTable(const string& table_id, bool wait) {
-  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+Status YBClient::DeleteTable(const string& table_id, bool wait, CoarseTimePoint deadline) {
   return data_->DeleteTable(this,
                             YBTableName(),
                             table_id,
                             false /* is_index_table */,
-                            deadline,
+                            PatchAdminDeadline(deadline),
                             nullptr /* indexed_table_name */,
                             wait);
 }
@@ -573,13 +542,13 @@ Status YBClient::DeleteIndexTable(const YBTableName& table_name,
 
 Status YBClient::DeleteIndexTable(const string& table_id,
                                   YBTableName* indexed_table_name,
-                                  bool wait) {
-  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+                                  bool wait,
+                                  CoarseTimePoint deadline) {
   return data_->DeleteTable(this,
                             YBTableName(),
                             table_id,
                             true /* is_index_table */,
-                            deadline,
+                            PatchAdminDeadline(deadline),
                             indexed_table_name,
                             wait);
 }
@@ -741,22 +710,15 @@ Result<IndexPermissions> YBClient::WaitUntilIndexPermissionsAtLeast(
       max_wait);
 }
 
-Status YBClient::AsyncUpdateIndexPermissions(const TableId& indexed_table_id) {
-  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
-  AlterTableRequestPB req;
-  req.mutable_table()->set_table_id(indexed_table_id);
-  req.set_force_send_alter_request(true);
-  return data_->AlterTable(this, req, deadline);
-}
-
 Status YBClient::CreateNamespace(const std::string& namespace_name,
                                  const boost::optional<YQLDatabase>& database_type,
                                  const std::string& creator_role_name,
                                  const std::string& namespace_id,
                                  const std::string& source_namespace_id,
                                  const boost::optional<uint32_t>& next_pg_oid,
-                                 const boost::optional<TransactionMetadata>& txn,
-                                 const bool colocated) {
+                                 const TransactionMetadata* txn,
+                                 const bool colocated,
+                                 CoarseTimePoint deadline) {
   CreateNamespaceRequestPB req;
   CreateNamespaceResponsePB resp;
   req.set_name(namespace_name);
@@ -779,7 +741,7 @@ Status YBClient::CreateNamespace(const std::string& namespace_name,
     txn->ToPB(req.mutable_transaction());
   }
   req.set_colocated(colocated);
-  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  deadline = PatchAdminDeadline(deadline);
   Status s = data_->SyncLeaderMasterRpc<CreateNamespaceRequestPB, CreateNamespaceResponsePB>(
         deadline, req, &resp, nullptr, "CreateNamespace", &MasterServiceProxy::CreateNamespace);
   if (resp.has_error()) {
@@ -790,8 +752,8 @@ Status YBClient::CreateNamespace(const std::string& namespace_name,
 
   // Verify that the namespace we found is running so that, once this request returns,
   // the client can send operations without receiving a "namespace not found" error.
-  RETURN_NOT_OK(data_->WaitForCreateNamespaceToFinish(this, namespace_name, database_type, cur_id,
-      CoarseMonoClock::Now() + default_admin_operation_timeout()));
+  RETURN_NOT_OK(data_->WaitForCreateNamespaceToFinish(
+      this, namespace_name, database_type, cur_id, deadline));
 
   return Status::OK();
 }
@@ -803,9 +765,10 @@ Status YBClient::CreateNamespaceIfNotExists(const std::string& namespace_name,
                                             const std::string& source_namespace_id,
                                             const boost::optional<uint32_t>& next_pg_oid,
                                             const bool colocated) {
-  Result<bool> namespace_exists = (!namespace_id.empty() ? NamespaceIdExists(namespace_id)
-                                                         : NamespaceExists(namespace_name));
-  if (VERIFY_RESULT(namespace_exists)) {
+  const auto namespace_exists = VERIFY_RESULT(
+      !namespace_id.empty() ? NamespaceIdExists(namespace_id)
+                            : NamespaceExists(namespace_name));
+  if (namespace_exists) {
     // Verify that the namespace we found is running so that, once this request returns,
     // the client can send operations without receiving a "namespace not found" error.
     return data_->WaitForCreateNamespaceToFinish(this, namespace_name, database_type, namespace_id,
@@ -813,7 +776,7 @@ Status YBClient::CreateNamespaceIfNotExists(const std::string& namespace_name,
   }
 
   Status s = CreateNamespace(namespace_name, database_type, creator_role_name, namespace_id,
-                             source_namespace_id, next_pg_oid, boost::none /* txn */, colocated);
+                             source_namespace_id, next_pg_oid, nullptr /* txn */, colocated);
   if (s.IsAlreadyPresent() && database_type && *database_type == YQLDatabase::YQL_DATABASE_CQL) {
     return Status::OK();
   }
@@ -831,7 +794,8 @@ Status YBClient::IsCreateNamespaceInProgress(const std::string& namespace_name,
 
 Status YBClient::DeleteNamespace(const std::string& namespace_name,
                                  const boost::optional<YQLDatabase>& database_type,
-                                 const std::string& namespace_id) {
+                                 const std::string& namespace_id,
+                                 CoarseTimePoint deadline) {
   DeleteNamespaceRequestPB req;
   DeleteNamespaceResponsePB resp;
   req.mutable_namespace_()->set_name(namespace_name);
@@ -842,7 +806,7 @@ Status YBClient::DeleteNamespace(const std::string& namespace_name,
     req.set_database_type(*database_type);
     req.mutable_namespace_()->set_database_type(*database_type);
   }
-  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  deadline = PatchAdminDeadline(deadline);
   Status s = data_->SyncLeaderMasterRpc<DeleteNamespaceRequestPB, DeleteNamespaceResponsePB>(
       deadline, req, &resp, nullptr, "DeleteNamespace", &MasterServiceProxy::DeleteNamespace);
   if (resp.has_error()) {
@@ -1359,7 +1323,8 @@ Status YBClient::DeleteUDType(const std::string& namespace_name,
 
 Result<CDCStreamId> YBClient::CreateCDCStream(
     const TableId& table_id,
-    const std::unordered_map<std::string, std::string>& options) {
+    const std::unordered_map<std::string, std::string>& options,
+    const master::SysCDCStreamEntryPB::State& initial_state) {
   // Setting up request.
   CreateCDCStreamRequestPB req;
   req.set_table_id(table_id);
@@ -1369,6 +1334,7 @@ Result<CDCStreamId> YBClient::CreateCDCStream(
     new_option->set_key(option.first);
     new_option->set_value(option.second);
   }
+  req.set_initial_state(initial_state);
 
   CreateCDCStreamResponsePB resp;
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, CreateCDCStream);
@@ -1413,7 +1379,9 @@ void YBClient::GetCDCStream(const CDCStreamId& stream_id,
   data_->GetCDCStream(this, stream_id, table_id, options, deadline, callback);
 }
 
-Status YBClient::DeleteCDCStream(const vector<CDCStreamId>& streams) {
+Status YBClient::DeleteCDCStream(const vector<CDCStreamId>& streams,
+                                 bool force,
+                                 master::DeleteCDCStreamResponsePB* ret) {
   if (streams.empty()) {
     return STATUS(InvalidArgument, "At least one stream id should be provided");
   }
@@ -1424,9 +1392,15 @@ Status YBClient::DeleteCDCStream(const vector<CDCStreamId>& streams) {
   for (const auto& stream : streams) {
     req.add_stream_id(stream);
   }
+  req.set_force(force);
 
-  DeleteCDCStreamResponsePB resp;
-  CALL_SYNC_LEADER_MASTER_RPC(req, resp, DeleteCDCStream);
+  if (ret) {
+    CALL_SYNC_LEADER_MASTER_RPC(req, (*ret), DeleteCDCStream);
+  } else {
+    DeleteCDCStreamResponsePB resp;
+    CALL_SYNC_LEADER_MASTER_RPC(req, resp, DeleteCDCStream);
+  }
+
   return Status::OK();
 }
 
@@ -1445,9 +1419,25 @@ void YBClient::DeleteCDCStream(const CDCStreamId& stream_id, StatusCallback call
   data_->DeleteCDCStream(this, stream_id, deadline, callback);
 }
 
-void YBClient::DeleteTablet(const TabletId& tablet_id, StdStatusCallback callback) {
+Status YBClient::UpdateCDCStream(const CDCStreamId& stream_id,
+                                 const master::SysCDCStreamEntryPB& new_entry) {
+  if (stream_id.empty()) {
+    return STATUS(InvalidArgument, "Stream id is required.");
+  }
+
+  // Setting up request.
+  UpdateCDCStreamRequestPB req;
+  req.set_stream_id(stream_id);
+  req.mutable_entry()->CopyFrom(new_entry);
+
+  UpdateCDCStreamResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, UpdateCDCStream);
+  return Status::OK();
+}
+
+void YBClient::DeleteNotServingTablet(const TabletId& tablet_id, StdStatusCallback callback) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
-  data_->DeleteTablet(this, tablet_id, deadline, callback);
+  data_->DeleteNotServingTablet(this, tablet_id, deadline, callback);
 }
 
 void YBClient::GetTableLocations(
@@ -1459,7 +1449,8 @@ void YBClient::GetTableLocations(
 }
 
 Status YBClient::TabletServerCount(int *tserver_count, bool primary_only, bool use_cache) {
-  int tserver_count_cached = data_->tserver_count_cached_.load(std::memory_order_acquire);
+  int tserver_count_cached = data_->tserver_count_cached_[primary_only].load(
+      std::memory_order_acquire);
   if (use_cache && tserver_count_cached > 0) {
     *tserver_count = tserver_count_cached;
     return Status::OK();
@@ -1469,64 +1460,64 @@ Status YBClient::TabletServerCount(int *tserver_count, bool primary_only, bool u
   ListTabletServersResponsePB resp;
   req.set_primary_only(primary_only);
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, ListTabletServers);
-  data_->tserver_count_cached_.store(resp.servers_size(), std::memory_order_release);
+  data_->tserver_count_cached_[primary_only].store(resp.servers_size(), std::memory_order_release);
   *tserver_count = resp.servers_size();
   return Status::OK();
 }
 
-Status YBClient::ListTabletServers(vector<std::unique_ptr<YBTabletServer>>* tablet_servers) {
+Result<std::vector<YBTabletServer>> YBClient::ListTabletServers() {
   ListTabletServersRequestPB req;
   ListTabletServersResponsePB resp;
+  std::vector<YBTabletServer> result;
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, ListTabletServers);
+  result.reserve(resp.servers_size());
   for (int i = 0; i < resp.servers_size(); i++) {
     const ListTabletServersResponsePB_Entry& e = resp.servers(i);
-    auto ts = std::make_unique<YBTabletServer>(
-        e.instance_id().permanent_uuid(),
-        DesiredHostPort(e.registration().common(), data_->cloud_info_pb_).host(),
-        e.registration().common().placement_uuid());
-    tablet_servers->push_back(std::move(ts));
+    result.push_back(YBTabletServer::FromPB(e, data_->cloud_info_pb_));
   }
-  return Status::OK();
+  return result;
 }
 
-Status YBClient::ListLiveTabletServers(
-    vector<std::unique_ptr<YBTabletServerPlacementInfo>>* tablet_servers, bool primary_only) {
+Result<TabletServersInfo> YBClient::ListLiveTabletServers(bool primary_only) {
   ListLiveTabletServersRequestPB req;
-  if (primary_only) req.set_primary_only(true);
+  if (primary_only) {
+    req.set_primary_only(true);
+  }
   ListLiveTabletServersResponsePB resp;
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, ListLiveTabletServers);
 
+  TabletServersInfo result;
+  result.resize(resp.servers_size());
   for (int i = 0; i < resp.servers_size(); i++) {
     const ListLiveTabletServersResponsePB_Entry& entry = resp.servers(i);
-    CloudInfoPB cloud_info = entry.registration().common().cloud_info();
-    std::string cloud = "";
-    std::string region = "";
-    std::string zone = "";
-    int broadcast_sz = entry.registration().common().broadcast_addresses().size();
+    auto& out = result[i];
+    out.server = YBTabletServer::FromPB(entry, data_->cloud_info_pb_);
+    const CloudInfoPB& cloud_info = entry.registration().common().cloud_info();
 
-    std::string publicIp = "";
-    if (broadcast_sz > 0) {
-      publicIp = entry.registration().common().broadcast_addresses().Get(0).host();
+    const auto& private_addresses = entry.registration().common().private_rpc_addresses();
+    if (!private_addresses.empty()) {
+      out.server.hostname = private_addresses.Get(0).host();
     }
 
-    bool isPrimary = !entry.isfromreadreplica();
+    const auto& broadcast_addresses = entry.registration().common().broadcast_addresses();
+    if (!broadcast_addresses.empty()) {
+      out.public_ip = broadcast_addresses.Get(0).host();
+    }
+
+    out.is_primary = !entry.isfromreadreplica();
     if (cloud_info.has_placement_cloud()) {
-      cloud = cloud_info.placement_cloud();
+      out.cloud = cloud_info.placement_cloud();
       if (cloud_info.has_placement_region()) {
-        region = cloud_info.placement_region();
+        out.region = cloud_info.placement_region();
       }
       if (cloud_info.has_placement_zone()) {
-        zone = cloud_info.placement_zone();
+        out.zone = cloud_info.placement_zone();
       }
     }
-
-    auto ts = std::make_unique<YBTabletServerPlacementInfo>(
-        entry.instance_id().permanent_uuid(),
-        DesiredHostPort(entry.registration().common(), data_->cloud_info_pb_).host(),
-        entry.registration().common().placement_uuid(), cloud, region, zone, isPrimary, publicIp);
-    tablet_servers->push_back(std::move(ts));
+    out.pg_port = entry.registration().common().pg_port();
   }
-  return Status::OK();
+
+  return result;
 }
 
 void YBClient::SetLocalTabletServer(const string& ts_uuid,
@@ -1915,25 +1906,31 @@ Status YBClient::OpenTable(const YBTableName& table_name, shared_ptr<YBTable>* t
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   RETURN_NOT_OK(data_->GetTableSchema(this, table_name, deadline, &info));
 
-  // In the future, probably will look up the table in some map to reuse YBTable
-  // instances.
-  std::shared_ptr<YBTable> ret(new YBTable(this, info));
-  RETURN_NOT_OK(ret->Open());
-  table->swap(ret);
+  *table = VERIFY_RESULT(CompleteTable(info));
   return Status::OK();
 }
 
-Status YBClient::OpenTable(const TableId& table_id, shared_ptr<YBTable>* table) {
+Status YBClient::OpenTable(const TableId& table_id, shared_ptr<YBTable>* table,
+                           master::GetTableSchemaResponsePB* resp) {
   YBTableInfo info;
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
-  RETURN_NOT_OK(data_->GetTableSchema(this, table_id, deadline, &info));
+  RETURN_NOT_OK(data_->GetTableSchema(this, table_id, deadline, &info, resp));
+
+  *table = VERIFY_RESULT(CompleteTable(info));
+  return Status::OK();
+}
+
+Result<YBTablePtr> YBClient::CompleteTable(const YBTableInfo& info) {
+  std::promise<FetchPartitionsResult> promise;
+  auto future = promise.get_future();
+
+  YBTable::FetchPartitions(this, info, [&promise](const FetchPartitionsResult& result) {
+    promise.set_value(result);
+  });
 
   // In the future, probably will look up the table in some map to reuse YBTable
   // instances.
-  std::shared_ptr<YBTable> ret(new YBTable(this, info));
-  RETURN_NOT_OK(ret->Open());
-  table->swap(ret);
-  return Status::OK();
+  return std::make_shared<YBTable>(info, VERIFY_RESULT(future.get()));
 }
 
 shared_ptr<YBSession> YBClient::NewSession() {
@@ -1993,6 +1990,13 @@ uint64_t YBClient::GetLatestObservedHybridTime() const {
 
 void YBClient::SetLatestObservedHybridTime(uint64_t ht_hybrid_time) {
   data_->UpdateLatestObservedHybridTime(ht_hybrid_time);
+}
+
+CoarseTimePoint YBClient::PatchAdminDeadline(CoarseTimePoint deadline) const {
+  if (deadline != CoarseTimePoint()) {
+    return deadline;
+  }
+  return CoarseMonoClock::Now() + default_admin_operation_timeout();
 }
 
 }  // namespace client

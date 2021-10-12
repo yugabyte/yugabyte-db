@@ -106,7 +106,7 @@ struct ColumnId {
   constexpr ColumnId(const ColumnId& t_) : t(t_.t) {}
   ColumnId& operator=(const ColumnId& rhs) { t = rhs.t; return *this; }
   ColumnId& operator=(const ColumnIdRep& rhs) { DCHECK_GE(rhs, 0); t = rhs; return *this; }
-  operator const ColumnIdRep() const { return t; }
+  operator ColumnIdRep() const { return t; }
   operator const strings::internal::SubstituteArg() const { return t; }
   operator const AlphaNum() const { return t; }
   ColumnIdRep rep() const { return t; }
@@ -167,7 +167,7 @@ struct DeletedColumn {
 
   DeletedColumn() { }
 
-  DeletedColumn(ColumnId id, const HybridTime& ht) : id(id), ht(ht) { }
+  DeletedColumn(ColumnId id_, HybridTime ht_) : id(id_), ht(ht_) {}
 
   static CHECKED_STATUS FromPB(const DeletedColumnPB& col, DeletedColumn* ret);
   void CopyToPB(DeletedColumnPB* pb) const;
@@ -872,7 +872,7 @@ class Schema {
 
   // Gets and sets the PG table OID of the non-primary table this schema belongs to in a tablet
   // with colocated tables.
-  const PgTableOid pgtable_id() const {
+  PgTableOid pgtable_id() const {
     return pgtable_id_;
   }
 
@@ -1117,7 +1117,7 @@ class Schema {
     const bool use_column_ids = base_schema.has_column_ids() && has_column_ids();
 
     int proj_idx = 0;
-    for (int i = 0; i < cols_.size(); ++i) {
+    for (size_t i = 0; i < cols_.size(); ++i) {
       const ColumnSchema& col_schema = cols_[i];
 
       // try to lookup the column by ID if present or just by name.

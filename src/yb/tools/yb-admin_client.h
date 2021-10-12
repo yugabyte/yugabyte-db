@@ -155,7 +155,7 @@ class ClusterAdminClient {
                             bool include_table_type);
 
   // List all tablets of this table
-  CHECKED_STATUS ListTablets(const client::YBTableName& table_name, int max_tablets);
+  CHECKED_STATUS ListTablets(const client::YBTableName& table_name, int max_tablets, bool json);
 
   // Per Tablet list of all tablet servers
   CHECKED_STATUS ListPerTabletTabletServers(const PeerId& tablet_id);
@@ -267,6 +267,11 @@ class ClusterAdminClient {
   CHECKED_STATUS GetYsqlCatalogVersion();
 
   Result<rapidjson::Document> DdlLog();
+
+  // Upgrade YSQL cluster (all databases) to the latest version, applying necessary migrations.
+  // Note: Works with a tserver but is placed here (and not in yb-ts-cli) because it doesn't
+  //       look like this workflow is a good fit there.
+  CHECKED_STATUS UpgradeYsql();
 
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.

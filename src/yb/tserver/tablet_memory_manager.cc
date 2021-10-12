@@ -288,21 +288,24 @@ void TabletMemoryManager::FlushTabletIfLimitExceeded() {
     YB_LOG_EVERY_N_SECS(INFO, 5) << Format("Memstore global limit of $0 bytes reached, looking for "
                                            "tablet to flush", memory_monitor_->limit());
     auto flush_tick = rocksdb::FlushTick();
-    tablet::TabletPeerPtr tablet_to_flush = TabletToFlush();
-    // TODO(bojanserafimov): If tablet_to_flush flushes now because of other reasons,
-    // we will schedule a second flush, which will unnecessarily stall writes for a short time. This
-    // will not happen often, but should be fixed.
-    if (tablet_to_flush) {
-      LOG(INFO)
-          << LogPrefix(tablet_to_flush)
-          << "Flushing tablet with oldest memstore write at "
-          << tablet_to_flush->tablet()->OldestMutableMemtableWriteHybridTime();
-      WARN_NOT_OK(
-          tablet_to_flush->tablet()->Flush(
-              tablet::FlushMode::kAsync, tablet::FlushFlags::kAll, flush_tick),
-          Substitute("Flush failed on $0", tablet_to_flush->tablet_id()));
-      for (auto listener : TEST_listeners) {
-        listener->StartedFlush(tablet_to_flush->tablet_id());
+    tablet::TabletPeerPtr peer_to_flush = TabletToFlush();
+    if (peer_to_flush) {
+      auto tablet_to_flush = peer_to_flush->shared_tablet();
+      // TODO(bojanserafimov): If peer_to_flush flushes now because of other reasons,
+      // we will schedule a second flush, which will unnecessarily stall writes for a short time.
+      // This will not happen often, but should be fixed.
+      if (tablet_to_flush) {
+        LOG(INFO)
+            << LogPrefix(peer_to_flush)
+            << "Flushing tablet with oldest memstore write at "
+            << tablet_to_flush->OldestMutableMemtableWriteHybridTime();
+        WARN_NOT_OK(
+            tablet_to_flush->Flush(
+                tablet::FlushMode::kAsync, tablet::FlushFlags::kAll, flush_tick),
+            Substitute("Flush failed on $0", peer_to_flush->tablet_id()));
+        for (auto listener : TEST_listeners) {
+          listener->StartedFlush(peer_to_flush->tablet_id());
+        }
       }
     }
   }

@@ -62,7 +62,9 @@
 #include "yb/server/rpc_server.h"
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/server/default-path-handlers.h"
+#include "yb/tserver/pg_client_service.h"
 #include "yb/tserver/tablet_service.h"
+#include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/remote_bootstrap_service.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/metrics.h"
@@ -129,8 +131,7 @@ namespace yb {
 namespace master {
 
 Master::Master(const MasterOptions& opts)
-  : RpcAndWebServerBase(
-        "Master", opts, "yb.master", server::CreateMemTrackerForServer()),
+  : DbServerBase("Master", opts, "yb.master", server::CreateMemTrackerForServer()),
     state_(kStopped),
     ts_manager_(new TSManager()),
     catalog_manager_(new enterprise::CatalogManager(this)),
@@ -170,6 +171,11 @@ Status Master::Init() {
   RETURN_NOT_OK(RpcAndWebServerBase::Init());
 
   RETURN_NOT_OK(path_handlers_->Register(web_server_.get()));
+
+  auto bound_addresses = rpc_server()->GetBoundAddresses();
+  if (!bound_addresses.empty()) {
+    shared_object().SetHostEndpoint(bound_addresses.front(), get_hostname());
+  }
 
   async_client_init_ = std::make_unique<client::AsyncClientInitialiser>(
       "master_client", 0 /* num_reactors */,
@@ -238,6 +244,14 @@ Status Master::RegisterServices() {
           fs_manager_.get(), catalog_manager_.get(), metric_entity()));
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_master_remote_bootstrap_svc_queue_length,
                                                      std::move(remote_bootstrap_service)));
+
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
+      FLAGS_master_svc_queue_length,
+      std::make_unique<tserver::PgClientServiceImpl>(
+          client_future(), std::bind(&Master::TransactionPool, this),
+          metric_entity(),
+          &messenger()->scheduler())));
+
   return Status::OK();
 }
 
@@ -247,7 +261,6 @@ void Master::DisplayGeneralInfoIcons(std::stringstream* output) {
   DisplayIconTile(output, "fa-check", "Tasks", "/tasks");
   DisplayIconTile(output, "fa-clone", "Replica Info", "/tablet-replication");
   DisplayIconTile(output, "fa-check", "TServer Clocks", "/tablet-server-clocks");
-  DisplayIconTile(output, "fa-clone", "Load Balancer Info", "/lb-statistics");
 }
 
 Status Master::StartAsync() {
@@ -474,6 +487,14 @@ Status Master::GoIntoShellMode() {
   maintenance_manager_->Shutdown();
   RETURN_NOT_OK(catalog_manager()->GoIntoShellMode());
   return Status::OK();
+}
+
+const std::shared_future<client::YBClient*>& Master::client_future() const {
+  return async_client_init_->get_client_future();
+}
+
+client::LocalTabletFilter Master::CreateLocalTabletFilter() {
+  return client::LocalTabletFilter();
 }
 
 } // namespace master

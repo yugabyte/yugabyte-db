@@ -265,6 +265,7 @@ export BUILD_ROOT
 
 "$YB_SRC_ROOT/yb_build.sh" --cmake-unit-tests
 
+find_or_download_ysql_snapshots
 find_or_download_thirdparty
 validate_thirdparty_dir
 detect_toolchain
@@ -814,9 +815,7 @@ fi
 remove_latest_symlink
 
 log "Aggregating test reports"
-cd "$YB_SRC_ROOT"  # even though we should already be in this directory
-find . -type f -name "*_test_report.json" | \
-    "$YB_SRC_ROOT/python/yb/aggregate_test_reports.py" \
+"$YB_SRC_ROOT/python/yb/aggregate_test_reports.py" \
       --yb-src-root "$YB_SRC_ROOT" \
       --output-dir "$YB_SRC_ROOT" \
       --build-type "$build_type" \

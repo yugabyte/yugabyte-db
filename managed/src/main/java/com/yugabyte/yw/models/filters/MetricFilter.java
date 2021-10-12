@@ -10,29 +10,42 @@
 package com.yugabyte.yw.models.filters;
 
 import com.yugabyte.yw.models.MetricKey;
+import com.yugabyte.yw.models.MetricSourceKey;
+import com.yugabyte.yw.models.helpers.PlatformMetrics;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 import lombok.Builder;
 import lombok.NonNull;
 import lombok.Value;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.UUID;
-
 @Value
 @Builder
 public class MetricFilter {
-  Long id;
+  Set<UUID> uuids;
   UUID customerUuid;
-  UUID targetUuid;
-  List<MetricKey> keys;
+  UUID sourceUuid;
+  List<PlatformMetrics> metrics;
+  Set<MetricSourceKey> sourceKeys;
+  Set<MetricKey> keys;
   Boolean expired;
 
   public static class MetricFilterBuilder {
-    List<MetricKey> keys = new ArrayList<>();
+    Set<UUID> uuids = new HashSet<>();
+    List<PlatformMetrics> metrics = new ArrayList<>();
+    Set<MetricSourceKey> sourceKeys = new HashSet<>();
+    Set<MetricKey> keys = new HashSet<>();
 
-    public MetricFilterBuilder id(@NonNull Long id) {
-      this.id = id;
+    public MetricFilterBuilder uuids(@NonNull Collection<UUID> uuids) {
+      this.uuids.addAll(uuids);
+      return this;
+    }
+
+    public MetricFilterBuilder uuid(@NonNull UUID uuid) {
+      this.uuids.add(uuid);
       return this;
     }
 
@@ -41,8 +54,28 @@ public class MetricFilter {
       return this;
     }
 
-    public MetricFilterBuilder targetUuid(@NonNull UUID targetUuid) {
-      this.targetUuid = targetUuid;
+    public MetricFilterBuilder sourceUuid(@NonNull UUID sourceUuid) {
+      this.sourceUuid = sourceUuid;
+      return this;
+    }
+
+    public MetricFilterBuilder metrics(@NonNull Collection<PlatformMetrics> metrics) {
+      this.metrics.addAll(metrics);
+      return this;
+    }
+
+    public MetricFilterBuilder metric(@NonNull PlatformMetrics metric) {
+      this.metrics.add(metric);
+      return this;
+    }
+
+    public MetricFilterBuilder sourceKeys(@NonNull Collection<MetricSourceKey> sourceKeys) {
+      this.sourceKeys.addAll(sourceKeys);
+      return this;
+    }
+
+    public MetricFilterBuilder sourceKeys(@NonNull MetricSourceKey sourceKey) {
+      this.sourceKeys.add(sourceKey);
       return this;
     }
 

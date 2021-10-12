@@ -244,14 +244,14 @@ class TabletPeer : public consensus::ConsensusContext,
     return tablet_;
   }
 
-  const RaftGroupStatePB state() const {
+  RaftGroupStatePB state() const {
     return state_.load(std::memory_order_acquire);
   }
 
-  const TabletDataState data_state() const;
+  TabletDataState data_state() const;
 
   // Returns the current Raft configuration.
-  const consensus::RaftConfigPB RaftConfig() const;
+  consensus::RaftConfigPB RaftConfig() const;
 
   TabletStatusListener* status_listener() const {
     return status_listener_.get();
@@ -465,7 +465,7 @@ class TabletPeer : public consensus::ConsensusContext,
 
   // List of maintenance operations for the tablet that need information that only the peer
   // can provide.
-  std::vector<MaintenanceOp*> maintenance_ops_;
+  std::vector<std::unique_ptr<MaintenanceOp>> maintenance_ops_;
 
   // Cache the permanent of the tablet UUID to retrieve it without a lock in the common case.
   const std::string permanent_uuid_;
@@ -503,11 +503,6 @@ class TabletPeer : public consensus::ConsensusContext,
   }
 
   TabletSplitter* tablet_splitter_;
-
-  // can_be_deleted_ is set to true if tablet can be deleted (all replicas have been split and
-  // tablet is no longer needed). After setting to true it will stay that way forever until
-  // TabletPeer is destroyed.
-  std::atomic<bool> can_be_deleted_ = {false};
 
   std::shared_future<client::YBClient*> client_future_;
 

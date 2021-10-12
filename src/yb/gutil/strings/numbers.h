@@ -159,6 +159,8 @@ char* FastTimeToBuffer(time_t t, char* buffer);
 char* FastHex64ToBuffer(uint64 i, char* buffer);
 char* FastHex32ToBuffer(uint32 i, char* buffer);
 
+std::string FastHex64ToString(uint64 value);
+
 // at least 22 bytes long
 inline char* FastIntToBuffer(int i, char* buffer) {
   return (sizeof(i) == 4 ?

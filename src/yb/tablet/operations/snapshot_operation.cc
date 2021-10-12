@@ -132,14 +132,19 @@ Status SnapshotOperation::Apply(int64_t leader_term, Status* complete_status) {
   FATAL_INVALID_ENUM_VALUE(TabletSnapshotOpRequestPB::Operation, operation);
 }
 
+bool SnapshotOperation::NeedOperationFilter() const {
+  return request()->operation() == TabletSnapshotOpRequestPB::RESTORE_ON_TABLET ||
+         request()->operation() == TabletSnapshotOpRequestPB::RESTORE_SYS_CATALOG;
+}
+
 void SnapshotOperation::AddedAsPending() {
-  if (request()->operation() == TabletSnapshotOpRequestPB::RESTORE_ON_TABLET) {
+  if (NeedOperationFilter()) {
     tablet()->RegisterOperationFilter(this);
   }
 }
 
 void SnapshotOperation::RemovedFromPending() {
-  if (request()->operation() == TabletSnapshotOpRequestPB::RESTORE_ON_TABLET) {
+  if (NeedOperationFilter()) {
     tablet()->UnregisterOperationFilter(this);
   }
 }

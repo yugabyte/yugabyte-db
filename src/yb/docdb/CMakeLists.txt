@@ -74,6 +74,7 @@ set(DOCDB_SRCS
         doc_rowwise_iterator.cc
         doc_write_batch_cache.cc
         doc_write_batch.cc
+        compaction_file_filter.cc
         intent_aware_iterator.cc
         lock_batch.cc
         pgsql_operation.cc
@@ -143,3 +144,4 @@ ADD_YB_TEST(shared_lock_manager-test)
 ADD_YB_TEST(subdocument-test)
 ADD_YB_TEST(value-test)
 ADD_YB_TEST(consensus_frontier-test)
+ADD_YB_TEST(compaction_file_filter-test)

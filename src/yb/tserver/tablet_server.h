@@ -37,11 +37,12 @@
 #include <vector>
 
 #include "yb/consensus/metadata.pb.h"
+#include "yb/client/client_fwd.h"
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/macros.h"
 #include "yb/master/master.h"
-#include "yb/server/server_base.h"
 #include "yb/server/webserver_options.h"
+#include "yb/tserver/db_server_base.h"
 #include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tablet_server_options.h"
@@ -63,12 +64,7 @@ class MaintenanceManager;
 
 namespace tserver {
 
-class Heartbeater;
-class MetricsSnapshotter;
-class TabletServerPathHandlers;
-class TSTabletManager;
-
-class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
+class TabletServer : public DbServerBase, public TabletServerIf {
  public:
   // TODO: move this out of this header, since clients want to use this
   // constant as well.
@@ -87,6 +83,9 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
   // of tablets. Caller can block, waiting for the initialization to fully
   // complete by calling WaitInited().
   CHECKED_STATUS Init();
+
+  CHECKED_STATUS GetRegistration(ServerRegistrationPB* reg,
+    server::RpcOnly rpc_only = server::RpcOnly::kFalse) const override;
 
   // Waits for the tablet server to complete the initialization.
   CHECKED_STATUS WaitInited();
@@ -130,6 +129,10 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
   void SetClockForTests(server::ClockPtr clock) { clock_ = std::move(clock); }
 
   const scoped_refptr<MetricEntity>& MetricEnt() const override { return metric_entity(); }
+
+  tserver::TServerSharedData& SharedObject() override {
+    return shared_object();
+  }
 
   CHECKED_STATUS PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp);
 
@@ -185,11 +188,12 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
 
   virtual rocksdb::Env* GetRocksDBEnv();
 
+  void SetUniverseKeys(const UniverseKeysPB& universe_keys);
+
   virtual CHECKED_STATUS SetUniverseKeyRegistry(
       const yb::UniverseKeyRegistryPB& universe_key_registry);
 
-  // Returns the file descriptor of this tablet server's shared memory segment.
-  int GetSharedMemoryFd();
+  void GetUniverseKeyRegistrySync();
 
   uint64_t GetSharedMemoryPostgresAuthKey();
 
@@ -200,13 +204,15 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
 
   client::TransactionPool* TransactionPool() override;
 
-  client::YBClient* client() override;
+  const std::shared_future<client::YBClient*>& client_future() const override;
 
   const std::string& LogPrefix() const {
     return log_prefix_;
   }
 
   const HostPort pgsql_proxy_bind_address() const { return pgsql_proxy_bind_address_; }
+
+  client::LocalTabletFilter CreateLocalTabletFilter() override;
 
  protected:
   virtual CHECKED_STATUS RegisterServices();
@@ -231,8 +237,12 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
   // Used to forward redis pub/sub messages to the redis pub/sub handler
   yb::AtomicUniquePtr<rpc::Publisher> publish_service_ptr_;
 
+  std::thread fetch_universe_key_thread_;
+
   // Thread responsible for heartbeating to the master.
   std::unique_ptr<Heartbeater> heartbeater_;
+
+  std::unique_ptr<client::UniverseKeyClient> universe_key_client_;
 
   // Thread responsible for collecting metrics snapshots for native storage.
   std::unique_ptr<MetricsSnapshotter> metrics_snapshotter_;
@@ -269,14 +279,6 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
  private:
   // Auto initialize some of the service flags that are defaulted to -1.
   void AutoInitServiceFlags();
-
-  // Shared memory owned by the tablet server.
-  TServerSharedObject shared_object_;
-
-  std::atomic<client::TransactionPool*> transaction_pool_{nullptr};
-  std::mutex transaction_pool_mutex_;
-  std::unique_ptr<client::TransactionManager> transaction_manager_holder_;
-  std::unique_ptr<client::TransactionPool> transaction_pool_holder_;
 
   std::string log_prefix_;
 

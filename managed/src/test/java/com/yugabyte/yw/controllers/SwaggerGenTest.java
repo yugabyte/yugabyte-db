@@ -67,16 +67,16 @@ public class SwaggerGenTest extends FakeDBApplication {
           fileWriter.write(actualSwaggerSpec);
         }
         fail(
-            "=============================================================================="
-                + "Run $sbt swaggerGen\n  The new swagger spec written to:"
+            "==============================================================================\n"
+                + "Run $sbt swaggerGen\n  The new swagger spec written to:\n"
                 + outFile.getAbsolutePath()
-                + "==============================================================================");
+                + "\n==========================================================================\n");
       }
     }
   }
 
   private String getSwaggerSpec() throws JsonProcessingException {
-    Result result = route(Helpers.fakeRequest("GET", "/docs/swagger.json"));
+    Result result = route(Helpers.fakeRequest("GET", "/docs/dynamic_swagger.json"));
     return sort(contentAsString(result, mat));
   }
 
@@ -92,9 +92,16 @@ public class SwaggerGenTest extends FakeDBApplication {
 
   private String sort(String jsonString) throws JsonProcessingException {
     ObjectNode specJsonNode = (ObjectNode) Json.parse(jsonString);
+    deleteApiUrl(specJsonNode);
     sortTagsList(specJsonNode);
     final Object obj = SORTED_MAPPER.treeToValue(specJsonNode, Object.class);
     return SORTED_MAPPER.writeValueAsString(obj);
+  }
+
+  // Do not hardcode API url
+  private void deleteApiUrl(ObjectNode specJsonNode) {
+    specJsonNode.remove("host");
+    specJsonNode.remove("basePath");
   }
 
   // This way swagger UI will show tags in sorted order.

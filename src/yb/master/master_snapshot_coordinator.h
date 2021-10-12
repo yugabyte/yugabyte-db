@@ -34,14 +34,6 @@
 namespace yb {
 namespace master {
 
-YB_DEFINE_ENUM(TableModificationType, (kCreate)(kDrop)(kAlter))
-
-struct ModifiedTable {
-  TableName name;
-  TableType type;
-  TableModificationType modification;
-};
-
 struct SnapshotScheduleRestoration {
   TxnSnapshotId snapshot_id;
   HybridTime restore_at;
@@ -49,11 +41,12 @@ struct SnapshotScheduleRestoration {
   OpId op_id;
   HybridTime write_time;
   int64_t term;
-  SnapshotScheduleFilterPB filter;
-  std::vector<TabletId> obsolete_tablets;
-  std::vector<TableId> obsolete_tables;
-  std::vector<ModifiedTable> modified_tables;
-  std::unordered_map<std::string, SysRowEntry::Type> objects_to_restore;
+  std::vector<std::pair<SnapshotScheduleId, SnapshotScheduleFilterPB>> schedules;
+  std::vector<std::pair<TabletId, SysTabletsEntryPB>> non_system_obsolete_tablets;
+  std::vector<std::pair<TableId, SysTablesEntryPB>> non_system_obsolete_tables;
+  std::unordered_map<std::string, SysRowEntry::Type> non_system_objects_to_restore;
+  // pg_catalog_tables to restore for YSQL tables.
+  std::unordered_map<TableId, TableName> system_tables_to_restore;
 };
 
 // Class that coordinates transaction aware snapshots at master.

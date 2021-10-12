@@ -108,7 +108,7 @@ public class HealthManagerTest extends FakeDBApplication {
                         startTime,
                         sendStatus,
                         reportOnlyErrors);
-                healthManager.runCommand(provider, ImmutableList.of(cluster), startTime);
+                healthManager.runCommand(provider, ImmutableList.of(cluster), startTime, false);
                 HashMap extraEnvVars = new HashMap<>(provider.getConfig());
                 verify(shellProcessHandler, times(1))
                     .run(eq(expectedCommand), eq(extraEnvVars), eq(false), anyString());

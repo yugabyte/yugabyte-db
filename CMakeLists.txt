@@ -685,6 +685,10 @@ set(YB_TEST_LINK_LIBS ${YB_MIN_TEST_LIBS})
 # Subdirectories
 ############################################################
 
+# TODO(dmitry): Add YB_CMAKE_CXX_EXTRA_FLAGS to CMAKE_CXX_FLAGS when all source code will be
+#               compatible with with these flags #9279
+set(YB_CMAKE_CXX_EXTRA_FLAGS "-Wextra -Wno-unused-parameter")
+
 # For any C code, use the same flags as for C++.
 set(CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS}")
 
@@ -714,11 +718,13 @@ endif()
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if (USING_LINUXBREW)
-  # Add the Linuxbrew library directory last.
-  ADD_LINKER_FLAGS("-L${LINUXBREW_LIB_DIR}")
-  ADD_GLOBAL_RPATH_ENTRY("${LINUXBREW_LIB_DIR}")
-  ADD_LINKER_FLAGS("-L/usr/lib64")
-  ADD_GLOBAL_RPATH_ENTRY("/usr/lib64")
+  # We need to add the postgres library directory prior to /usr/lib64 specifically in order to avoid
+  # using the system libpq.
+  ADD_GLOBAL_RPATH_ENTRY_AND_LIB_DIR("${YB_BUILD_ROOT}/postgres/lib")
+
+  # Add the Linuxbrew library directory and the system library directory last.
+  ADD_GLOBAL_RPATH_ENTRY_AND_LIB_DIR("${LINUXBREW_LIB_DIR}")
+  ADD_GLOBAL_RPATH_ENTRY_AND_LIB_DIR("/usr/lib64")
 endif()
 
 message("Linker flags for executables: ${CMAKE_EXE_LINKER_FLAGS}")

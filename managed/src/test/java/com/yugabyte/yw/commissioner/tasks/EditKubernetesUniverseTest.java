@@ -26,7 +26,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.ShellResponse;
@@ -58,18 +57,15 @@ import play.libs.Json;
 @RunWith(MockitoJUnitRunner.class)
 public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
-  @InjectMocks Commissioner commissioner;
-
   @InjectMocks EditKubernetesUniverse editUniverse;
 
   Universe defaultUniverse;
   YBClient mockClient;
-  ShellResponse dummyShellResponse;
 
   String nodePrefix = "demo-universe";
   String ybSoftwareVersion = "1.0.0";
 
-  Map<String, String> config = new HashMap<String, String>();
+  Map<String, String> config = new HashMap<>();
 
   private void setup() {
     ShellResponse responseEmpty = new ShellResponse();
@@ -101,6 +97,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
   private void setupUniverseSingleAZ(boolean setMasters) {
     setup();
+
     config.put("KUBECONFIG", "test");
     defaultProvider.setConfig(config);
     defaultProvider.save();
@@ -287,7 +284,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
-    ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
+    ArgumentCaptor<Map<String, String>> expectedConfig = ArgumentCaptor.forClass(Map.class);
 
     String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
 
@@ -356,7 +353,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertTaskSequence(
         subTasksByPosition, KUBERNETES_ADD_POD_TASKS, getExpectedAddPodTaskResults(), "add");
     assertEquals(Success, taskInfo.getTaskState());
@@ -366,13 +363,11 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   public void testRemoveNode() {
     setupUniverseSingleAZ(/* Create Masters */ true);
 
-    ArgumentCaptor<UUID> expectedUniverseUUID = ArgumentCaptor.forClass(UUID.class);
     ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
-    ArgumentCaptor<String> expectedPodName = ArgumentCaptor.forClass(String.class);
-    ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
+    ArgumentCaptor<Map<String, String>> expectedConfig = ArgumentCaptor.forClass(Map.class);
 
     String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
     ShellResponse responsePods = new ShellResponse();
@@ -424,7 +419,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertTaskSequence(
         subTasksByPosition,
         KUBERNETES_REMOVE_POD_TASKS,
@@ -438,12 +433,11 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     setupUniverseSingleAZ(/* Create Masters */ true);
 
     ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
-    ArgumentCaptor<UUID> expectedUniverseUUID = ArgumentCaptor.forClass(UUID.class);
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedPodName = ArgumentCaptor.forClass(String.class);
-    ArgumentCaptor<HashMap> expectedConfig = ArgumentCaptor.forClass(HashMap.class);
+    ArgumentCaptor<Map<String, String>> expectedConfig = ArgumentCaptor.forClass(Map.class);
 
     String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
     ShellResponse responsePods = new ShellResponse();
@@ -505,7 +499,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertTaskSequence(
         subTasksByPosition,
         KUBERNETES_CHANGE_INSTANCE_TYPE_TASKS,

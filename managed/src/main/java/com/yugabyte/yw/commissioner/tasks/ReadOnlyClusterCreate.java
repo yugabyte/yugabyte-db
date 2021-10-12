@@ -48,6 +48,8 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
       // Set the 'updateInProgress' flag to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
+      preTaskActions();
+
       // Set the correct node names for all to-be-added nodes.
       setNodeNames(UniverseOpType.CREATE, universe);
 
@@ -100,10 +102,13 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
       }
 
       // Create the required number of nodes in the appropriate locations.
-      createSetupServerTasks(nodesToProvision).setSubTaskGroupType(SubTaskGroupType.Provisioning);
+      createCreateServerTasks(nodesToProvision).setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
       // Get all information about the nodes of the cluster. for ex., private ip address.
       createServerInfoTasks(nodesToProvision).setSubTaskGroupType(SubTaskGroupType.Provisioning);
+
+      // Provision the nodes of the cluster so Yugabyte can be deployed.
+      createSetupServerTasks(nodesToProvision).setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
       // Configures and deploys software on all the nodes (masters and tservers).
       createConfigureServerTasks(nodesToProvision, true /* isShell */)

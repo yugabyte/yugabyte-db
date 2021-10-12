@@ -23,6 +23,9 @@
 #include "yb/util/ref_cnt_buffer.h"
 
 namespace yb {
+
+class Counter;
+
 namespace rpc {
 
 struct TcpStreamSendingData {
@@ -148,6 +151,8 @@ class TcpStream : public Stream {
   size_t inbound_bytes_to_skip_ = 0;
   bool waiting_write_ready_ = false;
   MemTrackerPtr mem_tracker_;
+  scoped_refptr<Counter> bytes_sent_counter_;
+  scoped_refptr<Counter> bytes_received_counter_;
 };
 
 } // namespace rpc

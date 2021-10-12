@@ -78,7 +78,12 @@ void SnapshotScheduleState::PrepareOperations(
   auto delete_time = HybridTime::FromPB(options_.delete_time());
   if (delete_time) {
     // Check whether we are ready to cleanup deleted schedule.
-    if (now > delete_time.AddMilliseconds(FLAGS_snapshot_coordinator_cleanup_delay_ms)) {
+    if (now > delete_time.AddMilliseconds(FLAGS_snapshot_coordinator_cleanup_delay_ms) &&
+        !CleanupTracker().Started()) {
+      LOG_WITH_PREFIX(INFO) << "Snapshot Schedule " << id() << " cleanup started.";
+      if (!CleanupTracker().Start().ok()) {
+        LOG(DFATAL) << "Snapshot Schedule " << id() << " cleanup was already started previously.";
+      }
       operations->push_back(SnapshotScheduleOperation {
         .type = SnapshotScheduleOperationType::kCleanup,
         .schedule_id = id_,
@@ -97,6 +102,7 @@ void SnapshotScheduleState::PrepareOperations(
 SnapshotScheduleOperation SnapshotScheduleState::MakeCreateSnapshotOperation(
     HybridTime last_snapshot_time) {
   creating_snapshot_id_ = TxnSnapshotId::GenerateRandom();
+  VLOG_WITH_PREFIX_AND_FUNC(4) << creating_snapshot_id_;
   return SnapshotScheduleOperation {
     .type = SnapshotScheduleOperationType::kCreateSnapshot,
     .schedule_id = id_,
@@ -122,6 +128,10 @@ void SnapshotScheduleState::SnapshotFinished(
     return;
   }
   creating_snapshot_id_ = TxnSnapshotId::Nil();
+}
+
+std::string SnapshotScheduleState::LogPrefix() const {
+  return Format("$0: ", id_);
 }
 
 } // namespace master

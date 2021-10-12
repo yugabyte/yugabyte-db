@@ -319,7 +319,7 @@ std::string AsString(T&&... t) {
 #if BOOST_PP_VARIADICS
 
 #define YB_FIELD_TO_STRING(r, data, elem) \
-    " " BOOST_PP_STRINGIZE(elem) ": " + AsString(BOOST_PP_CAT(elem, BOOST_PP_APPLY(data))) +
+    " " BOOST_PP_STRINGIZE(elem) ": " + yb::AsString(BOOST_PP_CAT(elem, BOOST_PP_APPLY(data))) +
 #define YB_FIELDS_TO_STRING(data, ...) \
     BOOST_PP_SEQ_FOR_EACH(YB_FIELD_TO_STRING, data(), BOOST_PP_VARIADIC_TO_SEQ(__VA_ARGS__))
 

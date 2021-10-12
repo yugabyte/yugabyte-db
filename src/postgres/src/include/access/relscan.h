@@ -20,7 +20,7 @@
 #include "access/itup.h"
 #include "access/tupdesc.h"
 #include "storage/spin.h"
-#include "ybcam.h"
+#include "access/yb_scan.h"
 
 /*
  * Shared state for parallel heap scan.

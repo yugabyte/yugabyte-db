@@ -10,12 +10,13 @@
 package com.yugabyte.yw.models.filters;
 
 import com.yugabyte.yw.models.Alert;
-import com.yugabyte.yw.models.AlertDefinitionGroup;
-import com.yugabyte.yw.models.AlertDefinitionGroup.Severity;
+import com.yugabyte.yw.models.AlertConfiguration;
+import com.yugabyte.yw.models.AlertConfiguration.Severity;
 import com.yugabyte.yw.models.AlertLabel;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Date;
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.Set;
@@ -31,13 +32,14 @@ public class AlertFilter {
   Set<UUID> excludeUuids;
   UUID customerUuid;
   Set<Alert.State> states;
-  Set<Alert.State> targetStates;
   Set<UUID> definitionUuids;
-  UUID groupUuid;
-  Set<AlertDefinitionGroup.Severity> severities;
-  Set<AlertDefinitionGroup.TargetType> groupTypes;
+  UUID configurationUuid;
+  Set<AlertConfiguration.Severity> severities;
+  Set<AlertConfiguration.TargetType> configurationTypes;
   AlertLabel label;
   Boolean notificationPending;
+  String sourceName;
+  Date resolvedDateBefore;
 
   // Can't use @Builder(toBuilder = true) as it sets null fields as well, which breaks non null
   // checks.
@@ -58,23 +60,26 @@ public class AlertFilter {
     if (states != null) {
       result.states(states);
     }
-    if (targetStates != null) {
-      result.targetStates(targetStates);
-    }
     if (definitionUuids != null) {
       result.definitionUuids(definitionUuids);
     }
-    if (groupUuid != null) {
-      result.groupUuid(groupUuid);
+    if (configurationUuid != null) {
+      result.configurationUuid(configurationUuid);
     }
     if (severities != null) {
       result.severities(severities);
     }
-    if (groupTypes != null) {
-      result.groupTypes(groupTypes);
+    if (configurationTypes != null) {
+      result.configurationTypes(configurationTypes);
     }
     if (notificationPending != null) {
       result.notificationPending(notificationPending);
+    }
+    if (sourceName != null) {
+      result.sourceName(sourceName);
+    }
+    if (resolvedDateBefore != null) {
+      result.resolvedDateBefore(resolvedDateBefore);
     }
     return result;
   }
@@ -83,10 +88,9 @@ public class AlertFilter {
     Set<UUID> uuids = new HashSet<>();
     Set<UUID> excludeUuids = new HashSet<>();
     Set<Alert.State> states = EnumSet.noneOf(Alert.State.class);
-    Set<Alert.State> targetStates = EnumSet.noneOf(Alert.State.class);
     Set<UUID> definitionUuids = new HashSet<>();
-    Set<AlertDefinitionGroup.Severity> severities = new HashSet<>();
-    Set<AlertDefinitionGroup.TargetType> groupTypes = new HashSet<>();
+    Set<AlertConfiguration.Severity> severities = new HashSet<>();
+    Set<AlertConfiguration.TargetType> configurationTypes = new HashSet<>();
 
     public AlertFilterBuilder uuid(@NonNull UUID uuid) {
       this.uuids.add(uuid);
@@ -120,16 +124,6 @@ public class AlertFilter {
 
     public AlertFilterBuilder states(@NonNull Set<Alert.State> states) {
       this.states.addAll(states);
-      return this;
-    }
-
-    public AlertFilterBuilder targetState(@NonNull Alert.State... state) {
-      targetStates.addAll(Arrays.asList(state));
-      return this;
-    }
-
-    public AlertFilterBuilder targetStates(@NonNull Set<Alert.State> states) {
-      this.targetStates.addAll(states);
       return this;
     }
 
@@ -168,18 +162,30 @@ public class AlertFilter {
       return this;
     }
 
-    public AlertFilterBuilder groupType(@NonNull AlertDefinitionGroup.TargetType... groupTypes) {
-      this.groupTypes.addAll(Arrays.asList(groupTypes));
+    public AlertFilterBuilder configurationType(
+        @NonNull AlertConfiguration.TargetType... configurationType) {
+      this.configurationTypes.addAll(Arrays.asList(configurationType));
       return this;
     }
 
-    public AlertFilterBuilder groupTypes(@NonNull Set<AlertDefinitionGroup.TargetType> groupTypes) {
-      this.groupTypes.addAll(groupTypes);
+    public AlertFilterBuilder configurationTypes(
+        @NonNull Set<AlertConfiguration.TargetType> configurationTypes) {
+      this.configurationTypes.addAll(configurationTypes);
       return this;
     }
 
     public AlertFilterBuilder notificationPending(boolean notificationPending) {
       this.notificationPending = notificationPending;
+      return this;
+    }
+
+    public AlertFilterBuilder sourceName(@NonNull String sourceName) {
+      this.sourceName = sourceName;
+      return this;
+    }
+
+    public AlertFilterBuilder resolvedDateBefore(@NonNull Date resolvedDateBefore) {
+      this.resolvedDateBefore = resolvedDateBefore;
       return this;
     }
   }

@@ -16,11 +16,11 @@ us-east-2:
   latitude: 40.367474
   longitude: -82.996216
 eu-west-1:
-  name: EU (Ireland)
+  name: Europe (Ireland)
   latitude: 53.412910
   longitude: -8.243890
 eu-central-1:
-  name: EU (Frankfurt)
+  name: Europe (Frankfurt)
   latitude: 50.110922
   longitude: 8.682127
 ap-southeast-1:
@@ -40,11 +40,11 @@ sa-east-1:
   latitude: -23.550520
   longitude: -46.633309
 eu-west-2:
-  name: EU (London)
+  name: Europe (London)
   latitude: 51.5287718
   longitude: 0.2416806
 eu-west-3:
-  name: EU (Paris)
+  name: Europe (Paris)
   latitude: 48.8589507
   longitude: 2.2770204
 ap-south-1:
@@ -56,7 +56,33 @@ ca-central-1:
   latitude: 45.5580421
   longitude: -73.7303025
 # TODO: not currently supported in x-region VPC.
-# ap-northeast-2:
-#   name: Asia Pacific (Seoul)
-#   latitude: 37.566535
-#   longitude: 126.977969
+ap-northeast-2:
+ name: Asia Pacific (Seoul)
+ latitude: 37.566535
+ longitude: 126.977969
+# Location information compiled from
+# https://developers-dot-devsite-v2-prod.appspot.com/maps/documentation/utils/geocoder
+ap-northeast-3:
+  name: Asia Pacific (Osaka)
+  latitude: 34.693725
+  longitude: 135.502254
+me-south-1:
+  name: Middle East (Bahrain)
+  latitude: 26.0667
+  longitude: 50.5577
+ap-east-1:
+  name: Asia Pacific (Hong Kong)
+  latitude: 22.319304
+  longitude: 114.169361
+af-south-1:
+  name: Africa (Cape Town)
+  latitude: -33.924868
+  longitude: 18.424055
+eu-south-1:
+  name: Europe (Milan)
+  latitude: 45.464204
+  longitude: 9.189982
+eu-north-1:
+  name: Europe (Stockholm)
+  latitude: 59.329323
+  longitude: 18.068581

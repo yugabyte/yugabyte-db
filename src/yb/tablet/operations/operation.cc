@@ -73,9 +73,9 @@ Status Operation::Replicated(int64_t leader_term) {
   return Status::OK();
 }
 
-void Operation::Aborted(const Status& status) {
+void Operation::Aborted(const Status& status, bool was_pending) {
   VLOG_WITH_PREFIX_AND_FUNC(4) << status;
-  Aborted();
+  Aborted(was_pending);
   Release();
   CompleteWithStatus(DoAborted(status));
 }
@@ -108,6 +108,13 @@ HybridTime Operation::WriteHybridTime() const {
   return hybrid_time();
 }
 
+void Operation::UpdateIfMaxTtl(const MonoDelta& ttl) {
+  std::lock_guard<simple_spinlock> l(mutex_);
+  if (!ttl_.Initialized() || ttl > ttl_) {
+    ttl_ = ttl;
+  }
+}
+
 void Operation::AddedToLeader(const OpId& op_id, const OpId& committed_op_id) {
   HybridTime hybrid_time;
   if (use_mvcc()) {
@@ -138,7 +145,7 @@ void Operation::AddedToFollower() {
   AddedAsPending();
 }
 
-void Operation::Aborted() {
+void Operation::Aborted(bool was_pending) {
   if (use_mvcc()) {
     auto hybrid_time = hybrid_time_even_if_unset();
     if (hybrid_time.is_valid()) {
@@ -146,7 +153,9 @@ void Operation::Aborted() {
     }
   }
 
-  RemovedFromPending();
+  if (was_pending) {
+    RemovedFromPending();
+  }
 }
 
 void Operation::Replicated() {

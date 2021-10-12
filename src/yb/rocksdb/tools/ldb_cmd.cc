@@ -2177,7 +2177,8 @@ void DumpSstFile(std::string filename, bool output_hex, bool show_properties) {
     return;
   }
   // no verification
-  rocksdb::SstFileReader reader(filename, false, output_hex);
+  rocksdb::SstFileReader reader(
+      filename, false, (output_hex ? OutputFormat::kHex : OutputFormat::kRaw));
   Status st = reader.ReadSequential(true, -1, false,  // has_from
                                     from_key, false,  // has_to
                                     to_key);

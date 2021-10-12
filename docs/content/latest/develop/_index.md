@@ -44,6 +44,19 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="gitdev/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/develop/real-world-apps.png" aria-hidden="true" />
+        <div class="articles">2 articles</div>
+        <div class="title">Cloud-native development</div>
+      </div>
+      <div class="body">
+        Ready-to-code, fully-integrated, automated code workflows in the cloud.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="explore-sample-apps/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/real-world-apps.png" aria-hidden="true" />
@@ -67,7 +80,6 @@ menu:
         Best practices for data modeling and cluster configuration.
       </div>
     </a>
-
   </div>
 
 <!--  <a class="section-link icon-offset" href="port-existing-apps/">

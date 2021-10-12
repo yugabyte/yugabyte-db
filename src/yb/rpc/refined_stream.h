@@ -29,11 +29,10 @@ YB_DEFINE_ENUM(LocalSide, (kClient)(kServer));
 class StreamRefiner {
  public:
   virtual void Start(RefinedStream* stream) = 0;
-  virtual Result<size_t> ProcessHeader(const IoVecs& data) = 0;
+  virtual CHECKED_STATUS ProcessHeader() = 0;
   virtual CHECKED_STATUS Send(OutboundDataPtr data) = 0;
   virtual CHECKED_STATUS Handshake() = 0;
-  virtual Result<size_t> Read(void* buf, size_t num) = 0;
-  virtual Result<size_t> Receive(const Slice& slice) = 0;
+  virtual Result<ReadBufferFull> Read(StreamReadBuffer* out) = 0;
   virtual const Protocol* GetProtocol() = 0;
 
   virtual std::string ToString() const = 0;
@@ -69,8 +68,7 @@ class RefinedStream : public Stream, public StreamContext {
   std::string ToString() const override;
 
   // Implementation StreamContext
-  Result<ProcessDataResult> ProcessReceived(
-      const IoVecs& data, ReadBufferFull read_buffer_full) override;
+  Result<size_t> ProcessReceived(ReadBufferFull read_buffer_full) override;
   void Connected() override;
 
   void UpdateLastActivity() override;
@@ -91,24 +89,28 @@ class RefinedStream : public Stream, public StreamContext {
     return local_side_;
   }
 
+  const MemTrackerPtr& buffer_tracker() const {
+    return buffer_tracker_;
+  }
+
  private:
-  CHECKED_STATUS HandshakeOrRead();
-  CHECKED_STATUS Read();
+  Result<size_t> Handshake();
+  Result<size_t> Read();
 
   std::unique_ptr<Stream> lower_stream_;
   std::unique_ptr<StreamRefiner> refiner_;
   RefinedStreamState state_ = RefinedStreamState::kInitial;
   StreamContext* context_ = nullptr;
   std::vector<OutboundDataPtr> pending_data_;
-  size_t lower_stream_bytes_to_skip_ = 0;
+  size_t upper_stream_bytes_to_skip_ = 0;
   LocalSide local_side_ = LocalSide::kServer;
   CircularReadBuffer read_buffer_;
+  MemTrackerPtr buffer_tracker_;
 };
 
 class RefinedStreamFactory : public StreamFactory {
  public:
   using RefinerFactory = std::function<std::unique_ptr<StreamRefiner>(
-        size_t receive_buffer_size, const MemTrackerPtr& buffer_tracker,
         const StreamCreateData& data)>;
 
   RefinedStreamFactory(

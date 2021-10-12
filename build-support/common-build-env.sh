@@ -123,6 +123,8 @@ readonly OPT_YB_BUILD_DIR="/opt/yb-build"
 
 readonly LOCAL_THIRDPARTY_DIR_PARENT="$OPT_YB_BUILD_DIR/thirdparty"
 
+readonly YSQL_SNAPSHOTS_DIR_PARENT="$OPT_YB_BUILD_DIR/ysql-sys-catalog-snapshots"
+
 # Parent directories for different compiler toolchains that we know how to download and install.
 readonly TOOLCHAIN_PARENT_DIR_LINUXBREW="$OPT_YB_BUILD_DIR/brew"
 readonly TOOLCHAIN_PARENT_DIR_LLVM="$OPT_YB_BUILD_DIR/llvm"
@@ -996,10 +998,22 @@ find_compiler_by_type() {
         local clang_cc_compiler_basename=${YB_COMPILER_TYPE//clang/clang-}
         local clang_cxx_compiler_basename=${YB_COMPILER_TYPE//clang/clang++-}
         for clang_prefix_candidate in /usr/local/bin /usr/bin; do
-          if [[ -L $clang_prefix_candidate/$clang_cc_compiler_basename &&
-                -L $clang_prefix_candidate/$clang_cxx_compiler_basename ]]; then
-            cc_executable=$( readlink "$clang_prefix_candidate/$clang_cc_compiler_basename" )
-            cxx_executable=$( readlink "$clang_prefix_candidate/$clang_cxx_compiler_basename" )
+          if [[ -e $clang_prefix_candidate/$clang_cc_compiler_basename &&
+                -e $clang_prefix_candidate/$clang_cxx_compiler_basename ]]; then
+            cc_executable="$clang_prefix_candidate/$clang_cc_compiler_basename"
+            cxx_executable="$clang_prefix_candidate/$clang_cxx_compiler_basename"
+            if [[ -L $cc_executable ]]; then
+              cc_executable=$( readlink "$cc_executable" )
+              if [[ ! $cc_executable =~ ^/ ]]; then
+                cc_executable="$clang_prefix_candidate/$cc_executable"
+              fi
+            fi
+            if [[ -L $cxx_executable ]]; then
+              cxx_executable=$( readlink "$cxx_executable" )
+              if [[ ! $cxx_executable =~ ^/ ]]; then
+                cxx_executable="$clang_prefix_candidate/$cxx_executable"
+              fi
+            fi
             break
           fi
         done
@@ -1906,6 +1920,24 @@ find_or_download_thirdparty() {
   save_thirdparty_info_to_build_dir
 }
 
+find_or_download_ysql_snapshots() {
+  local repo_url="https://github.com/yugabyte/yugabyte-db-ysql-catalog-snapshots"
+  local prefix="initial_sys_catalog_snapshot"
+
+  mkdir -p "$YSQL_SNAPSHOTS_DIR_PARENT"
+
+  # Just one snapshot for now.
+  # (disabling a code checker error about a singular loop iteration)
+  # shellcheck disable=SC2043
+  for ver in "2.0.9.0"; do
+    local name="${prefix}_${ver}"
+    if [[ ! -d "$YSQL_SNAPSHOTS_DIR_PARENT/$name" ]]; then
+      local url="${repo_url}/releases/download/v${ver}/${name}.tar.gz"
+      download_and_extract_archive "$url" "$YSQL_SNAPSHOTS_DIR_PARENT"
+    fi
+  done
+}
+
 log_thirdparty_and_toolchain_details() {
   (
     echo "Details of third-party dependencies:"
@@ -2284,11 +2316,13 @@ lint_java_code() {
          ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonTsanAsan\.class\)' \
              "$java_test_file" &&
          ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonSanitizersOrMac\.class\)' \
+             "$java_test_file" &&
+         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerReleaseOnly\.class\)' \
              "$java_test_file"
       then
         log "$log_prefix: neither YBTestRunner, YBParameterizedTestRunner, " \
-            "YBTestRunnerNonTsanOnly, YBTestRunnerNonTsanAsan " \
-            "nor YBTestRunnerNonSanitizersOrMac are being used in test"
+            "YBTestRunnerNonTsanOnly, YBTestRunnerNonTsanAsan, YBTestRunnerNonSanitizersOrMac " \
+            "nor YBTestRunnerReleaseOnly are being used in test"
         num_errors+=1
       fi
       if grep -Fq 'import static org.junit.Assert' "$java_test_file" ||

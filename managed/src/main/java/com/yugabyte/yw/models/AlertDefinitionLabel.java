@@ -19,7 +19,7 @@ import javax.persistence.Column;
 import javax.persistence.EmbeddedId;
 import javax.persistence.Entity;
 import javax.persistence.ManyToOne;
-import javax.persistence.MapsId;
+import javax.validation.constraints.NotNull;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
@@ -31,9 +31,10 @@ import lombok.ToString;
 public class AlertDefinitionLabel extends Model
     implements UniqueKeyListValue<AlertDefinitionLabel> {
 
-  @EmbeddedId private AlertDefinitionLabelKey key;
+  @NotNull @EmbeddedId private AlertDefinitionLabelKey key;
 
   @Column(nullable = false)
+  @NotNull
   private String value;
 
   @ManyToOne @JsonIgnore private AlertDefinition definition;

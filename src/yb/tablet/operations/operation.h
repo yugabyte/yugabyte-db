@@ -98,7 +98,7 @@ class Operation {
   CHECKED_STATUS Replicated(int64_t leader_term);
 
   // Abort operation. Release resources and notify callbacks.
-  void Aborted(const Status& status);
+  void Aborted(const Status& status, bool was_pending);
 
   // Each implementation should have its own ToString() method.
   virtual std::string ToString() const;
@@ -181,6 +181,18 @@ class Operation {
     return op_id_;
   }
 
+  void UpdateIfMaxTtl(const MonoDelta& ttl);
+
+  const MonoDelta ttl() const {
+    std::lock_guard<simple_spinlock> l(mutex_);
+    return ttl_;
+  }
+
+  bool has_ttl() const {
+    std::lock_guard<simple_spinlock> l(mutex_);
+    return ttl_.Initialized();
+  }
+
   bool has_completion_callback() const {
     return completion_clbk_ != nullptr;
   }
@@ -195,11 +207,11 @@ class Operation {
   // Initialize operation at leader side.
   // op_id - operation id.
   // committed_op_id - current committed operation id.
-  virtual void AddedToLeader(const OpId& op_id, const OpId& committed_op_id);
+  void AddedToLeader(const OpId& op_id, const OpId& committed_op_id);
+  void AddedToFollower();
 
-  virtual void AddedToFollower();
-  virtual void Aborted();
-  virtual void Replicated();
+  void Aborted(bool was_pending);
+  void Replicated();
 
   virtual ~Operation();
 
@@ -234,6 +246,8 @@ class Operation {
 
   // This OpId stores the canonical "anchor" OpId for this transaction.
   OpId op_id_ GUARDED_BY(mutex_);
+
+  MonoDelta ttl_ GUARDED_BY(mutex_);
 
   scoped_refptr<consensus::ConsensusRound> consensus_round_;
 };

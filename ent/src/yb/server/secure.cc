@@ -54,7 +54,7 @@ DEFINE_string(key_file_pattern, "node.$0.key", "Pattern used for key file");
 
 DEFINE_string(cert_file_pattern, "node.$0.crt", "Pattern used for certificate file");
 
-DEFINE_bool(enable_stream_compression, false, "Whether it is allowed to use stream compression.");
+DEFINE_bool(enable_stream_compression, true, "Whether it is allowed to use stream compression.");
 
 namespace yb {
 namespace server {
@@ -109,6 +109,7 @@ Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
     SecureContextType type, rpc::MessengerBuilder* builder) {
   auto use = type == SecureContextType::kInternal ? FLAGS_use_node_to_node_encryption
                                                   : FLAGS_use_client_to_server_encryption;
+  LOG(INFO) << __func__ << ": " << type << ", " << use;
   if (!use) {
     ApplyCompressedStream(builder, rpc::TcpStream::Factory());
     return nullptr;

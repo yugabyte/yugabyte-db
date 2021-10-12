@@ -12,6 +12,7 @@
 //
 
 #include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/rocksdb/table.h"
 
 #include "yb/util/test_util.h"
 
@@ -21,6 +22,7 @@ DECLARE_bool(rocksdb_disable_compactions);
 DECLARE_int32(rocksdb_base_background_compactions);
 DECLARE_int32(rocksdb_max_background_compactions);
 DECLARE_int32(priority_thread_pool_size);
+DECLARE_int32(block_restart_interval);
 
 namespace yb {
 namespace docdb {
@@ -110,6 +112,29 @@ TEST_F(DocDBRocksDBUtilTest, PriorityThreadPoolSizeTakesMaxBackgroundCompaction)
 TEST_F(DocDBRocksDBUtilTest, PriorityThreadPoolSizeCompactionDisabled) {
   FLAGS_rocksdb_disable_compactions = true;
   CHECK_EQ(GetGlobalRocksDBPriorityThreadPoolSize(), 1);
+}
+
+TEST_F(DocDBRocksDBUtilTest, MinBlockRestartInterval) {
+  FLAGS_block_restart_interval = 0;
+  auto blockBasedOptions = TEST_AutoInitFromRocksDbTableFlags();
+  CHECK_EQ(blockBasedOptions.block_restart_interval, 16);
+}
+
+TEST_F(DocDBRocksDBUtilTest, MaxBlockRestartInterval) {
+  FLAGS_block_restart_interval = 512;
+  auto blockBasedOptions = TEST_AutoInitFromRocksDbTableFlags();
+  CHECK_EQ(blockBasedOptions.block_restart_interval, 256);
+}
+
+TEST_F(DocDBRocksDBUtilTest, ValidBlockRestartInterval) {
+  FLAGS_block_restart_interval = 8;
+  auto blockBasedOptions = TEST_AutoInitFromRocksDbTableFlags();
+  CHECK_EQ(blockBasedOptions.block_restart_interval, 8);
+}
+
+TEST_F(DocDBRocksDBUtilTest, DefaultBlockRestartInterval) {
+  auto blockBasedOptions = TEST_AutoInitFromRocksDbTableFlags();
+  CHECK_EQ(blockBasedOptions.block_restart_interval, 16);
 }
 
 }  // namespace docdb

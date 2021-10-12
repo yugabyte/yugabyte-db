@@ -277,9 +277,10 @@ Status ReadFooterFromFile(
       RETURN_NOT_OK(footer->DecodeFrom(&mutable_read_result));
       if (enforce_table_magic_number != 0 &&
           enforce_table_magic_number != footer->table_magic_number()) {
-        return STATUS_FORMAT(Corruption, "Bad table magic number: $0, expected: $1",
-                              footer->table_magic_number(),
-                              enforce_table_magic_number);
+        return STATUS_FORMAT(
+            Corruption, "Bad table magic number: 0x$0, expected: 0x$1",
+            FastHex64ToString(footer->table_magic_number()),
+            FastHex64ToString(enforce_table_magic_number));
       }
       return Status::OK();
     }

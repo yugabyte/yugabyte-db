@@ -206,6 +206,7 @@ export default class ReleaseList extends Component {
             <TableHeaderColumn
               dataField="version"
               isKey={true}
+              tdStyle={{ whiteSpace: 'normal' }}
               columnClassName="no-border name-column"
               className="no-border"
               width="120px"

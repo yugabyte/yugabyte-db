@@ -31,6 +31,7 @@
 #include "yb/tools/yb-admin_util.h"
 #include "yb/util/cast.h"
 #include "yb/util/env.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/pb_util.h"
@@ -41,6 +42,9 @@
 #include "yb/util/string_util.h"
 #include "yb/util/timestamp.h"
 #include "yb/util/encryption_util.h"
+
+DEFINE_test_flag(int32, metadata_file_format_version, 0,
+                 "Used in 'export_snapshot' metadata file format (0 means using latest format).");
 
 DECLARE_bool(use_client_to_server_encryption);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
@@ -87,6 +91,7 @@ using master::RestoreSnapshotResponsePB;
 using master::SnapshotInfoPB;
 using master::SysNamespaceEntryPB;
 using master::SysRowEntry;
+using master::BackupRowEntryPB;
 using master::SysTablesEntryPB;
 using master::SysSnapshotEntryPB;
 
@@ -108,16 +113,13 @@ Status ClusterAdminClient::ListSnapshots(const ListSnapshotsFlags& flags) {
       AddStringField("current_snapshot_id",
                      SnapshotIdToString(resp.current_snapshot_id()),
                      &document, &document.GetAllocator());
-
     } else {
       cout << "Current snapshot id: " << SnapshotIdToString(resp.current_snapshot_id()) << endl;
     }
   }
 
   rapidjson::Value json_snapshots(rapidjson::kArrayType);
-  if (json) {
-    document.AddMember("snapshots", json_snapshots, document.GetAllocator());
-  } else {
+  if (!json) {
     if (resp.snapshots_size()) {
       cout << RightPadToUuidWidth("Snapshot UUID") << kColumnSep << "State" << endl;
     } else {
@@ -130,9 +132,17 @@ Status ClusterAdminClient::ListSnapshots(const ListSnapshotsFlags& flags) {
     if (json) {
       AddStringField(
           "id", SnapshotIdToString(snapshot.id()), &json_snapshot, &document.GetAllocator());
+      const auto& entry = snapshot.entry();
       AddStringField(
-          "state", SysSnapshotEntryPB::State_Name(snapshot.entry().state()), &json_snapshot,
+          "state", SysSnapshotEntryPB::State_Name(entry.state()), &json_snapshot,
           &document.GetAllocator());
+      AddStringField(
+          "snapshot_time", HybridTimeToString(HybridTime::FromPB(entry.snapshot_hybrid_time())),
+          &json_snapshot, &document.GetAllocator());
+      AddStringField(
+          "previous_snapshot_time",
+          HybridTimeToString(HybridTime::FromPB(entry.previous_snapshot_hybrid_time())),
+          &json_snapshot, &document.GetAllocator());
     } else {
       cout << SnapshotIdToString(snapshot.id()) << kColumnSep << snapshot.entry().state() << endl;
     }
@@ -144,6 +154,7 @@ Status ClusterAdminClient::ListSnapshots(const ListSnapshotsFlags& flags) {
         switch (entry.type()) {
           case SysRowEntry::NAMESPACE: {
             auto meta = VERIFY_RESULT(ParseFromSlice<SysNamespaceEntryPB>(entry.data()));
+            meta.clear_transaction();
             decoded_data = JsonWriter::ToJson(meta, JsonWriter::COMPACT);
             break;
           }
@@ -153,6 +164,7 @@ Status ClusterAdminClient::ListSnapshots(const ListSnapshotsFlags& flags) {
             meta.clear_partition_schema();
             meta.clear_index_info();
             meta.clear_indexes();
+            meta.clear_transaction();
             decoded_data = JsonWriter::ToJson(meta, JsonWriter::COMPACT);
             break;
           }
@@ -179,6 +191,7 @@ Status ClusterAdminClient::ListSnapshots(const ListSnapshotsFlags& flags) {
   }));
 
   if (json) {
+    document.AddMember("snapshots", json_snapshots, document.GetAllocator());
     std::cout << common::PrettyWriteRapidJsonToString(document) << std::endl;
     return Status::OK();
   }
@@ -429,7 +442,9 @@ Result<rapidjson::Document> ClusterAdminClient::DeleteSnapshotSchedule(
 }
 
 bool SnapshotSuitableForRestoreAt(const SysSnapshotEntryPB& entry, HybridTime restore_at) {
-  return HybridTime::FromPB(entry.snapshot_hybrid_time()) >= restore_at &&
+  return (entry.state() == master::SysSnapshotEntryPB::COMPLETE ||
+          entry.state() == master::SysSnapshotEntryPB::CREATING) &&
+         HybridTime::FromPB(entry.snapshot_hybrid_time()) >= restore_at &&
          HybridTime::FromPB(entry.previous_snapshot_hybrid_time()) < restore_at;
 }
 
@@ -464,10 +479,11 @@ Result<TxnSnapshotId> ClusterAdminClient::SuitableSnapshotId(
           return VERIFY_RESULT(FullyDecodeTxnSnapshotId(snapshot.id()));
         }
       }
-    }
-    if (last_snapshot_time > restore_at) {
-      return STATUS_FORMAT(
-          IllegalState, "Cannot restore at $0, last snapshot: $1", restore_at, last_snapshot_time);
+      if (last_snapshot_time > restore_at) {
+        return STATUS_FORMAT(
+            IllegalState, "Cannot restore at $0, last snapshot: $1, snapshots: $2",
+            restore_at, last_snapshot_time, resp.schedules()[0].snapshots());
+      }
     }
     RpcController rpc;
     rpc.set_deadline(deadline);
@@ -586,6 +602,13 @@ Status ClusterAdminClient::CreateSnapshotMetaFile(const string& snapshot_id,
   RETURN_NOT_OK(RequestMasterLeader(&resp, [&](RpcController* rpc) {
     ListSnapshotsRequestPB req;
     req.set_snapshot_id(StringToSnapshotId(snapshot_id));
+
+    // Format 0 - latest format (== Format 2 at the moment).
+    // Format 1 - old format.
+    // Format 2 - new format.
+    if (FLAGS_TEST_metadata_file_format_version != 1) {
+      req.set_prepare_for_backup(true);
+    }
     return master_backup_proxy_->ListSnapshots(req, &resp, rpc);
   }));
 
@@ -613,7 +636,7 @@ Status ClusterAdminClient::CreateSnapshotMetaFile(const string& snapshot_id,
   RETURN_NOT_OK(pb_util::WritePBContainerToPath(
       Env::Default(), file_name, *snapshot, pb_util::OVERWRITE, pb_util::SYNC));
 
-  cout << "Snapshot meta data was saved into file: " << file_name << endl;
+  cout << "Snapshot metadata was saved into file: " << file_name << endl;
   return Status::OK();
 }
 
@@ -629,12 +652,31 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
   // Read snapshot protobuf from given path.
   RETURN_NOT_OK(pb_util::ReadPBContainerFromPath(Env::Default(), file_name, snapshot_info));
 
+  if (!snapshot_info->has_format_version()) {
+    SCHECK_EQ(
+        0, snapshot_info->backup_entries_size(), InvalidArgument,
+        Format("Metadata file in Format 1 has backup entries from Format 2: $0",
+        snapshot_info->backup_entries_size()));
+
+    // Repack PB data loaded in the old format.
+    // Init BackupSnapshotPB based on loaded SnapshotInfoPB.
+    SysSnapshotEntryPB& sys_entry = *snapshot_info->mutable_entry();
+    snapshot_info->mutable_backup_entries()->Reserve(sys_entry.entries_size());
+    for (SysRowEntry& entry : *sys_entry.mutable_entries()) {
+      snapshot_info->add_backup_entries()->mutable_entry()->Swap(&entry);
+    }
+
+    sys_entry.clear_entries();
+    snapshot_info->set_format_version(2);
+  }
+
   cout << "Importing snapshot " << SnapshotIdToString(snapshot_info->id())
        << " (" << snapshot_info->entry().state() << ")" << endl;
 
   int table_index = 0;
   bool was_table_renamed = false;
-  for (SysRowEntry& entry : *snapshot_info->mutable_entry()->mutable_entries()) {
+  for (BackupRowEntryPB& backup_entry : *snapshot_info->mutable_backup_entries()) {
+    SysRowEntry& entry = *backup_entry.mutable_entry();
     const YBTableName table_name = table_index < tables.size()
         ? tables[table_index] : YBTableName();
 
@@ -676,10 +718,6 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
         if (meta.namespace_name().empty()) {
           return STATUS(IllegalState, "Could not find keyspace name from snapshot metadata");
         }
-
-        YBTableName orig_table_name;
-        orig_table_name.set_namespace_name(meta.namespace_name());
-        orig_table_name.set_table_name(meta.name());
 
         // Update the table name if needed.
         if (update_meta) {
@@ -971,6 +1009,9 @@ Status ClusterAdminClient::AllMastersHaveUniverseKeyInMemory(const std::string& 
     if (resp.has_error()) {
       return StatusFromPB(resp.error().status());
     }
+    if (!resp.has_key()) {
+      return STATUS_FORMAT(TryAgain, "Node $0 does not have universe key in memory", hp);
+    }
 
     std::cout << Format("Node $0 has universe key in memory: $1\n", hp.ToString(), resp.has_key());
   }
@@ -1167,10 +1208,11 @@ Status ClusterAdminClient::SetupUniverseReplication(
   return Status::OK();
 }
 
-Status ClusterAdminClient::DeleteUniverseReplication(const std::string& producer_id) {
+Status ClusterAdminClient::DeleteUniverseReplication(const std::string& producer_id, bool force) {
   master::DeleteUniverseReplicationRequestPB req;
   master::DeleteUniverseReplicationResponsePB resp;
   req.set_producer_id(producer_id);
+  req.set_force(force);
 
   RpcController rpc;
   rpc.set_timeout(timeout_);
@@ -1181,6 +1223,13 @@ Status ClusterAdminClient::DeleteUniverseReplication(const std::string& producer
     return StatusFromPB(resp.error().status());
   }
 
+  if (resp.warnings().size() > 0) {
+    cout << "Encountered the following warnings while running delete_universe_replication:" << endl;
+    for (const auto& warning : resp.warnings()) {
+      cout << " - " << warning.message() << endl;
+    }
+  }
+
   cout << "Replication deleted successfully" << endl;
   return Status::OK();
 }
@@ -1188,7 +1237,8 @@ Status ClusterAdminClient::DeleteUniverseReplication(const std::string& producer
 Status ClusterAdminClient::AlterUniverseReplication(const std::string& producer_uuid,
     const std::vector<std::string>& producer_addresses,
     const std::vector<TableId>& add_tables,
-    const std::vector<TableId>& remove_tables) {
+    const std::vector<TableId>& remove_tables,
+    const std::vector<std::string>& producer_bootstrap_ids_to_add) {
   master::AlterUniverseReplicationRequestPB req;
   master::AlterUniverseReplicationResponsePB resp;
   req.set_producer_id(producer_uuid);
@@ -1206,6 +1256,20 @@ Status ClusterAdminClient::AlterUniverseReplication(const std::string& producer_
     req.mutable_producer_table_ids_to_add()->Reserve(add_tables.size());
     for (const auto& table : add_tables) {
       req.add_producer_table_ids_to_add(table);
+    }
+
+    if (!producer_bootstrap_ids_to_add.empty()) {
+      // There msut be a bootstrap id for every table id.
+      if (producer_bootstrap_ids_to_add.size() != add_tables.size()) {
+        cout << "The number of bootstrap ids must equal the number of table ids. "
+             << "Use separate alter commands if only some tables are being bootstrapped." << endl;
+        return STATUS(InternalError, "Invalid number of bootstrap ids");
+      }
+
+      req.mutable_producer_bootstrap_ids_to_add()->Reserve(producer_bootstrap_ids_to_add.size());
+      for (const auto& bootstrap_id : producer_bootstrap_ids_to_add) {
+        req.add_producer_bootstrap_ids_to_add(bootstrap_id);
+      }
     }
   }
 
@@ -1225,8 +1289,11 @@ Status ClusterAdminClient::AlterUniverseReplication(const std::string& producer_
     return StatusFromPB(resp.error().status());
   }
 
-  // Wait for the altered producer to be deleted (this happens once it is merged with the original).
-  RETURN_NOT_OK(WaitForSetupUniverseReplicationToFinish(producer_uuid + ".ALTER"));
+  if (!add_tables.empty()) {
+    // If we are adding tables, then wait for the altered producer to be deleted (this happens once
+    // it is merged with the original).
+    RETURN_NOT_OK(WaitForSetupUniverseReplicationToFinish(producer_uuid + ".ALTER"));
+  }
 
   cout << "Replication altered successfully" << endl;
   return Status::OK();

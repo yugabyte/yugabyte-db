@@ -41,7 +41,7 @@ import org.yb.minicluster.Metrics;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.minicluster.MiniYBDaemon;
 import org.yb.minicluster.RocksDBMetrics;
-import org.yb.util.SanitizerUtil;
+import org.yb.util.BuildTypeUtil;
 import org.yb.util.StringUtil;
 
 import java.io.Closeable;
@@ -100,7 +100,7 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     flagMap.put("cql_system_query_cache_empty_responses",
         String.valueOf(systemQueryCacheEmptyResponses));
     flagMap.put("client_read_write_timeout_ms",
-        String.valueOf(SanitizerUtil.adjustTimeout(clientReadWriteTimeoutMs)));
+        String.valueOf(BuildTypeUtil.adjustTimeout(clientReadWriteTimeoutMs)));
 
     return flagMap;
   }
@@ -108,7 +108,7 @@ public class BaseCQLTest extends BaseMiniClusterTest {
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
-    builder.enablePostgres(false);
+    builder.enableYsql(false);
     // Prevent YB server processes from closing connections which are idle for less than client
     // timeout period.
     builder.addCommonFlag("rpc_default_keepalive_time_ms",
@@ -457,7 +457,7 @@ public class BaseCQLTest extends BaseMiniClusterTest {
       String roleName = row.getString("role");
       if (!DEFAULT_ROLE.equals(roleName)) {
         LOG.info("Dropping role " + roleName);
-        session.execute("DROP ROLE " + roleName);
+        session.execute("DROP ROLE '" + roleName + "'");
       }
     }
   }

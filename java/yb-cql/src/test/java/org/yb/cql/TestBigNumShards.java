@@ -29,7 +29,7 @@ public class TestBigNumShards extends BaseCQLTest {
   }
 
   @Test
-  public void testDropTableTimeout() throws Exception {
+  public void testCreateDropTable() throws Exception {
     LOG.info("Start test: " + getCurrentTestMethodName());
 
     // Create test table.
@@ -37,16 +37,10 @@ public class TestBigNumShards extends BaseCQLTest {
                     "c1 int, c2 int, c3 int, c4 int, c5 int) " +
                     "with transactions = {'enabled' : true};");
 
-    // Create test indexes.
+    // Create test index.
     session.execute("create index i1 on test_drop (c1);");
-    session.execute("create index i2 on test_drop (c2);");
-    session.execute("create index i3 on test_drop (c3);");
-    session.execute("create index i4 on test_drop (c4);");
-    session.execute("create index i5 on test_drop (c5);");
 
     // Drop test table.
     session.execute("drop table test_drop;");
-
-    LOG.info("End test: " + getCurrentTestMethodName());
   }
 }

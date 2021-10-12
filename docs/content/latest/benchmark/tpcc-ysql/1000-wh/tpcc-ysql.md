@@ -1,9 +1,6 @@
-### TPC-C Load Phase
+## TPC-C Load Phase
 
-Before starting the workload, you will need to load the data first. Make sure
-to replace the IP addresses with that of the nodes in the cluster. Loader
-threads allow us to configure the number of threads used to load the data. For
-a 3 node c5d.4xlarge cluster, loader threads value of 48 was the most optimal.
+Before starting the workload, you need to load the data first. Make sure to replace the IP addresses with that of the nodes in the cluster. Loader threads allow you to configure the number of threads used to load the data. For a 3-node c5d.4xlarge cluster, loader threads value of 48 was optimal.
 
 ```sh
 $ ./tpccbenchmark --create=true --nodes=127.0.0.1,127.0.0.2,127.0.0.3
@@ -37,11 +34,11 @@ $ ./tpccbenchmark --load=true \
   </tbody>
 </table>
 
-Tune the --loaderthreads parameter for higher parallelism during the load, based on the number and type of nodes in the cluster. The value specified here, 48 threads, is optimal for a 3-node cluster of type c5d.4xlarge (16 vCPUs). For larger clusters, or machines with more vCPUs, increase this value accordingly. For clusters with a replication factor of 3, a good approximation is to use the number of cores you have across all the nodes in the cluster.
+Tune the `--loaderthreads` parameter for higher parallelism during the load, based on the number and type of nodes in the cluster. The specified 48 threads value is optimal for a 3-node cluster of type c5d.4xlarge (16 vCPUs). For larger clusters or computers with more vCPUs, increase this value accordingly. For clusters with a replication factor of 3, a good approximation is to use the number of cores you have across all the nodes in the cluster.
 
-### TPC-C Execute Phase
+## TPC-C Execute Phase
 
-You can then run the workload against the database as follows:
+You can run the workload against the database as follows:
 
 ```sh
 $ ./tpccbenchmark --execute=true \
@@ -49,7 +46,7 @@ $ ./tpccbenchmark --execute=true \
   --warehouses=1000
 ```
 
-## 4. TPC-C Benchmark Results
+## TPC-C Benchmark Results
 
 <table>
   <tbody>
@@ -84,7 +81,7 @@ $ ./tpccbenchmark --execute=true \
 </table>
 
 
-Once the execution is done the TPM-C number along with the efficiency is printed.
+Once the execution is completed, the TPM-C number along with the efficiency is printed, as follows:
 
 ```
 17:18:58,728 (DBWorkload.java:955) INFO  - Throughput: Results(nanoSeconds=1800000716759, measuredRequests=842216) = 467.8975914612168 requests/sec reqs/sec

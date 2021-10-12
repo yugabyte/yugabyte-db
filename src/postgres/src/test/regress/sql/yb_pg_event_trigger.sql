@@ -120,7 +120,7 @@ grant all on table event_trigger_fire1 to public;
 comment on table event_trigger_fire1 is 'here is a comment';
 revoke all on table event_trigger_fire1 from public;
 drop table event_trigger_fire1;
--- foreign data wrapper not supported by YB
+-- create  FDW
 create foreign data wrapper useless;
 create server useless_server foreign data wrapper useless;
 create user mapping for regress_evt_user server useless_server;

@@ -643,6 +643,10 @@ Result<bool> DocRowwiseIterator::HasNext() const {
     }
 
     VLOG(4) << "*fetched_key is " << SubDocKey::DebugSliceToString(key_data->key);
+    if (debug_dump_) {
+      LOG(INFO) << __func__ << ", fetched key: " << SubDocKey::DebugSliceToString(key_data->key)
+                << ", " << key_data->key.ToDebugHexString();
+    }
 
     // The iterator is positioned by the previous GetSubDocument call (which places the iterator
     // outside the previous doc_key). Ensure the iterator is pushed forward/backward indeed. We
@@ -709,7 +713,7 @@ Result<bool> DocRowwiseIterator::HasNext() const {
       has_next_status_ = doc_found_res.status();
       return has_next_status_;
     } else {
-      doc_found = VERIFY_RESULT(doc_found_res);
+      doc_found = *doc_found_res;
     }
     if (scan_choices_ && !is_static_column) {
       has_next_status_ = scan_choices_->DoneWithCurrentTarget();

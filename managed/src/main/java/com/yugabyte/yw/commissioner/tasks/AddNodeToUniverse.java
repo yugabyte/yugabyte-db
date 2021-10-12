@@ -87,6 +87,8 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
         throw new RuntimeException(msg);
       }
 
+      preTaskActions();
+
       Cluster cluster = taskParams().getClusterByUuid(currentNode.placementUuid);
       Collection<NodeDetails> node = Collections.singletonList(currentNode);
 
@@ -126,9 +128,11 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
 
         // First spawn an instance for Decommissioned node.
         if (wasDecommissioned) {
-          createSetupServerTasks(node).setSubTaskGroupType(SubTaskGroupType.Provisioning);
+          createCreateServerTasks(node).setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
           createServerInfoTasks(node).setSubTaskGroupType(SubTaskGroupType.Provisioning);
+
+          createSetupServerTasks(node).setSubTaskGroupType(SubTaskGroupType.Provisioning);
         }
 
         // Re-install software.

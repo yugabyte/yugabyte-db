@@ -1,7 +1,7 @@
 ---
 title: Sensitivity of timestamptz-interval arithmetic to current timezone [YSQL]
-headerTitle: The sensitivity of timestamptz-interval arithmetic to the current timezone
-linkTitle: pure 'day' interval arithmetic
+headerTitle: Sensitivity of timestamptz-interval arithmetic to the current timezone
+linkTitle: Pure 'day' interval arithmetic
 description: Explains the sensitivity of timestamptz-interval arithmetic to current timezone for pure days intervals. [YSQL]
 menu:
   latest:
@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The [moment-moment overloads of the "-" operator for _timestamptz_, _timestamp_, and _time_](../../../date-time-data-types-semantics/type-interval/interval-arithmetic/moment-moment-overloads-of-minus/) section recommends that you avoid arithmetic that uses _hybrid interval_ semantics—in other words that you perform _interval_ arithmetic using only values that have just one of the fields of the internal _[&#91;mm. dd, ss&#93;](../../../date-time-data-types-semantics/type-interval/interval-representation/)_ representation tuple non-zero. The section [Defining and using custom domain types to specialize the native interval functionality](../../../date-time-data-types-semantics/type-interval/custom-interval-domains/) explains a coding practice that supports this recommendation.
+The [moment-moment overloads of the "-" operator for _timestamptz_, _timestamp_, and _time_](../../../date-time-data-types-semantics/type-interval/interval-arithmetic/moment-moment-overloads-of-minus/) section recommends that you avoid arithmetic that uses _hybrid interval_ semantics—in other words that you perform _interval_ arithmetic using only values that have just one of the fields of the internal _[&#91;mm. dd, ss&#93;](../../../date-time-data-types-semantics/type-interval/interval-representation/)_ representation tuple non-zero. The section [Custom domain types for specializing the native _interval_ functionality](../../../date-time-data-types-semantics/type-interval/custom-interval-domains/) explains a coding practice that supports this recommendation.
 
 Following the recommendation, this demonstration uses only pure days _interval_ values and pure seconds _interval_ values.
 
