@@ -27,8 +27,8 @@ export const QuerySearchInput: FC<QuerySearchInputProps> = ({
   id,
   placeholder,
   searchTerms,
-  onSearch,
-  onClear,
+  onSearch = () => {},
+  onClear = () => {},
   onSubmitSearchTerms
 }) => {
   const [showAutoComplete, setShowAutoComplete] = useState(false);

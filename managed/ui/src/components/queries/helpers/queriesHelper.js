@@ -167,6 +167,8 @@ export const filterBySearchTokens = (arr, searchTokens, keyMap) => {
               }
             }
             return query[column.value].includes(token.value.trim());
+          } else if (column.type === 'stringArray') {
+            return column.value in query && query[column.value].some(element => element.includes(token.value));
           } else {
             return column.value in query && query[column.value].includes(token.value);
           }
