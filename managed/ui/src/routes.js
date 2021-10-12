@@ -25,6 +25,7 @@ import Universes from './pages/Universes';
 import { Tasks, TasksList, TaskDetail } from './pages/tasks';
 import Alerts from './pages/Alerts';
 import ListUniverse from './pages/ListUniverse';
+import UniverseConsole from './pages/UniverseConsole'
 import Metrics from './pages/Metrics';
 import DataCenterConfiguration from './pages/DataCenterConfiguration';
 import TableDetail from './pages/TableDetail';
@@ -230,6 +231,7 @@ export default (store) => {
           <Route path="/universes/:uuid/:tab" component={UniverseDetail} />
           <Route path="/universes/:uuid/tables/:tableUUID" component={TableDetail} />
         </Route>
+        <Route path="/universes_new" component={UniverseConsole} />
 
         {/* ------------------------------------------------------------------------*/}
         <Route path="/universe/create" component={CreateUniverse} />
