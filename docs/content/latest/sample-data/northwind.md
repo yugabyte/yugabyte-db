@@ -14,6 +14,13 @@ showAsideToc: true
 
 Install the PostgreSQL-compatible version of the Northwind dataset on the YugabyteDB distributed SQL database.
 
+You can install and use the Northwind sample database using:
+
+- A local installation of YugabyteDB. To install YugabyteDB, refer to [Quick Start](/latest/quick-start/).
+- A local installation of the YugabyteDB client shells that you use to connect to a cluster in Yugabyte Cloud. To connect to your Yugabyte Cloud cluster, refer to [Connect via Client Shell](../../yugabyte-cloud/cloud-basics/connect-to-clusters/#connect-via-client-shell).
+
+In either case, you use the YugabyteDB SQL shell ([ysqlsh](../../admin/ysqlsh/)) CLI to interact with YugabyteDB using [YSQL](../../api/ysql/).
+
 ## About the Northwind sample database
 
 The Northwind database is a sample database that was originally created by Microsoft and used as the basis for their tutorials in a variety of database products for decades. The Northwind database contains the sales data for a fictitious company called “Northwind Traders,” which imports and exports specialty foods from around the world. The Northwind database is an excellent tutorial schema for a small-business ERP, with customers, orders, inventory, purchasing, suppliers, shipping, employees, and single-entry accounting. The Northwind database has since been ported to a variety of non-Microsoft databases, including PostgreSQL.
@@ -33,36 +40,22 @@ The Northwind sample database includes 14 tables and the table relationships are
 
 ## Install the Northwind sample database
 
-The Northwind SQL scripts reside in the `share` folder of your YugabyteDB or client shell installation. They can also be found in the [`sample` directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample). The following two files will be used for this exercise.
+The Northwind SQL scripts reside in the `share` folder of your YugabyteDB or client shell installation. They can also be found in the [`sample` directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample). The following files will be used for this exercise:
 
 - [northwind_ddl.sql](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/northwind_ddl.sql) — Creates tables and other database objects
 - [northwind_data.sql](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/northwind_data.sql) — Loads the sample data
 
 Follow the steps here to install the Northwind sample database.
 
-### Before you begin
-
-You can install and use the Northwind sample database using one of the following:
-
-- A local installation of YugabyteDB. To install YugabyteDB, refer to [Quick Start](/latest/quick-start/).
-- A local installation of the YugabyteDB client shells that you use to connect to a cluster in Yugabyte Cloud. To connect to your Yugabyte Cloud cluster, refer to [Client Shell](../../yugabyte-cloud/cloud-basics/connect-to-clusters/#connect-via-client-shell).
-
-In either case, you use the YugabyteDB SQL shell ([ysqlsh](../../admin/ysqlsh/)), which provides a CLI for interacting with YugabyteDB using [YSQL](../../api/ysql/).
-
 ### Open the YSQL shell
 
-To open the YSQL shell, run the `ysqlsh` command from the `yugabyte` or `yugabyte-client` root directory.
+If you are using a local installation of YugabyteDB, run the `ysqlsh` command from the `yugabyte` root directory.
 
 ```sh
 $ ./bin/ysqlsh
 ```
 
-```output
-ysqlsh (11.2)
-Type "help" for help.
-
-yugabyte=#
-```
+If you are connecting to Yugabyte Cloud, run the connection string for your cluster from the the `yugabyte-client` root directory. Refer to [Connect via Client Shell](../../yugabyte-cloud/cloud-basics/connect-to-clusters/#connect-via-client-shell).
 
 ### Create the Northwind database
 
@@ -119,7 +112,7 @@ northwind=# \d
 (14 rows)
 ```
 
-### 5. Load the sample data
+### Load the sample data
 
 To load the `northwind` database with sample data, run the `\i` command to execute commands in the `northwind_data.sql` file.
 

@@ -16,7 +16,7 @@ All of the datasets are PostgreSQL-compatible, and you can explore them using th
 
 For information on installing YugabyteDB, refer to [Quick Start](../quick-start/).
 
-To connect to your Yugabyte Cloud cluster using `ysqlsh`, refer to [Client Shell](../yugabyte-cloud/cloud-basics/connect-to-clusters#connect-via-client-shell).
+For information on connecting to your Yugabyte Cloud cluster using `ysqlsh`, refer to [Connect via Client Shell](../yugabyte-cloud/cloud-basics/connect-to-clusters#connect-via-client-shell).
 
 <div class="row">
 
