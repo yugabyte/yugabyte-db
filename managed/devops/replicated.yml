@@ -440,6 +440,12 @@ components:
                   # Broaden the location match regex to cover more endpoints as needed
                   client_max_body_size {{repl ConfigOption "upload_size"}};
                 }
+                location ~ /settings/ha/internal/upload$ {
+                  proxy_pass http://{{repl HostPrivateIpAddress "app" "yugabyte/yugaware" }}:{{repl ContainerExposedPort "app" "yugabyte/yugaware" "9000" }};
+                  # HA backp upload endpoint needs to allow bigger request size
+                  # Broaden the location match regex to cover more endpoints as needed
+                  client_max_body_size {{repl ConfigOption "upload_size"}};
+                }
               }
         ports:
           - private_port: '{{repl if ConfigOptionEquals "https_enabled" "1"}}443{{repl else}}80{{repl end}}'
