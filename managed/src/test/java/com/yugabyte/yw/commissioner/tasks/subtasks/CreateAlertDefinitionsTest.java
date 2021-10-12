@@ -7,10 +7,10 @@ import static org.junit.Assert.assertFalse;
 import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.YBThreadPoolExecutorFactory;
 import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.YBThreadPoolExecutorFactory;
 import com.yugabyte.yw.common.alerts.AlertDefinitionGroupService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;

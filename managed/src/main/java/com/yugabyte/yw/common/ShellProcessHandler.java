@@ -26,12 +26,15 @@ import java.util.regex.Pattern;
 import javax.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.Marker;
+import org.slf4j.MarkerFactory;
 
 @Singleton
 public class ShellProcessHandler {
   public static final Logger LOG = LoggerFactory.getLogger(ShellProcessHandler.class);
 
-  @Inject play.Configuration appConfig;
+  private final play.Configuration appConfig;
+  private final boolean cloudLoggingEnabled;
 
   static final Pattern ANSIBLE_FAIL_PAT =
       Pattern.compile(
@@ -40,6 +43,12 @@ public class ShellProcessHandler {
   static final Pattern ANSIBLE_FAILED_TASK_PAT =
       Pattern.compile("TASK.*?fatal.*?FAILED.*", Pattern.DOTALL);
   static final String ANSIBLE_IGNORING = "ignoring";
+
+  @Inject
+  public ShellProcessHandler(play.Configuration appConfig) {
+    this.appConfig = appConfig;
+    this.cloudLoggingEnabled = appConfig.getBoolean("yb.cloud.enabled");
+  }
 
   public ShellResponse run(
       List<String> command, Map<String, String> extraEnvVars, boolean logCmdOutput) {
@@ -115,15 +124,23 @@ public class ShellProcessHandler {
           LOG.debug("Proc stdout for '{}' :", response.description);
         }
         StringBuilder processOutput = new StringBuilder();
+        Marker fileOnly = MarkerFactory.getMarker("fileOnly");
+        Marker consoleOnly = MarkerFactory.getMarker("consoleOnly");
+
         outputStream
             .lines()
             .forEach(
                 line -> {
                   processOutput.append(line).append("\n");
                   if (logCmdOutput) {
-                    LOG.debug(line);
+                    LOG.debug(fileOnly, line);
                   }
                 });
+
+        if (logCmdOutput && cloudLoggingEnabled && processOutput.length() > 0) {
+          LOG.debug(consoleOnly, processOutput.toString());
+        }
+
         if (logCmdOutput) {
           LOG.debug("Proc stderr for '{}' :", response.description);
         }
@@ -134,9 +151,14 @@ public class ShellProcessHandler {
                 line -> {
                   processError.append(line).append("\n");
                   if (logCmdOutput) {
-                    LOG.debug(line);
+                    LOG.debug(fileOnly, line);
                   }
                 });
+
+        if (logCmdOutput && cloudLoggingEnabled && processError.length() > 0) {
+          LOG.debug(consoleOnly, processError.toString());
+        }
+
         response.code = process.exitValue();
         response.message =
             (response.code == 0) ? processOutput.toString().trim() : processError.toString().trim();

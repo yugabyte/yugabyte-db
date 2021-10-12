@@ -17,6 +17,22 @@
     <encoder>
       <pattern>%date [%level] from %logger{0} in %thread - %message%n%xException</pattern>
     </encoder>
+
+    <!--
+      this is to conditionally log to a specific appender using markers
+      a similar block is used for the console appender below
+      for a usage example see ShellProcessHandler
+    -->
+    <if condition='property("cloud").equals("true")'>
+      <then>
+        <filter class="ch.qos.logback.core.filter.EvaluatorFilter">
+          <evaluator class="ch.qos.logback.classic.boolex.OnMarkerEvaluator">
+              <marker>consoleOnly</marker>
+          </evaluator>
+          <onMatch>DENY</onMatch>
+        </filter>
+      </then>
+    </if>
   </appender>
 
   <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
@@ -44,6 +60,13 @@
             </pattern>
           </providers>
         </encoder>
+
+        <filter class="ch.qos.logback.core.filter.EvaluatorFilter">
+          <evaluator class="ch.qos.logback.classic.boolex.OnMarkerEvaluator">
+              <marker>fileOnly</marker>
+          </evaluator>
+          <onMatch>DENY</onMatch>
+        </filter>
       </then>
       <else>
         <encoder>
