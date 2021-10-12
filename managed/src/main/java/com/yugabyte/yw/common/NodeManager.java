@@ -470,6 +470,96 @@ public class NodeManager extends DevopsBase {
     return subcommandStrings;
   }
 
+  // Return the map of default gflags which will be passed as extra gflags to the db nodes.
+  private Map<String, String> addExtraGFlags(AnsibleConfigureServers.Params taskParam) {
+    UserIntent userIntent = getUserIntentFromParams(taskParam);
+    Universe universe = Universe.getOrBadRequest(taskParam.universeUUID);
+    NodeDetails node = universe.getNode(taskParam.nodeName);
+    boolean useHostname = universe.getUniverseDetails().getPrimaryCluster().userIntent.useHostname;
+    Map<String, String> extra_gflags = new HashMap<>();
+    extra_gflags.put("undefok", "enable_ysql");
+    if (taskParam.isMaster) {
+      extra_gflags.put("cluster_uuid", String.valueOf(taskParam.universeUUID));
+      extra_gflags.put("replication_factor", String.valueOf(userIntent.replicationFactor));
+    }
+    extra_gflags.put("placement_uuid", String.valueOf(taskParam.placementUuid));
+    // Add in the nodeName during configure.
+    extra_gflags.put("metric_node_name", taskParam.nodeName);
+    // TODO: add a shared path to massage flags across different flavors of configure.
+    String pgsqlProxyBindAddress = node.cloudInfo.private_ip;
+    String cqlProxyBindAddress = node.cloudInfo.private_ip;
+
+    if (useHostname) {
+      pgsqlProxyBindAddress = "0.0.0.0";
+      cqlProxyBindAddress = "0.0.0.0";
+    }
+
+    if (taskParam.enableYSQL) {
+      extra_gflags.put("enable_ysql", "true");
+      extra_gflags.put(
+          "pgsql_proxy_bind_address",
+          String.format("%s:%s", pgsqlProxyBindAddress, node.ysqlServerRpcPort));
+      if (taskParam.enableYSQLAuth) {
+        extra_gflags.put("ysql_enable_auth", "true");
+        extra_gflags.put("ysql_hba_conf_csv", "local all yugabyte trust");
+      } else {
+        extra_gflags.put("ysql_enable_auth", "false");
+      }
+    } else {
+      extra_gflags.put("enable_ysql", "false");
+    }
+
+    // For YCQL flag
+    if (taskParam.enableYCQL) {
+      extra_gflags.put("start_cql_proxy", "true");
+      extra_gflags.put(
+          "cql_proxy_bind_address",
+          String.format("%s:%s", cqlProxyBindAddress, node.yqlServerRpcPort));
+      if (taskParam.enableYCQLAuth) {
+        extra_gflags.put("use_cassandra_authentication", "true");
+      } else {
+        extra_gflags.put("use_cassandra_authentication", "false");
+      }
+    } else {
+      extra_gflags.put("start_cql_proxy", "false");
+    }
+
+    if (taskParam.getCurrentClusterType() == UniverseDefinitionTaskParams.ClusterType.PRIMARY
+        && taskParam.setTxnTableWaitCountFlag) {
+      extra_gflags.put(
+          "txn_table_wait_min_ts_count",
+          Integer.toString(universe.getUniverseDetails().getPrimaryCluster().userIntent.numNodes));
+    }
+
+    if ((taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt)) {
+      if (taskParam.enableNodeToNodeEncrypt) {
+        extra_gflags.put("use_node_to_node_encryption", "true");
+      }
+      if (taskParam.enableClientToNodeEncrypt) {
+        extra_gflags.put("use_client_to_server_encryption", "true");
+      }
+      extra_gflags.put("allow_insecure_connections", taskParam.allowInsecure ? "true" : "false");
+      String yb_home_dir = taskParam.getProvider().getYbHome();
+
+      extra_gflags.put("cert_node_filename", node.cloudInfo.private_ip);
+
+      if (CertificateHelper.isRootCARequired(taskParam)) {
+        extra_gflags.put("certs_dir", yb_home_dir + "/yugabyte-tls-config");
+      }
+      if (CertificateHelper.isClientRootCARequired(taskParam)) {
+        extra_gflags.put("certs_for_client_dir", yb_home_dir + "/yugabyte-client-tls-config");
+      }
+    }
+    if (taskParam.callhomeLevel != null) {
+      extra_gflags.put(
+          "callhome_collection_level", taskParam.callhomeLevel.toString().toLowerCase());
+      if (taskParam.callhomeLevel.toString().equals("NONE")) {
+        extra_gflags.put("callhome_enabled", "false");
+      }
+    }
+    return extra_gflags;
+  }
+
   private List<String> getConfigureSubCommand(AnsibleConfigureServers.Params taskParam) {
     UserIntent userIntent = getUserIntentFromParams(taskParam);
     List<String> subcommand = new ArrayList<String>();
@@ -537,104 +627,30 @@ public class NodeManager extends DevopsBase {
     subcommand.add("--redis_proxy_rpc_port");
     subcommand.add(Integer.toString(node.redisServerRpcPort));
 
+    boolean useHostname = universe.getUniverseDetails().getPrimaryCluster().userIntent.useHostname;
+
     switch (taskParam.type) {
       case Everything:
-        boolean useHostname =
-            universe.getUniverseDetails().getPrimaryCluster().userIntent.useHostname;
         if (ybServerPackage == null) {
           throw new RuntimeException(
               "Unable to fetch yugabyte release for version: " + taskParam.ybSoftwareVersion);
         }
         subcommand.add("--package");
         subcommand.add(ybServerPackage);
-        Map<String, String> extra_gflags = new HashMap<>();
-        extra_gflags.put("undefok", "enable_ysql");
-        if (taskParam.isMaster) {
-          extra_gflags.put("cluster_uuid", String.valueOf(taskParam.universeUUID));
-          extra_gflags.put("replication_factor", String.valueOf(userIntent.replicationFactor));
-        }
-        extra_gflags.put("placement_uuid", String.valueOf(taskParam.placementUuid));
-        // Add in the nodeName during configure.
-        extra_gflags.put("metric_node_name", taskParam.nodeName);
-        // TODO: add a shared path to massage flags across different flavors of configure.
-        String pgsqlProxyBindAddress = node.cloudInfo.private_ip;
-        String cqlProxyBindAddress = node.cloudInfo.private_ip;
-
         if (useHostname) {
           subcommand.add("--server_broadcast_addresses");
           subcommand.add(node.cloudInfo.private_ip);
-          pgsqlProxyBindAddress = "0.0.0.0";
-          cqlProxyBindAddress = "0.0.0.0";
-        }
-
-        if (taskParam.enableYSQL) {
-          extra_gflags.put("enable_ysql", "true");
-          extra_gflags.put(
-              "pgsql_proxy_bind_address",
-              String.format("%s:%s", pgsqlProxyBindAddress, node.ysqlServerRpcPort));
-          if (taskParam.enableYSQLAuth) {
-            extra_gflags.put("ysql_enable_auth", "true");
-            extra_gflags.put("ysql_hba_conf_csv", "local all yugabyte trust");
-          } else {
-            extra_gflags.put("ysql_enable_auth", "false");
-          }
-        } else {
-          extra_gflags.put("enable_ysql", "false");
-        }
-
-        // For YCQL flag
-        if (taskParam.enableYCQL) {
-          extra_gflags.put("start_cql_proxy", "true");
-          extra_gflags.put(
-              "cql_proxy_bind_address",
-              String.format("%s:%s", cqlProxyBindAddress, node.yqlServerRpcPort));
-          if (taskParam.enableYCQLAuth) {
-            extra_gflags.put("use_cassandra_authentication", "true");
-          } else {
-            extra_gflags.put("use_cassandra_authentication", "false");
-          }
-        } else {
-          extra_gflags.put("start_cql_proxy", "false");
-        }
-
-        if (taskParam.getCurrentClusterType() == UniverseDefinitionTaskParams.ClusterType.PRIMARY
-            && taskParam.setTxnTableWaitCountFlag) {
-          extra_gflags.put(
-              "txn_table_wait_min_ts_count",
-              Integer.toString(
-                  universe.getUniverseDetails().getPrimaryCluster().userIntent.numNodes));
         }
 
         if ((taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt)) {
-          if (taskParam.enableNodeToNodeEncrypt) {
-            extra_gflags.put("use_node_to_node_encryption", "true");
-          }
-          if (taskParam.enableClientToNodeEncrypt) {
-            extra_gflags.put("use_client_to_server_encryption", "true");
-          }
-          extra_gflags.put(
-              "allow_insecure_connections", taskParam.allowInsecure ? "true" : "false");
-          String yb_home_dir = taskParam.getProvider().getYbHome();
-
-          extra_gflags.put("cert_node_filename", node.cloudInfo.private_ip);
-
-          if (CertificateHelper.isRootCARequired(taskParam)) {
-            extra_gflags.put("certs_dir", yb_home_dir + "/yugabyte-tls-config");
-          }
-          if (CertificateHelper.isClientRootCARequired(taskParam)) {
-            extra_gflags.put("certs_for_client_dir", yb_home_dir + "/yugabyte-client-tls-config");
-          }
-          subcommand.addAll(getCertificatePaths(taskParam, node.cloudInfo.private_ip, yb_home_dir));
+          subcommand.addAll(
+              getCertificatePaths(
+                  taskParam, node.cloudInfo.private_ip, taskParam.getProvider().getYbHome()));
         }
-        if (taskParam.callhomeLevel != null) {
-          extra_gflags.put(
-              "callhome_collection_level", taskParam.callhomeLevel.toString().toLowerCase());
-          if (taskParam.callhomeLevel.toString().equals("NONE")) {
-            extra_gflags.put("callhome_enabled", "false");
-          }
-        }
+
+        // adds default gflags based on the user's initial preference.
         subcommand.add("--extra_gflags");
-        subcommand.add(Json.stringify(Json.toJson(extra_gflags)));
+        subcommand.add(Json.stringify(Json.toJson(addExtraGFlags(taskParam))));
         break;
       case Software:
         {
@@ -690,7 +706,44 @@ public class NodeManager extends DevopsBase {
           }
           subcommand.add("--replace_gflags");
 
-          // Add in the nodeName during configure.
+          if (taskParam.addDefaultGFlags) {
+            subcommand.add("--add_default_gflags");
+            subcommand.add("true");
+            if (useHostname) {
+              subcommand.add("--server_broadcast_addresses");
+              subcommand.add(node.cloudInfo.private_ip);
+            }
+            if ((taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt)) {
+              subcommand.addAll(
+                  getCertificatePaths(
+                      taskParam, node.cloudInfo.private_ip, taskParam.getProvider().getYbHome()));
+            }
+            Map<String, String> default_extra_gflags = addExtraGFlags(taskParam);
+            if (processType == ServerType.TSERVER.name()) {
+              if (userIntent.enableYEDIS) {
+                default_extra_gflags.put(
+                    "redis_proxy_webserver_port",
+                    Integer.toString(taskParam.communicationPorts.redisServerHttpPort));
+              } else {
+                default_extra_gflags.put("start_redis_proxy", "false");
+              }
+              if (userIntent.enableYCQL) {
+                default_extra_gflags.put(
+                    "cql_proxy_webserver_port",
+                    Integer.toString(taskParam.communicationPorts.yqlServerHttpPort));
+              }
+              if (userIntent.enableYSQL) {
+                default_extra_gflags.put(
+                    "pgsql_proxy_webserver_port",
+                    Integer.toString(taskParam.communicationPorts.ysqlServerHttpPort));
+              }
+            }
+
+            // Dict of default gflags that are passed to db nodes which can be overridden by user
+            subcommand.add("--extra_gflags");
+            subcommand.add(Json.stringify(Json.toJson(default_extra_gflags)));
+          }
+
           Map<String, String> gflags = new HashMap<>(taskParam.gflags);
 
           if (taskParam.updateMasterAddrsOnly) {
@@ -707,9 +760,12 @@ public class NodeManager extends DevopsBase {
             gflags.put("placement_uuid", String.valueOf(taskParam.placementUuid));
             gflags.put("metric_node_name", taskParam.nodeName);
           }
+
+          // gflags that are added/updated to the db nodes.
           subcommand.add("--gflags");
           subcommand.add(Json.stringify(Json.toJson(gflags)));
 
+          // gflags that needs to be deleted from db nodes.
           if (taskParam.gflagsToRemove != null && !taskParam.gflagsToRemove.isEmpty()) {
             subcommand.add("--gflags_to_remove");
             subcommand.add(Json.stringify(Json.toJson(taskParam.gflagsToRemove)));

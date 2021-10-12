@@ -12,6 +12,8 @@ import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -318,6 +320,32 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     params.azUuid = node.azUuid;
     // Add in the node placement uuid.
     params.placementUuid = node.placementUuid;
+    // Sets the isMaster field
+    params.isMaster = node.isMaster;
+    params.enableYSQL = userIntent.enableYSQL;
+    params.enableYCQL = userIntent.enableYCQL;
+    params.enableYCQLAuth = userIntent.enableYCQLAuth;
+    params.enableYSQLAuth = userIntent.enableYSQLAuth;
+
+    // The software package to install for this cluster.
+    params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
+    // Set the InstanceType
+    params.instanceType = node.cloudInfo.instance_type;
+    params.enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
+    params.enableClientToNodeEncrypt = userIntent.enableClientToNodeEncrypt;
+    params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
+
+    params.allowInsecure = taskParams().allowInsecure;
+    params.setTxnTableWaitCountFlag = taskParams().setTxnTableWaitCountFlag;
+    params.enableYEDIS = userIntent.enableYEDIS;
+
+    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    UUID custUUID = Customer.get(universe.customerId).uuid;
+    params.callhomeLevel = CustomerConfig.getCallhomeLevel(custUUID);
+    params.rootCA = universe.getUniverseDetails().rootCA;
+    params.clientRootCA = universe.getUniverseDetails().clientRootCA;
+    params.rootAndClientRootCASame = universe.getUniverseDetails().rootAndClientRootCASame;
+
     // Add testing flag.
     params.itestS3PackagePath = taskParams().itestS3PackagePath;
     // Add task type
