@@ -39,7 +39,6 @@ To restore YugabyteDB universe YSQL data from a backup:
 2. Click **Restore Backup** to open the **Restore data to** dialog.
 
     <br/><br/>
-
     ![Restore backup - YSQL](/images/yp/restore-universe-data-ysql.png)
 
 3. Complete the following fields:
@@ -56,4 +55,4 @@ To restore YugabyteDB universe YSQL data from a backup:
 5. To confirm the restore succeeded, go to the **Tables** tab to compare the original table with the table you
 restored to.
 
-![Tables View](/images/yp/tables-view.png)
+![Tables View](/images/yp/tables-view-ysql.png)
