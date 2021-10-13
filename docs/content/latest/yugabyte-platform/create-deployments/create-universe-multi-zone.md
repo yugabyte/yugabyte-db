@@ -91,7 +91,7 @@ You connect to a database node as follows:
 
 ![Multi-zone universe connect](/images/yp/multi-zone-universe-connect-1.png)
 
-- Determine the node to which you wish to connect and click the corresponding Action > Connect.
+- Determine the node to which you wish to connect and click the corresponding **Action > Connect**.
 
 - Copy the SSH command displayed in the **Access your node** dialog shown in the following illustration:
 
