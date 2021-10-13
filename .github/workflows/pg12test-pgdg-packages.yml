@@ -38,6 +38,8 @@ jobs:
 
       - name: Build pg_stat_monitor
         run: |
+          export PATH="/usr/lib/postgresql/12/bin:$PATH"
+          sudo cp /usr/lib/postgresql/12/bin/pg_config /usr/bin
           sudo make USE_PGXS=1
           sudo make USE_PGXS=1 install
         working-directory: src/pg_stat_monitor/
