@@ -71,13 +71,15 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       // Set all the node names.
       setNodeNames(UniverseOpType.EDIT, universe);
 
+      updateOnPremNodeUuids(universe);
+
       // Run preflight checks on onprem nodes to be added.
-      if (reserveAndCheckOnpremNodesToBeAdded()) {
+      if (performUniversePreflightChecks(universe, x -> true)) {
         // Select master nodes, if needed.
         selectMasters();
 
         // Update the user intent.
-        writeUserIntentToUniverse(false, false);
+        writeUserIntentToUniverse(false);
 
         for (Cluster cluster : taskParams().clusters) {
           addDefaultGFlags(cluster.userIntent);
