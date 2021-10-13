@@ -25,8 +25,8 @@ public class PrecheckNode extends UniverseTaskBase {
 
   // Parameters for failed precheck task.
   public static class Params extends UniverseTaskParams {
-    // Map of nodes to error messages.
-    public Map<NodeInstance, String> failedNodes;
+    // Map of node names to error messages.
+    public Map<String, String> failedNodeNamesToError;
     // Whether nodes should remain reserved or not.
     public boolean reserveNodes = false;
   }
@@ -39,8 +39,8 @@ public class PrecheckNode extends UniverseTaskBase {
   @Override
   public void run() {
     String errMsg = "";
-    for (Map.Entry<NodeInstance, String> entry : taskParams().failedNodes.entrySet()) {
-      NodeInstance node = entry.getKey();
+    for (Map.Entry<String, String> entry : taskParams().failedNodeNamesToError.entrySet()) {
+      NodeInstance node = NodeInstance.getByName(entry.getKey());
       if (!taskParams().reserveNodes) {
         try {
           node.clearNodeDetails();

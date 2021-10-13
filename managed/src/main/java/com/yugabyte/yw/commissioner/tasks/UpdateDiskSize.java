@@ -49,7 +49,8 @@ public class UpdateDiskSize extends UniverseDefinitionTaskBase {
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
       // Update the user intent.
-      writeUserIntentToUniverse();
+      universe = writeUserIntentToUniverse();
+      updateOnPremNodeUuids(universe);
 
       Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
 

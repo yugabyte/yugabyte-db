@@ -16,8 +16,8 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AsyncReplicationDelete;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AsyncReplicationSetup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AsyncReplicationPlatformSync;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AsyncReplicationSetup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.BackupTable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.BackupUniverseKeys;
 import com.yugabyte.yw.commissioner.tasks.subtasks.BulkImport;
@@ -94,12 +94,12 @@ import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.slf4j.MDC;
 import org.yb.Common;
 import org.yb.client.ModifyClusterConfigIncrementVersion;
 import org.yb.client.YBClient;
 import play.api.Play;
 import play.libs.Json;
-import org.slf4j.MDC;
 
 @Slf4j
 public abstract class UniverseTaskBase extends AbstractTaskBase {
@@ -1424,7 +1424,18 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   // Perform preflight checks on the given node.
-  public String performPreflightCheck(NodeDetails node, NodeTaskParams taskParams) {
+  public String performPreflightCheck(Cluster cluster, NodeDetails currentNode) {
+    if (cluster.userIntent.providerType != com.yugabyte.yw.commissioner.Common.CloudType.onprem) {
+      return null;
+    }
+    NodeTaskParams taskParams = new NodeTaskParams();
+    UserIntent userIntent = cluster.userIntent;
+    taskParams.nodeName = currentNode.nodeName;
+    taskParams.deviceInfo = userIntent.deviceInfo;
+    taskParams.azUuid = currentNode.azUuid;
+    taskParams.universeUUID = taskParams().universeUUID;
+    taskParams.extraDependencies.installNodeExporter =
+        taskParams().extraDependencies.installNodeExporter;
     // Create the process to fetch information about the node from the cloud provider.
     NodeManager nodeManager = Play.current().injector().instanceOf(NodeManager.class);
     log.info("Running preflight checks for node {}.", taskParams.nodeName);
