@@ -22,18 +22,19 @@
 
 static pgssSharedState *pgss;
 static HTAB *pgss_hash;
-static HTAB *pgss_query_hash;
 
 static HTAB* hash_init(const char *hash_name, int key_size, int entry_size, int hash_size);
 /*
- * Copy all queries from query_buffer[old_bucket_id] to query_buffer[new_bucket_id]
- * whose query ids are found in the array 'query_ids', of length 'n_queries'.
+ * Copy query from src_buffer to dst_buff.
+ * Use query_id and query_pos to fast locate query in source buffer.
+ * Store updated query position in the destination buffer into param query_pos.
  */
-static void copy_queries(unsigned char *query_buffer[],
-						uint64 new_bucket_id,
-						uint64 old_bucket_id,
-						uint64 *query_ids,
-						size_t n_queries);
+static bool copy_query(uint64 bucket_id,
+					   uint64 query_id,
+					   uint64 query_pos,
+					   unsigned char *dst_buf,
+					   unsigned char *src_buf,
+					   size_t *new_query_pos);
 
 static HTAB*
 hash_init(const char *hash_name, int key_size, int entry_size, int hash_size)
@@ -55,7 +56,6 @@ pgss_startup(void)
 
 	pgss = NULL;
 	pgss_hash = NULL;
-	pgss_query_hash = NULL;
 
 	/*
 	* Create or attach to the shared memory state, including hash table
@@ -85,7 +85,6 @@ pgss_startup(void)
 	}
 
 	pgss_hash = hash_init("pg_stat_monitor: bucket hashtable", sizeof(pgssHashKey), sizeof(pgssEntry), MAX_BUCKET_ENTRIES);
-	pgss_query_hash = hash_init("pg_stat_monitor: query hashtable", sizeof(pgssQueryHashKey), sizeof(pgssQueryEntry),MAX_BUCKET_ENTRIES);
 
 	LWLockRelease(AddinShmemInitLock);
 
@@ -169,146 +168,44 @@ hash_entry_alloc(pgssSharedState *pgss, pgssHashKey *key, int encoding)
 		elog(DEBUG1, "%s", "pg_stat_monitor: out of memory");
 	return entry;
 }
+
 /*
- * Reset all the entries.
+ * Prepare resources for using the new bucket:
+ *    - Deallocate finished hash table entries in new_bucket_id (entries whose
+ *      state is PGSS_FINISHED or PGSS_FINISHED).
+ *    - Clear query buffer for new_bucket_id.
+ *    - If old_bucket_id != -1, move all pending hash table entries in
+ *      old_bucket_id to the new bucket id, also move pending queries from the 
+ *      previous query buffer (query_buffer[old_bucket_id]) to the new one
+ *      (query_buffer[new_bucket_id]).
  *
  * Caller must hold an exclusive lock on pgss->lock.
  */
 void
-hash_query_entryies_reset()
-{
-	HASH_SEQ_STATUS 	hash_seq;
-	pgssQueryEntry      *entry;
-
-	hash_seq_init(&hash_seq, pgss_query_hash);
-	while ((entry = hash_seq_search(&hash_seq)) != NULL)
-		entry = hash_search(pgss_query_hash, &entry->key, HASH_REMOVE, NULL);
-}
-
-
-/*
- * Deallocate finished entries in new_bucket_id.
- *
- * Move all pending queries in query_buffer[old_bucket_id] to
- * query_buffer[new_bucket_id].
- *
- * Caller must hold an exclusive lock on pgss->lock.
- */
-void
-hash_query_entry_dealloc(int new_bucket_id, int old_bucket_id, unsigned char *query_buffer[])
-{
-	HASH_SEQ_STATUS 	hash_seq;
-	pgssQueryEntry      *entry;
-	pgssSharedState     *pgss = pgsm_get_ss();
-	/*
-	 * Store pending query ids from the previous bucket.
-	 * If there are more pending queries than MAX_PENDING_QUERIES then
-	 * we try to dynamically allocate memory for them.
-	 */
-#define MAX_PENDING_QUERIES 128
-	uint64				pending_query_ids[MAX_PENDING_QUERIES];
-	uint64				*pending_query_ids_buf = NULL;
-	size_t				n_pending_queries = 0;
-	bool				out_of_memory = false;
-
-	/* Clear all queries in the query buffer for the new bucket. */
-	memset(query_buffer[new_bucket_id], 0, pgss->query_buf_size_bucket);
-
-	hash_seq_init(&hash_seq, pgss_query_hash);
-	while ((entry = hash_seq_search(&hash_seq)) != NULL)
-	{
-		/* Remove previous finished query entries matching new bucket id. */
-		if (entry->key.bucket_id == new_bucket_id)
-		{
-			if (entry->state == PGSS_FINISHED || entry->state == PGSS_ERROR)
-			{
-				entry = hash_search(pgss_query_hash, &entry->key, HASH_REMOVE, NULL);
-			}
-		}
-		/* Set up a list of pending query ids from the previous bucket. */
-		else if (entry->key.bucket_id == old_bucket_id &&
-					(entry->state == PGSS_PARSE ||
-					entry->state == PGSS_PLAN ||
-					entry->state == PGSS_EXEC))
-		{
-			if (n_pending_queries < MAX_PENDING_QUERIES)
-			{
-				pending_query_ids[n_pending_queries] = entry->key.queryid;
-				++n_pending_queries;
-			}
-			else
-			{
-				/*
-				 * No. of pending queries exceeds MAX_PENDING_QUERIES.
-				 * Try to allocate memory from heap to keep track of pending query ids.
-				 * If allocation fails we manually copy pending query to the next query buffer.
-				 */
-				if (!out_of_memory && !pending_query_ids_buf)
-				{
-					/* Allocate enough room for query ids. */
-					pending_query_ids_buf = malloc(sizeof(uint64) * hash_get_num_entries(pgss_query_hash));
-					if (pending_query_ids_buf != NULL)
-						memcpy(pending_query_ids_buf, pending_query_ids, n_pending_queries * sizeof(uint64));
-					else
-						out_of_memory = true;
-				}
-
-				if (!out_of_memory)
-				{
-					/* Store pending query id in the dynamic buffer. */
-					pending_query_ids_buf[n_pending_queries] = entry->key.queryid;
-					++n_pending_queries;
-				}
-				else
-				{
-					/* No memory, manually copy query from previous buffer. */
-					char query_txt[1024];
-
-					if (read_query(query_buffer[old_bucket_id], old_bucket_id, entry->key.queryid, query_txt) != 0
-						|| read_query_buffer(old_bucket_id, entry->key.queryid, query_txt) == MAX_QUERY_BUFFER_BUCKET)
-					{
-						SaveQueryText(new_bucket_id, entry->key.queryid, query_buffer[new_bucket_id], query_txt, strlen(query_txt));
-					}
-					else
-						/* There was no space available to store the pending query text. */
-						elog(WARNING, "hash_query_entry_dealloc: Failed to move pending query %lX, %s",
-								entry->key.queryid,
-								(PGSM_OVERFLOW_TARGET == OVERFLOW_TARGET_NONE) ?
-									"insufficient shared space for query" :
-									"I/O error reading query from disk");
-				}
-			}
-		}
-	}
-
-	/* Copy all detected pending queries from previous bucket id to the new one. */
-	if (n_pending_queries > 0) {
-		if (n_pending_queries < MAX_PENDING_QUERIES)
-			pending_query_ids_buf = pending_query_ids;
-
-		copy_queries(query_buffer, new_bucket_id, old_bucket_id, pending_query_ids_buf, n_pending_queries);
-	}
-}
-
-/*
- * Deallocate least-used entries.
- *
- * If old_bucket_id != -1, move all pending queries in old_bucket_id
- * to the new bucket id.
- *
- * Caller must hold an exclusive lock on pgss->lock.
- */
-bool
-hash_entry_dealloc(int new_bucket_id, int old_bucket_id)
+hash_entry_dealloc(int new_bucket_id, int old_bucket_id, unsigned char *query_buffer[])
 {
 	HASH_SEQ_STATUS hash_seq;
 	pgssEntry		*entry = NULL;
-	List 			*pending_entries = NIL;
-	ListCell		*pending_entry;
+	pgssSharedState     *pgss = pgsm_get_ss();
 
+	/* Store pending query ids from the previous bucket. */
+	List        *pending_entries = NIL;
+	ListCell    *pending_entry;
+
+	if (new_bucket_id != -1)
+	{
+		/* Clear all queries in the query buffer for the new bucket. */
+		memset(query_buffer[new_bucket_id], 0, pgss->query_buf_size_bucket);
+	}
+
+	/* Iterate over the hash table. */
 	hash_seq_init(&hash_seq, pgss_hash);
 	while ((entry = hash_seq_search(&hash_seq)) != NULL)
 	{
+		/*
+		 * Remove all entries if new_bucket_id == -1.
+		 * Otherwise remove entry in new_bucket_id if it has finished already.
+		 */
 		if (new_bucket_id < 0 ||
 			(entry->key.bucket_id == new_bucket_id &&
 				 (entry->counters.state == PGSS_FINISHED || entry->counters.state == PGSS_ERROR)))
@@ -333,6 +230,7 @@ hash_entry_dealloc(int new_bucket_id, int old_bucket_id)
 				if (!bkp_entry)
 				{
 					/* No memory, remove pending query entry from the previous bucket. */
+					elog(ERROR, "hash_entry_dealloc: out of memory");
 					entry = hash_search(pgss_hash, &entry->key, HASH_REMOVE, NULL);
 					continue;
 				}
@@ -370,14 +268,19 @@ hash_entry_dealloc(int new_bucket_id, int old_bucket_id)
 			new_entry->counters = old_entry->counters;
 			SpinLockInit(&new_entry->mutex);
 			new_entry->encoding = old_entry->encoding;
+			/* copy query's text from previous bucket to the new one. */
+			copy_query(new_bucket_id,
+					   new_entry->key.queryid,       /* query id */
+					   old_entry->query_pos,         /* query position in buffer */
+					   query_buffer[new_bucket_id],  /* destination query buffer */
+					   query_buffer[old_bucket_id],  /* source query buffer */
+					   &new_entry->query_pos);       /* position in which query was inserted into destination buffer */
 		}
 
 		free(old_entry);
 	}
 
 	list_free(pending_entries);
-
-	return true;
 }
 
 /*
@@ -401,45 +304,6 @@ hash_entry_reset()
 	LWLockRelease(pgss->lock);
 }
 
-/* Caller must acquire a lock */
-pgssQueryEntry*
-hash_create_query_entry(uint64 bucket_id, uint64 queryid, uint64 dbid, uint64 userid, uint64 ip, uint64 appid)
-{
-    pgssQueryHashKey    key;
-	pgssQueryEntry      *entry;
-	bool                found;
-
-    key.queryid = queryid;
-	key.bucket_id = bucket_id;
-	key.dbid = dbid;
-	key.userid = userid;
-	key.ip = ip;
-	key.appid = appid;
-
-	entry = (pgssQueryEntry *) hash_search(pgss_query_hash, &key, HASH_ENTER_NULL, &found);
-	return entry;
-}
-
-/* Caller must acquire a lock */
-pgssQueryEntry*
-hash_find_query_entry(uint64 bucket_id, uint64 queryid, uint64 dbid, uint64 userid, uint64 ip, uint64 appid)
-{
-    pgssQueryHashKey    key;
-	pgssQueryEntry      *entry;
-	bool                found;
-
-    key.queryid = queryid;
-	key.bucket_id = bucket_id;
-	key.dbid = dbid;
-	key.userid = userid;
-	key.ip = ip;
-	key.appid = appid;
-
-    /* Lookup the hash table entry with shared lock. */
-	entry = (pgssQueryEntry *) hash_search(pgss_query_hash, &key, HASH_FIND, &found);
-    return entry;
-}
-
 bool
 IsHashInitialize(void)
 {
@@ -447,52 +311,38 @@ IsHashInitialize(void)
 			pgss_hash != NULL);
 }
 
-static void copy_queries(unsigned char *query_buffer[],
-						uint64 new_bucket_id,
-						uint64 old_bucket_id,
-						uint64 *query_ids,
-						size_t n_queries)
+static bool copy_query(uint64 bucket_id,
+					   uint64 query_id,
+					   uint64 query_pos,
+					   unsigned char *dst_buf,
+					   unsigned char *src_buf,
+					   size_t *new_query_pos)
 {
-	bool found;
-	uint64 query_id           = 0;
-	uint64 query_len          = 0;
-	uint64 rlen               = 0;
-	uint64 buf_len            = 0;
-	unsigned char *src_buffer = query_buffer[old_bucket_id];
-	size_t i;
+	uint64 query_len = 0;
+	uint64 buf_len   = 0;
 
-	memcpy(&buf_len, src_buffer, sizeof (uint64));
+	memcpy(&buf_len, src_buf, sizeof (uint64));
 	if (buf_len <= 0)
-		return;
+		return false;
 
-	rlen = sizeof (uint64); /* Move forwad to skip length bytes */
-	while (rlen < buf_len)
+	/* Try to locate the query directly. */
+	if (query_pos != 0 && (query_pos + sizeof(uint64) + sizeof(uint64)) < buf_len)
 	{
-		found = false;
-		memcpy(&query_id, &src_buffer[rlen], sizeof (uint64)); /* query id */
-		for (i = 0; i < n_queries; ++i)
-		{
-			if (query_id == query_ids[i])
-			{
-				found = true;
-				break;
-			}
-		}
+		if (*(uint64 *)&src_buf[query_pos] != query_id)
+			return false;
 
-		rlen += sizeof (uint64);
-		if (buf_len <= rlen)
-			break;
+		query_pos += sizeof(uint64);
 
-		memcpy(&query_len, &src_buffer[rlen], sizeof (uint64)); /* query len */
-		rlen += sizeof (uint64);
-		if (buf_len < rlen + query_len)
-			break;
+		memcpy(&query_len, &src_buf[query_pos], sizeof(uint64)); /* query len */
+		query_pos += sizeof(uint64);
 
-		if (found) {
-			SaveQueryText(new_bucket_id, query_id, query_buffer[new_bucket_id],
-							(const char *)&src_buffer[rlen], query_len);
-		}
+		if (query_pos + query_len > buf_len) /* avoid reading past buffer's length. */
+			return false;
 
-		rlen += query_len;
+		return SaveQueryText(bucket_id, query_id, dst_buf,
+							(const char *)&src_buf[query_pos],
+							query_len, new_query_pos);
 	}
+
+	return false;
 }
