@@ -126,6 +126,14 @@ To verify that you have some data to work with, you can run a simple SELECT stat
 northwind=# SELECT * FROM customers LIMIT 2;
 ```
 
+```output
+ customer_id |       company_name        | contact_name |    contact_title    |      address       |   city    | region | postal_code | country |     phone     |     fax     
+-------------+---------------------------+--------------+---------------------+--------------------+-----------+--------+-------------+---------+---------------+-------------
+ FAMIA       | Familia Arquibaldo        | Aria Cruz    | Marketing Assistant | Rua Orós, 92       | Sao Paulo | SP     | 05442-030   | Brazil  | (11) 555-9857 | 
+ VINET       | Vins et alcools Chevalier | Paul Henriot | Accounting Manager  | 59 rue de l'Abbaye | Reims     |        | 51100       | France  | 26.47.15.10   | 26.47.15.11
+(2 rows)
+```
+
 ## Explore the Northwind database
 
 That’s it! You are now ready to start exploring the Northwind database and YugabyteDB features using the command line or your favorite PostgreSQL tool.
