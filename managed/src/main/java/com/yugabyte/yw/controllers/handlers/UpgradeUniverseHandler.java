@@ -12,6 +12,7 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
+import com.yugabyte.yw.forms.SystemdUpgradeParams;
 import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -253,6 +254,22 @@ public class UpgradeUniverseHandler {
     return submitUpgradeTask(
         TaskType.VMImageUpgrade,
         CustomerTask.TaskType.VMImageUpgrade,
+        requestParams,
+        customer,
+        universe);
+  }
+
+  public UUID upgradeSystemd(
+      SystemdUpgradeParams requestParams, Customer customer, Universe universe) {
+
+    requestParams.verifyParams(universe);
+    // Update request params with additional metadata for upgrade task
+    requestParams.universeUUID = universe.universeUUID;
+    requestParams.expectedUniverseVersion = universe.version;
+
+    return submitUpgradeTask(
+        TaskType.SystemdUpgrade,
+        CustomerTask.TaskType.SystemdUpgrade,
         requestParams,
         customer,
         universe);
