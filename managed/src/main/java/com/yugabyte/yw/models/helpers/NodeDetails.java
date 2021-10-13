@@ -98,7 +98,9 @@ public class NodeDetails {
     // Set when TLS params (node-to-node and client-to-node) is being toggled
     ToggleTls(),
     // Set when the node is being resized to a new intended type
-    Resizing();
+    Resizing(),
+    // Set when the node is being upgraded to systemd from cron
+    SystemdUpgrade();
 
     private final NodeActionType[] allowedActions;
 
@@ -176,7 +178,11 @@ public class NodeDetails {
   // List of states which are considered in-transit and ops such as upgrade should not be allowed.
   public static final Set<NodeState> IN_TRANSIT_STATES =
       ImmutableSet.of(
-          NodeState.Removed, NodeState.Stopped, NodeState.Decommissioned, NodeState.Resizing);
+          NodeState.Removed,
+          NodeState.Stopped,
+          NodeState.Decommissioned,
+          NodeState.Resizing,
+          NodeState.SystemdUpgrade);
 
   @Override
   public NodeDetails clone() {
@@ -227,7 +233,8 @@ public class NodeDetails {
         || state == NodeState.Stopped
         || state == NodeState.Adding
         || state == NodeState.BeingDecommissioned
-        || state == NodeState.Decommissioned);
+        || state == NodeState.Decommissioned
+        || state == NodeState.SystemdUpgrade);
   }
 
   @JsonIgnore
