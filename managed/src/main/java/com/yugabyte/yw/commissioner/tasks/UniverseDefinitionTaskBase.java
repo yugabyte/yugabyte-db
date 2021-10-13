@@ -10,12 +10,11 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PrecheckNode;
-import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeState;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForTServerHeartBeats;
 import com.yugabyte.yw.common.CertificateHelper;
@@ -43,6 +42,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -111,22 +111,22 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     return (UniverseDefinitionTaskParams) taskParams;
   }
 
-  /** Writes the user intent to the universe. */
+  /**
+   * Writes all the user intent to the universe.
+   *
+   * @return
+   */
   public Universe writeUserIntentToUniverse() {
     return writeUserIntentToUniverse(false);
   }
 
-  /** Writes the user intent to the universe. */
-  public Universe writeUserIntentToUniverse(boolean isReadOnlyCreate) {
-    return writeUserIntentToUniverse(isReadOnlyCreate, true);
-  }
-
   /**
-   * Writes the user intent to the universe.
+   * Writes the user intent to the universe. In case of readonly cluster creation we only append
+   * taskParams().nodeDetailsSet to existing universe details.
    *
-   * @param isReadOnlyCreate only readonly cluster being created info needs peristence.
+   * @param isReadOnlyCreate only readonly cluster being created info needs persistence.
    */
-  public Universe writeUserIntentToUniverse(boolean isReadOnlyCreate, boolean updateOnpremNodes) {
+  public Universe writeUserIntentToUniverse(boolean isReadOnlyCreate) {
     // Create the update lambda.
     UniverseUpdater updater =
         universe -> {
@@ -179,10 +179,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // catch as we want to fail.
     Universe universe = saveUniverseDetails(updater);
     log.trace("Wrote user intent for universe {}.", taskParams().universeUUID);
-
-    if (updateOnpremNodes) {
-      updateOnPremNodeUuids(universe);
-    }
 
     // Return the universe object that we have already updated.
     return universe;
@@ -410,10 +406,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   public Map<String, NodeInstance> setOnpremData(Set<NodeDetails> nodes, String instanceType) {
-    Map<UUID, List<String>> onpremAzToNodes = new HashMap<UUID, List<String>>();
+    Map<UUID, List<String>> onpremAzToNodes = new HashMap<>();
     for (NodeDetails node : nodes) {
       if (node.state == NodeDetails.NodeState.ToBeAdded) {
-        List<String> nodeNames = onpremAzToNodes.getOrDefault(node.azUuid, new ArrayList<String>());
+        List<String> nodeNames = onpremAzToNodes.getOrDefault(node.azUuid, new ArrayList<>());
         nodeNames.add(node.nodeName);
         onpremAzToNodes.put(node.azUuid, nodeNames);
       }
@@ -638,7 +634,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    *
    * @param failedNodes : map of nodeName to associated error message
    */
-  public SubTaskGroup createFailedPrecheckTask(Map<NodeInstance, String> failedNodes) {
+  public SubTaskGroup createFailedPrecheckTask(Map<String, String> failedNodes) {
     return createFailedPrecheckTask(failedNodes, false);
   }
 
@@ -649,10 +645,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param reserveNodes : whether to reserve nodes for this universe for future use
    */
   public SubTaskGroup createFailedPrecheckTask(
-      Map<NodeInstance, String> failedNodes, boolean reserveNodes) {
+      Map<String, String> failedNodes, boolean reserveNodes) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("PrecheckNode", executor);
     PrecheckNode.Params params = new PrecheckNode.Params();
-    params.failedNodes = failedNodes;
+    params.failedNodeNamesToError = failedNodes;
     params.reserveNodes = reserveNodes;
     PrecheckNode failedCheck = createTask(PrecheckNode.class);
     failedCheck.initialize(params);
@@ -995,36 +991,42 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
   }
 
-  /** Reserves onprem nodes for an existing universe and performs preflight checks on them. */
-  public boolean reserveAndCheckOnpremNodesToBeAdded() {
-    Map<NodeInstance, String> failedNodes = new HashMap<>();
-    for (Cluster cluster : taskParams().clusters) {
-      Set<NodeDetails> nodes = taskParams().getNodesInCluster(cluster.uuid);
-      Collection<NodeDetails> nodesToProvision = PlacementInfoUtil.getNodesToProvision(nodes);
-
-      // Reserves onprem nodes.
-      Map<String, NodeInstance> onpremInstances = new HashMap<>();
-      if (cluster.userIntent.providerType == CloudType.onprem) {
-        onpremInstances = setOnpremData(nodes, cluster.userIntent.instanceType);
+  /**
+   * Performs preflight checks for nodes in cluster. No fail tasks are created.
+   *
+   * @return map of failed nodes
+   */
+  private Map<String, String> performClusterPreflightChecks(Cluster cluster) {
+    Map<String, String> failedNodes = new HashMap<>();
+    // This check is only applied to onperm nodes
+    if (cluster.userIntent.providerType != CloudType.onprem) {
+      return failedNodes;
+    }
+    Set<NodeDetails> nodes = taskParams().getNodesInCluster(cluster.uuid);
+    Collection<NodeDetails> nodesToProvision = PlacementInfoUtil.getNodesToProvision(nodes);
+    for (NodeDetails currentNode : nodesToProvision) {
+      String preflightStatus = performPreflightCheck(cluster, currentNode);
+      if (preflightStatus != null) {
+        failedNodes.put(currentNode.nodeName, preflightStatus);
       }
+    }
 
-      if (!nodesToProvision.isEmpty()) {
-        for (NodeDetails currentNode : nodesToProvision) {
-          NodeTaskParams nodeParams = new NodeTaskParams();
-          UserIntent userIntent =
-              taskParams().getClusterByUuid(currentNode.placementUuid).userIntent;
-          nodeParams.nodeName = currentNode.nodeName;
-          nodeParams.deviceInfo = userIntent.deviceInfo;
-          nodeParams.azUuid = currentNode.azUuid;
-          nodeParams.universeUUID = taskParams().universeUUID;
-          nodeParams.extraDependencies.installNodeExporter =
-              taskParams().extraDependencies.installNodeExporter;
+    return failedNodes;
+  }
 
-          String preflightStatus = performPreflightCheck(currentNode, nodeParams);
-          if (preflightStatus != null) {
-            failedNodes.put(onpremInstances.get(currentNode.nodeName), preflightStatus);
-          }
-        }
+  /**
+   * Performs preflight checks and creates failed preflight tasks.
+   *
+   * @param universe
+   * @param clusterPredicate
+   * @return true if everything is OK
+   */
+  public boolean performUniversePreflightChecks(
+      Universe universe, Predicate<Cluster> clusterPredicate) {
+    Map<String, String> failedNodes = new HashMap<>();
+    for (Cluster cluster : universe.getUniverseDetails().clusters) {
+      if (clusterPredicate.test(cluster)) {
+        failedNodes.putAll(performClusterPreflightChecks(cluster));
       }
     }
     if (!failedNodes.isEmpty()) {
