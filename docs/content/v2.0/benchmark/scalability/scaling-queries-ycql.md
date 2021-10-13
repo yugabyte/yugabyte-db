@@ -101,4 +101,4 @@ Note that these writes are the logical writes that the application issued. Each 
 
 ## Next steps
 
-By following the same steps outlined above, you can visit our [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) GitHub repository to try out more experiments on your own local setups. After you set up a local cluster and test your favorite application, share your feedback and suggestions with the [YugabyteDB Slack community](yugabyte-db.slack.com).
+By following the same steps outlined above, you can visit our [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) GitHub repository to try out more experiments on your own local setups. After you set up a local cluster and test your favorite application, share your feedback and suggestions with the [YugabyteDB Slack community](https://www.yugabyte.com/slack).

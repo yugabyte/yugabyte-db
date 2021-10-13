@@ -19,7 +19,7 @@ For details on PostgreSQL feature support in YSQL, see [What Features Does YSQL 
 
 Yugabyte and third party API client library drivers listed below are supported for developing applications that connect to and interact with the YSQL API.
 
-For help using these drivers with YSQL, ask questions in the [Slack community](https://yugabyte-db.slack.com).
+For help using these drivers with YSQL, ask questions in the [Slack community](https://www.yugabyte.com/slack).
 
 If you encounter an issue or want to file an enhancement request, [file a GitHub issue](https://github.com/yugabyte/yugabyte-db/issues/new/choose).
 

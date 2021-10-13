@@ -27,7 +27,7 @@ The Free Tier level includes:
 - **Client APIs:** [YSQL](../../../api/ysql) and [YCQL](../../../api/ycql)
 - **Administration**: Yugabyte Cloud Console
 - **Upgrades:** New releases automatically applied
-- **Support:** [Slack community (yugabyte-db)](https://yugabyte-db.slack.com)
+- **Support:** [Slack community (yugabyte-db)](https://www.yugabyte.com/slack)
 
 {{< note title="Note" >}}
 
