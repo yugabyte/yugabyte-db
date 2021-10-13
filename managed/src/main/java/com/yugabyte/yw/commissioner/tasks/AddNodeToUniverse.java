@@ -90,6 +90,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       preTaskActions();
 
       Cluster cluster = taskParams().getClusterByUuid(currentNode.placementUuid);
+      UserIntent userIntent = cluster.userIntent;
       Collection<NodeDetails> node = Collections.singletonList(currentNode);
 
       boolean wasDecommissioned = currentNode.state == NodeState.Decommissioned;
@@ -106,19 +107,15 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
         currentNode.nodeUuid = nodeMap.get(currentNode.nodeName).nodeUuid;
       }
 
-      NodeTaskParams nodeParams = new NodeTaskParams();
-      UserIntent userIntent = taskParams().getClusterByUuid(currentNode.placementUuid).userIntent;
-      nodeParams.nodeName = currentNode.nodeName;
-      nodeParams.deviceInfo = userIntent.deviceInfo;
-      nodeParams.azUuid = currentNode.azUuid;
-      nodeParams.universeUUID = taskParams().universeUUID;
-      nodeParams.extraDependencies.installNodeExporter =
-          taskParams().extraDependencies.installNodeExporter;
+      String preflightStatus = null;
+      // Perform preflight check for onprem cluster
+      if (cluster.userIntent.providerType == CloudType.onprem) {
+        preflightStatus = performPreflightCheck(cluster, currentNode);
+      }
 
-      String preflightStatus = performPreflightCheck(currentNode, nodeParams);
       if (preflightStatus != null) {
-        Map<NodeInstance, String> failedNodes = new HashMap<>();
-        failedNodes.put(NodeInstance.getByName(currentNode.nodeName), preflightStatus);
+        Map<String, String> failedNodes =
+            Collections.singletonMap(currentNode.nodeName, preflightStatus);
         createFailedPrecheckTask(failedNodes).setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
         errorString = "Preflight checks failed.";
       } else {

@@ -149,7 +149,7 @@ public class NodeInstance extends Model {
    */
   public static synchronized Map<String, NodeInstance> pickNodes(
       Map<UUID, List<String>> onpremAzToNodes, String instanceTypeCode) {
-    Map<String, NodeInstance> outputMap = new HashMap<String, NodeInstance>();
+    Map<String, NodeInstance> outputMap = new HashMap<>();
     Throwable error = null;
     try {
       for (Entry<UUID, List<String>> entry : onpremAzToNodes.entrySet()) {

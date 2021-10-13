@@ -3,12 +3,9 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
-import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.mockito.Matchers.any;
-import static org.mockito.Mockito.anyLong;
-import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -17,11 +14,10 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo.ModifyUniverseConfig;
 import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.common.NodeManager.NodeCommandType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -44,17 +40,12 @@ import org.mockito.runners.MockitoJUnitRunner;
 import org.yb.client.AbstractModifyMasterClusterConfig;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
-import org.yb.client.YBClient;
 import org.yb.master.Master;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
-public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
+public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
 
-  Universe defaultUniverse;
-  ShellResponse dummyShellResponse;
-  ShellResponse preflightSuccessResponse;
-  YBClient mockClient;
   ModifyUniverseConfig modifyUC;
   AbstractModifyMasterClusterConfig amuc;
 
@@ -62,29 +53,6 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
   public void setUp() {
     super.setUp();
 
-    Region region = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
-    AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
-    // create default universe
-    UserIntent userIntent = new UserIntent();
-    userIntent.numNodes = 3;
-    userIntent.ybSoftwareVersion = "yb-version";
-    userIntent.accessKeyCode = "demo-access";
-    userIntent.regionList = ImmutableList.of(region.uuid);
-    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
-    defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
-    Universe.saveDetails(
-        defaultUniverse.universeUUID,
-        ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
-    mockClient = mock(YBClient.class);
-    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
-    when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
-    dummyShellResponse = new ShellResponse();
-    dummyShellResponse.message = "true";
-    when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
-    preflightSuccessResponse = new ShellResponse();
-    preflightSuccessResponse.message = "{\"test\": true}";
-    when(mockNodeManager.nodeCommand(eq(NodeCommandType.Precheck), any()))
-        .thenReturn(preflightSuccessResponse);
     // TODO(bogdan): I don't think these mocks of the AbstractModifyMasterClusterConfig are doing
     // anything..
     modifyUC = mock(ModifyUniverseConfig.class);
@@ -102,7 +70,6 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockChangeConfigResponse);
     } catch (Exception e) {
     }
-    // WaitForServer mock.
     mockWaits(mockClient);
   }
 
@@ -185,8 +152,10 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
       iter++;
     }
     TaskInfo taskInfo = submitTask(taskParams);
-    verify(mockNodeManager, times(8)).nodeCommand(any(), any());
+    // removed unnecessary preflight check
+    verify(mockNodeManager, times(7)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
+
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertClusterCreateSequence(subTasksByPosition);
@@ -204,6 +173,79 @@ public class ReadOnlyClusterCreateTest extends CommissionerBaseTest {
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.universeUUID = defaultUniverse.universeUUID;
     TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testClusterOnPermCreateSuccess() {
+    UniverseConfigureTaskParams taskParams = new UniverseConfigureTaskParams();
+    taskParams.universeUUID = onPremUniverse.universeUUID;
+    taskParams.currentClusterType = ClusterType.ASYNC;
+
+    AvailabilityZone zone = AvailabilityZone.getByCode(onPremProvider, AZ_CODE);
+
+    UserIntent userIntent = new UserIntent();
+    userIntent.numNodes = 1;
+    userIntent.replicationFactor = 1;
+    userIntent.ybSoftwareVersion = "yb-version";
+    userIntent.accessKeyCode = "demo-access";
+    userIntent.regionList = ImmutableList.of(zone.region.uuid);
+    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
+    userIntent.providerType = Common.CloudType.onprem;
+    userIntent.universeName = onPremUniverse.name;
+    taskParams.clusters.add(new Cluster(ClusterType.ASYNC, userIntent));
+    taskParams.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.CREATE;
+    PlacementInfoUtil.updateUniverseDefinition(
+        taskParams, defaultCustomer.getCustomerId(), taskParams.clusters.get(0).uuid);
+
+    int iter = 1;
+    for (NodeDetails node : taskParams.nodeDetailsSet) {
+      node.cloudInfo.private_ip = "10.9.22." + iter;
+      node.tserverRpcPort = 3333;
+      iter++;
+    }
+
+    createOnpremInstance(zone);
+    TaskInfo taskInfo = submitTask(taskParams);
+
+    verify(mockNodeManager, times(8)).nodeCommand(any(), any());
+
+    UniverseDefinitionTaskParams univUTP =
+        Universe.getOrBadRequest(onPremUniverse.universeUUID).getUniverseDetails();
+    assertEquals(2, univUTP.clusters.size());
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testClusterOnPermCreateFailIfPreflightFails() {
+    UniverseConfigureTaskParams taskParams = new UniverseConfigureTaskParams();
+    taskParams.universeUUID = onPremUniverse.universeUUID;
+    taskParams.currentClusterType = ClusterType.ASYNC;
+
+    AvailabilityZone zone = AvailabilityZone.getByCode(onPremProvider, AZ_CODE);
+
+    UserIntent userIntent = new UserIntent();
+    userIntent.numNodes = 1;
+    userIntent.replicationFactor = 1;
+    userIntent.ybSoftwareVersion = "yb-version";
+    userIntent.accessKeyCode = "demo-access";
+    userIntent.regionList = ImmutableList.of(zone.region.uuid);
+    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
+    userIntent.providerType = Common.CloudType.onprem;
+    userIntent.universeName = onPremUniverse.name;
+    taskParams.clusters.add(new Cluster(ClusterType.ASYNC, userIntent));
+    taskParams.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.CREATE;
+    PlacementInfoUtil.updateUniverseDefinition(
+        taskParams, defaultCustomer.getCustomerId(), taskParams.clusters.get(0).uuid);
+    int iter = 1;
+    for (NodeDetails node : taskParams.nodeDetailsSet) {
+      node.cloudInfo.private_ip = "10.9.22." + iter;
+      node.tserverRpcPort = 3333;
+      iter++;
+    }
+    preflightResponse.message = "{\"test\": false}";
+    TaskInfo taskInfo = submitTask(taskParams);
+
     assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
   }
 }
