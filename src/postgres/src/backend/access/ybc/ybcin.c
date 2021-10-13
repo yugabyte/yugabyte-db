@@ -44,8 +44,12 @@ typedef struct
 {
 	bool	isprimary;		/* are we building a primary index? */
 	double	index_tuples;	/* # of tuples inserted into index */
-	bool	is_backfill;	/* are we concurrently backfilling an index? */
-	uint64_t *write_time;	/* write time for rows written to index */
+	/*
+	 * Write time for rows written to index as part of online index backfill.
+	 * This field being non-null signifies that we are doing online index
+	 * backfill.
+	 */
+	const uint64_t *backfill_write_time;
 } YBCBuildState;
 
 /*
@@ -112,8 +116,7 @@ ybcinbuildCallback(Relation index, HeapTuple heapTuple, Datum *values, bool *isn
 							  values,
 							  isnull,
 							  heapTuple->t_ybctid,
-							  buildstate->is_backfill,
-							  buildstate->write_time);
+							  buildstate->backfill_write_time);
 
 	buildstate->index_tuples += 1;
 }
@@ -127,7 +130,7 @@ ybcinbuild(Relation heap, Relation index, struct IndexInfo *indexInfo)
 	/* Do the heap scan */
 	buildstate.isprimary = index->rd_index->indisprimary;
 	buildstate.index_tuples = 0;
-	buildstate.is_backfill = false;
+	buildstate.backfill_write_time = NULL;
 	heap_tuples = IndexBuildHeapScan(heap, index, indexInfo, true, ybcinbuildCallback,
 									 &buildstate, NULL);
 
@@ -153,9 +156,8 @@ ybcinbackfill(Relation heap,
 	/* Do the heap scan */
 	buildstate.isprimary = index->rd_index->indisprimary;
 	buildstate.index_tuples = 0;
-	buildstate.is_backfill = true;
 	/* Backfilled rows should be as if they happened at the time of backfill */
-	buildstate.write_time = read_time;
+	buildstate.backfill_write_time = read_time;
 	heap_tuples = IndexBackfillHeapRangeScan(heap,
 											 index,
 											 indexInfo,
@@ -188,8 +190,7 @@ ybcininsert(Relation index, Datum *values, bool *isnull, Datum ybctid, Relation 
 							  values,
 							  isnull,
 							  ybctid,
-							  false /* is_backfill */,
-							  NULL /* read_time */);
+							  NULL /* backfill_write_time */);
 
 	return index->rd_index->indisunique ? true : false;
 }

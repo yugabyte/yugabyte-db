@@ -2710,15 +2710,6 @@ IndexBuildHeapRangeScanInternal(Relation heapRelation,
 	econtext = GetPerTupleExprContext(estate);
 	slot = MakeSingleTupleTableSlot(RelationGetDescr(heapRelation));
 
-	/*
-	 * Set some exec params.
-	 */
-	YBCPgExecParameters *exec_params = &estate->yb_exec_params;
-	if (read_time)
-		exec_params->read_time = *read_time;
-	if (row_bounds)
-		exec_params->partition_key = pstrdup(row_bounds->partition_key);
-
 	/* Arrange for econtext's scan tuple to be the tuple under test */
 	econtext->ecxt_scantuple = slot;
 
@@ -2761,7 +2752,18 @@ IndexBuildHeapRangeScanInternal(Relation heapRelation,
 									true,	/* buffer access strategy OK */
 									allow_sync);	/* syncscan OK? */
 		if (IsYBRelation(heapRelation))
+		{
+			YBCPgExecParameters *exec_params = &estate->yb_exec_params;
+			if (read_time)
+			{
+					*exec_params->statement_read_time = *read_time;
+					exec_params->is_index_backfill = true;
+			}
+			if (row_bounds)
+				exec_params->partition_key = pstrdup(row_bounds->partition_key);
+
 			scan->ybscan->exec_params = exec_params;
+		}
 	}
 	else
 	{

@@ -60,8 +60,7 @@ extern void YBCExecuteInsertIndex(Relation rel,
 								  Datum *values,
 								  bool *isnull,
 								  Datum ybctid,
-								  bool is_backfill,
-								  uint64_t *write_time);
+								  const uint64_t* backfill_write_time);
 
 /*
  * Delete a tuple (identified by ybctid) from a YugaByte table.

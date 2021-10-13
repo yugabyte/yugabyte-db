@@ -455,8 +455,7 @@ void YBCExecuteInsertIndex(Relation index,
 						   Datum *values,
 						   bool *isnull,
 						   Datum ybctid,
-						   bool is_backfill,
-						   uint64_t *write_time)
+						   const uint64_t *backfill_write_time)
 {
 	Assert(index->rd_rel->relkind == RELKIND_INDEX);
 	Assert(ybctid != 0);
@@ -470,6 +469,7 @@ void YBCExecuteInsertIndex(Relation index,
 	 * TODO(jason): rename `is_single_row_txn` to something like
 	 * `non_distributed_txn` when closing issue #4906.
 	 */
+	const bool is_backfill = (backfill_write_time != NULL);
 	HandleYBStatus(YBCPgNewInsert(dboid,
 								  relid,
 								  is_backfill /* is_single_row_txn */,
@@ -489,7 +489,6 @@ void YBCExecuteInsertIndex(Relation index,
 
 	if (is_backfill)
 	{
-		Assert(write_time);
 		HandleYBStatus(YBCPgInsertStmtSetIsBackfill(insert_stmt,
 													true /* is_backfill */));
 		/*
@@ -498,7 +497,7 @@ void YBCExecuteInsertIndex(Relation index,
 		 * any online writes.
 		 */
 		HandleYBStatus(YBCPgInsertStmtSetWriteTime(insert_stmt,
-												   *write_time));
+												   *backfill_write_time));
 	}
 
 	/* Execute the insert and clean up. */
