@@ -148,9 +148,10 @@ public class NodeManager extends DevopsBase {
       throw new RuntimeException("NodeTaskParams missing Universe UUID.");
     }
     UserIntent userIntent = getUserIntentFromParams(params);
+    final String defaultAccessKeyCode = appConfig.getString("yb.security.default.access.key");
 
     // TODO: [ENG-1242] we shouldn't be using our keypair, until we fix our VPC to support VPN
-    if (userIntent != null && !userIntent.accessKeyCode.equalsIgnoreCase("yugabyte-default")) {
+    if (userIntent != null && !userIntent.accessKeyCode.equalsIgnoreCase(defaultAccessKeyCode)) {
       AccessKey accessKey = AccessKey.get(params.getProvider().uuid, userIntent.accessKeyCode);
       AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
       if (keyInfo.vaultFile != null) {
