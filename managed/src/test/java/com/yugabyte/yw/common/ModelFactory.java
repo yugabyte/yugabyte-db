@@ -157,7 +157,7 @@ public class ModelFactory {
 
   public static Universe createUniverse(
       String universeName, long customerId, Common.CloudType cloudType) {
-    return createUniverse(universeName, UUID.randomUUID(), 1L, cloudType);
+    return createUniverse(universeName, UUID.randomUUID(), customerId, cloudType);
   }
 
   public static Universe createUniverse(
