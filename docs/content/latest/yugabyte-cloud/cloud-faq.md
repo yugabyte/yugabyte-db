@@ -71,7 +71,7 @@ Yugabyte Cloud supports all the regions that have robust infrastructure and suff
 
 Enterprise Support is included in the base price for paid clusters. Refer to the [Yugabyte Cloud Support Services Terms and Conditions](https://www.yugabyte.com/yugabyte-cloud-support-services-terms-and-conditions/).
 
-Free and paid cluster customers can also use the [YugabyteDB Slack community](https://yugabyte-db.slack.com/).
+Free and paid cluster customers can also use the [YugabyteDB Slack community](https://www.yugabyte.com/slack).
 
 ### Where can I find the support policy and Service Level Agreement (SLA) for Yugabyte Cloud?
 
