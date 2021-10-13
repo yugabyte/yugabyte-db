@@ -42,6 +42,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
 
   public abstract SubTaskGroupType getTaskSubGroupType();
 
+  // State set on node while it is being upgraded
   public abstract NodeState getNodeState();
 
   // Wrapper that takes care of common pre and post upgrade tasks and user has

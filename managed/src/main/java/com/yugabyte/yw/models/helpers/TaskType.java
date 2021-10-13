@@ -67,6 +67,8 @@ public enum TaskType {
 
   VMImageUpgrade("upgrade.VMImageUpgrade"),
 
+  SystemdUpgrade("upgrade.SystemdUpgrade"),
+
   CreateRootVolumes("subtasks.CreateRootVolumes"),
 
   ReplaceRootVolume("subtasks.ReplaceRootVolume"),
