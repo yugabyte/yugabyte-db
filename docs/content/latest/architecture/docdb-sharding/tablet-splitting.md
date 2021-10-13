@@ -217,9 +217,11 @@ For details on the architecture design, see [Automatic Re-sharding of Data with 
 
 ### Enable automatic tablet splitting
 
-To enable automatic tablet splitting, use the `yb-master` [`--tablet_split_size_threshold_bytes`](../../../reference/configuration/yb-master/#tablet-split-size-threshold-bytes) flag to specify the size when tablets should split.
+To enable automatic tablet splitting, use the `yb-master` [`--enable_automatic_tablet_splitting`](../../../reference/configuration/yb-master/#enable_automatic_tablet_splitting) and specify the associated flags to configure when tablets should split.
 
-The lower the value for the threshold size, the more tablets will exist with the same amount of data.
+Automatic tablet splitting occurs in a phased manner for a given table. When the table has fewer than [`--tablet_split_low_phase_shard_count_per_node`](../../../reference/configuration/yb-master/#tablet-split-low-phase-shard-count-per-node) shards, it will split all tablets larger than [`--tablet_split_low_phase_size_threshold_bytes`](../../../reference/configuration/yb-master/#tablet-split-low-phase-size-threshold-bytes). When the table has fewer than [`--tablet_split_high_phase_shard_count_per_node`](../../../reference/configuration/yb-master/#tablet-split-low-phase-shard-count-per-node) shards, it will split all tablets larger than [`--tablet_split_high_phase_size_threshold_bytes`](../../../reference/configuration/yb-master/#tablet-split-low-phase-size-threshold-bytes). And once the table has enough shards to be past either of these phases, it will still split tablets larger than [`--tablet_force_split_threshold_bytes`](../../../reference/configuration/yb-master/#tablet-force-split-threshold-bytes).
+
+When automatic tablet splitting is enabled, we will default newly created tables to have one shard per tserver.
 
 ### Example using a YCSB workload with automatic tablet splitting
 
@@ -228,7 +230,7 @@ In the following example, a three-node cluster is created and uses a YCSB worklo
 1. Create a three-node cluster.
 
     ```sh
-    ./bin/yb-ctl --rf=3 create --num_shards_per_tserver=1 --ysql_num_shards_per_tserver=1 --master_flags '"tablet_split_size_threshold=30000000"' --tserver_flags '"memstore_size_mb=10"'
+    ./bin/yb-ctl --rf=3 create --master_flags "enable_automatic_tablet_splitting=true,tablet_split_low_phase_size_threshold_bytes=30000000" --tserver_flags "memstore_size_mb=10"
     ```
 
 1. Create a table for workload.
