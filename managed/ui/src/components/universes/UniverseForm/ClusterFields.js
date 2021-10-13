@@ -111,7 +111,7 @@ const initialState = {
   ybSoftwareVersion: '',
   gflags: {},
   storageType: DEFAULT_STORAGE_TYPES['AWS'],
-  accessKeyCode: 'yugabyte-default',
+  accessKeyCode: '',
   // Maximum Number of nodes currently in use OnPrem case
   maxNumNodes: -1,
   assignPublicIP: true,
