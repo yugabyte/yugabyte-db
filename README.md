@@ -8,16 +8,16 @@
 
 [![Coverage Status](https://coveralls.io/repos/github/percona/pg_stat_monitor/badge.svg)](https://coveralls.io/github/percona/pg_stat_monitor)
 
-# pg_stat_monitor: Query Performance Tool for PostgreSQL
+# pg_stat_monitor: Query Performance Monitoring Tool for PostgreSQL
 
 ## Table of Contents
 
 * [Overview](#overview)
-* [pg_stat_monitor features](#pg_stat_monitor-features)
-* [Documentation](#documentation)
 * [Supported versions](#supported-versions)
+* [Features](#features)
+* [Documentation](#documentation)
 * [Supported platforms](#supported-platforms)
-* [Installation](#installation)
+* [Installation guidelines](#installation-guidelines)
 * [Configuration](#configuration)
 * [Setup](#setup)
 * [Building from source code](#building-from-source)
@@ -43,8 +43,17 @@ The RPM (for RHEL and CentOS) and the DEB (for Debian and Ubuntu) packages are a
 
 The RPM packages are also available in the official PostgreSQL (PGDG) yum repositories.
 
+### Supported versions
 
-### pg_stat_monitor features
+The `pg_stat_monitor` should work on the latest version of both [Percona Distribution for PostgreSQL](https://www.percona.com/software/postgresql-distribution) and PostgreSQL, but is only tested with these versions:
+
+| **Distribution** | **Version**     | **Provider** |
+| ---------------- | --------------- | ------------ |
+|[Percona Distribution for PostgreSQL](https://www.percona.com/software/postgresql-distribution)| [11](https://www.percona.com/downloads/percona-postgresql-11/LATEST/), [12](https://www.percona.com/downloads/postgresql-distribution-12/LATEST/) and [13](https://www.percona.com/downloads/postgresql-distribution-13/LATEST/)| Percona|
+| PostgreSQL       | 11, 12, and 13 | PostgreSQL Global Development Group (PGDG) |
+
+
+### Features
 
 `pg_stat_monitor` simplifies query observability by providing a more holistic view of query from performance, application and analysis perspectives. This is achieved by grouping data in configurable time buckets that allow capturing of load and performance information for smaller time windows. So performance issues and patterns can be identified based on time and workload.
 
@@ -66,16 +75,6 @@ The RPM packages are also available in the official PostgreSQL (PGDG) yum reposi
 5. Contributing guide (https://github.com/percona/pg_stat_monitor/blob/master/CONTRIBUTING.md)
 
 
-### Supported versions
-
-The `pg_stat_monitor` should work on the latest version of both [Percona Distribution for PostgreSQL](https://www.percona.com/software/postgresql-distribution) and PostgreSQL, but is only tested with these versions:
-
-| **Distribution** | **Version**     | **Provider** |
-| ---------------- | --------------- | ------------ |
-|[Percona Distribution for PostgreSQL](https://www.percona.com/software/postgresql-distribution)| [11](https://www.percona.com/downloads/percona-postgresql-11/LATEST/), [12](https://www.percona.com/downloads/postgresql-distribution-12/LATEST/) and [13](https://www.percona.com/downloads/postgresql-distribution-13/LATEST/)| Percona|
-| PostgreSQL       | 11, 12, and 13 | PostgreSQL Global Development Group (PGDG) |
-
-
 ### Supported platforms
 
 The PostgreSQL YUM repository supports `pg_stat_monitor` for all [supported versions](#supported-versions) for the following platforms:
@@ -86,7 +85,7 @@ The PostgreSQL YUM repository supports `pg_stat_monitor` for all [supported vers
 Find the list of supported platforms for `pg_stat_monitor` within [Percona Distribution for PostgreSQL](https://www.percona.com/software/postgresql-distribution) on the [Percona Release Lifecycle Overview](https://www.percona.com/services/policies/percona-software-support-lifecycle#pgsql) page.
 
 
-### Installation
+### Installation Guidelines
 
 You can install `pg_stat_monitor` from the following sources:
 
