@@ -9,6 +9,7 @@ import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
+import com.yugabyte.yw.forms.SystemdUpgradeParams;
 import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams;
@@ -120,6 +121,22 @@ public class UpgradeUniverseController extends AuthenticatedController {
         VMImageUpgradeParams.class,
         customerUuid,
         universeUuid);
+  }
+
+  /**
+   * API that upgrades from cron to systemd for universes. Supports only rolling upgrade of the
+   * universe.
+   *
+   * @param customerUuid ID of customer
+   * @param universeUuid ID of universe
+   * @return Result of update operation with task id
+   */
+  public Result upgradeSystemd(UUID customerUUID, UUID universeUUID) {
+    return requestHandler(
+        upgradeUniverseHandler::upgradeSystemd,
+        SystemdUpgradeParams.class,
+        customerUUID,
+        universeUUID);
   }
 
   private <T extends UpgradeTaskParams> Result requestHandler(
