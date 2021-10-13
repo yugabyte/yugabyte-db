@@ -3,6 +3,8 @@
 ![pg13-test](https://github.com/percona/pg_stat_monitor/workflows/pg13-test/badge.svg)
 ![pg14-test](https://github.com/percona/pg_stat_monitor/workflows/pg14-test/badge.svg)
 
+[![Coverage Status](https://coveralls.io/repos/github/percona/pg_stat_monitor/badge.svg)](https://coveralls.io/github/percona/pg_stat_monitor)
+
 # pg_stat_monitor: Query Performance Tool for PostgreSQL
 
 ## Table of Contents
