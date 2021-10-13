@@ -14,7 +14,7 @@ showAsideToc: true
 
 You can use [Replicated](https://www.replicated.com/) to upgrade your Yugabyte Platform to a newer version.
 
-To start the upgrade, you need to login to the Replicated Admin Console via https://8800 and then perform the following:
+To start the upgrade, you need to login to the Replicated Admin Console via https://:8800 and then perform the following:
 
 - Navigate to **Dashboard** and click **View release history** to open **Release History**, as shown in the following illustration.<br><br>
   ![image](/images/yb-platform/upgrade-replicated1.png) 
@@ -23,7 +23,7 @@ To start the upgrade, you need to login to the Replicated Admin Console via http
 
 <br>
 
-- Find the release required version and click the corresponding **Install**.
+- Find the required release version and click the corresponding **Install**.
 
   If the required version is not in the list, click **Check for updates** to refresh of a list of releases available in the channel to which you are subscribed, and then click **Install** corresponding to the release.
 
