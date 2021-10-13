@@ -23,7 +23,7 @@ The following examples illustrate how real-world, end-to-end applications can be
         <div class="title">E-Commerce</div>
       </div>
       <div class="body">
-          A distributed E-Commerce app using ReactJS, NodeJS Express and YugabyteDB's YCQL and YEDIS APIs.
+          A distributed E-Commerce app using ReactJS, NodeJS Express, and YugabyteDB's YCQL and YEDIS APIs.
       </div>
     </a>
   </div>
@@ -35,7 +35,7 @@ The following examples illustrate how real-world, end-to-end applications can be
         <div class="title">IoT Fleet Management</div>
       </div>
       <div class="body">
-          A real-time fleet-management app using Confluent Kafka, KSQL, Apache Spark, Spring Boot and YugabyteDB's YCQL API.
+          A real-time fleet-management app using Confluent Kafka, KSQL, Apache Spark, Spring Boot, and YugabyteDB's YCQL API.
       </div>
     </a>
   </div>
