@@ -2334,15 +2334,6 @@
       "required" : [ "lines" ],
       "type" : "object"
     },
-    "LoggingConfigFormData" : {
-      "properties" : {
-        "level" : {
-          "type" : "string"
-        }
-      },
-      "required" : [ "level" ],
-      "type" : "object"
-    },
     "MasterNode" : {
       "properties" : {
         "cloudInfo" : {
@@ -3259,6 +3250,16 @@
           "type" : "string"
         }
       },
+      "type" : "object"
+    },
+    "PlatformLoggingConfig" : {
+      "properties" : {
+        "level" : {
+          "enum" : [ "ERROR", "WARN", "INFO", "DEBUG", "TRACE" ],
+          "type" : "string"
+        }
+      },
+      "required" : [ "level" ],
       "type" : "object"
     },
     "Provider" : {
@@ -9995,12 +9996,15 @@
           "name" : "Logging Config",
           "required" : true,
           "schema" : {
-            "$ref" : "#/definitions/LoggingConfigFormData"
+            "$ref" : "#/definitions/PlatformLoggingConfig"
           }
         } ],
         "responses" : {
-          "default" : {
-            "description" : "successful operation"
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/PlatformLoggingConfig"
+            }
           }
         },
         "security" : [ {
