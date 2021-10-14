@@ -3,7 +3,7 @@
 package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
-import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
@@ -143,7 +143,7 @@ public class CertificateControllerTest extends FakeDBApplication {
   @Test
   public void testDeleteInvalidCertificate() {
     UUID uuid = UUID.randomUUID();
-    Result result = assertYWSE(() -> deleteCertificate(customer.uuid, uuid));
+    Result result = assertPlatformException(() -> deleteCertificate(customer.uuid, uuid));
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(BAD_REQUEST, result.status());
   }
@@ -188,7 +188,7 @@ public class CertificateControllerTest extends FakeDBApplication {
     bodyJson.put("certStart", date.getTime());
     bodyJson.put("certExpiry", date.getTime());
     bodyJson.put("certType", "SelfSigned");
-    Result result = assertYWSE(() -> uploadCertificate(customer.uuid, bodyJson));
+    Result result = assertPlatformException(() -> uploadCertificate(customer.uuid, bodyJson));
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(BAD_REQUEST, result.status());
     assertAuditEntry(0, customer.uuid);
@@ -203,7 +203,7 @@ public class CertificateControllerTest extends FakeDBApplication {
     bodyJson.put("certStart", date.getTime());
     bodyJson.put("certExpiry", date.getTime());
     bodyJson.put("certType", "SelfSigned");
-    Result result = assertYWSE(() -> uploadCertificate(customer.uuid, bodyJson));
+    Result result = assertPlatformException(() -> uploadCertificate(customer.uuid, bodyJson));
     assertEquals(BAD_REQUEST, result.status());
     assertAuditEntry(0, customer.uuid);
   }
@@ -416,7 +416,8 @@ public class CertificateControllerTest extends FakeDBApplication {
     certJson.put("nodeCertPath", "/tmp/nodeCertPath");
     certJson.put("nodeKeyPath", "/tmp/nodeKeyPath");
     bodyJson.put("customCertInfo", certJson);
-    Result result = assertYWSE(() -> updateCertificate(customer.uuid, certUUID, bodyJson));
+    Result result =
+        assertPlatformException(() -> updateCertificate(customer.uuid, certUUID, bodyJson));
     assertEquals(BAD_REQUEST, result.status());
   }
 

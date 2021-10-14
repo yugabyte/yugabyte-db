@@ -139,19 +139,13 @@ public class AssertHelper {
     assertEquals(expectedNumEntries, actual);
   }
 
-  public static void assertYWSuccess(Result result, String expectedMessage) {
+  public static void assertYBPSuccess(Result result, String expectedMessage) {
     assertOk(result);
     YBPSuccess ybpSuccess = Json.fromJson(Json.parse(contentAsString(result)), YBPSuccess.class);
     assertEquals(expectedMessage, ybpSuccess.message);
   }
 
-  private static void assertYWSuccessNoMessage(Result result) {
-    assertOk(result);
-    YBPSuccess ybpSuccess = Json.fromJson(Json.parse(contentAsString(result)), YBPSuccess.class);
-    assertNull(ybpSuccess.message);
-  }
-
-  public static Result assertYWSE(ThrowingRunnable runnable) {
+  public static Result assertPlatformException(ThrowingRunnable runnable) {
     return assertThrows(PlatformServiceException.class, runnable).getResult();
   }
 

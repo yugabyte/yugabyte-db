@@ -44,7 +44,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertNotFound;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithCustomHeaders;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
@@ -99,7 +99,7 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
 
     Universe u = createUniverse(customer.getCustomerId());
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/status";
-    Result result = assertYWSE(() -> doRequestWithAuthToken("GET", url, authToken));
+    Result result = assertPlatformException(() -> doRequestWithAuthToken("GET", url, authToken));
     // TODO(API) - Should this be an http error and that too bad request?
     assertBadRequest(result, "foobar");
     assertAuditEntry(0, customer.uuid);
@@ -117,7 +117,7 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
             + "/universes/"
             + u.universeUUID
             + "/dummy_node/download_logs";
-    Result result = assertYWSE(() -> doRequestWithAuthToken("GET", url, authToken));
+    Result result = assertPlatformException(() -> doRequestWithAuthToken("GET", url, authToken));
     assertNotFound(result, "dummy_node");
     assertAuditEntry(0, customer.uuid);
   }
@@ -189,6 +189,7 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
     fakeRequestHeaders.put("ysql-username", "yugabyte");
     fakeRequestHeaders.put("ysql-password", Util.encodeBase64("yugabyte"));
 
-    result = assertYWSE(() -> doRequestWithCustomHeaders("GET", url, fakeRequestHeaders));
+    result =
+        assertPlatformException(() -> doRequestWithCustomHeaders("GET", url, fakeRequestHeaders));
   }
 }

@@ -7,7 +7,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertConflict;
 import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
-import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
@@ -58,7 +58,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     ObjectNode bodyJson = Json.newObject();
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs";
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 FakeApiHelper.doRequestWithAuthTokenAndBody(
                     "POST", url, defaultUser.createAuthToken(), bodyJson));
@@ -81,7 +81,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     bodyJson.put("type", "foo");
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs";
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 FakeApiHelper.doRequestWithAuthTokenAndBody(
                     "POST", url, defaultUser.createAuthToken(), bodyJson));
@@ -104,7 +104,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     bodyJson.put("type", "STORAGE");
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs";
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 FakeApiHelper.doRequestWithAuthTokenAndBody(
                     "POST", url, defaultUser.createAuthToken(), bodyJson));
@@ -126,7 +126,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     bodyJson.put("configName", "   ");
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs";
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 FakeApiHelper.doRequestWithAuthTokenAndBody(
                     "POST", url, defaultUser.createAuthToken(), bodyJson));
@@ -169,7 +169,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     bodyJson.put("configName", configName);
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs";
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 FakeApiHelper.doRequestWithAuthTokenAndBody(
                     "POST", url, defaultUser.createAuthToken(), bodyJson));
@@ -214,7 +214,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     UUID configUUID = ModelFactory.createS3StorageConfig(customer, "TEST10").configUUID;
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken()));
     assertBadRequest(result, "Invalid StorageConfig UUID: " + configUUID);
@@ -228,7 +228,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     Backup backup = ModelFactory.createBackup(defaultCustomer.uuid, UUID.randomUUID(), configUUID);
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken()));
     assertBadRequest(
@@ -237,7 +237,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     Schedule schedule =
         ModelFactory.createScheduleBackup(defaultCustomer.uuid, UUID.randomUUID(), configUUID);
     result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 FakeApiHelper.doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken()));
     assertBadRequest(
@@ -287,7 +287,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
 
   @Test
   public void testNegativePasswordPolicy() {
-    Result result = assertYWSE(() -> testPasswordPolicy(8, -1, 1, 1, 1));
+    Result result = assertPlatformException(() -> testPasswordPolicy(8, -1, 1, 1, 1));
     assertBadRequest(result, "{\"data.minUppercase\":[\"must be greater than or equal to 0\"]}");
     assertEquals(0, CustomerConfig.getAll(defaultCustomer.uuid).size());
     assertAuditEntry(0, defaultCustomer.uuid);
@@ -305,7 +305,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     UUID configUUID = ModelFactory.createS3StorageConfig(customer, "TEST13").configUUID;
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 FakeApiHelper.doRequestWithAuthTokenAndBody(
                     "PUT", url, defaultUser.createAuthToken(), bodyJson));
@@ -325,7 +325,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     JsonNode bodyJson = Json.toJson(config);
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + config.getConfigUUID();
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 FakeApiHelper.doRequestWithAuthTokenAndBody(
                     "PUT", url, defaultUser.createAuthToken(), bodyJson));
@@ -397,7 +397,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
 
     String url = "/api/customers/" + defaultCustomer.uuid + "/configs/" + configUUID;
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 FakeApiHelper.doRequestWithAuthTokenAndBody(
                     "PUT", url, defaultUser.createAuthToken(), bodyJson));
@@ -406,7 +406,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
 
   @Test
   public void testInvalidPasswordPolicy() {
-    Result result = assertYWSE(() -> testPasswordPolicy(8, 3, 3, 2, 1));
+    Result result = assertPlatformException(() -> testPasswordPolicy(8, 3, 3, 2, 1));
     assertBadRequest(
         result,
         "{\"data\":[\"Minimal length should be not less than"

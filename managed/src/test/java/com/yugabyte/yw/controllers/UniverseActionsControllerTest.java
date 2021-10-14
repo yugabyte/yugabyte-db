@@ -41,7 +41,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
@@ -258,7 +258,8 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/toggle_tls";
     Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, Json.newObject()));
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, Json.newObject()));
     assertBadRequest(result, "This field is required");
 
     ArgumentCaptor<UpgradeParams> argCaptor = ArgumentCaptor.forClass(UpgradeParams.class);
@@ -278,7 +279,8 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
     ObjectNode bodyJson = prepareRequestBodyForToggleTls(true, true, null);
     bodyJson.put("upgradeOption", "ROLLING");
     Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "Invalid upgrade option");
 
     ArgumentCaptor<UpgradeParams> argCaptor = ArgumentCaptor.forClass(UpgradeParams.class);
@@ -297,7 +299,8 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
     String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/toggle_tls";
     ObjectNode bodyJson = prepareRequestBodyForToggleTls(false, false, null);
     Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "No changes in Tls parameters");
 
     ArgumentCaptor<UpgradeParams> argCaptor = ArgumentCaptor.forClass(UpgradeParams.class);
@@ -316,7 +319,8 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
     String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/toggle_tls";
     ObjectNode bodyJson = prepareRequestBodyForToggleTls(true, false, UUID.randomUUID());
     Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "No valid rootCA");
 
     ArgumentCaptor<UpgradeParams> argCaptor = ArgumentCaptor.forClass(UpgradeParams.class);
@@ -337,7 +341,8 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
     String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/toggle_tls";
     ObjectNode bodyJson = prepareRequestBodyForToggleTls(false, true, certUUID2);
     Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "Cannot update root certificate");
 
     ArgumentCaptor<UpgradeParams> argCaptor = ArgumentCaptor.forClass(UpgradeParams.class);
@@ -357,7 +362,8 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
     String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/toggle_tls";
     ObjectNode bodyJson = prepareRequestBodyForToggleTls(true, true, null);
     Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "as it has nodes in one of");
 
     ArgumentCaptor<UpgradeParams> argCaptor = ArgumentCaptor.forClass(UpgradeParams.class);
