@@ -39,7 +39,7 @@ For information on Yugabyte Cloud pricing, refer to the [Yugabyte Cloud Standard
 
 Refer to [Cloud provider regions](../release-notes#cloud-provider-regions) for a list currently supported regions.
 
-Yugabyte Cloud supports all the regions that have robust infrastructure and sufficient demand from customers. Regions where load balancers, certain VMs, or other resources are harder to obtain have not yet been added. We are continuously improving region coverage, so if there are any regions you would like us to support, reach out to [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
+Yugabyte Cloud supports all the regions that have robust infrastructure and sufficient demand from customers. We are continuously improving region coverage, so if there are any regions you would like us to support, reach out to [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
 
 ### What version of YugabyteDB does Yugabyte Cloud run on
 
