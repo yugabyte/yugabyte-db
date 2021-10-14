@@ -85,6 +85,7 @@ The following **AWS regions** are available:
 
 - **Tables** - In some instances in free clusters, the **Tables** tab will show all tables with a size of 0B.
 - **Clusters** - No support for scaling vCPUs on single node clusters.
+- **PostgreSQL Extensions** - For security reasons, the admin account used for the YugabyteDB database is not the super user. As a result, the admin account cannot install extensions, or enable extensions using the `CREATE EXTENSION` command. Support for installing and enabling extensions is planned. In the meantime, if you need database extensions added to a cluster, contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) with the names of the cluster and extension, or reach out on Slack. 
 
 ### Known issues in cloud shell
 
