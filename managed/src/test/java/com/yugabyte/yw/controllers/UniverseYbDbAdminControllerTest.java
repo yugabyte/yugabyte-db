@@ -14,7 +14,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertErrorResponse;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
-import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
 import static com.yugabyte.yw.common.FakeApiHelper.routeWithYWErrHandler;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
@@ -133,7 +133,8 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
       assertOk(result);
     } else {
       Result result =
-          assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+          assertPlatformException(
+              () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
       Mockito.verifyNoMoreInteractions(mockYcqlQueryExecutor, mockYsqlQueryExecutor);
       assertErrorResponse(result, responseError);
     }
@@ -206,7 +207,8 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
       assertOk(result);
     } else {
       Result result =
-          assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+          assertPlatformException(
+              () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
       Mockito.verifyNoMoreInteractions(mockYcqlQueryExecutor, mockYsqlQueryExecutor);
       assertErrorResponse(result, responseError);
     }

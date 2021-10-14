@@ -5,7 +5,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertErrorResponse;
 import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -175,7 +175,7 @@ public class RegionControllerTest extends FakeDBApplication {
     ObjectNode regionJson = Json.newObject();
     regionJson.put("code", "foo-region");
     UUID randomUUID = UUID.randomUUID();
-    Result result = assertYWSE(() -> createRegion(randomUUID, regionJson));
+    Result result = assertPlatformException(() -> createRegion(randomUUID, regionJson));
     assertEquals(BAD_REQUEST, result.status());
     assertErrorResponse(result, "Invalid Provider UUID: " + randomUUID);
     assertAuditEntry(0, customer.uuid);
@@ -183,7 +183,7 @@ public class RegionControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateRegionsWithoutRequiredParams() {
-    Result result = assertYWSE(() -> createRegion(provider.uuid, Json.newObject()));
+    Result result = assertPlatformException(() -> createRegion(provider.uuid, Json.newObject()));
     assertEquals(BAD_REQUEST, result.status());
     assertThat(
         contentAsString(result),
@@ -261,7 +261,7 @@ public class RegionControllerTest extends FakeDBApplication {
     ObjectNode vpcInfo = Json.newObject();
     vpcInfo.put("error", "Something went wrong!!.");
     when(mockNetworkManager.bootstrap(any(), any(), any())).thenReturn(vpcInfo);
-    Result result = assertYWSE(() -> createRegion(provider.uuid, regionJson));
+    Result result = assertPlatformException(() -> createRegion(provider.uuid, regionJson));
     assertInternalServerError(result, "Region Bootstrap failed.");
     Region r = Region.getByCode(provider, "foo-region");
     assertNull(r);
@@ -273,7 +273,7 @@ public class RegionControllerTest extends FakeDBApplication {
     ObjectNode regionJson = Json.newObject();
     regionJson.put("code", "datacenter-azure-washington");
     regionJson.put("name", "Gcp US West 1");
-    Result result = assertYWSE(() -> createRegion(provider.uuid, regionJson));
+    Result result = assertPlatformException(() -> createRegion(provider.uuid, regionJson));
     assertEquals(BAD_REQUEST, result.status());
     JsonNode json = Json.parse(contentAsString(result));
     assertValue(json, "success", "false");
@@ -284,7 +284,7 @@ public class RegionControllerTest extends FakeDBApplication {
   @Test
   public void testDeleteRegionWithInvalidParams() {
     UUID randomUUID = UUID.randomUUID();
-    Result result = assertYWSE(() -> deleteRegion(provider.uuid, randomUUID));
+    Result result = assertPlatformException(() -> deleteRegion(provider.uuid, randomUUID));
     assertEquals(BAD_REQUEST, result.status());
     assertThat(
         contentAsString(result), CoreMatchers.containsString("Invalid Provider/Region UUID"));
