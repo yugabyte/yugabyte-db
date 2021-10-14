@@ -1712,6 +1712,11 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 			if (tmp.state == PGSS_FINISHED)
 				continue;
 		}
+
+		/* Skip queries such as, $1, $2 := $3, etc. */
+		if (tmp.state == PGSS_PARSE || tmp.state == PGSS_PLAN)
+			continue;
+
 		if (tmp.info.parentid != UINT64CONST(0))
 		{
 			int len = 0;
