@@ -4383,6 +4383,13 @@ RollbackToSavepoint(const char *name)
 void
 BeginInternalSubTransaction(const char *name)
 {
+	/*
+	 * The subtransaction corresponding to the buffered operations must be
+	 * current and in the INPROGRESS state for correct error handling.
+	 * An error thrown while/after switching over to a new subtransaction
+	 * would lead to a fatal error or unpredictable behavior.
+	 */
+	YBFlushBufferedOperations();
 	TransactionState s = CurrentTransactionState;
 
 	/*
@@ -4454,6 +4461,13 @@ BeginInternalSubTransaction(const char *name)
 void
 ReleaseCurrentSubTransaction(void)
 {
+	/*
+	 * The subtransaction corresponding to the buffered operations must be
+	 * current and in the INPROGRESS state for correct error handling.
+	 * An error thrown while/after commiting/releasing it would lead to a
+	 * fatal error or unpredictable behavior.
+	 */
+	YBFlushBufferedOperations();
 	TransactionState s = CurrentTransactionState;
 
 	/*
