@@ -1115,27 +1115,5 @@ void PgSession::SetCatalogReadPoint(const ReadHybridTime& read_ht) {
   catalog_session_->SetReadPoint(read_ht);
 }
 
-Status PgSession::SetActiveSubTransaction(SubTransactionId id) {
-  // It's required that we flush all buffered operations before changing the SubTransactionMetadata
-  // used by the underlying batcher and RPC logic, as this will snapshot the current
-  // SubTransactionMetadata for use in construction of RPCs for already-queued operations, thereby
-  // ensuring that previous operations use previous SubTransactionMetadata. If we do not flush here,
-  // already queued operations may incorrectly use this newly modified SubTransactionMetadata when
-  // they are eventually sent to DocDB.
-  RETURN_NOT_OK(FlushBufferedOperations());
-  RETURN_NOT_OK(pg_txn_manager_->BeginWriteTransactionIfNecessary(
-      IsReadOnlyOperation::kFalse, IsPessimisticLockRequired::kFalse));
-  return pg_txn_manager_->SetActiveSubTransaction(id);
-}
-
-Status PgSession::RollbackSubTransaction(SubTransactionId id) {
-  // TODO(savepoints) -- send async RPC to transaction status tablet, or rely on heartbeater to
-  // eventually send this metadata.
-  // See comment in SetActiveSubTransaction -- we must flush buffered operations before updating any
-  // SubTransactionMetadata.
-  RETURN_NOT_OK(FlushBufferedOperations());
-  return pg_txn_manager_->RollbackSubTransaction(id);
-}
-
 }  // namespace pggate
 }  // namespace yb
