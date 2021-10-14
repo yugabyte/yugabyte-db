@@ -6,7 +6,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
@@ -256,7 +256,8 @@ public class UpgradeUniverseControllerTest extends WithApplication {
     String url =
         "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/software";
     Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, Json.newObject()));
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, Json.newObject()));
     assertBadRequest(result, "Missing required creator property");
 
     ArgumentCaptor<SoftwareUpgradeParams> argCaptor =
@@ -384,7 +385,8 @@ public class UpgradeUniverseControllerTest extends WithApplication {
     String url =
         "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/gflags";
     Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, Json.newObject()));
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, Json.newObject()));
     assertBadRequest(result, "gflags param is required");
 
     ArgumentCaptor<GFlagsUpgradeParams> argCaptor =
@@ -423,7 +425,8 @@ public class UpgradeUniverseControllerTest extends WithApplication {
     bodyJson.set("masterGFlags", masterGFlags);
     bodyJson.set("tserverGFlags", tserverGFlags);
     Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "No gflags to change");
 
     ArgumentCaptor<GFlagsUpgradeParams> argCaptor =
@@ -444,7 +447,8 @@ public class UpgradeUniverseControllerTest extends WithApplication {
         "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/gflags";
     ObjectNode bodyJson = Json.newObject().put("masterGFlags", "abcd").put("tserverGFlags", "abcd");
     Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "JsonProcessingException parsing request body");
 
     ArgumentCaptor<GFlagsUpgradeParams> argCaptor =
@@ -617,7 +621,8 @@ public class UpgradeUniverseControllerTest extends WithApplication {
     String url =
         "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/certs";
     Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, Json.newObject()));
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, Json.newObject()));
     assertBadRequest(result, "No changes in rootCA or clientRootCA.");
 
     ArgumentCaptor<CertsRotateParams> argCaptor = ArgumentCaptor.forClass(CertsRotateParams.class);
@@ -696,7 +701,8 @@ public class UpgradeUniverseControllerTest extends WithApplication {
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/tls";
     Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, Json.newObject()));
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, Json.newObject()));
     assertBadRequest(result, "Missing required creator property");
 
     ArgumentCaptor<TlsToggleParams> argCaptor = ArgumentCaptor.forClass(TlsToggleParams.class);
@@ -716,7 +722,8 @@ public class UpgradeUniverseControllerTest extends WithApplication {
     ObjectNode bodyJson = prepareRequestBodyForTlsToggle(true, true, null);
     bodyJson.put("upgradeOption", "ROLLING");
     Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "JsonProcessingException parsing request body");
 
     ArgumentCaptor<TlsToggleParams> argCaptor = ArgumentCaptor.forClass(TlsToggleParams.class);
@@ -735,7 +742,8 @@ public class UpgradeUniverseControllerTest extends WithApplication {
     String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/tls";
     ObjectNode bodyJson = prepareRequestBodyForTlsToggle(false, false, null);
     Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "No changes in Tls parameters");
 
     ArgumentCaptor<TlsToggleParams> argCaptor = ArgumentCaptor.forClass(TlsToggleParams.class);
@@ -754,7 +762,8 @@ public class UpgradeUniverseControllerTest extends WithApplication {
     String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/tls";
     ObjectNode bodyJson = prepareRequestBodyForTlsToggle(true, false, UUID.randomUUID());
     Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "No valid root certificate");
 
     ArgumentCaptor<TlsToggleParams> argCaptor = ArgumentCaptor.forClass(TlsToggleParams.class);
@@ -775,7 +784,8 @@ public class UpgradeUniverseControllerTest extends WithApplication {
     String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/tls";
     ObjectNode bodyJson = prepareRequestBodyForTlsToggle(false, true, certUUID2);
     Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "Cannot update root certificate");
 
     ArgumentCaptor<TlsToggleParams> argCaptor = ArgumentCaptor.forClass(TlsToggleParams.class);
@@ -795,7 +805,8 @@ public class UpgradeUniverseControllerTest extends WithApplication {
     String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/tls";
     ObjectNode bodyJson = prepareRequestBodyForTlsToggle(true, true, null);
     Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "as it has nodes in one of");
 
     ArgumentCaptor<TlsToggleParams> argCaptor = ArgumentCaptor.forClass(TlsToggleParams.class);
@@ -846,7 +857,8 @@ public class UpgradeUniverseControllerTest extends WithApplication {
     images.put(uuid.toString(), "image-" + uuid);
     bodyJson.set("machineImages", images);
     Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "VM image upgrade is only supported for AWS / GCP");
 
     ArgumentCaptor<VMImageUpgradeParams> argCaptor =
@@ -871,7 +883,8 @@ public class UpgradeUniverseControllerTest extends WithApplication {
     images.put(uuid.toString(), "image-" + uuid);
     bodyJson.set("machineImages", images);
     Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "Cannot upgrade a universe with ephemeral storage");
 
     ArgumentCaptor<VMImageUpgradeParams> argCaptor =
@@ -891,7 +904,8 @@ public class UpgradeUniverseControllerTest extends WithApplication {
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/vm";
     Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, Json.newObject()));
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, Json.newObject()));
     assertBadRequest(result, "JsonProcessingException parsing request body");
 
     ArgumentCaptor<VMImageUpgradeParams> argCaptor =

@@ -3,7 +3,7 @@
 package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
-import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.junit.Assert.assertEquals;
 import static org.mockito.Matchers.anyString;
@@ -65,7 +65,8 @@ public class TabletServerControllerTest extends FakeDBApplication {
     customer.addUniverseUUID(u1.universeUUID);
     customer.save();
     Result result =
-        assertYWSE(() -> tabletController.listTabletServers(customer.uuid, universeUUID));
+        assertPlatformException(
+            () -> tabletController.listTabletServers(customer.uuid, universeUUID));
     assertEquals(500, result.status());
     assertAuditEntry(0, customer.uuid);
   }

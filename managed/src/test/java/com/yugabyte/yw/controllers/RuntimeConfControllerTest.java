@@ -10,7 +10,7 @@
 
 package com.yugabyte.yw.controllers;
 
-import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
 import static org.junit.Assert.assertEquals;
@@ -125,13 +125,17 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
 
   @Test
   public void key() {
-    assertEquals(NOT_FOUND, assertYWSE(() -> getGCInterval(defaultUniverse.universeUUID)).status());
+    assertEquals(
+        NOT_FOUND,
+        assertPlatformException(() -> getGCInterval(defaultUniverse.universeUUID)).status());
     String newInterval = "2 days";
     Result result = setGCInterval(newInterval, defaultUniverse.universeUUID);
     assertEquals(OK, result.status());
     assertEquals(newInterval, contentAsString(getGCInterval(defaultUniverse.universeUUID)));
     assertEquals(OK, deleteGCInterval(defaultUniverse.universeUUID).status());
-    assertEquals(NOT_FOUND, assertYWSE(() -> getGCInterval(defaultUniverse.universeUUID)).status());
+    assertEquals(
+        NOT_FOUND,
+        assertPlatformException(() -> getGCInterval(defaultUniverse.universeUUID)).status());
   }
 
   private Result setGCInterval(String interval, UUID scopeUUID) {

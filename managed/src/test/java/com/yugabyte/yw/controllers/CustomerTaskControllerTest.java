@@ -3,9 +3,9 @@
 package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertValues;
-import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.models.CustomerTask.TaskType.Create;
 import static com.yugabyte.yw.models.CustomerTask.TaskType.GFlagsUpgrade;
@@ -595,7 +595,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     String authToken = user.createAuthToken();
     UUID taskUUID = UUID.randomUUID();
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 FakeApiHelper.doRequestWithAuthToken(
                     "GET", "/api/customers/" + customer.uuid + "/tasks/" + taskUUID, authToken));

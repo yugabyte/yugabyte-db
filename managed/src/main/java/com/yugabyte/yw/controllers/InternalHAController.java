@@ -10,9 +10,9 @@
 
 package com.yugabyte.yw.controllers;
 
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.forms.DemoteInstanceFormData;
@@ -23,6 +23,7 @@ import com.yugabyte.yw.models.PlatformInstance;
 import java.io.File;
 import java.net.URL;
 import java.util.Date;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -70,49 +71,45 @@ public class InternalHAController extends Controller {
     }
   }
 
+  // TODO: Change this to accept ObjectNode instead of ArrayNode in request body
   public Result syncInstances(long timestamp) {
-    try {
-      Optional<HighAvailabilityConfig> config =
-          HighAvailabilityConfig.getByClusterKey(this.getClusterKey());
-      if (!config.isPresent()) {
-        return ApiResponse.error(NOT_FOUND, "Invalid config UUID");
-      }
-
-      Optional<PlatformInstance> localInstance = config.get().getLocal();
-
-      if (!localInstance.isPresent()) {
-        LOG.warn("No local instance configured");
-
-        return ApiResponse.error(BAD_REQUEST, "No local instance configured");
-      }
-
-      if (localInstance.get().getIsLeader()) {
-        LOG.warn(
-            "Rejecting request to import instances due to this process being designated a leader");
-
-        return ApiResponse.error(BAD_REQUEST, "Cannot import instances for a leader");
-      }
-
-      Date requestLastFailover = new Date(timestamp);
-      Date localLastFailover = config.get().getLastFailover();
-
-      // Reject the request if coming from a platform instance that was failed over to earlier.
-      if (localLastFailover != null && localLastFailover.after(requestLastFailover)) {
-        LOG.warn("Rejecting request to import instances due to request lastFailover being stale");
-
-        return ApiResponse.error(BAD_REQUEST, "Cannot import instances from stale leader");
-      }
-
-      Set<PlatformInstance> processedInstances =
-          replicationManager.importPlatformInstances(
-              config.get(), (ArrayNode) request().body().asJson());
-
-      return PlatformResults.withData(processedInstances);
-    } catch (Exception e) {
-      LOG.error("Error importing platform instances", e);
-
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Error importing platform instances");
+    Optional<HighAvailabilityConfig> config =
+        HighAvailabilityConfig.getByClusterKey(this.getClusterKey());
+    if (!config.isPresent()) {
+      return ApiResponse.error(NOT_FOUND, "Invalid config UUID");
     }
+
+    Optional<PlatformInstance> localInstance = config.get().getLocal();
+
+    if (!localInstance.isPresent()) {
+      LOG.warn("No local instance configured");
+
+      return ApiResponse.error(BAD_REQUEST, "No local instance configured");
+    }
+
+    if (localInstance.get().getIsLeader()) {
+      LOG.warn(
+          "Rejecting request to import instances due to this process being designated a leader");
+
+      return ApiResponse.error(BAD_REQUEST, "Cannot import instances for a leader");
+    }
+
+    Date requestLastFailover = new Date(timestamp);
+    Date localLastFailover = config.get().getLastFailover();
+
+    // Reject the request if coming from a platform instance that was failed over to earlier.
+    if (localLastFailover != null && localLastFailover.after(requestLastFailover)) {
+      LOG.warn("Rejecting request to import instances due to request lastFailover being stale");
+
+      return ApiResponse.error(BAD_REQUEST, "Cannot import instances from stale leader");
+    }
+
+    String content = ctx().request().body().asBytes().utf8String();
+    List<PlatformInstance> newInstances = Util.parseJsonArray(content, PlatformInstance.class);
+    Set<PlatformInstance> processedInstances =
+        replicationManager.importPlatformInstances(config.get(), newInstances);
+
+    return PlatformResults.withData(processedInstances);
   }
 
   public Result syncBackups() throws Exception {

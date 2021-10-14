@@ -15,7 +15,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.hamcrest.CoreMatchers.allOf;
@@ -112,7 +112,8 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
   public void invalidUniverseUUID(String testDescription, String urlSuffix, String httpMethod) {
     UUID randomUUID = UUID.randomUUID();
     String url = "/api/customers/" + customer.uuid + "/universes/" + randomUUID + urlSuffix;
-    Result result = assertYWSE(() -> doRequestWithAuthToken(httpMethod, url, authToken));
+    Result result =
+        assertPlatformException(() -> doRequestWithAuthToken(httpMethod, url, authToken));
     assertBadRequest(result, "Cannot find universe " + randomUUID);
     assertAuditEntry(0, customer.uuid);
   }

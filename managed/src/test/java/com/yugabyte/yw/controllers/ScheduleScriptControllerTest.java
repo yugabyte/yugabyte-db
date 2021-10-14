@@ -2,7 +2,7 @@ package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.junit.Assert.assertEquals;
 import static play.test.Helpers.contentAsString;
@@ -88,7 +88,7 @@ public class ScheduleScriptControllerTest extends FakeDBApplication {
   @Test
   public void testWithoutCronExpression() {
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 createScriptSchedule(
                     defaultUniverse.universeUUID, null, validScriptParam, "5", true));
@@ -98,7 +98,7 @@ public class ScheduleScriptControllerTest extends FakeDBApplication {
   @Test
   public void testWithInvalidCronExpression() {
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 createScriptSchedule(
                     defaultUniverse.universeUUID, "* * * * ? * *", validScriptParam, "5", true));
@@ -108,7 +108,7 @@ public class ScheduleScriptControllerTest extends FakeDBApplication {
   @Test
   public void testWithoutTimeLimitMins() {
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 createScriptSchedule(
                     defaultUniverse.universeUUID, "5 * * * *", validScriptParam, null, true));
@@ -118,7 +118,7 @@ public class ScheduleScriptControllerTest extends FakeDBApplication {
   @Test
   public void testWithInvalidTimeLimitMins() {
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 createScriptSchedule(
                     defaultUniverse.universeUUID,
@@ -132,7 +132,7 @@ public class ScheduleScriptControllerTest extends FakeDBApplication {
   @Test
   public void testWithoutUploadingScript() {
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 createScriptSchedule(
                     defaultUniverse.universeUUID, "5 * * * *", validScriptParam, "5", false));
@@ -143,7 +143,7 @@ public class ScheduleScriptControllerTest extends FakeDBApplication {
   public void testWithUnkownUniverse() {
     UUID unKnownUniverseUUID = UUID.randomUUID();
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 createScriptSchedule(
                     unKnownUniverseUUID, "5 * * * *", validScriptParam, "5", true));
@@ -164,7 +164,7 @@ public class ScheduleScriptControllerTest extends FakeDBApplication {
   public void testCreateMultipleScriptSchedule() {
     createScriptSchedule(defaultUniverse.universeUUID, "5 * * * *", validScriptParam, "5", true);
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 createScriptSchedule(
                     defaultUniverse.universeUUID, "5 * * * *", validScriptParam, "5", true));

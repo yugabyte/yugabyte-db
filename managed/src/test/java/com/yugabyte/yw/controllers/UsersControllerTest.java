@@ -3,7 +3,7 @@
 package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
-import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.models.Users.Role;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
@@ -148,7 +148,7 @@ public class UsersControllerTest extends FakeDBApplication {
     assertEquals(testUser1.getRole(), Role.SuperAdmin);
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken1).build();
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 route(
                     fakeRequest(
@@ -221,7 +221,7 @@ public class UsersControllerTest extends FakeDBApplication {
     params.put("role", "Admin");
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 route(
                     fakeRequest(
@@ -243,7 +243,7 @@ public class UsersControllerTest extends FakeDBApplication {
     params.put("confirmPassword", "new-password");
     params.put("role", "ReadOnly");
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 route(
                     fakeRequest("POST", String.format(baseRoute, customer1.uuid))

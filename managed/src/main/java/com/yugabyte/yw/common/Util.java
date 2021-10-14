@@ -373,6 +373,31 @@ public class Util {
     }
   }
 
+  /**
+   * @deprecated Avoid using request body with Json ArrayNode as root. This is because
+   *     for @ApiImplicitParam does not support that. Instead create a top level request object that
+   *     wraps the array If at all, use this only for undocumented API
+   */
+  @Deprecated
+  public static <T> List<T> parseJsonArray(String content, Class<T> elementType) {
+    try {
+      return Json.mapper()
+          .readValue(
+              content,
+              Json.mapper().getTypeFactory().constructCollectionType(List.class, elementType));
+    } catch (IOException e) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Failed to parse List<"
+              + elementType.getSimpleName()
+              + ">"
+              + " object: "
+              + content
+              + " error: "
+              + e.getMessage());
+    }
+  }
+
   @ApiModel(value = "UniverseDetailSubset", description = "A small subset of universe information")
   @Getter
   public static class UniverseDetailSubset {

@@ -2,7 +2,7 @@
 
 package com.yugabyte.yw.controllers;
 
-import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static play.mvc.Http.Status.BAD_REQUEST;
@@ -96,7 +96,7 @@ public class AuditControllerTest extends FakeDBApplication {
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken2).build();
     String route = "/api/customers/%s/tasks/%s/audit_info";
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 route(
                     fakeRequest("GET", String.format(route, customer2.uuid, taskUUID1))
@@ -123,7 +123,7 @@ public class AuditControllerTest extends FakeDBApplication {
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken2).build();
     String route = "/api/customers/%s/tasks/%s/audit_user";
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 route(
                     fakeRequest("GET", String.format(route, customer2.uuid, taskUUID1))

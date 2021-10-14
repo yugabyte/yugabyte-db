@@ -10,6 +10,8 @@
 
 package com.yugabyte.yw.common.ha;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import akka.actor.ActorSystem;
 import akka.actor.Cancellable;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -18,6 +20,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
@@ -46,6 +49,7 @@ import scala.concurrent.ExecutionContext;
 
 @Singleton
 public class PlatformReplicationManager {
+
   private static final String BACKUP_SCRIPT = "bin/yb_platform_backup.sh";
   static final String DB_PASSWORD_ENV_VAR_KEY = "PGPASSWORD";
 
@@ -202,22 +206,24 @@ public class PlatformReplicationManager {
    * @param instancesJson the JSON payload received from the leader instance
    */
   public Set<PlatformInstance> importPlatformInstances(
-      HighAvailabilityConfig config, ArrayNode instancesJson) {
-    List<PlatformInstance> existingInstances = config.getInstances();
-    // Get list of existing addresses.
-    Set<String> existingAddrs =
-        existingInstances.stream().map(PlatformInstance::getAddress).collect(Collectors.toSet());
-
-    // Map request JSON payload to list of platform instances.
-    Set<PlatformInstance> newInstances =
-        StreamSupport.stream(instancesJson.spliterator(), false)
-            .map(obj -> Json.fromJson(obj, PlatformInstance.class))
-            .filter(Objects::nonNull)
-            .collect(Collectors.toSet());
+      HighAvailabilityConfig config, List<PlatformInstance> newInstances) {
+    String localAddress = config.getLocal().get().getAddress();
 
     // Get list of request payload addresses.
     Set<String> newAddrs =
         newInstances.stream().map(PlatformInstance::getAddress).collect(Collectors.toSet());
+
+    if (!newAddrs.contains(localAddress)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Current instance (%s) not found in Sync request %s", localAddress, newAddrs));
+    }
+
+    List<PlatformInstance> existingInstances = config.getInstances();
+    // Get list of existing addresses.
+    Set<String> existingAddrs =
+        existingInstances.stream().map(PlatformInstance::getAddress).collect(Collectors.toSet());
 
     // Delete any instances that exist locally but aren't included in the sync request.
     Set<String> instanceAddrsToDelete = Sets.difference(existingAddrs, newAddrs);
@@ -344,6 +350,7 @@ public class PlatformReplicationManager {
   }
 
   abstract class PlatformBackupParams {
+
     // The addr that the prometheus server is running on.
     private final String prometheusHost;
     // The username that YW uses to connect to it's DB.
@@ -396,6 +403,7 @@ public class PlatformReplicationManager {
   }
 
   private class CreatePlatformBackupParams extends PlatformBackupParams {
+
     // Whether to exclude prometheus metric data from the backup or not.
     private final boolean excludePrometheus;
     // Whether to exclude the YB release binaries from the backup or not.
@@ -430,6 +438,7 @@ public class PlatformReplicationManager {
   }
 
   private class RestorePlatformBackupParams extends PlatformBackupParams {
+
     // Where to input a previously taken platform backup from.
     private final File input;
 

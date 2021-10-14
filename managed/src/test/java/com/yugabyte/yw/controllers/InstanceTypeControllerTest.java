@@ -6,7 +6,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertValues;
-import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.core.IsNull.notNullValue;
@@ -157,7 +157,8 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   @Test
   public void testListInstanceTypeWithInvalidProviderUUID() {
     UUID randomUUID = UUID.randomUUID();
-    Result result = assertYWSE(() -> doListInstanceTypesAndVerify(randomUUID, BAD_REQUEST));
+    Result result =
+        assertPlatformException(() -> doListInstanceTypesAndVerify(randomUUID, BAD_REQUEST));
     assertErrorNodeValue(
         Json.parse(contentAsString(result)), "Invalid Provider UUID: " + randomUUID);
     assertAuditEntry(0, customer.uuid);
@@ -306,7 +307,8 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     instanceTypeJson.set("idKey", idKey);
     UUID randomUUID = UUID.randomUUID();
     Result result =
-        assertYWSE(() -> doCreateInstanceTypeAndVerify(randomUUID, instanceTypeJson, BAD_REQUEST));
+        assertPlatformException(
+            () -> doCreateInstanceTypeAndVerify(randomUUID, instanceTypeJson, BAD_REQUEST));
     assertErrorNodeValue(
         Json.parse(contentAsString(result)), "Invalid Provider UUID: " + randomUUID);
     assertAuditEntry(0, customer.uuid);
@@ -315,7 +317,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   @Test
   public void testCreateInstanceTypeWithInvalidParams() {
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () -> doCreateInstanceTypeAndVerify(awsProvider.uuid, Json.newObject(), BAD_REQUEST));
     assertErrorNodeValue(Json.parse(contentAsString(result)), "idKey", "This field is required");
     assertErrorNodeValue(
@@ -404,7 +406,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   public void testGetInstanceTypeWithInvalidParams() {
     String fakeInstanceCode = "foo";
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () -> doGetInstanceTypeAndVerify(awsProvider.uuid, fakeInstanceCode, BAD_REQUEST));
     assertErrorNodeValue(
         Json.parse(contentAsString(result)), "Instance type not found: " + fakeInstanceCode);
@@ -416,7 +418,8 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     String fakeInstanceCode = "foo";
     UUID randomUUID = UUID.randomUUID();
     Result result =
-        assertYWSE(() -> doGetInstanceTypeAndVerify(randomUUID, fakeInstanceCode, BAD_REQUEST));
+        assertPlatformException(
+            () -> doGetInstanceTypeAndVerify(randomUUID, fakeInstanceCode, BAD_REQUEST));
     assertErrorNodeValue(
         Json.parse(contentAsString(result)), "Invalid Provider UUID: " + randomUUID);
     assertAuditEntry(0, customer.uuid);
@@ -438,7 +441,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   public void testDeleteInstanceTypeWithInvalidParams() {
     String fakeInstanceCode = "foo";
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () -> doDeleteInstanceTypeAndVerify(awsProvider.uuid, fakeInstanceCode, BAD_REQUEST));
     assertErrorNodeValue(
         Json.parse(contentAsString(result)), "Instance type not found: " + fakeInstanceCode);
@@ -450,7 +453,8 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     String fakeInstanceCode = "foo";
     UUID randomUUID = UUID.randomUUID();
     Result result =
-        assertYWSE(() -> doDeleteInstanceTypeAndVerify(randomUUID, fakeInstanceCode, BAD_REQUEST));
+        assertPlatformException(
+            () -> doDeleteInstanceTypeAndVerify(randomUUID, fakeInstanceCode, BAD_REQUEST));
     assertErrorNodeValue(
         Json.parse(contentAsString(result)), "Invalid Provider UUID: " + randomUUID);
     assertAuditEntry(0, customer.uuid);
