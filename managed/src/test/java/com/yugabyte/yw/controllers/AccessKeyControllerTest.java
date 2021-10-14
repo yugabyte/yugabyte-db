@@ -8,7 +8,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
 import static com.yugabyte.yw.common.AssertHelper.assertErrorResponse;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.containsString;
@@ -169,7 +169,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
   @Test
   public void testGetAccessKeyWithInvalidProviderUUID() {
     UUID invalidProviderUUID = UUID.randomUUID();
-    Result result = assertYWSE(() -> getAccessKey(invalidProviderUUID, "foo"));
+    Result result = assertPlatformException(() -> getAccessKey(invalidProviderUUID, "foo"));
     assertBadRequest(result, "Invalid Provider UUID: " + invalidProviderUUID);
     assertAuditEntry(0, defaultCustomer.uuid);
   }
@@ -177,7 +177,8 @@ public class AccessKeyControllerTest extends FakeDBApplication {
   @Test
   public void testGetAccessKeyWithInvalidKeyCode() {
     AccessKey accessKey = AccessKey.create(UUID.randomUUID(), "foo", new AccessKey.KeyInfo());
-    Result result = assertYWSE(() -> getAccessKey(defaultProvider.uuid, accessKey.getKeyCode()));
+    Result result =
+        assertPlatformException(() -> getAccessKey(defaultProvider.uuid, accessKey.getKeyCode()));
     assertEquals(BAD_REQUEST, result.status());
     assertBadRequest(result, "KeyCode not found: " + accessKey.getKeyCode());
     assertAuditEntry(0, defaultCustomer.uuid);
@@ -198,7 +199,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
   @Test
   public void testListAccessKeyWithInvalidProviderUUID() {
     UUID invalidProviderUUID = UUID.randomUUID();
-    Result result = assertYWSE(() -> listAccessKey(invalidProviderUUID));
+    Result result = assertPlatformException(() -> listAccessKey(invalidProviderUUID));
     assertBadRequest(result, "Invalid Provider UUID: " + invalidProviderUUID);
     assertAuditEntry(0, defaultCustomer.uuid);
   }
@@ -234,14 +235,16 @@ public class AccessKeyControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateAccessKeyWithInvalidProviderUUID() {
-    Result result = assertYWSE(() -> createAccessKey(UUID.randomUUID(), "foo", false, false));
+    Result result =
+        assertPlatformException(() -> createAccessKey(UUID.randomUUID(), "foo", false, false));
     assertBadRequest(result, "Invalid Provider/Region UUID");
     assertAuditEntry(0, defaultCustomer.uuid);
   }
 
   @Test
   public void testCreateAccessKeyWithInvalidParams() {
-    Result result = assertYWSE(() -> createAccessKey(defaultProvider.uuid, null, false, false));
+    Result result =
+        assertPlatformException(() -> createAccessKey(defaultProvider.uuid, null, false, false));
     JsonNode node = Json.parse(contentAsString(result));
     assertErrorNodeValue(node, "keyCode", "This field is required");
     assertErrorNodeValue(node, "regionUUID", "This field is required");
@@ -251,7 +254,8 @@ public class AccessKeyControllerTest extends FakeDBApplication {
   @Test
   public void testCreateAccessKeyWithDifferentProviderUUID() {
     Provider gcpProvider = ModelFactory.gcpProvider(ModelFactory.testCustomer("fb", "foo@bar.com"));
-    Result result = assertYWSE(() -> createAccessKey(gcpProvider.uuid, "key-code", false, false));
+    Result result =
+        assertPlatformException(() -> createAccessKey(gcpProvider.uuid, "key-code", false, false));
     assertBadRequest(result, "Invalid Provider/Region UUID");
     assertAuditEntry(0, defaultCustomer.uuid);
   }
@@ -371,7 +375,8 @@ public class AccessKeyControllerTest extends FakeDBApplication {
     when(mockAccessManager.addKey(defaultRegion.uuid, "key-code-1", SSH_PORT, true, false))
         .thenThrow(new PlatformServiceException(INTERNAL_SERVER_ERROR, "Something went wrong!!"));
     Result result =
-        assertYWSE(() -> createAccessKey(defaultProvider.uuid, "key-code-1", false, false));
+        assertPlatformException(
+            () -> createAccessKey(defaultProvider.uuid, "key-code-1", false, false));
     assertErrorResponse(result, "Something went wrong!!");
     assertAuditEntry(0, defaultCustomer.uuid);
   }
@@ -407,7 +412,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
         .when(mockTemplateManager)
         .createProvisionTemplate(accessKey, false, false, true, 9300, "prometheus");
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 createAccessKey(
                     onpremProvider.uuid,
@@ -442,14 +447,14 @@ public class AccessKeyControllerTest extends FakeDBApplication {
   @Test
   public void testDeleteAccessKeyWithInvalidProviderUUID() {
     UUID invalidProviderUUID = UUID.randomUUID();
-    Result result = assertYWSE(() -> deleteAccessKey(invalidProviderUUID, "foo"));
+    Result result = assertPlatformException(() -> deleteAccessKey(invalidProviderUUID, "foo"));
     assertBadRequest(result, "Invalid Provider UUID: " + invalidProviderUUID);
     assertAuditEntry(0, defaultCustomer.uuid);
   }
 
   @Test
   public void testDeleteAccessKeyWithInvalidAccessKeyCode() {
-    Result result = assertYWSE(() -> deleteAccessKey(defaultProvider.uuid, "foo"));
+    Result result = assertPlatformException(() -> deleteAccessKey(defaultProvider.uuid, "foo"));
     assertBadRequest(result, "KeyCode not found: foo");
     assertAuditEntry(0, defaultCustomer.uuid);
   }
