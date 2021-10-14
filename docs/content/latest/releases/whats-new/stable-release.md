@@ -17,7 +17,103 @@ showAsideToc: true
 
 Included here are the release notes for all releases in the v2.6 stable release series. Content will be added as new notable features and changes are available in the patch releases of the v2.6 stable release series.
 
+{{< warning title="Use version 2.6.2.0 or later" >}}
+Release v2.6.1.0 contains an authentication vulnerability in YCQL LDAP. _YSQL is not affected._
+
+If you're using YCQL LDAP with v2.6.1.0 and can't upgrade immediately, see the note in the [Version 2.6.1.0 section](#v2-6-1-0-sept-3-2021) for mitigation instructions.
+{{< /warning >}}
+
+## v2.6.2.0 - Oct 12, 2021
+
+**Build:** `2.6.2.0-b36`
+
+### Downloads
+
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.6.2.0-darwin.tar.gz">
+  <button>
+    <i class="fab fa-apple"></i><span class="download-text">macOS</span>
+  </button>
+</a>
+&nbsp; &nbsp; &nbsp;
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.6.2.0-linux.tar.gz">
+  <button>
+    <i class="fab fa-linux"></i><span class="download-text">Linux</span>
+  </button>
+</a>
+<br />
+
+### Docker
+
+```sh
+docker pull yugabytedb/yugabyte:2.6.2.0-b36
+```
+
+### Improvements
+
+#### Database
+
+* [8807](https://github.com/yugabyte/yugabyte-db/issues/8807) [YBase] Add HTTP URL param for limiting the number of tables whose metrics are displayed
+* [9370](https://github.com/yugabyte/yugabyte-db/issues/9370) Add Snappy and LZ4 traffic compression algorithms
+* [9685](https://github.com/yugabyte/yugabyte-db/issues/9685) [XCluster] Make delete_universe_replication fault tolerant
+* [9762](https://github.com/yugabyte/yugabyte-db/issues/9762) Update yb-thirdparty dependencies to use cqlsh v3.10-yb-10
+* [10064](https://github.com/yugabyte/yugabyte-db/issues/10064) [xCluster] Lag Metric Improvements
+* [10139](https://github.com/yugabyte/yugabyte-db/issues/10139) [YBase] Avoid unnecessary table locking in CatalogManager::DeleteYsqlDBTables
+* [10199](https://github.com/yugabyte/yugabyte-db/issues/10199) [YSQL] Import Reset memory context once per tuple in validateForeignKeyConstraint.
+
+#### Yugabyte Platform
+
+* [8510](https://github.com/yugabyte/yugabyte-db/issues/8510) [Platform] Allow the deletion of Failed Backups
+* [8637](https://github.com/yugabyte/yugabyte-db/issues/8637) [PLAT-1672] Adding APIs to schedule External user-defined scripts.
+* [PLAT-1575] No HA config exists is now logged as INFO
+
+### Bug fixes
+
+#### Database
+
+* [1252](https://github.com/yugabyte/yugabyte-db/issues/1252) Do not link with system libpq
+* [2318](https://github.com/yugabyte/yugabyte-db/issues/2318) [2DC] yb-admin should prevent setup_universe_replication from self-referencing.
+* [4421](https://github.com/yugabyte/yugabyte-db/issues/4421) [YCQL] Disallow Unauthenticated LDAP binding + add handling for ycql_ldap_search_filter
+* [5920](https://github.com/yugabyte/yugabyte-db/issues/5920) Fix bootstrapping with preallocated log segment
+* [8580](https://github.com/yugabyte/yugabyte-db/issues/8580) [9489](https://github.com/yugabyte/yugabyte-db/issues/9489) [YSQL] Inherit default PGSQL proxy bind address from rpc bind address
+* [8772](https://github.com/yugabyte/yugabyte-db/issues/8772) Fix fatal that occurs when running alter_universe_replication and producer master has changed
+* [9170](https://github.com/yugabyte/yugabyte-db/issues/9170) [3375](https://github.com/yugabyte/yugabyte-db/issues/3375) [9934](https://github.com/yugabyte/yugabyte-db/issues/9934) [DocDB] Drive aware LBing when removing tablets
+* [9572](https://github.com/yugabyte/yugabyte-db/issues/9572) [YSQL] Correctly determine is_yb_relation for row-marked relations when preparing target list
+* [9763](https://github.com/yugabyte/yugabyte-db/issues/9763) Fix accept failure failure handling in linux
+* [9781](https://github.com/yugabyte/yugabyte-db/issues/9781) Mark snapshot as deleted if tablet was removed
+* [9806](https://github.com/yugabyte/yugabyte-db/issues/9806) [DocDB] fixed Batcher::FlushBuffersIsReady
+* [9892](https://github.com/yugabyte/yugabyte-db/issues/9892) Mask sensitive gflag info
+* [9927](https://github.com/yugabyte/yugabyte-db/issues/9927) [YCQL] Handle unset correctly
+* [9933](https://github.com/yugabyte/yugabyte-db/issues/9933) [YCQL] DESC TABLE does not directly match the "CREATE TABLE" command for number of tablets.
+* [9933](https://github.com/yugabyte/yugabyte-db/issues/9933) [YCQL] Update logic for using num_tablets from internal or user requests.
+* [9947](https://github.com/yugabyte/yugabyte-db/issues/9947) [YSQL] remove runtime tag for ysql_disable_index_backfill
+* [10085](https://github.com/yugabyte/yugabyte-db/issues/10085) [YSQL] fix FATAL caused by wrong sum pushdown
+* [10104](https://github.com/yugabyte/yugabyte-db/issues/10104) [Tools] Explicitly removing transaction metadata field during ListSnapshots
+
+#### Yugabyte Platform
+
+* [PLAT-1611] [PLAT-1671] Add python dependencies required for executing external scripts
+* [PLAT-1682] Fix node comparison function from accessing undefined cluster
+* [PLAT-1725] Full move fails midway if system tablet takes more than 2 mins to bootstrap
+* [Platform] [UI] NFS config failed in 2.6
+* [Platform] Use TaskInfo instead of CustomerTask in shouldIncrementVersion check
+
+### Known issues
+
+#### Database
+
+N/A
+
+#### Yugabyte Platform
+
+N/A
+
 ## v2.6.1.0 - Sept 3, 2021
+
+{{< warning title="Use version 2.6.2.0 or later" >}}
+Release v2.6.1.0 contains an authentication vulnerability in YCQL LDAP. _YSQL is not affected._
+
+**If you're using YCQL LDAP with v2.6.1.0 and can't update to 2.6.2.0 immediately**, disable LDAP authentication for YCQL by setting the `--ycql_use_ldap` flag to `false`, which reverts the authentication method to hashed password.
+{{< /warning >}}
 
 **Build:** `2.6.1.0-b49`
 
