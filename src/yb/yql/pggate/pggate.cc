@@ -1434,11 +1434,13 @@ void PgApiImpl::ClearSeparateDdlTxnMode() {
 }
 
 Status PgApiImpl::SetActiveSubTransaction(SubTransactionId id) {
-  return pg_session_->SetActiveSubTransaction(id);
+  RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
+  return pg_txn_manager_->SetActiveSubTransaction(id);
 }
 
 Status PgApiImpl::RollbackSubTransaction(SubTransactionId id) {
-  return pg_session_->RollbackSubTransaction(id);
+  pg_session_->DropBufferedOperations();
+  return pg_txn_manager_->RollbackSubTransaction(id);
 }
 
 void PgApiImpl::ResetCatalogReadTime() {

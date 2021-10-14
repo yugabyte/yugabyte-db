@@ -349,6 +349,8 @@ Status PgTxnManager::BeginWriteTransactionIfNecessary(bool read_only_op,
 }
 
 Status PgTxnManager::SetActiveSubTransaction(SubTransactionId id) {
+  RETURN_NOT_OK(BeginWriteTransactionIfNecessary(
+      false /* read_only_op */, false /* needs_pessimistic_locking */));
   SCHECK(
       txn_, InternalError, "Attempted to set active subtransaction on uninitialized transaciton.");
   txn_->SetActiveSubTransaction(id);
