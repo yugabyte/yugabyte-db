@@ -35,13 +35,17 @@ Regardless of the alert level, you create and configure an alert as follows:
 - Click **Alert Destinations** to define a new destination, view details of an existing destination, edit or delete a destination, as per the following illustration: <br><br>
 
   ![Destinations](/images/yp/config-alerts3.png)
-  - To add a new destination, click **Add Destination** and then complete the form shown in the following illustration:<br><br>
+  - To add a new alert destination, click **Add Destination** and then complete the form shown in the following illustration:<br><br>
 
     ![Add destination](/images/yp/config-alerts4.png)
+
+    <br>The preceding form allows you to either select an existing notification channel or create a new one by clicking **Add Channel** and completing the **Create new alert channel** dialog. In Yugabyte Platform, a channel defines how an alert is sent (an email or Slack message) and who should receive it.
 
   - Click **Save**.
 
   - To view, modify, or delete an existing destination, click **Actions** corresponding to this destination and then select either **Details**, **Edit Destination**, or **Delete Destination**.
+
+- Click **Notification Channels** if you need to create a new channel, as well as modify or delete an existing one.
 
 - Click **Health** to define and fine tune the health check that Yugabyte Platform performs on the universes, as per the following illustration:<br><br>
 
