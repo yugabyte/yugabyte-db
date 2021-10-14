@@ -35,7 +35,7 @@
     </if>
 
     <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
-      <level>${APPLICATION_LOG_LEVEL:-DEBUG}</level>
+      <level>${applicationLogLevel:-DEBUG}</level>
     </filter>
   </appender>
 
@@ -80,7 +80,7 @@
     </if>
 
     <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
-      <level>${APPLICATION_CONSOLE_LOG_LEVEL:-${APPLICATION_LOG_LEVEL:-DEBUG}}</level>
+      <level>${APPLICATION_CONSOLE_LOG_LEVEL:-${applicationLogLevel:-DEBUG}}</level>
     </filter>
   </appender>
 
