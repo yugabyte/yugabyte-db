@@ -148,6 +148,7 @@ class MonoTime {
   static constexpr int64_t kMicrosecondsPerMillisecond = 1000L;
   static constexpr int64_t kMillisecondsPerSecond = 1000L;
   static constexpr int64_t kSecondsPerMinute = 60L;
+  static constexpr int64_t kSecondsPerHour = 60L * kSecondsPerMinute;
 
   static constexpr int64_t kNanosecondsPerMillisecond =
       kNanosecondsPerMicrosecond * kMicrosecondsPerMillisecond;
