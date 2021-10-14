@@ -25,7 +25,11 @@ Options:
   -h, --help
     Show usage.
   -s, --postgres_max_log_size <size in mb>
-    max size of disk to use for postgres logs (default=100mb)
+    max size of disk to use for postgres logs (default=100mb).
+  -d, --cores_disk_percent_max <number>
+    max percentage of disk to use for core dump files (default=10).
+  -t, --logs_purge_threshold <size in gb>
+    threshold of disk space to use for server logs (default=10gb)
 EOT
 }
 
@@ -34,6 +38,8 @@ YB_HOME_DIR=/home/yugabyte
 
 logs_disk_percent_max=10
 postgres_max_log_size_kb=$((100 * 1000))
+cores_disk_percent_max=10
+logs_purge_threshold_kb=$((10 * 1000000))
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -43,6 +49,10 @@ while [[ $# -gt 0 ]]; do
     ;;
     -s|--postgres_max_log_size)
       postgres_max_log_size_kb=$(($2 * 1000))
+      shift
+    ;;
+    -t|--logs_purge_threshold)
+      logs_purge_threshold_kb=$(($2 * 1000000))
       shift
     ;;
     -z|--gzip_only)
@@ -67,6 +77,16 @@ fi
 
 if [[ $logs_disk_percent_max -lt 1 || $logs_disk_percent_max -gt 100 ]]; then
   echo "--logs_disk_percent_max needs to be [1, 100]" >&2
+  exit 1
+fi
+
+if [[ $cores_disk_percent_max -lt 1 || $cores_disk_percent_max -gt 100 ]]; then
+  echo "--cores_disk_percent_max needs to be [1, 100]" >&2
+  exit 1
+fi
+
+if [[ $logs_purge_threshold -lt 1 ]]; then
+  echo "--logs_purge_threshold needs to be at least 1 GB"
   exit 1
 fi
 
@@ -143,7 +163,9 @@ for daemon_type in $daemon_types; do
     # Get total size of disk in kb and then compute permitted usage for the log files.
     # We get the size of the target link of $YB_LOG_DIR
     disk_size_kb=$(df -k $YB_LOG_DIR | awk 'NR==2{print $2}')
-    permitted_disk_usage_kb=$(($disk_size_kb * $logs_disk_percent_max / 100))
+    percent_disk_usage_kb=$(($disk_size_kb * $logs_disk_percent_max / 100))
+    permitted_disk_usage_kb=$([ $percent_disk_usage_kb -le $logs_purge_threshold_kb ] && \
+      echo "$percent_disk_usage_kb" || echo "$logs_purge_threshold_kb")
     delete_gz_files $YB_LOG_DIR $server_log $permitted_disk_usage_kb
     delete_gz_files $YB_LOG_DIR $postgres_log $postgres_max_log_size_kb
   fi
