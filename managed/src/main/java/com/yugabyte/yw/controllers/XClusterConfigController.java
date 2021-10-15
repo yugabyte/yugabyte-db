@@ -9,19 +9,14 @@
  */
 package com.yugabyte.yw.controllers;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.controllers.handlers.XClusterReplicationHandler;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.forms.XClusterConfigEditFormData;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
-import com.yugabyte.yw.forms.XClusterReplicationFormData;
-import com.yugabyte.yw.models.AsyncReplicationRelationship;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Universe;
@@ -32,14 +27,16 @@ import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
+import java.util.HashSet;
 import java.util.List;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import play.mvc.Result;
 
 @Api(
-    value = "XCluster Config",
-    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
+    value = "XClusterConfig",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH),
+    hidden = true)
 @Slf4j
 public class XClusterConfigController extends AuthenticatedController {
 
@@ -48,38 +45,6 @@ public class XClusterConfigController extends AuthenticatedController {
   @Inject
   public XClusterConfigController(Commissioner commissioner) {
     this.commissioner = commissioner;
-  }
-
-  @Inject private XClusterReplicationHandler xClusterReplicationHandler;
-
-  /**
-   * API that creates an xCluster replication between two universes using the given body parameters
-   *
-   * @return Result
-   */
-  @ApiOperation(
-      nickname = "create_xcluster",
-      value = "Create xCluster Replication",
-      response = YBPTask.class)
-  @ApiImplicitParams(
-      @ApiImplicitParam(
-          name = "xcluster_replication_form_data",
-          value = "XCluster Replication Form Data",
-          dataType = "com.yugabyte.yw.forms.XClusterReplicationFormData",
-          paramType = "body",
-          required = true))
-  public Result createOld(UUID customerUUID, UUID targetUniverseUUID) {
-    Customer customer = Customer.getOrBadRequest(customerUUID);
-    XClusterReplicationFormData formData = getFormData();
-
-    validateUniverses(customer, formData.sourceUniverseUUID, targetUniverseUUID);
-    validateReplication(formData.sourceUniverseUUID, targetUniverseUUID, false);
-
-    UUID taskUUID =
-        xClusterReplicationHandler.createReplication(customer, formData, targetUniverseUUID);
-
-    auditService().createAuditEntryWithReqBody(ctx(), taskUUID);
-    return new YBPTask(taskUUID).asResult();
   }
 
   /**
@@ -99,6 +64,8 @@ public class XClusterConfigController extends AuthenticatedController {
           paramType = "body",
           required = true))
   public Result create(UUID customerUUID) {
+    log.info("Received create XClusterConfig request");
+
     // Parse and validate request
     Customer customer = Customer.getOrBadRequest(customerUUID);
     XClusterConfigCreateFormData createFormData = parseCreateFormData();
@@ -122,7 +89,7 @@ public class XClusterConfigController extends AuthenticatedController {
         CustomerTask.TaskType.CreateXClusterConfig,
         xClusterConfig.name);
 
-    log.info("Submitted create xcluster config {}, task {}", xClusterConfig.uuid, taskUUID);
+    log.info("Submitted create XClusterConfig({}), task {}", xClusterConfig.uuid, taskUUID);
 
     auditService().createAuditEntryWithReqBody(ctx(), taskUUID);
     return new YBPTask(taskUUID, xClusterConfig.uuid).asResult();
@@ -138,37 +105,11 @@ public class XClusterConfigController extends AuthenticatedController {
       value = "Get xcluster config",
       response = XClusterConfig.class)
   public Result get(UUID customerUUID, UUID xclusterConfigUUID) {
+    log.info("Received get XClusterConfig({}) request", xclusterConfigUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
     XClusterConfig xClusterConfig =
         XClusterConfig.getValidConfigOrBadRequest(customer, xclusterConfigUUID);
     return PlatformResults.withData(xClusterConfig);
-  }
-
-  /**
-   * API that edits an xCluster replication between two universes using the given body parameters
-   *
-   * @return Result
-   */
-  @ApiOperation(value = "Edit xCluster Replication", response = YBPTask.class)
-  @ApiImplicitParams(
-      @ApiImplicitParam(
-          name = "xcluster_replication_form_data",
-          value = "XCluster Replication Form Data",
-          dataType = "com.yugabyte.yw.forms.XClusterReplicationFormData",
-          paramType = "body",
-          required = true))
-  public Result editOld(UUID customerUUID, UUID targetUniverseUUID) {
-    Customer customer = Customer.getOrBadRequest(customerUUID);
-    XClusterReplicationFormData formData = getFormData();
-
-    validateUniverses(customer, formData.sourceUniverseUUID, targetUniverseUUID);
-    validateReplication(formData.sourceUniverseUUID, targetUniverseUUID, true);
-
-    UUID taskUUID =
-        xClusterReplicationHandler.editReplication(customer, formData, targetUniverseUUID);
-
-    auditService().createAuditEntryWithReqBody(ctx(), taskUUID);
-    return new YBPTask(taskUUID).asResult();
   }
 
   /**
@@ -188,6 +129,8 @@ public class XClusterConfigController extends AuthenticatedController {
           paramType = "body",
           required = true))
   public Result edit(UUID customerUUID, UUID xclusterConfigUUID) {
+    log.info("Received edit XClusterConfig({}) request", xclusterConfigUUID);
+
     // Parse and validate request
     Customer customer = Customer.getOrBadRequest(customerUUID);
     XClusterConfigEditFormData editFormData = parseEditFormData();
@@ -205,40 +148,10 @@ public class XClusterConfigController extends AuthenticatedController {
         CustomerTask.TaskType.EditXClusterConfig,
         xClusterConfig.name);
 
-    log.info("Submitted edit xcluster config {}, task {}", xClusterConfig.uuid, taskUUID);
+    log.info("Submitted edit XClusterConfig({}), task {}", xClusterConfig.uuid, taskUUID);
 
     auditService().createAuditEntryWithReqBody(ctx(), taskUUID);
     return new YBPTask(taskUUID, xClusterConfig.uuid).asResult();
-  }
-
-  /**
-   * API that deletes an xCluster replication between two universes using the given body parameters
-   *
-   * @return Result
-   */
-  @ApiOperation(
-      nickname = "delete_xcluster",
-      value = "Delete xCluster Replication",
-      response = YBPTask.class)
-  @ApiImplicitParams(
-      @ApiImplicitParam(
-          name = "xcluster_replication_form_data",
-          value = "XCluster Replication Form Data",
-          dataType = "com.yugabyte.yw.forms.XClusterReplicationFormData",
-          paramType = "body",
-          required = true))
-  public Result deleteOld(UUID customerUUID, UUID targetUniverseUUID) {
-    Customer customer = Customer.getOrBadRequest(customerUUID);
-    XClusterReplicationFormData formData = getFormData();
-
-    validateUniverses(customer, formData.sourceUniverseUUID, targetUniverseUUID);
-    validateReplication(formData.sourceUniverseUUID, targetUniverseUUID, true);
-
-    UUID taskUUID =
-        xClusterReplicationHandler.deleteReplication(customer, formData, targetUniverseUUID);
-
-    auditService().createAuditEntryWithReqBody(ctx(), taskUUID);
-    return new YBPTask(taskUUID).asResult();
   }
 
   /**
@@ -251,6 +164,8 @@ public class XClusterConfigController extends AuthenticatedController {
       value = "Delete xcluster config",
       response = YBPTask.class)
   public Result delete(UUID customerUUID, UUID xclusterConfigUUID) {
+    log.info("Received delete XClusterConfig({}) request", xclusterConfigUUID);
+
     // Parse and validate request
     Customer customer = Customer.getOrBadRequest(customerUUID);
     XClusterConfig xClusterConfig =
@@ -267,129 +182,53 @@ public class XClusterConfigController extends AuthenticatedController {
         CustomerTask.TaskType.DeleteXClusterConfig,
         xClusterConfig.name);
 
-    log.info("Submitted delete xcluster config {}, task {}", xClusterConfig.uuid, taskUUID);
+    log.info("Submitted delete XClusterConfig({}), task {}", xClusterConfig.uuid, taskUUID);
 
     auditService().createAuditEntryWithReqBody(ctx(), taskUUID);
     return new YBPTask(taskUUID).asResult();
-  }
-
-  /**
-   * API that pauses an xCluster replication between two universes using the given body parameters
-   *
-   * @return Result
-   */
-  @ApiOperation(value = "Pause xCluster Replication", response = YBPTask.class)
-  @ApiImplicitParams(
-      @ApiImplicitParam(
-          name = "xcluster_replication_form_data",
-          value = "XCluster Replication Form Data",
-          dataType = "com.yugabyte.yw.forms.XClusterReplicationFormData",
-          paramType = "body",
-          required = true))
-  public Result pauseOld(UUID customerUUID, UUID targetUniverseUUID) {
-    Customer customer = Customer.getOrBadRequest(customerUUID);
-    XClusterReplicationFormData formData = getFormData();
-
-    validateUniverses(customer, formData.sourceUniverseUUID, targetUniverseUUID);
-    validateReplication(formData.sourceUniverseUUID, targetUniverseUUID, true);
-
-    UUID taskUUID =
-        xClusterReplicationHandler.pauseReplication(customer, formData, targetUniverseUUID);
-
-    auditService().createAuditEntryWithReqBody(ctx(), taskUUID);
-    return new YBPTask(taskUUID).asResult();
-  }
-
-  /**
-   * API that resumes an xCluster replication between two universes using the given body parameters
-   *
-   * @return Result
-   */
-  @ApiOperation(value = "Resume xCluster Replication", response = YBPTask.class)
-  @ApiImplicitParams(
-      @ApiImplicitParam(
-          name = "xcluster_replication_form_data",
-          value = "XCluster Replication Form Data",
-          dataType = "com.yugabyte.yw.forms.XClusterReplicationFormData",
-          paramType = "body",
-          required = true))
-  public Result resumeOld(UUID customerUUID, UUID targetUniverseUUID) {
-    Customer customer = Customer.getOrBadRequest(customerUUID);
-    XClusterReplicationFormData formData = getFormData();
-
-    validateUniverses(customer, formData.sourceUniverseUUID, targetUniverseUUID);
-    validateReplication(formData.sourceUniverseUUID, targetUniverseUUID, true);
-
-    UUID taskUUID =
-        xClusterReplicationHandler.resumeReplication(customer, formData, targetUniverseUUID);
-
-    auditService().createAuditEntryWithReqBody(ctx(), taskUUID);
-    return new YBPTask(taskUUID).asResult();
-  }
-
-  private XClusterReplicationFormData getFormData() {
-    ObjectMapper mapper = new ObjectMapper();
-    XClusterReplicationFormData formData;
-
-    try {
-      formData = mapper.treeToValue(request().body().asJson(), XClusterReplicationFormData.class);
-    } catch (RuntimeException | JsonProcessingException e) {
-      throw new PlatformServiceException(BAD_REQUEST, "Invalid JSON");
-    }
-
-    return formData;
   }
 
   private XClusterConfigCreateFormData parseCreateFormData() {
-    ObjectMapper mapper = new ObjectMapper();
-    XClusterConfigCreateFormData formData;
+    XClusterConfigCreateFormData formData =
+        formFactory.getFormDataOrBadRequest(
+            request().body().asJson(), XClusterConfigCreateFormData.class);
 
-    try {
-      formData = mapper.treeToValue(request().body().asJson(), XClusterConfigCreateFormData.class);
-    } catch (RuntimeException | JsonProcessingException e) {
-      throw new PlatformServiceException(BAD_REQUEST, "Invalid JSON: " + e);
+    // TODO: Make a custom validation constraint for this.
+    if (formData.tables != null && formData.tables.size() == 0) {
+      throw new PlatformServiceException(BAD_REQUEST, "Table set must be non-empty");
+    }
+
+    // Set default value for bootstrapIds
+    if (formData.bootstrapIds == null) {
+      formData.bootstrapIds = new HashSet<>();
     }
 
     return formData;
   }
 
   private XClusterConfigEditFormData parseEditFormData() {
-    ObjectMapper mapper = new ObjectMapper();
-    XClusterConfigEditFormData formData;
+    XClusterConfigEditFormData formData =
+        formFactory.getFormDataOrBadRequest(
+            request().body().asJson(), XClusterConfigEditFormData.class);
 
-    try {
-      formData = mapper.treeToValue(request().body().asJson(), XClusterConfigEditFormData.class);
-    } catch (RuntimeException | JsonProcessingException e) {
-      throw new PlatformServiceException(BAD_REQUEST, "Invalid JSON: " + e);
+    // Ensure exactly one edit form field is specified
+    // TODO: There must be a better way to do this.
+    int numEditOps = 0;
+    numEditOps += (formData.name != null) ? 1 : 0;
+    numEditOps += (formData.status != null) ? 1 : 0;
+    numEditOps += (formData.tables != null) ? 1 : 0;
+    if (numEditOps == 0) {
+      throw new PlatformServiceException(BAD_REQUEST, "Must specify an edit operation");
+    } else if (numEditOps > 1) {
+      throw new PlatformServiceException(BAD_REQUEST, "Must perform one edit operation at a time");
+    }
+
+    // TODO: Make a custom validation constraint for this.
+    if (formData.tables != null && formData.tables.size() == 0) {
+      throw new PlatformServiceException(BAD_REQUEST, "Table set must be non-empty");
     }
 
     return formData;
-  }
-
-  private void validateUniverses(
-      Customer customer, UUID sourceUniverseUUID, UUID targetUniverseUUID) {
-    // check if universes exist and if they belong to customer
-    Universe.getValidUniverseOrBadRequest(targetUniverseUUID, customer);
-    Universe.getValidUniverseOrBadRequest(sourceUniverseUUID, customer);
-  }
-
-  private void validateReplication(
-      UUID sourceUniverseUUID, UUID targetUniverseUUID, boolean replicationShouldExist) {
-    // check if replication specified in form exists or not (based on replicationShouldExist)
-    List<AsyncReplicationRelationship> results =
-        AsyncReplicationRelationship.getBetweenUniverses(sourceUniverseUUID, targetUniverseUUID);
-
-    if (results.isEmpty() == replicationShouldExist) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          "xCluster replication between source universe "
-              + sourceUniverseUUID
-              + " and target universe "
-              + targetUniverseUUID
-              + " was"
-              + (replicationShouldExist ? " not" : " already")
-              + " found");
-    }
   }
 
   private void checkConfigDoesNotAlreadyExist(UUID sourceUniverseUUID, UUID targetUniverseUUID) {

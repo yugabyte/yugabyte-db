@@ -13,27 +13,27 @@
 package org.yb.client;
 
 import com.google.protobuf.Message;
+import java.util.Set;
+import java.util.UUID;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.yb.Common;
+import org.yb.Common.HostPortPB;
 import org.yb.master.Master;
 import org.yb.util.Pair;
 
-import java.util.List;
-import java.util.UUID;
-
-public class AlterXClusterReplicationRequest extends YRpc<AlterXClusterReplicationResponse> {
+public class AlterUniverseReplicationRequest extends YRpc<AlterUniverseReplicationResponse> {
 
   private final UUID sourceUniverseUUID;
-  private final List<String> sourceTableIDsToAdd;
-  private final List<String> sourceTableIDsToRemove;
-  private final List<Common.HostPortPB> sourceMasterAddresses;
+  private final Set<String> sourceTableIDsToAdd;
+  private final Set<String> sourceTableIDsToRemove;
+  private final Set<HostPortPB> sourceMasterAddresses;
 
-  AlterXClusterReplicationRequest(
+  AlterUniverseReplicationRequest(
     YBTable table,
     UUID sourceUniverseUUID,
-    List<String> sourceTableIDsToAdd,
-    List<String> sourceTableIDsToRemove,
-    List<Common.HostPortPB> sourceMasterAddresses) {
+    Set<String> sourceTableIDsToAdd,
+    Set<String> sourceTableIDsToRemove,
+    Set<Common.HostPortPB> sourceMasterAddresses) {
     super(table);
     this.sourceUniverseUUID = sourceUniverseUUID;
     this.sourceTableIDsToAdd = sourceTableIDsToAdd;
@@ -66,7 +66,7 @@ public class AlterXClusterReplicationRequest extends YRpc<AlterXClusterReplicati
   }
 
   @Override
-  Pair<AlterXClusterReplicationResponse, Object> deserialize(
+  Pair<AlterUniverseReplicationResponse, Object> deserialize(
     CallResponse callResponse, String tsUUID) throws Exception {
     final Master.AlterUniverseReplicationResponsePB.Builder builder =
       Master.AlterUniverseReplicationResponsePB.newBuilder();
@@ -75,8 +75,8 @@ public class AlterXClusterReplicationRequest extends YRpc<AlterXClusterReplicati
 
     final Master.MasterErrorPB error = builder.hasError() ? builder.getError() : null;
 
-    AlterXClusterReplicationResponse response =
-      new AlterXClusterReplicationResponse(deadlineTracker.getElapsedMillis(),
+    AlterUniverseReplicationResponse response =
+      new AlterUniverseReplicationResponse(deadlineTracker.getElapsedMillis(),
         tsUUID, error);
 
     return new Pair<>(response, error);

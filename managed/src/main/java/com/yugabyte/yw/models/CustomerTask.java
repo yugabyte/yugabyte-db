@@ -186,29 +186,14 @@ public class CustomerTask extends Model {
     @EnumValue("ExternalScript")
     ExternalScript,
 
-    @EnumValue("CreateXClusterReplication")
-    CreateXClusterReplication,
-
     @EnumValue("CreateXClusterConfig")
     CreateXClusterConfig,
-
-    @EnumValue("DeleteXClusterReplication")
-    DeleteXClusterReplication,
 
     @EnumValue("DeleteXClusterConfig")
     DeleteXClusterConfig,
 
-    @EnumValue("EditXClusterReplication")
-    EditXClusterReplication,
-
     @EnumValue("EditXClusterConfig")
-    EditXClusterConfig,
-
-    @EnumValue("PauseXClusterReplication")
-    PauseXClusterReplication,
-
-    @EnumValue("ResumeXClusterReplication")
-    ResumeXClusterReplication;
+    EditXClusterConfig;
 
     public String toString(boolean completed) {
       switch (this) {
@@ -268,16 +253,12 @@ public class CustomerTask extends Model {
           return completed ? "Created alert definitions " : "Creating alert definitions ";
         case ExternalScript:
           return completed ? "Script execution completed " : "Script execution is running";
-        case CreateXClusterReplication:
-          return completed ? "Created xCluster replication " : "Creating xCluster replication ";
-        case DeleteXClusterReplication:
-          return completed ? "Deleted xCluster replication " : "Deleting xCluster replication ";
-        case EditXClusterReplication:
-          return completed ? "Edited xCluster replication " : "Editing xCluster replication ";
-        case PauseXClusterReplication:
-          return completed ? "Paused xCluster replication " : "Pausing xCluster replication ";
-        case ResumeXClusterReplication:
-          return completed ? "Resumed xCluster replication " : "Resuming xCluster replication ";
+        case CreateXClusterConfig:
+          return completed ? "Created xcluster config " : "Creating xcluster config ";
+        case DeleteXClusterConfig:
+          return completed ? "Deleted xcluster config " : "Deleting xcluster config ";
+        case EditXClusterConfig:
+          return completed ? "Edited xcluster config " : "Editing xcluster config ";
         default:
           return null;
       }

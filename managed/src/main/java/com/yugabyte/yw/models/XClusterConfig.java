@@ -1,3 +1,4 @@
+// Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.models;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
@@ -6,9 +7,9 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
-import com.yugabyte.yw.forms.XClusterConfigEditFormData;
 import io.ebean.Finder;
 import io.ebean.Model;
+import io.ebean.annotation.DbEnumValue;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Date;
@@ -27,10 +28,10 @@ import javax.persistence.ManyToOne;
 import javax.persistence.OneToMany;
 import javax.persistence.Table;
 import javax.persistence.UniqueConstraint;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import play.db.ebean.Transactional;
 
+@Slf4j
 @Table(
     uniqueConstraints =
         @UniqueConstraint(
@@ -41,8 +42,6 @@ import play.db.ebean.Transactional;
 @Entity
 @ApiModel(description = "xcluster config object")
 public class XClusterConfig extends Model {
-
-  public static final Logger LOG = LoggerFactory.getLogger(XClusterConfig.class);
 
   private static final Finder<UUID, XClusterConfig> find =
       new Finder<UUID, XClusterConfig>(XClusterConfig.class) {};
@@ -68,7 +67,26 @@ public class XClusterConfig extends Model {
 
   @Column(name = "status")
   @ApiModelProperty(value = "Status", allowableValues = "Init, Running, Paused, Failed")
-  public String status;
+  public XClusterConfigStatusType status;
+
+  public enum XClusterConfigStatusType {
+    Init("Init"),
+    Running("Running"),
+    Paused("Paused"),
+    Failed("Failed");
+
+    private String status;
+
+    XClusterConfigStatusType(String status) {
+      this.status = status;
+    }
+
+    @Override
+    @DbEnumValue
+    public String toString() {
+      return this.status;
+    }
+  }
 
   @Column(name = "create_time")
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
@@ -102,26 +120,23 @@ public class XClusterConfig extends Model {
 
   @Transactional
   public static XClusterConfig create(XClusterConfigCreateFormData formData) {
-    XClusterConfig relationship = new XClusterConfig();
-    relationship.uuid = UUID.randomUUID();
-    relationship.name = formData.name;
-    relationship.sourceUniverseUUID = formData.sourceUniverseUUID;
-    relationship.targetUniverseUUID = formData.targetUniverseUUID;
-    relationship.status = "Init";
-    relationship.createTime = new Date();
-    relationship.modifyTime = new Date();
-    relationship.setTables(formData.tables);
-    relationship.save();
-    return relationship;
+    XClusterConfig xClusterConfig = new XClusterConfig();
+    xClusterConfig.uuid = UUID.randomUUID();
+    xClusterConfig.name = formData.name;
+    xClusterConfig.sourceUniverseUUID = formData.sourceUniverseUUID;
+    xClusterConfig.targetUniverseUUID = formData.targetUniverseUUID;
+    xClusterConfig.status = XClusterConfigStatusType.Init;
+    xClusterConfig.createTime = new Date();
+    xClusterConfig.modifyTime = new Date();
+    xClusterConfig.setTables(formData.tables);
+    xClusterConfig.save();
+    return xClusterConfig;
   }
 
-  @Transactional
-  public void updateFrom(XClusterConfigEditFormData formData) {
-    this.name = formData.name;
-    this.status = formData.status;
+  @Override
+  public void update() {
     this.modifyTime = new Date();
-    this.setTables(formData.tables);
-    this.update();
+    super.update();
   }
 
   public static XClusterConfig getValidConfigOrBadRequest(
@@ -136,14 +151,14 @@ public class XClusterConfig extends Model {
         .orElseThrow(
             () ->
                 new PlatformServiceException(
-                    BAD_REQUEST, "Cannot find xcluster config " + xClusterConfigUUID));
+                    BAD_REQUEST, "Cannot find XClusterConfig " + xClusterConfigUUID));
   }
 
   public static Optional<XClusterConfig> maybeGet(UUID xClusterConfigUUID) {
     XClusterConfig xClusterConfig =
         find.query().fetch("tables", "tableID").where().eq("uuid", xClusterConfigUUID).findOne();
     if (xClusterConfig == null) {
-      LOG.info("Cannot find xcluster config {}", xClusterConfigUUID);
+      log.info("Cannot find XClusterConfig {}", xClusterConfigUUID);
       return Optional.empty();
     }
     return Optional.of(xClusterConfig);
@@ -182,7 +197,7 @@ public class XClusterConfig extends Model {
       throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
-              "XCluster config UUID: %s doesn't belong " + "to Customer UUID: %s",
+              "XClusterConfig %s doesn't belong to Customer %s",
               xClusterConfig.uuid, customer.uuid));
     }
   }

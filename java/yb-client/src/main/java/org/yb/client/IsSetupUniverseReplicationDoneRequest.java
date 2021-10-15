@@ -7,14 +7,14 @@ import org.yb.WireProtocol.AppStatusPB;
 import org.yb.master.Master;
 import org.yb.util.Pair;
 
-public class IsCreateXClusterReplicationDoneRequest
-  extends YRpc<IsCreateXClusterReplicationDoneResponse> {
+public class IsSetupUniverseReplicationDoneRequest
+  extends YRpc<IsSetupUniverseReplicationDoneResponse> {
 
-  private final UUID sourceUniverseUUID;
+  private final String producerId;
 
-  IsCreateXClusterReplicationDoneRequest(YBTable table, UUID sourceUniverseUUID) {
+  IsSetupUniverseReplicationDoneRequest(YBTable table, String producerId) {
     super(table);
-    this.sourceUniverseUUID = sourceUniverseUUID;
+    this.producerId = producerId;
   }
 
   @Override
@@ -23,7 +23,7 @@ public class IsCreateXClusterReplicationDoneRequest
 
     final Master.IsSetupUniverseReplicationDoneRequestPB.Builder builder =
       Master.IsSetupUniverseReplicationDoneRequestPB.newBuilder()
-        .setProducerId(sourceUniverseUUID.toString());
+        .setProducerId(producerId.toString());
 
     return toChannelBuffer(header, builder.build());
   }
@@ -39,7 +39,7 @@ public class IsCreateXClusterReplicationDoneRequest
   }
 
   @Override
-  Pair<IsCreateXClusterReplicationDoneResponse, Object> deserialize(
+  Pair<IsSetupUniverseReplicationDoneResponse, Object> deserialize(
     CallResponse callResponse, String tsUUID) throws Exception {
     final Master.IsSetupUniverseReplicationDoneResponsePB.Builder builder =
       Master.IsSetupUniverseReplicationDoneResponsePB.newBuilder();
@@ -51,8 +51,8 @@ public class IsCreateXClusterReplicationDoneRequest
     final AppStatusPB replicationError =
       builder.hasReplicationError() ? builder.getReplicationError() : null;
 
-    IsCreateXClusterReplicationDoneResponse response =
-      new IsCreateXClusterReplicationDoneResponse(
+    IsSetupUniverseReplicationDoneResponse response =
+      new IsSetupUniverseReplicationDoneResponse(
         deadlineTracker.getElapsedMillis(),
         tsUUID,
         error,

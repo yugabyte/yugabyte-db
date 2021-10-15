@@ -35,11 +35,6 @@ public class UniverseUpdateSucceeded extends UniverseTaskBase {
   }
 
   @Override
-  public String getName() {
-    return super.getName() + "(" + taskParams().universeUUID + ")";
-  }
-
-  @Override
   public void run() {
     try {
       log.info("Running {}", getName());

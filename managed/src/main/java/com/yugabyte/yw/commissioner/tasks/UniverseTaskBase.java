@@ -15,9 +15,6 @@ import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AsyncReplicationDelete;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AsyncReplicationPlatformSync;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AsyncReplicationSetup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.BackupTable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.BackupUniverseKeys;
 import com.yugabyte.yw.commissioner.tasks.subtasks.BulkImport;
@@ -1509,33 +1506,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     task.initialize(params);
 
     SubTaskGroup subTaskGroup = new SubTaskGroup("LoadBalancerStateChange", executor);
-    subTaskGroup.addTask(task);
-    subTaskGroupQueue.add(subTaskGroup);
-    return subTaskGroup;
-  }
-
-  public SubTaskGroup createAsyncReplicationSetupTask() {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("AsyncReplicationSetup", executor);
-    AsyncReplicationSetup task = createTask(AsyncReplicationSetup.class);
-    task.initialize(taskParams());
-    subTaskGroup.addTask(task);
-    subTaskGroupQueue.add(subTaskGroup);
-    return subTaskGroup;
-  }
-
-  public SubTaskGroup createAsyncReplicationDeleteTask() {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("AsyncReplicationDelete", executor);
-    AsyncReplicationDelete task = createTask(AsyncReplicationDelete.class);
-    task.initialize(taskParams());
-    subTaskGroup.addTask(task);
-    subTaskGroupQueue.add(subTaskGroup);
-    return subTaskGroup;
-  }
-
-  public SubTaskGroup createAsyncReplicationPlatformSyncTask() {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("AsyncReplicationPlatformSync", executor);
-    AsyncReplicationPlatformSync task = createTask(AsyncReplicationPlatformSync.class);
-    task.initialize(taskParams());
     subTaskGroup.addTask(task);
     subTaskGroupQueue.add(subTaskGroup);
     return subTaskGroup;
