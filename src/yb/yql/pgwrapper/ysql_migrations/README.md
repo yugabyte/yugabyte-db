@@ -118,9 +118,6 @@ Tips
   after `reinitdb`, and following predefined OIDs you've introduced. Note that it will most likely
   add rows to `pg_depend` as well.
 
-* After you've introduced (and tested) your migration, go ahead and
-  fix `TestYsqlUpgrade#haveYouForgotAboutMigration` test by updating it with fresh values.
-
 Testing
 -------
 
