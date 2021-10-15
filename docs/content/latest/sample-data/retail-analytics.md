@@ -75,16 +75,16 @@ yugabyte=# \c yb_demo;
 First create the four tables necessary to store the data.
 
 ```plpgsql
-yugabyte=# \i 'schema.sql';
+yb_demo=# \i share/schema.sql;
 ```
 
 Now load the data into the tables.
 
 ```plpgsql
-\i 'data/products.sql';
-\i 'data/users.sql';
-\i 'data/orders.sql';
-\i 'data/reviews.sql';
+\i share/products.sql;
+\i share/users.sql;
+\i share/orders.sql;
+\i share/reviews.sql;
 ```
 
 ## Explore the Retail Analytics database

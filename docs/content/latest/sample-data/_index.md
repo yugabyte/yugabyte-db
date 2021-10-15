@@ -16,7 +16,7 @@ All of the datasets are PostgreSQL-compatible, and you can explore them using th
 
 For information on installing YugabyteDB, refer to [Quick Start](../quick-start/).
 
-For information on connecting to your Yugabyte Cloud cluster using `ysqlsh`, refer to [Connect via Client Shell](../yugabyte-cloud/cloud-basics/connect-to-clusters#connect-via-client-shell). To get started with Yugabyte Cloud, refer to [Get Started](../yugabyte-cloud/cloud-basics/).
+For information on connecting to your Yugabyte Cloud cluster using `ysqlsh`, refer to [Connect via Client Shell](../yugabyte-cloud/cloud-basics/connect-to-clusters#connect-via-client-shell). To get started with Yugabyte Cloud, refer to [Get Started](../yugabyte-cloud/cloud-basics/). The exercises can be run on free or paid clusters. Cloud shell does not support loading the data, but once the data is loaded, you can use cloud shell to run exercises and query the database.
 
 <div class="row">
 
