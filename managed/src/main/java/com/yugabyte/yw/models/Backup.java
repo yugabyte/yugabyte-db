@@ -213,6 +213,10 @@ public class Backup extends Model {
     return Backup.find.query().where().eq("task_uuid", taskUUID).findOne();
   }
 
+  public static List<Backup> fetchAllBackupsByTaskUUID(UUID taskUUID) {
+    return Backup.find.query().where().eq("task_uuid", taskUUID).findList();
+  }
+
   public static Map<Customer, List<Backup>> getExpiredBackups() {
     // Get current timestamp.
     Date now = new Date();
