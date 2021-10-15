@@ -162,12 +162,26 @@ public class YsqlQueryExecutor {
               ysqlResponse.toString());
         }
       } else {
+        boolean versionMatch =
+            universe
+                .getVersions()
+                .stream()
+                .allMatch(v -> Util.compareYbVersions(v, "2.6.4.0") >= 0);
+        String rolesList = "pg_read_all_stats, pg_signal_backend";
+        if (versionMatch) {
+          // yb_extension is only supported in recent YB versions 2.6.x >= 2.6.4 and >= 2.8.0
+          // not including the odd 2.7.x, 2.9.x releases
+          rolesList += ", yb_extension";
+        }
         ysqlResponse =
             runQueryUtil(
                 universe,
                 data,
                 String.format(
-                    "GRANT pg_read_all_stats, pg_signal_backend TO \"%s\"", DB_ADMIN_ROLE_NAME));
+                    "GRANT %2$s TO \"%1$s\"; "
+                        + "GRANT EXECUTE ON FUNCTION pg_stat_statements_reset TO  \"%1$s\"; "
+                        + " GRANT ALL ON DATABASE yugabyte, postgres TO \"%1$s\";",
+                    DB_ADMIN_ROLE_NAME, rolesList));
         LOG.info("GRANT privs to admin role, result {}", ysqlResponse.toString());
 
         ysqlResponse = runQueryUtil(universe, data, DEL_PG_ROLES_CMD_1);

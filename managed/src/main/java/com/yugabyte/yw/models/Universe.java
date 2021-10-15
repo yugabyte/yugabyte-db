@@ -166,6 +166,19 @@ public class Universe extends Model {
     this.update();
   }
 
+  @JsonIgnore
+  public List<String> getVersions() {
+    if (null == universeDetails || null == universeDetails.clusters) {
+      return new ArrayList<>();
+    }
+    return universeDetails
+        .clusters
+        .stream()
+        .filter(c -> c != null && c.userIntent != null)
+        .map(c -> c.userIntent.ybSoftwareVersion)
+        .collect(Collectors.toList());
+  }
+
   public static final Finder<UUID, Universe> find = new Finder<UUID, Universe>(Universe.class) {};
 
   // Prefix added to read only node.
