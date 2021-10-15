@@ -123,6 +123,7 @@ GET     /customers/:cUUID/releases                                             c
 PUT     /customers/:cUUID/releases                                             com.yugabyte.yw.controllers.ReleaseController.refresh(cUUID: java.util.UUID)
 POST    /customers/:cUUID/releases                                             com.yugabyte.yw.controllers.ReleaseController.create(cUUID: java.util.UUID)
 PUT     /customers/:cUUID/releases/:name                                       com.yugabyte.yw.controllers.ReleaseController.update(cUUID: java.util.UUID, name: String)
+DELETE  /customers/:cUUID/releases/:name                                       com.yugabyte.yw.controllers.ReleaseController.delete(cUUID: java.util.UUID, name: String)
 
 # Certificate API
 POST    /customers/:cUUID/certificates                                         com.yugabyte.yw.controllers.CertificateController.upload(cUUID: java.util.UUID)
@@ -263,6 +264,7 @@ POST    /customers/:cUUID/universes/:uniUUID/upgrade/gflags                    c
 POST    /customers/:cUUID/universes/:uniUUID/upgrade/certs                     com.yugabyte.yw.controllers.UpgradeUniverseController.upgradeCerts(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/upgrade/tls                       com.yugabyte.yw.controllers.UpgradeUniverseController.upgradeTls(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/upgrade/vm                        com.yugabyte.yw.controllers.UpgradeUniverseController.upgradeVMImage(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+POST    /customers/:cUUID/universes/:uniUUID/upgrade/systemd                   com.yugabyte.yw.controllers.UpgradeUniverseController.upgradeSystemd(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
 # Table Management API
 GET     /customers/:cUUID/universes/:uniUUID/tables                            com.yugabyte.yw.controllers.TablesController.listTables(cUUID: java.util.UUID, uniUUID: java.util.UUID)

@@ -404,7 +404,8 @@ _PG_init(void)
   strcpy(worker.bgw_name, "YSQL webserver");
   worker.bgw_flags = BGWORKER_SHMEM_ACCESS;
   worker.bgw_start_time = BgWorkerStart_PostmasterStart;
-  worker.bgw_restart_time = BGW_NEVER_RESTART;
+  /* Value of 1 allows the background worker for webserver to restart */
+  worker.bgw_restart_time = 1;
   worker.bgw_main_arg = (Datum) 0;
   strcpy(worker.bgw_library_name, "yb_pg_metrics");
   strcpy(worker.bgw_function_name, "webserver_worker_main");

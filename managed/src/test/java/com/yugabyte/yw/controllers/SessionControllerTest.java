@@ -11,7 +11,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertUnauthorized;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.FakeApiHelper.routeWithYWErrHandler;
 import static com.yugabyte.yw.models.Users.Role;
 import static org.hamcrest.CoreMatchers.allOf;
@@ -151,7 +151,8 @@ public class SessionControllerTest {
     ModelFactory.testUser(customer);
     ObjectNode loginJson = Json.newObject();
     loginJson.put("email", "test@customer.com");
-    Result result = assertYWSE(() -> route(fakeRequest("POST", "/api/login").bodyJson(loginJson)));
+    Result result =
+        assertPlatformException(() -> route(fakeRequest("POST", "/api/login").bodyJson(loginJson)));
     JsonNode json = Json.parse(contentAsString(result));
 
     assertEquals(BAD_REQUEST, result.status());
@@ -430,7 +431,8 @@ public class SessionControllerTest {
     ObjectNode registerJson = Json.newObject();
     registerJson.put("email", "test@customer.com");
     Result result =
-        assertYWSE(() -> route(fakeRequest("POST", "/api/login").bodyJson(registerJson)));
+        assertPlatformException(
+            () -> route(fakeRequest("POST", "/api/login").bodyJson(registerJson)));
 
     JsonNode json = Json.parse(contentAsString(result));
 

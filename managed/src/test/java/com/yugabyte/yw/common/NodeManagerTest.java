@@ -431,6 +431,8 @@ public class NodeManagerTest extends FakeDBApplication {
     when(releaseManager.getReleaseByVersion("0.0.1")).thenReturn(releaseMetadata);
 
     when(mockConfig.hasPath(NodeManager.BOOT_SCRIPT_PATH)).thenReturn(false);
+    when(mockAppConfig.getString(eq("yb.security.default.access.key")))
+        .thenReturn(ApiUtils.DEFAULT_ACCESS_KEY_CODE);
     when(runtimeConfigFactory.forProvider(any())).thenReturn(mockConfig);
     when(runtimeConfigFactory.forUniverse(any())).thenReturn(app.config());
     when(mockConfigHelper.getGravitonInstancePrefixList()).thenReturn(ImmutableList.of("m6g."));

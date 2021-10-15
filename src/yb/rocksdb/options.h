@@ -828,6 +828,7 @@ struct ColumnFamilyOptions {
 };
 
 typedef std::function<yb::Result<bool>(const MemTable&)> MemTableFilter;
+
 using IteratorReplacer =
     std::function<InternalIterator*(InternalIterator*, Arena*, const Slice&)>;
 
@@ -1333,8 +1334,9 @@ struct DBOptions {
   // Also it decodes those values during load of metafile.
   std::shared_ptr<BoundaryValuesExtractor> boundary_extractor;
 
-  // Max file size for compaction. Supported only for level0 of universal style compactions.
-  uint64_t max_file_size_for_compaction = std::numeric_limits<uint64_t>::max();
+  // Function that returns max file size for compaction.
+  // Supported only for level0 of universal style compactions.
+  std::shared_ptr<std::function<uint64_t()>> max_file_size_for_compaction;
 
   // Invoked after memtable switched.
   std::shared_ptr<std::function<MemTableFilter()>> mem_table_flush_filter_factory;

@@ -111,7 +111,7 @@ const initialState = {
   ybSoftwareVersion: '',
   gflags: {},
   storageType: DEFAULT_STORAGE_TYPES['AWS'],
-  accessKeyCode: 'yugabyte-default',
+  accessKeyCode: '',
   // Maximum Number of nodes currently in use OnPrem case
   maxNumNodes: -1,
   assignPublicIP: true,
@@ -1300,17 +1300,20 @@ export default class ClusterFields extends Component {
   }
 
   validatePassword(value) {
+    const errorMsg = 'Password must be 8 characters minimum and must contain at least 1 digit, 1 uppercase, 1 lowercase and one of the !@#$%^&* (special) characters.';
     if (value) {
       const passwordValidationRegex = /^(?=.*[0-9])(?=.*[!@#$%^&*])(?=.*[a-z])(?=.*[A-Z])[a-zA-Z0-9!@#$%^&*]{8,256}$/;
-      return (passwordValidationRegex.test(value) ? undefined :
-      'Password must be 8 characters minimum and must contain at least 1 digit, 1 capital, 1 lowercase and one of the !@#$%^&* (special) characters.');
+      return (passwordValidationRegex.test(value) ? undefined : errorMsg);
     }
-    return value;
+    return errorMsg;
   }
 
   validateConfirmPassword(value, a, b, field) {
     const passwordValue = this.props.primary[(field === 'primary.ysqlConfirmPassword')? 'ysqlPassword' : 'ycqlPassword'].input.value;
-    return value === passwordValue ? undefined : 'Password should match';
+    if (!_.isEmpty(passwordValue)) {
+      return (value === passwordValue) ? undefined : 'Password should match';
+    }
+    return undefined;
   }
 
   /**

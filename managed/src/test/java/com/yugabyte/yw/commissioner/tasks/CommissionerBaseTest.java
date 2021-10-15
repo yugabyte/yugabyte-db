@@ -79,6 +79,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected Customer defaultCustomer;
   protected Provider defaultProvider;
   protected Provider gcpProvider;
+  protected Provider onPremProvider;
 
   protected Commissioner commissioner;
 
@@ -88,6 +89,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     defaultCustomer = ModelFactory.testCustomer();
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
     gcpProvider = ModelFactory.gcpProvider(defaultCustomer);
+    onPremProvider = ModelFactory.onpremProvider(defaultCustomer);
     metricService = app.injector().instanceOf(MetricService.class);
     alertService = app.injector().instanceOf(AlertService.class);
     alertDefinitionService = app.injector().instanceOf(AlertDefinitionService.class);

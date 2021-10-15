@@ -5,7 +5,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
@@ -144,12 +144,12 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     bodyJson.set("clusters", clustersJsonArray);
     bodyJson.put("clusterOperation", "CREATE");
 
-    Result result = assertYWSE(() -> sendOldApiConfigureRequest(bodyJson));
+    Result result = assertPlatformException(() -> sendOldApiConfigureRequest(bodyJson));
     assertBadRequest(result, "currentClusterType");
 
     bodyJson.remove("clusterOperation");
     bodyJson.put("currentClusterType", "PRIMARY");
-    result = assertYWSE(() -> sendOldApiConfigureRequest(bodyJson));
+    result = assertPlatformException(() -> sendOldApiConfigureRequest(bodyJson));
     assertBadRequest(result, "clusterOperation");
   }
 
@@ -284,7 +284,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     }
     // HERE
     ObjectNode topJson = (ObjectNode) Json.toJson(taskParams);
-    Result result = assertYWSE(() -> sendPrimaryEditConfigureRequest(topJson));
+    Result result = assertPlatformException(() -> sendPrimaryEditConfigureRequest(topJson));
     assertBadRequest(result, "Invalid Node/AZ combination for given instance type type.small");
     assertAuditEntry(0, customer.uuid);
   }
@@ -513,7 +513,8 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID;
     Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson));
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson));
     assertBadRequest(result, "as it has nodes in one of");
     assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
     assertAuditEntry(0, customer.uuid);
@@ -524,7 +525,8 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     Universe u = createUniverse(customer.getCustomerId());
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID;
     Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("PUT", url, authToken, Json.newObject()));
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("PUT", url, authToken, Json.newObject()));
     assertBadRequest(result, "clusters: This field is required");
     assertAuditEntry(0, customer.uuid);
   }
@@ -592,7 +594,8 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + uUUID + "/upgrade";
     Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
 
     assertBadRequest(result, "VM image upgrade is only supported for AWS / GCP");
     assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
@@ -612,7 +615,8 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + uUUID + "/upgrade";
     Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
 
     assertBadRequest(result, "Cannot upgrade a universe with ephemeral storage");
     assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
@@ -632,7 +636,8 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + uUUID + "/upgrade";
     Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
 
     assertBadRequest(result, "machineImages param is required for taskType: VMImage");
     assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
@@ -679,7 +684,8 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + uUUID + "/upgrade";
     Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, Json.newObject()));
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, Json.newObject()));
     assertBadRequest(result, "clusters: This field is required");
     assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
     assertAuditEntry(0, customer.uuid);
@@ -704,7 +710,8 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     String url = "/api/customers/" + customer.uuid + "/universes/" + uUUID + "/upgrade";
     if (upgradeOption.equals("Rolling")) {
       Result result =
-          assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+          assertPlatformException(
+              () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
       assertBadRequest(result, "as it has nodes in one of");
       assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
       assertAuditEntry(0, customer.uuid);
@@ -831,7 +838,8 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     bodyJson.set("clusters", clustersJsonArray);
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
     Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
 
     assertBadRequest(result, "Rolling restart has to be a ROLLING UPGRADE.");
     assertAuditEntry(0, customer.uuid);
@@ -850,7 +858,8 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
     Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
 
     assertBadRequest(result, "ybSoftwareVersion param is required for taskType: Software");
     assertAuditEntry(0, customer.uuid);
@@ -940,7 +949,8 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
     Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
 
     assertBadRequest(result, "Neither master nor tserver gflags changed.");
     assertAuditEntry(0, customer.uuid);
@@ -978,7 +988,8 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
     Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
 
     assertBadRequest(result, "Neither master nor tserver gflags changed");
     assertAuditEntry(0, customer.uuid);
@@ -997,7 +1008,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJsonMissingGFlags));
 
     assertBadRequest(result, "Neither master nor tserver gflags changed.");
@@ -1018,7 +1029,8 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
     Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
 
     assertBadRequest(result, "Neither master nor tserver gflags changed.");
     assertAuditEntry(0, customer.uuid);
@@ -1038,7 +1050,8 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/upgrade";
     Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
 
     assertBadRequest(result, "Neither master nor tserver gflags changed.");
     assertAuditEntry(0, customer.uuid);
@@ -1229,7 +1242,8 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     String url =
         "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/disk_update";
     Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "Size can only be increased.");
   }
 
@@ -1247,7 +1261,8 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     String url =
         "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/disk_update";
     Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "Scratch type disk cannot be modified.");
   }
 
@@ -1265,7 +1280,8 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     String url =
         "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/disk_update";
     Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "Cannot modify instance volumes.");
   }
 

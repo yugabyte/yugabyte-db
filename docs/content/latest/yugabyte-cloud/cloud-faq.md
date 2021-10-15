@@ -35,6 +35,20 @@ Yugabyte bills for its services as follows:
 
 For information on Yugabyte Cloud pricing, refer to the [Yugabyte Cloud Standard Price List](https://www.yugabyte.com/yugabyte-cloud-standard-price-list/). For a description of how cluster configurations are costed, refer to [Cluster costs](../cloud-admin/cloud-billing-costs).
 
+### What regions in AWS and GCP are available?
+
+Refer to [Cloud provider regions](../release-notes#cloud-provider-regions) for a list currently supported regions.
+
+Yugabyte Cloud supports all the regions that have robust infrastructure and sufficient demand from customers. We are continuously improving region coverage, so if there are any regions you would like us to support, reach out to [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
+
+### What version of YugabyteDB does Yugabyte Cloud run on
+
+Yugabyte Cloud runs on the YugabyteDB 2.6 [stable release](../../releases/whats-new/stable-release/).
+
+### Can I test YugabyteDB locally?
+
+To test locally, [download](https://download.yugabyte.com) and install YugabyteDB on a local machine. Refer to [Quick Start](../../quick-start). For accurate comparison with cloud, be sure to download the version that is running on Yugabyte Cloud.
+
 ### What are the differences between Free and Paid clusters?
 
 Use the **Free** cluster to get started with YugabyteDB. The free cluster is limited to a single node, and although not suitable for production workloads, the cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB. You can only have one Free cluster.
@@ -55,15 +69,16 @@ A Yugabyte Cloud account is limited to a single Free cluster; you can add as man
 | Backups | None | Scheduled and on-demand |
 | Support | Slack Community | Enterprise Support |
 
+### What can I do if I run out of resources on my free cluster?
+
+If you want to continue testing YugabyteDB with more resource-intensive scenarios, you can:
+
+- Download and run YugabyteDB on a local machine. For instructions, refer to [Quick Start](../../quick-start).
+- Upgrade to a [paid cluster](../cloud-basics/create-clusters) to access bigger clusters with more resources.
+
 ### Can I migrate my Free cluster to a Paid cluster?
 
 Currently self-service migration is not supported. Contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) for help with migration.
-
-### What regions in AWS and GCP are available?
-
-Refer to [Cloud provider regions](../release-notes#cloud-provider-regions) for a list currently supported regions.
-
-Yugabyte Cloud supports all the regions that have robust infrastructure and sufficient demand from customers. Regions where load balancers, certain VMs, or other resources are harder to obtain have not yet been added. We are continuously improving region coverage, so if there are any regions you would like us to support, reach out to [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
 
 ## Support
 
@@ -71,7 +86,7 @@ Yugabyte Cloud supports all the regions that have robust infrastructure and suff
 
 Enterprise Support is included in the base price for paid clusters. Refer to the [Yugabyte Cloud Support Services Terms and Conditions](https://www.yugabyte.com/yugabyte-cloud-support-services-terms-and-conditions/).
 
-Free and paid cluster customers can also use the [YugabyteDB Slack community](https://yugabyte-db.slack.com/).
+Free and paid cluster customers can also use the [YugabyteDB Slack community](https://www.yugabyte.com/slack).
 
 ### Where can I find the support policy and Service Level Agreement (SLA) for Yugabyte Cloud?
 

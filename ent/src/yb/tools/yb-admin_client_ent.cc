@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include "yb/tools/yb-admin_cli.h"
 #include "yb/tools/yb-admin_client.h"
 
 #include <iostream>
@@ -1195,17 +1196,52 @@ Status ClusterAdminClient::SetupUniverseReplication(
 
   RpcController rpc;
   rpc.set_timeout(timeout_);
-  RETURN_NOT_OK(master_proxy_->SetupUniverseReplication(req, &resp, &rpc));
+  Status setup_result_status = master_proxy_->SetupUniverseReplication(req, &resp, &rpc);
+
+  // Clean up config files if setup fails.
+  if (!setup_result_status.ok()) {
+    CleanupEnvironmentOnSetupUniverseReplicationFailure(producer_uuid, setup_result_status);
+    return setup_result_status;
+  }
 
   if (resp.has_error()) {
     cout << "Error setting up universe replication: " << resp.error().status().message() << endl;
-    return StatusFromPB(resp.error().status());
+
+    Status status_from_error = StatusFromPB(resp.error().status());
+    CleanupEnvironmentOnSetupUniverseReplicationFailure(producer_uuid, status_from_error);
+
+    return status_from_error;
   }
 
-  RETURN_NOT_OK(WaitForSetupUniverseReplicationToFinish(producer_uuid));
+  setup_result_status = WaitForSetupUniverseReplicationToFinish(producer_uuid);
+
+  // Clean up config files if setup fails to complete.
+  if (!setup_result_status.ok()) {
+    CleanupEnvironmentOnSetupUniverseReplicationFailure(producer_uuid, setup_result_status);
+    return setup_result_status;
+  }
 
   cout << "Replication setup successfully" << endl;
   return Status::OK();
+}
+
+// Helper function for deleting the universe if SetupUniverseReplicaion fails.
+void ClusterAdminClient::CleanupEnvironmentOnSetupUniverseReplicationFailure(
+  const std::string& producer_uuid, const Status& failure_status) {
+  // We don't need to delete the universe if the call to SetupUniverseReplication
+  // failed due to one of the sanity checks.
+  if (failure_status.IsInvalidArgument()) {
+    return;
+  }
+
+  cout << "Replication setup failed, cleaning up environment" << endl;
+
+  Status delete_result_status = DeleteUniverseReplication(producer_uuid, false);
+  if (!delete_result_status.ok()) {
+    cout << "Could not clean up environment: " << delete_result_status.message() << endl;
+  } else {
+    cout << "Successfully cleaned up environment" << endl;
+  }
 }
 
 Status ClusterAdminClient::DeleteUniverseReplication(const std::string& producer_id, bool force) {

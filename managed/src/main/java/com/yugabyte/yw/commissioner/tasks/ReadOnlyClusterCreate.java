@@ -11,19 +11,13 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Collection;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Set;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -54,7 +48,8 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
       setNodeNames(UniverseOpType.CREATE, universe);
 
       // Update the user intent.
-      writeUserIntentToUniverse(true /* isReadOnly */, false);
+      universe = writeUserIntentToUniverse(true);
+      updateOnPremNodeUuids(universe);
 
       // Sanity checks for clusters list validity are performed in the controller.
       Cluster cluster = taskParams().getReadOnlyClusters().get(0);
@@ -76,30 +71,8 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
         throw new IllegalArgumentException(errMsg);
       }
 
-      // Check if nodes are able to be provisioned/configured properly.
-      Map<NodeInstance, String> failedNodes = new HashMap<>();
-      for (NodeDetails node : nodesToProvision) {
-        if (cluster.userIntent.providerType.equals(CloudType.onprem)) {
-          continue;
-        }
-
-        NodeTaskParams nodeParams = new NodeTaskParams();
-        UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
-        nodeParams.nodeName = node.nodeName;
-        nodeParams.deviceInfo = userIntent.deviceInfo;
-        nodeParams.azUuid = node.azUuid;
-        nodeParams.universeUUID = taskParams().universeUUID;
-        nodeParams.extraDependencies.installNodeExporter =
-            taskParams().extraDependencies.installNodeExporter;
-
-        String preflightStatus = performPreflightCheck(node, nodeParams);
-        if (preflightStatus != null) {
-          failedNodes.put(NodeInstance.getByName(node.nodeName), preflightStatus);
-        }
-      }
-      if (!failedNodes.isEmpty()) {
-        createFailedPrecheckTask(failedNodes).setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
-      }
+      // perform preflight checks for only readonly cluster
+      performUniversePreflightChecks(universe, cl -> cl.uuid.equals(cluster.uuid));
 
       // Create the required number of nodes in the appropriate locations.
       createCreateServerTasks(nodesToProvision).setSubTaskGroupType(SubTaskGroupType.Provisioning);

@@ -3,7 +3,7 @@
 package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
-import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -193,7 +193,7 @@ public class AlertControllerTest extends FakeDBApplication {
     data.put("name", "name");
     data.put("params", Json.toJson(new AlertChannelEmailParams()));
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 doRequestWithAuthTokenAndBody(
                     "POST",
@@ -227,7 +227,7 @@ public class AlertControllerTest extends FakeDBApplication {
   public void testGetAlertChannel_ErrorResult() {
     UUID uuid = UUID.randomUUID();
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 doRequestWithAuthToken(
                     "GET",
@@ -281,7 +281,7 @@ public class AlertControllerTest extends FakeDBApplication {
         .put("params", Json.toJson(createdChannel.getParams()));
 
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 doRequestWithAuthTokenAndBody(
                     "PUT",
@@ -342,7 +342,7 @@ public class AlertControllerTest extends FakeDBApplication {
   public void testDeleteAlertChannel_ErrorResult() {
     UUID uuid = UUID.randomUUID();
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 doRequestWithAuthToken(
                     "DELETE",
@@ -386,7 +386,7 @@ public class AlertControllerTest extends FakeDBApplication {
     assertThat(result.status(), is(OK));
 
     result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 doRequestWithAuthToken(
                     "DELETE",
@@ -480,7 +480,7 @@ public class AlertControllerTest extends FakeDBApplication {
         .putArray("channels")
         .add(alertChannelUUID);
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 doRequestWithAuthTokenAndBody(
                     "POST",
@@ -531,7 +531,7 @@ public class AlertControllerTest extends FakeDBApplication {
   public void testGetAlertDestination_ErrorResult() {
     UUID uuid = UUID.randomUUID();
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 doRequestWithAuthToken(
                     "GET",
@@ -587,7 +587,7 @@ public class AlertControllerTest extends FakeDBApplication {
 
     destination.setDefaultDestination(false);
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 doRequestWithAuthTokenAndBody(
                     "PUT",
@@ -629,7 +629,7 @@ public class AlertControllerTest extends FakeDBApplication {
   public void testDeleteAlertDestination_InvalidUUID_ErrorResult() {
     UUID uuid = UUID.randomUUID();
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 doRequestWithAuthToken(
                     "DELETE",
@@ -647,7 +647,7 @@ public class AlertControllerTest extends FakeDBApplication {
     String destinationUUID = createdDestination.getUuid().toString();
 
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 doRequestWithAuthToken(
                     "DELETE",
@@ -886,7 +886,7 @@ public class AlertControllerTest extends FakeDBApplication {
   public void testGetConfigurationFailure() {
     UUID uuid = UUID.randomUUID();
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 doRequestWithAuthToken(
                     "GET",
@@ -1021,7 +1021,7 @@ public class AlertControllerTest extends FakeDBApplication {
     alertConfiguration.setName(null);
 
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 doRequestWithAuthTokenAndBody(
                     "POST",
@@ -1058,7 +1058,7 @@ public class AlertControllerTest extends FakeDBApplication {
     alertConfiguration.setTargetType(null);
 
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 doRequestWithAuthTokenAndBody(
                     "PUT",
