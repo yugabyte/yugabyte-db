@@ -20,6 +20,7 @@ const WIDTH_OFFSET = 23;
 const CONTAINER_PADDING = 60;
 const MAX_GRAPH_WIDTH_PX = 600;
 const GRAPH_GUTTER_WIDTH_PX = 15;
+const MAX_NAME_LENGTH = 15;
 
 export default class MetricsPanel extends Component {
   static propTypes = {
@@ -30,6 +31,17 @@ export default class MetricsPanel extends Component {
   plotGraph = () => {
     const { metricKey, metric } = this.props;
     if (isNonEmptyObject(metric)) {
+      metric.data.forEach((dataItem, i) => {
+        dataItem['fullname'] = dataItem['name'];
+        // Truncate trace names if they are longer than 15 characters, and append ellipsis
+        if (dataItem['name'].length > MAX_NAME_LENGTH) {
+          dataItem['name'] =  dataItem['name'].substring(0, MAX_NAME_LENGTH) + '...';
+        }
+        // Only show upto first 8 traces in the legend
+        if (i >= 8) {
+          dataItem['showlegend'] = false;
+        }
+      });
       // Remove Null Properties from the layout
       removeNullProperties(metric.layout);
       // Detect if unit is µs and Y axis value is > 1000.
@@ -50,7 +62,7 @@ export default class MetricsPanel extends Component {
       // TODO: send this data from backend.
       let max = 0;
       metric.data.forEach(function (data) {
-        data.hovertemplate = '%{data.name}: %{y} at %{x} <extra></extra>';
+        data.hovertemplate = '%{data.fullname}: %{y} at %{x} <extra></extra>';
         if (data.y) {
           data.y.forEach(function (y) {
             y = parseFloat(y) * 1.25;
@@ -58,11 +70,12 @@ export default class MetricsPanel extends Component {
           });
         }
       });
+
       if (max === 0) max = 1.01;
       metric.layout.autosize = false;
       metric.layout.width =
         this.props.width || this.getGraphWidth(this.props.containerWidth || 1200);
-      metric.layout.height = this.props.height || 360;
+      metric.layout.height = this.props.height || 400;
       metric.layout.showlegend = true;
       metric.layout.hovermode = 'closest';
       metric.layout.margin = {
@@ -84,12 +97,19 @@ export default class MetricsPanel extends Component {
       metric.layout.font = {
         family: METRIC_FONT
       };
+
+      // Give the legend box extra vertical space if there are more than 4 traces
+      let legendExtraMargin = 0;
+      if (metric.data.length > 4) {
+         legendExtraMargin = 0.2;
+      }
+
       metric.layout.legend = {
         orientation: 'h',
         xanchor: 'center',
         yanchor: 'bottom',
         x: 0.5,
-        y: -0.5
+        y: -0.5 - legendExtraMargin,
       };
 
       // Handle the case when the metric data is empty, we would show
