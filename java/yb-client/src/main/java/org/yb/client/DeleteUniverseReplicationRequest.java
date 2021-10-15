@@ -19,11 +19,11 @@ import org.yb.util.Pair;
 
 import java.util.UUID;
 
-public class DeleteXClusterReplicationRequest extends YRpc<DeleteXClusterReplicationResponse> {
+public class DeleteUniverseReplicationRequest extends YRpc<DeleteUniverseReplicationResponse> {
 
   private final UUID sourceUniverseUUID;
 
-  DeleteXClusterReplicationRequest(YBTable table, UUID sourceUniverseUUID) {
+  DeleteUniverseReplicationRequest(YBTable table, UUID sourceUniverseUUID) {
     super(table);
     this.sourceUniverseUUID = sourceUniverseUUID;
   }
@@ -50,7 +50,7 @@ public class DeleteXClusterReplicationRequest extends YRpc<DeleteXClusterReplica
   }
 
   @Override
-  Pair<DeleteXClusterReplicationResponse, Object> deserialize(
+  Pair<DeleteUniverseReplicationResponse, Object> deserialize(
     CallResponse callResponse, String tsUUID) throws Exception {
     final Master.DeleteUniverseReplicationResponsePB.Builder builder =
       Master.DeleteUniverseReplicationResponsePB.newBuilder();
@@ -59,8 +59,8 @@ public class DeleteXClusterReplicationRequest extends YRpc<DeleteXClusterReplica
 
     final Master.MasterErrorPB error = builder.hasError() ? builder.getError() : null;
 
-    DeleteXClusterReplicationResponse response =
-      new DeleteXClusterReplicationResponse(deadlineTracker.getElapsedMillis(),
+    DeleteUniverseReplicationResponse response =
+      new DeleteUniverseReplicationResponse(deadlineTracker.getElapsedMillis(),
         tsUUID, error);
 
     return new Pair<>(response, error);

@@ -13,27 +13,27 @@
 package org.yb.client;
 
 import com.google.protobuf.Message;
+import java.util.Set;
+import java.util.UUID;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.yb.Common;
+import org.yb.Common.HostPortPB;
 import org.yb.master.Master;
 import org.yb.util.Pair;
 
-import java.util.List;
-import java.util.UUID;
-
-public class CreateXClusterReplicationRequest extends YRpc<CreateXClusterReplicationResponse> {
+public class SetupUniverseReplicationRequest extends YRpc<SetupUniverseReplicationResponse> {
 
   private final UUID sourceUniverseUUID;
-  private final List<String> sourceTableIDs;
-  private final List<Common.HostPortPB> sourceMasterAddresses;
-  private final List<String> sourceBootstrapIDs;
+  private final Set<String> sourceTableIDs;
+  private final Set<Common.HostPortPB> sourceMasterAddresses;
+  private final Set<String> sourceBootstrapIDs;
 
-  CreateXClusterReplicationRequest(
+  SetupUniverseReplicationRequest(
     YBTable table,
     UUID sourceUniverseUUID,
-    List<String> sourceTableIDs,
-    List<Common.HostPortPB> sourceMasterAddresses,
-    List<String> sourceBootstrapIDs) {
+    Set<String> sourceTableIDs,
+    Set<HostPortPB> sourceMasterAddresses,
+    Set<String> sourceBootstrapIDs) {
     super(table);
     this.sourceUniverseUUID = sourceUniverseUUID;
     this.sourceTableIDs = sourceTableIDs;
@@ -66,7 +66,7 @@ public class CreateXClusterReplicationRequest extends YRpc<CreateXClusterReplica
   }
 
   @Override
-  Pair<CreateXClusterReplicationResponse, Object> deserialize(
+  Pair<SetupUniverseReplicationResponse, Object> deserialize(
     CallResponse callResponse, String tsUUID) throws Exception {
     final Master.SetupUniverseReplicationResponsePB.Builder builder =
       Master.SetupUniverseReplicationResponsePB.newBuilder();
@@ -75,8 +75,8 @@ public class CreateXClusterReplicationRequest extends YRpc<CreateXClusterReplica
 
     final Master.MasterErrorPB error = builder.hasError() ? builder.getError() : null;
 
-    CreateXClusterReplicationResponse response =
-      new CreateXClusterReplicationResponse(deadlineTracker.getElapsedMillis(), tsUUID, error);
+    SetupUniverseReplicationResponse response =
+      new SetupUniverseReplicationResponse(deadlineTracker.getElapsedMillis(), tsUUID, error);
 
     return new Pair<>(response, error);
   }

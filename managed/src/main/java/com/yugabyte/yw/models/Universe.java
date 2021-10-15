@@ -132,14 +132,6 @@ public class Universe extends Model {
 
   @Transient private UniverseDefinitionTaskParams universeDetails;
 
-  @OneToMany(mappedBy = "sourceUniverse", cascade = CascadeType.ALL)
-  @JsonManagedReference
-  public Set<AsyncReplicationRelationship> sourceAsyncReplicationRelationships;
-
-  @OneToMany(mappedBy = "targetUniverse", cascade = CascadeType.ALL)
-  @JsonManagedReference
-  public Set<AsyncReplicationRelationship> targetAsyncReplicationRelationships;
-
   public void setUniverseDetails(UniverseDefinitionTaskParams details) {
     universeDetails = details;
   }

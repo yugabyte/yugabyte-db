@@ -4,10 +4,10 @@ import org.yb.annotations.InterfaceAudience;
 import org.yb.master.Master;
 
 @InterfaceAudience.Public
-public class CreateXClusterReplicationResponse extends YRpcResponse {
+public class DeleteUniverseReplicationResponse extends YRpcResponse {
   private final Master.MasterErrorPB serverError;
 
-  public CreateXClusterReplicationResponse(
+  public DeleteUniverseReplicationResponse(
     long elapsedMillis, String tsUUID, Master.MasterErrorPB serverError) {
     super(elapsedMillis, tsUUID);
     this.serverError = serverError;

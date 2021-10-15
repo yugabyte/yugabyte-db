@@ -13,28 +13,31 @@
 package org.yb.client;
 
 import com.google.protobuf.Message;
+import java.util.UUID;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.yb.master.Master;
 import org.yb.util.Pair;
 
-import java.util.UUID;
-
-public class GetXClusterReplicationInfoRequest extends YRpc<GetXClusterReplicationInfoResponse> {
+public class SetUniverseReplicationEnabledRequest
+  extends YRpc<SetUniverseReplicationEnabledResponse> {
 
   private final UUID sourceUniverseUUID;
+  private final boolean enabled;
 
-  GetXClusterReplicationInfoRequest(YBTable table, UUID sourceUniverseUUID) {
+  SetUniverseReplicationEnabledRequest(YBTable table, UUID sourceUniverseUUID, boolean enabled) {
     super(table);
     this.sourceUniverseUUID = sourceUniverseUUID;
+    this.enabled = enabled;
   }
 
   @Override
   ChannelBuffer serialize(Message header) {
     assert header.isInitialized();
 
-    final Master.GetUniverseReplicationRequestPB.Builder builder =
-      Master.GetUniverseReplicationRequestPB.newBuilder()
-        .setProducerId(sourceUniverseUUID.toString());
+    final Master.SetUniverseReplicationEnabledRequestPB.Builder builder =
+      Master.SetUniverseReplicationEnabledRequestPB.newBuilder()
+        .setProducerId(sourceUniverseUUID.toString())
+        .setIsEnabled(enabled);
 
     return toChannelBuffer(header, builder.build());
   }
@@ -46,23 +49,22 @@ public class GetXClusterReplicationInfoRequest extends YRpc<GetXClusterReplicati
 
   @Override
   String method() {
-    return "GetUniverseReplication";
+    return "SetUniverseReplicationEnabled";
   }
 
   @Override
-  Pair<GetXClusterReplicationInfoResponse, Object> deserialize(
+  Pair<SetUniverseReplicationEnabledResponse, Object> deserialize(
     CallResponse callResponse, String tsUUID) throws Exception {
-    final Master.GetUniverseReplicationResponsePB.Builder builder =
-      Master.GetUniverseReplicationResponsePB.newBuilder();
+    final Master.SetUniverseReplicationEnabledResponsePB.Builder builder =
+      Master.SetUniverseReplicationEnabledResponsePB.newBuilder();
 
     readProtobuf(callResponse.getPBMessage(), builder);
 
     final Master.MasterErrorPB error = builder.hasError() ? builder.getError() : null;
-    final Master.SysUniverseReplicationEntryPB info = builder.getEntry();
 
-    GetXClusterReplicationInfoResponse response =
-      new GetXClusterReplicationInfoResponse(deadlineTracker.getElapsedMillis(),
-        tsUUID, error, info);
+    SetUniverseReplicationEnabledResponse response =
+      new SetUniverseReplicationEnabledResponse(deadlineTracker.getElapsedMillis(),
+        tsUUID, error);
 
     return new Pair<>(response, error);
   }

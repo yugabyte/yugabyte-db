@@ -243,14 +243,7 @@ POST    /customers/:cUUID/universes/:uniUUID/config_alerts                     c
 POST    /customers/:cUUID/universes/:uniUUID/set_key                           com.yugabyte.yw.controllers.UniverseActionsController.setUniverseKey(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/toggle_tls                        com.yugabyte.yw.controllers.UniverseActionsController.toggleTls(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
-# xCluster Replication management (old API)
-POST    /customers/:cUUID/universes/:uniUUID/xcluster_replication              com.yugabyte.yw.controllers.XClusterConfigController.createOld(cUUID: java.util.UUID, uniUUID: java.util.UUID)
-PUT     /customers/:cUUID/universes/:uniUUID/xcluster_replication              com.yugabyte.yw.controllers.XClusterConfigController.editOld(cUUID: java.util.UUID, uniUUID: java.util.UUID)
-DELETE  /customers/:cUUID/universes/:uniUUID/xcluster_replication              com.yugabyte.yw.controllers.XClusterConfigController.deleteOld(cUUID: java.util.UUID, uniUUID: java.util.UUID)
-PUT     /customers/:cUUID/universes/:uniUUID/pause_xcluster_replication        com.yugabyte.yw.controllers.XClusterConfigController.pauseOld(cUUID: java.util.UUID, uniUUID: java.util.UUID)
-PUT     /customers/:cUUID/universes/:uniUUID/resume_xcluster_replication       com.yugabyte.yw.controllers.XClusterConfigController.resumeOld(cUUID: java.util.UUID, uniUUID: java.util.UUID)
-
-# xCluster Replication management
+# xCluster Replication API
 POST    /customers/:cUUID/xcluster_configs                                     com.yugabyte.yw.controllers.XClusterConfigController.create(cUUID: java.util.UUID)
 GET     /customers/:cUUID/xcluster_configs/:xccUUID                            com.yugabyte.yw.controllers.XClusterConfigController.get(cUUID: java.util.UUID, xccUUID: java.util.UUID)
 PUT     /customers/:cUUID/xcluster_configs/:xccUUID                            com.yugabyte.yw.controllers.XClusterConfigController.edit(cUUID: java.util.UUID, xccUUID: java.util.UUID)

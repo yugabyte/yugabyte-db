@@ -19,26 +19,22 @@ import org.yb.util.Pair;
 
 import java.util.UUID;
 
-public class SetXClusterReplicationActiveRequest
-  extends YRpc<SetXClusterReplicationActiveResponse> {
+public class GetUniverseReplicationRequest extends YRpc<GetUniverseReplicationResponse> {
 
   private final UUID sourceUniverseUUID;
-  private final boolean active;
 
-  SetXClusterReplicationActiveRequest(YBTable table, UUID sourceUniverseUUID, boolean active) {
+  GetUniverseReplicationRequest(YBTable table, UUID sourceUniverseUUID) {
     super(table);
     this.sourceUniverseUUID = sourceUniverseUUID;
-    this.active = active;
   }
 
   @Override
   ChannelBuffer serialize(Message header) {
     assert header.isInitialized();
 
-    final Master.SetUniverseReplicationEnabledRequestPB.Builder builder =
-      Master.SetUniverseReplicationEnabledRequestPB.newBuilder()
-        .setProducerId(sourceUniverseUUID.toString())
-        .setIsEnabled(active);
+    final Master.GetUniverseReplicationRequestPB.Builder builder =
+      Master.GetUniverseReplicationRequestPB.newBuilder()
+        .setProducerId(sourceUniverseUUID.toString());
 
     return toChannelBuffer(header, builder.build());
   }
@@ -50,22 +46,23 @@ public class SetXClusterReplicationActiveRequest
 
   @Override
   String method() {
-    return "SetUniverseReplicationEnabled";
+    return "GetUniverseReplication";
   }
 
   @Override
-  Pair<SetXClusterReplicationActiveResponse, Object> deserialize(
+  Pair<GetUniverseReplicationResponse, Object> deserialize(
     CallResponse callResponse, String tsUUID) throws Exception {
-    final Master.SetUniverseReplicationEnabledResponsePB.Builder builder =
-      Master.SetUniverseReplicationEnabledResponsePB.newBuilder();
+    final Master.GetUniverseReplicationResponsePB.Builder builder =
+      Master.GetUniverseReplicationResponsePB.newBuilder();
 
     readProtobuf(callResponse.getPBMessage(), builder);
 
     final Master.MasterErrorPB error = builder.hasError() ? builder.getError() : null;
+    final Master.SysUniverseReplicationEntryPB info = builder.getEntry();
 
-    SetXClusterReplicationActiveResponse response =
-      new SetXClusterReplicationActiveResponse(deadlineTracker.getElapsedMillis(),
-        tsUUID, error);
+    GetUniverseReplicationResponse response =
+      new GetUniverseReplicationResponse(deadlineTracker.getElapsedMillis(),
+        tsUUID, error, info);
 
     return new Pair<>(response, error);
   }
