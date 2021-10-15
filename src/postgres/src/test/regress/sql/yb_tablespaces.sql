@@ -227,14 +227,18 @@ CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":1, "placement_block
 CREATE DATABASE colocation_test colocated = true;
 \c colocation_test
 -- Should fail to set tablespace on a table in a colocated database
-CREATE TABLE tab_nonkey (a INT) TABLESPACE x;  
+CREATE TABLE tab_nonkey (a INT) TABLESPACE x;
 -- Should succeed in setting tablespace on a table in a colocated database when opted out
-CREATE TABLE tab_nonkey (a INT) WITH (COLOCATED = false) TABLESPACE x;  
+CREATE TABLE tab_nonkey (a INT) WITH (COLOCATED = false) TABLESPACE x;
 -- cleanup
 DROP TABLE tab_nonkey;
-DROP TABLESPACE x;
 \c yugabyte
 DROP DATABASE colocation_test;
+
+-- Fail, cannot set tablespaces for temp tables.
+CREATE TEMPORARY TABLE temptest (a INT) TABLESPACE x;
+-- Cleanup.
+DROP TABLESPACE x;
 
 /*
 Testing to make sure that an index on a "near" tablespace whose placements are
