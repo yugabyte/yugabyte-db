@@ -10,13 +10,13 @@ menu:
    weight: 2950
 ---
 
-YugabyteDB and YugabyteDB client shell installations include sample datasets you can use to test out YugabyteDB. These are located in the `share` directory of your installation. The datasets are also available in the [sample directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample). The datasets are provided in the form of SQL script files. You can install and use the sample datasets using either a local installation of YugabyteDB, or by connecting to a cluster in Yugabyte Cloud.
+YugabyteDB and YugabyteDB client shell installations include sample datasets you can use to test out YugabyteDB. These are located in the `share` directory of your installation. The datasets are also available in the [sample directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample). The datasets are provided in the form of SQL script files. You can install and use the sample datasets using either a local installation of YugabyteDB, or by connecting to a cluster in Yugabyte Cloud (including your free cluster) via a client shell.
 
 All of the datasets are PostgreSQL-compatible, and you can explore them using the [ysqlsh shell](../admin/ysqlsh/) to compare between PostgreSQL and the YugabyteDB [YSQL API](../api/ysql/).
 
 For information on installing YugabyteDB, refer to [Quick Start](../quick-start/).
 
-For information on connecting to your Yugabyte Cloud cluster using `ysqlsh`, refer to [Connect via Client Shell](../yugabyte-cloud/cloud-basics/connect-to-clusters#connect-via-client-shell).
+For information on connecting to your Yugabyte Cloud cluster using `ysqlsh`, refer to [Connect via Client Shell](../yugabyte-cloud/cloud-basics/connect-to-clusters#connect-via-client-shell). To get started with Yugabyte Cloud, refer to [Get Started](../yugabyte-cloud/cloud-basics/).
 
 <div class="row">
 
