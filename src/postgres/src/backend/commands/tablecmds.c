@@ -597,6 +597,18 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 		relkind = RELKIND_PARTITIONED_TABLE;
 	}
 
+	if (IsYugaByteEnabled() && stmt->tablespacename &&
+		stmt->relation->relpersistence == RELPERSISTENCE_TEMP)
+	{
+		/*
+		 * Disable setting tablespaces for temporary tables in Yugabyte
+		 * clusters.
+		 */
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("cannot set tablespaces for temporary tables")));
+	}
+
 	/*
 	 * Look up the namespace in which we are supposed to create the relation,
 	 * check we have permission to create there, lock it against concurrent
