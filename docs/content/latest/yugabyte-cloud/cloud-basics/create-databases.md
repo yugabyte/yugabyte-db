@@ -39,9 +39,9 @@ showAsideToc: true
 
 Using the `ysqlsh` shell, you can interact with your YugabyteDB database using the YSQL API. In the following exercise, you'll use ysqlsh to create a database, load a sample dataset, and run a simple query.
 
-Your YugabyteDB client shell installation includes sample datasets you can use to test out YugabyteDB. These are located in the `share` directory. The datasets are provided in the form of SQL script files. (The datasets are also available in the [sample directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample)). This exercise uses the [Retail Analytics](../../../develop/realworld-apps/retail-analytics/) dataset.
+Your YugabyteDB client shell installation includes sample datasets you can use to test out YugabyteDB. These are located in the `share` directory. The datasets are provided in the form of SQL script files. (The datasets are also available in the [sample directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample)). This exercise uses the [Retail Analytics](../../../sample-data/retail-analytics/) dataset.
 
-The following files will be used:
+The following files are used:
 
 - [schema.sql](https://github.com/yugabyte/yugabyte-db/tree/master/sample/schema.sql) — Database schema, creates tables and other database objects
 - [orders.sql](https://github.com/yugabyte/yugabyte-db/tree/master/sample/orders.sql) — Orders table
@@ -130,7 +130,7 @@ SELECT id, title, category, price, rating
 
 ## More to explore
 
-To explore more of the Retail Analytics database, refer to the exercises in [Retail Analytics](../../../develop/realworld-apps/retail-analytics#3-run-queries). 
+To explore more of the Retail Analytics database, refer to the exercises in [Retail Analytics](../../../sample-data/retail-analytics/). 
 
 Here are links to documentation on the tested datasets and the steps to create the other sample databases included with YugabyteDB:
 
