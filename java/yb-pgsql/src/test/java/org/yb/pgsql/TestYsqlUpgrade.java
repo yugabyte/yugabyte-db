@@ -704,7 +704,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
           postSnapshot.catalog.get(MIGRATIONS_TABLE)
               .get(postSnapshot.catalog.get(MIGRATIONS_TABLE).size() - 1).getInt(0).intValue());
       List<Row> appliedMigrations = postSnapshot.catalog.get(MIGRATIONS_TABLE);
-      assertTrue(appliedMigrations.get(0).getInt(0) == latestVersion);
+      assertTrue(appliedMigrations.get(0).getInt(0) == lastHardcodedMigrationVersion);
       postSnapshot.catalog.remove(MIGRATIONS_TABLE);
       postSnapshot.catalog.remove(CATALOG_VERSION_TABLE);
 
