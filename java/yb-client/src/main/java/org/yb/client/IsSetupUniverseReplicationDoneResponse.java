@@ -6,12 +6,12 @@ import org.yb.master.Master;
 import org.yb.master.Master.MasterErrorPB;
 
 @InterfaceAudience.Public
-public class IsCreateXClusterReplicationDoneResponse extends YRpcResponse {
+public class IsSetupUniverseReplicationDoneResponse extends YRpcResponse {
   private final Master.MasterErrorPB serverError;
   private final boolean done;
   private final AppStatusPB replicationError;
 
-  public IsCreateXClusterReplicationDoneResponse(
+  public IsSetupUniverseReplicationDoneResponse(
     long elapsedMillis,
     String tsUUID,
     Master.MasterErrorPB serverError,

@@ -4,18 +4,13 @@ import org.yb.annotations.InterfaceAudience;
 import org.yb.master.Master;
 
 @InterfaceAudience.Public
-public class GetXClusterReplicationInfoResponse extends YRpcResponse {
+public class SetUniverseReplicationEnabledResponse extends YRpcResponse {
   private final Master.MasterErrorPB serverError;
-  private final Master.SysUniverseReplicationEntryPB info;
 
-  public GetXClusterReplicationInfoResponse(
-    long elapsedMillis,
-    String tsUUID,
-    Master.MasterErrorPB serverError,
-    Master.SysUniverseReplicationEntryPB info) {
+  public SetUniverseReplicationEnabledResponse(
+    long elapsedMillis, String tsUUID, Master.MasterErrorPB serverError) {
     super(elapsedMillis, tsUUID);
     this.serverError = serverError;
-    this.info = info;
   }
 
   public boolean hasError() {
@@ -28,9 +23,5 @@ public class GetXClusterReplicationInfoResponse extends YRpcResponse {
     }
 
     return serverError.getStatus().getMessage();
-  }
-
-  public Master.SysUniverseReplicationEntryPB info() {
-    return info;
   }
 }
