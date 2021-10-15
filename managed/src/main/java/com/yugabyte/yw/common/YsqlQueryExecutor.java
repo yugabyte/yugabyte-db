@@ -167,7 +167,9 @@ public class YsqlQueryExecutor {
                 universe,
                 data,
                 String.format(
-                    "GRANT pg_read_all_stats, pg_signal_backend TO \"%s\"", DB_ADMIN_ROLE_NAME));
+                    "GRANT pg_read_all_stats, pg_signal_backend TO \"%1$s\"; "
+                        + "GRANT EXECUTE ON FUNCTION pg_stat_statements_reset TO  \"%1$s\"",
+                    DB_ADMIN_ROLE_NAME));
         LOG.info("GRANT privs to admin role, result {}", ysqlResponse.toString());
 
         ysqlResponse = runQueryUtil(universe, data, DEL_PG_ROLES_CMD_1);
