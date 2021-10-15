@@ -416,7 +416,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       for (int i = 0; i < 2; i++) {
         try {
         List<String> roles = getRowList(stmt, "SELECT rolname FROM pg_roles"
-            + " WHERE rolname <> 'postgres' AND rolname NOT LIKE 'pg_%'").stream()
+            + " WHERE rolname <> 'postgres'"
+            + " AND rolname NOT LIKE 'pg_%'"
+            + " AND rolname NOT LIKE 'yb_%'").stream()
                 .map(r -> r.getString(0))
                 .collect(Collectors.toList());
 

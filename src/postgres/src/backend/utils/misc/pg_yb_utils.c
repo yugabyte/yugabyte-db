@@ -39,6 +39,12 @@
 #include "access/tupdesc.h"
 #include "access/xact.h"
 #include "executor/ybcExpr.h"
+#include "utils/lsyscache.h"
+#include "utils/pg_locale.h"
+#include "utils/rel.h"
+#include "catalog/pg_authid.h"
+#include "catalog/pg_database.h"
+#include "utils/builtins.h"
 #include "catalog/pg_collation_d.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_type.h"
@@ -1842,4 +1848,8 @@ Oid YBEncodingCollation(YBCPgStatement handle, int attr_num, Oid attcollation) {
 	YBCPgColumnInfo column_info = {0};
 	HandleYBStatus(YBCPgDmlGetColumnInfo(handle, attr_num, &column_info));
 	return YBNeedCollationEncoding(&column_info) ? attcollation : InvalidOid;
+}
+
+bool IsYbExtensionUser(Oid member) {
+	return IsYugaByteEnabled() && has_privs_of_role(member, DEFAULT_ROLE_YB_EXTENSION);
 }

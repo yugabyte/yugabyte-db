@@ -62,6 +62,8 @@
 #include "utils/tqual.h"
 #include "utils/varlena.h"
 
+#include "pg_yb_utils.h"
+
 
 /* Globally visible state variables */
 bool		creating_extension = false;
@@ -799,7 +801,7 @@ execute_extension_script(Oid extensionOid, ExtensionControlFile *control,
 	 * here so that the flag is correctly associated with the right script(s)
 	 * if it's set in secondary control files.
 	 */
-	if (control->superuser && !superuser())
+	if (!IsYbExtensionUser(GetUserId()) && (control->superuser && !superuser()))
 	{
 		if (from_version == NULL)
 			ereport(ERROR,
