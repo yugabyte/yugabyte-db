@@ -126,7 +126,7 @@ public class HealthChecker {
 
   private static final String UPTIME_CHECK = "Uptime";
   private static final String VERSION_MISMATCH_CHECK = "YB Version";
-  private static final String ERROR_LOG_CHECK = "Error log files";
+  private static final String FATAL_LOG_CHECK = "Fatal log files";
   private static final String CQLSH_CONNECTIVITY_CHECK = "Connectivity with cqlsh";
   private static final String YSQLSH_CONNECTIVITY_CHECK = "Connectivity with ysqlsh";
   private static final String REDIS_CONNECTIVITY_CHECK = "Connectivity with redis-cli";
@@ -909,7 +909,7 @@ public class HealthChecker {
         } else {
           return PlatformMetrics.HEALTH_CHECK_TSERVER_VERSION_MISMATCH;
         }
-      case ERROR_LOG_CHECK:
+      case FATAL_LOG_CHECK:
         if (isMaster) {
           return PlatformMetrics.HEALTH_CHECK_MASTER_ERROR_LOGS;
         } else {
@@ -961,7 +961,7 @@ public class HealthChecker {
                   nodeName,
                   metricValue));
         }
-      case ERROR_LOG_CHECK:
+      case FATAL_LOG_CHECK:
         // 1 or 3 == error logs exist == 0 status
         double errorLogsValue = (metricValue + 1) % 2;
         // 2 or 3 == fatal logs exist == 0 status

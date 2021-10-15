@@ -454,7 +454,7 @@ class NodeChecker():
 
     def check_for_error_logs(self, process):
         logging.info("Checking for error logs on node {}".format(self.node))
-        e = self._new_entry("Error log files")
+        e = self._new_entry("Fatal log files")
         logs = []
         process_name = process.strip("yb-")
         search_dir = YB_PROCESS_LOG_PATH_FORMAT.format(process_name)
@@ -471,7 +471,9 @@ class NodeChecker():
 
             log_files = self.check_logs_find_output(output)
 
-            logs.extend(log_files)
+            # For now only show error on fatal logs - until error logs are cleaned up enough
+            if log_severity == "FATAL":
+                logs.extend(log_files)
 
             # 0 = no error and fatal logs
             # 1 = error logs only
