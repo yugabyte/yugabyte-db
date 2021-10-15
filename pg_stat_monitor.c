@@ -14,7 +14,9 @@
  *
  *-------------------------------------------------------------------------
  */
+
 #include "postgres.h"
+#include "access/parallel.h"
 #include <regex.h>
 #ifdef BENCHMARK
 #include <time.h> /* clock() */
@@ -367,6 +369,9 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query, JumbleState *jstate)
 	if (!IsSystemInitialized())
 		return;
 
+	if (IsParallelWorker())
+		return;
+
 	/*
 	 * Clear queryId for prepared statements related utility, as those will
 	 * inherit from the underlying statement's one (except DEALLOCATE which is
@@ -421,6 +426,9 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query)
 
 	/* Safety check... */
 	if (!IsSystemInitialized())
+		return;
+
+	if (IsParallelWorker())
 		return;
 
 	/*
@@ -484,6 +492,9 @@ pgss_ExecutorStart(QueryDesc *queryDesc, int eflags)
 		prev_ExecutorStart(queryDesc, eflags);
 	else
 		standard_ExecutorStart(queryDesc, eflags);
+
+	if (IsParallelWorker())
+		return;
 
 	/*
 	 * If query has queryId zero, don't track it.  This prevents double
@@ -655,7 +666,7 @@ pgss_ExecutorEnd(QueryDesc *queryDesc)
 		MemoryContextSwitchTo(mct);
 	}
 
-	if (queryId != UINT64CONST(0) && queryDesc->totaltime)
+	if (queryId != UINT64CONST(0) && queryDesc->totaltime && !IsParallelWorker())
 	{
 		/*
 		 * Make sure stats accumulation is done.  (Note: it's okay if several
@@ -770,7 +781,7 @@ pgss_planner_hook(Query *parse, const char *query_string, int cursorOptions, Par
 {
 	PlannedStmt			*result;
 
-	if (PGSM_TRACK_PLANNING && query_string && parse->queryId != UINT64CONST(0))
+	if (PGSM_TRACK_PLANNING && query_string && parse->queryId != UINT64CONST(0) && !IsParallelWorker())
 	{
 		PlanInfo	plan_info;
 		instr_time	start;
@@ -942,7 +953,7 @@ static void pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 	if (PGSM_TRACK_UTILITY &&
 		!IsA(parsetree, ExecuteStmt) &&
 		!IsA(parsetree, PrepareStmt) &&
-		!IsA(parsetree, DeallocateStmt))
+		!IsA(parsetree, DeallocateStmt) && !IsParallelWorker())
 	{
 		instr_time	start;
 		instr_time	duration;
@@ -1453,7 +1464,6 @@ pgss_store(uint64 queryid,
 	uint64          bucketid;
 	uint64          prev_bucket_id;
     uint64          userid;
-    int             con;
 	uint64          planid;
 	uint64          appid;
 	char            comments[512] = "";
@@ -1468,10 +1478,7 @@ pgss_store(uint64 queryid,
 		return;
 
 	Assert(query != NULL);
-	if (kind == PGSS_ERROR)
-		GetUserIdAndSecContext((unsigned int *)&userid, &con);
-	else
-		userid =  GetUserId();
+	userid =  GetUserId();
 
 	application_name_len = pg_get_application_name(application_name);
 	planid = plan_info ? plan_info->planid: 0;
@@ -3254,6 +3261,9 @@ pgsm_emit_log_hook(ErrorData *edata)
 {
 	if (!IsSystemInitialized() || edata == NULL)
 		goto exit;
+
+	if (IsParallelWorker())
+		return;
 
 	if ((edata->elevel == ERROR || edata->elevel == WARNING || edata->elevel == INFO || edata->elevel == DEBUG1))
 	{
