@@ -36,7 +36,6 @@ To restore YugabyteDB universe YCQL data from a backup:
 2. Click **Restore Backup** to open the **Restore data to** dialog.
 
     <br/><br/>
-
     ![Restore backup - YCQL](/images/yp/restore-universe-data-ycql.png)
 
 3. Enter the following information:
@@ -52,5 +51,6 @@ To restore YugabyteDB universe YCQL data from a backup:
 4. Click **OK**. The restore begins immediately. When the restore is completed, a completed **Restore Backup** task will appear in the **Tasks** tab.
 5. To confirm the restore succeeded, go to the **Tables** tab to compare the original table with the table you
 restored to.
-
-![Tables View](/images/yp/tables-view.png)
+  
+   <br/><br/>
+   ![Tables View](/images/yp/tables-view-ycql.png)
