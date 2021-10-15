@@ -20,6 +20,7 @@ import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.forms.BackupTableParams.ActionType;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -164,9 +165,11 @@ public class BackupUniverse extends UniverseTaskBase {
         // Run all the tasks.
         subTaskGroupQueue.run();
 
-        BACKUP_SUCCESS_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
-        metricService.setOkStatusMetric(
-            buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
+        if (taskParams().actionType == ActionType.CREATE) {
+          BACKUP_SUCCESS_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
+          metricService.setOkStatusMetric(
+              buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
+        }
         if (taskParams().actionType != BackupTableParams.ActionType.CREATE) {
           unlockUniverseForUpdate();
         }
@@ -180,9 +183,11 @@ public class BackupUniverse extends UniverseTaskBase {
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
 
-      BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
-      metricService.setStatusMetric(
-          buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe), t.getMessage());
+      if (taskParams().actionType == ActionType.CREATE) {
+        BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
+        metricService.setStatusMetric(
+            buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe), t.getMessage());
+      }
       // Run an unlock in case the task failed before getting to the unlock. It is okay if it
       // errors out.
       unlockUniverseForUpdate();
