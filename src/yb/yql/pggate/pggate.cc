@@ -918,8 +918,7 @@ Status PgApiImpl::ProcessYBTupleId(const YBCPgYBTupleIdDescriptor& descr,
   google::protobuf::RepeatedPtrField<PgsqlExpressionPB> hashed_values;
   vector<docdb::PrimitiveValue> hashed_components, range_components;
   hashed_components.reserve(target_desc->num_hash_key_columns());
-  range_components.reserve(
-      target_desc->num_hash_key_columns() - target_desc->num_hash_key_columns());
+  range_components.reserve(target_desc->num_key_columns() - target_desc->num_hash_key_columns());
   size_t remain_attr = descr.nattrs;
   // DocDB API requires that partition columns must be listed in their created-order.
   // Order from target_desc should be used as attributes sequence may have different order.

@@ -248,6 +248,10 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
     return out_param_backfill_spec_.c_str();
   }
 
+  bool end_of_data() const {
+    return end_of_data_;
+  }
+
  protected:
   uint64_t& GetReadTime();
 

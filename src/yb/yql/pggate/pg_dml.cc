@@ -336,34 +336,45 @@ Result<bool> PgDml::FetchDataFromServer() {
 }
 
 Result<bool> PgDml::GetNextRow(PgTuple *pg_tuple) {
-  for (auto rowset_iter = rowsets_.begin(); rowset_iter != rowsets_.end();) {
-    // Check if the rowset has any data.
-    auto& rowset = *rowset_iter;
-    if (rowset.is_eof()) {
-      rowset_iter = rowsets_.erase(rowset_iter);
-      continue;
+  for (;;) {
+    for (auto rowset_iter = rowsets_.begin(); rowset_iter != rowsets_.end();) {
+      // Check if the rowset has any data.
+      auto& rowset = *rowset_iter;
+      if (rowset.is_eof()) {
+        rowset_iter = rowsets_.erase(rowset_iter);
+        continue;
+      }
+
+      // If this rowset has the next row of the index order, load it. Otherwise, continue looking
+      // for the next row in the order.
+      //
+      // NOTE:
+      //   DML <Table> WHERE ybctid IN (SELECT base_ybctid FROM <Index> ORDER BY <Index Range>)
+      // The nested subquery should return rows in indexing order, but the ybctids are then grouped
+      // by hash-code for BATCH-DML-REQUEST, so the response here are out-of-order.
+      if (rowset.NextRowOrder() <= current_row_order_) {
+        // Write row to postgres tuple.
+        int64_t row_order = -1;
+        RETURN_NOT_OK(rowset.WritePgTuple(targets_, pg_tuple, &row_order));
+        SCHECK(row_order == -1 || row_order == current_row_order_, InternalError,
+               "The resulting row are not arranged in indexing order");
+
+        // Found the current row. Move cursor to next row.
+        current_row_order_++;
+        return true;
+      }
+
+      rowset_iter++;
     }
 
-    // If this rowset has the next row of the index order, load it. Otherwise, continue looking for
-    // the next row in the order.
-    //
-    // NOTE:
-    //   DML <Table> WHERE ybctid IN (SELECT base_ybctid FROM <Index> ORDER BY <Index Range>)
-    // The nested subquery should return rows in indexing order, but the ybctids are then grouped
-    // by hash-code for BATCH-DML-REQUEST, so the response here are out-of-order.
-    if (rowset.NextRowOrder() <= current_row_order_) {
-      // Write row to postgres tuple.
-      int64_t row_order = -1;
-      RETURN_NOT_OK(rowset.WritePgTuple(targets_, pg_tuple, &row_order));
-      SCHECK(row_order == -1 || row_order == current_row_order_, InternalError,
-             "The resulting row are not arranged in indexing order");
-
-      // Found the current row. Move cursor to next row.
+    if (!rowsets_.empty() && doc_op_->end_of_data()) {
+      // If the current desired row is missing, skip it and continue to look for the next
+      // desired row in order. A row is deemed missing if it is not found and the doc op
+      // has no more rows to return.
       current_row_order_++;
-      return true;
+    } else {
+      break;
     }
-
-    rowset_iter++;
   }
 
   return false;
