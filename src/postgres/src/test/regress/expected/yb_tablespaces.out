@@ -441,9 +441,13 @@ ERROR:  cannot create colocated table with a tablespace
 CREATE TABLE tab_nonkey (a INT) WITH (COLOCATED = false) TABLESPACE x;
 -- cleanup
 DROP TABLE tab_nonkey;
-DROP TABLESPACE x;
 \c yugabyte
 DROP DATABASE colocation_test;
+-- Fail, cannot set tablespaces for temp tables.
+CREATE TEMPORARY TABLE temptest (a INT) TABLESPACE x;
+ERROR:  cannot set tablespaces for temporary tables
+-- Cleanup.
+DROP TABLESPACE x;
 /*
 Testing to make sure that an index on a "near" tablespace whose placements are
 all on the current cloud/region/zone is preferred over "far" indexes.
