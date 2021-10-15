@@ -457,8 +457,7 @@ Result<std::vector<std::string>> PgDmlRead::BuildYbctidsFromPrimaryBinds() {
   google::protobuf::RepeatedPtrField<PgsqlExpressionPB> hashed_values;
   vector<docdb::PrimitiveValue> hashed_components, range_components;
   hashed_components.reserve(bind_->num_hash_key_columns());
-  range_components.reserve(
-      bind_->num_hash_key_columns() - bind_->num_hash_key_columns());
+  range_components.reserve(bind_->num_key_columns() - bind_->num_hash_key_columns());
   for (size_t i = 0; i < bind_->num_hash_key_columns(); ++i) {
     auto& col = bind_.columns()[i];
     hashed_components.push_back(VERIFY_RESULT(
