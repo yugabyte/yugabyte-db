@@ -211,7 +211,7 @@ Set up the Spark Cassandra Connector:
 ```java
 SparkConf conf = new SparkConf()
                    .setAppName(prop.getProperty("com.iot.app.spark.app.name"))
-	                 .setMaster(prop.getProperty("com.iot.app.spark.master"))
+                   .setMaster(prop.getProperty("com.iot.app.spark.master"))
                    .set("spark.cassandra.connection.host", cassandraHost)
                    .set("spark.cassandra.connection.port", cassandraPort)
                    .set("spark.cassandra.connection.keep_alive_ms", prop.getProperty("com.iot.app.cassandra.keep_alive"));
