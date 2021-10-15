@@ -346,7 +346,7 @@ JavaDStream<IoTData> iotDataStreamFiltered =
 
 // Pair with POI
 JavaPairDStream<IoTData, POIData> poiDStreamPair =
-iotDataStreamFiltered.mapToPair(iot -> new Tuple2<>(iot, broadcastPOIValues.value()._1()));
+  iotDataStreamFiltered.mapToPair(iot -> new Tuple2<>(iot, broadcastPOIValues.value()._1()));
 
 // Transform to DStream of POITrafficData
 JavaDStream<POITrafficData> trafficDStream = poiDStreamPair.map(poiTrafficDataFunc);
