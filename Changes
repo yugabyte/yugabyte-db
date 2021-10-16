@@ -3,7 +3,7 @@ Revision history for pgTAP
 
 1.2.0
 --------------------------
-* Make description field optional in has_view() and hasnt_view() when
+* Made the description field optional in `has_view()` and `hasnt_view()` when
   specifying schema (#230). Thanks to Godwottery for the patch!
 * Added support for the date and time keywords `CURRENT_DATE`, `CURRENT_TIME`,
   `CURRENT_TIMESTAMP`, `LOCALTIME`, and `LOCALTIMESTAMP` to `col_default_is()`.
@@ -33,8 +33,9 @@ Revision history for pgTAP
   the pull request (#250).
 * Added `hasnt_operator()`, `hasnt_leftop()`, `hasnt_rightop()` (#38). Thanks to
   Wolfgang Walther for the pull request (#251).
-* Improve output of results_eq and results_ne when number of columns or their
-  types are different (#37).
+* Improved the output of `results_eq()` and `results_ne()` when the number of
+  columns or their types are different (#37). Thanks to Wolfgang Walther for
+  the pull request (#255).
 
 1.1.0 2019-11-25T19:05:38Z
 --------------------------
