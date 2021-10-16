@@ -400,4 +400,9 @@ bool YBReadFromFollowersEnabled();
 YBCPgYBTupleIdDescriptor* YBCCreateYBTupleIdDescriptor(Oid db_oid, Oid table_oid, int nattrs);
 void YBCFillUniqueIndexNullAttribute(YBCPgYBTupleIdDescriptor* descr);
 
+/*
+ * Check whether the user ID is of a user who has the yb_extension role
+ */
+bool IsYbExtensionUser(Oid member);
+
 #endif /* PG_YB_UTILS_H */

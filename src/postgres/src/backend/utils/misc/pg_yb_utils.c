@@ -34,6 +34,7 @@
 #include "access/xact.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
+#include "catalog/pg_authid.h"
 #include "catalog/pg_database.h"
 #include "utils/builtins.h"
 #include "catalog/pg_type.h"
@@ -1225,4 +1226,8 @@ void YBCFillUniqueIndexNullAttribute(YBCPgYBTupleIdDescriptor* descr) {
 	last_attr->attr_num = YBUniqueIdxKeySuffixAttributeNumber;
 	last_attr->type_entity = YBCDataTypeFromOidMod(YBUniqueIdxKeySuffixAttributeNumber, BYTEAOID);
 	last_attr->is_null = true;
+}
+
+bool IsYbExtensionUser(Oid member) {
+	return IsYugaByteEnabled() && has_privs_of_role(member, DEFAULT_ROLE_YB_EXTENSION);
 }

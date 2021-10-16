@@ -13,3 +13,4 @@ test: yb_password
 test: yb_pg_privileges
 test: yb_init_privs
 test: yb_pg_rowsecurity
+test: yb_roles

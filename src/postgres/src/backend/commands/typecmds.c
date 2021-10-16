@@ -49,6 +49,7 @@
 #include "catalog/pg_range.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
+#include "commands/extension.h"
 #include "commands/tablecmds.h"
 #include "commands/typecmds.h"
 #include "executor/executor.h"
@@ -175,8 +176,11 @@ DefineType(ParseState *pstate, List *names, List *parameters)
 	 * superuserness anyway.  We're just making doubly sure here.
 	 *
 	 * XXX re-enable NOT_USED code sections below if you remove this test.
+	 *
+	 * In YB mode, we allow users with the yb_extension role who are in the
+	 * midst of creating an extension to create a base type.
 	 */
-	if (!superuser())
+	if (!(IsYbExtensionUser(GetUserId()) && creating_extension) && !superuser())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("must be superuser to create a base type")));
