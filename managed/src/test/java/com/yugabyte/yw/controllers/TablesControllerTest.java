@@ -584,7 +584,7 @@ public class TablesControllerTest extends FakeDBApplication {
     assertValue(resultJson, "taskUUID", fakeTaskUUID.toString());
     CustomerTask ct = CustomerTask.findByTaskUUID(fakeTaskUUID);
     assertNotNull(ct);
-    Backup backup = Backup.fetchByTaskUUID(fakeTaskUUID);
+    Backup backup = Backup.fetchAllBackupsByTaskUUID(fakeTaskUUID).get(0);
     assertNotNull(backup);
     assertEquals(tableUUID, backup.getBackupInfo().tableUUID);
     assertAuditEntry(1, customer.uuid);
@@ -631,7 +631,7 @@ public class TablesControllerTest extends FakeDBApplication {
     assertValue(resultJson, "taskUUID", fakeTaskUUID.toString());
     CustomerTask ct = CustomerTask.findByTaskUUID(fakeTaskUUID);
     assertNotNull(ct);
-    Backup backup = Backup.fetchByTaskUUID(fakeTaskUUID);
+    Backup backup = Backup.fetchAllBackupsByTaskUUID(fakeTaskUUID).get(0);
     assertNotNull(backup);
     assertEquals(tableUUID, backup.getBackupInfo().tableUUID);
     assertAuditEntry(1, customer.uuid);

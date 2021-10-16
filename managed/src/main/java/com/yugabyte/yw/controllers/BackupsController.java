@@ -60,6 +60,14 @@ public class BackupsController extends AuthenticatedController {
     return ApiResponse.success(backups);
   }
 
+  public Result fetchBackupsByTaskUUID(UUID customerUUID, UUID universeUUID, UUID taskUUID) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+
+    List<Backup> backups = Backup.fetchAllBackupsByTaskUUID(taskUUID);
+    return ApiResponse.success(backups);
+  }
+
   public Result restore(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.get(customerUUID);
     if (customer == null) {

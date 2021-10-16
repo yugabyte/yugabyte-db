@@ -61,8 +61,7 @@ public class Backup extends Model {
   @DbJson
   public JsonNode backupInfo;
 
-  @Column(unique = true)
-  public UUID taskUUID;
+  @Column public UUID taskUUID;
 
   @Column private UUID scheduleUUID;
 
@@ -207,10 +206,6 @@ public class Backup extends Model {
 
   public static Backup get(UUID customerUUID, UUID backupUUID) {
     return find.query().where().idEq(backupUUID).eq("customer_uuid", customerUUID).findOne();
-  }
-
-  public static Backup fetchByTaskUUID(UUID taskUUID) {
-    return Backup.find.query().where().eq("task_uuid", taskUUID).findOne();
   }
 
   public static List<Backup> fetchAllBackupsByTaskUUID(UUID taskUUID) {
