@@ -180,7 +180,7 @@ yb-ts-cli [ --server_address=<host>:<port> ] flush_tablet <tablet_id>
 
 ##### list_tablets
 
-Lists the tablets on the specified tablet server, displaying the following properties: column name, tablet ID, state, table name, partition, and schema.
+Lists the tablets on the specified tablet server, displaying the following properties: column name, tablet ID, state, table name, shard, and schema.
 
 **Syntax**
 

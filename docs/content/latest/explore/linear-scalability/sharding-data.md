@@ -51,7 +51,7 @@ YugabyteDB currently supports two ways of sharding data: [hash](#hash-sharding) 
 
 ### Hash sharding
 
-With (consistent) hash sharding, a partitioning algorithm distributes data evenly and randomly across shards. The algorithm places each row of the table into a shard determined by computing a consistent hash on the partition column values of that row.
+With (consistent) hash sharding, a sharding algorithm distributes data evenly and randomly across shards. The algorithm places each row of the table into a shard determined by computing a consistent hash on the hash column values of that row.
 
 The hash space for hash-sharded YugabyteDB tables is the 2-byte range from `0x0000` to `0xFFFF`. A table may therefore have at most 65,536 tablets. This is expected to be sufficient in practice even for very large data sets or cluster sizes.
 
