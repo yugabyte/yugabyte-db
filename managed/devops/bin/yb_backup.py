@@ -398,16 +398,13 @@ class AzBackupStorage(AbstractBackupStorage):
         return "azcopy"
 
     def upload_file_cmd(self, src, dest):
-        # azcopy requires quotes around the src and dest. This format is necessary to do so.
-        src = "'{}'".format(src)
-        dest = "'{}'".format(dest + os.getenv('AZURE_STORAGE_SAS_TOKEN'))
-        return ["{} {} {} {}".format(self._command_list_prefix(), "cp", src, dest)]
+        dest = dest + os.getenv('AZURE_STORAGE_SAS_TOKEN')
+        return [self._command_list_prefix(), "cp", src, dest]
 
     def download_file_cmd(self, src, dest):
-        src = "'{}'".format(src + os.getenv('AZURE_STORAGE_SAS_TOKEN'))
-        dest = "'{}'".format(dest)
-        return ["{} {} {} {} {}".format(self._command_list_prefix(), "cp", src,
-                dest, "--recursive")]
+        src = src + os.getenv('AZURE_STORAGE_SAS_TOKEN')
+        return [self._command_list_prefix(), "cp", src,
+                dest, "--recursive"]
 
     def upload_dir_cmd(self, src, dest):
         # azcopy will download the top-level directory as well as the contents without "/*".
