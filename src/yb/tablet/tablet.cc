@@ -2449,24 +2449,26 @@ Result<PgsqlBackfillSpecPB> QueryPostgresToDoBackfill(
 }
 
 struct BackfillParams {
-  explicit BackfillParams(const CoarseTimePoint deadline) {
-    batch_size = GetAtomicFlag(&FLAGS_backfill_index_write_batch_size);
-    rate_per_sec = GetAtomicFlag(&FLAGS_backfill_index_rate_rows_per_sec);
+  explicit BackfillParams(const CoarseTimePoint deadline)
+      : start_time(CoarseMonoClock::Now()),
+        rate_per_sec(GetAtomicFlag(&FLAGS_backfill_index_rate_rows_per_sec)),
+        batch_size(GetAtomicFlag(&FLAGS_backfill_index_write_batch_size)) {
     auto grace_margin_ms = GetAtomicFlag(&FLAGS_backfill_index_timeout_grace_margin_ms);
     if (grace_margin_ms < 0) {
       // We need: grace_margin_ms >= 1000 * batch_size / rate_per_sec;
       // By default, we will set it to twice the minimum value + 1s.
       grace_margin_ms = (rate_per_sec > 0 ? 1000 * (1 + 2.0 * batch_size / rate_per_sec) : 1000);
-      YB_LOG_EVERY_N(INFO, 100000) << "Using grace margin of " << grace_margin_ms << "ms";
+      YB_LOG_EVERY_N_SECS(INFO, 10)
+          << "Using grace margin of " << grace_margin_ms << "ms, original deadline: "
+          << MonoDelta(deadline - start_time);
     }
     modified_deadline = deadline - grace_margin_ms * 1ms;
-    start_time = CoarseMonoClock::Now();
   }
 
   CoarseTimePoint start_time;
-  CoarseTimePoint modified_deadline;
   size_t rate_per_sec;
   size_t batch_size;
+  CoarseTimePoint modified_deadline;
 };
 
 // Slow down before the next batch to throttle the rate of processing.
