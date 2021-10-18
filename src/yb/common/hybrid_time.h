@@ -172,6 +172,11 @@ class HybridTime {
 
   HybridTimeRepr value() const { return v; }
 
+  // Returns this HybridTime if valid, otherwise returns the one provided.
+  HybridTime GetValueOr(const HybridTime& other) const {
+    return is_valid() ? *this : other;
+  }
+
   bool is_special() const {
     switch (v) {
       case kMinHybridTimeValue: FALLTHROUGH_INTENDED;
