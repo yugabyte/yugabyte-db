@@ -210,6 +210,8 @@ public class NodeInstanceController extends AuthenticatedController {
         || nodeAction == NodeActionType.START_MASTER) {
       taskParams.clusters = universe.getUniverseDetails().clusters;
       taskParams.rootCA = universe.getUniverseDetails().rootCA;
+      taskParams.clientRootCA = universe.getUniverseDetails().clientRootCA;
+      taskParams.rootAndClientRootCASame = universe.getUniverseDetails().rootAndClientRootCASame;
       if (!CertificateInfo.isCertificateValid(taskParams.rootCA)) {
         String errMsg =
             String.format(
