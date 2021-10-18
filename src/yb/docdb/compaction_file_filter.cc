@@ -14,9 +14,20 @@
 #include "yb/docdb/compaction_file_filter.h"
 #include <algorithm>
 
+#include "yb/common/hybrid_time.h"
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_ttl_util.h"
 #include "yb/rocksdb/compaction_filter.h"
+#include "yb/util/flag_tags.h"
+
+DEFINE_bool(file_expiration_ignore_value_ttl, false,
+             "When deciding whether a file has expired, assume that it is safe to ignore "
+             "value-level TTL and expire based on table TTL only. Useful for expiration of "
+             "older SST files without value-level TTL metadata, or for expiring files with "
+             "unexpectedly long value-level expiration. Can result in the deletion of "
+             "live data - make sure that the data you are expiring is no longer wanted!");
+TAG_FLAG(file_expiration_ignore_value_ttl, unsafe);
+TAG_FLAG(file_expiration_ignore_value_ttl, runtime);
 
 namespace yb {
 namespace docdb {
@@ -35,22 +46,24 @@ ExpirationTime ExtractExpirationTime(const FileMetaData* file) {
   auto& consensus_frontier = down_cast<ConsensusFrontier&>(*file->largest.user_frontier);
   // If the TTL expiration time is uninitialized, return a max expiration time with the
   // frontier's hybrid time.
-  if (!consensus_frontier.max_value_level_ttl_expiration_time().is_valid()) {
-    return ExpirationTime{
-      .ttl_expiration_ht = kNoExpiration,
-      .created_ht = consensus_frontier.hybrid_time()
-    };
-  }
+  const auto ttl_expiry_ht =
+      consensus_frontier.max_value_level_ttl_expiration_time().GetValueOr(kNoExpiration);
+
   return ExpirationTime{
-    .ttl_expiration_ht = consensus_frontier.max_value_level_ttl_expiration_time(),
+    .ttl_expiration_ht = ttl_expiry_ht,
     .created_ht = consensus_frontier.hybrid_time()
   };
 }
 
 bool TtlIsExpired(ExpirationTime expiry, MonoDelta table_ttl, HybridTime now) {
-  auto file_expiry = MaxExpirationFromValueAndTableTTL(
-      expiry.created_ht, table_ttl, expiry.ttl_expiration_ht);
-  return HasExpiredTTL(file_expiry, now);
+  // If FLAGS_file_expiration_ignore_value_ttl is set, ignore the value level TTL
+  // entirely and use only the default table TTL.
+  const auto ttl_expiry_ht =
+      FLAGS_file_expiration_ignore_value_ttl ? kUseDefaultTTL : expiry.ttl_expiration_ht;
+
+  auto file_expiry_ht = MaxExpirationFromValueAndTableTTL(
+      expiry.created_ht, table_ttl, ttl_expiry_ht);
+  return HasExpiredTTL(file_expiry_ht, now);
 }
 
 bool IsLastKeyCreatedBeforeHistoryCutoff(ExpirationTime expiry, HybridTime history_cutoff) {
