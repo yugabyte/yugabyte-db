@@ -1,4 +1,4 @@
-import { isNonEmptyArray, isNonEmptyObject, isDefinedNotNull } from "../../../utils/ObjectUtils";
+import { isNonEmptyArray, isNonEmptyObject, isDefinedNotNull } from '../../../utils/ObjectUtils';
 
 export const getUniverseStatus = (universe, universePendingTask) => {
   const {
@@ -7,26 +7,26 @@ export const getUniverseStatus = (universe, universePendingTask) => {
     universePaused,
     errorString
   } = universe.universeDetails;
-  
+
   // statusText stores the status for display
   // warning stores extra information for internal use (ex. warning icons for certain errors)
-  let statusText = ''
-  let warning=''
+  let statusText = '';
+  let warning = '';
   if (!isDefinedNotNull(universePendingTask) && updateSucceeded && !universePaused) {
     statusText = 'Ready';
   } else if (!isDefinedNotNull(universePendingTask) && updateSucceeded && universePaused) {
     statusText = 'Paused';
   } else if (updateInProgress && isNonEmptyObject(universePendingTask)) {
     statusText = 'Pending';
-  } else if  (!updateInProgress && !updateSucceeded) {
-    statusText = errorString === 'Preflight checks failed.' ? 'Ready' : 'Error'
-    warning = errorString
-    }
-  return {statusText, warning}
-}
+  } else if (!updateInProgress && !updateSucceeded) {
+    statusText = errorString === 'Preflight checks failed.' ? 'Ready' : 'Error';
+    warning = errorString;
+  }
+  return { statusText, warning };
+};
 
 export const getUniversePendingTask = (universeUUID, customerTaskList) => {
-  return (isNonEmptyArray(customerTaskList) 
+  return isNonEmptyArray(customerTaskList)
     ? customerTaskList.find(function (taskItem) {
         return (
           taskItem.targetUUID === universeUUID &&
@@ -35,5 +35,5 @@ export const getUniversePendingTask = (universeUUID, customerTaskList) => {
           taskItem.target.toLowerCase() !== 'backup'
         );
       })
-    : null);
-}
+    : null;
+};
