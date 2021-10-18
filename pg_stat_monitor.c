@@ -251,7 +251,7 @@ _PG_init(void)
 	/*
 	 * Compile regular expression for extracting out query comments only once.
 	 */
-	rc = regcomp(&preg_query_comments, "/\\*.*\\*/", 0);
+	rc = regcomp(&preg_query_comments, "/\\*([^*]|[\r\n]|(\\*+([^*/]|[\r\n])))*\\*+/", REG_EXTENDED);
 	if (rc != 0)
 	{
 		elog(ERROR, "pg_stat_monitor: query comments regcomp() failed, return code=(%d)\n", rc);
@@ -3461,12 +3461,37 @@ extract_query_comments(const char *query, char *comments, size_t max_len)
 	int        rc;
 	size_t     nmatch = 1;
 	regmatch_t pmatch;
+	regoff_t   comment_len, total_len = 0;
+	const char *s = query;
 
-	rc = regexec(&preg_query_comments, query, nmatch, &pmatch, 0);
-	if (rc != 0)
-		return;
+	while (total_len < max_len)
+	{
+		rc = regexec(&preg_query_comments, s, nmatch, &pmatch, 0);
+		if (rc != 0)
+			break;
 
-	snprintf(comments, max_len, "%.*s", pmatch.rm_eo - pmatch.rm_so -4, &query[pmatch.rm_so + 2]);
+		comment_len = pmatch.rm_eo - pmatch.rm_so;
+
+		if (total_len + comment_len > max_len)
+			break;  /* TODO: log error in error view, insufficient space for comment. */
+
+		total_len += comment_len;
+
+		/* Not 1st iteration, append ", " before next comment. */
+		if (s != query)
+		{
+			if (total_len + 2 > max_len)
+				break;  /* TODO: log error in error view, insufficient space for ", " + comment. */
+
+			memcpy(comments, ", ", 2);
+			comments += 2;
+			total_len += 2;
+		}
+
+		memcpy(comments, s + pmatch.rm_so, comment_len);
+		comments += comment_len;
+		s += pmatch.rm_eo;
+	}
 }
 
 #if PG_VERSION_NUM < 140000
