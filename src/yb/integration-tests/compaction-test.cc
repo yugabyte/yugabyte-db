@@ -45,6 +45,7 @@ DECLARE_bool(tablet_enable_ttl_file_filter);
 DECLARE_int32(rocksdb_base_background_compactions);
 DECLARE_int32(rocksdb_max_background_compactions);
 DECLARE_uint64(rocksdb_max_file_size_for_compaction);
+DECLARE_bool(file_expiration_ignore_value_ttl);
 DECLARE_bool(TEST_disable_adding_user_frontier_to_sst);
 DECLARE_bool(TEST_disable_getting_user_frontier_from_mem_table);
 
@@ -520,6 +521,7 @@ class CompactionTestWithFileExpiration : public CompactionTest {
     CompactionTest::SetUp();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_enable_ttl_file_filter) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_file_expiration_ignore_value_ttl) = false;
     // Disable automatic compactions, but continue to allow manual compactions.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_base_background_compactions) = 0;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_background_compactions) = 0;
@@ -642,6 +644,29 @@ TEST_F(CompactionTestWithFileExpiration, ValueTTLOverridesTableTTL) {
   EXPECT_GT(size_after_manual_compaction, 0);
   EXPECT_GT(files_after_compaction, 0);
   ASSERT_EQ(CountFilteredSSTFiles(), 0);
+}
+
+TEST_F(CompactionTestWithFileExpiration, ValueTTLWillNotOverrideTableTTLWhenTableOnlyFlagSet) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_file_expiration_ignore_value_ttl) = true;
+  SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
+  // Set the value-level TTL to too high to expire.
+  workload_->set_ttl(10000000);
+
+  ASSERT_OK(WriteAtLeastFilesPerDb(10));
+  LogSizeAndFilesInDbs();
+
+  LOG(INFO) << "Sleeping long enough to expire all data (based on table-level TTL)";
+  SleepFor(MonoDelta::FromSeconds(2 * kTableTTLSec));
+
+  ASSERT_OK(ExecuteManualCompaction());
+  // Assert that the data is completely removed (i.e. value-level TTL was ignored)
+  auto size_after_manual_compaction = GetTotalSizeOfDbs();
+  auto files_after_compaction = GetNumFilesInDbs();
+  LOG(INFO) << "Total size after compaction: " << size_after_manual_compaction <<
+      ", num files: " << files_after_compaction;
+  EXPECT_EQ(size_after_manual_compaction, 0);
+  EXPECT_EQ(files_after_compaction, 0);
+  ASSERT_GT(CountFilteredSSTFiles(), 0);
 }
 
 TEST_F(CompactionTestWithFileExpiration, MixedExpiringAndNonExpiring) {
