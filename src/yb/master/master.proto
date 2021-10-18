@@ -141,6 +141,8 @@ message MasterErrorPB {
 
     // Error in case a tablet-level operation was attempted on a tablet which is not running.
     TABLET_NOT_RUNNING = 38;
+
+    TABLE_NOT_RUNNING = 39;
   }
 
   // The error code.
@@ -513,6 +515,8 @@ message SysRedisConfigEntryPB {
 // The data part of a SysRowEntry in the sys.catalog table for a CDC stream.
 message SysCDCStreamEntryPB {
   enum State {
+    // Used to mark a stream that has been bootstrapped, but hasn't started streaming yet.
+    INITIATED = 3;
     ACTIVE = 0;
     DELETING = 1;
     // Currently DELETED is not being used because we delete streams entries from sys catalog.
@@ -708,6 +712,11 @@ message ReportedTabletPB {
 
   // Replica is reporting that load balancer moves should be disabled
   optional bool should_disable_lb_move = 7;
+
+  optional bytes fs_data_dir = 8;
+
+  // Is the tablet hidden.
+  optional bool is_hidden = 9;
 }
 
 // Sent by the tablet server to report the set of tablets hosted by that TS.
@@ -774,20 +783,13 @@ message TabletForSplitPB {
   optional bytes OBSOLETE_split_encoded_key = 3;
 }
 
-message ListTabletsOnPathPB {
-  required bytes path_id = 1;
-  message TabletOnPath {
-    required bytes tablet_id = 1;
-    optional uint64 sst_file_size = 2;
-    optional uint64 wal_file_size = 3;
-    optional uint64 uncompressed_sst_file_size = 4;
-    optional bool may_have_orphaned_post_split_data = 5 [default = true];
-  }
-  repeated TabletOnPath tablet = 2;
-}
 
-message TabletPathInfoPB {
-  repeated ListTabletsOnPathPB list_path = 1;
+message TabletDriveStorageMetadataPB {
+  required bytes tablet_id = 1;
+  optional uint64 sst_file_size = 2;
+  optional uint64 wal_file_size = 3;
+  optional uint64 uncompressed_sst_file_size = 4;
+  optional bool may_have_orphaned_post_split_data = 5 [default = true];
 }
 
 message TSSnapshotScheduleInfoPB {
@@ -852,7 +854,9 @@ message TSHeartbeatRequestPB {
   // Roundtrip time for previous heartbeat in microseconds.
   optional int64 rtt_us = 12;
 
-  optional TabletPathInfoPB tablet_path_info = 13;
+  reserved 13;
+
+  repeated TabletDriveStorageMetadataPB storage_metadata = 14;
 }
 
 message TSHeartbeatResponsePB {
@@ -1007,7 +1011,11 @@ message CreateTableRequestPB {
 
   required string name = 1;
   optional SchemaPB schema = 2;
-  optional int32 num_tablets = 3;  // deprecated
+
+  // Specifies number of tablets to create. If it's not set here
+  // 'SchemaPB::TablePropertiesPB::num_tablets' from 'schema' field will be used.
+  optional int32 num_tablets = 3;
+
   optional PartitionSchemaPB partition_schema = 5;
   optional ReplicationInfoPB replication_info = 6;
   optional TableType table_type = 7 [ default = DEFAULT_TABLE_TYPE ];
@@ -1265,6 +1273,9 @@ message AlterTableRequestPB {
 
   // Replication information for this table.
   optional ReplicationInfoPB replication_info = 8;
+
+  // DDL Dependent upon Transaction success (abort removes). Used by YSQL.
+  optional TransactionMetadataPB transaction = 9;
 }
 
 message AlterTableResponsePB {
@@ -1915,6 +1926,7 @@ message UDTypeInfoPB {
 message CreateCDCStreamRequestPB {
   optional string table_id = 1;
   repeated CDCStreamOptionsPB options = 3;
+  optional SysCDCStreamEntryPB.State initial_state = 4;
 }
 
 // Options for CDC stream. This will include details such as:
@@ -1934,11 +1946,13 @@ message CreateCDCStreamResponsePB {
 
 message DeleteCDCStreamRequestPB {
   repeated bytes stream_id = 1;
+  optional bool force = 2 [default = false];
 }
 
 message DeleteCDCStreamResponsePB {
   // The error, if an error occurred with this request.
   optional MasterErrorPB error = 1;
+  repeated bytes not_found_stream_ids = 2;
 }
 
 message ListCDCStreamsRequestPB {
@@ -1959,6 +1973,15 @@ message GetCDCStreamResponsePB {
   // The error, if an error occurred with this request.
   optional MasterErrorPB error = 1;
   optional CDCStreamInfoPB stream = 2;
+}
+
+message UpdateCDCStreamRequestPB {
+  optional bytes stream_id = 1;
+  optional SysCDCStreamEntryPB entry = 2;
+}
+
+message UpdateCDCStreamResponsePB {
+  optional MasterErrorPB error = 1;
 }
 
 message CDCStreamInfoPB {
@@ -2053,10 +2076,13 @@ message SetupUniverseReplicationResponsePB {
 
 message DeleteUniverseReplicationRequestPB {
   optional string producer_id = 1;
+  optional bool force = 2 [default = false];
 }
 
 message DeleteUniverseReplicationResponsePB {
   optional MasterErrorPB error = 1;
+  // In case force is set, then still return any ignored warnings.
+  repeated AppStatusPB warnings = 2;
 }
 
 message AlterUniverseReplicationRequestPB {
@@ -2065,6 +2091,9 @@ message AlterUniverseReplicationRequestPB {
   repeated HostPortPB producer_master_addresses = 2;
   repeated string producer_table_ids_to_add = 4;
   repeated string producer_table_ids_to_remove = 5;
+
+  // Optional bootstrap ids for the add table operation.
+  repeated string producer_bootstrap_ids_to_add = 6;
 }
 
 message AlterUniverseReplicationResponsePB {
@@ -2109,11 +2138,11 @@ message SplitTabletResponsePB {
   optional MasterErrorPB error = 1;
 }
 
-message DeleteTabletRequestPB {
+message DeleteNotServingTabletRequestPB {
   required bytes tablet_id = 1;
 }
 
-message DeleteTabletResponsePB {
+message DeleteNotServingTabletResponsePB {
   optional MasterErrorPB error = 1;
 }
 
@@ -2203,6 +2232,8 @@ service MasterService {
   rpc DeleteCDCStream(DeleteCDCStreamRequestPB) returns (DeleteCDCStreamResponsePB);
   rpc ListCDCStreams(ListCDCStreamsRequestPB) returns (ListCDCStreamsResponsePB);
   rpc GetCDCStream(GetCDCStreamRequestPB) returns (GetCDCStreamResponsePB);
+  rpc UpdateCDCStream (UpdateCDCStreamRequestPB)
+      returns (UpdateCDCStreamResponsePB);
 
   // Redis Config
   rpc RedisConfigSet(RedisConfigSetRequestPB) returns (RedisConfigSetResponsePB);
@@ -2275,7 +2306,8 @@ service MasterService {
       returns (HasUniverseKeyInMemoryResponsePB);
 
   rpc SplitTablet(SplitTabletRequestPB) returns (SplitTabletResponsePB);
-  rpc DeleteTablet(DeleteTabletRequestPB) returns (DeleteTabletResponsePB);
+  rpc DeleteNotServingTablet(DeleteNotServingTabletRequestPB)
+      returns (DeleteNotServingTabletResponsePB);
 
   rpc DdlLog(DdlLogRequestPB) returns (DdlLogResponsePB);
 }

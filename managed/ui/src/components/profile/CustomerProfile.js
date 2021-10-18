@@ -7,7 +7,6 @@ import { isNonAvailable, isDisabled, showOrRedirect, isNotHidden } from '../../u
 import { YBTabsWithLinksPanel } from '../panels';
 import { isDefinedNotNull } from '../../utils/ObjectUtils';
 import UserProfileForm from './UserProfileForm';
-import AlertProfileForm from './AlertProfileForm';
 import UserList from './UserList';
 import { YBLoading } from '../common/indicators';
 import { getPromiseState } from '../../utils/PromiseUtils';
@@ -24,6 +23,7 @@ export default class CustomerProfile extends Component {
   componentDidMount() {
     const { customer } = this.props;
     this.props.getCustomerUsers();
+    this.props.validateRegistration();
     if (isNonAvailable(customer.features, 'main.profile')) browserHistory.push('/');
   }
 
@@ -83,22 +83,6 @@ export default class CustomerProfile extends Component {
               disabled={isDisabled(customer.data.features, 'main.profile')}
             >
               <UserProfileForm
-                customer={this.props.customer}
-                customerProfile={customerProfile}
-                apiToken={apiToken}
-                handleProfileUpdate={this.handleProfileUpdate}
-                {...this.props}
-              />
-            </Tab.Pane>,
-            <Tab.Pane
-              eventKey={'health-alerting'}
-              tabtitle="Health & Alerting"
-              key="health-alerting-tab"
-              mountOnEnter={true}
-              unmountOnExit={true}
-              disabled={isDisabled(customer.data.features, 'main.profile')}
-            >
-              <AlertProfileForm
                 customer={this.props.customer}
                 customerProfile={customerProfile}
                 apiToken={apiToken}

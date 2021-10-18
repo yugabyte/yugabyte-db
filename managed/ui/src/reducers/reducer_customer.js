@@ -6,6 +6,8 @@ import {
   VALIDATE_FROM_TOKEN_RESPONSE,
   REGISTER,
   REGISTER_RESPONSE,
+  FETCH_PASSWORD_POLICY,
+  FETCH_PASSWORD_POLICY_RESPONSE,
   LOGIN,
   LOGIN_RESPONSE,
   INSECURE_LOGIN,
@@ -67,7 +69,23 @@ import {
   GET_CUSTOMER_USERS_SUCCESS,
   GET_CUSTOMER_USERS_FAILURE,
   CREATE_USER,
-  CREATE_USER_RESPONSE
+  CREATE_USER_RESPONSE,
+  CREATE_ALERT_CHANNEL,
+  CREATE_ALERT_CHANNEL_RESPONSE,
+  GET_ALERT_CHANNELS,
+  GET_ALERT_DESTINATIONS,
+  GET_ALERT_TEMPLATES,
+  GET_ALERT_CONFIGS,
+  CREATE_ALERT_DESTINATION,
+  CREATE_ALERT_DESTINATION_RESPONSE,
+  CREATE_ALERT_CONFIG,
+  CREATE_ALERT_CONFIG_RESPONSE,
+  UPDATE_ALERT_DESTINATION,
+  UPDATE_ALERT_DESTINATION_RESPONSE,
+  UPDATE_ALERT_CONFIG,
+  UPDATE_ALERT_CONFIG_RESPONSE,
+  DELETE_ALERT_DESTINATION,
+  DELETE_ALERT_CONFIG
 } from '../actions/customers';
 
 import { sortVersionStrings, isDefinedNotNull } from '../utils/ObjectUtils';
@@ -92,6 +110,12 @@ const INITIAL_STATE = {
     alertsList: [],
     updated: null
   },
+  alertChannels: getInitialState([]),
+  alertDestinations: getInitialState([]),
+  alertTemplates: getInitialState([]),
+  alertConfigs: getInitialState([]),
+  deleteDestination: getInitialState([]),
+  deleteAlertConfig: getInitialState([]),
   hostInfo: null,
   customerCount: {},
   yugawareVersion: getInitialState({}),
@@ -107,10 +131,15 @@ const INITIAL_STATE = {
   importRelease: getInitialState({}),
   updateRelease: getInitialState({}),
   addCertificate: getInitialState({}),
-  userCertificates: getInitialState({}),
+  userCertificates: getInitialState([]),
   users: getInitialState([]),
   schedules: getInitialState([]),
-  createUser: getInitialState({})
+  createUser: getInitialState({}),
+  createAlertChannel: getInitialState({}),
+  createAlertDestination: getInitialState({}),
+  createAlertConfig: getInitialState({}),
+  updateAlertDestination: getInitialState({}),
+  updateAlertConfig: getInitialState({})
 };
 
 export default function (state = INITIAL_STATE, action) {
@@ -123,6 +152,11 @@ export default function (state = INITIAL_STATE, action) {
       return setLoadingState(state, 'authToken', {});
     case REGISTER_RESPONSE:
       return setPromiseResponse(state, 'authToken', action);
+
+    case FETCH_PASSWORD_POLICY:
+      return { ...state, passwordValidationInfo: {} };
+    case FETCH_PASSWORD_POLICY_RESPONSE:
+      return { ...state, passwordValidationInfo: action.payload.data };
 
     case LOGIN:
       return setLoadingState(state, 'authToken', {});
@@ -220,6 +254,73 @@ export default function (state = INITIAL_STATE, action) {
           updated: Date.now()
         }
       };
+    case GET_ALERT_CHANNELS:
+      return setLoadingState(state, 'alertChannels', []);
+    case GET_ALERT_DESTINATIONS:
+      return setLoadingState(state, 'alertDestinations', []);
+    case GET_ALERT_TEMPLATES:
+      return setLoadingState(state, 'alertTemplates', []);
+    case GET_ALERT_CONFIGS:
+      return setLoadingState(state, 'alertConfigs', []);
+    case DELETE_ALERT_DESTINATION:
+      return setLoadingState(state, 'deleteDestination', []);
+    case DELETE_ALERT_CONFIG:
+      return setLoadingState(state, 'deleteAlertConfig', []);
+    case CREATE_ALERT_CHANNEL:
+      return setLoadingState(state, 'createAlertChannel', {});
+    case CREATE_ALERT_CHANNEL_RESPONSE:
+      if (action.payload.status !== 200) {
+        if (isDefinedNotNull(action.payload.data)) {
+          return setFailureState(state, 'createAlertChannel', action.payload.response.data.error);
+        } else {
+          return state;
+        }
+      }
+      return setPromiseResponse(state, 'createAlertChannel', action);
+    case CREATE_ALERT_DESTINATION:
+      return setLoadingState(state, 'createAlertDestination', {});
+    case CREATE_ALERT_DESTINATION_RESPONSE:
+      if (action.payload.status !== 200) {
+        if (isDefinedNotNull(action.payload.data)) {
+          return setFailureState(state, 'createAlertChannel', action.payload.response.data.error);
+        } else {
+          return state;
+        }
+      }
+      return setPromiseResponse(state, 'createAlertChannel', action);
+    case CREATE_ALERT_CONFIG:
+      return setLoadingState(state, 'createAlertConfig', {});
+    case CREATE_ALERT_CONFIG_RESPONSE:
+      if (action.payload.status !== 200) {
+        if (isDefinedNotNull(action.payload.data)) {
+          return setFailureState(state, 'createAlertChannel', action.payload.response.data.error);
+        } else {
+          return state;
+        }
+      }
+      return setPromiseResponse(state, 'createAlertChannel', action);
+    case UPDATE_ALERT_DESTINATION:
+      return setLoadingState(state, 'updateAlertDestination', {});
+    case UPDATE_ALERT_DESTINATION_RESPONSE:
+      if (action.payload.status !== 200) {
+        if (isDefinedNotNull(action.payload.data)) {
+          return setFailureState(state, 'createAlertChannel', action.payload.response.data.error);
+        } else {
+          return state;
+        }
+      }
+      return setPromiseResponse(state, 'createAlertChannel', action);
+    case UPDATE_ALERT_CONFIG:
+      return setLoadingState(state, 'updateAlertConfig', {});
+    case UPDATE_ALERT_CONFIG_RESPONSE:
+      if (action.payload.status !== 200) {
+        if (isDefinedNotNull(action.payload.data)) {
+          return setFailureState(state, 'createAlertChannel', action.payload.response.data.error);
+        } else {
+          return state;
+        }
+      }
+      return setPromiseResponse(state, 'createAlertChannel', action);
     case FETCH_YUGAWARE_VERSION:
       return setLoadingState(state, 'yugawareVersion', {});
     case FETCH_YUGAWARE_VERSION_RESPONSE:
@@ -230,7 +331,7 @@ export default function (state = INITIAL_STATE, action) {
       return {
         ...state,
         setInitialVal: action.payload
-      }
+      };
     case ADD_CUSTOMER_CONFIG_RESPONSE:
       return setPromiseResponse(state, 'addConfig', action);
     case EDIT_CUSTOMER_CONFIG:

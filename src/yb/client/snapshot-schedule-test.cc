@@ -138,7 +138,8 @@ TEST_F(SnapshotScheduleTest, GC) {
 
   std::unordered_set<SnapshotScheduleId, SnapshotScheduleIdHash> all_snapshot_ids;
   while (all_snapshot_ids.size() < 4) {
-    auto snapshots = ASSERT_RESULT(snapshot_util_->ListSnapshots(TxnSnapshotId::Nil(), false));
+    auto snapshots = ASSERT_RESULT(
+        snapshot_util_->ListSnapshots(TxnSnapshotId::Nil(), ListDeleted::kFalse));
     for (const auto& snapshot : snapshots) {
       all_snapshot_ids.insert(ASSERT_RESULT(FullyDecodeSnapshotScheduleId(snapshot.id())));
     }
@@ -153,7 +154,11 @@ TEST_F(SnapshotScheduleTest, GC) {
       }
       auto dir = ASSERT_RESULT(peer->tablet_metadata()->TopSnapshotsDir());
       auto children = ASSERT_RESULT(Env::Default()->GetChildren(dir, ExcludeDots::kTrue));
-      ASSERT_LE(children.size(), 2) << AsString(children);
+      // At most 3 files (including an extra for intents).
+      // For e.g. [985a49e5-d7c7-491f-a95f-da8aa55a8cf9,
+      // 105d49d2-4e55-45bf-a6a4-73a8b0977242.tmp.intents,
+      // 105d49d2-4e55-45bf-a6a4-73a8b0977242.tmp].
+      ASSERT_LE(children.size(), 3) << AsString(children);
     }
 
     std::this_thread::sleep_for(100ms);
@@ -254,7 +259,10 @@ TEST_F(SnapshotScheduleTest, RestoreSchema) {
 }
 
 TEST_F(SnapshotScheduleTest, RemoveNewTablets) {
-  auto schedule_id = ASSERT_RESULT(snapshot_util_->CreateSchedule(table_, WaitSnapshot::kTrue));
+  const auto kInterval = 5s * kTimeMultiplier;
+  const auto kRetention = kInterval * 2;
+  auto schedule_id = ASSERT_RESULT(snapshot_util_->CreateSchedule(
+      table_, WaitSnapshot::kTrue, kInterval, kRetention));
   auto before_index_ht = cluster_->mini_master(0)->master()->clock()->Now();
   CreateIndex(Transactional::kTrue, 1, false);
   auto after_time_ht = cluster_->mini_master(0)->master()->clock()->Now();
@@ -274,7 +282,7 @@ TEST_F(SnapshotScheduleTest, RemoveNewTablets) {
       }
     }
     return true;
-  }, 10s, "Cleanup obsolete tablets"));
+  }, kRetention + kInterval * 2, "Cleanup obsolete tablets"));
 }
 
 } // namespace client

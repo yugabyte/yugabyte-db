@@ -126,6 +126,15 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
               }
               return ClusterAdminCli::kInvalidArguments;
             }));
+
+        for (auto table : tables) {
+          if (table.is_cql_namespace() && table.is_system()) {
+            return STATUS(InvalidArgument,
+                          "Cannot create snapshot of YCQL system table",
+                          table.table_name());
+          }
+        }
+
         RETURN_NOT_OK_PREPEND(client->CreateSnapshot(tables, true, timeout_secs),
                               Substitute("Unable to create snapshot of tables: $0",
                                          yb::ToString(tables)));
@@ -491,13 +500,17 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "delete_universe_replication", " <producer_universe_uuid>",
+      "delete_universe_replication", " <producer_universe_uuid> [ignore-errors]",
       [client](const CLIArguments& args) -> Status {
         if (args.size() < 1) {
           return ClusterAdminCli::kInvalidArguments;
         }
         const string producer_id = args[0];
-        RETURN_NOT_OK_PREPEND(client->DeleteUniverseReplication(producer_id),
+        bool ignore_errors = false;
+        if (args.size() >= 2 && args[1] == "ignore-errors") {
+          ignore_errors = true;
+        }
+        RETURN_NOT_OK_PREPEND(client->DeleteUniverseReplication(producer_id, ignore_errors),
                               Substitute("Unable to delete replication for universe $0",
                               producer_id));
         return Status::OK();
@@ -506,16 +519,23 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   Register(
       "alter_universe_replication",
       " <producer_universe_uuid>"
-      " {set_master_addresses <producer_master_addresses,...> |"
-      "  add_table <table_id>[, <table_id>...] | remove_table <table_id>[, <table_id>...] }",
+      " {set_master_addresses [comma_separated_list_of_producer_master_addresses] |"
+      "  add_table [comma_separated_list_of_table_ids]"
+      "            [comma_separated_list_of_producer_bootstrap_ids] |"
+      "  remove_table [comma_separated_list_of_table_ids] }",
       [client](const CLIArguments& args) -> Status {
-        if (args.size() != 3) {
+        if (args.size() < 3 || args.size() > 4) {
           return ClusterAdminCli::kInvalidArguments;
         }
+        if (args.size() == 4 && args[1] != "add_table") {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+
         const string producer_uuid = args[0];
         vector<string> master_addresses;
         vector<string> add_tables;
         vector<string> remove_tables;
+        vector<string> bootstrap_ids_to_add;
 
         vector<string> newElem, *lst;
         if (args[1] == "set_master_addresses") lst = &master_addresses;
@@ -527,10 +547,15 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         boost::split(newElem, args[2], boost::is_any_of(","));
         lst->insert(lst->end(), newElem.begin(), newElem.end());
 
+        if (args[1] == "add_table" && args.size() == 4) {
+          boost::split(bootstrap_ids_to_add, args[3], boost::is_any_of(","));
+        }
+
         RETURN_NOT_OK_PREPEND(client->AlterUniverseReplication(producer_uuid,
                                                                master_addresses,
                                                                add_tables,
-                                                               remove_tables),
+                                                               remove_tables,
+                                                               bootstrap_ids_to_add),
             Substitute("Unable to alter replication for universe $0", producer_uuid));
 
         return Status::OK();

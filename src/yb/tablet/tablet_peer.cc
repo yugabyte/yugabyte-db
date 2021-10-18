@@ -407,7 +407,7 @@ Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
   return tablet_->EnableCompactions(/* non_abortable_ops_pause */ nullptr);
 }
 
-const consensus::RaftConfigPB TabletPeer::RaftConfig() const {
+consensus::RaftConfigPB TabletPeer::RaftConfig() const {
   CHECK(consensus_) << "consensus is null";
   return consensus_->CommittedConfig();
 }
@@ -704,6 +704,8 @@ void TabletPeer::GetTabletStatusPB(TabletStatusPB* status_pb_out) {
     status_pb_out->set_table_type(tablet->table_type());
   }
   disk_size_info.ToPB(status_pb_out);
+  // Set hide status of the tablet.
+  status_pb_out->set_is_hidden(meta_->hidden());
 }
 
 Status TabletPeer::RunLogGC() {
@@ -712,14 +714,21 @@ Status TabletPeer::RunLogGC() {
   }
   auto s = reset_cdc_min_replicated_index_if_stale();
   if (!s.ok()) {
-    LOG(WARNING) << "Unable to reset cdc min replicated index " << s;
+    LOG_WITH_PREFIX(WARNING) << "Unable to reset cdc min replicated index " << s;
   }
-  int64_t min_log_index = VERIFY_RESULT(GetEarliestNeededLogIndex());
+  int64_t min_log_index;
+  if (VLOG_IS_ON(2)) {
+    std::string details;
+    min_log_index = VERIFY_RESULT(GetEarliestNeededLogIndex(&details));
+    LOG_WITH_PREFIX(INFO) << __func__ << ": " << details;
+  } else {
+     min_log_index = VERIFY_RESULT(GetEarliestNeededLogIndex());
+  }
   int32_t num_gced = 0;
   return log_->GC(min_log_index, &num_gced);
 }
 
-const TabletDataState TabletPeer::data_state() const {
+TabletDataState TabletPeer::data_state() const {
   std::lock_guard<simple_spinlock> lock(lock_);
   return meta_->tablet_data_state();
 }
@@ -1256,37 +1265,32 @@ void TabletPeer::StrandEnqueue(rpc::StrandTask* task) {
 }
 
 bool TabletPeer::CanBeDeleted() {
-  if (!IsLeader()) {
+  const auto consensus = shared_raft_consensus();
+  if (!consensus || consensus->LeaderTerm() == OpId::kUnknownTerm) {
     return false;
-  }
-  if (can_be_deleted_) {
-    return can_be_deleted_;
   }
 
   const auto tablet = shared_tablet();
-  const auto consensus = shared_raft_consensus();
-  if (!tablet || !consensus) {
+  if (!tablet) {
     return false;
   }
 
-  const auto tablet_data_state = tablet->metadata()->tablet_data_state();
-  if (tablet_data_state != TABLET_DATA_SPLIT_COMPLETED) {
+  auto op_id = tablet->metadata()->GetOpIdToDeleteAfterAllApplied();
+  if (!op_id.valid()) {
     return false;
   }
 
   const auto all_applied_op_id = consensus->GetAllAppliedOpId();
-  const auto committed_op_id = consensus->GetLastCommittedOpId();
-  if (all_applied_op_id < committed_op_id) {
+  if (all_applied_op_id < op_id) {
     return false;
   }
 
-  can_be_deleted_ = true;
   LOG_WITH_PREFIX(INFO) << Format(
       "Marked tablet $0 as requiring cleanup due to all replicas have been split (all applied op "
-      "ID: $1, committed op ID: $2)",
-      tablet_id(), all_applied_op_id, committed_op_id);
+      "id: $1, split op id: $2)",
+      tablet_id(), all_applied_op_id, op_id);
 
-  return can_be_deleted_;
+  return true;
 }
 
 rpc::Scheduler& TabletPeer::scheduler() const {

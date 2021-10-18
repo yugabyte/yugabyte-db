@@ -572,6 +572,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	/* YB variables. */
 	Oid			rowTypeId = InvalidOid;
 	bool		relisshared = false;
+	bool		use_initdb_acl = false;
 
 	/*
 	 * Truncate relname to appropriate length (probably a waste of time, as
@@ -594,6 +595,18 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 			elog(ERROR, "unexpected relkind: %d", (int) relkind);
 
 		relkind = RELKIND_PARTITIONED_TABLE;
+	}
+
+	if (IsYugaByteEnabled() && stmt->tablespacename &&
+		stmt->relation->relpersistence == RELPERSISTENCE_TEMP)
+	{
+		/*
+		 * Disable setting tablespaces for temporary tables in Yugabyte
+		 * clusters.
+		 */
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("cannot set tablespaces for temporary tables")));
 	}
 
 	/*
@@ -885,6 +898,22 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	/* Handles WITH (row_type_oid = x). */
 	rowTypeId = GetRowTypeOidFromRelOptions(stmt->options);
 
+	if (relkind == RELKIND_RELATION)
+	{
+		use_initdb_acl = IsYsqlUpgrade && IsSystemNamespace(namespaceId);
+	}
+	else
+	{
+		/* Handles WITH (use_initdb_acl = x). */
+		use_initdb_acl = YbGetUseInitdbAclFromRelOptions(stmt->options);
+		if (use_initdb_acl && !(IsYsqlUpgrade && IsSystemNamespace(namespaceId)))
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("use_initdb_acl cannot be used outside of YSQL upgrade for pg_catalog")));
+		}
+	}
+
 	/*
 	 * Create the relation.  Inherited defaults and constraints are passed in
 	 * for immediate handling --- since they don't need parsing, they can be
@@ -912,7 +941,8 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 										  allowSystemTableMods,
 										  false,
 										  InvalidOid,
-										  typaddress);
+										  typaddress,
+										  use_initdb_acl);
 
 	/*
 	 * We must bump the command counter to make the newly-created relation
@@ -1135,7 +1165,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	 */
 	if (rawDefaults || stmt->constraints)
 		AddRelationNewConstraints(rel, rawDefaults, stmt->constraints,
-								true, true, false, queryString);
+								  true, true, false, queryString);
 
 	ObjectAddressSet(address, RelationRelationId, relationId);
 
@@ -7571,6 +7601,7 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 	AttrNumber*  old2new_attmap;
 	AttrNumber*  new2old_attmap;
 	Oid          old_relid, new_relid;
+	bool         is_range_pk = false;
 
 	Relation     pg_constraint, pg_trigger, pg_depend;
 	ScanKeyData  key;
@@ -7615,6 +7646,15 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 	if ((*mutable_rel)->rd_rel->relhassubclass)
 		elog(ERROR, "adding primary key to a table having children tables "
 		            "is not yet implemented");
+
+	/*
+	 * At this point we're already sure that the table has no explicit PK -
+	 * meaning it's PK has to be (ybctid HASH).
+	 */
+	Assert(yb_table_props.is_colocated || yb_table_props.num_hash_key_columns == 1);
+
+	/* We should have at least one index parameter. */
+	Assert(stmt->indexParams->length > 0);
 
 	const Oid   namespace_oid   = RelationGetNamespace(*mutable_rel);
 	const char* namespace_name  = get_namespace_name(namespace_oid);
@@ -7674,19 +7714,53 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 		create_stmt->tablegroup->has_tablegroup = true;
 		create_stmt->tablegroup->tablegroup_name = get_tablegroup_name(tablegroup_id);
 		Assert(create_stmt->tablegroup->tablegroup_name);
-	} else if ((*mutable_rel)->rd_options) {
+	} else if ((*mutable_rel)->rd_options && MyDatabaseColocated) {
 		const bool colocated = RelationGetColocated(*mutable_rel);
 		create_stmt->options = lappend(create_stmt->options,
 			makeDefElem("colocated", (Node *) makeInteger(colocated), -1));
 	}
 
+	/* The only constraint we care about here is the PK constraint needed for YB. */
+	Constraint* pk_constr = makeNode(Constraint);
+	pk_constr->contype      = CONSTR_PRIMARY;
+	pk_constr->conname      = stmt->idxname;
+	pk_constr->options      = stmt->options;
+	pk_constr->indexspace   = stmt->tableSpace;
+	foreach(cell, stmt->indexParams)
+	{
+		IndexElem* ielem = lfirst(cell);
+		pk_constr->keys            = lappend(pk_constr->keys, makeString(ielem->name));
+		pk_constr->yb_index_params = lappend(pk_constr->yb_index_params, ielem);
+	}
+	switch (lfirst_node(IndexElem, stmt->indexParams->head)->ordering)
+	{
+		case SORTBY_HASH:
+			is_range_pk = false;
+			break;
+		case SORTBY_ASC:
+		case SORTBY_DESC:
+			is_range_pk = true;
+			break;
+		case SORTBY_DEFAULT:
+			/*
+			 * Default ordering for the first PK element is hash in
+			 * non-colocated case.
+			 */
+			is_range_pk = yb_table_props.is_colocated;
+			break;
+		case SORTBY_USING:
+			elog(ERROR, "USING is not allowed in primary key");
+	}
+	create_stmt->constraints = lappend(create_stmt->constraints, pk_constr);
+
 	/*
 	 * While there is little to no sense for a user to be doing
 	 * CREATE TABLE ... SPLIT INTO x TABLETS without defining a primary key,
-	 * we're still going to preserve it.
+	 * we're still going to preserve the number of tablets.
 	 * It might come in handy if once we start supporting DROP PK as well.
+	 * In case we define a range primary key though, we discard this.
 	 */
-	if (yb_table_props.num_hash_key_columns > 0)
+	if (!yb_table_props.is_colocated && !is_range_pk)
 	{
 		create_stmt->split_options = makeNode(OptSplit);
 		create_stmt->split_options->split_type   = NUM_TABLETS;
@@ -7716,7 +7790,8 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 				elog(ERROR, "cache lookup failed for type %u", attr_form->atttypid);
 			Form_pg_type attr_type_form = (Form_pg_type) GETSTRUCT(tuple);
 
-			if (attr_form->attcollation != attr_type_form->typcollation)
+			if (!YBIsCollationEnabled() &&
+				attr_form->attcollation != attr_type_form->typcollation)
 				elog(ERROR, "adding primary key to a table with collated columns "
 				            "is not yet implemented");
 
@@ -7759,20 +7834,6 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 
 		create_stmt->tableElts = lappend(create_stmt->tableElts, col_def);
 	}
-
-	/* The only constraint we care about here is the PK constraint needed for YB. */
-	Constraint* pk_constr = makeNode(Constraint);
-	pk_constr->contype      = CONSTR_PRIMARY;
-	pk_constr->conname      = stmt->idxname;
-	pk_constr->options      = stmt->options;
-	pk_constr->indexspace   = stmt->tableSpace;
-	foreach(cell, stmt->indexParams)
-	{
-		IndexElem* ielem = lfirst(cell);
-		pk_constr->keys            = lappend(pk_constr->keys, makeString(ielem->name));
-		pk_constr->yb_index_params = lappend(pk_constr->yb_index_params, ielem);
-	}
-	create_stmt->constraints = lappend(create_stmt->constraints, pk_constr);
 
 	/*
 	 * Create an altered table and open it.
@@ -10196,6 +10257,8 @@ validateForeignKeyConstraint(char *conname,
 	HeapTuple	tuple;
 	Trigger		trig;
 	Snapshot	snapshot;
+	MemoryContext oldcxt;
+	MemoryContext perTupCxt;
 
 	ereport(DEBUG1,
 			(errmsg("validating foreign key constraint \"%s\"", conname)));
@@ -10230,10 +10293,17 @@ validateForeignKeyConstraint(char *conname,
 	snapshot = RegisterSnapshot(GetLatestSnapshot());
 	scan = heap_beginscan(rel, snapshot, 0, NULL);
 
+	perTupCxt = AllocSetContextCreate(CurrentMemoryContext,
+									  "validateForeignKeyConstraint",
+									  ALLOCSET_SMALL_SIZES);
+	oldcxt = MemoryContextSwitchTo(perTupCxt);
+
 	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 	{
 		FunctionCallInfoData fcinfo;
 		TriggerData trigdata;
+
+		CHECK_FOR_INTERRUPTS();
 
 		/*
 		 * Make a call to the trigger function
@@ -10257,8 +10327,12 @@ validateForeignKeyConstraint(char *conname,
 		fcinfo.context = (Node *) &trigdata;
 
 		RI_FKey_check_ins(&fcinfo);
+
+		MemoryContextReset(perTupCxt);
 	}
 
+	MemoryContextSwitchTo(oldcxt);
+	MemoryContextDelete(perTupCxt);
 	heap_endscan(scan);
 	UnregisterSnapshot(snapshot);
 }

@@ -13,6 +13,7 @@ import static com.yugabyte.yw.controllers.TokenAuthenticator.API_TOKEN_HEADER;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.models.Users;
@@ -23,6 +24,7 @@ import io.swagger.annotations.Info;
 import io.swagger.annotations.License;
 import io.swagger.annotations.SecurityDefinition;
 import io.swagger.annotations.SwaggerDefinition;
+import play.libs.Json;
 import play.mvc.Controller;
 import play.mvc.Http;
 
@@ -45,7 +47,9 @@ import play.mvc.Http;
     produces = {"application/json"},
     schemes = {SwaggerDefinition.Scheme.HTTP, SwaggerDefinition.Scheme.HTTPS},
     externalDocs =
-        @ExternalDocs(value = "About Yugabyte Platform", url = "https://docs.yugabyte.com"),
+        @ExternalDocs(
+            value = "About Yugabyte Platform",
+            url = "https://docs.yugabyte.com/latest/yugabyte-platform/"),
     securityDefinition =
         @SecurityDefinition(
             apiKeyAuthDefinitions = {
@@ -53,7 +57,7 @@ import play.mvc.Http;
                   key = AbstractPlatformController.API_KEY_AUTH,
                   name = API_TOKEN_HEADER,
                   in = ApiKeyAuthDefinition.ApiKeyLocation.HEADER,
-                  description = "Api key passed as header")
+                  description = "API token passed as header")
             }))
 public abstract class AbstractPlatformController extends Controller {
 
@@ -78,5 +82,19 @@ public abstract class AbstractPlatformController extends Controller {
   @VisibleForTesting
   public void setAuditService(AuditService auditService) {
     this.auditService = auditService;
+  }
+
+  protected <T> T parseJsonAndValidate(Class<T> expectedClass) {
+    return formFactory.getFormDataOrBadRequest(request().body().asJson(), expectedClass);
+  }
+
+  protected <T> T parseJson(Class<T> expectedClass) {
+    try {
+      return Json.fromJson(request().body().asJson(), expectedClass);
+    } catch (Exception e) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Failed to parse " + expectedClass.getSimpleName() + " object: " + e.getMessage());
+    }
   }
 }

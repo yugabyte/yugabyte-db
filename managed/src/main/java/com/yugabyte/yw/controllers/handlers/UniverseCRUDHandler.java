@@ -23,14 +23,19 @@ import com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete;
 import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
+import com.yugabyte.yw.common.password.PasswordPolicyService;
+import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.DiskIncreaseFormData;
+import com.yugabyte.yw.forms.TlsConfigUpdateParams;
+import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.models.AccessKey;
@@ -50,9 +55,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.mvc.Http;
+import play.mvc.Http.Status;
 
 public class UniverseCRUDHandler {
 
@@ -67,6 +74,9 @@ public class UniverseCRUDHandler {
   @Inject RuntimeConfigFactory runtimeConfigFactory;
 
   @Inject KubernetesManager kubernetesManager;
+  @Inject PasswordPolicyService passwordPolicyService;
+
+  @Inject UpgradeUniverseHandler upgradeUniverseHandler;
 
   /**
    * Function to Trim keys and values of the passed map.
@@ -87,10 +97,10 @@ public class UniverseCRUDHandler {
 
   public void configure(Customer customer, UniverseConfigureTaskParams taskParams) {
     if (taskParams.currentClusterType == null) {
-      throw new YWServiceException(BAD_REQUEST, "currentClusterType must be set");
+      throw new PlatformServiceException(BAD_REQUEST, "currentClusterType must be set");
     }
     if (taskParams.clusterOperation == null) {
-      throw new YWServiceException(BAD_REQUEST, "clusterOperation must be set");
+      throw new PlatformServiceException(BAD_REQUEST, "clusterOperation must be set");
     }
 
     // TODO(Rahul): When we support multiple read only clusters, change clusterType to cluster
@@ -102,10 +112,13 @@ public class UniverseCRUDHandler {
     UniverseDefinitionTaskParams.UserIntent primaryIntent = c.userIntent;
     primaryIntent.masterGFlags = trimFlags(primaryIntent.masterGFlags);
     primaryIntent.tserverGFlags = trimFlags(primaryIntent.tserverGFlags);
+    if (StringUtils.isEmpty(primaryIntent.accessKeyCode)) {
+      primaryIntent.accessKeyCode = appConfig.getString("yb.security.default.access.key");
+    }
     if (PlacementInfoUtil.checkIfNodeParamsValid(taskParams, c)) {
       PlacementInfoUtil.updateUniverseDefinition(taskParams, customer.getCustomerId(), c.uuid);
     } else {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST,
           "Invalid Node/AZ combination for given instance type " + c.userIntent.instanceType);
     }
@@ -118,7 +131,7 @@ public class UniverseCRUDHandler {
     if (taskParams.getPrimaryCluster() != null
         && !Util.isValidUniverseNameFormat(
             taskParams.getPrimaryCluster().userIntent.universeName)) {
-      throw new YWServiceException(BAD_REQUEST, Util.UNIV_NAME_ERROR_MESG);
+      throw new PlatformServiceException(BAD_REQUEST, Util.UNIV_NAME_ERROR_MESG);
     }
 
     if (!taskParams.rootAndClientRootCASame
@@ -127,7 +140,7 @@ public class UniverseCRUDHandler {
             .userIntent
             .providerType
             .equals(Common.CloudType.kubernetes)) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST, "root and clientRootCA cannot be different for Kubernetes env.");
     }
 
@@ -152,7 +165,7 @@ public class UniverseCRUDHandler {
         try {
           checkK8sProviderAvailability(provider, customer);
         } catch (IllegalArgumentException e) {
-          throw new YWServiceException(BAD_REQUEST, e.getMessage());
+          throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
         }
         checkHelmChartExists(c.userIntent.ybSoftwareVersion);
       }
@@ -185,6 +198,28 @@ public class UniverseCRUDHandler {
       if (userIntent.providerType.isVM() && userIntent.enableYSQL) {
         taskParams.setTxnTableWaitCountFlag = true;
       }
+      if (!(userIntent.enableYSQL || userIntent.enableYCQL)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Enable atleast one endpoint among YSQL and YCQL");
+      }
+      if (!userIntent.enableYSQL && userIntent.enableYSQLAuth) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Cannot enable YSQL Authentication if YSQL endpoint is disabled.");
+      }
+      if (!userIntent.enableYCQL && userIntent.enableYCQLAuth) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Cannot enable YCQL Authentication if YCQL endpoint is disabled.");
+      }
+      try {
+        if (userIntent.enableYSQLAuth) {
+          passwordPolicyService.checkPasswordPolicy(null, userIntent.ysqlPassword);
+        }
+        if (userIntent.enableYCQLAuth) {
+          passwordPolicyService.checkPasswordPolicy(null, userIntent.ycqlPassword);
+        }
+      } catch (Exception e) {
+        throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
+      }
     }
 
     // Create a new universe. This makes sure that a universe of this name does not already exist
@@ -215,7 +250,7 @@ public class UniverseCRUDHandler {
             ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
       } else {
         if (primaryCluster.userIntent.enableIPV6) {
-          throw new YWServiceException(
+          throw new PlatformServiceException(
               BAD_REQUEST, "IPV6 not supported for platform deployed VMs.");
         }
       }
@@ -230,7 +265,7 @@ public class UniverseCRUDHandler {
 
         CertificateInfo cert = CertificateInfo.get(taskParams.rootCA);
         if (cert.certType == CertificateInfo.Type.CustomServerCert) {
-          throw new YWServiceException(
+          throw new PlatformServiceException(
               BAD_REQUEST,
               "CustomServerCert are only supported for Client to Server Communication.");
         }
@@ -241,7 +276,7 @@ public class UniverseCRUDHandler {
               .userIntent
               .providerType
               .equals(Common.CloudType.onprem)) {
-            throw new YWServiceException(
+            throw new PlatformServiceException(
                 BAD_REQUEST,
                 "CustomCertHostPath certificates are only supported for onprem providers.");
           }
@@ -270,7 +305,7 @@ public class UniverseCRUDHandler {
               .userIntent
               .providerType
               .equals(Common.CloudType.onprem)) {
-            throw new YWServiceException(
+            throw new PlatformServiceException(
                 BAD_REQUEST,
                 "CustomCertHostPath certificates are only supported for onprem providers.");
           }
@@ -441,7 +476,7 @@ public class UniverseCRUDHandler {
   private void notHelm2LegacyOrBadRequest(Universe u) {
     Map<String, String> universeConfig = u.getConfig();
     if (!universeConfig.containsKey(Universe.HELM2_LEGACY)) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST,
           "Cannot perform an edit operation on universe "
               + u.universeUUID
@@ -458,7 +493,7 @@ public class UniverseCRUDHandler {
               "The certificate %s needs info. Update the cert and retry.",
               CertificateInfo.get(rootCA).label);
       LOG.error(errMsg);
-      throw new YWServiceException(BAD_REQUEST, errMsg);
+      throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
     return rootCA;
   }
@@ -468,12 +503,12 @@ public class UniverseCRUDHandler {
     if (!u.getUniverseDetails().isUniverseEditable()) {
       String errMsg = "Universe UUID " + u.universeUUID + " cannot be edited.";
       LOG.error(errMsg);
-      throw new YWServiceException(BAD_REQUEST, errMsg);
+      throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
 
     if (u.nodesInTransit()) {
       // TODO 503 - Service Unavailable
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST,
           "Cannot perform an edit operation on universe "
               + u.universeUUID
@@ -494,8 +529,8 @@ public class UniverseCRUDHandler {
     return universes;
   }
 
-  public List<UniverseResp> findByName(String name) {
-    return Universe.maybeGetUniverseByName(name)
+  public List<UniverseResp> findByName(Customer customer, String name) {
+    return Universe.maybeGetUniverseByName(customer.getCustomerId(), name)
         .map(
             value ->
                 Collections.singletonList(
@@ -504,7 +539,11 @@ public class UniverseCRUDHandler {
   }
 
   public UUID destroy(
-      Customer customer, Universe universe, boolean isForceDelete, boolean isDeleteBackups) {
+      Customer customer,
+      Universe universe,
+      boolean isForceDelete,
+      boolean isDeleteBackups,
+      boolean isDeleteAssociatedCerts) {
     LOG.info(
         "Destroy universe, customer uuid: {}, universe: {} [ {} ] ",
         customer.uuid,
@@ -519,6 +558,7 @@ public class UniverseCRUDHandler {
     taskParams.customerUUID = customer.uuid;
     taskParams.isForceDelete = isForceDelete;
     taskParams.isDeleteBackups = isDeleteBackups;
+    taskParams.isDeleteAssociatedCerts = isDeleteAssociatedCerts;
     // Submit the task to destroy the universe.
     TaskType taskType = TaskType.DestroyUniverse;
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
@@ -556,7 +596,7 @@ public class UniverseCRUDHandler {
     // Get the user submitted form data.
 
     if (taskParams.clusters == null || taskParams.clusters.size() != 1)
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST,
           "Invalid 'clusters' field/size: "
               + taskParams.clusters
@@ -571,7 +611,7 @@ public class UniverseCRUDHandler {
         existingReadOnlyClusters.size());
 
     if (existingReadOnlyClusters.size() > 0 && newReadOnlyClusters.size() > 0) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST, "Can only have one read-only cluster per universe for now.");
     }
 
@@ -579,7 +619,7 @@ public class UniverseCRUDHandler {
     if (cluster.uuid == null) {
       String errMsg = "UUID of read-only cluster should be non-null.";
       LOG.error(errMsg);
-      throw new YWServiceException(BAD_REQUEST, errMsg);
+      throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
 
     if (cluster.clusterType != UniverseDefinitionTaskParams.ClusterType.ASYNC) {
@@ -589,7 +629,7 @@ public class UniverseCRUDHandler {
               + " but is "
               + cluster.clusterType;
       LOG.error(errMsg);
-      throw new YWServiceException(BAD_REQUEST, errMsg);
+      throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
 
     // Set the provider code.
@@ -602,7 +642,7 @@ public class UniverseCRUDHandler {
       try {
         checkK8sProviderAvailability(provider, customer);
       } catch (IllegalArgumentException e) {
-        throw new YWServiceException(BAD_REQUEST, e.getMessage());
+        throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
       }
     }
 
@@ -642,7 +682,7 @@ public class UniverseCRUDHandler {
       String errMsg =
           "Uuid " + clusterUUID + " to delete cluster not found, only " + uuid + " found.";
       LOG.error(errMsg);
-      throw new YWServiceException(BAD_REQUEST, errMsg);
+      throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
 
     // Create the Commissioner task to destroy the universe.
@@ -681,7 +721,7 @@ public class UniverseCRUDHandler {
       String errMsg =
           "Only one read-only cluster expected, but we got " + readReplicaClusters.size();
       LOG.error(errMsg);
-      throw new YWServiceException(BAD_REQUEST, errMsg);
+      throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
     return readReplicaClusters.get(0);
   }
@@ -743,12 +783,12 @@ public class UniverseCRUDHandler {
 
   public UUID upgrade(Customer customer, Universe universe, UpgradeParams taskParams) {
     if (taskParams.taskType == null) {
-      throw new YWServiceException(BAD_REQUEST, "task type is required");
+      throw new PlatformServiceException(BAD_REQUEST, "task type is required");
     }
 
     if (taskParams.upgradeOption == UpgradeParams.UpgradeOption.ROLLING_UPGRADE
         && universe.nodesInTransit()) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST,
           "Cannot perform rolling upgrade of universe "
               + universe.universeUUID
@@ -772,13 +812,13 @@ public class UniverseCRUDHandler {
     switch (taskParams.taskType) {
       case VMImage:
         if (!runtimeConfigFactory.forUniverse(universe).getBoolean("yb.cloud.enabled")) {
-          throw new YWServiceException(
+          throw new PlatformServiceException(
               Http.Status.METHOD_NOT_ALLOWED, "VM image upgrade is disabled");
         }
 
         Common.CloudType provider = primaryIntent.providerType;
         if (!(provider == Common.CloudType.gcp || provider == Common.CloudType.aws)) {
-          throw new YWServiceException(
+          throw new PlatformServiceException(
               BAD_REQUEST,
               "VM image upgrade is only supported for AWS / GCP, got: " + provider.toString());
         }
@@ -795,12 +835,12 @@ public class UniverseCRUDHandler {
         }
 
         if (hasEphemeralStorage) {
-          throw new YWServiceException(
+          throw new PlatformServiceException(
               BAD_REQUEST, "Cannot upgrade a universe with ephemeral storage");
         }
 
         if (taskParams.machineImages.isEmpty()) {
-          throw new YWServiceException(
+          throw new PlatformServiceException(
               BAD_REQUEST, "machineImages param is required for taskType: " + taskParams.taskType);
         }
 
@@ -808,7 +848,7 @@ public class UniverseCRUDHandler {
         break;
       case ResizeNode:
         if (!runtimeConfigFactory.forUniverse(universe).getBoolean("yb.cloud.enabled")) {
-          throw new YWServiceException(
+          throw new PlatformServiceException(
               Http.Status.METHOD_NOT_ALLOWED, "Smart resizing is disabled");
         }
 
@@ -816,7 +856,7 @@ public class UniverseCRUDHandler {
             universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
         if (!(providerType.equals(Common.CloudType.gcp)
             || providerType.equals(Common.CloudType.aws))) {
-          throw new YWServiceException(
+          throw new PlatformServiceException(
               BAD_REQUEST,
               "Smart resizing is only supported for AWS / GCP, It is: " + providerType.toString());
         }
@@ -826,17 +866,20 @@ public class UniverseCRUDHandler {
       case Software:
         customerTaskType = CustomerTask.TaskType.UpgradeSoftware;
         if (taskParams.ybSoftwareVersion == null || taskParams.ybSoftwareVersion.isEmpty()) {
-          throw new YWServiceException(
+          throw new PlatformServiceException(
               BAD_REQUEST,
               "ybSoftwareVersion param is required for taskType: " + taskParams.taskType);
         }
+        UniverseDefinitionTaskParams.UserIntent uIntent =
+            universe.getUniverseDetails().getPrimaryCluster().userIntent;
+        taskParams.ybPrevSoftwareVersion = uIntent.ybSoftwareVersion;
         break;
       case GFlags:
         customerTaskType = CustomerTask.TaskType.UpgradeGflags;
         // TODO(BUG): This looks like a bug. This should check for empty instead of null.
         // Fixing this cause unit test to break. Leaving the TODO for now.
         if (taskParams.masterGFlags == null && taskParams.tserverGFlags == null) {
-          throw new YWServiceException(
+          throw new PlatformServiceException(
               BAD_REQUEST, "gflags param is required for taskType: " + taskParams.taskType);
         }
         UniverseDefinitionTaskParams.UserIntent univIntent =
@@ -845,19 +888,28 @@ public class UniverseCRUDHandler {
             && taskParams.masterGFlags.equals(univIntent.masterGFlags)
             && taskParams.tserverGFlags != null
             && taskParams.tserverGFlags.equals(univIntent.tserverGFlags)) {
-          throw new YWServiceException(BAD_REQUEST, "Neither master nor tserver gflags changed.");
+          throw new PlatformServiceException(
+              BAD_REQUEST, "Neither master nor tserver gflags changed.");
         }
         break;
       case Restart:
         customerTaskType = CustomerTask.TaskType.Restart;
         if (taskParams.upgradeOption != UpgradeParams.UpgradeOption.ROLLING_UPGRADE) {
-          throw new YWServiceException(BAD_REQUEST, "Rolling restart has to be a ROLLING UPGRADE.");
+          throw new PlatformServiceException(
+              BAD_REQUEST, "Rolling restart has to be a ROLLING UPGRADE.");
+        }
+        break;
+      case Systemd:
+        customerTaskType = CustomerTask.TaskType.SystemdUpgrade;
+        if (taskParams.upgradeOption != UpgradeParams.UpgradeOption.ROLLING_UPGRADE) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "Rolling restart has to be a ROLLING UPGRADE.");
         }
         break;
       case Certs:
         customerTaskType = CustomerTask.TaskType.UpdateCert;
         if (taskParams.certUUID == null) {
-          throw new YWServiceException(
+          throw new PlatformServiceException(
               BAD_REQUEST, "certUUID is required for taskType: " + taskParams.taskType);
         }
         if (!taskParams
@@ -865,22 +917,22 @@ public class UniverseCRUDHandler {
             .userIntent
             .providerType
             .equals(Common.CloudType.onprem)) {
-          throw new YWServiceException(
+          throw new PlatformServiceException(
               BAD_REQUEST, "Certs can only be rotated for onprem." + taskParams.taskType);
         }
         CertificateInfo cert = CertificateInfo.get(taskParams.certUUID);
         if (cert.certType != CertificateInfo.Type.CustomCertHostPath) {
-          throw new YWServiceException(
+          throw new PlatformServiceException(
               BAD_REQUEST, "Need a custom cert. Cannot use self-signed." + taskParams.taskType);
         }
         cert = CertificateInfo.get(universe.getUniverseDetails().rootCA);
         if (cert.certType != CertificateInfo.Type.CustomCertHostPath) {
-          throw new YWServiceException(
+          throw new PlatformServiceException(
               BAD_REQUEST, "Only custom certs can be rotated." + taskParams.taskType);
         }
         break;
       default:
-        throw new YWServiceException(BAD_REQUEST, "Unexpected value: " + taskParams.taskType);
+        throw new PlatformServiceException(BAD_REQUEST, "Unexpected value: " + taskParams.taskType);
     }
 
     LOG.info("Got task type {}", customerTaskType.toString());
@@ -902,7 +954,7 @@ public class UniverseCRUDHandler {
         .equals(Common.CloudType.kubernetes)) {
       taskType = TaskType.UpgradeKubernetesUniverse;
       if (!universeConfig.containsKey(Universe.HELM2_LEGACY)) {
-        throw new YWServiceException(
+        throw new PlatformServiceException(
             BAD_REQUEST,
             "Cannot perform upgrade operation on universe. "
                 + universe.universeUUID
@@ -949,19 +1001,19 @@ public class UniverseCRUDHandler {
       Customer customer, Universe universe, DiskIncreaseFormData taskParams) {
     LOG.info("Disk Size Increase {} for {}.", customer.uuid, universe.universeUUID);
     if (taskParams.size == 0) {
-      throw new YWServiceException(BAD_REQUEST, "Size cannot be 0.");
+      throw new PlatformServiceException(BAD_REQUEST, "Size cannot be 0.");
     }
 
     UniverseDefinitionTaskParams.UserIntent primaryIntent =
         taskParams.getPrimaryCluster().userIntent;
     if (taskParams.size <= primaryIntent.deviceInfo.volumeSize) {
-      throw new YWServiceException(BAD_REQUEST, "Size can only be increased.");
+      throw new PlatformServiceException(BAD_REQUEST, "Size can only be increased.");
     }
     if (primaryIntent.deviceInfo.storageType == PublicCloudConstants.StorageType.Scratch) {
-      throw new YWServiceException(BAD_REQUEST, "Scratch type disk cannot be modified.");
+      throw new PlatformServiceException(BAD_REQUEST, "Scratch type disk cannot be modified.");
     }
     if (taskParams.getPrimaryCluster().isAwsClusterWithEphemeralStorage()) {
-      throw new YWServiceException(BAD_REQUEST, "Cannot modify instance volumes.");
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot modify instance volumes.");
     }
 
     primaryIntent.deviceInfo.volumeSize = taskParams.size;
@@ -979,7 +1031,8 @@ public class UniverseCRUDHandler {
         .userIntent
         .providerType
         .equals(Common.CloudType.kubernetes)) {
-      throw new YWServiceException(BAD_REQUEST, "Kubernetes disk size increase not yet supported.");
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Kubernetes disk size increase not yet supported.");
     }
 
     UUID taskUUID = commissioner.submit(taskType, taskParams);
@@ -1007,11 +1060,122 @@ public class UniverseCRUDHandler {
     return taskUUID;
   }
 
+  public UUID tlsConfigUpdate(
+      Customer customer, Universe universe, TlsConfigUpdateParams taskParams) {
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
+
+    boolean tlsToggle =
+        ((taskParams.enableNodeToNodeEncrypt != null
+                && taskParams.enableNodeToNodeEncrypt != userIntent.enableNodeToNodeEncrypt)
+            || (taskParams.enableClientToNodeEncrypt != null
+                && taskParams.enableClientToNodeEncrypt != userIntent.enableClientToNodeEncrypt));
+    boolean certsRotate =
+        ((taskParams.rootCA != null && !taskParams.rootCA.equals(universeDetails.rootCA))
+                || (taskParams.clientRootCA != null
+                    && !taskParams.clientRootCA.equals(universeDetails.clientRootCA)))
+            || taskParams.createNewRootCA
+            || taskParams.createNewClientRootCA;
+
+    if (taskParams.rootAndClientRootCASame == null) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST, "rootAndClientRootCASame cannot be null.");
+    }
+
+    if (tlsToggle && certsRotate) {
+      if ((universeDetails.rootCA == null && taskParams.rootCA != null)
+          || (universeDetails.rootCA == null && taskParams.createNewRootCA)
+          || (universeDetails.clientRootCA == null && taskParams.clientRootCA != null)
+          || (universeDetails.clientRootCA == null && taskParams.createNewClientRootCA)) {
+        certsRotate = false;
+      } else {
+        throw new PlatformServiceException(
+            Status.BAD_REQUEST,
+            "Cannot enable/disable TLS along with cert rotation. Perform them individually.");
+      }
+    }
+
+    if (!tlsToggle && !certsRotate) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST, "No changes in Tls parameters, cannot perform upgrade.");
+    }
+
+    if (tlsToggle) {
+      boolean isRootCA =
+          CertificateHelper.isRootCARequired(
+              taskParams.enableNodeToNodeEncrypt,
+              taskParams.enableClientToNodeEncrypt,
+              taskParams.rootAndClientRootCASame);
+      boolean isClientRootCA =
+          CertificateHelper.isClientRootCARequired(
+              taskParams.enableNodeToNodeEncrypt,
+              taskParams.enableClientToNodeEncrypt,
+              taskParams.rootAndClientRootCASame);
+
+      TlsToggleParams tlsToggleParams = new TlsToggleParams();
+      tlsToggleParams.enableNodeToNodeEncrypt = taskParams.enableNodeToNodeEncrypt;
+      tlsToggleParams.enableClientToNodeEncrypt = taskParams.enableClientToNodeEncrypt;
+      tlsToggleParams.allowInsecure =
+          !(taskParams.enableNodeToNodeEncrypt || taskParams.enableClientToNodeEncrypt);
+      tlsToggleParams.rootCA =
+          isRootCA ? (!taskParams.createNewRootCA ? taskParams.rootCA : null) : null;
+      tlsToggleParams.clientRootCA =
+          isClientRootCA
+              ? (!taskParams.createNewClientRootCA ? taskParams.clientRootCA : null)
+              : null;
+      tlsToggleParams.rootAndClientRootCASame = taskParams.rootAndClientRootCASame;
+      tlsToggleParams.upgradeOption = taskParams.upgradeOption;
+      tlsToggleParams.sleepAfterMasterRestartMillis = taskParams.sleepAfterMasterRestartMillis;
+      tlsToggleParams.sleepAfterTServerRestartMillis = taskParams.sleepAfterTServerRestartMillis;
+      return upgradeUniverseHandler.toggleTls(tlsToggleParams, customer, universe);
+    }
+
+    if (certsRotate) {
+      boolean isRootCA =
+          CertificateHelper.isRootCARequired(
+              userIntent.enableNodeToNodeEncrypt,
+              userIntent.enableClientToNodeEncrypt,
+              taskParams.rootAndClientRootCASame);
+      boolean isClientRootCA =
+          CertificateHelper.isClientRootCARequired(
+              userIntent.enableNodeToNodeEncrypt,
+              userIntent.enableClientToNodeEncrypt,
+              taskParams.rootAndClientRootCASame);
+
+      if (isRootCA && taskParams.createNewRootCA) {
+        taskParams.rootCA =
+            CertificateHelper.createRootCA(
+                universeDetails.nodePrefix,
+                customer.uuid,
+                runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"));
+      }
+
+      if (isClientRootCA && taskParams.createNewClientRootCA) {
+        taskParams.clientRootCA =
+            CertificateHelper.createClientRootCA(
+                universeDetails.nodePrefix,
+                customer.uuid,
+                runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"));
+      }
+
+      CertsRotateParams certsRotateParams = new CertsRotateParams();
+      certsRotateParams.rootCA = isRootCA ? taskParams.rootCA : null;
+      certsRotateParams.clientRootCA = isClientRootCA ? taskParams.clientRootCA : null;
+      certsRotateParams.rootAndClientRootCASame = taskParams.rootAndClientRootCASame;
+      certsRotateParams.upgradeOption = taskParams.upgradeOption;
+      certsRotateParams.sleepAfterMasterRestartMillis = taskParams.sleepAfterMasterRestartMillis;
+      certsRotateParams.sleepAfterTServerRestartMillis = taskParams.sleepAfterTServerRestartMillis;
+      return upgradeUniverseHandler.rotateCerts(certsRotateParams, customer, universe);
+    }
+
+    return null;
+  }
+
   private void checkHelmChartExists(String ybSoftwareVersion) {
     try {
       kubernetesManager.getHelmPackagePath(ybSoftwareVersion);
     } catch (RuntimeException e) {
-      throw new YWServiceException(BAD_REQUEST, e.getMessage());
+      throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
     }
   }
 }

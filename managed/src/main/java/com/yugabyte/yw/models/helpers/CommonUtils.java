@@ -6,8 +6,13 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.node.TextNode;
 import com.google.common.collect.Iterables;
-import com.yugabyte.yw.common.YWServiceException;
+import com.jayway.jsonpath.Configuration;
+import com.jayway.jsonpath.JsonPath;
+import com.jayway.jsonpath.spi.json.JacksonJsonNodeJsonProvider;
+import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.paging.PagedQuery;
 import com.yugabyte.yw.models.paging.PagedResponse;
 import io.ebean.ExpressionList;
@@ -16,6 +21,7 @@ import io.ebean.PagedList;
 import io.ebean.Query;
 import io.ebean.common.BeanList;
 import io.jsonwebtoken.lang.Collections;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.time.temporal.TemporalUnit;
@@ -46,6 +52,12 @@ public class CommonUtils {
   public static final int DB_MAX_IN_CLAUSE_ITEMS = 1000;
   public static final int DB_IN_CLAUSE_TO_WARN = 50000;
   public static final int DB_OR_CHAIN_TO_WARN = 100;
+
+  private static final Configuration JSONPATH_CONFIG =
+      Configuration.builder()
+          .jsonProvider(new JacksonJsonNodeJsonProvider())
+          .mappingProvider(new JacksonMappingProvider())
+          .build();
 
   /**
    * Checks whether the field name represents a field with a sensitive data or not.
@@ -84,9 +96,12 @@ public class CommonUtils {
    * @param config Config which could hold some data to mask.
    * @return Masked config
    */
-  public static JsonNode maskConfig(JsonNode config) {
+  public static ObjectNode maskConfig(ObjectNode config) {
     return processData(
-        config, CommonUtils::isSensitiveField, (key, value) -> getMaskedValue(key, value));
+        "$",
+        config,
+        CommonUtils::isSensitiveField,
+        (key, value, path) -> getMaskedValue(key, value));
   }
 
   public static Map<String, String> maskConfigNew(Map<String, String> config) {
@@ -100,6 +115,32 @@ public class CommonUtils {
         : value.replaceAll(maskRegex, "*");
   }
 
+  @SuppressWarnings("unchecked")
+  public static <T> T maskObject(T object) {
+    try {
+      JsonNode updatedJson = CommonUtils.maskConfig((ObjectNode) Json.toJson(object));
+      return Json.fromJson(updatedJson, (Class<T>) object.getClass());
+    } catch (Exception e) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Failed to parse " + object.getClass().getSimpleName() + " object: " + e.getMessage());
+    }
+  }
+
+  @SuppressWarnings("unchecked")
+  public static <T> T unmaskObject(T originalObject, T object) {
+    try {
+      JsonNode updatedJson =
+          CommonUtils.unmaskJsonObject(
+              (ObjectNode) Json.toJson(originalObject), (ObjectNode) Json.toJson(object));
+      return Json.fromJson(updatedJson, (Class<T>) object.getClass());
+    } catch (Exception e) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Failed to parse " + object.getClass().getSimpleName() + " object: " + e.getMessage());
+    }
+  }
+
   /**
    * Removes masks from the config. If some fields are sensitive but were updated, these fields are
    * remain the same (with the new values).
@@ -108,29 +149,40 @@ public class CommonUtils {
    * @param data The new config data.
    * @return Updated config (all masked fields are recovered).
    */
-  public static JsonNode unmaskConfig(JsonNode originalData, JsonNode data) {
+  public static ObjectNode unmaskJsonObject(ObjectNode originalData, ObjectNode data) {
     return originalData == null
         ? data
         : processData(
+            "$",
             data,
             CommonUtils::isSensitiveField,
-            (key, value) ->
-                StringUtils.equals(value, getMaskedValue(key, value))
-                    ? originalData.get(key).textValue()
-                    : value);
+            (key, value, path) -> {
+              JsonPath jsonPath = JsonPath.compile(path + "." + key);
+              return StringUtils.equals(value, getMaskedValue(key, value))
+                  ? ((TextNode) jsonPath.read(originalData, JSONPATH_CONFIG)).asText()
+                  : value;
+            });
   }
 
-  private static JsonNode processData(
-      JsonNode data, Predicate<String> selector, BiFunction<String, String, String> getter) {
+  private static ObjectNode processData(
+      String path,
+      JsonNode data,
+      Predicate<String> selector,
+      TriFunction<String, String, String, String> getter) {
     if (data == null) {
       return Json.newObject();
     }
-    JsonNode result = data.deepCopy();
+    ObjectNode result = data.deepCopy();
     for (Iterator<Entry<String, JsonNode>> it = result.fields(); it.hasNext(); ) {
       Entry<String, JsonNode> entry = it.next();
+      if (entry.getValue().isObject()) {
+        result.put(
+            entry.getKey(),
+            processData(path + "." + entry.getKey(), entry.getValue(), selector, getter));
+      }
       if (selector.test(entry.getKey())) {
-        ((ObjectNode) result)
-            .put(entry.getKey(), getter.apply(entry.getKey(), entry.getValue().textValue()));
+        result.put(
+            entry.getKey(), getter.apply(entry.getKey(), entry.getValue().textValue(), path));
       }
     }
     return result;
@@ -157,11 +209,11 @@ public class CommonUtils {
   /** Recursively merges second JsonNode into first JsonNode. ArrayNodes will be overwritten. */
   public static void deepMerge(JsonNode node1, JsonNode node2) {
     if (node1 == null || node1.size() == 0 || node2 == null || node2.size() == 0) {
-      throw new YWServiceException(BAD_REQUEST, "Cannot merge empty nodes.");
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot merge empty nodes.");
     }
 
     if (!node1.isObject() || !node2.isObject()) {
-      throw new YWServiceException(BAD_REQUEST, "Only ObjectNodes may be merged.");
+      throw new PlatformServiceException(BAD_REQUEST, "Only ObjectNodes may be merged.");
     }
 
     for (Iterator<String> fieldNames = node2.fieldNames(); fieldNames.hasNext(); ) {
@@ -310,6 +362,9 @@ public class CommonUtils {
     } else {
       query.orderBy().asc(pagedQuery.getSortBy().getSortField());
     }
+    if (pagedQuery.getSortBy() != pagedQuery.getSortBy().getOrderField()) {
+      query.orderBy().asc(pagedQuery.getSortBy().getOrderField().getSortField());
+    }
     query.setFirstRow(pagedQuery.getOffset());
     query.setMaxRows(pagedQuery.getLimit() + 1);
     PagedList<E> pagedList = query.findPagedList();
@@ -337,5 +392,35 @@ public class CommonUtils {
 
   public static Date nowPlusWithoutMillis(long amount, TemporalUnit timeUnit) {
     return Date.from(Instant.now().plus(amount, timeUnit).truncatedTo(ChronoUnit.SECONDS));
+  }
+
+  public static Date nowMinusWithoutMillis(long amount, TemporalUnit timeUnit) {
+    return Date.from(Instant.now().minus(amount, timeUnit).truncatedTo(ChronoUnit.SECONDS));
+  }
+
+  public static Date nowPlus(long amount, TemporalUnit timeUnit) {
+    return Date.from(Instant.now().plus(amount, timeUnit));
+  }
+
+  public static Date nowMinus(long amount, TemporalUnit timeUnit) {
+    return Date.from(Instant.now().minus(amount, timeUnit));
+  }
+
+  public static Date datePlus(Date date, long amount, TemporalUnit timeUnit) {
+    return Date.from(date.toInstant().plus(amount, timeUnit));
+  }
+
+  public static Date dateMinus(Date date, long amount, TemporalUnit timeUnit) {
+    return Date.from(date.toInstant().minus(amount, timeUnit));
+  }
+
+  public static long getDurationSeconds(Date startTime, Date endTime) {
+    Duration duration = Duration.between(startTime.toInstant(), endTime.toInstant());
+    return duration.getSeconds();
+  }
+
+  @FunctionalInterface
+  private interface TriFunction<A, B, C, R> {
+    R apply(A a, B b, C c);
   }
 }

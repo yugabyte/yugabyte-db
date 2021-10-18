@@ -7,6 +7,7 @@ import { YBTabsPanel, YBTabsWithLinksPanel } from '../components/panels';
 import { showOrRedirect } from '../utils/LayoutUtils';
 import { HAInstances, HAReplication } from '../components/ha';
 import './Administration.scss';
+import { AlertConfigurationContainer } from '../components/alerts';
 
 // very basic redux store definition, just enough to compile without ts errors
 interface Store {
@@ -21,32 +22,62 @@ interface Customer {
   };
 }
 
+interface FeatureStore {
+  featureFlags: FetureFlags;
+}
+
+interface FetureFlags {
+  released: any;
+  test: any;
+}
+
 // string values will be used in URL
 enum AdministrationTabs {
-  HA = 'ha'
+  HA = 'ha',
+  AC = 'alertConfig'
 }
 enum HighAvailabilityTabs {
   Replication = 'replication',
   Instances = 'instances'
 }
 
+enum AlertConfigurationTabs {
+  Creation = 'alertCreation'
+}
+
 interface RouteParams {
   tab: AdministrationTabs;
-  section: HighAvailabilityTabs;
+  section: HighAvailabilityTabs | AlertConfigurationTabs;
 }
 
 const DEFAULT_ADMIN_PAGE = `/admin/${AdministrationTabs.HA}/${HighAvailabilityTabs.Replication}`;
 const customerSelector: Selector<Store, Customer> = (state) => state.customer.currentCustomer;
+const featureFlags: Selector<FeatureStore, FetureFlags> = (state) => state.featureFlags;
 
 export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ params }) => {
   const currentCustomer = useSelector(customerSelector);
+  const { test, released } = useSelector(featureFlags);
 
   useEffect(() => {
     showOrRedirect(currentCustomer.data.features, 'menu.administration');
-    if (!params.tab || !params.section) {
+    if (!params.tab && !params.section) {
       browserHistory.replace(DEFAULT_ADMIN_PAGE);
     }
   }, [currentCustomer, params.tab, params.section]);
+
+  const getAlertTab = () => {
+    return test?.adminAlertsConfig || released?.adminAlertsConfig ? (
+      <Tab eventKey="alertConfig" title="Alert Configurations" key="alert-configurations">
+        <AlertConfigurationContainer
+          defaultTab={AlertConfigurationTabs.Creation}
+          activeTab={params.section}
+          routePrefix={`/admin/${AdministrationTabs.AC}/`}
+        />
+      </Tab>
+    ) : (
+      <span />
+    );
+  };
 
   return (
     <div>
@@ -68,20 +99,31 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
           >
             <Tab
               eventKey={HighAvailabilityTabs.Replication}
-              title={<span><i className="fa fa-clone tab-logo" aria-hidden="true"></i> Replication Configuration</span>}
+              title={
+                <span>
+                  <i className="fa fa-clone tab-logo" aria-hidden="true"></i> Replication
+                  Configuration
+                </span>
+              }
               unmountOnExit
             >
               <HAReplication />
             </Tab>
             <Tab
               eventKey={HighAvailabilityTabs.Instances}
-              title={<span><i className="fa fa-codepen tab-logo" aria-hidden="true"></i> Instance Configuration</span>}
+              title={
+                <span>
+                  <i className="fa fa-codepen tab-logo" aria-hidden="true"></i> Instance
+                  Configuration
+                </span>
+              }
               unmountOnExit
             >
               <HAInstances />
             </Tab>
           </YBTabsPanel>
         </Tab>
+        {getAlertTab()}
       </YBTabsWithLinksPanel>
     </div>
   );

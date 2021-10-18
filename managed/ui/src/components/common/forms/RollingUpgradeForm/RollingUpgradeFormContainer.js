@@ -74,7 +74,8 @@ const mapDispatchToProps = (dispatch) => {
 
 function mapStateToProps(state, ownProps) {
   const {
-    universe: { currentUniverse }
+    universe: { currentUniverse },
+    featureFlags: { test, released }
   } = state;
 
   const initialValues = {};
@@ -82,6 +83,7 @@ function mapStateToProps(state, ownProps) {
     initialValues.tlsCertificate = currentUniverse.data.universeDetails.rootCA;
 
     const primaryCluster = getPrimaryCluster(currentUniverse.data.universeDetails.clusters);
+    var intialSystemdValue = primaryCluster.userIntent.useSystemd;
     if (isDefinedNotNull(primaryCluster)) {
       const masterGFlags = primaryCluster.userIntent.masterGFlags;
       const tserverGFlags = primaryCluster.userIntent.tserverGFlags;
@@ -101,11 +103,14 @@ function mapStateToProps(state, ownProps) {
   initialValues.timeDelay = TASK_LONG_TIMEOUT / 1000;
   initialValues.upgradeOption = 'Rolling';
   initialValues.rollingUpgrade = true;
+  initialValues.systemdValue = intialSystemdValue;
 
   let certificates = [];
   const allCertificates = state.customer.userCertificates;
   if (getPromiseState(allCertificates).isSuccess()) {
-    const rootCert = allCertificates.data.find((item) => item.uuid === initialValues.tlsCertificate);
+    const rootCert = allCertificates.data.find(
+      (item) => item.uuid === initialValues.tlsCertificate
+    );
     // show custom certs with same root cert only
     certificates = allCertificates.data.filter(
       (item) => item.certType === 'CustomCertHostPath' && item.checksum === rootCert?.checksum
@@ -113,7 +118,7 @@ function mapStateToProps(state, ownProps) {
   }
 
   const selector = formValueSelector(FORM_NAME);
-  const formValues = selector(state, 'upgradeOption', 'ybSoftwareVersion', 'tlsCertificate');
+  const formValues = selector(state, 'upgradeOption', 'systemdValue', 'ybSoftwareVersion', 'tlsCertificate');
 
   return {
     modal: state.modal,
@@ -121,7 +126,9 @@ function mapStateToProps(state, ownProps) {
     softwareVersions: state.customer.softwareVersions,
     initialValues,
     certificates,
-    formValues
+    formValues,
+    enableNewEncryptionInTransitModal:
+      test.enableNewEncryptionInTransitModal || released.enableNewEncryptionInTransitModal
   };
 }
 

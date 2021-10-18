@@ -66,16 +66,20 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       // to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
+      preTaskActions();
+
       // Set all the node names.
       setNodeNames(UniverseOpType.EDIT, universe);
 
+      updateOnPremNodeUuids(universe);
+
       // Run preflight checks on onprem nodes to be added.
-      if (reserveAndCheckOnpremNodesToBeAdded()) {
+      if (performUniversePreflightChecks(universe, x -> true)) {
         // Select master nodes, if needed.
         selectMasters();
 
         // Update the user intent.
-        writeUserIntentToUniverse(false, false);
+        writeUserIntentToUniverse(false);
 
         for (Cluster cluster : taskParams().clusters) {
           addDefaultGFlags(cluster.userIntent);
@@ -175,11 +179,14 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
           });
 
       // Create the required number of nodes in the appropriate locations.
-      createSetupServerTasks(nodesToProvision).setSubTaskGroupType(SubTaskGroupType.Provisioning);
+      createCreateServerTasks(nodesToProvision).setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
       // Get all information about the nodes of the cluster. This includes the public ip address,
       // the private ip address (in the case of AWS), etc.
       createServerInfoTasks(nodesToProvision).setSubTaskGroupType(SubTaskGroupType.Provisioning);
+
+      // Provision the required nodes so that Yugabyte software can be deployed.
+      createSetupServerTasks(nodesToProvision).setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
       // Configures and deploys software on all the nodes (masters and tservers).
       createConfigureServerTasks(nodesToProvision, true /* isShell */)

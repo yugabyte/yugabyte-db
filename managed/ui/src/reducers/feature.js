@@ -2,12 +2,18 @@ import { TOGGLE_FEATURE } from '../actions/feature';
 
 const initialStateFeatureInTest = {
   pausedUniverse: false,
-  addListMultiProvider: false
+  addListMultiProvider: false,
+  adminAlertsConfig:true,
+  enableNewEncryptionInTransitModal: true,
+  addRestoreTimeStamp: false,
 };
 
 const initialStateFeatureReleased = {
   pausedUniverse: true,
-  addListMultiProvider: true
+  addListMultiProvider: true,
+  adminAlertsConfig:true,
+  enableNewEncryptionInTransitModal: true,
+  addRestoreTimeStamp: false,
 };
 
 export const FeatureFlag = (

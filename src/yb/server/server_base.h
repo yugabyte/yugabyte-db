@@ -74,6 +74,9 @@ class RpcServerBase {
   // FATALs if the server is not started.
   Endpoint first_rpc_address() const;
 
+  // Return the RPC addresses that this server has bound to.
+  const std::vector<Endpoint>& rpc_addresses() const;
+
   // Return the instance identifier of this server.
   // This may not be called until after the server is Initted.
   const NodeInstancePB& instance_pb() const;
@@ -170,7 +173,7 @@ class RpcAndWebServerBase : public RpcServerBase {
   void GetStatusPB(ServerStatusPB* status) const override;
 
   // Centralized method to get the Registration information for either the Master or Tserver.
-  CHECKED_STATUS GetRegistration(
+  virtual CHECKED_STATUS GetRegistration(
       ServerRegistrationPB* reg, RpcOnly rpc_only = RpcOnly::kFalse) const;
 
  protected:
@@ -200,6 +203,8 @@ class RpcAndWebServerBase : public RpcServerBase {
   void GenerateInstanceID();
   std::string GetEasterEggMessage() const;
   std::string FooterHtml() const;
+
+  scoped_refptr<AtomicMillisLag> server_uptime_ms_metric_;
 
   DISALLOW_COPY_AND_ASSIGN(RpcAndWebServerBase);
 };

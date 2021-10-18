@@ -49,6 +49,9 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
       } else {
         universe = lockUniverseForUpdate(-1 /* expectedUniverseVersion */);
       }
+
+      preTaskActions();
+
       UniverseDefinitionTaskParams.UserIntent userIntent =
           universe.getUniverseDetails().getPrimaryCluster().userIntent;
       UUID providerUUID = UUID.fromString(userIntent.provider);

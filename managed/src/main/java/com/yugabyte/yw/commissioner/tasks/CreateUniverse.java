@@ -18,13 +18,10 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Set;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -38,6 +35,14 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
   protected CreateUniverse(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
   }
+
+  private String ysqlPassword;
+  private String ycqlPassword;
+  private String ysqlCurrentPassword = Util.DEFAULT_YSQL_PASSWORD;
+  private String ysqlUsername = Util.DEFAULT_YSQL_USERNAME;
+  private String ycqlCurrentPassword = Util.DEFAULT_YCQL_PASSWORD;
+  private String ycqlUsername = Util.DEFAULT_YCQL_USERNAME;
+  private String ysqlDb = Util.YUGABYTE_DB;
 
   @Override
   public void run() {
@@ -59,9 +64,35 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       // Select master nodes.
       selectMasters();
 
+      if (taskParams().getPrimaryCluster().userIntent.enableYCQL
+          && taskParams().getPrimaryCluster().userIntent.enableYCQLAuth) {
+        ycqlPassword = taskParams().getPrimaryCluster().userIntent.ycqlPassword;
+        String ycqlPassLength = ((Integer) ycqlPassword.length()).toString();
+        String ycqlRegex = "(.)" + "{" + ycqlPassLength + "}";
+        taskParams().getPrimaryCluster().userIntent.ycqlPassword =
+            taskParams()
+                .getPrimaryCluster()
+                .userIntent
+                .ycqlPassword
+                .replaceAll(ycqlRegex, "REDACTED");
+      }
+      if (taskParams().getPrimaryCluster().userIntent.enableYSQL
+          && taskParams().getPrimaryCluster().userIntent.enableYSQLAuth) {
+        ysqlPassword = taskParams().getPrimaryCluster().userIntent.ysqlPassword;
+        String ysqlPassLength = ((Integer) ysqlPassword.length()).toString();
+        String ysqlRegex = "(.)" + "{" + ysqlPassLength + "}";
+        taskParams().getPrimaryCluster().userIntent.ysqlPassword =
+            taskParams()
+                .getPrimaryCluster()
+                .userIntent
+                .ysqlPassword
+                .replaceAll(ysqlRegex, "REDACTED");
+      }
+
       if (taskParams().firstTry) {
         // Update the user intent.
-        writeUserIntentToUniverse();
+        universe = writeUserIntentToUniverse();
+        updateOnPremNodeUuids(universe);
       }
 
       // Update the universe to the latest state and
@@ -71,43 +102,20 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       checkIfNodesExist(universe);
       Cluster primaryCluster = taskParams().getPrimaryCluster();
 
-      // Check if nodes are able to be provisioned/configured properly.
-      Map<NodeInstance, String> failedNodes = new HashMap<>();
-      for (NodeDetails node : taskParams().nodeDetailsSet) {
-        if (!universe
-            .getCluster(node.placementUuid)
-            .userIntent
-            .providerType
-            .equals(CloudType.onprem)) {
-          continue;
-        }
-
-        NodeTaskParams nodeParams = new NodeTaskParams();
-        UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
-        nodeParams.nodeName = node.nodeName;
-        nodeParams.deviceInfo = userIntent.deviceInfo;
-        nodeParams.azUuid = node.azUuid;
-        nodeParams.universeUUID = taskParams().universeUUID;
-        nodeParams.extraDependencies.installNodeExporter =
-            taskParams().extraDependencies.installNodeExporter;
-
-        String preflightStatus = performPreflightCheck(node, nodeParams);
-        if (preflightStatus != null) {
-          failedNodes.put(NodeInstance.getByName(node.nodeName), preflightStatus);
-        }
-      }
-      if (!failedNodes.isEmpty()) {
-        createFailedPrecheckTask(failedNodes, true)
-            .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
-      }
+      performUniversePreflightChecks(universe, x -> true);
 
       // Create the required number of nodes in the appropriate locations.
-      createSetupServerTasks(taskParams().nodeDetailsSet)
+      createCreateServerTasks(taskParams().nodeDetailsSet)
           .setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
       // Get all information about the nodes of the cluster. This includes the public ip address,
       // the private ip address (in the case of AWS), etc.
       createServerInfoTasks(taskParams().nodeDetailsSet)
+          .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+
+      // Provision the required number of nodes in the appropriate locations.
+      // force reuse host since part of create universe flow
+      createSetupServerTasks(taskParams().nodeDetailsSet)
           .setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
       // Configures and deploys software on all the nodes (masters and tservers).
@@ -176,6 +184,21 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       // Create alert definitions.
       createUnivCreateAlertDefinitionsTask()
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+      // Change admin password for Admin user, as specified.
+      if ((primaryCluster.userIntent.enableYSQL && primaryCluster.userIntent.enableYSQLAuth)
+          || (primaryCluster.userIntent.enableYCQL && primaryCluster.userIntent.enableYCQLAuth)) {
+        createChangeAdminPasswordTask(
+                primaryCluster,
+                ysqlPassword,
+                ysqlCurrentPassword,
+                ysqlUsername,
+                ysqlDb,
+                ycqlPassword,
+                ycqlCurrentPassword,
+                ycqlUsername)
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      }
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks()

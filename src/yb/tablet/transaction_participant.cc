@@ -106,6 +106,9 @@ METRIC_DEFINE_simple_gauge_uint64(
     tablet, transactions_running, "Total number of transactions running in participant",
     yb::MetricUnit::kTransactions);
 
+DEFINE_test_flag(int32, txn_participant_inject_latency_on_apply_update_txn_ms, 0,
+                 "How much latency to inject when a update txn operation is applied.");
+
 namespace yb {
 namespace tablet {
 
@@ -234,6 +237,18 @@ class TransactionParticipant::Impl
       return HybridTime::kInvalid;
     }
     return (**it).local_commit_time();
+  }
+
+  boost::optional<CommitMetadata> LocalCommitData(const TransactionId& id) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = transactions_.find(id);
+    if (it == transactions_.end()) {
+      return boost::none;
+    }
+    return boost::make_optional<CommitMetadata>({
+      .commit_ht = (**it).local_commit_time(),
+      .aborted_subtxn_set = (**it).local_commit_aborted_subtxn_set(),
+    });
   }
 
   std::pair<size_t, size_t> TEST_CountIntents() {
@@ -455,6 +470,10 @@ class TransactionParticipant::Impl
   }
 
   CHECKED_STATUS ProcessReplicated(const ReplicatedData& data) {
+    if (FLAGS_TEST_txn_participant_inject_latency_on_apply_update_txn_ms > 0) {
+      SleepFor(1ms * FLAGS_TEST_txn_participant_inject_latency_on_apply_update_txn_ms);
+    }
+
     auto id = FullyDecodeTransactionId(data.state.transaction_id());
     if (!id.ok()) {
       return id.status();
@@ -520,7 +539,7 @@ class TransactionParticipant::Impl
             << ", new commit ht: " << data.commit_ht;
       } else {
         transactions_.modify(lock_and_iterator.iterator, [&data](auto& txn) {
-          txn->SetLocalCommitTime(data.commit_ht);
+          txn->SetLocalCommitData(data.commit_ht, data.aborted);
         });
 
         LOG_IF_WITH_PREFIX(DFATAL, data.log_ht < last_safe_time_)
@@ -862,12 +881,14 @@ class TransactionParticipant::Impl
     return result;
   }
 
-  CHECKED_STATUS StopActiveTxnsPriorTo(HybridTime cutoff, CoarseTimePoint deadline) {
+  CHECKED_STATUS StopActiveTxnsPriorTo(
+      HybridTime cutoff, CoarseTimePoint deadline, TransactionId* exclude_txn_id) {
     vector<TransactionId> ids_to_abort;
     {
       std::lock_guard<std::mutex> lock(mutex_);
       for (const auto& txn : transactions_.get<StartTimeTag>()) {
-        if (txn->start_ht() > cutoff) {
+        if (txn->start_ht() > cutoff ||
+            (exclude_txn_id != nullptr && txn->id() == *exclude_txn_id)) {
           break;
         }
         if (!txn->WasAborted()) {
@@ -1212,7 +1233,7 @@ class TransactionParticipant::Impl
     if (pending_apply) {
       VLOG_WITH_PREFIX(4) << "Apply state found for " << txn->id() << ": "
                           << pending_apply->ToString();
-      txn->SetLocalCommitTime(pending_apply->commit_ht);
+      txn->SetLocalCommitData(pending_apply->commit_ht, pending_apply->state.aborted);
       txn->SetApplyData(pending_apply->state);
     }
     transactions_.insert(txn);
@@ -1287,7 +1308,8 @@ class TransactionParticipant::Impl
       if (it == transactions_.end()) {
         continue;
       }
-      if ((**it).UpdateStatus(info.status, info.status_ht, info.coordinator_safe_time)) {
+      if ((**it).UpdateStatus(
+          info.status, info.status_ht, info.coordinator_safe_time, info.aborted_subtxn_set)) {
         EnqueueRemoveUnlocked(
             info.transaction_id, RemoveReason::kStatusReceived, &min_running_notifier);
       } else {
@@ -1323,6 +1345,7 @@ class TransactionParticipant::Impl
     TransactionApplyData data = {
         .leader_term = term,
         .transaction_id = *id,
+        .aborted = AbortedSubTransactionSet(),
         .op_id = OpId(),
         .commit_ht = HybridTime(),
         .log_ht = HybridTime(),
@@ -1342,8 +1365,15 @@ class TransactionParticipant::Impl
     }
     HybridTime commit_time(data.state.commit_hybrid_time());
     TransactionApplyData apply_data = {
-        data.leader_term, id, data.op_id, commit_time, data.hybrid_time, data.sealed,
-        data.state.tablets(0) };
+        .leader_term = data.leader_term,
+        .transaction_id = id,
+        .aborted = VERIFY_RESULT(AbortedSubTransactionSet::FromPB(data.state.aborted().set())),
+        .op_id = data.op_id,
+        .commit_ht = commit_time,
+        .log_ht = data.hybrid_time,
+        .sealed = data.sealed,
+        .status_tablet = data.state.tablets(0)
+      };
     if (!data.already_applied_to_regular_db) {
       return ProcessApply(apply_data);
     }
@@ -1572,6 +1602,10 @@ HybridTime TransactionParticipant::LocalCommitTime(const TransactionId& id) {
   return impl_->LocalCommitTime(id);
 }
 
+boost::optional<CommitMetadata> TransactionParticipant::LocalCommitData(const TransactionId& id) {
+  return impl_->LocalCommitData(id);
+}
+
 std::pair<size_t, size_t> TransactionParticipant::TEST_CountIntents() const {
   return impl_->TEST_CountIntents();
 }
@@ -1671,8 +1705,9 @@ std::string TransactionParticipant::DumpTransactions() const {
   return impl_->DumpTransactions();
 }
 
-Status TransactionParticipant::StopActiveTxnsPriorTo(HybridTime cutoff, CoarseTimePoint deadline) {
-  return impl_->StopActiveTxnsPriorTo(cutoff, deadline);
+Status TransactionParticipant::StopActiveTxnsPriorTo(
+    HybridTime cutoff, CoarseTimePoint deadline, TransactionId* exclude_txn_id) {
+  return impl_->StopActiveTxnsPriorTo(cutoff, deadline, exclude_txn_id);
 }
 
 Result<HybridTime> TransactionParticipant::WaitForSafeTime(

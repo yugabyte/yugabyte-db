@@ -36,16 +36,18 @@
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_type_d.h"
-#include "catalog/ybctype.h"
+#include "catalog/yb_type.h"
 #include "commands/dbcommands.h"
 #include "commands/ybccmds.h"
 #include "commands/tablegroup.h"
 
 #include "access/htup_details.h"
+#include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/relcache.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
+#include "executor/executor.h"
 #include "executor/tuptable.h"
 #include "executor/ybcExpr.h"
 
@@ -155,7 +157,7 @@ static void CreateTableAddColumn(YBCPgStatement handle,
 								 bool is_nulls_first)
 {
 	const AttrNumber attnum = att->attnum;
-	const YBCPgTypeEntity *col_type = YBCDataTypeFromOidMod(attnum,
+	const YBCPgTypeEntity *col_type = YbDataTypeFromOidMod(attnum,
 															att->atttypid);
 	HandleYBStatus(YBCPgCreateTableAddColumn(handle,
 											 NameStr(att->attname),
@@ -208,7 +210,7 @@ static void CreateTableAddColumns(YBCPgStatement handle,
 							 &is_desc,
 							 &is_nulls_first);
 		const YBCPgTypeEntity *col_type =
-			YBCDataTypeFromOidMod(ObjectIdAttributeNumber, OIDOID);
+			YbDataTypeFromOidMod(ObjectIdAttributeNumber, OIDOID);
 		HandleYBStatus(YBCPgCreateTableAddColumn(handle,
 												 "oid",
 												 ObjectIdAttributeNumber,
@@ -230,7 +232,7 @@ static void CreateTableAddColumns(YBCPgStatement handle,
 				Form_pg_attribute att = TupleDescAttr(desc, i);
 				if (strcmp(NameStr(att->attname), index_elem->name) == 0)
 				{
-					if (!YBCDataTypeIsValidForKey(att->atttypid))
+					if (!YbDataTypeIsValidForKey(att->atttypid))
 						ereport(ERROR,
 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								 errmsg("PRIMARY KEY containing column of type"
@@ -321,8 +323,8 @@ YBTransformPartitionSplitPoints(YBCPgStatement yb_stmt,
 				{
 					/* Given value is not null. Convert it to YugaByte format. */
 					Const *value = castNode(Const, datums[idx]->value);
-					exprs[idx] = YBCNewConstant(yb_stmt, value->consttype, value->constvalue,
-												false /* is_null */);
+					exprs[idx] = YBCNewConstant(yb_stmt, value->consttype, value->constcollid,
+												value->constvalue, false /* is_null */);
 					break;
 				}
 
@@ -349,7 +351,8 @@ YBTransformPartitionSplitPoints(YBCPgStatement yb_stmt,
 		/* Defaulted to MINVALUE for the rest of the columns that are not assigned a value */
 		for (; idx < attr_count; idx++) {
 			Form_pg_attribute attr = attrs[idx];
-			exprs[idx] = YBCNewConstantVirtual(yb_stmt, attr->atttypid, YB_YQL_DATUM_LIMIT_MIN);
+			exprs[idx] = YBCNewConstantVirtual(yb_stmt, attr->atttypid,
+											   YB_YQL_DATUM_LIMIT_MIN);
 		}
 
 		/* Add the split boundary to CREATE statement */
@@ -511,6 +514,11 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 			break;
 		}
 	}
+
+	if (colocated && stmt->tablespacename)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("cannot create colocated table with a tablespace")));
 
 	HandleYBStatus(YBCPgNewCreateTable(db_name,
 									   schema_name,
@@ -765,12 +773,12 @@ YBCCreateIndex(const char *indexName,
 		Form_pg_attribute     att         = TupleDescAttr(indexTupleDesc, i);
 		char                  *attname    = NameStr(att->attname);
 		AttrNumber            attnum      = att->attnum;
-		const YBCPgTypeEntity *col_type   = YBCDataTypeFromOidMod(attnum, att->atttypid);
+		const YBCPgTypeEntity *col_type   = YbDataTypeFromOidMod(attnum, att->atttypid);
 		const bool            is_key      = (i < indexInfo->ii_NumIndexKeyAttrs);
 
 		if (is_key)
 		{
-			if (!YBCDataTypeIsValidForKey(att->atttypid))
+			if (!YbDataTypeIsValidForKey(att->atttypid))
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("INDEX on column of type '%s' not yet supported",
@@ -831,7 +839,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, YBCPgStatement handle,
 			typeTuple = typenameType(NULL, colDef->typeName, &typmod);
 			typeOid = HeapTupleGetOid(typeTuple);
 			order = RelationGetNumberOfAttributes(rel) + *col;
-			const YBCPgTypeEntity *col_type = YBCDataTypeFromOidMod(order, typeOid);
+			const YBCPgTypeEntity *col_type = YbDataTypeFromOidMod(order, typeOid);
 
 			HandleYBStatus(YBCPgAlterTableAddColumn(handle, colDef->colname,
 													order, col_type));
@@ -1149,4 +1157,80 @@ YBCIsTableColocated(Oid dboid, Oid relationId)
 	bool colocated;
 	HandleYBStatus(YBCPgIsTableColocated(dboid, relationId, &colocated));
 	return colocated;
+}
+
+void
+YbBackfillIndex(BackfillIndexStmt *stmt, DestReceiver *dest)
+{
+	IndexInfo  *indexInfo;
+	ListCell   *cell;
+	Oid			heapId;
+	Oid			indexId;
+	Relation	heapRel;
+	Relation	indexRel;
+	TupOutputState *tstate;
+	YbPgExecOutParam *out_param;
+
+	if (YBCGetDisableIndexBackfill())
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("backfill is not enabled")));
+
+	/*
+	 * Examine oid list.  Currently, we only allow it to be a single oid, but
+	 * later it should handle multiple oids of indexes on the same indexed
+	 * table.
+	 * TODO(jason): fix from here downwards for issue #4785.
+	 */
+	if (list_length(stmt->oid_list) != 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("only a single oid is allowed in BACKFILL INDEX (see"
+						" issue #4785)")));
+
+	foreach(cell, stmt->oid_list)
+	{
+		indexId = lfirst_oid(cell);
+	}
+
+	heapId = IndexGetRelation(indexId, false);
+	// TODO(jason): why ShareLock instead of ShareUpdateExclusiveLock?
+	heapRel = heap_open(heapId, ShareLock);
+	indexRel = index_open(indexId, ShareLock);
+
+	indexInfo = BuildIndexInfo(indexRel);
+	/*
+	 * The index should be ready for writes because it should be on the
+	 * BACKFILLING permission.
+	 */
+	Assert(indexInfo->ii_ReadyForInserts);
+	indexInfo->ii_Concurrent = true;
+	indexInfo->ii_BrokenHotChain = false;
+
+	out_param = YbCreateExecOutParam();
+	index_backfill(heapRel,
+				   indexRel,
+				   indexInfo,
+				   false,
+				   stmt->bfinfo,
+				   out_param);
+
+	index_close(indexRel, ShareLock);
+	heap_close(heapRel, ShareLock);
+
+	/* output tuples */
+	tstate = begin_tup_output_tupdesc(dest, YbBackfillIndexResultDesc(stmt));
+	do_text_output_oneline(tstate, out_param->bfoutput->data);
+	end_tup_output(tstate);
+}
+
+TupleDesc YbBackfillIndexResultDesc(BackfillIndexStmt *stmt) {
+	TupleDesc	tupdesc;
+	Oid			result_type = TEXTOID;
+
+	/* Need a tuple descriptor representing a single TEXT or XML column */
+	tupdesc = CreateTemplateTupleDesc(1, false);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "BACKFILL SPEC",
+					   result_type, -1, 0);
+	return tupdesc;
 }

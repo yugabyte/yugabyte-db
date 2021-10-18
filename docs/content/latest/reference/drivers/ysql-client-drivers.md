@@ -18,7 +18,7 @@ For details on PostgreSQL feature support in YSQL, see [What Features Does YSQL 
 
 Yugabyte and third party client drivers listed below are supported for developing applications that connect to and interact with the YSQL API. Most of the drivers use [libpq](#libpq) and support the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
-For help using these drivers with YSQL, ask your questions in the [Slack community](https://yugabyte-db.slack.com).
+For help using these drivers with YSQL, ask your questions in the [Slack community](https://www.yugabyte.com/slack).
 
 If you encounter an issue or have an enhancement request, [file a GitHub issue](https://github.com/yugabyte/yugabyte-db/issues/new/choose).
 
@@ -83,7 +83,7 @@ $ make install
 
 For details on installing and using Npgsql, see [Npgsql documentation](https://www.npgsql.org/doc/).
 
-To follow a tutorial on building a sample C# application with Npgsql, see [Build a C++ application](../../../quick-start/build-apps/csharp/ysql/).
+To follow a tutorial on building a sample C# application with Npgsql, see [Build a C# application](../../../quick-start/build-apps/csharp/ysql/).
 
 #### Install the driver
 
@@ -94,6 +94,16 @@ To install Npgsql in your Visual Studio project, follow the steps below.
 2. Right-click on **Packages** and click **Add Packages**.
 
 3. Search for `Npgsql` and click **Add Package**.
+
+{{< warning title="Warning" >}}
+
+On every new connection the NpgSQL driver also makes [extra system table queries to map types](https://github.com/npgsql/npgsql/issues/1486), which adds significant overhead. To turn off this behavior, set the following option in your connection string builder:
+
+```csharp
+connStringBuilder.ServerCompatibilityMode = ServerCompatibilityMode.NoTypeLoading;
+```
+
+{{< /warning >}}
 
 ## Go
 

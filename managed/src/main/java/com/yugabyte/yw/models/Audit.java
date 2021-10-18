@@ -6,7 +6,7 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.CreatedTimestamp;
@@ -27,14 +27,17 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
 
-@ApiModel(description = "Audit for audit logging of the requests and responses.")
+@ApiModel(description = "Audit logging for requests and responses")
 @Entity
 public class Audit extends Model {
 
   public static final Logger LOG = LoggerFactory.getLogger(Audit.class);
 
-  // An auto incrementing, user-friendly id for the audit entry.
-  @ApiModelProperty(value = "Audit uuid", accessMode = READ_ONLY)
+  // An auto incrementing, user-friendly ID for the audit entry.
+  @ApiModelProperty(
+      value = "Audit UID",
+      notes = "Automatically-incremented, user-friendly ID for the audit entry",
+      accessMode = READ_ONLY)
   @Id
   @SequenceGenerator(name = "audit_id_seq", sequenceName = "audit_id_seq", allocationSize = 1)
   @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "audit_id_seq")
@@ -44,7 +47,7 @@ public class Audit extends Model {
     return this.id;
   }
 
-  @ApiModelProperty(value = "User uuid", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "User UUID", accessMode = READ_ONLY)
   @Constraints.Required
   @Column(nullable = false)
   private UUID userUUID;
@@ -53,7 +56,7 @@ public class Audit extends Model {
     return this.userUUID;
   }
 
-  @ApiModelProperty(value = "Customer uuid", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Customer UUID", accessMode = READ_ONLY)
   @Constraints.Required
   @Column(nullable = false)
   private UUID customerUUID;
@@ -69,7 +72,7 @@ public class Audit extends Model {
     return this.timestamp;
   }
 
-  @ApiModelProperty(value = "Audit uuid", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Audit UUID", accessMode = READ_ONLY, dataType = "Object")
   @Column(columnDefinition = "TEXT")
   @DbJson
   private JsonNode payload;
@@ -84,7 +87,7 @@ public class Audit extends Model {
   }
 
   @ApiModelProperty(
-      value = "Api call",
+      value = "API call",
       example = "/api/v1/customers/<496fdea8-df25-11eb-ba80-0242ac130004>/providers",
       accessMode = READ_ONLY)
   @Constraints.Required
@@ -159,7 +162,7 @@ public class Audit extends Model {
     Audit entry =
         find.query().where().eq("task_uuid", taskUUID).eq("customer_uuid", customerUUID).findOne();
     if (entry == null) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST, "Task " + taskUUID + " does not belong to customer " + customerUUID);
     }
     return entry;

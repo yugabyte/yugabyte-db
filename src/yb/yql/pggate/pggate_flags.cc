@@ -48,8 +48,8 @@ DEFINE_test_flag(bool, pggate_ignore_tserver_shm, false,
 DEFINE_int32(ysql_request_limit, 1024,
              "Maximum number of requests to be sent at once");
 
-DEFINE_int32(ysql_prefetch_limit, 1024,
-             "Maximum number of rows to prefetch");
+DEFINE_uint64(ysql_prefetch_limit, 1024,
+              "Maximum number of rows to prefetch");
 
 DEFINE_double(ysql_backward_prefetch_scale_factor, 0.0625 /* 1/16th */,
               "Scale factor to reduce ysql_prefetch_limit for backward scan");
@@ -66,6 +66,13 @@ DEFINE_int32(ysql_max_read_restart_attempts, 20,
 
 DEFINE_test_flag(bool, ysql_disable_transparent_cache_refresh_retry, false,
     "Never transparently retry commands that fail with cache version mismatch error");
+
+DEFINE_test_flag(int64, inject_delay_between_prepare_ybctid_execute_batch_ybctid_ms, 0,
+    "Inject delay between creation and dispatch of RPC ops for testing");
+
+DEFINE_test_flag(bool, index_read_multiple_partitions, false,
+      "Test flag used to set only one partiton to the variable table_partitions_ while testing"
+      "tablet splitting.");
 
 DEFINE_int32(ysql_output_buffer_size, 262144,
              "Size of postgres-level output buffer, in bytes. "

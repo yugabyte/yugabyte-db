@@ -5,7 +5,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.junit.Assert.assertEquals;
@@ -38,7 +38,6 @@ import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -57,7 +56,6 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   private final String FAKE_IP = "fake_ip";
   private final String FAKE_IP_2 = "fake_ip_2";
   private Customer customer;
-  private Users user;
   private Provider provider;
   private Region region;
   private AvailabilityZone zone;
@@ -69,7 +67,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer("tc", "Test Customer 1");
-    user = ModelFactory.testUser(customer);
+    ModelFactory.testUser(customer);
     provider = ModelFactory.awsProvider(customer);
     region = Region.create(provider, "region-1", "Region 1", "yb-image-1");
     zone = AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
@@ -195,8 +193,8 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   @Test
   public void testGetNodeWithInvalidUuid() {
     UUID uuid = UUID.randomUUID();
-    Result r = assertYWSE(() -> getNode(uuid));
-    String expectedError = "Invalid Node UUID: " + uuid;
+    Result r = assertPlatformException(() -> getNode(uuid));
+    String expectedError = "Invalid node UUID: " + uuid;
     assertBadRequest(r, expectedError);
     assertAuditEntry(0, customer.uuid);
   }
@@ -226,7 +224,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   @Test
   public void testListByZoneWrongZone() {
     UUID wrongUuid = UUID.randomUUID();
-    Result r = assertYWSE(() -> listByZone(wrongUuid));
+    Result r = assertPlatformException(() -> listByZone(wrongUuid));
     String expectedError = "Invalid AvailabilityZone UUID: " + wrongUuid.toString();
     checkNotOk(r, expectedError);
     assertAuditEntry(0, customer.uuid);
@@ -273,7 +271,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateFailureDuplicateIp() {
-    Result failedReq = assertYWSE(() -> createNode(zone.uuid, node.getDetails()));
+    Result failedReq = assertPlatformException(() -> createNode(zone.uuid, node.getDetails()));
     checkNotOk(failedReq, "Invalid nodes in request. Duplicate IP Addresses are not allowed.");
     assertAuditEntry(0, customer.uuid);
   }
@@ -281,7 +279,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   @Test
   public void testCreateFailureInvalidZone() {
     UUID wrongUuid = UUID.randomUUID();
-    Result r = assertYWSE(() -> createNode(wrongUuid, node.getDetails()));
+    Result r = assertPlatformException(() -> createNode(wrongUuid, node.getDetails()));
     String error = "Invalid AvailabilityZone UUID: " + wrongUuid.toString();
     checkNotOk(r, error);
     assertAuditEntry(0, customer.uuid);
@@ -298,14 +296,15 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   @Test
   public void testDeleteInstanceWithInvalidProviderValidInstanceIP() {
     UUID invalidProviderUUID = UUID.randomUUID();
-    Result r = assertYWSE(() -> deleteInstance(customer.uuid, invalidProviderUUID, FAKE_IP));
+    Result r =
+        assertPlatformException(() -> deleteInstance(customer.uuid, invalidProviderUUID, FAKE_IP));
     assertBadRequest(r, "Cannot find universe " + invalidProviderUUID);
     assertAuditEntry(0, customer.uuid);
   }
 
   @Test
   public void testDeleteInstanceWithValidProviderInvalidInstanceIP() {
-    Result r = assertYWSE(() -> deleteInstance(customer.uuid, provider.uuid, "abc"));
+    Result r = assertPlatformException(() -> deleteInstance(customer.uuid, provider.uuid, "abc"));
     assertBadRequest(r, "Node Not Found");
     assertAuditEntry(0, customer.uuid);
   }
@@ -336,7 +335,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     customer.addUniverseUUID(universe.universeUUID);
     customer.save();
     Result r =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 performNodeAction(
                     customer.uuid, universe.universeUUID, "host-n1", NodeActionType.DELETE, true));
@@ -352,7 +351,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
       customer.save();
       verify(mockCommissioner, times(0)).submit(any(), any());
       Result r =
-          assertYWSE(
+          assertPlatformException(
               () ->
                   performNodeAction(
                       customer.uuid, u.universeUUID, "fake-n1", nodeActionType, true));
@@ -412,7 +411,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
 
     NodeDetails curNode = nodes.iterator().next();
     Result invalidRemove =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 performNodeAction(
                     customer.uuid, u.universeUUID, curNode.nodeName, NodeActionType.REMOVE, false));
@@ -423,7 +422,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
             + ": As it will under replicate the masters (count = 2, replicationFactor = 3)");
 
     Result invalidStop =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 performNodeAction(
                     customer.uuid, u.universeUUID, curNode.nodeName, NodeActionType.STOP, false));

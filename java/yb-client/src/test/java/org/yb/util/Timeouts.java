@@ -24,6 +24,6 @@ public final class Timeouts {
    * @return adjusted timeout
    */
   public static long adjustTimeoutSecForBuildType(long timeoutSec) {
-    return (long) (timeoutSec * SanitizerUtil.getTimeoutMultiplier());
+    return (long) (timeoutSec * BuildTypeUtil.getTimeoutMultiplier());
   }
 }

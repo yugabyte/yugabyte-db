@@ -22,6 +22,7 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "yb/rocksdb/db/version_set.h"
+#include <memory>
 
 #ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
@@ -45,6 +46,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 
+#include "yb/rocksdb/compaction_filter.h"
 #include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/file_numbers.h"
 #include "yb/rocksdb/db/internal_stats.h"
@@ -1882,11 +1884,11 @@ void VersionStorageInfo::CalculateBaseBytes(const ImmutableCFOptions& ioptions,
   // Special logic to set number of sorted runs.
   // It is to match the previous behavior when all files are in L0.
   int num_l0_count = 0;
-  if (options.max_file_size_for_compaction == std::numeric_limits<uint64_t>::max()) {
+  if (options.MaxFileSizeForCompaction() == std::numeric_limits<uint64_t>::max()) {
     num_l0_count = static_cast<int>(files_[0].size());
   } else {
     for (const auto& file : files_[0]) {
-      if (file->fd.GetTotalFileSize() <= options.max_file_size_for_compaction) {
+      if (file->fd.GetTotalFileSize() <= options.MaxFileSizeForCompaction()) {
         ++num_l0_count;
       }
     }
@@ -3568,6 +3570,12 @@ InternalIterator* VersionSet::MakeInputIterator(Compaction* c) {
       if (c->level(which) == 0) {
         const LevelFilesBrief* flevel = c->input_levels(which);
         for (size_t i = 0; i < flevel->num_files; i++) {
+          FileMetaData* fmd = c->input(which, i);
+          if (c->input(which, i)->delete_after_compaction) {
+            RecordTick(cfd->ioptions()->statistics, COMPACTION_FILES_FILTERED);
+            continue;
+          }
+          RecordTick(cfd->ioptions()->statistics, COMPACTION_FILES_NOT_FILTERED);
           list[num++] = cfd->table_cache()->NewIterator(
               read_options, env_options_compactions_,
               cfd->internal_comparator(), flevel->files[i].fd, flevel->files[i].user_filter_data,

@@ -41,6 +41,8 @@ public enum TaskType {
 
   EditKubernetesUniverse("EditKubernetesUniverse"),
 
+  ExternalScript("ExternalScript"),
+
   @Deprecated
   KubernetesProvision("KubernetesProvision"),
 
@@ -65,6 +67,8 @@ public enum TaskType {
 
   VMImageUpgrade("upgrade.VMImageUpgrade"),
 
+  SystemdUpgrade("upgrade.SystemdUpgrade"),
+
   CreateRootVolumes("subtasks.CreateRootVolumes"),
 
   ReplaceRootVolume("subtasks.ReplaceRootVolume"),
@@ -72,6 +76,8 @@ public enum TaskType {
   ChangeInstanceType("subtasks.ChangeInstanceType"),
 
   PersistResizeNode("subtasks.PersistResizeNode"),
+
+  PersistSystemdUpgrade("subtasks.PersistSystemdUpgrade"),
 
   UpdateNodeDetails("subtasks.UpdateNodeDetails"),
 
@@ -104,6 +110,20 @@ public enum TaskType {
 
   SyncDBStateWithPlatform("SyncDBStateWithPlatform"),
 
+  CreateXClusterReplication("CreateXClusterReplication"),
+
+  CreateXClusterConfig("CreateXClusterConfig"),
+
+  DeleteXClusterReplication("DeleteXClusterReplication"),
+
+  DeleteXClusterConfig("DeleteXClusterConfig"),
+
+  EditXClusterReplication("EditXClusterReplication"),
+
+  EditXClusterConfig("EditXClusterConfig"),
+
+  PauseOrResumeXClusterReplication("PauseOrResumeXClusterReplication"),
+
   // Tasks belonging to subtasks classpath
   AnsibleClusterServerCtl("subtasks.AnsibleClusterServerCtl"),
 
@@ -117,6 +137,8 @@ public enum TaskType {
 
   AnsibleSetupServer("subtasks.AnsibleSetupServer"),
 
+  AnsibleCreateServer("subtasks.AnsibleCreateServer"),
+
   PrecheckNode("subtasks.PrecheckNode"),
 
   AnsibleUpdateNodeInfo("subtasks.AnsibleUpdateNodeInfo"),
@@ -124,6 +146,8 @@ public enum TaskType {
   BulkImport("subtasks.BulkImport"),
 
   ChangeMasterConfig("subtasks.ChangeMasterConfig"),
+
+  ChangeAdminPassword("subtasks.ChangeAdminPassword"),
 
   CreateTable("subtasks.CreateTable"),
 
@@ -173,6 +197,8 @@ public enum TaskType {
 
   WaitForServerReady("subtasks.WaitForServerReady"),
 
+  RunExternalScript("subtasks.RunExternalScript"),
+
   // Tasks belonging to subtasks.cloud classpath
   CloudAccessKeyCleanup("subtasks.cloud.CloudAccessKeyCleanup"),
 
@@ -219,9 +245,26 @@ public enum TaskType {
 
   UniverseSetTlsParams("subtasks.UniverseSetTlsParams"),
 
+  UniverseUpdateRootCert("subtasks.UniverseUpdateRootCert"),
+
   AsyncReplicationPlatformSync("subtasks.AsyncReplicationPlatformSync"),
 
-  ResetUniverseVersion("subtasks.ResetUniverseVersion");
+  AsyncReplicationSetup("subtasks.AsyncReplicationSetup"),
+
+  AsyncReplicationDelete("subtasks.AsyncReplicationDelete"),
+
+  ResetUniverseVersion("subtasks.ResetUniverseVersion"),
+
+  AlterXClusterReplicationAddTables("subtasks.AlterXClusterReplicationAddTables"),
+
+  AlterXClusterReplicationRemoveTables("subtasks.AlterXClusterReplicationRemoveTables"),
+
+  AlterXClusterReplicationChangeMasterAddresses(
+      "subtasks.AlterXClusterReplicationChangeMasterAddresses"),
+
+  XClusterReplicationSetActive("subtasks.XClusterReplicationSetActive"),
+
+  DeleteCertificate("subtasks.DeleteCertificate");
 
   private String relativeClassPath;
 

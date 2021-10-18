@@ -197,7 +197,7 @@ class Schedules extends Component {
       getPromiseState(universeList).isSuccess()
     ) {
       const filteredSchedules = schedules.data.filter((item) => {
-        return item.taskParams.universeUUID === currentUniverse.data.universeUUID;
+        return item.taskParams.universeUUID === currentUniverse.data.universeUUID && item.taskType !== 'ExternalScript';
       });
       if (filteredSchedules.length) {
         schedulesList = filteredSchedules.map((scheduleItem, idx) => {

@@ -42,6 +42,7 @@ import "yb/rpc/rpc_header.proto";
 message CQLStatementsDetailsPB {
   optional string sql_id = 1;
   optional string sql_string = 2;
+  optional string params = 3;
 }
 
 message RedisStatementsDetailsPB {

@@ -39,6 +39,4 @@ export const ToggleBackupState = (props) => {
       </Row>
     </YBModal>
   );
-}
-
-
+};

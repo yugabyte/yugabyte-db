@@ -11,6 +11,7 @@ import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.models.Customer;
 import java.util.Map;
+import kamon.instrumentation.play.GuiceModule;
 import org.junit.Before;
 import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
@@ -44,6 +45,7 @@ public class NodeTaskBaseTest extends WithApplication {
 
     return new GuiceApplicationBuilder()
         .disable(SwaggerModule.class)
+        .disable(GuiceModule.class)
         .configure((Map) Helpers.inMemoryDatabase())
         .overrides(bind(NodeManager.class).toInstance(mockNodeManager))
         .overrides(bind(Commissioner.class).toInstance(mockCommissioner))

@@ -16,7 +16,8 @@ import static com.yugabyte.yw.models.helpers.EntityOperation.CREATE;
 import static com.yugabyte.yw.models.helpers.EntityOperation.UPDATE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.BeanValidator;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.Alert.SortBy;
 import com.yugabyte.yw.models.filters.AlertFilter;
@@ -35,14 +36,21 @@ import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.lang3.StringUtils;
 
 @Singleton
 @Slf4j
 public class AlertService {
+
+  private final BeanValidator beanValidator;
+
+  @Inject
+  public AlertService(BeanValidator beanValidator) {
+    this.beanValidator = beanValidator;
+  }
 
   @Transactional
   public List<Alert> save(List<Alert> alerts) {
@@ -67,22 +75,23 @@ public class AlertService {
     Map<EntityOperation, List<Alert>> toCreateAndUpdate =
         alerts
             .stream()
+            .map(alert -> prepareForSave(alert, beforeAlertMap.get(alert.getUuid())))
+            .filter(alert -> filterForSave(alert, beforeAlertMap.get(alert.getUuid())))
             .peek(alert -> validate(alert, beforeAlertMap.get(alert.getUuid())))
-            .map(this::prepareForSave)
             .collect(Collectors.groupingBy(alert -> alert.isNew() ? CREATE : UPDATE));
 
-    if (toCreateAndUpdate.containsKey(CREATE)) {
-      List<Alert> toCreate = toCreateAndUpdate.get(CREATE);
+    List<Alert> toCreate = toCreateAndUpdate.getOrDefault(CREATE, Collections.emptyList());
+    if (!toCreate.isEmpty()) {
       toCreate.forEach(Alert::generateUUID);
       Alert.db().saveAll(toCreate);
     }
 
-    if (toCreateAndUpdate.containsKey(UPDATE)) {
-      List<Alert> toUpdate = toCreateAndUpdate.get(UPDATE);
+    List<Alert> toUpdate = toCreateAndUpdate.getOrDefault(UPDATE, Collections.emptyList());
+    if (!toUpdate.isEmpty()) {
       Alert.db().updateAll(toUpdate);
     }
 
-    log.debug("{} alerts saved", alerts.size());
+    log.debug("{} alerts saved", toCreate.size() + toUpdate.size());
     return alerts;
   }
 
@@ -93,18 +102,18 @@ public class AlertService {
 
   public Alert get(UUID uuid) {
     if (uuid == null) {
-      throw new YWServiceException(BAD_REQUEST, "Can't get alert by null uuid");
+      throw new PlatformServiceException(BAD_REQUEST, "Can't get alert by null uuid");
     }
     return list(AlertFilter.builder().uuid(uuid).build()).stream().findFirst().orElse(null);
   }
 
   public Alert getOrBadRequest(UUID uuid) {
     if (uuid == null) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid Alert UUID: " + uuid);
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid Alert UUID: " + uuid);
     }
     Alert alert = get(uuid);
     if (alert == null) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid Alert UUID: " + uuid);
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid Alert UUID: " + uuid);
     }
     return alert;
   }
@@ -112,19 +121,15 @@ public class AlertService {
   @Transactional
   public List<Alert> markResolved(AlertFilter filter) {
     AlertFilter notResolved =
-        filter
-            .toBuilder()
-            .targetState(Alert.State.CREATED, Alert.State.ACTIVE, Alert.State.ACKNOWLEDGED)
-            .build();
+        filter.toBuilder().state(Alert.State.ACTIVE, Alert.State.ACKNOWLEDGED).build();
     List<Alert> resolved =
         list(notResolved)
             .stream()
             .peek(
                 alert -> {
-                  alert.setTargetState(Alert.State.RESOLVED).setResolvedTime(nowWithoutMillis());
-                  // Resolve immediately to avoid resolve notifications.
-                  if (alert.getState() == Alert.State.ACKNOWLEDGED) {
-                    alert.setState(Alert.State.RESOLVED);
+                  alert.setState(Alert.State.RESOLVED).setResolvedTime(nowWithoutMillis());
+                  if (alert.getNotifiedState() != Alert.State.ACKNOWLEDGED) {
+                    alert.setNextNotificationTime(nowWithoutMillis());
                   }
                 })
             .collect(Collectors.toList());
@@ -133,15 +138,13 @@ public class AlertService {
 
   @Transactional
   public List<Alert> acknowledge(AlertFilter filter) {
-    AlertFilter notResolved =
-        filter.toBuilder().targetState(Alert.State.CREATED, Alert.State.ACTIVE).build();
+    AlertFilter notResolved = filter.toBuilder().state(Alert.State.ACTIVE).build();
     List<Alert> resolved =
         list(notResolved)
             .stream()
             .map(
                 alert ->
                     alert
-                        .setTargetState(Alert.State.ACKNOWLEDGED)
                         .setState(Alert.State.ACKNOWLEDGED)
                         .setAcknowledgedTime(nowWithoutMillis())
                         .setNextNotificationTime(null)
@@ -165,7 +168,7 @@ public class AlertService {
 
   public List<Alert> listNotResolved(AlertFilter filter) {
     AlertFilter notResolved =
-        filter.toBuilder().targetState(Alert.State.ACTIVE, Alert.State.ACKNOWLEDGED).build();
+        filter.toBuilder().state(Alert.State.ACTIVE, Alert.State.ACKNOWLEDGED).build();
     return list(notResolved);
   }
 
@@ -189,9 +192,10 @@ public class AlertService {
   }
 
   @Transactional
-  public void delete(AlertFilter filter) {
+  public int delete(AlertFilter filter) {
     int deleted = createQueryByFilter(filter).delete();
     log.debug("{} alerts deleted", deleted);
+    return deleted;
   }
 
   /**
@@ -199,42 +203,56 @@ public class AlertService {
    * Will only need to insert definition related labels once all alerts will have underlying
    * definition.
    */
-  private Alert prepareForSave(Alert alert) {
+  private Alert prepareForSave(Alert alert, Alert before) {
+    if (before != null) {
+      alert.setCreateTime(before.getCreateTime());
+    }
     return alert
         .setLabel(KnownAlertLabels.CUSTOMER_UUID, alert.getCustomerUUID().toString())
         .setLabel(KnownAlertLabels.SEVERITY, alert.getSeverity().name());
   }
 
+  private boolean filterForSave(Alert alert, Alert before) {
+    if (before == null) {
+      return true;
+    }
+    return !alert.equals(before);
+  }
+
   private void validate(Alert alert, Alert before) {
-    if (alert.getCustomerUUID() == null) {
-      throw new YWServiceException(BAD_REQUEST, "Customer UUID field is mandatory");
-    }
-    if (alert.getSeverity() == null) {
-      throw new YWServiceException(BAD_REQUEST, "Alert severity field is mandatory");
-    }
-    if (StringUtils.isEmpty(alert.getMessage())) {
-      throw new YWServiceException(BAD_REQUEST, "Message field is mandatory");
-    }
+    beanValidator.validate(alert);
     if (before != null) {
       if (!alert.getCustomerUUID().equals(before.getCustomerUUID())) {
-        throw new YWServiceException(
-            BAD_REQUEST, "Can't change customer UUID for alert " + alert.getUuid());
+        beanValidator
+            .error()
+            .forField("customerUUID", "can't change for alert '" + alert.getUuid() + "'")
+            .throwError();
       }
       if (before.getDefinitionUuid() != null
           && !alert.getDefinitionUuid().equals(before.getDefinitionUuid())) {
-        throw new YWServiceException(
-            BAD_REQUEST, "Can't change definition for alert " + alert.getUuid());
+        beanValidator
+            .error()
+            .forField("definitionUuid", "can't change for alert '" + alert.getUuid() + "'")
+            .throwError();
       }
-      if (before.getGroupUuid() != null && !alert.getGroupUuid().equals(before.getGroupUuid())) {
-        throw new YWServiceException(
-            BAD_REQUEST, "Can't change group for alert " + alert.getUuid());
+      if (before.getConfigurationUuid() != null
+          && !alert.getConfigurationUuid().equals(before.getConfigurationUuid())) {
+        beanValidator
+            .error()
+            .forField("configurationUuid", "can't change for alert '" + alert.getUuid() + "'")
+            .throwError();
       }
       if (!alert.getCreateTime().equals(before.getCreateTime())) {
-        throw new YWServiceException(
-            BAD_REQUEST, "Can't change create time for alert " + alert.getUuid());
+        beanValidator
+            .error()
+            .forField("createTime", "can't change for alert '" + alert.getUuid() + "'")
+            .throwError();
       }
     } else if (!alert.isNew()) {
-      throw new YWServiceException(BAD_REQUEST, "Can't update missing alert " + alert.getUuid());
+      beanValidator
+          .error()
+          .forField("", "can't update missing alert '" + alert.getUuid() + "'")
+          .throwError();
     }
   }
 }

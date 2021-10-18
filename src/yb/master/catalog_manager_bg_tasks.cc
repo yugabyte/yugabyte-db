@@ -141,6 +141,7 @@ void CatalogManagerBgTasks::Run() {
         for (const auto& entries : to_process) {
           LOG(INFO) << "Processing pending assignments for table: " << entries.first;
           Status s = catalog_manager_->ProcessPendingAssignments(entries.second);
+          WARN_NOT_OK(s, "Assignment failed");
           // Set processed_tablets as true if the call succeeds for at least one table.
           processed_tablets = processed_tablets || s.ok();
           // TODO Add tests for this in the revision that makes
@@ -175,10 +176,10 @@ void CatalogManagerBgTasks::Run() {
 
       // Start the tablespace background task.
       catalog_manager_->StartTablespaceBgTaskIfStopped();
+    } else {
+      // Reset Metrics when leader_status is not ok.
+      catalog_manager_->ResetMetrics();
     }
-    WARN_NOT_OK(catalog_manager_->encryption_manager_->
-                GetUniverseKeyRegistry(&catalog_manager_->master_->proxy_cache()),
-                "Could not schedule GetUniverseKeyRegistry task.");
     // Wait for a notification or a timeout expiration.
     //  - CreateTable will call Wake() to notify about the tablets to add
     //  - HandleReportedTablet/ProcessPendingAssignments will call WakeIfHasPendingUpdates()

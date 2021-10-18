@@ -287,7 +287,7 @@ Status DocDBRocksDBUtil::AddExternalIntents(
     void Apply(rocksdb::WriteBatch* batch) {
       KeyValuePairPB kv_pair;
       kv_pair.set_key(key_.ToStringBuffer());
-      kv_pair.set_value(value_.ToString());
+      kv_pair.set_value(value_.ToStringBuffer());
       ExternalTxnApplyState external_txn_apply_state;
       AddPairToWriteBatch(kv_pair, hybrid_time_, 0, &external_txn_apply_state, nullptr, batch);
     }
@@ -417,6 +417,10 @@ Status DocDBRocksDBUtil::ReinitDBOptions() {
   regular_db_options_.compaction_filter_factory =
       std::make_shared<docdb::DocDBCompactionFilterFactory>(
           retention_policy_, &KeyBounds::kNoBounds);
+  regular_db_options_.compaction_file_filter_factory =
+      compaction_file_filter_factory_;
+  regular_db_options_.max_file_size_for_compaction =
+      max_file_size_for_compaction_;
   if (!regular_db_) {
     return Status::OK();
   }

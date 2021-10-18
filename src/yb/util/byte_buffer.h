@@ -164,8 +164,12 @@ class ByteBuffer {
     ++size_;
   }
 
-  std::string ToString() const {
+  std::string ToStringBuffer() const {
     return AsSlice().ToBuffer();
+  }
+
+  std::string ToString() const {
+    return AsSlice().ToDebugHexString();
   }
 
   Slice AsSlice() const {

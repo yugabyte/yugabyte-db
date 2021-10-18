@@ -19,8 +19,10 @@
 #include "yb/docdb/doc_key.h"
 #include "yb/util/debug-util.h"
 #include "yb/yql/pggate/pg_dml.h"
+#include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/pg_select_index.h"
 #include "yb/yql/pggate/util/pg_doc_data.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 namespace yb {
 namespace pggate {
@@ -61,7 +63,7 @@ PgDml::~PgDml() {
 
 Status PgDml::AppendTarget(PgExpr *target) {
   // Except for base_ctid, all targets should be appended to this DML.
-  if (target_desc_ && (prepare_params_.index_only_scan || !target->is_ybbasetid())) {
+  if (target_ && (prepare_params_.index_only_scan || !target->is_ybbasetid())) {
     RETURN_NOT_OK(AppendTargetPB(target));
   } else {
     // Append base_ctid to the index_query.
@@ -91,24 +93,21 @@ Status PgDml::AppendTargetPB(PgExpr *target) {
   return Status::OK();
 }
 
-Status PgDml::PrepareColumnForRead(int attr_num, PgsqlExpressionPB *target_pb,
-                                   const PgColumn **col) {
-  *col = nullptr;
-
+Result<const PgColumn&> PgDml::PrepareColumnForRead(int attr_num, PgsqlExpressionPB *target_pb) {
   // Find column from targeted table.
-  PgColumn *pg_col = VERIFY_RESULT(target_desc_->FindColumn(attr_num));
+  PgColumn& col = VERIFY_RESULT(target_.ColumnForAttr(attr_num));
 
   // Prepare protobuf to send to DocDB.
-  if (target_pb)
-    target_pb->set_column_id(pg_col->id());
-
-  // Mark non-virtual column reference for DocDB.
-  if (!pg_col->is_virtual_column()) {
-    pg_col->set_read_requested(true);
+  if (target_pb) {
+    target_pb->set_column_id(col.id());
   }
 
-  *col = pg_col;
-  return Status::OK();
+  // Mark non-virtual column reference for DocDB.
+  if (!col.is_virtual_column()) {
+    col.set_read_requested(true);
+  }
+
+  return const_cast<const PgColumn&>(col);
 }
 
 Status PgDml::PrepareColumnForWrite(PgColumn *pg_col, PgsqlExpressionPB *assign_pb) {
@@ -125,7 +124,7 @@ Status PgDml::PrepareColumnForWrite(PgColumn *pg_col, PgsqlExpressionPB *assign_
 
 void PgDml::ColumnRefsToPB(PgsqlColumnRefsPB *column_refs) {
   column_refs->Clear();
-  for (const PgColumn& col : target_desc_->columns()) {
+  for (const PgColumn& col : target_.columns()) {
     if (col.read_requested() || col.write_requested()) {
       column_refs->add_ids(col.id());
     }
@@ -141,16 +140,16 @@ Status PgDml::BindColumn(int attr_num, PgExpr *attr_value) {
   }
 
   // Find column to bind.
-  PgColumn *col = VERIFY_RESULT(bind_desc_->FindColumn(attr_num));
+  PgColumn& column = VERIFY_RESULT(bind_.ColumnForAttr(attr_num));
 
   // Check datatype.
-  SCHECK_EQ(col->internal_type(), attr_value->internal_type(), Corruption,
+  SCHECK_EQ(column.internal_type(), attr_value->internal_type(), Corruption,
             "Attribute value type does not match column type");
 
   // Alloc the protobuf.
-  PgsqlExpressionPB *bind_pb = col->bind_pb();
+  PgsqlExpressionPB *bind_pb = column.bind_pb();
   if (bind_pb == nullptr) {
-    bind_pb = AllocColumnBindPB(col);
+    bind_pb = AllocColumnBindPB(&column);
   } else {
     if (expr_binds_.find(bind_pb) != expr_binds_.end()) {
       LOG(WARNING) << strings::Substitute("Column $0 is already bound to another value.", attr_num);
@@ -193,16 +192,16 @@ Status PgDml::BindTable() {
 
 Status PgDml::AssignColumn(int attr_num, PgExpr *attr_value) {
   // Find column from targeted table.
-  PgColumn *col = VERIFY_RESULT(target_desc_->FindColumn(attr_num));
+  PgColumn& column = VERIFY_RESULT(target_.ColumnForAttr(attr_num));
 
   // Check datatype.
-  SCHECK_EQ(col->internal_type(), attr_value->internal_type(), Corruption,
+  SCHECK_EQ(column.internal_type(), attr_value->internal_type(), Corruption,
             "Attribute value type does not match column type");
 
   // Alloc the protobuf.
-  PgsqlExpressionPB *assign_pb = col->assign_pb();
+  PgsqlExpressionPB *assign_pb = column.assign_pb();
   if (assign_pb == nullptr) {
-    assign_pb = AllocColumnAssignPB(col);
+    assign_pb = AllocColumnAssignPB(&column);
   } else {
     if (expr_assigns_.find(assign_pb) != expr_assigns_.end()) {
       return STATUS_SUBSTITUTE(InvalidArgument,
@@ -213,7 +212,7 @@ Status PgDml::AssignColumn(int attr_num, PgExpr *attr_value) {
   // Link the expression and protobuf. During execution, expr will write result to the pb.
   // - Prepare the left hand side for write.
   // - Prepare the right hand side for read. Currently, the right hand side is always constant.
-  RETURN_NOT_OK(PrepareColumnForWrite(col, assign_pb));
+  RETURN_NOT_OK(PrepareColumnForWrite(&column, assign_pb));
   RETURN_NOT_OK(attr_value->PrepareForRead(this, assign_pb));
 
   // Link the given expression "attr_value" with the allocated protobuf. Note that except for
@@ -272,6 +271,7 @@ Result<bool> PgDml::ProcessSecondaryIndexRequest(const PgExecParameters *exec_pa
 
   // Update request with the new batch of ybctids to fetch the next batch of rows.
   RETURN_NOT_OK(doc_op_->PopulateDmlByYbctidOps(ybctids));
+  AtomicFlagSleepMs(&FLAGS_TEST_inject_delay_between_prepare_ybctid_execute_batch_ybctid_ms);
   return true;
 }
 
@@ -325,6 +325,13 @@ Result<bool> PgDml::FetchDataFromServer() {
     RETURN_NOT_OK(doc_op_->GetResult(&rowsets_));
   }
 
+  // Return the output parameter back to Postgres if server wants.
+  if (doc_op_->has_out_param_backfill_spec() && pg_exec_params_) {
+    PgExecOutParamValue value;
+    value.bfoutput = doc_op_->out_param_backfill_spec();
+    YBCGetPgCallbacks()->WriteExecOutParam(pg_exec_params_->out_param, &value);
+  }
+
   return true;
 }
 
@@ -373,6 +380,13 @@ bool PgDml::has_aggregate_targets() {
     << "Some, but not all, targets are aggregate expressions.";
 
   return num_aggregate_targets > 0;
+}
+
+Result<YBCPgColumnInfo> PgDml::GetColumnInfo(int attr_num) const {
+  if (secondary_index_query_) {
+    return secondary_index_query_->GetColumnInfo(attr_num);
+  }
+  return bind_->GetColumnInfo(attr_num);
 }
 
 }  // namespace pggate

@@ -148,6 +148,7 @@ class TabletScopedIf : public RefCountedThreadSafe<TabletScopedIf> {
 };
 
 YB_STRONGLY_TYPED_BOOL(AllowBootstrappingState);
+YB_STRONGLY_TYPED_BOOL(ResetSplit);
 
 class Tablet : public AbstractTablet, public TransactionIntentApplier {
  public:
@@ -180,12 +181,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Performs backfill for the key range beginning from the row immediately after
   // <backfill_from>, until either it reaches the end of the tablet
   //    or the current time is past deadline.
+  // *<number_of_rows_processed> will be set to the number of rows backfilled.
   // <backfilled_until> will be set to the first row that was not backfilled, so that the
   //    next API call can resume from where the backfill was left off.
   //    Note that <backfilled_until> only applies to the non-failing indexes.
-  //
-  // TODO(#5326): For now YSQL does not support chunking, so backfill will always run to the
-  // end of the tablet and set backfilled_until as the empty string.
   CHECKED_STATUS BackfillIndexesForYsql(
       const std::vector<IndexInfo>& indexes,
       const std::string& backfill_from,
@@ -194,22 +193,79 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const HostPort& pgsql_proxy_bind_address,
       const std::string& database_name,
       const uint64_t postgres_auth_key,
+      size_t* number_of_rows_processed,
       std::string* backfilled_until);
+
+  CHECKED_STATUS VerifyIndexTableConsistencyForCQL(
+      const std::vector<IndexInfo>& indexes,
+      const std::string& start_key,
+      const int num_rows,
+      const CoarseTimePoint deadline,
+      const HybridTime read_time,
+      std::unordered_map<TableId, uint64>* consistency_stats,
+      std::string* verified_until);
+
+  CHECKED_STATUS VerifyMainTableConsistencyForCQL(
+      const TableId& main_table_id,
+      const std::string& start_key,
+      const int num_rows,
+      const CoarseTimePoint deadline,
+      const HybridTime read_time,
+      std::unordered_map<TableId, uint64>* consistency_stats,
+      std::string* verified_until);
+
+  CHECKED_STATUS VerifyTableConsistencyForCQL(
+      const std::vector<TableId>& table_ids,
+      const std::vector<yb::ColumnSchema>& columns,
+      const std::string& start_key,
+      const int num_rows,
+      const CoarseTimePoint deadline,
+      const HybridTime read_time,
+      const bool is_main_table,
+      std::unordered_map<TableId, uint64>* consistency_stats,
+      std::string* verified_until);
+
+  CHECKED_STATUS VerifyTableInBatches(
+      const QLTableRow& row,
+      const std::vector<TableId>& table_ids,
+      const HybridTime read_time,
+      const CoarseTimePoint deadline,
+      const bool is_main_table,
+      std::vector<std::pair<const TableId, QLReadRequestPB>>* requests,
+      CoarseTimePoint* last_flushed_at,
+      std::unordered_set<TableId>* failed_indexes,
+      std::unordered_map<TableId, uint64>* consistency_stats);
+
+  CHECKED_STATUS FlushVerifyBatchIfRequired(
+      const HybridTime read_time,
+      const CoarseTimePoint deadline,
+      std::vector<std::pair<const TableId, QLReadRequestPB>>* requests,
+      CoarseTimePoint* last_flushed_at,
+      std::unordered_set<TableId>* failed_indexes,
+      std::unordered_map<TableId, uint64>* index_consistency_states);
+  CHECKED_STATUS FlushVerifyBatch(
+      const HybridTime read_time,
+      const CoarseTimePoint deadline,
+      std::vector<std::pair<const TableId, QLReadRequestPB>>* requests,
+      CoarseTimePoint* last_flushed_at,
+      std::unordered_set<TableId>* failed_indexes,
+      std::unordered_map<TableId, uint64>* index_consistency_states);
 
   // Performs backfill for the key range beginning from the row <backfill_from>,
   // until either it reaches the end of the tablet
   //    or the current time is past deadline.
-  // <failed_indexes> will be updated with the collection of index-ids for which any errors
-  //    were encountered.
+  // *<number_of_rows_processed> will be set to the number of rows backfilled.
   // <backfilled_until> will be set to the first row that was not backfilled, so that the
   //    next API call can resume from where the backfill was left off.
   //    Note that <backfilled_until> only applies to the non-failing indexes.
+  // <failed_indexes> will be updated with the collection of index-ids for which any errors
+  //    were encountered.
   CHECKED_STATUS BackfillIndexes(
       const std::vector<IndexInfo>& indexes,
       const std::string& backfill_from,
       const CoarseTimePoint deadline,
       const HybridTime read_time,
-      int* number_of_rows_processed,
+      size_t* number_of_rows_processed,
       std::string* backfilled_until,
       std::unordered_set<TableId>* failed_indexes);
 
@@ -217,20 +273,28 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const QLTableRow& row,
       const std::vector<IndexInfo>& indexes,
       const HybridTime write_time,
+      const CoarseTimePoint deadline,
       std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
-      CoarseTimePoint* last_flushed_at,
       std::unordered_set<TableId>* failed_indexes);
 
-  CHECKED_STATUS FlushIndexBatchIfRequired(
-      std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
-      bool force_flush,
+  Result<std::shared_ptr<client::YBSession>> GetSessionForVerifyOrBackfill(
+      const CoarseTimePoint deadline);
+
+  CHECKED_STATUS FlushWriteIndexBatchIfRequired(
       const HybridTime write_time,
-      CoarseTimePoint* last_flushed_at,
+      const CoarseTimePoint deadline,
+      std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
+      std::unordered_set<TableId>* failed_indexes);
+  CHECKED_STATUS FlushWriteIndexBatch(
+      const HybridTime write_time,
+      const CoarseTimePoint deadline,
+      std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
       std::unordered_set<TableId>* failed_indexes);
 
+  template <typename SomeYBqlOp>
   CHECKED_STATUS FlushWithRetries(
       std::shared_ptr<client::YBSession> session,
-      const std::vector<std::shared_ptr<client::YBqlWriteOp>>& write_ops,
+      const std::vector<std::shared_ptr<SomeYBqlOp>>& index_ops,
       int num_retries,
       std::unordered_set<TableId>* failed_indexes);
 
@@ -323,6 +387,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       bool is_explicit_request_read_time,
       const PgsqlReadRequestPB& pgsql_read_request,
       const TransactionMetadataPB& transaction_metadata,
+      const SubTransactionMetadataPB& subtransaction_metadata,
       PgsqlReadRequestResult* result,
       size_t* num_rows_read) override;
 
@@ -537,6 +602,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   CHECKED_STATUS CreateReadIntents(
       const TransactionMetadataPB& transaction_metadata,
+      const SubTransactionMetadataPB& subtransaction_metadata,
       const google::protobuf::RepeatedPtrField<QLReadRequestPB>& ql_batch,
       const google::protobuf::RepeatedPtrField<PgsqlReadRequestPB>& pgsql_batch,
       docdb::KeyValueWriteBatchPB* out);
@@ -684,6 +750,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   CHECKED_STATUS OpenKeyValueTablet();
   virtual CHECKED_STATUS CreateTabletDirectories(const string& db_dir, FsManager* fs);
 
+  std::vector<yb::ColumnSchema> GetColumnSchemasForIndex(const std::vector<IndexInfo>& indexes);
+
   void DocDBDebugDump(std::vector<std::string> *lines);
 
   CHECKED_STATUS PrepareTransactionWriteBatch(
@@ -694,11 +762,13 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   Result<TransactionOperationContextOpt> CreateTransactionOperationContext(
       const TransactionMetadataPB& transaction_metadata,
-      bool is_ysql_catalog_table) const;
+      bool is_ysql_catalog_table,
+      const boost::optional<SubTransactionMetadataPB>& subtransaction_metadata = boost::none) const;
 
-  TransactionOperationContextOpt CreateTransactionOperationContext(
+  Result<TransactionOperationContextOpt> CreateTransactionOperationContext(
       const boost::optional<TransactionId>& transaction_id,
-      bool is_ysql_catalog_table) const;
+      bool is_ysql_catalog_table,
+      const boost::optional<SubTransactionMetadataPB>& subtransaction_metadata = boost::none) const;
 
   // Pause abortable/non-abortable new read/write operations and wait for all
   // abortable/non-abortable pending read/write operations to finish.
@@ -723,9 +793,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       Destroy destroy, ScopedRWOperationPauses* ops_pauses);
 
   ScopedRWOperation CreateAbortableScopedRWOperation(
-      const CoarseTimePoint& deadline = CoarseTimePoint()) const;
+      const CoarseTimePoint deadline = CoarseTimePoint()) const;
   ScopedRWOperation CreateNonAbortableScopedRWOperation(
-      const CoarseTimePoint& deadline = CoarseTimePoint()) const;
+      const CoarseTimePoint deadline = CoarseTimePoint()) const;
 
   CHECKED_STATUS DoEnableCompactions();
 
@@ -733,10 +803,13 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   std::string LogPrefix(docdb::StorageDbType db_type) const;
 
-  Result<bool> IsQueryOnlyForTablet(const PgsqlReadRequestPB& pgsql_read_request) const;
+  Result<bool> IsQueryOnlyForTablet(const PgsqlReadRequestPB& pgsql_read_request,
+      size_t row_count) const;
 
   Result<bool> HasScanReachedMaxPartitionKey(
-      const PgsqlReadRequestPB& pgsql_read_request, const string& partition_key) const;
+      const PgsqlReadRequestPB& pgsql_read_request,
+      const string& partition_key,
+      size_t row_count) const;
 
   // Sets metadata_cache_ to nullptr. This is done atomically to avoid race conditions.
   void ResetYBMetaDataCache();
@@ -754,7 +827,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   CHECKED_STATUS OpenDbAndCheckIntegrity(const std::string& db_dir);
 
   // Add or remove restoring operation filter if necessary.
-  void SyncRestoringOperationFilter() EXCLUDES(operation_filters_mutex_);
+  // If reset_split is true, also reset split state.
+  void SyncRestoringOperationFilter(ResetSplit reset_split) EXCLUDES(operation_filters_mutex_);
   void UnregisterOperationFilterUnlocked(OperationFilter* filter)
     REQUIRES(operation_filters_mutex_);
 
@@ -956,7 +1030,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   std::unique_ptr<OperationFilter> completed_split_operation_filter_
       GUARDED_BY(operation_filters_mutex_);
-  std::unique_ptr<log::LogAnchor> completed_split_log_anchor_;
+  std::unique_ptr<log::LogAnchor> completed_split_log_anchor_ GUARDED_BY(operation_filters_mutex_);
 
   std::unique_ptr<OperationFilter> restoring_operation_filter_ GUARDED_BY(operation_filters_mutex_);
 

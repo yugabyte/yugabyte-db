@@ -25,6 +25,7 @@ import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
+import com.yugabyte.yw.cloud.UniverseResourceDetails.Context;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.ApiUtils;
@@ -346,8 +347,9 @@ public class UniverseTest extends FakeDBApplication {
 
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
 
+    Context context = new Context(getApp().config(), u);
     UniverseResourceDetails resourceDetails =
-        UniverseResourceDetails.create(u.getUniverseDetails(), getApp().config());
+        UniverseResourceDetails.create(u.getUniverseDetails(), context);
     JsonNode universeJson = Json.toJson(new UniverseResp(u, null, resourceDetails));
     assertThat(
         universeJson.get("universeUUID").asText(),
@@ -404,7 +406,7 @@ public class UniverseTest extends FakeDBApplication {
         universeJson.get("universeUUID").asText(),
         allOf(notNullValue(), equalTo(u.universeUUID.toString())));
     JsonNode clusterJson = universeJson.get("universeDetails").get("clusters").get(0);
-    assertTrue(clusterJson.get("userIntent").get("regionList").isNull());
+    assertTrue(!clusterJson.get("userIntent").has("regionList"));
     assertNull(clusterJson.get("regions"));
     assertNull(clusterJson.get("provider"));
   }
@@ -632,6 +634,9 @@ public class UniverseTest extends FakeDBApplication {
     ModelFactory.createUniverse(defaultCustomer.getCustomerId(), certUUID);
     Set<Universe> universes = Universe.universeDetailsIfCertsExists(certUUID, defaultCustomer.uuid);
     assertEquals(universes.size(), 1);
+
+    universes = Universe.universeDetailsIfReleaseExists("");
+    assertEquals(universes.size(), 0);
   }
 
   private UserIntent getBaseIntent() {
@@ -788,13 +793,9 @@ public class UniverseTest extends FakeDBApplication {
             ImmutableSet.of(NodeActionType.STOP, NodeActionType.REMOVE, NodeActionType.QUERY),
             allowedActions);
       } else if (nodeState == NodeDetails.NodeState.Stopped) {
-        assertEquals(
-            ImmutableSet.of(NodeActionType.START, NodeActionType.RELEASE, NodeActionType.QUERY),
-            allowedActions);
+        assertEquals(ImmutableSet.of(NodeActionType.START, NodeActionType.QUERY), allowedActions);
       } else if (nodeState == NodeDetails.NodeState.Removed) {
-        assertEquals(
-            ImmutableSet.of(NodeActionType.ADD, NodeActionType.RELEASE, NodeActionType.DELETE),
-            allowedActions);
+        assertEquals(ImmutableSet.of(NodeActionType.ADD, NodeActionType.RELEASE), allowedActions);
       } else if (nodeState == NodeDetails.NodeState.Decommissioned) {
         assertEquals(ImmutableSet.of(NodeActionType.ADD, NodeActionType.DELETE), allowedActions);
       } else {

@@ -134,7 +134,9 @@ struct KvStoreInfo {
         rocksdb_dir(rocksdb_dir_),
         snapshot_schedules(snapshot_schedules_.begin(), snapshot_schedules_.end()) {}
 
-  CHECKED_STATUS LoadFromPB(const KvStoreInfoPB& pb, const TableId& primary_table_id);
+  CHECKED_STATUS LoadFromPB(const KvStoreInfoPB& pb,
+                            const TableId& primary_table_id,
+                            bool local_superblock);
 
   CHECKED_STATUS LoadTablesFromPB(
       const google::protobuf::RepeatedPtrField<TableInfoPB>& pbs, const TableId& primary_table_id);
@@ -495,6 +497,10 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
 
   OpId split_op_id() const;
 
+  // If this tablet should be deleted, returns op id that should be applied to all replicas,
+  // before performing such deletion.
+  OpId GetOpIdToDeleteAfterAllApplied() const;
+
   void SetSplitDone(const OpId& op_id, const TabletId& child1, const TabletId& child2);
 
   bool has_active_restoration() const;
@@ -529,13 +535,14 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   CHECKED_STATUS LoadFromDisk();
 
   // Update state of metadata to that of the given superblock PB.
-  CHECKED_STATUS LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB& superblock);
+  CHECKED_STATUS LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB& superblock,
+                                    bool local_superblock);
 
   CHECKED_STATUS ReadSuperBlock(RaftGroupReplicaSuperBlockPB *pb);
 
   // Fully replace superblock.
   // Requires 'flush_lock_'.
-  CHECKED_STATUS ReplaceSuperBlockUnlocked(const RaftGroupReplicaSuperBlockPB &pb);
+  CHECKED_STATUS SaveToDiskUnlocked(const RaftGroupReplicaSuperBlockPB &pb);
 
   // Requires 'data_mutex_'.
   void ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* superblock) const REQUIRES(data_mutex_);

@@ -21,6 +21,7 @@
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/docdb_compaction_filter.h"
 #include "yb/docdb/primitive_value.h"
+#include "yb/rocksdb/compaction_filter.h"
 
 namespace yb {
 namespace docdb {
@@ -214,6 +215,8 @@ class DocDBRocksDBUtil {
   std::shared_ptr<rocksdb::Cache> block_cache_;
   std::shared_ptr<ManualHistoryRetentionPolicy> retention_policy_ {
       std::make_shared<ManualHistoryRetentionPolicy>() };
+  std::shared_ptr<rocksdb::CompactionFileFilterFactory> compaction_file_filter_factory_;
+  std::shared_ptr<std::function<uint64_t()>> max_file_size_for_compaction_;
 
   rocksdb::WriteOptions write_options_;
   Schema schema_;

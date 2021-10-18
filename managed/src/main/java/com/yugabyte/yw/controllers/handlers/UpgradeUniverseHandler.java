@@ -7,11 +7,12 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.KubernetesManager;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
+import com.yugabyte.yw.forms.SystemdUpgradeParams;
 import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -132,6 +133,25 @@ public class UpgradeUniverseHandler {
     requestParams.universeUUID = universe.universeUUID;
     requestParams.expectedUniverseVersion = universe.version;
 
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    // Generate client certs if rootAndClientRootCASame is true and rootCA is self-signed.
+    // This is there only for legacy support, no need if rootCA and clientRootCA are different.
+    if (userIntent.enableClientToNodeEncrypt && requestParams.rootAndClientRootCASame) {
+      CertificateInfo rootCert = CertificateInfo.get(requestParams.rootCA);
+      if (rootCert.certType == CertificateInfo.Type.SelfSigned) {
+        CertificateHelper.createClientCertificate(
+            requestParams.rootCA,
+            String.format(
+                CertificateHelper.CERT_PATH,
+                runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"),
+                customer.uuid.toString(),
+                requestParams.rootCA.toString()),
+            CertificateHelper.DEFAULT_CLIENT,
+            null,
+            null);
+      }
+    }
+
     return submitUpgradeTask(
         TaskType.CertsRotate, CustomerTask.TaskType.CertsRotate, requestParams, customer, universe);
   }
@@ -239,6 +259,22 @@ public class UpgradeUniverseHandler {
         universe);
   }
 
+  public UUID upgradeSystemd(
+      SystemdUpgradeParams requestParams, Customer customer, Universe universe) {
+
+    requestParams.verifyParams(universe);
+    // Update request params with additional metadata for upgrade task
+    requestParams.universeUUID = universe.universeUUID;
+    requestParams.expectedUniverseVersion = universe.version;
+
+    return submitUpgradeTask(
+        TaskType.SystemdUpgrade,
+        CustomerTask.TaskType.SystemdUpgrade,
+        requestParams,
+        customer,
+        universe);
+  }
+
   private UUID submitUpgradeTask(
       TaskType taskType,
       CustomerTask.TaskType customerTaskType,
@@ -282,7 +318,7 @@ public class UpgradeUniverseHandler {
     try {
       kubernetesManager.getHelmPackagePath(ybSoftwareVersion);
     } catch (RuntimeException e) {
-      throw new YWServiceException(Status.BAD_REQUEST, e.getMessage());
+      throw new PlatformServiceException(Status.BAD_REQUEST, e.getMessage());
     }
   }
 }

@@ -1228,7 +1228,7 @@ TEST_F(QLTransactionTest, StatusEvolution) {
         if (!IsReady(state.metadata_future)) {
           continue;
         }
-        state.metadata = ASSERT_RESULT(state.metadata_future.get());
+        state.metadata = ASSERT_RESULT(Copy(state.metadata_future.get()));
       }
       tserver::GetTransactionStatusRequestPB req;
       req.set_tablet_id(state.metadata.status_tablet);
@@ -1431,8 +1431,7 @@ TEST_F_EX(QLTransactionTest, ChangeLeader, QLTransactionBigLogSegmentSizeTest) {
   auto test_finish = std::chrono::steady_clock::now() + kTestTime;
   while (std::chrono::steady_clock::now() < test_finish) {
     for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
-      std::vector<tablet::TabletPeerPtr> peers;
-      cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers(&peers);
+      auto peers = cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
       for (const auto& peer : peers) {
         if (peer->consensus() &&
             peer->consensus()->GetLeaderStatus() !=

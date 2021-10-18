@@ -15,9 +15,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Provider;
@@ -44,7 +44,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertNotFound;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithCustomHeaders;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
@@ -99,7 +99,7 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
 
     Universe u = createUniverse(customer.getCustomerId());
     String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/status";
-    Result result = assertYWSE(() -> doRequestWithAuthToken("GET", url, authToken));
+    Result result = assertPlatformException(() -> doRequestWithAuthToken("GET", url, authToken));
     // TODO(API) - Should this be an http error and that too bad request?
     assertBadRequest(result, "foobar");
     assertAuditEntry(0, customer.uuid);
@@ -117,7 +117,7 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
             + "/universes/"
             + u.universeUUID
             + "/dummy_node/download_logs";
-    Result result = assertYWSE(() -> doRequestWithAuthToken("GET", url, authToken));
+    Result result = assertPlatformException(() -> doRequestWithAuthToken("GET", url, authToken));
     assertNotFound(result, "dummy_node");
     assertAuditEntry(0, customer.uuid);
   }
@@ -171,7 +171,7 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
     when(mockQueryHelper.slowQueries(any(), eq("yugabyte"), eq("foo-bar")))
         .thenReturn(Json.parse(jsonMsg));
     when(mockQueryHelper.slowQueries(any(), eq("yugabyte"), eq("yugabyte")))
-        .thenThrow(new YWServiceException(BAD_REQUEST, "Incorrect Username or Password"));
+        .thenThrow(new PlatformServiceException(BAD_REQUEST, "Incorrect Username or Password"));
     Universe u = createUniverse(customer.getCustomerId());
     String url =
         "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/slow_queries";
@@ -189,6 +189,7 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
     fakeRequestHeaders.put("ysql-username", "yugabyte");
     fakeRequestHeaders.put("ysql-password", Util.encodeBase64("yugabyte"));
 
-    result = assertYWSE(() -> doRequestWithCustomHeaders("GET", url, fakeRequestHeaders));
+    result =
+        assertPlatformException(() -> doRequestWithCustomHeaders("GET", url, fakeRequestHeaders));
   }
 }

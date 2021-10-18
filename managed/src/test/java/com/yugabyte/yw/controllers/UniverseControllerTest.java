@@ -15,7 +15,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.hamcrest.CoreMatchers.allOf;
@@ -37,8 +37,11 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Universe;
+
+import java.io.File;
 import java.net.URLEncoder;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -47,12 +50,22 @@ import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.junit.Test;
+import org.junit.After;
 import org.junit.runner.RunWith;
 import play.libs.Json;
 import play.mvc.Result;
 
 @RunWith(JUnitParamsRunner.class)
 public class UniverseControllerTest extends UniverseControllerTestBase {
+
+  private File certFolder = null;
+
+  @After
+  public void teardown() {
+    if (certFolder != null && certFolder.exists()) {
+      certFolder.delete();
+    }
+  }
 
   @Test
   public void testUniverseTrimFlags() {
@@ -99,7 +112,8 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
   public void invalidUniverseUUID(String testDescription, String urlSuffix, String httpMethod) {
     UUID randomUUID = UUID.randomUUID();
     String url = "/api/customers/" + customer.uuid + "/universes/" + randomUUID + urlSuffix;
-    Result result = assertYWSE(() -> doRequestWithAuthToken(httpMethod, url, authToken));
+    Result result =
+        assertPlatformException(() -> doRequestWithAuthToken(httpMethod, url, authToken));
     assertBadRequest(result, "Cannot find universe " + randomUUID);
     assertAuditEntry(0, customer.uuid);
   }
@@ -269,19 +283,33 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
   @Test
   // @formatter:off
   @Parameters({
-    "true, true",
-    "false, true",
-    "true, false",
-    "false, false",
-    "null, true",
+    "true, true, false",
+    "false, true, true",
+    "true, false, false",
+    "false, false, true",
+    "null, true, false",
   })
   // @formatter:on
   public void testUniverseDestroyValidUUIDIsForceDeleteAndDeleteBackup(
-      Boolean isDeleteBackups, Boolean isForceDelete) {
+      Boolean isDeleteBackups, Boolean isForceDelete, Boolean isDeleteAssociatedCerts) {
     UUID fakeTaskUUID = UUID.randomUUID();
     String url;
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    Universe u = createUniverse(customer.getCustomerId());
+
+    String certificate = "certificates/ca.crt";
+    File certFile = new File(certificate);
+    certFile.getParentFile().mkdirs();
+    CertificateInfo certInfo = null;
+    try {
+      certFile.createNewFile();
+      certInfo =
+          ModelFactory.createCertificateInfo(
+              customer.getUuid(), certificate, CertificateInfo.Type.SelfSigned);
+    } catch (Exception e) {
+
+    }
+
+    Universe u = createUniverse(customer.getCustomerId(), certInfo.uuid);
 
     // Add the cloud info into the universe.
     Universe.UniverseUpdater updater =
@@ -305,7 +333,9 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
               + "/universes/"
               + u.universeUUID
               + "?isForceDelete="
-              + isForceDelete;
+              + isForceDelete
+              + "&isDeleteAssociatedCerts="
+              + isDeleteAssociatedCerts;
     } else {
       url =
           "/api/customers/"
@@ -315,7 +345,9 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
               + "?isForceDelete="
               + isForceDelete
               + "&isDeleteBackups="
-              + isDeleteBackups;
+              + isDeleteBackups
+              + "&isDeleteAssociatedCerts="
+              + isDeleteAssociatedCerts;
     }
     Result result = doRequestWithAuthToken("DELETE", url, authToken);
     assertOk(result);

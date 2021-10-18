@@ -14,6 +14,7 @@
       - placement_region is defined
       - placement_zone is defined
       - mount_points is defined
+      - systemd_option is defined
 
 - name: Prepare host
   include: "prepare-configure-server.yml"

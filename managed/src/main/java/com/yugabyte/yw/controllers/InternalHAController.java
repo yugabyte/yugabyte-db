@@ -10,18 +10,20 @@
 
 package com.yugabyte.yw.controllers;
 
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.forms.DemoteInstanceFormData;
-import com.yugabyte.yw.forms.YWResults;
+import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
 import java.io.File;
 import java.net.URL;
 import java.util.Date;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -61,7 +63,7 @@ public class InternalHAController extends Controller {
         return ApiResponse.error(NOT_FOUND, "Could not find HA Config by cluster key");
       }
 
-      return YWResults.withData(config.get());
+      return PlatformResults.withData(config.get());
     } catch (Exception e) {
       LOG.error("Error retrieving HA config");
 
@@ -69,49 +71,45 @@ public class InternalHAController extends Controller {
     }
   }
 
+  // TODO: Change this to accept ObjectNode instead of ArrayNode in request body
   public Result syncInstances(long timestamp) {
-    try {
-      Optional<HighAvailabilityConfig> config =
-          HighAvailabilityConfig.getByClusterKey(this.getClusterKey());
-      if (!config.isPresent()) {
-        return ApiResponse.error(NOT_FOUND, "Invalid config UUID");
-      }
-
-      Optional<PlatformInstance> localInstance = config.get().getLocal();
-
-      if (!localInstance.isPresent()) {
-        LOG.warn("No local instance configured");
-
-        return ApiResponse.error(BAD_REQUEST, "No local instance configured");
-      }
-
-      if (localInstance.get().getIsLeader()) {
-        LOG.warn(
-            "Rejecting request to import instances due to this process being designated a leader");
-
-        return ApiResponse.error(BAD_REQUEST, "Cannot import instances for a leader");
-      }
-
-      Date requestLastFailover = new Date(timestamp);
-      Date localLastFailover = config.get().getLastFailover();
-
-      // Reject the request if coming from a platform instance that was failed over to earlier.
-      if (localLastFailover != null && localLastFailover.after(requestLastFailover)) {
-        LOG.warn("Rejecting request to import instances due to request lastFailover being stale");
-
-        return ApiResponse.error(BAD_REQUEST, "Cannot import instances from stale leader");
-      }
-
-      Set<PlatformInstance> processedInstances =
-          replicationManager.importPlatformInstances(
-              config.get(), (ArrayNode) request().body().asJson());
-
-      return YWResults.withData(processedInstances);
-    } catch (Exception e) {
-      LOG.error("Error importing platform instances", e);
-
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Error importing platform instances");
+    Optional<HighAvailabilityConfig> config =
+        HighAvailabilityConfig.getByClusterKey(this.getClusterKey());
+    if (!config.isPresent()) {
+      return ApiResponse.error(NOT_FOUND, "Invalid config UUID");
     }
+
+    Optional<PlatformInstance> localInstance = config.get().getLocal();
+
+    if (!localInstance.isPresent()) {
+      LOG.warn("No local instance configured");
+
+      return ApiResponse.error(BAD_REQUEST, "No local instance configured");
+    }
+
+    if (localInstance.get().getIsLeader()) {
+      LOG.warn(
+          "Rejecting request to import instances due to this process being designated a leader");
+
+      return ApiResponse.error(BAD_REQUEST, "Cannot import instances for a leader");
+    }
+
+    Date requestLastFailover = new Date(timestamp);
+    Date localLastFailover = config.get().getLastFailover();
+
+    // Reject the request if coming from a platform instance that was failed over to earlier.
+    if (localLastFailover != null && localLastFailover.after(requestLastFailover)) {
+      LOG.warn("Rejecting request to import instances due to request lastFailover being stale");
+
+      return ApiResponse.error(BAD_REQUEST, "Cannot import instances from stale leader");
+    }
+
+    String content = ctx().request().body().asBytes().utf8String();
+    List<PlatformInstance> newInstances = Util.parseJsonArray(content, PlatformInstance.class);
+    Set<PlatformInstance> processedInstances =
+        replicationManager.importPlatformInstances(config.get(), newInstances);
+
+    return PlatformResults.withData(processedInstances);
   }
 
   public Result syncBackups() throws Exception {
@@ -161,7 +159,7 @@ public class InternalHAController extends Controller {
     if (success) {
       // TODO: (Daniel) - Need to cleanup backups in non-current leader dir too.
       replicationManager.cleanupReceivedBackups(leaderUrl);
-      return YWResults.YWSuccess.withMessage("File uploaded");
+      return YBPSuccess.withMessage("File uploaded");
     } else {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "failed to copy backup");
     }
@@ -204,7 +202,7 @@ public class InternalHAController extends Controller {
       // Demote the local instance.
       replicationManager.demoteLocalInstance(localInstance.get(), formData.leader_address);
 
-      return YWResults.withData(localInstance);
+      return PlatformResults.withData(localInstance);
     } catch (Exception e) {
       LOG.error("Error demoting platform instance", e);
 

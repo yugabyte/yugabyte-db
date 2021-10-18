@@ -69,11 +69,11 @@ YugabyteDB supports several languages and client drivers. Below is a brief list.
 
 # What's being worked on?
 
-> This section was last updated in **July, 2021**.
+> This section was last updated in **August, 2021**.
 
 ## Current roadmap
 
-Here is a list of some of the key features being worked on for the upcoming releases (the YugabyteDB **v2.7 latest release** has been released in **May, 2021**, and the **v2.6 stable release** was released in **July 2021**).
+Here is a list of some of the key features being worked on for the upcoming releases (the YugabyteDB **v2.9 latest release** has been released in **August, 2021**, and the **v2.6 stable release** was released in **July 2021**).
 
 | Feature                                         | Status    | Release Target | Progress        |  Comments     |
 | ----------------------------------------------- | --------- | -------------- | --------------- | ------------- |
@@ -94,6 +94,10 @@ Here is a list of some of the key features being worked on for the upcoming rele
 | Transparently restart transactions | PROGRESS  | v2.7  | [Track](https://github.com/yugabyte/yugabyte-db/issues/5683) | Decrease the incidence of transaction restart errors seen in various scenarios |
 | Pessimistic locking Design | PROGRESS  | v2.7  | [Track](https://github.com/yugabyte/yugabyte-db/issues/5680) |  |
 | Support Liquibase, Flyway, ORM schema migrations | PROGRESS | v2.7           |                 |               |
+| [Platform Alerting and Notification](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/platform-alerting-and-notification.md) | PROGRESS | v2.7           | [Track](https://github.com/yugabyte/yugabyte-db/issues/8212)     |               |
+| [xCluster replication management through Platform](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/platform-xcluster-replication-management.md) | PROGRESS | v2.7           |       [Track](https://github.com/yugabyte/yugabyte-db/issues/8963)          |               |
+| Platform APIs | PROGRESS | v2.7           |                 |               |
+
 
 ## Planned additions to the roadmap
 

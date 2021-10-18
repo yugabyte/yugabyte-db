@@ -92,12 +92,12 @@ struct MiniClusterOptions {
   rocksdb::Env* ts_rocksdb_env = nullptr;
 
   // Directory in which to store data.
-  // Default: "", which auto-generates a unique path for this cluster.
+  // Default: empty string, which auto-generates a unique path for this cluster.
   // The default may only be used from a gtest unit test.
-  std::string data_root;
+  std::string data_root{};
 
   // Cluster id used to create fs path when we create tests with multiple clusters.
-  std::string cluster_id = "";
+  std::string cluster_id{};
 };
 
 // An in-process cluster with a MiniMaster and a configurable
@@ -268,12 +268,18 @@ YB_DEFINE_ENUM(ListPeersFilter, (kAll)(kLeaders)(kNonLeaders));
 
 std::unordered_set<string> ListTabletIdsForTable(MiniCluster* cluster, const string& table_id);
 
+std::unordered_set<string> ListActiveTabletIdsForTable(
+    MiniCluster* cluster, const string& table_id);
+
 std::vector<std::shared_ptr<tablet::TabletPeer>> ListTabletPeers(
     MiniCluster* cluster, ListPeersFilter filter);
 
 std::vector<std::shared_ptr<tablet::TabletPeer>> ListTabletPeers(
     MiniCluster* cluster,
     const std::function<bool(const std::shared_ptr<tablet::TabletPeer>&)>& filter);
+
+std::vector<tablet::TabletPeerPtr> ListTableTabletPeers(
+    MiniCluster* cluster, const TableId& table_id);
 
 // By active tablet here we mean tablet is ready or going to be ready to serve read/write requests,
 // i.e. not yet completed split or deleted (tombstoned).

@@ -55,6 +55,7 @@ DEFINE_test_flag(int32, slowdown_master_async_rpc_tasks_by_ms, 0,
 // The flags are defined in catalog_manager.cc.
 DECLARE_int32(master_ts_rpc_timeout_ms);
 DECLARE_int32(tablet_creation_timeout_ms);
+DECLARE_int32(TEST_slowdown_alter_table_rpcs_ms);
 
 namespace yb {
 namespace master {
@@ -488,7 +489,7 @@ AsyncTabletLeaderTask::AsyncTabletLeaderTask(
 }
 
 std::string AsyncTabletLeaderTask::description() const {
-  return type_name() + " RPC for " + tablet_->ToString();
+  return Format("$0 RPC for tablet $1 ($2)", type_name(), tablet_, table_name());
 }
 
 TabletId AsyncTabletLeaderTask::tablet_id() const {
@@ -554,6 +555,7 @@ void AsyncCreateReplica::HandleResponse(int attempt) {
   }
 
   TransitionToCompleteState();
+  VLOG_WITH_PREFIX(1) << "TS " << permanent_uuid_ << ": complete on tablet " << tablet_id_;
 }
 
 bool AsyncCreateReplica::SendRequest(int attempt) {
@@ -686,6 +688,13 @@ void AsyncDeleteReplica::UnregisterAsyncTaskCallback() {
 //  Class AsyncAlterTable.
 // ============================================================================
 void AsyncAlterTable::HandleResponse(int attempt) {
+  if (PREDICT_FALSE(FLAGS_TEST_slowdown_alter_table_rpcs_ms > 0)) {
+    VLOG_WITH_PREFIX(1) << "Sleeping for " << tablet_->tablet_id()
+                        << FLAGS_TEST_slowdown_alter_table_rpcs_ms
+                        << "ms before returning response in async alter table request handler";
+    SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_slowdown_alter_table_rpcs_ms));
+  }
+
   if (resp_.has_error()) {
     Status status = StatusFromPB(resp_.error().status());
 
@@ -747,6 +756,13 @@ bool AsyncAlterTable::SendRequest(int attempt) {
     req.set_new_table_name(l->pb.name());
     req.mutable_indexes()->CopyFrom(l->pb.indexes());
     req.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
+
+    if (table_type() == TableType::PGSQL_TABLE_TYPE && !transaction_id_.IsNil()) {
+      VLOG_WITH_PREFIX(1) << "Transaction ID is provided for tablet " << tablet_->tablet_id()
+          << " with ID " << transaction_id_.ToString() << " for ALTER TABLE operation";
+      req.set_should_abort_active_txns(true);
+      req.set_transaction_id(transaction_id_.ToString());
+    }
 
     schema_version_ = l->pb.version();
   }
@@ -888,9 +904,9 @@ TabletServerId CommonInfoForRaftTask::permanent_uuid() const {
 //  Class AsyncChangeConfigTask.
 // ============================================================================
 string AsyncChangeConfigTask::description() const {
-  return strings::Substitute(
-      "$0 RPC for tablet $1 on peer $2 with cas_config_opid_index $3", type_name(),
-      tablet_->tablet_id(), permanent_uuid(), cstate_.config().opid_index());
+  return Format(
+      "$0 RPC for tablet $1 ($2) on peer $3 with cas_config_opid_index $4", type_name(),
+      tablet_->tablet_id(), table_name(), permanent_uuid(), cstate_.config().opid_index());
 }
 
 bool AsyncChangeConfigTask::SendRequest(int attempt) {
@@ -1250,7 +1266,7 @@ bool IsDefinitelyPermanentError(const Status& s) {
 // ============================================================================
 AsyncGetTabletSplitKey::AsyncGetTabletSplitKey(
     Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
-    std::function<void(const std::string&, const std::string&)> result_cb)
+    DataCallbackType result_cb)
     : AsyncTabletLeaderTask(master, callback_pool, tablet), result_cb_(result_cb) {
   req_.set_tablet_id(tablet_id());
 }
@@ -1287,9 +1303,8 @@ void AsyncGetTabletSplitKey::HandleResponse(int attempt) {
 }
 
 bool AsyncGetTabletSplitKey::SendRequest(int attempt) {
-  req_.set_dest_uuid(permanent_uuid());
   req_.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
-  ts_admin_proxy_->GetSplitKeyAsync(req_, &resp_, &rpc_, BindRpcCallback());
+  ts_proxy_->GetSplitKeyAsync(req_, &resp_, &rpc_, BindRpcCallback());
   VLOG_WITH_PREFIX(1)
       << "Sent get split key request to " << permanent_uuid() << " (attempt " << attempt << "):\n"
       << req_.DebugString();
@@ -1297,8 +1312,12 @@ bool AsyncGetTabletSplitKey::SendRequest(int attempt) {
 }
 
 void AsyncGetTabletSplitKey::Finished(const Status& status) {
-  if (status.ok()) {
-    result_cb_(resp_.split_encoded_key(), resp_.split_partition_key());
+  if (result_cb_) {
+    if (status.ok()) {
+      result_cb_(Data{resp_.split_encoded_key(), resp_.split_partition_key()});
+    } else {
+      result_cb_(status);
+    }
   }
 }
 
@@ -1308,8 +1327,9 @@ void AsyncGetTabletSplitKey::Finished(const Status& status) {
 AsyncSplitTablet::AsyncSplitTablet(
     Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
     const std::array<TabletId, kNumSplitParts>& new_tablet_ids,
-    const std::string& split_encoded_key, const std::string& split_partition_key)
-    : AsyncTabletLeaderTask(master, callback_pool, tablet) {
+    const std::string& split_encoded_key, const std::string& split_partition_key,
+    std::function<void(const Status&)> result_cb)
+    : AsyncTabletLeaderTask(master, callback_pool, tablet), result_cb_(result_cb) {
   req_.set_tablet_id(tablet_id());
   req_.set_new_tablet1_id(new_tablet_ids[0]);
   req_.set_new_tablet2_id(new_tablet_ids[1]);
@@ -1346,6 +1366,12 @@ bool AsyncSplitTablet::SendRequest(int attempt) {
       << "Sent split tablet request to " << permanent_uuid() << " (attempt " << attempt << "):\n"
       << req_.DebugString();
   return true;
+}
+
+void AsyncSplitTablet::Finished(const Status& status) {
+  if (result_cb_) {
+    result_cb_(status);
+  }
 }
 
 }  // namespace master

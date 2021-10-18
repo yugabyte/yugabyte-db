@@ -240,6 +240,7 @@
 
 #include <algorithm>
 #include <mutex>
+#include <regex>
 #include <set>
 #include <string>
 #include <sstream>
@@ -519,6 +520,12 @@ struct MetricPrometheusOptions {
   // Include the metrics at a level and above.
   // Default: debug
   MetricLevel level;
+
+  // Number of tables to include metrics for.
+  uint32_t max_tables_metrics_breakdowns;
+
+  // Regex for metrics that should always be included for all tables.
+  string priority_regex;
 };
 
 class MetricEntityPrototype {
@@ -712,12 +719,19 @@ class PrometheusWriter {
     return Status::OK();
   }
 
-  CHECKED_STATUS FlushAggregatedValues() {
+  CHECKED_STATUS FlushAggregatedValues(const uint32_t& max_tables_metrics_breakdowns,
+                                       string priority_regex) {
+    uint32_t counter = 0;
+    const auto& p_regex = std::regex(priority_regex);
     for (const auto& entry : per_table_values_) {
       const auto& attrs = per_table_attributes_[entry.first];
       for (const auto& metric_entry : entry.second) {
-        RETURN_NOT_OK(FlushSingleEntry(attrs, metric_entry.first, metric_entry.second));
+        if (counter < max_tables_metrics_breakdowns ||
+            std::regex_match(metric_entry.first, p_regex)) {
+          RETURN_NOT_OK(FlushSingleEntry(attrs, metric_entry.first, metric_entry.second));
+        }
       }
+      counter += 1;
     }
     return Status::OK();
   }
@@ -829,6 +843,8 @@ class Metric : public RefCountedThreadSafe<Metric> {
 
   DISALLOW_COPY_AND_ASSIGN(Metric);
 };
+
+using MetricPtr = scoped_refptr<Metric>;
 
 // Registry of all the metrics for a server.
 //
@@ -1347,6 +1363,8 @@ class Counter : public Metric {
   DISALLOW_COPY_AND_ASSIGN(Counter);
 };
 
+using CounterPtr = scoped_refptr<Counter>;
+
 class MillisLagPrototype : public MetricPrototype {
  public:
   explicit MillisLagPrototype(const MetricPrototype::CtorArgs& args) : MetricPrototype(args) {
@@ -1423,9 +1441,15 @@ class AtomicMillisLag : public MillisLag {
   DISALLOW_COPY_AND_ASSIGN(AtomicMillisLag);
 };
 
-inline void IncrementCounter(const scoped_refptr<Counter>& counter) {
+inline void IncrementCounter(const CounterPtr& counter) {
   if (counter) {
     counter->Increment();
+  }
+}
+
+inline void IncrementCounterBy(const CounterPtr& counter, int64_t amount) {
+  if (counter) {
+    counter->IncrementBy(amount);
   }
 }
 
@@ -1498,6 +1522,8 @@ class Histogram : public Metric {
   const ExportPercentiles export_percentiles_;
   DISALLOW_COPY_AND_ASSIGN(Histogram);
 };
+
+using HistogramPtr = scoped_refptr<Histogram>;
 
 inline void IncrementHistogram(const scoped_refptr<Histogram>& histogram, int64_t value) {
   if (histogram) {

@@ -22,6 +22,7 @@
 
 #include <boost/function.hpp>
 
+#include "yb/common/common_fwd.h"
 #include "yb/common/entity_ids.h"
 
 #include "yb/util/result.h"
@@ -29,6 +30,8 @@
 
 template <class T>
 class scoped_refptr;
+
+YB_STRONGLY_TYPED_BOOL(RequireTabletsRunning);
 
 namespace yb {
 namespace client {
@@ -66,8 +69,6 @@ using FlushCallback = boost::function<void(FlushStatus*)>;
 
 class YBTable;
 typedef std::shared_ptr<YBTable> YBTablePtr;
-typedef std::string PartitionKey;
-typedef std::shared_ptr<const PartitionKey> PartitionKeyPtr;
 typedef std::vector<PartitionKey> TablePartitionList;
 typedef uint32_t PartitionListVersion;
 struct VersionedTablePartitionList;
@@ -86,10 +87,11 @@ class YBSchema;
 class YBTableAlterer;
 class YBTableCreator;
 class YBTableName;
-class YBTabletServer;
-class YBTabletServerPlacementInfo;
+class UniverseKeyClient;
 
 struct YBTableInfo;
+struct YBTabletServer;
+struct YBTabletServerPlacementInfo;
 
 typedef std::function<void(std::vector<const TabletId*>*)> LocalTabletFilter;
 

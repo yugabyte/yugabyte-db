@@ -39,6 +39,7 @@ class YQLIndexesVTable : public YQLVirtualTable {
   static constexpr const char* const kIndexId = "index_id";
   static constexpr const char* const kTransactions = "transactions";
   static constexpr const char* const kIsUnique = "is_unique";
+  static constexpr const char* const kNumTablets = "tablets";
 };
 
 }  // namespace master

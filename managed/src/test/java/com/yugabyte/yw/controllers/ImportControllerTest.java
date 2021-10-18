@@ -8,7 +8,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertValueAtPath;
-import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
 import static org.hamcrest.CoreMatchers.allOf;
@@ -236,7 +236,7 @@ public class ImportControllerTest extends CommissionerBaseTest {
     editUnivBody.set(
         "clusters", Json.newArray().add(Json.newObject().set("userIntent", userIntentJson)));
     result =
-        assertYWSE(
+        assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("PUT", universeUrl, authToken, editUnivBody));
     assertBadRequest(result, "cannot be edited");
 
@@ -267,7 +267,7 @@ public class ImportControllerTest extends CommissionerBaseTest {
     assertValue(Json.toJson(deleteTaskInfo), "taskState", "Success");
     assertAuditEntry(numAuditsExpected + 1, customer.uuid);
 
-    result = assertYWSE(() -> doRequestWithAuthToken("GET", universeUrl, authToken));
+    result = assertPlatformException(() -> doRequestWithAuthToken("GET", universeUrl, authToken));
     String expectedResult = String.format("Cannot find universe %s", univUUID);
     assertBadRequest(result, expectedResult);
 
@@ -282,7 +282,8 @@ public class ImportControllerTest extends CommissionerBaseTest {
             .put("universeName", "importUniv")
             .put("masterAddresses", "incorrect_format");
     Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "Could not parse host:port from masterAddresseses: incorrect_format");
     assertAuditEntry(1, customer.uuid);
   }
@@ -296,7 +297,8 @@ public class ImportControllerTest extends CommissionerBaseTest {
             .put("masterAddresses", MASTER_ADDRS)
             .put("currentState", ImportUniverseFormData.State.IMPORTED_TSERVERS.name());
     Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "Valid universe uuid needs to be set.");
     assertAuditEntry(1, customer.uuid);
   }
@@ -309,7 +311,8 @@ public class ImportControllerTest extends CommissionerBaseTest {
         Json.newObject().put("universeName", "importUniv").put("masterAddresses", MASTER_ADDRS);
     // Master phase
     Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertInternalServerError(result, "java.lang.RuntimeException: WaitForServer");
     JsonNode resultJson = Json.parse(contentAsString(result));
     String univUUID = resultJson.get("error").get("universeUUID").asText();

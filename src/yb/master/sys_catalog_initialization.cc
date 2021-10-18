@@ -259,8 +259,7 @@ Status MakeYsqlSysCatalogTablesTransactional(
     }
 
     {
-      TabletInfos tablet_infos;
-      table_info.GetAllTablets(&tablet_infos);
+      TabletInfos tablet_infos = table_info.GetTablets();
       if (tablet_infos.size() != 1 || tablet_infos.front()->tablet_id() != kSysCatalogTabletId) {
         continue;
       }

@@ -7,7 +7,7 @@ menu:
   latest:
     identifier: toc
     parent: api-ysql-datatypes-datetime
-    weight: 99
+    weight: 150
 isTocNested: true
 showAsideToc: true
 ---
@@ -40,7 +40,7 @@ This section explains: the purpose and significance of the _set timezone_ SQL st
     - **[Rule 4](../timezones/ways-to-spec-offset/name-res-rules/rule-4/)** — It's is resolved first in _pg_timezone_abbrevs.abbrev_ and, only if this fails, then in _pg_timezone_names.name_. This applies only in those syntax contexts where _pg_timezone_abbrevs.abbrev_ is a candidate for the resolution—so not for _set timezone_, which looks only in _pg_timezone_names.name_.
     - **[Helper functions](../timezones/ways-to-spec-offset/name-res-rules/helper-functions/)**
 - **[Three syntax contexts that use the specification of a UTC offset](../timezones/syntax-contexts-to-spec-offset/)**
-- **[Recommended practise for specifying the UTC offset](../timezones/recommendation/)**
+- **[Recommended practice for specifying the UTC offset](../timezones/recommendation/)**
 
 ## [Typecasting between date-time values and text values](../typecasting-between-date-time-and-text/)
 
@@ -72,6 +72,10 @@ This section defines the semantics of the _date_ data type, the _time_ data type
 ## [Typecasting between values of different date-time datatypes](../typecasting-between-date-time-values/)
 
 This section presents the five-by-five matrix of all possible conversions between values of the _date-time_ datatypes. Many of the cells are empty because they correspond to operations that aren't supported (or, because the cell is on the diagonal representing the conversion between values of the same data type, it's tautologically uninteresting). This still leaves *twenty* typecasts whose semantics you need to understand. However, many can be understood as combinations of others, and this leaves only a few that demand careful study. The critical conversions are between plain _timestamp_ and _timestamptz_ values in each direction.
+
+## [Case study—implementing a stopwatch with SQL](../stopwatch/)
+
+This shows you how to implement a SQL stopwatch that allows you to start it with a procedure call before starting what you want to time and to read it with a _select_ statement when what you want to time finishes. This reading goes to the spool file along with all other _select_ results. Using a SQL stopwatch brings many advantages over using _\timing on_.
 
 ## [Download and install the date-time utilities code](../download-date-time-utilities/)
 

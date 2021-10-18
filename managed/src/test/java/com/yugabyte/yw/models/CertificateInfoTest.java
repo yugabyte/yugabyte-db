@@ -9,14 +9,12 @@ import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import java.io.File;
 import java.io.IOException;
-import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -89,18 +87,12 @@ public class CertificateInfoTest extends FakeDBApplication {
     for (CertificateInfo cert : certificateInfoList) {
       if (cert.uuid.equals(certIdList.get(0))) {
         assertTrue(cert.getInUse());
-        assertEquals(
-            universe1.universeUUID.toString(),
-            cert.getUniverseDetails().get(0).get("uuid").asText());
+        assertEquals(universe1.universeUUID, cert.getUniverseDetails().get(0).getUuid());
       } else if (cert.uuid.equals(certIdList.get(1))) {
         assertTrue(cert.getInUse());
         assertEquals(2, cert.getUniverseDetails().size());
-        assertNotEquals(
-            universe1.universeUUID.toString(),
-            cert.getUniverseDetails().get(0).get("uuid").asText());
-        assertNotEquals(
-            universe1.universeUUID.toString(),
-            cert.getUniverseDetails().get(1).get("uuid").asText());
+        assertNotEquals(universe1.universeUUID, cert.getUniverseDetails().get(0).getUuid());
+        assertNotEquals(universe1.universeUUID, cert.getUniverseDetails().get(1).getUuid());
       } else {
         assertFalse(cert.getInUse());
         assertEquals(0, cert.getUniverseDetails().size());
@@ -136,18 +128,11 @@ public class CertificateInfoTest extends FakeDBApplication {
     List<CertificateInfo> certificateInfoList = CertificateInfo.getAll(customer.uuid);
     assertEquals(3, certificateInfoList.size());
 
-    Field inUseField = CertificateInfo.class.getDeclaredField("inUse");
-    Field universeDetailsField = CertificateInfo.class.getDeclaredField("universeDetails");
-    inUseField.setAccessible(true);
-    universeDetailsField.setAccessible(true);
-
     for (CertificateInfo cert : certificateInfoList) {
-      Boolean inUse = (Boolean) inUseField.get(cert);
-      ArrayNode universeDetails = (ArrayNode) universeDetailsField.get(cert);
       // If the private fields inUse and universeDetails are not null then
       // universeDetails are already populated and won't lead to individual universe data fetch
-      assertNotNull(inUse);
-      assertNotNull(universeDetails);
+      assertNotNull(cert.inUse);
+      assertNotNull(cert.universeDetailSubsets);
     }
   }
 }

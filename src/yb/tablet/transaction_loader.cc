@@ -170,14 +170,22 @@ class TransactionLoader::Executor {
       if (value.TryConsumeByte(docdb::ValueTypeAsChar::kString)) {
         auto pb = pb_util::ParseFromSlice<docdb::ApplyTransactionStatePB>(value);
         if (!pb.ok()) {
-          LOG_WITH_PREFIX(DFATAL) << "Failed to decode apply state " << key.ToDebugString() << ": "
-                                  << pb.status();
+          LOG_WITH_PREFIX(DFATAL) << "Failed to decode apply state pb from RocksDB"
+                                  << key.ToDebugString() << ": " << pb.status();
+          regular_iterator_.Next();
+          continue;
+        }
+
+        auto state = docdb::ApplyTransactionState::FromPB(*pb);
+        if (!state.ok()) {
+          LOG_WITH_PREFIX(DFATAL) << "Failed to decode apply state from stored pb "
+              << state.status();
           regular_iterator_.Next();
           continue;
         }
 
         auto it = pending_applies_.emplace(*txn_id, ApplyStateWithCommitHt {
-          .state = docdb::ApplyTransactionState::FromPB(*pb),
+          .state = state.get(),
           .commit_ht = HybridTime(pb->commit_ht())
         }).first;
 

@@ -222,6 +222,24 @@ DROP TABLESPACE regress_tblspace;
 DROP ROLE regress_tablespace_user1;
 DROP ROLE regress_tablespace_user2;
 
+-- Colocated Tests
+CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1}]}');
+CREATE DATABASE colocation_test colocated = true;
+\c colocation_test
+-- Should fail to set tablespace on a table in a colocated database
+CREATE TABLE tab_nonkey (a INT) TABLESPACE x;
+-- Should succeed in setting tablespace on a table in a colocated database when opted out
+CREATE TABLE tab_nonkey (a INT) WITH (COLOCATED = false) TABLESPACE x;
+-- cleanup
+DROP TABLE tab_nonkey;
+\c yugabyte
+DROP DATABASE colocation_test;
+
+-- Fail, cannot set tablespaces for temp tables.
+CREATE TEMPORARY TABLE temptest (a INT) TABLESPACE x;
+-- Cleanup.
+DROP TABLESPACE x;
+
 /*
 Testing to make sure that an index on a "near" tablespace whose placements are
 all on the current cloud/region/zone is preferred over "far" indexes.

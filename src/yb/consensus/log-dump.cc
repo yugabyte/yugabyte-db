@@ -43,7 +43,6 @@
 #include "yb/consensus/log_reader.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/numbers.h"
-#include "yb/tablet/tablet_metadata.h"
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
@@ -86,7 +85,6 @@ using std::string;
 using std::vector;
 using std::cout;
 using std::endl;
-using tablet::RaftGroupMetadata;
 using tserver::WriteRequestPB;
 
 enum PrintEntryType {
@@ -228,8 +226,7 @@ Status DumpLog(const string& tablet_id, const string& tablet_wal_path) {
 
 Status DumpSegment(const string &segment_path) {
   Env *env = Env::Default();
-  scoped_refptr<ReadableLogSegment> segment;
-  RETURN_NOT_OK(ReadableLogSegment::Open(env, segment_path, &segment));
+  auto segment = VERIFY_RESULT(ReadableLogSegment::Open(env, segment_path));
   RETURN_NOT_OK(PrintSegment(segment));
 
   return Status::OK();
@@ -250,8 +247,7 @@ Status FilterLogSegment(const string& segment_path) {
   output_wal_dir = VERIFY_RESULT(env->Canonicalize(output_wal_dir));
   LOG(INFO) << "Created directory " << output_wal_dir;
 
-  scoped_refptr<ReadableLogSegment> segment;
-  RETURN_NOT_OK(ReadableLogSegment::Open(env, segment_path, &segment));
+  auto segment = VERIFY_RESULT(ReadableLogSegment::Open(env, segment_path));
   Schema tablet_schema;
   const auto& segment_header = segment->header();
 

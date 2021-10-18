@@ -757,6 +757,15 @@ DefineIndex(Oid relationId,
 								accessMethodName, DEFAULT_YB_INDEX_TYPE)));
 				accessMethodName = DEFAULT_YB_INDEX_TYPE;
 			}
+			if (strcmp(accessMethodName, "gin") == 0)
+			{
+				char	   *new_name = "ybgin";
+
+				ereport(NOTICE,
+						(errmsg("replacing access method \"%s\" with \"%s\"",
+								accessMethodName, new_name)));
+				accessMethodName = new_name;
+			}
 		}
 	}
 
@@ -789,9 +798,11 @@ DefineIndex(Oid relationId,
 						accessMethodName),
 				 errhint("See https://github.com/YugaByte/yugabyte-db/issues/1337. "
 						 "Click '+' on the description to raise its priority")));
-	if (!IsYBRelation(rel) && accessMethodId == LSM_AM_OID)
+	if (!IsYBRelation(rel) && (accessMethodId == LSM_AM_OID ||
+							   accessMethodId == YBGIN_AM_OID))
 		ereport(ERROR,
-				(errmsg("access method \"%s\" only supported for indexes"
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("access method \"%s\" only supported for indexes"
 						" using Yugabyte storage",
 						accessMethodName)));
 
@@ -834,8 +845,9 @@ DefineIndex(Oid relationId,
 	/*
 	 * Parse AM-specific options, convert to text array form, validate.
 	 */
-	reloptions = transformRelOptions((Datum) 0, stmt->options,
-									 NULL, NULL, false, false);
+	reloptions = ybTransformRelOptions((Datum) 0, stmt->options,
+										NULL, NULL, false, false,
+										IsYsqlUpgrade);
 
 	(void) index_reloptions(amoptions, reloptions, true);
 
@@ -2808,61 +2820,4 @@ IndexSetParentIndex(Relation partitionIdx, Oid parentOid)
 		/* make our updates visible */
 		CommandCounterIncrement();
 	}
-}
-
-void
-BackfillIndex(BackfillIndexStmt *stmt)
-{
-	IndexInfo  *indexInfo;
-	ListCell   *cell;
-	Oid			heapId;
-	Oid			indexId;
-	Relation	heapRel;
-	Relation	indexRel;
-
-	if (YBCGetDisableIndexBackfill())
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("backfill is not enabled")));
-
-	/*
-	 * Examine oid list.  Currently, we only allow it to be a single oid, but
-	 * later it should handle multiple oids of indexes on the same indexed
-	 * table.
-	 * TODO(jason): fix from here downwards for issue #4785.
-	 */
-	if (list_length(stmt->oid_list) != 1)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("only a single oid is allowed in BACKFILL INDEX (see"
-						" issue #4785)")));
-
-	foreach(cell, stmt->oid_list)
-	{
-		indexId = lfirst_oid(cell);
-	}
-
-	heapId = IndexGetRelation(indexId, false);
-	// TODO(jason): why ShareLock instead of ShareUpdateExclusiveLock?
-	heapRel = heap_open(heapId, ShareLock);
-	indexRel = index_open(indexId, ShareLock);
-
-	indexInfo = BuildIndexInfo(indexRel);
-	/*
-	 * The index should be ready for writes because it should be on the
-	 * BACKFILLING permission.
-	 */
-	Assert(indexInfo->ii_ReadyForInserts);
-	indexInfo->ii_Concurrent = true;
-	indexInfo->ii_BrokenHotChain = false;
-
-	index_backfill(heapRel,
-				   indexRel,
-				   indexInfo,
-				   false,
-				   &stmt->read_time,
-				   stmt->row_bounds);
-
-	index_close(indexRel, ShareLock);
-	heap_close(heapRel, ShareLock);
 }

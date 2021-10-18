@@ -10,7 +10,7 @@
 
 package com.yugabyte.yw.forms;
 
-import com.yugabyte.yw.common.AlertDefinitionTemplate;
+import com.yugabyte.yw.common.AlertTemplate;
 import java.util.UUID;
 import play.data.validation.Constraints;
 
@@ -19,7 +19,7 @@ public class AlertDefinitionFormData {
 
   public UUID alertDefinitionUUID;
 
-  public AlertDefinitionTemplate template;
+  public AlertTemplate template;
 
   @Constraints.Required() public double value;
 

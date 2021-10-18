@@ -24,11 +24,10 @@ YBNamespaceAlterer::YBNamespaceAlterer(
 
 YBNamespaceAlterer::~YBNamespaceAlterer() {}
 
-Status YBNamespaceAlterer::Alter() {
+Status YBNamespaceAlterer::Alter(CoarseTimePoint deadline) {
   master::AlterNamespaceRequestPB req;
   RETURN_NOT_OK(ToRequest(&req));
-  return client_->data_->AlterNamespace(
-      client_, req, CoarseMonoClock::Now() + client_->default_admin_operation_timeout());
+  return client_->data_->AlterNamespace(client_, req, client_->PatchAdminDeadline(deadline));
 }
 
 YBNamespaceAlterer* YBNamespaceAlterer::RenameTo(const std::string& new_name) {

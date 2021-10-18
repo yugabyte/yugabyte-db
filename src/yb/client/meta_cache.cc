@@ -1238,8 +1238,9 @@ void MetaCache::InvalidateTableCache(const YBTable& table) {
     table_data.partition_list = table_partition_list;
   }
   for (const auto& callback : to_notify) {
-    const auto s =
-        STATUS_FORMAT(TryAgain, "MetaCache for table $0 has been invalidated.", table_id);
+    const auto s = STATUS_EC_FORMAT(
+        TryAgain, ClientError(ClientErrorCode::kMetaCacheInvalidated),
+        "MetaCache for table $0 has been invalidated.", table_id);
     boost::apply_visitor(LookupCallbackVisitor(s), callback);
   }
 }
@@ -2017,7 +2018,7 @@ void MetaCache::LookupTabletByKey(const std::shared_ptr<YBTable>& table,
                                   CoarseTimePoint deadline,
                                   LookupTabletCallback callback) {
   if (table->ArePartitionsStale()) {
-    table->RefreshPartitions([this, table, partition_key, deadline,
+    table->RefreshPartitions(client_, [this, table, partition_key, deadline,
                               callback = std::move(callback)](const Status& status) {
       if (!status.ok()) {
         callback(status);

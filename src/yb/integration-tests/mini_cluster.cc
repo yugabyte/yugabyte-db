@@ -167,7 +167,7 @@ Status MiniCluster::Start(const std::vector<tserver::TabletServerOptions>& extra
   FLAGS_ts_remote_bootstrap_svc_num_threads = 2;
 
   // We are testing public/private IPs using mini cluster. So set mode to 'cloud'.
-  FLAGS_use_private_ip = "cloud";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_private_ip) = "cloud";
 
   // This dictates the RF of newly created tables.
   SetAtomicFlag(options_.num_tablet_servers >= 3 ? 3 : 1, &FLAGS_replication_factor);
@@ -688,6 +688,15 @@ std::unordered_set<string> ListTabletIdsForTable(MiniCluster* cluster, const str
     if (peer->tablet_metadata()->table_id() == table_id) {
       tablet_ids.insert(peer->tablet_id());
     }
+  }
+  return tablet_ids;
+}
+
+std::unordered_set<string> ListActiveTabletIdsForTable(
+    MiniCluster* cluster, const string& table_id) {
+  std::unordered_set<string> tablet_ids;
+  for (auto peer : ListTableActiveTabletPeers(cluster, table_id)) {
+    tablet_ids.insert(peer->tablet_id());
   }
   return tablet_ids;
 }

@@ -10,6 +10,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.models.Customer;
 import java.util.Map;
+import kamon.instrumentation.play.GuiceModule;
 import org.junit.Before;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
@@ -34,6 +35,7 @@ public class SubTaskBaseTest extends WithApplication {
 
     return new GuiceApplicationBuilder()
         .disable(SwaggerModule.class)
+        .disable(GuiceModule.class)
         .configure((Map) Helpers.inMemoryDatabase())
         .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
         .overrides(bind(AlertConfigurationWriter.class).toInstance(mockAlertConfigurationWriter))

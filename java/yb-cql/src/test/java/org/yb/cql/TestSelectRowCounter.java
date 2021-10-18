@@ -32,7 +32,7 @@ import com.datastax.driver.core.exceptions.InvalidQueryException;
 import org.yb.minicluster.BaseMiniClusterTest;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.RocksDBMetrics;
-import org.yb.util.SanitizerUtil;
+import org.yb.util.BuildTypeUtil;
 import org.yb.util.TableProperties;
 
 import static org.yb.AssertionWrappers.assertEquals;
