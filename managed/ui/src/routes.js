@@ -25,7 +25,7 @@ import Universes from './pages/Universes';
 import { Tasks, TasksList, TaskDetail } from './pages/tasks';
 import Alerts from './pages/Alerts';
 import ListUniverse from './pages/ListUniverse';
-import UniverseConsole from './pages/UniverseConsole'
+import UniverseConsole from './pages/UniverseConsole';
 import Metrics from './pages/Metrics';
 import DataCenterConfiguration from './pages/DataCenterConfiguration';
 import TableDetail from './pages/TableDetail';
@@ -82,11 +82,11 @@ const autoLogin = (params) => {
   localStorage.setItem('authToken', authToken);
   localStorage.setItem('customerId', customerUUID);
   localStorage.setItem('userId', userUUID);
-  Cookies.set('authToken',authToken);
-  Cookies.set('customerId',customerUUID);
-  Cookies.set('userId',userUUID);
+  Cookies.set('authToken', authToken);
+  Cookies.set('customerId', customerUUID);
+  Cookies.set('userId', userUUID);
   browserHistory.replace({
-    search: '',
+    search: ''
   });
   browserHistory.push('/');
 };
@@ -195,13 +195,10 @@ function validateSession(store, replacePath, callback) {
 export default (store) => {
   const authenticatedSession = (nextState, replace, callback) => {
     const params = nextState?.location?.query;
-    if(!isNullOrEmpty(params) && checkAuthParamsInUrl(params)) {
+    if (!isNullOrEmpty(params) && checkAuthParamsInUrl(params)) {
       autoLogin(params);
-      validateSession(store, replace, callback);
     }
-    else {
-      validateSession(store, replace, callback);
-    }
+    validateSession(store, replace, callback);
   };
 
   const checkIfAuthenticated = (prevState, nextState, replace, callback) => {
