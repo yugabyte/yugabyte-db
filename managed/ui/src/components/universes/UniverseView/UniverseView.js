@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import React, { useState, useEffect } from 'react';
+import { usePrevious } from 'react-use';
 import { ListGroup } from 'react-bootstrap';
 import moment from 'moment';
 import _ from 'lodash';
@@ -44,151 +45,140 @@ const dropdownFieldKeys = {
   }
 };
 
-export class UniverseView extends Component {
-  constructor(props) {
-    super();
-    this.state = {
-      searchTokens: [],
-      sortField: 'Universe Name',
-      sortOrder: 'Ascending',
-      universePendingTasks: {}
-    };
-  }
+export const UniverseView = (props) => {
+  const [searchTokens, setSearchTokens] = useState([]);
+  const [sortField, setSortField] = useState('Universe Name');
+  const [sortOrder, setSortOrder] = useState('Ascending');
+  const [universePendingTasks, setUniversePendingTasks] = useState({});
+  const {
+    universe: { universeList },
+    customer: { currentCustomer },
+    tasks: { customerTaskList }
+  } = props;
 
-  componentDidMount() {
-    this.props.fetchUniverseMetadata();
-    this.props.fetchUniverseTasks();
-  }
+  const universeUUIDs =
+    universeList && universeList.data
+      ? universeList.data.map((universe) => universe.universeUUID)
+      : [];
+  const prevUniverseUUIDs = usePrevious(universeUUIDs);
+  const prevCustomerTaskList = usePrevious(customerTaskList);
 
-  componentDidUpdate(prevProps) {
+  useEffect(() => {
+    props.fetchUniverseMetadata();
+    props.fetchUniverseTasks();
+
+    return () => props.resetUniverseTasks();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
     if (
-      !_.isEqual(this.props.universe.universeList, prevProps.universe.universeList) ||
-      (this.props.universe.universeList &&
-        !_.isEqual(this.props.tasks.customerTaskList, prevProps.tasks.customerTaskList))
+      !_.isEqual(universeUUIDs, prevUniverseUUIDs) ||
+      !_.isEqual(customerTaskList, prevCustomerTaskList)
     ) {
-      this.updateUniversePendingTasks(this.props.universe.universeList.data);
+      updateUniversePendingTasks(universeUUIDs, customerTaskList);
     }
-  }
+  }, [universeList.data, customerTaskList]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  componentWillUnmount() {
-    this.props.resetUniverseTasks();
-  }
-
-  handleSearchTokenChange = (newTokens) => {
-    this.setState({ searchTokens: newTokens });
-  };
-
-  handleSortFieldChange = (event) => {
-    this.setState({ sortField: event.target.value });
-  };
-
-  handleSortOrderChange = (event) => {
-    this.setState({ sortOrder: event.target.value });
-  };
-
-  updateUniversePendingTasks(universes) {
-    const { tasks } = this.props;
+  const updateUniversePendingTasks = (universeUUIDs, customerTaskList) => {
     const newUniversePendingTasks = {};
-    universes.forEach((universe) => {
-      const universePendingTask = getUniversePendingTask(
-        universe.universeUUID,
-        tasks.customerTaskList
-      );
-      newUniversePendingTasks[universe.universeUUID] = universePendingTask;
+    universeUUIDs.forEach((universeUUID) => {
+      const universePendingTask = getUniversePendingTask(universeUUID, customerTaskList);
+      newUniversePendingTasks[universeUUID] = universePendingTask;
     });
-    this.setState({ universePendingTasks: newUniversePendingTasks });
-  }
+    setUniversePendingTasks(newUniversePendingTasks);
+  };
 
-  universeSortFunction = (a, b) => {
-    const { sortField, sortOrder } = this.state;
+  const handleSearchTokenChange = (newTokens) => {
+    setSearchTokens(newTokens);
+  };
+
+  const handleSortFieldChange = (newField) => {
+    setSortField(newField);
+  };
+
+  const handleSortOrderChange = (newOrder) => {
+    setSortOrder(newOrder);
+  };
+
+  const universeSortFunction = (a, b) => {
     let order = 0;
     if (sortField === 'Creation Date') {
       order = Date.parse(a.creationDate) - Date.parse(b.creationDate);
-    }
-    // Break ties with universe name in ascending order
-    const sortKey = dropdownFieldKeys[sortField].value;
-    if (a[sortKey] === b[sortKey]) {
-      return a.name < b.name ? -1 : 1;
+    } else {
+      // Break ties with universe name in ascending order
+      const sortKey = dropdownFieldKeys[sortField].value;
+      order = a[sortKey] < b[sortKey] ? -1 : 1;
+      if (a[sortKey] === b[sortKey]) {
+        return a.name < b.name ? -1 : 1;
+      }
     }
 
-    order = a[sortKey] < b[sortKey] ? -1 : 1;
     return sortOrder === 'Ascending' ? order : order * -1;
   };
 
-  render() {
-    const self = this;
-    const {
-      universe: { universeList },
-      customer: { currentCustomer }
-    } = this.props;
-    const { sortField, sortOrder, universePendingTasks } = this.state;
-    showOrRedirect(currentCustomer.data.features, 'menu.universes');
+  showOrRedirect(currentCustomer.data.features, 'menu.universes');
 
-    if (!_.isObject(universeList) || !isNonEmptyArray(universeList.data)) {
-      return <h5>No universes defined.</h5>;
-    }
-    let universes = universeList.data.map((universeBase) => {
-      let universe = _.cloneDeep(universeBase);
-      universe.pricePerMonth = universe.pricePerHour * 24 * moment().daysInMonth();
+  if (!_.isObject(universeList) || !isNonEmptyArray(universeList.data)) {
+    return <h5>No universes defined.</h5>;
+  }
+  let universes = universeList.data.map((universeBase) => {
+    const universe = _.cloneDeep(universeBase);
+    universe.pricePerMonth = universe.pricePerHour * 24 * moment().daysInMonth();
 
-      const clusterProviderUUIDs = getClusterProviderUUIDs(universe.universeDetails.clusters);
-      const clusterProviders = this.props.providers.data.filter((p) =>
-        clusterProviderUUIDs.includes(p.uuid)
-      );
-      universe.providerTypes = clusterProviders.map((provider) => {
-        return getProviderMetadata(provider).name;
-      });
-      universe.providerNames = clusterProviders.map((provider) => provider.name);
-
-      const universeStatus = getUniverseStatus(
-        universe,
-        universePendingTasks[universe.universeUUID]
-      );
-      universe.status = universeStatus.statusText;
-      return universe;
+    const clusterProviderUUIDs = getClusterProviderUUIDs(universe.universeDetails.clusters);
+    const clusterProviders = props.providers.data.filter((p) =>
+      clusterProviderUUIDs.includes(p.uuid)
+    );
+    universe.providerTypes = clusterProviders.map((provider) => {
+      return getProviderMetadata(provider).name;
     });
+    universe.providerNames = clusterProviders.map((provider) => provider.name);
 
-    universes = filterBySearchTokens(universes, this.state.searchTokens, dropdownFieldKeys);
-    const universeRowItem = universes.sort(this.universeSortFunction).map((item, idx) => {
-      return <YBUniverseItem {...self.props} key={item.universeUUID} idx={idx} universe={item} />;
-    });
+    const universeStatus = getUniverseStatus(universe, universePendingTasks[universe.universeUUID]);
+    universe.status = universeStatus.statusText;
+    return universe;
+  });
 
-    return (
-      <React.Fragment>
-        <div className="universe-list-table-toolbar-container">
-          <YBControlledSelectWithLabel
-            label="Sort Field"
-            options={Object.keys(dropdownFieldKeys)
-              .filter((field) => dropdownFieldKeys[field].type !== 'stringArray')
-              .map((field, idx) => (
-                <option key={idx} id={idx}>
-                  {field}
-                </option>
-              ))}
-            selectVal={sortField}
-            onInputChanged={this.handleSortFieldChange}
-          />
-          <YBControlledSelectWithLabel
-            label="Sort Order"
-            options={['Ascending', 'Descending'].map((field, idx) => (
+  universes = filterBySearchTokens(universes, searchTokens, dropdownFieldKeys);
+  const universeRowItem = universes.sort(universeSortFunction).map((item, idx) => {
+    return <YBUniverseItem {...props} key={item.universeUUID} idx={idx} universe={item} />;
+  });
+
+  return (
+    <React.Fragment>
+      <div className="universe-list-table-toolbar-container">
+        <YBControlledSelectWithLabel
+          label="Sort Field"
+          options={Object.keys(dropdownFieldKeys)
+            .filter((field) => dropdownFieldKeys[field].type !== 'stringArray')
+            .map((field, idx) => (
               <option key={idx} id={idx}>
                 {field}
               </option>
             ))}
-            selectVal={sortOrder}
-            onInputChanged={this.handleSortOrderChange}
-          />
-          <div className="universe-list-table-toolbar-button-container">{this.props.children}</div>
-        </div>
-        <QuerySearchInput
-          id="universe-list-search-bar"
-          columns={dropdownFieldKeys}
-          placeholder="Filter by universe details"
-          searchTerms={this.state.searchTokens}
-          onSubmitSearchTerms={this.handleSearchTokenChange}
+          selectVal={sortField}
+          onInputChanged={(event) => handleSortFieldChange(event.target.value)}
         />
-        <ListGroup>{universeRowItem}</ListGroup>
-      </React.Fragment>
-    );
-  }
-}
+        <YBControlledSelectWithLabel
+          label="Sort Order"
+          options={['Ascending', 'Descending'].map((field, idx) => (
+            <option key={idx} id={idx}>
+              {field}
+            </option>
+          ))}
+          selectVal={sortOrder}
+          onInputChanged={(event) => handleSortOrderChange(event.target.value)}
+        />
+        <div className="universe-list-table-toolbar-button-container">{props.children}</div>
+      </div>
+      <QuerySearchInput
+        id="universe-list-search-bar"
+        columns={dropdownFieldKeys}
+        placeholder="Filter by universe details"
+        searchTerms={searchTokens}
+        onSubmitSearchTerms={handleSearchTokenChange}
+      />
+      <ListGroup>{universeRowItem}</ListGroup>
+    </React.Fragment>
+  );
+};
