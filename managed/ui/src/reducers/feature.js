@@ -12,7 +12,7 @@ const initialStateFeatureReleased = {
   pausedUniverse: true,
   addListMultiProvider: true,
   adminAlertsConfig:true,
-  enableNewEncryptionInTransitModal: false,
+  enableNewEncryptionInTransitModal: true,
   addRestoreTimeStamp: false,
 };
 
