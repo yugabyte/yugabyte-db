@@ -142,5 +142,11 @@ size_t PgWire::ReadBytes(Slice *cursor, char *value, int64_t bytes) {
   return bytes;
 }
 
+// Read Text data into string
+size_t PgWire::ReadString(Slice *cursor, string *value, int64_t bytes) {
+  *value = string(cursor->cdata(), bytes);
+  return bytes;
+}
+
 }  // namespace pggate
 }  // namespace yb

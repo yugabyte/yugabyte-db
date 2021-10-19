@@ -50,6 +50,7 @@ class PgWire {
 
   // Read Text Data
   static size_t ReadBytes(Slice *cursor, char *value, int64_t bytes);
+  static size_t ReadString(Slice *cursor, string *value, int64_t bytes);
 
   //------------------------------------------------------------------------------------------------
   // Write Numeric Data
