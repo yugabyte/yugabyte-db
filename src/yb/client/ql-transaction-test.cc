@@ -687,7 +687,7 @@ void QLTransactionTest::TestWriteConflicts(const WriteConflictsOptions& options)
       const auto val = ++value;
       table_.AddInt32ColumnValue(req, kValueColumn, val);
       LOG(INFO) << "TXN: " << active_txn.ToString() << " write " << key << " = " << val;
-      ASSERT_OK(active_txn.session->Apply(op));
+      active_txn.session->Apply(op);
       active_txn.flush_future = active_txn.session->FlushFuture();
 
       ++tries;

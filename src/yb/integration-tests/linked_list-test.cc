@@ -335,9 +335,7 @@ class LinkedListChainGenerator {
     QLAddInt64HashValue(req, this_key);
     table.AddInt64ColumnValue(req, kInsertTsColumnName, ts);
     table.AddInt64ColumnValue(req, kLinkColumnName, prev_key_);
-    RETURN_NOT_OK_PREPEND(
-        session->Apply(insert),
-        strings::Substitute("Unable to apply insert with key $0 at ts $1", this_key, ts));
+    session->Apply(insert);
     prev_key_ = this_key;
     return Status::OK();
   }
@@ -392,7 +390,7 @@ class ScopedRowUpdater {
       QLAddInt64HashValue(req, next_key);
       table_.AddBoolColumnValue(req, kUpdatedColumnName, true);
       ops.push_back(update);
-      CHECK_OK(session->Apply(update));
+      session->Apply(update);
       if (ops.size() >= 50) {
         FlushSessionOrDie(session, ops);
         ops.clear();

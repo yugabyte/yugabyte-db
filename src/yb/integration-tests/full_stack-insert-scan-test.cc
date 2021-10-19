@@ -417,7 +417,7 @@ void FullStackInsertScanTest::InsertRows(CountDownLatch* start_latch, int id,
   for (int64_t key = start; key < end; ++key) {
     auto op = table->NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
     RandomRow(&rng, op->mutable_request(), randstr, key, id, table);
-    ASSERT_OK(session->Apply(op));
+    session->Apply(op);
 
     // Report updates or flush every so often, using the synchronizer to always
     // start filling up the next batch while previous one is sent out.
