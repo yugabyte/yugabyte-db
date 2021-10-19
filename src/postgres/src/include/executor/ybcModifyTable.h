@@ -84,12 +84,15 @@ extern void YBCExecuteInsertIndexForDb(Oid dboid,
  * Delete a tuple (identified by ybctid) from a YugaByte table.
  * If this is a single row op we will return false in the case that there was
  * no row to delete. This can occur because we do not first perform a scan if
- * it is a single row op.
+ * it is a single row op. 'changingPart' indicates if this delete is part of an
+ * UPDATE operation on a partitioned table that moves a row from one partition
+ * to anoter.
  */
 extern bool YBCExecuteDelete(Relation rel,
 							 TupleTableSlot *slot,
 							 EState *estate,
-							 ModifyTableState *mtstate);
+							 ModifyTableState *mtstate,
+							 bool changingPart);
 /*
  * Delete a tuple (identified by index columns and base table ybctid) from an
  * index's backing YugaByte index table.
