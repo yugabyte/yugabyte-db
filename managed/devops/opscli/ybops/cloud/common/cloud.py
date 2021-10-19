@@ -530,14 +530,14 @@ class AbstractCloud(AbstractCommandParser):
             ssh_port = int(ssh_port)
 
             while retry_count < self.SSH_RETRY_COUNT:
+                logging.info("[app] Waiting for ssh: {}:{}".format(private_ip, str(ssh_port)))
+                time.sleep(self.SSH_WAIT_SECONDS)
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 result = sock.connect_ex((private_ip, ssh_port))
 
                 if result == 0:
                     break
 
-                logging.info("[app] Waiting for ssh: {}:{}".format(private_ip, str(ssh_port)))
-                time.sleep(self.SSH_WAIT_SECONDS)
                 retry_count += 1
             else:
                 logging.error("[app] Start instance {} exceeded maxRetries!".format(instance_name))
