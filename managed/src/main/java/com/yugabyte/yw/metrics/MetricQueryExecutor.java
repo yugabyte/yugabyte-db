@@ -19,7 +19,7 @@ import play.libs.Json;
 
 public class MetricQueryExecutor implements Callable<JsonNode> {
   public static final Logger LOG = LoggerFactory.getLogger(MetricQueryExecutor.class);
-  public static final String DATE_FORMAT_STRING = "yyyy-MM-dd HH:mm:ss";
+  public static final String DATE_FORMAT_STRING = "yyyy-MM-dd'T'HH:mm:ssZ";
   private ApiHelper apiHelper;
   private play.Configuration appConfig;
   private YBMetricQueryComponent ybMetricQueryComponent;

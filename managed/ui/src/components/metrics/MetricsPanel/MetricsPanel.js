@@ -1,19 +1,20 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import React, {Component} from 'react';
 import PropTypes from 'prop-types';
 import {
-  removeNullProperties,
-  isNonEmptyObject,
+  divideYAxisByThousand,
   isNonEmptyArray,
+  isNonEmptyObject,
   isNonEmptyString,
   isYAxisGreaterThanThousand,
-  divideYAxisByThousand
+  removeNullProperties
 } from '../../../utils/ObjectUtils';
 import './MetricsPanel.scss';
-import { METRIC_FONT } from '../MetricsConfig';
+import {METRIC_FONT} from '../MetricsConfig';
 import _ from 'lodash';
 import moment from "moment";
+import {OverlayTrigger, Tooltip} from "react-bootstrap";
 
 const Plotly = require('plotly.js/lib/core');
 
@@ -170,8 +171,24 @@ export default class MetricsPanel extends Component {
   }
 
   render() {
+    const { prometheusQueryEnabled } = this.props;
+    const tooltip = (
+      <Tooltip id="tooltip" className="prometheus-link-tooltip">
+        Query in Prometheus
+      </Tooltip>
+    );
     return (
       <div id={this.props.metricKey} className="metrics-panel">
+        {prometheusQueryEnabled ?
+          (
+            <OverlayTrigger placement="top" overlay={tooltip}>
+              <a target="_blank" rel="noopener noreferrer" className="prometheus-link" href={this.props.metric.directURL}>
+                <span className="prometheus-link-icon fa fa-external-link"></span>
+              </a>
+            </OverlayTrigger>
+          )
+          : null
+        }
         <div />
       </div>
     );

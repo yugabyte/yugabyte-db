@@ -6,7 +6,8 @@ import {
   QUERY_METRICS,
   QUERY_METRICS_SUCCESS,
   QUERY_METRICS_FAILURE,
-  RESET_METRICS
+  RESET_METRICS,
+  TOGGLE_PROMETHEUS_QUERY
 } from '../actions/graph';
 import { DEFAULT_GRAPH_FILTER } from '../components/metrics';
 
@@ -15,7 +16,8 @@ const INITIAL_STATE = {
   metrics: {},
   loading: false,
   error: null,
-  universeMetricList: []
+  universeMetricList: [],
+  prometheusQueryEnabled: false,
 };
 
 export default function (state = INITIAL_STATE, action) {
@@ -42,6 +44,8 @@ export default function (state = INITIAL_STATE, action) {
     }
     case RESET_METRICS:
       return { ...state, metrics: {}, loading: false, panelType: null };
+    case TOGGLE_PROMETHEUS_QUERY:
+      return { ...state, prometheusQueryEnabled: !state.prometheusQueryEnabled };
     default:
       return state;
   }

@@ -161,7 +161,9 @@ class GraphPanelHeader extends Component {
   }
 
   shouldComponentUpdate(nextProps, nextState) {
-    return !_.isEqual(nextState, this.state) || !_.isEqual(nextProps.universe, this.props.universe);
+    return !_.isEqual(nextState, this.state)
+      || !_.isEqual(nextProps.universe, this.props.universe)
+      || this.props.prometheusQueryEnabled !== nextProps.prometheusQueryEnabled;
   }
 
   submitGraphFilters = (type, val) => {
@@ -272,7 +274,8 @@ class GraphPanelHeader extends Component {
   render() {
     const {
       origin,
-      universe: { currentUniverse }
+      universe: { currentUniverse },
+      prometheusQueryEnabled,
     } = this.props;
     const universePaused = currentUniverse?.data?.universeDetails?.universePaused;
     let datePicker = null;
@@ -373,6 +376,20 @@ class GraphPanelHeader extends Component {
                     <div className="timezone">
                       Timezone: {moment().format('[UTC]ZZ')}
                     </div>
+                    <Dropdown id="graphSettingDropdown" className="graph-setting-dropdown" pullRight>
+                      <Dropdown.Toggle noCaret>
+                        <i className="graph-settings-icon fa fa-cog"></i>
+                      </Dropdown.Toggle>
+                      <Dropdown.Menu>
+                        <MenuItem className="dropdown-header" header>
+                          VIEW OPTIONS
+                        </MenuItem>
+                        <MenuItem divider />
+                        <MenuItem onSelect={self.props.togglePrometheusQuery}>
+                          {prometheusQueryEnabled ? "Disable Prometheus query" : "Enable Prometheus query"}
+                        </MenuItem>
+                      </Dropdown.Menu>
+                    </Dropdown>
                     {datePicker}
                     <Dropdown id="graph-filter-dropdown" pullRight={true}>
                       {!universePaused &&
