@@ -2,41 +2,45 @@
 
 package com.yugabyte.yw.models;
 
-import java.util.Date;
-import java.util.UUID;
-import java.util.List;
-import java.util.stream.Collectors;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.Enumerated;
-import javax.persistence.EnumType;
-import javax.persistence.Id;
-
-import org.joda.time.DateTime;
-import org.mindrot.jbcrypt.BCrypt;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import io.ebean.*;
-import io.ebean.annotation.*;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.common.YWServiceException;
-
+import com.yugabyte.yw.common.PlatformServiceException;
+import io.ebean.DuplicateKeyException;
+import io.ebean.Finder;
+import io.ebean.Model;
+import io.ebean.annotation.EnumValue;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
+import java.util.Date;
+import java.util.List;
+import java.util.UUID;
+import java.util.stream.Collectors;
+import javax.persistence.Column;
+import javax.persistence.Entity;
+import javax.persistence.EnumType;
+import javax.persistence.Enumerated;
+import javax.persistence.Id;
+import org.joda.time.DateTime;
+import org.mindrot.jbcrypt.BCrypt;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
 import play.libs.Json;
-import static play.mvc.Http.Status.BAD_REQUEST;
+import play.mvc.Http.Status;
 
 @Entity
+@ApiModel(description = "A user associated with a customer")
 public class Users extends Model {
 
   public static final Logger LOG = LoggerFactory.getLogger(Users.class);
   // A globally unique UUID for the Users.
 
-  /** These are the various states of the task and taskgroup. */
+  /** These are the available user roles */
   public enum Role {
     @EnumValue("Admin")
     Admin,
@@ -68,9 +72,11 @@ public class Users extends Model {
 
   @Id
   @Column(nullable = false, unique = true)
+  @ApiModelProperty(value = "User UUID", accessMode = READ_ONLY)
   public UUID uuid = UUID.randomUUID();
 
   @Column(nullable = false)
+  @ApiModelProperty(value = "Customer UUID", accessMode = READ_ONLY)
   public UUID customerUUID;
 
   public void setCustomerUuid(UUID id) {
@@ -80,6 +86,10 @@ public class Users extends Model {
   @Column(length = 256, unique = true, nullable = false)
   @Constraints.Required
   @Constraints.Email
+  @ApiModelProperty(
+      value = "User email address",
+      example = "username1@example.com",
+      required = true)
   public String email;
 
   public String getEmail() {
@@ -88,6 +98,9 @@ public class Users extends Model {
 
   @JsonIgnore
   @Column(length = 256, nullable = false)
+  @ApiModelProperty(
+      value = "User password hash",
+      example = "$2y$10$ABccHWa1DO2VhcF1Ea2L7eOBZRhktsJWbFaB/aEjLfpaplDBIJ8K6")
   public String passwordHash;
 
   public void setPassword(String password) {
@@ -96,23 +109,34 @@ public class Users extends Model {
 
   @Column(nullable = false)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+  @ApiModelProperty(
+      value = "User creation date",
+      example = "2021-06-17 15:00:05",
+      accessMode = READ_ONLY)
   public Date creationDate;
 
   private String authToken;
 
   @Column(nullable = true)
+  @ApiModelProperty(
+      value = "API token creation date",
+      example = "1624255408795",
+      accessMode = READ_ONLY)
   private Date authTokenIssueDate;
 
   @JsonIgnore
   @Column(nullable = true)
+  @ApiModelProperty(value = "User API token", accessMode = READ_ONLY)
   private String apiToken;
 
   @Column(nullable = true, columnDefinition = "TEXT")
+  @ApiModelProperty(value = "UI_ONLY", hidden = true, accessMode = READ_ONLY)
   private JsonNode features;
 
   // The role of the user.
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
+  @ApiModelProperty(value = "User role")
   private Role role;
 
   public Role getRole() {
@@ -124,6 +148,7 @@ public class Users extends Model {
   }
 
   @Column(nullable = false)
+  @ApiModelProperty(value = "True if the user is the primary user")
   private boolean isPrimary;
 
   public boolean getIsPrimary() {
@@ -148,7 +173,7 @@ public class Users extends Model {
   public static Users getOrBadRequest(UUID userUUID) {
     Users user = get(userUUID);
     if (user == null) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid User UUID:" + userUUID);
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid User UUID:" + userUUID);
     }
     return user;
   }
@@ -161,19 +186,37 @@ public class Users extends Model {
     this.creationDate = new Date();
   }
 
-  public static Users create(String email, String password, Role role, UUID customerUUID) {
-    return Users.create(email, password, role, customerUUID, false);
-  }
-
   /**
    * Create new Users, we encrypt the password before we store it in the DB
    *
-   * @param name
    * @param email
    * @param password
    * @return Newly Created Users
    */
   public static Users create(
+      String email, String password, Role role, UUID customerUUID, boolean isPrimary) {
+    try {
+      return createInternal(email, password, role, customerUUID, isPrimary);
+    } catch (DuplicateKeyException pe) {
+      throw new PlatformServiceException(Status.CONFLICT, "User already exists");
+    }
+  }
+
+  /**
+   * Create first Users associated to a customer, we encrypt the password before we store it in the
+   * DB
+   *
+   * @return Newly Created Primary User
+   */
+  public static Users createPrimary(String email, String password, Role role, UUID customerUUID) {
+    try {
+      return createInternal(email, password, role, customerUUID, true);
+    } catch (DuplicateKeyException pe) {
+      throw new PlatformServiceException(Status.CONFLICT, "Customer already registered.");
+    }
+  }
+
+  static Users createInternal(
       String email, String password, Role role, UUID customerUUID, boolean isPrimary) {
     Users users = new Users();
     users.email = email.toLowerCase();
@@ -257,7 +300,7 @@ public class Users extends Model {
     if (apiToken == null) {
       return null;
     }
-    return apiToken.toString();
+    return apiToken;
   }
 
   /**

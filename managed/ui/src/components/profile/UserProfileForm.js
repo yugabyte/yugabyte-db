@@ -6,12 +6,14 @@ import { isEqual } from 'lodash';
 import { Row, Col } from 'react-bootstrap';
 import { YBFormInput, YBButton } from '../common/forms/fields';
 import { Formik, Form, Field } from 'formik';
-import { showOrRedirect, isDisabled } from '../../utils/LayoutUtils';
+import { showOrRedirect } from '../../utils/LayoutUtils';
 import { FlexContainer, FlexGrow, FlexShrink } from '../common/flexbox/YBFlexBox';
 import { YBCopyButton } from '../common/descriptors';
 import * as Yup from 'yup';
 import { isNonEmptyArray } from '../../utils/ObjectUtils';
 import { getPromiseState } from '../../utils/PromiseUtils';
+
+const MIN_PASSWORD_LENGTH = 8;
 
 export default class UserProfileForm extends Component {
   constructor(props) {
@@ -19,6 +21,11 @@ export default class UserProfileForm extends Component {
     this.state = {
       statusUpdated: false
     };
+  }
+
+  componentDidMount() {
+    const { validateRegistration } = this.props;
+    validateRegistration();
   }
 
   handleRefreshApiToken = (e) => {
@@ -47,8 +54,10 @@ export default class UserProfileForm extends Component {
       users = [],
       apiToken,
       updateCustomerDetails,
-      changeUserPassword
+      changeUserPassword,
+      passwordValidationInfo
     } = this.props;
+    const minPasswordLength = passwordValidationInfo?.minLength || MIN_PASSWORD_LENGTH;
 
     showOrRedirect(customer.data.features, 'main.profile');
 
@@ -69,9 +78,12 @@ export default class UserProfileForm extends Component {
 
       password: Yup.string()
         .notRequired()
-        .min(8, 'Password is too short - must be 8 characters minimum.')
+        .min(minPasswordLength, `Password is too short - must be ${minPasswordLength} characters minimum.`)
         .matches(/^(?=.*[0-9])(?=.*[!@#$%^&*])(?=.*[a-z])(?=.*[A-Z])[a-zA-Z0-9!@#$%^&*]{8,256}$/,
-          'Password must contain at least 1 digit, 1 capital, 1 lowercase and one of the !@#$%^&* (special) characters.')
+        `Password must contain at least ${passwordValidationInfo?.minDigits} digit
+          , ${passwordValidationInfo?.minUppercase} capital
+          , ${passwordValidationInfo?.minLowercase} lowercase
+          and ${passwordValidationInfo?.minSpecialCharacters} of the !@#$%^&* (special) characters.`)
         .oneOf([Yup.ref('confirmPassword')], "Passwords don't match"),
 
       confirmPassword: Yup.string()
@@ -88,6 +100,7 @@ export default class UserProfileForm extends Component {
       name: customer.data.name || '',
       email: (getCurrentUser.length && getCurrentUser[0].email) || '',
       code: customer.data.code || '',
+      customerId: customer.data.uuid,
       password: '',
       confirmPassword: ''
     };
@@ -210,6 +223,14 @@ export default class UserProfileForm extends Component {
                       />
                     </FlexShrink>
                   </FlexContainer>
+                  <Field
+                    name="customerId"
+                    readOnly={true}
+                    type="text"
+                    label="Customer ID"
+                    component={YBFormInput}
+                    placeholder="Customer ID"
+                  />
                 </Col>
               </Row>
               <div className="form-action-button-container">
@@ -217,7 +238,7 @@ export default class UserProfileForm extends Component {
                   <YBButton
                     btnText="Save"
                     btnType="submit"
-                    disabled={isSubmitting || isDisabled(customer.data.features, 'universe.create')}
+                    disabled={isSubmitting}
                     btnClass="btn btn-orange pull-right"
                   />
                 </Col>

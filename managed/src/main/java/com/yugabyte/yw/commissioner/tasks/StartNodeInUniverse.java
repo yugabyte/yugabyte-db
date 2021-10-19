@@ -10,7 +10,10 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.common.Util.areMastersUnderReplicated;
+
 import com.google.common.collect.ImmutableList;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
@@ -19,17 +22,22 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-
 import java.util.Arrays;
 import java.util.HashSet;
-
-import static com.yugabyte.yw.common.Util.areMastersUnderReplicated;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Class contains the tasks to start a node in a given universe. It starts the tserver process and
  * the master process if needed.
  */
+@Slf4j
 public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
+
+  @Inject
+  protected StartNodeInUniverse(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   @Override
   protected NodeTaskParams taskParams() {
@@ -39,22 +47,22 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
   @Override
   public void run() {
     NodeDetails currentNode = null;
-    boolean hitException = false;
     try {
       checkUniverseVersion();
       // Create the task list sequence.
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
       // Set the 'updateInProgress' flag to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
-      LOG.info(
-          "Start Node with name {} from universe {}",
+      log.info(
+          "Start Node with name {} from universe {} ({})",
           taskParams().nodeName,
-          taskParams().universeUUID);
+          taskParams().universeUUID,
+          universe.name);
 
       currentNode = universe.getNode(taskParams().nodeName);
       if (currentNode == null) {
         String msg = "No node " + taskParams().nodeName + " found in universe " + universe.name;
-        LOG.error(msg);
+        log.error(msg);
         throw new RuntimeException(msg);
       }
 
@@ -62,20 +70,14 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
       taskParams().placementUuid = currentNode.placementUuid;
       if (!instanceExists(taskParams())) {
         String msg = "No instance exists for " + taskParams().nodeName;
-        LOG.error(msg);
+        log.error(msg);
         throw new RuntimeException(msg);
       }
 
+      preTaskActions();
+
       // Update node state to Starting
       createSetNodeStateTask(currentNode, NodeState.Starting)
-          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
-
-      // Start the tserver process
-      createTServerTaskForNode(currentNode, "start")
-          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
-
-      // Mark the node process flags as true.
-      createUpdateNodeProcessTask(taskParams().nodeName, ServerType.TSERVER, true)
           .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
       // Bring up any masters, as needed.
@@ -98,7 +100,7 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
             .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
         // Mark node as isMaster in YW DB.
-        createUpdateNodeProcessTask(taskParams().nodeName, ServerType.MASTER, true)
+        createUpdateNodeProcessTask(taskParams().nodeName, ServerType.MASTER, true /* isAdd */)
             .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
         // Wait for the master to be responsive.
@@ -111,6 +113,19 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
 
         masterAdded = true;
       }
+
+      // Start the tserver process
+      createTServerTaskForNode(currentNode, "start")
+          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+
+      // Mark the node process flags as true.
+      createUpdateNodeProcessTask(taskParams().nodeName, ServerType.TSERVER, true /* isAdd */)
+          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+
+      // Wait for the tablet server to be responsive.
+      createWaitForServersTasks(
+              new HashSet<NodeDetails>(Arrays.asList(currentNode)), ServerType.TSERVER)
+          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
       // Update all server conf files with new master information.
       if (masterAdded) {
@@ -137,16 +152,15 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
 
       subTaskGroupQueue.run();
     } catch (Throwable t) {
-      LOG.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
-      hitException = true;
-      throw t;
-    } finally {
+      log.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
       // Reset the state, on any failure, so that the actions can be retried.
-      if (currentNode != null && hitException) {
+      if (currentNode != null) {
         setNodeState(taskParams().nodeName, currentNode.state);
       }
+      throw t;
+    } finally {
       unlockUniverseForUpdate();
     }
-    LOG.info("Finished {} task.", getName());
+    log.info("Finished {} task.", getName());
   }
 }

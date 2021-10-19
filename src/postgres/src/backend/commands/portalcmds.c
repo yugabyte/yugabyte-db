@@ -293,12 +293,21 @@ PortalCleanup(Portal portal)
 
 			/* We must make the portal's resource owner current */
 			saveResourceOwner = CurrentResourceOwner;
-			if (portal->resowner)
-				CurrentResourceOwner = portal->resowner;
+			PG_TRY();
+			{
+				if (portal->resowner)
+					CurrentResourceOwner = portal->resowner;
 
-			ExecutorFinish(queryDesc);
-			ExecutorEnd(queryDesc);
-			FreeQueryDesc(queryDesc);
+				ExecutorFinish(queryDesc);
+				ExecutorEnd(queryDesc);
+				FreeQueryDesc(queryDesc);
+			}
+			PG_CATCH();
+			{
+				CurrentResourceOwner = saveResourceOwner;
+				PG_RE_THROW();
+			}
+			PG_END_TRY();
 
 			CurrentResourceOwner = saveResourceOwner;
 		}
@@ -369,10 +378,23 @@ PersistHoldablePortal(Portal portal)
 		PushActiveSnapshot(queryDesc->snapshot);
 
 		/*
-		 * Rewind the executor: we need to store the entire result set in the
-		 * tuplestore, so that subsequent backward FETCHs can be processed.
+		 * If the portal is marked scrollable, we need to store the entire
+		 * result set in the tuplestore, so that subsequent backward FETCHs
+		 * can be processed.  Otherwise, store only the not-yet-fetched rows.
+		 * (The latter is not only more efficient, but avoids semantic
+		 * problems if the query's output isn't stable.)
 		 */
-		ExecutorRewind(queryDesc);
+		if (portal->cursorOptions & CURSOR_OPT_SCROLL)
+		{
+			ExecutorRewind(queryDesc);
+		}
+		else
+		{
+			/* We must reset the cursor state as though at start of query */
+			portal->atStart = true;
+			portal->atEnd = false;
+			portal->portalPos = 0;
+		}
 
 		/*
 		 * Change the destination to output to the tuplestore.  Note we tell

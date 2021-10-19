@@ -47,8 +47,8 @@
 #include <vector>
 #include <boost/optional/optional_fwd.hpp>
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
+#include "yb/client/client_fwd.h"
 #include "yb/common/entity_ids.h"
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
@@ -90,10 +90,10 @@ namespace itest {
 struct TServerDetails {
   NodeInstancePB instance_id;
   master::TSRegistrationPB registration;
-  gscoped_ptr<tserver::TabletServerServiceProxy> tserver_proxy;
-  gscoped_ptr<tserver::TabletServerAdminServiceProxy> tserver_admin_proxy;
-  gscoped_ptr<consensus::ConsensusServiceProxy> consensus_proxy;
-  gscoped_ptr<server::GenericServiceProxy> generic_proxy;
+  std::unique_ptr<tserver::TabletServerServiceProxy> tserver_proxy;
+  std::unique_ptr<tserver::TabletServerAdminServiceProxy> tserver_admin_proxy;
+  std::unique_ptr<consensus::ConsensusServiceProxy> consensus_proxy;
+  std::unique_ptr<server::GenericServiceProxy> generic_proxy;
 
   // Convenience function to get the UUID from the instance_id struct.
   const std::string& uuid() const;
@@ -399,6 +399,7 @@ Status GetTabletLocations(const std::shared_ptr<master::MasterServiceProxy>& mas
 Status GetTableLocations(const std::shared_ptr<master::MasterServiceProxy>& master_proxy,
                          const client::YBTableName& table_name,
                          const MonoDelta& timeout,
+                         RequireTabletsRunning require_tablets_running,
                          master::GetTableLocationsResponsePB* table_locations);
 
 // Wait for the specified number of voters to be reported to the config on the

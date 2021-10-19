@@ -142,7 +142,7 @@ def set_env_vars_from_build_root(build_root: str) -> None:
     os.environ['YB_COMPILER_TYPE'] = compiler_type_from_build_root
 
 
-def safe_path_join(*args: List[Optional[str]]) -> str:
+def safe_path_join(args: List[Optional[str]]) -> Optional[str]:
     """Like os.path.join, but allows the first argument to be None."""
     if args[0] is None:
         return None
@@ -237,7 +237,7 @@ def write_json_file(
         json_data: Any, output_path: str, description_for_log: Optional[str] = None) -> None:
     with open(output_path, 'w') as output_file:
         json.dump(json_data, output_file, indent=JSON_INDENTATION)
-        if description_for_log is None:
+        if description_for_log is not None:
             logging.info("Wrote %s: %s", description_for_log, output_path)
 
 

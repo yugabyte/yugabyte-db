@@ -146,7 +146,7 @@ class DocKey {
     return !cotable_id_.IsNil();
   }
 
-  const PgTableOid pgtable_id() const {
+  PgTableOid pgtable_id() const {
     return pgtable_id_;
   }
 
@@ -198,6 +198,9 @@ class DocKey {
 
   static Result<size_t> EncodedSize(
       Slice slice, DocKeyPart part, AllowSpecial allow_special = AllowSpecial::kFalse);
+
+  // Returns size of the encoded `part` of DocKey and whether it has hash code present.
+  static Result<std::pair<size_t, bool>> EncodedSizeAndHashPresent(Slice slice, DocKeyPart part);
 
   // Returns size of encoded hash part and whole part of DocKey.
   static Result<std::pair<size_t, size_t>> EncodedHashPartAndDocKeySizes(

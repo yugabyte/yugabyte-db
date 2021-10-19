@@ -300,9 +300,6 @@ void CompactionJob::Prepare() {
   if (c->ShouldFormSubcompactions()) {
     const uint64_t start_micros = env_->NowMicros();
     GenSubcompactionBoundaries();
-    MeasureTime(stats_, SUBCOMPACTION_SETUP_TIME,
-                env_->NowMicros() - start_micros);
-
     assert(sizes_.size() == boundaries_.size() + 1);
 
     for (size_t i = 0; i <= boundaries_.size(); i++) {
@@ -310,8 +307,6 @@ void CompactionJob::Prepare() {
       Slice* end = i == boundaries_.size() ? nullptr : &boundaries_[i];
       compact_->sub_compact_states.emplace_back(c, start, end, sizes_[i]);
     }
-    MeasureTime(stats_, NUM_SUBCOMPACTIONS_SCHEDULED,
-                compact_->sub_compact_states.size());
   } else {
     compact_->sub_compact_states.emplace_back(c, nullptr, nullptr);
   }
@@ -446,9 +441,6 @@ Result<FileNumbersHolder> CompactionJob::Run() {
   TEST_SYNC_POINT("CompactionJob::Run():Start");
   log_buffer_->FlushBufferToLog();
   LogCompaction();
-  for (auto listener : db_options_.listeners) {
-    listener->OnCompactionStarted();
-  }
 
   const size_t num_threads = compact_->sub_compact_states.size();
   assert(num_threads > 0);
@@ -785,7 +777,6 @@ void CompactionJob::RecordDroppedKeys(
 
 void CompactionJob::CloseFile(Status* status, std::unique_ptr<WritableFileWriter>* writer) {
   if (status->ok() && !db_options_.disableDataSync) {
-    StopWatch sw(env_, stats_, COMPACTION_OUTFILE_SYNC_MICROS);
     *status = (*writer)->Sync(db_options_.use_fsync);
   }
   if (status->ok()) {

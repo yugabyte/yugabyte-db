@@ -1,7 +1,7 @@
 ---
-title: Client drivers for YSQL API
-headerTitle: Client drivers for YSQL API
-linkTitle: Client drivers for YSQL API
+title: Client drivers for YSQL
+headerTitle: Client drivers for YSQL
+linkTitle: Client drivers for YSQL
 description: Lists the client drivers that you can use to connect to and interact with the YSQL API.
 menu:
   stable:
@@ -18,7 +18,7 @@ For details on PostgreSQL feature support in YSQL, see [What Features Does YSQL 
 
 Yugabyte and third party client drivers listed below are supported for developing applications that connect to and interact with the YSQL API. Most of the drivers use [libpq](#libpq) and support the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
-For help using these drivers with YSQL, ask your questions in the [Slack community](https://yugabyte-db.slack.com).
+For help using these drivers with YSQL, ask your questions in the [Slack community](https://www.yugabyte.com/slack).
 
 If you encounter an issue or have an enhancement request, [file a GitHub issue](https://github.com/yugabyte/yugabyte-db/issues/new/choose).
 
@@ -83,7 +83,7 @@ $ make install
 
 For details on installing and using Npgsql, see [Npgsql documentation](https://www.npgsql.org/doc/).
 
-To follow a tutorial on building a sample C# application with Npgsql, see [Build a C++ application](../../../quick-start/build-apps/csharp/ysql/).
+To follow a tutorial on building a sample C# application with Npgsql, see [Build a C# application](../../../quick-start/build-apps/csharp/ysql/).
 
 #### Install the driver
 
@@ -126,13 +126,6 @@ For a tutorial on building a sample Go application with the PostgreSQL JDBC Driv
 To download binary JAR files, go to [PostgreSQL JDBC Driver – Downloads](https://jdbc.postgresql.org/download.html).  Because Java is platform neutral, download the appropriate JAR file and drop it into the classpath.
 
 To get the latest versions for projects using [Apache Maven](https://maven.apache.org), see [Maven Central Repository Search](https://search.maven.org/artifact/org.postgresql/postgresql/42.2.14.jre7/jar).
-
-### YugabyteDB JDBC Driver [BETA]
-
-The [YugabyteDB JDBC Driver](https://jdbc.postgresql.org/) is based on the [PostgreSQL JDBC Driver (PgJDBC)](#postgresql-jdbc-driver) and incorporates all of the functionality and behavior of that driver. The YugabyteDB JDBC driver extends PgJDBC to add support for features important for distributed SQL databases created in YugabyteDB universes: cluster awareness, connection pooling, and load balancing.
-Like PgJDBC, the YugabyteDB JDBC driver is not based on [`libpq`](#libpq), but supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
-
-For details, see [YugabyteDB JDBC Driver](../yugabytedb-jdbc-driver) in this section.
 
 ## Node.JS
 

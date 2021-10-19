@@ -65,6 +65,9 @@ DEFINE_string(metric_node_name, "DEFAULT_NODE_NAME",
 DEFINE_bool(expose_metric_histogram_percentiles, true,
             "Should we expose the percentiles information for metrics histograms.");
 
+DEFINE_int32(max_tables_metrics_breakdowns, INT32_MAX,
+             "The maxmimum number of tables to retrieve metrics for");
+
 // Process/server-wide metrics should go into the 'server' entity.
 // More complex applications will define other entities.
 METRIC_DEFINE_entity(server);
@@ -167,6 +170,8 @@ const char* MetricLevelName(MetricLevel level) {
   }
 }
 
+const std::regex prometheus_name_regex("[a-zA-Z_:][a-zA-Z0-9_:]*");
+
 } // anonymous namespace
 
 //
@@ -204,8 +209,7 @@ MetricEntity::~MetricEntity() {
 }
 
 const std::regex& PrometheusNameRegex() {
-  static const std::regex result("[a-zA-Z_:][a-zA-Z0-9_:]*");
-  return result;
+  return prometheus_name_regex;
 }
 
 void MetricEntity::CheckInstantiation(const MetricPrototype* proto) const {
@@ -223,11 +227,13 @@ scoped_refptr<Metric> MetricEntity::FindOrNull(const MetricPrototype& prototype)
 
 namespace {
 
+const string kWildCardString = "*";
+
 bool MatchMetricInList(const string& metric_name,
                        const vector<string>& match_params) {
   for (const string& param : match_params) {
     // Handle wildcard.
-    if (param == "*") return true;
+    if (param == kWildCardString) return true;
     // The parameter is a substring match of the metric name.
     if (metric_name.find(param) != std::string::npos) {
       return true;
@@ -306,7 +312,10 @@ Status MetricEntity::WriteAsJson(JsonWriter* writer,
 }
 
 CHECKED_STATUS MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
+                                                const vector<string>& requested_metrics,
                                                 const MetricPrometheusOptions& opts) const {
+  bool select_all = MatchMetricInList(id(), requested_metrics);
+
   // We want the keys to be in alphabetical order when printing, so we use an ordered map here.
   typedef std::map<const char*, scoped_refptr<Metric> > OrderedMetricMap;
   OrderedMetricMap metrics;
@@ -322,9 +331,20 @@ CHECKED_STATUS MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
       const MetricPrototype* prototype = val.first;
       const scoped_refptr<Metric>& metric = val.second;
 
-      InsertOrDie(&metrics, prototype->name(), metric);
+      if (select_all || MatchMetricInList(prototype->name(), requested_metrics)) {
+        InsertOrDie(&metrics, prototype->name(), metric);
+      }
     }
   }
+
+  // If we had a filter, and we didn't either match this entity or any metrics inside
+  // it, don't print the entity at all.
+  // If metrics is empty, we'd still call the callbacks if the entity matches,
+  // i.e. requested_metrics and select_all is true.
+  if (!requested_metrics.empty() && !select_all && metrics.empty()) {
+    return Status::OK();
+  }
+
   AttributeMap prometheus_attr;
   // Per tablet metrics come with tablet_id, as well as table_id and table_name attributes.
   // We ignore the tablet part to squash at the table level.
@@ -479,6 +499,12 @@ Status MetricRegistry::WriteAsJson(JsonWriter* writer,
 
 CHECKED_STATUS MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
                                                   const MetricPrometheusOptions& opts) const {
+  return WriteForPrometheus(writer, {kWildCardString}, opts);  // Include all metrics.
+}
+
+CHECKED_STATUS MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
+                                                  const vector<string>& requested_metrics,
+                                                  const MetricPrometheusOptions& opts) const {
   EntityMap entities;
   {
     std::lock_guard<simple_spinlock> l(lock_);
@@ -490,10 +516,11 @@ CHECKED_STATUS MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
       continue;
     }
 
-    WARN_NOT_OK(e.second->WriteForPrometheus(writer, opts),
+    WARN_NOT_OK(e.second->WriteForPrometheus(writer, requested_metrics, opts),
                 Substitute("Failed to write entity $0 as Prometheus", e.second->id()));
   }
-  RETURN_NOT_OK(writer->FlushAggregatedValues());
+  RETURN_NOT_OK(writer->FlushAggregatedValues(opts.max_tables_metrics_breakdowns,
+                opts.priority_regex));
 
   // Rather than having a thread poll metrics periodically to retire old ones,
   // we'll just retire them here. The only downside is that, if no one is polling

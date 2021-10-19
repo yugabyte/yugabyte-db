@@ -468,7 +468,7 @@ DocRowwiseIterator::DocRowwiseIterator(
       pending_op_(pending_op_counter),
       done_(false) {
   projection_subkeys_.reserve(projection.num_columns() + 1);
-  projection_subkeys_.push_back(PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn));
+  projection_subkeys_.push_back(PrimitiveValue::kLivenessColumn);
   for (size_t i = projection_.num_key_columns(); i < projection.num_columns(); i++) {
     projection_subkeys_.emplace_back(projection.column_id(i));
   }
@@ -643,6 +643,10 @@ Result<bool> DocRowwiseIterator::HasNext() const {
     }
 
     VLOG(4) << "*fetched_key is " << SubDocKey::DebugSliceToString(key_data->key);
+    if (debug_dump_) {
+      LOG(INFO) << __func__ << ", fetched key: " << SubDocKey::DebugSliceToString(key_data->key)
+                << ", " << key_data->key.ToDebugHexString();
+    }
 
     // The iterator is positioned by the previous GetSubDocument call (which places the iterator
     // outside the previous doc_key). Ensure the iterator is pushed forward/backward indeed. We
@@ -709,7 +713,7 @@ Result<bool> DocRowwiseIterator::HasNext() const {
       has_next_status_ = doc_found_res.status();
       return has_next_status_;
     } else {
-      doc_found = VERIFY_RESULT(doc_found_res);
+      doc_found = *doc_found_res;
     }
     if (scan_choices_ && !is_static_column) {
       has_next_status_ = scan_choices_->DoneWithCurrentTarget();
@@ -821,8 +825,7 @@ Status DocRowwiseIterator::DoNextRow(const Schema& projection, QLTableRow* table
 }
 
 bool DocRowwiseIterator::LivenessColumnExists() const {
-  const SubDocument* subdoc = row_.GetChild(
-      PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn));
+  const SubDocument* subdoc = row_.GetChild(PrimitiveValue::kLivenessColumn);
   return subdoc != nullptr && subdoc->value_type() != ValueType::kInvalid;
 }
 

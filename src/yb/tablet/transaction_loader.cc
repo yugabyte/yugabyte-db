@@ -170,14 +170,22 @@ class TransactionLoader::Executor {
       if (value.TryConsumeByte(docdb::ValueTypeAsChar::kString)) {
         auto pb = pb_util::ParseFromSlice<docdb::ApplyTransactionStatePB>(value);
         if (!pb.ok()) {
-          LOG_WITH_PREFIX(DFATAL) << "Failed to decode apply state " << key.ToDebugString() << ": "
-                                  << pb.status();
+          LOG_WITH_PREFIX(DFATAL) << "Failed to decode apply state pb from RocksDB"
+                                  << key.ToDebugString() << ": " << pb.status();
+          regular_iterator_.Next();
+          continue;
+        }
+
+        auto state = docdb::ApplyTransactionState::FromPB(*pb);
+        if (!state.ok()) {
+          LOG_WITH_PREFIX(DFATAL) << "Failed to decode apply state from stored pb "
+              << state.status();
           regular_iterator_.Next();
           continue;
         }
 
         auto it = pending_applies_.emplace(*txn_id, ApplyStateWithCommitHt {
-          .state = docdb::ApplyTransactionState::FromPB(*pb),
+          .state = state.get(),
           .commit_ht = HybridTime(pb->commit_ht())
         }).first;
 
@@ -287,13 +295,16 @@ class TransactionLoader::Executor {
               << "Found latest record for " << id
               << ": " << docdb::SubDocKey::DebugSliceToString(intents_iterator_.key())
               << " => " << intents_iterator_.value().ToDebugHexString();
-          auto status = docdb::DecodeIntentValue(
-              intents_iterator_.value(), id.AsSlice(), &last_batch_data->next_write_id,
-              nullptr /* body */);
-          LOG_IF_WITH_PREFIX(DFATAL, !status.ok())
-              << "Failed to decode intent value: " << status << ", "
+          auto txn_id_slice = id.AsSlice();
+          auto decoded_value_or_status = docdb::DecodeIntentValue(
+              intents_iterator_.value(), &txn_id_slice);
+          LOG_IF_WITH_PREFIX(DFATAL, !decoded_value_or_status.ok())
+              << "Failed to decode intent value: " << decoded_value_or_status.status() << ", "
               << docdb::SubDocKey::DebugSliceToString(intents_iterator_.key()) << " => "
               << intents_iterator_.value().ToDebugHexString();
+          if (decoded_value_or_status.ok()) {
+            last_batch_data->next_write_id = decoded_value_or_status->write_id;
+          }
           ++last_batch_data->next_write_id;
         }
         break;

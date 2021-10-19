@@ -298,7 +298,7 @@ class LinkedListTest : public tserver::TabletServerIntegrationTestBase {
   }
 
   std::unique_ptr<YBClient> client_;
-  gscoped_ptr<LinkedListTester> tester_;
+  std::unique_ptr<LinkedListTester> tester_;
 };
 
 // Generates the linked list pattern.
@@ -381,7 +381,7 @@ class ScopedRowUpdater {
 
  private:
   void RowUpdaterThread() {
-    std::shared_ptr<client::YBSession> session(table_->client()->NewSession());
+    std::shared_ptr<client::YBSession> session(table_.client()->NewSession());
     session->SetTimeout(15s);
 
     int64_t next_key;
@@ -713,9 +713,8 @@ Status LinkedListTester::VerifyLinkedListRemote(
   verifier.StartScanTimer();
 
   if (snapshot_hybrid_time.is_valid()) {
-    std::vector<std::unique_ptr<client::YBTabletServer>> servers;
-    RETURN_NOT_OK(client_->ListTabletServers(&servers));
-    const std::string down_ts = servers.front()->uuid();
+    const auto servers = VERIFY_RESULT(client_->ListTabletServers());
+    const auto& down_ts = servers.front().uuid;
     LOG(INFO) << "Calling callback on tserver " << down_ts;
     RETURN_NOT_OK(cb(down_ts));
   }

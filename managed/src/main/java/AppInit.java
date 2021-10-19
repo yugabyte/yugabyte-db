@@ -4,18 +4,30 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.commissioner.TaskGarbageCollector;
-import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.CertificateHelper;
+import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.CustomerTaskManager;
+import com.yugabyte.yw.common.ExtraMigrationManager;
+import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.common.YamlWrapper;
+import com.yugabyte.yw.common.alerts.AlertConfigurationService;
+import com.yugabyte.yw.common.alerts.AlertDestinationService;
+import com.yugabyte.yw.common.alerts.AlertsGarbageCollector;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.ExtraMigration;
+import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.MetricConfig;
+import com.yugabyte.yw.models.Provider;
 import io.ebean.Ebean;
 import io.prometheus.client.hotspot.DefaultExports;
+import java.util.List;
+import java.util.Map;
 import play.Application;
 import play.Configuration;
 import play.Environment;
 import play.Logger;
-
-import java.util.List;
-import java.util.Map;
 
 /** We will use this singleton to do actions specific to the app environment, like db seed etc. */
 @Singleton
@@ -32,7 +44,11 @@ public class AppInit {
       YamlWrapper yaml,
       ExtraMigrationManager extraMigrationManager,
       TaskGarbageCollector taskGC,
-      PlatformReplicationManager replicationManager)
+      PlatformReplicationManager replicationManager,
+      AlertsGarbageCollector alertsGC,
+      AlertConfigurationService alertConfigurationService,
+      AlertDestinationService alertDestinationService,
+      PlatformMetricsProcessor platformMetricsProcessor)
       throws ReflectiveOperationException {
     Logger.info("Yugaware Application has started");
     Configuration appConfig = application.configuration();
@@ -47,6 +63,9 @@ public class AppInit {
         List<?> all =
             yaml.load(environment.resourceAsStream("db_seed.yml"), application.classloader());
         Ebean.saveAll(all);
+        Customer customer = Customer.getAll().get(0);
+        alertDestinationService.createDefaultDestination(customer.uuid);
+        alertConfigurationService.createDefaultConfigs(customer);
       }
 
       if (mode.equals("PLATFORM")) {
@@ -66,7 +85,7 @@ public class AppInit {
       for (Provider provider : providerList) {
         if (provider.code.equals("aws")) {
           for (InstanceType instanceType :
-              InstanceType.findByProvider(provider, application.config())) {
+              InstanceType.findByProvider(provider, application.config(), configHelper)) {
             if (instanceType.instanceTypeDetails != null
                 && (instanceType.instanceTypeDetails.volumeDetailsList == null)) {
               awsInitializer.initialize(provider.customerUUID, provider.uuid);
@@ -103,6 +122,9 @@ public class AppInit {
 
       // Schedule garbage collection of old completed tasks in database.
       taskGC.start();
+      alertsGC.start();
+
+      platformMetricsProcessor.start();
 
       // Startup platform HA.
       replicationManager.init();

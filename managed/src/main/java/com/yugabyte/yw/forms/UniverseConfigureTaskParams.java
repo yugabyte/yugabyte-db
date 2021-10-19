@@ -12,17 +12,18 @@ package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import io.swagger.annotations.ApiModelProperty;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonDeserialize(converter = UniverseConfigureTaskParams.Converter.class)
 public class UniverseConfigureTaskParams extends UniverseDefinitionTaskParams {
 
-  public ClusterOperationType clusterOperation;
+  @ApiModelProperty public ClusterOperationType clusterOperation;
 
   public enum ClusterOperationType {
     CREATE,
     EDIT,
-    DELETE
+    DELETE // This is never used
   }
 
   public static class Converter extends BaseConverter<UniverseConfigureTaskParams> {}

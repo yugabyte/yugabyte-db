@@ -1,23 +1,36 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.metrics;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.ApiHelper;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.metrics.data.AlertData;
+import com.yugabyte.yw.metrics.data.AlertsResponse;
+import com.yugabyte.yw.metrics.data.ResponseStatus;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import org.apache.commons.lang3.StringUtils;
 import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
-
-import java.io.IOException;
-import java.util.*;
-import java.util.concurrent.*;
-
-import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Singleton
 public class MetricQueryHelper {
@@ -25,6 +38,15 @@ public class MetricQueryHelper {
   public static final Logger LOG = LoggerFactory.getLogger(MetricQueryHelper.class);
   public static final Integer STEP_SIZE = 100;
   public static final Integer QUERY_EXECUTOR_THREAD_POOL = 5;
+
+  public static final String METRICS_QUERY_PATH = "query";
+  public static final String ALERTS_PATH = "alerts";
+
+  public static final String MANAGEMENT_COMMAND_RELOAD = "reload";
+  private static final String PROMETHEUS_METRICS_URL_PATH = "yb.metrics.url";
+  private static final String PROMETHEUS_MANAGEMENT_URL_PATH = "yb.metrics.management.url";
+  public static final String PROMETHEUS_MANAGEMENT_ENABLED = "yb.metrics.management.enabled";
+
   @Inject play.Configuration appConfig;
 
   @Inject ApiHelper apiHelper;
@@ -55,7 +77,7 @@ public class MetricQueryHelper {
       Map<String, String> params,
       Map<String, Map<String, String>> filterOverrides) {
     if (metricKeys.isEmpty()) {
-      throw new YWServiceException(BAD_REQUEST, "Empty metricKeys data provided.");
+      throw new PlatformServiceException(BAD_REQUEST, "Empty metricKeys data provided.");
     }
 
     long timeDifference;
@@ -79,12 +101,12 @@ public class MetricQueryHelper {
       try {
         additionalFilters = new ObjectMapper().readValue(params.get("filters"), HashMap.class);
       } catch (IOException e) {
-        throw new YWServiceException(
+        throw new PlatformServiceException(
             BAD_REQUEST, "Invalid filter params provided, it should be a hash.");
       }
     }
 
-    String metricsUrl = appConfig.getString("yb.metrics.url");
+    String metricsUrl = appConfig.getString(PROMETHEUS_METRICS_URL_PATH);
     boolean useNativeMetrics = appConfig.getBoolean("yb.metrics.useNative", false);
     if ((null == metricsUrl || metricsUrl.isEmpty()) && !useNativeMetrics) {
       LOG.error("Error fetching metrics data: no prometheus metrics URL configured");
@@ -140,11 +162,7 @@ public class MetricQueryHelper {
    * <p>The return type is a set of labels for each metric and an array of time-stamped values
    */
   public ArrayList<MetricQueryResponse.Entry> queryDirect(String promQueryExpression) {
-    final String metricsUrl = appConfig.getString("yb.metrics.url");
-    if (metricsUrl == null || metricsUrl.isEmpty()) {
-      throw new RuntimeException("yb.metrics.url not set");
-    }
-    final String queryUrl = metricsUrl + "/query";
+    final String queryUrl = getPrometheusQueryUrl(METRICS_QUERY_PATH);
 
     HashMap<String, String> getParams = new HashMap<>();
     getParams.put("query", promQueryExpression);
@@ -157,5 +175,48 @@ public class MetricQueryHelper {
     }
 
     return metricResponse.getValues();
+  }
+
+  public List<AlertData> queryAlerts() {
+    final String queryUrl = getPrometheusQueryUrl(ALERTS_PATH);
+
+    final JsonNode responseJson = apiHelper.getRequest(queryUrl);
+    final AlertsResponse response = Json.fromJson(responseJson, AlertsResponse.class);
+    if (response.getStatus() != ResponseStatus.success) {
+      throw new RuntimeException("Error querying prometheus alerts: " + response);
+    }
+
+    if (response.getData() == null || response.getData().getAlerts() == null) {
+      return Collections.emptyList();
+    }
+    return response.getData().getAlerts();
+  }
+
+  public void postManagementCommand(String command) {
+    final String queryUrl = getPrometheusManagementUrl(command);
+    if (!apiHelper.postRequest(queryUrl)) {
+      throw new RuntimeException(
+          "Failed to perform " + command + " on prometheus instance " + queryUrl);
+    }
+  }
+
+  public boolean isPrometheusManagementEnabled() {
+    return appConfig.getBoolean(PROMETHEUS_MANAGEMENT_ENABLED);
+  }
+
+  private String getPrometheusManagementUrl(String path) {
+    final String prometheusManagementUrl = appConfig.getString(PROMETHEUS_MANAGEMENT_URL_PATH);
+    if (StringUtils.isEmpty(prometheusManagementUrl)) {
+      throw new RuntimeException(PROMETHEUS_MANAGEMENT_URL_PATH + " not set");
+    }
+    return prometheusManagementUrl + "/" + path;
+  }
+
+  private String getPrometheusQueryUrl(String path) {
+    final String metricsUrl = appConfig.getString(PROMETHEUS_METRICS_URL_PATH);
+    if (StringUtils.isEmpty(metricsUrl)) {
+      throw new RuntimeException(PROMETHEUS_METRICS_URL_PATH + " not set");
+    }
+    return metricsUrl + "/" + path;
   }
 }

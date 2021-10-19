@@ -25,9 +25,6 @@ namespace yb {
 
 class EncryptionParamsPB;
 class RandomAccessFile;
-
-namespace enterprise {
-
 class HeaderManager;
 class BlockAccessCipherStream;
 class OpenSSLInitializer;
@@ -153,9 +150,8 @@ Status CreateRandomAccessFile(ReadablePtr* result,
   std::unique_ptr<BlockAccessCipherStream> stream;
   uint32_t header_size;
 
-  auto res = GetEncryptionInfoFromFile<BufType>(
-      header_manager, underlying.get(), &stream, &header_size);
-  bool file_encrypted = VERIFY_RESULT(res);
+  const auto file_encrypted = VERIFY_RESULT(GetEncryptionInfoFromFile<BufType>(
+      header_manager, underlying.get(), &stream, &header_size));
 
   if (!file_encrypted) {
     *result = std::move(underlying);
@@ -188,7 +184,6 @@ Result<uint32_t> GetHeaderSize(SequentialFile* file, HeaderManager* header_manag
 
 OpenSSLInitializer& InitOpenSSL();
 
-} // namespace enterprise
 } // namespace yb
 
 #endif // YB_UTIL_ENCRYPTION_UTIL_H

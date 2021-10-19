@@ -59,12 +59,14 @@ class YBTableTestBase : public YBTest {
   virtual void SetUp() override;
   virtual void TearDown() override;
   virtual void BeforeCreateTable();
+  virtual void BeforeStartCluster();
 
   virtual bool use_external_mini_cluster();
   virtual bool use_yb_admin_client();
   virtual int session_timeout_ms();
   virtual int num_masters();
   virtual int num_tablet_servers();
+  virtual int num_drives();
   virtual int num_tablets();
   virtual int client_rpc_timeout_ms();
   virtual client::YBTableName table_name();
@@ -124,12 +126,18 @@ class YBTableTestBase : public YBTest {
 
   static constexpr int kDefaultNumMasters = 1;
   static constexpr int kDefaultNumTabletServers = 3;
+  static constexpr int kDefaultNumDrives = 1;
   static constexpr int kDefaultSessionTimeoutMs = 60000;
   static constexpr int kDefaultClientRpcTimeoutMs = 30000;
   static constexpr int kDefaultLoadBalanceTimeoutMs = 60000;
   static constexpr bool kDefaultUsingExternalMiniCluster = false;
   static constexpr bool kDefaultEnableYSQL = true;
   static const client::YBTableName kDefaultTableName;
+
+  // Set custom Env and rocksdb::Env to be used by MiniTabletServer, otherwise MiniTabletServer
+  // will use own Env and rocksdb::Env.
+  std::unique_ptr<Env> ts_env_;
+  std::unique_ptr<rocksdb::Env> ts_rocksdb_env_;
 
   vector<uint16_t> master_rpc_ports();
   // Calls CreateYBClient and assigns it to local class field.

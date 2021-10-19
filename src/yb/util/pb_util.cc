@@ -156,6 +156,28 @@ string InitializationErrorMessage(const char* action,
   return result;
 }
 
+uint8_t* GetUInt8Ptr(const char* buffer) {
+  return pointer_cast<uint8_t*>(const_cast<char*>(buffer));
+}
+
+uint8_t* GetUInt8Ptr(uint8_t* buffer) {
+  return buffer;
+}
+
+template <class Out>
+void DoAppendPartialToString(const MessageLite &msg, Out* output) {
+  int old_size = output->size();
+  int byte_size = msg.ByteSize();
+
+  output->resize(old_size + byte_size);
+
+  uint8* start = GetUInt8Ptr(output->data()) + old_size;
+  uint8* end = msg.SerializeWithCachedSizesToArray(start);
+  if (end - start != byte_size) {
+    ByteSizeConsistencyError(byte_size, msg.ByteSize(), end - start);
+  }
+}
+
 } // anonymous namespace
 
 void AppendToString(const MessageLite &msg, faststring *output) {
@@ -164,16 +186,11 @@ void AppendToString(const MessageLite &msg, faststring *output) {
 }
 
 void AppendPartialToString(const MessageLite &msg, faststring* output) {
-  int old_size = output->size();
-  int byte_size = msg.ByteSize();
+  DoAppendPartialToString(msg, output);
+}
 
-  output->resize(old_size + byte_size);
-
-  uint8* start = &((*output)[old_size]);
-  uint8* end = msg.SerializeWithCachedSizesToArray(start);
-  if (end - start != byte_size) {
-    ByteSizeConsistencyError(byte_size, msg.ByteSize(), end - start);
-  }
+void AppendPartialToString(const MessageLite &msg, std::string* output) {
+  DoAppendPartialToString(msg, output);
 }
 
 void SerializeToString(const MessageLite &msg, faststring *output) {
@@ -576,7 +593,7 @@ Status ReadablePBContainerFile::Dump(ostream* os, bool oneline) {
     if (oneline) {
       *os << count++ << "\t" << msg->ShortDebugString() << endl;
     } else {
-      *os << "Message " << count << endl;
+      *os << pb_type_ << " " << count << endl;
       *os << "-------" << endl;
       *os << msg->DebugString() << endl;
       count++;
@@ -630,15 +647,35 @@ Status ReadablePBContainerFile::ValidateAndRead(size_t length, EofOK eofOK,
   return Status::OK();
 }
 
+namespace {
 
-Status ReadPBContainerFromPath(Env* env, const std::string& path, Message* msg) {
+Status ReadPBContainer(
+    Env* env, const std::string& path, Message* msg, const std::string* pb_type_name = nullptr) {
   std::unique_ptr<RandomAccessFile> file;
   RETURN_NOT_OK(env->NewRandomAccessFile(path, &file));
 
   ReadablePBContainerFile pb_file(std::move(file));
   RETURN_NOT_OK(pb_file.Init());
+
+  if (pb_type_name && pb_file.pb_type() != *pb_type_name) {
+    WARN_NOT_OK(pb_file.Close(), "Could not Close() PB container file");
+    return STATUS(InvalidArgument,
+                  Substitute("Wrong PB type: $0, expected $1", pb_file.pb_type(), *pb_type_name));
+  }
+
   RETURN_NOT_OK(pb_file.ReadNextPB(msg));
   return pb_file.Close();
+}
+
+} // namespace
+
+Status ReadPBContainerFromPath(Env* env, const std::string& path, Message* msg) {
+  return ReadPBContainer(env, path, msg);
+}
+
+Status ReadPBContainerFromPath(
+    Env* env, const std::string& path, const std::string& pb_type_name, Message* msg) {
+  return ReadPBContainer(env, path, msg, &pb_type_name);
 }
 
 Status WritePBContainerToPath(Env* env, const std::string& path,

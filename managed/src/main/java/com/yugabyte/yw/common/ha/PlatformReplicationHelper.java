@@ -15,22 +15,16 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.common.*;
-import com.yugabyte.yw.common.config.impl.RuntimeConfig;
+import com.yugabyte.yw.common.ApiHelper;
+import com.yugabyte.yw.common.PlatformInstanceClient;
+import com.yugabyte.yw.common.PlatformInstanceClientFactory;
+import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager.PlatformBackupParams;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
-import io.ebean.Model;
-import org.apache.velocity.Template;
-import org.apache.velocity.VelocityContext;
-import org.apache.velocity.app.VelocityEngine;
-import org.apache.velocity.runtime.RuntimeConstants;
-import org.apache.velocity.runtime.resource.loader.ClasspathResourceLoader;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.libs.Json;
-
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
@@ -43,6 +37,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.apache.velocity.Template;
+import org.apache.velocity.VelocityContext;
+import org.apache.velocity.app.VelocityEngine;
+import org.apache.velocity.runtime.RuntimeConstants;
+import org.apache.velocity.runtime.resource.loader.ClasspathResourceLoader;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.libs.Json;
 
 @Singleton
 public class PlatformReplicationHelper {
@@ -55,6 +57,7 @@ public class PlatformReplicationHelper {
 
   // Config keys:
   public static final String STORAGE_PATH_KEY = "yb.storage.path";
+  private static final String LOG_SHELL_CMD_OUTPUT_KEY = "yb.ha.logScriptOutput";
   private static final String REPLICATION_SCHEDULE_ENABLED_KEY =
       "yb.ha.replication_schedule_enabled";
   private static final String PROMETHEUS_FEDERATED_CONFIG_DIR_KEY = "yb.ha.prometheus_config_dir";
@@ -86,45 +89,44 @@ public class PlatformReplicationHelper {
     this.shellProcessHandler = shellProcessHandler;
   }
 
-  RuntimeConfig<Model> getRuntimeConfig() {
-    return this.runtimeConfigFactory.globalRuntimeConf();
-  }
-
   Path getBackupDir() {
-    return Paths.get(this.getRuntimeConfig().getString(STORAGE_PATH_KEY), BACKUP_DIR)
+    return Paths.get(
+            runtimeConfigFactory.globalRuntimeConf().getString(STORAGE_PATH_KEY), BACKUP_DIR)
         .toAbsolutePath();
   }
 
   String getPrometheusHost() {
-    return this.getRuntimeConfig().getString(PROMETHEUS_HOST_CONFIG_KEY);
+    return runtimeConfigFactory.globalRuntimeConf().getString(PROMETHEUS_HOST_CONFIG_KEY);
   }
 
   int getNumBackupsRetention() {
-    return Math.max(0, this.getRuntimeConfig().getInt(NUM_BACKUP_RETENTION_KEY));
+    return Math.max(0, runtimeConfigFactory.globalRuntimeConf().getInt(NUM_BACKUP_RETENTION_KEY));
   }
 
   String getDBUser() {
-    return this.getRuntimeConfig().getString(DB_USERNAME_CONFIG_KEY);
+    return runtimeConfigFactory.globalRuntimeConf().getString(DB_USERNAME_CONFIG_KEY);
   }
 
   String getDBPassword() {
-    return this.getRuntimeConfig().getString(DB_PASSWORD_CONFIG_KEY);
+    return runtimeConfigFactory.globalRuntimeConf().getString(DB_PASSWORD_CONFIG_KEY);
   }
 
   String getDBHost() {
-    return this.getRuntimeConfig().getString(DB_HOST_CONFIG_KEY);
+    return runtimeConfigFactory.globalRuntimeConf().getString(DB_HOST_CONFIG_KEY);
   }
 
   int getDBPort() {
-    return this.getRuntimeConfig().getInt(DB_PORT_CONFIG_KEY);
+    return runtimeConfigFactory.globalRuntimeConf().getInt(DB_PORT_CONFIG_KEY);
   }
 
   boolean isBackupScheduleEnabled() {
-    return this.getRuntimeConfig().getBoolean(REPLICATION_SCHEDULE_ENABLED_KEY);
+    return runtimeConfigFactory.globalRuntimeConf().getBoolean(REPLICATION_SCHEDULE_ENABLED_KEY);
   }
 
   void setBackupScheduleEnabled(boolean enabled) {
-    this.getRuntimeConfig().setValue(REPLICATION_SCHEDULE_ENABLED_KEY, Boolean.toString(enabled));
+    runtimeConfigFactory
+        .globalRuntimeConf()
+        .setValue(REPLICATION_SCHEDULE_ENABLED_KEY, Boolean.toString(enabled));
   }
 
   boolean isBackupScheduleRunning(Cancellable schedule) {
@@ -132,7 +134,8 @@ public class PlatformReplicationHelper {
   }
 
   private File getPrometheusConfigDir() {
-    String outputDirString = this.getRuntimeConfig().getString(PROMETHEUS_FEDERATED_CONFIG_DIR_KEY);
+    String outputDirString =
+        runtimeConfigFactory.globalRuntimeConf().getString(PROMETHEUS_FEDERATED_CONFIG_DIR_KEY);
 
     return new File(outputDirString);
   }
@@ -143,8 +146,18 @@ public class PlatformReplicationHelper {
     return new File(configDir, PROMETHEUS_CONFIG_FILENAME);
   }
 
+  boolean isBackupScriptOutputEnabled() {
+    return runtimeConfigFactory.globalRuntimeConf().getBoolean(LOG_SHELL_CMD_OUTPUT_KEY);
+  }
+
   Duration getBackupFrequency() {
-    return this.getRuntimeConfig().getDuration(REPLICATION_FREQUENCY_KEY);
+    return runtimeConfigFactory.globalRuntimeConf().getDuration(REPLICATION_FREQUENCY_KEY);
+  }
+
+  public void setReplicationFrequency(Duration duration) {
+    runtimeConfigFactory
+        .globalRuntimeConf()
+        .setValue(REPLICATION_FREQUENCY_KEY, String.format("%d ms", duration.toMillis()));
   }
 
   JsonNode getBackupInfoJson(long frequency, boolean isRunning) {
@@ -152,7 +165,7 @@ public class PlatformReplicationHelper {
   }
 
   Path getReplicationDirFor(String leader) {
-    String storagePath = this.getRuntimeConfig().getString(STORAGE_PATH_KEY);
+    String storagePath = runtimeConfigFactory.globalRuntimeConf().getString(STORAGE_PATH_KEY);
     return Paths.get(storagePath, REPLICATION_DIR, leader);
   }
 
@@ -180,7 +193,8 @@ public class PlatformReplicationHelper {
 
   private void reloadPrometheusConfig() {
     try {
-      String localPromHost = this.getRuntimeConfig().getString(PROMETHEUS_HOST_CONFIG_KEY);
+      String localPromHost =
+          runtimeConfigFactory.globalRuntimeConf().getString(PROMETHEUS_HOST_CONFIG_KEY);
       URL reloadEndpoint = new URL("http", localPromHost, 9090, "/-/reload");
 
       // Send the reload request.
@@ -193,7 +207,8 @@ public class PlatformReplicationHelper {
   boolean demoteRemoteInstance(PlatformInstance remoteInstance) {
     try {
       if (remoteInstance.getIsLocal()) {
-        throw new RuntimeException("Cannot perform this action on a local instance");
+        LOG.warn("Cannot perform demoteRemoteInstance action on a local instance");
+        return false;
       }
 
       HighAvailabilityConfig config = remoteInstance.getConfig();
@@ -245,8 +260,7 @@ public class PlatformReplicationHelper {
       File previousConfigFile = new File(configDir, "previous_prometheus.yml");
 
       if (!configDir.exists() && !configDir.mkdirs()) {
-        LOG.warn("Could not create output dir");
-
+        LOG.warn("Could not create output dir {}", configDir);
         return;
       }
 
@@ -332,7 +346,7 @@ public class PlatformReplicationHelper {
       return;
     }
 
-    LOG.debug("Garbage collecting {} backups", numBackups - numToRetain);
+    LOG.info("Garbage collecting {} backups", numBackups - numToRetain);
     backups.subList(0, numBackups - numToRetain).forEach(File::delete);
   }
 
@@ -371,7 +385,6 @@ public class PlatformReplicationHelper {
     this.exportPlatformInstances(config, remoteAddr);
   }
 
-  // TODO: (Daniel/Shashank) - https://github.com/yugabyte/yugabyte-db/issues/6961.
   List<File> listBackups(URL leader) {
     try {
       Path backupDir = this.getReplicationDirFor(leader.getHost());
@@ -433,6 +446,7 @@ public class PlatformReplicationHelper {
 
     LOG.debug("Command to run: [" + String.join(" ", commandArgs) + "]");
 
-    return shellProcessHandler.run(commandArgs, extraVars, false /* logCmdOutput */);
+    boolean logCmdOutput = isBackupScriptOutputEnabled();
+    return shellProcessHandler.run(commandArgs, extraVars, logCmdOutput);
   }
 }

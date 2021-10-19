@@ -2,24 +2,25 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import static org.mockito.Mockito.mock;
+import static play.inject.Bindings.bind;
+
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.models.Customer;
+import java.util.Map;
+import kamon.instrumentation.play.GuiceModule;
 import org.junit.Before;
-import play.Application;
-import play.inject.guice.GuiceApplicationBuilder;
-import play.test.Helpers;
-import play.test.WithApplication;
-
 import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
-
-import java.util.Map;
-
-import static org.mockito.Mockito.mock;
-import static play.inject.Bindings.bind;
+import play.Application;
+import play.inject.guice.GuiceApplicationBuilder;
+import play.modules.swagger.SwaggerModule;
+import play.test.Helpers;
+import play.test.WithApplication;
 
 public class NodeTaskBaseTest extends WithApplication {
   NodeManager mockNodeManager;
@@ -27,6 +28,7 @@ public class NodeTaskBaseTest extends WithApplication {
   Commissioner mockCommissioner;
   protected CallbackController mockCallbackController;
   protected PlayCacheSessionStore mockSessionStore;
+  protected AlertConfigurationWriter mockAlertConfigurationWriter;
 
   @Before
   public void setUp() {
@@ -39,13 +41,17 @@ public class NodeTaskBaseTest extends WithApplication {
     mockCommissioner = mock(Commissioner.class);
     mockCallbackController = mock(CallbackController.class);
     mockSessionStore = mock(PlayCacheSessionStore.class);
+    mockAlertConfigurationWriter = mock(AlertConfigurationWriter.class);
 
     return new GuiceApplicationBuilder()
+        .disable(SwaggerModule.class)
+        .disable(GuiceModule.class)
         .configure((Map) Helpers.inMemoryDatabase())
         .overrides(bind(NodeManager.class).toInstance(mockNodeManager))
         .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
         .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
         .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
+        .overrides(bind(AlertConfigurationWriter.class).toInstance(mockAlertConfigurationWriter))
         .build();
   }
 }

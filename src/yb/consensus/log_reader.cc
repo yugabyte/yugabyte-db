@@ -55,7 +55,7 @@
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
 
-DEFINE_bool(enable_log_retention_by_op_idx, false,
+DEFINE_bool(enable_log_retention_by_op_idx, true,
             "If true, logs will be retained based on an op id passed by the cdc service");
 
 DEFINE_int32(log_max_seconds_to_retain, 24 * 3600, "Log files that are older will be "
@@ -75,10 +75,9 @@ METRIC_DEFINE_counter(tablet, log_reader_entries_read, "Entries Read From Log",
                       yb::MetricUnit::kEntries,
                       "Number of entries read from the WAL since tablet start");
 
-METRIC_DEFINE_histogram(table, log_reader_read_batch_latency, "Log Read Latency",
+METRIC_DEFINE_coarse_histogram(table, log_reader_read_batch_latency, "Log Read Latency",
                         yb::MetricUnit::kBytes,
-                        "Microseconds spent reading log entry batches",
-                        60000000LU, 2);
+                        "Microseconds spent reading log entry batches");
 
 DEFINE_test_flag(bool, record_segments_violate_max_time_policy, false,
     "If set, everytime GetSegmentPrefixNotIncluding runs, segments that violate the max time "
@@ -177,10 +176,12 @@ Status LogReader::Init(const string& tablet_wal_path) {
     }
 
     string fqp = JoinPathSegments(tablet_wal_path, potential_log_file);
-    scoped_refptr<ReadableLogSegment> segment;
-    RETURN_NOT_OK_PREPEND(ReadableLogSegment::Open(env_, fqp, &segment),
-                          Format("Unable to open readable log segment: $0", fqp));
-    DCHECK(segment);
+    auto segment = VERIFY_RESULT_PREPEND(ReadableLogSegment::Open(env_, fqp),
+                                         Format("Unable to open readable log segment: $0", fqp));
+    if (!segment) {
+      LOG_WITH_PREFIX(INFO) << "Log segment w/o header: " << fqp << ", skipping";
+      continue;
+    }
     CHECK(segment->IsInitialized()) << "Uninitialized segment at: " << segment->path();
 
     if (!segment->HasFooter()) {
@@ -240,9 +241,10 @@ bool LogReader::ViolatesMaxTimePolicy(const scoped_refptr<ReadableLogSegment>& s
   int64_t now = GetCurrentTimeMicros();
   int64_t age_seconds = (now - segment->footer().close_timestamp_micros()) / 1000000;
   if (age_seconds > FLAGS_log_max_seconds_to_retain) {
-    LOG(WARNING) << "Segment " << segment->path() << " violates max retention time policy. "
-                 << "Segment age: " << age_seconds << " seconds. "
-                 << "log_max_seconds_to_retain: " << FLAGS_log_max_seconds_to_retain;
+    YB_LOG_EVERY_N_SECS(WARNING, 300)
+        << "Segment " << segment->path() << " violates max retention time policy. "
+        << "Segment age: " << age_seconds << " seconds. "
+        << "log_max_seconds_to_retain: " << FLAGS_log_max_seconds_to_retain;
     if (PREDICT_FALSE(FLAGS_TEST_record_segments_violate_max_time_policy)) {
       segments_violate_max_time_policy_->push_back(segment);
     }
@@ -258,14 +260,15 @@ bool LogReader::ViolatesMinSpacePolicy(const scoped_refptr<ReadableLogSegment>& 
   }
   auto free_space_result = env_->GetFreeSpaceBytes(segment->path());
   if (!free_space_result.ok()) {
-    LOG(WARNING) << "Unable to get free space: " << free_space_result;
+    YB_LOG_EVERY_N_SECS(WARNING, 300) << "Unable to get free space: " << free_space_result;
     return false;
   } else {
     uint64_t free_space = *free_space_result;
     if ((free_space + *potential_reclaimed_space) / 1024 < FLAGS_log_stop_retaining_min_disk_mb) {
-      LOG(WARNING) << "Segment " << segment->path() << " violates minimum free space policy "
-                   << "specified by log_stop_retaining_min_disk_mb: "
-                   << FLAGS_log_stop_retaining_min_disk_mb;
+      YB_LOG_EVERY_N_SECS(WARNING, 300)
+          << "Segment " << segment->path() << " violates minimum free space policy "
+          << "specified by log_stop_retaining_min_disk_mb: "
+          << FLAGS_log_stop_retaining_min_disk_mb;
       *potential_reclaimed_space += segment->file_size();
       if (PREDICT_FALSE(FLAGS_TEST_record_segments_violate_min_space_policy)) {
         segments_violate_min_space_policy_->push_back(segment);

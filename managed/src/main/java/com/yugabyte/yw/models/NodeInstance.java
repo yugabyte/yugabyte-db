@@ -1,35 +1,48 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.models;
 
-import io.ebean.*;
-import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
+import io.ebean.Ebean;
+import io.ebean.ExpressionList;
+import io.ebean.Finder;
+import io.ebean.Model;
+import io.ebean.Query;
+import io.ebean.RawSql;
+import io.ebean.RawSqlBuilder;
+import io.ebean.SqlUpdate;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.UUID;
-
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import play.libs.Json;
-import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Entity
+@ApiModel(description = "A single node instance, attached to a provider and availability zone")
 public class NodeInstance extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(NodeInstance.class);
 
-  @Id public UUID nodeUuid;
+  @Id
+  @ApiModelProperty(value = "The node's UUID", accessMode = READ_ONLY)
+  public UUID nodeUuid;
 
-  @Column public String instanceTypeCode;
+  @Column
+  @ApiModelProperty(value = "The node's type code", example = "c5large")
+  public String instanceTypeCode;
 
   @Column(nullable = false)
+  @ApiModelProperty(value = "The node's name", example = "India node")
   private String nodeName;
 
   public String getNodeName() {
@@ -45,18 +58,23 @@ public class NodeInstance extends Model {
   }
 
   @Column(nullable = false)
+  @ApiModelProperty(value = "The node instance's name", example = "Mumbai instance")
   public String instanceName;
 
   @Column(nullable = false)
+  @ApiModelProperty(value = "The availability zone's UUID")
   public UUID zoneUuid;
 
   @Column(nullable = false)
+  @ApiModelProperty(value = "True if the node is in use")
   public boolean inUse;
 
   @Column(nullable = false)
+  @ApiModelProperty(value = "Node details (as a JSON object)")
   private String nodeDetailsJson;
 
   // Preserving the details into a structured class.
+  @ApiModelProperty(value = "Node details")
   private NodeInstanceData nodeDetails;
 
   public void setDetails(NodeInstanceData details) {
@@ -77,6 +95,9 @@ public class NodeInstance extends Model {
     this.save();
   }
 
+  @ApiModelProperty(
+      value = "Node details (as a JSON object)",
+      example = "{\"ip\":\"1.1.1.1\",\"sshUser\":\"centos\"}")
   public String getDetailsJson() {
     return nodeDetailsJson;
   }
@@ -128,7 +149,7 @@ public class NodeInstance extends Model {
    */
   public static synchronized Map<String, NodeInstance> pickNodes(
       Map<UUID, List<String>> onpremAzToNodes, String instanceTypeCode) {
-    Map<String, NodeInstance> outputMap = new HashMap<String, NodeInstance>();
+    Map<String, NodeInstance> outputMap = new HashMap<>();
     Throwable error = null;
     try {
       for (Entry<UUID, List<String>> entry : onpremAzToNodes.entrySet()) {
@@ -179,7 +200,7 @@ public class NodeInstance extends Model {
   public static NodeInstance getOrBadRequest(UUID nodeUuid) {
     NodeInstance node = get(nodeUuid);
     if (node == null) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid Node UUID: " + nodeUuid);
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid node UUID: " + nodeUuid);
     }
     return node;
   }

@@ -1,27 +1,35 @@
 package com.yugabyte.yw.forms;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
-
-import com.fasterxml.jackson.annotation.JsonProperty;
-
-import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
-import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import play.data.validation.Constraints;
 
 @JsonDeserialize(converter = UpgradeParams.Converter.class)
 public class UpgradeParams extends UniverseDefinitionTaskParams {
   // Rolling Restart task type
-  @Constraints.Required() public UpgradeUniverse.UpgradeTaskType taskType;
+  @Constraints.Required() public UpgradeTaskParams.UpgradeTaskType taskType;
 
   // The software version to install. Do not set this value if no software needs to be installed.
   public String ybSoftwareVersion = null;
+  // Previous software version.
+  public String ybPrevSoftwareVersion = null;
+
+  public final Map<UUID, String> machineImages = new HashMap<>();
+  public boolean forceVMImageUpgrade;
+
+  public boolean forceResizeNode;
 
   // The certificate that needs to be used.
   public UUID certUUID = null;
   // If the root certificate needs to be rotated.
   public boolean rotateRoot = false;
+
+  // Parameters for toggle tls operation
+  public boolean enableNodeToNodeEncrypt = false;
+  public boolean enableClientToNodeEncrypt = false;
 
   @Deprecated
   // This is deprecated use cluster.userIntent.masterGFlags

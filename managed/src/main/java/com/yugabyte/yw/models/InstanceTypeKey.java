@@ -2,14 +2,18 @@
 
 package com.yugabyte.yw.models;
 
-import javax.persistence.Embeddable;
 import java.io.Serializable;
 import java.util.UUID;
+import javax.persistence.Embeddable;
+import lombok.Data;
+import lombok.experimental.Accessors;
 
+@Data
+@Accessors(chain = true)
 @Embeddable
 public class InstanceTypeKey implements Serializable {
-  public UUID providerUuid;
-  public String instanceTypeCode;
+  private UUID providerUuid;
+  private String instanceTypeCode;
 
   @Override
   public boolean equals(Object object) {

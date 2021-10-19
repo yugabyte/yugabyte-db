@@ -28,7 +28,12 @@ const std::string kTransactionsTableName = "transactions";
 const std::string kMetricsSnapshotsTableName = "metrics";
 
 TransactionStatusResult::TransactionStatusResult(TransactionStatus status_, HybridTime status_time_)
-    : status(status_), status_time(status_time_) {
+    : TransactionStatusResult(status_, status_time_, AbortedSubTransactionSet()) {}
+
+TransactionStatusResult::TransactionStatusResult(
+    TransactionStatus status_, HybridTime status_time_,
+    AbortedSubTransactionSet aborted_subtxn_set_)
+    : status(status_), status_time(status_time_), aborted_subtxn_set(aborted_subtxn_set_) {
   DCHECK(status == TransactionStatus::ABORTED || status_time.is_valid())
       << "Status: " << status << ", status_time: " << status_time;
 }
@@ -76,6 +81,30 @@ bool operator==(const TransactionMetadata& lhs, const TransactionMetadata& rhs) 
 }
 
 std::ostream& operator<<(std::ostream& out, const TransactionMetadata& metadata) {
+  return out << metadata.ToString();
+}
+
+void SubTransactionMetadata::ToPB(SubTransactionMetadataPB* dest) const {
+  dest->set_subtransaction_id(subtransaction_id);
+  aborted.ToPB(dest->mutable_aborted()->mutable_set());
+}
+
+Result<SubTransactionMetadata> SubTransactionMetadata::FromPB(
+    const SubTransactionMetadataPB& source) {
+  return SubTransactionMetadata {
+    .subtransaction_id = source.has_subtransaction_id()
+        ? source.subtransaction_id()
+        : kMinSubTransactionId,
+    .aborted = VERIFY_RESULT(AbortedSubTransactionSet::FromPB(source.aborted().set())),
+  };
+}
+
+bool SubTransactionMetadata::IsDefaultState() const {
+  DCHECK(subtransaction_id >= kMinSubTransactionId);
+  return subtransaction_id == kMinSubTransactionId && aborted.IsEmpty();
+}
+
+std::ostream& operator<<(std::ostream& out, const SubTransactionMetadata& metadata) {
   return out << metadata.ToString();
 }
 

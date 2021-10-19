@@ -12,23 +12,32 @@ package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
+import com.yugabyte.yw.models.helpers.UniqueKeyListValue;
 import io.ebean.Model;
-
-import javax.persistence.*;
 import java.util.Objects;
+import javax.persistence.Column;
+import javax.persistence.EmbeddedId;
+import javax.persistence.Entity;
+import javax.persistence.ManyToOne;
+import javax.validation.constraints.NotNull;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.ToString;
 
 @Entity
-public class AlertDefinitionLabel extends Model {
+@Data
+@EqualsAndHashCode(exclude = "definition", callSuper = false)
+@ToString(exclude = "definition")
+public class AlertDefinitionLabel extends Model
+    implements UniqueKeyListValue<AlertDefinitionLabel> {
 
-  @EmbeddedId private AlertDefinitionLabelKey key;
+  @NotNull @EmbeddedId private AlertDefinitionLabelKey key;
 
   @Column(nullable = false)
+  @NotNull
   private String value;
 
-  @ManyToOne
-  @MapsId("definition")
-  @JsonIgnore
-  private AlertDefinition definition;
+  @ManyToOne @JsonIgnore private AlertDefinition definition;
 
   public AlertDefinitionLabel() {
     this.key = new AlertDefinitionLabelKey();
@@ -54,46 +63,24 @@ public class AlertDefinitionLabel extends Model {
     this(definition, knownLabel.labelName(), value);
   }
 
-  public AlertDefinition getDefinition() {
-    return definition;
-  }
-
-  public void setDefinition(AlertDefinition definition) {
-    this.definition = definition;
-    key.setDefinitionUUID(definition.uuid);
-  }
-
   public String getName() {
     return key.getName();
   }
 
-  public void setName(String name) {
-    key.setName(name);
-  }
-
-  public String getValue() {
-    return value;
-  }
-
-  public void setValue(String value) {
-    this.value = value;
+  public void setDefinition(AlertDefinition definition) {
+    this.definition = definition;
+    key.setDefinitionUUID(definition.getUuid());
   }
 
   @Override
-  public boolean equals(Object o) {
-    if (this == o) return true;
-    if (o == null || getClass() != o.getClass()) return false;
-    AlertDefinitionLabel label = (AlertDefinitionLabel) o;
-    return Objects.equals(key, label.key) && Objects.equals(value, label.value);
+  @JsonIgnore
+  public boolean keyEquals(AlertDefinitionLabel other) {
+    return Objects.equals(getName(), other.getName());
   }
 
   @Override
-  public int hashCode() {
-    return Objects.hash(key, value);
-  }
-
-  @Override
-  public String toString() {
-    return "AlertDefinitionLabel{" + "key=" + key + ", value=" + value + '}';
+  @JsonIgnore
+  public boolean valueEquals(AlertDefinitionLabel other) {
+    return keyEquals(other) && Objects.equals(getValue(), other.getValue());
   }
 }

@@ -2,28 +2,25 @@
 
 package com.yugabyte.yw.common;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Provider;
-
-import org.pac4j.oidc.client.KeycloakOidcClient;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import javax.inject.Singleton;
+import com.yugabyte.yw.models.Region;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
-import java.nio.file.NoSuchFileException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -31,8 +28,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-
-import static play.mvc.Http.Status.*;
+import javax.inject.Singleton;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Singleton
 public class AccessManager extends DevopsBase {
@@ -120,16 +118,16 @@ public class AccessManager extends DevopsBase {
     keyCode = Util.getFileName(keyCode);
     AccessKey accessKey = AccessKey.get(region.provider.uuid, keyCode);
     if (accessKey != null) {
-      throw new YWServiceException(BAD_REQUEST, "Duplicate Access KeyCode: " + keyCode);
+      throw new PlatformServiceException(BAD_REQUEST, "Duplicate Access KeyCode: " + keyCode);
     }
     Path source = Paths.get(uploadedFile.getAbsolutePath());
     Path destination = Paths.get(keyFilePath, keyCode + keyType.getExtension());
     if (!Files.exists(source)) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Key file " + source.getFileName() + " not found.");
     }
     if (Files.exists(destination)) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "File " + destination.getFileName() + " already exists.");
     }
 
@@ -148,7 +146,7 @@ public class AccessManager extends DevopsBase {
     }
     JsonNode vaultResponse = createVault(regionUUID, keyInfo.privateKey);
     if (vaultResponse.has("error")) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR,
           "Vault Creation failed with : " + vaultResponse.get("error").asText());
     }
@@ -261,7 +259,7 @@ public class AccessManager extends DevopsBase {
 
     JsonNode response = execAndParseCommandRegion(regionUUID, "add-key", commandArgs);
     if (response.has("error")) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR,
           "Parsing of Region failed with : " + response.get("error").asText());
     }
@@ -272,7 +270,7 @@ public class AccessManager extends DevopsBase {
       keyInfo.privateKey = response.get("private_key").asText();
       JsonNode vaultResponse = createVault(regionUUID, keyInfo.privateKey);
       if (response.has("error")) {
-        throw new YWServiceException(
+        throw new PlatformServiceException(
             INTERNAL_SERVER_ERROR,
             "Vault Creation failed with : " + response.get("error").asText());
       }

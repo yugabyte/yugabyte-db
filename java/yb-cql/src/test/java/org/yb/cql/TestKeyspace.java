@@ -29,7 +29,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.yb.util.RandomNumberUtil;
-import org.yb.util.SanitizerUtil;
+import org.yb.util.BuildTypeUtil;
 
 @RunWith(value=YBTestRunner.class)
 public class TestKeyspace extends BaseCQLTest {
@@ -113,9 +113,9 @@ public class TestKeyspace extends BaseCQLTest {
       useKeyspace(keyspaceName);
 
       for (int i = 0; i < 4; ++i) {
-        final int numRows = SanitizerUtil.isTSAN() ? 1000 : 7500;
+        final int numRows = BuildTypeUtil.isTSAN() ? 1000 : 7500;
         LOG.info("Create a big table '" + tableName + "' with " + numRows +
-            " rows (isTSAN=" + SanitizerUtil.isTSAN() + ", build type=" + TestUtils.getBuildType() +
+            " rows (isTSAN=" + BuildTypeUtil.isTSAN() + ", build type=" + TestUtils.getBuildType() +
             "). Iteration: " + i);
 
         try {

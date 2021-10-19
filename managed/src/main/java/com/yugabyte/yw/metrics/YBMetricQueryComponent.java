@@ -13,15 +13,23 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.net.InetSocketAddress;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.NavigableMap;
+import java.util.TreeMap;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.ListTabletServersResponse;
 import org.yb.client.YBClient;
 import org.yb.util.ServerInfo;
-
-import java.net.InetSocketAddress;
-import java.util.*;
-import java.util.Map.Entry;
 
 @Singleton
 public class YBMetricQueryComponent {
@@ -344,11 +352,10 @@ public class YBMetricQueryComponent {
       if (nodePrefix.length >= 3) {
         universeName = nodePrefix[2];
       }
-      Optional<Universe> optUniverse = Universe.maybeGetUniverseByName(universeName);
-      if (!optUniverse.isPresent()) {
+      Universe universe = Universe.getUniverseByName(universeName);
+      if (universe == null) {
         return null;
       }
-      Universe universe = optUniverse.get();
       TServerMappings tserverMaps = getTservers(universe);
       CassandraConnection cc = null;
 

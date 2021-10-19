@@ -583,9 +583,9 @@ void YBSingleThreadedReader::ConfigureSession() {
 bool NoopSingleThreadedWriter::Write(
     int64_t key_index, const string& key_str, const string& value_str) {
   YBNoOp noop(table_->table());
-  gscoped_ptr<YBPartialRow> row(table_->schema().NewRow());
+  std::unique_ptr<YBPartialRow> row(table_->schema().NewRow());
   CHECK_OK(row->SetBinary("k", key_str));
-  Status s = noop.Execute(*row);
+  Status s = noop.Execute(client_, *row);
   if (s.ok()) {
     return true;
   }

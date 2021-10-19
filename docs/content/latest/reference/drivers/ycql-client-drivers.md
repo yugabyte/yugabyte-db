@@ -9,7 +9,6 @@ menu:
     parent: drivers
     weight: 2942
 aliases:
-  - /latest/reference/connectors/yugabytedb-jdbc-driver
 isTocNested: true
 showAsideToc: true
 ---
@@ -60,7 +59,7 @@ For a tutorial on building a sample Java application with this driver, see [Buil
 
 To build Java applications with this driver, you must add the following Maven dependency to your application:
 
-```mvn
+```xml
 <dependency>
   <groupId>com.yugabyte</groupId>
   <artifactId>java-driver-core</artifactId>
@@ -78,7 +77,7 @@ For details, see the [v3.8 README](https://github.com/yugabyte/cassandra-java-dr
 
 To build Java applications with this driver, you must add the following Maven dependency to your application:
 
-```mvn
+```xml
 <dependency>
   <groupId>com.yugabyte</groupId>
   <artifactId>cassandra-driver-core</artifactId>

@@ -34,6 +34,7 @@ message ApplyExternalTransactionPB {
 message KeyValueWriteBatchPB {
   repeated KeyValuePairPB write_pairs = 1;
   optional TransactionMetadataPB transaction = 2;
+  optional SubTransactionMetadataPB subtransaction = 8;
   optional bool DEPRECATED_may_have_metadata = 3;
   // Used by serializable isolation transactions and row locking statements to store read intents.
   // In case of read-modify-write operation both read_pairs and write_pairs could present.
@@ -47,6 +48,7 @@ message ConsensusFrontierPB {
   optional fixed64 hybrid_time = 2;
   optional fixed64 history_cutoff = 3;
   optional fixed64 hybrid_time_filter = 4;
+  optional fixed64 max_value_level_ttl_expiration_time = 5;
 }
 
 message ApplyTransactionStatePB {
@@ -58,4 +60,7 @@ message ApplyTransactionStatePB {
 
   // Transaction commit hybrid time.
   optional fixed64 commit_ht = 3;
+
+  // Set of aborted subtransactions.
+  optional AbortedSubTransactionSetPB aborted = 4;
 }

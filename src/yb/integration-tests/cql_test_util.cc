@@ -90,8 +90,15 @@ CassError GetCassandraValue<CassInet>::Apply(const CassValue* val, CassInet* v) 
   return cass_value_get_inet(val, v);
 }
 
+bool CassandraValue::IsNull() const {
+  return cass_value_is_null(value_);
+}
+
 std::string CassandraValue::ToString() const {
   auto value_type = cass_value_type(value_);
+  if (IsNull()) {
+    return "NULL";
+  }
   switch (value_type) {
     case CASS_VALUE_TYPE_BLOB:
       return As<Slice>().ToDebugHexString();
@@ -414,7 +421,8 @@ CassandraStatement CassandraPrepared::Bind() {
   return CassandraStatement(cass_prepared_bind(prepared_.get()));
 }
 
-const MonoDelta kCassandraTimeOut = RegularBuildVsSanitizers(12s, 60s);
+const MonoDelta kCassandraTimeOut = 20s * kTimeMultiplier;
+const std::string kCqlTestKeyspace = "test";
 
 CppCassandraDriver::CppCassandraDriver(
     const std::vector<std::string>& hosts, uint16_t port,
@@ -460,8 +468,9 @@ Result<CassandraSession> CppCassandraDriver::CreateSession() {
 
 Result<CassandraSession> EstablishSession(CppCassandraDriver* driver) {
   auto session = VERIFY_RESULT(driver->CreateSession());
-  RETURN_NOT_OK(session.ExecuteQuery("CREATE KEYSPACE IF NOT EXISTS test;"));
-  RETURN_NOT_OK(session.ExecuteQuery("USE test;"));
+  RETURN_NOT_OK(
+      session.ExecuteQuery(Format("CREATE KEYSPACE IF NOT EXISTS $0;", kCqlTestKeyspace)));
+  RETURN_NOT_OK(session.ExecuteQuery(Format("USE $0;", kCqlTestKeyspace)));
   return session;
 }
 

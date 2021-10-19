@@ -266,7 +266,7 @@ class DelayablePeerProxy : public TestPeerProxy {
   }
 
  protected:
-  gscoped_ptr<ProxyType> const proxy_;
+  std::unique_ptr<ProxyType> const proxy_;
   bool delay_response_; // Protected by lock_.
   CountDownLatch latch_;
 };
@@ -426,7 +426,7 @@ class NoOpTestPeerProxyFactory : public PeerProxyFactory {
     return messenger_.get();
   }
 
-  gscoped_ptr<ThreadPool> pool_;
+  std::unique_ptr<ThreadPool> pool_;
   std::unique_ptr<rpc::Messenger> messenger_;
 };
 
@@ -649,7 +649,7 @@ class LocalTestPeerProxyFactory : public PeerProxyFactory {
   }
 
  private:
-  gscoped_ptr<ThreadPool> pool_;
+  std::unique_ptr<ThreadPool> pool_;
   rpc::AutoShutdownMessengerHolder messenger_;
   TestPeerMapManager* const peers_;
     // NOTE: There is no need to delete this on the dctor because proxies are externally managed
@@ -752,7 +752,7 @@ class TestOperationFactory : public TestConsensusContext {
   }
 
  private:
-  gscoped_ptr<ThreadPool> pool_;
+  std::unique_ptr<ThreadPool> pool_;
   Consensus* consensus_ = nullptr;
 };
 

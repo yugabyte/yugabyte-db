@@ -4,7 +4,7 @@ import _ from 'lodash';
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { browserHistory } from 'react-router';
-import { YBFormSelect, YBFormInput, YBSelectWithLabel } from '../../common/forms/fields';
+import { YBFormSelect, YBFormInput } from '../../common/forms/fields';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { isNonEmptyArray, isNonEmptyObject, isEmptyString } from '../../../utils/ObjectUtils';
 import { YBModalForm } from '../../common/forms';
@@ -26,7 +26,9 @@ export default class RestoreBackup extends Component {
     ) {
       const { restoreToUniverseUUID } = values;
       const payload = {
-        storageConfigUUID: values.storageConfigUUID,
+        storageConfigUUID: values.storageConfigUUID.value
+          ? values.storageConfigUUID.value
+          : values.storageConfigUUID,
         storageLocation: values.storageLocation,
         actionType: 'RESTORE',
         parallelism: values.parallelism
@@ -41,6 +43,9 @@ export default class RestoreBackup extends Component {
         payload.keyspace = values.restoreToKeyspace;
       }
 
+      if (values.restoreTimeStamp !== initialValues.restoreTimeStamp) {
+        payload.restoreTimeStamp = values.restoreTimeStamp.trim();
+      }
       if (_.get(values, 'kmsConfigUUID.value.length', 0) > 0) {
         payload['kmsConfigUUID'] = values.kmsConfigUUID.value;
       }
@@ -61,15 +66,6 @@ export default class RestoreBackup extends Component {
     return isNonEmptyObject(this.props.backupInfo);
   };
 
-  /**
-   * This is an onchange event for storage type.
-   * 
-   * @param {string} value Input field value.
-   */
-   backupConfigType = (value) => {
-    this.props.initialValues.storageConfigUUID = value;
-  }
-
   render() {
     const {
       backupInfo,
@@ -78,7 +74,8 @@ export default class RestoreBackup extends Component {
       universeList,
       storageConfigs,
       currentUniverse,
-      cloud
+      cloud,
+      featureFlags
     } = this.props;
 
     // If the backup information is not provided, most likely we are trying to load the backup
@@ -89,6 +86,7 @@ export default class RestoreBackup extends Component {
       restoreToUniverseUUID: Yup.string().required('Restore To Universe is Required'),
       restoreToKeyspace: Yup.string().nullable(),
       restoreToTableName: Yup.string().nullable(),
+      restoreTimeStamp: Yup.string().nullable(),
       storageConfigUUID: Yup.string().required('Storage Config is Required'),
       storageLocation: Yup.string()
         .nullable()
@@ -126,7 +124,7 @@ export default class RestoreBackup extends Component {
       const labelName = config.metadata.provider + ' - ' + config.metadata.name;
       return { value: config.metadata.configUUID, label: labelName };
     });
-    
+
     const configTypeList = BackupStorageOptions(storageConfigs);
     const initialValues = this.props.initialValues;
     const isUniverseBackup =
@@ -168,6 +166,7 @@ export default class RestoreBackup extends Component {
             if (values.storageLocation) {
               payload.storageLocation = values.storageLocation.trim();
             }
+
             this.restoreBackup(payload);
           }}
           initialValues={initialValues}
@@ -176,10 +175,12 @@ export default class RestoreBackup extends Component {
           <Field
             name="storageConfigUUID"
             {...(hasBackupInfo ? { type: 'hidden' } : null)}
-            component={YBSelectWithLabel}
+            component={YBFormSelect}
+            className="config"
+            classNamePrefix="select-nested"
             label={'Storage'}
+            defaultValue={initialValues.storageConfigUUID.value}
             options={configTypeList}
-            onInputChanged={this.backupConfigType}
           />
           <Field
             name="storageLocation"
@@ -207,6 +208,10 @@ export default class RestoreBackup extends Component {
             disabled={isMultiTableBackup}
             label={'Table'}
           />
+          {(featureFlags.test?.addRestoreTimeStamp ||
+              featureFlags.released?.addRestoreTimeStamp) && (
+              <Field name="restoreTimeStamp" component={YBFormInput} label={'TimeStamp'} />
+            )}
           <Field name="parallelism" component={YBFormInput} label={'Parallel Threads'} />
           <Field
             name="kmsConfigUUID"

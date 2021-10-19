@@ -2,10 +2,19 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
+import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.anyLong;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ShellResponse;
@@ -16,44 +25,34 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
 import org.mockito.runners.MockitoJUnitRunner;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.yb.client.YBClient;
-
 import play.libs.Json;
-
-import java.util.*;
-import java.util.stream.Collectors;
-
-import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
-import static com.yugabyte.yw.common.ModelFactory.createUniverse;
-import static org.junit.Assert.*;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.anyLong;
-import static org.mockito.Mockito.*;
 
 @RunWith(MockitoJUnitRunner.class)
 public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
-  public static final Logger LOG = LoggerFactory.getLogger(AddNodeToUniverseTest.class);
 
   UniverseDefinitionTaskParams.UserIntent userIntent;
 
-  @InjectMocks Commissioner commissioner;
   Universe defaultUniverse;
   YBClient mockClient;
   ShellResponse dummyShellResponse;
 
   public void setUp(boolean withMaster, int numNodes, int replicationFactor, boolean multiZone) {
     super.setUp();
+
     Region region = Region.create(defaultProvider, "test-region", "Region 1", "yb-image-1");
-    AvailabilityZone.create(region, "az-1", "az-1", "subnet-1");
+    AvailabilityZone.createOrThrow(region, "az-1", "az-1", "subnet-1");
     if (multiZone) {
-      AvailabilityZone.create(region, "az-2", "az-2", "subnet-2");
-      AvailabilityZone.create(region, "az-3", "az-3", "subnet-3");
+      AvailabilityZone.createOrThrow(region, "az-2", "az-2", "subnet-2");
+      AvailabilityZone.createOrThrow(region, "az-3", "az-3", "subnet-3");
     }
     // create default universe
     userIntent = new UniverseDefinitionTaskParams.UserIntent();
@@ -69,22 +68,20 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.universeUUID);
 
     Universe.UniverseUpdater updater =
-        new Universe.UniverseUpdater() {
-          public void run(Universe universe) {
-            UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-            Set<NodeDetails> nodes = universeDetails.nodeDetailsSet;
-            int count = 0;
-            int numZones = 1;
-            if (multiZone) {
-              numZones = 3;
-            }
-            for (NodeDetails node : nodes) {
-              node.cloudInfo.az = "az-" + (count % numZones + 1);
-              nodes.add(node);
-            }
-            universeDetails.nodeDetailsSet = nodes;
-            universe.setUniverseDetails(universeDetails);
+        universe -> {
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          Set<NodeDetails> nodes = universeDetails.nodeDetailsSet;
+          int count = 0;
+          int numZones = 1;
+          if (multiZone) {
+            numZones = 3;
           }
+          for (NodeDetails node : nodes) {
+            node.cloudInfo.az = "az-" + (count % numZones + 1);
+            nodes.add(node);
+          }
+          universeDetails.nodeDetailsSet = nodes;
+          universe.setUniverseDetails(universeDetails);
         };
     Universe.saveDetails(defaultUniverse.universeUUID, updater);
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.universeUUID);
@@ -190,7 +187,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     WITH_MASTER,
     ONLY_TSERVER,
     NOT_EXISTS
-  };
+  }
 
   private void assertRemoveNodeSequence(
       Map<Integer, List<TaskInfo>> subTasksByPosition, RemoveType type, boolean moveData) {
@@ -209,7 +206,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           assertEquals(taskType, tasks.get(0).getTaskType());
           JsonNode expectedResults = REMOVE_NODE_WITH_MASTER_RESULTS.get(position);
           List<JsonNode> taskDetails =
-              tasks.stream().map(t -> t.getTaskDetails()).collect(Collectors.toList());
+              tasks.stream().map(TaskInfo::getTaskDetails).collect(Collectors.toList());
           assertJsonEqual(expectedResults, taskDetails.get(0));
           position++;
           taskPosition++;
@@ -222,7 +219,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           assertEquals(taskType, tasks.get(0).getTaskType());
           JsonNode expectedResults = REMOVE_NODE_TASK_EXPECTED_RESULTS.get(position);
           List<JsonNode> taskDetails =
-              tasks.stream().map(t -> t.getTaskDetails()).collect(Collectors.toList());
+              tasks.stream().map(TaskInfo::getTaskDetails).collect(Collectors.toList());
           assertJsonEqual(expectedResults, taskDetails.get(0));
           position++;
           taskPosition++;
@@ -235,7 +232,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           assertEquals(taskType, tasks.get(0).getTaskType());
           JsonNode expectedResults = REMOVE_NOT_EXISTS_NODE_TASK_EXPECTED_RESULTS.get(position);
           List<JsonNode> taskDetails =
-              tasks.stream().map(t -> t.getTaskDetails()).collect(Collectors.toList());
+              tasks.stream().map(TaskInfo::getTaskDetails).collect(Collectors.toList());
           assertJsonEqual(expectedResults, taskDetails.get(0));
           position++;
           taskPosition++;
@@ -254,7 +251,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertRemoveNodeSequence(subTasksByPosition, RemoveType.ONLY_TSERVER, true);
   }
 
@@ -267,7 +264,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertRemoveNodeSequence(subTasksByPosition, RemoveType.WITH_MASTER, true);
   }
 
@@ -293,7 +290,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertRemoveNodeSequence(subTasksByPosition, RemoveType.NOT_EXISTS, true);
   }
 
@@ -306,7 +303,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertRemoveNodeSequence(subTasksByPosition, RemoveType.WITH_MASTER, false);
   }
 
@@ -319,7 +316,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertRemoveNodeSequence(subTasksByPosition, RemoveType.WITH_MASTER, false);
   }
 
@@ -332,7 +329,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertRemoveNodeSequence(subTasksByPosition, RemoveType.WITH_MASTER, true);
   }
 }

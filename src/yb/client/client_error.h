@@ -27,8 +27,8 @@ YB_DEFINE_ENUM(
     (kTablePartitionListIsStale)
     (kExpiredRequestToBeRetried)
     (kTabletNotYetRunning)
-    (kAbortedBatchDueToFailedTabletLookup)
     (kTablePartitionListVersionDoesNotMatch)
+    (kMetaCacheInvalidated)
     );
 
 struct ClientErrorTag : IntegralErrorTag<ClientErrorCode> {

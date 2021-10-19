@@ -3,35 +3,46 @@
 package com.yugabyte.yw.models.helpers;
 
 import com.google.common.collect.ImmutableSet;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
+import java.util.Set;
 import org.yb.ColumnSchema;
 import org.yb.Type;
 
-import java.util.Set;
-
+@ApiModel(description = "Details of a CQL database column")
 public class ColumnDetails {
 
   // The relative position for this column in the table and in CQL commands
+  @ApiModelProperty(
+      value = "Relative position (column order) for this column, in the table and in CQL commands")
   public int columnOrder;
 
   // The name of this column
+  @ApiModelProperty(value = "Column name")
   public String name;
 
   // The type of this column
+  @ApiModelProperty(value = "The column's data type")
   public YQLDataType type;
 
   // For collections, this is the item type (key type for maps)
+  @ApiModelProperty(value = "Column key type")
   public YQLDataType keyType;
 
   // For maps, this is the value type
+  @ApiModelProperty(value = "Column value name")
   public YQLDataType valueType;
 
   // True if this column is a partition key
+  @ApiModelProperty(value = "True if this column is a partition key")
   public boolean isPartitionKey;
 
   // True if this column is a clustering key
+  @ApiModelProperty(value = "True if this column is a clustering key")
   public boolean isClusteringKey;
 
   // SortOrder for this column (only valid for clustering columns)
+  @ApiModelProperty(value = "Sort order for this column. Valid only for clustering columns.")
   public ColumnSchema.SortOrder sortOrder = ColumnSchema.SortOrder.NONE;
 
   public static ColumnDetails createWithColumnSchema(ColumnSchema columnSchema) {

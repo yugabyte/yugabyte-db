@@ -71,6 +71,12 @@ message ChangeMetadataRequestPB {
 
   // Used to update schema of a colocated user table upon backfill completion.
   optional bytes backfill_done_table_id = 13;
+
+  // Transactions will be aborted except the one with this id which triggered the AlterTable.
+  optional bytes transaction_id = 14; // 16 byte uuid
+
+  // Used for AlterTable to determine if active transactions on the tablet needs to be aborted.
+  optional bool should_abort_active_txns = 16 [ default = false ];
 }
 
 // This is used to export tablet metadata changes to a protobuf file to be reloaded on a new cluster
@@ -143,6 +149,9 @@ message BackfillIndexResponsePB {
 
   // In case of a partial error, list of indexes that failed.
   repeated bytes failed_index_ids = 4;
+
+  // Returns the number of rows backfilled in the request.
+  optional uint64 number_rows_processed = 5;
 }
 
 message CopartitionTableRequestPB {
@@ -250,6 +259,12 @@ enum TSTabletManagerStatePB {
 
 // TODO: rename this to FlushOrCompactTabletsRequestPB
 message FlushTabletsRequestPB {
+  enum Operation {
+    FLUSH = 0;
+    COMPACT = 1;
+    LOG_GC = 2;
+  }
+
   // UUID of server this request is addressed to.
   optional bytes dest_uuid = 1;
 
@@ -258,8 +273,8 @@ message FlushTabletsRequestPB {
 
   optional fixed64 propagated_hybrid_time = 3;
 
-  // Whether we want to compact the tablets instead of flushing them.
-  optional bool is_compaction = 4;
+  // Actual operation that we plan to perform.
+  optional Operation operation = 4;
 
   // Whether we want to flush or compact all tablets in the server.
   optional bool all_tablets = 5;
@@ -301,25 +316,6 @@ message RemoveTableFromTabletResponsePB {
   optional fixed64 propagated_hybrid_time = 2;
 }
 
-message GetSplitKeyRequestPB {
-  // UUID of server this request is addressed to.
-  optional bytes dest_uuid = 1;
-
-  optional fixed64 propagated_hybrid_time = 2;
-
-  required bytes tablet_id = 3;
-}
-
-message GetSplitKeyResponsePB {
-  optional TabletServerErrorPB error = 1;
-
-  optional bytes split_partition_key = 2;
-
-  optional bytes split_encoded_key = 3;
-
-  optional fixed64 propagated_hybrid_time = 4;
-}
-
 message SplitTabletRequestPB {
   // UUID of server this request is addressed to.
   optional bytes dest_uuid = 1;
@@ -340,6 +336,13 @@ message SplitTabletRequestPB {
 message SplitTabletResponsePB {
   optional TabletServerErrorPB error = 1;
   optional fixed64 propagated_hybrid_time = 2;
+}
+
+message UpgradeYsqlRequestPB {
+}
+
+message UpgradeYsqlResponsePB {
+  optional TabletServerErrorPB error = 1;
 }
 
 service TabletServerAdminService {
@@ -375,6 +378,7 @@ service TabletServerAdminService {
   rpc RemoveTableFromTablet(RemoveTableFromTabletRequestPB)
       returns (RemoveTableFromTabletResponsePB);
 
-  rpc GetSplitKey(GetSplitKeyRequestPB) returns (GetSplitKeyResponsePB);
   rpc SplitTablet(SplitTabletRequestPB) returns (SplitTabletResponsePB);
+
+  rpc UpgradeYsql(UpgradeYsqlRequestPB) returns (UpgradeYsqlResponsePB);
 }

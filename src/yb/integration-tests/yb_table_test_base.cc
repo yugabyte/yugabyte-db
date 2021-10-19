@@ -55,6 +55,10 @@ int YBTableTestBase::num_tablet_servers() {
   return kDefaultNumTabletServers;
 }
 
+int YBTableTestBase::num_drives() {
+  return kDefaultNumDrives;
+}
+
 int YBTableTestBase::num_tablets() {
   return CalcNumTablets(num_tablet_servers());
 }
@@ -96,6 +100,9 @@ YBTableTestBase::YBTableTestBase() {
 void YBTableTestBase::BeforeCreateTable() {
 }
 
+void YBTableTestBase::BeforeStartCluster() {
+}
+
 void YBTableTestBase::SetUp() {
   YBTest::SetUp();
 
@@ -111,12 +118,18 @@ void YBTableTestBase::SetUp() {
     external_mini_cluster_.reset(new ExternalMiniCluster(opts));
     mini_cluster_status = external_mini_cluster_->Start();
   } else {
-    auto opts = MiniClusterOptions();
+    auto opts = MiniClusterOptions {
+        .num_masters = num_masters(),
+        .num_tablet_servers = num_tablet_servers(),
+        .num_drives = num_drives(),
+        .master_env = env_.get(),
+        .ts_env = ts_env_.get(),
+        .ts_rocksdb_env = ts_rocksdb_env_.get()
+    };
     SetAtomicFlag(enable_ysql(), &FLAGS_enable_ysql);
-    opts.num_masters = num_masters();
-    opts.num_tablet_servers = num_tablet_servers();
 
-    mini_cluster_.reset(new MiniCluster(env_.get(), opts));
+    mini_cluster_.reset(new MiniCluster(opts));
+    BeforeStartCluster();
     mini_cluster_status = mini_cluster_->Start();
   }
   if (!mini_cluster_status.ok()) {

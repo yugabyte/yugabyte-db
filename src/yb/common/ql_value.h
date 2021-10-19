@@ -23,12 +23,26 @@
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_type.h"
 
+#include "yb/util/bytes_formatter.h"
 #include "yb/util/decimal.h"
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/timestamp.h"
 #include "yb/util/uuid.h"
 #include "yb/util/yb_partition.h"
 #include "yb/util/varint.h"
+
+// The list of unsupported datatypes to use in switch statements
+#define QL_UNSUPPORTED_TYPES_IN_SWITCH \
+  case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED; \
+  case TUPLE: FALLTHROUGH_INTENDED;     \
+  case TYPEARGS: FALLTHROUGH_INTENDED;  \
+  case UNKNOWN_DATA
+
+#define QL_INVALID_TYPES_IN_SWITCH     \
+  case UINT8:  FALLTHROUGH_INTENDED;    \
+  case UINT16: FALLTHROUGH_INTENDED;    \
+  case UINT32: FALLTHROUGH_INTENDED;    \
+  case UINT64
 
 namespace yb {
 
@@ -431,6 +445,7 @@ class QLValue {
 
   //------------------------------------ debug string ---------------------------------------
   // Return a string for debugging.
+  std::string ToValueString(const QuotesType quotes_type = QuotesType::kDoubleQuotes) const;
   std::string ToString() const;
 
  private:

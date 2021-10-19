@@ -20,9 +20,7 @@ import com.yugabyte.yw.common.kms.algorithms.SmartKeyAlgorithm;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig;
-import java.util.Arrays;
 import java.util.Base64;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import play.api.Play;
@@ -48,7 +46,7 @@ public class SmartKeyEARService extends EncryptionAtRestService<SmartKeyAlgorith
    *     for
    * @return a session token to be used to authorize subsequent requests
    */
-  private String retrieveSessionAuthorization(ObjectNode authConfig) {
+  public String retrieveSessionAuthorization(ObjectNode authConfig) {
     final String endpoint = "/sys/v1/session/auth";
     final String apiToken = authConfig.get("api_key").asText();
     final String baseUrl = authConfig.get("base_url").asText();

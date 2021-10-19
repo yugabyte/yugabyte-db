@@ -584,13 +584,50 @@ ERROR:  enum label "green" already exists
 -- check transactional behaviour of ALTER TYPE ... ADD VALUE
 --
 CREATE TYPE bogus AS ENUM('good');
--- check that we can't add new values to existing enums in a transaction
+-- check that we can add new values to existing enums in a transaction
+-- but we can't use them
 BEGIN;
-ALTER TYPE bogus ADD VALUE 'bad';
-ERROR:  ALTER TYPE ... ADD cannot run inside a transaction block
+ALTER TYPE bogus ADD VALUE 'new';
+SAVEPOINT x;
+SELECT 'new'::bogus;  -- unsafe
+ERROR:  unsafe use of new value "new" of enum type bogus
+LINE 1: SELECT 'new'::bogus;
+               ^
+HINT:  New enum values must be committed before they can be used.
+ROLLBACK TO x;
+SELECT enum_first(null::bogus);  -- safe
+ enum_first 
+------------
+ good
+(1 row)
+
+SELECT enum_last(null::bogus);  -- unsafe
+ERROR:  unsafe use of new value "new" of enum type bogus
+HINT:  New enum values must be committed before they can be used.
+ROLLBACK TO x;
+SELECT enum_range(null::bogus);  -- unsafe
+ERROR:  unsafe use of new value "new" of enum type bogus
+HINT:  New enum values must be committed before they can be used.
+ROLLBACK TO x;
 COMMIT;
+SELECT 'new'::bogus;  -- now safe
+ bogus
+-------
+ new
+(1 row)
+
+SELECT enumlabel, enumsortorder
+FROM pg_enum
+WHERE enumtypid = 'bogus'::regtype
+ORDER BY 2;
+ enumlabel | enumsortorder
+-----------+---------------
+ good      |             1
+ new       |             2
+(2 rows)
+
 -- check that we recognize the case where the enum already existed but was
--- modified in the current txn
+-- modified in the current txn; this should not be considered safe
 BEGIN;
 ALTER TYPE bogus RENAME TO bogon;
 ERROR:  ALTER TYPE not supported yet
@@ -599,8 +636,10 @@ LINE 1: ALTER TYPE bogus RENAME TO bogon;
 HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1893. Click '+' on the description to raise its priority
 ALTER TYPE bogon ADD VALUE 'bad';
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
+SELECT 'bad'::bogon;
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
 ROLLBACK;
--- but ALTER TYPE RENAME VALUE is safe in a transaction
+-- but a renamed value is safe to use later in same transaction
 BEGIN;
 ALTER TYPE bogus RENAME VALUE 'good' to 'bad';
 SELECT 'bad'::bogus;
@@ -611,13 +650,32 @@ SELECT 'bad'::bogus;
 
 ROLLBACK;
 DROP TYPE bogus;
--- check that we *can* add new values to existing enums in a transaction,
--- if the type is new as well
+-- check that values created during CREATE TYPE can be used in any case
 BEGIN;
-CREATE TYPE bogus AS ENUM();
-ALTER TYPE bogus ADD VALUE 'good';
-ERROR:  ALTER TYPE ... ADD cannot run inside a transaction block
-ALTER TYPE bogus ADD VALUE 'ugly';
+CREATE TYPE bogus AS ENUM('good','bad','ugly');
+ALTER TYPE bogus RENAME TO bogon;
+ERROR:  ALTER TYPE not supported yet
+LINE 1: ALTER TYPE bogus RENAME TO bogon;
+        ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1893. Click '+' on the description to raise its priority
+select enum_range(null::bogon);
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ROLLBACK;
+-- ideally, we'd allow this usage; but it requires keeping track of whether
+-- the enum type was created in the current transaction, which is expensive
+BEGIN;
+CREATE TYPE bogus AS ENUM('good');
+ERROR:  type "bogus" already exists
+ALTER TYPE bogus RENAME TO bogon;
+ERROR:  ALTER TYPE not supported yet
+LINE 1: ALTER TYPE bogus RENAME TO bogon;
+        ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1893. Click '+' on the description to raise its priority
+ALTER TYPE bogon ADD VALUE 'bad';
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ALTER TYPE bogon ADD VALUE 'ugly';
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+select enum_range(null::bogon);  -- fails
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 ROLLBACK;
 --
@@ -641,4 +699,3 @@ SELECT * FROM pg_enum WHERE NOT EXISTS
  enumtypid | enumsortorder | enumlabel
 -----------+---------------+-----------
 (0 rows)
-

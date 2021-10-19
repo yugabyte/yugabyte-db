@@ -7,14 +7,29 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.NodeActionType;
-import com.yugabyte.yw.common.YWServiceException;
-import com.yugabyte.yw.common.ValidatingFormFactory;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.NodeActionFormData;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
-import com.yugabyte.yw.forms.YWResults;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPTask;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.AllowedActionsHelper;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
+import io.swagger.annotations.ApiImplicitParams;
+import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.Authorization;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
@@ -22,13 +37,10 @@ import play.libs.Json;
 import play.mvc.Result;
 import play.mvc.Results;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-
+@Api(
+    value = "Node instances",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class NodeInstanceController extends AuthenticatedController {
-  @Inject ValidatingFormFactory formFactory;
 
   @Inject Commissioner commissioner;
 
@@ -41,10 +53,14 @@ public class NodeInstanceController extends AuthenticatedController {
    * @param nodeUuid the node UUID
    * @return JSON response with Node data
    */
+  @ApiOperation(
+      value = "Get a node instance",
+      response = NodeInstance.class,
+      nickname = "getNodeInstance")
   public Result get(UUID customerUuid, UUID nodeUuid) {
     Customer.getOrBadRequest(customerUuid);
     NodeInstance node = NodeInstance.getOrBadRequest(nodeUuid);
-    return ApiResponse.success(node);
+    return PlatformResults.withData(node);
   }
 
   /**
@@ -54,26 +70,34 @@ public class NodeInstanceController extends AuthenticatedController {
    * @param zoneUuid the zone UUID
    * @return JSON response with list of nodes
    */
+  @ApiOperation(
+      value = "List all of a zone's node instances",
+      response = NodeInstance.class,
+      responseContainer = "List")
   public Result listByZone(UUID customerUuid, UUID zoneUuid) {
     Customer.getOrBadRequest(customerUuid);
     AvailabilityZone.getOrBadRequest(zoneUuid);
 
     try {
       List<NodeInstance> nodes = NodeInstance.listByZone(zoneUuid, null /* instanceTypeCode */);
-      return ApiResponse.success(nodes);
+      return PlatformResults.withData(nodes);
     } catch (Exception e) {
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
   }
 
+  @ApiOperation(
+      value = "List all of a provider's node instances",
+      response = NodeInstance.class,
+      responseContainer = "List")
   public Result listByProvider(UUID customerUUID, UUID providerUUID) {
     List<NodeInstance> regionList;
     try {
       regionList = NodeInstance.listByProvider(providerUUID);
     } catch (Exception e) {
-      throw new YWServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
-    return ApiResponse.success(regionList);
+    return PlatformResults.withData(regionList);
   }
 
   /**
@@ -83,6 +107,19 @@ public class NodeInstanceController extends AuthenticatedController {
    * @param zoneUuid the zone UUID
    * @return JSON response of newly created Nodes
    */
+  @ApiOperation(
+      value = "Create a node instance",
+      response = NodeInstance.class,
+      responseContainer = "Map",
+      nickname = "createNodeInstance")
+  @ApiImplicitParams({
+    @ApiImplicitParam(
+        name = "Node instance",
+        value = "Node instance data to be created",
+        required = true,
+        dataType = "com.yugabyte.yw.forms.NodeInstanceFormData",
+        paramType = "body")
+  })
   public Result create(UUID customerUuid, UUID zoneUuid) {
     Customer.getOrBadRequest(customerUuid);
     AvailabilityZone.getOrBadRequest(zoneUuid);
@@ -99,9 +136,9 @@ public class NodeInstanceController extends AuthenticatedController {
     }
     if (nodes.size() > 0) {
       auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
-      return ApiResponse.success(nodes);
+      return PlatformResults.withData(nodes);
     }
-    throw new YWServiceException(
+    throw new PlatformServiceException(
         BAD_REQUEST, "Invalid nodes in request. Duplicate IP Addresses are not allowed.");
   }
 
@@ -109,6 +146,7 @@ public class NodeInstanceController extends AuthenticatedController {
    * Endpoint deletes the configured instance for a provider. Since instance name and instance uuid
    * are absent in a pristine (unused) instance We use IP to query for Instance and delete it
    */
+  @ApiOperation(value = "Delete a node instance")
   public Result deleteInstance(UUID customerUUID, UUID providerUUID, String instanceIP) {
     // Validate customer UUID and universe UUID and AWS provider.
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -127,10 +165,19 @@ public class NodeInstanceController extends AuthenticatedController {
       auditService().createAuditEntry(ctx(), request());
       return Results.status(OK);
     } else {
-      throw new YWServiceException(BAD_REQUEST, "Node Not Found");
+      throw new PlatformServiceException(BAD_REQUEST, "Node Not Found");
     }
   }
 
+  @ApiOperation(value = "Update a node", response = YBPTask.class)
+  @ApiImplicitParams({
+    @ApiImplicitParam(
+        name = "Node action",
+        value = "Node action data to be updated",
+        required = true,
+        dataType = "com.yugabyte.yw.forms.NodeActionFormData",
+        paramType = "body")
+  })
   public Result nodeAction(UUID customerUUID, UUID universeUUID, String nodeName) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID);
@@ -148,6 +195,7 @@ public class NodeInstanceController extends AuthenticatedController {
     taskParams.universeUUID = universe.universeUUID;
     taskParams.expectedUniverseVersion = universe.version;
     taskParams.nodeName = nodeName;
+    taskParams.useSystemd = universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd;
     NodeActionType nodeAction = formData.get().nodeAction;
 
     // Check deleting/removing a node will not go below the RF
@@ -162,20 +210,22 @@ public class NodeInstanceController extends AuthenticatedController {
         || nodeAction == NodeActionType.START_MASTER) {
       taskParams.clusters = universe.getUniverseDetails().clusters;
       taskParams.rootCA = universe.getUniverseDetails().rootCA;
+      taskParams.clientRootCA = universe.getUniverseDetails().clientRootCA;
+      taskParams.rootAndClientRootCASame = universe.getUniverseDetails().rootAndClientRootCASame;
       if (!CertificateInfo.isCertificateValid(taskParams.rootCA)) {
         String errMsg =
             String.format(
                 "The certificate %s needs info. Update the cert" + " and retry.",
                 CertificateInfo.get(taskParams.rootCA).label);
         LOG.error(errMsg);
-        throw new YWServiceException(BAD_REQUEST, errMsg);
+        throw new PlatformServiceException(BAD_REQUEST, errMsg);
       }
     }
 
     if (nodeAction == NodeActionType.QUERY) {
       String errMsg = "Node action not allowed for this action type.";
       LOG.error(errMsg);
-      throw new YWServiceException(BAD_REQUEST, errMsg);
+      throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
 
     LOG.info(
@@ -201,6 +251,6 @@ public class NodeInstanceController extends AuthenticatedController {
         universe.name,
         nodeName);
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
-    return new YWResults.YWTask(taskUUID).asResult();
+    return new YBPTask(taskUUID).asResult();
   }
 }

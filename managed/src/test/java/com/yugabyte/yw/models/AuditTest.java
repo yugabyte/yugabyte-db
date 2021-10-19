@@ -2,30 +2,32 @@
 
 package com.yugabyte.yw.models;
 
+import static com.yugabyte.yw.common.audit.AuditService.SECRET_REPLACEMENT;
+import static com.yugabyte.yw.models.Users.Role;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+import static play.test.Helpers.contextComponents;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.audit.AuditService;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
 import play.libs.Json;
 import play.mvc.Http;
-
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-
-import static com.yugabyte.yw.common.audit.AuditService.SECRET_REPLACEMENT;
-import static com.yugabyte.yw.models.Users.Role;
-import static org.junit.Assert.*;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-import static play.test.Helpers.contextComponents;
 
 @RunWith(MockitoJUnitRunner.class)
 public class AuditTest extends FakeDBApplication {
@@ -159,7 +161,7 @@ public class AuditTest extends FakeDBApplication {
 
   @Test
   public void testGetAllUserEntries() {
-    Users u1 = Users.create("foo@foo.com", "password", Role.Admin, customer.uuid);
+    Users u1 = Users.create("foo@foo.com", "password", Role.Admin, customer.uuid, false);
     UUID randUUID = UUID.randomUUID();
     UUID randUUID1 = UUID.randomUUID();
     UUID randUUID2 = UUID.randomUUID();

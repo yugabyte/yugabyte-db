@@ -319,22 +319,21 @@ Status MasterTestBase::CreateNamespaceWait(const NamespaceId& ns_id,
     is_req.mutable_namespace_()->set_database_type(*database_type);
   }
 
-  AssertLoggedWaitFor([&]() -> Result<bool> {
+  return LoggedWaitFor([&]() -> Result<bool> {
     IsCreateNamespaceDoneResponsePB is_resp;
     status = proxy_->IsCreateNamespaceDone(is_req, &is_resp, ResetAndGetController());
     WARN_NOT_OK(status, "IsCreateNamespaceDone returned unexpected error");
-    if (status.ok()) {
-      if (is_resp.has_done() && is_resp.done()) {
-        if (is_resp.has_error()) {
-          status = StatusFromPB(is_resp.error().status());
-        }
-        return true;
+    if (!status.ok()) {
+      return status;
+    }
+    if (is_resp.has_done() && is_resp.done()) {
+      if (is_resp.has_error()) {
+        return StatusFromPB(is_resp.error().status());
       }
+      return true;
     }
     return false;
   }, MonoDelta::FromSeconds(60), "Wait for create namespace to finish async setup tasks.");
-
-  return status;
 }
 
 Status MasterTestBase::AlterNamespace(const NamespaceName& ns_name,
@@ -360,24 +359,21 @@ Status MasterTestBase::AlterNamespace(const NamespaceName& ns_name,
 // PGSQL Namespaces are deleted asynchronously since they may delete a large number of tables.
 // CQL Namespaces don't need to call this function and return success if present.
 Status MasterTestBase::DeleteNamespaceWait(IsDeleteNamespaceDoneRequestPB const& del_req) {
-  Status status = Status::OK();
-  AssertLoggedWaitFor([&]() -> Result<bool> {
+  return LoggedWaitFor([&]() -> Result<bool> {
     IsDeleteNamespaceDoneResponsePB del_resp;
-    status = proxy_->IsDeleteNamespaceDone(del_req, &del_resp, ResetAndGetController());
+    auto status = proxy_->IsDeleteNamespaceDone(del_req, &del_resp, ResetAndGetController());
     if (!status.ok()) {
       WARN_NOT_OK(status, "IsDeleteNamespaceDone returned unexpected error");
-      return true;
+      return status;
     }
     if (del_resp.has_done() && del_resp.done()) {
       if (del_resp.has_error()) {
-        status = StatusFromPB(del_resp.error().status());
+        return StatusFromPB(del_resp.error().status());
       }
       return true;
     }
     return false;
   }, MonoDelta::FromSeconds(10), "Wait for delete namespace to finish async cleanup tasks.");
-
-  return status;
 }
 
 Status MasterTestBase::DeleteTableSync(const NamespaceName& ns_name, const TableName& table_name,

@@ -4,15 +4,13 @@ package com.yugabyte.yw.models;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 
-import java.util.List;
-import java.util.UUID;
-
-import org.junit.Before;
-import org.junit.Test;
-
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
+import java.util.List;
+import java.util.UUID;
+import org.junit.Before;
+import org.junit.Test;
 
 public class NodeInstanceTest extends FakeDBApplication {
   private Provider provider;
@@ -23,7 +21,7 @@ public class NodeInstanceTest extends FakeDBApplication {
   public void setUp() {
     provider = ModelFactory.awsProvider(ModelFactory.testCustomer());
     region = Region.create(provider, "region-1", "Region 1", "yb-image-1");
-    zone = AvailabilityZone.create(region, "az-1", "AZ 1", "subnet-1");
+    zone = AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
   }
 
   private NodeInstance createNode() {

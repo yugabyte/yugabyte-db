@@ -104,8 +104,6 @@ using consensus::RaftPeerPB;
 using master::GetLeaderMasterRpc;
 using master::MasterServiceProxy;
 using master::MasterErrorPB;
-using master::AnalyzeTableRequestPB;
-using master::AnalyzeTableResponsePB;
 using rpc::Rpc;
 using rpc::RpcController;
 
@@ -263,6 +261,7 @@ Status YBClient::Data::SyncLeaderMasterRpc(
 // Explicit specialization for callers outside this compilation unit.
 YB_CLIENT_SPECIALIZE_SIMPLE(ListTables);
 YB_CLIENT_SPECIALIZE_SIMPLE(ListTabletServers);
+YB_CLIENT_SPECIALIZE_SIMPLE(ListLiveTabletServers);
 YB_CLIENT_SPECIALIZE_SIMPLE(GetTableLocations);
 YB_CLIENT_SPECIALIZE_SIMPLE(GetTabletLocations);
 YB_CLIENT_SPECIALIZE_SIMPLE(ListMasters);
@@ -289,6 +288,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE(CreateCDCStream);
 YB_CLIENT_SPECIALIZE_SIMPLE(DeleteCDCStream);
 YB_CLIENT_SPECIALIZE_SIMPLE(ListCDCStreams);
 YB_CLIENT_SPECIALIZE_SIMPLE(GetCDCStream);
+YB_CLIENT_SPECIALIZE_SIMPLE(UpdateCDCStream);
 YB_CLIENT_SPECIALIZE_SIMPLE(CreateTablegroup);
 YB_CLIENT_SPECIALIZE_SIMPLE(DeleteTablegroup);
 YB_CLIENT_SPECIALIZE_SIMPLE(ListTablegroups);
@@ -316,7 +316,11 @@ YB_CLIENT_SPECIALIZE_SIMPLE(IsDeleteNamespaceDone);
 YBClient::Data::Data()
     : leader_master_rpc_(rpcs_.InvalidHandle()),
       latest_observed_hybrid_time_(YBClient::kNoHybridTime),
-      id_(ClientId::GenerateRandom()) {}
+      id_(ClientId::GenerateRandom()) {
+  for(auto& cache : tserver_count_cached_) {
+    cache.store(0, std::memory_order_relaxed);
+  }
+}
 
 YBClient::Data::~Data() {
   rpcs_.Shutdown();
@@ -554,6 +558,10 @@ Status YBClient::Data::IsCreateTableInProgress(YBClient* client,
   if (!table_id.empty()) {
     req.mutable_table()->set_table_id(table_id);
   }
+  if (!req.has_table()) {
+    *create_in_progress = false;
+    return STATUS(InternalError, "Cannot query IsCreateTableInProgress without table info");
+  }
 
   const Status s =
       SyncLeaderMasterRpc<IsCreateTableDoneRequestPB, IsCreateTableDoneResponsePB>(
@@ -583,16 +591,6 @@ Status YBClient::Data::WaitForCreateTableToFinish(YBClient* client,
       deadline, "Waiting on Create Table to be completed", "Timed out waiting for Table Creation",
       std::bind(&YBClient::Data::IsCreateTableInProgress, this, client,
                 table_name, table_id, _1, _2));
-}
-
-Result<AnalyzeTableResponsePB> YBClient::Data::AnalyzeTable(
-    YBClient* client, const AnalyzeTableRequestPB& req, CoarseTimePoint deadline) {
-  AnalyzeTableResponsePB resp;
-  const auto s = SyncLeaderMasterRpc<AnalyzeTableRequestPB, AnalyzeTableResponsePB>(
-      deadline, req, &resp, nullptr /* attempts */, "AnalyzeTable",
-      &MasterServiceProxy::AnalyzeTable);
-  RETURN_NOT_OK(s);
-  return resp;
 }
 
 Status YBClient::Data::DeleteTable(YBClient* client,
@@ -635,19 +633,33 @@ Status YBClient::Data::DeleteTable(YBClient* client,
   }
 
   // Spin until the table is fully deleted, if requested.
-  if (wait && resp.has_table_id()) {
-    RETURN_NOT_OK(WaitForDeleteTableToFinish(client, resp.table_id(), deadline));
-  }
-  if (wait && resp.has_indexed_table()) {
-    auto res = WaitUntilIndexPermissionsAtLeast(
-        client,
-        resp.indexed_table().table_id(),
-        resp.table_id(),
-        IndexPermissions::INDEX_PERM_NOT_USED,
-        deadline);
-    if (!res && !res.status().IsNotFound()) {
-      LOG(WARNING) << "Waiting for the index to be deleted from the indexed table, got " << res;
-      return res.status();
+  VLOG(3) << "Got response " << yb::ToString(resp);
+  if (wait) {
+    // Wait for the deleted tables to be gone.
+    if (resp.deleted_table_ids_size() > 0) {
+      for (const auto& table_id : resp.deleted_table_ids()) {
+        RETURN_NOT_OK(WaitForDeleteTableToFinish(client, table_id, deadline));
+        VLOG(2) << "Waited for table to be deleted " << table_id;
+      }
+    } else if (resp.has_table_id()) {
+      // for backwards compatibility, in case the master is not yet using deleted_table_ids.
+      RETURN_NOT_OK(WaitForDeleteTableToFinish(client, resp.table_id(), deadline));
+      VLOG(2) << "Waited for table to be deleted " << resp.table_id();
+    }
+
+    // In case this table is an index, wait for the indexed table to remove reference to index
+    // table.
+    if (resp.has_indexed_table()) {
+      auto res = WaitUntilIndexPermissionsAtLeast(
+          client,
+          resp.indexed_table().table_id(),
+          resp.table_id(),
+          IndexPermissions::INDEX_PERM_NOT_USED,
+          deadline);
+      if (!res && !res.status().IsNotFound()) {
+        LOG(WARNING) << "Waiting for the index to be deleted from the indexed table, got " << res;
+        return res.status();
+      }
     }
   }
 
@@ -1237,7 +1249,8 @@ class GetTableSchemaRpc
                     YBTableInfo* info,
                     CoarseTimePoint deadline,
                     rpc::Messenger* messenger,
-                    rpc::ProxyCache* proxy_cache);
+                    rpc::ProxyCache* proxy_cache,
+                    master::GetTableSchemaResponsePB* resp_copy);
 
   std::string ToString() const override;
 
@@ -1250,7 +1263,8 @@ class GetTableSchemaRpc
                     YBTableInfo* info,
                     CoarseTimePoint deadline,
                     rpc::Messenger* messenger,
-                    rpc::ProxyCache* proxy_cache);
+                    rpc::ProxyCache* proxy_cache,
+                    master::GetTableSchemaResponsePB* resp_copy = nullptr);
 
   void CallRemoteMethod() override;
   void ProcessResponse(const Status& status) override;
@@ -1258,6 +1272,7 @@ class GetTableSchemaRpc
   StatusCallback user_cb_;
   master::TableIdentifierPB table_identifier_;
   YBTableInfo* info_;
+  master::GetTableSchemaResponsePB* resp_copy_;
 };
 
 // Gets all table schemas for a colocated tablet from the leader master. See ClientMasterRpc.
@@ -1425,6 +1440,8 @@ void ClientMasterRpc<Req, Resp>::Finished(const Status& status) {
   ProcessResponse(new_status);
 }
 
+} // namespace internal
+
 // Helper function to create YBTableInfo from GetTableSchemaResponsePB.
 Status CreateTableInfoFromTableSchemaResp(const GetTableSchemaResponsePB& resp, YBTableInfo* info) {
   std::unique_ptr<Schema> schema = std::make_unique<Schema>(Schema());
@@ -1434,7 +1451,7 @@ Status CreateTableInfoFromTableSchemaResp(const GetTableSchemaResponsePB& resp, 
   info->schema.set_is_compatible_with_previous_version(
       resp.is_compatible_with_previous_version());
   RETURN_NOT_OK(PartitionSchema::FromPB(resp.partition_schema(),
-                                        GetSchema(&info->schema),
+                                        internal::GetSchema(&info->schema),
                                         &info->partition_schema));
 
   info->table_name.GetFromTableIdentifierPB(resp.identifier());
@@ -1452,6 +1469,8 @@ Status CreateTableInfoFromTableSchemaResp(const GetTableSchemaResponsePB& resp, 
 
   return Status::OK();
 }
+
+namespace internal {
 
 GetTableSchemaRpc::GetTableSchemaRpc(YBClient* client,
                                      StatusCallback user_cb,
@@ -1471,9 +1490,11 @@ GetTableSchemaRpc::GetTableSchemaRpc(YBClient* client,
                                      YBTableInfo* info,
                                      CoarseTimePoint deadline,
                                      rpc::Messenger* messenger,
-                                     rpc::ProxyCache* proxy_cache)
+                                     rpc::ProxyCache* proxy_cache,
+                                     master::GetTableSchemaResponsePB* resp_copy)
     : GetTableSchemaRpc(
-          client, user_cb, ToTableIdentifierPB(table_id), info, deadline, messenger, proxy_cache) {}
+          client, user_cb, ToTableIdentifierPB(table_id), info, deadline, messenger, proxy_cache,
+          resp_copy) {}
 
 GetTableSchemaRpc::GetTableSchemaRpc(YBClient* client,
                                      StatusCallback user_cb,
@@ -1481,11 +1502,13 @@ GetTableSchemaRpc::GetTableSchemaRpc(YBClient* client,
                                      YBTableInfo* info,
                                      CoarseTimePoint deadline,
                                      rpc::Messenger* messenger,
-                                     rpc::ProxyCache* proxy_cache)
+                                     rpc::ProxyCache* proxy_cache,
+                                     master::GetTableSchemaResponsePB* resp_copy)
     : ClientMasterRpc(client, deadline, messenger, proxy_cache),
       user_cb_(std::move(user_cb)),
       table_identifier_(table_identifier),
-      info_(DCHECK_NOTNULL(info)) {
+      info_(DCHECK_NOTNULL(info)),
+      resp_copy_(resp_copy) {
   req_.mutable_table()->CopyFrom(table_identifier_);
 }
 
@@ -1507,6 +1530,9 @@ void GetTableSchemaRpc::ProcessResponse(const Status& status) {
   auto new_status = status;
   if (new_status.ok()) {
     new_status = CreateTableInfoFromTableSchemaResp(resp_, info_);
+    if (resp_copy_) {
+      resp_copy_->Swap(&resp_);
+    }
   }
   if (!new_status.ok()) {
     LOG(WARNING) << ToString() << " failed: " << new_status.ToString();
@@ -1773,10 +1799,11 @@ void GetCDCStreamRpc::ProcessResponse(const Status& status) {
   user_cb_(status);
 }
 
-class DeleteTabletRpc
-    : public ClientMasterRpc<master::DeleteTabletRequestPB, master::DeleteTabletResponsePB> {
+class DeleteNotServingTabletRpc
+    : public ClientMasterRpc<
+          master::DeleteNotServingTabletRequestPB, master::DeleteNotServingTabletResponsePB> {
  public:
-  DeleteTabletRpc(
+  DeleteNotServingTabletRpc(
       YBClient* client,
       const TabletId& tablet_id,
       StdStatusCallback user_cb,
@@ -1790,16 +1817,17 @@ class DeleteTabletRpc
 
   std::string ToString() const override {
     return Format(
-        "DeleteTabletRpc(tablet_id: $0, num_attempts: $1)", req_.tablet_id(), num_attempts());
+        "DeleteNotServingTabletRpc(tablet_id: $0, num_attempts: $1)", req_.tablet_id(),
+        num_attempts());
   }
 
-  virtual ~DeleteTabletRpc() = default;
+  virtual ~DeleteNotServingTabletRpc() = default;
 
  private:
   void CallRemoteMethod() override {
-    master_proxy()->DeleteTabletAsync(
+    master_proxy()->DeleteNotServingTabletAsync(
         req_, &resp_, mutable_retrier()->mutable_controller(),
-        std::bind(&DeleteTabletRpc::Finished, this, Status::OK()));
+        std::bind(&DeleteNotServingTabletRpc::Finished, this, Status::OK()));
   }
 
   void ProcessResponse(const Status& status) override {
@@ -1810,6 +1838,69 @@ class DeleteTabletRpc
   }
 
   StdStatusCallback user_cb_;
+};
+
+class GetTableLocationsRpc
+    : public ClientMasterRpc<
+          master::GetTableLocationsRequestPB, master::GetTableLocationsResponsePB> {
+ public:
+  GetTableLocationsRpc(
+      YBClient* client, const TableId& table_id, int32_t max_tablets,
+      RequireTabletsRunning require_tablets_running, GetTableLocationsCallback user_cb,
+      CoarseTimePoint deadline, rpc::Messenger* messenger, rpc::ProxyCache* proxy_cache)
+      : ClientMasterRpc(client, deadline, messenger, proxy_cache), user_cb_(std::move(user_cb)) {
+    req_.mutable_table()->set_table_id(table_id);
+    req_.set_max_returned_locations(max_tablets);
+    req_.set_require_tablets_running(require_tablets_running);
+  }
+
+  std::string ToString() const override {
+    return Format(
+        "GetTableLocationsRpc(table_id: $0, max_tablets: $1, require_tablets_running: $2, "
+        "num_attempts: $3)", req_.table().table_id(), req_.max_returned_locations(),
+        req_.require_tablets_running(), num_attempts());
+  }
+
+  virtual ~GetTableLocationsRpc() = default;
+
+ private:
+  void CallRemoteMethod() override {
+    master_proxy()->GetTableLocationsAsync(
+        req_, &resp_, mutable_retrier()->mutable_controller(),
+        std::bind(&GetTableLocationsRpc::Finished, this, Status::OK()));
+  }
+
+  void ProcessResponse(const Status& status) override {
+    if (status.IsShutdownInProgress() || status.IsNotFound() || status.IsAborted()) {
+      // Return without retry in case of permanent errors.
+      // We can get:
+      // - ShutdownInProgress when catalog manager is in process of shutting down.
+      // - Aborted when client is shutting down.
+      // - NotFound when table has been deleted.
+      LOG(WARNING) << ToString() << " failed: " << status;
+      user_cb_(status);
+      return;
+    }
+    if (!status.ok()) {
+      YB_LOG_EVERY_N_SECS(WARNING, 10)
+          << ToString() << ": error getting table locations: " << status << ", retrying.";
+    } else if (resp_.tablet_locations_size() > 0) {
+      user_cb_(&resp_);
+      return;
+    } else {
+      YB_LOG_EVERY_N_SECS(WARNING, 10) << ToString() << ": got zero table locations, retrying.";
+    }
+    if (CoarseMonoClock::Now() > retrier().deadline()) {
+      const auto error_msg = ToString() + " timed out";
+      LOG(ERROR) << error_msg;
+      user_cb_(STATUS(TimedOut, error_msg));
+      return;
+    }
+    mutable_retrier()->mutable_controller()->Reset();
+    SendRpc();
+  }
+
+  GetTableLocationsCallback user_cb_;
 };
 
 } // namespace internal
@@ -1833,7 +1924,8 @@ Status YBClient::Data::GetTableSchema(YBClient* client,
 Status YBClient::Data::GetTableSchema(YBClient* client,
                                       const TableId& table_id,
                                       CoarseTimePoint deadline,
-                                      YBTableInfo* info) {
+                                      YBTableInfo* info,
+                                      master::GetTableSchemaResponsePB* resp) {
   Synchronizer sync;
   auto rpc = rpc::StartRpc<GetTableSchemaRpc>(
       client,
@@ -1842,7 +1934,8 @@ Status YBClient::Data::GetTableSchema(YBClient* client,
       info,
       deadline,
       messenger_,
-      proxy_cache_.get());
+      proxy_cache_.get(),
+      resp);
   return sync.Wait();
 }
 
@@ -1858,7 +1951,8 @@ Status YBClient::Data::GetTableSchemaById(YBClient* client,
       info.get(),
       deadline,
       messenger_,
-      proxy_cache_.get());
+      proxy_cache_.get(),
+      nullptr);
   return Status::OK();
 }
 
@@ -1930,7 +2024,7 @@ Result<IndexPermissions> YBClient::Data::WaitUntilIndexPermissionsAtLeast(
           *retry = retry_on_not_found;
           return result.status();
         }
-        actual_index_permissions = VERIFY_RESULT(result);
+        actual_index_permissions = *result;
         *retry = actual_index_permissions < target_index_permissions;
         return Status::OK();
       },
@@ -1980,7 +2074,7 @@ Result<IndexPermissions> YBClient::Data::WaitUntilIndexPermissionsAtLeast(
           *retry = retry_on_not_found;
           return result.status();
         }
-        actual_index_permissions = VERIFY_RESULT(result);
+        actual_index_permissions = *result;
         *retry = actual_index_permissions < target_index_permissions;
         return Status::OK();
       },
@@ -2035,12 +2129,27 @@ void YBClient::Data::GetCDCStream(
       proxy_cache_.get());
 }
 
-void YBClient::Data::DeleteTablet(
+void YBClient::Data::DeleteNotServingTablet(
     YBClient* client, const TabletId& tablet_id, CoarseTimePoint deadline,
     StdStatusCallback callback) {
-  auto rpc = rpc::StartRpc<internal::DeleteTabletRpc>(
+  auto rpc = rpc::StartRpc<internal::DeleteNotServingTabletRpc>(
       client,
       tablet_id,
+      callback,
+      deadline,
+      messenger_,
+      proxy_cache_.get());
+}
+
+void YBClient::Data::GetTableLocations(
+    YBClient* client, const TableId& table_id, const int32_t max_tablets,
+    const RequireTabletsRunning require_tablets_running, const CoarseTimePoint deadline,
+    GetTableLocationsCallback callback) {
+  auto rpc = rpc::StartRpc<internal::GetTableLocationsRpc>(
+      client,
+      table_id,
+      max_tablets,
+      require_tablets_running,
       callback,
       deadline,
       messenger_,
@@ -2213,25 +2322,7 @@ Result<std::string> ReadMasterAddressesFromFlagFile(
 Status YBClient::Data::ReinitializeMasterAddresses() {
   Status result;
   std::lock_guard<simple_spinlock> l(master_server_addrs_lock_);
-  if (!master_server_endpoint_.empty()) {
-    faststring buf;
-    result = EasyCurl().FetchURL(master_server_endpoint_, &buf);
-    if (result.ok()) {
-      // The JSON serialization adds a " character to the beginning and end of the response, remove
-      // those if they are present.
-      std::string master_addrs = buf.ToString();
-      if (master_addrs.at(0) == '"') {
-        master_addrs = master_addrs.erase(0, 1);
-      }
-      if (master_addrs.at(master_addrs.size() - 1) == '"') {
-        master_addrs = master_addrs.erase(master_addrs.size() - 1, 1);
-      }
-      master_server_addrs_.clear();
-      master_server_addrs_.push_back(master_addrs);
-      LOG(INFO) << "Got master addresses = " << master_addrs
-                << " from REST endpoint: " << master_server_endpoint_;
-    }
-  } else if (!FLAGS_flagfile.empty() && !skip_master_flagfile_) {
+  if (!FLAGS_flagfile.empty() && !skip_master_flagfile_) {
     LOG(INFO) << "Reinitialize master addresses from file: " << FLAGS_flagfile;
     auto master_addrs = ReadMasterAddressesFromFlagFile(
         FLAGS_flagfile, master_address_flag_name_);
@@ -2355,11 +2446,25 @@ bool YBClient::Data::IsMultiMaster() {
   if (full_master_server_addrs_.size() > 1) {
     return true;
   }
-  // For single entry case, check if it is a list of host/ports.
-  std::vector<Endpoint> addrs;
-  const auto status = ParseAddressList(full_master_server_addrs_[0],
+
+  // For single entry case, first check if it is a list of hosts/ports.
+  std::vector<HostPort> host_ports;
+  auto status = HostPort::ParseStrings(full_master_server_addrs_[0],
                                        yb::master::kMasterDefaultPort,
-                                       &addrs);
+                                       &host_ports);
+  if (!status.ok()) {
+    // Will fail ResolveAddresses as well, so log error and return false early.
+    LOG(WARNING) << "Failure parsing address list: " << full_master_server_addrs_[0]
+                 << ": " << status;
+    return false;
+  }
+  if (host_ports.size() > 1) {
+    return true;
+  }
+
+  // If we only have one HostPort, check if it resolves to multiple endpoints.
+  std::vector<Endpoint> addrs;
+  status = host_ports[0].ResolveAddresses(&addrs);
   return status.ok() && (addrs.size() > 1);
 }
 

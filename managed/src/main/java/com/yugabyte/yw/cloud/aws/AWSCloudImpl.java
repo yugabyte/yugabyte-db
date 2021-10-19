@@ -1,24 +1,32 @@
 package com.yugabyte.yw.cloud.aws;
 
-import com.amazonaws.auth.*;
+import static java.util.stream.Collectors.groupingBy;
+import static java.util.stream.Collectors.mapping;
+import static java.util.stream.Collectors.toSet;
+
+import com.amazonaws.auth.AWSCredentialsProvider;
+import com.amazonaws.auth.AWSStaticCredentialsProvider;
+import com.amazonaws.auth.BasicAWSCredentials;
+import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
 import com.amazonaws.services.ec2.AmazonEC2;
-import com.amazonaws.services.ec2.AmazonEC2Client;
 import com.amazonaws.services.ec2.AmazonEC2ClientBuilder;
-import com.amazonaws.services.ec2.model.*;
-import com.amazonaws.regions.Regions;
+import com.amazonaws.services.ec2.model.DescribeInstanceTypeOfferingsRequest;
+import com.amazonaws.services.ec2.model.DescribeInstanceTypeOfferingsResult;
+import com.amazonaws.services.ec2.model.DescribeInstancesRequest;
+import com.amazonaws.services.ec2.model.DryRunResult;
+import com.amazonaws.services.ec2.model.Filter;
+import com.amazonaws.services.ec2.model.InstanceTypeOffering;
+import com.amazonaws.services.ec2.model.LocationType;
 import com.google.common.base.Strings;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
-
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import static java.util.stream.Collectors.*;
 
 // TODO - Better handling of UnauthorizedOperation. Ideally we should trigger alert so that
 // site admin knows about it

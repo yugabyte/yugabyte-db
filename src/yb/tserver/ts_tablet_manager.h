@@ -169,7 +169,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
       const bool colocated = false,
       const std::vector<SnapshotScheduleId>& snapshot_schedules = {});
 
-  CHECKED_STATUS ApplyTabletSplit(tablet::SplitOperationState* state, log::Log* raft_log) override;
+  CHECKED_STATUS ApplyTabletSplit(tablet::SplitOperation* operation, log::Log* raft_log) override;
 
   // Delete the specified tablet.
   // 'delete_type' must be one of TABLET_DATA_DELETED or TABLET_DATA_TOMBSTONED
@@ -253,9 +253,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   }
 
   // Get all of the tablets currently hosted on this server.
-  void GetTabletPeers(TabletPeers* tablet_peers,
-                      TabletPtrs* tablet_ptrs = nullptr) const;
-  TabletPeers GetTabletPeers() const;
+  TabletPeers GetTabletPeers(TabletPtrs* tablet_ptrs = nullptr) const;
   void GetTabletPeersUnlocked(TabletPeers* tablet_peers) const REQUIRES_SHARED(mutex_);
   void PreserveLocalLeadersOnly(std::vector<const TabletId*>* tablet_ids) const;
 
@@ -319,12 +317,14 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   TabletMemoryManager* tablet_memory_manager() { return mem_manager_.get(); }
 
-  CHECKED_STATUS UpdateSnapshotSchedules(const master::TSSnapshotSchedulesInfoPB& info);
+  CHECKED_STATUS UpdateSnapshotsInfo(const master::TSSnapshotsInfoPB& info);
 
   // Background task that verifies the data on each tablet for consistency.
   void VerifyTabletData();
 
   client::YBClient& client();
+
+  const std::shared_future<client::YBClient*>& client_future();
 
   tablet::TabletOptions* TEST_tablet_options() { return &tablet_options_; }
 
@@ -484,7 +484,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   void CleanupSplitTablets();
 
-  HybridTime AllowedHistoryCutoff(const tablet::RaftGroupMetadata& metadata);
+  HybridTime AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata);
 
   const CoarseTimePoint start_time_;
 
@@ -586,6 +586,12 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   std::unordered_map<SnapshotScheduleId, HybridTime, SnapshotScheduleIdHash>
       snapshot_schedule_allowed_history_cutoff_
       GUARDED_BY(snapshot_schedule_allowed_history_cutoff_mutex_);
+  // Store snapshot schedules that were missing on previous calls to AllowedHistoryCutoff.
+  std::unordered_map<SnapshotScheduleId, int64_t, SnapshotScheduleIdHash>
+      missing_snapshot_schedules_
+      GUARDED_BY(snapshot_schedule_allowed_history_cutoff_mutex_);
+  int64_t snapshot_schedules_version_ = 0;
+  HybridTime last_restorations_update_ht_;
 
   DISALLOW_COPY_AND_ASSIGN(TSTabletManager);
 };

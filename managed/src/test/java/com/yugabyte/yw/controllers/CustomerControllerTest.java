@@ -2,45 +2,66 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
+import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
+import static com.yugabyte.yw.common.AssertHelper.assertValue;
+import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static org.hamcrest.CoreMatchers.allOf;
+import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.hamcrest.CoreMatchers.nullValue;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.core.StringContains.containsString;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.Matchers.anyList;
+import static org.mockito.Matchers.anyMap;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static play.mvc.Http.Status.FORBIDDEN;
+import static play.mvc.Http.Status.OK;
+import static play.test.Helpers.BAD_REQUEST;
+import static play.test.Helpers.contentAsString;
+import static play.test.Helpers.fakeRequest;
+import static play.test.Helpers.route;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
-import com.yugabyte.yw.models.*;
-import org.junit.Before;
-import org.junit.Test;
-import org.mockito.ArgumentCaptor;
-import play.libs.Json;
-import play.mvc.Http;
-import play.mvc.Result;
-
+import com.yugabyte.yw.common.FakeApiHelper;
+import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.forms.PlatformResults.YBPError;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerConfig;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
 import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.junit.MockitoJUnitRunner;
+import play.libs.Json;
+import play.mvc.Http;
+import play.mvc.Result;
 
-import static com.yugabyte.yw.common.AssertHelper.*;
-import static com.yugabyte.yw.common.ModelFactory.createUniverse;
-import static org.hamcrest.CoreMatchers.*;
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.core.StringContains.containsString;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
-import static org.mockito.Matchers.anyList;
-import static org.mockito.Matchers.anyMap;
-import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.*;
-import static play.mvc.Http.Status.FORBIDDEN;
-import static play.mvc.Http.Status.OK;
-import static play.test.Helpers.*;
-
+@RunWith(MockitoJUnitRunner.class)
 public class CustomerControllerTest extends FakeDBApplication {
   String rootRoute = "/api/customers";
   String baseRoute = rootRoute + "/";
@@ -61,13 +82,23 @@ public class CustomerControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testListCustomersWithAuth() {
+  public void testListCustomersUuidsWithAuth() {
+    String authToken = user.createAuthToken();
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
+    Result result = route(fakeRequest("GET", rootRoute + "_uuids").cookie(validCookie));
+    assertEquals(OK, result.status());
+    ArrayNode json = (ArrayNode) Json.parse(contentAsString(result));
+    assertEquals(json.get(0).textValue(), customer.uuid.toString());
+  }
+
+  @Test
+  public void testListWithDataCustomersWithAuth() {
     String authToken = user.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
     Result result = route(fakeRequest("GET", rootRoute).cookie(validCookie));
     assertEquals(OK, result.status());
     ArrayNode json = (ArrayNode) Json.parse(contentAsString(result));
-    assertEquals(json.get(0).textValue(), customer.uuid.toString());
+    assertEquals(json.get(0).get("uuid").textValue(), customer.uuid.toString());
   }
 
   // check that invalid creds is failing to do that
@@ -95,6 +126,21 @@ public class CustomerControllerTest extends FakeDBApplication {
 
     String resultString = contentAsString(result);
     assertThat(resultString, allOf(notNullValue(), equalTo("Unable To Authenticate User")));
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testCustomerGETWithBadUUID() {
+    String authToken = user.createAuthToken();
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
+    Result result = route(fakeRequest("GET", baseRoute + "null").cookie(validCookie));
+    assertEquals(BAD_REQUEST, result.status());
+
+    JsonNode ybpError = Json.parse(contentAsString(result));
+    assertEquals(
+        Json.toJson(
+            new YBPError("Cannot parse parameter cUUID as UUID: Invalid UUID string: null")),
+        ybpError);
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -412,10 +458,10 @@ public class CustomerControllerTest extends FakeDBApplication {
         Provider.get(
             UUID.fromString(u1.getUniverseDetails().getPrimaryCluster().userIntent.provider));
     Region r = Region.create(provider, "region-1", "PlacementRegion-1", "default-image");
-    AvailabilityZone.create(r, "az-1", "PlacementAZ-1", "subnet-1");
+    AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ-1", "subnet-1");
     Region r1 = Region.create(provider, "region-2", "PlacementRegion-2", "default-image");
-    AvailabilityZone.create(r1, "az-2", "PlacementAZ-2", "subnet-2");
-    AvailabilityZone az3 = AvailabilityZone.create(r1, "az-3", "PlacementAZ-3", "subnet-3");
+    AvailabilityZone.createOrThrow(r1, "az-2", "PlacementAZ-2", "subnet-2");
+    AvailabilityZone az3 = AvailabilityZone.createOrThrow(r1, "az-3", "PlacementAZ-3", "subnet-3");
     az3.updateConfig(ImmutableMap.of("KUBENAMESPACE", "test-ns-1"));
 
     ObjectNode response = Json.newObject();
@@ -447,7 +493,7 @@ public class CustomerControllerTest extends FakeDBApplication {
         Provider.get(
             UUID.fromString(u1.getUniverseDetails().getPrimaryCluster().userIntent.provider));
     Region r = Region.create(provider, "region-1", "PlacementRegion-1", "default-image");
-    AvailabilityZone.create(r, "az-1", "PlacementAZ-1", "subnet-1");
+    AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ-1", "subnet-1");
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");
@@ -479,7 +525,7 @@ public class CustomerControllerTest extends FakeDBApplication {
         Provider.get(
             UUID.fromString(u1.getUniverseDetails().getPrimaryCluster().userIntent.provider));
     Region r = Region.create(provider, "region-1", "PlacementRegion-1", "default-image");
-    AvailabilityZone.create(r, "az-1", "PlacementAZ-1", "subnet-1");
+    AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ-1", "subnet-1");
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");
@@ -603,7 +649,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     expectedResponse.put("error", "Weird Data provided");
 
     when(mockMetricQueryHelper.query(anyList(), anyMap(), anyMap()))
-        .thenThrow(new YWServiceException(BAD_REQUEST, "Weird Data provided"));
+        .thenThrow(new PlatformServiceException(BAD_REQUEST, "Weird Data provided"));
     Result result =
         routeWithYWErrHandler(
             fakeRequest("POST", baseRoute + customer.uuid + "/metrics")
@@ -748,40 +794,6 @@ public class CustomerControllerTest extends FakeDBApplication {
     responseNode.put("aws", response);
     responseNode.put("gcp", response);
     assertEquals(json, responseNode);
-    assertAuditEntry(0, customer.uuid);
-  }
-
-  @Test
-  public void testCustomerPUTWithoutSmtpDataResolvesAlerts() {
-    String authToken = user.createAuthToken();
-    Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
-    ObjectNode params = Json.newObject();
-    params.put("code", "tc");
-    params.put("email", "admin");
-    params.put("name", "Test Customer");
-    params.put("callhomeLevel", "MEDIUM");
-    params.put("smtpData", (String) null);
-
-    CustomerConfig smtpConfig = CustomerConfig.createSmtpConfig(customer.uuid, Json.newObject());
-    Alert.create(
-        customer.uuid,
-        smtpConfig.configUUID,
-        Alert.TargetType.CustomerConfigType,
-        "Error code",
-        "",
-        "");
-
-    Result result =
-        route(fakeRequest("PUT", baseRoute + customer.uuid).cookie(validCookie).bodyJson(params));
-    assertEquals(OK, result.status());
-
-    assertNull(CustomerConfig.getSmtpConfig(customer.uuid));
-    List<Alert> alerts = Alert.list(customer.uuid, "%", smtpConfig.configUUID);
-    assertEquals(1, alerts.size());
-    assertEquals(Alert.State.RESOLVED, alerts.get(0).state);
-
-    JsonNode json = Json.parse(contentAsString(result));
-    assertThat(json.get("uuid").asText(), is(equalTo(customer.uuid.toString())));
     assertAuditEntry(0, customer.uuid);
   }
 }

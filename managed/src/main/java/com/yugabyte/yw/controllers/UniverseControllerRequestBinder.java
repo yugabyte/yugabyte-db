@@ -10,24 +10,22 @@
 
 package com.yugabyte.yw.controllers;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.libs.Json;
-import play.mvc.Http;
-
+import com.yugabyte.yw.forms.UpgradeTaskParams;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
-import static play.mvc.Http.Status.BAD_REQUEST;
+import play.libs.Json;
+import play.mvc.Http;
 
 /**
  * This code needs to be fixed (ideally purged) as it is doing lot of raw json manipulation. As a
@@ -35,7 +33,6 @@ import static play.mvc.Http.Status.BAD_REQUEST;
  * sane.
  */
 public class UniverseControllerRequestBinder {
-  private static final Logger LOG = LoggerFactory.getLogger(UniverseControllerRequestBinder.class);
 
   static <T extends UniverseDefinitionTaskParams> T bindFormDataToTaskParams(
       Http.Request request, Class<T> paramType) {
@@ -48,13 +45,26 @@ public class UniverseControllerRequestBinder {
     // 3. cluster.userIntent gflags list to maps - TODO
     try {
       ObjectNode formData = (ObjectNode) request.body().asJson();
-      List<UniverseDefinitionTaskParams.Cluster> clusters = mapClustersInParams(formData);
+      List<UniverseDefinitionTaskParams.Cluster> clusters = mapClustersInParams(formData, true);
       T taskParams = Json.mapper().treeToValue(formData, paramType);
-
       taskParams.clusters = clusters;
       return taskParams;
     } catch (JsonProcessingException exception) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
+          BAD_REQUEST, "JsonProcessingException parsing request body: " + exception.getMessage());
+    }
+  }
+
+  static <T extends UpgradeTaskParams> T bindFormDataToUpgradeTaskParams(
+      Http.Request request, Class<T> paramType) {
+    try {
+      ObjectNode formData = (ObjectNode) request.body().asJson();
+      List<UniverseDefinitionTaskParams.Cluster> clusters = mapClustersInParams(formData, false);
+      T taskParams = Json.mapper().treeToValue(formData, paramType);
+      taskParams.clusters = clusters;
+      return taskParams;
+    } catch (JsonProcessingException exception) {
+      throw new PlatformServiceException(
           BAD_REQUEST, "JsonProcessingException parsing request body: " + exception.getMessage());
     }
   }
@@ -67,20 +77,35 @@ public class UniverseControllerRequestBinder {
    * @param formData Parent FormObject for the clusters array.
    * @return A list of deserialized clusters.
    */
-  private static List<UniverseDefinitionTaskParams.Cluster> mapClustersInParams(ObjectNode formData)
-      throws JsonProcessingException {
+  private static List<UniverseDefinitionTaskParams.Cluster> mapClustersInParams(
+      ObjectNode formData, boolean failIfNotPresent) throws JsonProcessingException {
     ArrayNode clustersJsonArray = (ArrayNode) formData.get("clusters");
     if (clustersJsonArray == null) {
-      throw new YWServiceException(BAD_REQUEST, "clusters: This field is required");
+      if (failIfNotPresent) {
+        throw new PlatformServiceException(BAD_REQUEST, "clusters: This field is required");
+      } else {
+        return new ArrayList<>();
+      }
     }
+
     ArrayNode newClustersJsonArray = Json.newArray();
     List<UniverseDefinitionTaskParams.Cluster> clusters = new ArrayList<>();
     for (int i = 0; i < clustersJsonArray.size(); ++i) {
       ObjectNode clusterJson = (ObjectNode) clustersJsonArray.get(i);
       ObjectNode userIntent = (ObjectNode) clusterJson.get("userIntent");
       if (userIntent == null) {
-        throw new YWServiceException(BAD_REQUEST, "userIntent: This field is required");
+        if (failIfNotPresent) {
+          throw new PlatformServiceException(BAD_REQUEST, "userIntent: This field is required");
+        } else {
+          newClustersJsonArray.add(clusterJson);
+          UniverseDefinitionTaskParams.Cluster cluster =
+              (new ObjectMapper())
+                  .treeToValue(clusterJson, UniverseDefinitionTaskParams.Cluster.class);
+          clusters.add(cluster);
+          continue;
+        }
       }
+
       // TODO: (ram) add tests for all these.
       Map<String, String> masterGFlagsMap = serializeGFlagListToMap(userIntent, "masterGFlags");
       Map<String, String> tserverGFlagsMap = serializeGFlagListToMap(userIntent, "tserverGFlags");
@@ -95,6 +120,7 @@ public class UniverseControllerRequestBinder {
       clusters.add(cluster);
     }
     formData.set("clusters", newClustersJsonArray);
+
     return clusters;
   }
 

@@ -38,25 +38,26 @@ using strings::Substitute;
 
 namespace {
 
-Result<HybridTime> ParseHybridTime(const string& timestamp) {
+Result<HybridTime> ParseHybridTime(string input) {
   // Acceptable system time formats:
   //  1. HybridTime Timestamp (in Microseconds)
   //  2. -Interval
   //  3. Human readable string
-  auto ts = boost::trim_copy(timestamp);
+  boost::trim(input);
 
   HybridTime ht;
-  // The HybridTime is given in milliseconds and will contain 16 chars.
+  // The HybridTime is given in microseconds and will contain 16 chars.
   static const std::regex int_regex("[0-9]{16}");
-  if (std::regex_match(ts, int_regex)) {
-    return HybridTime::FromMicros(std::stoul(ts));
+  if (std::regex_match(input, int_regex)) {
+    return HybridTime::FromMicros(std::stoul(input));
   }
-  if (!ts.empty() && ts[0] == '-') {
+  if (!input.empty() && input[0] == '-') {
     return HybridTime::FromMicros(
         VERIFY_RESULT(WallClock()->Now()).time_point -
-        VERIFY_RESULT(DateTime::IntervalFromString(ts.substr(1))).ToMicroseconds());
+        VERIFY_RESULT(DateTime::IntervalFromString(input.substr(1))).ToMicroseconds());
   }
-  return HybridTime::FromMicros(VERIFY_RESULT(DateTime::TimestampFromString(ts)).ToInt64());;
+  auto ts = VERIFY_RESULT(DateTime::TimestampFromString(input, DateTime::HumanReadableInputFormat));
+  return HybridTime::FromMicros(ts.ToInt64());
 }
 
 const string kMinus = "minus";
@@ -74,52 +75,38 @@ Result<T> GetOptionalArg(const Args& args, size_t idx) {
   return VERIFY_RESULT(T::FromString(args[idx]));
 }
 
-CHECKED_STATUS CheckArgumentsCount(int count, int min, int max) {
-  if (count < min) {
-    return STATUS_FORMAT(
-        InvalidArgument, "Too few arguments $0, should be in range [$1, $2]", count, min, max);
-  }
-
-  if (count > max) {
-    return STATUS_FORMAT(
-        InvalidArgument, "Too many arguments $0, should be in range [$1, $2]", count, min, max);
-  }
-
-  return Status::OK();
-}
-
 } // namespace
 
 void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   super::RegisterCommandHandlers(client);
 
+  std::string options = "";
+  for (auto flag : kListSnapshotsFlagList) {
+    options += Format(" [$0]", flag);
+  }
   Register(
-      "list_snapshots", " [SHOW_DETAILS] [NOT_SHOW_RESTORED] [SHOW_DELETED]",
+      "list_snapshots", std::move(options),
       [client](const CLIArguments& args) -> Status {
-        bool show_details = false;
-        bool show_restored = true;
-        bool show_deleted = false;
+        EnumBitSet<ListSnapshotsFlag> flags;
 
-        if (args.size() > 2) {
-          return ClusterAdminCli::kInvalidArguments;
-        }
         for (int i = 0; i < args.size(); ++i) {
-          string uppercase_flag;
+          std::string uppercase_flag;
           ToUpperCase(args[i], &uppercase_flag);
 
-          if (uppercase_flag == "SHOW_DETAILS") {
-            show_details = true;
-          } else if (uppercase_flag == "NOT_SHOW_RESTORED") {
-            show_restored = false;
-          } else if (uppercase_flag == "SHOW_DELETED") {
-            show_deleted = true;
-          } else {
-            return ClusterAdminCli::kInvalidArguments;
+          bool found = false;
+          for (auto flag : kListSnapshotsFlagList) {
+            if (uppercase_flag == ToString(flag)) {
+              flags.Set(flag);
+              found = true;
+              break;
+            }
+          }
+          if (!found) {
+            return STATUS_FORMAT(InvalidArgument, "Wrong flag: $0", args[i]);
           }
         }
 
-        RETURN_NOT_OK_PREPEND(client->ListSnapshots(show_details, show_restored, show_deleted),
-                              "Unable to list snapshots");
+        RETURN_NOT_OK_PREPEND(client->ListSnapshots(flags), "Unable to list snapshots");
         return Status::OK();
       });
 
@@ -139,6 +126,15 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
               }
               return ClusterAdminCli::kInvalidArguments;
             }));
+
+        for (auto table : tables) {
+          if (table.is_cql_namespace() && table.is_system()) {
+            return STATUS(InvalidArgument,
+                          "Cannot create snapshot of YCQL system table",
+                          table.table_name());
+          }
+        }
+
         RETURN_NOT_OK_PREPEND(client->CreateSnapshot(tables, true, timeout_secs),
                               Substitute("Unable to create snapshot of tables: $0",
                                          yb::ToString(tables)));
@@ -157,14 +153,18 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       "create_snapshot_schedule",
       " <snapshot_interval_in_minutes>"
       " <snapshot_retention_in_minutes>"
-      " <table>"
-      " [<table>]...",
+      " <keyspace>",
       [client](const CLIArguments& args) -> Result<rapidjson::Document> {
+        RETURN_NOT_OK(CheckArgumentsCount(args.size(), 3, 3));
         auto interval = MonoDelta::FromMinutes(VERIFY_RESULT(CheckedStold(args[0])));
         auto retention = MonoDelta::FromMinutes(VERIFY_RESULT(CheckedStold(args[1])));
         const auto tables = VERIFY_RESULT(ResolveTableNames(
             client, args.begin() + 2, args.end(), TailArgumentsProcessor(), true));
-        return client->CreateSnapshotSchedule(tables, interval, retention);
+        // This is just a paranoid check, should never happen.
+        if (tables.size() != 1 || !tables[0].has_namespace()) {
+          return STATUS(InvalidArgument, "Expecting exactly one keyspace argument");
+        }
+        return client->CreateSnapshotSchedule(tables[0], interval, retention);
       });
 
   RegisterJson(
@@ -174,6 +174,15 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         RETURN_NOT_OK(CheckArgumentsCount(args.size(), 0, 1));
         auto schedule_id = VERIFY_RESULT(GetOptionalArg<SnapshotScheduleId>(args, 0));
         return client->ListSnapshotSchedules(schedule_id);
+      });
+
+  RegisterJson(
+      "delete_snapshot_schedule",
+      " <schedule_id>",
+      [client](const CLIArguments& args) -> Result<rapidjson::Document> {
+        RETURN_NOT_OK(CheckArgumentsCount(args.size(), 1, 1));
+        auto schedule_id = VERIFY_RESULT(SnapshotScheduleId::FromString(args[0]));
+        return client->DeleteSnapshotSchedule(schedule_id);
       });
 
   RegisterJson(
@@ -491,13 +500,17 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "delete_universe_replication", " <producer_universe_uuid>",
+      "delete_universe_replication", " <producer_universe_uuid> [ignore-errors]",
       [client](const CLIArguments& args) -> Status {
         if (args.size() < 1) {
           return ClusterAdminCli::kInvalidArguments;
         }
         const string producer_id = args[0];
-        RETURN_NOT_OK_PREPEND(client->DeleteUniverseReplication(producer_id),
+        bool ignore_errors = false;
+        if (args.size() >= 2 && args[1] == "ignore-errors") {
+          ignore_errors = true;
+        }
+        RETURN_NOT_OK_PREPEND(client->DeleteUniverseReplication(producer_id, ignore_errors),
                               Substitute("Unable to delete replication for universe $0",
                               producer_id));
         return Status::OK();
@@ -506,16 +519,23 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   Register(
       "alter_universe_replication",
       " <producer_universe_uuid>"
-      " {set_master_addresses <producer_master_addresses,...> |"
-      "  add_table <table_id>[, <table_id>...] | remove_table <table_id>[, <table_id>...] }",
+      " {set_master_addresses [comma_separated_list_of_producer_master_addresses] |"
+      "  add_table [comma_separated_list_of_table_ids]"
+      "            [comma_separated_list_of_producer_bootstrap_ids] |"
+      "  remove_table [comma_separated_list_of_table_ids] }",
       [client](const CLIArguments& args) -> Status {
-        if (args.size() != 3) {
+        if (args.size() < 3 || args.size() > 4) {
           return ClusterAdminCli::kInvalidArguments;
         }
+        if (args.size() == 4 && args[1] != "add_table") {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+
         const string producer_uuid = args[0];
         vector<string> master_addresses;
         vector<string> add_tables;
         vector<string> remove_tables;
+        vector<string> bootstrap_ids_to_add;
 
         vector<string> newElem, *lst;
         if (args[1] == "set_master_addresses") lst = &master_addresses;
@@ -527,10 +547,15 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         boost::split(newElem, args[2], boost::is_any_of(","));
         lst->insert(lst->end(), newElem.begin(), newElem.end());
 
+        if (args[1] == "add_table" && args.size() == 4) {
+          boost::split(bootstrap_ids_to_add, args[3], boost::is_any_of(","));
+        }
+
         RETURN_NOT_OK_PREPEND(client->AlterUniverseReplication(producer_uuid,
                                                                master_addresses,
                                                                add_tables,
-                                                               remove_tables),
+                                                               remove_tables,
+                                                               bootstrap_ids_to_add),
             Substitute("Unable to alter replication for universe $0", producer_uuid));
 
         return Status::OK();

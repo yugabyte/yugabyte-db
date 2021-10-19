@@ -48,8 +48,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLSizeEstimatesVTable::RetrieveData(
     }
 
     // Get tablets for table.
-    std::vector<scoped_refptr<TabletInfo> > tablets;
-    table->GetAllTablets(&tablets);
+    auto tablets = table->GetTablets();
     for (const scoped_refptr<TabletInfo>& tablet : tablets) {
       TabletLocationsPB tabletLocationsPB;
       Status s = catalog_manager->GetTabletLocations(tablet->id(), &tabletLocationsPB);

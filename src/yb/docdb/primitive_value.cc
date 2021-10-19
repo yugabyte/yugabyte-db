@@ -24,6 +24,7 @@
 #include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/subdocument.h"
 #include "yb/docdb/intent.h"
+#include "yb/gutil/macros.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rocksutil/yb_rocksdb.h"
@@ -44,7 +45,7 @@ using yb::util::VarInt;
 using yb::FormatBytesAsStr;
 using yb::util::CompareUsingLessThan;
 using yb::util::FastAppendSignedVarIntToBuffer;
-using yb::util::FastDecodeSignedVarInt;
+using yb::util::FastDecodeSignedVarIntUnsafe;
 using yb::util::kInt32SignBitFlipMask;
 using yb::util::AppendBigEndianUInt64;
 using yb::util::AppendBigEndianUInt32;
@@ -102,6 +103,8 @@ string RealToString(T val) {
 const PrimitiveValue PrimitiveValue::kInvalid = PrimitiveValue(ValueType::kInvalid);
 const PrimitiveValue PrimitiveValue::kTombstone = PrimitiveValue(ValueType::kTombstone);
 const PrimitiveValue PrimitiveValue::kObject = PrimitiveValue(ValueType::kObject);
+const PrimitiveValue PrimitiveValue::kLivenessColumn = PrimitiveValue::SystemColumnId(
+    SystemColumnIds::kLivenessColumn);
 
 string PrimitiveValue::ToString(AutoDecodeKeys auto_decode_keys) const {
   switch (type_) {
@@ -122,7 +125,9 @@ string PrimitiveValue::ToString(AutoDecodeKeys auto_decode_keys) const {
       return "true";
     case ValueType::kInvalid:
       return "invalid";
-    case ValueType::kStringDescending:
+    case ValueType::kCollStringDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kCollString: FALLTHROUGH_INTENDED;
+    case ValueType::kStringDescending: FALLTHROUGH_INTENDED;
     case ValueType::kString:
       if (auto_decode_keys) {
         // This is useful when logging write batches for secondary indexes.
@@ -230,6 +235,8 @@ string PrimitiveValue::ToString(AutoDecodeKeys auto_decode_keys) const {
     case ValueType::kExternalTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kTransactionId:
       return Substitute("TransactionId($0)", uuid_val_.ToString());
+    case ValueType::kSubTransactionId:
+      return Substitute("SubTransactionId($0)", uint32_val_);
     case ValueType::kWriteId:
       return Format("WriteId($0)", int32_val_);
     case ValueType::kIntentTypeSet:
@@ -275,10 +282,12 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
     case ValueType::kFalseDescending: return;
     case ValueType::kTrueDescending: return;
 
+    case ValueType::kCollString: FALLTHROUGH_INTENDED;
     case ValueType::kString:
       key_bytes->AppendString(str_val_);
       return;
 
+    case ValueType::kCollStringDescending: FALLTHROUGH_INTENDED;
     case ValueType::kStringDescending:
       key_bytes->AppendDescendingString(str_val_);
       return;
@@ -293,6 +302,7 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
       return;
 
     case ValueType::kPgTableOid: FALLTHROUGH_INTENDED;
+    case ValueType::kSubTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32:
       key_bytes->AppendUInt32(uint32_val_);
       return;
@@ -457,6 +467,10 @@ string PrimitiveValue::ToValue() const {
     case ValueType::kRedisSortedSet: FALLTHROUGH_INTENDED;
     case ValueType::kRedisSet: return result;
 
+    case ValueType::kCollStringDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kCollString:
+      LOG(DFATAL) << "collation encoded string found for docdb value";
+      FALLTHROUGH_INTENDED;
     case ValueType::kStringDescending: FALLTHROUGH_INTENDED;
     case ValueType::kString:
       // No zero encoding necessary when storing the string in a value.
@@ -470,6 +484,7 @@ string PrimitiveValue::ToValue() const {
       return result;
 
     case ValueType::kPgTableOid: FALLTHROUGH_INTENDED;
+    case ValueType::kSubTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32Descending: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32:
       AppendBigEndianUInt32(uint32_val_, &result);
@@ -634,6 +649,7 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
       type_ref = value_type;
       return Status::OK();
 
+    case ValueType::kCollStringDescending:  FALLTHROUGH_INTENDED;
     case ValueType::kStringDescending: {
       if (out) {
         string result;
@@ -647,6 +663,7 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
       return Status::OK();
     }
 
+    case ValueType::kCollString: FALLTHROUGH_INTENDED;
     case ValueType::kString: {
       if (out) {
         string result;
@@ -753,6 +770,7 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
 
     case ValueType::kPgTableOid: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32Descending: FALLTHROUGH_INTENDED;
+    case ValueType::kSubTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32:
       if (slice->size() < sizeof(uint32_t)) {
         return STATUS_SUBSTITUTE(Corruption,
@@ -910,7 +928,7 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
       {
         ColumnId dummy_column_id;
         ColumnId& column_id_ref = out ? out->column_id_val_ : dummy_column_id;
-        int64_t column_id_as_int64 = VERIFY_RESULT(FastDecodeSignedVarInt(slice));
+        int64_t column_id_as_int64 = VERIFY_RESULT(FastDecodeSignedVarIntUnsafe(slice));
         RETURN_NOT_OK(ColumnId::FromInt64(column_id_as_int64, &column_id_ref));
       }
 
@@ -1044,10 +1062,11 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
 
       return STATUS(Corruption, "Reached end of slice looking for frozen group end marker");
     }
+    case ValueType::kCollString: FALLTHROUGH_INTENDED;
     case ValueType::kString:
       new(&str_val_) string(slice.cdata(), slice.size());
       // Only set type to string after string field initialization succeeds.
-      type_ = ValueType::kString;
+      type_ = value_type;
       return Status::OK();
 
     case ValueType::kInt32: FALLTHROUGH_INTENDED;
@@ -1065,6 +1084,7 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
 
     case ValueType::kPgTableOid: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32: FALLTHROUGH_INTENDED;
+    case ValueType::kSubTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32Descending:
       if (slice.size() != sizeof(uint32_t)) {
         return STATUS_FORMAT(Corruption, "Invalid number of bytes for a $0: $1",
@@ -1186,6 +1206,7 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
     case ValueType::kColumnId: FALLTHROUGH_INTENDED;
     case ValueType::kSystemColumnId: FALLTHROUGH_INTENDED;
     case ValueType::kHybridTime: FALLTHROUGH_INTENDED;
+    case ValueType::kCollStringDescending: FALLTHROUGH_INTENDED;
     case ValueType::kStringDescending: FALLTHROUGH_INTENDED;
     case ValueType::kInetaddressDescending: FALLTHROUGH_INTENDED;
     case ValueType::kDecimalDescending: FALLTHROUGH_INTENDED;
@@ -1353,6 +1374,8 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
     case ValueType::kHighest: FALLTHROUGH_INTENDED;
     case ValueType::kMaxByte: return true;
 
+    case ValueType::kCollStringDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kCollString: FALLTHROUGH_INTENDED;
     case ValueType::kStringDescending: FALLTHROUGH_INTENDED;
     case ValueType::kString: return str_val_ == other.str_val_;
 
@@ -1365,6 +1388,7 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
 
     case ValueType::kPgTableOid: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32Descending: FALLTHROUGH_INTENDED;
+    case ValueType::kSubTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32: return uint32_val_ == other.uint32_val_;
 
     case ValueType::kUInt64Descending: FALLTHROUGH_INTENDED;
@@ -1435,8 +1459,10 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
     case ValueType::kHighest: FALLTHROUGH_INTENDED;
     case ValueType::kMaxByte:
       return 0;
+    case ValueType::kCollStringDescending: FALLTHROUGH_INTENDED;
     case ValueType::kStringDescending:
       return other.str_val_.compare(str_val_);
+    case ValueType::kCollString: FALLTHROUGH_INTENDED;
     case ValueType::kString:
       return str_val_.compare(other.str_val_);
     case ValueType::kInt64Descending:
@@ -1449,6 +1475,7 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
     case ValueType::kUInt32Descending:
       return CompareUsingLessThan(other.uint32_val_, uint32_val_);
     case ValueType::kPgTableOid: FALLTHROUGH_INTENDED;
+    case ValueType::kSubTransactionId: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32:
       return CompareUsingLessThan(uint32_val_, other.uint32_val_);
     case ValueType::kUInt64Descending:
@@ -1591,8 +1618,19 @@ PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value,
       return PrimitiveValue::Decimal(value.decimal_value(), sort_order);
     case QLValuePB::kVarintValue:
       return PrimitiveValue::VarInt(value.varint_value(), sort_order);
-    case QLValuePB::kStringValue:
-      return PrimitiveValue(value.string_value(), sort_order);
+    case QLValuePB::kStringValue: {
+      const string& val = value.string_value();
+      // In both Postgres and YCQL, character value cannot have embedded \0 byte.
+      // Redis allows embedded \0 byte but it does not use QLValuePB so will not
+      // come here to pick up 'is_collate'. Therefore, if the value is not empty
+      // and the first byte is \0, it indicates this is a collation encoded string.
+      if (!val.empty() && val[0] == '\0') {
+        // An empty collation encoded string is at least 3 bytes.
+        CHECK_GE(val.size(), 3);
+        return PrimitiveValue(val, sort_order, true /* is_collate */);
+      }
+      return PrimitiveValue(val, sort_order);
+    }
     case QLValuePB::kBinaryValue:
       // TODO consider using dedicated encoding for binary (not string) to avoid overhead of
       // zero-encoding for keys (since zero-bytes could be common for binary)

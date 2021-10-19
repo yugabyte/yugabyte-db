@@ -49,6 +49,10 @@
 using namespace yb::size_literals;  // NOLINT.
 using namespace std::literals;
 
+static constexpr int32_t kMinBlockStartInterval = 1;
+static constexpr int32_t kDefaultBlockStartInterval = 16;
+static constexpr int32_t kMaxBlockStartInterval = 256;
+
 DEFINE_int32(rocksdb_max_background_flushes, -1, "Number threads to do background flushes.");
 DEFINE_bool(rocksdb_disable_compactions, false, "Disable rocksdb compactions.");
 DEFINE_bool(rocksdb_compaction_measure_io_stats, false, "Measure stats for rocksdb compactions.");
@@ -118,6 +122,60 @@ DEFINE_int32(priority_thread_pool_size, -1,
              "Max running workers in compaction thread pool. "
              "If -1 and max_background_compactions is specified - use max_background_compactions. "
              "If -1 and max_background_compactions is not specified - use sqrt(num_cpus).");
+
+DEFINE_string(compression_type, "Snappy",
+              "On-disk compression type to use in RocksDB."
+              "By default, Snappy is used if supported.");
+
+DEFINE_int32(block_restart_interval, kDefaultBlockStartInterval,
+             "Controls the number of keys to look at for computing the diff encoding.");
+
+namespace yb {
+namespace {
+
+Result<rocksdb::CompressionType> GetConfiguredCompressionType(const std::string& flag_value) {
+  if (!FLAGS_enable_ondisk_compression) {
+    return rocksdb::kNoCompression;
+  }
+  const std::vector<rocksdb::CompressionType> kValidRocksDBCompressionTypes = {
+    rocksdb::kNoCompression,
+    rocksdb::kSnappyCompression,
+    rocksdb::kZlibCompression,
+    rocksdb::kLZ4Compression
+  };
+  for (const auto& compression_type : kValidRocksDBCompressionTypes) {
+    if (flag_value == rocksdb::CompressionTypeToString(compression_type)) {
+      if (rocksdb::CompressionTypeSupported(compression_type)) {
+        return compression_type;
+      }
+      return STATUS_FORMAT(
+          InvalidArgument, "Configured compression type $0 is not supported.", flag_value);
+    }
+  }
+  return STATUS_FORMAT(
+      InvalidArgument, "Configured compression type $0 is not valid.", flag_value);
+}
+
+} // namespace
+} // namespace yb
+
+namespace {
+
+bool CompressionTypeValidator(const char* flagname, const std::string& flag_compression_type) {
+  auto res = yb::GetConfiguredCompressionType(flag_compression_type);
+  if (!res.ok()) {
+    // Below we CHECK_RESULT on the same value returned here, and validating the result here ensures
+    // that CHECK_RESULT will never fail once the process is running.
+    LOG(ERROR) << res.status().ToString();
+    return false;
+  }
+  return true;
+}
+
+} // namespace
+
+__attribute__((unused))
+DEFINE_validator(compression_type, &CompressionTypeValidator);
 
 using std::shared_ptr;
 using std::string;
@@ -325,7 +383,7 @@ int32_t GetBaseBackgroundCompactions() {
   return FLAGS_rocksdb_base_background_compactions;
 }
 
-// Auto initialize some of the RocksDB flags that are defaulted to -1.
+// Auto initialize some of the RocksDB flags.
 void AutoInitFromRocksDBFlags(rocksdb::Options* options) {
   std::unique_lock<std::mutex> lock(rocksdb_flags_mutex);
 
@@ -337,6 +395,27 @@ void AutoInitFromRocksDBFlags(rocksdb::Options* options) {
 
   options->max_background_compactions = GetMaxBackgroundCompactions();
   options->base_background_compactions = GetBaseBackgroundCompactions();
+}
+
+void AutoInitFromBlockBasedTableOptions(rocksdb::BlockBasedTableOptions* table_options) {
+  std::unique_lock<std::mutex> lock(rocksdb_flags_mutex);
+
+  table_options->block_size = FLAGS_db_block_size_bytes;
+  table_options->filter_block_size = FLAGS_db_filter_block_size_bytes;
+  table_options->index_block_size = FLAGS_db_index_block_size_bytes;
+  table_options->min_keys_per_index_block = FLAGS_db_min_keys_per_index_block;
+
+  if (FLAGS_block_restart_interval < kMinBlockStartInterval) {
+      LOG(INFO) << "FLAGS_block_restart_interval was set to a very low value, overriding "
+                << "block_restart_interval to " << kDefaultBlockStartInterval << ".";
+      table_options->block_restart_interval = kDefaultBlockStartInterval;
+    } else if (FLAGS_block_restart_interval > kMaxBlockStartInterval) {
+      LOG(INFO) << "FLAGS_block_restart_interval was set to a very high value, overriding "
+                << "block_restart_interval to " << kMaxBlockStartInterval << ".";
+      table_options->block_restart_interval = kMaxBlockStartInterval;
+    } else {
+      table_options->block_restart_interval = FLAGS_block_restart_interval;
+    }
 }
 
 class HybridTimeFilteringIterator : public rocksdb::FilteringIterator {
@@ -398,6 +477,12 @@ rocksdb::Options TEST_AutoInitFromRocksDBFlags() {
   rocksdb::Options options;
   AutoInitFromRocksDBFlags(&options);
   return options;
+}
+
+rocksdb::BlockBasedTableOptions TEST_AutoInitFromRocksDbTableFlags() {
+  rocksdb::BlockBasedTableOptions blockBasedTableOptions;
+  AutoInitFromBlockBasedTableOptions(&blockBasedTableOptions);
+  return blockBasedTableOptions;
 }
 
 int32_t GetGlobalRocksDBPriorityThreadPoolSize() {
@@ -462,8 +547,9 @@ void InitRocksDBOptions(
     options->num_reserved_small_compaction_threads = FLAGS_num_reserved_small_compaction_threads;
   }
 
-  options->compression = rocksdb::Snappy_Supported() && FLAGS_enable_ondisk_compression
-      ? rocksdb::kSnappyCompression : rocksdb::kNoCompression;
+  // Since the flag validator for FLAGS_compression_type will fail if the result of this call is not
+  // OK, this CHECK_RESULT should never fail and is safe.
+  options->compression = CHECK_RESULT(GetConfiguredCompressionType(FLAGS_compression_type));
 
   options->listeners.insert(
       options->listeners.end(), tablet_options.listeners.begin(),
@@ -479,10 +565,8 @@ void InitRocksDBOptions(
     table_options.no_block_cache = true;
     table_options.cache_index_and_filter_blocks = false;
   }
-  table_options.block_size = FLAGS_db_block_size_bytes;
-  table_options.filter_block_size = FLAGS_db_filter_block_size_bytes;
-  table_options.index_block_size = FLAGS_db_index_block_size_bytes;
-  table_options.min_keys_per_index_block = FLAGS_db_min_keys_per_index_block;
+
+  AutoInitFromBlockBasedTableOptions(&table_options);
 
   // Set our custom bloom filter that is docdb aware.
   if (FLAGS_use_docdb_aware_bloom_filter) {
@@ -539,11 +623,6 @@ void InitRocksDBOptions(
   } else {
     options->level0_slowdown_writes_trigger = std::numeric_limits<int>::max();
     options->level0_stop_writes_trigger = std::numeric_limits<int>::max();
-  }
-
-  uint64_t max_file_size_for_compaction = FLAGS_rocksdb_max_file_size_for_compaction;
-  if (max_file_size_for_compaction != 0) {
-    options->max_file_size_for_compaction = max_file_size_for_compaction;
   }
 
   options->max_write_buffer_number = FLAGS_rocksdb_max_write_buffer_number;
@@ -760,5 +839,5 @@ Status ForceRocksDBCompact(rocksdb::DB* db) {
   return Status::OK();
 }
 
-}  // namespace docdb
-}  // namespace yb
+} // namespace docdb
+} // namespace yb

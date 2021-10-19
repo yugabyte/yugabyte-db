@@ -280,7 +280,8 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 										   true,
 										   true,
 										   InvalidOid,
-										   NULL);
+										   NULL,
+										   false);
 	Assert(toast_relid != InvalidOid);
 
 	/* make the toast relation visible, else heap_open will fail */
@@ -362,7 +363,7 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 	else
 	{
 		/* While bootstrapping, we cannot UPDATE, so overwrite in-place */
-		heap_inplace_update(class_rel, reltup);
+		heap_inplace_update(class_rel, reltup, false /* yb_shared_update */);
 	}
 
 	heap_freetuple(reltup);

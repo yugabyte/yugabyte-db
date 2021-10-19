@@ -2,36 +2,58 @@
 
 package com.yugabyte.yw.models;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.password.RedactingService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import io.ebean.Ebean;
+import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.SqlUpdate;
 import io.ebean.annotation.DbJson;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.ConcurrentModificationException;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.HashSet;
+import java.util.UUID;
+import java.util.stream.Collectors;
+import javax.persistence.CascadeType;
+import javax.persistence.Column;
+import javax.persistence.Entity;
+import javax.persistence.Id;
+import javax.persistence.OneToMany;
+import javax.persistence.Table;
+import javax.persistence.Transient;
+import javax.persistence.UniqueConstraint;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.YBClient;
 import play.api.Play;
 import play.data.validation.Constraints;
 import play.libs.Json;
-
-import javax.persistence.*;
-import java.util.*;
-import java.util.stream.Collectors;
-
-import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Table(uniqueConstraints = @UniqueConstraint(columnNames = {"name", "customer_id"}))
 @Entity
@@ -43,7 +65,7 @@ public class Universe extends Model {
 
   private static void checkUniverseInCustomer(UUID universeUUID, Customer customer) {
     if (!customer.getUniverseUUIDs().contains(universeUUID)) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
               "Universe UUID: %s doesn't belong " + "to Customer UUID: %s",
@@ -110,7 +132,15 @@ public class Universe extends Model {
   @Column(columnDefinition = "TEXT", nullable = false)
   private String universeDetailsJson;
 
-  private UniverseDefinitionTaskParams universeDetails;
+  @Transient private UniverseDefinitionTaskParams universeDetails;
+
+  @OneToMany(mappedBy = "sourceUniverse", cascade = CascadeType.ALL)
+  @JsonManagedReference
+  public Set<AsyncReplicationRelationship> sourceAsyncReplicationRelationships;
+
+  @OneToMany(mappedBy = "targetUniverse", cascade = CascadeType.ALL)
+  @JsonManagedReference
+  public Set<AsyncReplicationRelationship> targetAsyncReplicationRelationships;
 
   public void setUniverseDetails(UniverseDefinitionTaskParams details) {
     universeDetails = details;
@@ -120,17 +150,8 @@ public class Universe extends Model {
     return universeDetails;
   }
 
-  public String getDnsName() {
-    Provider p =
-        Provider.get(UUID.fromString(universeDetails.getPrimaryCluster().userIntent.provider));
-    if (p == null) {
-      return null;
-    }
-    String dnsSuffix = p.getHostedZoneName();
-    if (dnsSuffix == null) {
-      return null;
-    }
-    return String.format("%s.%s.%s", name, Customer.get(p.customerUUID).code, dnsSuffix);
+  public UUID getUniverseUUID() {
+    return universeUUID;
   }
 
   public void resetVersion() {
@@ -168,7 +189,8 @@ public class Universe extends Model {
     universe.customerId = customerId;
     // Create the default universe details. This should be updated after creation.
     universe.universeDetails = taskParams;
-    universe.universeDetailsJson = Json.stringify(Json.toJson(universe.universeDetails));
+    universe.universeDetailsJson =
+        Json.stringify(RedactingService.filterSecretFields(Json.toJson(universe.universeDetails)));
     LOG.info("Created db entry for universe {} [{}]", universe.name, universe.universeUUID);
     LOG.debug(
         "Details for universe {} [{}] : [{}].",
@@ -202,6 +224,19 @@ public class Universe extends Model {
         find.query().where().eq("customer_id", customer.getCustomerId()).findIds());
   }
 
+  public static Set<Universe> getAllWithoutResources(Customer customer) {
+    List<Universe> rawList =
+        find.query().where().eq("customer_id", customer.getCustomerId()).findList();
+    return rawList.stream().peek(Universe::fillUniverseDetails).collect(Collectors.toSet());
+  }
+
+  public static Set<Universe> getAllWithoutResources(Set<UUID> uuids) {
+    ExpressionList<Universe> query = find.query().where();
+    CommonUtils.appendInClause(query, "universeUUID", uuids);
+    List<Universe> rawList = query.findList();
+    return rawList.stream().peek(Universe::fillUniverseDetails).collect(Collectors.toSet());
+  }
+
   /**
    * Returns the Universe object given its uuid.
    *
@@ -210,7 +245,8 @@ public class Universe extends Model {
   public static Universe getOrBadRequest(UUID universeUUID) {
     return maybeGet(universeUUID)
         .orElseThrow(
-            () -> new YWServiceException(BAD_REQUEST, "Cannot find universe " + universeUUID));
+            () ->
+                new PlatformServiceException(BAD_REQUEST, "Cannot find universe " + universeUUID));
   }
 
   public static Optional<Universe> maybeGet(UUID universeUUID) {
@@ -221,20 +257,7 @@ public class Universe extends Model {
       return Optional.empty();
     }
 
-    JsonNode detailsJson = Json.parse(universe.universeDetailsJson);
-    universe.universeDetails = Json.fromJson(detailsJson, UniverseDefinitionTaskParams.class);
-
-    // For backwards compatibility from {universeDetails: {"userIntent": <foo>, "placementInfo":
-    // <bar>}}
-    // to {universeDetails: {clusters: [{"userIntent": <foo>, "placementInfo": <bar>},...]}}
-    if (detailsJson != null
-        && !detailsJson.isNull()
-        && (!detailsJson.has("clusters") || detailsJson.get("clusters").size() == 0)) {
-      UserIntent userIntent = Json.fromJson(detailsJson.get("userIntent"), UserIntent.class);
-      PlacementInfo placementInfo =
-          Json.fromJson(detailsJson.get("placementInfo"), PlacementInfo.class);
-      universe.universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
-    }
+    fillUniverseDetails(universe);
 
     // Return the universe object.
     return Optional.of(universe);
@@ -253,8 +276,13 @@ public class Universe extends Model {
     return find.query().where().eq("name", universeName).findOne();
   }
 
-  public static Optional<Universe> maybeGetUniverseByName(String universeName) {
-    return find.query().where().eq("name", universeName).findOneOrEmpty();
+  public static Optional<Universe> maybeGetUniverseByName(Long customerId, String universeName) {
+    return find.query()
+        .where()
+        .eq("customerId", customerId)
+        .eq("name", universeName)
+        .findOneOrEmpty()
+        .map(Universe::fillUniverseDetails);
   }
 
   /**
@@ -366,7 +394,8 @@ public class Universe extends Model {
     return maybeGetNode(nodeName)
         .orElseThrow(
             () ->
-                new YWServiceException(BAD_REQUEST, "Invalid Node " + nodeName + " for Universe"));
+                new PlatformServiceException(
+                    BAD_REQUEST, "Invalid Node " + nodeName + " for Universe"));
   }
 
   /**
@@ -556,7 +585,10 @@ public class Universe extends Model {
     UniverseDefinitionTaskParams details = this.getUniverseDetails();
     if (details.getPrimaryCluster().userIntent.enableClientToNodeEncrypt) {
       // This means there must be a root CA associated with it.
-      return CertificateInfo.get(details.rootCA).certificate;
+      if (details.rootAndClientRootCASame) {
+        return CertificateInfo.get(details.rootCA).certificate;
+      }
+      return CertificateInfo.get(details.clientRootCA).certificate;
     }
     return null;
   }
@@ -734,9 +766,11 @@ public class Universe extends Model {
     final String cert = getCertificateNodetoNode();
     final YBClientService ybService = Play.current().injector().instanceOf(YBClientService.class);
     final YBClient client = ybService.getClient(masterAddresses, cert);
-    final HostAndPort leaderMasterHostAndPort = client.getLeaderMasterHostAndPort();
-    ybService.closeClient(client, masterAddresses);
-    return leaderMasterHostAndPort;
+    try {
+      return client.getLeaderMasterHostAndPort();
+    } finally {
+      ybService.closeClient(client, masterAddresses);
+    }
   }
 
   /**
@@ -780,13 +814,37 @@ public class Universe extends Model {
         .stream()
         .filter(
             s ->
-                s.getUniverseDetails().rootCA != null
-                    && s.getUniverseDetails().rootCA.equals(certUUID))
+                (s.getUniverseDetails().rootCA != null
+                        && s.getUniverseDetails().rootCA.equals(certUUID))
+                    || (s.getUniverseDetails().clientRootCA != null
+                        && s.getUniverseDetails().clientRootCA.equals(certUUID)))
         .collect(Collectors.toSet());
+  }
+
+  public static Set<Universe> universeDetailsIfReleaseExists(String version) {
+    Set<Universe> universes = new HashSet<Universe>();
+    Customer.getAll()
+        .forEach(customer -> universes.addAll(Customer.get(customer.getUuid()).getUniverses()));
+    Set<Universe> universesWithGivenRelease = new HashSet<Universe>();
+    for (Universe u : universes) {
+      List<Cluster> clusters = u.getUniverseDetails().clusters;
+      for (Cluster c : clusters) {
+        if (c.userIntent.ybSoftwareVersion != null
+            && c.userIntent.ybSoftwareVersion.equals(version)) {
+          universesWithGivenRelease.add(u);
+          break;
+        }
+      }
+    }
+    return universesWithGivenRelease;
   }
 
   public static boolean existsCertificate(UUID certUUID, UUID customerUUID) {
     return universeDetailsIfCertsExists(certUUID, customerUUID).size() != 0;
+  }
+
+  public static boolean existsRelease(String version) {
+    return universeDetailsIfReleaseExists(version).size() != 0;
   }
 
   static boolean isUniversePaused(UUID uuid) {
@@ -795,5 +853,23 @@ public class Universe extends Model {
       return false;
     }
     return universe.getUniverseDetails().universePaused;
+  }
+
+  private static Universe fillUniverseDetails(Universe universe) {
+    JsonNode detailsJson = Json.parse(universe.universeDetailsJson);
+    universe.universeDetails = Json.fromJson(detailsJson, UniverseDefinitionTaskParams.class);
+
+    // For backwards compatibility from {universeDetails: {"userIntent": <foo>, "placementInfo":
+    // <bar>}}
+    // to {universeDetails: {clusters: [{"userIntent": <foo>, "placementInfo": <bar>},...]}}
+    if (detailsJson != null
+        && !detailsJson.isNull()
+        && (!detailsJson.has("clusters") || detailsJson.get("clusters").size() == 0)) {
+      UserIntent userIntent = Json.fromJson(detailsJson.get("userIntent"), UserIntent.class);
+      PlacementInfo placementInfo =
+          Json.fromJson(detailsJson.get("placementInfo"), PlacementInfo.class);
+      universe.universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
+    }
+    return universe;
   }
 }

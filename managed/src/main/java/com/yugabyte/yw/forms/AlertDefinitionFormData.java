@@ -10,22 +10,20 @@
 
 package com.yugabyte.yw.forms;
 
-import play.data.validation.Constraints;
-
+import com.yugabyte.yw.common.AlertTemplate;
 import java.util.UUID;
-
-import com.yugabyte.yw.common.AlertDefinitionTemplate;
+import play.data.validation.Constraints;
 
 /** This class will be used by the API and UI Form Elements to validate constraints are met. */
 public class AlertDefinitionFormData {
 
   public UUID alertDefinitionUUID;
 
-  public AlertDefinitionTemplate template;
+  public AlertTemplate template;
 
   @Constraints.Required() public double value;
 
   @Constraints.Required() public String name;
 
-  @Constraints.Required() public boolean isActive;
+  @Constraints.Required() public boolean active;
 }

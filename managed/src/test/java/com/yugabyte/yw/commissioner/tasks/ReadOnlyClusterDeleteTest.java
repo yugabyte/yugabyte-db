@@ -2,10 +2,20 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
+import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+import static org.mockito.Matchers.any;
+import static org.mockito.Mockito.anyLong;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo.ModifyUniverseConfig;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -21,11 +31,14 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
 import org.mockito.runners.MockitoJUnitRunner;
 import org.yb.client.AbstractModifyMasterClusterConfig;
 import org.yb.client.ChangeMasterClusterConfigResponse;
@@ -33,21 +46,9 @@ import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.YBClient;
 import play.libs.Json;
 
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.stream.Collectors;
-
-import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
-import static com.yugabyte.yw.common.ModelFactory.createUniverse;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
-import static org.mockito.Matchers.any;
-import static org.mockito.Mockito.*;
-
 @RunWith(MockitoJUnitRunner.class)
 public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
-  @InjectMocks Commissioner commissioner;
+
   Universe defaultUniverse;
   ShellResponse dummyShellResponse;
   YBClient mockClient;
@@ -71,8 +72,9 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
   @Before
   public void setUp() {
     super.setUp();
+
     Region region = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
-    AvailabilityZone.create(region, "az-1", "AZ 1", "subnet-1");
+    AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
     // create default universe
     UserIntent userIntent = new UserIntent();
     userIntent.numNodes = 3;
@@ -104,7 +106,7 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
     taskParams.currentClusterType = ClusterType.ASYNC;
     userIntent = new UserIntent();
     region = Region.create(defaultProvider, "region-2", "Region 2", "yb-image-1");
-    AvailabilityZone.create(region, "az-2", "AZ 2", "subnet-2");
+    AvailabilityZone.createOrThrow(region, "az-2", "AZ 2", "subnet-2");
     userIntent.numNodes = 1;
     userIntent.replicationFactor = 1;
     userIntent.ybSoftwareVersion = "yb-version";
@@ -145,8 +147,7 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()));
 
-  private void assertClusterDeleteSequence(
-      Map<Integer, List<TaskInfo>> subTasksByPosition, boolean masterUnderReplicated) {
+  private void assertClusterDeleteSequence(Map<Integer, List<TaskInfo>> subTasksByPosition) {
     int position = 0;
     for (TaskType taskType : CLUSTER_DELETE_TASK_SEQUENCE) {
       List<TaskInfo> tasks = subTasksByPosition.get(position);
@@ -154,7 +155,7 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
       assertEquals(taskType, tasks.get(0).getTaskType());
       JsonNode expectedResults = CLUSTER_DELETE_TASK_EXPECTED_RESULTS.get(position);
       List<JsonNode> taskDetails =
-          tasks.stream().map(t -> t.getTaskDetails()).collect(Collectors.toList());
+          tasks.stream().map(TaskInfo::getTaskDetails).collect(Collectors.toList());
       assertJsonEqual(expectedResults, taskDetails.get(0));
       position++;
     }
@@ -173,8 +174,8 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
     verify(mockNodeManager, times(5)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
-    assertClusterDeleteSequence(subTasksByPosition, false);
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+    assertClusterDeleteSequence(subTasksByPosition);
     univUTP = Universe.getOrBadRequest(defaultUniverse.universeUUID).getUniverseDetails();
     assertEquals(1, univUTP.clusters.size());
     assertEquals(3, univUTP.nodeDetailsSet.size());

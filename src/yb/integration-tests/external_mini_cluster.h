@@ -42,7 +42,6 @@
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/opid_util.h"
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
@@ -218,6 +217,8 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   // Return a pointer to the running leader master. This may be NULL
   // if the cluster is not started.
+  // WARNING: If leader master is not elected after kMaxRetryIterations, first available master
+  // will be returned.
   ExternalMaster* GetLeaderMaster();
 
   // Perform an RPC to determine the leader of the external mini cluster.  Set 'index' to the leader
@@ -255,7 +256,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   CHECKED_STATUS AddTServerToLeaderBlacklist(ExternalMaster* master, ExternalTabletServer* ts);
 
   // Empty blacklist.
-  CHECKED_STATUS EmptyBlacklist(ExternalMaster* master);
+  CHECKED_STATUS ClearBlacklist(ExternalMaster* master);
 
   // Starts a new master and returns the handle of the new master object on success.  Not thread
   // safe for now. We could move this to a static function outside External Mini Cluster, but
@@ -392,10 +393,18 @@ class ExternalMiniCluster : public MiniClusterBase {
   // state.
   CHECKED_STATUS WaitForTabletsRunning(ExternalTabletServer* ts, const MonoDelta& timeout);
 
+  Result<tserver::ListTabletsResponsePB> ListTablets(ExternalTabletServer* ts);
+
   Result<std::vector<tserver::ListTabletsForTabletServerResponsePB::Entry>> GetTablets(
       ExternalTabletServer* ts);
 
   Result<std::vector<TabletId>> GetTabletIds(ExternalTabletServer* ts);
+
+  Result<tserver::GetSplitKeyResponsePB> GetSplitKey(const std::string& tablet_id);
+
+  CHECKED_STATUS FlushTabletsOnSingleTServer(
+      ExternalTabletServer* ts, const std::vector<yb::TabletId> tablet_ids,
+      bool is_compaction);
 
   CHECKED_STATUS WaitForTSToCrash(const ExternalTabletServer* ts,
                           const MonoDelta& timeout = MonoDelta::FromSeconds(60));
@@ -448,7 +457,7 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   void ConfigureClientBuilder(client::YBClientBuilder* builder) override;
 
-  HostPort DoGetLeaderMasterBoundRpcAddr() override;
+  Result<HostPort> DoGetLeaderMasterBoundRpcAddr() override;
 
   CHECKED_STATUS StartMasters();
 
@@ -548,6 +557,8 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   // Sends a SIGCONT signal to the daemon.
   CHECKED_STATUS Resume();
 
+  CHECKED_STATUS Kill(int signal);
+
   // Return true if we have explicitly shut down the process.
   bool IsShutdown() const;
 
@@ -643,7 +654,7 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   const std::string full_data_dir_;
   std::vector<std::string> extra_flags_;
 
-  gscoped_ptr<Subprocess> process_;
+  std::unique_ptr<Subprocess> process_;
 
   std::unique_ptr<server::ServerStatusPB> status_;
 
@@ -737,11 +748,13 @@ class ExternalTabletServer : public ExternalDaemon {
 
   CHECKED_STATUS Start(
       bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy,
-      bool set_proxy_addrs = true);
+      bool set_proxy_addrs = true,
+      std::vector<std::pair<string, string>> extra_flags = {});
 
   // Restarts the daemon. Requires that it has previously been shutdown.
   CHECKED_STATUS Restart(
-      bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy);
+      bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+      std::vector<std::pair<string, string>> flags = {});
 
   // IP addresses to bind to.
   const std::string& bind_host() const {

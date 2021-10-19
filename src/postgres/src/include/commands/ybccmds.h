@@ -30,6 +30,7 @@
 #include "nodes/parsenodes.h"
 #include "storage/lock.h"
 #include "utils/relcache.h"
+#include "tcop/utility.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"
 
@@ -41,8 +42,6 @@ extern void YBCCreateDatabase(
 extern void YBCDropDatabase(Oid dboid, const char *dbname);
 
 extern void YBCReserveOids(Oid dboid, Oid next_oid, uint32 count, Oid *begin_oid, Oid *end_oid);
-
-extern bool YBCIsDatabaseColocated(Oid dboid);
 
 /*  Tablegroup Functions ------------------------------------------------------------------------ */
 
@@ -89,6 +88,8 @@ extern void YBCRename(RenameStmt* stmt, Oid relationId);
 
 extern bool YBCIsTableColocated(Oid dboid, Oid relationId);
 
-extern int32_t YBCAnalyzeTable(Relation rel);
+extern void YbBackfillIndex(BackfillIndexStmt *stmt, DestReceiver *dest);
+
+extern TupleDesc YbBackfillIndexResultDesc(BackfillIndexStmt *stmt);
 
 #endif

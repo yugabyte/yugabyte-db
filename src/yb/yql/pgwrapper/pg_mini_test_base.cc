@@ -33,7 +33,9 @@ namespace yb {
 namespace pgwrapper {
 
 void PgMiniTestBase::DoTearDown() {
-  pg_supervisor_->Stop();
+  if (pg_supervisor_) {
+    pg_supervisor_->Stop();
+  }
   YBMiniClusterTestBase::DoTearDown();
 }
 
@@ -52,8 +54,13 @@ void PgMiniTestBase::SetUp() {
   master::SetDefaultInitialSysCatalogSnapshotFlags();
   YBMiniClusterTestBase::SetUp();
 
-  MiniClusterOptions mini_cluster_opt(NumMasters(), NumTabletServers());
-  cluster_ = std::make_unique<MiniCluster>(env_.get(), mini_cluster_opt);
+  MiniClusterOptions mini_cluster_opt = MiniClusterOptions {
+      .num_masters = NumMasters(),
+      .num_tablet_servers = NumTabletServers(),
+      .num_drives = 1,
+      .master_env = env_.get()
+  };
+  cluster_ = std::make_unique<MiniCluster>(mini_cluster_opt);
   ASSERT_OK(cluster_->Start());
 
   ASSERT_OK(WaitForInitDb(cluster_.get()));

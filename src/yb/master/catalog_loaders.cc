@@ -32,7 +32,6 @@
 
 #include "yb/master/catalog_loaders.h"
 #include "yb/master/master_util.h"
-#include "yb/master/permissions_manager.h"
 
 DEFINE_bool(master_ignore_deleted_on_load, true,
   "Whether the Master should ignore deleted tables & tablets on restart.  "
@@ -47,9 +46,14 @@ using namespace std::placeholders;
 // Table Loader
 ////////////////////////////////////////////////////////////
 
+bool ShouldLoadObject(const SysTablesEntryPB& metadata) {
+  // TODO: We need to properly remove deleted tables.  This can happen async of master loading.
+  return !FLAGS_master_ignore_deleted_on_load || metadata.state() != SysTablesEntryPB::DELETED;
+}
+
 Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metadata) {
   // TODO: We need to properly remove deleted tables.  This can happen async of master loading.
-  if (FLAGS_master_ignore_deleted_on_load && metadata.state() == SysTablesEntryPB::DELETED) {
+  if (!ShouldLoadObject(metadata)) {
     return Status::OK();
   }
 
@@ -70,7 +74,7 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
   // add Postgres tables to the name map as the table name is not unique in a namespace.
   auto table_ids_map_checkout = catalog_manager_->table_ids_map_.CheckOut();
   (*table_ids_map_checkout)[table->id()] = table;
-  if (l->table_type() != PGSQL_TABLE_TYPE && !l->started_deleting()) {
+  if (l->table_type() != PGSQL_TABLE_TYPE && !l->started_deleting() && !l->started_hiding()) {
     catalog_manager_->table_names_map_[{l->namespace_id(), l->name()}] = table;
   }
 
@@ -101,7 +105,15 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
 // Tablet Loader
 ////////////////////////////////////////////////////////////
 
+bool ShouldLoadObject(const SysTabletsEntryPB& pb) {
+  return true;
+}
+
 Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& metadata) {
+  if (!ShouldLoadObject(metadata)) {
+    return Status::OK();
+  }
+
   // Lookup the table.
   TableInfoPtr first_table = FindPtrOrNull(*catalog_manager_->table_ids_map_, metadata.table_id());
 
@@ -141,8 +153,8 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
     // was empty, we "upgrade" the master to support this new invariant.
     if (metadata.table_ids_size() == 0) {
       l.mutable_data()->pb.add_table_ids(metadata.table_id());
-      Status s = catalog_manager_->sys_catalog_->UpdateItem(
-          tablet.get(), catalog_manager_->leader_ready_term());
+      Status s = catalog_manager_->sys_catalog_->Upsert(
+          catalog_manager_->leader_ready_term(), tablet);
       if (PREDICT_FALSE(!s.ok())) {
         return STATUS_FORMAT(
             IllegalState, "An error occurred while inserting to sys-tablets: $0", s);
@@ -206,8 +218,8 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
           << "Deleting tablet " << tablet->id() << " for table " << first_table->ToString();
       string deletion_msg = "Tablet deleted at " + LocalTimeAsString();
       l.mutable_data()->set_state(SysTabletsEntryPB::DELETED, deletion_msg);
-      RETURN_NOT_OK_PREPEND(catalog_manager_->sys_catalog()->UpdateItem(tablet.get(), term_),
-                            strings::Substitute("Error deleting tablet $0", tablet->id()));
+      RETURN_NOT_OK_PREPEND(catalog_manager_->sys_catalog()->Upsert(term_, tablet),
+                            Format("Error deleting tablet $0", tablet->id()));
     }
 
     l.Commit();
@@ -251,7 +263,15 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
 // Namespace Loader
 ////////////////////////////////////////////////////////////
 
+bool ShouldLoadObject(const SysNamespaceEntryPB& metadata) {
+  return true;
+}
+
 Status NamespaceLoader::Visit(const NamespaceId& ns_id, const SysNamespaceEntryPB& metadata) {
+  if (!ShouldLoadObject(metadata)) {
+    return Status::OK();
+  }
+
   CHECK(!ContainsKey(catalog_manager_->namespace_ids_map_, ns_id))
     << "Namespace already exists: " << ns_id;
 
@@ -426,9 +446,6 @@ Status RedisConfigLoader::Visit(const std::string& key, const SysRedisConfigEntr
 ////////////////////////////////////////////////////////////
 
 Status RoleLoader::Visit(const RoleName& role_name, const SysRoleEntryPB& metadata) {
-  CHECK(!catalog_manager_->permissions_manager()->DoesRoleExistUnlocked(role_name))
-    << "Role already exists: " << role_name;
-
   RoleInfo* const role = new RoleInfo(role_name);
   {
     auto l = role->LockForWrite();

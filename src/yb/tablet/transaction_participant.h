@@ -68,6 +68,7 @@ namespace tablet {
 struct TransactionApplyData {
   int64_t leader_term = -1;
   TransactionId transaction_id = TransactionId::Nil();
+  AbortedSubTransactionSet aborted;
   OpId op_id;
   HybridTime commit_ht;
   HybridTime log_ht;
@@ -118,7 +119,7 @@ class TransactionParticipantContext {
   virtual void UpdateClock(HybridTime hybrid_time) = 0;
   virtual bool IsLeader() = 0;
   virtual void SubmitUpdateTransaction(
-      std::unique_ptr<UpdateTxnOperationState> state, int64_t term) = 0;
+      std::unique_ptr<UpdateTxnOperation> state, int64_t term) = 0;
 
   // Returns hybrid time that lower than any future transaction apply record.
   virtual HybridTime SafeTimeForTransactionParticipant() = 0;
@@ -178,11 +179,13 @@ class TransactionParticipant : public TransactionStatusManager {
 
   HybridTime LocalCommitTime(const TransactionId& id) override;
 
+  boost::optional<CommitMetadata> LocalCommitData(const TransactionId& id) override;
+
   void RequestStatusAt(const StatusRequest& request) override;
 
   void Abort(const TransactionId& id, TransactionStatusCallback callback) override;
 
-  void Handle(std::unique_ptr<tablet::UpdateTxnOperationState> request, int64_t term);
+  void Handle(std::unique_ptr<tablet::UpdateTxnOperation> request, int64_t term);
 
   void Cleanup(TransactionIdSet&& set) override;
 
@@ -239,9 +242,14 @@ class TransactionParticipant : public TransactionStatusManager {
   // Waits until deadline, for txns to abort. If not, it returns a TimedOut.
   // After this call, there should be no active (non-aborted/committed) txn that
   // started before cutoff which is active on this tablet.
-  CHECKED_STATUS StopActiveTxnsPriorTo(HybridTime cutoff, CoarseTimePoint deadline);
+  CHECKED_STATUS StopActiveTxnsPriorTo(
+      HybridTime cutoff, CoarseTimePoint deadline, TransactionId* exclude_txn_id = nullptr);
+
+  void IgnoreAllTransactionsStartedBefore(HybridTime limit);
 
   std::string DumpTransactions() const;
+
+  const TabletId& tablet_id() const override;
 
   size_t TEST_GetNumRunningTransactions() const;
 

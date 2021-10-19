@@ -28,6 +28,8 @@
 #include <string.h>         // for memcpy
 #include <limits.h>         // for enumeration casts and tests
 
+#include <memory>
+
 #include <glog/logging.h>
 
 #include "yb/gutil/macros.h"
@@ -415,6 +417,11 @@ template<class Out, class In>
 Out pointer_cast(const In* in) {
   const void* temp = in;
   return static_cast<Out>(temp);
+}
+
+template<class D, class S>
+std::unique_ptr<D> down_pointer_cast(std::unique_ptr<S> s) {
+  return std::unique_ptr<D>(down_cast<D*>(s.release()));
 }
 
 } // namespace yb

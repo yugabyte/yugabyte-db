@@ -2,54 +2,13 @@
 
 package com.yugabyte.yw.controllers;
 
-import akka.stream.javadsl.FileIO;
-import akka.stream.javadsl.Source;
-import akka.util.ByteString;
-
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.AccessManager;
-import com.yugabyte.yw.common.FakeApiHelper;
-import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.TemplateManager;
-import com.yugabyte.yw.common.TestHelper;
-import com.yugabyte.yw.common.YWServiceException;
-import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.Users;
-import org.apache.commons.io.FileUtils;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
-import org.mockito.ArgumentCaptor;
-import play.Application;
-import play.inject.guice.GuiceApplicationBuilder;
-import play.libs.Json;
-import play.mvc.Http;
-import play.mvc.Result;
-import play.test.Helpers;
-import play.test.WithApplication;
-
-import java.io.File;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeoutException;
-
+import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
 import static com.yugabyte.yw.common.AssertHelper.assertErrorResponse;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.containsString;
@@ -59,19 +18,48 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertThrows;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static play.inject.Bindings.bind;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.OK;
+import static play.test.Helpers.INTERNAL_SERVER_ERROR;
 import static play.test.Helpers.contentAsString;
-import static play.test.Helpers.*;
+
+import akka.stream.javadsl.FileIO;
+import akka.stream.javadsl.Source;
+import akka.util.ByteString;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.AccessManager;
+import com.yugabyte.yw.common.FakeApiHelper;
+import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Users;
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+import org.apache.commons.io.FileUtils;
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
+import org.mockito.ArgumentCaptor;
+import play.libs.Json;
+import play.mvc.Http;
+import play.mvc.Result;
 
 public class AccessKeyControllerTest extends FakeDBApplication {
   Provider defaultProvider;
@@ -142,7 +130,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
         String tmpFile = createTempFile("PRIVATE KEY DATA");
         Source<ByteString, ?> keyFile = FileIO.fromFile(new File(tmpFile));
         bodyData.add(
-            new Http.MultipartFormData.FilePart(
+            new Http.MultipartFormData.FilePart<>(
                 "keyFile", "test.pem", "application/octet-stream", keyFile));
       }
 
@@ -181,9 +169,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
   @Test
   public void testGetAccessKeyWithInvalidProviderUUID() {
     UUID invalidProviderUUID = UUID.randomUUID();
-    Result result =
-        assertThrows(YWServiceException.class, () -> getAccessKey(invalidProviderUUID, "foo"))
-            .getResult();
+    Result result = assertPlatformException(() -> getAccessKey(invalidProviderUUID, "foo"));
     assertBadRequest(result, "Invalid Provider UUID: " + invalidProviderUUID);
     assertAuditEntry(0, defaultCustomer.uuid);
   }
@@ -192,10 +178,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
   public void testGetAccessKeyWithInvalidKeyCode() {
     AccessKey accessKey = AccessKey.create(UUID.randomUUID(), "foo", new AccessKey.KeyInfo());
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> getAccessKey(defaultProvider.uuid, accessKey.getKeyCode()))
-            .getResult();
+        assertPlatformException(() -> getAccessKey(defaultProvider.uuid, accessKey.getKeyCode()));
     assertEquals(BAD_REQUEST, result.status());
     assertBadRequest(result, "KeyCode not found: " + accessKey.getKeyCode());
     assertAuditEntry(0, defaultCustomer.uuid);
@@ -216,9 +199,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
   @Test
   public void testListAccessKeyWithInvalidProviderUUID() {
     UUID invalidProviderUUID = UUID.randomUUID();
-    Result result =
-        assertThrows(YWServiceException.class, () -> listAccessKey(invalidProviderUUID))
-            .getResult();
+    Result result = assertPlatformException(() -> listAccessKey(invalidProviderUUID));
     assertBadRequest(result, "Invalid Provider UUID: " + invalidProviderUUID);
     assertAuditEntry(0, defaultCustomer.uuid);
   }
@@ -255,10 +236,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
   @Test
   public void testCreateAccessKeyWithInvalidProviderUUID() {
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> createAccessKey(UUID.randomUUID(), "foo", false, false))
-            .getResult();
+        assertPlatformException(() -> createAccessKey(UUID.randomUUID(), "foo", false, false));
     assertBadRequest(result, "Invalid Provider/Region UUID");
     assertAuditEntry(0, defaultCustomer.uuid);
   }
@@ -266,10 +244,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
   @Test
   public void testCreateAccessKeyWithInvalidParams() {
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> createAccessKey(defaultProvider.uuid, null, false, false))
-            .getResult();
+        assertPlatformException(() -> createAccessKey(defaultProvider.uuid, null, false, false));
     JsonNode node = Json.parse(contentAsString(result));
     assertErrorNodeValue(node, "keyCode", "This field is required");
     assertErrorNodeValue(node, "regionUUID", "This field is required");
@@ -280,10 +255,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
   public void testCreateAccessKeyWithDifferentProviderUUID() {
     Provider gcpProvider = ModelFactory.gcpProvider(ModelFactory.testCustomer("fb", "foo@bar.com"));
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> createAccessKey(gcpProvider.uuid, "key-code", false, false))
-            .getResult();
+        assertPlatformException(() -> createAccessKey(gcpProvider.uuid, "key-code", false, false));
     assertBadRequest(result, "Invalid Provider/Region UUID");
     assertAuditEntry(0, defaultCustomer.uuid);
   }
@@ -401,12 +373,10 @@ public class AccessKeyControllerTest extends FakeDBApplication {
   @Test
   public void testCreateAccessKeyWithException() {
     when(mockAccessManager.addKey(defaultRegion.uuid, "key-code-1", SSH_PORT, true, false))
-        .thenThrow(new YWServiceException(INTERNAL_SERVER_ERROR, "Something went wrong!!"));
+        .thenThrow(new PlatformServiceException(INTERNAL_SERVER_ERROR, "Something went wrong!!"));
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () -> createAccessKey(defaultProvider.uuid, "key-code-1", false, false))
-            .getResult();
+        assertPlatformException(
+            () -> createAccessKey(defaultProvider.uuid, "key-code-1", false, false));
     assertErrorResponse(result, "Something went wrong!!");
     assertAuditEntry(0, defaultCustomer.uuid);
   }
@@ -437,24 +407,22 @@ public class AccessKeyControllerTest extends FakeDBApplication {
     when(mockAccessManager.addKey(onpremRegion.uuid, "key-code-1", SSH_PORT, false, false))
         .thenReturn(accessKey);
     doThrow(
-            new YWServiceException(
+            new PlatformServiceException(
                 INTERNAL_SERVER_ERROR, "Unable to create access key: key-code-1"))
         .when(mockTemplateManager)
         .createProvisionTemplate(accessKey, false, false, true, 9300, "prometheus");
     Result result =
-        assertThrows(
-                YWServiceException.class,
-                () ->
-                    createAccessKey(
-                        onpremProvider.uuid,
-                        "key-code-1",
-                        false,
-                        false,
-                        onpremRegion,
-                        false,
-                        false,
-                        false))
-            .getResult();
+        assertPlatformException(
+            () ->
+                createAccessKey(
+                    onpremProvider.uuid,
+                    "key-code-1",
+                    false,
+                    false,
+                    onpremRegion,
+                    false,
+                    false,
+                    false));
     assertErrorResponse(result, "Unable to create access key: key-code-1");
     assertAuditEntry(0, defaultCustomer.uuid);
   }
@@ -479,18 +447,14 @@ public class AccessKeyControllerTest extends FakeDBApplication {
   @Test
   public void testDeleteAccessKeyWithInvalidProviderUUID() {
     UUID invalidProviderUUID = UUID.randomUUID();
-    Result result =
-        assertThrows(YWServiceException.class, () -> deleteAccessKey(invalidProviderUUID, "foo"))
-            .getResult();
+    Result result = assertPlatformException(() -> deleteAccessKey(invalidProviderUUID, "foo"));
     assertBadRequest(result, "Invalid Provider UUID: " + invalidProviderUUID);
     assertAuditEntry(0, defaultCustomer.uuid);
   }
 
   @Test
   public void testDeleteAccessKeyWithInvalidAccessKeyCode() {
-    Result result =
-        assertThrows(YWServiceException.class, () -> deleteAccessKey(defaultProvider.uuid, "foo"))
-            .getResult();
+    Result result = assertPlatformException(() -> deleteAccessKey(defaultProvider.uuid, "foo"));
     assertBadRequest(result, "KeyCode not found: foo");
     assertAuditEntry(0, defaultCustomer.uuid);
   }

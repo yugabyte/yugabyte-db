@@ -95,6 +95,7 @@ class YBOperation {
   virtual ~YBOperation();
 
   std::shared_ptr<const YBTable> table() const { return table_; }
+  std::shared_ptr<YBTable> mutable_table() const { return table_; }
 
   void ResetTable(std::shared_ptr<YBTable> new_table);
 
@@ -139,11 +140,6 @@ class YBOperation {
 
   // Mark table this op is designated for as having stale partitions.
   void MarkTablePartitionListAsStale();
-
-  // Refreshes partitions of the table this op is designated of in case partitions have been marked
-  // as stale.
-  // Returns whether table partitions have been refreshed.
-  Result<bool> MaybeRefreshTablePartitionList();
 
   // If partition_list_version is set YBSession guarantees that this operation instance won't
   // be applied to the tablet with a different table partition_list_version (meaning serving
@@ -383,7 +379,7 @@ class YBqlReadOp : public YBqlOp {
   // Also sets the hash_code and max_hash_code in the request.
   CHECKED_STATUS GetPartitionKey(std::string* partition_key) const override;
 
-  const YBConsistencyLevel yb_consistency_level() {
+  YBConsistencyLevel yb_consistency_level() {
     return yb_consistency_level_;
   }
 
@@ -494,16 +490,16 @@ class YBPgsqlWriteOp : public YBPgsqlOp {
   const HybridTime& write_time() const { return write_time_; }
   void SetWriteTime(const HybridTime& value) { write_time_ = value; }
 
+  static std::unique_ptr<YBPgsqlWriteOp> NewInsert(const YBTablePtr& table);
+  static std::unique_ptr<YBPgsqlWriteOp> NewUpdate(const YBTablePtr& table);
+  static std::unique_ptr<YBPgsqlWriteOp> NewDelete(const YBTablePtr& table);
+  static std::unique_ptr<YBPgsqlWriteOp> NewTruncateColocated(const YBTablePtr& table);
+
  protected:
   virtual Type type() const override { return PGSQL_WRITE; }
 
  private:
   friend class YBTable;
-  static std::unique_ptr<YBPgsqlWriteOp> NewInsert(const std::shared_ptr<YBTable>& table);
-  static std::unique_ptr<YBPgsqlWriteOp> NewUpdate(const std::shared_ptr<YBTable>& table);
-  static std::unique_ptr<YBPgsqlWriteOp> NewDelete(const std::shared_ptr<YBTable>& table);
-  static std::unique_ptr<YBPgsqlWriteOp> NewTruncateColocated(
-      const std::shared_ptr<YBTable>& table);
 
   std::unique_ptr<PgsqlWriteRequestPB> write_request_;
   // Whether this operation should be run as a single row txn.
@@ -515,6 +511,8 @@ class YBPgsqlWriteOp : public YBPgsqlOp {
 class YBPgsqlReadOp : public YBPgsqlOp {
  public:
   static std::unique_ptr<YBPgsqlReadOp> NewSelect(const std::shared_ptr<YBTable>& table);
+
+  static std::unique_ptr<YBPgsqlReadOp> NewSample(const std::shared_ptr<YBTable>& table);
 
   // Create a deep copy of this operation, copying all fields and request PB content.
   // Does NOT, however, copy response and rows data.
@@ -539,7 +537,7 @@ class YBPgsqlReadOp : public YBPgsqlOp {
   // Also sets the hash_code and max_hash_code in the request.
   CHECKED_STATUS GetPartitionKey(std::string* partition_key) const override;
 
-  const YBConsistencyLevel yb_consistency_level() {
+  YBConsistencyLevel yb_consistency_level() {
     return yb_consistency_level_;
   }
 
@@ -588,7 +586,7 @@ class YBNoOp {
 
   // Executes a no-op request against the tablet server on which the row specified
   // by "key" lives.
-  CHECKED_STATUS Execute(const YBPartialRow& key);
+  CHECKED_STATUS Execute(YBClient* client, const YBPartialRow& key);
  private:
   const std::shared_ptr<YBTable> table_;
 

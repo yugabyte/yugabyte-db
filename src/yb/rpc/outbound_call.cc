@@ -54,22 +54,21 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
 
-METRIC_DEFINE_histogram(
+METRIC_DEFINE_coarse_histogram(
     server, handler_latency_outbound_call_queue_time, "Time taken to queue the request ",
-    yb::MetricUnit::kMicroseconds, "Microseconds spent to queue the request to the reactor",
-    60000000LU, 2);
-METRIC_DEFINE_histogram(
+    yb::MetricUnit::kMicroseconds, "Microseconds spent to queue the request to the reactor");
+METRIC_DEFINE_coarse_histogram(
     server, handler_latency_outbound_call_send_time, "Time taken to send the request ",
-    yb::MetricUnit::kMicroseconds, "Microseconds spent to queue and write the request to the wire",
-    60000000LU, 2);
-METRIC_DEFINE_histogram(
+    yb::MetricUnit::kMicroseconds, "Microseconds spent to queue and write the request to the wire");
+METRIC_DEFINE_coarse_histogram(
     server, handler_latency_outbound_call_time_to_response, "Time taken to get the response ",
     yb::MetricUnit::kMicroseconds,
-    "Microseconds spent to send the request and get a response on the wire", 60000000LU, 2);
+    "Microseconds spent to send the request and get a response on the wire");
 
 // 100M cycles should be about 50ms on a 2Ghz box. This should be high
 // enough that involuntary context switches don't trigger it, but low enough
@@ -112,50 +111,6 @@ int32_t NextCallId() {
   }
 }
 
-class RemoteMethodsCache {
- public:
-  RemoteMethodPool* Find(const RemoteMethod& method) {
-    {
-      auto cache = concurrent_cache_.get();
-      auto it = cache->find(method);
-      if (it != cache->end()) {
-        return it->second;
-      }
-    }
-    std::lock_guard<std::mutex> lock(mutex_);
-    auto it = cache_.find(method);
-    if (it == cache_.end()) {
-      auto result = std::make_shared<RemoteMethodPool>([method]() -> RemoteMethodPB* {
-        auto remote_method = new RemoteMethodPB();
-        method.ToPB(remote_method);
-        return remote_method;
-      });
-      cache_.emplace(method, result);
-      PtrCache new_ptr_cache;
-      for (const auto& p : cache_) {
-        new_ptr_cache.emplace(p.first, p.second.get());
-      }
-      concurrent_cache_.Set(std::move(new_ptr_cache));
-      return result.get();
-    }
-
-    return it->second.get();
-  }
-
-  static RemoteMethodsCache& Instance() {
-    static RemoteMethodsCache instance;
-    return instance;
-  }
-
- private:
-  typedef std::unordered_map<
-      RemoteMethod, std::shared_ptr<RemoteMethodPool>, RemoteMethodHash> Cache;
-  typedef std::unordered_map<RemoteMethod, RemoteMethodPool*, RemoteMethodHash> PtrCache;
-  std::mutex mutex_;
-  Cache cache_;
-  ConcurrentValue<PtrCache> concurrent_cache_;
-};
-
 const std::string kEmptyString;
 
 } // namespace
@@ -187,13 +142,14 @@ void InvokeCallbackTask::Done(const Status& status) {
 
 OutboundCall::OutboundCall(const RemoteMethod* remote_method,
                            const std::shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
+                           std::shared_ptr<const OutboundMethodMetrics> method_metrics,
                            google::protobuf::Message* response_storage,
                            RpcController* controller,
                            RpcMetrics* rpc_metrics,
                            ResponseCallback callback,
                            ThreadPool* callback_thread_pool)
     : hostname_(&kEmptyString),
-      start_(MonoTime::Now()),
+      start_(CoarseMonoClock::Now()),
       controller_(DCHECK_NOTNULL(controller)),
       response_(DCHECK_NOTNULL(response_storage)),
       call_id_(NextCallId()),
@@ -202,8 +158,8 @@ OutboundCall::OutboundCall(const RemoteMethod* remote_method,
       callback_thread_pool_(callback_thread_pool),
       trace_(new Trace),
       outbound_call_metrics_(outbound_call_metrics),
-      remote_method_pool_(RemoteMethodsCache::Instance().Find(*remote_method_)),
-      rpc_metrics_(rpc_metrics) {
+      rpc_metrics_(rpc_metrics),
+      method_metrics_(std::move(method_metrics)) {
   // Avoid expensive conn_id.ToString() in production.
   TRACE_TO_WITH_TIME(trace_, start_, "Outbound Call initiated.");
 
@@ -225,8 +181,7 @@ OutboundCall::~OutboundCall() {
 
   if (PREDICT_FALSE(FLAGS_rpc_dump_all_traces)) {
     LOG(INFO) << ToString() << " took "
-              << MonoTime::Now().GetDeltaSince(start_).ToMicroseconds()
-              << "us. Trace:";
+              << MonoDelta(CoarseMonoClock::Now() - start_).ToMicroseconds() << "us. Trace:";
     trace_->Dump(&LOG(INFO), true);
   }
 
@@ -273,12 +228,19 @@ Status OutboundCall::SetRequestParam(
   }
   size_t header_size = 0;
 
-  RequestHeader header;
-  status = InitHeader(&header);
-  if (status.ok()) {
-    status = SerializeHeader(header, message_size, &buffer_, message_size, &header_size);
+  {
+    RequestHeader header;
+    status = InitHeader(&header, false /* copy */);
+    auto se = ScopeExit([&header] {
+      // Prevent header to free its RemoteMethodPB pointer incorrectly when header
+      // goes out of scope, because RemoteMethodPB is owned by the containing remote_method_.
+      header.release_remote_method();
+    });
+    if (status.ok()) {
+      status = SerializeHeader(header, message_size, &buffer_, message_size, &header_size);
+    }
   }
-  remote_method_pool_->Release(header.release_remote_method());
+
   if (!status.ok()) {
     return status;
   }
@@ -287,11 +249,12 @@ Status OutboundCall::SetRequestParam(
     buffer_consumption_ = ScopedTrackedConsumption(mem_tracker, buffer_.size());
   }
 
-  return SerializeMessage(message,
-                          &buffer_,
-                          /* additional_size */ 0,
-                          /* use_cached_size */ true,
-                          header_size);
+  RETURN_NOT_OK(SerializeMessage(
+      message, &buffer_, /* additional_size */ 0, /* use_cached_size */ true, header_size));
+  if (method_metrics_) {
+    IncrementCounterBy(method_metrics_->request_bytes, buffer_.size());
+  }
+  return Status::OK();
 }
 
 Status OutboundCall::status() const {
@@ -410,15 +373,19 @@ void OutboundCall::InvokeCallbackSync() {
 void OutboundCall::SetResponse(CallResponse&& resp) {
   DCHECK(!IsFinished());
 
-  auto now = MonoTime::Now();
+  auto now = CoarseMonoClock::Now();
   TRACE_TO_WITH_TIME(trace_, now, "Response received.");
   // Track time taken to be responded.
 
   if (outbound_call_metrics_) {
-    outbound_call_metrics_->time_to_response->Increment(now.GetDeltaSince(start_).ToMicroseconds());
+    outbound_call_metrics_->time_to_response->Increment(MonoDelta(now - start_).ToMicroseconds());
   }
   call_response_ = std::move(resp);
   Slice r(call_response_.serialized_response());
+
+  if (method_metrics_) {
+    IncrementCounterBy(method_metrics_->response_bytes, r.size());
+  }
 
   if (call_response_.is_success()) {
     // TODO: here we're deserializing the call response within the reactor thread,
@@ -449,20 +416,20 @@ void OutboundCall::SetResponse(CallResponse&& resp) {
 }
 
 void OutboundCall::SetQueued() {
-  auto end_time = MonoTime::Now();
+  auto end_time = CoarseMonoClock::Now();
   // Track time taken to be queued.
   if (outbound_call_metrics_) {
-    outbound_call_metrics_->queue_time->Increment(end_time.GetDeltaSince(start_).ToMicroseconds());
+    outbound_call_metrics_->queue_time->Increment(MonoDelta(end_time - start_).ToMicroseconds());
   }
   SetState(ON_OUTBOUND_QUEUE);
   TRACE_TO_WITH_TIME(trace_, end_time, "Queued.");
 }
 
 void OutboundCall::SetSent() {
-  auto end_time = MonoTime::Now();
+  auto end_time = CoarseMonoClock::Now();
   // Track time taken to be sent
   if (outbound_call_metrics_) {
-    outbound_call_metrics_->send_time->Increment(end_time.GetDeltaSince(start_).ToMicroseconds());
+    outbound_call_metrics_->send_time->Increment(MonoDelta(end_time - start_).ToMicroseconds());
   }
   SetState(SENT);
   TRACE_TO_WITH_TIME(trace_, end_time, "Call Sent.");
@@ -474,7 +441,7 @@ void OutboundCall::SetFinished() {
   // Track time taken to be responded.
   if (outbound_call_metrics_) {
     outbound_call_metrics_->time_to_response->Increment(
-        MonoTime::Now().GetDeltaSince(start_).ToMicroseconds());
+        MonoDelta(CoarseMonoClock::Now() - start_).ToMicroseconds());
   }
   if (SetState(FINISHED_SUCCESS)) {
     InvokeCallback();
@@ -548,13 +515,14 @@ bool OutboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
   if (!req.dump_timed_out() && state_value == RpcCallState::TIMED_OUT) {
     return false;
   }
-  if (!InitHeader(resp->mutable_header()).ok() && !req.dump_timed_out()) {
+  if (!InitHeader(resp->mutable_header(), true /* copy */).ok() &&
+      !req.dump_timed_out()) {
     // Note that if we proceed here due to req.dump_timed_out() being true, then the
     // header.timeout_millis() will be inaccurate/not-set. This is ok because DumpPB
     // is only used for dumping the PB and not to send the RPC over the wire.
     return false;
   }
-  resp->set_elapsed_millis(MonoTime::Now().GetDeltaSince(start_).ToMilliseconds());
+  resp->set_elapsed_millis(MonoDelta(CoarseMonoClock::Now() - start_).ToMilliseconds());
   resp->set_state(state_value);
   if (req.include_traces() && trace_) {
     resp->set_trace_buffer(trace_->DumpToString(true));
@@ -566,15 +534,20 @@ std::string OutboundCall::LogPrefix() const {
   return Format("{ OutboundCall@$0 } ", this);
 }
 
-Status OutboundCall::InitHeader(RequestHeader* header) {
+Status OutboundCall::InitHeader(RequestHeader* header, bool copy) {
   header->set_call_id(call_id_);
-  header->set_allocated_remote_method(remote_method_pool_->Take());
+  const RemoteMethodPB& remote_method_pb = remote_method_->remote_method_pb();
+  if (copy) {
+    *header->mutable_remote_method() = remote_method_pb;
+  } else {
+    header->set_allocated_remote_method(const_cast<RemoteMethodPB*>(&remote_method_pb));
+  }
 
   if (!IsFinished()) {
     MonoDelta timeout = controller_->timeout();
     if (timeout.Initialized()) {
       auto timeout_millis = timeout.ToMilliseconds();
-      if (timeout_millis < 0) {
+      if (timeout_millis <= 0) {
         return STATUS(TimedOut, "Call timed out before sending");
       }
       header->set_timeout_millis(timeout_millis);

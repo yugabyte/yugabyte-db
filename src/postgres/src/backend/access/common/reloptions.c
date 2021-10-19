@@ -160,6 +160,15 @@ static relopt_bool boolRelOpts[] =
 		 * colocated. This option will be ignored in non-colocated database. */
 		true
 	},
+	{
+		{
+			"use_initdb_acl",
+			"Initialize view's permissions as if it was created by initdb via yb_system_views.sql",
+			RELOPT_KIND_VIEW,
+			AccessExclusiveLock
+		},
+		false
+	},
 	/* list terminator */
 	{{NULL}}
 };
@@ -377,7 +386,20 @@ static relopt_int intRelOpts[] =
 			RELOPT_KIND_HEAP | RELOPT_KIND_INDEX,
 			AccessExclusiveLock
 		},
-		InvalidOid, FirstNormalObjectId, INT_MAX
+		InvalidOid,
+		1 /* parse_utilcmd takes care of OID >= FirstNormalObjectId for user tables */,
+		INT_MAX
+	},
+	{
+		{
+			"row_type_oid",
+			"Postgres type oid for the new row type defined for this relation.",
+			RELOPT_KIND_HEAP | RELOPT_KIND_INDEX,
+			AccessExclusiveLock
+		},
+		InvalidOid,
+		1 /* parse_utilcmd takes care of OID >= FirstNormalObjectId for user tables */,
+		INT_MAX
 	},
 	/* list terminator */
 	{{NULL}}
@@ -815,6 +837,24 @@ Datum
 transformRelOptions(Datum oldOptions, List *defList, const char *namspace,
 					char *validnsps[], bool ignoreOids, bool isReset)
 {
+	return ybTransformRelOptions(oldOptions, defList, namspace, validnsps,
+								 ignoreOids, isReset,
+								 false /* ybIgnoreYsqlUpgradeOptions */);
+}
+
+/*
+ * See above for transformRelOptions description.
+ * 
+ * If ybIgnoreYsqlUpgradeOptions is specified, ignore "table_oid"
+ * and "row_type_oid" options. This is needed in YSQL upgrade mode, where we
+ * use them to simulate initdb-like behaviour for creating relations but don't
+ * want them to be persisted.
+ */
+Datum
+ybTransformRelOptions(Datum oldOptions, List *defList, const char *namspace,
+					  char *validnsps[], bool ignoreOids, bool isReset,
+					  bool ybIgnoreYsqlUpgradeOptions)
+{
 	Datum		result;
 	ArrayBuildState *astate;
 	ListCell   *cell;
@@ -927,6 +967,17 @@ transformRelOptions(Datum oldOptions, List *defList, const char *namspace,
 			if (ignoreOids && strcmp(def->defname, "oids") == 0)
 				continue;
 
+			/*
+			 * These options serve as temporary markers during YSQL upgrade,
+			 * but they might also be used for other purposes (e.g. table_oid
+			 * is used to backup/restore colocated tables).
+			 */
+			if (ybIgnoreYsqlUpgradeOptions &&
+				(strcmp(def->defname, "table_oid") == 0 ||
+				 strcmp(def->defname, "row_type_oid") == 0 ||
+				 strcmp(def->defname, "use_initdb_acl") == 0))
+				continue;
+
 			/* ignore if not in the same namespace */
 			if (namspace == NULL)
 			{
@@ -1004,6 +1055,7 @@ untransformRelOptions(Datum options)
 			val = (Node *) makeString(pstrdup(p));
 		}
 		result = lappend(result, makeDefElem(pstrdup(s), val, -1));
+		pfree(s);
 	}
 
 	return result;
@@ -1427,8 +1479,9 @@ default_reloptions(Datum reloptions, bool validate, relopt_kind kind)
 		offsetof(StdRdOptions, vacuum_cleanup_index_scale_factor)},
 		{"colocated", RELOPT_TYPE_BOOL,
 		offsetof(StdRdOptions, colocated)},
-		{"tablegroup", RELOPT_TYPE_INT, offsetof(StdRdOptions, tablegroup)},
+		{"tablegroup", RELOPT_TYPE_INT, offsetof(StdRdOptions, tablegroup_oid)},
 		{"table_oid", RELOPT_TYPE_INT, offsetof(StdRdOptions, table_oid)},
+		{"row_type_oid", RELOPT_TYPE_INT, offsetof(StdRdOptions, row_type_oid)},
 	};
 
 	options = parseRelOptions(reloptions, validate, kind, &numoptions);
@@ -1460,7 +1513,9 @@ view_reloptions(Datum reloptions, bool validate)
 		{"security_barrier", RELOPT_TYPE_BOOL,
 		offsetof(ViewOptions, security_barrier)},
 		{"check_option", RELOPT_TYPE_STRING,
-		offsetof(ViewOptions, check_option_offset)}
+		offsetof(ViewOptions, check_option_offset)},
+		{"use_initdb_acl", RELOPT_TYPE_BOOL,
+		offsetof(ViewOptions, yb_use_initdb_acl)},
 	};
 
 	options = parseRelOptions(reloptions, validate, RELOPT_KIND_VIEW, &numoptions);

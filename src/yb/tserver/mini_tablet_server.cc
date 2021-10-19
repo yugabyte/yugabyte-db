@@ -59,11 +59,16 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
+
+#include "yb/util/encrypted_file_factory.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/header_manager_impl.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/tunnel.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
+#include "yb/util/universe_key_manager.h"
 
 using std::pair;
 
@@ -86,29 +91,44 @@ DEFINE_test_flag(bool, private_broadcast_address, false,
 namespace yb {
 namespace tserver {
 
-MiniTabletServer::MiniTabletServer(const string& fs_root,
+MiniTabletServer::MiniTabletServer(const std::vector<std::string>& wal_paths,
+                                   const std::vector<std::string>& data_paths,
                                    uint16_t rpc_port,
-                                   const TabletServerOptions& extra_opts,
-                                   int index)
+                                   const TabletServerOptions& extra_opts, int index)
   : started_(false),
     opts_(extra_opts),
-    index_(index + 1) {
+    index_(index + 1),
+    universe_key_manager_(new UniverseKeyManager()),
+    encrypted_env_(NewEncryptedEnv(DefaultHeaderManager(universe_key_manager_.get()))),
+    rocksdb_encrypted_env_(
+      NewRocksDBEncryptedEnv(DefaultHeaderManager(universe_key_manager_.get()))) {
 
   // Start RPC server on loopback.
   FLAGS_rpc_server_allow_ephemeral_ports = true;
   opts_.rpc_opts.rpc_bind_addresses = server::TEST_RpcBindEndpoint(index_, rpc_port);
   // A.B.C.D.xip.io resolves to A.B.C.D so it is very useful for testing.
-  opts_.broadcast_addresses = { HostPort(
-      server::TEST_RpcAddress(index_, server::Private(FLAGS_TEST_private_broadcast_address)),
-      rpc_port) };
+  opts_.broadcast_addresses = {
+    HostPort(server::TEST_RpcAddress(index_,
+                                     server::Private(FLAGS_TEST_private_broadcast_address)),
+    rpc_port) };
   opts_.webserver_opts.port = 0;
   opts_.webserver_opts.bind_interface = opts_.broadcast_addresses.front().host();
   if (!opts_.has_placement_cloud()) {
     opts_.SetPlacement(Format("cloud$0", (index_ + 1) / FLAGS_TEST_nodes_per_cloud),
                        Format("rack$0", index_), "zone");
   }
-  opts_.fs_opts.wal_paths = { fs_root };
-  opts_.fs_opts.data_paths = { fs_root };
+  opts_.fs_opts.wal_paths = wal_paths;
+  opts_.fs_opts.data_paths = data_paths;
+  opts_.universe_key_manager = universe_key_manager_.get();
+  opts_.env = encrypted_env_.get();
+  opts_.rocksdb_env = rocksdb_encrypted_env_.get();
+}
+
+MiniTabletServer::MiniTabletServer(const string& fs_root,
+                                   uint16_t rpc_port,
+                                   const TabletServerOptions& extra_opts,
+                                   int index)
+  : MiniTabletServer({ fs_root }, { fs_root }, rpc_port, extra_opts, index) {
 }
 
 MiniTabletServer::~MiniTabletServer() {
@@ -124,7 +144,7 @@ Result<std::unique_ptr<MiniTabletServer>> MiniTabletServer::CreateMiniTabletServ
 Status MiniTabletServer::Start() {
   CHECK(!started_);
 
-  gscoped_ptr<TabletServer> server(new enterprise::TabletServer(opts_));
+  std::unique_ptr<TabletServer> server(new enterprise::TabletServer(opts_));
   RETURN_NOT_OK(server->Init());
 
   RETURN_NOT_OK(server->Start());

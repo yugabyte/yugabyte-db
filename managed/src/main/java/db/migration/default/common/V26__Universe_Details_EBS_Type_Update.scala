@@ -3,9 +3,9 @@
 package db.migration.default.common
 
 import java.sql.Connection
-import play.api.libs.json._
 
 import org.flywaydb.core.api.migration.jdbc.JdbcMigration
+import play.api.libs.json._
 
 class V26__Universe_Details_EBS_Type_UUID_Update extends JdbcMigration {
 

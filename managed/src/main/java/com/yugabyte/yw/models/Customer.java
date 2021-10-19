@@ -2,32 +2,44 @@
 
 package com.yugabyte.yw.models;
 
+import static com.yugabyte.yw.models.helpers.CommonUtils.deepMerge;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Joiner;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import io.ebean.Finder;
 import io.ebean.Model;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
+import java.util.Date;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
+import javax.persistence.Column;
+import javax.persistence.Entity;
+import javax.persistence.GeneratedValue;
+import javax.persistence.GenerationType;
+import javax.persistence.Id;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
 import play.libs.Json;
 
-import javax.persistence.*;
-import java.util.*;
-import java.util.stream.Collectors;
-
-import static com.yugabyte.yw.models.helpers.CommonUtils.deepMerge;
-import static play.mvc.Http.Status.BAD_REQUEST;
-
 @Entity
+@ApiModel(description = "Customer information, including associated universes")
 public class Customer extends Model {
 
   public static final Logger LOG = LoggerFactory.getLogger(Customer.class);
   // A globally unique UUID for the customer.
   @Column(nullable = false, unique = true)
+  @ApiModelProperty(value = "Customer UUID", accessMode = READ_ONLY)
   public UUID uuid = UUID.randomUUID();
 
   public void setUuid(UUID uuid) {
@@ -44,29 +56,43 @@ public class Customer extends Model {
   // Use IDENTITY strategy because `customer.id` is a `bigserial` type; not a sequence.
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
+  @ApiModelProperty(value = "Customer ID", accessMode = READ_ONLY)
   private Long id;
 
+  @ApiModelProperty(value = "Customer ID", accessMode = READ_ONLY, example = "1")
   public Long getCustomerId() {
     return id;
   }
 
   @Column(length = 15, nullable = false)
   @Constraints.Required
+  @ApiModelProperty(value = "Customer code", example = "admin", required = true)
   public String code;
 
   @Column(length = 256, nullable = false)
   @Constraints.Required
   @Constraints.MinLength(3)
+  @ApiModelProperty(value = "Name of customer", example = "sridhar", required = true)
   public String name;
 
   @Column(nullable = false)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+  @ApiModelProperty(
+      value = "Creation time",
+      example = "2021-06-17 15:00:05",
+      accessMode = READ_ONLY)
   public Date creationDate;
 
+  // To be replaced with runtime config
   @Column(nullable = true, columnDefinition = "TEXT")
+  @ApiModelProperty(value = "UI_ONLY", hidden = true, accessMode = READ_ONLY)
   private JsonNode features;
 
   @Column(columnDefinition = "TEXT", nullable = false)
+  @ApiModelProperty(
+      value = "Universe UUIDs",
+      accessMode = READ_ONLY,
+      example = "[c3595ca7-68a3-47f0-b1b2-1725886d5ed5, 9e0bb733-556c-4935-83dd-6b742a2c32e6]")
   private String universeUUIDs = "";
 
   public synchronized void addUniverseUUID(UUID universeUUID) {
@@ -126,7 +152,7 @@ public class Customer extends Model {
   public static Customer getOrBadRequest(UUID customerUUID) {
     Customer customer = get(customerUUID);
     if (customer == null) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid Customer UUID:" + customerUUID);
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid Customer UUID:" + customerUUID);
     }
     return customer;
   }
@@ -168,7 +194,7 @@ public class Customer extends Model {
    */
   public void upsertFeatures(JsonNode input) {
     if (!input.isObject()) {
-      throw new YWServiceException(BAD_REQUEST, "Features must be Jsons.");
+      throw new PlatformServiceException(BAD_REQUEST, "Features must be Jsons.");
     } else if (features == null || features.isNull() || features.size() == 0) {
       features = input;
     } else {

@@ -1,11 +1,13 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.models;
 
-import javax.persistence.Embeddable;
-import javax.persistence.Entity;
 import java.io.Serializable;
 import java.util.UUID;
+import javax.persistence.Embeddable;
+import javax.persistence.Entity;
+import lombok.Data;
 
+@Data
 @Entity
 @Embeddable
 public class PriceComponentKey implements Serializable {
@@ -18,22 +20,6 @@ public class PriceComponentKey implements Serializable {
 
   // Code to identify this particular component (e.g. "m3.medium", "io1.size", etc.)
   public String componentCode;
-
-  @Override
-  public boolean equals(Object object) {
-    if (object instanceof PriceComponentKey) {
-      PriceComponentKey key = (PriceComponentKey) object;
-      return (this.providerUuid.equals(key.providerUuid)
-          && this.regionCode.equals(key.regionCode)
-          && this.componentCode.equals(key.componentCode));
-    }
-    return false;
-  }
-
-  @Override
-  public int hashCode() {
-    return providerUuid.hashCode() + regionCode.hashCode() + componentCode.hashCode();
-  }
 
   public static PriceComponentKey create(
       UUID providerUuid, String regionCode, String componentCode) {

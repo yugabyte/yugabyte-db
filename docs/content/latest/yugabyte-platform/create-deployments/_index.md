@@ -3,8 +3,6 @@ title: Create YugabyteDB universe deployments
 headerTitle: Create YugabyteDB universe deployments
 linkTitle: Create deployments
 description: Create YugabyteDB universe deployments.
-aliases:
-  - /latest/yugabyte-platform/deploy/
 image: /images/section_icons/index/deploy.png
 menu:
   latest:
@@ -56,6 +54,18 @@ showAsideToc: true
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="create-universe-multi-cloud/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/planet_scale.png" aria-hidden="true" />
+        <div class="title">Create a multi-cloud universe</div>
+      </div>
+      <div class="body">
+        Use Yugabyte Platform to deploy a multi-cloud universe.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="read-replicas/">
       <div class="head">
         <img class="icon" src="/images/deploy/cdc/deploy.png" aria-hidden="true" />
@@ -63,6 +73,18 @@ showAsideToc: true
       </div>
       <div class="body">
         Use Yugabyte Platform to create a read-replica cluster for a universe.
+      </div>
+    </a>
+  </div>
+  
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="async-replication-platform/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/planet_scale.png" aria-hidden="true" />
+        <div class="title">Enable asynchronous replication </div>
+      </div>
+      <div class="body">
+        Enable unidirectional and bidirectional replication between two data sources
       </div>
     </a>
   </div>

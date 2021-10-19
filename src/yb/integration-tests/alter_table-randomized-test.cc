@@ -114,7 +114,7 @@ class AlterTableRandomized : public YBTest {
   }
 
  protected:
-  gscoped_ptr<ExternalMiniCluster> cluster_;
+  std::unique_ptr<ExternalMiniCluster> cluster_;
   std::unique_ptr<YBClient> client_;
 };
 

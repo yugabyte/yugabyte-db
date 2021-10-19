@@ -136,7 +136,8 @@ extern bool index_insert(Relation indexRelation,
 			 HeapTuple heapTuple,
 			 Relation heapRelation,
 			 IndexUniqueCheck checkUnique,
-			 struct IndexInfo *indexInfo);
+			 struct IndexInfo *indexInfo,
+			 bool yb_shared_insert);
 extern void index_delete(Relation indexRelation,
 			 Datum *values, bool *isnull,
 			 Datum ybctid,

@@ -249,7 +249,7 @@ ybplatform-sample-yugaware-0  5/5   Running            0     93s
 
 In addition to meeting the requirements described in  [Prepare the OpenShift Environment](../../../install-yugabyte-platform/prepare-environment/openshift/), you need to perform the following steps before attempting to install Yugbyte Platform using Helm:
 
-- Verify that the OpenShift cluster is configured with Helm 3 or later by executing the following command:
+- Verify that the OpenShift cluster is configured with Helm 3.4 or later by executing the following command:
 
   ```shell
   $ helm version
@@ -337,7 +337,7 @@ To create a Yugabyte Platform instance, perform the following:
 
   Expect to see a message notifying you whether or not the deployment is successful.
 
-  Note that if you are executing the preceding command as an admin user, then you can set `rabc.create=true`. Alternatively, you can ask the cluster administrator to perform the next step.
+  Note that if you are executing the preceding command as an admin user, then you can set `rbac.create=true`. Alternatively, you can ask the cluster administrator to perform the next step.
   
 - Optionally, execute the following command as an admin user to create ClusterRoleBinding:
 

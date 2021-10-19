@@ -25,7 +25,6 @@
 #include "yb/consensus/metadata.pb.h"
 
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/catalog_entity_info.h"
@@ -41,6 +40,7 @@
 
 
 namespace yb {
+struct TransactionMetadata;
 
 class ThreadPool;
 
@@ -115,7 +115,7 @@ class RetryingTSRpcTask : public MonitoredTask {
  public:
   RetryingTSRpcTask(Master *master,
                     ThreadPool* callback_pool,
-                    gscoped_ptr<TSPicker> replica_picker,
+                    std::unique_ptr<TSPicker> replica_picker,
                     const scoped_refptr<TableInfo>& table);
 
   ~RetryingTSRpcTask();
@@ -193,9 +193,13 @@ class RetryingTSRpcTask : public MonitoredTask {
   // Note: This is the last thing function called, to guarantee it's the last work done by the task.
   virtual void UnregisterAsyncTaskCallback();
 
+  string table_name() const {
+    return !table_ ? "" : table_->ToString();
+  }
+
   Master* const master_;
   ThreadPool* const callback_pool_;
-  const gscoped_ptr<TSPicker> replica_picker_;
+  const std::unique_ptr<TSPicker> replica_picker_;
   const scoped_refptr<TableInfo> table_;
 
   MonoTime start_ts_;
@@ -252,6 +256,8 @@ class RetryingTSRpcTask : public MonitoredTask {
   std::atomic<MonitoredTaskState> state_{MonitoredTaskState::kWaiting};
 };
 
+using RetryingTSRpcTaskPtr = std::shared_ptr<RetryingTSRpcTask>;
+
 // RetryingTSRpcTask subclass which always retries the same tablet server,
 // identified by its UUID.
 class RetrySpecificTSRpcTask : public RetryingTSRpcTask {
@@ -262,7 +268,7 @@ class RetrySpecificTSRpcTask : public RetryingTSRpcTask {
                          const scoped_refptr<TableInfo>& table)
     : RetryingTSRpcTask(master,
                         callback_pool,
-                        gscoped_ptr<TSPicker>(new PickSpecificUUID(master, permanent_uuid)),
+                        std::unique_ptr<TSPicker>(new PickSpecificUUID(master, permanent_uuid)),
                         table),
       permanent_uuid_(permanent_uuid) {
   }
@@ -306,7 +312,8 @@ class AsyncCreateReplica : public RetrySpecificTSRpcTask {
   std::string type_name() const override { return "Create Tablet"; }
 
   std::string description() const override {
-    return "CreateTablet RPC for tablet " + tablet_id_ + " on TS " + permanent_uuid_;
+    return Format("CreateTablet RPC for tablet $0 ($1) on TS=$2",
+                  tablet_id_, table_name(), permanent_uuid_);
   }
 
  protected:
@@ -334,7 +341,8 @@ class AsyncStartElection : public RetrySpecificTSRpcTask {
   std::string type_name() const override { return "Hinted Leader Start Election"; }
 
   std::string description() const override {
-    return "RunLeaderElection RPC for tablet " + tablet_id_ + " on TS " + permanent_uuid_;
+    return Format("RunLeaderElection RPC for tablet $0 ($1) on TS=$2",
+                  tablet_id_, table_name(), permanent_uuid_);
   }
 
  protected:
@@ -370,8 +378,8 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTask {
   std::string type_name() const override { return "Delete Tablet"; }
 
   std::string description() const override {
-    return Format("$0 Tablet RPC for $1 on TS=$2",
-                  hide_only_ ? "Hide" : "Delete", tablet_id_, permanent_uuid_);
+    return Format("$0Tablet RPC for tablet $1 ($2) on TS=$3",
+                  hide_only_ ? "Hide" : "Delete", tablet_id_, table_name(), permanent_uuid_);
   }
 
   void set_hide_only(bool value) {
@@ -408,12 +416,18 @@ class AsyncAlterTable : public AsyncTabletLeaderTask {
 
   AsyncAlterTable(
       Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
-      const scoped_refptr<TableInfo>& table)
-      : AsyncTabletLeaderTask(master, callback_pool, tablet, table) {}
+      const scoped_refptr<TableInfo>& table,
+      const TransactionId transaction_id)
+      : AsyncTabletLeaderTask(master, callback_pool, tablet, table), transaction_id_(transaction_id)
+      {}
 
   Type type() const override { return ASYNC_ALTER_TABLE; }
 
   std::string type_name() const override { return "Alter Table"; }
+
+  TableType table_type() const {
+    return tablet_->table()->GetTableType();
+  }
 
  protected:
   uint32_t schema_version_;
@@ -422,6 +436,8 @@ class AsyncAlterTable : public AsyncTabletLeaderTask {
  private:
   void HandleResponse(int attempt) override;
   bool SendRequest(int attempt) override;
+
+  TransactionId transaction_id_ = TransactionId::Nil();
 };
 
 class AsyncBackfillDone : public AsyncAlterTable {
@@ -672,9 +688,15 @@ class AsyncRemoveTableFromTablet : public RetryingTSRpcTask {
 
 class AsyncGetTabletSplitKey : public AsyncTabletLeaderTask {
  public:
+  struct Data {
+    const std::string& split_encoded_key;
+    const std::string& split_partition_key;
+  };
+  using DataCallbackType = std::function<void(const Result<Data>&)>;
+
   AsyncGetTabletSplitKey(
       Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
-      std::function<void(const std::string&, const std::string&)> result_cb);
+      DataCallbackType result_cb);
 
   Type type() const override { return ASYNC_GET_TABLET_SPLIT_KEY; }
 
@@ -687,7 +709,7 @@ class AsyncGetTabletSplitKey : public AsyncTabletLeaderTask {
 
   tserver::GetSplitKeyRequestPB req_;
   tserver::GetSplitKeyResponsePB resp_;
-  std::function<void(const std::string&, const std::string&)> result_cb_;
+  DataCallbackType result_cb_;
 };
 
 // Sends SplitTabletRequest with provided arguments to the service interface of the leader of the
@@ -697,7 +719,8 @@ class AsyncSplitTablet : public AsyncTabletLeaderTask {
   AsyncSplitTablet(
       Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
       const std::array<TabletId, kNumSplitParts>& new_tablet_ids,
-      const std::string& split_encoded_key, const std::string& split_partition_key);
+      const std::string& split_encoded_key, const std::string& split_partition_key,
+      std::function<void(const Status&)> result_cb);
 
   Type type() const override { return ASYNC_SPLIT_TABLET; }
 
@@ -706,9 +729,11 @@ class AsyncSplitTablet : public AsyncTabletLeaderTask {
  protected:
   void HandleResponse(int attempt) override;
   bool SendRequest(int attempt) override;
+  void Finished(const Status& status) override;
 
   tserver::SplitTabletRequestPB req_;
   tserver::SplitTabletResponsePB resp_;
+  std::function<void(const Status&)> result_cb_;
 };
 
 } // namespace master

@@ -10,6 +10,9 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.common.Util.areMastersUnderReplicated;
+
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
@@ -21,7 +24,6 @@ import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -30,16 +32,18 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import static com.yugabyte.yw.common.Util.areMastersUnderReplicated;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
 // Allows the addition of a node into a universe. Spawns the necessary processes - tserver
 // and/or master and ensures the task waits for the right set of load balance primitives.
+@Slf4j
 public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(AddNodeToUniverse.class);
+
+  @Inject
+  protected AddNodeToUniverse(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   @Override
   protected NodeTaskParams taskParams() {
@@ -48,7 +52,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
 
   @Override
   public void run() {
-    LOG.info(
+    log.info(
         "Started {} task for node {} in univ uuid={}",
         getName(),
         taskParams().nodeName,
@@ -67,7 +71,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       currentNode = universe.getNode(taskParams().nodeName);
       if (currentNode == null) {
         String msg = "No node " + taskParams().nodeName + " in universe " + universe.name;
-        LOG.error(msg);
+        log.error(msg);
         throw new RuntimeException(msg);
       }
 
@@ -79,11 +83,14 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
                 + ", but is in "
                 + currentNode.state
                 + ", so cannot be added.";
-        LOG.error(msg);
+        log.error(msg);
         throw new RuntimeException(msg);
       }
 
+      preTaskActions();
+
       Cluster cluster = taskParams().getClusterByUuid(currentNode.placementUuid);
+      UserIntent userIntent = cluster.userIntent;
       Collection<NodeDetails> node = Collections.singletonList(currentNode);
 
       boolean wasDecommissioned = currentNode.state == NodeState.Decommissioned;
@@ -100,19 +107,15 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
         currentNode.nodeUuid = nodeMap.get(currentNode.nodeName).nodeUuid;
       }
 
-      NodeTaskParams nodeParams = new NodeTaskParams();
-      UserIntent userIntent = taskParams().getClusterByUuid(currentNode.placementUuid).userIntent;
-      nodeParams.nodeName = currentNode.nodeName;
-      nodeParams.deviceInfo = userIntent.deviceInfo;
-      nodeParams.azUuid = currentNode.azUuid;
-      nodeParams.universeUUID = taskParams().universeUUID;
-      nodeParams.extraDependencies.installNodeExporter =
-          taskParams().extraDependencies.installNodeExporter;
+      String preflightStatus = null;
+      // Perform preflight check for onprem cluster
+      if (cluster.userIntent.providerType == CloudType.onprem) {
+        preflightStatus = performPreflightCheck(cluster, currentNode);
+      }
 
-      String preflightStatus = performPreflightCheck(currentNode, nodeParams);
       if (preflightStatus != null) {
-        Map<NodeInstance, String> failedNodes = new HashMap<>();
-        failedNodes.put(NodeInstance.getByName(currentNode.nodeName), preflightStatus);
+        Map<String, String> failedNodes =
+            Collections.singletonMap(currentNode.nodeName, preflightStatus);
         createFailedPrecheckTask(failedNodes).setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
         errorString = "Preflight checks failed.";
       } else {
@@ -122,9 +125,11 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
 
         // First spawn an instance for Decommissioned node.
         if (wasDecommissioned) {
-          createSetupServerTasks(node).setSubTaskGroupType(SubTaskGroupType.Provisioning);
+          createCreateServerTasks(node).setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
           createServerInfoTasks(node).setSubTaskGroupType(SubTaskGroupType.Provisioning);
+
+          createSetupServerTasks(node).setSubTaskGroupType(SubTaskGroupType.Provisioning);
         }
 
         // Re-install software.
@@ -142,7 +147,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
         // Bring up any masters, as needed.
         boolean masterAdded = false;
         if (areMastersUnderReplicated(currentNode, universe)) {
-          LOG.info(
+          log.info(
               "Bringing up master for under replicated universe {} ({})",
               universe.universeUUID,
               universe.name);
@@ -214,12 +219,12 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       // Run all the tasks.
       subTaskGroupQueue.run();
     } catch (Throwable t) {
-      LOG.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+      log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;
     } finally {
       // Mark the update of the universe as done. This will allow future updates to the universe.
       unlockUniverseForUpdate(errorString);
     }
-    LOG.info("Finished {} task.", getName());
+    log.info("Finished {} task.", getName());
   }
 }

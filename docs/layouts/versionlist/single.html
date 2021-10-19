@@ -13,13 +13,13 @@
 <input class="toggle" type="checkbox" id="toggle-search">
 <label class="toggle-button overlay" for="toggle-drawer"></label>
 
-{{ partial "header" . }}
+{{ partialCached "header" . }}
 
 <main class="main">
 		<div class="wrapper">
 
 			<br/><br/><br/><br/>
-			{{ partial "version_list" . }}
+			{{ partialCached "version_list" . }}
 
 			<!--<aside class="copyright" role="note">
 				{{ with .Site.Params.copyright }}
@@ -44,5 +44,5 @@
 	</div>
 </main>
 
-{{ partial "footer" . }}
-{{ partial "footer_js" . }}
+{{ partialCached "footer" . }}
+{{ partialCached "footer_js" . }}

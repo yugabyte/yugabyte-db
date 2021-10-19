@@ -63,7 +63,8 @@
 
 using namespace std::literals;
 
-DECLARE_int32(TEST_yb_num_total_tablets);
+DECLARE_int32(ycql_num_tablets);
+DECLARE_int32(ysql_num_tablets);
 DECLARE_int32(heartbeat_interval_ms);
 
 namespace yb {
@@ -204,7 +205,7 @@ class MasterFailoverTest : public YBTest {
  protected:
   int num_masters_;
   ExternalMiniClusterOptions opts_;
-  gscoped_ptr<ExternalMiniCluster> cluster_;
+  std::unique_ptr<ExternalMiniCluster> cluster_;
   std::unique_ptr<YBClient> client_;
 };
 
@@ -294,7 +295,8 @@ TEST_P(MasterFailoverTestIndexCreation, TestPauseAfterCreateIndexIssued) {
   const int kPauseAfterStage = GetParam();
   YBTableName table_name(YQL_DATABASE_CQL, "test", "testPauseAfterCreateTableIssued");
   LOG(INFO) << "Issuing CreateTable for " << table_name.ToString();
-  FLAGS_TEST_yb_num_total_tablets = 5;
+  FLAGS_ycql_num_tablets = 5;
+  FLAGS_ysql_num_tablets = 5;
   ASSERT_OK(CreateTable(table_name, kWaitForCreate));
   LOG(INFO) << "CreateTable done for " << table_name.ToString();
 
@@ -586,12 +588,12 @@ class MasterFailoverTestWithPlacement : public MasterFailoverTest {
 
   void AssertTserverHasPlacementUuid(
       const string& ts_uuid, const string& placement_uuid,
-      const std::vector<std::unique_ptr<YBTabletServer>>& tablet_servers) {
+      const std::vector<YBTabletServer>& tablet_servers) {
     auto it = std::find_if(tablet_servers.begin(), tablet_servers.end(), [&](const auto& ts) {
-        return ts->uuid() == ts_uuid;
+        return ts.uuid == ts_uuid;
     });
     ASSERT_TRUE(it != tablet_servers.end());
-    ASSERT_EQ((*it)->placement_uuid(), placement_uuid);
+    ASSERT_EQ(it->placement_uuid, placement_uuid);
   }
 
  protected:
@@ -634,8 +636,7 @@ TEST_F_EX(MasterFailoverTest, TestFailoverWithReadReplicas, MasterFailoverTestWi
     return tserver_count == 4;
   }, MonoDelta::FromSeconds(30), "Wait for tablet server count"));
 
-  std::vector<std::unique_ptr<YBTabletServer>> tablet_servers;
-  ASSERT_OK(client_->ListTabletServers(&tablet_servers));
+  const auto tablet_servers = ASSERT_RESULT(client_->ListTabletServers());
 
   ASSERT_NO_FATALS(AssertTserverHasPlacementUuid(live_ts_uuid, kLivePlacementUuid, tablet_servers));
   ASSERT_NO_FATALS(AssertTserverHasPlacementUuid(

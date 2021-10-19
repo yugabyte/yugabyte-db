@@ -143,6 +143,9 @@ message TabletServerErrorPB {
     // Tablet splitting has been started (after split is completed - tablet stays in this state
     // until it is deleted).
     TABLET_SPLIT = 28;
+
+    // Tablet splitting has not been started on this peer yet.
+    TABLET_SPLIT_PARENT_STILL_LIVE = 29;
   }
 
   // The error code.
@@ -266,6 +269,36 @@ message NoOpResponsePB {
   optional TabletServerErrorPB error = 1;
 }
 
+// A verification request to check if a range of rows in main table is
+// consistent with index table content. We will verify index table rows using
+// the primary table.
+message VerifyTableRowRangeRequestPB {
+  required bytes tablet_id = 1;
+
+  // If indexes is empty, we will check all indexes
+  // If it contains entries, then we will check only the ones provided.
+  repeated bytes index_ids = 2;
+
+  optional bytes start_key = 3;
+
+  optional uint32 num_rows = 4;
+
+  // Read time if left empty will be replaced by the earliest safe time to read
+  optional fixed64 read_time = 5;
+
+  optional fixed64 propagated_hybrid_time = 6;
+}
+
+message VerifyTableRowRangeResponsePB {
+  optional TabletServerErrorPB error = 1;
+
+  map<string, uint64> consistency_stats = 2;
+
+  optional bytes verified_until = 3;
+
+  optional fixed64 propagated_hybrid_time = 4;
+}
+
 message ReadRequestPB {
   // The tablet to scan.
   optional bytes tablet_id = 1;
@@ -286,6 +319,8 @@ message ReadRequestPB {
   // TODO: add hybrid_time in future
 
   optional TransactionMetadataPB transaction = 7;
+
+  optional SubTransactionMetadataPB subtransaction = 15;
 
   optional fixed64 propagated_hybrid_time = 8;
 
@@ -347,6 +382,9 @@ message TransactionStatePB {
   // Relevant only in CLEANUP and APPLYING status, true when we perform request
   // for a transaction that was previously sealed.
   optional bool sealed = 6;
+
+  // Set of subtransaction IDs which are aborted.
+  optional AbortedSubTransactionSetPB aborted = 7;
 }
 
 // Truncate tablet request.

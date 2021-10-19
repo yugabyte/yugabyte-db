@@ -10,30 +10,33 @@
 
 package com.yugabyte.yw.common.kms.util;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.Util.UniverseDetailSubset;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.kms.algorithms.SupportedAlgorithmInterface;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.KmsHistory;
 import com.yugabyte.yw.models.KmsHistoryId;
 import com.yugabyte.yw.models.Universe;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-
 import java.io.File;
 import java.lang.reflect.Constructor;
-import java.util.*;
-
+import java.util.Arrays;
+import java.util.Base64;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.encrypt.Encryptors;
 import org.springframework.security.crypto.encrypt.TextEncryptor;
 import play.api.Play;
 import play.libs.Json;
-import static play.mvc.Http.Status.BAD_REQUEST;
 
 public class EncryptionAtRestUtil {
   protected static final Logger LOG = LoggerFactory.getLogger(EncryptionAtRestUtil.class);
@@ -193,7 +196,7 @@ public class EncryptionAtRestUtil {
     return KmsHistory.configHasHistory(configUUID, KmsHistoryId.TargetType.UNIVERSE_KEY);
   }
 
-  public static ArrayNode getUniverses(UUID configUUID) {
+  public static List<UniverseDetailSubset> getUniverses(UUID configUUID) {
     Set<Universe> universes =
         KmsHistory.getUniverses(configUUID, KmsHistoryId.TargetType.UNIVERSE_KEY);
     return Util.getUniverseDetails(universes);
@@ -212,9 +215,7 @@ public class EncryptionAtRestUtil {
               ? KmsHistory.getAllTargetKeyRefs(universeUUID, KmsHistoryId.TargetType.UNIVERSE_KEY)
               : KmsHistory.getAllConfigTargetKeyRefs(
                   configUUID, universeUUID, KmsHistoryId.TargetType.UNIVERSE_KEY);
-      if (keyRotations != null) {
-        numRotations = keyRotations.size();
-      }
+      numRotations = keyRotations.size();
     } catch (Exception e) {
       String errMsg =
           String.format(
@@ -236,7 +237,7 @@ public class EncryptionAtRestUtil {
   public static KmsHistory getActiveKeyOrBadRequest(UUID universeUUID) {
     KmsHistory activeKey = getActiveKey(universeUUID);
     if (activeKey == null) {
-      throw new YWServiceException(BAD_REQUEST, "Could not retrieve ActiveKey");
+      throw new PlatformServiceException(BAD_REQUEST, "Could not retrieve ActiveKey");
     }
     return activeKey;
   }

@@ -12,21 +12,23 @@ menu:
   latest:
     identifier: follower-reads-1-fr-ycql
     parent: explore
-    weight: 237
+    weight: 285
 isTocNested: true
 showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
+
   <li >
-    <a href="/latest/explore/follower-reads/fr-ycql" class="nav-link active">
-      <i class="icon-cassandra" aria-hidden="true"></i>YCQL</a>
-  </li>
-  <li >
-    <a href="/latest/explore/follower-reads/fr-ysql" class="nav-link">
+    <a href="../fr-ysql/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>YSQL</a>
   </li>
-
+  
+  <li >
+    <a href="../fr-ycql/" class="nav-link active">
+      <i class="icon-cassandra" aria-hidden="true"></i>YCQL</a>
+  </li>
+  
 </ul>
 
 With YugabyteDB, you can use follower reads to lower read latencies since the DB now has less work to do at read time including serving the read from the tablet followers. Follower reads is similar to reading from a cache, which can give more read IOPS with low latency but might have slightly stale yet timeline-consistent data (that is, no out of order is possible). In this tutorial, you will update a single key-value over and over, and read it from the tablet leader. While that workload is running, you will start another workload to read from a follower and verify that you are able to read from a tablet follower.
@@ -58,7 +60,7 @@ $ ./bin/yb-ctl add_node
 Download the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) JAR file (`yb-sample-apps.jar`) by running the following command:
 
 ```sh
-$ wget https://github.com/yugabyte/yb-sample-apps/releases/download/1.3.1/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar
+$ wget https://github.com/yugabyte/yb-sample-apps/releases/download/1.3.9/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar
 ```
 
 By default, the YugabyteDB workload generator runs with strong read consistency, where all data is read from the tablet leader. We are going to populate exactly one key with a `10KB` value into the system. Since the replication factor is `3`, this key will get replicated to only three of the four nodes in the universe.
@@ -81,7 +83,7 @@ In the preceding command, the value of `num_unique_keys` is set to `1`, which me
 $ ./bin/ycqlsh 127.0.0.1
 ```
 
-```
+```output
 Connected to local cluster at 127.0.0.1:9042.
 [ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.
@@ -93,7 +95,7 @@ Run a query as follows:
 ycqlsh> SELECT k FROM ybdemo_keyspace.cassandrakeyvalue;
 ```
 
-```
+```output
  k
 -------
  key:0

@@ -70,6 +70,7 @@ set(MASTER_SRCS
   catalog_loaders.cc
   scoped_leader_shared_lock.cc
   cluster_balance.cc
+  cluster_balance_util.cc
   encryption_manager.cc
   permissions_manager.cc
   flush_manager.cc
@@ -116,6 +117,7 @@ set(MASTER_SRCS
   yql_views_vtable.cc
   yql_partitions_vtable.cc
   ysql_transaction_ddl.cc
+  ysql_tablespace_manager.cc
   ${MASTER_SRCS_EXTENSIONS})
 
 set(MASTER_DEPS

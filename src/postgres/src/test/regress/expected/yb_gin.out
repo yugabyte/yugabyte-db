@@ -646,7 +646,8 @@ DISCARD TEMP;
 --
 CREATE TABLE vectors (i serial PRIMARY KEY, v tsvector);
 CREATE INDEX ON vectors USING gin (v);
-ERROR:  index method "gin" not supported yet
+NOTICE:  replacing access method "gin" with "ybgin"
+ERROR:  index method "ybgin" not supported yet
 HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1337. Click '+' on the description to raise its priority
 -- Cleanup
 DROP TABLE vectors;

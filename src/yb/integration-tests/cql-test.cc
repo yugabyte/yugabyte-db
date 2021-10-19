@@ -15,6 +15,8 @@
 
 #include "yb/consensus/raft_consensus.h"
 
+#include "yb/master/mini_master.h"
+
 #include "yb/util/random_util.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
@@ -24,9 +26,12 @@ using namespace std::literals;
 DECLARE_int64(cql_processors_limit);
 DECLARE_int32(client_read_write_timeout_ms);
 
+DECLARE_string(TEST_fail_to_fast_resolve_address);
+DECLARE_int32(partitions_vtable_cache_refresh_secs);
+
 namespace yb {
 
-class CqlTest : public CqlTestBase {
+class CqlTest : public CqlTestBase<MiniCluster> {
  public:
   virtual ~CqlTest() = default;
 };
@@ -191,5 +196,81 @@ TEST_F(CqlTest, Timeout) {
     });
   }
 }
+
+TEST_F(CqlTest, RecreateTableWithInserts) {
+  const auto kNumKeys = 4;
+  const auto kNumIters = 2;
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  for (int i = 0; i != kNumIters; ++i) {
+    SCOPED_TRACE(Format("Iteration: $0", i));
+    ASSERT_OK(session.ExecuteQuery(
+        "CREATE TABLE t (k INT PRIMARY KEY, v INT) WITH transactions = { 'enabled' : true }"));
+    std::string expr = "BEGIN TRANSACTION ";
+    for (int key = 0; key != kNumKeys; ++key) {
+      expr += "INSERT INTO t (k, v) VALUES (?, ?); ";
+    }
+    expr += "END TRANSACTION;";
+    auto prepared = ASSERT_RESULT(session.Prepare(expr));
+    auto stmt = prepared.Bind();
+    size_t idx = 0;
+    for (int key = 0; key != kNumKeys; ++key) {
+      stmt.Bind(idx++, RandomUniformInt<int32_t>(-1000, 1000));
+      stmt.Bind(idx++, -key);
+    }
+    ASSERT_OK(session.Execute(stmt));
+    ASSERT_OK(session.ExecuteQuery("DROP TABLE t"));
+  }
+}
+
+class CqlThreeMastersTest : public CqlTest {
+ public:
+  void SetUp() override {
+    FLAGS_partitions_vtable_cache_refresh_secs = 0;
+    CqlTest::SetUp();
+  }
+
+  int num_masters() override {
+    return 3;
+  }
+};
+
+Status CheckNumAddressesInYqlPartitionsTable(CassandraSession* session, int expected_num_addrs) {
+  const int kReplicaAddressesIndex = 5;
+  auto result = VERIFY_RESULT(session->ExecuteWithResult("SELECT * FROM system.partitions"));
+  auto iterator = result.CreateIterator();
+  while (iterator.Next()) {
+    auto replica_addresses = iterator.Row().Value(kReplicaAddressesIndex).ToString();
+    int num_addrs = 0;
+    if (replica_addresses.size() > std::strlen("{}")) {
+      num_addrs = std::count(replica_addresses.begin(), replica_addresses.end(), ',') + 1;
+    }
+
+    EXPECT_EQ(expected_num_addrs, num_addrs);
+  }
+  return Status::OK();
+}
+
+TEST_F(CqlThreeMastersTest, HostnameResolutionFailureInYqlPartitionsTable) {
+  google::FlagSaver flag_saver;
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  ASSERT_OK(CheckNumAddressesInYqlPartitionsTable(&session, 3));
+
+  // TEST_RpcAddress is 1-indexed.
+  string hostname = server::TEST_RpcAddress(cluster_->LeaderMasterIdx() + 1,
+                                            server::Private::kFalse);
+
+  // Shutdown the master leader, and wait for new leader to get elected.
+  ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->Shutdown();
+  ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+
+  // Fail resolution of the old leader master's hostname.
+  FLAGS_TEST_fail_to_fast_resolve_address = hostname;
+  LOG(INFO) << "Setting FLAGS_TEST_fail_to_fast_resolve_address to: "
+            << FLAGS_TEST_fail_to_fast_resolve_address;
+
+  // Assert that a new call will succeed, but will be missing the shutdown master address.
+  ASSERT_OK(CheckNumAddressesInYqlPartitionsTable(&session, 2));
+}
+
 
 } // namespace yb

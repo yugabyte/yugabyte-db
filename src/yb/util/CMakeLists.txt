@@ -259,12 +259,14 @@ set(UTIL_SRCS
   uuid.cc
   varint.cc
   version_info.cc
+  zlib.cc
   async_util.cc
   )
 
 set(UTIL_LIBS
   boost_system
   boost_thread
+  boost_atomic
   cds
   icui18n
   icuuc
@@ -316,6 +318,7 @@ add_dependencies(yb_util gen_version_info)
 
 add_library(yb_test_util
   logging_test_util.cc
+  memory/memory_usage_test_util.cc
   test_util.cc)
 target_link_libraries(yb_test_util
   gflags
@@ -493,3 +496,6 @@ YB_TEST_TARGET_LINK_LIBRARIES(encrypted_env-test encryption_test_util)
 
 ADD_YB_TEST(ctr_cipher_stream-test)
 YB_TEST_TARGET_LINK_LIBRARIES(ctr_cipher_stream-test encryption_test_util)
+
+ADD_YB_TEST(uint_set-test)
+YB_TEST_TARGET_LINK_LIBRARIES(uint_set-test proto_container_test_proto)

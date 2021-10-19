@@ -10,16 +10,36 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
+import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
+import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+import static play.test.Helpers.FORBIDDEN;
+import static play.test.Helpers.NOT_FOUND;
+import static play.test.Helpers.OK;
+import static play.test.Helpers.contentAsString;
+import static play.test.Helpers.fakeRequest;
+import static play.test.Helpers.route;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.junit.Before;
@@ -29,14 +49,6 @@ import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
 import play.test.Helpers;
-
-import java.util.*;
-import java.util.stream.Collectors;
-
-import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
-import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
-import static org.junit.Assert.*;
-import static play.test.Helpers.*;
 
 @RunWith(JUnitParamsRunner.class)
 public class RuntimeConfControllerTest extends FakeDBApplication {
@@ -90,27 +102,32 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
     assertEquals(OK, result.status());
     Iterator<JsonNode> scopedConfigList =
         Json.parse(contentAsString(result)).get("scopedConfigList").elements();
-    Map<ScopeType, UUID> actualScopesMap = new HashMap<>();
+    Map<ScopeType, List<UUID>> actualScopesMap = new HashMap<>();
     while (scopedConfigList.hasNext()) {
       JsonNode actualScope = scopedConfigList.next();
       assertTrue(actualScope.get("mutableScope").asBoolean());
       ScopeType type = ScopeType.valueOf(actualScope.get("type").asText());
-      actualScopesMap.put(type, UUID.fromString(actualScope.get("uuid").asText()));
+
+      if (actualScopesMap.containsKey(type)) {
+        actualScopesMap.get(type).add(UUID.fromString(actualScope.get("uuid").asText()));
+      } else {
+        List<UUID> typeList = new ArrayList<>();
+        typeList.add(UUID.fromString(actualScope.get("uuid").asText()));
+        actualScopesMap.put(type, typeList);
+      }
     }
     assertEquals(4, actualScopesMap.size());
-    assertEquals(GLOBAL_SCOPE_UUID, actualScopesMap.get(ScopeType.GLOBAL));
-    assertEquals(defaultCustomer.uuid, actualScopesMap.get(ScopeType.CUSTOMER));
-    assertEquals(defaultProvider.uuid, actualScopesMap.get(ScopeType.PROVIDER));
-    assertEquals(defaultUniverse.universeUUID, actualScopesMap.get(ScopeType.UNIVERSE));
+    assertTrue(actualScopesMap.get(ScopeType.GLOBAL).contains(GLOBAL_SCOPE_UUID));
+    assertTrue(actualScopesMap.get(ScopeType.CUSTOMER).contains(defaultCustomer.uuid));
+    assertTrue(actualScopesMap.get(ScopeType.PROVIDER).contains(defaultProvider.uuid));
+    assertTrue(actualScopesMap.get(ScopeType.UNIVERSE).contains(defaultUniverse.universeUUID));
   }
 
   @Test
   public void key() {
     assertEquals(
         NOT_FOUND,
-        assertThrows(YWServiceException.class, () -> getGCInterval(defaultUniverse.universeUUID))
-            .getResult()
-            .status());
+        assertPlatformException(() -> getGCInterval(defaultUniverse.universeUUID)).status());
     String newInterval = "2 days";
     Result result = setGCInterval(newInterval, defaultUniverse.universeUUID);
     assertEquals(OK, result.status());
@@ -118,9 +135,7 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
     assertEquals(OK, deleteGCInterval(defaultUniverse.universeUUID).status());
     assertEquals(
         NOT_FOUND,
-        assertThrows(YWServiceException.class, () -> getGCInterval(defaultUniverse.universeUUID))
-            .getResult()
-            .status());
+        assertPlatformException(() -> getGCInterval(defaultUniverse.universeUUID)).status());
   }
 
   private Result setGCInterval(String interval, UUID scopeUUID) {

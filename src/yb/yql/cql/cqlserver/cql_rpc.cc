@@ -41,6 +41,8 @@ DEFINE_int32(rpcz_max_cql_batch_dump_count, 4_KB,
              "The maximum number of CQL batch elements in the RPCZ dump.");
 DEFINE_bool(throttle_cql_calls_on_soft_memory_limit, true,
             "Whether to reject CQL calls when soft memory limit is reached.");
+DEFINE_bool(display_bind_params_in_cql_details, true,
+            "Whether to show bind params for CQL calls details in the RPCZ dump.");
 
 constexpr int kDropPolicy = 1;
 constexpr int kRejectPolicy = 0;
@@ -87,7 +89,7 @@ CQLConnectionContext::CQLConnectionContext(
   }
 }
 
-Result<rpc::ProcessDataResult> CQLConnectionContext::ProcessCalls(
+Result<rpc::ProcessCallsResult> CQLConnectionContext::ProcessCalls(
     const rpc::ConnectionPtr& connection, const IoVecs& data,
     rpc::ReadBufferFull read_buffer_full) {
   return parser_.Parse(connection, data, read_buffer_full, nullptr /* tracker_for_throttle */);
@@ -177,7 +179,7 @@ const std::string& CQLInboundCall::method_name() const {
   return result;
 }
 
-void CQLInboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* output) {
+void CQLInboundCall::DoSerialize(boost::container::small_vector_base<RefCntBuffer>* output) {
   TRACE_EVENT0("rpc", "CQLInboundCall::Serialize");
   CHECK_GT(response_msg_buf_.size(), 0);
 
@@ -222,10 +224,9 @@ void CQLInboundCall::RespondFailure(rpc::ErrorStatusPB::RpcErrorCodePB error_cod
   QueueResponse(/* is_success */ false);
 }
 
-void CQLInboundCall::RespondSuccess(const RefCntBuffer& buffer,
-                                    const yb::rpc::RpcMethodMetrics& metrics) {
-  RecordHandlingCompleted(metrics.handler_latency);
+void CQLInboundCall::RespondSuccess(const RefCntBuffer& buffer) {
   response_msg_buf_ = buffer;
+  RecordHandlingCompleted();
 
   QueueResponse(/* is_success */ true);
 }
@@ -252,17 +253,23 @@ void CQLInboundCall::GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress_p
       details_pb->set_sql_string((static_cast<const ql::PrepareRequest&>(*request)).query()
                                     .substr(0, FLAGS_rpcz_max_cql_query_dump_size));
       return;
-    case CQLMessage::Opcode::EXECUTE:
+    case CQLMessage::Opcode::EXECUTE: {
       call_in_progress->set_type("EXECUTE");
       details_pb = call_in_progress->add_call_details();
-      query_id = (static_cast<const ql::ExecuteRequest&>(*request)).query_id();
+      const auto& exec_request = static_cast<const ql::ExecuteRequest&>(*request);
+      query_id = exec_request.query_id();
       details_pb->set_sql_id(b2a_hex(query_id));
       statement_ptr = service_impl_->GetPreparedStatement(query_id);
       if (statement_ptr != nullptr) {
         details_pb->set_sql_string(statement_ptr->text()
                                        .substr(0, FLAGS_rpcz_max_cql_query_dump_size));
       }
+      if (FLAGS_display_bind_params_in_cql_details) {
+        details_pb->set_params(yb::ToString(exec_request.params().values)
+                                   .substr(0, FLAGS_rpcz_max_cql_query_dump_size));
+      }
       return;
+    }
     case CQLMessage::Opcode::QUERY:
       call_in_progress->set_type("QUERY");
       details_pb = call_in_progress->add_call_details();
@@ -278,13 +285,12 @@ void CQLInboundCall::GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress_p
           details_pb->set_sql_id(b2a_hex(batchQuery.query_id));
           statement_ptr = service_impl_->GetPreparedStatement(batchQuery.query_id);
           if (statement_ptr != nullptr) {
-            if (statement_ptr->text().size() > FLAGS_rpcz_max_cql_query_dump_size) {
-              string short_text = statement_ptr->text()
-                  .substr(0, FLAGS_rpcz_max_cql_query_dump_size);
-              details_pb->set_sql_string(short_text);
-            } else {
-              details_pb->set_sql_string(statement_ptr->text());
-            }
+            details_pb->set_sql_string(
+                statement_ptr->text().substr(0, FLAGS_rpcz_max_cql_query_dump_size));
+          }
+          if (FLAGS_display_bind_params_in_cql_details) {
+            details_pb->set_params(yb::ToString(batchQuery.params.values)
+                                       .substr(0, FLAGS_rpcz_max_cql_query_dump_size));
           }
         } else {
           details_pb->set_sql_string(batchQuery.query

@@ -19,13 +19,18 @@
 namespace yb {
 
 class ClockBase;
+class DocHybridTime;
 class HybridTime;
 class IndexInfo;
 class IndexMap;
 class PartitionSchema;
+class TransactionStatusManager;
 
 class Schema;
 typedef std::shared_ptr<Schema> SchemaPtr;
+
+typedef std::string PartitionKey;
+typedef std::shared_ptr<const PartitionKey> PartitionKeyPtr;
 
 class PgsqlBCallPB;
 class PgsqlConditionPB;
@@ -49,6 +54,8 @@ class TableProperties;
 struct ColumnId;
 struct OpId;
 struct QLTableColumn;
+struct ReadHybridTime;
+struct TransactionMetadata;
 
 enum class PgSystemAttrNum : int;
 

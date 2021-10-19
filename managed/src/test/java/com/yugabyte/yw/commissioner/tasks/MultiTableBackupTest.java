@@ -2,35 +2,39 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+import static org.mockito.Matchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import com.google.protobuf.ByteString;
-import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
 import org.mockito.runners.MockitoJUnitRunner;
 import org.yb.Common.TableType;
-import org.yb.client.*;
+import org.yb.client.GetTableSchemaResponse;
+import org.yb.client.ListTablesResponse;
+import org.yb.client.YBClient;
 import org.yb.master.Master;
 import org.yb.master.Master.ListTablesResponsePB.TableInfo;
 
-import java.util.*;
-
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
-import static org.mockito.Matchers.any;
-import static org.mockito.Mockito.*;
-
 @RunWith(MockitoJUnitRunner.class)
 public class MultiTableBackupTest extends CommissionerBaseTest {
-
-  @InjectMocks Commissioner commissioner;
 
   Universe defaultUniverse;
   YBClient mockClient;
@@ -48,11 +52,13 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
 
   @Before
   public void setUp() {
+    super.setUp();
+
     defaultCustomer = ModelFactory.testCustomer();
     defaultUniverse = ModelFactory.createUniverse();
-    List<TableInfo> tableInfoList = new ArrayList<TableInfo>();
-    List<TableInfo> tableInfoList1 = new ArrayList<TableInfo>();
-    List<TableInfo> tableInfoList2 = new ArrayList<TableInfo>();
+    List<TableInfo> tableInfoList = new ArrayList<>();
+    List<TableInfo> tableInfoList1 = new ArrayList<>();
+    List<TableInfo> tableInfoList2 = new ArrayList<>();
     TableInfo ti1 =
         TableInfo.newBuilder()
             .setName("Table1")
@@ -96,17 +102,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
     mockSchemaResponse2 = mock(GetTableSchemaResponse.class);
     mockSchemaResponse3 = mock(GetTableSchemaResponse.class);
     mockSchemaResponse4 = mock(GetTableSchemaResponse.class);
-    Master.SysClusterConfigEntryPB.Builder configBuilder =
-        Master.SysClusterConfigEntryPB.newBuilder().setVersion(1);
-    GetMasterClusterConfigResponse mockConfigResponse =
-        new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
-    ChangeMasterClusterConfigResponse ccr = new ChangeMasterClusterConfigResponse(1111, "", null);
     mockClient = mock(YBClient.class);
-    try {
-      when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
-      when(mockClient.changeMasterClusterConfig(any())).thenReturn(ccr);
-    } catch (Exception e) {
-    }
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     try {
       when(mockClient.getTablesList(null, true, null)).thenReturn(mockListTablesResponse);
@@ -168,7 +164,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
     when(mockTableManager.createBackup(any())).thenReturn(shellResponse);
 
     // Entire universe backup, only YCQL tables
-    TaskInfo taskInfo = submitTask(null, new ArrayList<UUID>());
+    TaskInfo taskInfo = submitTask(null, new ArrayList<>());
     verify(mockTableManager, times(1)).createBackup(any());
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
   }
@@ -183,7 +179,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
     shellResponse.code = 0;
     when(mockTableManager.createBackup(any())).thenReturn(shellResponse);
 
-    TaskInfo taskInfo = submitTask("$$$Default1", new ArrayList<UUID>());
+    TaskInfo taskInfo = submitTask("$$$Default1", new ArrayList<>());
     verify(mockTableManager, times(1)).createBackup(any());
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
   }
@@ -198,7 +194,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
     shellResponse.code = 0;
     when(mockTableManager.createBackup(any())).thenReturn(shellResponse);
 
-    TaskInfo taskInfo = submitTask(null, new ArrayList<UUID>(), true, TableType.YQL_TABLE_TYPE);
+    TaskInfo taskInfo = submitTask(null, new ArrayList<>(), true, TableType.YQL_TABLE_TYPE);
     verify(mockTableManager, times(1)).createBackup(any());
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
   }
@@ -212,7 +208,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
     shellResponse.message = "{\"success\": true}";
     shellResponse.code = 0;
     when(mockTableManager.createBackup(any())).thenReturn(shellResponse);
-    List<UUID> tableUUIDs = new ArrayList<UUID>();
+    List<UUID> tableUUIDs = new ArrayList<>();
     tableUUIDs.add(table1UUID);
     tableUUIDs.add(table2UUID);
     tableUUIDs.add(table3UUID);
@@ -230,7 +226,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
     shellResponse.message = "{\"success\": true}";
     shellResponse.code = 0;
     when(mockTableManager.createBackup(any())).thenReturn(shellResponse);
-    List<UUID> tableUUIDs = new ArrayList<UUID>();
+    List<UUID> tableUUIDs = new ArrayList<>();
     tableUUIDs.add(table1UUID);
     tableUUIDs.add(table2UUID);
     tableUUIDs.add(table3UUID);
@@ -254,7 +250,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
     shellResponse.code = 0;
     when(mockTableManager.createBackup(any())).thenReturn(shellResponse);
     TaskInfo taskInfo =
-        submitTask("$$$Default2", new ArrayList<UUID>(), true, TableType.PGSQL_TABLE_TYPE);
+        submitTask("$$$Default2", new ArrayList<>(), true, TableType.PGSQL_TABLE_TYPE);
     verify(mockTableManager, times(1)).createBackup(any());
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
   }

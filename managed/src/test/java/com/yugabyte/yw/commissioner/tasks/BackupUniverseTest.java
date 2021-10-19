@@ -2,7 +2,16 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import com.yugabyte.yw.commissioner.Commissioner;
+import static com.yugabyte.yw.models.Backup.BackupState.Completed;
+import static com.yugabyte.yw.models.Backup.BackupState.Failed;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.mockito.Matchers.any;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.BackupTableParams;
@@ -11,50 +20,22 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
-import org.mockito.runners.MockitoJUnitRunner;
-import org.yb.client.ChangeMasterClusterConfigResponse;
-import org.yb.client.GetMasterClusterConfigResponse;
-import org.yb.client.YBClient;
-import org.yb.master.Master;
-
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
-
-import static com.yugabyte.yw.models.Backup.BackupState.Completed;
-import static com.yugabyte.yw.models.Backup.BackupState.Failed;
-import static org.junit.Assert.*;
-import static org.mockito.Matchers.any;
-import static org.mockito.Mockito.*;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.runners.MockitoJUnitRunner;
 
 @RunWith(MockitoJUnitRunner.class)
 public class BackupUniverseTest extends CommissionerBaseTest {
 
-  @InjectMocks Commissioner commissioner;
-
   Universe defaultUniverse;
-
-  private YBClient mockClient;
 
   @Before
   public void setUp() {
-    mockClient = mock(YBClient.class);
-    Master.SysClusterConfigEntryPB.Builder configBuilder =
-        Master.SysClusterConfigEntryPB.newBuilder().setVersion(1);
-    GetMasterClusterConfigResponse mockConfigResponse =
-        new GetMasterClusterConfigResponse(0, "", configBuilder.build(), null);
-    ChangeMasterClusterConfigResponse mockChangeConfigResponse =
-        new ChangeMasterClusterConfigResponse(0, "", null);
-    try {
-      when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
-      when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockChangeConfigResponse);
-    } catch (Exception e) {
-    }
-    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+    super.setUp();
     defaultCustomer = ModelFactory.testCustomer();
     defaultUniverse = ModelFactory.createUniverse();
     Map<String, String> config = new HashMap<>();
@@ -71,10 +52,9 @@ public class BackupUniverseTest extends CommissionerBaseTest {
     backupTableParams.storageConfigUUID = UUID.randomUUID();
     backupTableParams.actionType = actionType;
     backupTableParams.enableVerboseLogs = enableVerboseLogs;
+    backupTableParams.customerUuid = defaultCustomer.uuid;
     try {
-      Backup backup = Backup.create(defaultCustomer.uuid, backupTableParams);
       UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, backupTableParams);
-      backup.setTaskUUID(taskUUID);
       CustomerTask.create(
           defaultCustomer,
           defaultUniverse.universeUUID,
@@ -99,7 +79,7 @@ public class BackupUniverseTest extends CommissionerBaseTest {
     TaskInfo taskInfo = submitTask(BackupTableParams.ActionType.CREATE, false);
     verify(mockTableManager, times(1)).createBackup(any());
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
-    Backup backup = Backup.fetchByTaskUUID(taskInfo.getTaskUUID());
+    Backup backup = Backup.fetchAllBackupsByTaskUUID(taskInfo.getTaskUUID()).get(0);
     assertNotNull(backup);
     assertEquals(Completed, backup.state);
   }
@@ -113,7 +93,7 @@ public class BackupUniverseTest extends CommissionerBaseTest {
 
     TaskInfo taskInfo = submitTask(BackupTableParams.ActionType.CREATE, true);
     verify(mockTableManager, times(1)).createBackup(any());
-    Backup backup = Backup.fetchByTaskUUID(taskInfo.getTaskUUID());
+    Backup backup = Backup.fetchAllBackupsByTaskUUID(taskInfo.getTaskUUID()).get(0);
     assertNotNull(backup);
     assertEquals(Failed, backup.state);
   }
@@ -126,7 +106,7 @@ public class BackupUniverseTest extends CommissionerBaseTest {
     when(mockTableManager.createBackup(any())).thenReturn(shellResponse);
     TaskInfo taskInfo = submitTask(BackupTableParams.ActionType.CREATE, true);
     verify(mockTableManager, times(1)).createBackup(any());
-    Backup backup = Backup.fetchByTaskUUID(taskInfo.getTaskUUID());
+    Backup backup = Backup.fetchAllBackupsByTaskUUID(taskInfo.getTaskUUID()).get(0);
     assertNotNull(backup);
     assertEquals(Failed, backup.state);
   }
@@ -141,7 +121,7 @@ public class BackupUniverseTest extends CommissionerBaseTest {
     TaskInfo taskInfo = submitTask(BackupTableParams.ActionType.RESTORE, false);
     verify(mockTableManager, times(1)).createBackup(any());
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
-    Backup backup = Backup.fetchByTaskUUID(taskInfo.getTaskUUID());
+    Backup backup = Backup.fetchAllBackupsByTaskUUID(taskInfo.getTaskUUID()).get(0);
     assertNotNull(backup);
     assertEquals(Completed, backup.state);
   }
@@ -156,7 +136,7 @@ public class BackupUniverseTest extends CommissionerBaseTest {
     TaskInfo taskInfo = submitTask(BackupTableParams.ActionType.RESTORE, true);
     verify(mockTableManager, times(1)).createBackup(any());
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
-    Backup backup = Backup.fetchByTaskUUID(taskInfo.getTaskUUID());
+    Backup backup = Backup.fetchAllBackupsByTaskUUID(taskInfo.getTaskUUID()).get(0);
     assertNotNull(backup);
     assertEquals(Completed, backup.state);
   }

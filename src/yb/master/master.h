@@ -38,7 +38,6 @@
 #include <vector>
 
 #include "yb/consensus/consensus.pb.h"
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
@@ -46,6 +45,7 @@
 #include "yb/master/master_options.h"
 #include "yb/master/master_tserver.h"
 #include "yb/server/server_base.h"
+#include "yb/tserver/db_server_base.h"
 #include "yb/util/metrics.h"
 #include "yb/util/promise.h"
 #include "yb/util/status.h"
@@ -72,7 +72,7 @@ class TSManager;
 class MasterPathHandlers;
 class FlushManager;
 
-class Master : public server::RpcAndWebServerBase {
+class Master : public tserver::DbServerBase {
  public:
   explicit Master(const MasterOptions& opts);
   virtual ~Master();
@@ -92,7 +92,7 @@ class Master : public server::RpcAndWebServerBase {
 
   void Shutdown();
 
-  std::string ToString() const;
+  std::string ToString() const override;
 
   TSManager* ts_manager() const { return ts_manager_.get(); }
 
@@ -153,7 +153,7 @@ class Master : public server::RpcAndWebServerBase {
  protected:
   virtual CHECKED_STATUS RegisterServices();
 
-  void DisplayGeneralInfoIcons(std::stringstream* output);
+  void DisplayGeneralInfoIcons(std::stringstream* output) override;
 
  private:
   friend class MasterTest;
@@ -165,6 +165,10 @@ class Master : public server::RpcAndWebServerBase {
   // Requires that the web server and RPC server have been started.
   CHECKED_STATUS InitMasterRegistration();
 
+  const std::shared_future<client::YBClient*>& client_future() const override;
+
+  client::LocalTabletFilter CreateLocalTabletFilter() override;
+
   enum MasterState {
     kStopped,
     kInitialized,
@@ -173,13 +177,13 @@ class Master : public server::RpcAndWebServerBase {
 
   MasterState state_;
 
-  gscoped_ptr<TSManager> ts_manager_;
-  gscoped_ptr<enterprise::CatalogManager> catalog_manager_;
-  gscoped_ptr<MasterPathHandlers> path_handlers_;
-  gscoped_ptr<FlushManager> flush_manager_;
+  std::unique_ptr<TSManager> ts_manager_;
+  std::unique_ptr<enterprise::CatalogManager> catalog_manager_;
+  std::unique_ptr<MasterPathHandlers> path_handlers_;
+  std::unique_ptr<FlushManager> flush_manager_;
 
   // For initializing the catalog manager.
-  gscoped_ptr<ThreadPool> init_pool_;
+  std::unique_ptr<ThreadPool> init_pool_;
 
   // The status of the master initialization. This is set
   // by the async initialization task.

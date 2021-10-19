@@ -62,7 +62,7 @@ class HostPort {
   static Result<HostPort> FromString(const std::string& str, uint16_t default_port) {
     HostPort result;
     RETURN_NOT_OK(result.ParseString(str, default_port));
-    return std::move(result);
+    return result;
   }
 
   // Resolve any addresses corresponding to this host:port pair.
@@ -95,7 +95,7 @@ class HostPort {
       const char* separator = ",") {
     std::vector<HostPort> result;
     RETURN_NOT_OK(ParseStrings(comma_sep_addrs, default_port, &result, separator));
-    return std::move(result);
+    return result;
   }
 
   template <class PB>

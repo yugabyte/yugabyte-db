@@ -49,6 +49,7 @@ export const CREATE_ACCESS_KEY_FAILURE = 'CREATE_ACCESS_KEY_FAILURE';
 export const INITIALIZE_PROVIDER = 'INITIALIZE_PROVIDER';
 export const INITIALIZE_PROVIDER_SUCCESS = 'INITIALIZE_PROVIDER_SUCCESS';
 export const INITIALIZE_PROVIDER_FAILURE = 'INITIALIZE_PROVIDER_FAILURE';
+export const EDIT_PROVIDER_FAILURE = 'EDIT_PROVIDER_FAILURE';
 
 export const DELETE_PROVIDER = 'DELETE_PROVIDER';
 export const DELETE_PROVIDER_SUCCESS = 'DELETE_PROVIDER_SUCCESS';
@@ -219,7 +220,7 @@ export function createProvider(type, name, config, regionFormVals = null) {
     const region = Object.keys(regionFormVals.perRegionMetadata)[0] || '';
     formValues['region'] = region;
   }
-  const request = axios.post(`${ROOT_URL}/customers/${customerUUID}/providers`, formValues);
+  const request = axios.post(`${ROOT_URL}/customers/${customerUUID}/providers/ui`, formValues);
   return {
     type: CREATE_PROVIDER,
     payload: request
@@ -418,6 +419,13 @@ export function initializeProviderFailure(error) {
   };
 }
 
+export function editProviderFailure(error) {
+  return {
+    type: EDIT_PROVIDER_FAILURE,
+    payload: error
+  };
+}
+
 export function deleteProvider(providerUUID) {
   const cUUID = localStorage.getItem('customerId');
   const request = axios.delete(`${ROOT_URL}/customers/${cUUID}/providers/${providerUUID}`);
@@ -603,7 +611,7 @@ export function createOnPremProvider(type, name, config) {
     name: name,
     config: config
   };
-  const request = axios.post(`${getCustomerEndpoint()}/providers`, formValues);
+  const request = axios.post(`${getCustomerEndpoint()}/providers/ui`, formValues);
   return {
     type: CREATE_ONPREM_PROVIDER,
     payload: request

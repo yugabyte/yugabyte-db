@@ -10,20 +10,31 @@
 
 package com.yugabyte.yw.models;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
-import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.PlatformServiceException;
 import io.ebean.Finder;
 import io.ebean.Model;
-import play.data.validation.Constraints;
-
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.Date;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.stream.Collectors;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
-import javax.persistence.*;
-import java.util.*;
-import java.util.stream.Collectors;
-import static play.mvc.Http.Status.BAD_REQUEST;
+import javax.persistence.CascadeType;
+import javax.persistence.Column;
+import javax.persistence.Entity;
+import javax.persistence.Id;
+import javax.persistence.OneToMany;
+import javax.persistence.Temporal;
+import javax.persistence.TemporalType;
+import play.data.validation.Constraints;
 
 @Entity
 @JsonPropertyOrder({"uuid", "cluster_key", "instances"})
@@ -127,7 +138,7 @@ public class HighAvailabilityConfig extends Model {
   public static Optional<HighAvailabilityConfig> getOrBadRequest(UUID uuid) {
     Optional<HighAvailabilityConfig> config = get(uuid);
     if (!config.isPresent()) {
-      throw new YWServiceException(BAD_REQUEST, "Invalid config UUID");
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid config UUID");
     }
     return config;
   }

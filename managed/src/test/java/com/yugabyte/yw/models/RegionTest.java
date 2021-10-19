@@ -3,35 +3,43 @@
 package com.yugabyte.yw.models;
 
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
+import static org.hamcrest.CoreMatchers.allOf;
+import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.core.StringContains.containsString;
-import static org.junit.Assert.*;
-import static org.hamcrest.CoreMatchers.*;
-
-import com.google.common.collect.ImmutableMap;
-
-import java.util.Set;
-import java.util.List;
-import java.util.UUID;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.models.helpers.ProviderAndRegion;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+import javax.persistence.PersistenceException;
+import org.hamcrest.Matchers;
 import org.junit.Before;
 import org.junit.Test;
-
-import com.yugabyte.yw.common.FakeDBApplication;
 import play.libs.Json;
-
-import javax.persistence.PersistenceException;
 
 public class RegionTest extends FakeDBApplication {
   Provider defaultProvider;
+  Provider otherProvider;
   Customer defaultCustomer;
 
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
+    otherProvider = ModelFactory.azuProvider(defaultCustomer);
   }
 
   @Test
@@ -101,24 +109,25 @@ public class RegionTest extends FakeDBApplication {
   }
 
   @Test
-  public void testSettingValidLatLong() {
-    Region r = Region.create(defaultProvider, "region-1", "region 1", "default-image");
-    r.setLatLon(-10, 120);
-    assertEquals(r.latitude, -10, 0);
-    assertEquals(r.longitude, 120, 0);
-  }
+  public void testFindRegionByKey() {
+    Region region1 = Region.create(defaultProvider, "region-1", "region 1", "default-image");
+    Region region2 = Region.create(defaultProvider, "region-2", "region 2", "default-image");
+    Region region3 = Region.create(otherProvider, "region-1", "region 2", "default-image");
 
-  @Test(expected = IllegalArgumentException.class)
-  public void testSettingInvalidLatLong() {
-    Region r = Region.create(defaultProvider, "region-1", "region 1", "default-image");
-    r.setLatLon(-90, 200);
+    List<Region> regions =
+        Region.findByKeys(
+            ImmutableList.of(
+                new ProviderAndRegion(defaultProvider.uuid, "region-1"),
+                new ProviderAndRegion(otherProvider.uuid, "region-1")));
+
+    assertThat(regions, Matchers.containsInAnyOrder(region1, region3));
   }
 
   @Test
   public void testDisableRegionZones() {
     Region r = Region.create(defaultProvider, "region-1", "region 1", "default-image");
-    AvailabilityZone.create(r, "az-1", "AZ - 1", "subnet-1");
-    AvailabilityZone.create(r, "az-2", "AZ - 2", "subnet-2");
+    AvailabilityZone.createOrThrow(r, "az-1", "AZ - 1", "subnet-1");
+    AvailabilityZone.createOrThrow(r, "az-2", "AZ - 2", "subnet-2");
 
     assertTrue(r.isActive());
     for (AvailabilityZone zone : AvailabilityZone.getAZsForRegion(r.uuid)) {
@@ -181,7 +190,7 @@ public class RegionTest extends FakeDBApplication {
   @Test
   public void testCascadeDelete() {
     Region r = Region.create(defaultProvider, "region-1", "region 1", "default-image");
-    AvailabilityZone.create(r, "az-1", "az 1", "subnet-1");
+    AvailabilityZone.createOrThrow(r, "az-1", "az 1", "subnet-1");
     r.delete();
     assertEquals(0, AvailabilityZone.find.all().size());
   }

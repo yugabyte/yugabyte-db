@@ -89,7 +89,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     // Use a high enough initial sequence number.
     FLAGS_initial_seqno = 1 << 20;
 
-    cluster_.reset(new MiniCluster(env_.get(), opts));
+    cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
 
     client_ = ASSERT_RESULT(YBClientBuilder()
@@ -111,8 +111,8 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     client_ = ASSERT_RESULT(cluster_->CreateClient());
     client_messenger_ = ASSERT_RESULT(rpc::MessengerBuilder("Client").Build());
     rpc::ProxyCache proxy_cache(client_messenger_.get());
-    proxy_.reset(new master::MasterServiceProxy(&proxy_cache,
-                                                cluster_->leader_mini_master()->bound_rpc_addr()));
+    proxy_.reset(new master::MasterServiceProxy(
+        &proxy_cache, ASSERT_RESULT(cluster_->GetLeaderMasterBoundRpcAddr())));
 
     // Create the namespace.
     ASSERT_OK(client_->CreateNamespace(kNamespace));

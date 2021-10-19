@@ -36,22 +36,22 @@
 
 // TODO: do we need word Redis in following two metrics? ReadRpc and WriteRpc objects emitting
 // these metrics are used not only in Redis service.
-METRIC_DEFINE_histogram(
+METRIC_DEFINE_coarse_histogram(
     server, handler_latency_yb_client_write_remote, "yb.client.Write remote call time",
-    yb::MetricUnit::kMicroseconds, "Microseconds spent in the remote Write call ", 60000000LU, 2);
-METRIC_DEFINE_histogram(
+    yb::MetricUnit::kMicroseconds, "Microseconds spent in the remote Write call ");
+METRIC_DEFINE_coarse_histogram(
     server, handler_latency_yb_client_read_remote, "yb.client.Read remote call time",
-    yb::MetricUnit::kMicroseconds, "Microseconds spent in the remote Read call ", 60000000LU, 2);
-METRIC_DEFINE_histogram(
+    yb::MetricUnit::kMicroseconds, "Microseconds spent in the remote Read call ");
+METRIC_DEFINE_coarse_histogram(
     server, handler_latency_yb_client_write_local, "yb.client.Write local call time",
-    yb::MetricUnit::kMicroseconds, "Microseconds spent in the local Write call ", 60000000LU, 2);
-METRIC_DEFINE_histogram(
+    yb::MetricUnit::kMicroseconds, "Microseconds spent in the local Write call ");
+METRIC_DEFINE_coarse_histogram(
     server, handler_latency_yb_client_read_local, "yb.client.Read local call time",
-    yb::MetricUnit::kMicroseconds, "Microseconds spent in the local Read call ", 60000000LU, 2);
-METRIC_DEFINE_histogram(
+    yb::MetricUnit::kMicroseconds, "Microseconds spent in the local Read call ");
+METRIC_DEFINE_coarse_histogram(
     server, handler_latency_yb_client_time_to_send,
     "Time taken for a Write/Read rpc to be sent to the server", yb::MetricUnit::kMicroseconds,
-    "Microseconds spent before sending the request to the server", 60000000LU, 2);
+    "Microseconds spent before sending the request to the server");
 
 METRIC_DEFINE_counter(server, consistent_prefix_successful_reads,
     "Number of consistent prefix reads that were served by the closest replica.",
@@ -184,10 +184,15 @@ void AsyncRpc::SendRpc() {
 }
 
 std::string AsyncRpc::ToString() const {
-  return Format("$0(tablet: $1, num_ops: $2, num_attempts: $3, txn: $4)",
+  const auto& transaction = batcher_->in_flight_ops().metadata.transaction;
+  const auto subtransaction_opt = batcher_->in_flight_ops().metadata.subtransaction;
+  return Format("$0(tablet: $1, num_ops: $2, num_attempts: $3, txn: $4, subtxn: $5)",
                 ops_.front()->yb_op->read_only() ? "Read" : "Write",
                 tablet().tablet_id(), ops_.size(), num_attempts(),
-                batcher_->transaction_metadata().transaction_id);
+                transaction.transaction_id,
+                subtransaction_opt
+                    ? Format("$0", subtransaction_opt->subtransaction_id)
+                    : "[none]");
 }
 
 std::shared_ptr<const YBTable> AsyncRpc::table() const {
@@ -285,22 +290,26 @@ bool AsyncRpc::IsLocalCall() const {
 namespace {
 
 template<class T>
-void SetTransactionMetadata(const TransactionMetadata& metadata,
-                            bool need_full_metadata,
-                            T* dest) {
+void SetMetadata(const InFlightOpsTransactionMetadata& metadata,
+                 bool need_full_metadata,
+                 T* dest) {
   auto* transaction = dest->mutable_transaction();
   if (need_full_metadata) {
-    metadata.ToPB(transaction);
+    metadata.transaction.ToPB(transaction);
   } else {
-    metadata.TransactionIdToPB(transaction);
+    metadata.transaction.TransactionIdToPB(transaction);
   }
   dest->set_deprecated_may_have_metadata(true);
+
+  if (metadata.subtransaction && !metadata.subtransaction->IsDefaultState()) {
+    metadata.subtransaction->ToPB(dest->mutable_subtransaction());
+  }
 }
 
-void SetTransactionMetadata(const TransactionMetadata& metadata,
-                            bool need_full_metadata,
-                            tserver::WriteRequestPB* req) {
-  SetTransactionMetadata(metadata, need_full_metadata, req->mutable_write_batch());
+void SetMetadata(const InFlightOpsTransactionMetadata& metadata,
+                 bool need_full_metadata,
+                 tserver::WriteRequestPB* req) {
+  SetMetadata(metadata, need_full_metadata, req->mutable_write_batch());
 }
 
 } // namespace
@@ -338,9 +347,9 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(AsyncRpcData* data,
   if (!ops_.empty()) {
     req_.set_batch_idx(ops_.front()->batch_idx);
   }
-  auto& transaction_metadata = batcher_->transaction_metadata();
+  auto& transaction_metadata = batcher_->in_flight_ops().metadata.transaction;
   if (!transaction_metadata.transaction_id.IsNil()) {
-    SetTransactionMetadata(transaction_metadata, data->need_metadata, &req_);
+    SetMetadata(batcher_->in_flight_ops().metadata, data->need_metadata, &req_);
     bool serializable = transaction_metadata.isolation == IsolationLevel::SERIALIZABLE_ISOLATION;
     LOG_IF(DFATAL, has_read_time && serializable)
         << "Read time should NOT be specified for serializable isolation: "

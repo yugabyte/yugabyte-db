@@ -57,6 +57,15 @@ message SysSnapshotEntryPB {
   optional fixed64 previous_snapshot_hybrid_time = 7;
 }
 
+message BackupRowEntryPB {
+  optional SysRowEntry entry = 1;
+
+  // Other per-object backup related properties.
+
+  // Used to disambiguate in case YSQL tables in different schema have same name.
+  optional bytes pg_schema_name = 2; // For 'entry.type' == TABLE only.
+}
+
 ////////////////////////////////////////////////////////////
 // RPCs
 ////////////////////////////////////////////////////////////
@@ -85,6 +94,12 @@ message SnapshotInfoPB {
   optional bytes id = 1;
   // Detailed snapshot entries.
   optional SysSnapshotEntryPB entry = 2;
+
+  optional int64 format_version = 3 [ default = 1 ];
+
+  // Stored extended info about snapshot (1) namespaces (2) tables (3) tablets
+  // instead of 'SysRowEntry entry.entries'.
+  repeated BackupRowEntryPB backup_entries = 4;
 }
 
 message TabletRestorationPB {
@@ -96,6 +111,10 @@ message SysRestorationEntryPB {
   optional SysSnapshotEntryPB.State state = 1 [ default = UNKNOWN ];
   repeated TabletRestorationPB tablet_restorations = 2;
   optional bytes snapshot_id = 8;
+
+  // Time when restoration finished. Computed on master after received response from the last
+  // tablet.
+  optional fixed64 complete_time_ht = 3;
 }
 
 message RestorationInfoPB {
@@ -107,12 +126,15 @@ message RestorationInfoPB {
 message ListSnapshotsRequestPB {
   optional bytes snapshot_id = 2;
   optional bool list_deleted_snapshots = 3;
+  optional bool prepare_for_backup = 4;
 }
 
 message ListSnapshotsResponsePB {
   optional MasterErrorPB error = 1;
 
-  optional bytes current_snapshot_id = 2; // Snapshot currently being created/restored.
+  // Non-transactional snapshot currently being created/restored.
+  optional bytes current_snapshot_id = 2;
+
   repeated SnapshotInfoPB snapshots = 3;
 }
 
@@ -190,6 +212,7 @@ message SnapshotScheduleOptionsPB {
   optional SnapshotScheduleFilterPB filter = 1;
   optional uint64 interval_sec = 2; // interval for taking snapshot in seconds.
   optional uint64 retention_duration_sec = 3; // how long store snapshots in seconds.
+  optional fixed64 delete_time = 4; // hybrid time when this schedule was deleted.
 }
 
 message CreateSnapshotScheduleRequestPB {
@@ -219,6 +242,14 @@ message ListSnapshotSchedulesResponsePB {
   repeated SnapshotScheduleInfoPB schedules = 2;
 }
 
+message DeleteSnapshotScheduleRequestPB {
+  optional bytes snapshot_schedule_id = 1;
+}
+
+message DeleteSnapshotScheduleResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 service MasterBackupService {
   // Client->Master RPCs
   rpc CreateSnapshot(CreateSnapshotRequestPB) returns (CreateSnapshotResponsePB);
@@ -232,4 +263,6 @@ service MasterBackupService {
       returns (CreateSnapshotScheduleResponsePB);
   rpc ListSnapshotSchedules(ListSnapshotSchedulesRequestPB)
       returns (ListSnapshotSchedulesResponsePB);
+  rpc DeleteSnapshotSchedule(DeleteSnapshotScheduleRequestPB)
+      returns (DeleteSnapshotScheduleResponsePB);
 }

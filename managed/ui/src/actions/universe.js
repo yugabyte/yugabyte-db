@@ -369,8 +369,10 @@ export function closeUniverseDialog() {
 
 export function rollingUpgrade(values, universeUUID) {
   const customerUUID = localStorage.getItem('customerId');
+  const taskEndPoint = values.taskType.toLowerCase();
+  delete values.taskType;
   const request = axios.post(
-    `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/upgrade`,
+    `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/upgrade/${taskEndPoint}`,
     values
   );
   return {
@@ -502,7 +504,7 @@ export function resetMasterLeader() {
 
 export function checkIfUniverseExists(universeName) {
   const customerUUID = localStorage.getItem('customerId');
-  const requestUrl = `${ROOT_URL}/customers/${customerUUID}/universes/find/${universeName}`;
+  const requestUrl = `${ROOT_URL}/customers/${customerUUID}/universes/find?name=${universeName}`;
   const request = axios.get(requestUrl);
   return {
     type: CHECK_IF_UNIVERSE_EXISTS,
@@ -709,21 +711,27 @@ export function resetSlowQueries(universeUUID) {
   return axios.delete(endpoint);
 }
 
-export function createAlertDefinition(universeUUID, data) {
+export function getAlertTemplates(filter) {
   const customerUUID = localStorage.getItem('customerId');
-  const endpoint = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/alert_definitions`;
+  const endpoint = `${ROOT_URL}/customers/${customerUUID}/alert_templates`;
+  return axios.post(endpoint, filter).then(resp => resp.data);
+}
+
+export function getAlertConfigurations(filter) {
+  const customerUUID = localStorage.getItem('customerId');
+  const endpoint = `${ROOT_URL}/customers/${customerUUID}/alert_configurations/list`;
+  return axios.post(endpoint, filter).then(resp => resp.data);
+}
+
+export function createAlertConfiguration(data) {
+  const customerUUID = localStorage.getItem('customerId');
+  const endpoint = `${ROOT_URL}/customers/${customerUUID}/alert_configurations`;
   return axios.post(endpoint, data);
 }
 
-export function getAlertDefinition(universeUUID, alertName) {
+export function updateAlertConfiguration(data) {
   const customerUUID = localStorage.getItem('customerId');
-  const endpoint = `${ROOT_URL}/customers/${customerUUID}/alert_definitions/${universeUUID}/${alertName}`;
-  return axios.get(endpoint).then(resp => resp.data);
-}
-
-export function updateAlertDefinition(alertDefinitionUUID, data) {
-  const customerUUID = localStorage.getItem('customerId');
-  const endpoint = `${ROOT_URL}/customers/${customerUUID}/alert_definitions/${alertDefinitionUUID}`;
+  const endpoint = `${ROOT_URL}/customers/${customerUUID}/alert_configurations/${data.uuid}`;
   return axios.put(endpoint, data);
 }
 

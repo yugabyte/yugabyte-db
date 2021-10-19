@@ -59,11 +59,10 @@ Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::RetrieveData(
     }
   }
 
-  RETURN_NOT_OK(GenerateAndCacheData());
-  return cache_;
+  return GenerateAndCacheData();
 }
 
-Status YQLPartitionsVTable::GenerateAndCacheData() const {
+Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::GenerateAndCacheData() const {
   CatalogManager* catalog_manager = master_->catalog_manager();
   {
     SharedLock<boost::shared_mutex> read_lock(mutex_);
@@ -71,7 +70,7 @@ Status YQLPartitionsVTable::GenerateAndCacheData() const {
         catalog_manager->tablets_version() == cached_tablets_version_ &&
         catalog_manager->tablet_locations_version() == cached_tablet_locations_version_) {
       // Cache is up to date, so we could use it.
-      return Status::OK();
+      return cache_;
     }
   }
 
@@ -82,7 +81,7 @@ Status YQLPartitionsVTable::GenerateAndCacheData() const {
       new_tablets_version == cached_tablets_version_ &&
       new_tablet_locations_version == cached_tablet_locations_version_) {
     // Cache was updated between locks, and now it is up to date.
-    return Status::OK();
+    return cache_;
   }
 
   auto vtable = std::make_shared<QLRowBlock>(schema_);
@@ -109,8 +108,7 @@ Status YQLPartitionsVTable::GenerateAndCacheData() const {
     auto namespace_info = VERIFY_RESULT(catalog_manager->FindNamespaceById(table->namespace_id()));
 
     // Get tablets for table.
-    std::vector<scoped_refptr<TabletInfo>> tablet_infos;
-    table->GetAllTablets(&tablet_infos);
+    auto tablet_infos = table->GetTablets();
     for (const auto& info : tablet_infos) {
       tablets.emplace_back();
       auto& data = tablets.back();
@@ -134,7 +132,12 @@ Status YQLPartitionsVTable::GenerateAndCacheData() const {
   std::unordered_map<std::string, InetAddress> dns_results;
 
   for (auto& p : dns_lookups) {
-    dns_results.emplace(p.first, InetAddress(VERIFY_RESULT(p.second.get())));
+    const auto res = p.second.get();
+    if (!res.ok()) {
+      YB_LOG_EVERY_N_SECS(WARNING, 30) << "Unable to resolve host: " << res;
+    } else {
+      dns_results.emplace(p.first, InetAddress(res.get()));
+    }
   }
 
   // Reserve upfront memory, as we're likely to need to insert a row for each tablet.
@@ -163,9 +166,13 @@ Status YQLPartitionsVTable::GenerateAndCacheData() const {
     QLMapValuePB *map_value = replica_addresses.mutable_map_value();
     for (const auto& replica : data.locations->replicas()) {
       auto host = DesiredHostPort(replica.ts_info(), CloudInfoPB()).host();
-      QLValue::set_inetaddress_value(dns_results[host], map_value->add_keys());
 
-      map_value->add_values()->set_string_value(consensus::RaftPeerPB::Role_Name(replica.role()));
+      // In case of resolution failure, we may not find the host in dns_results.
+      const auto addr = dns_results.find(host);
+      if (addr != dns_results.end()) {
+        QLValue::set_inetaddress_value(addr->second, map_value->add_keys());
+        map_value->add_values()->set_string_value(consensus::RaftPeerPB::Role_Name(replica.role()));
+      }
     }
     RETURN_NOT_OK(SetColumnValue(kReplicaAddresses, replica_addresses, &row));
   }
@@ -175,7 +182,7 @@ Status YQLPartitionsVTable::GenerateAndCacheData() const {
   cached_tablet_locations_version_ = new_tablet_locations_version;
   cache_ = vtable;
 
-  return Status::OK();
+  return cache_;
 }
 
 Schema YQLPartitionsVTable::CreateSchema() const {

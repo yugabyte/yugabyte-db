@@ -50,6 +50,7 @@
 #include "yb/integration-tests/test_workload.h"
 #include "yb/master/master_util.h"
 #include "yb/util/env.h"
+#include "yb/util/monotime.h"
 #include "yb/util/random.h"
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
@@ -274,7 +275,7 @@ void TestWorkload::State::WriteThread(const TestWorkloadOptions& options) {
           QLAddInt32HashValue(req, 0);
           table.AddInt32ColumnValue(req, table.schema().columns()[1].name(), r.Next());
           if (options.ttl >= 0) {
-            req->set_ttl(options.ttl);
+            req->set_ttl(options.ttl * MonoTime::kMillisecondsPerSecond);
           }
           ops.push_back(update);
           CHECK_OK(session->Apply(update));
@@ -298,7 +299,7 @@ void TestWorkload::State::WriteThread(const TestWorkloadOptions& options) {
       QLAddInt32HashValue(req, key);
       table.AddInt32ColumnValue(req, table.schema().columns()[1].name(), r.Next());
       table.AddStringColumnValue(req, table.schema().columns()[2].name(), test_payload);
-      if (options.ttl > 0) {
+      if (options.ttl >= 0) {
         req->set_ttl(options.ttl);
       }
       ops.push_back(insert);
@@ -465,6 +466,10 @@ void TestWorkload::State::Setup(YBTableType table_type, const TestWorkloadOption
   if (!table_exists.get()) {
     auto schema = GetSimpleTestSchema();
     schema.SetTransactional(options.is_transactional());
+    if (options.has_table_ttl()) {
+      schema.SetDefaultTimeToLive(
+          options.table_ttl * MonoTime::kMillisecondsPerSecond);
+    }
     YBSchema client_schema(YBSchemaFromSchema(schema));
 
     std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());

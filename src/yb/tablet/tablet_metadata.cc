@@ -196,9 +196,13 @@ Status KvStoreInfo::LoadTablesFromPB(
   return Status::OK();
 }
 
-Status KvStoreInfo::LoadFromPB(const KvStoreInfoPB& pb, const TableId& primary_table_id) {
+Status KvStoreInfo::LoadFromPB(const KvStoreInfoPB& pb,
+                               const TableId& primary_table_id,
+                               bool local_superblock) {
   kv_store_id = KvStoreId(pb.kv_store_id());
-  rocksdb_dir = pb.rocksdb_dir();
+  if (local_superblock) {
+    rocksdb_dir = pb.rocksdb_dir();
+  }
   lower_bound_key = pb.lower_bound_key();
   upper_bound_key = pb.upper_bound_key();
   has_been_fully_compacted = pb.has_been_fully_compacted();
@@ -489,18 +493,19 @@ Status RaftGroupMetadata::LoadFromDisk() {
 
   RaftGroupReplicaSuperBlockPB superblock;
   RETURN_NOT_OK(ReadSuperBlockFromDisk(&superblock));
-  RETURN_NOT_OK_PREPEND(LoadFromSuperBlock(superblock),
+  RETURN_NOT_OK_PREPEND(LoadFromSuperBlock(superblock, /* local_superblock = */ true),
                         "Failed to load data from superblock protobuf");
   state_ = kInitialized;
   return Status::OK();
 }
 
-Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB& superblock) {
+Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB& superblock,
+                                             bool local_superblock) {
   if (!superblock.has_kv_store()) {
     // Backward compatibility for tablet=KV-store=raft-group.
     RaftGroupReplicaSuperBlockPB superblock_migrated(superblock);
     RETURN_NOT_OK(MigrateSuperblock(&superblock_migrated));
-    RETURN_NOT_OK(LoadFromSuperBlock(superblock_migrated));
+    RETURN_NOT_OK(LoadFromSuperBlock(superblock_migrated, local_superblock));
     return Flush();
   }
 
@@ -522,7 +527,9 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
     primary_table_id_ = superblock.primary_table_id();
     colocated_ = superblock.colocated();
 
-    RETURN_NOT_OK(kv_store_.LoadFromPB(superblock.kv_store(), primary_table_id_));
+    RETURN_NOT_OK(kv_store_.LoadFromPB(superblock.kv_store(),
+                                       primary_table_id_,
+                                       local_superblock));
 
     wal_dir_ = superblock.wal_dir();
     tablet_data_state_ = superblock.tablet_data_state();
@@ -535,6 +542,27 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
     cdc_min_replicated_index_ = superblock.cdc_min_replicated_index();
     is_under_twodc_replication_ = superblock.is_under_twodc_replication();
     hidden_ = superblock.hidden();
+    auto restoration_hybrid_time = HybridTime::FromPB(superblock.restoration_hybrid_time());
+    if (restoration_hybrid_time) {
+      restoration_hybrid_time_ = restoration_hybrid_time;
+    }
+
+    if (superblock.has_split_op_id()) {
+      split_op_id_ = OpId::FromPB(superblock.split_op_id());
+
+      SCHECK_EQ(superblock.split_child_tablet_ids().size(), split_child_tablet_ids_.size(),
+                Corruption, "Expected exact number of child tablet ids");
+      for (size_t i = 0; i != split_child_tablet_ids_.size(); ++i) {
+        split_child_tablet_ids_[i] = superblock.split_child_tablet_ids(i);
+      }
+    }
+
+    if (!superblock.active_restorations().empty()) {
+      active_restorations_.reserve(superblock.active_restorations().size());
+      for (const auto& id : superblock.active_restorations()) {
+        active_restorations_.push_back(VERIFY_RESULT(FullyDecodeTxnSnapshotRestorationId(id)));
+      }
+    }
   }
 
   return Status::OK();
@@ -550,7 +578,7 @@ Status RaftGroupMetadata::Flush() {
     std::lock_guard<MutexType> lock(data_mutex_);
     ToSuperBlockUnlocked(&pb);
   }
-  RETURN_NOT_OK(ReplaceSuperBlockUnlocked(pb));
+  RETURN_NOT_OK(SaveToDiskUnlocked(pb));
   TRACE("Metadata flushed");
 
   return Status::OK();
@@ -559,16 +587,16 @@ Status RaftGroupMetadata::Flush() {
 Status RaftGroupMetadata::ReplaceSuperBlock(const RaftGroupReplicaSuperBlockPB &pb) {
   {
     MutexLock l(flush_lock_);
-    RETURN_NOT_OK_PREPEND(ReplaceSuperBlockUnlocked(pb), "Unable to replace superblock");
+    RETURN_NOT_OK_PREPEND(SaveToDiskUnlocked(pb), "Unable to replace superblock");
   }
 
-  RETURN_NOT_OK_PREPEND(LoadFromSuperBlock(pb),
+  RETURN_NOT_OK_PREPEND(LoadFromSuperBlock(pb, /* local_superblock = */ false),
                         "Failed to load data from superblock protobuf");
 
   return Status::OK();
 }
 
-Status RaftGroupMetadata::ReplaceSuperBlockUnlocked(const RaftGroupReplicaSuperBlockPB &pb) {
+Status RaftGroupMetadata::SaveToDiskUnlocked(const RaftGroupReplicaSuperBlockPB &pb) {
   flush_lock_.AssertAcquired();
 
   string path = fs_manager_->GetRaftGroupMetadataPath(raft_group_id_);
@@ -619,12 +647,25 @@ void RaftGroupMetadata::ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* super
   pb.set_cdc_min_replicated_index(cdc_min_replicated_index_);
   pb.set_is_under_twodc_replication(is_under_twodc_replication_);
   pb.set_hidden(hidden_);
+  if (restoration_hybrid_time_) {
+    pb.set_restoration_hybrid_time(restoration_hybrid_time_.ToUint64());
+  }
 
-  split_op_id_.ToPB(pb.mutable_split_op_id());
-  auto& split_child_table_ids = *pb.mutable_split_child_tablet_ids();
-  split_child_table_ids.Reserve(split_child_tablet_ids_.size());
-  for (const auto& split_child_tablet_id : split_child_tablet_ids_) {
-    *split_child_table_ids.Add() = split_child_tablet_id;
+  if (!split_op_id_.empty()) {
+    split_op_id_.ToPB(pb.mutable_split_op_id());
+    auto& split_child_table_ids = *pb.mutable_split_child_tablet_ids();
+    split_child_table_ids.Reserve(split_child_tablet_ids_.size());
+    for (const auto& split_child_tablet_id : split_child_tablet_ids_) {
+      *split_child_table_ids.Add() = split_child_tablet_id;
+    }
+  }
+
+  if (!active_restorations_.empty()) {
+    auto& active_restorations = *pb.mutable_active_restorations();
+    active_restorations.Reserve(active_restorations_.size());
+    for (const auto& id : active_restorations_) {
+      active_restorations.Add()->assign(id.AsSlice().cdata(), id.size());
+    }
   }
 
   superblock->Swap(&pb);
@@ -809,17 +850,24 @@ bool RaftGroupMetadata::is_under_twodc_replication() const {
   return is_under_twodc_replication_;
 }
 
-Status RaftGroupMetadata::SetHiddenAndFlush(bool value) {
-  {
-    std::lock_guard<MutexType> lock(data_mutex_);
-    hidden_ = value;
-  }
-  return Flush();
+void RaftGroupMetadata::SetHidden(bool value) {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  hidden_ = value;
 }
 
 bool RaftGroupMetadata::hidden() const {
   std::lock_guard<MutexType> lock(data_mutex_);
   return hidden_;
+}
+
+void RaftGroupMetadata::SetRestorationHybridTime(HybridTime value) {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  restoration_hybrid_time_ = std::max(restoration_hybrid_time_, value);
+}
+
+HybridTime RaftGroupMetadata::restoration_hybrid_time() const {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  return restoration_hybrid_time_;
 }
 
 void RaftGroupMetadata::set_tablet_data_state(TabletDataState state) {
@@ -856,12 +904,71 @@ OpId RaftGroupMetadata::split_op_id() const {
   return split_op_id_;
 }
 
+OpId RaftGroupMetadata::GetOpIdToDeleteAfterAllApplied() const {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  if (tablet_data_state_ != TabletDataState::TABLET_DATA_SPLIT_COMPLETED || hidden_) {
+    return OpId::Invalid();
+  }
+  return split_op_id_;
+}
+
 void RaftGroupMetadata::SetSplitDone(
     const OpId& op_id, const TabletId& child1, const TabletId& child2) {
   std::lock_guard<MutexType> lock(data_mutex_);
   tablet_data_state_ = TabletDataState::TABLET_DATA_SPLIT_COMPLETED;
+  split_op_id_ = op_id;
   split_child_tablet_ids_[0] = child1;
   split_child_tablet_ids_[1] = child2;
+}
+
+bool RaftGroupMetadata::has_active_restoration() const {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  return !active_restorations_.empty();
+}
+
+void RaftGroupMetadata::RegisterRestoration(const TxnSnapshotRestorationId& restoration_id) {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  if (tablet_data_state_ == TabletDataState::TABLET_DATA_SPLIT_COMPLETED) {
+    tablet_data_state_ = TabletDataState::TABLET_DATA_READY;
+    split_op_id_ = OpId();
+    split_child_tablet_ids_[0] = std::string();
+    split_child_tablet_ids_[1] = std::string();
+  }
+  active_restorations_.push_back(restoration_id);
+}
+
+void RaftGroupMetadata::UnregisterRestoration(const TxnSnapshotRestorationId& restoration_id) {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  Erase(restoration_id, &active_restorations_);
+}
+
+HybridTime RaftGroupMetadata::CheckCompleteRestorations(
+    const RestorationCompleteTimeMap& restoration_complete_time) {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  auto result = HybridTime::kMin;
+  for (const auto& restoration_id : active_restorations_) {
+    auto it = restoration_complete_time.find(restoration_id);
+    if (it != restoration_complete_time.end() && it->second) {
+      result = std::max(result, it->second);
+    }
+  }
+  return result;
+}
+
+bool RaftGroupMetadata::CleanupRestorations(
+    const RestorationCompleteTimeMap& restoration_complete_time) {
+  bool result = false;
+  std::lock_guard<MutexType> lock(data_mutex_);
+  for (auto it = active_restorations_.begin(); it != active_restorations_.end();) {
+    auto known_restoration_it = restoration_complete_time.find(*it);
+    if (known_restoration_it == restoration_complete_time.end() || known_restoration_it->second) {
+      it = active_restorations_.erase(it);
+      result = true;
+    } else {
+      ++it;
+    }
+  }
+  return result;
 }
 
 std::string RaftGroupMetadata::GetSubRaftGroupWalDir(const RaftGroupId& raft_group_id) const {
@@ -881,9 +988,10 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSubtabletMetadata(
   ToSuperBlock(&superblock);
 
   RaftGroupMetadataPtr metadata(new RaftGroupMetadata(fs_manager_, raft_group_id_));
-  RETURN_NOT_OK(metadata->LoadFromSuperBlock(superblock));
+  RETURN_NOT_OK(metadata->LoadFromSuperBlock(superblock, /* local_superblock = */ true));
   metadata->raft_group_id_ = raft_group_id;
   metadata->wal_dir_ = GetSubRaftGroupWalDir(raft_group_id);
+  metadata->kv_store_.kv_store_id = KvStoreId(raft_group_id);
   metadata->kv_store_.lower_bound_key = lower_bound_key;
   metadata->kv_store_.upper_bound_key = upper_bound_key;
   metadata->kv_store_.rocksdb_dir = GetSubRaftGroupDataDir(raft_group_id);

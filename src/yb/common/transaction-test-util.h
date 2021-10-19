@@ -26,8 +26,12 @@ namespace yb {
 
 class TransactionStatusManagerMock : public TransactionStatusManager {
  public:
-  HybridTime LocalCommitTime(const TransactionId &id) override {
+  HybridTime LocalCommitTime(const TransactionId& id) override {
     return HybridTime::kInvalid;
+  }
+
+  boost::optional<CommitMetadata> LocalCommitData(const TransactionId& id) override {
+    return boost::none;
   }
 
   void RequestStatusAt(const StatusRequest& request) override;
@@ -63,6 +67,11 @@ class TransactionStatusManagerMock : public TransactionStatusManager {
 
   Result<HybridTime> WaitForSafeTime(HybridTime safe_time, CoarseTimePoint deadline) override {
     return STATUS(NotSupported, "WaitForSafeTime not implemented");
+  }
+
+  const TabletId& tablet_id() const override {
+    static TabletId tablet_id;
+    return tablet_id;
   }
 
  private:

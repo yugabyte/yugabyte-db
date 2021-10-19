@@ -67,6 +67,7 @@ class SystemTablet : public tablet::AbstractTablet {
                                         bool is_explicit_request_read_time,
                                         const PgsqlReadRequestPB& pgsql_read_request,
                                         const TransactionMetadataPB& transaction_metadata,
+                                        const SubTransactionMetadataPB& subtransaction_metadata,
                                         tablet::PgsqlReadRequestResult* result,
                                         size_t* num_rows_read) override {
     return STATUS(NotSupported, "Postgres system table is not yet supported");

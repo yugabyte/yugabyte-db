@@ -31,18 +31,18 @@ class TransactionStatusCache {
 
   // Returns transaction commit time if already committed by the specified time or HybridTime::kMin
   // otherwise.
-  Result<HybridTime> GetCommitTime(const TransactionId& transaction_id);
+  Result<CommitMetadata> GetCommitData(const TransactionId& transaction_id);
 
  private:
-  struct GetCommitTimeResult;
+  struct GetCommitDataResult;
 
-  HybridTime GetLocalCommitTime(const TransactionId& transaction_id);
-  Result<GetCommitTimeResult> DoGetCommitTime(const TransactionId& transaction_id);
+  boost::optional<CommitMetadata> GetLocalCommitData(const TransactionId& transaction_id);
+  Result<GetCommitDataResult> DoGetCommitData(const TransactionId& transaction_id);
 
   const TransactionOperationContextOpt& txn_context_opt_;
   ReadHybridTime read_time_;
   CoarseTimePoint deadline_;
-  std::unordered_map<TransactionId, HybridTime, TransactionIdHash> cache_;
+  std::unordered_map<TransactionId, CommitMetadata, TransactionIdHash> cache_;
 };
 
 } // namespace docdb

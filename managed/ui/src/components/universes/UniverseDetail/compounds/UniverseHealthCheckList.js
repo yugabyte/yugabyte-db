@@ -14,6 +14,7 @@ import { isNonEmptyArray, isEmptyArray, isNonEmptyString } from '../../../../uti
 import { getPromiseState } from '../../../../utils/PromiseUtils';
 import { UniverseAction } from '../../../universes';
 import { isDisabled, isNotHidden } from '../../../../utils/LayoutUtils';
+import { getPrimaryCluster } from '../../../../utils/UniverseUtils';
 
 import './UniverseHealthCheckList.scss';
 
@@ -22,9 +23,13 @@ export const UniverseHealthCheckList = (props) => {
     universe: { healthCheck, currentUniverse },
     currentCustomer
   } = props;
+  const primaryCluster = getPrimaryCluster(
+    props?.universe?.currentUniverse?.data?.universeDetails?.clusters
+  );
+  const useSystemd = primaryCluster?.userIntent?.useSystemd;
   let nodesCronStatus = <span />;
   const inactiveCronNodes = getNodesWithInactiveCrons(currentUniverse.data).join(', ');
-  if (isNonEmptyString(inactiveCronNodes)) {
+  if (!useSystemd && isNonEmptyString(inactiveCronNodes)) {
     nodesCronStatus = (
       <Alert bsStyle="warning" className="pre-provision-message">
         Warning: cronjobs are not active on some nodes ({inactiveCronNodes})
@@ -110,8 +115,9 @@ class Timestamp extends Component {
             }}
           >
             <span>{timestampFormatter(timestamp.timestampMoment)}</span>
-            {countFormatter(timestamp.healthyNodes, 'node', 'nodes', false, 'healthy')}
-            {countFormatter(timestamp.errorNodes, 'node', 'nodes', true, 'failing')}
+            {countFormatter(timestamp.healthyNodes, 'node', 'nodes', false, false, 'healthy')}
+            {countFormatter(timestamp.errorNodes, 'node', 'nodes', true, false, 'failing')}
+            {countFormatter(timestamp.warningNodes, 'node', 'nodes', false, true, 'warning')}
           </Panel.Title>
         </Panel.Heading>
         <Panel.Body collapsible>
@@ -134,9 +140,11 @@ const NodeList = (props) => {
             <span>
               <span className="tree-node-main-heading">{node.ipAddress}</span>-
               {node.passingChecks.length > 0 &&
-                countFormatter(node.passingChecks, 'check', 'checks', false, 'OK')}
+                countFormatter(node.passingChecks, 'check', 'checks', false, false, 'OK')}
               {node.failedChecks.length > 0 &&
-                countFormatter(node.failedChecks, 'check', 'checks', true, 'failed')}
+                countFormatter(node.failedChecks, 'check', 'checks', true, false, 'failed')}
+              {node.warningChecks.length > 0 &&
+                countFormatter(node.warningChecks, 'check', 'checks', false, true, 'warning')}
             </span>
           }
           body={<ChecksTable checks={node.checks} />}
@@ -193,13 +201,13 @@ const timestampFormatter = (timestampMoment) => (
   </span>
 );
 
-const countFormatter = (items, singleUnit, pluralUnit, hasError, descriptor = '') => {
+const countFormatter = (items, singleUnit, pluralUnit, hasError, hasWarning, descriptor = '') => {
   if (items.length === 0) {
     return;
   }
   return (
-    <span className={`count status-${hasError ? 'bad' : 'good'}`}>
-      <i className={`fa fa-${hasError ? 'times' : 'check'}`} />
+    <span className={`count status-${hasError ? 'bad' : (hasWarning ? 'warning' : 'good')}`}>
+      <i className={`fa fa-${hasError ? 'times' : (hasWarning ? 'exclamation' : 'check')}`} />
       {items.length} {descriptor} {items.length === 1 ? singleUnit : pluralUnit}
     </span>
   );
@@ -208,6 +216,7 @@ const countFormatter = (items, singleUnit, pluralUnit, hasError, descriptor = ''
 const messageFormatter = (cell, row) => (
   <span>
     {row.has_error && <span className="label label-danger">Failed</span>}
+    {row.has_warning && <span className="label label-warning">Warning</span>}
     {row.message}
   </span>
 );
@@ -225,8 +234,7 @@ const detailsFormatter = (cell, row) => {
 
 // For performance optimization, move this to a Redux reducer, so that it doesn't get run on each render.
 function prepareData(data) {
-  return data.map((timeDataJson) => {
-    const timeData = JSON.parse(timeDataJson);
+  return data.map((timeData) => {
     const timestampMoment = moment.utc(timeData.timestamp).local();
     const nodesByIpAddress = {};
     timeData.data.forEach((check) => {
@@ -238,29 +246,37 @@ function prepareData(data) {
           checks: [],
           passingChecks: [],
           failedChecks: [],
-          hasError: false
+          warningChecks: [],
+          hasError: false,
+          hasWarning: false
         };
       }
       const node = nodesByIpAddress[ipAddress];
       node.checks.push(check);
-      node[check.has_error ? 'failedChecks' : 'passingChecks'].push(check);
+      node[check.has_error ? 'failedChecks' :
+                             (check.has_warning ? 'warningChecks' : 'passingChecks')].push(check);
       if (check.has_error) {
         node.hasError = true;
       }
+      if (check.has_warning) {
+        node.hasWarning = true;
+      }
     });
     values(nodesByIpAddress).forEach((node) => {
-      node.checks = sortBy(node.checks, (check) => (check.has_error ? 0 : 1));
+      node.checks = sortBy(node.checks,
+                           (check) => (check.has_error ? 0 : (check.has_warning ? 0 : 1)));
     });
     const nodes = sortBy(
       values(nodesByIpAddress),
-      (node) => `${node.hasError ? 0 : 1}-${node.ipAddress}`
+      (node) => `${node.hasError ? 0 : (node.has_warning ? 0 : 1)}-${node.ipAddress}`
     );
     const healthyNodes = [];
     const errorNodes = [];
+    const warningNodes = [];
     nodes.forEach((node) => {
-      (node.hasError ? errorNodes : healthyNodes).push(node);
+      (node.hasError ? errorNodes : (node.hasWarning ? warningNodes : healthyNodes)).push(node);
     });
-    return { timestampMoment, nodes, healthyNodes, errorNodes };
+    return { timestampMoment, nodes, healthyNodes, errorNodes, warningNodes };
   });
 }
 

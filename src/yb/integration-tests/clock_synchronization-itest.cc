@@ -48,7 +48,7 @@ class ClockSynchronizationTest : public YBMiniClusterTestBase<MiniCluster> {
     MiniClusterOptions opts;
 
     opts.num_tablet_servers = 3;
-    cluster_.reset(new MiniCluster(env_.get(), opts));
+    cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
 
     client::YBSchemaBuilder b;

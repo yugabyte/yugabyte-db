@@ -234,4 +234,6 @@ extern bool RelationHasCachedLists(Relation relation);
 extern void PrintCatCacheLeakWarning(HeapTuple tuple);
 extern void PrintCatCacheListLeakWarning(CatCList *list);
 
+extern long GetCatCacheMisses();
+
 #endif							/* CATCACHE_H */

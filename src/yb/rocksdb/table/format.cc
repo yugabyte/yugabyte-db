@@ -40,6 +40,7 @@
 #include "yb/util/encrypted_file.h"
 #include "yb/util/format.h"
 #include "yb/util/mem_tracker.h"
+#include "yb/util/std_util.h"
 #include "yb/util/string_util.h"
 
 using yb::Format;
@@ -276,9 +277,10 @@ Status ReadFooterFromFile(
       RETURN_NOT_OK(footer->DecodeFrom(&mutable_read_result));
       if (enforce_table_magic_number != 0 &&
           enforce_table_magic_number != footer->table_magic_number()) {
-        return STATUS_FORMAT(Corruption, "Bad table magic number: $0, expected: $1",
-                              footer->table_magic_number(),
-                              enforce_table_magic_number);
+        return STATUS_FORMAT(
+            Corruption, "Bad table magic number: 0x$0, expected: 0x$1",
+            FastHex64ToString(footer->table_magic_number()),
+            FastHex64ToString(enforce_table_magic_number));
       }
       return Status::OK();
     }
@@ -311,7 +313,7 @@ Result<ChecksumData> ComputeChecksum(
           .actual = crc32c::Value(src_data.data(), src_data.size())
       };
     case kxxHash:
-      if (src_data.size() > std::numeric_limits<int>::max()) {
+      if (yb::std_util::cmp_greater(src_data.size(), std::numeric_limits<int>::max())) {
         return STATUS_FORMAT(
             Corruption, "Block too large for xxHash ($0 bytes, but must be $1 or smaller)",
             src_data.size(), std::numeric_limits<int>::max());

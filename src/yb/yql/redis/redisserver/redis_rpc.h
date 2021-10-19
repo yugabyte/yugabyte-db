@@ -76,9 +76,9 @@ class RedisConnectionContext : public rpc::ConnectionContextWithQueue {
     return rpc::RpcConnectionPB::OPEN;
   }
 
-  Result<rpc::ProcessDataResult> ProcessCalls(const rpc::ConnectionPtr& connection,
-                                              const IoVecs& bytes_to_process,
-                                              rpc::ReadBufferFull read_buffer_full) override;
+  Result<rpc::ProcessCallsResult> ProcessCalls(const rpc::ConnectionPtr& connection,
+                                               const IoVecs& bytes_to_process,
+                                               rpc::ReadBufferFull read_buffer_full) override;
 
   rpc::StreamReadBuffer& ReadBuffer() override {
     return read_buffer_;
@@ -115,7 +115,7 @@ class RedisInboundCall : public rpc::QueueableInboundCall {
 
   // Serialize the response packet for the finished call.
   // The resulting slices refer to memory in this object.
-  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) override;
+  void DoSerialize(boost::container::small_vector_base<RefCntBuffer>* output) override;
   void GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress_pb) const;
   void LogTrace() const override;
   std::string ToString() const override;

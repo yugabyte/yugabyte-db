@@ -22,15 +22,33 @@
 
 namespace yb {
 
-class CqlTestBase : public MiniClusterTestWithClient<MiniCluster> {
+template <class MiniClusterType>
+class CqlTestBase : public MiniClusterTestWithClient<MiniClusterType> {
  public:
+  static constexpr auto kDefaultNumMasters = 1;
+  static constexpr auto kDefaultNumTabletServers = 3;
+
+  virtual int num_masters() {
+    return kDefaultNumMasters;
+  }
+
+  virtual int num_tablet_servers() {
+    return kDefaultNumTabletServers;
+  }
+
   void SetUp() override;
 
  protected:
   void DoTearDown() override;
 
+  virtual void SetUpFlags() {}
+
   std::unique_ptr<CppCassandraDriver> driver_;
   std::unique_ptr<cqlserver::CQLServer> cql_server_;
+  typename MiniClusterType::Options mini_cluster_opt_;
+
+ private:
+  void SetupClusterOpt();
 };
 
 } // namespace yb

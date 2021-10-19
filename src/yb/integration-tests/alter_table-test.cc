@@ -144,7 +144,7 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster>,
     MiniClusterOptions opts;
     opts.num_tablet_servers = num_replicas();
     FLAGS_replication_factor = num_replicas();
-    cluster_.reset(new MiniCluster(env_.get(), opts));
+    cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
     ASSERT_OK(cluster_->WaitForTabletServerCount(num_replicas()));
 
@@ -177,8 +177,7 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster>,
   }
 
   std::shared_ptr<TabletPeer> LookupTabletPeer() {
-    vector<std::shared_ptr<TabletPeer> > peers;
-    cluster_->mini_tablet_server(0)->server()->tablet_manager()->GetTabletPeers(&peers);
+    auto peers = cluster_->mini_tablet_server(0)->server()->tablet_manager()->GetTabletPeers();
     return peers[0];
   }
 

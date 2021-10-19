@@ -22,10 +22,24 @@
 namespace yb {
 namespace master {
 
+namespace {
+
+std::string MakeRestorationStateLogPrefix(
+    const TxnSnapshotRestorationId& restoration_id, SnapshotState* snapshot) {
+  if (snapshot->schedule_id()) {
+    return Format("Restoration[$0/$1/$2]: ",
+                  restoration_id, snapshot->id(), snapshot->schedule_id());
+  }
+  return Format("Restoration[$0/$1]: ", restoration_id, snapshot->id());
+}
+
+} // namespace
+
 RestorationState::RestorationState(
     SnapshotCoordinatorContext* context, const TxnSnapshotRestorationId& restoration_id,
     SnapshotState* snapshot)
-    : StateWithTablets(context, SysSnapshotEntryPB::RESTORING),
+    : StateWithTablets(context, SysSnapshotEntryPB::RESTORING,
+                       MakeRestorationStateLogPrefix(restoration_id, snapshot)),
       restoration_id_(restoration_id), snapshot_id_(snapshot->id()) {
   InitTabletIds(snapshot->TabletIdsInState(SysSnapshotEntryPB::COMPLETE));
 }
@@ -36,6 +50,10 @@ CHECKED_STATUS RestorationState::ToPB(RestorationInfoPB* out) {
   entry.set_snapshot_id(snapshot_id_.data(), snapshot_id_.size());
 
   entry.set_state(VERIFY_RESULT(AggregatedState()));
+
+  if (complete_time_) {
+    entry.set_complete_time_ht(complete_time_.ToUint64());
+  }
 
   TabletsToPB(entry.mutable_tablet_restorations());
 

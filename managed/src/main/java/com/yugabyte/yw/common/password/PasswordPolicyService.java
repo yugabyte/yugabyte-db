@@ -10,28 +10,33 @@
 
 package com.yugabyte.yw.common.password;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.typesafe.config.Config;
-import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.PasswordPolicyFormData;
 import com.yugabyte.yw.models.CustomerConfig;
+
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
 import play.data.validation.ValidationError;
-import play.mvc.Result;
+import play.libs.Json;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-import static play.mvc.Http.Status.BAD_REQUEST;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.core.JsonProcessingException;
 
 @Singleton
 public class PasswordPolicyService {
-
   private static final char[] SPECIAL_CHARACTERS =
       "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~".toCharArray();
   private static final String DEFAULT_MIN_LENGTH_PARAM = "yb.pwdpolicy.default_min_length";
@@ -66,12 +71,55 @@ public class PasswordPolicyService {
             "special characters"));
   }
 
-  public Result checkPasswordPolicy(UUID customerUUID, String password) {
+  public void checkPasswordPolicy(UUID customerUUID, String password) {
+    PasswordPolicyFormData effectivePolicy = getCustomerPolicy(customerUUID);
+
+    if (StringUtils.isEmpty(password)) {
+      throw new PlatformServiceException(BAD_REQUEST, "Password shouldn't be empty.");
+    }
+
+    List<ValidationError> errors =
+        validators
+            .stream()
+            .map(validator -> validator.validate(password, effectivePolicy))
+            .filter(Objects::nonNull)
+            .collect(Collectors.toList());
+
+    if (!errors.isEmpty()) {
+      String fullMessage =
+          errors
+              .stream()
+              .map(ValidationError::messages)
+              .flatMap(List::stream)
+              .collect(Collectors.joining("; "));
+
+      throw new PlatformServiceException(BAD_REQUEST, fullMessage);
+    }
+  }
+
+  // Method to return the password policy
+  public PasswordPolicyFormData getPasswordPolicyData(UUID customerUUID) {
+    PasswordPolicyFormData effectivePolicy = getCustomerPolicy(customerUUID);
+    PasswordPolicyFormData policyData;
+    JsonNode effectivePolicyJson = Json.toJson(effectivePolicy);
+    ObjectMapper mapper = new ObjectMapper();
+
+    try {
+      policyData = mapper.treeToValue(effectivePolicyJson, PasswordPolicyFormData.class);
+    } catch (JsonProcessingException e) {
+      throw new RuntimeException("Can not pretty print a Json object.");
+    }
+
+    return policyData;
+  }
+
+  public PasswordPolicyFormData getCustomerPolicy(UUID customerUUID) {
     PasswordPolicyFormData configuredPolicy =
         PasswordPolicyFormData.fromCustomerConfig(
             CustomerConfig.getPasswordPolicyConfig(customerUUID));
 
     PasswordPolicyFormData effectivePolicy;
+
     if (configuredPolicy == null) {
       effectivePolicy = new PasswordPolicyFormData();
       effectivePolicy.setMinLength(config.getInt(DEFAULT_MIN_LENGTH_PARAM));
@@ -83,28 +131,6 @@ public class PasswordPolicyService {
       effectivePolicy = configuredPolicy;
     }
 
-    if (StringUtils.isEmpty(password)) {
-      return ApiResponse.error(BAD_REQUEST, "Password shouldn't be empty.");
-    }
-
-    List<ValidationError> errors =
-        validators
-            .stream()
-            .map(validator -> validator.validate(password, effectivePolicy))
-            .filter(Objects::nonNull)
-            .collect(Collectors.toList());
-
-    if (errors.isEmpty()) {
-      return null;
-    }
-
-    String fullMessage =
-        errors
-            .stream()
-            .map(ValidationError::messages)
-            .flatMap(List::stream)
-            .collect(Collectors.joining("; "));
-
-    return ApiResponse.error(BAD_REQUEST, fullMessage);
+    return effectivePolicy;
   }
 }

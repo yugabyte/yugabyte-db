@@ -35,6 +35,8 @@
 
 #include "utils/elog.h"
 
+const bool kTestOnlyUseOSDefaultCollation = false;
+
 bool
 YBCIsEnvVarTrue(const char* env_var_name)
 {
@@ -134,17 +136,6 @@ YBIsNonTxnCopyEnabled()
 	return cached_value;
 }
 
-bool
-YBIsAnalyzeCmdEnabled()
-{
-	static int cached_value = -1;
-	if (cached_value == -1)
-	{
-		cached_value = YBCIsEnvVarTrue("FLAGS_ysql_allow_analyze_cmd");
-	}
-	return cached_value;
-}
-
 const char *YBGetCurrentCloud()
 {
 	return getenv("FLAGS_placement_cloud");
@@ -158,4 +149,23 @@ const char *YBGetCurrentRegion()
 const char *YBGetCurrentZone()
 {
 	return getenv("FLAGS_placement_zone");
+}
+
+bool
+YBIsCollationEnabled()
+{
+#ifdef USE_ICU
+	static int cached_value = -1;
+	if (cached_value == -1)
+	{
+		/*
+		 * The default value must be in sync with that of FLAGS_TEST_pg_collation_enabled.
+		 */
+		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_TEST_pg_collation_enabled",
+												  false /* default_value */);
+	}
+	return cached_value;
+#else
+	return false;
+#endif
 }

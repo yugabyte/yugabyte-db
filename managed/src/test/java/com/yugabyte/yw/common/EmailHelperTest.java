@@ -9,18 +9,28 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.when;
 
+import com.icegreen.greenmail.util.GreenMail;
+import com.yugabyte.yw.common.alerts.SmtpData;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.impl.RuntimeConfig;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerConfig;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Properties;
-
 import javax.mail.MessagingException;
+import javax.mail.internet.AddressException;
 import javax.mail.internet.MimeMessage;
 import javax.mail.internet.MimeMultipart;
-
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
+import junitparams.converters.Nullable;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.validator.routines.EmailValidator;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -29,17 +39,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
-
-import com.icegreen.greenmail.util.GreenMail;
-import com.yugabyte.yw.common.config.impl.RuntimeConfig;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.forms.CustomerRegisterFormData.SmtpData;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
-
-import junitparams.JUnitParamsRunner;
-import junitparams.Parameters;
-import junitparams.converters.Nullable;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
@@ -165,6 +164,12 @@ public class EmailHelperTest extends FakeDBApplication {
   }
 
   @Test
+  public void testGetDestinations_NoAlertConfiguration_EmptyList() {
+    List<String> destinations = emailHelper.getDestinations(defaultCustomer.uuid);
+    assertEquals(0, destinations.size());
+  }
+
+  @Test
   public void testGetSmtpData_NoDbConfig() {
     SmtpData smtpData = emailHelper.getSmtpData(defaultCustomer.uuid);
     assertEquals(YB_DEFAULT_EMAIL, smtpData.emailFrom);
@@ -210,8 +215,8 @@ public class EmailHelperTest extends FakeDBApplication {
   }
 
   @Test
+  // @formatter:off
   @Parameters({
-    // @formatter:off
     "localhost, -1, false",
     "localhost, -1, true",
     "localhost, 999, false",
@@ -220,8 +225,8 @@ public class EmailHelperTest extends FakeDBApplication {
     ", -1, true",
     "null, -1, false",
     "null, -1, true",
-    // @formatter:on
   })
+  // @formatter:on
   public void testSmtpDataToProperties(@Nullable String smtpServer, int smtpPort, boolean useSSL)
       throws MessagingException, IOException {
     SmtpData smtpData = EmailFixtures.createSmtpData();
@@ -313,5 +318,37 @@ public class EmailHelperTest extends FakeDBApplication {
         String.valueOf(DEFAULT_SMTP_CONNECTION_TIMEOUT + 1),
         props.get("mail.smtps.connectiontimeout"));
     assertEquals(String.valueOf(DEFAULT_SMTP_TIMEOUT + 1), props.get("mail.smtps.timeout"));
+  }
+
+  @Test
+  public void testSplitEmails() throws AddressException {
+    String emails =
+        "test1@test1.com, \"A\" <test2@test2.com>; \"something;here,\" <test3@test3.com>";
+    Collection<String> emailsList =
+        EmailHelper.splitEmails(emails, EmailHelper.DEFAULT_EMAIL_SEPARATORS);
+    assertEquals(3, emailsList.size());
+
+    EmailValidator emailValidator = EmailValidator.getInstance(false);
+    int counter = 1;
+    for (String email : emailsList) {
+      String pureEmail = EmailHelper.extractEmailAddress(email);
+      assertEquals(true, emailValidator.isValid(pureEmail));
+      assertEquals("test" + counter + "@test" + counter + ".com", pureEmail);
+      counter++;
+    }
+  }
+
+  @Test
+  // @formatter:off
+  @Parameters({
+    "to@mail.com, to@mail.com",
+    "A <to@mail.com>, to@mail.com",
+    "\"John Doe\" <unknown@google.com>, unknown@google.com",
+    "\"John Doe\" to@mail.com, null", // Incorrect format for email.
+    "<to@mail.com>, to@mail.com",
+  })
+  // @formatter:on
+  public void testExtractEmailAddress(String src, @Nullable String expectedEmail) {
+    assertEquals(expectedEmail, EmailHelper.extractEmailAddress(src));
   }
 }

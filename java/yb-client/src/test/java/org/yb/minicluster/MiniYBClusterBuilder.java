@@ -15,7 +15,6 @@
 package org.yb.minicluster;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -186,10 +185,16 @@ public class MiniYBClusterBuilder {
   }
 
   /**
-   * Enable PostgreSQL server API in tablet servers.
+   * Enable YSQL server API in tablet servers.
    */
-  public MiniYBClusterBuilder enablePostgres(boolean enablePostgres) {
-    this.clusterParameters.startPgSqlProxy = enablePostgres;
+  public MiniYBClusterBuilder enableYsql(boolean enableYsql) {
+    this.clusterParameters.startYsqlProxy = enableYsql;
+    return this;
+  }
+
+  public MiniYBClusterBuilder ysqlSnapshotVersion(YsqlSnapshotVersion ysqlSnapshotVersion) {
+    Preconditions.checkState(this.clusterParameters.startYsqlProxy, "YSQL is not enabled");
+    this.clusterParameters.ysqlSnapshotVersion = ysqlSnapshotVersion;
     return this;
   }
 
@@ -198,7 +203,7 @@ public class MiniYBClusterBuilder {
    */
   public MiniYBClusterBuilder enablePgTransactions(boolean enablePgTransactions) {
     if (enablePgTransactions) {
-      enablePostgres(true);
+      enableYsql(true);
     }
     this.clusterParameters.pgTransactionsEnabled = enablePgTransactions;
     return this;
@@ -225,11 +230,10 @@ public class MiniYBClusterBuilder {
   }
 
   public MiniYBCluster build() throws Exception {
-    if (!perTServerFlags.isEmpty() && perTServerFlags.size() != clusterParameters.numTservers) {
-      throw new AssertionError(
-          "Per-tablet-server arguments list has " + perTServerFlags.size() + " elements (" +
-              perTServerFlags + ") but numTServers=" + clusterParameters.numTservers);
-    }
+    Preconditions.checkArgument(
+        perTServerFlags.isEmpty() || perTServerFlags.size() == clusterParameters.numTservers,
+        "Per-tablet-server arguments list has %s elements (%s) but numTServers=%s",
+        perTServerFlags.size(), perTServerFlags, clusterParameters.numTservers);
 
     return new MiniYBCluster(
         clusterParameters,

@@ -36,6 +36,7 @@
 #include <shared_mutex>
 
 #include <mutex>
+#include <vector>
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
@@ -47,14 +48,17 @@
 #include "yb/server/monitored_task.h"
 #include "yb/util/cow_object.h"
 #include "yb/util/monotime.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace master {
 
+YB_STRONGLY_TYPED_BOOL(IncludeInactive);
+YB_STRONGLY_TYPED_BOOL(InactiveOnly);
+
 // Drive usage information on a current replica of a tablet.
 // This allows us to look at individual resource usage per replica of a tablet.
 struct TabletReplicaDriveInfo {
-  std::string ts_path;
   uint64 sst_files_size = 0;
   uint64 wal_files_size = 0;
   uint64 uncompressed_sst_file_size = 0;
@@ -74,6 +78,8 @@ struct TabletReplica {
   // where a tablet has just been split and still refers to data from its parent which is no longer
   // relevant, for example.
   bool should_disable_lb_move = false;
+
+  std::string fs_data_dir;
 
   TabletReplicaDriveInfo drive_info;
 
@@ -114,9 +120,9 @@ template <class PersistentDataEntryPB>
 class MetadataCowWrapper {
  public:
   // Type declaration for use in the Lock classes.
-  typedef PersistentDataEntryPB cow_state;
-  typedef CowWriteLock<cow_state> WriteLock;
-  typedef CowReadLock<cow_state> ReadLock;
+  typedef PersistentDataEntryPB CowState;
+  typedef CowWriteLock<CowState> WriteLock;
+  typedef CowReadLock<CowState> ReadLock;
 
   // This method should return the id to be written into the sys_catalog id column.
   virtual const std::string& id() const = 0;
@@ -138,6 +144,18 @@ class MetadataCowWrapper {
 
   WriteLock LockForWrite() {
     return WriteLock(mutable_metadata());
+  }
+
+  const auto& old_pb() const {
+    return metadata_.state().pb;
+  }
+
+  const auto& new_pb() const {
+    return metadata_.dirty().pb;
+  }
+
+  static auto type() {
+    return CowState::type();
   }
 
  protected:
@@ -214,6 +232,7 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   void SetReplicaLocations(std::shared_ptr<ReplicaMap> replica_locations);
   std::shared_ptr<const ReplicaMap> GetReplicaLocations() const;
   Result<TSDescriptor*> GetLeader() const;
+  Result<TabletReplicaDriveInfo> GetLeaderReplicaDriveInfo() const;
 
   // Replaces a replica in replica_locations_ map if it exists. Otherwise, it adds it to the map.
   void UpdateReplicaLocations(const TabletReplica& replica);
@@ -262,6 +281,7 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
 
   ~TabletInfo();
   TSDescriptor* GetLeaderUnlocked() const REQUIRES_SHARED(lock_);
+  CHECKED_STATUS GetLeaderNotFoundStatus() const REQUIRES_SHARED(lock_);
 
   const TabletId tablet_id_;
   const scoped_refptr<TableInfo> table_;
@@ -332,7 +352,7 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntry::TA
   }
 
   // Return the table's type.
-  const TableType table_type() const {
+  TableType table_type() const {
     return pb.table_type();
   }
 
@@ -372,6 +392,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   const TableName name() const;
 
   bool is_running() const;
+  bool is_deleted() const;
 
   std::string ToString() const override;
   std::string ToStringWithState() const;
@@ -409,14 +430,19 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   }
 
   // Add a tablet to this table.
-  void AddTablet(TabletInfo *tablet);
+  void AddTablet(const TabletInfoPtr& tablet);
+
+  // Replace existing tablet with a new one.
+  void ReplaceTablet(const TabletInfoPtr& old_tablet, const TabletInfoPtr& new_tablet);
 
   // Add multiple tablets to this table.
-  void AddTablets(const std::vector<TabletInfo*>& tablets);
+  void AddTablets(const TabletInfos& tablets);
 
-  // Return true if tablet with 'partition_key_start' has been
-  // removed from 'tablet_map_' below.
-  bool RemoveTablet(const std::string& partition_key_start);
+  // Return true if tablet has been removed from 'partitions_' below.
+  bool RemoveTablet(const TabletId& tablet_id, InactiveOnly inactive_only = InactiveOnly::kFalse);
+
+  // Remove multiple tablets from this table. Return true if all given tablets were removed.
+  bool RemoveTablets(const TabletInfos& tablets, InactiveOnly inactive_only = InactiveOnly::kFalse);
 
   // This only returns tablets which are in RUNNING state.
   void GetTabletsInRange(const GetTableLocationsRequestPB* req, TabletInfos *ret) const;
@@ -425,12 +451,12 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
       TabletInfos* ret,
       int32_t max_returned_locations = std::numeric_limits<int32_t>::max()) const;
 
-  std::size_t NumTablets() const;
+  std::size_t NumPartitions() const;
 
   // Get all tablets of the table.
-  void GetAllTablets(TabletInfos *ret) const;
-
-  bool HasTablets() const;
+  // If include_split_tablets is true, also returns not yet deleted split parent tablets for
+  // which we've already registered child split tablets.
+  TabletInfos GetTablets(IncludeInactive include_inactive = IncludeInactive::kFalse) const;
 
   // Get the tablet of the table.  The table must be colocated.
   TabletInfoPtr GetColocatedTablet() const;
@@ -458,17 +484,6 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   void ClearIsBackfilling() {
     std::lock_guard<decltype(lock_)> l(lock_);
     is_backfilling_ = false;
-  }
-
-  boost::optional<TabletId> AreAllTabletsRunning() const {
-    std::lock_guard<decltype(lock_)> l(lock_);
-    for (const auto& tablet_it : tablet_map_) {
-      const auto& table = tablet_it.second;
-      if (table->LockForRead().data().pb.state() != SysTabletsEntryPB::RUNNING) {
-        return table->tablet_id();
-      }
-    }
-    return boost::none;
   }
 
   // Returns true if an "Alter" operation is in-progress.
@@ -513,7 +528,11 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   friend class RefCountedThreadSafe<TableInfo>;
   ~TableInfo();
 
-  void AddTabletUnlocked(TabletInfo* tablet) REQUIRES_SHARED(lock_);
+  void AddTabletUnlocked(const TabletInfoPtr& tablet) REQUIRES(lock_);
+  bool RemoveTabletUnlocked(const TableId& tablet_id,
+                            InactiveOnly inactive_only = InactiveOnly::kFalse)
+      REQUIRES(lock_);
+
   void AbortTasksAndCloseIfRequested(bool close);
 
   std::string LogPrefix() const {
@@ -526,8 +545,8 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // Sorted index of tablet start partition-keys to TabletInfo.
   // The TabletInfo objects are owned by the CatalogManager.
-  typedef std::map<std::string, TabletInfo *> TabletInfoMap;
-  TabletInfoMap tablet_map_ GUARDED_BY(lock_);
+  std::map<PartitionKey, TabletInfo*> partitions_ GUARDED_BY(lock_);
+  std::unordered_map<TabletId, TabletInfo*> tablets_ GUARDED_BY(lock_);
 
   // Protects tablet_map_ and pending_tasks_.
   mutable rw_spinlock lock_;
@@ -807,6 +826,65 @@ class SysConfigInfo : public RefCountedThreadSafe<SysConfigInfo>,
   DISALLOW_COPY_AND_ASSIGN(SysConfigInfo);
 };
 
+class DdlLogEntry {
+ public:
+  // time - when DDL operation was started.
+  // table_id - modified table id.
+  // table - what table was modified during DDL.
+  // action - string description of DDL.
+  DdlLogEntry(
+      HybridTime time, const TableId& table_id, const SysTablesEntryPB& table,
+      const std::string& action);
+
+  static SysRowEntry::Type type() {
+    return SysRowEntry::DDL_LOG_ENTRY;
+  }
+
+  std::string id() const;
+
+  // Used by sys catalog writer. It requires 2 protobuf to check whether entry was actually changed.
+  const DdlLogEntryPB& new_pb() const;
+  const DdlLogEntryPB& old_pb() const;
+
+ protected:
+  DdlLogEntryPB pb_;
+};
+
+// Helper class to commit Info mutations at the end of a scope.
+template <class Info>
+class ScopedInfoCommitter {
+ public:
+  typedef scoped_refptr<Info> InfoPtr;
+  typedef std::vector<InfoPtr> Infos;
+  explicit ScopedInfoCommitter(const Infos* infos) : infos_(DCHECK_NOTNULL(infos)), done_(false) {}
+  ~ScopedInfoCommitter() {
+    if (!done_) {
+      Commit();
+    }
+  }
+  // This method is not thread safe. Must be called by the same thread
+  // that would destroy this instance.
+  void Abort() {
+    if (PREDICT_TRUE(!done_)) {
+      for (const InfoPtr& info : *infos_) {
+        info->mutable_metadata()->AbortMutation();
+      }
+    }
+    done_ = true;
+  }
+  void Commit() {
+    if (PREDICT_TRUE(!done_)) {
+      for (const InfoPtr& info : *infos_) {
+        info->mutable_metadata()->CommitMutation();
+      }
+    }
+    done_ = true;
+  }
+ private:
+  const Infos* infos_;
+  bool done_;
+};
+
 // Convenience typedefs.
 // Table(t)InfoMap ordered for deterministic locking.
 typedef std::map<TabletId, scoped_refptr<TabletInfo>> TabletInfoMap;
@@ -824,6 +902,13 @@ void FillInfoEntry(const Info& info, SysRowEntry* entry) {
   entry->set_id(info.id());
   entry->set_type(info.metadata().state().type());
   entry->set_data(info.metadata().state().pb.SerializeAsString());
+}
+
+template <class Info>
+auto AddInfoEntry(Info* info, google::protobuf::RepeatedPtrField<SysRowEntry>* out) {
+  auto lock = info->LockForRead();
+  FillInfoEntry(*info, out->Add());
+  return lock;
 }
 
 }  // namespace master

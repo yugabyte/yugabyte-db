@@ -19,19 +19,16 @@ import com.jayway.jsonpath.spi.json.JacksonJsonNodeJsonProvider;
 import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Users;
+import java.util.List;
+import java.util.UUID;
+import java.util.stream.Collectors;
+import javax.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.mvc.Http;
 
-import javax.inject.Singleton;
-import java.util.List;
-import java.util.UUID;
-import java.util.stream.Collectors;
-
 @Singleton
 public class AuditService {
-
-  private static final Logger LOG = LoggerFactory.getLogger(AuditService.class);
 
   public static final String SECRET_REPLACEMENT = "REDACTED";
   // List of json paths to any secret fields we want to redact in audit entries.
@@ -40,7 +37,8 @@ public class AuditService {
       ImmutableList.of(
           "$..password",
           "$..confirmPassword",
-          // AWS credentials
+          "$..ysqlPassword",
+          "$..ycqlPassword",
           "$..['config.AWS_ACCESS_KEY_ID']",
           "$..['config.AWS_SECRET_ACCESS_KEY']",
           // GCP private key
@@ -105,7 +103,7 @@ public class AuditService {
     createAuditEntry(ctx, ctx.request(), ctx.request().body().asJson(), taskUUID);
   }
 
-  // TODO make this internal method and use WithReqBody
+  // TODO make this internal method and use createAuditEntryWithReqBody
   @Deprecated
   public void createAuditEntry(
       Http.Context ctx, Http.Request request, JsonNode params, UUID taskUUID) {

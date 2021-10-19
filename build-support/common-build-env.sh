@@ -123,6 +123,8 @@ readonly OPT_YB_BUILD_DIR="/opt/yb-build"
 
 readonly LOCAL_THIRDPARTY_DIR_PARENT="$OPT_YB_BUILD_DIR/thirdparty"
 
+readonly YSQL_SNAPSHOTS_DIR_PARENT="$OPT_YB_BUILD_DIR/ysql-sys-catalog-snapshots"
+
 # Parent directories for different compiler toolchains that we know how to download and install.
 readonly TOOLCHAIN_PARENT_DIR_LINUXBREW="$OPT_YB_BUILD_DIR/brew"
 readonly TOOLCHAIN_PARENT_DIR_LLVM="$OPT_YB_BUILD_DIR/llvm"
@@ -370,7 +372,8 @@ set_real_build_root_path() {
     real_build_root_path="$BUILD_ROOT"
   fi
 
-  readonly real_build_root_path=$( cd "$real_build_root_path" && pwd )
+  real_build_root_path=$( cd "$real_build_root_path" && pwd )
+  readonly real_build_root_path
 }
 
 ensure_build_root_is_set() {
@@ -597,7 +600,7 @@ set_cmake_build_type_and_compiler_type() {
   elif [[ -z ${YB_COMPILER_TYPE:-} ]]; then
     if [[ $build_type =~ ^(asan|tsan)$ ]]; then
       # Use Clang by default for ASAN/TSAN builds.
-      YB_COMPILER_TYPE=clang
+      YB_COMPILER_TYPE=clang7
     else
       # The default on Linux.
       YB_COMPILER_TYPE=gcc
@@ -659,8 +662,9 @@ set_mvn_parameters() {
     return
   fi
   if is_jenkins; then
-    if "$is_run_test_script" && [[ -d $BUILD_ROOT/m2_repository ]]; then
-      YB_MVN_LOCAL_REPO=$BUILD_ROOT/m2_repository
+    local m2_repository_in_build_root=$BUILD_ROOT/m2_repository
+    if "$is_run_test_script" && [[ -d $m2_repository_in_build_root ]]; then
+      YB_MVN_LOCAL_REPO=$m2_repository_in_build_root
       # Do not use the "shared Maven settings" path even if it is available.
       YB_MVN_SETTINGS_PATH=$YB_DEFAULT_MVN_SETTINGS_PATH
       log "Will use Maven repository from build root ($YB_MVN_LOCAL_REPO) and the" \
@@ -933,7 +937,7 @@ find_compiler_by_type() {
         fatal "Invalid GCC major version: '$gcc_major_version'" \
               "(from compiler type '$YB_COMPILER_TYPE')."
       fi
-      if is_centos; then
+      if is_redhat_family; then
         local gcc_bin_dir
         if [[ -d /opt/rh/gcc-toolset-$gcc_major_version ]]; then
           gcc_bin_dir=/opt/rh/gcc-toolset-$gcc_major_version/root/usr/bin
@@ -994,10 +998,22 @@ find_compiler_by_type() {
         local clang_cc_compiler_basename=${YB_COMPILER_TYPE//clang/clang-}
         local clang_cxx_compiler_basename=${YB_COMPILER_TYPE//clang/clang++-}
         for clang_prefix_candidate in /usr/local/bin /usr/bin; do
-          if [[ -L $clang_prefix_candidate/$clang_cc_compiler_basename &&
-                -L $clang_prefix_candidate/$clang_cxx_compiler_basename ]]; then
-            cc_executable=$( readlink "$clang_prefix_candidate/$clang_cc_compiler_basename" )
-            cxx_executable=$( readlink "$clang_prefix_candidate/$clang_cxx_compiler_basename" )
+          if [[ -e $clang_prefix_candidate/$clang_cc_compiler_basename &&
+                -e $clang_prefix_candidate/$clang_cxx_compiler_basename ]]; then
+            cc_executable="$clang_prefix_candidate/$clang_cc_compiler_basename"
+            cxx_executable="$clang_prefix_candidate/$clang_cxx_compiler_basename"
+            if [[ -L $cc_executable ]]; then
+              cc_executable=$( readlink "$cc_executable" )
+              if [[ ! $cc_executable =~ ^/ ]]; then
+                cc_executable="$clang_prefix_candidate/$cc_executable"
+              fi
+            fi
+            if [[ -L $cxx_executable ]]; then
+              cxx_executable=$( readlink "$cxx_executable" )
+              if [[ ! $cxx_executable =~ ^/ ]]; then
+                cxx_executable="$clang_prefix_candidate/$cxx_executable"
+              fi
+            fi
             break
           fi
         done
@@ -1153,7 +1169,7 @@ download_thirdparty() {
   yb_thirdparty_dir_origin=" (downloaded from $YB_THIRDPARTY_URL)"
   save_thirdparty_info_to_build_dir
 
-  if ! is_centos; then
+  if ! is_redhat_family; then
     return
   fi
   download_toolchain
@@ -1254,7 +1270,13 @@ detect_brew() {
     return
   fi
   if is_linux; then
-    detect_linuxbrew
+    local cpu_type
+    cpu_type=$( uname --processor )
+    if [[ $cpu_type == "x86_64" ]]; then
+      detect_linuxbrew
+    else
+      disable_linuxbrew
+    fi
   fi
 }
 
@@ -1898,6 +1920,24 @@ find_or_download_thirdparty() {
   save_thirdparty_info_to_build_dir
 }
 
+find_or_download_ysql_snapshots() {
+  local repo_url="https://github.com/yugabyte/yugabyte-db-ysql-catalog-snapshots"
+  local prefix="initial_sys_catalog_snapshot"
+
+  mkdir -p "$YSQL_SNAPSHOTS_DIR_PARENT"
+
+  # Just one snapshot for now.
+  # (disabling a code checker error about a singular loop iteration)
+  # shellcheck disable=SC2043
+  for ver in "2.0.9.0"; do
+    local name="${prefix}_${ver}"
+    if [[ ! -d "$YSQL_SNAPSHOTS_DIR_PARENT/$name" ]]; then
+      local url="${repo_url}/releases/download/v${ver}/${name}.tar.gz"
+      download_and_extract_archive "$url" "$YSQL_SNAPSHOTS_DIR_PARENT"
+    fi
+  done
+}
+
 log_thirdparty_and_toolchain_details() {
   (
     echo "Details of third-party dependencies:"
@@ -2091,6 +2131,27 @@ check_python_script_syntax() {
   popd
 }
 
+run_shellcheck() {
+  local scripts_to_check=(
+    yb_build.sh
+    build-support/find_linuxbrew.sh
+    build-support/common-build-env.sh
+    build-support/common-test-env.sh
+    build-support/common-cli-env.sh
+    build-support/run-test.sh
+    build-support/compiler-wrappers/compiler-wrapper.sh
+  )
+  pushd "$YB_SRC_ROOT"
+  local script_path
+  for script_path in "${scripts_to_check[@]}"; do
+    # We skip errors 2030 and 2031 that say that a variable has been modified in a subshell and that
+    # the modification is local to the subshell. Seeing a lot of false positivies for these with
+    # the version 0.7.2 of Shellcheck.
+    ( set -x; shellcheck --external-sources --exclude=2030,2031 --shell=bash "$script_path" )
+  done
+  popd
+}
+
 activate_virtualenv() {
   local virtualenv_parent_dir=$YB_BUILD_PARENT_DIR
   local virtualenv_dir=$virtualenv_parent_dir/$YB_VIRTUALENV_BASENAME
@@ -2112,7 +2173,7 @@ activate_virtualenv() {
       # function might not even be present in our current shell. This is necessary because otherwise
       # the --user installation below will fail.
       set +eu
-      # shellcheck disable=SC1090
+      # shellcheck disable=SC1090,SC1091
       . "$VIRTUAL_ENV/bin/activate"
       deactivate
       set -eu
@@ -2129,7 +2190,7 @@ activate_virtualenv() {
   fi
 
   set +u
-  # shellcheck disable=SC1090
+  # shellcheck disable=SC1090,SC1091
   . "$virtualenv_dir"/bin/activate
   set -u
   local pip_no_cache=""
@@ -2255,11 +2316,13 @@ lint_java_code() {
          ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonTsanAsan\.class\)' \
              "$java_test_file" &&
          ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonSanitizersOrMac\.class\)' \
+             "$java_test_file" &&
+         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerReleaseOnly\.class\)' \
              "$java_test_file"
       then
         log "$log_prefix: neither YBTestRunner, YBParameterizedTestRunner, " \
-            "YBTestRunnerNonTsanOnly, YBTestRunnerNonTsanAsan " \
-            "nor YBTestRunnerNonSanitizersOrMac are being used in test"
+            "YBTestRunnerNonTsanOnly, YBTestRunnerNonTsanAsan, YBTestRunnerNonSanitizersOrMac " \
+            "nor YBTestRunnerReleaseOnly are being used in test"
         num_errors+=1
       fi
       if grep -Fq 'import static org.junit.Assert' "$java_test_file" ||

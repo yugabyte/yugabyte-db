@@ -73,7 +73,7 @@ class YBTabletUtilTest : public YBMiniClusterTestBase<MiniCluster> {
 
     opts.num_tablet_servers = kNumTabletServers;
 
-    cluster_.reset(new MiniCluster(env_.get(), opts));
+    cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
 
     YBSchema schema;
@@ -147,7 +147,7 @@ TEST_F(YBTabletUtilTest, VerifySingleKeyIsFound) {
     "--compression_type=snappy",
     "--db=" + db_path
   };
-  ASSERT_OK(Subprocess::Call(argv, &output, false /* read_stderr */));
+  ASSERT_OK(Subprocess::Call(argv, &output));
 
   ASSERT_NE(output.find("Keys in range: 1"), string::npos);
 }

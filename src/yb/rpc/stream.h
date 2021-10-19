@@ -30,20 +30,9 @@ struct loop_ref;
 namespace yb {
 
 class MemTracker;
+class MetricEntity;
 
 namespace rpc {
-
-struct ProcessDataResult {
-  size_t consumed = 0;
-  Slice buffer;
-  size_t bytes_to_skip = 0;
-
-  std::string ToString() const {
-    return Format(
-        "{ consumed: $0 buffer.size(): $1 bytes_to_skip: $2 }", consumed, buffer.size(),
-        bytes_to_skip);
-  }
-};
 
 class StreamReadBuffer {
  public:
@@ -74,6 +63,8 @@ class StreamReadBuffer {
   // entry of vector returned by PrepareAppend.
   virtual void Consume(size_t count, const Slice& prepend) = 0;
 
+  virtual size_t DataAvailable() = 0;
+
   // Render this buffer to string.
   virtual std::string ToString() const = 0;
 
@@ -91,8 +82,7 @@ class StreamContext {
   // Called by underlying stream when stream has been connected (Stream::IsConnected() became true).
   virtual void Connected() = 0;
 
-  virtual Result<ProcessDataResult> ProcessReceived(
-      const IoVecs& data, ReadBufferFull read_buffer_full) = 0;
+  virtual Result<size_t> ProcessReceived(ReadBufferFull read_buffer_full) = 0;
   virtual StreamReadBuffer& ReadBuffer() = 0;
 
  protected:
@@ -101,6 +91,11 @@ class StreamContext {
 
 class Stream {
  public:
+  Stream() = default;
+
+  Stream(const Stream&) = delete;
+  void operator=(const Stream&) = delete;
+
   virtual CHECKED_STATUS Start(bool connect, ev::loop_ref* loop, StreamContext* context) = 0;
   virtual void Close() = 0;
   virtual void Shutdown(const Status& status) = 0;
@@ -120,12 +115,12 @@ class Stream {
   virtual void DumpPB(const DumpRunningRpcsRequestPB& req, RpcConnectionPB* resp) = 0;
 
   // The address of the remote end of the connection.
-  virtual const Endpoint& Remote() = 0;
+  virtual const Endpoint& Remote() const = 0;
 
   // The address of the local end of the connection.
-  virtual const Endpoint& Local() = 0;
+  virtual const Endpoint& Local() const = 0;
 
-  virtual std::string ToString() {
+  virtual std::string ToString() const {
     return Format("{ local: $0 remote: $1 }", Local(), Remote());
   }
 
@@ -152,7 +147,9 @@ struct StreamCreateData {
   Endpoint remote;
   const std::string& remote_hostname;
   Socket* socket;
+  int32_t receive_buffer_size;
   std::shared_ptr<MemTracker> mem_tracker;
+  scoped_refptr<MetricEntity> metric_entity;
 };
 
 class StreamFactory {

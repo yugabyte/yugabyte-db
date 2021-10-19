@@ -3,7 +3,6 @@
 package com.yugabyte.yw.commissioner;
 
 import com.yugabyte.yw.common.ConfigHelper;
-
 import java.util.Optional;
 
 public class Common {
@@ -48,7 +47,7 @@ public class Common {
     }
 
     public boolean isVM() {
-      return !CloudType.kubernetes.value.equals(this.value);
+      return this != CloudType.kubernetes;
     }
 
     public boolean isRequiresDeviceInfo() {

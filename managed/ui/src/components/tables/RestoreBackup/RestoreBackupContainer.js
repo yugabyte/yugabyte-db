@@ -24,13 +24,15 @@ function mapStateToProps(state, ownProps) {
     restoreToKeyspace: '',
     storageConfigUUID: '',
     storageLocation: '',
+    restoreTimeStamp: '',
     parallelism: 8,
     kmsConfigUUID: ''
   };
   const {
     customer: { configs },
     universe: { currentUniverse, universeList },
-    cloud
+    cloud,
+    featureFlags,
   } = state;
   const storageConfigs = configs.data.filter((config) => config.type === 'STORAGE');
 
@@ -68,7 +70,10 @@ function mapStateToProps(state, ownProps) {
       initialFormValues.restoreToUniverseUUID = { value: currentUniverse.data.universeUUID, label: currentUniverse.data.name };
     }
     if (isNonEmptyArray(storageConfigs)) {
-      initialFormValues.storageConfigUUID = storageConfigs[0].configUUID;
+      initialFormValues.storageConfigUUID = {
+        value: storageConfigs[0].configUUID,
+        label: storageConfigs[0].name + ' Storage'
+      };
     }
   }
 
@@ -77,7 +82,8 @@ function mapStateToProps(state, ownProps) {
     currentUniverse: currentUniverse,
     universeList: universeList,
     initialValues: initialFormValues,
-    cloud: cloud
+    cloud: cloud,
+    featureFlags: featureFlags,
   };
 }
 

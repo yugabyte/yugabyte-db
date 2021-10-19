@@ -59,6 +59,7 @@ set(CLIENT_SRCS
   transaction_manager.cc
   transaction_pool.cc
   transaction_rpc.cc
+  universe_key_client.cc
   value.cc
   yb_op.cc
   yb_table_name.cc
@@ -108,7 +109,7 @@ target_link_libraries(yb_client_test_util
                       gmock
                       yb_client)
 
-add_library(ql-dml-test-base ql-dml-test-base.cc txn-test-base.cc snapshot_test_base.cc)
+add_library(ql-dml-test-base ql-dml-test-base.cc txn-test-base.cc snapshot_test_util.cc)
 target_link_libraries(ql-dml-test-base integration-tests)
 
 # Tests

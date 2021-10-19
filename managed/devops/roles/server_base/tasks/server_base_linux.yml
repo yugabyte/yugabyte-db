@@ -104,7 +104,7 @@
         patterns: "*.repo"
       register: repos
 
-    - name: Replace mirror links from https to http
+    - name: Uncomment mirror links
       become: yes
       become_method: sudo
       replace:
@@ -126,6 +126,9 @@
 
     when: ansible_os_family == "RedHat" and (cloud_type is not defined or cloud_type != "onprem")
 
+  - name: Gather package facts
+    package_facts:
+
   - name: Install linux packages we need on our YugaByte clusters on CentOS
     become: yes
     become_method: sudo
@@ -138,7 +141,7 @@
     register: result
     until: result is succeeded
     retries: "{{ yum_retry_count }}"
-    when: ansible_os_family == "RedHat"
+    when: ansible_os_family == 'RedHat' and "item not in ansible_facts.packages"
 
   - name: Install linux packages we need on our YugaByte clusters
     become: yes
@@ -151,6 +154,22 @@
     register: result
     until: result is succeeded
     retries: "{{ yum_retry_count }}"
-    when: ansible_os_family != "RedHat"
+    when: ansible_os_family != 'RedHat' and "item not in ansible_facts.packages"
+
+  - name: Install linux packages we need on our YugaByte clusters on aarch64 architecture
+    become: yes
+    become_method: sudo
+    module_defaults:
+      yum:
+        lock_timeout: 600
+    package:
+      name: "{{ item }}"
+      state: latest
+    with_items:
+      - "{{ linux_packages + aarch64_packages }}"
+    register: result
+    until: result is succeeded
+    retries: "{{ yum_retry_count }}"
+    when: ansible_architecture == 'aarch64' and "item not in ansible_facts.packages"
 
   when: not air_gap

@@ -152,7 +152,7 @@ TEST_F(SysCatalogTest, TestSysCatalogTablesOperations) {
     l.mutable_data()->pb.set_state(SysTablesEntryPB::PREPARING);
     SchemaToPB(Schema(), l.mutable_data()->pb.mutable_schema());
     // Add the table
-    ASSERT_OK(sys_catalog->AddItem(table.get(), kLeaderTerm));
+    ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, table));
 
     l.Commit();
   }
@@ -169,7 +169,7 @@ TEST_F(SysCatalogTest, TestSysCatalogTablesOperations) {
     auto l = table->LockForWrite();
     l.mutable_data()->pb.set_version(1);
     l.mutable_data()->pb.set_state(SysTablesEntryPB::DELETING);
-    ASSERT_OK(sys_catalog->UpdateItem(table.get(), kLeaderTerm));
+    ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, table));
     l.Commit();
   }
 
@@ -180,7 +180,7 @@ TEST_F(SysCatalogTest, TestSysCatalogTablesOperations) {
 
   // Delete the table
   loader->Reset();
-  ASSERT_OK(sys_catalog->DeleteItem(table.get(), kLeaderTerm));
+  ASSERT_OK(sys_catalog->Delete(kLeaderTerm, table));
   ASSERT_OK(sys_catalog->Visit(loader.get()));
   ASSERT_EQ(kNumSystemTables, loader->tables.size());
 }
@@ -286,7 +286,7 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
     tablets.push_back(tablet2.get());
 
     loader->Reset();
-    ASSERT_OK(sys_catalog->AddItems(tablets, kLeaderTerm));
+    ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, tablets));
     tablet1->mutable_metadata()->CommitMutation();
     tablet2->mutable_metadata()->CommitMutation();
 
@@ -303,7 +303,7 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
 
     auto l1 = tablet1->LockForWrite();
     l1.mutable_data()->pb.set_state(SysTabletsEntryPB::RUNNING);
-    ASSERT_OK(sys_catalog->UpdateItems(tablets, kLeaderTerm));
+    ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, tablets));
     l1.Commit();
 
     loader->Reset();
@@ -328,7 +328,7 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
     l2.mutable_data()->pb.set_state(SysTabletsEntryPB::RUNNING);
 
     loader->Reset();
-    ASSERT_OK(sys_catalog->AddAndUpdateItems(to_add, to_update, kLeaderTerm));
+    ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, to_add, to_update));
 
     l1.Commit();
     l2.Commit();
@@ -349,7 +349,7 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
     tablets.push_back(tablet3.get());
 
     loader->Reset();
-    ASSERT_OK(sys_catalog->DeleteItems(tablets, kLeaderTerm));
+    ASSERT_OK(sys_catalog->Delete(kLeaderTerm, tablets));
     ASSERT_OK(sys_catalog->Visit(loader.get()));
     ASSERT_EQ(1 + kNumSystemTables, loader->tablets.size());
     ASSERT_METADATA_EQ(tablet2.get(), loader->tablets[tablet2->id()]);
@@ -447,7 +447,7 @@ TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
     pb->set_min_num_replicas(100);
 
     // Set it in the sys_catalog. It already has the default entry, so we use update.
-    ASSERT_OK(sys_catalog->UpdateItem(config_info.get(), kLeaderTerm));
+    ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, config_info));
     l.Commit();
   }
 
@@ -468,7 +468,7 @@ TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
     cloud_info->set_placement_cloud("cloud2");
     pb->set_min_num_replicas(200);
     // Update it in the sys_catalog.
-    ASSERT_OK(sys_catalog->UpdateItem(config_info.get(), kLeaderTerm));
+    ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, config_info));
     l.Commit();
   }
 
@@ -581,7 +581,7 @@ TEST_F(SysCatalogTest, TestSysCatalogNamespacesOperations) {
     auto l = ns->LockForWrite();
     l.mutable_data()->pb.set_name("test_ns");
     // Add the namespace
-    ASSERT_OK(sys_catalog->AddItem(ns.get(), kLeaderTerm));
+    ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, ns));
 
     l.Commit();
   }
@@ -597,7 +597,7 @@ TEST_F(SysCatalogTest, TestSysCatalogNamespacesOperations) {
   {
     auto l = ns->LockForWrite();
     l.mutable_data()->pb.set_name("test_ns_new_name");
-    ASSERT_OK(sys_catalog->UpdateItem(ns.get(), kLeaderTerm));
+    ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, ns));
     l.Commit();
   }
 
@@ -609,7 +609,7 @@ TEST_F(SysCatalogTest, TestSysCatalogNamespacesOperations) {
 
   // 4. CHECK DELETE_NAMESPACE
   // Delete the namespace
-  ASSERT_OK(sys_catalog->DeleteItem(ns.get(), kLeaderTerm));
+  ASSERT_OK(sys_catalog->Delete(kLeaderTerm, ns));
 
   // Verify the result.
   loader->Reset();
@@ -714,7 +714,7 @@ TEST_F(SysCatalogTest, TestSysCatalogRedisConfigOperations) {
     auto l = rci->LockForWrite();
     l.mutable_data()->pb = std::move(config_entry);
     // Add the redis config
-    ASSERT_OK(sys_catalog->AddItem(rci.get(), kLeaderTerm));
+    ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, rci));
     l.Commit();
   }
 
@@ -733,7 +733,7 @@ TEST_F(SysCatalogTest, TestSysCatalogRedisConfigOperations) {
   metadata->clear_args();
   metadata->add_args("value1b");
 
-  ASSERT_OK(sys_catalog->UpdateItem(rci.get(), kLeaderTerm));
+  ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, rci));
   rci->mutable_metadata()->CommitMutation();
 
   // Verify config entries.
@@ -757,7 +757,7 @@ TEST_F(SysCatalogTest, TestSysCatalogRedisConfigOperations) {
       auto l = rci2->LockForWrite();
       l.mutable_data()->pb = std::move(config_entry);
       // Add the redis config
-      ASSERT_OK(sys_catalog->AddItem(rci2.get(), kLeaderTerm));
+      ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, rci2));
       l.Commit();
     }
 
@@ -769,7 +769,7 @@ TEST_F(SysCatalogTest, TestSysCatalogRedisConfigOperations) {
     ASSERT_METADATA_EQ(rci2.get(), loader->config_entries[1]);
 
     // 2. CHECK DELETE RedisConfig
-    ASSERT_OK(sys_catalog->DeleteItem(rci2.get(), kLeaderTerm));
+    ASSERT_OK(sys_catalog->Delete(kLeaderTerm, rci2));
 
     // Verify the result.
     loader->Reset();
@@ -777,7 +777,7 @@ TEST_F(SysCatalogTest, TestSysCatalogRedisConfigOperations) {
     ASSERT_EQ(1, loader->config_entries.size());
   }
   // 2. CHECK DELETE RedisConfig
-  ASSERT_OK(sys_catalog->DeleteItem(rci.get(), kLeaderTerm));
+  ASSERT_OK(sys_catalog->Delete(kLeaderTerm, rci));
 
   // Verify the result.
   loader->Reset();
@@ -848,7 +848,7 @@ TEST_F(SysCatalogTest, TestSysCatalogSysConfigOperations) {
     l.mutable_data()->pb.mutable_security_config()->set_roles_version(1234);
 
     // Add the test_config.
-    ASSERT_OK(sys_catalog->AddItem(test_config.get(), kLeaderTerm));
+    ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, test_config));
     l.Commit();
   }
   loader->Reset();
@@ -859,7 +859,7 @@ TEST_F(SysCatalogTest, TestSysCatalogSysConfigOperations) {
   ASSERT_METADATA_EQ(ysql_catalog_config.get(), loader->sys_configs[2]);
 
   // 2. Remove the SysConfigEntry and verify that it got removed.
-  ASSERT_OK(sys_catalog->DeleteItem(test_config.get(), kLeaderTerm));
+  ASSERT_OK(sys_catalog->Delete(kLeaderTerm, test_config));
   loader->Reset();
   ASSERT_OK(sys_catalog->Visit(loader.get()));
   ASSERT_EQ(2, loader->sys_configs.size());
@@ -915,7 +915,7 @@ TEST_F(SysCatalogTest, TestSysCatalogRoleOperations) {
     auto l = rl->LockForWrite();
     l.mutable_data()->pb = std::move(role_entry);
     // Add the role
-    ASSERT_OK(sys_catalog->AddItem(rl.get(), kLeaderTerm));
+    ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, rl));
     l.Commit();
   }
 
@@ -948,7 +948,7 @@ TEST_F(SysCatalogTest, TestSysCatalogRoleOperations) {
 
   currentResource->add_permissions(PermissionType::DROP_PERMISSION);
 
-  ASSERT_OK(sys_catalog->UpdateItem(rl.get(), kLeaderTerm));
+  ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, rl));
   rl->mutable_metadata()->CommitMutation();
 
   // Verify permissions
@@ -959,7 +959,7 @@ TEST_F(SysCatalogTest, TestSysCatalogRoleOperations) {
   ASSERT_METADATA_EQ(rl.get(), loader->roles[1]);
 
   // 2. CHECK DELETE Role
-  ASSERT_OK(sys_catalog->DeleteItem(rl.get(), kLeaderTerm));
+  ASSERT_OK(sys_catalog->Delete(kLeaderTerm, rl));
 
   // Verify the result.
   loader->Reset();
@@ -982,7 +982,7 @@ TEST_F(SysCatalogTest, TestSysCatalogUDTypeOperations) {
     l.mutable_data()->pb.set_name("test_tp");
     l.mutable_data()->pb.set_namespace_id(kSystemNamespaceId);
     // Add the udtype
-    ASSERT_OK(sys_catalog->AddItem(tp.get(), kLeaderTerm));
+    ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, tp));
     l.Commit();
   }
 
@@ -993,7 +993,7 @@ TEST_F(SysCatalogTest, TestSysCatalogUDTypeOperations) {
   ASSERT_METADATA_EQ(tp.get(), loader->udtypes[0]);
 
   // 2. CHECK DELETE_UDTYPE
-  ASSERT_OK(sys_catalog->DeleteItem(tp.get(), kLeaderTerm));
+  ASSERT_OK(sys_catalog->Delete(kLeaderTerm, tp));
 
   // Verify the result.
   loader->Reset();
@@ -1024,7 +1024,7 @@ TEST_F(SysCatalogTest, TestCatalogManagerTasksTracker) {
     l.mutable_data()->pb.set_state(SysTablesEntryPB::PREPARING);
     SchemaToPB(Schema(), l.mutable_data()->pb.mutable_schema());
     // Add the table.
-    ASSERT_OK(sys_catalog->AddItem(table.get(), kLeaderTerm));
+    ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, table));
 
     l.Commit();
   }

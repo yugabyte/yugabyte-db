@@ -46,7 +46,13 @@ template<class MiniClusterType>
 const std::string KeyValueTableTest<MiniClusterType>::kValueColumn = kv_table_test::kValueColumn;
 
 template <>
-QLDmlTestBase<MiniCluster>::QLDmlTestBase() : mini_cluster_opt_(1, 3) {}
+QLDmlTestBase<MiniCluster>::QLDmlTestBase()
+  : mini_cluster_opt_(MiniClusterOptions {
+                      .num_masters = 1,
+                      .num_tablet_servers = 3,
+                      .num_drives = 1,
+                      .master_env = env_.get(),
+                      }) {}
 
 template <>
 QLDmlTestBase<ExternalMiniCluster>::QLDmlTestBase() {
@@ -66,7 +72,7 @@ void QLDmlTestBase<ExternalMiniCluster>::SetFlags() {
 
 template <>
 void QLDmlTestBase<MiniCluster>::StartCluster() {
-  cluster_.reset(new MiniCluster(env_.get(), mini_cluster_opt_));
+  cluster_.reset(new MiniCluster(mini_cluster_opt_));
   ASSERT_OK(cluster_->Start());
 }
 
@@ -159,9 +165,10 @@ Result<YBqlWriteOpPtr> Increment(
 }
 
 void CreateTable(
-    Transactional transactional, int num_tablets, YBClient* client, TableHandle* table) {
-  ASSERT_OK(client->CreateNamespaceIfNotExists(kTableName.namespace_name(),
-                                               kTableName.namespace_type()));
+    Transactional transactional, int num_tablets, YBClient* client, TableHandle* table,
+    const YBTableName& table_name) {
+  ASSERT_OK(client->CreateNamespaceIfNotExists(table_name.namespace_name(),
+                                               table_name.namespace_type()));
 
   YBSchemaBuilder builder;
   builder.AddColumn(kKeyColumn)->Type(INT32)->HashPrimaryKey()->NotNull();
@@ -172,7 +179,7 @@ void CreateTable(
     builder.SetTableProperties(table_properties);
   }
 
-  ASSERT_OK(table->Create(kTableName, num_tablets, client, &builder));
+  ASSERT_OK(table->Create(table_name, num_tablets, client, &builder));
 }
 
 void InitIndex(
@@ -248,7 +255,7 @@ void CreateIndex(
   const YBTableName index_name(YQL_DATABASE_CQL, table.name().namespace_name(),
       table.name().table_name() + '_' + schema.Column(indexed_column_index).name() + "_idx");
 
-  ASSERT_OK(index->Create(index_name, schema.table_properties().num_tablets(),
+  ASSERT_OK(index->Create(index_name, table->GetPartitionCount(),
       client, &builder, &index_info));
 }
 

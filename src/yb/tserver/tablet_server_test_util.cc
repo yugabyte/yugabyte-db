@@ -47,10 +47,10 @@ using std::shared_ptr;
 
 void CreateTsClientProxies(const HostPort& addr,
                            rpc::ProxyCache* proxy_cache,
-                           gscoped_ptr<TabletServerServiceProxy>* proxy,
-                           gscoped_ptr<TabletServerAdminServiceProxy>* admin_proxy,
-                           gscoped_ptr<ConsensusServiceProxy>* consensus_proxy,
-                           gscoped_ptr<server::GenericServiceProxy>* generic_proxy) {
+                           std::unique_ptr<TabletServerServiceProxy>* proxy,
+                           std::unique_ptr<TabletServerAdminServiceProxy>* admin_proxy,
+                           std::unique_ptr<ConsensusServiceProxy>* consensus_proxy,
+                           std::unique_ptr<server::GenericServiceProxy>* generic_proxy) {
   proxy->reset(new TabletServerServiceProxy(proxy_cache, addr));
   admin_proxy->reset(new TabletServerAdminServiceProxy(proxy_cache, addr));
   consensus_proxy->reset(new ConsensusServiceProxy(proxy_cache, addr));

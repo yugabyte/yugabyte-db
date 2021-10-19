@@ -10,22 +10,21 @@
 
 package com.yugabyte.yw.models.helpers;
 
-import com.yugabyte.yw.common.NodeActionType;
-import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.YWServiceException;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.Universe;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.mvc.Http;
-
-import java.util.Arrays;
-import java.util.Set;
-import java.util.stream.Collectors;
-
 import static com.yugabyte.yw.common.NodeActionType.START_MASTER;
 import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType.PRIMARY;
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Live;
+
+import com.yugabyte.yw.common.NodeActionType;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.Universe;
+import java.util.Arrays;
+import java.util.Set;
+import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.mvc.Http;
 
 public class AllowedActionsHelper {
   private static final Logger LOG = LoggerFactory.getLogger(AllowedActionsHelper.class);
@@ -37,11 +36,11 @@ public class AllowedActionsHelper {
     this.node = node;
   }
 
-  /** @throws YWServiceException if action not allowed on this node */
+  /** @throws PlatformServiceException if action not allowed on this node */
   public void allowedOrBadRequest(NodeActionType action) {
     String errMsg = nodeActionErrOrNull(action);
     if (errMsg != null) {
-      throw new YWServiceException(Http.Status.BAD_REQUEST, errMsg);
+      throw new PlatformServiceException(Http.Status.BAD_REQUEST, errMsg);
     }
   }
 
@@ -55,7 +54,7 @@ public class AllowedActionsHelper {
   private boolean isNodeActionAllowed(NodeActionType nodeActionType) {
     String nodeActionAllowedErr = nodeActionErrOrNull(nodeActionType);
     if (nodeActionAllowedErr != null) {
-      LOG.debug(nodeActionAllowedErr);
+      LOG.trace(nodeActionAllowedErr);
       return false;
     }
     return true;

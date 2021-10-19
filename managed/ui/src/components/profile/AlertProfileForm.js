@@ -14,6 +14,7 @@ import * as Yup from 'yup';
 import _ from 'lodash';
 import { isNonEmptyObject, isNonEmptyArray } from '../../utils/ObjectUtils';
 import { getPromiseState } from '../../utils/PromiseUtils';
+import { toast } from 'react-toastify';
 
 // TODO set predefined defaults another way not to share defaults this way
 const CHECK_INTERVAL_MS = 300000;
@@ -26,8 +27,7 @@ const validationSchema = Yup.object().shape({
     alertingEmail: Yup.string().nullable(), // This field can be one or more emails separated by commas
     checkIntervalMs: Yup.number().typeError('Must specify a number'),
     statusUpdateIntervalMs: Yup.number().typeError('Must specify a number'),
-    reportOnlyErrors: Yup.boolean().default(false).nullable(),
-    reportBackupFailures: Yup.boolean().default(false).nullable()
+    reportOnlyErrors: Yup.boolean().default(false).nullable()
   }),
   customSmtp: Yup.boolean(),
   smtpData: Yup.object().when('customSmtp', {
@@ -69,13 +69,12 @@ export default class AlertProfileForm extends Component {
   }
 
   componentDidUpdate() {
-    const { customerProfile, handleProfileUpdate } = this.props;
+    const { customerProfile } = this.props;
     const { statusUpdated } = this.state;
     if (
       statusUpdated &&
       (getPromiseState(customerProfile).isSuccess() || getPromiseState(customerProfile).isError())
     ) {
-      handleProfileUpdate(customerProfile.data);
       this.setState({ statusUpdated: false });
     }
   }
@@ -110,8 +109,7 @@ export default class AlertProfileForm extends Component {
             : STATUS_UPDATE_INTERVAL_MS
           : '',
         sendAlertsToYb: customer.data.alertingData && customer.data.alertingData.sendAlertsToYb,
-        reportOnlyErrors: customer.data.alertingData && customer.data.alertingData.reportOnlyErrors,
-        reportBackupFailures: customer.data.alertingData && customer.data.alertingData.reportBackupFailures
+        reportOnlyErrors: customer.data.alertingData && customer.data.alertingData.reportOnlyErrors
       },
       customSmtp: isNonEmptyObject(_.get(customer, 'data.smtpData', {})),
       smtpData: {
@@ -148,6 +146,7 @@ export default class AlertProfileForm extends Component {
             updateCustomerDetails(data);
             this.setState({ statusUpdated: true });
             setSubmitting(false);
+            toast.success('Configuration updated successfully');
 
             // default form to new values to avoid unwanted validation of smtp fields when they are hidden
             resetForm(values);
@@ -213,20 +212,6 @@ export default class AlertProfileForm extends Component {
                         }}
                         label="Only include errors in alert emails"
                         subLabel="Whether or not to include errors in alert emails."
-                      />
-                    )}
-                  </Field>
-                  <Field name="alertingData.reportBackupFailures">
-                    {({ field }) => (
-                      <YBToggle
-                        onToggle={handleChange}
-                        name="alertingData.reportBackupFailures"
-                        input={{
-                          value: field.value,
-                          onChange: field.onChange
-                        }}
-                        label="Send backup failure notification"
-                        subLabel="Whether or not to send an email if a backup task fails."
                       />
                     )}
                   </Field>

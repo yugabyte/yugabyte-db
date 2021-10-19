@@ -11,34 +11,29 @@
 package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
-import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.CustomerTaskManager;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
-import com.yugabyte.yw.common.YWServiceException;
-import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.forms.PlatformInstanceFormData;
 import com.yugabyte.yw.forms.RestorePlatformBackupFormData;
+import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
-import org.apache.commons.lang3.StringUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.data.Form;
-import play.data.FormFactory;
-import play.mvc.Result;
-
 import java.io.File;
 import java.net.URL;
 import java.util.Optional;
 import java.util.UUID;
+import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.data.Form;
+import play.mvc.Result;
 
 public class PlatformInstanceController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(PlatformInstanceController.class);
 
   @Inject private PlatformReplicationManager replicationManager;
-
-  @Inject private ValidatingFormFactory formFactory;
 
   @Inject CustomerTaskManager taskManager;
 
@@ -50,19 +45,19 @@ public class PlatformInstanceController extends AuthenticatedController {
 
     // Cannot create a remote instance before creating a local instance.
     if (!formData.get().is_local && !config.get().getLocal().isPresent()) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST,
           "Cannot create a remote platform instance before creating local platform instance");
       // Cannot create a remote instance if local instance is follower.
     } else if (!formData.get().is_local && !config.get().isLocalLeader()) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST, "Cannot create a remote platform instance on a follower platform instance");
       // Cannot create multiple local platform instances.
     } else if (formData.get().is_local && config.get().getLocal().isPresent()) {
-      throw new YWServiceException(BAD_REQUEST, "Local platform instance already exists");
+      throw new PlatformServiceException(BAD_REQUEST, "Local platform instance already exists");
       // Cannot create multiple leader platform instances.
     } else if (formData.get().is_leader && config.get().isLocalLeader()) {
-      throw new YWServiceException(BAD_REQUEST, "Leader platform instance already exists");
+      throw new PlatformServiceException(BAD_REQUEST, "Leader platform instance already exists");
     }
 
     PlatformInstance instance =
@@ -77,7 +72,7 @@ public class PlatformInstanceController extends AuthenticatedController {
       config.get().updateLastFailover();
     }
 
-    return ApiResponse.success(instance);
+    return PlatformResults.withData(instance);
   }
 
   public Result deleteInstance(UUID configUUID, UUID instanceUUID) {
@@ -90,16 +85,16 @@ public class PlatformInstanceController extends AuthenticatedController {
             && config.get().getInstances().stream().anyMatch(i -> i.getUUID().equals(instanceUUID));
 
     if (!instanceUUIDValid) {
-      throw new YWServiceException(NOT_FOUND, "Invalid instance UUID");
+      throw new PlatformServiceException(NOT_FOUND, "Invalid instance UUID");
     }
 
     if (!config.get().isLocalLeader()) {
-      throw new YWServiceException(
+      throw new PlatformServiceException(
           BAD_REQUEST, "Follower platform instance cannot delete platform instances");
     }
 
     if (instanceToDelete.get().getIsLocal()) {
-      throw new YWServiceException(BAD_REQUEST, "Cannot delete local instance");
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot delete local instance");
     }
 
     PlatformInstance.delete(instanceUUID);
@@ -112,10 +107,10 @@ public class PlatformInstanceController extends AuthenticatedController {
 
     Optional<PlatformInstance> localInstance = config.get().getLocal();
     if (!localInstance.isPresent()) {
-      throw new YWServiceException(BAD_REQUEST, "No local platform instance for config");
+      throw new PlatformServiceException(BAD_REQUEST, "No local platform instance for config");
     }
 
-    return ApiResponse.success(localInstance.get());
+    return PlatformResults.withData(localInstance.get());
   }
 
   public Result promoteInstance(UUID configUUID, UUID instanceUUID, String curLeaderAddr)
@@ -129,15 +124,15 @@ public class PlatformInstanceController extends AuthenticatedController {
             && config.get().getInstances().stream().anyMatch(i -> i.getUUID().equals(instanceUUID));
 
     if (!instanceUUIDValid) {
-      throw new YWServiceException(NOT_FOUND, "Invalid platform instance UUID");
+      throw new PlatformServiceException(NOT_FOUND, "Invalid platform instance UUID");
     }
 
     if (!instance.get().getIsLocal()) {
-      throw new YWServiceException(BAD_REQUEST, "Cannot promote a remote platform instance");
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot promote a remote platform instance");
     }
 
     if (instance.get().getIsLeader()) {
-      throw new YWServiceException(BAD_REQUEST, "Cannot promote a leader platform instance");
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot promote a leader platform instance");
     }
 
     Form<RestorePlatformBackupFormData> formData =
@@ -146,7 +141,7 @@ public class PlatformInstanceController extends AuthenticatedController {
     if (StringUtils.isBlank(curLeaderAddr)) {
       Optional<PlatformInstance> leaderInstance = config.get().getLeader();
       if (!leaderInstance.isPresent()) {
-        throw new YWServiceException(BAD_REQUEST, "Could not find leader instance");
+        throw new PlatformServiceException(BAD_REQUEST, "Could not find leader instance");
       }
 
       curLeaderAddr = leaderInstance.get().getAddress();
@@ -160,7 +155,7 @@ public class PlatformInstanceController extends AuthenticatedController {
             .filter(f -> f.getName().equals(formData.get().backup_file))
             .findFirst();
     if (!backup.isPresent()) {
-      throw new YWServiceException(BAD_REQUEST, "Could not find backup file");
+      throw new PlatformServiceException(BAD_REQUEST, "Could not find backup file");
     }
 
     // Cache local instance address before restore so we can query to new corresponding model.

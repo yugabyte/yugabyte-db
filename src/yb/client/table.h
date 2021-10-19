@@ -57,6 +57,8 @@ struct VersionedTablePartitionList {
 };
 
 typedef std::shared_ptr<const VersionedTablePartitionList> VersionedTablePartitionListPtr;
+typedef Result<VersionedTablePartitionListPtr> FetchPartitionsResult;
+typedef std::function<void(const FetchPartitionsResult&)> FetchPartitionsCallback;
 
 // A YBTable represents a table on a particular cluster. It holds the current
 // schema of the table. Any given YBTable instance belongs to a specific YBClient
@@ -68,10 +70,16 @@ typedef std::shared_ptr<const VersionedTablePartitionList> VersionedTablePartiti
 // This class is thread-safe.
 class YBTable : public std::enable_shared_from_this<YBTable> {
  public:
+  YBTable(const YBTableInfo& info, VersionedTablePartitionListPtr partitions);
+
   ~YBTable();
 
   static Status PBToClientTableType(TableType table_type_from_pb, YBTableType* client_table_type);
   static TableType ClientToPBTableType(YBTableType table_type);
+  // Fetches tablet partitions from master using GetTableLocations RPC.
+  static void FetchPartitions(
+      YBClient* client, std::reference_wrapper<const YBTableInfo> table_info,
+      FetchPartitionsCallback callback);
 
   //------------------------------------------------------------------------------------------------
   // Access functions.
@@ -85,7 +93,6 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   // name, the ID will distinguish the old table from the new.
   const std::string& id() const;
 
-  YBClient* client() const;
   const YBSchema& schema() const;
   const Schema& InternalSchema() const;
   const PartitionSchema& partition_schema() const;
@@ -113,7 +120,7 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   const IndexInfo& index_info() const;
 
   // Is the table colocated?
-  const bool colocated() const;
+  bool colocated() const;
 
   // Returns the replication info for the table.
   const boost::optional<master::ReplicationInfoPB>& replication_info() const;
@@ -137,38 +144,18 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   void MarkPartitionsAsStale();
   bool ArePartitionsStale() const;
 
-  // Refreshes table partitions if stale.
-  // Returns whether table partitions have been refreshed.
-  Result<bool> MaybeRefreshPartitions();
-
-  //------------------------------------------------------------------------------------------------
-  // Postgres support
-  // Create a new QL operation for this table.
-  std::unique_ptr<YBPgsqlWriteOp> NewPgsqlWrite();
-  std::unique_ptr<YBPgsqlWriteOp> NewPgsqlInsert();
-  std::unique_ptr<YBPgsqlWriteOp> NewPgsqlUpdate();
-  std::unique_ptr<YBPgsqlWriteOp> NewPgsqlDelete();
-  std::unique_ptr<YBPgsqlWriteOp> NewPgsqlTruncateColocated();
-
-  std::unique_ptr<YBPgsqlReadOp> NewPgsqlRead();
-  std::unique_ptr<YBPgsqlReadOp> NewPgsqlSelect();
+  // Asynchronously refreshes table partitions.
+  void RefreshPartitions(YBClient* client, StdStatusCallback callback);
 
  private:
   friend class YBClient;
   friend class internal::GetTableSchemaRpc;
   friend class internal::GetColocatedTabletSchemaRpc;
 
-  YBTable(client::YBClient* client, const YBTableInfo& info);
-
-  CHECKED_STATUS Open();
-
-  // Fetches tablet partitions from master using GetTableLocations RPC.
-  Result<VersionedTablePartitionListPtr> FetchPartitions(bool set_table_type = false);
+  void InvokeRefreshPartitionsCallbacks(const Status& status);
 
   size_t FindPartitionStartIndex(const std::string& partition_key, size_t group_by = 1) const;
 
-  client::YBClient* const client_;
-  YBTableType table_type_;
   const YBTableInfo info_;
 
   // Mutex protecting partitions_.
@@ -176,7 +163,10 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   VersionedTablePartitionListPtr partitions_ GUARDED_BY(mutex_);
 
   std::atomic<bool> partitions_are_stale_{false};
-  std::mutex partitions_refresh_mutex_;
+
+  std::mutex refresh_partitions_callbacks_mutex_;
+  std::vector<StdStatusCallback> refresh_partitions_callbacks_
+      GUARDED_BY(refresh_partitions_callbacks_mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(YBTable);
 };

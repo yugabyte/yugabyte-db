@@ -10,32 +10,30 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.yb.client.IsServerReadyResponse;
-import org.yb.client.YBClient;
-import org.yb.tserver.Tserver.TabletServerErrorPB;
-
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
-
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ServerSubTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
-
 import java.util.Map;
 import java.util.Map.Entry;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
+import org.yb.client.YBClient;
 
-import play.api.Play;
-
+@Slf4j
 public class SetFlagInMemory extends ServerSubTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(SetFlagInMemory.class);
 
   // The gflag for tserver addresses.
   private static final String TSERVER_MASTER_ADDR_FLAG = "tserver_master_addrs";
 
   // The gflag for master addresses.
   private static final String MASTER_MASTER_ADDR_FLAG = "master_addresses";
+
+  @Inject
+  public SetFlagInMemory(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   // Parameters for wait task.
   public static class Params extends ServerSubTaskParams {
@@ -58,7 +56,6 @@ public class SetFlagInMemory extends ServerSubTaskBase {
   public void run() {
     checkParams();
     String masterAddresses = getMasterAddresses();
-    YBClient client = getClient();
     boolean isTserverTask = taskParams().serverType == ServerType.TSERVER;
     HostAndPort hp = getHostPort();
 
@@ -67,6 +64,7 @@ public class SetFlagInMemory extends ServerSubTaskBase {
       String flagToSet = isTserverTask ? TSERVER_MASTER_ADDR_FLAG : MASTER_MASTER_ADDR_FLAG;
       gflags = ImmutableMap.of(flagToSet, masterAddresses);
     }
+    YBClient client = getClient();
     try {
       if (gflags == null) {
         throw new IllegalArgumentException("Gflags cannot be null during a setFlag operation.");
@@ -85,9 +83,10 @@ public class SetFlagInMemory extends ServerSubTaskBase {
         }
       }
     } catch (Exception e) {
-      LOG.error("{} hit error : {}", getName(), e.getMessage());
+      log.error("{} hit error : {}", getName(), e.getMessage());
       throw new RuntimeException(e);
+    } finally {
+      closeClient(client);
     }
-    closeClient(client);
   }
 }

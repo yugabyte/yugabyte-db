@@ -2,25 +2,19 @@
 
 package com.yugabyte.yw.models;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-
-import com.google.common.collect.ImmutableMap;
-import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.forms.AlertingFormData.SmtpData;
-import com.yugabyte.yw.models.helpers.CommonUtils;
-
-import org.junit.Before;
-import org.junit.Test;
-import play.libs.Json;
-
-import java.util.Map;
-
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ModelFactory;
+import java.util.Map;
+import org.junit.Before;
+import org.junit.Test;
+import play.libs.Json;
 
 public class CustomerConfigTest extends FakeDBApplication {
 
@@ -60,10 +54,16 @@ public class CustomerConfigTest extends FakeDBApplication {
                 + "\"data\": {\"KEY\": \"ABCDEFGHIJ\", \"SECRET\": \"123456789\", \"DATA\": \"HELLO\"}}");
     CustomerConfig customerConfig =
         CustomerConfig.createWithFormData(defaultCustomer.uuid, formData);
+
     JsonNode data = customerConfig.getData();
-    assertValue(data, "KEY", "AB******IJ");
-    assertValue(data, "SECRET", "12*****89");
+    assertValue(data, "KEY", "ABCDEFGHIJ");
+    assertValue(data, "SECRET", "123456789");
     assertValue(data, "DATA", "HELLO");
+
+    JsonNode maskedData = customerConfig.getMaskedData();
+    assertValue(maskedData, "KEY", "AB******IJ");
+    assertValue(maskedData, "SECRET", "12*****89");
+    assertValue(maskedData, "DATA", "HELLO");
   }
 
   @Test

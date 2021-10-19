@@ -2,51 +2,50 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCheckNumPod;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesWaitForPod;
-import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCheckNumPod;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
-import com.yugabyte.yw.commissioner.tasks.subtasks.LoadBalancerStateChange;
-import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.Universe;
-
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Set;
+import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import javax.inject.Inject;
 
 public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(KubernetesTaskBase.class);
 
-  public class KubernetesPlacement {
-    PlacementInfo placementInfo;
-    Map<UUID, Integer> masters = new HashMap<>();
-    Map<UUID, Integer> tservers = new HashMap<>();
-    Map<UUID, Map<String, String>> configs = new HashMap<>();
+  @Inject
+  protected KubernetesTaskBase(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
+
+  public static class KubernetesPlacement {
+    public PlacementInfo placementInfo;
+    public Map<UUID, Integer> masters;
+    public Map<UUID, Integer> tservers;
+    public Map<UUID, Map<String, String>> configs;
 
     public KubernetesPlacement(PlacementInfo pi) {
       placementInfo = pi;
       masters = PlacementInfoUtil.getNumMasterPerAZ(pi);
       tservers = PlacementInfoUtil.getNumTServerPerAZ(pi);
-
       // Mapping of the deployment zone and its corresponding Kubeconfig.
       configs = PlacementInfoUtil.getConfigPerAZ(pi);
     }
@@ -62,6 +61,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       KubernetesPlacement currPlacement,
       ServerType serverType,
       PlacementInfo activeZones) {
+
+    String ybSoftwareVersion = taskParams().getPrimaryCluster().userIntent.ybSoftwareVersion;
 
     boolean edit = currPlacement != null;
     boolean isMultiAz = masterAddresses != null;
@@ -150,7 +151,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                 tempPI,
                 azCode,
                 masterAddresses,
-                null,
+                ybSoftwareVersion,
                 serverType,
                 config,
                 masterPartition,
@@ -188,6 +189,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                 tempPI,
                 azCode,
                 masterAddresses,
+                ybSoftwareVersion,
                 config));
 
         // Add zone to active configs.
@@ -323,6 +325,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       KubernetesPlacement newPlacement,
       boolean userIntentChange) {
 
+    String ybSoftwareVersion = taskParams().getPrimaryCluster().userIntent.ybSoftwareVersion;
+
     boolean edit = newPlacement != null;
     boolean isMultiAz = masterAddresses != null;
 
@@ -369,7 +373,12 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             newPlacement.masters.getOrDefault(azUUID, 0);
         helmDeletes.addTask(
             createKubernetesExecutorTask(
-                CommandType.HELM_UPGRADE, tempPI, azCode, masterAddresses, config));
+                CommandType.HELM_UPGRADE,
+                tempPI,
+                azCode,
+                masterAddresses,
+                ybSoftwareVersion,
+                config));
         podsWait.addTask(
             createKubernetesCheckPodNumTask(
                 KubernetesCheckNumPod.CommandType.WAIT_FOR_PODS,
@@ -409,7 +418,6 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   public NodeDetails getPodName(
       int partition, String azCode, ServerType serverType, boolean isMultiAz) {
     String sType = serverType == ServerType.MASTER ? "yb-master" : "yb-tserver";
-    Set<NodeDetails> tservers = new HashSet<>();
     String podName =
         isMultiAz
             ? String.format("%s-%d_%s", sType, partition, azCode)
@@ -471,22 +479,23 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   // Create Kubernetes Executor task for creating the namespaces and pull secrets.
   public KubernetesCommandExecutor createKubernetesExecutorTask(
       KubernetesCommandExecutor.CommandType commandType, String az, Map<String, String> config) {
-    return createKubernetesExecutorTask(commandType, null, az, null, config);
+    return createKubernetesExecutorTask(commandType, null, az, null, null, config);
   }
 
   // Create the Kubernetes Executor task for the helm deployments. (USED)
   public KubernetesCommandExecutor createKubernetesExecutorTask(
-      KubernetesCommandExecutor.CommandType commandType,
+      CommandType commandType,
       PlacementInfo pi,
       String az,
       String masterAddresses,
+      String ybSoftwareVersion,
       Map<String, String> config) {
     return createKubernetesExecutorTaskForServerType(
         commandType,
         pi,
         az,
         masterAddresses,
-        null,
+        ybSoftwareVersion,
         ServerType.EITHER,
         config,
         0 /* master partition */,
@@ -536,7 +545,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.enableClientToNodeEncrypt = primary.userIntent.enableClientToNodeEncrypt;
     params.rootCA = taskParams().rootCA;
     params.serverType = serverType;
-    KubernetesCommandExecutor task = new KubernetesCommandExecutor();
+    KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
     task.initialize(params);
     return task;
   }
@@ -605,7 +614,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.enableClientToNodeEncrypt = primary.userIntent.enableClientToNodeEncrypt;
     params.rootCA = taskParams().rootCA;
     params.serverType = serverType;
-    KubernetesCommandExecutor task = new KubernetesCommandExecutor();
+    KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
     task.initialize(params);
     subTaskGroup.addTask(task);
     subTaskGroupQueue.add(subTaskGroup);
@@ -636,7 +645,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     }
     params.universeUUID = taskParams().universeUUID;
     params.podName = podName;
-    KubernetesWaitForPod task = new KubernetesWaitForPod();
+    KubernetesWaitForPod task = createTask(KubernetesWaitForPod.class);
     task.initialize(params);
     subTaskGroup.addTask(task);
     subTaskGroupQueue.add(subTaskGroup);
@@ -665,7 +674,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     }
     params.universeUUID = taskParams().universeUUID;
     params.podNum = numPods;
-    KubernetesCheckNumPod task = new KubernetesCheckNumPod();
+    KubernetesCheckNumPod task = createTask(KubernetesCheckNumPod.class);
     task.initialize(params);
     return task;
   }

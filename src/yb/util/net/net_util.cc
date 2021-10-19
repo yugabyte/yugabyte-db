@@ -47,7 +47,6 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/optional/optional.hpp>
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/numbers.h"
@@ -59,6 +58,7 @@
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/errno.h"
 #include "yb/util/faststring.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
 #include "yb/util/memory/memory.h"
@@ -81,13 +81,16 @@ using strings::Substitute;
 
 DEFINE_string(
     net_address_filter,
-    "ipv4_external,ipv4_all",
+    "ipv4_external,ipv4_all,ipv6_external,ipv6_non_link_local,ipv6_all",
     "Order in which to select ip addresses returned by the resolver"
     "Can be set to something like \"ipv4_all,ipv6_all\" to prefer IPv4 over "
     "IPv6 addresses."
     "Can be set to something like \"ipv4_external,ipv4_all,ipv6_all\" to "
     "prefer external IPv4 "
     "addresses first. Other options include ipv6_external,ipv6_non_link_local");
+
+DEFINE_test_flag(string, fail_to_fast_resolve_address, "",
+                 "A hostname to fail to fast resolve for tests.");
 
 namespace yb {
 
@@ -427,6 +430,10 @@ Status GetFQDN(string* hostname) {
     }
   }
 
+  if (!result->ai_canonname) {
+    return STATUS(NetworkError, "Canonical name not specified");
+  }
+
   *hostname = result->ai_canonname;
   freeaddrinfo(result);
   return Status::OK();
@@ -637,6 +644,9 @@ boost::optional<IpAddress> TryFastResolve(const std::string& host) {
   // For testing purpose we resolve A.B.C.D.ip.yugabyte to A.B.C.D.
   static const std::string kYbIpSuffix = ".ip.yugabyte";
   if (boost::ends_with(host, kYbIpSuffix)) {
+    if (PREDICT_FALSE(host == FLAGS_TEST_fail_to_fast_resolve_address)) {
+      return boost::none;
+    }
     boost::system::error_code ec;
     auto address = IpAddress::from_string(
         host.substr(0, host.length() - kYbIpSuffix.length()), ec);

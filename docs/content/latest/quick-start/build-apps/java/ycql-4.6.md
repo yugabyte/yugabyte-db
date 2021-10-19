@@ -22,6 +22,12 @@ showAsideToc: true
     </a>
   </li>
   <li >
+    <a href="/latest/quick-start/build-apps/java/ysql-jdbc-ssl" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - JDBC SSL/TLS
+    </a>
+  </li>
+  <li >
     <a href="/latest/quick-start/build-apps/java/ysql-spring-data" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - Spring Data JPA
@@ -45,7 +51,7 @@ showAsideToc: true
 
 To build a sample Java application with the [Yugabyte Java Driver for YCQL](https://github.com/yugabyte/cassandra-java-driver), add the following Maven dependency to your application:
 
-```mvn
+```xml
  <dependency>
    <groupId>com.yugabyte</groupId>
    <artifactId>java-driver-core</artifactId>

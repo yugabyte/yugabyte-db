@@ -50,11 +50,16 @@ struct InFlightOpsGroup {
   std::string ToString() const;
 };
 
+struct InFlightOpsTransactionMetadata {
+  TransactionMetadata transaction;
+  boost::optional<SubTransactionMetadata> subtransaction;
+};
+
 struct InFlightOpsGroupsWithMetadata {
   static const size_t kPreallocatedCapacity = 40;
 
   boost::container::small_vector<InFlightOpsGroup, kPreallocatedCapacity> groups;
-  TransactionMetadata metadata;
+  InFlightOpsTransactionMetadata metadata;
 };
 
 typedef StatusFunctor Waiter;
@@ -178,7 +183,7 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
   std::string ToString() const;
 
-  const IsolationLevel isolation() const;
+  IsolationLevel isolation() const;
 
   // Releases this transaction object returning its metadata.
   // So this transaction could be used by some other application instance.
@@ -188,9 +193,33 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   // between application instances.
   static YBTransactionPtr Take(TransactionManager* manager, const TransactionMetadata& metadata);
 
+  void SetActiveSubTransaction(SubTransactionId id);
+
+  CHECKED_STATUS RollbackSubTransaction(SubTransactionId id);
+
+  bool HasSubTransactionState();
+
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;
+};
+
+class YBSubTransaction {
+ public:
+  YBSubTransaction();
+
+  void SetActiveSubTransaction(SubTransactionId id);
+
+  CHECKED_STATUS RollbackSubTransaction(SubTransactionId id);
+
+  const SubTransactionMetadata& get();
+
+ private:
+  SubTransactionMetadata sub_txn_;
+
+  // Tracks the highest observed subtransaction_id. Used during "ROLLBACK TO s" to abort from s to
+  // the highest live subtransaction_id.
+  SubTransactionId highest_subtransaction_id_ = kMinSubTransactionId;
 };
 
 } // namespace client

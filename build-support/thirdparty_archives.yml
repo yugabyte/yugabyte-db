@@ -1,62 +1,97 @@
-sha_for_local_checkout: 8aebe87f79ebbc8bfac94cdd823abfb297586063
+sha_for_local_checkout: 44ba3719652858e1f7816df87b25101e09527c88
 archives:
-  - os_type: centos7
+  - os_type: almalinux8
+    architecture: x86_64
     compiler_type: clang11
-    tag: v20210520175409-8aebe87f79-centos7-clang11
-    sha: 8aebe87f79ebbc8bfac94cdd823abfb297586063
-  - os_type: centos7
+    sha: 44ba3719652858e1f7816df87b25101e09527c88
+    tag: v20210916160342-44ba371965-almalinux8-x86_64-clang11
+  - os_type: almalinux8
+    architecture: x86_64
     compiler_type: clang12
-    tag: v20210520175436-8aebe87f79-centos7-clang12
-    sha: 8aebe87f79ebbc8bfac94cdd823abfb297586063
+    sha: 44ba3719652858e1f7816df87b25101e09527c88
+    tag: v20210916160348-44ba371965-almalinux8-x86_64-clang12
+  - os_type: almalinux8
+    architecture: x86_64
+    compiler_type: gcc8
+    sha: 44ba3719652858e1f7816df87b25101e09527c88
+    tag: v20210916160322-44ba371965-almalinux8-x86_64-gcc8
+  - os_type: almalinux8
+    architecture: x86_64
+    compiler_type: gcc9
+    sha: 44ba3719652858e1f7816df87b25101e09527c88
+    tag: v20210916160339-44ba371965-almalinux8-x86_64-gcc9
   - os_type: centos7
+    architecture: x86_64
+    compiler_type: clang11
+    sha: 44ba3719652858e1f7816df87b25101e09527c88
+    tag: v20210916160331-44ba371965-centos7-x86_64-clang11
+  - os_type: centos7
+    architecture: x86_64
+    compiler_type: clang12
+    sha: 44ba3719652858e1f7816df87b25101e09527c88
+    tag: v20210916160400-44ba371965-centos7-x86_64-clang12
+  - os_type: centos7
+    architecture: x86_64
     compiler_type: clang7
-    tag: v20210520175411-8aebe87f79-centos7-clang7
-    sha: 8aebe87f79ebbc8bfac94cdd823abfb297586063
+    sha: 44ba3719652858e1f7816df87b25101e09527c88
+    tag: v20210916160346-44ba371965-centos7-x86_64-clang7
   - os_type: centos7
+    architecture: x86_64
     compiler_type: gcc5
-    tag: v20210520175408-8aebe87f79-centos7-linuxbrew-gcc5
-    sha: 8aebe87f79ebbc8bfac94cdd823abfb297586063
+    sha: 44ba3719652858e1f7816df87b25101e09527c88
+    tag: v20210916160412-44ba371965-centos7-x86_64-linuxbrew-gcc5
   - os_type: centos7
+    architecture: x86_64
     compiler_type: gcc8
-    tag: v20210520175423-8aebe87f79-centos7-gcc8
-    sha: 8aebe87f79ebbc8bfac94cdd823abfb297586063
+    sha: 44ba3719652858e1f7816df87b25101e09527c88
+    tag: v20210916160355-44ba371965-centos7-x86_64-gcc8
   - os_type: centos7
+    architecture: x86_64
     compiler_type: gcc9
-    tag: v20210520175418-8aebe87f79-centos7-gcc9
-    sha: 8aebe87f79ebbc8bfac94cdd823abfb297586063
+    sha: 44ba3719652858e1f7816df87b25101e09527c88
+    tag: v20210916160541-44ba371965-centos7-x86_64-gcc9
+  - os_type: centos8
+    architecture: x86_64
+    compiler_type: gcc8
+    sha: 44ba3719652858e1f7816df87b25101e09527c88
+    tag: v20210916160428-44ba371965-centos8-x86_64-gcc8
+  - os_type: centos8
+    architecture: x86_64
+    compiler_type: gcc9
+    sha: 44ba3719652858e1f7816df87b25101e09527c88
+    tag: v20210916160344-44ba371965-centos8-x86_64-gcc9
   - os_type: macos
+    architecture: x86_64
     compiler_type: clang
-    tag: v20210520175419-8aebe87f79-macos
-    sha: 8aebe87f79ebbc8bfac94cdd823abfb297586063
+    sha: 44ba3719652858e1f7816df87b25101e09527c88
+    tag: v20210916160324-44ba371965-macos-x86_64
   - os_type: ubuntu18.04
+    architecture: x86_64
     compiler_type: clang10
-    tag: v20210520175438-8aebe87f79-ubuntu1804-clang10
-    sha: 8aebe87f79ebbc8bfac94cdd823abfb297586063
+    sha: 44ba3719652858e1f7816df87b25101e09527c88
+    tag: v20210916160408-44ba371965-ubuntu1804-x86_64-clang10
   - os_type: ubuntu18.04
+    architecture: x86_64
     compiler_type: clang11
-    tag: v20210520175434-8aebe87f79-ubuntu1804-clang11
-    sha: 8aebe87f79ebbc8bfac94cdd823abfb297586063
+    sha: 44ba3719652858e1f7816df87b25101e09527c88
+    tag: v20210916160408-44ba371965-ubuntu1804-x86_64-clang11
   - os_type: ubuntu18.04
+    architecture: x86_64
     compiler_type: gcc7
-    tag: v20210520175530-8aebe87f79-ubuntu1804-gcc7
-    sha: 8aebe87f79ebbc8bfac94cdd823abfb297586063
+    sha: 44ba3719652858e1f7816df87b25101e09527c88
+    tag: v20210916160407-44ba371965-ubuntu1804-x86_64-gcc7
   - os_type: ubuntu18.04
+    architecture: x86_64
     compiler_type: gcc8
-    tag: v20210520175516-8aebe87f79-ubuntu1804-gcc8
-    sha: 8aebe87f79ebbc8bfac94cdd823abfb297586063
+    sha: 44ba3719652858e1f7816df87b25101e09527c88
+    tag: v20210916160407-44ba371965-ubuntu1804-x86_64-gcc8
   - os_type: ubuntu20.04
+    architecture: x86_64
     compiler_type: clang11
-    tag: v20210520175442-8aebe87f79-ubuntu2004-clang11
-    sha: 8aebe87f79ebbc8bfac94cdd823abfb297586063
+    sha: 44ba3719652858e1f7816df87b25101e09527c88
+    tag: v20210916160341-44ba371965-ubuntu2004-x86_64-clang11
   - os_type: ubuntu20.04
+    architecture: x86_64
     compiler_type: gcc9
-    tag: v20210520175444-8aebe87f79-ubuntu2004-gcc9
-    sha: 8aebe87f79ebbc8bfac94cdd823abfb297586063
-
-  # Added manually to un-break the Ubuntu build on Jenkins. Instead of this, if the compiler type
-  # does not specify a version, we should detect the actual compiler version and match based on
-  # its major version.
-  - os_type: ubuntu18.04
-    compiler_type: gcc
-    tag: v20210520175530-8aebe87f79-ubuntu1804-gcc7
-    sha: 8aebe87f79ebbc8bfac94cdd823abfb297586063
+    sha: 44ba3719652858e1f7816df87b25101e09527c88
+    tag: v20210916160342-44ba371965-ubuntu2004-x86_64-gcc9

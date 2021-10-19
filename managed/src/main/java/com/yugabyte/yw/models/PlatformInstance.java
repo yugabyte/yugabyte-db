@@ -15,21 +15,29 @@ import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.ObjectCodec;
-import com.fasterxml.jackson.databind.*;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonDeserializer;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.JsonSerializer;
+import com.fasterxml.jackson.databind.SerializerProvider;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import io.ebean.Finder;
 import io.ebean.Model;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.data.validation.Constraints;
-
-import javax.persistence.*;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Optional;
 import java.util.UUID;
+import javax.persistence.Column;
+import javax.persistence.Entity;
+import javax.persistence.Id;
+import javax.persistence.ManyToOne;
+import javax.persistence.Temporal;
+import javax.persistence.TemporalType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.data.validation.Constraints;
 
 @Entity
 @JsonPropertyOrder({"uuid", "config_uuid", "address", "is_leader", "is_local", "last_backup"})
@@ -203,8 +211,7 @@ public class PlatformInstance extends Model {
             && json.has("config_uuid")
             && json.has("address")
             && json.has("is_leader")
-            && json.has("is_local")
-            && json.has("last_backup")) {
+            && json.has("is_local")) {
           PlatformInstance instance = new PlatformInstance();
           instance.uuid = UUID.fromString(json.get("uuid").asText());
           UUID configUUID = UUID.fromString(json.get("config_uuid").asText());
@@ -214,7 +221,9 @@ public class PlatformInstance extends Model {
           instance.setIsLocal(json.get("is_local").asBoolean());
           JsonNode lastBackup = json.get("last_backup");
           instance.lastBackup =
-              lastBackup.asText().equals("null") ? null : new Date(lastBackup.asLong());
+              (lastBackup == null || lastBackup.asText().equals("null"))
+                  ? null
+                  : new Date(lastBackup.asLong());
 
           return instance;
         } else {

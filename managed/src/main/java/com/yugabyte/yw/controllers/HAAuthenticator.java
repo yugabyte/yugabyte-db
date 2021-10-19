@@ -11,14 +11,12 @@
 package com.yugabyte.yw.controllers;
 
 import com.yugabyte.yw.models.HighAvailabilityConfig;
-
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import play.mvc.Action;
 import play.mvc.Http;
 import play.mvc.Result;
 import play.mvc.Results;
-
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
 
 public class HAAuthenticator extends Action.Simple {
   public static final String HA_CLUSTER_KEY_TOKEN_HEADER = "HA-AUTH-TOKEN";

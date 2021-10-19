@@ -42,7 +42,6 @@
 #include <google/protobuf/descriptor.pb.h>
 #include <gtest/gtest.h>
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/util/env_util.h"
 #include "yb/util/memenv/memenv.h"
 #include "yb/util/pb_util.h"
@@ -375,7 +374,7 @@ void TestPBUtil::DumpPBCToString(const string& path, bool oneline_output,
 
 TEST_F(TestPBUtil, TestDumpPBContainer) {
   const char* kExpectedOutput =
-      "Message 0\n"
+      "yb.ProtoContainerTest3PB 0\n"
       "-------\n"
       "record_one {\n"
       "  name: \"foo\"\n"
@@ -388,7 +387,7 @@ TEST_F(TestPBUtil, TestDumpPBContainer) {
       "  }\n"
       "}\n"
       "\n"
-      "Message 1\n"
+      "yb.ProtoContainerTest3PB 1\n"
       "-------\n"
       "record_one {\n"
       "  name: \"foo\"\n"

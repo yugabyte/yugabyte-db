@@ -41,12 +41,45 @@ public enum TaskType {
 
   EditKubernetesUniverse("EditKubernetesUniverse"),
 
+  ExternalScript("ExternalScript"),
+
   @Deprecated
   KubernetesProvision("KubernetesProvision"),
 
   ImportIntoTable("ImportIntoTable"),
 
+  // TODO: Mark it as deprecated once UpgradeUniverse related APIs are removed
   UpgradeUniverse("UpgradeUniverse"),
+
+  RestartUniverse("upgrade.RestartUniverse"),
+
+  SoftwareUpgrade("upgrade.SoftwareUpgrade"),
+
+  SoftwareKubernetesUpgrade("upgrade.SoftwareKubernetesUpgrade"),
+
+  GFlagsUpgrade("upgrade.GFlagsUpgrade"),
+
+  GFlagsKubernetesUpgrade("upgrade.GFlagsKubernetesUpgrade"),
+
+  CertsRotate("upgrade.CertsRotate"),
+
+  TlsToggle("upgrade.TlsToggle"),
+
+  VMImageUpgrade("upgrade.VMImageUpgrade"),
+
+  SystemdUpgrade("upgrade.SystemdUpgrade"),
+
+  CreateRootVolumes("subtasks.CreateRootVolumes"),
+
+  ReplaceRootVolume("subtasks.ReplaceRootVolume"),
+
+  ChangeInstanceType("subtasks.ChangeInstanceType"),
+
+  PersistResizeNode("subtasks.PersistResizeNode"),
+
+  PersistSystemdUpgrade("subtasks.PersistSystemdUpgrade"),
+
+  UpdateNodeDetails("subtasks.UpdateNodeDetails"),
 
   UpgradeKubernetesUniverse("UpgradeKubernetesUniverse"),
 
@@ -75,6 +108,22 @@ public enum TaskType {
 
   StartMasterOnNode("StartMasterOnNode"),
 
+  SyncDBStateWithPlatform("SyncDBStateWithPlatform"),
+
+  CreateXClusterReplication("CreateXClusterReplication"),
+
+  CreateXClusterConfig("CreateXClusterConfig"),
+
+  DeleteXClusterReplication("DeleteXClusterReplication"),
+
+  DeleteXClusterConfig("DeleteXClusterConfig"),
+
+  EditXClusterReplication("EditXClusterReplication"),
+
+  EditXClusterConfig("EditXClusterConfig"),
+
+  PauseOrResumeXClusterReplication("PauseOrResumeXClusterReplication"),
+
   // Tasks belonging to subtasks classpath
   AnsibleClusterServerCtl("subtasks.AnsibleClusterServerCtl"),
 
@@ -88,6 +137,8 @@ public enum TaskType {
 
   AnsibleSetupServer("subtasks.AnsibleSetupServer"),
 
+  AnsibleCreateServer("subtasks.AnsibleCreateServer"),
+
   PrecheckNode("subtasks.PrecheckNode"),
 
   AnsibleUpdateNodeInfo("subtasks.AnsibleUpdateNodeInfo"),
@@ -95,6 +146,8 @@ public enum TaskType {
   BulkImport("subtasks.BulkImport"),
 
   ChangeMasterConfig("subtasks.ChangeMasterConfig"),
+
+  ChangeAdminPassword("subtasks.ChangeAdminPassword"),
 
   CreateTable("subtasks.CreateTable"),
 
@@ -144,6 +197,8 @@ public enum TaskType {
 
   WaitForServerReady("subtasks.WaitForServerReady"),
 
+  RunExternalScript("subtasks.RunExternalScript"),
+
   // Tasks belonging to subtasks.cloud classpath
   CloudAccessKeyCleanup("subtasks.cloud.CloudAccessKeyCleanup"),
 
@@ -186,7 +241,30 @@ public enum TaskType {
 
   UnivSetCertificate("subtasks.UnivSetCertificate"),
 
-  CreateAlertDefinitions("subtasks.CreateAlertDefinitions");
+  CreateAlertDefinitions("subtasks.CreateAlertDefinitions"),
+
+  UniverseSetTlsParams("subtasks.UniverseSetTlsParams"),
+
+  UniverseUpdateRootCert("subtasks.UniverseUpdateRootCert"),
+
+  AsyncReplicationPlatformSync("subtasks.AsyncReplicationPlatformSync"),
+
+  AsyncReplicationSetup("subtasks.AsyncReplicationSetup"),
+
+  AsyncReplicationDelete("subtasks.AsyncReplicationDelete"),
+
+  ResetUniverseVersion("subtasks.ResetUniverseVersion"),
+
+  AlterXClusterReplicationAddTables("subtasks.AlterXClusterReplicationAddTables"),
+
+  AlterXClusterReplicationRemoveTables("subtasks.AlterXClusterReplicationRemoveTables"),
+
+  AlterXClusterReplicationChangeMasterAddresses(
+      "subtasks.AlterXClusterReplicationChangeMasterAddresses"),
+
+  XClusterReplicationSetActive("subtasks.XClusterReplicationSetActive"),
+
+  DeleteCertificate("subtasks.DeleteCertificate");
 
   private String relativeClassPath;
 

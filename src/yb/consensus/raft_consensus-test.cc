@@ -47,7 +47,6 @@
 #include "yb/util/metrics.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
-#include "yb/tablet/preparer.h"
 
 DECLARE_bool(enable_leader_failure_detection);
 
@@ -357,14 +356,14 @@ class RaftConsensusTest : public YBTest {
   }
 
  protected:
-  gscoped_ptr<ThreadPool> raft_pool_;
+  std::unique_ptr<ThreadPool> raft_pool_;
   ConsensusOptions options_;
   RaftConfigPB config_;
   OpIdPB initial_id_;
-  gscoped_ptr<FsManager> fs_manager_;
+  std::unique_ptr<FsManager> fs_manager_;
   std::unique_ptr<ThreadPool> log_thread_pool_;
   scoped_refptr<Log> log_;
-  gscoped_ptr<PeerProxyFactory> proxy_factory_;
+  std::unique_ptr<PeerProxyFactory> proxy_factory_;
   scoped_refptr<server::Clock> clock_;
   MetricRegistry metric_registry_;
   scoped_refptr<MetricEntity> table_metric_entity_;
@@ -379,7 +378,7 @@ class RaftConsensusTest : public YBTest {
   // the test is.
   MockQueue* queue_;
   MockPeerManager* peer_manager_;
-  gscoped_ptr<MockOperationFactory> operation_factory_;
+  std::unique_ptr<MockOperationFactory> operation_factory_;
 };
 
 ConsensusRequestPB RaftConsensusTest::MakeConsensusRequest(int64_t caller_term,

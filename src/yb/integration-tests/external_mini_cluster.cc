@@ -885,7 +885,7 @@ Status ExternalMiniCluster::AddTServerToLeaderBlacklist(
   return Status::OK();
 }
 
-Status ExternalMiniCluster::EmptyBlacklist(
+Status ExternalMiniCluster::ClearBlacklist(
     ExternalMaster* master) {
   GetMasterClusterConfigRequestPB config_req;
   GetMasterClusterConfigResponsePB config_resp;
@@ -1172,7 +1172,7 @@ Status ExternalMiniCluster::StartMasters() {
 
 Status ExternalMiniCluster::WaitForInitDb() {
   const auto start_time = std::chrono::steady_clock::now();
-  const auto kTimeout = NonTsanVsTsan(900s, 1800s);
+  const auto kTimeout = NonTsanVsTsan(1200s, 1800s);
   int num_timeouts = 0;
   const int kMaxTimeouts = 10;
   while (true) {
@@ -1412,7 +1412,7 @@ Result<std::vector<ListTabletsForTabletServerResponsePB::Entry>> ExternalMiniClu
   ListTabletsForTabletServerResponsePB resp;
 
   rpc::RpcController rpc;
-  rpc.set_timeout(MonoDelta::FromSeconds(10));
+  rpc.set_timeout(10s * kTimeMultiplier);
   RETURN_NOT_OK(proxy.ListTabletsForTabletServer(req, &resp, &rpc));
 
   std::vector<ListTabletsForTabletServerResponsePB::Entry> result;
@@ -1421,6 +1421,55 @@ Result<std::vector<ListTabletsForTabletServerResponsePB::Entry>> ExternalMiniClu
   }
 
   return result;
+}
+
+Result<tserver::GetSplitKeyResponsePB> ExternalMiniCluster::GetSplitKey(
+    const std::string& tablet_id) {
+  for (int i = 0; i < this->num_tablet_servers(); i++) {
+    auto tserver = this->tablet_server(i);
+    auto ts_service_proxy = std::make_unique<tserver::TabletServerServiceProxy>(
+        proxy_cache_.get(), tserver->bound_rpc_addr());
+    tserver::GetSplitKeyRequestPB req;
+    req.set_tablet_id(tablet_id);
+    rpc::RpcController controller;
+    controller.set_timeout(10s * kTimeMultiplier);
+    tserver::GetSplitKeyResponsePB resp;
+    RETURN_NOT_OK(ts_service_proxy->GetSplitKey(req, &resp, &controller));
+    if (!resp.has_error()) {
+      return resp;
+    }
+  }
+  return STATUS(IllegalState, "GetSplitKey failed on all TServers");
+}
+
+Status ExternalMiniCluster::FlushTabletsOnSingleTServer(
+    ExternalTabletServer* ts, const std::vector<yb::TabletId> tablet_ids,
+    bool is_compaction) {
+  tserver::FlushTabletsRequestPB req;
+  tserver::FlushTabletsResponsePB resp;
+  rpc::RpcController controller;
+  controller.set_timeout(10s * kTimeMultiplier);
+
+  req.set_dest_uuid(ts->uuid());
+  req.set_operation(is_compaction ? tserver::FlushTabletsRequestPB::COMPACT
+                                  : tserver::FlushTabletsRequestPB::FLUSH);
+  for (const auto& tablet_id : tablet_ids) {
+    req.add_tablet_ids(tablet_id);
+  }
+
+  auto ts_admin_service_proxy = std::make_unique<tserver::TabletServerAdminServiceProxy>(
+    proxy_cache_.get(), ts->bound_rpc_addr());
+  return ts_admin_service_proxy->FlushTablets(req, &resp, &controller);
+}
+
+Result<tserver::ListTabletsResponsePB> ExternalMiniCluster::ListTablets(ExternalTabletServer* ts) {
+  rpc::RpcController rpc;
+  ListTabletsRequestPB req;
+  ListTabletsResponsePB resp;
+  rpc.set_timeout(opts_.timeout);
+  TabletServerServiceProxy proxy(proxy_cache_.get(), ts->bound_rpc_addr());
+  RETURN_NOT_OK(proxy.ListTablets(req, &resp, &rpc));
+  return resp;
 }
 
 Result<std::vector<std::string>> ExternalMiniCluster::GetTabletIds(ExternalTabletServer* ts) {
@@ -1679,7 +1728,7 @@ void ExternalMiniCluster::ConfigureClientBuilder(client::YBClientBuilder* builde
   }
 }
 
-HostPort ExternalMiniCluster::DoGetLeaderMasterBoundRpcAddr() {
+Result<HostPort> ExternalMiniCluster::DoGetLeaderMasterBoundRpcAddr() {
   return GetLeaderMaster()->bound_rpc_addr();
 }
 
@@ -1943,11 +1992,6 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
   // inherited from test script
   argv.push_back("--log_dir=");
 
-  // Then the "extra flags" passed into the ctor (from the ExternalMiniCluster
-  // options struct). These come at the end so they can override things like
-  // web port or RPC bind address if necessary.
-  argv.insert(argv.end(), extra_flags_.begin(), extra_flags_.end());
-
   // Tell the server to dump its port information so we can pick it up.
   const string info_path = GetServerInfoPath();
   argv.push_back("--server_dump_info_path=" + info_path);
@@ -1999,9 +2043,16 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
 
   argv.push_back(Format("--minicluster_daemon_id=$0", daemon_id_));
 
+  // Finally, extra flags to override.
+  // - extra_flags_ is taken from ExternalMiniCluster.opts_, which is often set by test subclasses'
+  //   UpdateMiniClusterOptions.
+  // - extra daemon flags is supplied by the user, either through environment variable or
+  //   yb_build.sh --extra_daemon_flags (or --extra_daemon_args), so it should take highest
+  //   precedence.
+  argv.insert(argv.end(), extra_flags_.begin(), extra_flags_.end());
   AddExtraFlagsFromEnvVar("YB_EXTRA_DAEMON_FLAGS", &argv);
 
-  gscoped_ptr<Subprocess> p(new Subprocess(exe_, argv));
+  std::unique_ptr<Subprocess> p(new Subprocess(exe_, argv));
   p->ShareParentStdout(false);
   p->ShareParentStderr(false);
   auto default_output_prefix = Substitute("[$0]", daemon_id_);
@@ -2071,6 +2122,12 @@ Status ExternalDaemon::Resume() {
   if (!process_) return Status::OK();
   VLOG(1) << "Resuming " << ProcessNameAndPidStr();
   return process_->Kill(SIGCONT);
+}
+
+Status ExternalDaemon::Kill(int signal) {
+  if (!process_) return Status::OK();
+  VLOG(1) << "Kill " << ProcessNameAndPidStr() << " with " << signal;
+  return process_->Kill(signal);
 }
 
 bool ExternalDaemon::IsShutdown() const {
@@ -2439,7 +2496,9 @@ ExternalTabletServer::ExternalTabletServer(
 ExternalTabletServer::~ExternalTabletServer() {
 }
 
-Status ExternalTabletServer::Start(bool start_cql_proxy, bool set_proxy_addrs) {
+Status ExternalTabletServer::Start(
+    bool start_cql_proxy, bool set_proxy_addrs,
+    std::vector<std::pair<string, string>> extra_flags) {
   start_cql_proxy_ = start_cql_proxy;
   Flags flags;
   flags.Add("fs_data_dirs", data_dir_);
@@ -2463,6 +2522,10 @@ Status ExternalTabletServer::Start(bool start_cql_proxy, bool set_proxy_addrs) {
   // where several unit tests tend to run in parallel.
   flags.Add("tablet_server_svc_num_threads", "64");
   flags.Add("ts_consensus_svc_num_threads", "20");
+
+  for (const auto& flag_value : extra_flags) {
+    flags.Add(flag_value.first, flag_value.second);
+  }
 
   RETURN_NOT_OK(StartProcess(flags.value()));
 
@@ -2499,7 +2562,8 @@ Status ExternalTabletServer::DeleteServerInfoPaths() {
   return Status::OK();
 }
 
-Status ExternalTabletServer::Restart(bool start_cql_proxy) {
+Status ExternalTabletServer::Restart(
+    bool start_cql_proxy, std::vector<std::pair<string, string>> flags) {
   LOG_WITH_PREFIX(INFO) << "Restart: start_cql_proxy=" << start_cql_proxy;
   if (!IsProcessAlive()) {
     // Make sure this function could be safely called if the process has already crashed.
@@ -2509,7 +2573,7 @@ Status ExternalTabletServer::Restart(bool start_cql_proxy) {
   if (bound_rpc_.port() == 0) {
     return STATUS(IllegalState, "Tablet server cannot be restarted. Must call Shutdown() first.");
   }
-  return Start(start_cql_proxy);
+  return Start(start_cql_proxy, true /* set_proxy_addrs */, flags);
 }
 
 Status RestartAllMasters(ExternalMiniCluster* cluster) {

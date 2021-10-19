@@ -2,28 +2,42 @@
 
 package com.yugabyte.yw.models;
 
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
+import static java.lang.Math.abs;
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.helpers.TaskType;
-
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.CreatedTimestamp;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.EnumValue;
 import io.ebean.annotation.UpdatedTimestamp;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
-import java.text.SimpleDateFormat;
-import java.util.*;
-import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import static java.lang.Math.abs;
-
+@ApiModel(
+    description =
+        "A single backup. Includes the backup's status, expiration time, and configuration.")
 @Entity
 public class Backup extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(Backup.class);
@@ -48,29 +62,43 @@ public class Backup extends Model {
     // Complete or partial failure to delete
     @EnumValue("FailedToDelete")
     FailedToDelete,
+
+    @EnumValue("Stopped")
+    Stopped,
   }
 
-  @Id public UUID backupUUID;
+  @ApiModelProperty(value = "Backup UUID", accessMode = READ_ONLY)
+  @Id
+  public UUID backupUUID;
 
+  @ApiModelProperty(value = "Customer UUID that owns this backup", accessMode = READ_WRITE)
   @Column(nullable = false)
   public UUID customerUUID;
 
+  @ApiModelProperty(value = "State of the backup", example = "DELETED", accessMode = READ_ONLY)
   @Column(nullable = false)
   public BackupState state;
 
+  @ApiModelProperty(value = "Details of the backup", accessMode = READ_WRITE)
   @Column(columnDefinition = "TEXT", nullable = false)
   @DbJson
   private BackupTableParams backupInfo;
 
+  @ApiModelProperty(value = "Backup UUID", accessMode = READ_ONLY)
   @Column(unique = true)
   public UUID taskUUID;
 
-  @Column private UUID scheduleUUID;
+  @ApiModelProperty(
+      value = "Schedule UUID, if this backup is part of a schedule",
+      accessMode = READ_WRITE)
+  @Column
+  private UUID scheduleUUID;
 
   public UUID getScheduleUUID() {
     return scheduleUUID;
   }
 
+  @ApiModelProperty(value = "Expiry time (unix timestamp) of the backup", accessMode = READ_WRITE)
   @Column
   // Unix timestamp at which backup will get deleted.
   private Date expiry;
@@ -206,12 +234,21 @@ public class Backup extends Model {
         .collect(Collectors.toList());
   }
 
+  @Deprecated
   public static Backup get(UUID customerUUID, UUID backupUUID) {
     return find.query().where().idEq(backupUUID).eq("customer_uuid", customerUUID).findOne();
   }
 
-  public static Backup fetchByTaskUUID(UUID taskUUID) {
-    return Backup.find.query().where().eq("task_uuid", taskUUID).findOne();
+  public static Backup getOrBadRequest(UUID customerUUID, UUID backupUUID) {
+    Backup backup = get(customerUUID, backupUUID);
+    if (backup == null) {
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid customer or backup UUID");
+    }
+    return backup;
+  }
+
+  public static List<Backup> fetchAllBackupsByTaskUUID(UUID taskUUID) {
+    return Backup.find.query().where().eq("task_uuid", taskUUID).findList();
   }
 
   public static Map<Customer, List<Backup>> getExpiredBackups() {
@@ -245,7 +282,9 @@ public class Backup extends Model {
     // Or completed to deleted state.
     if ((this.state == BackupState.InProgress && this.state != newState)
         || (this.state == BackupState.Completed && newState == BackupState.Deleted)
-        || (this.state == BackupState.Completed && newState == BackupState.FailedToDelete)) {
+        || (this.state == BackupState.Completed && newState == BackupState.FailedToDelete)
+        || (this.state == BackupState.Failed && newState == BackupState.FailedToDelete)
+        || (this.state == BackupState.Failed && newState == BackupState.Deleted)) {
       this.state = newState;
       save();
     } else {
@@ -253,30 +292,21 @@ public class Backup extends Model {
     }
   }
 
-  public static boolean existsStorageConfig(UUID customerConfigUUID) {
-    List<Backup> backupList =
-        find.query()
-            .where()
-            .or()
-            .eq("state", BackupState.Completed)
-            .eq("state", BackupState.InProgress)
-            .endOr()
-            .findList();
-    backupList =
-        backupList
-            .stream()
-            .filter(b -> b.getBackupInfo().storageConfigUUID.equals(customerConfigUUID))
-            .collect(Collectors.toList());
-    return backupList.size() != 0;
+  public static List<Backup> getInProgressAndCompleted(UUID customerUUID) {
+    return find.query()
+        .where()
+        .eq("customer_uuid", customerUUID)
+        .in("state", BackupState.InProgress, BackupState.Completed)
+        .or()
+        .eq("state", BackupState.Completed)
+        .eq("state", BackupState.InProgress)
+        .endOr()
+        .findList();
   }
 
-  public static Set<Universe> getAssociatedUniverses(UUID configUUID) {
+  public static Set<Universe> getAssociatedUniverses(UUID customerUUID, UUID configUUID) {
     Set<UUID> universeUUIDs = new HashSet<>();
-    List<Backup> backupList =
-        find.query()
-            .where()
-            .in("state", BackupState.Completed, BackupState.InProgress)
-            .findList();
+    List<Backup> backupList = getInProgressAndCompleted(customerUUID);
     backupList =
         backupList
             .stream()
@@ -303,14 +333,14 @@ public class Backup extends Model {
                             .asText()
                             .equals(configUUID.toString())
                         && universeUUIDs.add(
-                            UUID.fromString(s.getTaskParams().path("universeUUID").toString())))
+                            UUID.fromString(s.getTaskParams().get("universeUUID").asText())))
             .collect(Collectors.toList());
     Set<Universe> universes = new HashSet<>();
     for (UUID universeUUID : universeUUIDs) {
       try {
         universes.add(Universe.getOrBadRequest(universeUUID));
       }
-      // Backup is present but universe does no. We are ignoring such backups.
+      // Backup is present but universe does not. We are ignoring such backups.
       catch (Exception e) {
       }
     }

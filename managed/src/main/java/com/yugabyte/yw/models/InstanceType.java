@@ -1,36 +1,49 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.models;
 
-import com.fasterxml.jackson.annotation.JsonBackReference;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.fasterxml.jackson.databind.JsonNode;
-import com.google.common.collect.ImmutableList;
 import com.typesafe.config.Config;
-import com.yugabyte.yw.common.YWServiceException;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
+import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.PlatformServiceException;
 import io.ebean.Ebean;
+import io.ebean.ExpressionList;
 import io.ebean.Finder;
+import io.ebean.Junction;
 import io.ebean.Model;
 import io.ebean.SqlUpdate;
 import io.ebean.annotation.EnumValue;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
+import javax.persistence.Column;
+import javax.persistence.EmbeddedId;
+import javax.persistence.Entity;
+import javax.persistence.JoinColumn;
+import javax.persistence.ManyToOne;
+import org.apache.commons.collections.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
 import play.libs.Json;
 
-import javax.persistence.*;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.UUID;
-import java.util.function.Predicate;
-import java.util.stream.Collectors;
-import static play.mvc.Http.Status.BAD_REQUEST;
-
+@ApiModel(description = "Information about an instance")
 @Entity
 public class InstanceType extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(InstanceType.class);
 
-  public static List<String> AWS_INSTANCE_PREFIXES_SUPPORTED =
-      ImmutableList.of("m3.", "c5.", "c5d.", "c4.", "c3.", "i3.");
   static final String YB_AWS_DEFAULT_VOLUME_COUNT_KEY = "yb.aws.default_volume_count";
   static final String YB_AWS_DEFAULT_VOLUME_SIZE_GB_KEY = "yb.aws.default_volume_size_gb";
 
@@ -58,20 +71,24 @@ public class InstanceType extends Model {
   @JoinColumn(name = "provider_uuid", insertable = false, updatable = false)
   private Provider provider;
 
+  public InstanceTypeKey getIdKey() {
+    return idKey;
+  }
+
   public Provider getProvider() {
     if (this.provider == null) {
-      setProviderUuid(this.idKey.providerUuid);
+      setProviderUuid(this.idKey.getProviderUuid());
     }
     return this.provider;
   }
 
   public void setProvider(Provider aProvider) {
     provider = aProvider;
-    idKey.providerUuid = aProvider.uuid;
+    idKey.setProviderUuid(aProvider.uuid);
   }
 
   public UUID getProviderUuid() {
-    return this.idKey.providerUuid;
+    return this.idKey.getProviderUuid();
   }
 
   public void setProviderUuid(UUID providerUuid) {
@@ -79,7 +96,7 @@ public class InstanceType extends Model {
     if (provider != null) {
       setProvider(provider);
     } else {
-      LOG.error("No provider found for the given id: {}", providerUuid);
+      LOG.error("No provider found for the given UUID: {}", providerUuid);
     }
   }
 
@@ -89,13 +106,14 @@ public class InstanceType extends Model {
   }
 
   public String getInstanceTypeCode() {
-    return this.idKey.instanceTypeCode;
+    return this.idKey.getInstanceTypeCode();
   }
 
   public void setInstanceTypeCode(String code) {
-    idKey.instanceTypeCode = code;
+    idKey.setInstanceTypeCode(code);
   }
 
+  @ApiModelProperty(value = "True if the instance is active", accessMode = READ_ONLY)
   @Constraints.Required
   @Column(nullable = false, columnDefinition = "boolean default true")
   private Boolean active = true;
@@ -108,14 +126,19 @@ public class InstanceType extends Model {
     this.active = active;
   }
 
+  @ApiModelProperty(value = "The instance's number of CPU cores", accessMode = READ_WRITE)
   @Constraints.Required
   @Column(nullable = false, columnDefinition = "float")
   public Double numCores;
 
+  @ApiModelProperty(value = "The instance's memory size, in gigabytes", accessMode = READ_WRITE)
   @Constraints.Required
   @Column(nullable = false, columnDefinition = "float")
   public Double memSizeGB;
 
+  @ApiModelProperty(
+      value = "Extra details about the instance (as a JSON object)",
+      accessMode = READ_WRITE)
   @Column(columnDefinition = "TEXT")
   private String instanceTypeDetailsJson;
 
@@ -129,6 +152,10 @@ public class InstanceType extends Model {
     if (instanceType == null) {
       return instanceType;
     }
+    return populateDetails(instanceType);
+  }
+
+  private static InstanceType populateDetails(InstanceType instanceType) {
     // Since 'instanceTypeDetailsJson' can be null (populated externally), we need to populate these
     // fields explicitly.
     if (instanceType.instanceTypeDetailsJson == null
@@ -144,10 +171,32 @@ public class InstanceType extends Model {
     return instanceType;
   }
 
+  public static List<InstanceType> findByKeys(Collection<InstanceTypeKey> keys) {
+    if (CollectionUtils.isEmpty(keys)) {
+      return Collections.emptyList();
+    }
+    Set<InstanceTypeKey> uniqueKeys = new HashSet<>(keys);
+    ExpressionList<InstanceType> query = find.query().where();
+    Junction<InstanceType> orExpr = query.or();
+    for (InstanceTypeKey key : uniqueKeys) {
+      Junction<InstanceType> andExpr = orExpr.and();
+      andExpr.eq("provider_uuid", key.getProviderUuid());
+      andExpr.eq("instance_type_code", key.getInstanceTypeCode());
+      orExpr.endAnd();
+    }
+    return query
+        .endOr()
+        .findList()
+        .stream()
+        .map(InstanceType::populateDetails)
+        .collect(Collectors.toList());
+  }
+
   public static InstanceType getOrBadRequest(UUID providerUuid, String instanceTypeCode) {
     InstanceType instanceType = InstanceType.get(providerUuid, instanceTypeCode);
     if (instanceType == null) {
-      throw new YWServiceException(BAD_REQUEST, "Instance Type not found: " + instanceTypeCode);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Instance type not found: " + instanceTypeCode);
     }
     return instanceType;
   }
@@ -217,8 +266,9 @@ public class InstanceType extends Model {
   }
 
   /** Delete Instance Types corresponding to given provider */
-  public static void deleteInstanceTypesForProvider(Provider provider, Config config) {
-    for (InstanceType instanceType : findByProvider(provider, config)) {
+  public static void deleteInstanceTypesForProvider(
+      Provider provider, Config config, ConfigHelper configHelper) {
+    for (InstanceType instanceType : findByProvider(provider, config, configHelper)) {
       instanceType.delete();
     }
   }
@@ -229,12 +279,12 @@ public class InstanceType extends Model {
   }
 
   private static List<InstanceType> populateDefaultsIfEmpty(
-      List<InstanceType> entries, Config config) {
+      List<InstanceType> entries, Config config, ConfigHelper configHelper) {
     // For AWS, we would filter and show only supported instance prefixes
     entries =
         entries
             .stream()
-            .filter(supportedInstanceTypes(AWS_INSTANCE_PREFIXES_SUPPORTED))
+            .filter(supportedInstanceTypes(configHelper.getAWSInstancePrefixesSupported()))
             .collect(Collectors.toList());
     for (InstanceType instanceType : entries) {
       JsonNode parsedJson = Json.parse(instanceType.instanceTypeDetailsJson);
@@ -254,7 +304,8 @@ public class InstanceType extends Model {
   }
 
   /** Query Helper to find supported instance types for a given cloud provider. */
-  public static List<InstanceType> findByProvider(Provider provider, Config config) {
+  public static List<InstanceType> findByProvider(
+      Provider provider, Config config, ConfigHelper configHelper) {
     List<InstanceType> entries =
         InstanceType.find
             .query()
@@ -263,7 +314,7 @@ public class InstanceType extends Model {
             .eq("active", true)
             .findList();
     if (provider.code.equals("aws")) {
-      return populateDefaultsIfEmpty(entries, config);
+      return populateDefaultsIfEmpty(entries, config, configHelper);
     } else {
       return entries
           .stream()
