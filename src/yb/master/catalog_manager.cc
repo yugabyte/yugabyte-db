@@ -5554,7 +5554,7 @@ bool CatalogManager::ProcessCommittedConsensusState(
     TSDescriptor* ts_desc,
     bool is_incremental,
     const ReportedTabletPB& report,
-    const TableInfo::ReadLock& table_lock,
+    const TableInfo::WriteLock& table_lock,
     const TabletInfoPtr& tablet,
     const TabletInfo::WriteLock& tablet_lock,
     std::vector<RetryingTSRpcTaskPtr>* rpcs) {
@@ -5753,13 +5753,15 @@ Status CatalogManager::ProcessTabletReportBatch(
     ReportedTablets::const_iterator end,
     TabletReportUpdatesPB* full_report_update,
     std::vector<RetryingTSRpcTaskPtr>* rpcs) {
-  // 1. First Pass. Iterate in TabletId Order to discover all Table locks we'll need.
+  // 1. First Pass. Iterate in TabletId Order to discover all Table locks we'll need. Even though
+  //    read locks are sufficient here, take write locks since we'll be writing to the tablet while
+  //    holding this.
   //    Need to acquire both types of locks in Id order to prevent deadlock.
-  std::map<TableId, TableInfo::ReadLock> table_read_locks;
+  std::map<TableId, TableInfo::WriteLock> table_write_locks;
   for (auto it = begin; it != end; ++it) {
-    auto& lock = table_read_locks[it->info->table()->id()];
+    auto& lock = table_write_locks[it->info->table()->id()];
     if (!lock.locked()) {
-      lock = it->info->table()->LockForRead();
+      lock = it->info->table()->LockForWrite();
     }
   }
 
@@ -5780,7 +5782,7 @@ Status CatalogManager::ProcessTabletReportBatch(
 
     // Get tablet lock on demand.  This works in the batch case because the loop is ordered.
     tablet_write_locks[tablet_id] = tablet->LockForWrite();
-    auto& table_lock = table_read_locks[table->id()];
+    auto& table_lock = table_write_locks[table->id()];
     auto& tablet_lock = tablet_write_locks[tablet_id];
 
     TRACE_EVENT1("master", "HandleReportedTablet", "tablet_id", report.tablet_id());
@@ -5887,10 +5889,10 @@ Status CatalogManager::ProcessTabletReportBatch(
   } // Finished one round of batch processing.
 
   // 7. Unlock the tables; we no longer need to access their state.
-  for (auto& l : table_read_locks) {
+  for (auto& l : table_write_locks) {
     l.second.Unlock();
   }
-  table_read_locks.clear();
+  table_write_locks.clear();
 
   // 8. Write all tablet mutations to the catalog table.
   //
