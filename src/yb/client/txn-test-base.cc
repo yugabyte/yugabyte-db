@@ -247,7 +247,7 @@ YBqlReadOpPtr TransactionTestBase<MiniClusterType>::ReadRow(
   auto* const req = op->mutable_request();
   QLAddInt32HashValue(req, key);
   table_.AddColumns({column}, req);
-  EXPECT_OK(session->Apply(op));
+  session->Apply(op);
   return op;
 }
 

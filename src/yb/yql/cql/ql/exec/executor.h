@@ -405,7 +405,7 @@ class Executor : public QLExprExecutor {
   // Add a read/write operation for the current statement and apply it. For write operation, check
   // for inter-dependency before applying. If it is a write operation to a table with secondary
   // indexes, update them as needed.
-  CHECKED_STATUS AddOperation(const client::YBqlReadOpPtr& op, TnodeContext *tnode_context);
+  void AddOperation(const client::YBqlReadOpPtr& op, TnodeContext *tnode_context);
   CHECKED_STATUS AddOperation(const client::YBqlWriteOpPtr& op, TnodeContext *tnode_context);
 
   // Is this a batch returning status?

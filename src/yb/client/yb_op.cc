@@ -656,7 +656,9 @@ std::unique_ptr<YBPgsqlWriteOp> YBPgsqlWriteOp::NewTruncateColocated(
 }
 
 std::string YBPgsqlWriteOp::ToString() const {
-  return "PGSQL_WRITE " + write_request_->ShortDebugString() + ResponseSuffix(response());
+  return Format(
+      "PGSQL_WRITE $0$1$2", write_request_->ShortDebugString(),
+      (write_time_ ? " write_time: " + write_time_.ToString() : ""), ResponseSuffix(response()));
 }
 
 Status YBPgsqlWriteOp::GetPartitionKey(string* partition_key) const {

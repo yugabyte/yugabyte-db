@@ -117,7 +117,7 @@ TEST_F(NetworkFailureTest, DisconnectMasterLeader) {
       auto* const req = op->mutable_request();
       QLAddInt32HashValue(req, key);
       table_.AddInt32ColumnValue(req, kValueColumn, value);
-      ASSERT_OK(session->Apply(op));
+      session->Apply(op);
       futures.push_back(session->FlushFuture());
       ops.push_back(op);
     }

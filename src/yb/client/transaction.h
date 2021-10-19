@@ -27,6 +27,7 @@
 #include "yb/common/transaction.h"
 
 #include "yb/client/client_fwd.h"
+#include "yb/client/in_flight_op.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/status.h"
