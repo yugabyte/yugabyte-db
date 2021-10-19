@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellResponse;
@@ -18,8 +19,12 @@ import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.junit.Before;
 import org.yb.client.YBClient;
 
@@ -47,6 +52,8 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
         .then(
             invocation -> {
               if (invocation.getArgument(0).equals(NodeManager.NodeCommandType.Precheck)) {
+                NodeTaskParams params = invocation.getArgument(1);
+                NodeInstance.getByName(params.nodeName); // verify node is picked
                 return preflightResponse;
               }
               return dummyShellResponse;
@@ -71,6 +78,7 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
     Common.CloudType providerType = Common.CloudType.valueOf(provider.code);
     userIntent.providerType = providerType;
     userIntent.provider = provider.uuid.toString();
+    userIntent.universeName = universeName;
     if (providerType == Common.CloudType.onprem) {
       createOnpremInstance(zone);
       createOnpremInstance(zone);
@@ -81,8 +89,28 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
     userIntent.masterGFlags = gflags;
     userIntent.tserverGFlags = gflags;
     Universe result = createUniverse(universeName, defaultCustomer.getCustomerId(), providerType);
-    Universe.saveDetails(
-        result.universeUUID, ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
+    result =
+        Universe.saveDetails(
+            result.universeUUID, ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
+    if (providerType == Common.CloudType.onprem) {
+      String instanceType =
+          result.getUniverseDetails().nodeDetailsSet.iterator().next().cloudInfo.instance_type;
+      Map<UUID, List<String>> onpremAzToNodes = new HashMap<>();
+      for (NodeDetails node : result.getUniverseDetails().nodeDetailsSet) {
+        List<String> nodeNames = onpremAzToNodes.getOrDefault(node.azUuid, new ArrayList<>());
+        nodeNames.add(node.nodeName);
+        onpremAzToNodes.put(node.azUuid, nodeNames);
+      }
+      Map<String, NodeInstance> nodeMap = NodeInstance.pickNodes(onpremAzToNodes, instanceType);
+      for (NodeDetails node : result.getUniverseDetails().nodeDetailsSet) {
+        NodeInstance nodeInstance = nodeMap.get(node.nodeName);
+        if (nodeInstance != null) {
+          node.nodeUuid = nodeInstance.nodeUuid;
+        }
+      }
+      result.save();
+    }
+
     return result;
   }
 
