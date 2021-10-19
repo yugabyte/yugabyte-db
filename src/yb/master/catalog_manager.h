@@ -1551,7 +1551,7 @@ class CatalogManager :
       TSDescriptor* ts_desc,
       bool is_incremental,
       const ReportedTabletPB& report,
-      const TableInfo::ReadLock& table_lock,
+      const TableInfo::WriteLock& table_lock,
       const TabletInfoPtr& tablet,
       const TabletInfo::WriteLock& tablet_lock,
       std::vector<RetryingTSRpcTaskPtr>* rpcs);
