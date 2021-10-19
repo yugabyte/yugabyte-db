@@ -231,6 +231,11 @@ class AbstractCloud(AbstractCommandParser):
             args.private_key_file, 'sudo reboot')
         self.wait_for_ssh_port(extra_vars["ssh_host"],
                                args.search_pattern, extra_vars["ssh_port"])
+        # It is possible that the second NIC might not have gotten configured, but
+        # the sshd process might have started. Just wait for some additional time
+        # for the dhclient to be ready.
+        # TODO: Add proper retry mechanism.
+        time.sleep(self.SSH_WAIT_SECONDS)
         # Verify that the command ran successfully:
         rc, stdout, stderr = remote_exec_command(extra_vars["ssh_host"], extra_vars["ssh_port"],
                                                  extra_vars["ssh_user"], args.private_key_file,
@@ -530,14 +535,14 @@ class AbstractCloud(AbstractCommandParser):
             ssh_port = int(ssh_port)
 
             while retry_count < self.SSH_RETRY_COUNT:
+                logging.info("[app] Waiting for ssh: {}:{}".format(private_ip, str(ssh_port)))
+                time.sleep(self.SSH_WAIT_SECONDS)
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 result = sock.connect_ex((private_ip, ssh_port))
 
                 if result == 0:
                     break
 
-                logging.info("[app] Waiting for ssh: {}:{}".format(private_ip, str(ssh_port)))
-                time.sleep(self.SSH_WAIT_SECONDS)
                 retry_count += 1
             else:
                 logging.error("[app] Start instance {} exceeded maxRetries!".format(instance_name))
