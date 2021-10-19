@@ -115,7 +115,7 @@ A program that generates random test data and publishes it to the Kafka topic `i
 
 A single data point is a JSON payload and looks as follows:
 
-```
+```json
 {
   "vehicleId":"0bf45cac-d1b8-4364-a906-980e1c2bdbcb",
   "vehicleType":"Taxi",
@@ -230,10 +230,11 @@ JavaPairInputDStream<String, IoTData> directKafkaStream =
                                 IoTDataDecoder.class,
                                 kafkaParams,
                                 topicsSet
-  );
+                               );
 ```
 
 Create non-filtered and filtered streams, to be used later in actual processing:
+
 ```java
 // Non-filtered stream for Point-of-interest (POI) traffic data calculation
 JavaDStream<IoTData> nonFilteredIotDataStream = directKafkaStream.map(tuple -> tuple._2());
@@ -257,6 +258,7 @@ JavaDStream<IoTData> filteredIotDataStream = filteredIotDStreams.map(tuple -> tu
 ```
 
 The above code uses the following function to check for processed vehicles:
+
 ```java
 Function3<String, Optional<IoTData>, State<Boolean>, Tuple2<IoTData, Boolean>> processedVehicleFunc = (String, iot, state) -> {
   Tuple2<IoTData,Boolean> vehicle = new Tuple2<>(iot.get(), false);
@@ -265,19 +267,20 @@ Function3<String, Optional<IoTData>, State<Boolean>, Tuple2<IoTData, Boolean>> p
   }
   else {
     state.update(Boolean.TRUE);
-  }			
+  }
   return vehicle;
 };
 ```
 
 Compute a breakdown by vehicle type and the shipment route across all the vehicles and shipments done so far:
+
 ```java
 // Get count of vehicle group by routeId and vehicleType
 JavaPairDStream<AggregateKey, Long> countDStreamPair =
   filteredIotDataStream
     .mapToPair(iot -> new Tuple2<>(new AggregateKey(iot.getRouteId(), iot.getVehicleType()), 1L))
     .reduceByKey((a, b) -> a + b);
-		
+    
 // Keep state for total count
 JavaMapWithStateDStream<AggregateKey, Long, Long, Tuple2<AggregateKey, Long>> countDStreamWithStatePair =
   countDStreamPair.mapWithState(
@@ -303,6 +306,7 @@ javaFunctions(trafficDStream)
 ```
 
 Compute the same breakdown for active shipments. This is done by computing the breakdown by vehicle type and shipment route for the last 30 seconds:
+
 ```java
 // Reduce by key and window (30 sec window and 10 sec slide)
 JavaPairDStream<AggregateKey, Long> countDStreamPair =
@@ -328,6 +332,7 @@ javaFunctions(trafficDStream)
 ```
 
 Detect the vehicles which are within a 20 mile radius of a given Point of Interest (POI), which represents a road-closure:
+
 ```java
 // Filter by routeId, vehicleType and in POI range
 JavaDStream<IoTData> iotDataStreamFiltered =
@@ -366,6 +371,7 @@ javaFunctions(trafficDStream)
 ```
 
 The above "detection within radius" code uses the following helper functions:
+
 ```java
 // Function to get running sum by maintaining the state
 Function3<AggregateKey, Optional<Long>, State<Long>, Tuple2<AggregateKey, Long>> totalSumFunc = (key, currentSum, state) -> {
@@ -428,7 +434,7 @@ public interface TotalTrafficDataRepository extends CassandraRepository<TotalTra
 }
 ```
 
-In order to connect to YugabyteDB cluster and get connection for database operations, you write the assandraConfig class. This is done as follows:
+In order to connect to YugabyteDB cluster and get connection for database operations, you write the CassandraConfig class. This is done as follows:
 
 ```java
 public class CassandraConfig extends AbstractCassandraConfiguration {
