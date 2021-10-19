@@ -1299,8 +1299,10 @@ export default class ClusterFields extends Component {
     }
   }
 
-  validatePassword(value) {
+  validatePassword(value, formValues, formikBag, fieldName) {
     const errorMsg = 'Password must be 8 characters minimum and must contain at least 1 digit, 1 uppercase, 1 lowercase and one of the !@#$%^&* (special) characters.';
+    const isAuthEnabled = formValues.primary[(fieldName === 'primary.ysqlPassword')? "enableYSQLAuth" : "enableYCQLAuth"];
+    if (!isAuthEnabled) {return undefined;}
     if (value) {
       const passwordValidationRegex = /^(?=.*[0-9])(?=.*[!@#$%^&*])(?=.*[a-z])(?=.*[A-Z])[a-zA-Z0-9!@#$%^&*]{8,256}$/;
       return (passwordValidationRegex.test(value) ? undefined : errorMsg);
@@ -1308,8 +1310,8 @@ export default class ClusterFields extends Component {
     return errorMsg;
   }
 
-  validateConfirmPassword(value, a, b, field) {
-    const passwordValue = this.props.primary[(field === 'primary.ysqlConfirmPassword')? 'ysqlPassword' : 'ycqlPassword'].input.value;
+  validateConfirmPassword(value, formValues, formikBag, fieldName) {
+    const passwordValue = formValues.primary[(fieldName === 'primary.ysqlConfirmPassword')? 'ysqlPassword' : 'ycqlPassword'];
     if (!_.isEmpty(passwordValue)) {
       return (value === passwordValue) ? undefined : 'Password should match';
     }
