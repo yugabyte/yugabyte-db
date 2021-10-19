@@ -386,6 +386,15 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     PlacementInfoUtil.ensureUniqueNodeNames(taskParams().nodeDetailsSet);
   }
 
+  public void updateOnPremNodeUuidsOnTaskParams() {
+    for (Cluster cluster : taskParams().clusters) {
+      if (cluster.userIntent.providerType == CloudType.onprem) {
+        setOnpremData(
+            taskParams().getNodesInCluster(cluster.uuid), cluster.userIntent.instanceType);
+      }
+    }
+  }
+
   public void updateOnPremNodeUuids(Universe universe) {
     log.info(
         "Selecting onprem nodes for universe {} ({}).", universe.name, taskParams().universeUUID);
@@ -1017,17 +1026,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   /**
    * Performs preflight checks and creates failed preflight tasks.
    *
-   * @param universe
-   * @param clusterPredicate
    * @return true if everything is OK
    */
-  public boolean performUniversePreflightChecks(
-      Universe universe, Predicate<Cluster> clusterPredicate) {
+  public boolean performUniversePreflightChecks(Collection<Cluster> clusters) {
     Map<String, String> failedNodes = new HashMap<>();
-    for (Cluster cluster : universe.getUniverseDetails().clusters) {
-      if (clusterPredicate.test(cluster)) {
-        failedNodes.putAll(performClusterPreflightChecks(cluster));
-      }
+    for (Cluster cluster : clusters) {
+      failedNodes.putAll(performClusterPreflightChecks(cluster));
     }
     if (!failedNodes.isEmpty()) {
       createFailedPrecheckTask(failedNodes).setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
