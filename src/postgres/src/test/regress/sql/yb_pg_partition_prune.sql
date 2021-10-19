@@ -586,7 +586,6 @@ deallocate ab_q5;
 -- UPDATE on a partition subtree has been seen to have problems.
 insert into ab values (1,2);
 explain (analyze, costs off, summary off, timing off)
--- TODO(jason): fix output when closing issue #5310
 update ab_a1 set b = 3 from ab where ab.a = 1 and ab.a = ab_a1.a;
 table ab;
 

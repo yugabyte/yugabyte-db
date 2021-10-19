@@ -249,13 +249,33 @@ Bitmapset *YBGetTableFullPrimaryKeyBms(Relation rel)
 extern bool YBRelHasOldRowTriggers(Relation rel, CmdType operation)
 {
 	TriggerDesc *trigdesc = rel->trigdesc;
-	return (trigdesc &&
-		((operation == CMD_UPDATE &&
-			(trigdesc->trig_update_after_row ||
-			trigdesc->trig_update_before_row)) ||
-		(operation == CMD_DELETE &&
-			(trigdesc->trig_delete_after_row ||
-			trigdesc->trig_delete_before_row))));
+	if (!trigdesc)
+	{
+		return false;
+	}
+	if (operation == CMD_DELETE)
+	{
+		return trigdesc->trig_delete_after_row ||
+			   trigdesc->trig_delete_before_row;
+	}
+	if (operation != CMD_UPDATE)
+	{
+			return false;
+	}
+	if (rel->rd_rel->relkind != RELKIND_PARTITIONED_TABLE &&
+		!rel->rd_rel->relispartition)
+	{
+		return trigdesc->trig_update_after_row ||
+			   trigdesc->trig_update_before_row;
+	}
+	/*
+	 * This is an update operation. We look for both update and delete triggers
+	 * as update on partitioned tables can result in deletes as well.
+	 */
+	return trigdesc->trig_update_after_row ||
+		 trigdesc->trig_update_before_row ||
+		 trigdesc->trig_delete_after_row ||
+		 trigdesc->trig_delete_before_row;
 }
 
 bool
@@ -1481,9 +1501,9 @@ yb_hash_code(PG_FUNCTION_ARGS)
 		size_t typesize;
 		const YBCPgTypeEntity *typeentity =
 				 YbDataTypeFromOidMod(InvalidAttrNumber, argtype);
-		YBCStatus status = YBCGetDocDBKeySize(PG_GETARG_DATUM(i), typeentity, 
+		YBCStatus status = YBCGetDocDBKeySize(PG_GETARG_DATUM(i), typeentity,
 							PG_ARGISNULL(i), &typesize);
-		if (unlikely(!YBCStatusIsOK(status))) 
+		if (unlikely(!YBCStatusIsOK(status)))
 		{
 			ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -1500,7 +1520,7 @@ yb_hash_code(PG_FUNCTION_ARGS)
 	/* TODO(Tanuj): Look into caching the above buffer */
 
 	char *arg_buf_pos = arg_buf;
-	
+
 	size_t total_bytes = 0;
 	for (int i = 0; i < PG_NARGS(); i++)
 	{
@@ -1508,9 +1528,9 @@ yb_hash_code(PG_FUNCTION_ARGS)
 		const YBCPgTypeEntity *typeentity =
 				 YbDataTypeFromOidMod(InvalidAttrNumber, argtype);
 		size_t written;
-		YBCStatus status = YBCAppendDatumToKey(PG_GETARG_DATUM(i), typeentity, 
+		YBCStatus status = YBCAppendDatumToKey(PG_GETARG_DATUM(i), typeentity,
 							PG_ARGISNULL(i), arg_buf_pos, &written);
-		if (unlikely(!YBCStatusIsOK(status))) 
+		if (unlikely(!YBCStatusIsOK(status)))
 		{
 			ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),

@@ -667,7 +667,8 @@ static bool YBCParseReturningExpressionTargetColumn(Node *node,
 	return expression_tree_walker(node, YBCParseReturningExpressionTargetColumn, (void *) context);
 }
 
-bool YBCExecuteDelete(Relation rel, TupleTableSlot *slot, EState *estate, ModifyTableState *mtstate)
+bool YBCExecuteDelete(Relation rel, TupleTableSlot *slot, EState *estate,
+					  ModifyTableState *mtstate, bool changingPart)
 {
 	Oid            dboid          = YBCGetDatabaseOid(rel);
 	Oid            relid          = RelationGetRelid(rel);
@@ -714,6 +715,29 @@ bool YBCExecuteDelete(Relation rel, TupleTableSlot *slot, EState *estate, Modify
 
 	/* Execute the statement. */
 	int rows_affected_count = 0;
+
+	/*
+	 * TODO (deepthi): Remove this hacky fix once #9592 is fixed
+	 */
+	if (changingPart)
+	{
+			/*
+			 * This delete is part of the DELETE+INSERT done while UPDATing the
+			 * partition key of a row such that it moves from one partition to
+			 * another. Only if the DELETE actually removes a row, should the
+			 * corresponding INSERT take place. In case of #9592 we cannot assume
+			 * that a non-single row transaction always deleted an existing
+			 * value. Hence until #9592 is fixed, if the delete is part of moving
+			 * a row across partitions, pass &rows_affected_count even if this
+			 * is not a single row transaction.
+			 */
+			YBCExecWriteStmt(delete_stmt, rel, &rows_affected_count,
+							true /* cleanup */);
+			/* Cleanup. */
+			delete_stmt = NULL;
+			return rows_affected_count > 0;
+	}
+
 	YBCExecWriteStmt(delete_stmt,
 					 rel,
 					 isSingleRow ? &rows_affected_count : NULL,
@@ -947,7 +971,7 @@ Oid YBCExecuteUpdateReplace(Relation rel,
 {
 	Assert(!mtstate->yb_mt_is_single_row_update_or_delete);
 
-	YBCExecuteDelete(rel, slot, estate, mtstate);
+	YBCExecuteDelete(rel, slot, estate, mtstate, false /* changingPart */);
 
 	Oid tupleoid = YBCExecuteInsert(rel, RelationGetDescr(rel), tuple);
 

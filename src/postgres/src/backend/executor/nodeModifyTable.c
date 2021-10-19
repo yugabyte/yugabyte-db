@@ -790,7 +790,8 @@ ExecDelete(ModifyTableState *mtstate,
 	}
 	else if (IsYBRelation(resultRelationDesc))
 	{
-		bool row_found = YBCExecuteDelete(resultRelationDesc, planSlot, estate, mtstate);
+		bool row_found = YBCExecuteDelete(resultRelationDesc, planSlot, estate,
+										  mtstate, changingPart);
 		if (!row_found)
 		{
 			/*
@@ -1368,9 +1369,7 @@ ExecUpdate(ModifyTableState *mtstate,
 	{
 		bool		partition_constraint_failed;
 
-		if (resultRelInfo->ri_WithCheckOptions != NIL)
-			ExecWithCheckOptions(WCO_RLS_UPDATE_CHECK, resultRelInfo, slot, estate);
-
+		yb_lreplace:;
 		/*
 		 * Check the constraints of the tuple.
 		 */
@@ -1384,13 +1383,47 @@ ExecUpdate(ModifyTableState *mtstate,
 			resultRelInfo->ri_PartitionCheck &&
 			!ExecPartitionCheck(resultRelInfo, slot, estate, false /* emitError */);
 
+		if (!partition_constraint_failed && resultRelInfo->ri_WithCheckOptions != NIL)
+		{
+			/*
+			 * ExecWithCheckOptions() will skip any WCOs which are not of the
+			 * kind we are looking for at this point.
+			 */
+			ExecWithCheckOptions(WCO_RLS_UPDATE_CHECK, resultRelInfo, slot, estate);
+		}
+
+
+		/*
+		 * If a partition check failed, try to move the row into the right
+		 * partition.
+		 */
 		if (partition_constraint_failed)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("This operation would cause a row to change the partition, "
-							"this is not yet supported"),
-					 errhint("See https://github.com/YugaByte/yugabyte-db/issues/%d. "
-							 "Click '+' on the description to raise its priority", 5310)));
+		{
+			TupleTableSlot *inserted_tuple, *retry_slot;
+			bool            retry;
+
+
+			/*
+			 * ExecCrossPartitionUpdate will first DELETE the row from the
+			 * partition it's currently in and then insert it back into the
+			 * root table, which will re-route it to the correct partition.
+			 * The first part may have to be repeated if it is detected that
+			 * the tuple we're trying to move has been concurrently updated.
+ 			 */
+
+			retry = !ExecCrossPartitionUpdate(mtstate, resultRelInfo, tupleid,
+											  oldtuple, slot, planSlot,
+											  epqstate, canSetTag,
+											  &retry_slot, &inserted_tuple);
+			if (retry)
+			{
+				slot = retry_slot;
+				tuple = ExecMaterializeSlot(slot);
+				goto yb_lreplace;
+ 			}
+
+			return inserted_tuple;
+ 		}
 
 		RangeTblEntry *rte = rt_fetch(resultRelInfo->ri_RangeTableIndex,
 									  estate->es_range_table);
