@@ -34,6 +34,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
+import java.util.UUID;
 import java.util.function.BiFunction;
 import java.util.function.Predicate;
 import lombok.extern.slf4j.Slf4j;
@@ -43,6 +44,7 @@ import play.libs.Json;
 
 @Slf4j
 public class CommonUtils {
+
   public static final String DEFAULT_YB_HOME_DIR = "/home/yugabyte";
 
   private static final String maskRegex = "(?<!^.?).(?!.?$)";

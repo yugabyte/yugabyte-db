@@ -32,6 +32,8 @@ import com.yugabyte.yw.models.helpers.EntityOperation;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import io.ebean.annotation.Transactional;
+import io.prometheus.client.CollectorRegistry;
+import io.prometheus.client.Counter;
 import java.time.temporal.ChronoUnit;
 import java.util.Collection;
 import java.util.Collections;
@@ -46,6 +48,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
@@ -58,6 +61,7 @@ public class MetricService {
   public static final double EXPIRY_TIME_UPDATE_COEFFICIENT = 1.1;
   public static final double STATUS_OK = 1D;
   public static final double STATUS_NOT_OK = 0D;
+
   private static final Comparator<MetricSourceKey> METRIC_SOURCE_KEY_COMPARATOR =
       Comparator.comparing(MetricSourceKey::getName)
           .thenComparing(MetricSourceKey::getCustomerUuid)
@@ -68,26 +72,42 @@ public class MetricService {
               MetricKey::getSourceLabels, Comparator.nullsFirst(Comparator.naturalOrder()));
   private final MultiKeyLock<MetricKey> metricKeyLock = new MultiKeyLock<>(METRIC_KEY_COMPARATOR);
 
-  @Transactional
-  public List<Metric> save(List<Metric> metrics) {
-    if (CollectionUtils.isEmpty(metrics)) {
-      return metrics;
-    }
+  // Counter names
+  private static final String METRIC_UPDATE_COUNT = "ybp_metric_update_count";
+  private static final String METRIC_DELETE_COUNT = "ybp_metric_delete_count";
 
+  // Counters
+  private static final Counter METRIC_UPDATE_COUNTER =
+      Counter.build(METRIC_UPDATE_COUNT, "Number of created/updated metric values")
+          .labelNames("persistent")
+          .register(CollectorRegistry.defaultRegistry);
+  private static final Counter METRIC_DELETE_COUNTER =
+      Counter.build(METRIC_DELETE_COUNT, "Number of deleted metric values")
+          .labelNames("persistent")
+          .register(CollectorRegistry.defaultRegistry);
+
+  private final MetricStorage metricStorage;
+
+  @Inject
+  public MetricService(MetricStorage metricStorage) {
+    this.metricStorage = metricStorage;
+  }
+
+  public List<Metric> save(List<Metric> metrics) {
     try {
       acquireLocks(metrics);
-      return saveInternal(metrics);
+      return saveInternal(metrics, false);
     } finally {
       releaseLocks(metrics);
     }
   }
 
-  private List<Metric> saveInternal(List<Metric> metrics) {
+  private List<Metric> saveInternal(List<Metric> metrics, boolean persist) {
     List<Metric> beforeMetrics = Collections.emptyList();
     Set<MetricKey> metricKeys = metrics.stream().map(MetricKey::from).collect(Collectors.toSet());
     if (!metricKeys.isEmpty()) {
       MetricFilter filter = MetricFilter.builder().keys(metricKeys).build();
-      beforeMetrics = list(filter);
+      beforeMetrics = list(filter, persist);
     }
     Map<MetricKey, Metric> beforeMetricMap =
         beforeMetrics.stream().collect(Collectors.toMap(MetricKey::from, Function.identity()));
@@ -102,34 +122,49 @@ public class MetricService {
 
     List<Metric> toCreate = toCreateAndUpdate.getOrDefault(CREATE, Collections.emptyList());
     if (!toCreate.isEmpty()) {
-      toCreate.forEach(Metric::generateUUID);
-      Metric.db().saveAll(toCreate);
+      if (persist) {
+        toCreate.forEach(Metric::generateUUID);
+        Metric.db().saveAll(toCreate);
+      } else {
+        metricStorage.save(toCreate);
+      }
     }
 
     List<Metric> toUpdate = toCreateAndUpdate.getOrDefault(UPDATE, Collections.emptyList());
     if (!toUpdate.isEmpty()) {
-      Metric.db().updateAll(toUpdate);
+      if (persist) {
+        Metric.db().updateAll(toUpdate);
+      } else {
+        metricStorage.save(toUpdate);
+      }
     }
 
-    log.trace("{} metrics saved", toCreate.size() + toUpdate.size());
+    int savedMetrics = toCreate.size() + toUpdate.size();
+    METRIC_UPDATE_COUNTER.labels(String.valueOf(persist)).inc(savedMetrics);
+    log.trace("{} metrics saved", savedMetrics);
     return metrics;
   }
 
-  @Transactional
   public Metric save(Metric metric) {
     return save(Collections.singletonList(metric)).get(0);
   }
 
   public Metric get(MetricKey key) {
-    MetricFilter filter = MetricFilter.builder().key(key).build();
-    return createQueryByFilter(filter).findOneOrEmpty().orElse(null);
+    return metricStorage.get(key);
   }
 
   public List<Metric> list(MetricFilter filter) {
-    return createQueryByFilter(filter).findList();
+    return list(filter, false);
   }
 
-  @Transactional
+  public List<Metric> list(MetricFilter filter, boolean persisted) {
+    if (persisted) {
+      return createQueryByFilter(filter).findList();
+    } else {
+      return metricStorage.list(filter);
+    }
+  }
+
   public void delete(MetricFilter filter) {
     List<Metric> toDelete = list(filter);
     if (toDelete.isEmpty()) {
@@ -137,22 +172,28 @@ public class MetricService {
     }
     try {
       acquireLocks(toDelete);
-      deleteInternal(toDelete);
+      deleteInternal(toDelete, false);
     } finally {
       releaseLocks(toDelete);
     }
   }
 
-  private void deleteInternal(Collection<Metric> toDelete) {
-    MetricFilter deleteFilter =
-        MetricFilter.builder()
-            .uuids(toDelete.stream().map(Metric::getUuid).collect(Collectors.toSet()))
-            .build();
-    int deleted = createQueryByFilter(deleteFilter).delete();
+  private void deleteInternal(Collection<Metric> toDelete, boolean persist) {
+    int deleted;
+    if (persist) {
+      MetricFilter deleteFilter =
+          MetricFilter.builder()
+              .keys(toDelete.stream().map(MetricKey::from).collect(Collectors.toSet()))
+              .build();
+      deleted = createQueryByFilter(deleteFilter).delete();
+    } else {
+      deleted = metricStorage.delete(toDelete);
+    }
+
+    METRIC_DELETE_COUNTER.labels(String.valueOf(persist)).inc(deleted);
     log.trace("{} metrics deleted", deleted);
   }
 
-  @Transactional
   public void cleanAndSave(List<Metric> toSave, List<MetricFilter> toClean) {
     Map<MetricKey, Metric> toDelete =
         toClean
@@ -168,22 +209,20 @@ public class MetricService {
     try {
       metricKeyLock.acquireLocks(allKeys);
       if (!toSave.isEmpty()) {
-        saveInternal(toSave);
+        saveInternal(toSave, false);
       }
       if (!toDelete.isEmpty()) {
-        deleteInternal(toDelete.values());
+        deleteInternal(toDelete.values(), false);
       }
     } finally {
       metricKeyLock.releaseLocks(allKeys);
     }
   }
 
-  @Transactional
   public void cleanAndSave(List<Metric> toSave, MetricFilter toClean) {
     cleanAndSave(toSave, ImmutableList.of(toClean));
   }
 
-  @Transactional
   public void cleanAndSave(List<Metric> toSave) {
     if (CollectionUtils.isEmpty(toSave)) {
       return;
@@ -195,7 +234,6 @@ public class MetricService {
     cleanAndSave(toSave, toClean);
   }
 
-  @Transactional
   public void setOkStatusMetric(Metric metric) {
     setStatusMetric(metric, StringUtils.EMPTY);
   }
@@ -206,7 +244,6 @@ public class MetricService {
     cleanAndSave(Collections.singletonList(metric));
   }
 
-  @Transactional
   public void setStatusMetric(Metric metric, String message) {
     boolean isSuccess = StringUtils.isEmpty(message);
     metric.setValue(isSuccess ? STATUS_OK : STATUS_NOT_OK);
@@ -216,13 +253,11 @@ public class MetricService {
     cleanAndSave(Collections.singletonList(metric));
   }
 
-  @Transactional
   public void setMetric(Metric metric, double value) {
     metric.setValue(value);
     cleanAndSave(Collections.singletonList(metric));
   }
 
-  @Transactional
   public void handleSourceRemoval(UUID customerUuid, UUID sourceUuid) {
     MetricFilterBuilder filter = MetricFilter.builder().customerUuid(customerUuid);
     if (sourceUuid != null) {
@@ -277,16 +312,6 @@ public class MetricService {
     return result;
   }
 
-  private void acquireLocks(Collection<Metric> metrics) {
-    Set<MetricKey> keys = metrics.stream().map(MetricKey::from).collect(Collectors.toSet());
-    metricKeyLock.acquireLocks(keys);
-  }
-
-  private void releaseLocks(Collection<Metric> metrics) {
-    Set<MetricKey> keys = metrics.stream().map(MetricKey::from).collect(Collectors.toSet());
-    metricKeyLock.releaseLocks(keys);
-  }
-
   public static Metric buildMetricTemplate(PlatformMetrics metric) {
     return buildMetricTemplate(metric, DEFAULT_METRIC_EXPIRY_SEC);
   }
@@ -331,5 +356,58 @@ public class MetricService {
         .setCustomerUUID(customer.getUuid())
         .setSourceUuid(universe.getUniverseUUID())
         .setLabels(MetricLabelsBuilder.create().appendSource(universe).getMetricLabels());
+  }
+
+  private void acquireLocks(Collection<Metric> metrics) {
+    Set<MetricKey> keys = metrics.stream().map(MetricKey::from).collect(Collectors.toSet());
+    metricKeyLock.acquireLocks(keys);
+  }
+
+  private void releaseLocks(Collection<Metric> metrics) {
+    Set<MetricKey> keys = metrics.stream().map(MetricKey::from).collect(Collectors.toSet());
+    metricKeyLock.releaseLocks(keys);
+  }
+
+  @Transactional
+  public void flushMetricsToDb() {
+    Set<MetricKey> dirtyKeys = metricStorage.getDirtyMetrics();
+    Set<MetricKey> deletedKeys = metricStorage.getDeletedMetrics();
+    Set<MetricKey> keysToLock =
+        Stream.concat(dirtyKeys.stream(), deletedKeys.stream()).collect(Collectors.toSet());
+    if (CollectionUtils.isEmpty(keysToLock)) {
+      return;
+    }
+    try {
+      Set<UUID> customerUuids =
+          keysToLock
+              .stream()
+              .map(MetricKey::getSourceKey)
+              .map(MetricSourceKey::getCustomerUuid)
+              .filter(Objects::nonNull)
+              .collect(Collectors.toSet());
+      // This is required to avoid DB deadlock on customer delete +
+      // parallel metric save/delete operation
+      if (CollectionUtils.isNotEmpty(customerUuids)) {
+        Customer.getForUpdate(customerUuids);
+      }
+      metricKeyLock.acquireLocks(keysToLock);
+      if (CollectionUtils.isNotEmpty(dirtyKeys)) {
+        List<Metric> toSave = metricStorage.list(MetricFilter.builder().keys(dirtyKeys).build());
+        saveInternal(toSave, true);
+        metricStorage.getDirtyMetrics().removeAll(deletedKeys);
+      }
+      if (CollectionUtils.isNotEmpty(deletedKeys)) {
+        List<Metric> toDelete =
+            metricStorage.list(MetricFilter.builder().keys(deletedKeys).build());
+        deleteInternal(toDelete, true);
+        metricStorage.getDeletedMetrics().removeAll(deletedKeys);
+      }
+    } finally {
+      metricKeyLock.releaseLocks(keysToLock);
+    }
+  }
+
+  void initialize() {
+    metricStorage.initialize(list(MetricFilter.builder().build(), true));
   }
 }
