@@ -1159,13 +1159,11 @@ INSERT INTO fk_partitioned_fk (a,b) VALUES (1500, 1501);
 INSERT INTO fk_partitioned_fk (a,b) VALUES (2500, 2502);
 INSERT INTO fk_partitioned_fk (a,b) VALUES (2501, 2503);
 
--- TODO(YB): When UPDATE changing partitions is supported, restore this section
---           to its original form. (#5310)
 -- this update fails because there is no referenced row
-UPDATE fk_partitioned_fk SET a = a + 5 WHERE a = 2501;
+UPDATE fk_partitioned_fk SET a = a + 1 WHERE a = 2501;
 -- but we can fix it thusly:
-INSERT INTO fk_notpartitioned_pk (a,b) VALUES (2506, 2503);
-UPDATE fk_partitioned_fk SET a = a + 5 WHERE a = 2501;
+INSERT INTO fk_notpartitioned_pk (a,b) VALUES (2502, 2503);
+UPDATE fk_partitioned_fk SET a = a + 1 WHERE a = 2501;
 
 -- these updates would leave lingering rows in the referencing table; disallow
 UPDATE fk_notpartitioned_pk SET b = 502 WHERE a = 500;
@@ -1212,22 +1210,11 @@ INSERT INTO fk_partitioned_fk (a,b) VALUES (NULL, NULL);
 
 -- ON UPDATE SET NULL
 SELECT tableoid::regclass, a, b FROM fk_partitioned_fk WHERE b IS NULL ORDER BY a;
--- TODO(YB): When UPDATE changing partitions is supported, the below section
---           should be reworked. (#5310)
 UPDATE fk_notpartitioned_pk SET a = a + 1 WHERE a = 2502;
-DELETE FROM fk_partitioned_fk WHERE a = 2502;
-INSERT INTO fk_partitioned_fk (a,b) VALUES (NULL, NULL);
-INSERT INTO fk_partitioned_fk (a,b) VALUES (2502, NULL);
-UPDATE fk_notpartitioned_pk SET a = 2503 WHERE a = 2502;
-SELECT tableoid::regclass, a, b FROM fk_partitioned_fk ORDER BY a, b;
-SELECT tableoid::regclass, a, b FROM fk_notpartitioned_pk ORDER BY a;
+SELECT tableoid::regclass, a, b FROM fk_partitioned_fk WHERE b IS NULL ORDER BY a;
 
 -- ON DELETE SET NULL
--- TODO(YB): When UPDATE changing partitions is supported, restore this section
---           to its original form. (#5310)
-DELETE FROM fk_notpartitioned_pk WHERE a=2502;
-INSERT INTO fk_notpartitioned_pk (a,b) VALUES (500, 500);
-INSERT INTO fk_partitioned_fk VALUES (500, 500);
+INSERT INTO fk_partitioned_fk VALUES (2503, 2503);
 SELECT count(*) FROM fk_partitioned_fk WHERE a IS NULL;
 DELETE FROM fk_notpartitioned_pk;
 SELECT count(*) FROM fk_partitioned_fk WHERE a IS NULL;
