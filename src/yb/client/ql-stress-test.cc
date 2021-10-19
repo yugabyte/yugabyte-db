@@ -142,7 +142,7 @@ class QLStressTest : public QLDmlTestBase<MiniCluster> {
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, key);
     table.AddStringColumnValue(req, kValueColumn, value);
-    EXPECT_OK(session->Apply(op));
+    session->Apply(op);
     return op;
   }
 
@@ -165,7 +165,7 @@ class QLStressTest : public QLDmlTestBase<MiniCluster> {
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, key);
     table.AddColumns({kValueColumn}, req);
-    EXPECT_OK(session->Apply(op));
+    session->Apply(op);
     return op;
   }
 
@@ -499,7 +499,7 @@ TEST_F_EX(QLStressTest, Increment, QLStressTestIntValue) {
   }
 
   for (const auto& op : write_ops) {
-    ASSERT_OK(session->Apply(op));
+    session->Apply(op);
     futures.push_back(session->FlushFuture());
   }
 
@@ -1054,7 +1054,7 @@ TEST_F_EX(QLStressTest, DynamicCompactionPriority, QLStressDynamicCompactionPrio
       auto* const req = op->mutable_request();
       QLAddInt32HashValue(req, key);
       table_.AddStringColumnValue(req, kValueColumn, value);
-      ASSERT_OK(session->Apply(op));
+      session->Apply(op);
       ASSERT_OK(session->Flush());
       ASSERT_OK(CheckOp(op.get()));
       std::this_thread::sleep_for(100ms);

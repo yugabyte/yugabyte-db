@@ -155,7 +155,7 @@ Result<YBqlWriteOpPtr> Increment(
   column_op->add_operands()->set_column_id(value_column_id);
   bfcall->add_operands()->mutable_value()->set_int64_value(delta);
 
-  RETURN_NOT_OK(session->Apply(op));
+  session->Apply(op);
   if (flush) {
     RETURN_NOT_OK(session->Flush());
     RETURN_NOT_OK(CheckOp(op.get()));
@@ -300,7 +300,7 @@ Result<YBqlWriteOpPtr> WriteRow(
   if (op_type != WriteOpType::DELETE) {
     table->AddInt32ColumnValue(req, kValueColumn, value);
   }
-  RETURN_NOT_OK(session->Apply(op));
+  session->Apply(op);
   if (flush) {
     RETURN_NOT_OK(session->Flush());
     RETURN_NOT_OK(CheckOp(op.get()));
@@ -324,7 +324,7 @@ Result<int32_t> SelectRow(
   auto* const req = op->mutable_request();
   QLAddInt32HashValue(req, key);
   table->AddColumns({column}, req);
-  RETURN_NOT_OK(session->Apply(op));
+  session->Apply(op);
   auto flush_status = session->FlushAndGetOpsErrors();
   if (flush_status.status.IsIOError()) {
     for (const auto& error : flush_status.errors) {
@@ -364,7 +364,7 @@ Result<std::map<int32_t, int32_t>> SelectAllRows(
       continue;
     }
     ops.push_back(op);
-    RETURN_NOT_OK(session->Apply(op));
+    session->Apply(op);
   }
 
   RETURN_NOT_OK(session->Flush());

@@ -160,7 +160,7 @@ class QLDmlTest : public QLDmlTestBase<MiniCluster> {
     QLAddStringRangeValue(req, r2);
     table_.AddInt32ColumnValue(req, "c1", c1);
     table_.AddStringColumnValue(req, "c2", c2);
-    CHECK_OK(session->Apply(op));
+    session->Apply(op);
     return op;
   }
 
@@ -205,7 +205,7 @@ class QLDmlTest : public QLDmlTestBase<MiniCluster> {
     table_.AddInt32Condition(condition, "r1", QL_OP_EQUAL, r1);
     table_.AddStringCondition(condition, "r2", QL_OP_EQUAL, r2);
     table_.AddColumns(columns, req);
-    EXPECT_OK(session->Apply(op));
+    session->Apply(op);
     return op;
   }
 
@@ -1224,7 +1224,7 @@ TEST_F(QLDmlTest, OpenRecentlyCreatedTable) {
       auto* const req = op->mutable_request();
       QLAddInt32HashValue(req, k);
       table.AddInt32ColumnValue(req, "v", -k);
-      ASSERT_OK(session->Apply(op));
+      session->Apply(op);
     }
     ASSERT_OK(session->Flush());
     table_creation_thread.join();

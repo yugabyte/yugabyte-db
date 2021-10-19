@@ -115,7 +115,7 @@ class YBTabletUtilTest : public YBMiniClusterTestBase<MiniCluster> {
     auto req = insert->mutable_request();
     GenerateDataForRow(table_->schema(), 17 /* record_id */, &random_, req);
 
-    RETURN_NOT_OK(session->Apply(insert));
+    session->Apply(insert);
     RETURN_NOT_OK(session->Flush());
     return Status::OK();
   }

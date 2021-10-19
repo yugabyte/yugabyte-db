@@ -278,7 +278,7 @@ void TestWorkload::State::WriteThread(const TestWorkloadOptions& options) {
             req->set_ttl(options.ttl * MonoTime::kMillisecondsPerSecond);
           }
           ops.push_back(update);
-          CHECK_OK(session->Apply(update));
+          session->Apply(update);
           break;
         }
       }
@@ -306,7 +306,7 @@ void TestWorkload::State::WriteThread(const TestWorkloadOptions& options) {
     }
 
     for (const auto& op : ops) {
-      CHECK_OK(session->Apply(op));
+      session->Apply(op);
     }
 
     const auto flush_status = session->FlushAndGetOpsErrors();
@@ -403,7 +403,7 @@ void TestWorkload::State::ReadThread(const TestWorkloadOptions& options) {
       key = r.Next();
     }
     QLAddInt32HashValue(req, key);
-    CHECK_OK(session->Apply(op));
+    session->Apply(op);
     const auto flush_status = session->FlushAndGetOpsErrors();
     const auto& s = flush_status.status;
     if (s.ok()) {

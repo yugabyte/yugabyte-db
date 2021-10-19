@@ -365,7 +365,7 @@ TEST_F_EX(ClientStressTest, MasterQueueFull, ClientStressTestSmallQueueMultiMast
     QLAddInt32HashValue(req, ++key);
     item.table->AddInt32ColumnValue(req, item.table->schema().columns()[1].name(), -key);
     item.table->AddStringColumnValue(req, item.table->schema().columns()[2].name(), kStringValue);
-    ASSERT_OK(item.session->Apply(op));
+    item.session->Apply(op);
     item.future = item.session->FlushFuture();
   }
 

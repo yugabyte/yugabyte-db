@@ -1077,6 +1077,7 @@ TEST_P(TwoDCTestWithEnableIntentsReplication, CleanupAbortedTransactions) {
   ASSERT_OK(WaitFor([&]() {
     return CountIntents(consumer_cluster()) == 0;
   }, MonoDelta::FromSeconds(kRpcTimeout), "Consumer cluster cleaned up intents"));
+  txn_0.second->Abort();
 }
 
 // Make sure when we compact a tablet, we retain intents.

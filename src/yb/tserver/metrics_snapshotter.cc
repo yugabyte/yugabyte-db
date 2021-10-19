@@ -303,7 +303,8 @@ Status MetricsSnapshotter::Thread::DoPrometheusMetricsSnapshot(const client::Tab
   }
 
   req->set_ttl(FLAGS_metrics_snapshotter_ttl_ms);
-  return session->Apply(op);
+  session->Apply(op);
+  return Status::OK();
 }
 
 Status MetricsSnapshotter::Thread::DoMetricsSnapshot() {

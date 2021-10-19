@@ -97,7 +97,7 @@ class KVTableTsFailoverWriteIfTest : public integration_tests::YBTableTestBase {
     table_.AddInt32ColumnValue(req, kValueColumnName, value);
     string op_str = Format("$0: $1", key, value);
     LOG(INFO) << "Sending write: " << op_str;
-    ASSERT_OK(session->Apply(insert));
+    session->Apply(insert);
     session->FlushAsync([insert, op_str](client::FlushStatus* flush_status) {
       const auto& s = flush_status->status;
       ASSERT_TRUE(s.ok() || s.IsAlreadyPresent())
@@ -345,11 +345,11 @@ TEST_F(KVTableTsFailoverWriteIfTest, KillTabletServerDuringReplication) {
     } else {
       LOG(INFO) << "Error during CAS: " << s;
       LOG(INFO) << "Retrying CAS: " << op_str;
-      ASSERT_OK(session->Apply(op));
+      session->Apply(op);
       session->FlushAsync(callback);
     }
   };
-  ASSERT_OK(session->Apply(op));
+  session->Apply(op);
   session->FlushAsync(callback);
 
   // In case of bug ENG-3471 read part of CAS will be completed before appending pending ops to log,

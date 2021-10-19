@@ -288,11 +288,7 @@ class Operation {
       return functor(session, callback);
     }
 
-    auto status = session->Apply(operation_);
-    if (!status.ok()) {
-      Respond(status);
-      return false;
-    }
+    session->Apply(operation_);
     *applied_operations = true;
     return true;
   }

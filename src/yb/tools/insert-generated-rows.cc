@@ -117,7 +117,7 @@ static int WriteRandomDataToTable(int argc, char** argv) {
     GenerateDataForRow(schema, record_id, &random, req);
 
     LOG(INFO) << "Inserting record: " << req->ShortDebugString();
-    CHECK_OK(session->Apply(insert));
+    session->Apply(insert);
     auto flush_status = session->FlushAndGetOpsErrors();
     const auto& s = flush_status.status;
     if (PREDICT_FALSE(!s.ok())) {

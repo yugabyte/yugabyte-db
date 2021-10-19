@@ -295,7 +295,8 @@ class AllTypesItest : public YBTest {
     table_.AddBinaryColumnValue(req, "binary_val", content);
     table_.AddBoolColumnValue(req, "bool_val", int_val % 2);
     VLOG(1) << "Inserting row[" << split_idx << "," << row_idx << "]" << insert->ToString();
-    return session->Apply(insert);
+    session->Apply(insert);
+    return Status::OK();
   }
 
   // This inserts kNumRowsPerTablet in each of the tablets. In the end we should have

@@ -391,7 +391,7 @@ struct MirrorTable {
           }
         }
       }
-      RETURN_NOT_OK(session->Apply(op));
+      session->Apply(op);
       const auto flush_status = session->FlushAndGetOpsErrors();
       const auto& s = flush_status.status;
       if (s.ok()) {

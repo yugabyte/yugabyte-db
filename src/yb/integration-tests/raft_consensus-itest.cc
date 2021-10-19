@@ -286,7 +286,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
         QLAddInt32HashValue(req, j);
         table.AddInt32ColumnValue(req, "int_val", j * 2);
         table.AddStringColumnValue(req, "string_val", StringPrintf("hello %d", j));
-        ASSERT_OK(session->Apply(op));
+        session->Apply(op);
       }
 
       // We don't handle write idempotency yet. (i.e making sure that when a leader fails

@@ -444,7 +444,7 @@ void AlterTableTest::InsertRows(int start_row, int num_rows) {
     }
 
     ops.push_back(op);
-    ASSERT_OK(session->Apply(op));
+    session->Apply(op);
 
     if (ops.size() >= 50) {
       FlushSessionOrDie(session, ops);
@@ -469,7 +469,7 @@ void AlterTableTest::UpdateRow(int32_t row_key,
   for (const auto& e : updates) {
     table.AddInt32ColumnValue(update->mutable_request(), e.first, e.second);
   }
-  CHECK_OK(session->Apply(update));
+  session->Apply(update);
   FlushSessionOrDie(session);
 }
 
@@ -770,7 +770,7 @@ void AlterTableTest::WriteThread(QLWriteRequestPB::QLStmtType type) {
       }
 
       ops.push_back(op);
-      ASSERT_OK(session->Apply(op));
+      session->Apply(op);
     }
 
     if (should_stop || ops.size() >= 10) {
@@ -884,7 +884,7 @@ TEST_P(AlterTableTest, TestInsertAfterAlterTable) {
   table.AddInt32ColumnValue(req, "new-i32", 1);
   shared_ptr<YBSession> session = client_->NewSession();
   session->SetTimeout(15s);
-  ASSERT_OK(session->Apply(insert));
+  session->Apply(insert);
   auto flush_status = session->FlushAndGetOpsErrors();
   const auto& s = flush_status.status;
   if (!s.ok()) {

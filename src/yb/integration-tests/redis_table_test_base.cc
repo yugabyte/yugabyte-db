@@ -80,7 +80,7 @@ void RedisTableTestBase::PutKeyValueWithTtlNoFlush(string key, string value, int
   auto set_op = std::make_shared<YBRedisWriteOp>(table_->shared_from_this());
   ASSERT_OK(ParseSet(set_op.get(),
       SlicesFromString({"set", key, value, "PX", std::to_string(ttl_msec)})));
-  ASSERT_OK(session_->Apply(set_op));
+  session_->Apply(set_op);
 }
 
 void RedisTableTestBase::GetKeyValue(

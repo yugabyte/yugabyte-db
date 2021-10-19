@@ -244,7 +244,7 @@ bool TableIterator::ExecuteOps() {
   constexpr size_t kMaxConcurrentOps = 5;
   const size_t new_executed_ops = std::min(ops_.size(), executed_ops_ + kMaxConcurrentOps);
   for (size_t i = executed_ops_; i != new_executed_ops; ++i) {
-    REPORT_AND_RETURN_FALSE_IF_NOT_OK(session_->Apply(ops_[i]));
+    session_->Apply(ops_[i]);
   }
 
   if (!IsFlushStatusOkOrHandleErrors(session_->FlushAndGetOpsErrors())) {
@@ -282,7 +282,7 @@ void TableIterator::Move() {
       if (paging_state_) {
         auto& op = ops_[ops_index_];
         *op->mutable_request()->mutable_paging_state() = *paging_state_;
-        REPORT_AND_RETURN_IF_NOT_OK(session_->Apply(op));
+        session_->Apply(op);
         if (!IsFlushStatusOkOrHandleErrors(session_->FlushAndGetOpsErrors())) {
           return;
         }

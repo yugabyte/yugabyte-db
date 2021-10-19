@@ -62,7 +62,7 @@ class Trace;
 class Runnable {
  public:
   virtual void Run() = 0;
-  virtual ~Runnable() {}
+  virtual ~Runnable() = default;
 };
 
 template <class F>

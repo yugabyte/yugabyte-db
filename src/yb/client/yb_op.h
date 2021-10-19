@@ -339,6 +339,14 @@ class YBqlWriteOp : public YBqlOp {
   void set_writes_static_row(const bool value) { writes_static_row_ = value; }
   void set_writes_primary_row(const bool value) { writes_primary_row_ = value; }
 
+  void set_write_time_for_backfill(HybridTime value) {
+    write_time_for_backfill_ = value;
+  }
+
+  HybridTime write_time_for_backfill() const {
+    return write_time_for_backfill_;
+  }
+
  protected:
   Type type() const override { return QL_WRITE; }
 
@@ -352,6 +360,7 @@ class YBqlWriteOp : public YBqlOp {
   // Does this operation write to the static or primary row?
   bool writes_static_row_ = false;
   bool writes_primary_row_ = false;
+  HybridTime write_time_for_backfill_;
 };
 
 class YBqlReadOp : public YBqlOp {

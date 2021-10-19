@@ -868,7 +868,7 @@ TEST_F(QLTabletTest, LeaderChange) {
   table.SetInt32Condition(
     req->mutable_if_expr()->mutable_condition(), kValueColumn, QL_OP_EQUAL, kValue1);
   req->mutable_column_refs()->add_ids(table.ColumnId(kValueColumn));
-  ASSERT_OK(session->Apply(write_op));
+  session->Apply(write_op);
 
   SetAtomicFlag(30000, &FLAGS_TEST_delay_execute_async_ms);
   auto flush_future = session->FlushFuture();
@@ -951,7 +951,7 @@ void QLTabletTest::TestDeletePartialKey(int num_range_keys_in_delete) {
       for (int i = 0; i != num_range_keys_in_delete; ++i) {
         QLAddInt32RangeValue(req, key);
       }
-      ASSERT_OK(session1->Apply(op_del));
+      session1->Apply(op_del);
     }
 
     const auto op_update = table.NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
@@ -962,7 +962,7 @@ void QLTabletTest::TestDeletePartialKey(int num_range_keys_in_delete) {
       QLAddInt32RangeValue(req, key);
       table.AddInt32ColumnValue(req, kValueColumn, kValue2);
       req->mutable_if_expr()->mutable_condition()->set_op(QL_OP_EXISTS);
-      ASSERT_OK(session2->Apply(op_update));
+      session2->Apply(op_update);
     }
     auto future_del = session1->FlushFuture();
     auto future_update = session2->FlushFuture();
@@ -1084,7 +1084,7 @@ TEST_F(QLTabletTest, OperationMemTracking) {
   QLAddInt32HashValue(req, 42);
   auto session = CreateSession();
   table.AddStringColumnValue(req, kValueColumn, std::string(kValueSize, 'X'));
-  ASSERT_OK(session->Apply(op));
+  session->Apply(op);
   auto future = session->FlushFuture();
   auto server_tracker = MemTracker::GetRootTracker()->FindChild("server 1");
   auto tablets_tracker = server_tracker->FindChild("Tablets");

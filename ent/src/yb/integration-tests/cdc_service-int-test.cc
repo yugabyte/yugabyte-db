@@ -373,7 +373,7 @@ TEST_P(CDCServiceTest, TestCompoundKey) {
     QLAddStringHashValue(req, "hk");
     QLAddStringRangeValue(req, Format("rk_$0", i));
     table.AddInt32ColumnValue(req, "val", i);
-    ASSERT_OK(session->Apply(op));
+    session->Apply(op);
   }
   ASSERT_OK(session->Flush());
 
@@ -1708,7 +1708,7 @@ TEST_P(CDCLogAndMetaIndexReset, TestLogAndMetaCdcIndexAreReset) {
     auto* delete_req = delete_op->mutable_request();
     QLAddStringHashValue(delete_req, tablet_id);
     QLAddStringRangeValue(delete_req, stream_id[i]);
-    ASSERT_OK(session->Apply(delete_op));
+    session->Apply(delete_op);
   }
   ASSERT_OK(session->Flush());
   LOG(INFO) << "Successfully deleted all streams from cdc_state";
