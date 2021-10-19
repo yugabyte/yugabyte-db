@@ -56,7 +56,7 @@ export default class Replication extends Component {
   render() {
     const {
       universe: { currentUniverse },
-      graph: { metrics }
+      graph: { metrics, prometheusQueryEnabled }
     } = this.props;
 
     const universeDetails = currentUniverse.data.universeDetails;
@@ -173,6 +173,7 @@ export default class Replication extends Component {
                     className={'metrics-panel-container'}
                     width={this.state.graphWidth}
                     height={540}
+                    prometheusQueryEnabled={prometheusQueryEnabled}
                   />
                 </div>
               )}

@@ -3,7 +3,11 @@
 import { connect } from 'react-redux';
 import { reduxForm } from 'redux-form';
 import { GraphPanelHeader } from '../../metrics';
-import { changeGraphQueryPeriod, resetGraphQueryPeriod } from '../../../actions/graph';
+import {
+  changeGraphQueryPeriod,
+  resetGraphQueryPeriod,
+  togglePrometheusQuery
+} from '../../../actions/graph';
 import { fetchUniverseList, fetchUniverseListResponse } from '../../../actions/universe';
 
 const mapDispatchToProps = (dispatch) => {
@@ -18,6 +22,9 @@ const mapDispatchToProps = (dispatch) => {
     },
     resetGraphQueryPeriod: () => {
       dispatch(resetGraphQueryPeriod());
+    },
+    togglePrometheusQuery: () => {
+      dispatch(togglePrometheusQuery());
     }
   };
 };
@@ -25,7 +32,8 @@ const mapDispatchToProps = (dispatch) => {
 function mapStateToProps(state, ownProps) {
   return {
     graph: state.graph,
-    universe: state.universe
+    universe: state.universe,
+    prometheusQueryEnabled: state.graph.prometheusQueryEnabled
   };
 }
 

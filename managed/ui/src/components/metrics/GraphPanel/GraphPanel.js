@@ -272,7 +272,7 @@ class GraphPanel extends Component {
       type,
       selectedUniverse,
       insecureLoginToken,
-      graph: { metrics }
+      graph: { metrics, prometheusQueryEnabled }
     } = this.props;
 
     let panelData = <YBLoading />;
@@ -301,6 +301,7 @@ class GraphPanel extends Component {
                 metric={metrics[type][metricKey]}
                 className={'metrics-panel-container'}
                 containerWidth={width}
+                prometheusQueryEnabled={prometheusQueryEnabled}
               />
             ) : null;
           })
