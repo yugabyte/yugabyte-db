@@ -57,6 +57,7 @@ public class PlatformMetricsProcessor {
   }
 
   public void start() {
+    metricService.initialize();
     this.actorSystem
         .scheduler()
         .schedule(
@@ -73,6 +74,7 @@ public class PlatformMetricsProcessor {
       try {
         errorMessage = updateMetrics();
         cleanExpiredMetrics();
+        metricService.flushMetricsToDb();
       } catch (Exception e) {
         errorMessage = "Error processing metrics: " + e.getMessage();
         log.error("Error processing metrics", e);

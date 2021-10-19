@@ -8,12 +8,8 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.PlatformServiceException;
-import io.ebean.Ebean;
 import io.ebean.Finder;
 import io.ebean.Model;
-import io.ebean.Query;
-import io.ebean.RawSql;
-import io.ebean.RawSqlBuilder;
 import io.ebean.annotation.DbJson;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -190,12 +186,12 @@ public class AvailabilityZone extends Model {
 
   @JsonBackReference
   public Provider getProvider() {
-    String providerQuery = "select p.uuid, p.code, p.name from provider p where p.uuid = :p_uuid";
-    RawSql rawSql = RawSqlBuilder.parse(providerQuery).create();
-    Query<Provider> query = Ebean.find(Provider.class);
-    query.setRawSql(rawSql);
-    query.setParameter("p_uuid", region.provider.uuid);
-    return query.findOne();
+    return Provider.find
+        .query()
+        .fetchLazy("regions")
+        .where()
+        .eq("uuid", region.provider.uuid)
+        .findOne();
   }
 
   @Override
