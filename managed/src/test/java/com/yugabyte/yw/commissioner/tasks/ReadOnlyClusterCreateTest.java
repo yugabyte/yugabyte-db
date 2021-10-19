@@ -183,6 +183,7 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
     taskParams.currentClusterType = ClusterType.ASYNC;
 
     AvailabilityZone zone = AvailabilityZone.getByCode(onPremProvider, AZ_CODE);
+    createOnpremInstance(zone);
 
     UserIntent userIntent = new UserIntent();
     userIntent.numNodes = 1;
@@ -205,7 +206,6 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
       iter++;
     }
 
-    createOnpremInstance(zone);
     TaskInfo taskInfo = submitTask(taskParams);
 
     verify(mockNodeManager, times(8)).nodeCommand(any(), any());
@@ -223,6 +223,7 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
     taskParams.currentClusterType = ClusterType.ASYNC;
 
     AvailabilityZone zone = AvailabilityZone.getByCode(onPremProvider, AZ_CODE);
+    createOnpremInstance(zone);
 
     UserIntent userIntent = new UserIntent();
     userIntent.numNodes = 1;
