@@ -4,8 +4,8 @@ package com.yugabyte.yw.controllers;
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
-import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
+import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.junit.Assert.assertEquals;
@@ -298,7 +298,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     UUID invalidProviderUUID = UUID.randomUUID();
     Result r =
         assertPlatformException(() -> deleteInstance(customer.uuid, invalidProviderUUID, FAKE_IP));
-    assertBadRequest(r, "Cannot find universe " + invalidProviderUUID);
+    assertBadRequest(r, "Cannot find provider " + invalidProviderUUID);
     assertAuditEntry(0, customer.uuid);
   }
 

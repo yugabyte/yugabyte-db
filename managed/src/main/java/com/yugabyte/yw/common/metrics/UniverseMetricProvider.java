@@ -124,7 +124,7 @@ public class UniverseMetricProvider implements MetricsProvider {
         }
         universeGroup.cleanMetricFilter(
             MetricFilter.builder()
-                .metrics(UNIVERSE_METRICS)
+                .metricNames(UNIVERSE_METRICS)
                 .sourceUuid(universe.getUniverseUUID())
                 .build());
         metricSaveGroups.add(universeGroup.build());

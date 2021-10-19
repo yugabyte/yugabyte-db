@@ -16,6 +16,7 @@ import io.ebean.Finder;
 import io.ebean.Model;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.Collection;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
@@ -159,6 +160,10 @@ public class Customer extends Model {
 
   public static Customer get(UUID customerUUID) {
     return find.query().where().eq("uuid", customerUUID).findOne();
+  }
+
+  public static List<Customer> getForUpdate(Collection<UUID> customerUUIDs) {
+    return find.query().forUpdate().where().in("uuid", customerUUIDs).findList();
   }
 
   public static Customer get(long id) {

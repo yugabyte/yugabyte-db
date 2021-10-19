@@ -69,7 +69,6 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
@@ -108,7 +107,7 @@ public class HealthCheckerTest extends FakeDBApplication {
 
   @Mock private EmailHelper mockEmailHelper;
 
-  @InjectMocks private MetricService metricService;
+  private MetricService metricService;
 
   @Mock Config mockRuntimeConfig;
 
@@ -146,6 +145,8 @@ public class HealthCheckerTest extends FakeDBApplication {
 
     when(mockruntimeConfigFactory.forUniverse(any())).thenReturn(mockConfigUniverseScope);
     when(mockConfigUniverseScope.getBoolean("yb.health.logOutput")).thenReturn(false);
+
+    metricService = app.injector().instanceOf(MetricService.class);
 
     // Finally setup the mocked instance.
     healthChecker =

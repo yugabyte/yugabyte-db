@@ -12,7 +12,6 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.models.filters.MetricFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
-import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Junction;
@@ -162,20 +161,13 @@ public class Metric extends Model {
 
   public static ExpressionList<Metric> createQueryByFilter(MetricFilter filter) {
     ExpressionList<Metric> query = find.query().fetch("labels").where();
-    appendInClause(query, "uuid", filter.getUuids());
     if (filter.getCustomerUuid() != null) {
       query.eq("customerUUID", filter.getCustomerUuid());
     }
     if (filter.getSourceUuid() != null) {
       query.eq("sourceUuid", filter.getSourceUuid());
     }
-    List<String> metricNames =
-        filter
-            .getMetrics()
-            .stream()
-            .map(PlatformMetrics::getMetricName)
-            .collect(Collectors.toList());
-    appendInClause(query, "name", metricNames);
+    appendInClause(query, "name", filter.getMetricNames());
     if (!CollectionUtils.isEmpty(filter.getKeys())
         || !CollectionUtils.isEmpty(filter.getSourceKeys())) {
       if (filter.getKeys().size() + filter.getSourceKeys().size() > DB_OR_CHAIN_TO_WARN) {
