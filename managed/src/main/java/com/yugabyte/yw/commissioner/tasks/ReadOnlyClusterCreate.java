@@ -18,6 +18,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Set;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -72,7 +73,7 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
       }
 
       // perform preflight checks for only readonly cluster
-      performUniversePreflightChecks(universe, cl -> cl.uuid.equals(cluster.uuid));
+      performUniversePreflightChecks(Collections.singletonList(cluster));
 
       // Create the required number of nodes in the appropriate locations.
       createCreateServerTasks(nodesToProvision).setSubTaskGroupType(SubTaskGroupType.Provisioning);

@@ -102,7 +102,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       checkIfNodesExist(universe);
       Cluster primaryCluster = taskParams().getPrimaryCluster();
 
-      performUniversePreflightChecks(universe, x -> true);
+      performUniversePreflightChecks(universe.getUniverseDetails().clusters);
 
       // Create the required number of nodes in the appropriate locations.
       createCreateServerTasks(taskParams().nodeDetailsSet)
