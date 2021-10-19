@@ -36,7 +36,6 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnitRunner;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -44,7 +43,7 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
 
   private CustomerConfig s3StorageConfig;
 
-  @InjectMocks private MetricService metricService;
+  private MetricService metricService;
 
   private Universe defaultUniverse;
   private CertificateInfo certInfo;
@@ -76,6 +75,8 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     } catch (Exception e) {
 
     }
+
+    metricService = app.injector().instanceOf(MetricService.class);
 
     defaultUniverse = createUniverse(defaultCustomer.getCustomerId(), certInfo.uuid);
     Universe.saveDetails(

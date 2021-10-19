@@ -63,7 +63,7 @@ public class Provider extends Model {
   @ApiModelProperty(value = "Provider active status", accessMode = READ_ONLY)
   public Boolean active = true;
 
-  @Column(nullable = false)
+  @Column(name = "customer_uuid", nullable = false)
   @ApiModelProperty(value = "Customer uuid", accessMode = READ_ONLY)
   public UUID customerUUID;
 
@@ -294,7 +294,7 @@ public class Provider extends Model {
   public static Provider getOrBadRequest(UUID providerUuid) {
     Provider provider = find.byId(providerUuid);
     if (provider == null)
-      throw new PlatformServiceException(BAD_REQUEST, "Cannot find universe " + providerUuid);
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot find provider " + providerUuid);
     return provider;
   }
 
