@@ -254,7 +254,7 @@ export default class ClusterFields extends Component {
     ) {
       let currentSoftwareVersion = this.props.softwareVersions[0];
       // Use primary cluster software version even for read replica
-      if (formValues.primary.ybSoftwareVersion) {
+      if (formValues.primary?.ybSoftwareVersion) {
         currentSoftwareVersion = formValues.primary.ybSoftwareVersion;
       }
       this.setState({ ybSoftwareVersion: currentSoftwareVersion });
