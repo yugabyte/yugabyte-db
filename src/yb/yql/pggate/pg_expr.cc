@@ -224,20 +224,23 @@ void PgExpr::TranslateDecimal(Slice *yb_cursor, const PgWireDataHeader& header, 
     return pg_tuple->WriteNull(index, header);
   }
 
+  // Get the value size.
   int64_t data_size;
   size_t read_size = PgDocData::ReadNumber(yb_cursor, &data_size);
   yb_cursor->remove_prefix(read_size);
 
-  std::string serialized_decimal = yb_cursor->ToBuffer();
-  yb_cursor->remove_prefix(data_size);
-
+  // Read the decimal value from Protobuf and decode it to internal format.
+  std::string serialized_decimal;
+  read_size = PgDocData::ReadString(yb_cursor, &serialized_decimal, data_size);
+  yb_cursor->remove_prefix(read_size);
   util::Decimal yb_decimal;
   if (!yb_decimal.DecodeFromComparable(serialized_decimal).ok()) {
     LOG(FATAL) << "Failed to deserialize DECIMAL from " << serialized_decimal;
     return;
   }
-  auto plaintext = yb_decimal.ToString();
 
+  // Translate to decimal format and write to datum.
+  auto plaintext = yb_decimal.ToString();
   pg_tuple->WriteDatum(index, type_entity->yb_to_datum(plaintext.c_str(), data_size, type_attrs));
 }
 
