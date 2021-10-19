@@ -2215,7 +2215,7 @@ export default class ClusterFields extends Component {
                         label="Replication Factor"
                         initialValue={this.state.replicationFactor}
                         onSelect={this.replicationFactorChanged}
-                        isReadOnly={isFieldReadOnly}
+                        isReadOnly={isReadOnlyOnEdit}
                       />
                     ]
                   : null}
