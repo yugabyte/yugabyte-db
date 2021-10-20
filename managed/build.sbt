@@ -4,6 +4,8 @@ import play.sbt.PlayInteractionMode
 
 import scala.sys.process.Process
 
+useCoursier := false
+
 // ------------------------------------------------------------------------------------------------
 // Constants
 // ------------------------------------------------------------------------------------------------
@@ -159,7 +161,7 @@ libraryDependencies ++= Seq(
   "com.amazonaws" % "aws-java-sdk-iam" % "1.11.670",
   "com.amazonaws" % "aws-java-sdk-sts" % "1.11.678",
   "com.amazonaws" % "aws-java-sdk-s3" % "1.11.931",
-  "com.cronutils" % "cron-utils" % "9.0.1",
+  "com.cronutils" % "cron-utils" % "9.1.5",
   "io.prometheus" % "simpleclient" % "0.11.0",
   "io.prometheus" % "simpleclient_hotspot" % "0.11.0",
   "io.prometheus" % "simpleclient_servlet" % "0.11.0",
