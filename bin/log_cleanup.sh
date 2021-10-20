@@ -90,13 +90,14 @@ if [[ $cores_disk_percent_max -lt 1 || $cores_disk_percent_max -gt 100 ]]; then
   exit 1
 fi
 
-if [[ $logs_purge_threshold -lt 1 ]]; then
+if [[ $logs_purge_threshold_kb -lt 1000000 ]]; then
   echo "--logs_purge_threshold needs to be at least 1 GB"
   exit 1
 fi
 
 # half for tserver and half for master.
 logs_disk_percent_max=$(($logs_disk_percent_max / 2))
+logs_purge_threshold_kb=$(($logs_purge_threshold_kb / 2))
 
 delete_gz_files() {
   set -f
