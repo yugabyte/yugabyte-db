@@ -128,6 +128,11 @@ DEFINE_bool(load_balancer_drive_aware, true,
             "When LB decides to move a tablet from server A to B, on the target LB "
             "should select the tablet to move from most loaded drive.");
 
+// TODO(tsplit): make false by default or even remove flag after
+// https://github.com/yugabyte/yugabyte-db/issues/10301 is fixed.
+DEFINE_test_flag(
+    bool, load_balancer_skip_inactive_tablets, true, "Don't move inactive (hidden) tablets");
+
 namespace yb {
 namespace master {
 
@@ -1386,7 +1391,7 @@ Result<TabletInfos> ClusterLoadBalancer::GetTabletsForTable(const TableId& table
         table_uuid);
   }
 
-  return table_info->GetTablets();
+  return table_info->GetTablets(IncludeInactive(!FLAGS_TEST_load_balancer_skip_inactive_tablets));
 }
 
 const TableInfoMap& ClusterLoadBalancer::GetTableMap() const {

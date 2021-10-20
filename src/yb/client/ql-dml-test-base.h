@@ -49,7 +49,7 @@ class QLDmlTestBase : public MiniClusterTestWithClient<MiniClusterType> {
   virtual ~QLDmlTestBase() {}
 
  protected:
-  void SetFlags();
+  virtual void SetFlags();
   void StartCluster();
 
   using MiniClusterTestWithClient<MiniClusterType>::client_;
