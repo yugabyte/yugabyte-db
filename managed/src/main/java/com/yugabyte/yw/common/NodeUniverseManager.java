@@ -40,7 +40,7 @@ public class NodeUniverseManager extends DevopsBase {
           PlacementInfoUtil.getKubernetesNamespace(
               universe.getUniverseDetails().nodePrefix,
               isMultiAz ? AvailabilityZone.get(node.azUuid).name : null,
-              AvailabilityZone.get(node.azUuid).getConfig());
+              AvailabilityZone.get(node.azUuid).getUnmaskedConfig());
 
       commandArgs.add("k8s");
       commandArgs.add("--namespace");
