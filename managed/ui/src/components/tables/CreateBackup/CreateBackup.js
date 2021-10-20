@@ -340,7 +340,7 @@ export default class CreateBackup extends Component {
             const isSchedulingFrequencyReadOnly = cronExpression !== '';
             const isCronExpressionReadOnly = schedulingFrequency !== '';
             const isTableSelected = backupTableUUID && backupTableUUID.length;
-            const s3StorageSelected = storageConfigUUID && storageConfigUUID.label === 'S3 Storage';
+            const s3StorageSelected = storageConfigUUID && storageConfigUUID.id === 'S3';
             const showTransactionalToggle =
               isKeyspaceSelected &&
               !!isTableSelected &&
