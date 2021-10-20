@@ -45,6 +45,15 @@ export const AlertConfiguration = (props) => {
         ]);
       });
     }
+    // if universe list is already fetched, load it from the store
+    else {
+      setAlertUniverseList([
+        ...props.universes.data.map((universe) => ({
+          label: universe.name,
+          value: universe.universeUUID
+        }))
+      ]);
+    }
   };
 
   useEffect(onInit, []);
@@ -94,6 +103,7 @@ export const AlertConfiguration = (props) => {
               enablePlatformAlert={setPlatformAlert}
               handleMetricsCall={handleMetricsCall}
               alertUniverseList={alertUniverseList}
+              universes={universes}
               {...props}
             />
           )}
