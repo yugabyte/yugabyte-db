@@ -45,6 +45,20 @@
   tags:
     - download-software
 
+- name: Remove older releases
+  shell: "ls \"{{ yb_home_dir }}/releases\" -t | \
+      tail -n +{{ num_releases_to_keep + 1 }} | \
+      xargs -I{} --no-run-if-empty rm -rv \"{{ yb_home_dir }}/releases/{}\" --"
+  register: rm_releases_result
+  tags:
+    - download-software
+
+- name: Log remove older releases response
+  debug:
+    var: rm_releases_result.stdout_lines
+  tags:
+    - download-software
+
 - name: Retrieve items to symlink
   command: "ls {{ yb_package_folder }}"
   register: symlink_items
@@ -80,3 +94,18 @@
   tags:
     - install-software
   when: not is_yugabyte_package
+
+# doing num_releases_to_keep + 2 because we need to protect 'TEMPORARY' directory under yb-software
+- name: Remove older yb software folders
+  shell: "ls \"{{ yb_software_dir }}\" -t | \
+      tail -n +{{ num_releases_to_keep + 2 }} | \
+      xargs -I{} --no-run-if-empty rm -rv \"{{ yb_software_dir }}/{}\" --"
+  register: rm_yb_softwares_result
+  tags:
+    - install-software
+
+- name: Log remove older yb software folders response
+  debug:
+    var: rm_yb_softwares_result.stdout_lines
+  tags:
+    - install-software
