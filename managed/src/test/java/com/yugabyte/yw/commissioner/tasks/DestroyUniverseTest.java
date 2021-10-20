@@ -31,8 +31,6 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.File;
-import java.io.IOException;
-import java.security.NoSuchAlgorithmException;
 import java.util.UUID;
 import org.junit.After;
 import org.junit.Before;
