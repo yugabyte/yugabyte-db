@@ -32,7 +32,8 @@ export const BackupStorageOptions = (storageConfigs) => {
           .sort((a, b) => regex.exec(a) - regex.exec(b))
           .map((item, arrIdx) => ({
             label: item.configName,
-            value: item.configUUID
+            value: item.configUUID,
+            id: key.toUpperCase(),
           }))
       };
     });
