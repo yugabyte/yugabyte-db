@@ -3,6 +3,7 @@
      "(\\.l$)",
      "(Makefile$)",
      "(src/yb/common/ql_type.h$)",
+     "(\\.ipynb$)",
      "(\\.sql$)",
      "(\\.txt$)",
      "(^src/postgres/.*$)",
