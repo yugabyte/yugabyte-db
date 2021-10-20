@@ -203,6 +203,10 @@ public class TaskRunner implements Runnable {
 
       // Run a one-off Platform HA sync every time a task finishes.
       replicationManager.oneOffSync();
+
+      // Terminate the task to release resources.
+      // Any added subtasks in the subgroups are also terminated.
+      task.terminate();
     }
   }
 
