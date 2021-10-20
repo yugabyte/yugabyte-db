@@ -73,6 +73,11 @@ DEFINE_int32(global_log_cache_size_limit_mb, 1024,
              "caching log entries across all tablets is kept under this threshold.");
 TAG_FLAG(global_log_cache_size_limit_mb, advanced);
 
+DEFINE_int32(global_log_cache_size_limit_percentage, 5,
+             "The maximum percentage of root process memory that can be used for caching log "
+             "entries across all tablets. Default is 5.");
+TAG_FLAG(global_log_cache_size_limit_percentage, advanced);
+
 DEFINE_test_flag(bool, log_cache_skip_eviction, false,
                  "Don't evict log entries in tests.");
 
@@ -132,7 +137,17 @@ LogCache::LogCache(const scoped_refptr<MetricEntity>& metric_entity,
 }
 
 MemTrackerPtr LogCache::GetServerMemTracker(const MemTrackerPtr& server_tracker) {
-  const int64_t global_max_ops_size_bytes = FLAGS_global_log_cache_size_limit_mb * 1_MB;
+  CHECK(FLAGS_global_log_cache_size_limit_percentage > 0 &&
+        FLAGS_global_log_cache_size_limit_percentage <= 100)
+    << Substitute("Flag FLAGS_global_log_cache_size_limit_percentage must be between 0 and 100. ",
+                  "Current value: $0",
+                  FLAGS_global_log_cache_size_limit_percentage);
+
+  int64_t global_max_ops_size_bytes = FLAGS_global_log_cache_size_limit_mb * 1_MB;
+  int64_t root_mem_limit = MemTracker::GetRootTracker()->limit();
+  global_max_ops_size_bytes = std::min(
+      global_max_ops_size_bytes,
+      root_mem_limit * FLAGS_global_log_cache_size_limit_percentage / 100);
   return MemTracker::FindOrCreateTracker(
       global_max_ops_size_bytes, kParentMemTrackerId, server_tracker);
 }

@@ -173,7 +173,8 @@ class LogCache {
 
  private:
   FRIEND_TEST(LogCacheTest, TestAppendAndGetMessages);
-  FRIEND_TEST(LogCacheTest, TestGlobalMemoryLimit);
+  FRIEND_TEST(LogCacheTest, TestGlobalMemoryLimitMB);
+  FRIEND_TEST(LogCacheTest, TestGlobalMemoryLimitPercentage);
   FRIEND_TEST(LogCacheTest, TestReplaceMessages);
   friend class LogCacheTest;
 
