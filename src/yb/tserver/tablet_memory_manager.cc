@@ -210,7 +210,6 @@ void TabletMemoryManager::InitLogCacheGC() {
 
 void TabletMemoryManager::ConfigureBackgroundTask(tablet::TabletOptions* options) {
   // Calculate memstore_size_bytes based on total RAM available and global percentage.
-  bool should_count_memory = FLAGS_global_memstore_size_percentage > 0;
   CHECK(FLAGS_global_memstore_size_percentage > 0 && FLAGS_global_memstore_size_percentage <= 100)
     << Substitute(
         "Flag tablet_block_cache_size_percentage must be between 0 and 100. Current value: "
@@ -226,16 +225,15 @@ void TabletMemoryManager::ConfigureBackgroundTask(tablet::TabletOptions* options
 
   // Add memory monitor and background thread for flushing.
   // TODO(zhaoalex): replace task with Poller
-  if (should_count_memory) {
-    background_task_.reset(new BackgroundTask(
-      std::function<void()>([this]() { FlushTabletIfLimitExceeded(); }),
-      "tablet manager",
-      "flush scheduler bgtask"));
-    options->memory_monitor = std::make_shared<rocksdb::MemoryMonitor>(
-        memstore_size_bytes,
-        std::function<void()>([this](){
-                                YB_WARN_NOT_OK(background_task_->Wake(), "Wakeup error"); }));
-  }
+  background_task_.reset(new BackgroundTask(
+    std::function<void()>([this]() { FlushTabletIfLimitExceeded(); }),
+    "tablet manager",
+    "flush scheduler bgtask"));
+  options->memory_monitor = std::make_shared<rocksdb::MemoryMonitor>(
+      memstore_size_bytes,
+      std::function<void()>([this](){
+                              YB_WARN_NOT_OK(background_task_->Wake(), "Wakeup error"); }));
+
   // Must assign memory_monitor_ after configuring the background task.
   memory_monitor_ = options->memory_monitor;
 }
