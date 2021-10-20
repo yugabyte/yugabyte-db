@@ -42,26 +42,26 @@ const getValidationSchema = (type) => {
   return Yup.object().shape(shape);
 };
 
-const PATH_FIELD = () => <Field name="x86_64" label="Path" component={YBFormInput} />;
+const PathField = () => <Field name="x86_64" label="Path" component={YBFormInput} />;
 
-const S3_FIELDS = () => (
+const S3Fields = () => (
   <>
-    <PATH_FIELD />
+    <PathField />
     <Field name="accessKeyId" label="Access key id" component={YBFormInput} />
     <Field name="secretAccessKey" label="Secret access key" component={YBFormInput} />
   </>
 );
 
-const GCS_FIELDS = () => (
+const GcsFields = () => (
   <>
-    <PATH_FIELD />
+    <PathField />
     <Field name="credentialsJson" label="Credentials Json" component={YBFormInput} />
   </>
 );
 
-const HTTP_FIELDS = () => (
+const HttpFields = () => (
   <>
-    <PATH_FIELD />
+    <PathField />
     <Field name="x86_64_checksum" component={YBFormInput} label="Checksum" />
   </>
 );
@@ -69,11 +69,11 @@ const HTTP_FIELDS = () => (
 const getFields = (type) => {
   switch (type.value) {
     case 's3':
-      return <S3_FIELDS />;
+      return <S3Fields />;
     case 'gcs':
-      return <GCS_FIELDS />;
+      return <GcsFields />;
     case 'http':
-      return <HTTP_FIELDS />;
+      return <HttpFields />;
     default:
       throw new Error('Unknown import type ' + type.value);
   }
