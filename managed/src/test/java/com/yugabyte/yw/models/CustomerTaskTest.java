@@ -9,6 +9,7 @@ import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
@@ -115,6 +116,14 @@ public class CustomerTaskTest extends FakeDBApplication {
           is(allOf(notNullValue(), equalTo("Creating " + targetType.toString() + " : Foo"))));
       assertThat(th.getTargetUUID(), is(equalTo(targetUUID)));
       assertThat(th.getCustomerUUID(), is(equalTo(defaultCustomer.uuid)));
+    }
+  }
+
+  @Test
+  public void testAllTaskTypesTranslated() {
+    for (CustomerTask.TaskType taskType : CustomerTask.TaskType.values()) {
+      assertNotNull("toString missed for " + taskType.name(), taskType.toString(false));
+      assertNotNull("toString missed for " + taskType.name(), taskType.toString(true));
     }
   }
 
