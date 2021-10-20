@@ -249,13 +249,17 @@ export default class ClusterFields extends Component {
     // Set default software version in case of create
     if (
       isNonEmptyArray(this.props.softwareVersions) &&
-      !isNonEmptyString(this.state.ybSoftwareVersion) &&
-      type === 'Create'
+      !isNonEmptyString(this.state.ybSoftwareVersion)
     ) {
       let currentSoftwareVersion = this.props.softwareVersions[0];
-      // Use primary cluster software version even for read replica
-      if (formValues.primary?.ybSoftwareVersion) {
-        currentSoftwareVersion = formValues.primary.ybSoftwareVersion;
+      if (type === 'Create') {
+        // Use primary cluster software version even for read replica
+        if (formValues.primary?.ybSoftwareVersion) {
+          currentSoftwareVersion = formValues.primary.ybSoftwareVersion;
+        }
+      } else {
+        // when adding read replica post universe creation
+        currentSoftwareVersion = getPrimaryCluster(universeDetails.clusters).userIntent.ybSoftwareVersion;
       }
       this.setState({ ybSoftwareVersion: currentSoftwareVersion });
       updateFormField(`${clusterType}.ybSoftwareVersion`, currentSoftwareVersion);
@@ -1436,6 +1440,13 @@ export default class ClusterFields extends Component {
       ) || (
         this.props.type === 'Create' && this.props.clusterType === 'async' && this.state.isReadOnlyExists
       );
+    const isSWVersionReadOnly = 
+      (
+        isNonEmptyObject(universe.currentUniverse.data) &&
+        (this.props.type === 'Edit' || this.props.type === 'Async')
+      ) || (
+        this.props.type === 'Create' && this.props.clusterType === 'async'
+      );
     const isReadOnlyOnEdit =
       isNonEmptyObject(universe.currentUniverse.data) &&
       (this.props.type === 'Edit' || (this.props.type === 'Async' && this.state.isReadOnlyExists));
@@ -2368,7 +2379,7 @@ export default class ClusterFields extends Component {
                     options={softwareVersionOptions}
                     label="DB Version"
                     onInputChanged={this.softwareVersionChanged}
-                    readOnlySelect={isFieldReadOnly}
+                    readOnlySelect={isSWVersionReadOnly}
                   />
                 </div>
               </Col>
