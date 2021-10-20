@@ -302,6 +302,13 @@ public class SubTaskGroup implements Runnable {
     }
   }
 
+  public void cleanup() {
+    for (AbstractTaskBase task : taskMap.keySet()) {
+      // Subtasks are also tasks which may have their own executor service
+      task.terminate();
+    }
+  }
+
   @Data
   @ToString
   private static class TaskInfoWithStats {

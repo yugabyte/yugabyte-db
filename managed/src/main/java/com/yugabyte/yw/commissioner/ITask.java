@@ -11,6 +11,9 @@ public interface ITask extends Runnable {
   /** Initialize the task by reading various parameters. */
   public void initialize(ITaskParams taskParams);
 
+  /** Clean up the initialization */
+  public void terminate();
+
   /** A short name representing the task. */
   public String getName();
 

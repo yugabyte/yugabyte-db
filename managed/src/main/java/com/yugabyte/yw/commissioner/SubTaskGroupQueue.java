@@ -59,4 +59,11 @@ public class SubTaskGroupQueue {
 
     if (!runSuccess) throw new RuntimeException("One or more subTaskGroups failed while running.");
   }
+
+  /** Cleans up the resources held by the subtasks in the groups */
+  public void cleanup() {
+    for (SubTaskGroup subTaskGroup : subTaskGroups) {
+      subTaskGroup.cleanup();
+    }
+  }
 }
