@@ -206,8 +206,10 @@ bool IndexInfo::CheckColumnDependency(ColumnId column_id) const {
     }
   }
 
-  for (auto indexed_col_id : where_predicate_spec_->column_ids()) {
-    if (indexed_col_id == column_id) return true;
+  if (where_predicate_spec_) {
+    for (auto indexed_col_id : where_predicate_spec_->column_ids()) {
+      if (indexed_col_id == column_id) return true;
+    }
   }
 
   return false;
