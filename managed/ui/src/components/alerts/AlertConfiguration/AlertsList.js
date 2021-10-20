@@ -9,7 +9,9 @@ import React, { useEffect, useState } from 'react';
 import { DropdownButton, MenuItem } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { isNonEmptyArray } from '../../../utils/ObjectUtils';
+import { getPromiseState } from '../../../utils/PromiseUtils';
 import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
+import { YBLoading } from '../../common/indicators';
 import { YBConfirmModal } from '../../modals';
 import { YBPanelItem } from '../../panels';
 
@@ -89,7 +91,8 @@ export const AlertsList = (props) => {
     modal: { visibleModal },
     onCreateAlert,
     showDeleteModal,
-    setInitialValues
+    setInitialValues,
+    universes
   } = props;
   const [options, setOptions] = useState({
     noDataText: 'Loading...',
@@ -230,6 +233,23 @@ export const AlertsList = (props) => {
     });
   };
 
+  const formatAlertDestinationName = (cell) => {
+    if (cell.all) return 'ALL';
+    const targetUniverse = cell.uuids
+      .map((uuid) => {
+        return universes.data.find((destination) => destination.universeUUID === uuid);
+      })
+      .filter(Boolean); //filtering undefined, if the universe is already deleted
+
+    return (
+      <span>
+        {targetUniverse.map((u) => (
+          <div key={u.universeUUID}>{u.name}</div>
+        ))}
+      </span>
+    );
+  };
+
   // This method will handle all the required actions for the particular row.
   const formatConfigActions = (cell, row) => {
     return (
@@ -267,6 +287,10 @@ export const AlertsList = (props) => {
     );
   };
 
+  if (!getPromiseState(universes).isSuccess()) {
+    return <YBLoading />;
+  }
+
   return (
     <YBPanelItem
       header={header(
@@ -299,6 +323,15 @@ export const AlertsList = (props) => {
               className="no-border"
             >
               Type
+            </TableHeaderColumn>
+            <TableHeaderColumn
+              dataField="target"
+              dataSort
+              columnClassName="no-border name-column"
+              className="no-border"
+              dataFormat={formatAlertDestinationName}
+            >
+              Target Universes
             </TableHeaderColumn>
             <TableHeaderColumn
               dataField="thresholds"

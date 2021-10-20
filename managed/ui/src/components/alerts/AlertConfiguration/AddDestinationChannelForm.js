@@ -2,11 +2,7 @@ import { Field } from 'formik';
 import React, { useState } from 'react';
 import { Col, Row } from 'react-bootstrap';
 import { YBModalForm } from '../../common/forms';
-import {
-  YBControlledSelectWithLabel,
-  YBFormInput,
-  YBToggle
-} from '../../common/forms/fields';
+import { YBControlledSelectWithLabel, YBFormInput, YBToggle } from '../../common/forms/fields';
 import * as Yup from 'yup';
 
 import './AddDestinationChannelForm.scss';
@@ -17,8 +13,8 @@ export const AddDestinationChannelForm = (props) => {
   const [customSMTP, setCustomSMTP] = useState(props.customSmtp ? props.customSmtp : false);
   const [defaultRecipients, setDefaultRecipients] = useState(
     props.defaultRecipients ? props.defaultRecipients : false
-    );
-    
+  );
+
   // TODO: Add option for pagerDuty once API is avaialable
   const channelTypeList = [
     <option key={1} value="email">

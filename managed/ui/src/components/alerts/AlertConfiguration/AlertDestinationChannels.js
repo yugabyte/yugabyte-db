@@ -47,7 +47,7 @@ const prepareInitialValues = (values) => {
       }
       break;
     default:
-      throw new Error(`Unknown Channel type ${values.params.channelType}`)
+      throw new Error(`Unknown Channel type ${values.params.channelType}`);
   }
 
   return initialValues;
@@ -85,9 +85,9 @@ export const AlertDestinationChannels = (props) => {
     });
   };
 
-  useMount(()=>{
+  useMount(() => {
     getAlertChannelsList();
-  })
+  });
 
   const editAlertChannel = (channelUUID, values) => {
     dispatch(updateAlertChannel(channelUUID, values)).then((resp) => {
