@@ -2623,13 +2623,56 @@ public class TestPartialIndex extends BaseCQLTest {
   }
 
   @Test
-  public void testDropColUsedInIdxPredicate() throws Exception {
-    createTable(String.format("create table %s (h1 int primary key, v1 int)", testTableName),
-      true /* strongConsistency */);
-    createIndex(String.format("CREATE INDEX idx ON %s(v1) WHERE v1 != NULL", testTableName),
-      true /* strongConsistency */);
+  public void testAlterCol() throws Exception {
+    createTable(String.format("create table %s (h1 int primary key, v1 int, v2 int)",
+                              testTableName),
+                true /* strongConsistency */);
+
+    // Add, rename, drop column without presence of any secondary index.
+    session.execute(String.format("alter table %s add v3 int", testTableName));
+    session.execute(String.format("alter table %s rename v3 to v33", testTableName));
+    session.execute(String.format("alter table %s rename v33 to v3", testTableName));
+    session.execute(String.format("alter table %s drop v3", testTableName));
+
+    // Add, rename, drop column with presence of a partial index. Check for these cases -
+    //   1. Indexed col - Drop (fails), rename
+    //   2. Col in predicate - Drop (fails), rename
+    //   3. New col - Add, rename, drop
+    createIndex(String.format("CREATE INDEX idx ON %s(v1) WHERE v2 != NULL", testTableName),
+                true /* strongConsistency */);
+
     runInvalidStmt(String.format("alter table %s drop v1", testTableName),
-      "Can't drop column used in an index. Remove 'idx' index first and try again");
+                   "Can't drop column used in an index. Remove 'idx' index first and try again");
+    session.execute(String.format("alter table %s rename v1 to v11", testTableName));
+    session.execute(String.format("alter table %s rename v11 to v1", testTableName));
+
+    runInvalidStmt(String.format("alter table %s drop v2", testTableName),
+                   "Can't drop column used in an index. Remove 'idx' index first and try again");
+    session.execute(String.format("alter table %s rename v2 to v22", testTableName));
+    session.execute(String.format("alter table %s rename v22 to v2", testTableName));
+
+    session.execute(String.format("alter table %s add v3 int", testTableName));
+    session.execute(String.format("alter table %s rename v3 to v33", testTableName));
+    session.execute(String.format("alter table %s rename v33 to v3", testTableName));
+    session.execute(String.format("alter table %s drop v3", testTableName));
+
+    // Add, rename, drop column with presence of a non-partial index. Check for these cases -
+    //   1. Indexed col - Drop (fails), rename
+    //   2. Non-indexed col - Rename, drop, re-add
+    // #10364 - In case of a non-partial index, if we tried to drop a column that wasn't in the
+    // index, it resulted in seg fault.
+    session.execute("drop index idx");
+    createIndex(String.format("CREATE INDEX idx ON %s(v1)", testTableName),
+                true /* strongConsistency */);
+    runInvalidStmt(String.format("alter table %s drop v1", testTableName),
+                   "Can't drop column used in an index. Remove 'idx' index first and try again");
+    session.execute(String.format("alter table %s rename v1 to v11", testTableName));
+    session.execute(String.format("alter table %s rename v11 to v1", testTableName));
+
+    session.execute(String.format("alter table %s rename v2 to v22", testTableName));
+    session.execute(String.format("alter table %s rename v22 to v2", testTableName));
+    session.execute(String.format("alter table %s drop v2", testTableName));
+    session.execute(String.format("alter table %s add v2 int", testTableName));
   }
 
   @Test
