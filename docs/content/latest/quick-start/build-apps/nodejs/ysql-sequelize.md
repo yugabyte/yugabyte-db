@@ -65,6 +65,12 @@ $ cd ./node/sequelize/
 npm install
 ```
 
+## Create the Database
+
+```sh
+ysqlsh -c "CREATE DATABASE ysql_sequelize"
+```
+
 ## Run the application
 
 Bring the NodeJS API server at <http://localhost:8080> with DEBUG logs on.
@@ -105,13 +111,13 @@ Create 2 orders.
 
 ```sh
 $ curl \
-  --data '{ "userId": "2", "products": [ { "productId": 1, "units": 2 } ] }' \
+  --data '{ "userId": "101", "products": [ { "productId": 1, "units": 2 } ] }' \
   -v -X POST -H 'Content-Type:application/json' http://localhost:8080/orders
 ```
 
 ```sh
 $ curl \
-  --data '{ "userId": "2", "products": [ { "productId": 1, "units": 2 }, { "productId": 2, "units": 4 } ] }' \
+  --data '{ "userId": "101", "products": [ { "productId": 1, "units": 2 }, { "productId": 101, "units": 4 } ] }' \
   -v -X POST -H 'Content-Type:application/json' http://localhost:8080/orders
 ```
 
