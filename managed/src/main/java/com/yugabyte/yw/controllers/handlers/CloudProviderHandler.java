@@ -30,6 +30,7 @@ import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.cloud.GCPInitializer;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.CloudQueryHelper;
@@ -172,11 +173,11 @@ public class CloudProviderHandler {
           BAD_REQUEST, "API for only kubernetes provider creation: " + providerCode);
     }
 
-    boolean hasConfig = formData.config.containsKey("KUBECONFIG_NAME");
     if (formData.regionList.isEmpty()) {
       throw new PlatformServiceException(BAD_REQUEST, "Need regions in provider");
     }
     for (KubernetesProviderFormData.RegionData rd : formData.regionList) {
+      boolean hasConfig = formData.config.containsKey("KUBECONFIG_NAME");
       if (rd.config != null) {
         if (rd.config.containsKey("KUBECONFIG_NAME")) {
           if (hasConfig) {
@@ -201,7 +202,6 @@ public class CloudProviderHandler {
           }
         }
       }
-      hasConfig = formData.config.containsKey("KUBECONFIG_NAME");
     }
 
     Provider provider;
@@ -228,6 +228,73 @@ public class CloudProviderHandler {
       createKubernetesInstanceTypes(customer, provider);
     } catch (PersistenceException ex) {
       provider.delete();
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Couldn't create instance types");
+      // TODO: make instance types more multi-tenant friendly...
+    }
+    return provider;
+  }
+
+  // TODO(Shashank): For now this code is similar to createKubernetes but we can improve it.
+  //  Note that we already have all the beans (i.e. regions and zones) in reqProvider.
+  //  We do not need to call all the updateKubeConfig* methods. Instead just save
+  //  whole thing after some validation.
+  public Provider createKubernetesNew(Customer customer, Provider reqProvider) throws IOException {
+    Common.CloudType providerCode = CloudType.valueOf(reqProvider.code);
+    if (!providerCode.equals(kubernetes)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "API for only kubernetes provider creation: " + providerCode);
+    }
+    if (reqProvider.regions.isEmpty()) {
+      throw new PlatformServiceException(BAD_REQUEST, "Need regions in provider");
+    }
+    for (Region rd : reqProvider.regions) {
+      boolean hasConfig = reqProvider.getUnmaskedConfig().containsKey("KUBECONFIG_NAME");
+      if (rd.getUnmaskedConfig().containsKey("KUBECONFIG_NAME")) {
+        if (hasConfig) {
+          throw new PlatformServiceException(BAD_REQUEST, "Kubeconfig can't be at two levels");
+        } else {
+          hasConfig = true;
+        }
+      }
+      if (rd.zones.isEmpty()) {
+        throw new PlatformServiceException(BAD_REQUEST, "No zone provided in region");
+      }
+      for (AvailabilityZone zd : rd.zones) {
+        if (zd.getUnmaskedConfig().containsKey("KUBECONFIG_NAME")) {
+          if (hasConfig) {
+            throw new PlatformServiceException(BAD_REQUEST, "Kubeconfig can't be at two levels");
+          }
+        } else if (!hasConfig) {
+          LOG.warn(
+              "No Kubeconfig found at any level. "
+                  + "In-cluster service account credentials will be used.");
+        }
+      }
+    }
+
+    Provider provider;
+    Map<String, String> config = reqProvider.getUnmaskedConfig();
+    provider = Provider.create(customer.uuid, providerCode, reqProvider.name);
+    boolean isConfigInProvider = updateKubeConfig(provider, config, false);
+    List<Region> regionList = reqProvider.regions;
+    for (Region rd : regionList) {
+      Map<String, String> regionConfig = rd.getUnmaskedConfig();
+      Region region = Region.create(provider, rd.code, rd.name, null, rd.latitude, rd.longitude);
+      boolean isConfigInRegion = updateKubeConfigForRegion(provider, region, regionConfig, false);
+      for (AvailabilityZone zd : rd.zones) {
+        Map<String, String> zoneConfig = zd.getUnmaskedConfig();
+        AvailabilityZone az = AvailabilityZone.createOrThrow(region, zd.code, zd.name, null);
+        boolean isConfigInZone = updateKubeConfigForZone(provider, region, az, zoneConfig, false);
+        if (!(isConfigInProvider || isConfigInRegion || isConfigInZone)) {
+          // Use in-cluster ServiceAccount credentials
+          az.setConfig(ImmutableMap.of("KUBECONFIG", ""));
+          az.save();
+        }
+      }
+    }
+    try {
+      createKubernetesInstanceTypes(customer, provider);
+    } catch (PersistenceException ex) {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Couldn't create instance types");
       // TODO: make instance types more multi-tenant friendly...
     }
@@ -502,7 +569,7 @@ public class CloudProviderHandler {
         // to
         // store it somewhere and the config is the easiest place to put it. As such, since all the
         // config is loaded up as env vars anyway, might as well use in in devops like that...
-        Map<String, String> config = provider.getConfig();
+        Map<String, String> config = provider.getUnmaskedConfig();
         config.put("CUSTOM_GCE_NETWORK", taskParams.destVpcId);
         provider.setConfig(config);
         provider.save();

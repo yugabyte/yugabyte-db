@@ -31,6 +31,7 @@ import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.MetricKey;
 import java.util.List;
 import java.util.UUID;
+import javax.persistence.PersistenceException;
 import org.junit.function.ThrowingRunnable;
 import play.libs.Json;
 import play.mvc.Result;
@@ -153,6 +154,12 @@ public class AssertHelper {
 
   public static Result assertYWSE(ThrowingRunnable runnable) {
     return assertThrows(PlatformServiceException.class, runnable).getResult();
+  }
+
+  public static Result assertYWSEInTransaction(ThrowingRunnable throwingRunnable) {
+    return ((PlatformServiceException)
+      assertThrows(PersistenceException.class, throwingRunnable).getCause())
+      .getResult();
   }
 
   public static Metric assertMetricValue(
