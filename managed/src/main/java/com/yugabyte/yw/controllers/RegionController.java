@@ -11,10 +11,10 @@ import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.forms.RegionFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.forms.RegionFormData;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -180,7 +180,8 @@ public class RegionController extends AuthenticatedController {
   // TODO: Move this to CloudQueryHelper after getting rid of region.delete()
   private JsonNode getZoneInfoOrFail(Provider provider, Region region) {
     JsonNode zoneInfo =
-        cloudQueryHelper.getZones(region.uuid, provider.getConfig().get("CUSTOM_GCE_NETWORK"));
+        cloudQueryHelper.getZones(
+            region.uuid, provider.getUnmaskedConfig().get("CUSTOM_GCE_NETWORK"));
     if (zoneInfo.has("error") || !zoneInfo.has(region.code)) {
       region.delete();
       throw new PlatformServiceException(

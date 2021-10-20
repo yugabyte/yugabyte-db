@@ -25,7 +25,6 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
-
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -34,7 +33,6 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -298,7 +296,7 @@ public class TableManagerTest extends FakeDBApplication {
     BulkImportParams bulkImportParams = getBulkImportParams();
     UserIntent userIntent = testUniverse.getUniverseDetails().getPrimaryCluster().userIntent;
     List<String> expectedCommand = getExpectedBulkImportCommmand(bulkImportParams);
-    Map<String, String> expectedEnvVars = testProvider.getConfig();
+    Map<String, String> expectedEnvVars = testProvider.getUnmaskedConfig();
     expectedEnvVars.put("AWS_DEFAULT_REGION", Region.get(userIntent.regionList.get(0)).code);
 
     tableManager.bulkImport(bulkImportParams);
@@ -312,7 +310,7 @@ public class TableManagerTest extends FakeDBApplication {
     bulkImportParams.instanceCount = 5;
     UserIntent userIntent = testUniverse.getUniverseDetails().getPrimaryCluster().userIntent;
     List<String> expectedCommand = getExpectedBulkImportCommmand(bulkImportParams);
-    Map<String, String> expectedEnvVars = testProvider.getConfig();
+    Map<String, String> expectedEnvVars = testProvider.getUnmaskedConfig();
     expectedEnvVars.put("AWS_DEFAULT_REGION", Region.get(userIntent.regionList.get(0)).code);
 
     tableManager.bulkImport(bulkImportParams);

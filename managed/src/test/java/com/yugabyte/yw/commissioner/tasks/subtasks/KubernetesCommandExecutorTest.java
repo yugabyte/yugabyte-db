@@ -195,7 +195,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
               yaml.load(provideApplication().resourceAsStream("k8s-expose-all.yml"));
     }
     double burstVal = 1.2;
-    Map<String, String> config = defaultProvider.getConfig();
+    Map<String, String> config = defaultProvider.getUnmaskedConfig();
 
     Map<String, Object> storageOverrides =
         (HashMap) expectedOverrides.getOrDefault("storage", new HashMap<>());
@@ -315,8 +315,8 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     // Put all the flags together.
     expectedOverrides.put("gflags", gflagOverrides);
 
-    Map<String, String> azConfig = defaultAZ.getConfig();
-    Map<String, String> regionConfig = defaultRegion.getConfig();
+    Map<String, String> azConfig = defaultAZ.getUnmaskedConfig();
+    Map<String, String> regionConfig = defaultRegion.getUnmaskedConfig();
 
     Map<String, Object> annotations = new HashMap<String, Object>();
     String overridesYAML = null;

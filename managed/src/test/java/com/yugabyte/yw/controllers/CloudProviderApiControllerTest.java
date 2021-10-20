@@ -15,6 +15,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformExceptionInTransaction;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertValues;
 import static com.yugabyte.yw.common.AssertHelper.assertYBPSuccess;
@@ -284,7 +285,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   public void testCreateMultiInstanceProviderWithSameNameAndCloud() {
     ModelFactory.awsProvider(customer);
     Result result =
-        assertPlatformException(
+        assertPlatformExceptionInTransaction(
             () ->
                 createProviderTest(
                     buildProviderReq("aws", "Amazon"),
@@ -314,7 +315,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("code", "aws");
     Result result =
-        assertPlatformException(
+        assertPlatformExceptionInTransaction(
             () ->
                 createProviderTest(
                     buildProviderReq("aws", null), REGION_CODES_FROM_CLOUD_API, UUID.randomUUID()));
@@ -341,7 +342,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     providerReq.setConfig(reqConfig);
     Provider createdProvider =
         createProviderTest(providerReq, REGION_CODES_FROM_CLOUD_API, UUID.randomUUID());
-    Map<String, String> config = createdProvider.getConfig();
+    Map<String, String> config = createdProvider.getUnmaskedConfig();
     assertFalse(config.isEmpty());
     // We should technically check the actual content, but the keys are different between the
     // input payload and the saved config. (So what?! check the expected keys)
@@ -459,7 +460,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   }
 
   //  @Test
-  public void testCreateAwsProviderWithInValidAWSCredentials() {
+  public void testCreateAwsProviderWithInvalidAWSCredentials() {
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("code", "aws");
     bodyJson.put("name", "aws-Provider");
@@ -471,7 +472,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     bodyJson.set("config", configJson);
     CloudAPI mockCloudAPI = mock(CloudAPI.class);
     when(mockCloudAPIFactory.get(any())).thenReturn(mockCloudAPI);
-    Result result = assertPlatformException(() -> createProvider(bodyJson));
+    Result result = assertPlatformExceptionInTransaction(() -> createProvider(bodyJson));
     assertBadRequest(result, "Invalid AWS Credentials.");
     assertAuditEntry(0, customer.uuid);
   }
@@ -486,7 +487,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     bodyJson.set("config", configJson);
 
     mockDnsManagerListFailure("fail", 0);
-    Result result = assertPlatformException(() -> createProvider(bodyJson));
+    Result result = assertPlatformExceptionInTransaction(() -> createProvider(bodyJson));
     verify(mockDnsManager, times(1)).listDnsRecord(any(), any());
     assertInternalServerError(result, "Invalid devops API response: ");
     assertAuditEntry(0, customer.uuid);
@@ -502,7 +503,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     bodyJson.set("config", configJson);
 
     mockDnsManagerListFailure("fail", 1);
-    Result result = assertPlatformException(() -> createProvider(bodyJson));
+    Result result = assertPlatformExceptionInTransaction(() -> createProvider(bodyJson));
     verify(mockDnsManager, times(1)).listDnsRecord(any(), any());
     assertInternalServerError(result, "Invalid devops API response: ");
     assertAuditEntry(0, customer.uuid);
