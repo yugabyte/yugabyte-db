@@ -360,6 +360,10 @@ struct ReplayDecision {
   // This is true for transaction update operations that have already been applied to the regular
   // RocksDB but not to the intents RocksDB.
   AlreadyAppliedToRegularDB already_applied_to_regular_db = AlreadyAppliedToRegularDB::kFalse;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(should_replay, already_applied_to_regular_db);
+  }
 };
 
 ReplayDecision ShouldReplayOperation(
@@ -374,6 +378,9 @@ ReplayDecision ShouldReplayOperation(
   if (index <= std::min(regular_flushed_index, intents_flushed_index)) {
     // Never replay anyting that is flushed to both regular and intents RocksDBs in a transactional
     // table.
+    VLOG_WITH_FUNC(3) << "index: " << index << " "
+                      << "regular_flushed_index: " << regular_flushed_index
+                      << " intents_flushed_index: " << intents_flushed_index;
     return {false};
   }
 
@@ -381,18 +388,27 @@ ReplayDecision ShouldReplayOperation(
     if (txn_status == TransactionStatus::APPLYING &&
         intents_flushed_index < index && index <= regular_flushed_index) {
       // Intents were applied/flushed to regular RocksDB, but not flushed into the intents RocksDB.
+      VLOG_WITH_FUNC(3) << "index: " << index << " "
+                        << "regular_flushed_index: " << regular_flushed_index
+                        << " intents_flushed_index: " << intents_flushed_index;
       return {true, AlreadyAppliedToRegularDB::kTrue};
     }
     // For other types of transaction updates, we ignore them if they have been flushed to the
     // regular RocksDB.
+    VLOG_WITH_FUNC(3) << "index: " << index << " > "
+                      << "regular_flushed_index: " << regular_flushed_index;
     return {index > regular_flushed_index};
   }
 
   if (op_type == consensus::WRITE_OP && write_op_has_transaction) {
     // Write intents that have not been flushed into the intents DB.
+    VLOG_WITH_FUNC(3) << "index: " << index << " > "
+                      << "intents_flushed_index: " << intents_flushed_index;
     return {index > intents_flushed_index};
   }
 
+  VLOG_WITH_FUNC(3) << "index: " << index << " > "
+                    << "regular_flushed_index: " << regular_flushed_index;
   return {index > regular_flushed_index};
 }
 
@@ -920,6 +936,7 @@ class TabletBootstrap {
 
     if (tablet_->metadata()->tablet_data_state() == TabletDataState::TABLET_DATA_SPLIT_COMPLETED) {
       // Ignore SPLIT_OP if tablet has been already split.
+      VLOG_WITH_PREFIX_AND_FUNC(1) << "Tablet has been already split.";
       return Status::OK();
     }
 
@@ -971,7 +988,7 @@ class TabletBootstrap {
         WriteOpHasTransaction(*replicate));
 
     HandleRetryableRequest(*replicate, entry_time);
-
+    VLOG_WITH_PREFIX_AND_FUNC(3) << "decision: " << AsString(decision);
     if (decision.should_replay) {
       const auto status = PlayAnyRequest(replicate, decision.already_applied_to_regular_db);
       if (!status.ok()) {
