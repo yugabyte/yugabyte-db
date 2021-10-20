@@ -18,9 +18,15 @@ showAsideToc: true
 
 Yugabyte Platform (previously known as YugaWare) is a private database-as-a-service, used to create and manage YugabyteDB universes and clusters. Yugabyte Platform can be used to deploy YugabyteDB in any public or private cloud.
 
+You deploy and manage your Yugabyte universes using the highly available Yugabyte Platform console.
+
+See also Yugabyte Platform at [yugabyte.com](https://www.yugabyte.com/platform/).
+
 ## How does Yugabyte Platform installation work?
 
 Yugabyte Platform first needs to be installed on a machine. The next step is to configure Yugabyte Platform to work with public and/or private clouds. In the case of public clouds, Yugabyte Platform spawns the machines to orchestrate bringing up the data platform. In the case of private clouds, you add the nodes you want to be a part of the data platform into Yugabyte Platform. Yugabyte Platform needs SSH access into these nodes to manage them.
+
+For instructions on installing Yugabyte Platform, refer to [Install Yugabyte Platform](../../yugabyte-platform/install-yugabyte-platform/).
 
 ## What are the OS requirements and permissions to run Yugabyte Platform?
 
@@ -47,15 +53,17 @@ Yugabyte Platform also requires the following:
 
 For a complete list of prerequisites, refer to [Prerequisites](../../yugabyte-platform/install-yugabyte-platform/prerequisites/).
 
-## What are the OS requirements and permissions to run the YugabyteDB data nodes?
+## What are the OS requirements and permissions to run YugabyteDB data nodes?
 
 Prerequisites for YugabyteDB data nodes are listed in the YugabyteDB [Deployment checklist](../../../deploy/checklist).
 
 ## How are the build artifacts packaged and stored for Yugabyte Platform?
 
-The Yugabyte Platform software is packaged as a set of Docker container images hosted on the [Quay.io](https://quay.io/) container registry and managed by the [Replicated](https://www.replicated.com/) management tool. Installation of the admin console starts with installing Replicated on a Linux host. Replicated installs the [docker-engine](https://docs.docker.com/engine/), the Docker container runtime, and then pulls its own container images the Replicated.com container registry. Yugabyte Platform then becomes a managed application of Replicated, which starts by pulling the Yugabyte Platform (`yugaware`) container images from Quay.io for the very first time. Replicated ensures that Yugabyte Platform remains highly available, and allows for instant upgrades by simply pulling the incremental container images associated with a newer platform release. If the host running the Yugabyte Platform Console does not have Internet connectivity, a fully air-gapped installation option is also available.
+Yugabyte Platform software is packaged as a set of Docker container images hosted on the [Quay.io](https://quay.io/) container registry and managed by the [Replicated](https://www.replicated.com/) management tool. Replicated ensures that Yugabyte Platform remains highly available, and allows for instant upgrades by simply pulling the incremental container images associated with a newer platform release. If the host running the Yugabyte Platform console does not have Internet connectivity, a fully air-gapped installation option is also available.
 
-The data node software is packaged into the Yugabyte Platform application. Yugabyte Platform distributes and installs the data node software on the hosts identified to run the data nodes. Since it's already packaged into existing artifacts, the data node does not require any Internet connectivity.
+Installation of the admin console starts with installing Replicated on a Linux host. Replicated installs the [docker-engine](https://docs.docker.com/engine/), the Docker container runtime, and then pulls its own container images from the Replicated.com container registry. Yugabyte Platform then becomes a managed application of Replicated, which starts by pulling the Yugabyte Platform (`yugaware`) container images from Quay.io for the very first time. 
+
+The data node (YugabyteDB) software is packaged into the Yugabyte Platform application. Yugabyte Platform distributes and installs YugabyteDB on the hosts identified to run the data nodes. Since it's already packaged into existing artifacts, the data node does not require any Internet connectivity.
 
 ## How does the Yugabyte Platform console interact with the YugabyteDB data nodes?
 
@@ -70,7 +78,7 @@ Yes, you have access to all machines spawned. The machines are spawned by Yugaby
 You need:  
 
 - One server to install Yugabyte Platform on.
-- A minimum number of servers as determined by the replication factor (RF). For example, one server for RF=1, and 3 servers in case of RF=3.
+- A minimum number of servers for the data nodes as determined by the replication factor (RF). For example, one server for RF=1, and 3 servers in case of RF=3.
 - A server to run the load tests on.
 
 Typically, you can saturate a database server (or three in case of RF=3) with just one large enough test machine running a synthetic load tester that has a light usage pattern. YugabyteDB ships with some synthetic load-testers, which can simulate a few different workloads. For example, one load tester simulates a time series or IoT-style workload and another does a stock-ticker like workload. But if you have a load tester that emulates your planned usage pattern, you can use that.
@@ -87,4 +95,4 @@ Yugabyte Platform also allows creating these machines out of band and importing 
 
 ## How do I report a security vulnerability?
 
-Please follow the steps in the [vulnerability disclosure policy](/latest/secure/vulnerability-disclosure-policy) to report a vulnerability to our security team. The policy outlines our commitments to you when you disclose a potential vulnerability, the reporting process, and how we will respond.
+Follow the steps in the [vulnerability disclosure policy](/latest/secure/vulnerability-disclosure-policy) to report a vulnerability to our security team. The policy outlines our commitments to you when you disclose a potential vulnerability, the reporting process, and how we will respond.
