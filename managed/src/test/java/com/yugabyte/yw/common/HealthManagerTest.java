@@ -109,7 +109,7 @@ public class HealthManagerTest extends FakeDBApplication {
                         sendStatus,
                         reportOnlyErrors);
                 healthManager.runCommand(provider, ImmutableList.of(cluster), startTime, false);
-                HashMap extraEnvVars = new HashMap<>(provider.getConfig());
+                HashMap extraEnvVars = new HashMap<>(provider.getUnmaskedConfig());
                 verify(shellProcessHandler, times(1))
                     .run(eq(expectedCommand), eq(extraEnvVars), eq(false), anyString());
 
