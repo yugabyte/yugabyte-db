@@ -39,6 +39,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -278,8 +279,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
   private void changeEachAZsNodesByOne(PlacementInfo placementInfo, boolean isAdd) {
     for (PlacementCloud cloud : placementInfo.cloudList) {
       for (PlacementRegion region : cloud.regionList) {
-        for (int azIdx = 0; azIdx < region.azList.size(); azIdx++) {
-          PlacementAZ az = region.azList.get(azIdx);
+        for (PlacementAZ element : region.azList) {
+          PlacementAZ az = element;
           if (isAdd) {
             az.numNodesInAZ = az.numNodesInAZ + 1;
           } else if (az.numNodesInAZ > 1) {
@@ -308,8 +309,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     Map<UUID, Integer> azUuidToNumNodes = PlacementInfoUtil.getAzUuidToNumNodes(nodeDetailsSet);
     for (PlacementCloud cloud : placementInfo.cloudList) {
       for (PlacementRegion region : cloud.regionList) {
-        for (int azIdx = 0; azIdx < region.azList.size(); azIdx++) {
-          PlacementAZ az = region.azList.get(azIdx);
+        for (PlacementAZ element : region.azList) {
+          PlacementAZ az = element;
           if (azUuidToNumNodes.containsKey(az.uuid)) {
             az.numNodesInAZ = azUuidToNumNodes.get(az.uuid);
           }
@@ -548,13 +549,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
               .filter(node -> !node.isActive())
               .map(node -> node.azUuid)
               .collect(Collectors.toList());
-      updateNodeCountInAZ(
-          udtp,
-          0,
-          -1,
-          p -> {
-            return !zonesWithRemovedServers.contains(p.uuid);
-          });
+      updateNodeCountInAZ(udtp, 0, -1, p -> !zonesWithRemovedServers.contains(p.uuid));
 
       // Requires this flag to associate correct mode with update operation
       udtp.userAZSelected = true;
@@ -1420,17 +1415,13 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     Provider k8sProvider = ModelFactory.newProvider(k8sCustomer, CloudType.kubernetes);
     Region r1 = Region.create(k8sProvider, "region-1", "Region 1", "yb-image-1");
     Region r2 = Region.create(k8sProvider, "region-2", "Region 2", "yb-image-1");
-    AvailabilityZone az1 =
-        AvailabilityZone.createOrThrow(r1, "PlacementAZ " + 1, "az-" + 1, "subnet-" + 1);
-    AvailabilityZone az2 =
-        AvailabilityZone.createOrThrow(r1, "PlacementAZ " + 2, "az-" + 2, "subnet-" + 2);
-    AvailabilityZone az3 =
-        AvailabilityZone.createOrThrow(r2, "PlacementAZ " + 3, "az-" + 3, "subnet-" + 3);
+    AvailabilityZone.createOrThrow(r1, "PlacementAZ " + 1, "az-" + 1, "subnet-" + 1);
+    AvailabilityZone.createOrThrow(r1, "PlacementAZ " + 2, "az-" + 2, "subnet-" + 2);
+    AvailabilityZone.createOrThrow(r2, "PlacementAZ " + 3, "az-" + 3, "subnet-" + 3);
     Provider k8sProviderNotMultiAZ =
         ModelFactory.newProvider(k8sCustomer, CloudType.kubernetes, "kubernetes-notAz");
     Region r4 = Region.create(k8sProviderNotMultiAZ, "region-1", "Region 1", "yb-image-1");
-    AvailabilityZone az4 =
-        AvailabilityZone.createOrThrow(r4, "PlacementAZ " + 1, "az-" + 1, "subnet-" + 1);
+    AvailabilityZone.createOrThrow(r4, "PlacementAZ " + 1, "az-" + 1, "subnet-" + 1);
     assertTrue(PlacementInfoUtil.isMultiAZ(k8sProvider));
     assertFalse(PlacementInfoUtil.isMultiAZ(k8sProviderNotMultiAZ));
   }
@@ -1642,16 +1633,42 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     // Checking proportional masters seeding.
     "Case 16, 6, r1-az1-15-1-3;r1-az2-10-2-2;r1-az3-5-3-1, 2",
     "Case 17, 6, r1-az1-15-1-1;r1-az2-30-2-2;r1-az3-45-3-3, 0",
+
+    // Checking default region logic. Region with name ended as 'd' is treated in this test
+    // as default region. As example, 'r1d' - is a default region, 'r1' - isn't.
+    // Use the same region name for all AZs in this region. If you have r1d-az1,
+    // you need to use r1d-az2 and r1d-az3 as well.
+    // Case when RF < nodes count in the default region, only one zone in this region.
+    "Case 18, 3, r1d-az1-3-0-3;r2-az1-5-0-0, 0",
+    // Case when RF < nodes count in the default region, three zones in this region.
+    "Case 19, 5, r1d-az1-3-0-2;r1d-az2-3-0-2;r1d-az3-3-0-1;r2-az1-5-0-0, 0",
+    // The same as previous + check that larger zones get more masters.
+    "Case 20, 5, r1d-az1-2-0-1;r1d-az2-2-0-1;r1d-az3-4-0-3;r2-az1-5-0-0, 0",
   })
   // @formatter:on
   public void testSelectMasters_Extended(String name, int rf, String zones, int removedCount) {
+    String customerCode = String.valueOf(customerIdx.nextInt(99999));
+    Customer customer =
+        ModelFactory.testCustomer(customerCode, String.format("Test Customer %s", customerCode));
+    Provider provider = ModelFactory.newProvider(customer, CloudType.aws);
+
     String[] zoneDescr = zones.split(";");
     List<NodeDetails> nodes = new ArrayList<NodeDetails>();
     int index = 0;
     Map<String, Integer> expected = new HashMap<>();
+    Set<String> createdRegions = new HashSet<>();
+    Region defaultRegion = null;
+
     for (String descriptor : zoneDescr) {
       String[] parts = descriptor.split("-");
       String region = parts[0];
+      // Default region should exist.
+      if (region.endsWith("d")) {
+        if (!createdRegions.contains(region)) {
+          defaultRegion = Region.create(provider, region, region, "yb-image-1");
+          createdRegions.add(region);
+        }
+      }
       String zone = parts[1];
       int count = Integer.parseInt(parts[2]);
       int mastersCount = Integer.parseInt(parts[3]);
@@ -1670,7 +1687,9 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       }
     }
 
-    SelectMastersResult selection = PlacementInfoUtil.selectMasters(null, nodes, rf);
+    SelectMastersResult selection =
+        PlacementInfoUtil.selectMasters(
+            null, nodes, rf, defaultRegion == null ? null : defaultRegion.code);
     PlacementInfoUtil.verifyMastersSelection(nodes, rf);
 
     List<NodeDetails> masters =
@@ -1695,6 +1714,82 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         fail("Expected master not found in " + entry.getKey());
       }
     }
+  }
+
+  private static final String SELECT_MASTERS_ERRORS[] = {
+    "Could not pick 5 masters, only 3 nodes available in default region r1d",
+    "Could not pick 7 masters, only 3 nodes available in default region r1d",
+    "Could not pick 7 masters, only 2 nodes available in default region r1d",
+    "Could not pick 7 masters, only 6 nodes available. Nodes"
+  };
+
+  @Test
+  // @formatter:off
+  @Parameters({
+    // The parameter format is:
+    //   region - zone - nodes in zone - existing masters in zone
+
+    // Default region doesn't have enough nodes.
+    "Case 1, 5, r1d-az1-1-0;r1d-az2-1-0;r1d-az3-1-1;r2-az1-5-0;r2-az2-3-0, 0",
+    "Case 2, 7, r1d-az1-1-0;r1d-az2-1-0;r1d-az3-1-0;r2-az1-6-0;r2-az2-2-0, 1",
+    "Case 3, 7, r1d-az1-1-0;r1d-az2-1-0;r2-az1-6-0;r2-az2-2-0;r3-az1-6-0, 2",
+
+    // No default region, not enough nodes.
+    "Case 4, 7, r1-az1-1-0;r1-az2-1-0;r2-az1-1-0;r2-az2-2-0;r3-az1-1-0, 3",
+  })
+  // @formatter:on
+  public void testSelectMasters_ExceptionThrown(
+      String name, int rf, String zones, int expectedMessageIndex) {
+    String customerCode = String.valueOf(customerIdx.nextInt(99999));
+    Customer customer =
+        ModelFactory.testCustomer(customerCode, String.format("Test Customer %s", customerCode));
+    Provider provider = ModelFactory.newProvider(customer, CloudType.aws);
+
+    String[] zoneDescr = zones.split(";");
+    List<NodeDetails> nodes = new ArrayList<NodeDetails>();
+    int index = 0;
+    Set<String> createdRegions = new HashSet<>();
+    Region defaultRegion = null;
+
+    for (String descriptor : zoneDescr) {
+      String[] parts = descriptor.split("-");
+      String region = parts[0];
+      // Default region should exist.
+      if (region.endsWith("d")) {
+        if (!createdRegions.contains(region)) {
+          defaultRegion = Region.create(provider, region, region, "yb-image-1");
+          createdRegions.add(region);
+        }
+      }
+      String zone = parts[1];
+      int count = Integer.parseInt(parts[2]);
+      int mastersCount = Integer.parseInt(parts[3]);
+      for (int i = 0; i < count; i++) {
+        nodes.add(
+            ApiUtils.getDummyNodeDetails(
+                index++,
+                NodeDetails.NodeState.ToBeAdded,
+                mastersCount-- > 0,
+                true,
+                "onprem",
+                region,
+                zone,
+                null));
+      }
+    }
+
+    String defaultRegionCode = defaultRegion == null ? null : defaultRegion.code;
+    String errorMessage =
+        assertThrows(
+                RuntimeException.class,
+                () -> {
+                  PlacementInfoUtil.selectMasters(null, nodes, rf, defaultRegionCode);
+                })
+            .getMessage();
+    String expectedMessage = SELECT_MASTERS_ERRORS[expectedMessageIndex];
+    assertTrue(
+        errorMessage + " doesn't start with " + expectedMessage,
+        errorMessage.startsWith(expectedMessage));
   }
 
   @Test
@@ -1774,5 +1869,83 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
           });
       nodes.get(1).isMaster = !nodes.get(1).isMaster;
     }
+  }
+
+  @Test
+  public void testGetPlacementInfo_WithDefaultRegion() {
+    Common.CloudType cloud = Common.CloudType.aws;
+    Customer customer = ModelFactory.testCustomer("1", "Test Customer");
+    Provider provider = ModelFactory.newProvider(customer, cloud);
+
+    // Create Regions/AZs for the cloud
+    Region r1 = Region.create(provider, "region-1", "Region 1", "yb-image-1");
+    AvailabilityZone.createOrThrow(r1, "PlacementAZ1", "az-1", "subnet-1");
+    AvailabilityZone.createOrThrow(r1, "PlacementAZ2", "az-2", "subnet-2");
+    AvailabilityZone.createOrThrow(r1, "PlacementAZ3", "az-3", "subnet-3");
+
+    // Next region is default.
+    Region r2 = Region.create(provider, "region-2", "Region 2", "yb-image-1");
+    Set<UUID> defaultAZs = new HashSet<>();
+    defaultAZs.add(AvailabilityZone.createOrThrow(r2, "PlacementAZ1", "az-1", "subnet-1").uuid);
+    defaultAZs.add(AvailabilityZone.createOrThrow(r2, "PlacementAZ2", "az-2", "subnet-2").uuid);
+    defaultAZs.add(AvailabilityZone.createOrThrow(r2, "PlacementAZ3", "az-3", "subnet-3").uuid);
+
+    List<UUID> regionList = new ArrayList<>();
+    regionList.add(r1.uuid);
+    regionList.add(r2.uuid);
+
+    // Update userIntent for Universe
+    UserIntent userIntent = new UserIntent();
+    userIntent.universeName = "Test universe";
+    userIntent.replicationFactor = 3;
+    userIntent.numNodes = 5;
+    userIntent.provider = provider.code;
+    userIntent.regionList = regionList;
+    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
+    userIntent.ybSoftwareVersion = "0.0.1";
+    userIntent.accessKeyCode = "akc";
+    userIntent.providerType = cloud;
+    userIntent.preferredRegion = r1.uuid;
+
+    // Using default region. Only AZs from the default region should have
+    // replicationFactor = 1.
+    PlacementInfo pi =
+        PlacementInfoUtil.getPlacementInfo(ClusterType.PRIMARY, userIntent, 5, r2.uuid);
+    assertNotNull(pi);
+
+    List<PlacementAZ> placementAZs =
+        pi.cloudList
+            .stream()
+            .flatMap(c -> c.regionList.stream())
+            .flatMap(region -> region.azList.stream())
+            .collect(Collectors.toList());
+    for (PlacementAZ placement : placementAZs) {
+      assertEquals(defaultAZs.contains(placement.uuid) ? 1 : 0, placement.replicationFactor);
+    }
+
+    // Old logic - without default region.
+    // Zones from different regions are alternated - so at least one zone from both
+    // r1 and r2 regions should have replicationFactor = 1.
+    pi = PlacementInfoUtil.getPlacementInfo(ClusterType.PRIMARY, userIntent, 5, null);
+    assertNotNull(pi);
+
+    placementAZs =
+        pi.cloudList
+            .stream()
+            .flatMap(c -> c.regionList.stream())
+            .flatMap(region -> region.azList.stream())
+            .collect(Collectors.toList());
+    assertTrue(
+        placementAZs
+                .stream()
+                .filter(p -> defaultAZs.contains(p.uuid) && p.replicationFactor > 0)
+                .count()
+            > 0);
+    assertTrue(
+        placementAZs
+                .stream()
+                .filter(p -> !defaultAZs.contains(p.uuid) && p.replicationFactor > 0)
+                .count()
+            > 0);
   }
 }

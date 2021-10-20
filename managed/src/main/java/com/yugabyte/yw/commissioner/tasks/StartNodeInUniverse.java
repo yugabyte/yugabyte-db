@@ -18,6 +18,7 @@ import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -26,6 +27,7 @@ import java.util.Arrays;
 import java.util.HashSet;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang.StringUtils;
 
 /**
  * Class contains the tasks to start a node in a given universe. It starts the tserver process and
@@ -80,9 +82,15 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
       createSetNodeStateTask(currentNode, NodeState.Starting)
           .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
-      // Bring up any masters, as needed.
+      // Bring up any masters, as needed:
+      // - Masters should be under replicated;
+      // - If GP is on, currentNode should be in default region (when GP and default
+      // region is defined, we can have masters only in the default region).
       boolean masterAdded = false;
-      if (areMastersUnderReplicated(currentNode, universe)) {
+      String defaultRegionCode = PlacementInfoUtil.getDefaultRegionCode(taskParams());
+      if (areMastersUnderReplicated(currentNode, universe)
+          && ((defaultRegionCode == null)
+              || StringUtils.equals(defaultRegionCode, currentNode.cloudInfo.region))) {
         // Clean the master addresses in the conf file for the current node so that
         // the master comes up as a shell master.
         createConfigureServerTasks(

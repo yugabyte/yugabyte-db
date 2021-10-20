@@ -3206,6 +3206,10 @@
         "code" : {
           "type" : "string"
         },
+        "defaultRegion" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
         "regionList" : {
           "items" : {
             "$ref" : "#/definitions/PlacementRegion"
@@ -3834,6 +3838,9 @@
     },
     "UniverseConfigureTaskParams" : {
       "properties" : {
+        "allowGeoPartitioning" : {
+          "type" : "boolean"
+        },
         "allowInsecure" : {
           "type" : "boolean"
         },

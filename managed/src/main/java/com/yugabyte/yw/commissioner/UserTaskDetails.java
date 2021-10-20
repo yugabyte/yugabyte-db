@@ -12,6 +12,10 @@ public class UserTaskDetails {
 
   // The various groupings of user facing subtasks.
   public enum SubTaskGroupType {
+    // Used for parent tasks which could have own details/errors. Only for UI/API
+    // purposes, not stored in DB.
+    Preparation,
+
     // Ignore this subtask and do not display it to the user.
     Invalid,
 
@@ -176,6 +180,10 @@ public class UserTaskDetails {
     String title;
     String description;
     switch (subTaskGroupType) {
+      case Preparation:
+        title = "Action preparation";
+        description = "Preparing to execute a selected action.";
+        break;
       case PreflightChecks:
         title = "Preflight Checks";
         description =

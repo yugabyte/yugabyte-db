@@ -43,7 +43,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -165,7 +164,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           taskParams()
               .getReadOnlyClusters()
               .forEach(
-                  (async) -> {
+                  async -> {
                     // Update read replica cluster TLS params to be same as primary cluster
                     async.userIntent.enableNodeToNodeEncrypt =
                         universeDetails.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt;
@@ -431,7 +430,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       Set<NodeDetails> primaryNodes = taskParams().getNodesInCluster(primaryCluster.uuid);
       SelectMastersResult result =
           PlacementInfoUtil.selectMasters(
-              masterLeader, primaryNodes, primaryCluster.userIntent.replicationFactor);
+              masterLeader,
+              primaryNodes,
+              primaryCluster.userIntent.replicationFactor,
+              PlacementInfoUtil.getDefaultRegionCode(taskParams()));
       log.info(
           "Active masters count after balancing = "
               + PlacementInfoUtil.getNumActiveMasters(primaryNodes));
@@ -622,6 +624,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     return subTaskGroup;
   }
 
+  @Override
   public SubTaskGroup createWaitForMasterLeaderTask() {
     SubTaskGroup subTaskGroup = new SubTaskGroup("WaitForMasterLeader", executor);
     WaitForMasterLeader task = createTask(WaitForMasterLeader.class);
@@ -929,11 +932,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       throw new IllegalStateException("Should not have any masters before create task is run.");
     }
 
+    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     for (Cluster cluster : taskParams().clusters) {
       if (opType == UniverseOpType.EDIT
           && cluster.userIntent.instanceTags.containsKey(NODE_NAME_KEY)) {
-        Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
-        Cluster univCluster = universe.getUniverseDetails().getClusterByUuid(cluster.uuid);
+        Cluster univCluster = universeDetails.getClusterByUuid(cluster.uuid);
         if (univCluster == null) {
           throw new IllegalStateException(
               "No cluster " + cluster.uuid + " found in " + taskParams().universeUUID);

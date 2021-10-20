@@ -6,13 +6,14 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CustomerTaskFormData;
+import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.SubTaskFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseResp;
-import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
@@ -31,6 +32,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -51,6 +53,7 @@ public class CustomerTaskController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(CustomerTaskController.class);
 
   private List<SubTaskFormData> fetchFailedSubTasks(UUID parentUUID) {
+    TaskInfo parentTask = TaskInfo.getOrBadRequest(parentUUID);
     Query<TaskInfo> subTaskQuery =
         TaskInfo.find
             .query()
@@ -58,7 +61,21 @@ public class CustomerTaskController extends AuthenticatedController {
             .eq("parent_uuid", parentUUID)
             .eq("task_state", TaskInfo.State.Failure.name())
             .orderBy("position desc");
-    Set<TaskInfo> result = subTaskQuery.findSet();
+    List<TaskInfo> result = new ArrayList<>(subTaskQuery.findList());
+    if (parentTask.getTaskState() == TaskInfo.State.Failure) {
+      JsonNode taskError = parentTask.getTaskDetails().get("errorString");
+      if ((taskError != null) && !StringUtils.isEmpty(taskError.asText())) {
+        // Parent task hasn't `sub_task_group_type` set but can have some error details
+        // which are not present in subtasks. Usually these errors encountered on a
+        // stage of the action preparation (some initial checks plus preparation of
+        // subtasks for execution).
+        if (parentTask.getSubTaskGroupType() == null) {
+          parentTask.setSubTaskGroupType(SubTaskGroupType.Preparation);
+        }
+        result.add(0, parentTask);
+      }
+    }
+
     List<SubTaskFormData> subTasks = new ArrayList<>();
     for (TaskInfo taskInfo : result) {
       SubTaskFormData subTaskData = new SubTaskFormData();
