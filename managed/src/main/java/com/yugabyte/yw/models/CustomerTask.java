@@ -358,11 +358,11 @@ public class CustomerTask extends Model {
 
   @Constraints.Required
   @Column(nullable = false)
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
   @ApiModelProperty(
       value = "Creation time",
       accessMode = READ_ONLY,
-      example = "2021-06-17 15:00:05",
+      example = "2021-06-17T15:00:05-0400",
       required = true)
   private Date createTime;
 
@@ -371,11 +371,11 @@ public class CustomerTask extends Model {
   }
 
   @Column
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
   @ApiModelProperty(
       value = "Completion time (present only if a task has completed)",
       accessMode = READ_ONLY,
-      example = "2021-06-17 15:00:05")
+      example = "2021-06-17T15:00:05-0400")
   private Date completionTime;
 
   public Date getCompletionTime() {
