@@ -207,7 +207,7 @@ a89ecb84ad1b488b893b6e7762a6ca2a  key_start: "\177\377" key_end: ""     127.0.0.
 * The original tablet `9991368c4b85456988303cd65a3c6503` no longer exists and has been replaced with two new tablets.
 * The tablet leaders are now spread across two nodes in order to evenly balance the tablets for the table across the nodes of the cluster.
 
-{{</note >}}
+{{< /note >}}
 
 ## Automatic tablet splitting
 
@@ -217,13 +217,19 @@ For details on the architecture design, see [Automatic Re-sharding of Data with 
 
 ### Enable automatic tablet splitting
 
-To enable automatic tablet splitting, use the `yb-master` [`--enable_automatic_tablet_splitting`](../../../reference/configuration/yb-master/#enable_automatic_tablet_splitting) and specify the associated flags to configure when tablets should split.
+To enable automatic tablet splitting, use the `yb-master` [`--enable_automatic_tablet_splitting`](../../../reference/configuration/yb-master/#enable_automatic_tablet_splitting) command, and specify the associated flags to configure when tablets should split.
 
-Automatic tablet splitting occurs in a phased manner for a given table. When the table has fewer than [`--tablet_split_low_phase_shard_count_per_node`](../../../reference/configuration/yb-master/#tablet-split-low-phase-shard-count-per-node) shards, it will split all tablets larger than [`--tablet_split_low_phase_size_threshold_bytes`](../../../reference/configuration/yb-master/#tablet-split-low-phase-size-threshold-bytes). When the table has fewer than [`--tablet_split_high_phase_shard_count_per_node`](../../../reference/configuration/yb-master/#tablet-split-low-phase-shard-count-per-node) shards, it will split all tablets larger than [`--tablet_split_high_phase_size_threshold_bytes`](../../../reference/configuration/yb-master/#tablet-split-low-phase-size-threshold-bytes). And once the table has enough shards to be past either of these phases, it will still split tablets larger than [`--tablet_force_split_threshold_bytes`](../../../reference/configuration/yb-master/#tablet-force-split-threshold-bytes).
+Tablet splitting happens in three phases, determined by the shard count per node. As the shard count increases, the threshold size for splitting a tablet also increases:
 
-When automatic tablet splitting is enabled, we will default newly created tables to have one shard per tserver.
+* In the **low phase**, each node has fewer than [`tablet_split_low_phase_shard_count_per_node`](../../../reference/configuration/yb-master/#tablet-split-low-phase-shard-count-per-node) shards. In this phase, YugabyteDB splits tablets larger than [`tablet_split_low_phase_size_threshold_bytes`](../../../reference/configuration/yb-master/#tablet-split-low-phase-size-threshold-bytes).
 
-### Example using a YCSB workload with automatic tablet splitting
+* In the **high phase**, each node has fewer than [`tablet_split_high_phase_shard_count_per_node`](../../../reference/configuration/yb-master/#tablet-split-high-phase-shard-count-per-node) shards. In this phase, YugabyteDB splits tablets larger than [`tablet_split_high_phase_size_threshold_bytes`](../../../reference/configuration/yb-master/#tablet-split-high-phase-size-threshold-bytes).
+
+* Once the shard count exceeds the high phase count, YugabyteDB splits tablets larger than [`tablet_force_split_threshold_bytes`].
+
+When automatic tablet splitting is enabled, newly-created tables have one shard per tserver by default.
+
+### Example: YCSB workload with automatic tablet splitting
 
 In the following example, a three-node cluster is created and uses a YCSB workload to demonstrate the use of automatic tablet splitting in a YSQL database. For details on using YCSB with YugabyteDB, see the [YCSB](../../../benchmark/ycsb-jdbc/) section in the Benchmark guide.
 
@@ -247,7 +253,7 @@ In the following example, a three-node cluster is created and uses a YCSB worklo
 
 1. Create the properties file for YCSB at `~/code/YCSB/db-local.properties` and add the following content.
 
-    ```sh
+    ```conf
     db.driver=org.postgresql.Driver
     db.url=jdbc:postgresql://127.0.0.1:5433/ycsb;jdbc:postgresql://127.0.0.2:5433/ycsb;jdbc:postgresql://127.0.0.3:5433/ycsb
     db.user=yugabyte
@@ -261,7 +267,7 @@ In the following example, a three-node cluster is created and uses a YCSB worklo
     ~/code/YCSB/bin/ycsb load jdbc -s -P ~/code/YCSB/db-local.properties -P ~/code/YCSB/workloads/workloada -p recordcount=500000 -p operationcount=1000000 -p threadcount=4
     ```
 
-1. Monitor the tablets splitting by going to the YugabyteDB Web UI at `http://localhost:7000/tablet-servers` and `http://127.0.0.1:9000/tablets`.
+1. Monitor the tablet splitting using the YugabyteDB web interfaces at `http://localhost:7000/tablet-servers` and `http://127.0.0.1:9000/tablets`.
 
 1. Run the workload.
 
@@ -279,7 +285,7 @@ In the following example, a three-node cluster is created and uses a YCSB worklo
 
 ## Current limitations
 
-{{< note title="Note" >}}
+{{< note title="Limitations" >}}
 
 The following known limitations are planned to be resolved in upcoming releases:
 
