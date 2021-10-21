@@ -190,7 +190,7 @@ void PggateTest::BeginDDLTransaction() {
 }
 
 void PggateTest::CommitDDLTransaction() {
-  CHECK_YBC_STATUS(YBCPgExitSeparateDdlTxnMode(true /* success */));
+  CHECK_YBC_STATUS(YBCPgExitSeparateDdlTxnMode());
 }
 
 void PggateTest::BeginTransaction() {
