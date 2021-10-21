@@ -673,6 +673,20 @@ std::size_t TableInfo::NumPartitions() const {
   return partitions_.size();
 }
 
+bool TableInfo::HasPartitions(const std::vector<PartitionKey> other) const {
+  SharedLock<decltype(lock_)> l(lock_);
+  if (partitions_.size() != other.size()) {
+    return false;
+  }
+  int i = 0;
+  for (const auto& entry : partitions_) {
+    if (entry.first != other[i++]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 TabletInfos TableInfo::GetTablets(IncludeInactive include_inactive) const {
   TabletInfos result;
   SharedLock<decltype(lock_)> l(lock_);
