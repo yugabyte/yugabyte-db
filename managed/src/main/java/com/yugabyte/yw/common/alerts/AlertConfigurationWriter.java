@@ -179,9 +179,9 @@ public class AlertConfigurationWriter {
             buildMetricTemplate(PlatformMetrics.ALERT_CONFIG_WRITER_STATUS),
             "Error syncing alert definition configs " + e.getMessage());
         LOG.error("Error syncing alert definition configs", e);
+      } finally {
+        running.set(false);
       }
-
-      running.set(false);
     }
   }
 
