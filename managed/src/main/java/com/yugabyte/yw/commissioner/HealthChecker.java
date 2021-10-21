@@ -36,6 +36,7 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
@@ -52,6 +53,12 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.prometheus.client.Gauge;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
@@ -75,10 +82,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import javax.mail.MessagingException;
 import lombok.AllArgsConstructor;
+import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.Configuration;
+import play.Environment;
 import play.inject.ApplicationLifecycle;
 import play.libs.Json;
 import scala.concurrent.ExecutionContext;
@@ -91,6 +100,8 @@ public class HealthChecker {
   private static final String YB_TSERVER_PROCESS = "yb-tserver";
 
   private static final String MAX_NUM_THREADS_KEY = "yb.health.max_num_parallel_checks";
+
+  private final Environment environment;
 
   private final play.Configuration config;
 
@@ -129,6 +140,7 @@ public class HealthChecker {
 
   @Inject
   public HealthChecker(
+      Environment environment,
       ActorSystem actorSystem,
       Configuration config,
       ExecutionContext executionContext,
@@ -139,6 +151,7 @@ public class HealthChecker {
       RuntimeConfigFactory runtimeConfigFactory,
       ApplicationLifecycle lifecycle,
       HealthCheckMetrics healthMetrics) {
+    this.environment = environment;
     this.actorSystem = actorSystem;
     this.config = config;
     this.executionContext = executionContext;
@@ -363,54 +376,57 @@ public class HealthChecker {
       return;
     }
 
-    if (running.get()) {
+    if (!running.compareAndSet(false, true)) {
       LOG.info("Previous run of health check scheduler is still underway");
       return;
     }
 
-    running.set(true);
-    // TODO(bogdan): This will not be too DB friendly when we go multi-tenant.
-    for (Customer c : Customer.getAll()) {
-      try {
-        checkCustomer(c);
-      } catch (Exception ex) {
-        LOG.error("Error running health check scheduler for customer " + c.uuid, ex);
+    try {
+      // TODO(bogdan): This will not be too DB friendly when we go multi-tenant.
+      for (Customer c : Customer.getAll()) {
+        try {
+          checkCustomer(c);
+        } catch (Exception ex) {
+          LOG.error("Error running health check scheduler for customer " + c.uuid, ex);
+        }
       }
+    } finally {
+      running.set(false);
     }
-
-    running.set(false);
   }
 
   public void checkCustomer(Customer c) {
     // We need an alerting config to do work.
     CustomerConfig config = CustomerConfig.getAlertConfig(c.uuid);
-    if ((config == null) || (config.data == null)) {
-      LOG.debug(
-          "Skipping healthchecks for customer " + c.uuid + " due to missing alerting config...");
-      return;
-    }
 
-    AlertingData alertingData = Json.fromJson(config.data, AlertingData.class);
-    long now = (new Date()).getTime();
-    long checkIntervalMs =
-        alertingData.checkIntervalMs <= 0 ? healthCheckIntervalMs() : alertingData.checkIntervalMs;
+    boolean onlyMetrics = true;
+    boolean shouldSendStatusUpdate = false;
+    AlertingData alertingData = null;
+    if (config != null && config.data != null) {
+      alertingData = Json.fromJson(config.data, AlertingData.class);
+      long now = (new Date()).getTime();
+      long checkIntervalMs =
+          alertingData.checkIntervalMs <= 0
+              ? healthCheckIntervalMs()
+              : alertingData.checkIntervalMs;
 
-    long statusUpdateIntervalMs =
-        alertingData.statusUpdateIntervalMs <= 0
-            ? statusUpdateIntervalMs()
-            : alertingData.statusUpdateIntervalMs;
-    boolean shouldSendStatusUpdate =
-        (now - statusUpdateIntervalMs) > lastStatusUpdateTimeMap.getOrDefault(c.uuid, 0L);
+      long statusUpdateIntervalMs =
+          alertingData.statusUpdateIntervalMs <= 0
+              ? statusUpdateIntervalMs()
+              : alertingData.statusUpdateIntervalMs;
+      shouldSendStatusUpdate =
+          (now - statusUpdateIntervalMs) > lastStatusUpdateTimeMap.getOrDefault(c.uuid, 0L);
 
-    boolean onlyMetrics =
-        !shouldSendStatusUpdate
-            && ((now - checkIntervalMs) < lastCheckTimeMap.getOrDefault(c.uuid, 0L));
+      onlyMetrics =
+          !shouldSendStatusUpdate
+              && ((now - checkIntervalMs) < lastCheckTimeMap.getOrDefault(c.uuid, 0L));
 
-    if (!onlyMetrics) {
-      lastCheckTimeMap.put(c.uuid, now);
-    }
-    if (shouldSendStatusUpdate) {
-      lastStatusUpdateTimeMap.put(c.uuid, now);
+      if (!onlyMetrics) {
+        lastCheckTimeMap.put(c.uuid, now);
+      }
+      if (shouldSendStatusUpdate) {
+        lastStatusUpdateTimeMap.put(c.uuid, now);
+      }
     }
     checkAllUniverses(c, alertingData, shouldSendStatusUpdate, onlyMetrics);
   }
@@ -662,6 +678,8 @@ public class HealthChecker {
           }
         }
       }
+
+      info.collectMetricsScript = generateMetricsCollectionScript(cluster);
     }
 
     // If any clusters were invalid, abort for this universe.
@@ -798,6 +816,23 @@ public class HealthChecker {
             .setLabel(KnownAlertLabels.ERROR_MESSAGE, message)
             .setValue(0.0);
     metricService.cleanAndSave(Collections.singletonList(healthCheckFailed), toClean);
+  }
+
+  private String generateMetricsCollectionScript(Cluster cluster) {
+    String template;
+    try (InputStream templateStream =
+        environment.resourceAsStream("metric/collect_metrics.sh.template")) {
+      template = IOUtils.toString(templateStream, StandardCharsets.UTF_8);
+      // For now it has no universe/cluster specific info. Add placeholder substitution here once
+      // they are added.
+      Path path = Paths.get("/tmp/collect_metrics_" + cluster.uuid + ".sh");
+
+      Files.write(path, template.getBytes(StandardCharsets.UTF_8));
+
+      return path.toString();
+    } catch (IOException e) {
+      throw new RuntimeException("Failed to read alert definition rule template", e);
+    }
   }
 
   private MetricFilter metricSourceKeysFilter(

@@ -104,6 +104,35 @@
     group: "{{ user_name }}"
   with_items: "{{ mount_points.split(',') }}"
 
+# create configure metrics script
+- name: Setup | Create directory for metrics files
+  file:
+    path: "{{ ssh_user_bin_dir }}"
+    state: directory
+    recurse: yes
+    mode: 0755
+    owner: "{{ ssh_user }}"
+    group: "{{ ssh_user }}"
+
+- name: Configure | Add collect metrics wrapper script
+  template:
+    src: collect_metrics_wrapper.sh.j2
+    dest: "{{ ssh_user_bin_dir }}/collect_metrics_wrapper.sh"
+    owner: "{{ ssh_user }}"
+    mode: 0755
+
+- block:
+  - name: Setup cron to collect metrics.
+    cron:
+      name: "metric collection every minute"
+      user: "{{ ssh_user }}"
+      job: "{{ ssh_user_bin_dir }}/collect_metrics_wrapper.sh"
+    register: cron_result
+    failed_when:
+      - cron_result is failed
+      - cloud_type != "onprem"
+  when: not systemd_option
+
 - block:
   # Give yugabyte user sudo access to start/stop/restart master and tserver
   - name: Add yugabyte sudo user without password
@@ -196,6 +225,40 @@
       dest: "/etc/systemd/system/yb-clean_cores.timer"
       owner: "{{ user_name }}"
       mode: 0644
+
+  # Remove old cron job for collect_metrics
+  - name: Remove old cron job that collects metrics (for upgrades)
+    cron:
+      name: "metric collection every minute"
+      user: "{{ ssh_user }}"
+      state: absent
+
+  # Adding systemd service and timer files for collect_metrics
+  - name: Add yb-collect_metrics.service
+    template:
+      src: yb-collect_metrics.service
+      dest: "/etc/systemd/system/yb-collect_metrics.service"
+      owner: "{{ ssh_user }}"
+      mode: 0644
+
+  - name: Add yb-collect_metrics.timer
+    template:
+      src: yb-collect_metrics.timer
+      dest: "/etc/systemd/system/yb-collect_metrics.timer"
+      owner: "{{ ssh_user }}"
+      mode: 0644
+
+  - name: Enable yb-collect_metrics.service for collecting metrics
+    shell:
+      cmd: "sudo systemctl enable yb-collect_metrics"
+
+  - name: Enable yb-collect_metrics.timer for collecting metrics
+    shell:
+      cmd: "sudo systemctl enable yb-collect_metrics.timer"
+
+  - name: Run collect_metrics_wrapper.sh (using timer) for collecting metrics
+    shell:
+      cmd: "sudo systemctl start yb-collect_metrics.timer"
   tags: systemd_upgrade
   when: systemd_option
 

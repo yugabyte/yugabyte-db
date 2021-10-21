@@ -72,6 +72,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
+import play.Environment;
 import play.libs.Json;
 import scala.concurrent.ExecutionContext;
 
@@ -151,6 +152,7 @@ public class HealthCheckerTest extends FakeDBApplication {
     // Finally setup the mocked instance.
     healthChecker =
         new HealthChecker(
+            app.injector().instanceOf(Environment.class),
             mockActorSystem,
             mockConfig,
             mockExecutionContext,
