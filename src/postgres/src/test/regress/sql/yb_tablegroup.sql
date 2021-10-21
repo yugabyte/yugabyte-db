@@ -1,6 +1,9 @@
 --
 -- YB_TABLEGROUP Testsuite: Testing Statments for TABLEGROUP.
 --
+\h CREATE TABLEGROUP
+\h ALTER TABLEGROUP
+\h DROP TABLEGROUP
 
 --
 -- pg_catalog alterations. Validate columns of pg_tablegroup and oids.
