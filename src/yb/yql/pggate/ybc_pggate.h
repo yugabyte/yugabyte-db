@@ -428,12 +428,13 @@ YBCStatus YBCPgBeginTransaction();
 YBCStatus YBCPgRecreateTransaction();
 YBCStatus YBCPgRestartTransaction();
 YBCStatus YBCPgCommitTransaction();
-YBCStatus YBCPgAbortTransaction();
+void YBCPgAbortTransaction();
 YBCStatus YBCPgSetTransactionIsolationLevel(int isolation);
 YBCStatus YBCPgSetTransactionReadOnly(bool read_only);
 YBCStatus YBCPgSetTransactionDeferrable(bool deferrable);
 YBCStatus YBCPgEnterSeparateDdlTxnMode();
-YBCStatus YBCPgExitSeparateDdlTxnMode(bool success);
+YBCStatus YBCPgExitSeparateDdlTxnMode();
+void YBCPgClearSeparateDdlTxnMode();
 YBCStatus YBCPgSetActiveSubTransaction(uint32_t id);
 YBCStatus YBCPgRollbackSubTransaction(uint32_t id);
 
