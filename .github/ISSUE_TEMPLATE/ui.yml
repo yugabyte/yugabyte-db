@@ -1,7 +1,7 @@
 name: Yugabyte UI
 description: Create a UI issue.
 title: "[UI] Title"
-labels: "area/ui"
+labels: ["area/ui"]
 body:
 - type: textarea
   id: ui
