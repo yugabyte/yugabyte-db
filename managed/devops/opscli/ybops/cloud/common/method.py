@@ -613,7 +613,8 @@ class CronCheckMethod(AbstractInstancesMethod):
 
 class ConfigureInstancesMethod(AbstractInstancesMethod):
     VALID_PROCESS_TYPES = ['master', 'tserver']
-    CERT_ROTATE_ACTIONS = ['APPEND_NEW_ROOT_CERT', 'ROTATE_CERTS', 'REMOVE_OLD_ROOT_CERT']
+    CERT_ROTATE_ACTIONS = ['APPEND_NEW_ROOT_CERT', 'ROTATE_CERTS',
+                           'REMOVE_OLD_ROOT_CERT', 'UPDATE_CERT_DIRS']
 
     def __init__(self, base_command):
         super(ConfigureInstancesMethod, self).__init__(base_command, "configure")
