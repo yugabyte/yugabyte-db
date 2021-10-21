@@ -64,11 +64,11 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
       details.zone = "zone";
       nodeInstance.setDetails(details);
       nodeInstance.setNodeName(node.nodeName);
-      nodeInstance.nodeUuid = node.nodeUuid;
-      nodeInstance.instanceName = details.instanceName;
-      nodeInstance.zoneUuid = node.azUuid;
-      nodeInstance.inUse = true;
-      nodeInstance.instanceTypeCode = details.instanceType;
+      nodeInstance.setNodeUuid(node.nodeUuid);
+      nodeInstance.setInstanceName(details.instanceName);
+      nodeInstance.setZoneUuid(node.azUuid);
+      nodeInstance.setInUse(true);
+      nodeInstance.setInstanceTypeCode(details.instanceType);
 
       nodeInstance.save();
       nodes.add(node);
@@ -93,12 +93,12 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     for (int i = 0; i < NUM_NODES; i++) {
       // Node should not be in use.
       NodeInstance ni = NodeInstance.get(nodes.get(i).nodeUuid);
-      assertEquals(detailsCleanExpected, !ni.inUse);
+      assertEquals(detailsCleanExpected, !ni.isInUse());
       // If the instance details are cleared then it is not possible to find it by node name
       try {
         NodeInstance nodeInstance = NodeInstance.getByName(nodes.get(i).nodeName);
         assertFalse(detailsCleanExpected);
-        assertTrue(nodeInstance.inUse);
+        assertTrue(nodeInstance.isInUse());
       } catch (Exception e) {
         assertTrue(detailsCleanExpected);
       }

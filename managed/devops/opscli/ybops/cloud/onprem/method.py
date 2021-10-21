@@ -147,6 +147,9 @@ class OnPremDestroyInstancesMethod(DestroyInstancesMethod):
             self.cloud.run_control_script(
                 "thirdparty", "stop-services", args, self.extra_vars, host_info)
 
+        self.cloud.run_control_script(
+            "platform-services", "stop-services", args, self.extra_vars, host_info)
+
         # Force db-related commands to use the "yugabyte" user.
         args.ssh_user = "yugabyte"
         self.update_ansible_vars_with_args(args)

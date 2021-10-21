@@ -105,7 +105,7 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
       for (NodeDetails node : result.getUniverseDetails().nodeDetailsSet) {
         NodeInstance nodeInstance = nodeMap.get(node.nodeName);
         if (nodeInstance != null) {
-          node.nodeUuid = nodeInstance.nodeUuid;
+          node.nodeUuid = nodeInstance.getNodeUuid();
         }
       }
       result.save();

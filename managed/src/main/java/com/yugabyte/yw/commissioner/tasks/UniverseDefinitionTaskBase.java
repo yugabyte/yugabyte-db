@@ -430,7 +430,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // to more easily trickle down this uuid into all locations.
       NodeInstance n = nodeMap.get(node.nodeName);
       if (n != null) {
-        node.nodeUuid = n.nodeUuid;
+        node.nodeUuid = n.getNodeUuid();
       }
     }
     return nodeMap;

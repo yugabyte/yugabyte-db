@@ -1,9 +1,9 @@
 package com.yugabyte.yw.forms;
 
 import com.yugabyte.yw.common.NodeActionType;
-import play.data.validation.Constraints;
+import javax.validation.constraints.NotNull;
 
 public class NodeActionFormData {
 
-  @Constraints.Required() public NodeActionType nodeAction;
+  @NotNull public NodeActionType nodeAction;
 }

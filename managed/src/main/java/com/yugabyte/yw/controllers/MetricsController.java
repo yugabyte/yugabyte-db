@@ -23,7 +23,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.OutputStreamWriter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
@@ -32,6 +31,7 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -107,7 +107,7 @@ public class MetricsController extends Controller {
             .collect(Collectors.groupingBy(Metric::getName, TreeMap::new, Collectors.toList()));
 
     Map<String, PlatformMetrics> platformMetricsMap =
-        Arrays.stream(PlatformMetrics.values())
+        Stream.of(PlatformMetrics.values())
             .collect(Collectors.toMap(PlatformMetrics::name, Function.identity()));
     for (Map.Entry<String, List<Metric>> metric : metricsByName.entrySet()) {
       String metricName = metric.getKey();

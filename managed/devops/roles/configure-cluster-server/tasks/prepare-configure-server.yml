@@ -42,7 +42,7 @@
     group: "{{ user_name }}"
     state: link
 
-- name: Configure | Add clean_cores script
+- name: Configure | Add clean cores script
   template:
     src: clean_cores.sh.j2
     dest: "{{ yb_bin_dir }}/clean_cores.sh"
@@ -98,12 +98,12 @@
       user: "{{ user_name }}"
       state: absent
 
-  # Daemon-reload for zip_purge_yb_logs and clean_cores
+  # Daemon-reload for services
   - name: Perform daemon-reload for the new services
     shell:
       cmd: "sudo systemctl daemon-reload"
 
-  # Enable zip_purge_yb_logs and clean_cores service files
+  # Enable service files
   - name: Enable yb-zip_purge_yb_logs.service for purging logs
     shell:
       cmd: "sudo systemctl enable yb-zip_purge_yb_logs"
@@ -112,7 +112,7 @@
     shell:
       cmd: "sudo systemctl enable yb-clean_cores"
 
-  # Enable zip_purge_yb_logs and clean_cores timers
+  # Enable timers
   - name: Enable yb-zip_purge_yb_logs.timer for purging logs
     shell:
       cmd: "sudo systemctl enable yb-zip_purge_yb_logs.timer"
@@ -121,7 +121,7 @@
     shell:
       cmd: "sudo systemctl enable yb-clean_cores.timer"
 
-  # Starting zip_purge_yb_logs and clean_cores timers
+  # Starting timers
   - name: Run yb-zip_purge_yb_logs.sh (using timer) for purging logs
     shell:
       cmd: "sudo systemctl start yb-zip_purge_yb_logs.timer"
@@ -129,5 +129,6 @@
   - name: Run yb-clean_cores.sh (using timer) for cleaning cores
     shell:
       cmd: "sudo systemctl start yb-clean_cores.timer"
+
   tags: systemd_upgrade
   when: systemd_option

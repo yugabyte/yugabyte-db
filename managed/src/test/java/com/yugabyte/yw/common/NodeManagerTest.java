@@ -199,7 +199,7 @@ public class NodeManagerTest extends FakeDBApplication {
 
   private void buildValidParams(TestData testData, NodeTaskParams params, Universe universe) {
     params.azUuid = testData.zone.uuid;
-    params.instanceType = testData.node.instanceTypeCode;
+    params.instanceType = testData.node.getInstanceTypeCode();
     params.nodeName = testData.node.getNodeName();
     params.universeUUID = universe.universeUUID;
     params.placementUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;

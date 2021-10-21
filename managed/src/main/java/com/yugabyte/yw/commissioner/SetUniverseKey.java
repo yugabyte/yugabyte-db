@@ -145,16 +145,19 @@ public class SetUniverseKey {
 
     if (running.compareAndSet(false, true)) {
       LOG.debug("Running universe key setter");
-      Customer.getAll()
-          .forEach(
-              c -> {
-                try {
-                  setCustomerUniverseKeys(c);
-                } catch (Exception e) {
-                  handleCustomerError(c.uuid, e);
-                }
-              });
-      running.set(false);
+      try {
+        Customer.getAll()
+            .forEach(
+                c -> {
+                  try {
+                    setCustomerUniverseKeys(c);
+                  } catch (Exception e) {
+                    handleCustomerError(c.uuid, e);
+                  }
+                });
+      } finally {
+        running.set(false);
+      }
     }
   }
 }

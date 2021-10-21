@@ -166,8 +166,8 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   }
 
   private void checkNodesMatch(JsonNode queryNode, NodeInstance dbNode) {
-    assertEquals(dbNode.nodeUuid.toString(), queryNode.get("nodeUuid").asText());
-    assertEquals(dbNode.zoneUuid.toString(), queryNode.get("zoneUuid").asText());
+    assertEquals(dbNode.getNodeUuid().toString(), queryNode.get("nodeUuid").asText());
+    assertEquals(dbNode.getZoneUuid().toString(), queryNode.get("zoneUuid").asText());
     assertEquals(dbNode.getDetailsJson(), queryNode.get("details").toString());
     assertEquals(dbNode.getDetails().sshUser, queryNode.get("details").get("sshUser").asText());
   }
@@ -182,7 +182,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
 
   @Test
   public void testGetNodeWithValidUuid() {
-    Result r = getNode(node.nodeUuid);
+    Result r = getNode(node.getNodeUuid());
     checkOk(r);
     JsonNode json = parseResult(r);
     assertTrue(json.isObject());
@@ -232,7 +232,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
 
   @Test
   public void testListByZoneNoFreeNodes() {
-    node.inUse = true;
+    node.setInUse(true);
     node.save();
     Result r = listByZone(zone.uuid);
     checkOk(r);
@@ -240,7 +240,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     JsonNode json = parseResult(r);
     assertEquals(0, json.size());
 
-    node.inUse = false;
+    node.setInUse(false);
     node.save();
     assertAuditEntry(0, customer.uuid);
   }
@@ -339,7 +339,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
             () ->
                 performNodeAction(
                     customer.uuid, universe.universeUUID, "host-n1", NodeActionType.DELETE, true));
-    assertBadRequest(r, "{\"nodeAction\":[\"This field is required\"]}");
+    assertBadRequest(r, "{\"nodeAction\":[\"may not be null\"]}");
     assertAuditEntry(0, customer.uuid);
   }
 

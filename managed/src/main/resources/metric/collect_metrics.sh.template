@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+#
+# Copyright 2021 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+
+set -euo pipefail
+
+print_help() {
+  cat <<EOT
+Usage: ${0##*/} [<options>]
+Options:
+  -o, --output <file/console>
+    output type (default: file).
+  -f, --file <filename>
+    output file path - mandatory for 'file' output type
+  -h, --help
+    Show usage
+EOT
+}
+
+output="console"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -o|--output)
+      if [[ "$2" =~ ^(file|console)$ ]]; then
+        output=$2
+      else
+        echo "Invalid output: $1" >&2
+        print_help
+        exit 1
+      fi
+      shift
+    ;;
+    -f|--file)
+      filename=$2
+      shift
+    ;;
+    -h|--help)
+      print_help
+      exit 0
+    ;;
+    *)
+      echo "Invalid option: $1" >&2
+      print_help
+      exit 1
+  esac
+  shift
+done
+
+YB_HOME_DIR=${YB_HOME_DIR:=/home/yugabyte}
+
+PROCESS_MASTER="yb-master"
+PROCESS_TSERVER="yb-tserver"
+
+get_oom_kills_last_10_minutes()
+{
+  local oom_kills=$(journalctl -k --since "10min ago" | grep -c 'invoked oom-killer' | \
+    sed 's/^ *//')
+  echo "$oom_kills"
+  return $?
+}
+
+get_boot_time()
+{
+  local process_name=$1
+  boot_time=$(ps -C "$process_name" -o lstart=)
+  [[ -z "$boot_time" ]] && { echo "Process $process_name not running" ; exit 1; }
+  boot_time_seconds=$(date +%s -d "$boot_time")
+  echo "$boot_time_seconds"
+  return $?
+}
+
+metrics=""
+collect_metric()
+{
+  local metric_name=$1
+  local metric_command=$2
+  local command_result=$(eval "$metric_command")
+  if [ $? -eq 0 ]; then
+    if [[ $command_result =~ ^[+-]?[0-9]+\.?[0-9]*$ ]]; then
+      metrics="$metrics$metric_name $command_result\\n"
+    else
+      echo "Command $metric_command resulted in $command_result, which is not a double value"
+    fi
+  else
+    echo "Command $metric_command returned code $?: $command_result"
+  fi
+}
+
+collect_metric 'yb_node_oom_kills_10min' 'get_oom_kills_last_10_minutes'
+collect_metric 'yb_node_boot_time{process="master"}' "get_boot_time $PROCESS_MASTER"
+collect_metric 'yb_node_boot_time{process="tserver"}' "get_boot_time $PROCESS_TSERVER"
+
+if [ "$output" = "file" ]; then
+  mkdir -p "$(dirname "$(realpath "$filename")")" && echo -e "$metrics" > "$filename"
+else
+  echo -e "$metrics"
+fi

@@ -220,7 +220,7 @@ class NodeChecker():
     def __init__(self, node, node_name, identity_file, ssh_port, start_time_ms,
                  namespace_to_config, ysql_port, ycql_port, redis_port, enable_tls_client,
                  root_and_client_root_ca_same, ssl_protocol, enable_ysql_auth,
-                 master_http_port, tserver_http_port, universe_version):
+                 master_http_port, tserver_http_port, collect_metrics_script, universe_version):
         self.node = node
         self.node_name = node_name
         self.identity_file = identity_file
@@ -244,6 +244,7 @@ class NodeChecker():
         self.enable_ysql_auth = enable_ysql_auth
         self.master_http_port = master_http_port
         self.tserver_http_port = tserver_http_port
+        self.collect_metrics_script = collect_metrics_script
         self.universe_version = universe_version
         self.additional_info = {}
 
@@ -281,6 +282,35 @@ class NodeChecker():
 
         output = check_output(cmd_to_run, env_conf).strip()
 
+        return self.convert_output(output)
+
+    def _upload_file(self, local_file, remote_file):
+        cmd_to_run = []
+        env_conf = os.environ.copy()
+        if self.is_k8s:
+            env_conf["KUBECONFIG"] = self.k8s_details.config
+            cmd_to_run.extend([
+                'kubectl',
+                'cp',
+                local_file,
+                '{}/{}:{}'.format(
+                    self.k8s_details.namespace, self.k8s_details.pod_name, remote_file),
+                '-c', self.k8s_details.container])
+        else:
+            cmd_to_run.extend(
+                ['scp', '-P', str(self.ssh_port),
+                 '-o', 'StrictHostKeyChecking no',
+                 '-o', 'ConnectTimeout={}'.format(SSH_TIMEOUT_SEC),
+                 '-o', 'UserKnownHostsFile /dev/null',
+                 '-o', 'LogLevel ERROR',
+                 '-i', self.identity_file,
+                 local_file, 'yugabyte@{}:{}'.format(self.node, remote_file)])
+
+        output = check_output(cmd_to_run, env_conf).strip()
+
+        return self.convert_output(output)
+
+    def convert_output(self, output):
         # TODO: this is only relevant for SSH, so non-k8s.
         if output.endswith('No route to host'):
             return 'Error: Node {} is unreachable'.format(self.node)
@@ -704,6 +734,13 @@ class NodeChecker():
         return {"ssl_installed:" + self.node: (output == "0")
                 if not has_errors(output) else None}
 
+    def upload_collect_metrics_script(self):
+        remote_script_path = "{}/bin/collect_metrics.sh".format(YB_HOME_DIR)
+        output = self._upload_file(self.collect_metrics_script, remote_script_path).rstrip()
+        logging.info("Metrics collection script uploaded to node %s: %s",  self.node, output)
+        return {"collect_metrics_script_uploaded:" + self.node: (output == "0")
+                if not has_errors(output) else None}
+
 
 ###################################################################################################
 # Utility functions
@@ -867,6 +904,7 @@ class Cluster():
         self.enable_ysql_auth = data["enableYSQLAuth"]
         self.master_http_port = data["masterHttpPort"]
         self.tserver_http_port = data["tserverHttpPort"]
+        self.collect_metrics_script = data["collectMetricsScript"]
 
 
 class UniverseDefinition():
@@ -911,9 +949,11 @@ def main():
                         args.start_time_ms, c.namespace_to_config, c.ysql_port,
                         c.ycql_port, c.redis_port, c.enable_tls_client,
                         c.root_and_client_root_ca_same, c.ssl_protocol, c.enable_ysql_auth,
-                        c.master_http_port, c.tserver_http_port, universe_version)
+                        c.master_http_port, c.tserver_http_port, c.collect_metrics_script,
+                        universe_version)
 
                 coordinator.add_precheck(checker, "check_openssl_availability")
+                coordinator.add_precheck(checker, "upload_collect_metrics_script")
 
                 # TODO: use paramiko to establish ssh connection to the nodes.
                 if node in master_nodes:
