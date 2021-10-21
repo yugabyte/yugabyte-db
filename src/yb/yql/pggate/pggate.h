@@ -469,12 +469,13 @@ class PgApiImpl {
   CHECKED_STATUS RecreateTransaction();
   CHECKED_STATUS RestartTransaction();
   CHECKED_STATUS CommitTransaction();
-  CHECKED_STATUS AbortTransaction();
+  void AbortTransaction();
   CHECKED_STATUS SetTransactionIsolationLevel(int isolation);
   CHECKED_STATUS SetTransactionReadOnly(bool read_only);
   CHECKED_STATUS SetTransactionDeferrable(bool deferrable);
   CHECKED_STATUS EnterSeparateDdlTxnMode();
-  CHECKED_STATUS ExitSeparateDdlTxnMode(bool success);
+  CHECKED_STATUS ExitSeparateDdlTxnMode();
+  void ClearSeparateDdlTxnMode();
   CHECKED_STATUS SetActiveSubTransaction(SubTransactionId id);
   CHECKED_STATUS RollbackSubTransaction(SubTransactionId id);
 

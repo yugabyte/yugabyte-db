@@ -532,7 +532,7 @@ YBCAbortTransaction()
 		return;
 
 	if (YBTransactionsEnabled())
-		HandleYBStatus(YBCPgAbortTransaction());
+		YBCPgAbortTransaction();
 }
 
 void
@@ -941,6 +941,13 @@ YBIsInitDbAlreadyDone()
 static ProcessUtility_hook_type prev_ProcessUtility = NULL;
 static int ddl_nesting_level = 0;
 
+static void
+YBResetDdlState()
+{
+	ddl_nesting_level = 0;
+	YBCPgClearSeparateDdlTxnMode();
+}
+
 int
 YBGetDdlNestingLevel()
 {
@@ -958,20 +965,15 @@ YBIncrementDdlNestingLevel()
 }
 
 void
-YBDecrementDdlNestingLevel(bool success,
-                           bool is_catalog_version_increment,
-                           bool is_breaking_catalog_change)
+YBDecrementDdlNestingLevel(bool is_catalog_version_increment, bool is_breaking_catalog_change)
 {
 	ddl_nesting_level--;
 	if (ddl_nesting_level == 0)
 	{
-		bool increment_done = false;
-		if (success && is_catalog_version_increment)
-		{
-			increment_done = YbIncrementMasterCatalogVersionTableEntry(is_breaking_catalog_change);
-		}
+		const bool increment_done = is_catalog_version_increment &&
+			YbIncrementMasterCatalogVersionTableEntry(is_breaking_catalog_change);
 
-		HandleYBStatus(YBCPgExitSeparateDdlTxnMode(success));
+		HandleYBStatus(YBCPgExitSeparateDdlTxnMode());
 
 		/*
 		 * Optimization to avoid redundant cache refresh on the current session
@@ -985,28 +987,25 @@ YBDecrementDdlNestingLevel(bool success,
 			yb_catalog_cache_version += 1;
 		}
 
-		if (success)
+		List *handles = YBGetDdlHandles();
+		ListCell *lc = NULL;
+		foreach(lc, handles)
 		{
-			List *handles = YBGetDdlHandles();
-			ListCell *lc = NULL;
-			foreach(lc, handles)
-			{
-				YBCPgStatement handle = (YBCPgStatement) lfirst(lc);
-				/*
-				 * At this point we have already applied the DDL in the YSQL layer and
-				 * executing the postponed DocDB statement is not strictly required.
-				 * Ignore 'NotFound' because DocDB might already notice applied DDL.
-				 * See comment for YBGetDdlHandles in xact.h for more details.
-				 */
-				YBCStatus status = YBCPgExecPostponedDdlStmt(handle);
-				if (YBCStatusIsNotFound(status)) {
-					YBCFreeStatus(status);
-				} else {
-					HandleYBStatusAtErrorLevel(status, WARNING);
-				}
+			YBCPgStatement handle = (YBCPgStatement) lfirst(lc);
+			/*
+			 * At this point we have already applied the DDL in the YSQL layer and
+			 * executing the postponed DocDB statement is not strictly required.
+			 * Ignore 'NotFound' because DocDB might already notice applied DDL.
+			 * See comment for YBGetDdlHandles in xact.h for more details.
+			 */
+			YBCStatus status = YBCPgExecPostponedDdlStmt(handle);
+			if (YBCStatusIsNotFound(status)) {
+				YBCFreeStatus(status);
+			} else {
+				HandleYBStatusAtErrorLevel(status, WARNING);
 			}
-			YBClearDdlHandles();
 		}
+		YBClearDdlHandles();
 	}
 }
 
@@ -1328,17 +1327,17 @@ static void YBTxnDdlProcessUtility(
 	PG_CATCH();
 	{
 		if (is_txn_ddl) {
-			YBDecrementDdlNestingLevel(/* success */ false,
-			                           is_catalog_version_increment,
-			                           is_breaking_catalog_change);
+			/*
+			 * It is possible that ddl_nesting_level has wrong value due to error.
+			 * Ddl transaction state should be reset.
+			 */
+			YBResetDdlState();
 		}
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
 	if (is_txn_ddl) {
-		YBDecrementDdlNestingLevel(/* success */ true,
-		                           is_catalog_version_increment,
-		                           is_breaking_catalog_change);
+		YBDecrementDdlNestingLevel(is_catalog_version_increment, is_breaking_catalog_change);
 	}
 }
 
