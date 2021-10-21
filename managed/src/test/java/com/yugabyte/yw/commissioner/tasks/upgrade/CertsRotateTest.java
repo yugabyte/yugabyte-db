@@ -440,7 +440,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
 
     int position = 0;
     // RootCA update task
-    int expectedPosition = 12;
+    int expectedPosition = 14;
     if (rotateRootCA) {
       expectedPosition += 2;
       position = assertCommonTasks(subTasksByPosition, position, true, false);
@@ -453,11 +453,14 @@ public class CertsRotateTest extends UpgradeTaskTest {
     if (rotateRootCA) {
       position = assertCommonTasks(subTasksByPosition, position, true, false);
     }
+    // gflags update tasks
+    position = assertCommonTasks(subTasksByPosition, position, false, false);
+    position = assertCommonTasks(subTasksByPosition, position, false, false);
     // Update universe params task
     position = assertCommonTasks(subTasksByPosition, position, false, true);
 
     assertEquals(expectedPosition, position);
-    verify(mockNodeManager, times(15)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(21)).nodeCommand(any(), any());
 
     assertUniverseDetails(
         taskParams,
@@ -600,8 +603,8 @@ public class CertsRotateTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
-    int expectedPosition = 46;
-    int expectedNumberOfInvocations = 15;
+    int expectedPosition = 48;
+    int expectedNumberOfInvocations = 21;
     if (rotateRootCA) {
       expectedPosition += 92;
       expectedNumberOfInvocations += 30;
@@ -617,6 +620,9 @@ public class CertsRotateTest extends UpgradeTaskTest {
       position = assertRestartSequence(subTasksByPosition, position, true);
       // Third round cert update tasks
       position = assertCommonTasks(subTasksByPosition, position, false, false);
+      // gflags update tasks
+      position = assertCommonTasks(subTasksByPosition, position, false, false);
+      position = assertCommonTasks(subTasksByPosition, position, false, false);
       // Update universe params task
       position = assertCommonTasks(subTasksByPosition, position, true, true);
       // Third round restart tasks
@@ -626,6 +632,9 @@ public class CertsRotateTest extends UpgradeTaskTest {
       position = assertCommonTasks(subTasksByPosition, position, false, false);
       // Restart tasks
       position = assertRestartSequence(subTasksByPosition, position, true);
+      // gflags update tasks
+      position = assertCommonTasks(subTasksByPosition, position, false, false);
+      position = assertCommonTasks(subTasksByPosition, position, false, false);
       // Update universe params task
       position = assertCommonTasks(subTasksByPosition, position, false, true);
     }
