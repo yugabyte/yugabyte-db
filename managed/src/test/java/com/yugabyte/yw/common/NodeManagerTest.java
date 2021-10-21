@@ -793,6 +793,7 @@ public class NodeManagerTest extends FakeDBApplication {
           String yb_home_dir =
               Provider.getOrBadRequest(UUID.fromString(userIntent.provider)).getYbHome();
           String certsNodeDir = yb_home_dir + "/yugabyte-tls-config";
+          String certsForClientDir = yb_home_dir + "/yugabyte-client-tls-config";
 
           expectedCommand.add("--cert_rotate_action");
           expectedCommand.add(configureParams.certRotateAction.toString());
@@ -830,6 +831,20 @@ public class NodeManagerTest extends FakeDBApplication {
                       configureParams.clientRootCARotationType != CertRotationType.None,
                       yb_home_dir));
               break;
+            case UPDATE_CERT_DIRS:
+              {
+                gflags = new HashMap<>();
+                if (CertificateHelper.isRootCARequired(configureParams)) {
+                  gflags.put("certs_dir", certsNodeDir);
+                }
+                if (CertificateHelper.isClientRootCARequired(configureParams)) {
+                  gflags.put("certs_for_client_dir", certsForClientDir);
+                }
+                expectedCommand.add("--replace_gflags");
+                expectedCommand.add("--gflags");
+                expectedCommand.add(Json.stringify(Json.toJson(gflags)));
+                break;
+              }
           }
         } else {
           expectedCommand.add("--extra_gflags");
