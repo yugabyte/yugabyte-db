@@ -98,6 +98,7 @@ public class NodeManager extends DevopsBase {
     APPEND_NEW_ROOT_CERT,
     REMOVE_OLD_ROOT_CERT,
     ROTATE_CERTS,
+    UPDATE_CERT_DIRS
   }
 
   public static final Logger LOG = LoggerFactory.getLogger(NodeManager.class);
@@ -737,6 +738,7 @@ public class NodeManager extends DevopsBase {
                           universe.getUniverseDetails().getPrimaryCluster().userIntent.provider))
                   .getYbHome();
           String certsNodeDir = yb_home_dir + "/yugabyte-tls-config";
+          String certsForClientDir = yb_home_dir + "/yugabyte-client-tls-config";
 
           subcommand.add("--cert_rotate_action");
           subcommand.add(taskParam.certRotateAction.toString());
@@ -792,6 +794,20 @@ public class NodeManager extends DevopsBase {
                         yb_home_dir));
               }
               break;
+            case UPDATE_CERT_DIRS:
+              {
+                Map<String, String> gflags = new HashMap<>();
+                if (CertificateHelper.isRootCARequired(taskParam)) {
+                  gflags.put("certs_dir", certsNodeDir);
+                }
+                if (CertificateHelper.isClientRootCARequired(taskParam)) {
+                  gflags.put("certs_for_client_dir", certsForClientDir);
+                }
+                subcommand.add("--replace_gflags");
+                subcommand.add("--gflags");
+                subcommand.add(Json.stringify(Json.toJson(gflags)));
+                break;
+              }
           }
         }
         break;
