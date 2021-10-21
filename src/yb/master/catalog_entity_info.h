@@ -452,6 +452,8 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
       int32_t max_returned_locations = std::numeric_limits<int32_t>::max()) const;
 
   std::size_t NumPartitions() const;
+  // Return whether given partition start keys match partitions_.
+  bool HasPartitions(const std::vector<PartitionKey> other) const;
 
   // Get all tablets of the table.
   // If include_split_tablets is true, also returns not yet deleted split parent tablets for
