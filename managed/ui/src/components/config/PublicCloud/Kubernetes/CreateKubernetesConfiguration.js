@@ -67,6 +67,7 @@ class CreateKubernetesConfiguration extends Component {
           config: {
             STORAGE_CLASS: zone.storageClasses || undefined,
             KUBENAMESPACE: zone.namespace || undefined,
+            KUBE_DOMAIN: zone.kubeDomain || undefined,
             OVERRIDES: zone.zoneOverrides,
             KUBECONFIG_NAME: (zone.zoneKubeConfig && zone.zoneKubeConfig.name) || undefined
           }
@@ -149,6 +150,7 @@ class CreateKubernetesConfiguration extends Component {
       kubeConfig: null,
       imageRegistry: '',
       storageClasses: '',
+      kubeDomain: '',
       regionList: [],
       zoneOverrides: ''
     };
