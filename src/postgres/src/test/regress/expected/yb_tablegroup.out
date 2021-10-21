@@ -1,6 +1,25 @@
 --
 -- YB_TABLEGROUP Testsuite: Testing Statments for TABLEGROUP.
 --
+\h CREATE TABLEGROUP
+Command:     CREATE TABLEGROUP
+Description: define a new tablegroup
+Syntax:
+CREATE TABLEGROUP tablegroup_name
+
+\h ALTER TABLEGROUP
+Command:     ALTER TABLEGROUP
+Description: change the definition of a tablegroup
+Syntax:
+ALTER TABLEGROUP name RENAME TO new_name
+ALTER TABLEGROUP name OWNER TO { new_owner | CURRENT_USER | SESSION_USER }
+
+\h DROP TABLEGROUP
+Command:     DROP TABLEGROUP
+Description: remove a tablegroup
+Syntax:
+DROP TABLEGROUP name
+
 --
 -- pg_catalog alterations. Validate columns of pg_tablegroup and oids.
 --
