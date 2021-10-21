@@ -104,7 +104,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
         String instanceType = currentNode.cloudInfo.instance_type;
 
         Map<String, NodeInstance> nodeMap = NodeInstance.pickNodes(onpremAzToNodes, instanceType);
-        currentNode.nodeUuid = nodeMap.get(currentNode.nodeName).nodeUuid;
+        currentNode.nodeUuid = nodeMap.get(currentNode.nodeName).getNodeUuid();
       }
 
       String preflightStatus = null;

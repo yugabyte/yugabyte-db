@@ -52,7 +52,7 @@ public class PrecheckNode extends UniverseTaskBase {
       errMsg +=
           String.format(
               "\n-----\nNode %s (%s) failed preflight checks:\n%s",
-              node.instanceName, node.getDetails().ip, entry.getValue());
+              node.getInstanceName(), node.getDetails().ip, entry.getValue());
     }
 
     throw new RuntimeException(errMsg);

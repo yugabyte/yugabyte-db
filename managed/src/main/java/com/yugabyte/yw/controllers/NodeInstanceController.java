@@ -32,7 +32,6 @@ import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.data.Form;
 import play.libs.Json;
 import play.mvc.Result;
 import play.mvc.Results;
@@ -124,9 +123,8 @@ public class NodeInstanceController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUuid);
     AvailabilityZone.getOrBadRequest(zoneUuid);
 
-    Form<NodeInstanceFormData> formData =
-        formFactory.getFormDataOrBadRequest(NodeInstanceFormData.class);
-    List<NodeInstanceData> nodeDataList = formData.get().nodes;
+    NodeInstanceFormData nodeInstanceFormData = parseJsonAndValidate(NodeInstanceFormData.class);
+    List<NodeInstanceData> nodeDataList = nodeInstanceFormData.nodes;
     Map<String, NodeInstance> nodes = new HashMap<>();
     for (NodeInstanceData nodeData : nodeDataList) {
       if (!NodeInstance.checkIpInUse(nodeData.ip)) {
@@ -135,7 +133,7 @@ public class NodeInstanceController extends AuthenticatedController {
       }
     }
     if (nodes.size() > 0) {
-      auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
+      auditService().createAuditEntry(ctx(), request(), Json.toJson(nodeInstanceFormData));
       return PlatformResults.withData(nodes);
     }
     throw new PlatformServiceException(
@@ -156,7 +154,7 @@ public class NodeInstanceController extends AuthenticatedController {
     for (NodeInstance node : nodesInProvider) {
       // TODO: Need to convert routes to use UUID instead of instances' IP address
       // See: https://github.com/yugabyte/yugabyte-db/issues/7936
-      if (node.getDetails().ip.equals(instanceIP) && !node.inUse) {
+      if (node.getDetails().ip.equals(instanceIP) && !node.isInUse()) {
         nodeToBeFound = node;
       }
     }
@@ -182,8 +180,7 @@ public class NodeInstanceController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID);
     universe.getNodeOrBadRequest(nodeName);
-    Form<NodeActionFormData> formData =
-        formFactory.getFormDataOrBadRequest(NodeActionFormData.class);
+    NodeActionFormData nodeActionFormData = parseJsonAndValidate(NodeActionFormData.class);
 
     if (!universe.getUniverseDetails().isUniverseEditable()) {
       String errMsg = "Node actions cannot be performed on universe UUID " + universeUUID;
@@ -196,7 +193,7 @@ public class NodeInstanceController extends AuthenticatedController {
     taskParams.expectedUniverseVersion = universe.version;
     taskParams.nodeName = nodeName;
     taskParams.useSystemd = universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd;
-    NodeActionType nodeAction = formData.get().nodeAction;
+    NodeActionType nodeAction = nodeActionFormData.nodeAction;
 
     // Check deleting/removing a node will not go below the RF
     // TODO: Always check this for all actions?? For now leaving it as is since it breaks many tests
@@ -250,7 +247,7 @@ public class NodeInstanceController extends AuthenticatedController {
         universe.universeUUID,
         universe.name,
         nodeName);
-    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()), taskUUID);
+    auditService().createAuditEntry(ctx(), request(), Json.toJson(nodeActionFormData), taskUUID);
     return new YBPTask(taskUUID).asResult();
   }
 }

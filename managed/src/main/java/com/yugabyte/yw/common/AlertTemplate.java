@@ -84,7 +84,7 @@ public enum AlertTemplate {
           + " is above {{ $labels.threshold }}%."
           + " Current value is {{ $value | printf \\\"%.0f\\\" }}%",
       15,
-      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      EnumSet.noneOf(DefinitionSettings.class),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
           .defaultThreshold(SEVERE, "yb.alert.max_memory_cons_pct")
@@ -290,6 +290,26 @@ public enum AlertTemplate {
       ThresholdSettings.builder()
           .defaultThreshold(SEVERE, "yb.alert.max_node_fd_usage_pct_severe")
           .defaultThresholdUnit(PERCENT)
+          .build()),
+
+  NODE_OOM_KILLS(
+      "DB node OOM",
+      "Number of OOM kills during last 10 minutes is above threshold",
+      "count by (node_prefix) ("
+          + "yb_node_oom_kills_10min{node_prefix=\"__nodePrefix__\"} "
+          + "{{ query_condition }} {{ query_threshold }}) > 0",
+      "More than {{ $labels.threshold }} OOM kills detected"
+          + " for universe '{{ $labels.source_name }}'"
+          + " on {{ $value | printf \\\"%.0f\\\" }} nodes.",
+      15,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      TargetType.UNIVERSE,
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, "yb.alert.max_oom_kills_severe")
+          .defaultThreshold(WARNING, "yb.alert.max_oom_kills_warning")
+          .defaultThresholdUnit(COUNT)
+          .thresholdUnitName("OOM kill(s)")
+          .thresholdConditionReadOnly(true)
           .build()),
 
   DB_VERSION_MISMATCH(
