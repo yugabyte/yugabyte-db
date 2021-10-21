@@ -255,8 +255,7 @@ class TabletSplitITestBase : public client::TransactionTestBase<MiniClusterType>
 
   Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>> WriteRowsAndFlush(
       const size_t num_rows = kDefaultNumRows, const size_t start_key = 1) {
-    auto result = VERIFY_RESULT(WriteRows(num_rows));
-    RETURN_NOT_OK(WriteRows(num_rows));
+    auto result = VERIFY_RESULT(WriteRows(num_rows, start_key));
     RETURN_NOT_OK(FlushTestTable());
     return result;
   }
