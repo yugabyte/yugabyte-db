@@ -16,9 +16,9 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Sharding is the process of breaking up large tables into smaller chunks called shards that are spread across multiple servers. A shard is essentially a horizontal data partition that contains a subset of the total data set, and hence is responsible for serving a portion of the overall workload. The idea is to distribute data that can’t fit on a single node onto a cluster of database nodes. Sharding is also referred to as horizontal partitioning. The distinction between horizontal and vertical comes from the traditional tabular view of a database. A database can be split vertically — storing different table columns in a separate database, or horizontally — storing rows of the same table in multiple database nodes.
+Sharding is the process of breaking up large tables into smaller chunks called shards that are spread across multiple servers. Sharding is also referred to as horizontal partitioning, and a shard is essentially a horizontal data partition that contains a subset of the total data set, and hence is responsible for serving a portion of the overall workload. The idea is to distribute data that can’t fit on a single node onto a cluster of database nodes. The distinction between horizontal and vertical comes from the traditional tabular view of a database. A database can be split vertically — storing different table columns in a separate database, or horizontally — storing rows of the same table in multiple database nodes.
 
-User tables are implicitly managed as multiple shards by DocDB. These shards are referred to as **tablets**. The primary key for each row in the table uniquely determines the tablet the row lives in. This is shown in the following illustration:
+User tables are implicitly managed as multiple shards by DocDB. These shards are referred to as _tablets_. The primary key for each row in the table uniquely determines the tablet the row lives in. This is shown in the following illustration:
 
 ![Sharding a table into tablets](/images/architecture/partitioning-table-into-tablets.png)
 
@@ -30,7 +30,7 @@ YugabyteDB currently supports two ways of sharding data - hash (aka consistent h
 
 ## Hash sharding
 
-With (consistent) hash sharding, data is evenly and randomly distributed across shards using a partitioning algorithm. Each row of the table is placed into a shard determined by computing a consistent hash on the partition column values of that row. This is shown in the following illustration:
+With (consistent) hash sharding, data is evenly and randomly distributed across shards using a sharding algorithm. Each row of the table is placed into a shard determined by computing a consistent hash on the shard column values of that row. This is shown in the following illustration:
 
 ![tablet_hash_1](/images/architecture/tablet_hash_1.png)
 

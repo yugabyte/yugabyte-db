@@ -7,16 +7,23 @@ menu:
   latest:
     identifier: sportsdb
     parent: sample-data
-    weight: 2754
+    weight: 400
 isTocNested: true
 showAsideToc: true
 ---
 
 If you like sports statistics, you can install the PostgreSQL-compatible version of SportsDB on the YugabyteDB distributed SQL database and explore statistics for your favorite sport.
 
+You can install and use the SportsDB sample database using:
+
+- A local installation of YugabyteDB. To install YugabyteDB, refer to [Quick Start](../../quick-start/).
+- A local installation of the YugabyteDB client shells that you use to connect to a cluster in Yugabyte Cloud. To connect to your Yugabyte Cloud cluster, refer to [Connect via Client Shell](../../yugabyte-cloud/cloud-basics/connect-to-clusters/#connect-via-client-shell). To get started with Yugabyte Cloud, refer to [Get Started](../../yugabyte-cloud/cloud-basics/).
+
+In either case, you use the YugabyteDB SQL shell ([ysqlsh](../../admin/ysqlsh/)) CLI to interact with YugabyteDB using [YSQL](../../api/ysql/).
+
 ## About the SportsDB sample database
 
-[SportsDB](http://www.sportsdb.org/sd) is a sample sports statistics dataset compiled from multiple sources and encompassing a variety of sports, including football, baseball, basketball, ice hockey, and soccer. It also cross-references many different types of content media. It is capable of supporting queries for the most intense of sports data applications, yet is simple enough for use by those with minimal database experience. The database includes over 100 tables and just as many sequences, unique constraints, foreign keys, and indexes. The dataset also includes almost 80,000 rows of data. It has been ported to MySQL, SQL Server and PostgreSQL.
+[SportsDB](http://www.sportsdb.org/sd) is a sample sports statistics dataset compiled from multiple sources and encompassing a variety of sports, including football, baseball, basketball, ice hockey, and soccer. It also cross-references many different types of content media. It is capable of supporting queries for the most intense of sports data applications, yet is simple enough for use by those with minimal database experience. The database includes over 100 tables and just as many sequences, unique constraints, foreign keys, and indexes. The dataset also includes almost 80,000 rows of data. It has been ported to MySQL, SQL Server, and PostgreSQL.
 
 If you like details, check out this detailed entity relationship (ER) diagram.
 
@@ -24,15 +31,7 @@ If you like details, check out this detailed entity relationship (ER) diagram.
 
 ## Install the SportsDB sample database
 
-Follow the steps here to download and install the SportsDB sample database.
-
-### Before you begin
-
-To use the SportsDB sample database, you must have installed and configured YugabyteDB. To get up and running quickly, see [Quick Start](/latest/quick-start/).
-
-### 1. Download the SportsDB scripts (optional)
-
-The SportsDB SQL scripts that are compatible with YugabyteDB reside in the[`sample` directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample). The following five files will be used for this exercise.
+The SportsDB SQL scripts reside in the `share` folder of your YugabyteDB or client shell installation. They can also be found in the [`sample` directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample). The following files will be used for this exercise:
 
 - [`sportsdb_tables.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/sportsdb_tables.sql) — Creates the tables and sequences
 - [`sportsdb_inserts.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/sportsdb_inserts.sql) — Loads the sample data into the `sportsdb` database
@@ -40,25 +39,21 @@ The SportsDB SQL scripts that are compatible with YugabyteDB reside in the[`samp
 - [`sportsdb_fks.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/sportsdb_fks.sql) — Creates the foreign key constraints
 - [`sportsdb_indexes.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/sportsdb_indexes.sql) — Creates the indexes
 
-If you've installed YugabyteDB, you can find the scripts in your installation's `share` folder.
+Follow the steps here to install the SportsDB sample database.
 
-### 2. Open the YSQL shell
+### Open the YSQL shell
 
-To open the Yugabyte SQL (YSQL) shell, run the `ysqlsh` command from the YugabyteDB root directory.
+If you are using a local installation of YugabyteDB, run the `ysqlsh` command from the `yugabyte` root directory.
 
 ```sh
 $ ./bin/ysqlsh
 ```
 
-```
-ysqlsh (11.2)
-Type "help" for help.
-yugabyte=#
-```
+If you are connecting to Yugabyte Cloud, run the connection string for your cluster from the the `yugabyte-client` root directory. Refer to [Connect via Client Shell](../../yugabyte-cloud/cloud-basics/connect-to-clusters/#connect-via-client-shell).
 
-### 3. Create the SportsDB database
+### Create the SportsDB database
 
-To create the `sportsdb` database, run the following YSQL command
+To create the `sportsdb` database, run the following YSQL command.
 
 ```plpgsql
 CREATE DATABASE sportsdb;
@@ -76,12 +71,12 @@ Connect to the `sportsdb` database.
 yugabyte=# \c sportsdb
 ```
 
-```
+```output
 You are now connected to database "sportsdb" as user "yugabyte".
 sportsdb=#
 ```
 
-### 4. Build the SportsDB tables and sequences
+### Build the SportsDB tables and sequences
 
 To build the tables and database objects, run the following command.
 
@@ -95,7 +90,7 @@ You can verify that all 203 tables and sequences have been created by running th
 sportsdb=# \d
 ```
 
-### 5. Load sample data into the SportsDB database
+### Load sample data into the SportsDB database
 
 To load the `sportsdb` database with sample data (~80k rows), run the following command to execute commands in the file.
 
@@ -109,21 +104,16 @@ To verify that you have some data to work with, you can run the following simple
 sportsdb=# SELECT * FROM basketball_defensive_stats WHERE steals_total = '5';
 ```
 
-### 6. Create unique constraints and foreign key
+### Create unique constraints and foreign key
 
 To create the unique constraints and foreign keys, run the following commands.
 
 ```plpgsql
 sportsdb=# \i share/sportsdb_constraints.sql
-```
-
-and
-
-```plpgsql
 sportsdb=# \i share/sportsdb_fks.sql
 ```
 
-### 7. Create the indexes
+### Create the indexes
 
 To create the indexes, run the following command.
 

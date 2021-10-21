@@ -547,7 +547,7 @@ Status OutboundCall::InitHeader(RequestHeader* header, bool copy) {
     MonoDelta timeout = controller_->timeout();
     if (timeout.Initialized()) {
       auto timeout_millis = timeout.ToMilliseconds();
-      if (timeout_millis < 0) {
+      if (timeout_millis <= 0) {
         return STATUS(TimedOut, "Call timed out before sending");
       }
       header->set_timeout_millis(timeout_millis);

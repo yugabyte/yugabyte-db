@@ -2622,17 +2622,10 @@ Status CatalogManager::CleanUpDeletedCDCStreams(
 
       QLAddStringHashValue(delete_req, tablet->tablet_id());
       QLAddStringRangeValue(delete_req, stream->id());
-      s = session->Apply(delete_op);
+      session->Apply(delete_op);
       stream_ops.push_back(std::make_pair(stream->id(), delete_op));
       LOG(INFO) << "Deleting stream " << stream->id() << " for tablet " << tablet->tablet_id()
               << " with request " << delete_req->ShortDebugString();
-      if (!s.ok()) {
-        LOG(WARNING) << "Unable to delete stream with id "
-                     << stream->id() << " from table " << master::kCdcStateTableName
-                     << " for tablet " << tablet->tablet_id()
-                     << ". Status: " << s
-                     << ", Response: " << delete_op->response().ShortDebugString();
-      }
     }
   }
   // Flush all the delete operations.

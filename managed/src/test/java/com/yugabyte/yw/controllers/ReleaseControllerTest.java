@@ -429,7 +429,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
 
   @Test
   public void testDeleteInvalidRelease() {
-    Result result = assertYWSE(() -> deleteRelease(customer.uuid, "0.0.1"));
+    Result result = assertPlatformException(() -> deleteRelease(customer.uuid, "0.0.1"));
     verify(mockReleaseManager, times(1)).getReleaseByVersion("0.0.1");
     assertBadRequest(result, "Invalid Release version: 0.0.1");
     assertAuditEntry(0, customer.uuid);
@@ -450,7 +450,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
     ReleaseManager.ReleaseMetadata metadata = ReleaseManager.ReleaseMetadata.create("0.0.3");
     when(mockReleaseManager.getReleaseByVersion("0.0.3")).thenReturn(metadata);
     doThrow(new RuntimeException("Some Error")).when(mockReleaseManager).removeRelease("0.0.3");
-    Result result = assertYWSE(() -> deleteRelease(customer.uuid, "0.0.3"));
+    Result result = assertPlatformException(() -> deleteRelease(customer.uuid, "0.0.3"));
     verify(mockReleaseManager, times(1)).getReleaseByVersion("0.0.3");
     assertInternalServerError(result, "Some Error");
     assertAuditEntry(0, customer.uuid);

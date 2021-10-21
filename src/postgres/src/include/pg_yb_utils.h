@@ -492,5 +492,10 @@ bool YBIsCollationValidNonC(Oid collation_id);
  * for the column string value.
  */
 Oid YBEncodingCollation(YBCPgStatement handle, int attr_num, Oid attcollation);
+ 
+/*
+ * Check whether the user ID is of a user who has the yb_extension role.
+ */
+bool IsYbExtensionUser(Oid member);
 
 #endif /* PG_YB_UTILS_H */

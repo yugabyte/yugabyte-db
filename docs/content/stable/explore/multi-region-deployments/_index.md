@@ -19,19 +19,19 @@ YugabyteDB supports a rich set of multi-region deployment topologies. This secti
 * **xCluster asynchronous replication** for unidirectional and bidirectional replication
 * **Read replicas** which internally use asynchronous replication and can only serve reads
 
-The table below summarizes these different multi-region deployments in YugabyteDB along with some of their key characteristics.
+The following table summarizes these different multi-region deployments in YugabyteDB along with some of their key characteristics.
 
-|                             | [Default](synchronous-replication-ysql/) | [Geo-partitioning](row-level-geo-partitioning/) | [xCluster](asynchronous-replication-ysql/) | [Read replicas](read-replicas/)
-|-----------------------------|---------|------------------|-----------------------------|-----------------------------
-|<strong>Replication</strong> | Synchronous | Synchronous  | Asynchronous <br/> *(unidirectional and bidirectional)* | Asynchronous <br/> *(unidirectional only)*
-|<strong>Data residency</strong> | All data replicated across regions | Data partitioned across regions. <br/>Partitions replicated inside region. | All data replicated inside region. <br/>Configure per-table cross-region replication. | All data replicated in primary region. <br/>Cluster-wide async replication to read replicas.
-| <strong>Consistency</strong> | Transactional | Transactional | Timeline consistency | Timeline consistency
-| <strong>Write latency</strong> | High latency | Low latency | Low latency | Low latency
-| <strong>Read latency</strong> | High latency | Low latency <br/> *(when queried from nearby geography)* | Low latency | Low latency
-| <strong>Schema changes</strong> | Transparently managed | Transparently managed | Manual propagation | Transparently managed
-| <strong>RPO</strong> <br/> | No data loss | No data loss <br/> *(partial unavailability possible)* | Some data loss | No data loss
+|     | [Default](synchronous-replication-ysql/) | [Geo-partitioning](row-level-geo-partitioning/) | [xCluster](asynchronous-replication-ysql/) | [Read replicas](read-replicas/) |
+| :-- | :--------------------------------------- | :---------------------------------------------- | :----------------------------------------- | :------------ |
+| **Replication** | Synchronous | Synchronous  | Asynchronous <br/> *(unidirectional and bidirectional)* | Asynchronous <br/> *(unidirectional only)* |
+| **Data residency** | All data replicated across regions | Data partitioned across regions. <br/>Partitions replicated inside region. | All data replicated inside region. <br/>Configure per-table cross-region replication. | All data replicated in primary region. <br/>Cluster-wide async replication to read replicas. |
+| **Consistency** | Transactional | Transactional | Timeline consistency | Timeline consistency |
+| **Write latency** | High latency | Low latency | Low latency | N/A |
+| **Read latency** | High latency | Low latency <br/> *(when queried from nearby geography)* | Low latency | Low latency |
+| **Schema changes** | Transparently managed | Transparently managed | Manual propagation | Transparently managed |
+| **RPO** | No data loss | No data loss <br/> *(partial unavailability possible)* | Some data loss | No data loss |
 
-The deployments are explained in the following sections:
+The deployment types are explained in the following sections:
 
 <div class="row">
 

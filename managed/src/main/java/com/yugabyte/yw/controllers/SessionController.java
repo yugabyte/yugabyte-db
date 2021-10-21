@@ -23,14 +23,18 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
+import com.yugabyte.yw.controllers.handlers.SessionHandler;
 import com.yugabyte.yw.forms.CustomerLoginFormData;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.forms.PasswordPolicyFormData;
@@ -52,14 +56,20 @@ import java.io.FileFilter;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.io.FileNotFoundException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.Map;
+import java.util.Scanner;
 import java.util.UUID;
 import java.util.concurrent.CompletionStage;
 import java.util.regex.Matcher;
@@ -77,6 +87,7 @@ import org.apache.commons.io.IOCase;
 import org.apache.commons.io.input.ReversedLinesFileReader;
 import org.pac4j.core.profile.CommonProfile;
 import org.pac4j.core.profile.ProfileManager;
+import org.pac4j.oauth.client.OkClient;
 import org.pac4j.play.PlayWebContext;
 import org.pac4j.play.java.Secure;
 import org.pac4j.play.store.PlaySessionStore;
@@ -131,10 +142,13 @@ public class SessionController extends AbstractPlatformController {
 
   @Inject private HttpExecutionContext ec;
 
+  @Inject private SessionHandler sessionHandler;
+
   public static final String AUTH_TOKEN = "authToken";
   public static final String API_TOKEN = "apiToken";
   public static final String CUSTOMER_UUID = "customerUUID";
   private static final Integer FOREVER = 2147483647;
+  public static final String FILTERED_LOGS_SCRIPT = "bin/filtered_logs.sh";
 
   private CommonProfile getProfile() {
     final PlayWebContext context = new PlayWebContext(ctx(), playSessionStore);
@@ -230,7 +244,7 @@ public class SessionController extends AbstractPlatformController {
     }
   }
 
-  @ApiOperation(value = "getFilteredLogs", response = LogData.class)
+  @ApiOperation(value = "getFilteredLogs", produces = "text/plain")
   @With(TokenAuthenticator.class)
   public Result getFilteredLogs(Integer maxLines, String universeName, String queryRegex) {
     LOG.debug(
@@ -238,22 +252,15 @@ public class SessionController extends AbstractPlatformController {
         maxLines,
         universeName,
         queryRegex);
-    String appHomeDir = appConfig.getString("application.home", ".");
-    String logDir = appConfig.getString("log.override.path", String.format("%s/logs", appHomeDir));
-    List<String> regexBuilder = new ArrayList<>();
-    String universeUUID = null;
-    Universe universe = null;
 
+    Universe universe = null;
     if (universeName != null) {
       universe = Universe.getUniverseByName(universeName);
       if (universe == null) {
         LOG.error("Universe {} not found", universeName);
         throw new PlatformServiceException(BAD_REQUEST, "Universe name given does not exist");
       }
-      universeUUID = universe.universeUUID.toString();
-      regexBuilder.add(universeUUID);
     }
-
     if (queryRegex != null) {
       try {
         Pattern.compile(queryRegex);
@@ -261,86 +268,18 @@ public class SessionController extends AbstractPlatformController {
         LOG.error("Invalid regular expression given: {}", queryRegex);
         throw new PlatformServiceException(BAD_REQUEST, "Invalid regular expression given");
       }
-      regexBuilder.add(queryRegex);
     }
 
-    String grepRegex = buildRegexString(regexBuilder);
-
-    File file = new File(String.format("%s/application.log", logDir));
-    if (!file.exists()) {
-      throw new PlatformServiceException(BAD_REQUEST, "Could not find application.log file.");
-    }
-    List<String> lines =
-        Unix4j.fromFile(String.format("%s/application.log", logDir))
-            .grep(GrepOption.ignoreCase, grepRegex)
-            .tail(maxLines)
-            .sort(Sort.Options.reverse)
-            .toStringList();
-
-    if (lines.size() >= maxLines) {
-      return PlatformResults.withData(new LogData(lines));
-    }
-    File dir = new File(logDir);
-    FileFilter fileFilter = new WildcardFileFilter("*.gz", IOCase.INSENSITIVE);
-    File[] gzFileList = dir.listFiles(fileFilter);
-    Arrays.sort(gzFileList, LastModifiedFileComparator.LASTMODIFIED_REVERSE);
-    for (File gzfile : gzFileList) {
-      if (gzfile.isFile()) {
-        try {
-          final InputStream gzStream = new GZIPInputStream(new FileInputStream(gzfile));
-          int linesRemaining = maxLines - lines.size();
-          List<String> newLines =
-              Unix4j.from(gzStream)
-                  .grep(GrepOption.ignoreCase, grepRegex)
-                  .tail(linesRemaining)
-                  .sort(Sort.Options.reverse)
-                  .toStringList();
-          lines.addAll(newLines);
-          if (lines.size() >= maxLines) {
-            break;
-          }
-        } catch (FileNotFoundException ex) {
-          LOG.error("Gz file not found.", ex);
-          throw new PlatformServiceException(
-              INTERNAL_SERVER_ERROR, "Could not find gz file with error " + ex.getMessage());
-        } catch (IOException ex) {
-          LOG.error("Log file open failed.", ex);
-          throw new PlatformServiceException(
-              INTERNAL_SERVER_ERROR, "Could not open gz file with error " + ex.getMessage());
-        }
-      }
-    }
-    return PlatformResults.withData(new LogData(lines));
-  }
-
-  public String buildRegexString(List<String> regexBuilder) {
-    String regexString = "";
-    if (regexBuilder.size() == 0) {
-      return regexString;
-    }
-
-    List<List<String>> permutedStrings = new ArrayList<>();
-    permute(regexBuilder, 0, permutedStrings);
-
-    List<String> regexArr = new ArrayList<>();
-    for (List<String> list : permutedStrings) {
-      regexArr.add(String.join(".*", list));
-    }
-    regexArr = regexArr.stream().map(v -> ".*" + v + ".*").collect(Collectors.toList());
-
-    regexString = String.join("|", regexArr);
-    return regexString;
-  }
-
-  public void permute(List<String> arr, int k, List<List<String>> permutations) {
-    for (int i = k; i < arr.size(); i++) {
-      Collections.swap(arr, i, k);
-      permute(arr, k + 1, permutations);
-      Collections.swap(arr, k, i);
-    }
-    if (k == arr.size() - 1) {
-      List<String> copy = new ArrayList<String>(arr);
-      permutations.add(copy);
+    try {
+      Path filteredLogsPath = sessionHandler.getFilteredLogs(maxLines, universe, queryRegex);
+      LOG.debug("filtered logs temporary file path {}", filteredLogsPath.toString());
+      InputStream is = Files.newInputStream(filteredLogsPath, StandardOpenOption.DELETE_ON_CLOSE);
+      return ok(is).as("text/plain");
+    } catch (IOException ex) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Could not find temporary file with error " + ex.getMessage());
+    } catch (PlatformServiceException ex) {
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, ex.getMessage());
     }
   }
 

@@ -298,6 +298,20 @@ Status Wait(const std::function<Result<bool>()>& condition,
               delay_multiplier, max_delay);
 }
 
+Status LoggedWait(
+    const std::function<Result<bool>()>& condition,
+    CoarseTimePoint deadline,
+    const string& description,
+    MonoDelta initial_delay,
+    double delay_multiplier,
+    MonoDelta max_delay) {
+  LOG(INFO) << description << " - started";
+  auto status =
+      Wait(condition, deadline, description, initial_delay, delay_multiplier, max_delay);
+  LOG(INFO) << description << " - completed: " << status;
+  return status;
+}
+
 // Waits for the given condition to be true or until the provided timeout has expired.
 Status WaitFor(const std::function<Result<bool>()>& condition,
                MonoDelta timeout,
@@ -317,8 +331,9 @@ Status LoggedWaitFor(
     double delay_multiplier,
     MonoDelta max_delay) {
   LOG(INFO) << description << " - started";
-  auto status = WaitFor(condition, timeout, description, initial_delay);
-  LOG(INFO) << description << " - completed: " << yb::ToString(status);
+  auto status =
+      WaitFor(condition, timeout, description, initial_delay, delay_multiplier, max_delay);
+  LOG(INFO) << description << " - completed: " << status;
   return status;
 }
 

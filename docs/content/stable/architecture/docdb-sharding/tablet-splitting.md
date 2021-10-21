@@ -126,7 +126,7 @@ CREATE TABLE customers (
 
 For YSQL API details, see:
 
-* [CREATE TABLE ... SPLIT AT VALUES](../../../api/ysql/the-sql-language/statements/ddl_create_table/#split-at-values) for use with range-partitioned tables.
+* [CREATE TABLE ... SPLIT AT VALUES](../../../api/ysql/the-sql-language/statements/ddl_create_table/#split-at-values) for use with range-sharded tables.
 
 ## Manual tablet splitting
 

@@ -55,6 +55,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.mvc.Http;
@@ -111,6 +112,9 @@ public class UniverseCRUDHandler {
     UniverseDefinitionTaskParams.UserIntent primaryIntent = c.userIntent;
     primaryIntent.masterGFlags = trimFlags(primaryIntent.masterGFlags);
     primaryIntent.tserverGFlags = trimFlags(primaryIntent.tserverGFlags);
+    if (StringUtils.isEmpty(primaryIntent.accessKeyCode)) {
+      primaryIntent.accessKeyCode = appConfig.getString("yb.security.default.access.key");
+    }
     if (PlacementInfoUtil.checkIfNodeParamsValid(taskParams, c)) {
       PlacementInfoUtil.updateUniverseDefinition(taskParams, customer.getCustomerId(), c.uuid);
     } else {

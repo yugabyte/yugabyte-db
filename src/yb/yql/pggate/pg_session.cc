@@ -432,7 +432,8 @@ Status PgSession::RunHelper::Apply(std::shared_ptr<client::YBPgsqlOp> op,
   if (PREDICT_FALSE(yb_debug_log_docdb_requests)) {
     LOG(INFO) << "Applying operation: " << op->ToString();
   }
-  return yb_session_->Apply(std::move(op));
+  yb_session_->Apply(std::move(op));
+  return Status::OK();
 }
 
 Result<PgSessionAsyncRunResult> PgSession::RunHelper::Flush() {
@@ -929,7 +930,8 @@ Status PgSession::ApplyOperation(client::YBSession *session,
                    op->table()->name(),
                    op->table()->schema().table_properties().is_transactional(),
                    YBCIsInitDbModeEnvVarSet()));
-  return session->Apply(op);
+  session->Apply(op);
+  return Status::OK();
 }
 
 Status PgSession::FlushOperations(PgsqlOpBuffer ops, IsTransactionalSession transactional) {

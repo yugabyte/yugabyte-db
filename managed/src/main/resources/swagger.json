@@ -1124,6 +1124,11 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "minNumBackupsToRetain" : {
+          "description" : "Minimum number of backups to retain for a particular backup schedule",
+          "format" : "int32",
+          "type" : "integer"
+        },
         "nodeDetailsSet" : {
           "description" : "Node details",
           "items" : {
@@ -1774,7 +1779,7 @@
         },
         "creationDate" : {
           "description" : "Creation time",
-          "example" : "2021-06-17 15:00:05",
+          "example" : "2021-06-17T15:00:05-0400",
           "format" : "date-time",
           "readOnly" : true,
           "type" : "string"
@@ -2036,13 +2041,13 @@
       "properties" : {
         "completionTime" : {
           "description" : "Customer task completion time",
-          "example" : "1624295417405",
+          "example" : "2021-06-17T15:00:05-0400",
           "format" : "date-time",
           "type" : "string"
         },
         "createTime" : {
           "description" : "Customer task creation time",
-          "example" : "1624295417405",
+          "example" : "2021-06-17T15:00:05-0400",
           "format" : "date-time",
           "type" : "string"
         },
@@ -2531,6 +2536,11 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "minNumBackupsToRetain" : {
+          "description" : "Minimum number of backups to retain for a particular backup schedule",
+          "format" : "int32",
+          "type" : "integer"
+        },
         "nodeDetailsSet" : {
           "description" : "Node details",
           "items" : {
@@ -2742,6 +2752,11 @@
           "description" : "KMS configuration UUID",
           "format" : "uuid",
           "type" : "string"
+        },
+        "minNumBackupsToRetain" : {
+          "description" : "Minimum number of backups to retain for a particular backup schedule",
+          "format" : "int32",
+          "type" : "integer"
         },
         "nodeDetailsSet" : {
           "description" : "Node details",
@@ -10577,12 +10592,10 @@
           "required" : false,
           "type" : "string"
         } ],
+        "produces" : [ "text/plain" ],
         "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/LogData"
-            }
+          "default" : {
+            "description" : "successful operation"
           }
         },
         "summary" : "getFilteredLogs",

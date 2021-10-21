@@ -157,7 +157,7 @@ public class ModelFactory {
 
   public static Universe createUniverse(
       String universeName, long customerId, Common.CloudType cloudType) {
-    return createUniverse(universeName, UUID.randomUUID(), 1L, cloudType);
+    return createUniverse(universeName, UUID.randomUUID(), customerId, cloudType);
   }
 
   public static Universe createUniverse(
@@ -242,6 +242,19 @@ public class ModelFactory {
     params.setKeyspace("foo");
     params.setTableName("bar");
     params.tableUUID = UUID.randomUUID();
+    return Backup.create(customerUUID, params);
+  }
+
+  public static Backup createExpiredBackupWithScheduleUUID(
+      UUID customerUUID, UUID universeUUID, UUID configUUID, UUID scheduleUUID) {
+    BackupTableParams params = new BackupTableParams();
+    params.storageConfigUUID = configUUID;
+    params.universeUUID = universeUUID;
+    params.setKeyspace("foo");
+    params.setTableName("bar");
+    params.tableUUID = UUID.randomUUID();
+    params.scheduleUUID = scheduleUUID;
+    params.timeBeforeDelete = -100L;
     return Backup.create(customerUUID, params);
   }
 

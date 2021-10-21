@@ -91,6 +91,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       METRIC_PREFIX + "Single_Shard_Transactions";
   protected static final String TRANSACTIONS_METRIC = METRIC_PREFIX + "Transactions";
   protected static final String AGGREGATE_PUSHDOWNS_METRIC = METRIC_PREFIX + "AggregatePushdowns";
+  protected static final String CATALOG_CACHE_MISSES_METRICS = METRIC_PREFIX + "CatalogCacheMisses";
 
   // CQL and Redis settings, will be reset before each test via resetSettings method.
   protected boolean startCqlProxy = false;
@@ -416,7 +417,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       for (int i = 0; i < 2; i++) {
         try {
         List<String> roles = getRowList(stmt, "SELECT rolname FROM pg_roles"
-            + " WHERE rolname <> 'postgres' AND rolname NOT LIKE 'pg_%'").stream()
+            + " WHERE rolname <> 'postgres'"
+            + " AND rolname NOT LIKE 'pg_%'"
+            + " AND rolname NOT LIKE 'yb_%'").stream()
                 .map(r -> r.getString(0))
                 .collect(Collectors.toList());
 

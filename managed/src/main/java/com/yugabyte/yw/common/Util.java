@@ -65,6 +65,7 @@ public class Util {
   public static final String DEFAULT_YCQL_USERNAME = "cassandra";
   public static final String DEFAULT_YCQL_PASSWORD = "cassandra";
   public static final String YUGABYTE_DB = "yugabyte";
+  public static final int MIN_NUM_BACKUPS_TO_RETAIN = 3;
 
   /**
    * Returns a list of Inet address objects in the proxy tier. This is needed by Cassandra clients.

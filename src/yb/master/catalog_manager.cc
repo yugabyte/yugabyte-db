@@ -2310,8 +2310,8 @@ bool CatalogManager::ShouldSplitValidCandidate(
 }
 
 Status CatalogManager::DoSplitTablet(
-    const scoped_refptr<TabletInfo>& source_tablet_info, const std::string& split_encoded_key,
-    const std::string& split_partition_key) {
+    const scoped_refptr<TabletInfo>& source_tablet_info, std::string split_encoded_key,
+    std::string split_partition_key) {
   auto source_table_lock = source_tablet_info->table()->LockForWrite();
   auto source_tablet_lock = source_tablet_info->LockForWrite();
 
@@ -2332,6 +2332,27 @@ Status CatalogManager::DoSplitTablet(
         InvalidArgument,
         "Tablet split candidate $0 is no longer a valid split candidate.",
         source_tablet_info->tablet_id());
+  }
+
+  // Check if at least one child tablet already registered
+  if (source_tablet_lock->pb.split_tablet_ids().size() > 0) {
+    const auto child_tablet_id = source_tablet_lock->pb.split_tablet_ids(0);
+    const auto child_tablet = VERIFY_RESULT(GetTabletInfo(child_tablet_id));
+    const auto parent_partition = source_tablet_lock->pb.partition();
+    const auto child_partition = child_tablet->LockForRead()->pb.partition();
+
+    if (parent_partition.partition_key_start() == child_partition.partition_key_start()) {
+      split_partition_key = child_partition.partition_key_end();
+    } else {
+      SCHECK_EQ(parent_partition.partition_key_end(), child_partition.partition_key_end(),
+        IllegalState, "Parent partion key end does not equal child partition key end");
+      split_partition_key = child_partition.partition_key_start();
+    }
+
+    // Re-compute the encoded key
+    // to ensure we use the same partition boundary for both child tablets
+    split_encoded_key = PartitionSchema::GetEncodedKeyPrefix(
+      split_partition_key, source_table_lock->pb.partition_schema());
   }
 
   LOG(INFO) << "Starting tablet split: " << source_tablet_info->ToString()
@@ -2423,20 +2444,7 @@ Status CatalogManager::SplitTablet(const TabletId& tablet_id) {
 Status CatalogManager::SplitTablet(
     const SplitTabletRequestPB* req, SplitTabletResponsePB* resp, rpc::RpcContext* rpc) {
   const auto source_tablet_id = req->tablet_id();
-  const auto source_tablet_info = VERIFY_RESULT(GetTabletInfo(source_tablet_id));
-  const auto source_partition = source_tablet_info->LockForRead()->pb.partition();
-
-  const auto start_hash_code = source_partition.partition_key_start().empty()
-      ? 0
-      : PartitionSchema::DecodeMultiColumnHashValue(source_partition.partition_key_start());
-
-  const auto end_hash_code = source_partition.partition_key_end().empty()
-      ? std::numeric_limits<docdb::DocKeyHash>::max()
-      : PartitionSchema::DecodeMultiColumnHashValue(source_partition.partition_key_end());
-
-  const auto split_hash_code = (start_hash_code + end_hash_code) / 2;
-
-  return DoSplitTablet(source_tablet_info, split_hash_code);
+  return SplitTablet(source_tablet_id);
 }
 
 Status CatalogManager::DeleteNotServingTablet(

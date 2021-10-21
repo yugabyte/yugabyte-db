@@ -31,6 +31,7 @@ import org.yb.ColumnSchema.SortOrder;
 
 public class ApiUtils {
   public static String UTIL_INST_TYPE = "m3.medium";
+  public static final String DEFAULT_ACCESS_KEY_CODE = "mock-access-code-key";
 
   public static Universe.UniverseUpdater mockUniverseUpdater() {
     return mockUniverseUpdater("host", null);
@@ -57,11 +58,11 @@ public class ApiUtils {
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
         UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
         userIntent.providerType = cloudType;
-        userIntent.accessKeyCode = "yugabyte-default";
+        userIntent.accessKeyCode = DEFAULT_ACCESS_KEY_CODE;
         // Add a desired number of nodes.
         userIntent.numNodes = userIntent.replicationFactor;
         universeDetails.upsertPrimaryCluster(userIntent, null);
-        universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
+        universeDetails.nodeDetailsSet = new HashSet<>();
         for (int idx = 1; idx <= userIntent.numNodes; idx++) {
           // TODO: This state needs to be ToBeAdded as Create(k8s)Univ runtime sets it to Live
           // and nodeName should be null for ToBeAdded.
@@ -184,12 +185,9 @@ public class ApiUtils {
 
   public static Universe insertInstanceTags(UUID univUUID) {
     UniverseUpdater updater =
-        new UniverseUpdater() {
-          @Override
-          public void run(Universe universe) {
-            UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-            userIntent.instanceTags.put("Cust", "Test");
-          }
+        universe -> {
+          UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+          userIntent.instanceTags.put("Cust", "Test");
         };
     return Universe.saveDetails(univUUID, updater);
   }
@@ -202,7 +200,7 @@ public class ApiUtils {
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
         UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
         // Add a desired number of nodes.
-        universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
+        universeDetails.nodeDetailsSet = new HashSet<>();
         userIntent.numNodes = userIntent.replicationFactor;
         for (int idx = 1; idx <= userIntent.numNodes; idx++) {
           NodeDetails node =
@@ -232,7 +230,7 @@ public class ApiUtils {
         UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
         // Add a desired number of nodes.
         userIntent.enableYSQL = enableYSQL;
-        universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
+        universeDetails.nodeDetailsSet = new HashSet<>();
         userIntent.numNodes = userIntent.replicationFactor;
         for (int idx = 1; idx <= userIntent.numNodes; idx++) {
           NodeDetails node = getDummyNodeDetails(idx, NodeDetails.NodeState.Live, true, enableYSQL);
@@ -256,7 +254,7 @@ public class ApiUtils {
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
         UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
         // Add a desired number of nodes.
-        universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
+        universeDetails.nodeDetailsSet = new HashSet<>();
         universeDetails.nodeDetailsSet.add(getDummyNodeDetails(0, NodeDetails.NodeState.Live));
         userIntent.numNodes = 1;
         universeDetails.upsertPrimaryCluster(userIntent, null);
@@ -274,7 +272,7 @@ public class ApiUtils {
         PlacementInfo pi = universeDetails.getPrimaryCluster().placementInfo;
         userIntent.enableYSQL = true;
         userIntent.numNodes = 1;
-        universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
+        universeDetails.nodeDetailsSet = new HashSet<>();
         universeDetails.nodeDetailsSet.add(
             getDummyNodeDetailsWithPlacement(universeDetails.getPrimaryCluster().uuid));
         universeDetails.upsertPrimaryCluster(userIntent, pi);
@@ -293,7 +291,7 @@ public class ApiUtils {
         PlacementInfo pi = universeDetails.getPrimaryCluster().placementInfo;
         userIntent.enableYSQL = true;
         userIntent.numNodes = 1;
-        universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
+        universeDetails.nodeDetailsSet = new HashSet<>();
         universeDetails.nodeDetailsSet.addAll(
             getDummyNodeDetailSet(
                 universeDetails.getPrimaryCluster().uuid, numMasters, numTservers));
@@ -311,7 +309,7 @@ public class ApiUtils {
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
         UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
         // Add a desired number of nodes.
-        universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
+        universeDetails.nodeDetailsSet = new HashSet<>();
         userIntent.numNodes = userIntent.replicationFactor;
         UUID primaryClusterUUID = universeDetails.getPrimaryCluster().uuid;
         for (int idx = 1; idx <= userIntent.numNodes; idx++) {

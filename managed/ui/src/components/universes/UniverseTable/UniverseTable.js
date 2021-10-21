@@ -1,12 +1,11 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
-import { ListGroup } from 'react-bootstrap';
-import { isObject } from 'lodash';
-
-import { isNonEmptyArray } from '../../../utils/ObjectUtils';
-import { showOrRedirect } from '../../../utils/LayoutUtils';
-import { YBUniverseItem } from '..';
+import React, {Component} from 'react';
+import {ListGroup} from 'react-bootstrap';
+import {isObject} from 'lodash';
+import {isNonEmptyArray} from '../../../utils/ObjectUtils';
+import {showOrRedirect} from '../../../utils/LayoutUtils';
+import {YBUniverseItem} from '..';
 
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import './UniverseTable.scss';

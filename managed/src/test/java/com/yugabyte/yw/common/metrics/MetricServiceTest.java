@@ -1,10 +1,13 @@
 // Copyright (c) YugaByte, Inc.
-package com.yugabyte.yw.models;
+package com.yugabyte.yw.common.metrics;
 
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 import static com.yugabyte.yw.models.helpers.CommonUtils.datePlus;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
@@ -15,27 +18,32 @@ import static org.junit.Assert.fail;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.metrics.MetricService;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Metric;
+import com.yugabyte.yw.models.MetricKey;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.filters.MetricFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnitRunner;
 
 @RunWith(MockitoJUnitRunner.class)
-public class MetricTest extends FakeDBApplication {
+@Slf4j
+public class MetricServiceTest extends FakeDBApplication {
 
   private final Instant testStart = Instant.now();
 
@@ -43,12 +51,13 @@ public class MetricTest extends FakeDBApplication {
 
   private Universe universe;
 
-  @InjectMocks private MetricService metricService;
+  private MetricService metricService;
 
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer("Customer");
     universe = ModelFactory.createUniverse();
+    metricService = app.injector().instanceOf(MetricService.class);
   }
 
   @Test
@@ -116,6 +125,89 @@ public class MetricTest extends FakeDBApplication {
   }
 
   @Test
+  public void testConcurrentMetricUpdateAndCustomerDelete() throws InterruptedException {
+    ExecutorService executor = Executors.newFixedThreadPool(2);
+    List<Metric> metrics =
+        ImmutableList.of(
+            buildMetricTemplate(PlatformMetrics.UNIVERSE_EXISTS, universe).setValue(1D),
+            buildMetricTemplate(PlatformMetrics.UNIVERSE_PAUSED, universe).setValue(1D),
+            buildMetricTemplate(PlatformMetrics.UNIVERSE_UPDATE_IN_PROGRESS, universe)
+                .setValue(1D));
+    metricService.save(metrics);
+    metricService.flushMetricsToDb();
+
+    List<Metric> updatedMetrics =
+        ImmutableList.of(
+            buildMetricTemplate(PlatformMetrics.UNIVERSE_EXISTS, universe)
+                .setValue(0D)
+                .setLabel(KnownAlertLabels.NODE_NAME, "qwerty"),
+            buildMetricTemplate(PlatformMetrics.UNIVERSE_PAUSED, universe)
+                .setValue(0D)
+                .setLabel(KnownAlertLabels.NODE_NAME, "qwerty1"),
+            buildMetricTemplate(PlatformMetrics.UNIVERSE_UPDATE_IN_PROGRESS, universe)
+                .setValue(0D)
+                .setLabels(Collections.emptyList()));
+    metricService.save(updatedMetrics);
+
+    Future<?> metricFlushFuture = executor.submit(() -> metricService.flushMetricsToDb());
+    Future<?> customerRemovalFuture =
+        executor.submit(
+            () -> {
+              customer.delete();
+              metricService.handleSourceRemoval(customer.getUuid(), null);
+            });
+    try {
+      customerRemovalFuture.get();
+    } catch (ExecutionException e) {
+      log.error("Exception occurred in customer removal worker", e);
+      fail("Exception occurred in customer removal worker: " + e);
+    }
+    try {
+      metricFlushFuture.get();
+    } catch (ExecutionException e) {
+      log.info("Exception occurred in metric flush worker. Will retry:", e);
+      metricService.flushMetricsToDb();
+      log.info("Metrics saved successfully on retry.");
+    }
+    executor.shutdown();
+  }
+
+  @Test
+  public void testMetricStorageInitialization() {
+    List<Metric> metrics =
+        ImmutableList.of(
+            buildMetricTemplate(PlatformMetrics.UNIVERSE_EXISTS, universe).setValue(1D),
+            buildMetricTemplate(PlatformMetrics.UNIVERSE_PAUSED, universe).setValue(1D),
+            buildMetricTemplate(PlatformMetrics.UNIVERSE_UPDATE_IN_PROGRESS, universe)
+                .setValue(1D));
+    metricService.save(metrics);
+
+    List<Metric> inMemoryMetrics = metricService.list(MetricFilter.builder().build());
+    assertThat(inMemoryMetrics, containsInAnyOrder(metrics.toArray(new Metric[0])));
+    List<Metric> persistedMetrics = metricService.list(MetricFilter.builder().build(), true);
+    assertThat(persistedMetrics, empty());
+
+    metricService.flushMetricsToDb();
+
+    inMemoryMetrics = metricService.list(MetricFilter.builder().build());
+    assertThat(inMemoryMetrics, containsInAnyOrder(metrics.toArray(new Metric[0])));
+    persistedMetrics = metricService.list(MetricFilter.builder().build(), true);
+    assertThat(persistedMetrics, containsInAnyOrder(metrics.toArray(new Metric[0])));
+
+    MetricStorage newStorage = new MetricStorage();
+    MetricService newService = new MetricService(newStorage);
+
+    inMemoryMetrics = newService.list(MetricFilter.builder().build());
+    assertThat(inMemoryMetrics, empty());
+
+    newService.initialize();
+
+    inMemoryMetrics = newService.list(MetricFilter.builder().build());
+    assertThat(inMemoryMetrics, hasSize(3));
+    assertThat(inMemoryMetrics, containsInAnyOrder(metrics.toArray(new Metric[0])));
+  }
+
+  @Test
   public void testDelete() {
     metricService.setStatusMetric(
         buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, universe), "Error");
@@ -171,7 +263,7 @@ public class MetricTest extends FakeDBApplication {
                 .setExpireTime(datePlus(node3Metric.getExpireTime(), 36, ChronoUnit.HOURS))
                 .setValue(3D));
     MetricFilter toClean =
-        MetricFilter.builder().metric(PlatformMetrics.UNIVERSE_NODE_FUNCTION).build();
+        MetricFilter.builder().metricName(PlatformMetrics.UNIVERSE_NODE_FUNCTION).build();
 
     metricService.cleanAndSave(newMetrics, toClean);
 
@@ -189,7 +281,6 @@ public class MetricTest extends FakeDBApplication {
   }
 
   private void assertMetric(Metric metric, double value) {
-    assertThat(metric.getUuid(), notNullValue());
     assertThat(metric.getCreateTime(), notNullValue());
     assertThat(metric.getUpdateTime(), notNullValue());
     assertFalse(

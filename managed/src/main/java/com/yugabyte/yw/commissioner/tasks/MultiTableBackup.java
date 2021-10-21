@@ -27,6 +27,7 @@ import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.forms.BackupTableParams.ActionType;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -285,9 +286,11 @@ public class MultiTableBackup extends UniverseTaskBase {
 
         subTaskGroupQueue.run();
 
-        BACKUP_SUCCESS_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
-        metricService.setOkStatusMetric(
-            buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
+        if (params().actionType == ActionType.CREATE) {
+          BACKUP_SUCCESS_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
+          metricService.setOkStatusMetric(
+              buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
+        }
       } catch (Throwable t) {
         throw t;
       } finally {
@@ -296,9 +299,11 @@ public class MultiTableBackup extends UniverseTaskBase {
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
 
-      BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
-      metricService.setStatusMetric(
-          buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe), t.getMessage());
+      if (params().actionType == ActionType.CREATE) {
+        BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
+        metricService.setStatusMetric(
+            buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe), t.getMessage());
+      }
       // Run an unlock in case the task failed before getting to the unlock. It is okay if it
       // errors out.
       unlockUniverseForUpdate();

@@ -114,9 +114,6 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   // session, this call is idempotent.
   void DeferReadPoint();
 
-  // Used for backfilling the index, where we may want to write with a historic timestamp.
-  void SetHybridTimeForWrite(const HybridTime ht);
-
   // Changes transaction used by this session.
   void SetTransaction(YBTransactionPtr transaction);
 
@@ -132,21 +129,13 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
 
   // Apply the write operation.
   //
-  // Apply may begin to perform processing in the background for the call (e.g looking up the
-  // tablet, etc).
-  //
-  // If Apply returns an error status, session is switched to a failed state and might only be
-  // used again after Abort or SetTransaction. Session users shouldn't call flush in this case.
-  //
-  // Until Abort or SetTransaction, subsequent calls to Apply and Flush will return an error. It is
-  // important that in this case call to flush won't provide per-operations list of errors, just
-  // general error status.
-  CHECKED_STATUS Apply(YBOperationPtr yb_op);
+  // Applied operations just added to the session and waits to be flushed.
+  void Apply(YBOperationPtr yb_op);
   CHECKED_STATUS ApplyAndFlush(YBOperationPtr yb_op);
 
   bool IsInProgress(YBOperationPtr yb_op) const;
 
-  CHECKED_STATUS Apply(const std::vector<YBOperationPtr>& ops);
+  void Apply(const std::vector<YBOperationPtr>& ops);
   CHECKED_STATUS ApplyAndFlush(const std::vector<YBOperationPtr>& ops);
 
   // Flush any pending writes.
@@ -211,10 +200,8 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   // operations which have been sent and not yet responded to.
   int TEST_CountBufferedOperations() const;
 
-  // Returns number of operations successfully added to the session via Apply call,
-  // but not yet tried to flush.
-  // Abort/Flush* call resets this number to 0.
-  int GetAddedNotFlushedOperationsCount() const;
+  // Returns true if this session has not flushed operations.
+  bool HasNotFlushedOperations() const;
 
   // Allow local calls to run in the current thread.
   void set_allow_local_calls_in_curr_thread(bool flag);
@@ -249,8 +236,6 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
     std::shared_ptr<ConsistentReadPoint> non_transactional_read_point;
     bool allow_local_calls_in_curr_thread = true;
     bool force_consistent_read = false;
-    // HybridTime for Write. Used for Index Backfill.
-    HybridTime hybrid_time_for_write;
     RejectionScoreSourcePtr rejection_score_source;
 
     ConsistentReadPoint* read_point() const;
@@ -268,7 +253,7 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   mutable simple_spinlock lock_;
 
   // The current batcher being prepared.
-  scoped_refptr<internal::Batcher> batcher_;
+  internal::BatcherPtr batcher_;
 
   // Any batchers which have been flushed but not yet finished.
   //
@@ -277,8 +262,7 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   // the flush is active, the batcher manages its own refcount. The Batcher will always
   // call FlushFinished() before it destructs itself, so we're guaranteed that these
   // pointers stay valid.
-  std::unordered_set<
-      internal::BatcherPtr, ScopedRefPtrHashFunctor, ScopedRefPtrEqualsFunctor> flushed_batchers_;
+  std::unordered_set<internal::BatcherPtr> flushed_batchers_;
 
   // Session only one of deadline and timeout could be active.
   // When new batcher is created its deadline is set as session deadline or

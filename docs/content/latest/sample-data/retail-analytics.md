@@ -1,61 +1,58 @@
 ---
-title: Retail analytics example application
-headerTitle: Retail analytics sample application
+title: Retail analytics sample database
+headerTitle: Retail analytics sample database
 linkTitle: Retail Analytics
-description: Run this retail analytics sample application on YugabyteDB and explore YSQL.
+description: Explore this retail analytics sample database on YugabyteDB using YSQL.
 aliases:
   - /develop/realworld-apps/retail-analytics/
 menu:
   latest:
     identifier: retail-analytics
-    parent: realworld-apps
-    weight: 584
+    parent: sample-data
+    weight: 500
 isTocNested: true
 showAsideToc: true
 ---
 
-## 1. Start local cluster
+Install the PostgreSQL-compatible Retail Analytics dataset on the YugabyteDB distributed SQL database.
 
-Follow [Quick Start](../../../quick-start/) instructions to run a local YugabyteDB cluster. Test the YSQL API as [documented](../../../quick-start/explore/ysql/) so that you can confirm that you have the YSQL service running on `localhost:5433`. 
+You can install and use the Retail Analytics sample database using:
 
-## 2. Load data
+- A local installation of YugabyteDB. To install YugabyteDB, refer to [Quick Start](../../quick-start/).
+- A local installation of the YugabyteDB client shells that you use to connect to a cluster in Yugabyte Cloud. To connect to your Yugabyte Cloud cluster, refer to [Connect via Client Shell](../../yugabyte-cloud/cloud-basics/connect-to-clusters/#connect-via-client-shell). To get started with Yugabyte Cloud, refer to [Get Started](../../yugabyte-cloud/cloud-basics/).
 
-### Download the sample schema
+In either case, you use the YugabyteDB SQL shell ([ysqlsh](../../admin/ysqlsh/)) CLI to interact with YugabyteDB using [YSQL](../../api/ysql/).
 
-```sh
-$ wget https://raw.githubusercontent.com/yugabyte/yb-sql-workshop/master/query-using-bi-tools/schema.sql
-```
+## About the Retail Analytics database
 
-### Download the sample data
+The Retail Analytics dataset includes sample data in the following tables:
 
-```sh
-$ wget https://github.com/yugabyte/yb-sql-workshop/raw/master/query-using-bi-tools/sample-data.tgz
-```
+- **Products**: Product information
+- **Users**: Customers who have bought products
+- **Orders**: Orders made by customers
+- **Reviews**: Product reviews
 
-```sh
-$ tar zxvf sample-data.tgz
-```
+## Install the Retail Analytics sample database
 
-```sh
-$ ls data/
-```
+The Retail Analytics SQL scripts reside in the `share` folder of your YugabyteDB or client shell installation. They can also be found in the [`sample` directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample). The following files will be used for this exercise:
 
-```
-orders.sql  products.sql  reviews.sql users.sql
-```
+- [`schema.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/schema.sql) — Creates the tables and constraints
+- [`orders.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/orders.sql) — Loads product orders
+- [`products.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/products.sql) — Loads products
+- [`reviews.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/reviews.sql) — Loads product reviews
+- [`users.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/users.sql) — Loads customer information
 
-### Connect to YugabyteDB using ysqlsh
+Follow the steps here to install the Retail Analytics sample database.
+
+### Open the YSQL shell
+
+If you are using a local installation of YugabyteDB, run the `ysqlsh` command from the `yugabyte` root directory.
 
 ```sh
 $ ./bin/ysqlsh
 ```
 
-```
-ysqlsh (11.2)
-Type "help" for help.
-
-yugabyte=#
-```
+If you are connecting to Yugabyte Cloud, run the connection string for your cluster from the the `yugabyte-client` root directory. Refer to [Connect via Client Shell](../../yugabyte-cloud/cloud-basics/connect-to-clusters/#connect-via-client-shell).
 
 ### Create a database
 
@@ -78,28 +75,19 @@ yugabyte=# \c yb_demo;
 First create the four tables necessary to store the data.
 
 ```plpgsql
-yugabyte=# \i 'schema.sql';
+yb_demo=# \i share/schema.sql;
 ```
 
 Now load the data into the tables.
 
 ```plpgsql
-yugabyte=# \i 'data/products.sql'
+\i share/products.sql;
+\i share/users.sql;
+\i share/orders.sql;
+\i share/reviews.sql;
 ```
 
-```plpgsql
-yugabyte=# \i 'data/users.sql'
-```
-
-```plpgsql
-yugabyte=# \i 'data/orders.sql'
-```
-
-```plpgsql
-yugabyte=# \i 'data/reviews.sql'
-```
-
-## 3. Run queries
+## Explore the Retail Analytics database
 
 ### How are users signing up for my site?
 
@@ -107,7 +95,7 @@ yugabyte=# \i 'data/reviews.sql'
 yb_demo=# SELECT DISTINCT(source) FROM users;
 ```
 
-```
+```output
 source
 -----------
  Facebook
@@ -127,7 +115,7 @@ yb_demo=# SELECT source, count(*) AS num_user_signups
           ORDER BY num_user_signups DESC;
 ```
 
-```
+```output
 source     | num_user_signups
 -----------+------------------
  Facebook  |              512
@@ -147,7 +135,7 @@ yb_demo=# SELECT source, ROUND(SUM(orders.total)) AS total_sales
           ORDER BY total_sales DESC;
 ```
 
-```
+```output
 source     | total_sales
 -----------+-------------
  Facebook  |      333454
@@ -164,7 +152,7 @@ source     | total_sales
 yb_demo=# SELECT MIN(price), MAX(price), AVG(price) FROM products;
 ```
 
-```
+```output
 min               |       max        |       avg
 ------------------+------------------+------------------
  15.6919436739704 | 98.8193368436819 | 55.7463996679207
@@ -190,7 +178,7 @@ Now that the view is created, you can see it in our list of relations.
 yb_demo=# \d
 ```
 
-```
+```output
 List of relations
  Schema |   Name   | Type  |  Owner
 --------+----------+-------+----------
@@ -207,7 +195,7 @@ yb_demo=# SELECT source, total_sales * 100.0 / (SELECT SUM(total_sales) FROM cha
           FROM channel WHERE source='Facebook';
 ```
 
-```
+```output
 source    |  percent_sales
 ----------+------------------
  Facebook | 20.9018954710909

@@ -32,14 +32,23 @@
 package org.yb.client;
 
 import com.google.common.net.HostAndPort;
+import com.stumbleupon.async.Callback;
 import com.stumbleupon.async.Deferred;
+import java.lang.InterruptedException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.ColumnSchema;
@@ -469,26 +478,55 @@ public class YBClient implements AutoCloseable {
    * @return The host and port of the leader master, or null if no leader found.
    */
   public HostAndPort getLeaderMasterHostAndPort() {
-    for (HostAndPort hostAndPort : asyncClient.getMasterAddresses()) {
-      Deferred<GetMasterRegistrationResponse> d;
+    List<HostAndPort> masterAddresses = asyncClient.getMasterAddresses();
+    Map<HostAndPort, TabletClient> clients = new HashMap<>();
+    for (HostAndPort hostAndPort : masterAddresses) {
       TabletClient clientForHostAndPort = asyncClient.newMasterClient(hostAndPort);
       if (clientForHostAndPort == null) {
         String message = "Couldn't resolve this master's host/port " + hostAndPort.toString();
         LOG.warn(message);
-      } else {
-        d = asyncClient.getMasterRegistration(clientForHostAndPort);
-        try {
-          GetMasterRegistrationResponse resp = d.join(getDefaultAdminOperationTimeoutMs());
-          if (resp.getRole() == Metadata.RaftPeerPB.Role.LEADER) {
-            return hostAndPort;
-          }
-        } catch (Exception e) {
-          LOG.warn("Couldn't get registration info for master " + hostAndPort.toString());
-        }
       }
+      clients.put(hostAndPort, clientForHostAndPort);
     }
 
-    return null;
+    CountDownLatch finished = new CountDownLatch(1);
+    AtomicInteger workersLeft = new AtomicInteger(clients.entrySet().size());
+
+    AtomicReference<HostAndPort> result = new AtomicReference<>(null);
+    for (Entry<HostAndPort, TabletClient> entry : clients.entrySet()) {
+      asyncClient.getMasterRegistration(entry.getValue())
+          .addCallback(new Callback<Object, GetMasterRegistrationResponse>() {
+            @Override
+            public Object call(GetMasterRegistrationResponse response) throws Exception {
+              if (response.getRole() == Metadata.RaftPeerPB.Role.LEADER) {
+                finished.countDown();
+                result.set(entry.getKey());
+              } else if (workersLeft.decrementAndGet() == 0) {
+                finished.countDown();
+              }
+              return null;
+            }
+          }).addErrback(new Callback<Exception, Exception>() {
+            @Override
+            public Exception call(final Exception e) {
+              // If finished == 0 then we are here because of closeClient() and the master is
+              // already found.
+              if (finished.getCount() != 0) {
+                LOG.warn("Couldn't get registration info for master " + entry.getKey().toString());
+                if (workersLeft.decrementAndGet() == 0) {
+                  finished.countDown();
+                }
+              }
+              return null;
+            }
+          });
+    }
+
+    try {
+      finished.await(getDefaultAdminOperationTimeoutMs(), TimeUnit.MILLISECONDS);
+    } catch (InterruptedException e) {
+    }
+    return result.get();
   }
 
   /**

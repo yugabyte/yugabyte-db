@@ -33,6 +33,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import play.libs.Json;
 
 // Tracks edit intents to the cluster and then performs the sequence of configuration changes on
 // this universe to go from the current set of master/tserver nodes to the final configuration.
@@ -71,13 +72,15 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       // Set all the node names.
       setNodeNames(UniverseOpType.EDIT, universe);
 
+      updateOnPremNodeUuidsOnTaskParams();
+
       // Run preflight checks on onprem nodes to be added.
-      if (reserveAndCheckOnpremNodesToBeAdded()) {
+      if (performUniversePreflightChecks(taskParams().clusters)) {
         // Select master nodes, if needed.
         selectMasters();
 
         // Update the user intent.
-        writeUserIntentToUniverse(false, false);
+        writeUserIntentToUniverse(false);
 
         for (Cluster cluster : taskParams().clusters) {
           addDefaultGFlags(cluster.userIntent);

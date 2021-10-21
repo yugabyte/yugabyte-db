@@ -1652,11 +1652,7 @@ void Tablet::UpdateQLIndexes(std::unique_ptr<WriteOperation> operation) {
       shared_ptr<client::YBqlWriteOp> index_op(index_table->NewQLWrite());
       index_op->mutable_request()->Swap(&pair.second);
       index_op->mutable_request()->MergeFrom(pair.second);
-      status = session->Apply(index_op);
-      if (!status.ok()) {
-        WriteOperation::StartSynchronization(std::move(operation), status);
-        return;
-      }
+      session->Apply(index_op);
       index_ops.emplace_back(std::move(index_op), write_op);
     }
   }
@@ -2449,24 +2445,26 @@ Result<PgsqlBackfillSpecPB> QueryPostgresToDoBackfill(
 }
 
 struct BackfillParams {
-  explicit BackfillParams(const CoarseTimePoint deadline) {
-    batch_size = GetAtomicFlag(&FLAGS_backfill_index_write_batch_size);
-    rate_per_sec = GetAtomicFlag(&FLAGS_backfill_index_rate_rows_per_sec);
+  explicit BackfillParams(const CoarseTimePoint deadline)
+      : start_time(CoarseMonoClock::Now()),
+        rate_per_sec(GetAtomicFlag(&FLAGS_backfill_index_rate_rows_per_sec)),
+        batch_size(GetAtomicFlag(&FLAGS_backfill_index_write_batch_size)) {
     auto grace_margin_ms = GetAtomicFlag(&FLAGS_backfill_index_timeout_grace_margin_ms);
     if (grace_margin_ms < 0) {
       // We need: grace_margin_ms >= 1000 * batch_size / rate_per_sec;
       // By default, we will set it to twice the minimum value + 1s.
       grace_margin_ms = (rate_per_sec > 0 ? 1000 * (1 + 2.0 * batch_size / rate_per_sec) : 1000);
-      YB_LOG_EVERY_N(INFO, 100000) << "Using grace margin of " << grace_margin_ms << "ms";
+      YB_LOG_EVERY_N_SECS(INFO, 10)
+          << "Using grace margin of " << grace_margin_ms << "ms, original deadline: "
+          << MonoDelta(deadline - start_time);
     }
     modified_deadline = deadline - grace_margin_ms * 1ms;
-    start_time = CoarseMonoClock::Now();
   }
 
   CoarseTimePoint start_time;
-  CoarseTimePoint modified_deadline;
   size_t rate_per_sec;
   size_t batch_size;
+  CoarseTimePoint modified_deadline;
 };
 
 // Slow down before the next batch to throttle the rate of processing.
@@ -2830,7 +2828,6 @@ Status Tablet::FlushWriteIndexBatch(
     return STATUS(IllegalState, "Table metadata cache is not present for index update");
   }
   std::shared_ptr<YBSession> session = VERIFY_RESULT(GetSessionForVerifyOrBackfill(deadline));
-  session->SetHybridTimeForWrite(write_time);
 
   std::unordered_set<
       client::YBqlWriteOpPtr, client::YBqlWriteOp::PrimaryKeyComparator,
@@ -2846,6 +2843,7 @@ Status Tablet::FlushWriteIndexBatch(
         VERIFY_RESULT(GetTable(pair.first->table_id(), metadata_cache));
 
     shared_ptr<client::YBqlWriteOp> index_op(index_table->NewQLWrite());
+    index_op->set_write_time_for_backfill(write_time);
     index_op->mutable_request()->Swap(&pair.second);
     if (index_table->IsUniqueIndex()) {
       if (ops_by_primary_key.count(index_op) > 0) {
@@ -2858,7 +2856,7 @@ Status Tablet::FlushWriteIndexBatch(
       }
       ops_by_primary_key.insert(index_op);
     }
-    RETURN_NOT_OK_PREPEND(session->Apply(index_op), "Could not Apply.");
+    session->Apply(index_op);
     write_ops.push_back(index_op);
   }
 
@@ -2901,7 +2899,7 @@ Status Tablet::FlushWithRetries(
       }
 
       failed_ops.push_back(index_op);
-      RETURN_NOT_OK_PREPEND(session->Apply(index_op), "Could not Apply.");
+      session->Apply(index_op);
     }
 
     if (!failed_ops.empty()) {
@@ -3157,7 +3155,7 @@ Status Tablet::FlushVerifyBatch(
     read_op->mutable_request()->Swap(&pair.second);
     read_op->SetReadTime(ReadHybridTime::SingleTime(read_time));
 
-    RETURN_NOT_OK_PREPEND(session->Apply(read_op), "Could not Apply.");
+    session->Apply(read_op);
 
     // Note: always emplace at tail because row keys must
     // correspond sequentially with the read_ops in the vector

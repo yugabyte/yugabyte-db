@@ -242,7 +242,7 @@ class ApiService {
     const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/alerts/${alertUUID}`;
     return axios.get(requestURL).then((res) => res.data);
   }
-  
+
   acknowledgeAlert = (uuid: string) => {
     const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/alerts/acknowledge`;
     return axios.post(requestURL, { uuids: [uuid] }).then((res) => res.data);

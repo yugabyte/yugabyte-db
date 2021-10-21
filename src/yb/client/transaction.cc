@@ -280,7 +280,7 @@ class YBTransaction::Impl final {
 
       if (!defer || initial) {
         for (auto& group : ops_info->groups) {
-          auto& first_op = **group.begin;
+          auto& first_op = *group.begin;
           const auto should_add_intents = first_op.yb_op->should_add_intents(metadata_.isolation);
           const auto& tablet_id = first_op.tablet->tablet_id();
           bool has_metadata;
@@ -357,7 +357,7 @@ class YBTransaction::Impl final {
             // Display details of operations before crashing in debug mode.
             int op_idx = 1;
             for (const auto& op : ops) {
-              LOG(ERROR) << "Operation " << op_idx << ": " << op->ToString();
+              LOG(ERROR) << "Operation " << op_idx << ": " << op.ToString();
               op_idx++;
             }
           }
@@ -369,8 +369,8 @@ class YBTransaction::Impl final {
         }
         const std::string* prev_tablet_id = nullptr;
         for (const auto& op : ops) {
-          if (op->yb_op->applied() && op->yb_op->should_add_intents(metadata_.isolation)) {
-            const std::string& tablet_id = op->tablet->tablet_id();
+          if (op.yb_op->applied() && op.yb_op->should_add_intents(metadata_.isolation)) {
+            const std::string& tablet_id = op.tablet->tablet_id();
             if (prev_tablet_id == nullptr || tablet_id != *prev_tablet_id) {
               prev_tablet_id = &tablet_id;
               tablets_[tablet_id].has_metadata = true;

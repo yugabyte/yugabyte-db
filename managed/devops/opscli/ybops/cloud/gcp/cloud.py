@@ -111,11 +111,21 @@ class GcpCloud(AbstractCloud):
         self.get_admin().unmount_disk(args.zone, args.search_pattern, name)
 
     def stop_instance(self, args):
-        self.admin.stop_instance(args.zone, args.search_pattern)
+        instance = self.get_admin().get_instances(args.zone, args.search_pattern,
+                                                  filters="(status eq RUNNING)")
+        if not instance:
+            logging.error("Host {} does not exist or not running".format(args.search_pattern))
+            return
+        self.admin.stop_instance(instance['zone'], instance['name'])
 
     def start_instance(self, args, ssh_port):
-        self.admin.start_instance(args.zone, args.search_pattern)
-        self.wait_for_ssh_port(args.private_ip, args.search_pattern, ssh_port)
+        instance = self.get_admin().get_instances(args.zone, args.search_pattern,
+                                                  filters="(status eq TERMINATED)")
+        if not instance:
+            logging.error("Host {} does not exist or not stopped".format(args.search_pattern))
+            return
+        self.admin.start_instance(instance['zone'], instance['name'])
+        self.wait_for_ssh_port(instance['private_ip'], instance['name'], ssh_port)
 
     def delete_instance(self, args):
         host_info = self.get_host_info(args)

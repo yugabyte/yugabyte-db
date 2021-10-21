@@ -48,6 +48,7 @@
 #include "catalog/pg_type.h"
 #include "commands/alter.h"
 #include "commands/defrem.h"
+#include "commands/extension.h"
 #include "commands/proclang.h"
 #include "executor/execdesc.h"
 #include "executor/executor.h"
@@ -953,8 +954,11 @@ CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt)
 	}
 	else
 	{
-		/* if untrusted language, must be superuser */
-		if (!superuser())
+		/* 
+		 * If untrusted language, must be superuser, or someone with the
+		 * yb_extension role in the midst of creating an extension.
+		 */
+		if (!(IsYbExtensionUser(GetUserId()) && creating_extension) && !superuser())
 			aclcheck_error(ACLCHECK_NO_PRIV, OBJECT_LANGUAGE,
 						   NameStr(languageStruct->lanname));
 	}

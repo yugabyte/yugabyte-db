@@ -336,7 +336,7 @@ function mapStateToProps(state, ownProps) {
       numNodes: 3,
       isMultiAZ: true,
       instanceType: 'c5.large',
-      accessKeyCode: 'yugabyte-default',
+      accessKeyCode: '',
       assignPublicIP: true,
       useSystemd: false,
       useTimeSync: true,

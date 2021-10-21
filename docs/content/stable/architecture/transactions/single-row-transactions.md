@@ -13,7 +13,7 @@ showAsideToc: true
 ---
 
 YugabyteDB offers ACID semantics for mutations involving a single row or rows that fall
-within the same shard (partition, tablet). These mutations incur only one network roundtrip between the distributed consensus peers.
+within the same shard (tablet). These mutations incur only one network roundtrip between the distributed consensus peers.
 
 Even read-modify-write operations within a single row or single shard, such as the following incur
 only one round trip in YugabyteDB.

@@ -59,20 +59,13 @@ class ErrorCollector {
   void AddError(YBOperationPtr operation, Status status);
 
   // See YBSession for details.
-  int CountErrors() const;
+  size_t CountErrors() const;
 
   // See YBSession for details.
   CollectedErrors GetAndClearErrors();
 
-  void ClearErrors();
-
-  // If there is only one error in the error collector, returns its associated status. Otherwise
-  // returns Status::OK().
-  Status GetSingleErrorStatus();
-
  private:
-  mutable simple_spinlock mutex_;
-  CollectedErrors errors_ GUARDED_BY(mutex_);
+  CollectedErrors errors_;
 
   DISALLOW_COPY_AND_ASSIGN(ErrorCollector);
 };

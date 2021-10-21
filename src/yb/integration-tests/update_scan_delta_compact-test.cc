@@ -189,7 +189,7 @@ void UpdateScanDeltaCompactionTest::InsertBaseData() {
     for (int64_t key = 0; key < FLAGS_row_count; key++) {
       auto insert = table_.NewInsertOp();
       MakeRow(key, 0, insert->mutable_request());
-      ASSERT_OK(session->Apply(insert));
+      session->Apply(insert);
       ASSERT_OK(WaitForLastBatchAndFlush(key, &flush_future, session));
     }
     ASSERT_OK(WaitForLastBatchAndFlush(kSessionBatchSize, &flush_future, session));
@@ -250,7 +250,7 @@ void UpdateScanDeltaCompactionTest::UpdateRows(CountDownLatch* stop_latch) {
       for (int64_t key = 0; key < FLAGS_row_count && stop_latch->count() > 0; key++) {
         auto update = table_.NewUpdateOp();
         MakeRow(key, iteration, update->mutable_request());
-        CHECK_OK(session->Apply(update));
+        session->Apply(update);
         CHECK_OK(WaitForLastBatchAndFlush(key, &flush_future, session));
       }
       CHECK_OK(WaitForLastBatchAndFlush(kSessionBatchSize, &flush_future, session));

@@ -111,7 +111,7 @@ const initialState = {
   ybSoftwareVersion: '',
   gflags: {},
   storageType: DEFAULT_STORAGE_TYPES['AWS'],
-  accessKeyCode: 'yugabyte-default',
+  accessKeyCode: '',
   // Maximum Number of nodes currently in use OnPrem case
   maxNumNodes: -1,
   assignPublicIP: true,
@@ -246,15 +246,23 @@ export default class ClusterFields extends Component {
         }
       }
     } = this.props;
-
     // Set default software version in case of create
     if (
       isNonEmptyArray(this.props.softwareVersions) &&
-      !isNonEmptyString(this.state.ybSoftwareVersion) &&
-      type === 'Create'
+      !isNonEmptyString(this.state.ybSoftwareVersion)
     ) {
-      this.setState({ ybSoftwareVersion: this.props.softwareVersions[0] });
-      updateFormField(`${clusterType}.ybSoftwareVersion`, this.props.softwareVersions[0]);
+      let currentSoftwareVersion = this.props.softwareVersions[0];
+      if (type === 'Create') {
+        // Use primary cluster software version even for read replica
+        if (formValues.primary?.ybSoftwareVersion) {
+          currentSoftwareVersion = formValues.primary.ybSoftwareVersion;
+        }
+      } else {
+        // when adding read replica post universe creation
+        currentSoftwareVersion = getPrimaryCluster(universeDetails.clusters).userIntent.ybSoftwareVersion;
+      }
+      this.setState({ ybSoftwareVersion: currentSoftwareVersion });
+      updateFormField(`${clusterType}.ybSoftwareVersion`, currentSoftwareVersion);
     }
 
     if (type === 'Create') {
@@ -504,15 +512,6 @@ export default class ClusterFields extends Component {
     ) {
       this.props.updateFormField(`${clusterType}.storageType`, DEFAULT_STORAGE_TYPES['AWS']);
       this.setState({ storageType: DEFAULT_STORAGE_TYPES['AWS'] });
-    }
-
-    if (
-      isNonEmptyArray(nextProps.softwareVersions) &&
-      isNonEmptyObject(this.props.formValues[clusterType]) &&
-      !isNonEmptyString(this.props.formValues[clusterType].ybSoftwareVersion)
-    ) {
-      this.setState({ ybSoftwareVersion: this.props.softwareVersions[0] });
-      this.props.updateFormField(`${clusterType}.ybSoftwareVersion`, nextProps.softwareVersions[0]);
     }
 
     // Form Actions on Create Universe Success
@@ -1299,8 +1298,10 @@ export default class ClusterFields extends Component {
     }
   }
 
-  validatePassword(value) {
+  validatePassword(value, formValues, formikBag, fieldName) {
     const errorMsg = 'Password must be 8 characters minimum and must contain at least 1 digit, 1 uppercase, 1 lowercase and one of the !@#$%^&* (special) characters.';
+    const isAuthEnabled = formValues.primary[(fieldName === 'primary.ysqlPassword')? "enableYSQLAuth" : "enableYCQLAuth"];
+    if (!isAuthEnabled) {return undefined;}
     if (value) {
       const passwordValidationRegex = /^(?=.*[0-9])(?=.*[!@#$%^&*])(?=.*[a-z])(?=.*[A-Z])[a-zA-Z0-9!@#$%^&*]{8,256}$/;
       return (passwordValidationRegex.test(value) ? undefined : errorMsg);
@@ -1308,8 +1309,8 @@ export default class ClusterFields extends Component {
     return errorMsg;
   }
 
-  validateConfirmPassword(value, a, b, field) {
-    const passwordValue = this.props.primary[(field === 'primary.ysqlConfirmPassword')? 'ysqlPassword' : 'ycqlPassword'].input.value;
+  validateConfirmPassword(value, formValues, formikBag, fieldName) {
+    const passwordValue = formValues.primary[(fieldName === 'primary.ysqlConfirmPassword')? 'ysqlPassword' : 'ycqlPassword'];
     if (!_.isEmpty(passwordValue)) {
       return (value === passwordValue) ? undefined : 'Password should match';
     }
@@ -1438,6 +1439,13 @@ export default class ClusterFields extends Component {
         (this.props.type === 'Edit' || (this.props.type === 'Async' && this.state.isReadOnlyExists))
       ) || (
         this.props.type === 'Create' && this.props.clusterType === 'async' && this.state.isReadOnlyExists
+      );
+    const isSWVersionReadOnly = 
+      (
+        isNonEmptyObject(universe.currentUniverse.data) &&
+        (this.props.type === 'Edit' || this.props.type === 'Async')
+      ) || (
+        this.props.type === 'Create' && this.props.clusterType === 'async'
       );
     const isReadOnlyOnEdit =
       isNonEmptyObject(universe.currentUniverse.data) &&
@@ -2213,7 +2221,7 @@ export default class ClusterFields extends Component {
                         label="Replication Factor"
                         initialValue={this.state.replicationFactor}
                         onSelect={this.replicationFactorChanged}
-                        isReadOnly={isFieldReadOnly}
+                        isReadOnly={isReadOnlyOnEdit}
                       />
                     ]
                   : null}
@@ -2357,279 +2365,281 @@ export default class ClusterFields extends Component {
             </Col>
           </Row>
         </div>
-        <div className="form-section" data-yb-section="advanced">
-          <Row>
-            <Col md={12}>
-              <h4>Advanced</h4>
-            </Col>
-            <Col sm={5} md={4}>
-              <div className="form-right-aligned-labels">
-                <Field
-                  name={`${clusterType}.ybSoftwareVersion`}
-                  component={YBSelectWithLabel}
-                  options={softwareVersionOptions}
-                  label="DB Version"
-                  onInputChanged={this.softwareVersionChanged}
-                  readOnlySelect={isFieldReadOnly}
-                />
-              </div>
-            </Col>
-            {!this.state.isKubernetesUniverse && (
-              <Col lg={4}>
-                <div className="form-right-aligned-labels">
-                  <Field
-                    name={`${clusterType}.accessKeyCode`}
-                    type="select"
-                    component={YBSelectWithLabel}
-                    label="Access Key"
-                    onInputChanged={this.accessKeyChanged}
-                    options={accessKeyOptions}
-                    readOnlySelect={isFieldReadOnly}
-                  />
-                </div>
-              </Col>
-            )}
-          </Row>
-          {isDefinedNotNull(currentProvider) && currentProvider.code === 'aws' && (
+        {isDefinedNotNull(currentProvider) && (
+          <div className="form-section" data-yb-section="advanced">
             <Row>
+              <Col md={12}>
+                <h4>Advanced</h4>
+              </Col>
               <Col sm={5} md={4}>
                 <div className="form-right-aligned-labels">
                   <Field
-                    name={`${clusterType}.awsArnString`}
-                    type="text"
-                    component={YBTextInputWithLabel}
-                    label="Instance Profile ARN"
-                    isReadOnly={isFieldReadOnly}
+                    name={`${clusterType}.ybSoftwareVersion`}
+                    component={YBSelectWithLabel}
+                    options={softwareVersionOptions}
+                    label="DB Version"
+                    onInputChanged={this.softwareVersionChanged}
+                    readOnlySelect={isSWVersionReadOnly}
                   />
                 </div>
               </Col>
+              {!this.state.isKubernetesUniverse && (
+                <Col lg={4}>
+                  <div className="form-right-aligned-labels">
+                    <Field
+                      name={`${clusterType}.accessKeyCode`}
+                      type="select"
+                      component={YBSelectWithLabel}
+                      label="Access Key"
+                      onInputChanged={this.accessKeyChanged}
+                      options={accessKeyOptions}
+                      readOnlySelect={isFieldReadOnly}
+                    />
+                  </div>
+                </Col>
+              )}
             </Row>
-          )}
-          {isDefinedNotNull(currentProvider) && currentProvider.code === 'kubernetes' && (
-            <Row>
-              <Col md={12}>
-                <div className="form-right-aligned-labels">
-                  <Field
-                    name={`${clusterType}.enableIPV6`}
-                    component={YBToggle}
-                    isReadOnly={isFieldReadOnly}
-                    disableOnChange={disableToggleOnChange}
-                    checkedVal={this.state.enableIPV6}
-                    onToggle={this.toggleEnableIPV6}
-                    label="Enable IPV6"
-                    subLabel="Use IPV6 networking for connections between the DB servers."
-                  />
-                </div>
-              </Col>
-            </Row>
-          )}
-          {isDefinedNotNull(currentProvider) && currentProvider.code === 'kubernetes' && (
-            <Row>
-              <Col md={12}>
-                <div className="form-right-aligned-labels">
-                  <Field
-                    name={`${clusterType}.enableExposingService`}
-                    component={YBToggle}
-                    isReadOnly={isFieldReadOnly}
-                    disableOnChange={disableToggleOnChange}
-                    checkedVal={
-                      this.state.enableExposingService === EXPOSING_SERVICE_STATE_TYPES['Exposed']
-                    }
-                    onToggle={this.toggleEnableExposingService}
-                    label="Enable Public Network Access"
-                    subLabel="Assign a load balancer or nodeport for connecting to the DB endpoints over the internet."
-                  />
-                </div>
-              </Col>
-            </Row>
-          )}
-          {isDefinedNotNull(currentProvider) && (
-            <Row>
-              <Col md={12}>
-                <div className="form-right-aligned-labels">
-                  <Field
-                    name={`${clusterType}.useSystemd`}
-                    component={YBToggle}
-                    defaultChecked={false}
-                    disableOnChange={disableToggleOnChange}
-                    checkedVal={this.state.useSystemd}
-                    onToggle={this.toggleUseSystemd}
-                    label="Enable Systemd Services"
-                    isReadOnly={isFieldReadOnly}
-                  />
-                </div>
-              </Col>
-            </Row>
-          )}
-          {isDefinedNotNull(currentProvider) && currentProvider.code !== 'kubernetes' && (
-            <Row>
-              <Col md={12}>
-                <div className="form-right-aligned-labels">
-                  <Field
-                    name={`${clusterType}.customizePorts`}
-                    component={YBToggle}
-                    defaultChecked={false}
-                    disableOnChange={disableToggleOnChange}
-                    checkedVal={this.state.customizePorts}
-                    onToggle={this.toggleCustomizePorts}
-                    label="Override Deployment Ports"
-                    isReadOnly={isFieldReadOnly}
-                  />
-                </div>
-              </Col>
-            </Row>
-          )}
-          {this.state.customizePorts && (
-            <Row>
-              <Col sm={3}>
-                <div className="form-right-aligned-labels">
-                  <Field
-                    name={`${clusterType}.masterHttpPort`}
-                    type="text"
-                    component={YBTextInputWithLabel}
-                    normalize={normalizeToValidPort}
-                    validate={portValidation}
-                    label="Master HTTP Port"
-                    isReadOnly={isFieldReadOnly}
-                  />
-                </div>
-              </Col>
-              <Col sm={3}>
-                <div className="form-right-aligned-labels">
-                  <Field
-                    name={`${clusterType}.masterRpcPort`}
-                    type="text"
-                    component={YBTextInputWithLabel}
-                    normalize={normalizeToValidPort}
-                    validate={portValidation}
-                    label="Master RPC Port"
-                    isReadOnly={isFieldReadOnly}
-                  />
-                </div>
-              </Col>
-            </Row>
-          )}
-          {this.state.customizePorts && (
-            <Row>
-              <Col sm={3}>
-                <div className="form-right-aligned-labels">
-                  <Field
-                    name={`${clusterType}.tserverHttpPort`}
-                    type="text"
-                    component={YBTextInputWithLabel}
-                    normalize={normalizeToValidPort}
-                    validate={portValidation}
-                    label="Tserver HTTP Port"
-                    isReadOnly={isFieldReadOnly}
-                  />
-                </div>
-              </Col>
-              <Col sm={3}>
-                <div className="form-right-aligned-labels">
-                  <Field
-                    name={`${clusterType}.tserverRpcPort`}
-                    type="text"
-                    component={YBTextInputWithLabel}
-                    normalize={normalizeToValidPort}
-                    validate={portValidation}
-                    label="Tserver RPC Port"
-                    isReadOnly={isFieldReadOnly}
-                  />
-                </div>
-              </Col>
-            </Row>
-          )}
-          {this.state.customizePorts && this.state.enableYCQL && (
-            <Row>
-              <Col sm={3}>
-                <div className="form-right-aligned-labels">
-                  <Field
-                    name={`${clusterType}.yqlHttpPort`}
-                    type="text"
-                    component={YBTextInputWithLabel}
-                    normalize={normalizeToValidPort}
-                    validate={portValidation}
-                    label="YCQL HTTP Port"
-                    isReadOnly={isFieldReadOnly}
-                  />
-                </div>
-              </Col>
-              <Col sm={3}>
-                <div className="form-right-aligned-labels">
-                  <Field
-                    name={`${clusterType}.yqlRpcPort`}
-                    type="text"
-                    component={YBTextInputWithLabel}
-                    normalize={normalizeToValidPort}
-                    validate={portValidation}
-                    label="YCQL RPC Port"
-                    isReadOnly={isFieldReadOnly}
-                  />
-                </div>
-              </Col>
-            </Row>
-          )}
-          {this.state.customizePorts && this.state.enableYSQL && (
-            <Row>
-              <Col sm={3}>
-                <div className="form-right-aligned-labels">
-                  <Field
-                    name={`${clusterType}.ysqlHttpPort`}
-                    type="text"
-                    component={YBTextInputWithLabel}
-                    normalize={normalizeToValidPort}
-                    validate={portValidation}
-                    label="YSQL HTTP Port"
-                    isReadOnly={isFieldReadOnly}
-                  />
-                </div>
-              </Col>
-              <Col sm={3}>
-                <div className="form-right-aligned-labels">
-                  <Field
-                    name={`${clusterType}.ysqlRpcPort`}
-                    type="text"
-                    component={YBTextInputWithLabel}
-                    normalize={normalizeToValidPort}
-                    validate={portValidation}
-                    label="YSQL RPC Port"
-                    isReadOnly={isFieldReadOnly}
-                  />
-                </div>
-              </Col>
-            </Row>
-          )}
-          {this.state.customizePorts && this.state.enableYEDIS && (
-            <Row>
-              <Col sm={3}>
-                <div className="form-right-aligned-labels">
-                  <Field
-                    name={`${clusterType}.redisHttpPort`}
-                    type="text"
-                    component={YBTextInputWithLabel}
-                    normalize={normalizeToValidPort}
-                    validate={portValidation}
-                    label="Yedis HTTP Port"
-                    isReadOnly={isFieldReadOnly}
-                  />
-                </div>
-              </Col>
-              <Col sm={3}>
-                <div className="form-right-aligned-labels">
-                  <Field
-                    name={`${clusterType}.redisRpcPort`}
-                    type="text"
-                    component={YBTextInputWithLabel}
-                    normalize={normalizeToValidPort}
-                    validate={portValidation}
-                    label="Yedis RPC Port"
-                    isReadOnly={isFieldReadOnly}
-                  />
-                </div>
-              </Col>
-            </Row>
-          )}
-        </div>
+            {isDefinedNotNull(currentProvider) && currentProvider.code === 'aws' && (
+              <Row>
+                <Col sm={5} md={4}>
+                  <div className="form-right-aligned-labels">
+                    <Field
+                      name={`${clusterType}.awsArnString`}
+                      type="text"
+                      component={YBTextInputWithLabel}
+                      label="Instance Profile ARN"
+                      isReadOnly={isFieldReadOnly}
+                    />
+                  </div>
+                </Col>
+              </Row>
+            )}
+            {isDefinedNotNull(currentProvider) && currentProvider.code === 'kubernetes' && (
+              <Row>
+                <Col md={12}>
+                  <div className="form-right-aligned-labels">
+                    <Field
+                      name={`${clusterType}.enableIPV6`}
+                      component={YBToggle}
+                      isReadOnly={isFieldReadOnly}
+                      disableOnChange={disableToggleOnChange}
+                      checkedVal={this.state.enableIPV6}
+                      onToggle={this.toggleEnableIPV6}
+                      label="Enable IPV6"
+                      subLabel="Use IPV6 networking for connections between the DB servers."
+                    />
+                  </div>
+                </Col>
+              </Row>
+            )}
+            {isDefinedNotNull(currentProvider) && currentProvider.code === 'kubernetes' && (
+              <Row>
+                <Col md={12}>
+                  <div className="form-right-aligned-labels">
+                    <Field
+                      name={`${clusterType}.enableExposingService`}
+                      component={YBToggle}
+                      isReadOnly={isFieldReadOnly}
+                      disableOnChange={disableToggleOnChange}
+                      checkedVal={
+                        this.state.enableExposingService === EXPOSING_SERVICE_STATE_TYPES['Exposed']
+                      }
+                      onToggle={this.toggleEnableExposingService}
+                      label="Enable Public Network Access"
+                      subLabel="Assign a load balancer or nodeport for connecting to the DB endpoints over the internet."
+                    />
+                  </div>
+                </Col>
+              </Row>
+            )}
+            {isDefinedNotNull(currentProvider) && (
+              <Row>
+                <Col md={12}>
+                  <div className="form-right-aligned-labels">
+                    <Field
+                      name={`${clusterType}.useSystemd`}
+                      component={YBToggle}
+                      defaultChecked={false}
+                      disableOnChange={disableToggleOnChange}
+                      checkedVal={this.state.useSystemd}
+                      onToggle={this.toggleUseSystemd}
+                      label="Enable Systemd Services"
+                      isReadOnly={isFieldReadOnly}
+                    />
+                  </div>
+                </Col>
+              </Row>
+            )}
+            {isDefinedNotNull(currentProvider) && currentProvider.code !== 'kubernetes' && (
+              <Row>
+                <Col md={12}>
+                  <div className="form-right-aligned-labels">
+                    <Field
+                      name={`${clusterType}.customizePorts`}
+                      component={YBToggle}
+                      defaultChecked={false}
+                      disableOnChange={disableToggleOnChange}
+                      checkedVal={this.state.customizePorts}
+                      onToggle={this.toggleCustomizePorts}
+                      label="Override Deployment Ports"
+                      isReadOnly={isFieldReadOnly}
+                    />
+                  </div>
+                </Col>
+              </Row>
+            )}
+            {this.state.customizePorts && (
+              <Row>
+                <Col sm={3}>
+                  <div className="form-right-aligned-labels">
+                    <Field
+                      name={`${clusterType}.masterHttpPort`}
+                      type="text"
+                      component={YBTextInputWithLabel}
+                      normalize={normalizeToValidPort}
+                      validate={portValidation}
+                      label="Master HTTP Port"
+                      isReadOnly={isFieldReadOnly}
+                    />
+                  </div>
+                </Col>
+                <Col sm={3}>
+                  <div className="form-right-aligned-labels">
+                    <Field
+                      name={`${clusterType}.masterRpcPort`}
+                      type="text"
+                      component={YBTextInputWithLabel}
+                      normalize={normalizeToValidPort}
+                      validate={portValidation}
+                      label="Master RPC Port"
+                      isReadOnly={isFieldReadOnly}
+                    />
+                  </div>
+                </Col>
+              </Row>
+            )}
+            {this.state.customizePorts && (
+              <Row>
+                <Col sm={3}>
+                  <div className="form-right-aligned-labels">
+                    <Field
+                      name={`${clusterType}.tserverHttpPort`}
+                      type="text"
+                      component={YBTextInputWithLabel}
+                      normalize={normalizeToValidPort}
+                      validate={portValidation}
+                      label="Tserver HTTP Port"
+                      isReadOnly={isFieldReadOnly}
+                    />
+                  </div>
+                </Col>
+                <Col sm={3}>
+                  <div className="form-right-aligned-labels">
+                    <Field
+                      name={`${clusterType}.tserverRpcPort`}
+                      type="text"
+                      component={YBTextInputWithLabel}
+                      normalize={normalizeToValidPort}
+                      validate={portValidation}
+                      label="Tserver RPC Port"
+                      isReadOnly={isFieldReadOnly}
+                    />
+                  </div>
+                </Col>
+              </Row>
+            )}
+            {this.state.customizePorts && this.state.enableYCQL && (
+              <Row>
+                <Col sm={3}>
+                  <div className="form-right-aligned-labels">
+                    <Field
+                      name={`${clusterType}.yqlHttpPort`}
+                      type="text"
+                      component={YBTextInputWithLabel}
+                      normalize={normalizeToValidPort}
+                      validate={portValidation}
+                      label="YCQL HTTP Port"
+                      isReadOnly={isFieldReadOnly}
+                    />
+                  </div>
+                </Col>
+                <Col sm={3}>
+                  <div className="form-right-aligned-labels">
+                    <Field
+                      name={`${clusterType}.yqlRpcPort`}
+                      type="text"
+                      component={YBTextInputWithLabel}
+                      normalize={normalizeToValidPort}
+                      validate={portValidation}
+                      label="YCQL RPC Port"
+                      isReadOnly={isFieldReadOnly}
+                    />
+                  </div>
+                </Col>
+              </Row>
+            )}
+            {this.state.customizePorts && this.state.enableYSQL && (
+              <Row>
+                <Col sm={3}>
+                  <div className="form-right-aligned-labels">
+                    <Field
+                      name={`${clusterType}.ysqlHttpPort`}
+                      type="text"
+                      component={YBTextInputWithLabel}
+                      normalize={normalizeToValidPort}
+                      validate={portValidation}
+                      label="YSQL HTTP Port"
+                      isReadOnly={isFieldReadOnly}
+                    />
+                  </div>
+                </Col>
+                <Col sm={3}>
+                  <div className="form-right-aligned-labels">
+                    <Field
+                      name={`${clusterType}.ysqlRpcPort`}
+                      type="text"
+                      component={YBTextInputWithLabel}
+                      normalize={normalizeToValidPort}
+                      validate={portValidation}
+                      label="YSQL RPC Port"
+                      isReadOnly={isFieldReadOnly}
+                    />
+                  </div>
+                </Col>
+              </Row>
+            )}
+            {this.state.customizePorts && this.state.enableYEDIS && (
+              <Row>
+                <Col sm={3}>
+                  <div className="form-right-aligned-labels">
+                    <Field
+                      name={`${clusterType}.redisHttpPort`}
+                      type="text"
+                      component={YBTextInputWithLabel}
+                      normalize={normalizeToValidPort}
+                      validate={portValidation}
+                      label="Yedis HTTP Port"
+                      isReadOnly={isFieldReadOnly}
+                    />
+                  </div>
+                </Col>
+                <Col sm={3}>
+                  <div className="form-right-aligned-labels">
+                    <Field
+                      name={`${clusterType}.redisRpcPort`}
+                      type="text"
+                      component={YBTextInputWithLabel}
+                      normalize={normalizeToValidPort}
+                      validate={portValidation}
+                      label="Yedis RPC Port"
+                      isReadOnly={isFieldReadOnly}
+                    />
+                  </div>
+                </Col>
+              </Row>
+            )}
+          </div>
+        )}
         <div className="form-section" data-yb-section="g-flags">
           {gflagArray}
         </div>
