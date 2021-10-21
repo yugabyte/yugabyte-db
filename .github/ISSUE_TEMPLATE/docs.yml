@@ -1,7 +1,7 @@
 name: Docs
 description: Create a documentation issue.
 title: "[Docs] Title"
-labels: "area/documentation"
+labels: ["area/documentation"]
 body:
 - type: textarea
   id: documentation
@@ -11,4 +11,3 @@ body:
       **Provide a detailed description of the information you want to update/include in the YugabyteDB docs.**
   validations:
     required: true 
-    

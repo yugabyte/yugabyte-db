@@ -1,7 +1,7 @@
 name: Platform
 description: Create a Platform issue.
 title: "[Platform] Title"
-labels: "area/platform"
+labels: ["area/platform"]
 body:
 - type: textarea
   id: platform

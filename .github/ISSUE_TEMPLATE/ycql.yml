@@ -1,7 +1,7 @@
 name: Core-YCQL
 description: Create a YCQL issue.
 title: "[YCQL] Title"
-labels: "area/ycql"
+labels: ["area/ycql"]
 body:
 - type: textarea
   id: ycql
@@ -13,4 +13,3 @@ body:
       **Include steps to reproduce the issue.**
   validations:
     required: true 
-    
