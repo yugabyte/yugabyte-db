@@ -87,6 +87,8 @@ Shows the billing details for the current billing cycle, including:
 - Last billed on - the date of the previous invoice.
 - This time last month - the amount owing on the same day in the previous billing period (for example, if the current day is the 13th, this displays the amount that was owed on the 13th of last month.
 
+Click **Invoice Details** to view the invoice [Summary](#invoice-summary) for the active invoice.
+
 ### Invoice History
 
 Lists your invoices with following details:
@@ -124,12 +126,12 @@ To download the invoice as a PDF, click **Download Invoice**.
 - Payment date - the date the invoice was paid.
 - Payment method - the payment method used to pay the invoice.
 
-**Summary by Usage** shows a breakdown of costs for each dimension, including:
+**Summary by Usage** shows a breakdown of costs for each cluster. Click a cluster to view usage details for each dimension, including:
 
 - The instance minutes, price, and amount.
-- Data storage overage in GB-hours, price, and amount.
-- Backup storage overage in GB-hours, price, and amount.
-- Data transfer overages in GB, price, and amount.
+- Data storage usage, overage in GB-hours, price, and amount.
+- Backup storage usage, overage in GB-hours, price, and amount.
+- Data transfer usage, overages in GB, price, and amount.
 
 For information on how your invoice is costed, refer to [Cluster costs](../cloud-billing-costs).
 
