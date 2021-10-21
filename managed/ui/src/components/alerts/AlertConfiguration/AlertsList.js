@@ -326,7 +326,6 @@ export const AlertsList = (props) => {
             </TableHeaderColumn>
             <TableHeaderColumn
               dataField="target"
-              dataSort
               columnClassName="no-border name-column"
               className="no-border"
               dataFormat={formatAlertDestinationName}
