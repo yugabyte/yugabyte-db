@@ -3,6 +3,10 @@
 import { getClusterByType } from './UniverseUtils';
 import _ from 'lodash';
 
+export function get(obj, path, defaultValue) {
+  return _.get(obj, path, defaultValue);
+}
+
 export function isDefinedNotNull(obj) {
   return typeof obj !== 'undefined' && obj !== null;
 }
@@ -203,9 +207,10 @@ export function areUniverseConfigsEqual(config1, config2) {
 // TODO: Move this function to NumberUtils.js?
 
 // [{name: "foo", value: "bar"}, {name: "aaa", value: "zzz"}] --> {foo: "bar", aaa: "zzz"}
-const normalizeFlags = (flags) => Array.isArray(flags)
-  ? flags.reduce((result, curr) => ({...result, [curr.name]: curr.value}), {})
-  : flags;
+const normalizeFlags = (flags) =>
+  Array.isArray(flags)
+    ? flags.reduce((result, curr) => ({ ...result, [curr.name]: curr.value }), {})
+    : flags;
 
 export function normalizeToPositiveInt(value) {
   return parseInt(Math.abs(value), 10) || 0;
