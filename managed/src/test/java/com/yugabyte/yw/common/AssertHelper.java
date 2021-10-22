@@ -158,8 +158,8 @@ public class AssertHelper {
 
   public static Result assertYWSEInTransaction(ThrowingRunnable throwingRunnable) {
     return ((PlatformServiceException)
-      assertThrows(PersistenceException.class, throwingRunnable).getCause())
-      .getResult();
+            assertThrows(PersistenceException.class, throwingRunnable).getCause())
+        .getResult();
   }
 
   public static Metric assertMetricValue(
