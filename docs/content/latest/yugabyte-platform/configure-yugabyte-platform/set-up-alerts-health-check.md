@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Yugabyte Platform can check universes for issues that may affect deployment. Should problems arise, Yugabyte Platform can automatically send email alerts.
+Yugabyte Platform can check universes for issues that may affect deployment. Should problems arise, Yugabyte Platform can automatically issue alert notifications.
 
 You can access Yugabyte Platform health monitor and configure alerts by navigating to **Admin > Alert Configurations**, as per the following illustration:
 
@@ -28,7 +28,13 @@ Regardless of the alert level, you create and configure an alert as follows:
 
   ![Create alert](/images/yp/config-alerts2.png)
 
-  <br><br>The **Destination** field allows you to select one of the previously defined recipients of the alert. 
+  <br><br>
+
+  Templates are available for alerts related to Yugabyte Platform operations, YugabyteDB operations, as well as YSQL and YCQL performance. 
+
+  The **Threshold** field allows you to define the value (for example, number of milliseconds, resets, errors, nodes) that must be reached in order to trigger the alert.
+
+  The **Destination** field allows you to select one of the previously defined recipients of the alert. 
 
 - Click **Save**.
 
