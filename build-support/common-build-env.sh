@@ -1930,11 +1930,13 @@ find_or_download_ysql_snapshots() {
   # (disabling a code checker error about a singular loop iteration)
   # shellcheck disable=SC2043
   for ver in "2.0.9.0"; do
-    local name="${prefix}_${ver}"
-    if [[ ! -d "$YSQL_SNAPSHOTS_DIR_PARENT/$name" ]]; then
-      local url="${repo_url}/releases/download/v${ver}/${name}.tar.gz"
-      download_and_extract_archive "$url" "$YSQL_SNAPSHOTS_DIR_PARENT"
-    fi
+    for bt in "release" "debug"; do
+      local name="${prefix}_${ver}_${bt}"
+      if [[ ! -d "$YSQL_SNAPSHOTS_DIR_PARENT/$name" ]]; then
+        local url="${repo_url}/releases/download/v${ver}/${name}.tar.gz"
+        download_and_extract_archive "$url" "$YSQL_SNAPSHOTS_DIR_PARENT"
+      fi
+    done
   done
 }
 

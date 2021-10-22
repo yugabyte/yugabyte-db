@@ -14,11 +14,7 @@
 package org.yb.minicluster;
 
 public enum YsqlSnapshotVersion {
-  /**
-   * Earliest supported snapshot (v2.0.9).
-   * <p>
-   * Note that because of #10116 this will ONLY work in release build!
-   */
+  /** Earliest supported snapshot (v2.0.9). */
   EARLIEST,
 
   /** Latest (current) snapshot. */
