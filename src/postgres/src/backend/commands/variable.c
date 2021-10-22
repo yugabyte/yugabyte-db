@@ -586,14 +586,6 @@ check_XactIsoLevel(char **newval, void **extra, GucSource source)
 		}
 	}
 
-	if ((newXactIsoLevel == XACT_SERIALIZABLE || newXactIsoLevel == XACT_REPEATABLE_READ) &&
-		YBReadFromFollowersEnabled()) {
-		GUC_check_errcode(ERRCODE_FEATURE_NOT_SUPPORTED);
-		GUC_check_errmsg("cannot use this transaction isolation level with yb_read_from_followers enabled");
-		GUC_check_errhint("Disable yb_read_from_followers to use REPEATABLE READ or SERIALIZABLE.");
-		return false;
-	}
-
 	*extra = malloc(sizeof(int));
 	if (!*extra)
 		return false;
@@ -631,22 +623,16 @@ show_XactIsoLevel(void)
 	}
 }
 
-/* Check if the isolation level is compatible with read from followers */
-static inline bool
-iso_level_compatible(int iso_level) {
-	switch (iso_level)
-	{
-		case XACT_READ_UNCOMMITTED:
-			return true;
-		case XACT_READ_COMMITTED:
-			return true;
-		case XACT_REPEATABLE_READ:
-			return false;
-		case XACT_SERIALIZABLE:
-			return false;
-		default:
-			return false;
+bool is_staleness_acceptable(int32_t staleness_ms) {
+	int32_t max_clock_skew_usec = YBGetMaxClockSkewUsec();
+	const int kMargin = 2;
+	if (staleness_ms * 1000 < kMargin * max_clock_skew_usec) {
+		GUC_check_errcode(ERRCODE_FEATURE_NOT_SUPPORTED);
+		GUC_check_errmsg("cannot enable yb_read_from_followers with a staleness of less than "
+						"%d * (max_clock_skew = %d usec)", kMargin, max_clock_skew_usec);
+		return false;
 	}
+	return true;
 }
 
 bool
@@ -654,29 +640,15 @@ check_follower_reads(bool *newval, void **extra, GucSource source) {
 	if (*newval == false) {
 		return true;
 	}
-
-	bool ret = iso_level_compatible(XactIsoLevel);
-	if (!ret) {
-		GUC_check_errcode(ERRCODE_FEATURE_NOT_SUPPORTED);
-		GUC_check_errmsg("cannot enable yb_read_from_followers with the current transaction isolation mode");
-		GUC_check_errhint("Use READ UNCOMMITTED or READ COMMITTED to enable yb_read_from_followers.");
-	}
-	return ret;
+	return is_staleness_acceptable(yb_follower_read_staleness_ms);
 }
 
 bool
-check_default_XactIsoLevel(int *newval, void **extra, GucSource source) {
+check_follower_read_staleness_ms(int32_t *newval, void **extra, GucSource source) {
 	if (!YBReadFromFollowersEnabled()) {
 		return true;
 	}
-
-	bool ret = iso_level_compatible(*newval);
-	if (!ret) {
-		GUC_check_errcode(ERRCODE_FEATURE_NOT_SUPPORTED);
-		GUC_check_errmsg("cannot use this transaction isolation level with yb_read_from_followers enabled");
-		GUC_check_errhint("Disable yb_read_from_followers to use REPEATABLE READ or SERIALIZABLE.");
-	}
-	return ret;
+	return is_staleness_acceptable(*newval);
 }
 
 /*

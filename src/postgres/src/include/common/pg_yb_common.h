@@ -107,6 +107,12 @@ extern const char *YBGetCurrentZone();
 extern bool YBIsCollationEnabled();
 
 /**
+ * Returns the value of the configration variable `max_clock_sec_usec`
+ * returns -1 if the configuration was not found.
+ */
+extern int YBGetMaxClockSkewUsec();
+
+/**
  * Test only constant. When set to true initdb imports default collation
  * from the OS environment. As a result the default collation will be
  * en_US.UTF-8. All the initial databases will have en_US.UTF-8 collation.
