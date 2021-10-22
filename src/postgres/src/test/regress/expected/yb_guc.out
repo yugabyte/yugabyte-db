@@ -15,10 +15,10 @@ set yb_transaction_priority_upper_bound = 0.7;
 -- Invalid values.
 set yb_transaction_priority_upper_bound = 0.2;
 ERROR:  invalid value for parameter "yb_transaction_priority_upper_bound": 0.2
-DETAIL:  must be greater than or equal to yb_transaction_priority_lower_bound (0.300000)
+DETAIL:  must be greater than or equal to yb_transaction_priority_lower_bound (0.300000).
 set yb_transaction_priority_lower_bound = 0.8;
 ERROR:  invalid value for parameter "yb_transaction_priority_lower_bound": 0.8
-DETAIL:  must be less than or equal to yb_transaction_priority_upper_bound (0.700000)
+DETAIL:  must be less than or equal to yb_transaction_priority_upper_bound (0.700000).
 -- Valid values.
 set yb_transaction_priority_upper_bound = 0.3;
 set yb_transaction_priority_upper_bound = 0.6;
