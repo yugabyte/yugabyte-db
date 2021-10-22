@@ -11028,7 +11028,7 @@ check_effective_io_concurrency(int *newval, void **extra, GucSource source)
 #else
 	if (*newval != 0)
 	{
-		GUC_check_errdetail("effective_io_concurrency must be set to 0 on platforms that lack posix_fadvise()");
+		GUC_check_errdetail("effective_io_concurrency must be set to 0 on platforms that lack posix_fadvise().");
 		return false;
 	}
 	return true;
@@ -11140,7 +11140,7 @@ static bool
 check_transaction_priority_lower_bound(double *newval, void **extra, GucSource source)
 {
 	if (*newval > yb_transaction_priority_upper_bound) {
-		GUC_check_errdetail("must be less than or equal to yb_transaction_priority_upper_bound (%f)",
+		GUC_check_errdetail("must be less than or equal to yb_transaction_priority_upper_bound (%f).",
 		                    yb_transaction_priority_upper_bound);
 		return false;
 	}
@@ -11152,7 +11152,7 @@ static bool
 check_transaction_priority_upper_bound(double *newval, void **extra, GucSource source)
 {
 	if (*newval < yb_transaction_priority_lower_bound) {
-		GUC_check_errdetail("must be greater than or equal to yb_transaction_priority_lower_bound (%f)",
+		GUC_check_errdetail("must be greater than or equal to yb_transaction_priority_lower_bound (%f).",
 		                    yb_transaction_priority_lower_bound);
 		return false;
 	}
@@ -11179,7 +11179,7 @@ check_max_backoff(int *max_backoff_msecs, void **extra, GucSource source)
 {
 	if (*max_backoff_msecs < 0)
 	{
-		GUC_check_errdetail("must be greater than or equal to 0");
+		GUC_check_errdetail("must be greater than or equal to 0.");
 		return false;
 	}
 
@@ -11191,7 +11191,7 @@ check_min_backoff(int *min_backoff_msecs, void **extra, GucSource source)
 {
 	if (*min_backoff_msecs < 0)
 	{
-		GUC_check_errdetail("must be greater than or equal to 0");
+		GUC_check_errdetail("must be greater than or equal to 0.");
 		return false;
 	}
 
@@ -11203,7 +11203,7 @@ check_backoff_multiplier(double *multiplier, void **extra, GucSource source)
 {
 	if (*multiplier < 1)
 	{
-		GUC_check_errdetail("must be greater than or equal to 1");
+		GUC_check_errdetail("must be greater than or equal to 1.");
 		return false;
 	}
 	return true;
