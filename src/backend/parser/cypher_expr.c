@@ -85,6 +85,10 @@ static Node *transform_CoalesceExpr(cypher_parsestate *cpstate,
                                     CoalesceExpr *cexpr);
 static Node *transform_SubLink(cypher_parsestate *cpstate, SubLink *sublink);
 static Node *transform_FuncCall(cypher_parsestate *cpstate, FuncCall *fn);
+static Node *transform_WholeRowRef(ParseState *pstate, RangeTblEntry *rte,
+                                   int location);
+
+/* transform a cypher expression */
 Node *transform_cypher_expr(cypher_parsestate *cpstate, Node *expr,
                             ParseExprKind expr_kind)
 {
@@ -240,39 +244,191 @@ static Node *transform_A_Const(cypher_parsestate *cpstate, A_Const *ac)
     return (Node *)c;
 }
 
+/*
+ * Private function borrowed from PG's transformWholeRowRef.
+ * Construct a whole-row reference to represent the notation "relation.*".
+ */
+static Node *transform_WholeRowRef(ParseState *pstate, RangeTblEntry *rte,
+                                   int location)
+{
+    Var *result;
+    int vnum;
+    int sublevels_up;
+
+    /* Find the RTE's rangetable location */
+    vnum = RTERangeTablePosn(pstate, rte, &sublevels_up);
+
+    /*
+     * Build the appropriate referencing node.  Note that if the RTE is a
+     * function returning scalar, we create just a plain reference to the
+     * function value, not a composite containing a single column.  This is
+     * pretty inconsistent at first sight, but it's what we've done
+     * historically.  One argument for it is that "rel" and "rel.*" mean the
+     * same thing for composite relations, so why not for scalar functions...
+     */
+     result = makeWholeRowVar(rte, vnum, sublevels_up, true);
+
+     /* location is not filled in by makeWholeRowVar */
+     result->location = location;
+
+     /* mark relation as requiring whole-row SELECT access */
+     markVarForSelectPriv(pstate, result, rte);
+
+     return (Node *)result;
+}
+
+/*
+ * Function to transform a ColumnRef node from the grammar into a Var node
+ * Code borrowed from PG's transformColumnRef.
+ */
 static Node *transform_ColumnRef(cypher_parsestate *cpstate, ColumnRef *cref)
 {
     ParseState *pstate = (ParseState *)cpstate;
-    Node *field1;
-    const char *colname;
-    Node *var;
+    RangeTblEntry *rte = NULL;
+    Node *field1 = NULL;
+    Node *field2 = NULL;
+    char *colname = NULL;
+    char *nspname = NULL;
+    char *relname = NULL;
+    Node *node = NULL;
+    int levels_up;
 
-    field1 = linitial(cref->fields);
-    Assert(IsA(field1, String));
-    colname = strVal(field1);
-
-    var = colNameToVar(pstate, colname, false, cref->location);
-    if (!var)
+    switch (list_length(cref->fields))
     {
-        RangeTblEntry *rte;
+        case 1:
+            {
+                field1 = (Node*)linitial(cref->fields);
 
-        /*
-         * If we find an rte with the column ref name, this expr might be
-         * referencing a property in a vertex or edge. In that case switch
-         * the columnRef to a ColumnRef of the rte.
-         */
-        if ((rte = find_rte(cpstate, (char *)colname)))
-        {
-            return scanRTEForColumn(pstate, rte, AG_VERTEX_COLNAME_PROPERTIES,
-                                    -1, 0, NULL);
-        }
+                Assert(IsA(field1, String));
+                colname = strVal(field1);
 
-        ereport(ERROR, (errcode(ERRCODE_UNDEFINED_COLUMN),
-                        errmsg("variable `%s` does not exist", colname),
-                        parser_errposition(pstate, cref->location)));
+                /* Try to identify as an unqualified column */
+                node = colNameToVar(pstate, colname, false, cref->location);
+
+                if (node == NULL)
+                {
+                    /*
+                     * Not known as a column of any range-table entry.
+                     * Try to find the name as a relation.  Note that only
+                     * relations already entered into the rangetable will be
+                     * recognized.
+                     *
+                     * This is a hack for backwards compatibility with
+                     * PostQUEL-inspired syntax.  The preferred form now is
+                     * "rel.*".
+                     */
+                    rte = refnameRangeTblEntry(pstate, NULL, colname,
+                                               cref->location, &levels_up);
+                    if (rte)
+                    {
+                        node = transform_WholeRowRef(pstate, rte,
+                                                     cref->location);
+                    }
+                    else
+                    {
+                        ereport(ERROR,
+                                (errcode(ERRCODE_UNDEFINED_COLUMN),
+                                 errmsg("could not find rte for %s", colname),
+                                 parser_errposition(pstate, cref->location)));
+                    }
+
+                    if (node == NULL)
+                    {
+                        ereport(ERROR,
+                                (errcode(ERRCODE_DATA_EXCEPTION),
+                                 errmsg("unable to transform whole row for %s",
+                                         colname),
+                                 parser_errposition(pstate, cref->location)));
+                    }
+                }
+                break;
+            }
+        case 2:
+            {
+                Oid inputTypeId = InvalidOid;
+                Oid targetTypeId = InvalidOid;
+
+                field1 = (Node*)linitial(cref->fields);
+                field2 = (Node*)lsecond(cref->fields);
+
+                Assert(IsA(field1, String));
+                relname = strVal(field1);
+
+                if (IsA(field2, String))
+                {
+                    colname = strVal(field2);
+                }
+
+                /* locate the referenced RTE */
+                rte = refnameRangeTblEntry(pstate, nspname, relname,
+                                           cref->location, &levels_up);
+                if (rte == NULL)
+                {
+                    ereport(ERROR,
+                            (errcode(ERRCODE_UNDEFINED_COLUMN),
+                             errmsg("could not find rte for %s.%s", relname,
+                                    colname),
+                             parser_errposition(pstate, cref->location)));
+                    break;
+                }
+
+                /*
+                 * TODO: Left in for potential future use.
+                 * Is it a whole-row reference?
+                 */
+                if (IsA(field2, A_Star))
+                {
+                    node = transform_WholeRowRef(pstate, rte, cref->location);
+                    break;
+                }
+
+                Assert(IsA(field2, String));
+
+                /* try to identify as a column of the RTE */
+                node = scanRTEForColumn(pstate, rte, colname, cref->location, 0,
+                                        NULL);
+                if (node == NULL)
+                {
+                    ereport(ERROR,
+                            (errcode(ERRCODE_UNDEFINED_COLUMN),
+                             errmsg("could not find column %s in rel %s of rte",
+                                    colname, relname),
+                             parser_errposition(pstate, cref->location)));
+                }
+
+                /* coerce it to AGTYPE if possible */
+                inputTypeId = exprType(node);
+                targetTypeId = AGTYPEOID;
+
+                if (can_coerce_type(1, &inputTypeId, &targetTypeId,
+                                    COERCION_EXPLICIT))
+                {
+                    node = coerce_type(pstate, node, inputTypeId, targetTypeId,
+                                       -1, COERCION_EXPLICIT,
+                                       COERCE_EXPLICIT_CAST, -1);
+                }
+                break;
+            }
+        default:
+            {
+                ereport(ERROR,
+                        (errcode(ERRCODE_SYNTAX_ERROR),
+                         errmsg("improper qualified name (too many dotted names): %s",
+                                NameListToString(cref->fields)),
+                         parser_errposition(pstate, cref->location)));
+                break;
+            }
     }
 
-    return var;
+    if (node == NULL)
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_UNDEFINED_COLUMN),
+                 errmsg("variable `%s` does not exist", colname),
+                 parser_errposition(pstate, cref->location)));
+    }
+
+    return node;
 }
 
 static Node *transform_AEXPR_OP(cypher_parsestate *cpstate, A_Expr *a)
@@ -723,14 +879,17 @@ static Node *transform_FuncCall(cypher_parsestate *cpstate, FuncCall *fn)
     Node *last_srf = pstate->p_last_srf;
     List *targs = NIL;
     List *fname = NIL;
-    ListCell *args;
+    ListCell *arg;
     Node *retval = NULL;
 
     /* Transform the list of arguments ... */
-    foreach(args, fn->args)
-        targs = lappend(targs,
-                        transform_cypher_expr_recurse(cpstate,
-                                                      (Node *)lfirst(args)));
+    foreach(arg, fn->args)
+    {
+        Node *farg = NULL;
+
+        farg = (Node *)lfirst(arg);
+        targs = lappend(targs, transform_cypher_expr_recurse(cpstate, farg));
+    }
 
     /* within group should not happen */
     Assert(!fn->agg_within_group);
@@ -754,7 +913,7 @@ static Node *transform_FuncCall(cypher_parsestate *cpstate, FuncCall *fn)
          * All AGE function names are in lower case. So, copy in the name
          * in lower case.
          */
-        for(i = 0; i < pnlen; i++)
+        for (i = 0; i < pnlen; i++)
             ag_name[i + 4] = tolower(name[i]);
 
         /* terminate it with 0 */
@@ -764,18 +923,20 @@ static Node *transform_FuncCall(cypher_parsestate *cpstate, FuncCall *fn)
         fname = list_make2(makeString("ag_catalog"), makeString(ag_name));
 
         /*
-         * Currently 2 functions need the graph name passed in as the first
-         * argument - in addition to the other arguments: startNode and endNode.
-         * So, check for those 2 functions here and that the arg list is not
-         * empty. Then prepend the graph name if necessary.
+         * Currently 3 functions need the graph name passed in as the first
+         * argument - in addition to the other arguments: startNode, endNode,
+         * and vle. So, check for those 3 functions here and that the arg list
+         * is not empty. Then prepend the graph name if necessary.
          */
         if ((list_length(targs) != 0) &&
             ((pg_strcasecmp("startNode", name) == 0 ||
-              pg_strcasecmp("endNode", name) == 0)))
+              pg_strcasecmp("endNode", name) == 0 ||
+              pg_strcasecmp("vle", name) == 0)))
         {
             char *graph_name = cpstate->graph_name;
             Datum d = string_to_agtype(graph_name);
-            Const *c = makeConst(AGTYPEOID, -1, InvalidOid, -1, d, false, false);
+            Const *c = makeConst(AGTYPEOID, -1, InvalidOid, -1, d, false,
+                                 false);
 
             targs = lcons(c, targs);
         }
@@ -783,7 +944,9 @@ static Node *transform_FuncCall(cypher_parsestate *cpstate, FuncCall *fn)
     }
     /* If it is not one of our functions, pass the name list through */
     else
+    {
         fname = fn->funcname;
+    }
 
     /* ... and hand off to ParseFuncOrColumn */
     retval = ParseFuncOrColumn(pstate, fname, targs, last_srf, fn, false,
@@ -791,7 +954,9 @@ static Node *transform_FuncCall(cypher_parsestate *cpstate, FuncCall *fn)
 
     /* flag that an aggregate was found during a transform */
     if (retval != NULL && retval->type == T_Aggref)
+    {
         cpstate->exprHasAgg = true;
+    }
 
     return retval;
 }
@@ -835,12 +1000,14 @@ static Node *transform_CoalesceExpr(cypher_parsestate *cpstate, CoalesceExpr
 
     /* if any subexpression contained a SRF, complain */
     if (pstate->p_last_srf != last_srf)
+    {
         ereport(ERROR,
                 (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
                  /* translator: %s is name of a SQL construct, eg GROUP BY */
                  errmsg("set-returning functions are not allowed in %s",
                         "COALESCE"),
                  parser_errposition(pstate, exprLocation(pstate->p_last_srf))));
+    }
 
     newcexpr->args = newcoercedargs;
     newcexpr->location = cexpr->location;

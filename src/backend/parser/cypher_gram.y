@@ -163,6 +163,11 @@
 %left TYPECAST
 
 %{
+//
+// unique name generation
+#define UNIQUE_NAME_NULL_PREFIX "_unique_null_prefix"
+static char *create_unique_name(char *prefix_name);
+
 // logical operators
 static Node *make_or_expr(Node *lexpr, Node *rexpr, int location);
 static Node *make_and_expr(Node *lexpr, Node *rexpr, int location);
@@ -893,7 +898,164 @@ simple_path:
         }
     | simple_path path_relationship path_node
         {
-            $$ = lappend(lappend($1, $2), $3);
+            cypher_relationship *cr = NULL;
+
+            /* get the relationship */
+            cr = (cypher_relationship *)$2;
+
+            /* if this is a VLE relation node */
+            if (cr->varlen != NULL)
+            {
+                ColumnRef *cref = NULL;
+                A_Indices *ai = NULL;
+                List *args = NIL;
+                List *eargs = NIL;
+                List *fname = NIL;
+                cypher_node *cnl = NULL;
+                cypher_node *cnr = NULL;
+                Node *node = NULL;
+                int length = 0;
+                int location = 0;
+
+                /* get the location */
+                location = cr->location;
+
+                /* get the left and right cypher_nodes */
+                cnl = (cypher_node*)llast($1);
+                cnr = (cypher_node*)$3;
+
+                /* get the length of the left path */
+                length = list_length($1);
+
+                /*
+                 * If the left name is NULL and the left path is greater than 1
+                 * If the left name is NULL and the left label is not NULL
+                 * If the left name is NULL and the left props is not NULL
+                 * If the left name is NULL and the right name is not NULL
+                 * If the left name is NULL and the right label is not NULL
+                 * If the left name is NULL and the right props is not NULL
+                 * we need to create a variable name for the left node.
+                 */
+                if ((cnl->name == NULL && length > 1) ||
+                    (cnl->name == NULL && cnl->label != NULL) ||
+                    (cnl->name == NULL && cnl->props != NULL) ||
+                    (cnl->name == NULL && cnr->name != NULL) ||
+                    (cnl->name == NULL && cnr->label != NULL) ||
+                    (cnl->name == NULL && cnr->props != NULL))
+                {
+                    cnl->name = create_unique_name("_vle_function_start_var");
+                }
+                /* add in the start vertex as a ColumnRef if necessary */
+                if (cnl->name != NULL)
+                {
+                    cref = makeNode(ColumnRef);
+                    cref->fields = list_make2(makeString(cnl->name),
+                                              makeString("id"));
+                    cref->location = @1;
+                    args = lappend(args, cref);
+                }
+                /*
+                 * If there aren't any variables in the VLE path, we can use
+                 * the FROM_ALL algorithm.
+                 */
+                else
+                {
+                    args = lappend(args, make_null_const(-1));
+                }
+
+                /*
+                 * Create a variable name for the end vertex if we have a label
+                 * name or props but we don't have a variable name.
+                 *
+                 * For example: ()-[*]-(:label) or ()-[*]-({name: "John"})
+                 *
+                 * We need this so the addition of match_vle_terminal_edge is
+                 * done in the transform phase.
+                 */
+                if (cnr->name == NULL &&
+                    (cnr->label != NULL || cnr->props != NULL))
+                {
+                    cnr->name = create_unique_name("_vle_function_end_var");
+                }
+                /*
+                 * We need a NULL for the target vertex in the VLE match to
+                 * force the dfs_find_a_path_from algorithm. However, for now,
+                 * the default will be to only do that when a target isn't
+                 * supplied.
+                 *
+                 * TODO: We will likely want to force it to use
+                 * dfs_find_a_path_from.
+                 */
+                if (cnl->name == NULL && cnr->name != NULL)
+                {
+                    cref = makeNode(ColumnRef);
+                    cref->fields = list_make2(makeString(cnr->name),
+                                              makeString("id"));
+                    cref->location = @1;
+                    args = lappend(args, cref);
+                }
+                else
+                {
+                    args = lappend(args, make_null_const(-1));
+                }
+
+                /* build the required edge arguments */
+                if (cr->label == NULL)
+                {
+                    eargs = lappend(eargs, make_null_const(location));
+                }
+                else
+                {
+                    eargs = lappend(eargs, make_string_const(cr->label,
+                                                             location));
+                }
+                if (cr->props == NULL)
+                {
+                    eargs = lappend(eargs, make_null_const(location));
+                }
+                else
+                {
+                    eargs = lappend(eargs, cr->props);
+                }
+                /* build the edge function name (schema.funcname) */
+                fname = list_make2(makeString("ag_catalog"),
+                                   makeString("age_build_vle_match_edge"));
+                /* build the edge function node */
+                node = make_function_expr(fname, eargs, location);
+                /* add in the edge*/
+                args = lappend(args, node);
+
+                /* add in the lidx and uidx range as Const */
+                ai = (A_Indices*)cr->varlen;
+                if (ai == NULL || ai->lidx == NULL)
+                {
+                    args = lappend(args, make_null_const(location));
+                }
+                else
+                {
+                    args = lappend(args, ai->lidx);
+                }
+                if (ai == NULL || ai->uidx == NULL)
+                {
+                    args = lappend(args, make_null_const(location));
+                }
+                else
+                {
+                    args = lappend(args, ai->uidx);
+                }
+                /* add in the direction as Const */
+                args = lappend(args, make_int_const(cr->dir, @2));
+
+                /* build the VLE function node */
+                cr->varlen = make_function_expr(list_make1(makeString("vle")),
+                                                args, @2);
+                /* return the VLE relation in the path */
+                $$ = lappend(lappend($1, cr), $3);
+            }
+            else
+            {
+                $$ = lappend(lappend($1, $2), $3);
+            }
         }
     ;
 
@@ -1868,4 +2030,46 @@ static Node *make_function_expr(List *func_name, List *exprs, int location)
 
     /* return the node */
     return (Node *)fnode;
+}
+
+/* function to create a unique name given a prefix */
+static char *create_unique_name(char *prefix_name)
+{
+    char *name = NULL;
+    char *prefix = NULL;
+    uint nlen = 0;
+
+    /* STATIC VARIABLE unique_counter for name uniqueness */
+    static unsigned long unique_counter = 0;
+
+    /* was a valid prefix supplied */
+    if (prefix_name == NULL || strlen(prefix_name) <= 0)
+    {
+        prefix = pnstrdup(UNIQUE_NAME_NULL_PREFIX,
+                          strlen(UNIQUE_NAME_NULL_PREFIX));
+    }
+    else
+    {
+        prefix = prefix_name;
+    }
+
+    /* get the length of the combinded string */
+    nlen = snprintf(NULL, 0, "%s_%lu", prefix, unique_counter);
+
+    /* allocate the space */
+    name = palloc0(nlen + 1);
+
+    /* create the name */
+    snprintf(name, nlen + 1, "%s_%lu", prefix, unique_counter);
+
+    /* if we created the prefix, we need to free it */
+    if (prefix_name == NULL || strlen(prefix_name) <= 0)
+    {
+        pfree(prefix);
+    }
+
+    /* increment the counter */
+    unique_counter++;
+
+    return name;
 }

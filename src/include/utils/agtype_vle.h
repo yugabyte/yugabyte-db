@@ -22,4 +22,31 @@
 
 #include "postgres.h"
 
+/*
+ * We declare the VLE_path_container here, and in this way, so that it may be
+ * used elsewhere. However, we keep the contents private by defining it in
+ * agtype_vle.c
+ */
+typedef struct VLE_path_container VLE_path_container;
+
+/*
+ * Function to take an AGTV_BINARY VLE_path_container and return a path as an
+ * agtype.
+ */
+agtype *agt_materialize_vle_path(agtype *agt_arg_vpc);
+/*
+ * Function to take a AGTV_BINARY VLE_path_container and return a path as an
+ * agtype_value.
+ */
+agtype_value *agtv_materialize_vle_path(agtype *agt_arg_vpc);
+/*
+ * Exposed helper function to make an agtype_value AGTV_ARRAY of edges from a
+ * VLE_path_container.
+ */
+agtype_value *agtv_materialize_vle_edges(agtype *agt_arg_vpc);
+
+/* edge checking */
+bool is_edge_id_in_vle_container(VLE_path_container *vpc, graphid edge_id);
+bool vle_edges_overlap(VLE_path_container *vpc_1, VLE_path_container *vpc_2);
+
 #endif

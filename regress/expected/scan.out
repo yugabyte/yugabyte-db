@@ -433,37 +433,37 @@ LINE 1: SELECT * FROM cypher('scan', $$RETURN "high surrogate \uD835...
 SELECT * FROM cypher('scan', $$
 RETURN _$09A_z
 $$) AS t(id text);
-ERROR:  variable `_$09A_z` does not exist
+ERROR:  could not find rte for _$09A_z
 LINE 2: RETURN _$09A_z
                ^
 SELECT * FROM cypher('scan', $$
 RETURN A
 $$) AS t(id text);
-ERROR:  variable `A` does not exist
+ERROR:  could not find rte for A
 LINE 2: RETURN A
                ^
 SELECT * FROM cypher('scan', $$
 RETURN z
 $$) AS t(id text);
-ERROR:  variable `z` does not exist
+ERROR:  could not find rte for z
 LINE 2: RETURN z
                ^
 SELECT * FROM cypher('scan', $$
 RETURN `$`
 $$) AS t(id text);
-ERROR:  variable `$` does not exist
+ERROR:  could not find rte for $
 LINE 2: RETURN `$`
                ^
 SELECT * FROM cypher('scan', $$
 RETURN `0`
 $$) AS t(id text);
-ERROR:  variable `0` does not exist
+ERROR:  could not find rte for 0
 LINE 2: RETURN `0`
                ^
 SELECT * FROM cypher('scan', $$
 RETURN ````
 $$) AS t(id text);
-ERROR:  variable ``` does not exist
+ERROR:  could not find rte for `
 LINE 2: RETURN ````
                ^
 -- zero-length quoted identifier

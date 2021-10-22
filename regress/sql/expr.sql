@@ -2257,7 +2257,7 @@ $$) as (result agtype);
 
 -- VLE
 SELECT create_graph('VLE');
--- should fail
+-- should return 0 rows
 SELECT * FROM cypher('VLE', $$MATCH (u)-[*]-(v) RETURN u, v$$) AS (u agtype, v agtype);
 SELECT * FROM cypher('VLE', $$MATCH (u)-[*0..1]-(v) RETURN u, v$$) AS (u agtype, v agtype);
 SELECT * FROM cypher('VLE', $$MATCH (u)-[*..1]-(v) RETURN u, v$$) AS (u agtype, v agtype);

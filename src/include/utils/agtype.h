@@ -234,16 +234,40 @@ typedef struct agtype_container
 } agtype_container;
 
 /* flags for the header-field in agtype_container*/
-#define AGT_CMASK 0x0FFFFFFF /* mask for count field */
+#define AGT_CMASK   0x0FFFFFFF /* mask for count field */
 #define AGT_FSCALAR 0x10000000 /* flag bits */
 #define AGT_FOBJECT 0x20000000
-#define AGT_FARRAY 0x40000000
+#define AGT_FARRAY  0x40000000
+#define AGT_FBINARY 0x80000000 /* our binary objects */
+
+/*
+ * It should be noted that while AGT_FBINARY utilizes the AGTV_BINARY mechanism,
+ * it is not necessarily an agtype serialized (binary) value. We are just using
+ * that mechanism to pass blobs of data more quickly between components. In the
+ * case of the path from the VLE routine, the blob is a graphid array where the
+ * first element contains the header embedded in it. This way it is just cast to
+ * the graphid array to be used after verifying that it is an AGT_FBINARY and an
+ * AGT_FBINARY_TYPE_VLE_PATH.
+ */
+
+/*
+ * Flags for the agtype_container type AGT_FBINARY are in the AGT_CMASK (count)
+ * field. We put the flags here as this is a strictly AGTV_BINARY blob of data
+ * and count is irrelevant because there is only one. The additional flags allow
+ * for differing types of user defined binary blobs. To be consistent and clear,
+ * we create binary specific masks, flags, and macros.
+ */
+#define AGT_FBINARY_MASK 0x0FFFFFFF /* mask for binary flags */
+#define AGTYPE_FBINARY_CONTAINER_TYPE(agtc) ((agtc)->header &AGT_FBINARY_MASK)
+#define AGT_ROOT_DATA_FBINARY(agtp_) VARDATA(agtp_);
+#define AGT_FBINARY_TYPE_VLE_PATH 0x00000001
 
 /* convenience macros for accessing an agtype_container struct */
 #define AGTYPE_CONTAINER_SIZE(agtc) ((agtc)->header & AGT_CMASK)
 #define AGTYPE_CONTAINER_IS_SCALAR(agtc) (((agtc)->header & AGT_FSCALAR) != 0)
 #define AGTYPE_CONTAINER_IS_OBJECT(agtc) (((agtc)->header & AGT_FOBJECT) != 0)
 #define AGTYPE_CONTAINER_IS_ARRAY(agtc) (((agtc)->header & AGT_FARRAY) != 0)
+#define AGTYPE_CONTAINER_IS_BINARY(agtc) (((agtc)->header & AGT_FBINARY) != 0)
 
 /* The top-level on-disk format for an agtype datum. */
 typedef struct
@@ -260,6 +284,10 @@ typedef struct
     ((*(uint32 *)VARDATA(agtp_) & AGT_FOBJECT) != 0)
 #define AGT_ROOT_IS_ARRAY(agtp_) \
     ((*(uint32 *)VARDATA(agtp_) & AGT_FARRAY) != 0)
+#define AGT_ROOT_IS_BINARY(agtp_) \
+    ((*(uint32 *)VARDATA(agtp_) & AGT_FBINARY) != 0)
+#define AGT_ROOT_BINARY_FLAGS(agtp_) \
+    (*(uint32 *)VARDATA(agtp_) & AGT_FBINARY_MASK)
 
 /* values for the AGTYPE header field to denote the stored data type */
 #define AGT_HEADER_INTEGER 0x00000000
@@ -417,6 +445,13 @@ typedef struct agtype_iterator
     struct agtype_iterator *parent;
 } agtype_iterator;
 
+/* agtype parse state */
+typedef struct agtype_in_state
+{
+    agtype_parse_state *parse_state;
+    agtype_value *res;
+} agtype_in_state;
+
 /* Support functions */
 int reserve_from_buffer(StringInfo buffer, int len);
 short pad_buffer_to_int(StringInfo buffer);
@@ -474,10 +509,16 @@ Datum make_edge(Datum id, Datum startid, Datum endid, Datum label,
 Datum make_path(List *path);
 Datum column_get_datum(TupleDesc tupdesc, HeapTuple tuple, int column,
                        const char *attname, Oid typid, bool isnull);
-Datum build_agtype_value_array_of_agtype_value_edges(agtype_value **ava,
-                                                     int size);
+agtype_value *agtype_value_build_vertex(graphid id, char *label,
+                                        Datum properties);
 agtype_value *agtype_value_build_edge(graphid id, char *label, graphid end_id,
                                       graphid start_id, Datum properties);
+agtype_value *get_agtype_value(char *funcname, agtype *agt_arg,
+                               enum agtype_value_type type, bool error);
+bool is_agtype_null(agtype *agt_arg);
+agtype_value *string_to_agtype_value(char *s);
+void add_agtype(Datum val, bool is_null, agtype_in_state *result, Oid val_type,
+                bool key_scalar);
 
 // OID of agtype and _agtype
 #define AGTYPEOID \
