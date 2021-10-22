@@ -73,9 +73,11 @@ NOTICE:  x.f1 = 3, x.f2 = 4
 
 select stricttest3();
 ERROR:  query returned more than one row
+HINT:  Make sure the query returns a single row, or use LIMIT 1
 CONTEXT:  PL/pgSQL function stricttest3() line 5 at SQL statement
 select stricttest4();
 ERROR:  query returned more than one row
+HINT:  Make sure the query returns a single row, or use LIMIT 1
 CONTEXT:  PL/pgSQL function stricttest4() line 5 at SQL statement
 --
 -- Cleanup
