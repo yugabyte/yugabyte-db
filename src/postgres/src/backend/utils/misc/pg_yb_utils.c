@@ -87,6 +87,7 @@ int ybc_disable_pg_locking = -1;
 static void YBCInstallTxnDdlHook();
 
 bool yb_read_from_followers = false;
+int32_t yb_follower_read_staleness_ms = 0;
 
 bool
 IsYugaByteEnabled()
@@ -1402,6 +1403,10 @@ void YBFlushBufferedOperations() {
 
 bool YBReadFromFollowersEnabled() {
   return yb_read_from_followers;
+}
+
+int32_t YBFollowerReadStalenessMs() {
+  return yb_follower_read_staleness_ms;
 }
 
 YBCPgYBTupleIdDescriptor* YBCCreateYBTupleIdDescriptor(Oid db_oid, Oid table_oid, int nattrs) {

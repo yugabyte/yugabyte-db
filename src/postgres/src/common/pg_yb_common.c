@@ -151,6 +151,15 @@ const char *YBGetCurrentZone()
 	return getenv("FLAGS_placement_zone");
 }
 
+int YBGetMaxClockSkewUsec() {
+	const int kDefaultClockSkewUsec = 500 * 1000;  // from physical_time.cc
+	const char *clock_skew_str = getenv("FLAGS_max_clock_skew_usec");
+	if (clock_skew_str) {
+		return atoi(clock_skew_str);
+	}
+	return kDefaultClockSkewUsec;
+}
+
 bool
 YBIsCollationEnabled()
 {

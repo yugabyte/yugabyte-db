@@ -422,8 +422,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   const tserver::TServerSharedObject* const tserver_shared_object_;
   const YBCPgCallbacks& pg_callbacks_;
-
-  bool read_from_followers_ = false;
 };
 
 }  // namespace pggate

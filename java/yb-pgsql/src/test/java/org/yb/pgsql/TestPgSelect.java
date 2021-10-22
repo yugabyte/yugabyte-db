@@ -28,6 +28,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -37,6 +38,17 @@ import static org.yb.AssertionWrappers.*;
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestPgSelect extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgSelect.class);
+  private static int kMaxClockSkewMs = 500;
+
+  /**
+   * @return flags shared between tablet server and initdb
+   */
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("max_clock_skew_usec", "" + kMaxClockSkewMs * 1000);
+    return flagMap;
+  }
 
   @Test
   public void testWhereClause() throws Exception {
@@ -337,10 +349,43 @@ public class TestPgSelect extends BasePgSQLTest {
   @Test
   public void testSetIsolationLevelsWithReadFromFollowersSessionVariable() throws Exception {
     try (Statement statement = connection.createStatement()) {
-      final String CANT_CHANGE_TXN_LEVEL =
-          "ERROR: cannot use this transaction isolation level with yb_read_from_followers enabled";
-      final String CANT_CHANGE_YB_READ_FROM_FOLLOWERS =
-          "ERROR: cannot enable yb_read_from_followers with the current transaction isolation mode";
+      // If follower reads are disabled, we should be allowed to set any staleness.
+      // Enabling follower reads should fail if staleness is less than 2 * max_clock_skew.
+      statement.execute("SET yb_read_from_followers = false");
+      statement.execute("SET yb_follower_read_staleness_ms = " + (2 * kMaxClockSkewMs - 1));
+      runInvalidQuery(statement, "SET yb_read_from_followers = true",
+                      "ERROR: cannot enable yb_read_from_followers with a staleness of less than "
+                      + "2 * (max_clock_skew");
+      statement.execute("SET yb_follower_read_staleness_ms = " + kMaxClockSkewMs / 2);
+      runInvalidQuery(statement, "SET yb_read_from_followers = true",
+                      "ERROR: cannot enable yb_read_from_followers with a staleness of less than "
+                      + "2 * (max_clock_skew");
+      statement.execute("SET yb_follower_read_staleness_ms = " + 0);
+      runInvalidQuery(statement, "SET yb_read_from_followers = true",
+                      "ERROR: cannot enable yb_read_from_followers with a staleness of less than "
+                      + "2 * (max_clock_skew");
+
+      statement.execute("SET yb_follower_read_staleness_ms = " + (2 * kMaxClockSkewMs + 1));
+      statement.execute("SET yb_read_from_followers = true");
+
+      // If follower reads are enabled, we should be allowed to set staleness to any value over
+      // 2 * max_clock_skew, which is 500ms. Any value smaller than that should fail.
+      statement.execute("SET yb_read_from_followers = true");
+      statement.execute("SET yb_follower_read_staleness_ms = " + 2 * kMaxClockSkewMs);
+      runInvalidQuery(statement, "SET yb_follower_read_staleness_ms = " + (2 * kMaxClockSkewMs - 1),
+                      "ERROR: cannot enable yb_read_from_followers with a staleness of less than "
+                      + "2 * (max_clock_skew");
+      runInvalidQuery(statement, "SET yb_follower_read_staleness_ms = " + kMaxClockSkewMs / 2,
+                      "ERROR: cannot enable yb_read_from_followers with a staleness of less than "
+                      + "2 * (max_clock_skew");
+      runInvalidQuery(statement, "SET yb_follower_read_staleness_ms = 0",
+                      "ERROR: cannot enable yb_read_from_followers with a staleness of less than "
+                      + "2 * (max_clock_skew");
+      statement.execute("SET yb_follower_read_staleness_ms = " + (2 * kMaxClockSkewMs + 1));
+
+      // Test enabling follower reads with various isolation levels.
+      // Reset session variable.
+      statement.execute("SET yb_read_from_followers = false");
 
       // READ UNCOMMITTED with yb_read_from_followers enabled -> ok.
       statement.execute(
@@ -358,23 +403,25 @@ public class TestPgSelect extends BasePgSQLTest {
       // Reset session variable.
       statement.execute("SET yb_read_from_followers = false");
 
-      // REPEATABLE READ with yb_read_from_followers enabled -> error.
+      // REPEATABLE READ with yb_read_from_followers enabled
       statement.execute(
           "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL REPEATABLE READ");
+      statement.execute("SET yb_read_from_followers = true");
 
-      runInvalidQuery(statement, "SET yb_read_from_followers = true",
-          CANT_CHANGE_YB_READ_FROM_FOLLOWERS);
+      // Reset session variable.
+      statement.execute("SET yb_read_from_followers = false");
 
-      // SERIALIZABLE with yb_read_from_followers enabled -> error.
+      // SERIALIZABLE with yb_read_from_followers enabled
       statement.execute(
           "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE");
-      runInvalidQuery(statement, "SET yb_read_from_followers = true",
-          CANT_CHANGE_YB_READ_FROM_FOLLOWERS);
+      statement.execute("SET yb_read_from_followers = true");
+
+      // Reset session variable.
+      statement.execute("SET yb_read_from_followers = false");
 
       // Reset the isolation level to the lowest possible.
       statement.execute(
           "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL READ UNCOMMITTED");
-
       statement.execute("SET yb_read_from_followers = true");
 
       // yb_read_from_followers enabled with READ UNCOMMITTED -> ok.
@@ -385,15 +432,13 @@ public class TestPgSelect extends BasePgSQLTest {
       statement.execute(
           "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL READ COMMITTED");
 
-      // yb_read_from_followers enabled with REPEATABLE READ -> error.
-      runInvalidQuery(statement,
-          "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL REPEATABLE READ",
-          CANT_CHANGE_TXN_LEVEL);
+      // yb_read_from_followers enabled with REPEATABLE READ
+      statement.execute(
+          "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL REPEATABLE READ");
 
-      // yb_read_from_followers enabled with SERIALIZABLE -> error.
-      runInvalidQuery(statement,
-          "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE",
-          CANT_CHANGE_TXN_LEVEL);
+      // yb_read_from_followers enabled with SERIALIZABL
+      statement.execute(
+          "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE");
 
       // Reset the isolation level to the lowest possible.
       statement.execute(
@@ -412,14 +457,12 @@ public class TestPgSelect extends BasePgSQLTest {
 
 
       // yb_read_from_followers enabled with START TRANSACTION ISOLATION LEVEL REPEATABLE READ
-      // -> error.
-      runInvalidQuery(statement, "START TRANSACTION ISOLATION LEVEL REPEATABLE READ",
-          CANT_CHANGE_TXN_LEVEL);
+      statement.execute("START TRANSACTION ISOLATION LEVEL REPEATABLE READ");
+      statement.execute("ABORT");
 
       // yb_read_from_followers enabled with START TRANSACTION ISOLATION LEVEL SERIALIZABLE
-      // -> error.
-      runInvalidQuery(statement, "START TRANSACTION ISOLATION LEVEL SERIALIZABLE",
-          CANT_CHANGE_TXN_LEVEL);
+      statement.execute("START TRANSACTION ISOLATION LEVEL SERIALIZABLE");
+      statement.execute("ABORT");
 
       // Reset session variable.
       statement.execute("SET yb_read_from_followers = false");
@@ -442,19 +485,15 @@ public class TestPgSelect extends BasePgSQLTest {
       // Reset session variable.
       statement.execute("SET yb_read_from_followers = false");
       // START TRANSACTION ISOLATION LEVEL REPEATABLE READ with yb_read_from_followers enabled
-      // -> error.
       statement.execute("START TRANSACTION ISOLATION LEVEL REPEATABLE READ");
-      runInvalidQuery(statement, "SET yb_read_from_followers = true",
-          CANT_CHANGE_YB_READ_FROM_FOLLOWERS);
+      statement.execute("SET yb_read_from_followers = true");
       statement.execute("ABORT");
 
       // Reset session variable.
       statement.execute("SET yb_read_from_followers = false");
       // START TRANSACTION ISOLATION LEVEL SERIALIZABLE with yb_read_from_followers enabled
-      // -> error.
       statement.execute("START TRANSACTION ISOLATION LEVEL SERIALIZABLE");
-      runInvalidQuery(statement, "SET yb_read_from_followers = true",
-          CANT_CHANGE_YB_READ_FROM_FOLLOWERS);
+      statement.execute("SET yb_read_from_followers = true");
       statement.execute("ABORT");
     }
   }

@@ -909,6 +909,10 @@ YBCStatus YBCPgSetTransactionReadOnly(bool read_only) {
   return ToYBCStatus(pgapi->SetTransactionReadOnly(read_only));
 }
 
+YBCStatus YBCPgEnableFollowerReads(bool enable_follower_reads, int32_t staleness_ms) {
+  return ToYBCStatus(pgapi->EnableFollowerReads(enable_follower_reads, staleness_ms));
+}
+
 YBCStatus YBCPgSetTransactionDeferrable(bool deferrable) {
   return ToYBCStatus(pgapi->SetTransactionDeferrable(deferrable));
 }
