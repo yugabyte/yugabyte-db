@@ -23,6 +23,70 @@ Release v2.6.1.0 contains an authentication vulnerability in YCQL LDAP. _YSQL is
 If you're using YCQL LDAP with v2.6.1.0 and can't upgrade immediately, see the note in the [Version 2.6.1.0 section](#v2-6-1-0-sept-3-2021) for mitigation instructions.
 {{< /warning >}}
 
+## v2.6.3.0 - Oct 22, 2021
+
+**Build:** `2.6.3.0-b12`
+
+### Downloads
+
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.6.3.0-darwin.tar.gz">
+  <button>
+    <i class="fab fa-apple"></i><span class="download-text">macOS</span>
+  </button>
+</a>
+&nbsp; &nbsp; &nbsp;
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.6.3.0-linux.tar.gz">
+  <button>
+    <i class="fab fa-linux"></i><span class="download-text">Linux</span>
+  </button>
+</a>
+<br />
+
+### Docker
+
+```sh
+docker pull yugabytedb/yugabyte:2.6.3.0-b12
+```
+
+### Improvements
+
+#### Database
+
+* [[3785](https://github.com/yugabyte/yugabyte-db/issues/3785)] [DocDB] Add support for LZ4 compression
+* [[7612](https://github.com/yugabyte/yugabyte-db/issues/7612)] [DocDB] Allow TTL-expired SST files that are too large for compaction to be directly expired
+* [[7612](https://github.com/yugabyte/yugabyte-db/issues/7612)] [DocDB] Improves TTL handling by removing a file completely if all data is expired
+* [[7612](https://github.com/yugabyte/yugabyte-db/issues/7612)] [DocDB] Modified compaction file filter to filter files out of order
+* [[10019](https://github.com/yugabyte/yugabyte-db/issues/10019)] [DocDB] Add support for zlib compression
+* [[10110](https://github.com/yugabyte/yugabyte-db/issues/10110)] [DocDB] Enables compaction file filter during manual compactions
+
+#### Yugabyte Platform
+
+* [[9113](https://github.com/yugabyte/yugabyte-db/issues/9113)] [[9114](https://github.com/yugabyte/yugabyte-db/issues/9114)] [Platform] Populate the task id field in the backup table
+* [PLAT-1753] Enable taking backups using custom ports
+
+### Bug fixes
+
+#### Database
+
+* [[9436](https://github.com/yugabyte/yugabyte-db/issues/9436)] [YSQL] Statement reads rows it has inserted
+* [[10077](https://github.com/yugabyte/yugabyte-db/issues/10077)] [DocDB] Compaction file filter factory uses HistoryRetention instead of Schema
+* [[10164](https://github.com/yugabyte/yugabyte-db/issues/10164)] [DocDB] Max file size for compactions should only affect TTL tables
+* [YSQL] Restart metrics webserver when postmaster recovers backend
+
+#### Yugabyte Platform
+
+* [PLAT-1819] [PLAT-1828] Release backup lock when Platform restarts, and update Backup state
+
+### Known issues
+
+#### Database
+
+N/A
+
+#### Yugabyte Platform
+
+N/A
+
 ## v2.6.2.0 - Oct 12, 2021
 
 **Build:** `2.6.2.0-b36`
