@@ -54,10 +54,10 @@ menu:
     <a class="section-link icon-offset" href="set-up-alerts-health-check/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/manual-deployment.png" aria-hidden="true" />
-        <div class="title">Configure alerts and health checking</div>
+        <div class="title">Configure alerts and health checks</div>
       </div>
       <div class="body">
-        Configure alerts and health checking.
+        Configure alerts and health checks.
       </div>
     </a>
   </div>
