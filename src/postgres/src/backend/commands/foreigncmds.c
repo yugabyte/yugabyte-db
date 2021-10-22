@@ -217,7 +217,7 @@ AlterForeignDataWrapperOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerI
 	form = (Form_pg_foreign_data_wrapper) GETSTRUCT(tup);
 
 	/* Must be a superuser to change a FDW owner */
-	if (!superuser())
+	if (!IsYbFdwUser(GetUserId()) && !superuser())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied to change owner of foreign-data wrapper \"%s\"",
@@ -225,7 +225,7 @@ AlterForeignDataWrapperOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerI
 				 errhint("Must be superuser to change owner of a foreign-data wrapper.")));
 
 	/* New owner must also be a superuser */
-	if (!superuser_arg(newOwnerId))
+	if (!IsYbFdwUser(newOwnerId) && !superuser_arg(newOwnerId))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied to change owner of foreign-data wrapper \"%s\"",
@@ -349,7 +349,7 @@ AlterForeignServerOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerId)
 	if (form->srvowner != newOwnerId)
 	{
 		/* Superusers can always do it */
-		if (!superuser())
+		if (!IsYbFdwUser(GetUserId()) && !superuser())
 		{
 			Oid			srvId;
 			AclResult	aclresult;
@@ -576,7 +576,7 @@ CreateForeignDataWrapper(CreateFdwStmt *stmt)
 	rel = heap_open(ForeignDataWrapperRelationId, RowExclusiveLock);
 
 	/* Must be super user */
-	if (!superuser())
+	if (!IsYbFdwUser(GetUserId()) && !superuser())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied to create foreign-data wrapper \"%s\"",
@@ -690,7 +690,7 @@ AlterForeignDataWrapper(AlterFdwStmt *stmt)
 	rel = heap_open(ForeignDataWrapperRelationId, RowExclusiveLock);
 
 	/* Must be super user */
-	if (!superuser())
+	if (!IsYbFdwUser(GetUserId()) && !superuser())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied to alter foreign-data wrapper \"%s\"",
