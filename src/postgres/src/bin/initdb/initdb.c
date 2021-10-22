@@ -3178,7 +3178,7 @@ initialize_data_directory(void)
 
 	/* Bootstrap template1 */
 	bootstrap_template1();
-	
+
 	if (IsYugaByteLocalNodeInitdb())
 		return;
 
