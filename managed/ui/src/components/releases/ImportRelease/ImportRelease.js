@@ -12,8 +12,8 @@ import { toast } from 'react-toastify';
 const getValidationSchema = (type) => {
   const shape = {
     version: Yup.string()
-      .matches(/^((\d+).(\d+).(\d+).(\d+)(?:-[a-z]+)?(\d+)?)$/, {
-        message: 'Incorrect version format. Valid formats: 1.1.1.1 or 1.1.1.1-b1',
+      .matches(/^((\d+).(\d+).(\d+).(\d+)(?:-[a-z0-9]+)*)$/, {
+        message: 'Incorrect version format. Valid formats: 1.1.1.1, 1.1.1.1-b1 or 1.1.1.1-b12-remote',
         excludeEmptyString: true
       })
       .required('Release Version is Required'),
