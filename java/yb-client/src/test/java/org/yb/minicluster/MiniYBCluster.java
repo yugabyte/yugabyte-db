@@ -460,21 +460,31 @@ public class MiniYBCluster implements AutoCloseable {
     startTabletServers(numTservers, commonTserverFlags, perTserverFlags, tserverEnvVars);
   }
 
-  private void applyYsqlSnapshot(YsqlSnapshotVersion ver, Map<String, String> masterFlags) {
+  private String getYsqlSnapshotFilePath(YsqlSnapshotVersion ver) {
+    String filenamePrefix = "initial_sys_catalog_snapshot_";
+    String filename;
     switch (ver) {
       case EARLIEST:
-        String filename = "initial_sys_catalog_snapshot_2.0.9.0";
-        File file = new File(YSQL_SNAPSHOTS_DIR, filename);
-        Preconditions.checkState(file.exists(),
-            "Snapshot %s is not found in %s, should've been downloaded by the build script!",
-            filename, YSQL_SNAPSHOTS_DIR);
-        masterFlags.put("initial_sys_catalog_snapshot_path", file.getAbsolutePath());
+        filename = filenamePrefix + "2.0.9.0";
         break;
       case LATEST:
-        // NOOP, use default path
-        break;
+        throw new IllegalArgumentException("LATEST snapshot does not need a custom path");
       default:
-        Preconditions.checkArgument(false, "Unknown snapshot version: %s", ver);
+        throw new IllegalArgumentException("Unknown snapshot version: " + ver);
+    }
+    filename = filename + "_" + (BuildTypeUtil.isRelease() ? "release" : "debug");
+    File file = new File(YSQL_SNAPSHOTS_DIR, filename);
+    Preconditions.checkState(file.exists(),
+        "Snapshot %s is not found in %s, should've been downloaded by the build script!",
+        filename, YSQL_SNAPSHOTS_DIR);
+    return file.getAbsolutePath();
+  }
+
+  private void applyYsqlSnapshot(YsqlSnapshotVersion ver, Map<String, String> masterFlags) {
+    // No need to set the flag for LATEST snapshot.
+    if (ver != YsqlSnapshotVersion.LATEST) {
+      String snapshotPath = getYsqlSnapshotFilePath(ver);
+      masterFlags.put("initial_sys_catalog_snapshot_path", snapshotPath);
     }
   }
 
