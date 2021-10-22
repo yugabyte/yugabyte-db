@@ -92,7 +92,7 @@ static void DoWriteStatArrayElemToJson(JsonWriter* writer, YsqlStatementStat* st
   writer->Double(stat->mean_time);
 
   writer->String("stddev_time");
-  // Based on logic in pg_stat_statements_internal().
+  // Based on logic in pg_stat_monitor_internal().
   double stddev = (stat->calls > 1) ?
     (sqrt(stat->sum_var_time / stat->calls)) : 0.0;
   writer->Double(stddev);

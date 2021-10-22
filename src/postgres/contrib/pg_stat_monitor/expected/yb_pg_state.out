@@ -1,0 +1,31 @@
+CREATE EXTENSION pg_stat_monitor;
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset
+-----------------------
+
+(1 row)
+
+SELECT 1;
+ ?column?
+----------
+        1
+(1 row)
+
+SELECT 1/0;   -- divide by zero
+ERROR:  division by zero
+SELECT query, state_code, state FROM pg_stat_monitor ORDER BY query COLLATE "C";
+                                      query                                       | state_code |        state
+----------------------------------------------------------------------------------+------------+---------------------
+ SELECT $1 AS num                                                                 |          3 | FINISHED
+ SELECT 1/0;                                                                      |          4 | FINISHED WITH ERROR
+ SELECT pg_stat_monitor_reset();                                                  |          3 | FINISHED
+ SELECT query, state_code, state FROM pg_stat_monitor ORDER BY query COLLATE "C"; |          2 | ACTIVE
+(4 rows)
+
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset
+-----------------------
+
+(1 row)
+
+DROP EXTENSION pg_stat_monitor;

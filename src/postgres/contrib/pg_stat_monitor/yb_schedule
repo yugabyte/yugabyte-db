@@ -1,0 +1,18 @@
+# contrib/pg_stat_monitor/yb_schedule
+
+# test: yb_pg_stat_monitor
+test: yb_pg_basic
+test: yb_pg_version
+test: yb_pg_guc
+test: yb_pg_counters
+test: yb_pg_relations
+test: yb_pg_database
+test: yb_pg_top_query
+test: yb_pg_application_name
+test: yb_pg_cmd_type
+test: yb_pg_error
+test: yb_pg_state
+test: yb_pg_rows
+test: yb_pg_tags
+test: yb_pg_histogram
+test: yb_pg_user
