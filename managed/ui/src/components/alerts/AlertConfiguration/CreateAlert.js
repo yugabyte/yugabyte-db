@@ -13,7 +13,8 @@ import {
   YBMultiSelectWithLabel,
   YBSelectWithLabel,
   YBTextArea,
-  YBTextInputWithLabel
+  YBTextInputWithLabel,
+  YBToggle
 } from '../../common/forms/fields';
 import { connect } from 'react-redux';
 import '../CreateAlerts.scss';
@@ -43,7 +44,7 @@ const CreateAlert = (props) => {
   );
   const [alertDestination, setAlertDestination] = useState([]);
   const [currentMetric, setCurrentMetric] = useState(undefined);
-
+  
   useEffect(() => {
     alertDestinations().then((res) => {
       const defaultDestination = res.find((destination) => destination.defaultDestination);
@@ -136,7 +137,6 @@ const CreateAlert = (props) => {
    */
   const handleOnSubmit = async (values) => {
     const cUUID = localStorage.getItem('customerId');
-
     if (
       values.type !== 'update' ||
       values['ALERT_CONFIGURATION_NAME'] !== initialValues['ALERT_CONFIGURATION_NAME']
@@ -165,7 +165,7 @@ const CreateAlert = (props) => {
       thresholdUnit: currentMetric.thresholdUnit,
       template: values['ALERT_METRICS_CONDITION'] || 'REPLICATION_LAG',
       durationSec: values['ALERT_METRICS_DURATION'],
-      active: true
+      active: values['ALERT_STATUS']
     };
 
     switch (values['ALERT_DESTINATION_LIST']) {
@@ -277,6 +277,17 @@ const CreateAlert = (props) => {
             </Col>
           </Row>
         )}
+          {currentMetric && <Row>
+            <Col md={6}>
+                  <Field
+                    name="ALERT_STATUS"
+                    component={YBToggle}
+                    onChange={(event) => props.updateField('alertConfigForm', 'ALERT_STATUS', event?.target?.checked)}
+                    defaultChecked={true}
+                    label="Active"
+                  />
+            </Col>
+          </Row>}
         {currentMetric && <hr />}
         {currentMetric && (
           <Row>
