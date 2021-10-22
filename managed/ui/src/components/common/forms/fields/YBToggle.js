@@ -21,7 +21,8 @@ export default class YBToggle extends Component {
       infoContent,
       infoTitle,
       checkedVal,
-      name
+      name,
+      defaultChecked
     } = this.props;
     const onChange = (event) => {
       if (!this.props.disableOnChange) {
@@ -48,6 +49,7 @@ export default class YBToggle extends Component {
             className="yb-toggle"
             onChange={onChange}
             disabled={isReadOnly}
+            defaultChecked={defaultChecked}
           />
         </DescriptionItem>
       </YBLabel>
@@ -57,10 +59,12 @@ export default class YBToggle extends Component {
 
 YBToggle.propTypes = {
   checkedVal: PropTypes.bool,
-  disableOnChange: PropTypes.bool
+  disableOnChange: PropTypes.bool,
+  defaultChecked: PropTypes.bool
 };
 
 YBToggle.defaultProps = {
   checkedVal: true,
-  disableOnChange: false
+  disableOnChange: false,
+  defaultChecked: false
 };

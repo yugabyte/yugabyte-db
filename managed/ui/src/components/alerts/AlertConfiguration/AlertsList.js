@@ -213,7 +213,8 @@ export const AlertsList = (props) => {
       ALERT_METRICS_DURATION: row.durationSec,
       ALERT_METRICS_CONDITION_POLICY: condition,
       ALERT_DESTINATION_LIST: currentDestination,
-      thresholdUnit: row.thresholdUnit
+      thresholdUnit: row.thresholdUnit,
+      ALERT_STATUS : row.active
     };
 
     setInitialValues(initialVal);
