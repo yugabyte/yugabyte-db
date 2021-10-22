@@ -499,8 +499,13 @@ public class YBClient implements AutoCloseable {
             @Override
             public Object call(GetMasterRegistrationResponse response) throws Exception {
               if (response.getRole() == Metadata.RaftPeerPB.Role.LEADER) {
+                boolean wasNullResult = result.compareAndSet(null, entry.getKey());
+                if (!wasNullResult) {
+                  LOG.warn(
+                      "More than one node reported they are master-leaders ({} and {})",
+                      result.get().toString(), entry.getKey().toString());
+                }
                 finished.countDown();
-                result.set(entry.getKey());
               } else if (workersLeft.decrementAndGet() == 0) {
                 finished.countDown();
               }
