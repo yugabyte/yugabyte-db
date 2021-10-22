@@ -81,15 +81,11 @@ Once the universe is ready, its **Overview** tab should appear similar to the fo
 
 You connect to a database node as follows: 
 
-- Open the **Nodes** tab to find a list of the IP addresses of the available nodes that have been created and configured, as shown in the following illustration:
+- Open the **Nodes** tab to find a list of the IP addresses of the available nodes that have been created and configured, as shown in the following illustration:<br>
 
   ![Multi-zone universe nodes](/images/yp/multi-zone-universe-nodes-1.png)
 
-- Click **Connect**.
 
-- Notice the connection information for the universe displayed in the **Connect** dialog, as shown in the following illustration:
-
-![Multi-zone universe connect](/images/yp/multi-zone-universe-connect-1.png)
 
 - Determine the node to which you wish to connect and click the corresponding **Action > Connect**.
 
@@ -110,7 +106,13 @@ You connect to a database node as follows:
 
 Yugabyte Platform includes a number of sample applications enclosed in Docker containers. 
 
-To access instruction on how to run sample applications, select your universe's **Overview** and then click **Actions > Run Sample Apps** to open the Run Sample Apps dialog shown in the following illustrations:
+The jdbc connection string is only needed if you're hooking up a Java application to the database. 
+
+The YSQL, YCQL, and Yedis endpoints are passed into the driver to let it know what IP addresses and ports to use to connect to the database. 
+
+The sample apps include the endpoint information in the command that is run on the platform node anyway.
+
+To access instructions on how to run sample applications, select your universe's **Overview** and then click **Actions > Run Sample Apps** to open the **Run Sample Apps** dialog shown in the following illustration:
 
 ![Multi-zone universe sample apps](/images/yp/multi-zone-universe-sample-apps-1.png)
 
@@ -201,7 +203,13 @@ You can stop the load tester as follows:
   user@yugaware-1:~$ sudo docker container ls | grep "yugabytedb/yb-sample-apps"
   ```
 
-  Expect the following output:
+  <br>Expect an output similar to the following:
+
+  ```output
+  <container_id> yugabytedb/yb-sample-apps "/usr/bin/java -jar …" 17 seconds ago Up 16 seconds                                                                                                            jovial_morse
+  ```
+
+  <br>For example, if the container ID is ac144a49d57d, you would see the following output:
 
   ```output
   ac144a49d57d yugabytedb/yb-sample-apps "/usr/bin/java -jar …" 17 seconds ago Up 16 seconds                                                                                                            jovial_morse
@@ -210,11 +218,23 @@ You can stop the load tester as follows:
 - Stop the container by executing the following command:
 
   ```shell
-  user@yugaware-1:~$ sudo docker container stop ac144a49d57d
+  user@yugaware-1:~$ sudo docker container stop <container_id>
   ```
 
-  Expect the following output:
+  <br>Expect the following output:
 
+  ```output
+  <container_id>
+  ```
+  
+  <br>For example, for a container with ID ac144a49d57d, you would need to execute the following command:
+  
+  ```shell
+  user@yugaware-1:~$ sudo docker container stop ac144a49d57d
+  ```
+  
+  <br>You would see the following output:
+  
   ```output
   ac144a49d57d
   ```
