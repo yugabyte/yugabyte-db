@@ -691,20 +691,19 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       runMigrations();
 
       SysCatalogSnapshot postSnapshot = takeSysCatalogSnapshot(stmt);
+      List<Row> appliedMigrations = postSnapshot.catalog.get(MIGRATIONS_TABLE);
       assertEquals("Expected an entry for the last hardcoded migration"
           + " and each migration past that!",
           latestVersion - lastHardcodedMigrationVersion + 1,
-          postSnapshot.catalog.get(MIGRATIONS_TABLE).size());
+          appliedMigrations.size());
       assertEquals(
           lastHardcodedMigrationVersion,
-          postSnapshot.catalog.get(MIGRATIONS_TABLE)
+          appliedMigrations
               .get(0).getInt(0).intValue());
       assertEquals(
           latestVersion,
-          postSnapshot.catalog.get(MIGRATIONS_TABLE)
+          appliedMigrations
               .get(postSnapshot.catalog.get(MIGRATIONS_TABLE).size() - 1).getInt(0).intValue());
-      List<Row> appliedMigrations = postSnapshot.catalog.get(MIGRATIONS_TABLE);
-      assertTrue(appliedMigrations.get(0).getInt(0) == lastHardcodedMigrationVersion);
       postSnapshot.catalog.remove(MIGRATIONS_TABLE);
       postSnapshot.catalog.remove(CATALOG_VERSION_TABLE);
 
@@ -723,12 +722,6 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
    */
   @Test
   public void migratingIsEquivalentToReinitdb() throws Exception {
-    // TODO: Remove after #10116 is fixed!
-    if (!BuildTypeUtil.isRelease()) {
-      LOG.warn("Not a release build, skipping migratingIsEquivalentToReinitdb!");
-      return;
-    }
-
     final SysCatalogSnapshot preSnapshotCustom, preSnapshotTemplate1;
     try (Connection conn = getConnectionBuilder().withDatabase(customDbName).connect();
          Statement stmt = conn.createStatement()) {
@@ -1389,10 +1382,14 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
   }
 
   private void runMigrations() throws Exception {
+    // Set migrations timeout to 3 min, adjusted
+    long timeoutMs = BuildTypeUtil.adjustTimeout(180 * 1000);
     List<String> lines = runProcess(
         TestUtils.findBinary("yb-admin"),
         "--master_addresses",
         masterAddresses,
+        "-timeout_ms",
+        String.valueOf(timeoutMs),
         "upgrade_ysql");
     String joined = String.join("\n", lines);
     if (!joined.toLowerCase().contains("successfully upgraded")) {
