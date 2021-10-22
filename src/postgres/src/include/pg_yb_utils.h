@@ -84,6 +84,7 @@ extern void YBResetCatalogVersion();
 extern bool IsYugaByteEnabled();
 
 extern bool yb_read_from_followers;
+extern int32_t yb_follower_read_staleness_ms;
 
 /*
  * Iterate over databases and execute a given code snippet.
@@ -452,6 +453,7 @@ extern void YBResetOperationsBuffering();
 extern void YBFlushBufferedOperations();
 
 bool YBReadFromFollowersEnabled();
+int32_t YBFollowerReadStalenessMs();
 
 /*
  * Allocates YBCPgYBTupleIdDescriptor with nattrs arguments by using palloc.

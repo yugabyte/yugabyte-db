@@ -3286,6 +3286,17 @@ static struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_follower_read_staleness_ms", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Sets the staleness (in ms) to be used for performing follower reads."),
+			NULL,
+			0
+		},
+		&yb_follower_read_staleness_ms,
+		30000, 0, INT_MAX,
+		check_follower_read_staleness_ms, NULL, NULL
+	},
+
 	/*
 	 * Default to a 1s delay because commits currently aren't guaranteed to be
 	 * visible across tservers.  Commits cause master to update catalog
@@ -4224,7 +4235,7 @@ static struct config_enum ConfigureNamesEnum[] =
 		},
 		&DefaultXactIsoLevel,
 		XACT_READ_COMMITTED, isolation_level_options,
-		check_default_XactIsoLevel, NULL, NULL
+		NULL, NULL, NULL
 	},
 
 	{

@@ -1403,6 +1403,10 @@ Status PgApiImpl::SetTransactionReadOnly(bool read_only) {
   return pg_txn_manager_->SetReadOnly(read_only);
 }
 
+Status PgApiImpl::EnableFollowerReads(bool enable_follower_reads, int32_t staleness_ms) {
+  return pg_txn_manager_->EnableFollowerReads(enable_follower_reads, staleness_ms);
+}
+
 Status PgApiImpl::SetTransactionDeferrable(bool deferrable) {
   return pg_txn_manager_->SetDeferrable(deferrable);
 }
