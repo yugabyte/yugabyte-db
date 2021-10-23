@@ -115,7 +115,7 @@ function getEncryptionComponent(
   );
 }
 
-export function EncryptionInTransit({ visible, onHide, currentUniverse }) {
+export function EncryptionInTransit({ visible, onHide, currentUniverse, fetchCurrentUniverse }) {
   const userCertificates = useSelector((state) => state.customer.userCertificates);
 
   const isCertificateListLoading =
@@ -216,6 +216,7 @@ export function EncryptionInTransit({ visible, onHide, currentUniverse }) {
       if (resp.error) {
         setStatus({ error: resp.payload.response.data.error });
       } else {
+        fetchCurrentUniverse(currentUniverse.data.universeDetails.universeUUID);
         onHide();
       }
     });
