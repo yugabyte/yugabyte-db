@@ -256,7 +256,7 @@ RETURN null IS NOT NULL
 $$) AS r(result boolean);
 
 --
--- Test transform logic for AND, OR, and NOT
+-- Test transform logic for AND, OR, NOT and XOR
 --
 
 SELECT * FROM cypher('expr', $$
@@ -301,6 +301,22 @@ $$) AS r(result boolean);
 
 SELECT * FROM cypher('expr', $$
 RETURN NOT ((true OR false) AND (false OR true))
+$$) AS r(result boolean);
+
+SELECT * FROM cypher('expr', $$
+RETURN true XOR true
+$$) AS r(result boolean);
+
+SELECT * FROM cypher('expr', $$
+RETURN true XOR false
+$$) AS r(result boolean);
+
+SELECT * FROM cypher('expr', $$
+RETURN false XOR true
+$$) AS r(result boolean);
+
+SELECT * FROM cypher('expr', $$
+RETURN false XOR false
 $$) AS r(result boolean);
 
 --

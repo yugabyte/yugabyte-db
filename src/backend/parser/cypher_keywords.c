@@ -73,7 +73,8 @@ const ScanKeyword cypher_keywords[] = {
     {"verbose", VERBOSE, RESERVED_KEYWORD},
     {"when", WHEN, RESERVED_KEYWORD},
     {"where", WHERE, RESERVED_KEYWORD},
-    {"with", WITH, RESERVED_KEYWORD}
+    {"with", WITH, RESERVED_KEYWORD},
+    {"xor", XOR, RESERVED_KEYWORD}
 };
 
 const int num_cypher_keywords = lengthof(cypher_keywords);
