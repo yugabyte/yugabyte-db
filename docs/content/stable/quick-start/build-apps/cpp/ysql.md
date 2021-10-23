@@ -148,7 +148,7 @@ $ ./ybsql_hello_world
 
 You should see the following output:
 
-```
+```output
 Created table employee
 Inserted data (1, 'John', 35, 'C++')
 Query returned: John, 35, C++

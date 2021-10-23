@@ -133,7 +133,7 @@ $ python yb-sql-helloworld.py
 
 You should see the following output.
 
-```
+```output
 Created table employee
 Inserted (id, name, age, language) = (1, 'John', 35, 'Python')
 Query returned: John, 35, Python

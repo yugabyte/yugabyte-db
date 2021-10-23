@@ -144,7 +144,7 @@ $ go run ybsql_hello_world.go
 
 You should see the following output.
 
-```
+```output
 Created table employee
 Inserted data: INSERT INTO employee(id, name, age, language) VALUES (1, 'John', 35, 'Go')
 Query for id=1 returned: Row[John, 35, Go]

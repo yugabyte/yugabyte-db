@@ -113,11 +113,11 @@ To run the C# app from the Visual Studio menu, select `Run > Start Without Debug
 
 You should see the following as the output.
 
-```
+```output
 Created keyspace ybdemo
 Created keyspace employee
 Inserted data: INSERT INTO ybdemo.employee(id, name, age, language) VALUES (1, 'John', 35, 'C#')
 Select query returned 1 rows
-Name	Age	Language
-John	35	C#
+Name  Age  Language
+John  35   C#
 ```

@@ -100,7 +100,7 @@ $ php yb-sql-sample.php
 
 and you should see the following output:
 
-```
+```output
 Inserted new records successfully.
 Retrieving info for user id 11...
 Array

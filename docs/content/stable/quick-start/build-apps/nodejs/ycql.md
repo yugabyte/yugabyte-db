@@ -131,7 +131,7 @@ $ node yb-cql-helloworld.js
 
 You should see the following output.
 
-```
+```output
 Creating keyspace ybdemo
 Creating table employee
 Inserting row with: INSERT INTO ybdemo.employee (id, name, age, language) VALUES (1, 'John', 35, 'NodeJS');

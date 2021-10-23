@@ -105,7 +105,7 @@ $ ./yb-sql-helloworld.rb
 
 You should see the following output.
 
-```
+```output
 Created table employee
 Inserted data (1, 'John', 35, 'Ruby')
 Query returned: John 35 Ruby

@@ -239,7 +239,7 @@ $ ./yb_cql_hello_world
 
 You should see the following output:
 
-```
+```output
 Created keyspace ybdemo
 Created table ybdemo.employee
 Inserted data: INSERT INTO ybdemo.employee (id, name, age, language) VALUES (1, 'John', 35, 'C/C++')

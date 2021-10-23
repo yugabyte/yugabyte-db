@@ -129,7 +129,7 @@ $ go run ybcql_hello_world.go
 
 You should see the following as the output.
 
-```
+```output
 Created keyspace ybdemo
 Created table ybdemo.employee
 Inserted data: INSERT INTO ybdemo.employee(id, name, age, language) VALUES (1, 'John', 35, 'Go')

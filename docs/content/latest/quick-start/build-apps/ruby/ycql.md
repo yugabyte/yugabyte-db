@@ -104,7 +104,7 @@ $ ruby yb-cql-helloworld.rb
 
 You should see the following output.
 
-```
+```output
 Created keyspace ybdemo
 Created table employee
 Inserted (id, name, age, language) = (1, 'John', 35, 'Ruby')
