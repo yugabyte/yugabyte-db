@@ -31,15 +31,24 @@
 #include "access/sysattr.h"
 #include "access/ybgin.h"
 #include "access/ybgin_private.h"
+#include "catalog/pg_collation.h"
+#include "catalog/pg_opfamily.h"
+#include "catalog/pg_type.h"
+#include "nodes/makefuncs.h"
+#include "utils/builtins.h"
 #include "utils/elog.h"
+#include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
+#include "utils/selfuncs.h"
 
 #include "pg_yb_utils.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
 /* Copied from ginget.c. */
 #define GinIsVoidRes(s)		( ((GinScanOpaque) scan->opaque)->isVoidRes )
+
+#define TSVECTOR_GIN_FAM_OID	((Oid) 3659)
 
 /*
  * Parts copied from ginget.c.  Take the code right under label
@@ -224,6 +233,132 @@ ybginGetScanKeys(IndexScanDesc scan)
 }
 
 /*
+ * Generate a Const node of text type from a C string.
+ *
+ * Parts copied from string_to_const.
+ */
+static Const *
+text_to_const(Datum conval, Oid colloid)
+{
+	Oid			datatype = TEXTOID;
+	int			constlen = -1;
+
+	return makeConst(datatype, -1, colloid, constlen,
+					 conval, false, false);
+}
+
+/*
+ * Try to generate a string to serve as an exclusive upperbound for matching
+ * strings with the given prefix.  If successful, return a palloc'd string in
+ * the form of a Const node; else, return NULL.
+ */
+static Const *
+get_greaterstr(Datum prefix, Oid datatype, Oid colloid)
+{
+	Const	   *prefix_const;
+	FmgrInfo	ltproc;
+	Oid			opfamily;
+	Oid			oproid;
+
+	/* make_greater_string cannot accurately handle non-C collations. */
+	if (!lc_collate_is_c(colloid))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot handle ybgin scans with prefix on non-C collation %u",
+						colloid)));
+
+	/*
+	 * For now, hardcode to assume type is text.  This is true for the four
+	 * native postgres ybgin opclasses, but it may no longer be true when
+	 * supporting extensions like btree_gin.  This assumption makes finding
+	 * opfamily and operator easier.
+	 */
+	if (datatype != TEXTOID)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot handle ybgin scans with prefix on key type %u",
+						datatype)));
+
+	opfamily = TEXT_LSM_FAM_OID;
+	oproid = get_opfamily_member(opfamily, datatype, datatype,
+								 BTLessStrategyNumber);
+	if (oproid == InvalidOid)
+		elog(ERROR, "no < operator for opfamily %u", opfamily);
+	fmgr_info(get_opcode(oproid), &ltproc);
+	prefix_const = text_to_const(prefix, colloid);
+	return make_greater_string(prefix_const, &ltproc, colloid);
+}
+
+static void
+ybginSetupBindsForPrefix(TupleDesc tupdesc, YbginScanOpaque ybso,
+						 GinScanEntry entry)
+{
+	Const	   *greaterstr;
+	GinScanOpaque so = (GinScanOpaque) ybso;
+	Oid			colloid;
+	Oid			typoid;
+	YBCPgExpr	expr_start,
+				expr_end;
+
+	colloid = so->ginstate.supportCollation[0];
+	typoid = TupleDescAttr(tupdesc, 0)->atttypid;
+
+	expr_start = YBCNewConstant(ybso->handle,
+								typoid,
+								colloid,
+								entry->queryKey,
+								false /* is_null */);
+
+	greaterstr = get_greaterstr((Datum) entry->queryKey,
+								typoid,
+								colloid);
+	if (greaterstr)
+	{
+		expr_end = YBCNewConstant(ybso->handle,
+								  typoid,
+								  colloid,
+								  greaterstr->constvalue,
+								  false /* is_null */);
+		HandleYBStatus(YBCPgDmlBindColumnCondBetween(ybso->handle,
+													 1 /* attr_num */,
+													 expr_start,
+													 expr_end));
+		pfree(greaterstr);
+	}
+	else
+		HandleYBStatus(YBCPgDmlBindColumnCondBetween(ybso->handle,
+													 1 /* attr_num */,
+													 expr_start,
+													 NULL /* attr_value_end */));
+}
+
+static void
+ybginSetupBindsForPartialMatch(TupleDesc tupdesc, YbginScanOpaque ybso,
+							   GinScanEntry entry)
+{
+	GinScanOpaque so = (GinScanOpaque) ybso;
+
+	/*
+	 * For now, assume partial match always means prefix match.  In the
+	 * future, this should be handled by a new support function, similar to
+	 * the existing support function comparePartial.
+	 *
+	 * TODO(jason): don't assume one column when multicolumn is supported.
+	 */
+	if (so->ginstate.index->rd_opfamily[0] != TSVECTOR_GIN_FAM_OID)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("unsupported ybgin index scan"),
+				 errdetail("Partial match with ybgin index method"
+						   " currently only supports opfamily %u: got %u.",
+						   TSVECTOR_GIN_FAM_OID,
+						   so->ginstate.index->rd_opfamily[0]),
+				 errhint("Turn off index scan using"
+						 " \"SET enable_indexscan TO false\".")));
+	ybginSetupBindsForPrefix(tupdesc, ybso, entry);
+}
+
+/*
  * Add binds for the select.
  */
 static void
@@ -288,12 +423,9 @@ ybginSetupBinds(IndexScanDesc scan)
 	tupdesc = RelationGetDescr(scan->indexRelation);
 
 	if (entry->isPartialMatch)
-		/* For now, don't handle prefix match. */
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("unsupported ybgin index scan"),
-				 errdetail("ybgin index method does not support"
-						   " partial match.")));
+	{
+		ybginSetupBindsForPartialMatch(tupdesc, ybso, entry);
+	}
 	else
 	{
 		YBCPgExpr	expr;

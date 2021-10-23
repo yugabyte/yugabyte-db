@@ -87,6 +87,149 @@ END $$;
 NOTICE:  tsvector_ops count: 1
 NOTICE:  jsonb_ops count: 1
 --
+-- Prefix match without greater string.
+--
+INSERT INTO vectors (v) VALUES
+    (E'\x7F\x7F\x7F'),
+    (E'\x7F\x7F\x7Fa'),
+    (E'\x7F\x7F\x7F\x7F'),
+    (E'\x7F\x7F');
+EXPLAIN (costs off)
+SELECT v FROM vectors WHERE v @@ E'\x7F\x7F\x7F:*' ORDER BY i;
+                        QUERY PLAN
+----------------------------------------------------------
+ Sort
+   Sort Key: i
+   ->  Index Scan using vectors_v_idx on vectors
+         Index Cond: (v @@ '''\x7F\x7F\x7F'':*'::tsquery)
+(4 rows)
+
+SELECT v FROM vectors WHERE v @@ E'\x7F\x7F\x7F:*' ORDER BY i;
+         v
+--------------------
+ '\x7F\x7F\x7F'
+ '\x7F\x7F\x7Fa'
+ '\x7F\x7F\x7F\x7F'
+(3 rows)
+
+EXPLAIN (costs off)
+DELETE FROM vectors WHERE v @@ E'\x7F:*';
+                    QUERY PLAN
+--------------------------------------------------
+ Delete on vectors
+   ->  Index Scan using vectors_v_idx on vectors
+         Index Cond: (v @@ '''\x7F'':*'::tsquery)
+(3 rows)
+
+DELETE FROM vectors WHERE v @@ E'\x7F:*';
+--
+-- Prefix match with other odd characters.
+--
+INSERT INTO vectors (v) VALUES
+    (E'\x7F\u00bf'),
+    (E'\x7F\u00c0'),
+    (E'\x7F\u00cf'),
+    (E'\x7F\u00d0'),
+    (E'\x7F\u00df'),
+    (E'\x7F\u00e0'),
+    (E'\x7F\u00ef'),
+    (E'\x7F\u00f0'),
+    (E'\x7F\u00ff'),
+    (E'\x7F\u0100'),
+    (E'\x7F\u013f'),
+    (E'\x7F\u0140'),
+    (E'\x7F\u017f'),
+    (E'\x7F\u0180'),
+    (E'\x7F\u07ff'),
+    (E'\x7F\u0800'),
+    (E'\x7F\ufeff'),
+    (E'\x7F\uff00'),
+    (E'\x7F\uffff'),
+    (E'\x7F\U00010000'),
+    (E'\x7F\U0001ffff'),
+    (E'\x7F\U00100000'),
+    (E'\x7F\U0010ffff'),
+    (E'\x7F\U0010ffff\x7F');
+SELECT count(*) FROM vectors WHERE v @@ E'\x7F\u00bf:*';
+ count
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM vectors WHERE v @@ E'\x7F\u00cf:*';
+ count
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM vectors WHERE v @@ E'\x7F\u00df:*';
+ count
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM vectors WHERE v @@ E'\x7F\u00ef:*';
+ count
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM vectors WHERE v @@ E'\x7F\u00ff:*';
+ count
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM vectors WHERE v @@ E'\x7F\u013f:*';
+ count
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM vectors WHERE v @@ E'\x7F\u017f:*';
+ count
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM vectors WHERE v @@ E'\x7F\u07ff:*';
+ count
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM vectors WHERE v @@ E'\x7F\ufeff:*';
+ count
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM vectors WHERE v @@ E'\x7F\uffff:*';
+ count
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM vectors WHERE v @@ E'\x7F\U0001ffff:*';
+ count
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM vectors WHERE v @@ E'\x7F\U0010ffff:*';
+ count
+-------
+     2
+(1 row)
+
+SELECT count(*) FROM vectors WHERE v @@ E'\x7F:*';
+ count
+-------
+    24
+(1 row)
+
+DELETE FROM vectors WHERE v @@ E'\x7F:*';
+--
 -- Three ways to query tsvectors containing both of two specific words.
 --
 -- AND inside tsquery
