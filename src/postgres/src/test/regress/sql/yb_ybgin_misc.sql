@@ -65,6 +65,64 @@ BEGIN
 END $$;
 
 --
+-- Prefix match without greater string.
+--
+INSERT INTO vectors (v) VALUES
+    (E'\x7F\x7F\x7F'),
+    (E'\x7F\x7F\x7Fa'),
+    (E'\x7F\x7F\x7F\x7F'),
+    (E'\x7F\x7F');
+EXPLAIN (costs off)
+SELECT v FROM vectors WHERE v @@ E'\x7F\x7F\x7F:*' ORDER BY i;
+SELECT v FROM vectors WHERE v @@ E'\x7F\x7F\x7F:*' ORDER BY i;
+EXPLAIN (costs off)
+DELETE FROM vectors WHERE v @@ E'\x7F:*';
+DELETE FROM vectors WHERE v @@ E'\x7F:*';
+
+--
+-- Prefix match with other odd characters.
+--
+INSERT INTO vectors (v) VALUES
+    (E'\x7F\u00bf'),
+    (E'\x7F\u00c0'),
+    (E'\x7F\u00cf'),
+    (E'\x7F\u00d0'),
+    (E'\x7F\u00df'),
+    (E'\x7F\u00e0'),
+    (E'\x7F\u00ef'),
+    (E'\x7F\u00f0'),
+    (E'\x7F\u00ff'),
+    (E'\x7F\u0100'),
+    (E'\x7F\u013f'),
+    (E'\x7F\u0140'),
+    (E'\x7F\u017f'),
+    (E'\x7F\u0180'),
+    (E'\x7F\u07ff'),
+    (E'\x7F\u0800'),
+    (E'\x7F\ufeff'),
+    (E'\x7F\uff00'),
+    (E'\x7F\uffff'),
+    (E'\x7F\U00010000'),
+    (E'\x7F\U0001ffff'),
+    (E'\x7F\U00100000'),
+    (E'\x7F\U0010ffff'),
+    (E'\x7F\U0010ffff\x7F');
+SELECT count(*) FROM vectors WHERE v @@ E'\x7F\u00bf:*';
+SELECT count(*) FROM vectors WHERE v @@ E'\x7F\u00cf:*';
+SELECT count(*) FROM vectors WHERE v @@ E'\x7F\u00df:*';
+SELECT count(*) FROM vectors WHERE v @@ E'\x7F\u00ef:*';
+SELECT count(*) FROM vectors WHERE v @@ E'\x7F\u00ff:*';
+SELECT count(*) FROM vectors WHERE v @@ E'\x7F\u013f:*';
+SELECT count(*) FROM vectors WHERE v @@ E'\x7F\u017f:*';
+SELECT count(*) FROM vectors WHERE v @@ E'\x7F\u07ff:*';
+SELECT count(*) FROM vectors WHERE v @@ E'\x7F\ufeff:*';
+SELECT count(*) FROM vectors WHERE v @@ E'\x7F\uffff:*';
+SELECT count(*) FROM vectors WHERE v @@ E'\x7F\U0001ffff:*';
+SELECT count(*) FROM vectors WHERE v @@ E'\x7F\U0010ffff:*';
+SELECT count(*) FROM vectors WHERE v @@ E'\x7F:*';
+DELETE FROM vectors WHERE v @@ E'\x7F:*';
+
+--
 -- Three ways to query tsvectors containing both of two specific words.
 --
 
