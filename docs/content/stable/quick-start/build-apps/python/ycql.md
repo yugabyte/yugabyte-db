@@ -34,7 +34,7 @@ showAsideToc: true
     </a>
   </li>
   <li>
-    <a href="" class="nav-link active">
+    <a href="{{< relref "./ycql.md" >}}" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>

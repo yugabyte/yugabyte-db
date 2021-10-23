@@ -28,7 +28,7 @@ showAsideToc: true
     </a>
   </li>
   <li >
-    <a href="" class="nav-link active">
+    <a href="{{< relref "./ysql-sqlalchemy.md" >}}" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - SQL Alchemy
     </a>
