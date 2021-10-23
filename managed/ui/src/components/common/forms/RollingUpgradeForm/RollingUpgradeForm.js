@@ -335,6 +335,7 @@ export default class RollingUpgradeForm extends Component {
               visible={modalVisible}
               onHide={this.resetAndClose}
               currentUniverse={universe.currentUniverse}
+              fetchCurrentUniverse={this.props.fetchCurrentUniverse}
             />
           );
         }
@@ -437,14 +438,17 @@ export default class RollingUpgradeForm extends Component {
             onFormSubmit={submitAction}
             error={error}
             footerAccessory={
-              formValues.systemdValue !== true
-                ? (
-                  <YBCheckBox
-                    label="Confirm Systemd upgrade"
-                    input={{ checked: this.state.formConfirmed, onChange: this.toggleConfirmValidation }}
-                  />
-                )
-                : <span>Already upgraded to Systemd</span>
+              formValues.systemdValue !== true ? (
+                <YBCheckBox
+                  label="Confirm Systemd upgrade"
+                  input={{
+                    checked: this.state.formConfirmed,
+                    onChange: this.toggleConfirmValidation
+                  }}
+                />
+              ) : (
+                <span>Already upgraded to Systemd</span>
+              )
             }
             asyncValidating={!this.state.formConfirmed}
           >
