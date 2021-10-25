@@ -1026,6 +1026,9 @@ bool YBCPgIsYugaByteEnabled() {
 }
 
 void YBCSetTimeout(int timeout_ms, void* extra) {
+  if (!pgapi) {
+    return;
+  }
   const auto default_client_timeout_ms =
       (FLAGS_ysql_client_read_write_timeout_ms < 0
            ? std::max(FLAGS_client_read_write_timeout_ms, 600000)

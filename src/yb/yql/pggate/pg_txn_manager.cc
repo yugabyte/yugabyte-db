@@ -91,6 +91,8 @@ void YBCAssignTransactionPriorityUpperBound(double newval, void* extra) {
   DCHECK_LE(txn_priority_regular_upper_bound, txn_priority_highpri_lower_bound);
 }
 
+int* YBCStatementTimeoutPtr = nullptr;
+
 }
 
 using namespace std::literals;
@@ -120,9 +122,14 @@ DEFINE_int32(pg_yb_session_timeout_ms, kDefaultPgYbSessionTimeoutMs,
 std::shared_ptr<yb::client::YBSession> BuildSession(
     yb::client::YBClient* client,
     const scoped_refptr<ClockBase>& clock) {
+  int statement_timeout = YBCStatementTimeoutPtr ? *YBCStatementTimeoutPtr : 0;
+  int session_timeout = FLAGS_pg_yb_session_timeout_ms;
+  if (statement_timeout > 0 && statement_timeout < session_timeout) {
+    session_timeout = statement_timeout;
+  }
   auto session = std::make_shared<YBSession>(client, clock);
   session->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
-  session->SetTimeout(MonoDelta::FromMilliseconds(FLAGS_pg_yb_session_timeout_ms));
+  session->SetTimeout(MonoDelta::FromMilliseconds(session_timeout));
   return session;
 }
 
