@@ -23,6 +23,7 @@
 #include "access/htup_details.h"
 #include "catalog/pg_class.h"
 #include "catalog/pg_constraint.h"
+#include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "foreign/fdwapi.h"
 #include "miscadmin.h"
@@ -5182,6 +5183,11 @@ fix_indexqual_operand(Node *node, IndexOptInfo *index, int indexcol)
 	if (index->indexkeys[indexcol] != 0)
 	{
 		/* It's a simple index column */
+		if (IsA(node, FuncExpr))
+		{
+			Assert(((FuncExpr *)(node))->funcid == YB_HASH_CODE_OID);
+			return node;
+		}
 		if (IsA(node, Var) &&
 			((Var *) node)->varno == index->rel->relid &&
 			((Var *) node)->varattno == index->indexkeys[indexcol])
