@@ -4,6 +4,7 @@ package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.tasks.params.DetachedNodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.NodeActionType;
@@ -140,31 +141,56 @@ public class NodeInstanceController extends AuthenticatedController {
         BAD_REQUEST, "Invalid nodes in request. Duplicate IP Addresses are not allowed.");
   }
 
-  /**
-   * Endpoint deletes the configured instance for a provider. Since instance name and instance uuid
-   * are absent in a pristine (unused) instance We use IP to query for Instance and delete it
-   */
+  @ApiOperation(value = "Detached node action", response = YBPTask.class)
+  public Result detachedNodeAction(UUID customerUUID, UUID providerUUID, String instanceIP) {
+    // Validate customer UUID and universe UUID and AWS provider.
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Provider provider = Provider.getOrBadRequest(providerUUID);
+    NodeInstance node = findNodeOrThrow(provider, instanceIP);
+    NodeActionFormData nodeActionFormData = parseJsonAndValidate(NodeActionFormData.class);
+    NodeActionType nodeAction = nodeActionFormData.getNodeAction();
+    if (!nodeAction.isForDetached()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Should provide only detached node action, but found " + nodeAction);
+    }
+    if (nodeAction == NodeActionType.PRECHECK_DETACHED && node.isInUse()) {
+      return Results.status(OK); // Skip checks for node in use
+    }
+    List<CustomerTask> running = CustomerTask.findIncompleteByTargetUUID(node.getNodeUuid());
+    if (!running.isEmpty()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Node " + node.getNodeUuid() + " has incomplete tasks");
+    }
+    DetachedNodeTaskParams taskParams = new DetachedNodeTaskParams();
+    taskParams.setNodeUuid(node.getNodeUuid());
+    taskParams.setInstanceType(node.getInstanceTypeCode());
+    taskParams.setAzUuid(node.getZoneUuid());
+
+    UUID taskUUID = commissioner.submit(nodeAction.getCommissionerTask(), taskParams);
+    CustomerTask.create(
+        customer,
+        node.getNodeUuid(),
+        taskUUID,
+        CustomerTask.TargetType.Node,
+        nodeAction.getCustomerTask(),
+        node.getNodeName());
+
+    auditService().createAuditEntry(ctx(), request());
+    return Results.status(OK);
+  }
+
   @ApiOperation(value = "Delete a node instance")
   public Result deleteInstance(UUID customerUUID, UUID providerUUID, String instanceIP) {
     // Validate customer UUID and universe UUID and AWS provider.
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Provider provider = Provider.getOrBadRequest(providerUUID);
-    List<NodeInstance> nodesInProvider = NodeInstance.listByProvider(providerUUID);
-    NodeInstance nodeToBeFound = null;
-    for (NodeInstance node : nodesInProvider) {
-      // TODO: Need to convert routes to use UUID instead of instances' IP address
-      // See: https://github.com/yugabyte/yugabyte-db/issues/7936
-      if (node.getDetails().ip.equals(instanceIP) && !node.isInUse()) {
-        nodeToBeFound = node;
-      }
+    NodeInstance nodeToBeFound = findNodeOrThrow(provider, instanceIP);
+    if (nodeToBeFound.isInUse()) {
+      throw new PlatformServiceException(BAD_REQUEST, "Node is in use");
     }
-    if (nodeToBeFound != null) {
-      nodeToBeFound.delete();
-      auditService().createAuditEntry(ctx(), request());
-      return Results.status(OK);
-    } else {
-      throw new PlatformServiceException(BAD_REQUEST, "Node Not Found");
-    }
+    nodeToBeFound.delete();
+    auditService().createAuditEntry(ctx(), request());
+    return Results.status(OK);
   }
 
   @ApiOperation(value = "Update a node", response = YBPTask.class)
@@ -193,7 +219,7 @@ public class NodeInstanceController extends AuthenticatedController {
     taskParams.expectedUniverseVersion = universe.version;
     taskParams.nodeName = nodeName;
     taskParams.useSystemd = universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd;
-    NodeActionType nodeAction = nodeActionFormData.nodeAction;
+    NodeActionType nodeAction = nodeActionFormData.getNodeAction();
 
     // Check deleting/removing a node will not go below the RF
     // TODO: Always check this for all actions?? For now leaving it as is since it breaks many tests
@@ -249,5 +275,16 @@ public class NodeInstanceController extends AuthenticatedController {
         nodeName);
     auditService().createAuditEntry(ctx(), request(), Json.toJson(nodeActionFormData), taskUUID);
     return new YBPTask(taskUUID).asResult();
+  }
+
+  private NodeInstance findNodeOrThrow(Provider provider, String instanceIP) {
+    List<NodeInstance> nodesInProvider = NodeInstance.listByProvider(provider.uuid);
+    // TODO: Need to convert routes to use UUID instead of instances' IP address
+    // See: https://github.com/yugabyte/yugabyte-db/issues/7936
+    return nodesInProvider
+        .stream()
+        .filter(node -> node.getDetails().ip.equals(instanceIP))
+        .findFirst()
+        .orElseThrow(() -> new PlatformServiceException(BAD_REQUEST, "Node Not Found"));
   }
 }

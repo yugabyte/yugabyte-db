@@ -288,6 +288,7 @@ GET    /customers/:cUUID/zones/:azUUID/nodes/list                              c
 GET    /customers/:cUUID/providers/:pUUID/nodes/list                           com.yugabyte.yw.controllers.NodeInstanceController.listByProvider(cUUID: java.util.UUID, pUUID: java.util.UUID)
 POST   /customers/:cUUID/zones/:azUUID/nodes                                   com.yugabyte.yw.controllers.NodeInstanceController.create(cUUID: java.util.UUID, azUUID: java.util.UUID)
 DELETE /customers/:cUUID/providers/:pUUID/instances/:instanceIP                com.yugabyte.yw.controllers.NodeInstanceController.deleteInstance(cUUID: java.util.UUID, pUUID: java.util.UUID, instanceIP: String)
+POST   /customers/:cUUID/providers/:pUUID/instances/:instanceIP                com.yugabyte.yw.controllers.NodeInstanceController.detachedNodeAction(cUUID: java.util.UUID, pUUID: java.util.UUID, instanceIP: String)
 PUT    /customers/:cUUID/universes/:universeUUID/nodes/:nodeName               com.yugabyte.yw.controllers.NodeInstanceController.nodeAction(cUUID: java.util.UUID, universeUUID: java.util.UUID, nodeName: String)
 
 # Metadata API
