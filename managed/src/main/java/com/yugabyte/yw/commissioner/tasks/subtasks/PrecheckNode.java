@@ -17,6 +17,7 @@ import com.yugabyte.yw.models.NodeInstance;
 import java.util.Map;
 import javax.inject.Inject;
 
+/** Actually now this is fake task, that just must fail */
 public class PrecheckNode extends UniverseTaskBase {
   @Inject
   protected PrecheckNode(BaseTaskDependencies baseTaskDependencies) {
@@ -52,7 +53,7 @@ public class PrecheckNode extends UniverseTaskBase {
       errMsg +=
           String.format(
               "\n-----\nNode %s (%s) failed preflight checks:\n%s",
-              node.instanceName, node.getDetails().ip, entry.getValue());
+              node.getInstanceName(), node.getDetails().ip, entry.getValue());
     }
 
     throw new RuntimeException(errMsg);

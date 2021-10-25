@@ -40,7 +40,7 @@ public class NodeInstanceTest extends FakeDBApplication {
 
     assertNotNull(node);
     assertEquals(defaultNodeName, node.getNodeName());
-    assertEquals(zone.uuid, node.zoneUuid);
+    assertEquals(zone.uuid, node.getZoneUuid());
 
     NodeInstanceFormData.NodeInstanceData details = node.getDetails();
     assertEquals("fake_ip", details.ip);
@@ -69,7 +69,7 @@ public class NodeInstanceTest extends FakeDBApplication {
     assertEquals(nodes.size(), 0);
 
     // Update node to in use and confirm no more fetching.
-    node.inUse = true;
+    node.setInUse(true);
     node.save();
     nodes = NodeInstance.listByZone(zone.uuid, null);
     assertEquals(nodes.size(), 0);
@@ -102,10 +102,10 @@ public class NodeInstanceTest extends FakeDBApplication {
   public void testClearNodeDetails() {
     NodeInstance node = createNode();
     node.setNodeName("yb-universe-1-n1");
-    node.inUse = true;
+    node.setInUse(true);
     node.save();
     node.clearNodeDetails();
-    assertEquals(node.inUse, false);
+    assertEquals(node.isInUse(), false);
     assertEquals(node.getNodeName(), "");
   }
 

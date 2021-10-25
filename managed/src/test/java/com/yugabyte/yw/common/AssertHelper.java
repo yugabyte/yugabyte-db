@@ -149,6 +149,11 @@ public class AssertHelper {
     return assertThrows(PlatformServiceException.class, runnable).getResult();
   }
 
+  /** If using @Transactional you will have to use assertPlatformExceptionInTransaction */
+  public static Result assertPlatformException(ThrowingRunnable runnable) {
+    return assertThrows(PlatformServiceException.class, runnable).getResult();
+  }
+
   public static Metric assertMetricValue(
       MetricService metricService, MetricKey metricKey, Double value) {
     Metric metric = metricService.get(metricKey);

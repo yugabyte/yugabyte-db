@@ -294,7 +294,7 @@ public class Provider extends Model {
   public static Provider getOrBadRequest(UUID providerUuid) {
     Provider provider = find.byId(providerUuid);
     if (provider == null)
-      throw new PlatformServiceException(BAD_REQUEST, "Cannot find universe " + providerUuid);
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot find provider " + providerUuid);
     return provider;
   }
 

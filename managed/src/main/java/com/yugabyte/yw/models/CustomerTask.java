@@ -194,7 +194,10 @@ public class CustomerTask extends Model {
     DeleteXClusterConfig,
 
     @EnumValue("EditXClusterConfig")
-    EditXClusterConfig;
+    EditXClusterConfig,
+
+    @EnumValue("PrecheckNode")
+    PrecheckNode;
 
     public String toString(boolean completed) {
       switch (this) {
@@ -260,6 +263,8 @@ public class CustomerTask extends Model {
           return completed ? "Deleted xcluster config " : "Deleting xcluster config ";
         case EditXClusterConfig:
           return completed ? "Edited xcluster config " : "Editing xcluster config ";
+        case PrecheckNode:
+          return completed ? "Performed preflight check on " : "Performing preflight check on ";
         default:
           return null;
       }
@@ -283,6 +288,8 @@ public class CustomerTask extends Model {
       switch (this) {
         case StartMaster:
           return "Start Master Process on";
+        case PrecheckNode:
+          return "Precheck";
         default:
           return toFriendlyTypeName();
       }
