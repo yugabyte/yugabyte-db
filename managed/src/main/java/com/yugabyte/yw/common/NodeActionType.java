@@ -24,7 +24,23 @@ public enum NodeActionType {
   // Release the instance to the IaaS/provider. Shown only for stopped/removed nodes.
   RELEASE,
   // Start the Master server on the node.
-  START_MASTER;
+  START_MASTER,
+  // Precheck for detached node.
+  PRECHECK_DETACHED(true);
+
+  NodeActionType() {
+    this(false);
+  }
+
+  NodeActionType(boolean forDetached) {
+    this.forDetached = forDetached;
+  }
+
+  private final boolean forDetached;
+
+  public boolean isForDetached() {
+    return forDetached;
+  }
 
   public String toString(boolean completed) {
     switch (this) {
@@ -44,6 +60,8 @@ public enum NodeActionType {
         return completed ? "Released" : "Releasing";
       case START_MASTER:
         return completed ? "Started Master" : "Starting Master";
+      case PRECHECK_DETACHED:
+        return completed ? "Performed preflight check" : "Performing preflight check";
       default:
         return null;
     }
@@ -65,6 +83,8 @@ public enum NodeActionType {
         return TaskType.ReleaseInstanceFromUniverse;
       case START_MASTER:
         return TaskType.StartMasterOnNode;
+      case PRECHECK_DETACHED:
+        return TaskType.PrecheckNodeDetached;
       default:
         return null;
     }
@@ -86,6 +106,8 @@ public enum NodeActionType {
         return CustomerTask.TaskType.Release;
       case START_MASTER:
         return CustomerTask.TaskType.StartMaster;
+      case PRECHECK_DETACHED:
+        return CustomerTask.TaskType.PrecheckNode;
       default:
         return null;
     }

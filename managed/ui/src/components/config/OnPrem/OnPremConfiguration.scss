@@ -47,6 +47,15 @@
   text-decoration: underline;
 }
 
+.precheck-status-container {
+  cursor: pointer;
+}
+
+.precheck-action-container {
+  margin-left: 3px;
+  cursor: pointer;
+}
+
 .form-item-custom-label {
   font-weight: 500;
   text-align: left;

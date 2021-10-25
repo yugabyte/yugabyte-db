@@ -181,9 +181,11 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
     createRootVolumeTasks.forEach(
         task -> {
           JsonNode details = task.getTaskDetails();
-          UUID region = UUID.fromString(details.get("region").get("uuid").asText());
+          UUID azUuid = UUID.fromString(details.get("azUuid").asText());
+          AvailabilityZone zone =
+              AvailabilityZone.find.query().fetch("region").where().idEq(azUuid).findOne();
           String machineImage = details.get("machineImage").asText();
-          assertEquals(taskParams.machineImages.get(region), machineImage);
+          assertEquals(taskParams.machineImages.get(zone.region.uuid), machineImage);
 
           String azUUID = details.get("azUuid").asText();
           if (azUUID.equals(az4.uuid.toString())) {

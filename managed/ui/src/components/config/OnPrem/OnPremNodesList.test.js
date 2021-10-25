@@ -8,6 +8,7 @@ jest.mock('axios');
 const getRegionListItems = jest.fn();
 const getInstanceTypeListItems = jest.fn();
 const showAddNodesDialog = jest.fn();
+const fetchCustomerTasks = jest.fn();
 const handleNodeSubmit = jest.fn((addNodeFn) => addNodeFn);
 const PROVIDER_UUID = '9545ac0f-29ee-46ea-ba89-680720a7cb7e';
 const REGION_NAME = 'us-west1';
@@ -125,6 +126,9 @@ const mockUniverseList = {
     ordinal: 1
   }
 };
+const tasks = {
+  customerTaskList: []
+};
 
 beforeEach(() => {
   render(<OnPremNodesList
@@ -133,6 +137,8 @@ beforeEach(() => {
     getRegionListItems={getRegionListItems}
     getInstanceTypeListItems={getInstanceTypeListItems}
     handleSubmit={handleNodeSubmit}
+    fetchCustomerTasks={fetchCustomerTasks}
+    tasks={tasks}
     showAddNodesDialog={showAddNodesDialog}
   />);
 });

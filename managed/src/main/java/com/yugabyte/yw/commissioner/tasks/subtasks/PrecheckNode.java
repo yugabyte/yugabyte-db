@@ -17,6 +17,7 @@ import com.yugabyte.yw.models.NodeInstance;
 import java.util.Map;
 import javax.inject.Inject;
 
+/** Actually now this is fake task, that just must fail */
 public class PrecheckNode extends UniverseTaskBase {
   @Inject
   protected PrecheckNode(BaseTaskDependencies baseTaskDependencies) {

@@ -23,6 +23,7 @@ import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.commissioner.tasks.params.DetachedNodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeApiHelper;
@@ -55,6 +56,7 @@ import play.mvc.Result;
 public class NodeInstanceControllerTest extends FakeDBApplication {
   private final String FAKE_IP = "fake_ip";
   private final String FAKE_IP_2 = "fake_ip_2";
+  private final String FAKE_INSTANCE_TYPE = "fake_instance_type";
   private Customer customer;
   private Provider provider;
   private Region region;
@@ -79,7 +81,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     nodeData1.ip = FAKE_IP;
     nodeData1.region = region.code;
     nodeData1.zone = zone.code;
-    nodeData1.instanceType = "fake_instance_type";
+    nodeData1.instanceType = FAKE_INSTANCE_TYPE;
     nodeData1.sshUser = "ssh-user";
     node = NodeInstance.create(zone.uuid, nodeData1);
     // Give it a name.
@@ -138,6 +140,23 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     }
 
     return FakeApiHelper.doRequestWithBody("PUT", uri, params);
+  }
+
+  private Result performDetachedNodeAction(
+      UUID customerUUID,
+      UUID providerUUID,
+      String nodeIP,
+      NodeActionType nodeAction,
+      boolean mimicError) {
+    String uri =
+        "/api/customers/" + customerUUID + "/providers/" + providerUUID + "/instances/" + nodeIP;
+    ObjectNode params = Json.newObject();
+    if (mimicError) {
+      params.put("foo", "bar");
+    } else {
+      params.put("nodeAction", nodeAction.name());
+    }
+    return FakeApiHelper.doRequestWithBody("POST", uri, params);
   }
 
   private void setInTransitNode(UUID universeUUID) {
@@ -457,5 +476,82 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
         u.getUniverseDetails().clusters.get(0).equals(taskParams.getValue().clusters.get(0)));
     assertEquals(u.getUniverseDetails().rootCA, taskParams.getValue().rootCA);
     Mockito.reset(mockCommissioner);
+  }
+
+  @Test
+  public void testDetachedNodeActionValid() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(TaskType.class), any(DetachedNodeTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    Result r =
+        performDetachedNodeAction(
+            customer.uuid, provider.uuid, FAKE_IP, NodeActionType.PRECHECK_DETACHED, false);
+    ArgumentCaptor<DetachedNodeTaskParams> paramsCaptor =
+        ArgumentCaptor.forClass(DetachedNodeTaskParams.class);
+    assertOk(r);
+    verify(mockCommissioner, times(1))
+        .submit(Mockito.eq(TaskType.PrecheckNodeDetached), paramsCaptor.capture());
+    DetachedNodeTaskParams params = paramsCaptor.getValue();
+    assertEquals(params.getInstanceType(), FAKE_INSTANCE_TYPE);
+    assertEquals(params.getNodeUuid(), node.getNodeUuid());
+    assertEquals(params.getAzUuid(), node.getZoneUuid());
+    assertAuditEntry(1, customer.uuid);
+  }
+
+  @Test
+  public void testDetachedNodeActionInvalidProviderIP() {
+    UUID invalidProviderUUID = UUID.randomUUID();
+    Result r =
+        assertPlatformException(
+            () ->
+                performDetachedNodeAction(
+                    customer.uuid,
+                    invalidProviderUUID,
+                    FAKE_IP,
+                    NodeActionType.PRECHECK_DETACHED,
+                    false));
+
+    assertBadRequest(r, "Cannot find provider " + invalidProviderUUID);
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testDetachedNodeActionInvalidIP() {
+    Result r =
+        assertPlatformException(
+            () ->
+                performDetachedNodeAction(
+                    customer.uuid,
+                    provider.uuid,
+                    FAKE_IP_2,
+                    NodeActionType.PRECHECK_DETACHED,
+                    false));
+
+    assertBadRequest(r, "Node Not Found");
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testDetachedNodeActionAlreadyInProgress() {
+    CustomerTask.create(
+        customer,
+        node.getNodeUuid(),
+        UUID.randomUUID(),
+        CustomerTask.TargetType.Node,
+        CustomerTask.TaskType.PrecheckNode,
+        node.getNodeName());
+
+    Result r =
+        assertPlatformException(
+            () ->
+                performDetachedNodeAction(
+                    customer.uuid,
+                    provider.uuid,
+                    FAKE_IP,
+                    NodeActionType.PRECHECK_DETACHED,
+                    false));
+
+    assertBadRequest(r, "Node " + node.getNodeUuid() + " has incomplete tasks");
+    assertAuditEntry(0, customer.uuid);
   }
 }

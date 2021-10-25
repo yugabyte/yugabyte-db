@@ -12,11 +12,15 @@ package com.yugabyte.yw.common;
 
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.params.DetachedNodeTaskParams;
+import com.yugabyte.yw.commissioner.tasks.params.INodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
@@ -38,6 +42,7 @@ import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.CertificateInfo.Type;
+import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -49,6 +54,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -120,7 +127,7 @@ public class NodeManager extends DevopsBase {
   }
 
   private List<String> getCloudArgs(NodeTaskParams nodeTaskParam) {
-    List<String> command = new ArrayList<String>();
+    List<String> command = new ArrayList<>();
     command.add("--zone");
     command.add(nodeTaskParam.getAZ().code);
     UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
@@ -153,99 +160,113 @@ public class NodeManager extends DevopsBase {
 
     // TODO: [ENG-1242] we shouldn't be using our keypair, until we fix our VPC to support VPN
     if (userIntent != null && !userIntent.accessKeyCode.equalsIgnoreCase(defaultAccessKeyCode)) {
-      AccessKey accessKey = AccessKey.get(params.getProvider().uuid, userIntent.accessKeyCode);
+      AccessKey accessKey =
+          AccessKey.getOrBadRequest(params.getProvider().uuid, userIntent.accessKeyCode);
       AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
-      if (keyInfo.vaultFile != null) {
-        subCommand.add("--vars_file");
-        subCommand.add(keyInfo.vaultFile);
-        subCommand.add("--vault_password_file");
-        subCommand.add(keyInfo.vaultPasswordFile);
-      }
-      if (keyInfo.privateKey != null) {
-        subCommand.add("--private_key_file");
-        subCommand.add(keyInfo.privateKey);
+      subCommand.addAll(
+          getAccessKeySpecificCommand(
+              params, type, keyInfo, userIntent.providerType, userIntent.accessKeyCode));
+    }
 
-        // We only need to include keyPair name for create instance method and if this is aws.
-        if ((params instanceof AnsibleCreateServer.Params
-                || params instanceof AnsibleSetupServer.Params)
-            && userIntent.providerType.equals(Common.CloudType.aws)) {
-          subCommand.add("--key_pair_name");
-          subCommand.add(userIntent.accessKeyCode);
-          // Also we will add the security group information for create
-          if (params instanceof AnsibleCreateServer.Params) {
-            Region r = params.getRegion();
-            String customSecurityGroupId = r.getSecurityGroupId();
-            if (customSecurityGroupId != null) {
-              subCommand.add("--security_group_id");
-              subCommand.add(customSecurityGroupId);
-            }
+    return subCommand;
+  }
+
+  private List<String> getAccessKeySpecificCommand(
+      INodeTaskParams params,
+      NodeCommandType type,
+      AccessKey.KeyInfo keyInfo,
+      Common.CloudType providerType,
+      String accessKeyCode) {
+    List<String> subCommand = new ArrayList<>();
+
+    if (keyInfo.vaultFile != null) {
+      subCommand.add("--vars_file");
+      subCommand.add(keyInfo.vaultFile);
+      subCommand.add("--vault_password_file");
+      subCommand.add(keyInfo.vaultPasswordFile);
+    }
+    if (keyInfo.privateKey != null) {
+      subCommand.add("--private_key_file");
+      subCommand.add(keyInfo.privateKey);
+
+      // We only need to include keyPair name for create instance method and if this is aws.
+      if ((params instanceof AnsibleCreateServer.Params
+              || params instanceof AnsibleSetupServer.Params)
+          && providerType.equals(Common.CloudType.aws)) {
+        subCommand.add("--key_pair_name");
+        subCommand.add(accessKeyCode);
+        // Also we will add the security group information for create
+        if (params instanceof AnsibleCreateServer.Params) {
+          Region r = params.getRegion();
+          String customSecurityGroupId = r.getSecurityGroupId();
+          if (customSecurityGroupId != null) {
+            subCommand.add("--security_group_id");
+            subCommand.add(customSecurityGroupId);
           }
-        }
-      }
-      // security group is only used during Azure create instance method
-      if (params instanceof AnsibleCreateServer.Params
-          && userIntent.providerType.equals(Common.CloudType.azu)) {
-        Region r = params.getRegion();
-        String customSecurityGroupId = r.getSecurityGroupId();
-        if (customSecurityGroupId != null) {
-          subCommand.add("--security_group_id");
-          subCommand.add(customSecurityGroupId);
-        }
-      }
-
-      if (params instanceof AnsibleDestroyServer.Params
-          && userIntent.providerType.equals(Common.CloudType.onprem)) {
-        subCommand.add("--install_node_exporter");
-      }
-
-      subCommand.add("--custom_ssh_port");
-      subCommand.add(keyInfo.sshPort.toString());
-
-      if ((type == NodeCommandType.Provision
-              || type == NodeCommandType.Destroy
-              || type == NodeCommandType.Create)
-          && keyInfo.sshUser != null) {
-        subCommand.add("--ssh_user");
-        subCommand.add(keyInfo.sshUser);
-      }
-
-      if (type == NodeCommandType.Precheck) {
-        subCommand.add("--precheck_type");
-        if (keyInfo.skipProvisioning) {
-          subCommand.add("configure");
-          subCommand.add("--ssh_user");
-          subCommand.add("yugabyte");
-        } else {
-          subCommand.add("provision");
-          if (keyInfo.sshUser != null) {
-            subCommand.add("--ssh_user");
-            subCommand.add(keyInfo.sshUser);
-          }
-        }
-
-        if (keyInfo.airGapInstall) {
-          subCommand.add("--air_gap");
-        }
-        if (keyInfo.installNodeExporter) {
-          subCommand.add("--install_node_exporter");
-        }
-      }
-
-      if (params instanceof AnsibleSetupServer.Params) {
-        if (keyInfo.airGapInstall) {
-          subCommand.add("--air_gap");
-        }
-
-        if (keyInfo.installNodeExporter) {
-          subCommand.add("--install_node_exporter");
-          subCommand.add("--node_exporter_port");
-          subCommand.add(Integer.toString(keyInfo.nodeExporterPort));
-          subCommand.add("--node_exporter_user");
-          subCommand.add(keyInfo.nodeExporterUser);
         }
       }
     }
+    // security group is only used during Azure create instance method
+    if (params instanceof AnsibleCreateServer.Params && providerType.equals(Common.CloudType.azu)) {
+      Region r = params.getRegion();
+      String customSecurityGroupId = r.getSecurityGroupId();
+      if (customSecurityGroupId != null) {
+        subCommand.add("--security_group_id");
+        subCommand.add(customSecurityGroupId);
+      }
+    }
 
+    if (params instanceof AnsibleDestroyServer.Params
+        && providerType.equals(Common.CloudType.onprem)) {
+      subCommand.add("--install_node_exporter");
+    }
+
+    subCommand.add("--custom_ssh_port");
+    subCommand.add(keyInfo.sshPort.toString());
+
+    if ((type == NodeCommandType.Provision
+            || type == NodeCommandType.Destroy
+            || type == NodeCommandType.Create)
+        && keyInfo.sshUser != null) {
+      subCommand.add("--ssh_user");
+      subCommand.add(keyInfo.sshUser);
+    }
+
+    if (type == NodeCommandType.Precheck) {
+      subCommand.add("--precheck_type");
+      if (keyInfo.skipProvisioning) {
+        subCommand.add("configure");
+        subCommand.add("--ssh_user");
+        subCommand.add("yugabyte");
+      } else {
+        subCommand.add("provision");
+        if (keyInfo.sshUser != null) {
+          subCommand.add("--ssh_user");
+          subCommand.add(keyInfo.sshUser);
+        }
+      }
+
+      if (keyInfo.airGapInstall) {
+        subCommand.add("--air_gap");
+      }
+      if (keyInfo.installNodeExporter) {
+        subCommand.add("--install_node_exporter");
+      }
+    }
+
+    if (params instanceof AnsibleSetupServer.Params) {
+      if (keyInfo.airGapInstall) {
+        subCommand.add("--air_gap");
+      }
+
+      if (keyInfo.installNodeExporter) {
+        subCommand.add("--install_node_exporter");
+        subCommand.add("--node_exporter_port");
+        subCommand.add(Integer.toString(keyInfo.nodeExporterPort));
+        subCommand.add("--node_exporter_user");
+        subCommand.add(keyInfo.nodeExporterUser);
+      }
+    }
     return subCommand;
   }
 
@@ -562,7 +583,7 @@ public class NodeManager extends DevopsBase {
 
   private List<String> getConfigureSubCommand(AnsibleConfigureServers.Params taskParam) {
     UserIntent userIntent = getUserIntentFromParams(taskParam);
-    List<String> subcommand = new ArrayList<String>();
+    List<String> subcommand = new ArrayList<>();
     Universe universe = Universe.getOrBadRequest(taskParam.universeUUID);
     String masterAddresses = universe.getMasterAddresses(false);
     subcommand.add("--master_addresses_for_tserver");
@@ -980,6 +1001,45 @@ public class NodeManager extends DevopsBase {
 
     LOG.trace("ansible env vars {}", envVars);
     return envVars;
+  }
+
+  public ShellResponse detachedNodeCommand(
+      NodeCommandType type, DetachedNodeTaskParams nodeTaskParam) {
+    List<String> commandArgs = new ArrayList<>();
+    if (type != NodeCommandType.Precheck) {
+      throw new UnsupportedOperationException("Not supported " + type);
+    }
+    Provider provider = nodeTaskParam.getProvider();
+    List<AccessKey> accessKeys = AccessKey.getAll(provider.uuid);
+    if (accessKeys.isEmpty()) {
+      throw new RuntimeException("No access keys for provider: " + provider.uuid);
+    }
+    AccessKey accessKey = accessKeys.get(0);
+    AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
+    commandArgs.addAll(
+        getAccessKeySpecificCommand(
+            nodeTaskParam, type, keyInfo, Common.CloudType.onprem, accessKey.getKeyCode()));
+
+    InstanceType instanceType = InstanceType.get(provider.uuid, nodeTaskParam.getInstanceType());
+    commandArgs.add("--mount_points");
+    commandArgs.add(instanceType.instanceTypeDetails.volumeDetailsList.get(0).mountPath);
+
+    commandArgs.add(nodeTaskParam.getNodeName());
+
+    NodeInstance nodeInstance = NodeInstance.getOrBadRequest(nodeTaskParam.getNodeUuid());
+    JsonNode nodeDetails = Json.toJson(nodeInstance.getDetails());
+    ((ObjectNode) nodeDetails).put("nodeName", DetachedNodeTaskParams.DEFAULT_NODE_NAME);
+
+    List<String> cloudArgs = Arrays.asList("--node_metadata", Json.stringify(nodeDetails));
+
+    return execCommand(
+        nodeTaskParam.getRegion().uuid,
+        null,
+        null,
+        type.toString().toLowerCase(),
+        commandArgs,
+        cloudArgs,
+        Collections.emptyMap());
   }
 
   public ShellResponse nodeCommand(NodeCommandType type, NodeTaskParams nodeTaskParam) {

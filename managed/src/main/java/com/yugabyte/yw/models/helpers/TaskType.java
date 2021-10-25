@@ -131,6 +131,8 @@ public enum TaskType {
 
   PrecheckNode("subtasks.PrecheckNode"),
 
+  PrecheckNodeDetached("subtasks.PrecheckNodeDetached"),
+
   AnsibleUpdateNodeInfo("subtasks.AnsibleUpdateNodeInfo"),
 
   BulkImport("subtasks.BulkImport"),
