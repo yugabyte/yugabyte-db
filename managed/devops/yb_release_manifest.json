@@ -29,7 +29,8 @@
     "bin/ybcloud.sh",
     "bin/edit_universe_details.py",
     "bin/support_package.py",
-    "bin/support_package_utils.py"
+    "bin/support_package_utils.py",
+    "bin/filtered_logs.sh"
   ],
   "filter_plugins": [
     "filter_plugins/*"

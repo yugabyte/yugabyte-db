@@ -46,6 +46,7 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/spinlock.h"
 #include "yb/util/locks.h"
+#include "yb/util/monotime.h"
 
 namespace yb {
 
@@ -123,7 +124,8 @@ class LogReader {
       const int64_t starting_at,
       const int64_t up_to,
       int64_t max_bytes_to_read,
-      ReplicateMsgs* replicates) const;
+      ReplicateMsgs* replicates,
+      CoarseTimePoint deadline = CoarseTimePoint::max()) const;
   static const int64_t kNoSizeLimit;
 
   // Look up the OpId for the given operation index.

@@ -30,6 +30,7 @@
 #include "yb/util/subprocess.h"
 #include "yb/yql/redis/redisserver/redis_parser.h"
 
+using namespace std::chrono_literals;
 using std::unique_ptr;
 using std::vector;
 using std::string;
@@ -965,8 +966,61 @@ class YBBackupTestNumTablets : public YBBackupTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     YBBackupTest::UpdateMiniClusterOptions(options);
 
+    // For convenience, rather than create a subclass for tablet splitting tests, add tablet split
+    // flags here since they shouldn't really affect non-tablet splitting tests.
+    options->extra_master_flags.push_back("--enable_automatic_tablet_splitting=false");
+    options->extra_master_flags.push_back("--TEST_select_all_tablets_for_split=true");
+    options->extra_tserver_flags.push_back("--db_block_size_bytes=1024");
     options->extra_tserver_flags.push_back("--ycql_num_tablets=3");
     options->extra_tserver_flags.push_back("--ysql_num_tablets=3");
+  }
+
+ protected:
+  Result<string> GetTableId(const string& table_name, const string& log_prefix) {
+    LOG(INFO) << log_prefix << ": get table";
+    vector<client::YBTableName> tables = VERIFY_RESULT(client_->ListTables(table_name));
+    if (tables.size() != 1) {
+      return STATUS_FORMAT(InternalError, "Expected 1 table: got $0", tables.size());
+    }
+    return tables.front().table_id();
+  }
+
+  Result<google::protobuf::RepeatedPtrField<yb::master::TabletLocationsPB>> GetTablets(
+      const string& table_name, const string& log_prefix) {
+    auto table_id = VERIFY_RESULT(GetTableId(table_name, log_prefix));
+
+    LOG(INFO) << log_prefix << ": get tablets";
+    google::protobuf::RepeatedPtrField<yb::master::TabletLocationsPB> tablets;
+    RETURN_NOT_OK(client_->GetTabletsFromTableId(table_id, -1, &tablets));
+    return tablets;
+  }
+
+  Result<bool> CheckPartitions(
+      const google::protobuf::RepeatedPtrField<yb::master::TabletLocationsPB>& tablets,
+      const vector<string>& expected_splits) {
+    SCHECK_EQ(tablets.size(), expected_splits.size() + 1, InvalidArgument, "");
+
+    static const string empty;
+    for (int i = 0; i < tablets.size(); i++) {
+      const string& expected_start = (i == 0 ? empty : expected_splits[i-1]);
+      const string& expected_end = (i == tablets.size() - 1 ? empty : expected_splits[i]);
+
+      if (tablets[i].partition().partition_key_start() != expected_start) {
+        LOG(WARNING) << "actual partition start "
+                     << b2a_hex(tablets[i].partition().partition_key_start())
+                     << " not equal to expected start "
+                     << b2a_hex(expected_start);
+        return false;
+      }
+      if (tablets[i].partition().partition_key_end() != expected_end) {
+        LOG(WARNING) << "actual partition end "
+                     << b2a_hex(tablets[i].partition().partition_key_end())
+                     << " not equal to expected end "
+                     << b2a_hex(expected_end);
+        return false;
+      }
+    }
+    return true;
   }
 };
 
@@ -987,14 +1041,7 @@ TEST_F_EX(YBBackupTest,
   ASSERT_NO_FATALS(CreateTable(Format(
       "CREATE TABLE $0 (k INT PRIMARY KEY, v TEXT, UNIQUE (v))", table_name)));
 
-  LOG(INFO) << "pre-backup: get table";
-  std::vector<client::YBTableName> tables = ASSERT_RESULT(client_->ListTables(index_name));
-  ASSERT_EQ(tables.size(), 1);
-  string table_id = tables.front().table_id();
-
-  LOG(INFO) << "pre-backup: get tablets";
-  google::protobuf::RepeatedPtrField<yb::master::TabletLocationsPB> tablets;
-  ASSERT_OK(client_->GetTabletsFromTableId(table_id, -1, &tablets));
+  auto tablets = ASSERT_RESULT(GetTablets(index_name, "pre-backup"));
   ASSERT_EQ(tablets.size(), 3);
 
   const string backup_dir = GetTempDir("backup");
@@ -1021,10 +1068,7 @@ TEST_F_EX(YBBackupTest,
   // 2. finding 2 index tablets
   ASSERT_NO_FATALS(CreateTable(Format(
       "CREATE TABLE $0 (k INT PRIMARY KEY, v TEXT, UNIQUE (v))", table_name)));
-  tables = ASSERT_RESULT(client_->ListTables(index_name));
-  ASSERT_EQ(tables.size(), 1);
-  table_id = tables.front().table_id();
-  ASSERT_OK(client_->GetTabletsFromTableId(table_id, -1, &tablets));
+  tablets = ASSERT_RESULT(GetTablets(index_name, "pre-restore"));
   ASSERT_EQ(tablets.size(), 2);
   ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
 
@@ -1032,14 +1076,159 @@ TEST_F_EX(YBBackupTest,
   // the external snapshot (3 tablets), so it should adjust to match the snapshot (3 tablets).
   ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
 
-  LOG(INFO) << "post-restore: get table";
-  tables = ASSERT_RESULT(client_->ListTables(index_name));
-  ASSERT_EQ(tables.size(), 1);
-  table_id = tables.front().table_id();
-
-  LOG(INFO) << "post-restore: get tablets";
-  ASSERT_OK(client_->GetTabletsFromTableId(table_id, -1, &tablets));
+  tablets = ASSERT_RESULT(GetTablets(index_name, "post-restore"));
   ASSERT_EQ(tablets.size(), 3);
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+// Test backup/restore when a hash-partitioned table undergoes manual tablet splitting.  Most
+// often, if tablets are split after creation, the partition boundaries will not be evenly spaced.
+// This then differs from the boundaries of a hash table that is pre-split with the same number of
+// tablets.  Restoring snapshots to a table with differing partition boundaries should be detected
+// and handled by repartitioning the table, even if the number of partitions are equal.  This test
+// exercises that:
+// 1. start with 3 pre-split tablets
+// 2. split one of them to make 4 tablets
+// 3. backup
+// 4. drop table
+// 5. restore, which will initially create 4 pre-split tablets then realize the partition boundaries
+//    differ
+TEST_F_EX(YBBackupTest,
+          YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLManualTabletSplit),
+          YBBackupTestNumTablets) {
+  const string table_name = "mytbl";
+
+  // Create table.
+  ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0 (k INT PRIMARY KEY)", table_name)));
+
+  // Insert rows that hash to each possible partition range for both manual split and even split.
+  //
+  // part range    | k  | hash   | manual split part num | even split part num | interesting
+  //       -0x3fff | 1  | 0x1210 | 1                     | 1                   | N
+  // 0x3fff-0x5555 | 6  | 0x4e58 | 1                     | 2                   | Y
+  // 0x5555-0x7ffe | 9  | 0x5d60 | 2                     | 2                   | N
+  // 0x7ffe-0x9c76 | 23 | 0x986c | 2                     | 3                   | Y
+  // 0x9c76-0xaaaa | 4  | 0x9eaf | 3                     | 3                   | N
+  // 0xaaaa-0xbffd | 27 | 0xbd51 | 4                     | 3                   | Y
+  // 0xbffd-       | 2  | 0xc0c4 | 4                     | 4                   | N
+  //
+  // Split ranges are further discused in comments below.
+  ASSERT_NO_FATALS(InsertRows(
+      Format("INSERT INTO $0 VALUES (generate_series(1, 100))", table_name), 100));
+  string select_query = Format("SELECT k, to_hex(yb_hash_code(k)) AS hash FROM $0"
+                               " WHERE k IN (1, 2, 4, 6, 9, 23, 27) ORDER BY hash",
+                               table_name);
+  string select_output = R"#(
+                            k  | hash
+                           ----+------
+                             1 | 1210
+                             6 | 4e58
+                             9 | 5d60
+                            23 | 986c
+                             4 | 9eaf
+                            27 | bd51
+                             2 | c0c4
+                           (7 rows)
+                         )#";
+  ASSERT_NO_FATALS(RunPsqlCommand(select_query, select_output));
+
+  // It has three tablets because of --ysql_num_tablets=3.
+  auto tablets = ASSERT_RESULT(GetTablets(table_name, "pre-split"));
+  for (const auto& tablet : tablets) {
+    if (VLOG_IS_ON(1)) {
+      VLOG(1) << "tablet location:\n" << tablet.DebugString();
+    } else {
+      LOG(INFO) << "tablet_id: " << tablet.tablet_id()
+                << ", partition: " << tablet.partition().ShortDebugString();
+    }
+  }
+  ASSERT_EQ(tablets.size(), 3);
+  ASSERT_TRUE(ASSERT_RESULT(CheckPartitions(tablets, {"\x55\x55", "\xaa\xaa"})));
+
+  // Choose the middle tablet among
+  // -       -0x5555
+  // - 0x5555-0xaaaa
+  // - 0xaaaa-
+  constexpr int middle_index = 1;
+  ASSERT_EQ(tablets[middle_index].partition().partition_key_start(), "\x55\x55");
+  string tablet_id = tablets[middle_index].tablet_id();
+
+  // Flush table because it is necessary for manual tablet split.
+  auto table_id = ASSERT_RESULT(GetTableId(table_name, "pre-split"));
+  ASSERT_OK(client_->FlushTables({table_id}, false, 30, false));
+
+  // Split it.
+  master::SplitTabletRequestPB req;
+  req.set_tablet_id(tablet_id);
+  master::SplitTabletResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(30s * kTimeMultiplier);
+  ASSERT_OK(cluster_->master_proxy()->SplitTablet(req, &resp, &rpc));
+
+  // Wait for split to complete.
+  constexpr int num_tablets = 4;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto res = VERIFY_RESULT(GetTablets(table_name, "wait-split"));
+        return res.size() == num_tablets;
+      }, 20s * kTimeMultiplier, Format("Waiting for tablet count: $0", num_tablets)));
+
+  // Verify that it has these four tablets:
+  // -       -0x5555
+  // - 0x5555-0x9c76
+  // - 0x9c76-0xaaaa
+  // - 0xaaaa-
+  // 0x9c76 just happens to be what tablet splitting chooses.  Tablet splitting should choose the
+  // split point based on the existing data.  Don't verify that it chose the right split point: that
+  // is out of scope of this test.  Just trust what it chose.
+  tablets = ASSERT_RESULT(GetTablets(table_name, "post-split"));
+  for (const auto& tablet : tablets) {
+    if (VLOG_IS_ON(1)) {
+      VLOG(1) << "tablet location:\n" << tablet.DebugString();
+    } else {
+      LOG(INFO) << "tablet_id: " << tablet.tablet_id()
+                << ", split_depth: " << tablet.split_depth()
+                << ", partition: " << tablet.partition().ShortDebugString();
+    }
+  }
+  ASSERT_EQ(tablets.size(), num_tablets);
+  ASSERT_TRUE(ASSERT_RESULT(CheckPartitions(tablets, {"\x55\x55", "\x9c\x76", "\xaa\xaa"})));
+
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+
+  // Drop the table so that, on restore, running the ysql_dump file recreates the table.  ysql_dump
+  // should specify SPLIT INTO 4 TABLETS because the table in snapshot has 4 tablets.
+  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
+
+  // Before performing restore, demonstrate that the table that would be created by the ysql_dump
+  // file will have the following even splits:
+  // -       -0x3fff
+  // - 0x3fff-0x7ffe
+  // - 0x7ffe-0xbffd
+  // - 0xbffd-
+  // Note: If this test starts failing because of this, the default splits probably changed to
+  // something more even like -0x4000, 0x4000-0x8000, and so forth.  Simply adjust the test
+  // expectation here.
+  ASSERT_NO_FATALS(CreateTable(
+      Format("CREATE TABLE $0 (k INT PRIMARY KEY) SPLIT INTO 4 TABLETS", table_name)));
+  tablets = ASSERT_RESULT(GetTablets(table_name, "mock-restore"));
+  ASSERT_EQ(tablets.size(), 4);
+  ASSERT_TRUE(ASSERT_RESULT(CheckPartitions(tablets, {"\x3f\xff", "\x7f\xfe", "\xbf\xfd"})));
+  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
+
+  // Restore should notice that the table it creates from ysql_dump file has different partition
+  // boundaries from the one in the external snapshot EVEN THOUGH the number of partitions is four
+  // in both, so it should recreate partitions to match the splits in the snapshot.
+  ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
+
+  // Validate.
+  tablets = ASSERT_RESULT(GetTablets(table_name, "post-restore"));
+  ASSERT_EQ(tablets.size(), 4);
+  ASSERT_TRUE(ASSERT_RESULT(CheckPartitions(tablets, {"\x55\x55", "\x9c\x76", "\xaa\xaa"})));
+  ASSERT_NO_FATALS(RunPsqlCommand(select_query, select_output));
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
