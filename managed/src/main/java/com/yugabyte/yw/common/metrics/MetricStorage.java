@@ -86,7 +86,7 @@ public class MetricStorage {
             .filter(
                 metric -> {
                   MetricKey key = MetricKey.from(metric);
-                  boolean deleted = metricsByKey.remove(key, metric);
+                  boolean deleted = (metricsByKey.remove(key) != null);
                   dirtyMetrics.remove(key);
                   deletedMetrics.add(key);
                   return deleted;
