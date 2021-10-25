@@ -389,6 +389,11 @@ extern bool yb_enable_create_with_table_oid;
 extern int yb_index_state_flags_update_delay;
 
 //------------------------------------------------------------------------------
+// GUC variables needed by YB via their YB pointers.
+extern int StatementTimeout;
+extern int *YBCStatementTimeoutPtr;
+
+//------------------------------------------------------------------------------
 // YB Debug utils.
 
 /**

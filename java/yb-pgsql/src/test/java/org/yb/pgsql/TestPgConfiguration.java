@@ -471,6 +471,29 @@ public class TestPgConfiguration extends BasePgSQLTest {
     }
   }
 
+  @Test
+  public void testStatementTimeout() throws Exception {
+    int tserver = spawnTServer();
+
+    // By default, there is no statement timeout so "SELECT pg_sleep(5);" should finish
+    // successfully.
+    try (Connection connection = getConnectionBuilder().withTServer(tserver).connect();
+         Statement statement = connection.createStatement()) {
+      assertQuery(statement, "SHOW statement_timeout", new Row("0"));
+      assertQuery(statement, "SELECT pg_sleep(5);", new Row(""));
+    }
+
+    // If we set statement timeout to 1000ms in ysql_pg.conf via --ysql_pg_conf_csv, we should
+    // see the same "SELECT pg_sleep(5);" get cancelled due to statement timeout.
+    tserver = spawnTServerWithFlags("ysql_pg_conf_csv", "statement_timeout=1000");
+    try (Connection connection = getConnectionBuilder().withTServer(tserver).connect();
+         Statement statement = connection.createStatement()) {
+      assertQuery(statement, "SHOW statement_timeout", new Row("1s"));
+      runInvalidQuery(statement, "SELECT pg_sleep(5);",
+                      "ERROR: canceling statement due to statement timeout");
+    }
+  }
+
   private int spawnTServer() throws Exception {
     return spawnTServerWithFlags(Collections.emptyMap());
   }
