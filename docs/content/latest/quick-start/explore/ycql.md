@@ -132,7 +132,7 @@ Query all the values you have inserted into the database for the stock symbol 'A
 ycqlsh> SELECT * FROM myapp.stock_market WHERE stock_symbol = 'AAPL';
 ```
 
-```
+```output
  stock_symbol | ts                  | current_price
 --------------+---------------------+---------------
          AAPL | 2017-10-26 09:00:00 |        157.41
@@ -147,7 +147,7 @@ Query all the values for `FB` and `GOOG` as follows.
 ycqlsh> SELECT * FROM myapp.stock_market WHERE stock_symbol in ('FB', 'GOOG');
 ```
 
-```
+```output
  stock_symbol | ts                  | current_price
 --------------+---------------------+---------------
            FB | 2017-10-26 09:00:00 |        170.63
@@ -157,7 +157,6 @@ ycqlsh> SELECT * FROM myapp.stock_market WHERE stock_symbol in ('FB', 'GOOG');
 
 (4 rows)
 ```
-
 
 {{<tip title="Next step" >}}
 
