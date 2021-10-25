@@ -92,6 +92,9 @@ export const BOOTSTRAP_PROVIDER_RESPONSE = 'BOOTSTRAP_PROVIDER_RESPONSE';
 export const DELETE_INSTANCE = 'DELETE_INSTANCE';
 export const DELETE_INSTANCE_RESPONSE = 'DELETE_INSTANCE_RESPONSE';
 
+export const PRECHECK_INSTANCE = 'PRECHECK_INSTANCE';
+export const PRECHECK_INSTANCE_RESPONSE = 'PRECHECK_INSTANCE_RESPONSE';
+
 export const EDIT_PROVIDER = 'EDIT_PROVIDER';
 export const EDIT_PROVIDER_RESPONSE = 'EDIT_PROVIDER_RESPONSE';
 
@@ -637,6 +640,22 @@ export function deleteInstance(providerUUID, instanceIP) {
 export function deleteInstanceResponse(response) {
   return {
     type: DELETE_INSTANCE_RESPONSE,
+    payload: response
+  };
+}
+
+export function precheckInstance(providerUUID, instanceIP) {
+  const uri = `${getProviderEndpoint(providerUUID)}/instances/${instanceIP}`;
+  const request = axios.post(uri, { nodeAction: 'PRECHECK_DETACHED' });
+  return {
+    type: PRECHECK_INSTANCE,
+    payload: request
+  };
+}
+
+export function precheckInstanceResponse(response) {
+  return {
+    type: PRECHECK_INSTANCE_RESPONSE,
     payload: response
   };
 }
