@@ -985,9 +985,15 @@ class YBBackup:
 
         # Specify cert file in case TLS is enabled.
         cert_flag = []
+        ipv6_flag = []
         if self.args.certs_dir:
             cert_flag = ["--certs_dir_name", self.args.certs_dir]
-            cmd_line_args = cert_flag + cmd_line_args
+            ipv6_flag = ["--net_address_filter", "ipv6_all"]
+            cmd_line_args = ipv6_flag + cert_flag + cmd_line_args
+        else:
+            ipv6_flag = ["--net_address_filter", "ipv6_all"]
+            cmd_line_args = ipv6_flag + cmd_line_args
+
 
         return self.run_tool(self.args.local_yb_admin_binary, self.args.remote_yb_admin_binary,
                              ['--master_addresses', self.args.masters],
