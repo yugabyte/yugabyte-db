@@ -390,7 +390,7 @@ void hash_entry_dealloc(int new_bucket_id, int old_bucket_id, unsigned char *que
 pgssEntry* hash_entry_alloc(pgssSharedState *pgss, pgssHashKey *key, int encoding);
 Size hash_memsize(void);
 
-int read_query_buffer(int bucket_id, uint64 queryid, char *query_txt);
+int read_query_buffer(int bucket_id, uint64 queryid, char *query_txt, size_t pos);
 uint64 read_query(unsigned char *buf, uint64 queryid, char * query, size_t pos);
 pgssQueryEntry* hash_find_query_entry(uint64 bucket_id, uint64 queryid, uint64 dbid, uint64 userid, uint64 ip, uint64 appid);
 pgssQueryEntry* hash_create_query_entry(uint64 bucket_id, uint64 queryid, uint64 dbid, uint64 userid, uint64 ip, uint64 appid);
