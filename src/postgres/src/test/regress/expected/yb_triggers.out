@@ -396,6 +396,13 @@ SELECT * FROM incremental_key;
  1 | 2 | 10 |  1
 (1 row)
 
+UPDATE incremental_key SET v1 = 10 WHERE yb_hash_code(h) = yb_hash_code(1);
+SELECT * FROM incremental_key;
+ h | r | v1 | v2
+---+---+----+----
+ 1 | 3 | 10 |  1
+(1 row)
+
 DROP TABLE incremental_key;
 DROP FUNCTION increment_key;
 CREATE TABLE incremental_value(h INT, r INT, v1 INT, v2 INT, PRIMARY KEY(h, r ASC));

@@ -170,6 +170,11 @@ Status QLRocksDBStorage::GetIterator(const PgsqlReadRequestPB& request,
                    request.hash_code(),
                    std::move(hashed_components),
                    std::move(range_components)),
+        request.has_hash_code() ? boost::make_optional<int32_t>(request.hash_code())
+                                    : boost::none,
+        request.has_max_hash_code() ? boost::make_optional<int32_t>(
+                                        request.max_hash_code())
+                                    : boost::none,
         start_doc_key,
         request.is_forward_scan())));
   } else {

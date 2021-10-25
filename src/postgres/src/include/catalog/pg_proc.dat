@@ -10283,7 +10283,7 @@
   proisstrict => 'f', prorettype => 'bool', proargtypes => 'oid int4 int4 any',
   proargmodes => '{i,i,i,v}', prosrc => 'satisfies_hash_partition' },
 
-{ oid => '8020', descr => 'function to compute internal hash code of given values',
+{ oid => '8020', descr => 'function to compute internal hash code of given values', oid_symbol => 'YB_HASH_CODE_OID',
   proname => 'yb_hash_code', provariadic => 'any', proisstrict => 'f',
   prorettype => 'int4', proargtypes => 'any', proallargtypes => '{any}',
   proargmodes => '{v}', prosrc => 'yb_hash_code' },

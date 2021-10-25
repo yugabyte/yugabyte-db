@@ -120,6 +120,25 @@ SELECT r FROM reverse_scan_test WHERE h = 1;
  14
 (14 rows)
 
+SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint);
+ r
+----
+  1
+  2
+  3
+  4
+  5
+  6
+  7
+  8
+  9
+ 10
+ 11
+ 12
+ 13
+ 14
+(14 rows)
+
 SELECT r FROM reverse_scan_test WHERE h = 1 AND r > 2 and r < 9;
  r
 ---
@@ -131,7 +150,28 @@ SELECT r FROM reverse_scan_test WHERE h = 1 AND r > 2 and r < 9;
  8
 (6 rows)
 
+SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) AND r > 2 and r < 9;
+ r
+---
+ 3
+ 4
+ 5
+ 6
+ 7
+ 8
+(6 rows)
+
 SELECT r FROM reverse_scan_test WHERE h = 1 AND r > 2 and r < 9 LIMIT 5;
+ r
+---
+ 3
+ 4
+ 5
+ 6
+ 7
+(5 rows)
+
+SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) AND r > 2 and r < 9 LIMIT 5;
  r
 ---
  3
@@ -158,7 +198,39 @@ SELECT r FROM reverse_scan_test WHERE h = 1 AND r >= 2 and r <= 13;
  13
 (12 rows)
 
+SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) AND r >= 2 and r <= 13;
+ r
+----
+  2
+  3
+  4
+  5
+  6
+  7
+  8
+  9
+ 10
+ 11
+ 12
+ 13
+(12 rows)
+
 SELECT r FROM reverse_scan_test WHERE h = 1 AND r >= 2 and r <= 13 LIMIT 10;
+ r
+----
+  2
+  3
+  4
+  5
+  6
+  7
+  8
+  9
+ 10
+ 11
+(10 rows)
+
+SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) AND r >= 2 and r <= 13 LIMIT 10;
  r
 ----
   2
@@ -193,7 +265,36 @@ SELECT r FROM reverse_scan_test WHERE h = 1 ORDER BY r DESC;
   1
 (14 rows)
 
+SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) ORDER BY r DESC;
+ r
+----
+ 14
+ 13
+ 12
+ 11
+ 10
+  9
+  8
+  7
+  6
+  5
+  4
+  3
+  2
+  1
+(14 rows)
+
 SELECT r FROM reverse_scan_test WHERE h = 1 ORDER BY r DESC LIMIT 5;
+ r
+----
+ 14
+ 13
+ 12
+ 11
+ 10
+(5 rows)
+
+SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) ORDER BY r DESC LIMIT 5;
  r
 ----
  14
@@ -213,7 +314,34 @@ SELECT r FROM reverse_scan_test WHERE h = 1 AND r < 9 ORDER BY r DESC LIMIT 5;
  4
 (5 rows)
 
+SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) AND r < 9 ORDER BY r DESC LIMIT 5;
+ r
+---
+ 8
+ 7
+ 6
+ 5
+ 4
+(5 rows)
+
 SELECT r FROM reverse_scan_test WHERE h = 1 AND r > 1 AND r < 14 ORDER BY r DESC;
+ r
+----
+ 13
+ 12
+ 11
+ 10
+  9
+  8
+  7
+  6
+  5
+  4
+  3
+  2
+(12 rows)
+
+SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) AND r > 1 AND r < 14 ORDER BY r DESC;
  r
 ----
  13
@@ -244,6 +372,20 @@ SELECT r FROM reverse_scan_test WHERE h = 1 AND r > 1 AND r < 14 ORDER BY r DESC
   5
 (9 rows)
 
+SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) AND r > 1 AND r < 14 ORDER BY r DESC LIMIT 9;
+ r
+----
+ 13
+ 12
+ 11
+ 10
+  9
+  8
+  7
+  6
+  5
+(9 rows)
+
 SELECT r FROM reverse_scan_test WHERE h = 1 AND r >= 3 and r <= 13 ORDER BY r DESC;
  r
 ----
@@ -260,7 +402,36 @@ SELECT r FROM reverse_scan_test WHERE h = 1 AND r >= 3 and r <= 13 ORDER BY r DE
   3
 (11 rows)
 
+SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) AND r >= 3 and r <= 13 ORDER BY r DESC;
+ r
+----
+ 13
+ 12
+ 11
+ 10
+  9
+  8
+  7
+  6
+  5
+  4
+  3
+(11 rows)
+
 SELECT r FROM reverse_scan_test WHERE h = 1 AND r >= 3 and r <= 13 ORDER BY r DESC LIMIT 8;
+ r
+----
+ 13
+ 12
+ 11
+ 10
+  9
+  8
+  7
+  6
+(8 rows)
+
+SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) AND r >= 3 and r <= 13 ORDER BY r DESC LIMIT 8;
  r
 ----
  13

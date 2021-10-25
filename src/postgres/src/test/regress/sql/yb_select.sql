@@ -52,25 +52,49 @@ VALUES (1, 1),
 -- Check ascending order.
 SELECT r FROM reverse_scan_test WHERE h = 1;
 
+SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint);
+
 SELECT r FROM reverse_scan_test WHERE h = 1 AND r > 2 and r < 9;
+
+SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) AND r > 2 and r < 9;
 
 SELECT r FROM reverse_scan_test WHERE h = 1 AND r > 2 and r < 9 LIMIT 5;
 
+SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) AND r > 2 and r < 9 LIMIT 5;
+
 SELECT r FROM reverse_scan_test WHERE h = 1 AND r >= 2 and r <= 13;
 
+SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) AND r >= 2 and r <= 13;
+
 SELECT r FROM reverse_scan_test WHERE h = 1 AND r >= 2 and r <= 13 LIMIT 10;
+
+SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) AND r >= 2 and r <= 13 LIMIT 10;
 
 -- Test desc order (reverse scan).
 SELECT r FROM reverse_scan_test WHERE h = 1 ORDER BY r DESC;
 
+SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) ORDER BY r DESC;
+
 SELECT r FROM reverse_scan_test WHERE h = 1 ORDER BY r DESC LIMIT 5;
+
+SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) ORDER BY r DESC LIMIT 5;
 
 SELECT r FROM reverse_scan_test WHERE h = 1 AND r < 9 ORDER BY r DESC LIMIT 5;
 
+SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) AND r < 9 ORDER BY r DESC LIMIT 5;
+
 SELECT r FROM reverse_scan_test WHERE h = 1 AND r > 1 AND r < 14 ORDER BY r DESC;
+
+SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) AND r > 1 AND r < 14 ORDER BY r DESC;
 
 SELECT r FROM reverse_scan_test WHERE h = 1 AND r > 1 AND r < 14 ORDER BY r DESC LIMIT 9;
 
+SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) AND r > 1 AND r < 14 ORDER BY r DESC LIMIT 9;
+
 SELECT r FROM reverse_scan_test WHERE h = 1 AND r >= 3 and r <= 13 ORDER BY r DESC;
 
+SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) AND r >= 3 and r <= 13 ORDER BY r DESC;
+
 SELECT r FROM reverse_scan_test WHERE h = 1 AND r >= 3 and r <= 13 ORDER BY r DESC LIMIT 8;
+
+SELECT r FROM reverse_scan_test WHERE yb_hash_code(h) = yb_hash_code(1::bigint) AND r >= 3 and r <= 13 ORDER BY r DESC LIMIT 8;

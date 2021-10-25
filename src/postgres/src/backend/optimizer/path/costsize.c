@@ -495,8 +495,8 @@ cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	Cost		indexStartupCost;
 	Cost		indexTotalCost;
 	Selectivity indexSelectivity;
-	double		indexCorrelation,
-				csquared;
+	double		indexCorrelation = 0;
+	double		csquared;
 	double		spc_seq_page_cost,
 				spc_random_page_cost;
 	Cost		min_IO_cost,

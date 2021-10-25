@@ -134,6 +134,8 @@ const char* YBCGetStackTrace();
 // Initializes global state needed for thread management, including CDS library initialization.
 void YBCInitThreading();
 
+double YBCEvalHashValueSelectivity(int32_t hash_low, int32_t hash_high);
+
 #ifdef __cplusplus
 } // extern "C"
 #endif
