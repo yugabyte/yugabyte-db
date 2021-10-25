@@ -31,7 +31,7 @@ import java.util.List;
 
 import com.google.common.net.HostAndPort;
 import org.yb.minicluster.MiniYBDaemon;
-import org.postgresql.util.PSQLException;
+import com.yugabyte.util.PSQLException;
 import static org.yb.AssertionWrappers.*;
 
 @RunWith(value=YBTestRunnerNonTsanOnly.class)

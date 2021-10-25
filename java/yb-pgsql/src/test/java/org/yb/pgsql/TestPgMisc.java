@@ -17,8 +17,8 @@ import java.util.*;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.postgresql.util.PSQLException;
-import org.postgresql.util.PSQLWarning;
+import com.yugabyte.util.PSQLException;
+import com.yugabyte.util.PSQLWarning;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.util.YBTestRunnerNonTsanOnly;

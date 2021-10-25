@@ -146,7 +146,7 @@ public class TestPgSequences extends BasePgSQLTest {
         assertEquals(i, rs.getInt("nextval"));
       }
 
-      thrown.expect(org.postgresql.util.PSQLException.class);
+      thrown.expect(com.yugabyte.util.PSQLException.class);
       thrown.expectMessage("reached maximum value of sequence \"s1\" (5)");
       statement.executeQuery("SELECT nextval('s1')");
     }
@@ -165,7 +165,7 @@ public class TestPgSequences extends BasePgSQLTest {
   @Test
   public void testCreateInvalidSequenceWithMinValueAndNegativeIncrement() throws Exception {
     try (Statement statement = connection.createStatement()) {
-      thrown.expect(org.postgresql.util.PSQLException.class);
+      thrown.expect(com.yugabyte.util.PSQLException.class);
       thrown.expectMessage("MINVALUE (10) must be less than MAXVALUE (-1)");
       statement.execute("CREATE SEQUENCE s1 MINVALUE 10 INCREMENT -1");
     }
@@ -181,7 +181,7 @@ public class TestPgSequences extends BasePgSQLTest {
         assertEquals(i, rs.getInt("nextval"));
       }
 
-      thrown.expect(org.postgresql.util.PSQLException.class);
+      thrown.expect(com.yugabyte.util.PSQLException.class);
       thrown.expectMessage("reached minimum value of sequence \"s1\" (100)");
       statement.executeQuery("SELECT nextval('s1')");
     }
@@ -200,7 +200,7 @@ public class TestPgSequences extends BasePgSQLTest {
         Statement statement = connection2.createStatement()) {
       // Since the previous client already got all the available sequence numbers in its cache,
       // we should get an error when we request another sequence number from another client.
-      thrown.expect(org.postgresql.util.PSQLException.class);
+      thrown.expect(com.yugabyte.util.PSQLException.class);
       thrown.expectMessage("reached maximum value of sequence \"s1\" (5)");
       statement.executeQuery("SELECT nextval('s1')");
     }
@@ -247,7 +247,7 @@ public class TestPgSequences extends BasePgSQLTest {
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE table t(k SERIAL)");
 
-      thrown.expect(org.postgresql.util.PSQLException.class);
+      thrown.expect(com.yugabyte.util.PSQLException.class);
       thrown.expectMessage("cannot drop sequence t_k_seq because other objects depend on it");
       statement.execute("DROP SEQUENCE t_k_seq");
 
@@ -263,7 +263,7 @@ public class TestPgSequences extends BasePgSQLTest {
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE table t(k SERIAL)");
 
-      thrown.expect(org.postgresql.util.PSQLException.class);
+      thrown.expect(com.yugabyte.util.PSQLException.class);
       thrown.expectMessage("cannot drop sequence t_k_seq because other objects depend on it");
       statement.execute("DROP SEQUENCE t_k_seq RESTRICT");
 
@@ -325,7 +325,7 @@ public class TestPgSequences extends BasePgSQLTest {
       assertTrue(rs.next());
       assertEquals(9223372036854775807L, rs.getLong("nextval"));
 
-      thrown.expect(org.postgresql.util.PSQLException.class);
+      thrown.expect(com.yugabyte.util.PSQLException.class);
       thrown.expectMessage("reached maximum value of sequence \"s1\" (9223372036854775807)");
       statement.executeQuery("SELECT nextval('s1')");
     }
@@ -344,7 +344,7 @@ public class TestPgSequences extends BasePgSQLTest {
         Statement statement = connection2.createStatement()) {
       // Since the previous client already got all the available sequence numbers in its cache,
       // we should get an error when we request another sequence number from another client.
-      thrown.expect(org.postgresql.util.PSQLException.class);
+      thrown.expect(com.yugabyte.util.PSQLException.class);
       thrown.expectMessage("reached maximum value of sequence \"s1\" (9223372036854775807)");
       statement.executeQuery("SELECT nextval('s1')");
     }
@@ -365,7 +365,7 @@ public class TestPgSequences extends BasePgSQLTest {
       boolean exceptionOcurred = false;
       try {
         rs = statement.executeQuery("SELECT nextval('s1')");
-      } catch (org.postgresql.util.PSQLException e) {
+      } catch (com.yugabyte.util.PSQLException e) {
         assertTrue(e.getMessage().contains(
             "reached maximum value of sequence \"s1\" (9223372036854775807)"));
         exceptionOcurred = true;
@@ -377,7 +377,7 @@ public class TestPgSequences extends BasePgSQLTest {
         Statement statement = connection2.createStatement()) {
       // Since the previous client already got all the available sequence numbers in its cache,
       // we should get an error when we request another sequence number from another client.
-      thrown.expect(org.postgresql.util.PSQLException.class);
+      thrown.expect(com.yugabyte.util.PSQLException.class);
       thrown.expectMessage("reached maximum value of sequence \"s1\" (9223372036854775807)");
       statement.executeQuery("SELECT nextval('s1')");
     }
@@ -392,7 +392,7 @@ public class TestPgSequences extends BasePgSQLTest {
       assertTrue(rs.next());
       assertEquals(-9223372036854775808L, rs.getLong("nextval"));
 
-      thrown.expect(org.postgresql.util.PSQLException.class);
+      thrown.expect(com.yugabyte.util.PSQLException.class);
       thrown.expectMessage("reached minimum value of sequence \"s1\" (-9223372036854775808)");
       statement.executeQuery("SELECT nextval('s1')");
     }
@@ -412,7 +412,7 @@ public class TestPgSequences extends BasePgSQLTest {
         Statement statement = connection2.createStatement()) {
       // Since the previous client already got all the available sequence numbers in its cache,
       // we should get an error when we request another sequence number from another client.
-      thrown.expect(org.postgresql.util.PSQLException.class);
+      thrown.expect(com.yugabyte.util.PSQLException.class);
       thrown.expectMessage("reached minimum value of sequence \"s1\" (-9223372036854775808)");
       statement.executeQuery("SELECT nextval('s1')");
     }
@@ -434,7 +434,7 @@ public class TestPgSequences extends BasePgSQLTest {
       boolean exceptionOcurred = false;
       try {
         rs = statement.executeQuery("SELECT nextval('s1')");
-      } catch (org.postgresql.util.PSQLException e) {
+      } catch (com.yugabyte.util.PSQLException e) {
         assertTrue(e.getMessage().contains(
             "reached minimum value of sequence \"s1\" (-9223372036854775808)"));
         exceptionOcurred = true;
@@ -446,7 +446,7 @@ public class TestPgSequences extends BasePgSQLTest {
         Statement statement = connection2.createStatement()) {
       // Since the previous client already got all the available sequence numbers in its cache,
       // we should get an error when we request another sequence number from another client.
-      thrown.expect(org.postgresql.util.PSQLException.class);
+      thrown.expect(com.yugabyte.util.PSQLException.class);
       thrown.expectMessage("reached minimum value of sequence \"s1\" (-9223372036854775808)");
       statement.executeQuery("SELECT nextval('s1')");
     }
@@ -456,7 +456,7 @@ public class TestPgSequences extends BasePgSQLTest {
   public void testCurrvalFails() throws Exception {
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE SEQUENCE s1");
-      thrown.expect(org.postgresql.util.PSQLException.class);
+      thrown.expect(com.yugabyte.util.PSQLException.class);
       thrown.expectMessage("currval of sequence \"s1\" is not yet defined in this session");
       statement.executeQuery("SELECT currval('s1')");
     }
@@ -485,7 +485,7 @@ public class TestPgSequences extends BasePgSQLTest {
   public void testLastvalFails() throws Exception {
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE SEQUENCE s1");
-      thrown.expect(org.postgresql.util.PSQLException.class);
+      thrown.expect(com.yugabyte.util.PSQLException.class);
       thrown.expectMessage("lastval is not yet defined in this session");
       statement.execute("SELECT lastval()");
     }
@@ -503,7 +503,7 @@ public class TestPgSequences extends BasePgSQLTest {
 
     try (Connection connection2 = getConnectionBuilder().connect();
         Statement statement = connection2.createStatement()) {
-      thrown.expect(org.postgresql.util.PSQLException.class);
+      thrown.expect(com.yugabyte.util.PSQLException.class);
       thrown.expectMessage("lastval is not yet defined in this session");
       statement.execute("SELECT lastval()");
     }
@@ -549,7 +549,7 @@ public class TestPgSequences extends BasePgSQLTest {
         assertEquals(i, rs.getInt("nextval"));
       }
 
-      thrown.expect(org.postgresql.util.PSQLException.class);
+      thrown.expect(com.yugabyte.util.PSQLException.class);
       thrown.expectMessage("reached maximum value of sequence \"s1\" (2)");
       statement.executeQuery("SELECT nextval('s1')");
     }

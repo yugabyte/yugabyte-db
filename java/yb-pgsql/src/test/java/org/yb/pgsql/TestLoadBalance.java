@@ -14,6 +14,8 @@
 package org.yb.pgsql;
 
 import com.google.common.net.HostAndPort;
+import com.yugabyte.ysql.ClusterAwareLoadBalancer;
+import com.yugabyte.jdbc.PgConnection;
 import org.yb.AssertionWrappers;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -22,14 +24,24 @@ import org.slf4j.LoggerFactory;
 import org.yb.minicluster.MiniYBDaemon;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
+import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @RunWith(value = YBTestRunnerNonTsanOnly.class)
 public class TestLoadBalance extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgEncryption.class);
+
+  @Override
+  public ConnectionBuilder getConnectionBuilder() {
+    ConnectionBuilder cb = new ConnectionBuilder(miniCluster);
+    cb.setLoadBalance(true);
+    return cb;
+  }
 
   @Test
   public void testYBServersFunction() throws Exception {
@@ -75,6 +87,82 @@ public class TestLoadBalance extends BasePgSQLTest {
     }
     AssertionWrappers.assertEquals(
       "expected servers started by minicluster", hostPortsDaemonMap.size(), cnt);
-
+    ClusterAwareLoadBalancer clb = ClusterAwareLoadBalancer.instance();
+    AssertionWrappers.assertNotNull(clb);
+    List<Connection> connList = new ArrayList<>();
+    try {
+      Map<String, Integer> hostToNumConnections = new HashMap<>();
+      for (int i = 0; i < 10; i++) {
+        Connection c = getConnectionBuilder().connect();
+        connList.add(c);
+        String host = ((PgConnection)c).getQueryExecutor().getHostSpec().getHost();
+        Integer numConns = 0;
+        if (hostToNumConnections.containsKey(host)) {
+          numConns = hostToNumConnections.get(host);
+          numConns += 1;
+        } else {
+          numConns = 1;
+        }
+        hostToNumConnections.put(host, numConns);
+      }
+      // Add the first connection host port too
+      String firstHost = ((PgConnection)connection).getQueryExecutor().getHostSpec().getHost();
+      Integer numConns = hostToNumConnections.get(firstHost);
+      hostToNumConnections.put(firstHost, numConns+1);
+      clb.printHostToConnMap();
+      AssertionWrappers.assertEquals(3, hostToNumConnections.size());
+      for (Map.Entry<String, Integer> e : hostToNumConnections.entrySet()) {
+        AssertionWrappers.assertTrue(e.getValue() >= 3);
+      }
+    } finally {
+      for (Connection c : connList) c.close();
+    }
+    // Let's close the first connection as well, so that this connection does not interfere
+    // with the accounting done later in the test when multiple threads try to create the
+    // connections at the same time.
+    connection.close();
+    // Now let's test parallel connection attempts. Even then it should be properly balanced
+    class ConnectionRunnable implements Runnable {
+      volatile Connection conn;
+      volatile Exception ex;
+      @Override
+      public void run() {
+        try {
+          conn = getConnectionBuilder().connect();
+        } catch (Exception e) {
+          ex = e;
+        }
+      }
+    }
+    Thread[] threads = new Thread[10];
+    ConnectionRunnable[] runnables = new ConnectionRunnable[10];
+    for(int i=0; i< 10; i++) {
+      runnables[i] = new ConnectionRunnable();
+      threads[i] = new Thread(runnables[i]);
+    }
+    for(Thread t : threads) {
+      t.start();
+    }
+    for(Thread t : threads) {
+      t.join();
+    }
+    Map<String, Integer> hostToNumConnections = new HashMap<>();
+    for (int i = 0; i < 10; i++) {
+      AssertionWrappers.assertNull(runnables[i].ex);
+      Connection c = runnables[i].conn;
+      String host = ((PgConnection)c).getQueryExecutor().getHostSpec().getHost();
+      Integer numConns;
+      if (hostToNumConnections.containsKey(host)) {
+        numConns = hostToNumConnections.get(host);
+        numConns += 1;
+      } else {
+        numConns = 1;
+      }
+      hostToNumConnections.put(host, numConns);
+      c.close();
+    }
+    for (Map.Entry<String, Integer> e : hostToNumConnections.entrySet()) {
+      AssertionWrappers.assertTrue(e.getValue() >= 3);
+    }
   }
 }
