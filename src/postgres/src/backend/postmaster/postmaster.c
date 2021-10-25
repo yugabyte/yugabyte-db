@@ -589,6 +589,10 @@ PostmasterMain(int argc, char *argv[])
 
 	IsPostmasterEnvironment = true;
 
+	if (YBIsEnabledInPostgresEnvVar()) {
+		YBCStatementTimeoutPtr = &StatementTimeout;
+	}
+
 	/*
 	 * We should not be creating any files or directories before we check the
 	 * data directory (see checkDataDir()), but just in case set the umask to
