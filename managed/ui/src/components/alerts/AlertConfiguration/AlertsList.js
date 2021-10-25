@@ -71,7 +71,6 @@ const header = (
 const payload = {
   uuids: [],
   name: null,
-  active: true,
   targetUuid: null,
   routeUuid: null
 };
@@ -92,18 +91,19 @@ export const AlertsList = (props) => {
     onCreateAlert,
     showDeleteModal,
     setInitialValues,
-    universes
+    universes,
+    updateAlertConfig
   } = props;
   const [options, setOptions] = useState({
     noDataText: 'Loading...',
-    sortName: 'createTime',
-    sortOrder: 'desc'
+    defaultSortName: 'name',
+    defaultSortOrder: 'asc'
   });
 
   const onInit = () => {
     alertConfigs(payload).then((res) => {
       setAlertList(res);
-      setOptions({ noDataText: 'There is no data to display ' });
+      setOptions({ ...options, noDataText: 'There is no data to display ' });
     });
 
     alertDestinations().then((res) => {
@@ -113,6 +113,15 @@ export const AlertsList = (props) => {
   };
 
   useEffect(onInit, []);
+
+    const formatName = (cell, row) => {
+      if (!row.active) {
+        return (
+          <span className="text-red text-regular">{row.name} (Inactive)</span>
+        );
+      }
+      return row.name
+    };
 
   /**
    * This method is used to congifure the destinationUUID with its repsective
@@ -147,7 +156,8 @@ export const AlertsList = (props) => {
    */
   const formatThresholds = (cell, row) => {
     return Object.keys(row.thresholds)
-      .map((threshold) => threshold)
+      .map((severity) => severity)
+      .sort()
       .join(', ');
   };
 
@@ -157,7 +167,7 @@ export const AlertsList = (props) => {
    * @param {string} cell Not in-use.
    * @param {object} row Respective row.
    */
-  const formatcreatedTime = (cell, row) => {
+  const formatCreatedTime = (cell, row) => {
     return moment(row.createTime).format('MM/DD/yyyy');
   };
 
@@ -221,6 +231,14 @@ export const AlertsList = (props) => {
     onCreateAlert(true);
   };
 
+  const onToggleActive = (row) => {
+     const updatedAlertConfig = { ...row, active: !row.active }
+     updateAlertConfig(updatedAlertConfig, row.uuid).then(() => {
+       alertConfigs(payload).then((res) => {
+         setAlertList(res);
+       });
+     });
+  };
   /**
    * This method will help us to delete the respective row record.
    *
@@ -234,13 +252,14 @@ export const AlertsList = (props) => {
     });
   };
 
-  const formatAlertDestinationName = (cell) => {
+  const formatAlertTargets = (cell) => {
     if (cell.all) return 'ALL';
     const targetUniverse = cell.uuids
       .map((uuid) => {
         return universes.data.find((destination) => destination.universeUUID === uuid);
       })
-      .filter(Boolean); //filtering undefined, if the universe is already deleted
+      .filter(Boolean) //filtering undefined, if the universe is already deleted
+      .sort();
 
     return (
       <span>
@@ -250,6 +269,71 @@ export const AlertsList = (props) => {
       </span>
     );
   };
+
+  const targetSortFunc = (a, b, order) => {
+    const targetA = getTargetString(a.target)
+    const targetB = getTargetString(b.target)
+    if (order === 'desc') {
+      return targetB.localeCompare(targetA);
+    } else {
+      return targetA.localeCompare(targetB);
+    }
+  }
+
+  const getTargetString = (target) => {
+    if (target.all) return 'ALL';
+    return target.uuids
+      .map((uuid) => {
+        return universes.data.find((destination) => destination.universeUUID === uuid);
+      })
+      .filter(Boolean) //filtering undefined, if the universe is already deleted
+      .sort()
+      .join();
+  }
+
+  const thresholdSortFunc = (a, b, order) => {
+    const severitiesA = getSeveritiesString(a.thresholds)
+    const severitiesB = getSeveritiesString(b.thresholds)
+    if (order === 'desc') {
+      return severitiesB.localeCompare(severitiesA);
+    } else {
+      return severitiesA.localeCompare(severitiesB);
+    }
+  }
+
+  const getSeveritiesString = (thresholds) => {
+    return Object.keys(thresholds)
+      .map((severity) => severity)
+      .sort()
+      .join();
+  }
+
+  const destinationsSortFunc = (a, b, order) => {
+    const destinationA = getDestinationsString(a)
+    const destinationB = getDestinationsString(b)
+    if (order === 'desc') {
+      return destinationB.localeCompare(destinationA);
+    } else {
+      return destinationA.localeCompare(destinationB);
+    }
+  }
+
+  const getDestinationsString = (config) => {
+    if (config.defaultDestination) {
+      return "Use Default"
+    }
+    const destination = alertDestinationList
+      .map((destination) => {
+        return destination.uuid === config.destinationUUID ? destination.name : null;
+      })
+      .filter((res) => res !== null)
+      .join();
+
+    if (destination) {
+      return destination;
+    }
+    return "No destination"
+  }
 
   // This method will handle all the required actions for the particular row.
   const formatConfigActions = (cell, row) => {
@@ -269,6 +353,22 @@ export const AlertsList = (props) => {
           >
             <i className="fa fa-pencil"></i> Edit Alert
           </MenuItem>
+
+          {!row.active ? (<MenuItem
+            onClick={() => {
+              onToggleActive(row);
+            }}
+          >
+            <i className="fa fa-toggle-on"></i> Activate
+          </MenuItem>) : null}
+
+          {row.active ? (<MenuItem
+            onClick={() => {
+              onToggleActive(row);
+            }}
+          >
+            <i className="fa fa-toggle-off"></i> Deactivate
+          </MenuItem>) : null}
 
           <MenuItem onClick={() => showDeleteModal(row?.uuid)}>
             <i className="fa fa-trash"></i> Delete Alert
@@ -312,7 +412,9 @@ export const AlertsList = (props) => {
             <TableHeaderColumn dataField="uuid" isKey={true} hidden={true} />
             <TableHeaderColumn
               dataField="name"
+              dataSort
               columnClassName="no-border name-column"
+              dataFormat={formatName}
               className="no-border"
             >
               Name
@@ -327,14 +429,18 @@ export const AlertsList = (props) => {
             </TableHeaderColumn>
             <TableHeaderColumn
               dataField="target"
+              dataSort
+              sortFunc={targetSortFunc}
               columnClassName="no-border name-column"
               className="no-border"
-              dataFormat={formatAlertDestinationName}
+              dataFormat={formatAlertTargets}
             >
               Target Universes
             </TableHeaderColumn>
             <TableHeaderColumn
               dataField="thresholds"
+              dataSort
+              sortFunc={thresholdSortFunc}
               dataFormat={formatThresholds}
               columnClassName="no-border name-column"
               className="no-border"
@@ -343,6 +449,8 @@ export const AlertsList = (props) => {
             </TableHeaderColumn>
             <TableHeaderColumn
               dataField="destinationUUID"
+              dataSort
+              sortFunc={destinationsSortFunc}
               dataFormat={formatRoutes}
               columnClassName="no-border name-column"
               className="no-border"
@@ -351,8 +459,8 @@ export const AlertsList = (props) => {
             </TableHeaderColumn>
             <TableHeaderColumn
               dataField="createTime"
-              dataFormat={formatcreatedTime}
               dataSort
+              dataFormat={formatCreatedTime}
               width="120px"
               columnClassName="no-border name-column"
               className="no-border"
@@ -361,6 +469,7 @@ export const AlertsList = (props) => {
             </TableHeaderColumn>
             <TableHeaderColumn
               dataField="template"
+              dataSort
               columnClassName="no-border name-column"
               className="no-border"
             >

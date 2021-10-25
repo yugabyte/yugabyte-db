@@ -128,6 +128,7 @@ const CreateAlert = (props) => {
     props.updateField('alertConfigForm', 'ALERT_METRICS_DURATION', metric.durationSec);
     props.updateField('alertConfigForm', 'ALERT_CONFIGURATION_NAME', metric.name);
     props.updateField('alertConfigForm', 'ALERT_CONFIGURATION_DESCRIPTION', metric.description);
+    props.updateField('alertConfigForm', 'ALERT_STATUS', true);
   };
 
   /**
@@ -283,7 +284,6 @@ const CreateAlert = (props) => {
                     name="ALERT_STATUS"
                     component={YBToggle}
                     onChange={(event) => props.updateField('alertConfigForm', 'ALERT_STATUS', event?.target?.checked)}
-                    defaultChecked={true}
                     label="Active"
                   />
             </Col>
