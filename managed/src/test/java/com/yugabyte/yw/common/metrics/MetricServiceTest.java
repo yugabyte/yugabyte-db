@@ -211,20 +211,49 @@ public class MetricServiceTest extends FakeDBApplication {
   public void testDelete() {
     metricService.setStatusMetric(
         buildMetricTemplate(PlatformMetrics.ALERT_MANAGER_STATUS, universe), "Error");
+    metricService.setOkStatusMetric(
+        buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_STATUS, universe));
+    metricService.flushMetricsToDb();
 
-    MetricKey key =
+    MetricKey keyToDelete =
         MetricKey.builder()
             .customerUuid(customer.getUuid())
             .name(PlatformMetrics.ALERT_MANAGER_STATUS.getMetricName())
             .targetUuid(universe.getUniverseUUID())
             .build();
+    MetricKey keyRemaining =
+        MetricKey.builder()
+            .customerUuid(customer.getUuid())
+            .name(PlatformMetrics.HEALTH_CHECK_STATUS.getMetricName())
+            .targetUuid(universe.getUniverseUUID())
+            .build();
 
-    MetricFilter metricFilter = MetricFilter.builder().key(key).build();
+    MetricFilter filterToDelete = MetricFilter.builder().key(keyToDelete).build();
+    MetricFilter filterRemaining = MetricFilter.builder().key(keyRemaining).build();
 
-    metricService.delete(metricFilter);
+    metricService.delete(filterToDelete);
 
-    Metric metric = metricService.get(key);
-    assertThat(metric, nullValue());
+    List<Metric> deletedMetric = metricService.list(filterToDelete);
+    List<Metric> remainingMetric = metricService.list(filterRemaining);
+
+    assertThat(deletedMetric, empty());
+    assertThat(remainingMetric, hasSize(1));
+
+    List<Metric> deletedMetricInDb = metricService.list(filterToDelete, true);
+    List<Metric> remainingMetricInDb = metricService.list(filterRemaining, true);
+
+    // Both metrics are still in DB.
+    assertThat(deletedMetricInDb, hasSize(1));
+    assertThat(remainingMetricInDb, hasSize(1));
+
+    metricService.flushMetricsToDb();
+
+    deletedMetricInDb = metricService.list(filterToDelete, true);
+    remainingMetricInDb = metricService.list(filterRemaining, true);
+
+    // Only remaining metric left in DB.
+    assertThat(deletedMetricInDb, empty());
+    assertThat(remainingMetricInDb, hasSize(1));
   }
 
   @Test
