@@ -26,7 +26,8 @@
         "restartUniverse": "hidden",
         "pausedUniverse": "hidden",
         "deleteUniverse": "hidden",
-        "costs": "hidden"
+        "costs": "hidden",
+        "systemdUpgrade": "hidden"
       },
       "replication": "hidden",
       "health": {

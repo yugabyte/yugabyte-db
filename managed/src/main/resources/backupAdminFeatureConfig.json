@@ -21,7 +21,8 @@
         "manageEncryption": "hidden",
         "restartUniverse": "hidden",
         "deleteUniverse": "hidden",
-        "costs": "hidden"
+        "costs": "hidden",
+        "systemdUpgrade": "hidden"
       }
     },
     "tableActions": "disabled",
