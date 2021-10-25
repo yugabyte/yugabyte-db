@@ -44,8 +44,8 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TestName;
 import org.junit.runner.RunWith;
-import org.postgresql.jdbc.PgArray;
-import org.postgresql.util.PGobject;
+import com.yugabyte.jdbc.PgArray;
+import com.yugabyte.util.PGobject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

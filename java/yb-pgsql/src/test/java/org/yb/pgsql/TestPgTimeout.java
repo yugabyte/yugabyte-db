@@ -24,7 +24,7 @@ import java.sql.Statement;
 import java.util.List;
 import java.util.Map;
 
-import org.postgresql.util.PSQLException;
+import com.yugabyte.util.PSQLException;
 import static org.yb.AssertionWrappers.*;
 
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
