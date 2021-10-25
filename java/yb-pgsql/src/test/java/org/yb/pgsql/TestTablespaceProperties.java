@@ -32,7 +32,7 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.postgresql.util.PSQLException;
+import com.yugabyte.util.PSQLException;
 import org.yb.client.LeaderStepDownResponse;
 import org.yb.client.LocatedTablet;
 import org.yb.client.YBClient;
