@@ -1,6 +1,6 @@
-Tracking GitHub Issue: https://github.com/yugabyte/yugabyte-db/issues/9219
-
 # Supporting SAVEPOINTS in YSQL
+
+Tracking GitHub Issue: <https://github.com/yugabyte/yugabyte-db/issues/9219>
 
 Savepoints allow a user to create "checkpoints" within a transaction to which they can rollback the state of the transaction without rolling back the entire transaction. Postgres implements savepoints using "subtransactions". In Yugabyte, we leverage Postgres' subtransaction logic with additional changes to our transaction and persistence layers to support savepoints in YSQL.
 
@@ -36,4 +36,4 @@ For sufficiently large transactions (see `FLAGS_txn_max_apply_batch_records`), w
 
 ### Notes
 
-Although we best-effort transmit the aborted subtransaction set from the client to the coordinator via status heartbeats, in order to support semantics identical to Postgres, we should synchronously drop explicit locks taken during a now-aborted subtransaction (https://github.com/yugabyte/yugabyte-db/issues/10039). This would require transmitting new aborted subtransaction state to the coordinator synchronously when the user issues a `ROLLBACK TO [savepoint]` command.
+Although we best-effort transmit the aborted subtransaction set from the client to the coordinator via status heartbeats, in order to support semantics identical to Postgres, we should synchronously drop explicit locks taken during a now-aborted subtransaction (<https://github.com/yugabyte/yugabyte-db/issues/10039>). This would require transmitting new aborted subtransaction state to the coordinator synchronously when the user issues a `ROLLBACK TO [savepoint]` command.
