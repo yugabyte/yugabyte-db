@@ -91,9 +91,13 @@ export default class RollingUpgradeForm extends Component {
         }
       }
     } = this.props;
-    const currentCertificate = certificates.filter((cert) => cert.uuid === rootCA)[0];
-    const selectedCertificate = certificates.filter((cert) => cert.uuid === value)[0];
-    this.setState({ rotateRoot: currentCertificate.checksum !== selectedCertificate.checksum });
+    if (value !== "Create New Certificate") {
+      const currentCertificate = certificates.filter((cert) => cert.uuid === rootCA)[0];
+      const selectedCertificate = certificates.filter((cert) => cert.uuid === value)[0];
+      this.setState({ rotateRoot: currentCertificate.checksum !== selectedCertificate.checksum });
+    } else {
+      this.setState({ rotateRoot: true });
+    }
   };
 
   componentWillUnmount() {
@@ -143,8 +147,9 @@ export default class RollingUpgradeForm extends Component {
       case 'tlsConfigurationModal': {
         payload.taskType = 'Certs';
         payload.upgradeOption = values.rollingUpgrade ? 'Rolling' : 'Non-Rolling';
-        payload.certUUID = values.tlsCertificate;
+        payload.certUUID = values.tlsCertificate === "Create New Certificate" ? null : values.tlsCertificate;
         payload.rotateRoot = this.state.rotateRoot;
+        payload.createNewSelfSignedRootCA = values.tlsCertificate === "Create New Certificate";
         break;
       }
       case 'rollingRestart': {

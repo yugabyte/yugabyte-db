@@ -1515,33 +1515,40 @@ public class UniverseController extends AuthenticatedController {
           }
           break;
         case Certs:
+          UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
           customerTaskType = CustomerTask.TaskType.UpdateCert;
           if (taskParams.certUUID == null) {
-            return ApiResponse.error(
-                BAD_REQUEST, "certUUID is required for taskType: " + taskParams.taskType);
+            if (taskParams.createNewSelfSignedRootCA) {
+              taskParams.rotateRoot = true;
+              taskParams.certUUID =
+                  CertificateHelper.createRootCA(
+                      taskParams.nodePrefix, customerUUID, appConfig.getString("yb.storage.path"));
+              if (userIntent.enableClientToNodeEncrypt) {
+                CertificateHelper.createClientCertificate(
+                    taskParams.certUUID,
+                    String.format(
+                        CertificateHelper.CERT_PATH,
+                        appConfig.getString("yb.storage.path"),
+                        customerUUID,
+                        taskParams.certUUID.toString()),
+                    CertificateHelper.DEFAULT_CLIENT,
+                    null,
+                    null);
+              }
+            } else {
+              return ApiResponse.error(
+                  BAD_REQUEST, "certUUID is required for taskType: " + taskParams.taskType);
+            }
           }
           CertificateInfo cert = CertificateInfo.get(taskParams.certUUID);
           if (cert == null) {
             throw new IllegalArgumentException("Certificate not present: " + taskParams.certUUID);
           }
-          if (cert.certType != CertificateInfo.Type.CustomCertHostPath) {
-            return ApiResponse.error(
-                BAD_REQUEST, "Need a custom cert. Cannot use self-signed. " + taskParams.certUUID);
-          }
-          if (!universe
-              .getUniverseDetails()
-              .getPrimaryCluster()
-              .userIntent
-              .providerType
-              .equals(CloudType.onprem)) {
-            return ApiResponse.error(
-                BAD_REQUEST, "Certs can only be rotated for onprem." + taskParams.taskType);
-          }
-          cert = CertificateInfo.get(universe.getUniverseDetails().rootCA);
-          if (cert.certType != CertificateInfo.Type.CustomCertHostPath) {
+          if (cert.certType == CertificateInfo.Type.CustomCertHostPath
+              && !userIntent.providerType.equals(CloudType.onprem)) {
             return ApiResponse.error(
                 BAD_REQUEST,
-                "Only custom certs can be rotated. current rootCA is self-signed: " + cert.uuid);
+                "Custom certs can be used only for onprem universes: " + taskParams.certUUID);
           }
           if (!taskParams.rotateRoot
               && CertificateHelper.areCertsDiff(

@@ -507,22 +507,40 @@ public class NodeManagerTest extends FakeDBApplication {
           }
 
           CertificateInfo cert = CertificateInfo.get(configureParams.rootCA);
-          CertificateParams.CustomCertInfo customCertInfo = cert.getCustomCertInfo();
-          expectedCommand.add("--use_custom_certs");
-          expectedCommand.add("--root_cert_path");
-          expectedCommand.add(customCertInfo.rootCertPath);
-          expectedCommand.add("--node_cert_path");
-          expectedCommand.add(customCertInfo.nodeCertPath);
-          expectedCommand.add("--node_key_path");
-          expectedCommand.add(customCertInfo.nodeKeyPath);
-          if (customCertInfo.clientCertPath != null
-              && !customCertInfo.clientCertPath.isEmpty()
-              && customCertInfo.clientKeyPath != null
-              && !customCertInfo.clientKeyPath.isEmpty()) {
-            expectedCommand.add("--client_cert_path");
-            expectedCommand.add(customCertInfo.clientCertPath);
-            expectedCommand.add("--client_key_path");
-            expectedCommand.add(customCertInfo.clientKeyPath);
+
+          String yb_home_dir = Provider.get(UUID.fromString(userIntent.provider)).getYbHome();
+          expectedCommand.add("--certs_node_dir");
+          expectedCommand.add(yb_home_dir + "/yugabyte-tls-config");
+
+          if (cert.certType == Type.SelfSigned) {
+            expectedCommand.add("--rootCA_cert");
+            expectedCommand.add(cert.certificate);
+            expectedCommand.add("--rootCA_key");
+            expectedCommand.add(cert.privateKey);
+            if (configureParams.enableClientToNodeEncrypt) {
+              expectedCommand.add("--client_cert");
+              expectedCommand.add(CertificateHelper.getClientCertFile(configureParams.rootCA));
+              expectedCommand.add("--client_key");
+              expectedCommand.add(CertificateHelper.getClientKeyFile(configureParams.rootCA));
+            }
+          } else {
+            CertificateParams.CustomCertInfo customCertInfo = cert.getCustomCertInfo();
+            expectedCommand.add("--use_custom_certs");
+            expectedCommand.add("--root_cert_path");
+            expectedCommand.add(customCertInfo.rootCertPath);
+            expectedCommand.add("--node_cert_path");
+            expectedCommand.add(customCertInfo.nodeCertPath);
+            expectedCommand.add("--node_key_path");
+            expectedCommand.add(customCertInfo.nodeKeyPath);
+            if (customCertInfo.clientCertPath != null
+                && !customCertInfo.clientCertPath.isEmpty()
+                && customCertInfo.clientKeyPath != null
+                && !customCertInfo.clientKeyPath.isEmpty()) {
+              expectedCommand.add("--client_cert_path");
+              expectedCommand.add(customCertInfo.clientCertPath);
+              expectedCommand.add("--client_key_path");
+              expectedCommand.add(customCertInfo.clientKeyPath);
+            }
           }
         } else {
           expectedCommand.add("--extra_gflags");
@@ -1741,30 +1759,6 @@ public class NodeManagerTest extends FakeDBApplication {
         fail();
       } catch (RuntimeException re) {
         assertThat(re.getMessage(), containsString("Certificate is null"));
-      }
-    }
-  }
-
-  @Test
-  public void testCertRotateWithSelfSignedCert() throws IOException, NoSuchAlgorithmException {
-    for (TestData data : testData) {
-      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
-      buildValidParams(
-          data,
-          params,
-          Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(data.cloudType)));
-      params.type = Certs;
-      params.rootCA =
-          createCertificate(Type.SelfSigned, data.provider.customerUUID, params.nodePrefix);
-      params.setProperty("taskSubType", "RotateCerts");
-      params.setProperty("processType", MASTER.toString());
-
-      try {
-        nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-        fail();
-      } catch (RuntimeException re) {
-        assertThat(re.getMessage(), containsString("Self signed certs cannot be rotated"));
       }
     }
   }

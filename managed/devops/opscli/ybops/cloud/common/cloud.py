@@ -238,17 +238,24 @@ class AbstractCloud(AbstractCommandParser):
 
         return 3
 
-    def append_new_root_cert(self, extra_vars, ssh_options):
+    def append_new_root_cert(self, extra_vars, ssh_options, is_custom_cert=False):
         remote_shell = RemoteShell(ssh_options)
-        root_cert_path = extra_vars["root_cert_path"]
         certs_dir = extra_vars["certs_node_dir"]
         yb_root_cert_path = os.path.join(certs_dir, self.ROOT_CERT_NAME)
         yb_root_cert_new_path = os.path.join(certs_dir, self.ROOT_CERT_NEW_NAME)
+
         # Give write permissions to cert directory
         remote_shell.run_command('chmod -f 666 {}/* || true'.format(certs_dir))
+
         # Copy the new root cert to ca_new.crt
-        remote_shell.run_command("cp '{}' '{}'".format(root_cert_path,
-                                                       yb_root_cert_new_path))
+        if is_custom_cert:
+            root_cert_path = extra_vars["root_cert_path"]
+            remote_shell.run_command("cp '{}' '{}'".format(root_cert_path,
+                                                           yb_root_cert_new_path))
+        else:
+            root_cert_path = extra_vars["rootCA_cert"]
+            remote_shell.put_file(root_cert_path, yb_root_cert_new_path)
+
         # Append new cert content to ca.crt
         remote_shell.run_command(
             "cat '{}' >> '{}'".format(yb_root_cert_new_path, yb_root_cert_path))
@@ -411,16 +418,35 @@ class AbstractCloud(AbstractCommandParser):
                                                                         self.CLIENT_KEY_NAME)))
             remote_shell.run_command('chmod 400 {}/*'.format(self.YSQLSH_CERT_DIR))
 
-    def generate_client_cert(self, extra_vars, ssh_options):
+    def generate_client_cert(self, extra_vars, ssh_options, rotate_certs=False):
         node_ip = ssh_options["ssh_host"]
         root_cert_path = extra_vars["rootCA_cert"]
         root_key_path = extra_vars["rootCA_key"]
         certs_node_dir = extra_vars["certs_node_dir"]
+        yb_root_cert_path = os.path.join(certs_node_dir, self.ROOT_CERT_NAME)
+
         with open(root_cert_path, 'rb') as cert_in:
             certlines = cert_in.read()
-        root_cert = x509.load_pem_x509_certificate(certlines, default_backend())
         with open(root_key_path, 'rb') as key_in:
             keylines = key_in.read()
+
+        copy_root = True
+        remote_shell = RemoteShell(ssh_options)
+        if rotate_certs:
+            root_cert = remote_shell.run_command(
+                "cat '{}'".format(yb_root_cert_path)).stdout
+            root_cert_new = str(certlines)
+            if root_cert is not None and root_cert_new is not None:
+                compare_result = self.compare_certs(root_cert_new, root_cert)
+                if compare_result == 0 or compare_result == 1:
+                    # Don't copy root certs if the new root cert is
+                    # same or subset of the existing root cert
+                    copy_root = False
+            else:
+                raise YBOpsRuntimeError(
+                    "Unable to fetch the certificate {}".format(root_cert_path))
+
+        root_cert = x509.load_pem_x509_certificate(certlines, default_backend())
         root_key = load_pem_private_key(keylines, None, default_backend())
         private_key = rsa.generate_private_key(
             public_exponent=self.PUBLIC_EXPONENT,
@@ -462,7 +488,6 @@ class AbstractCloud(AbstractCommandParser):
             with open(os.path.join(common_path, cert_file), 'wb') as pem_out:
                 pem_out.write(pem)
             # Copy files over to node
-            remote_shell = RemoteShell(ssh_options)
             remote_shell.run_command('mkdir -p ' + certs_node_dir)
             # Give write permission in case file exists. If the command fails, ignore.
             remote_shell.run_command('chmod -f 666 {}/* || true'.format(certs_node_dir))
@@ -470,7 +495,8 @@ class AbstractCloud(AbstractCommandParser):
                                   os.path.join(certs_node_dir, key_file))
             remote_shell.put_file(os.path.join(common_path, cert_file),
                                   os.path.join(certs_node_dir, cert_file))
-            remote_shell.put_file(root_cert_path, os.path.join(certs_node_dir, self.ROOT_CERT_NAME))
+            if copy_root:
+                remote_shell.put_file(root_cert_path, yb_root_cert_path)
             remote_shell.run_command('chmod 400 {}/*'.format(certs_node_dir))
 
             if "client_cert" in extra_vars:

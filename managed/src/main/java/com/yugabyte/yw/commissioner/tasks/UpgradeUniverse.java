@@ -28,6 +28,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.forms.UpgradeParams.UpgradeOption;
 import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.CertificateInfo.Type;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
@@ -126,8 +127,9 @@ public class UpgradeUniverse extends UniverseTaskBase {
                 universe.getUniverseDetails().rootCA, taskParams().certUUID)) {
           throw new IllegalArgumentException("CA certificates are same. No cert rotation needed.");
         }
-        if (CertificateHelper.arePathsSame(
-            universe.getUniverseDetails().rootCA, taskParams().certUUID)) {
+        if (cert.certType == Type.CustomCertHostPath
+            && CertificateHelper.arePathsSame(
+                universe.getUniverseDetails().rootCA, taskParams().certUUID)) {
           throw new IllegalArgumentException("The node cert/key paths cannot be same.");
         }
     }

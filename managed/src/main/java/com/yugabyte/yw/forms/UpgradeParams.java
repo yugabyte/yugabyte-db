@@ -20,6 +20,8 @@ public class UpgradeParams extends UniverseDefinitionTaskParams {
   public UUID certUUID = null;
   // If the root certificate needs to be rotated.
   public boolean rotateRoot = false;
+  // creates a new self signed certificate and rotates
+  public boolean createNewSelfSignedRootCA = false;
 
   @Deprecated
   // This is deprecated use cluster.userIntent.masterGFlags

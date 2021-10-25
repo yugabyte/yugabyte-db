@@ -24,7 +24,6 @@ import { ListTablesContainer, ListBackupsContainer, ReplicationContainer } from 
 import { QueriesViewer } from '../../queries';
 import { isEmptyObject, isNonEmptyObject } from '../../../utils/ObjectUtils';
 import {
-  isOnpremUniverse,
   isKubernetesUniverse,
   isAWSUniverse,
   isUniverseType
@@ -38,7 +37,6 @@ import { YBMenuItem } from './compounds/YBMenuItem';
 import { MenuItemsContainer } from './compounds/MenuItemsContainer';
 import {
   isNonAvailable,
-  isEnabled,
   isDisabled,
   isNotHidden,
   getFeatureState
@@ -280,17 +278,6 @@ class UniverseDetail extends Component {
       currentCustomer.data.features,
       'universes.details.overview.manageEncryption'
     );
-    // enable edit TLS menu item for onprem universes with rootCA of a "CustomCertHostPath" type
-    if (isEnabled(editTLSAvailability)) {
-      if (isOnpremUniverse(currentUniverse.data) && Array.isArray(customer.userCertificates.data)) {
-        const rootCert = customer.userCertificates.data.find(
-          (item) => item.uuid === currentUniverse.data.universeDetails.rootCA
-        );
-        if (rootCert?.certType !== 'CustomCertHostPath') editTLSAvailability = 'disabled';
-      } else {
-        editTLSAvailability = 'disabled';
-      }
-    }
 
     const defaultTab = isNotHidden(currentCustomer.data.features, 'universes.details.overview')
       ? 'overview'

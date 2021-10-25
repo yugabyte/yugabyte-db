@@ -32,6 +32,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.CertificateInfo.Type;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -43,6 +44,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -391,7 +393,7 @@ public class NodeManager extends DevopsBase {
             }
           }
           if (isSkipCertHostValidation(userIntent, taskParam)) {
-              subcommand.add("--skip_cert_hostname_validation");
+            subcommand.add("--skip_cert_hostname_validation");
           }
         }
         if (taskParam.callhomeLevel != null) {
@@ -490,9 +492,6 @@ public class NodeManager extends DevopsBase {
           if (cert == null) {
             throw new RuntimeException("Certificate is null: " + taskParam.rootCA);
           }
-          if (cert.certType == CertificateInfo.Type.SelfSigned) {
-            throw new RuntimeException("Self signed certs cannot be rotated.");
-          }
           String processType = taskParam.getProperty("processType");
           if (processType == null || !VALID_CONFIGURE_PROCESS_TYPES.contains(processType)) {
             throw new RuntimeException("Invalid processType: " + processType);
@@ -516,22 +515,43 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("Invalid taskSubType property: " + taskSubType);
           }
 
-          CertificateParams.CustomCertInfo customCertInfo = cert.getCustomCertInfo();
-          subcommand.add("--use_custom_certs");
-          subcommand.add("--root_cert_path");
-          subcommand.add(customCertInfo.rootCertPath);
-          subcommand.add("--node_cert_path");
-          subcommand.add(customCertInfo.nodeCertPath);
-          subcommand.add("--node_key_path");
-          subcommand.add(customCertInfo.nodeKeyPath);
-          if (customCertInfo.clientCertPath != null
-              && !customCertInfo.clientCertPath.isEmpty()
-              && customCertInfo.clientKeyPath != null
-              && !customCertInfo.clientKeyPath.isEmpty()) {
-            subcommand.add("--client_cert_path");
-            subcommand.add(customCertInfo.clientCertPath);
-            subcommand.add("--client_key_path");
-            subcommand.add(customCertInfo.clientKeyPath);
+          String yb_home_dir =
+              Provider.get(
+                      UUID.fromString(
+                          universe.getUniverseDetails().getPrimaryCluster().userIntent.provider))
+                  .getYbHome();
+          subcommand.add("--certs_node_dir");
+          subcommand.add(yb_home_dir + "/yugabyte-tls-config");
+
+          if (cert.certType == Type.SelfSigned) {
+            subcommand.add("--rootCA_cert");
+            subcommand.add(cert.certificate);
+            subcommand.add("--rootCA_key");
+            subcommand.add(cert.privateKey);
+            if (taskParam.enableClientToNodeEncrypt) {
+              subcommand.add("--client_cert");
+              subcommand.add(CertificateHelper.getClientCertFile(taskParam.rootCA));
+              subcommand.add("--client_key");
+              subcommand.add(CertificateHelper.getClientKeyFile(taskParam.rootCA));
+            }
+          } else {
+            CertificateParams.CustomCertInfo customCertInfo = cert.getCustomCertInfo();
+            subcommand.add("--use_custom_certs");
+            subcommand.add("--root_cert_path");
+            subcommand.add(customCertInfo.rootCertPath);
+            subcommand.add("--node_cert_path");
+            subcommand.add(customCertInfo.nodeCertPath);
+            subcommand.add("--node_key_path");
+            subcommand.add(customCertInfo.nodeKeyPath);
+            if (customCertInfo.clientCertPath != null
+                && !customCertInfo.clientCertPath.isEmpty()
+                && customCertInfo.clientKeyPath != null
+                && !customCertInfo.clientKeyPath.isEmpty()) {
+              subcommand.add("--client_cert_path");
+              subcommand.add(customCertInfo.clientCertPath);
+              subcommand.add("--client_key_path");
+              subcommand.add(customCertInfo.clientKeyPath);
+            }
           }
           if (isSkipCertHostValidation(userIntent, taskParam)) {
             subcommand.add("--skip_cert_hostname_validation");
@@ -787,7 +807,7 @@ public class NodeManager extends DevopsBase {
 
   @VisibleForTesting
   static boolean isSkipCertHostValidation(
-          UserIntent userIntent, AnsibleConfigureServers.Params taskParam) {
+      UserIntent userIntent, AnsibleConfigureServers.Params taskParam) {
     if (taskParam.gflagsToRemove.contains(VERIFY_SERVER_ENDPOINT_GFLAG)) {
       return false;
     }
@@ -798,12 +818,11 @@ public class NodeManager extends DevopsBase {
             .masterGFlags
             .getOrDefault(VERIFY_SERVER_ENDPOINT_GFLAG, "true")
             .equalsIgnoreCase("false")
-            || userIntent
+        || userIntent
             .tserverGFlags
             .getOrDefault(VERIFY_SERVER_ENDPOINT_GFLAG, "true")
             .equalsIgnoreCase("false");
   }
-
 
   private List<String> addArguments(List<String> commandArgs, String nodeIP, String instanceType) {
     commandArgs.add("--instance_type");

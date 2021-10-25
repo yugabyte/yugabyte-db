@@ -672,19 +672,20 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         }
         ssh_options.update(get_ssh_host_port(host_info, args.custom_ssh_port))
 
+        rotate_certs = False
+        if args.cert_rotate_action is not None:
+            if args.cert_rotate_action == "APPEND_NEW_ROOT_CERT":
+                self.cloud.append_new_root_cert(
+                    self.extra_vars, ssh_options, args.use_custom_certs)
+                return
+            if args.cert_rotate_action == "REMOVE_OLD_ROOT_CERT":
+                self.cloud.remove_old_root_cert(
+                    self.extra_vars, ssh_options)
+                return
+            if args.cert_rotate_action == "ROTATE_CERTS":
+                rotate_certs = True
+
         if args.use_custom_certs:
-            rotate_certs = False
-            if args.cert_rotate_action is not None:
-                if args.cert_rotate_action == "APPEND_NEW_ROOT_CERT":
-                    self.cloud.append_new_root_cert(
-                        self.extra_vars, ssh_options)
-                    return
-                if args.cert_rotate_action == "REMOVE_OLD_ROOT_CERT":
-                    self.cloud.remove_old_root_cert(
-                        self.extra_vars, ssh_options)
-                    return
-                if args.cert_rotate_action == "ROTATE_CERTS":
-                    rotate_certs = True
             logging.info("Copying custom certificates to {}.".format(args.search_pattern))
             self.cloud.copy_certs(self.extra_vars, ssh_options, rotate_certs,
                                   args.skip_cert_hostname_validation)
@@ -692,7 +693,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
             if args.rootCA_cert and args.rootCA_key is not None:
                 logging.info("Creating and copying over client TLS certificate to {}".format(
                     args.search_pattern))
-                self.cloud.generate_client_cert(self.extra_vars, ssh_options)
+                self.cloud.generate_client_cert(self.extra_vars, ssh_options, rotate_certs)
 
         if args.encryption_key_source_file is not None:
             self.extra_vars["encryption_key_file"] = args.encryption_key_source_file
