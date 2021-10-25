@@ -67,9 +67,6 @@ You can also modify TLS settings for an existing universe, as follows:
 
   - If encryption in-transit is currently enabled for the universe, disable it via the **Encryption in Transit for this Universe** field, and then click **OK**.
 
-  Previously we used to support cert rotation only for custom certs and that too only server certs rotation not root cert rotation
-  With this change we support both custom certs and self signed certs rotation (either server certs or root certs)And yes the process is more or less same to the old UI. In the old UI there is only one dropdown where they can choose another custom certs.
-  Now in the new UI we separated node-to-node certs and client-to-node certs and they can choose any type of certs to rotate.
 
 ## Self-Signed Self-Provided Certificates
 
