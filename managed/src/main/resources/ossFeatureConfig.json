@@ -41,7 +41,8 @@
         "metricsInterval": 15000,
         "editUniverse": "hidden",
         "pausedUniverse": "hidden",
-        "deleteUniverse": "disabled"
+        "deleteUniverse": "disabled",
+        "systemdUpgrade": "hidden"
       }
     },
     "tableActions": "disabled"
