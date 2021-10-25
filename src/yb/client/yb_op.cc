@@ -790,7 +790,7 @@ Status YBPgsqlReadOp::GetHashPartitionKey(string* partition_key) const {
         return STATUS_SUBSTITUTE(
             InternalError,
             "Out of bounds partition key found in paging state:"
-            "Query's partition bounds: [%d, %d], paging state partition: %d",
+            "Query's partition bounds: [$0, $1], paging state partition: $2",
             read_request_->has_hash_code() ? read_request_->hash_code() : 0,
             read_request_->has_max_hash_code() ? read_request_->max_hash_code() : 0,
             paging_state_hash_code);

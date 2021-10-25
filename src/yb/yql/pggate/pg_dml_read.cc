@@ -562,5 +562,29 @@ Result<docdb::PrimitiveValue> PgDmlRead::BuildKeyColumnValue(
   return BuildKeyColumnValue(col, src, &temp_expr);
 }
 
+Status PgDmlRead::BindHashCode(bool start_valid, bool start_inclusive,
+                                uint64_t start_hash_val, bool end_valid,
+                                bool end_inclusive, uint64_t end_hash_val) {
+  if (secondary_index_query_) {
+    return secondary_index_query_->BindHashCode(start_valid, start_inclusive,
+                                                  start_hash_val, end_valid,
+                                                  end_inclusive, end_hash_val);
+  }
+  if (start_valid) {
+    read_req_->mutable_lower_bound()
+            ->set_key(PartitionSchema::EncodeMultiColumnHashValue
+                      (start_hash_val));
+    read_req_->mutable_lower_bound()->set_is_inclusive(start_inclusive);
+  }
+
+  if (end_valid) {
+    read_req_->mutable_upper_bound()
+              ->set_key(PartitionSchema::EncodeMultiColumnHashValue
+                        (end_hash_val));
+    read_req_->mutable_upper_bound()->set_is_inclusive(end_inclusive);
+  }
+  return Status::OK();
+}
+
 }  // namespace pggate
 }  // namespace yb
