@@ -122,6 +122,7 @@ public class MetricService {
 
     List<Metric> toCreate = toCreateAndUpdate.getOrDefault(CREATE, Collections.emptyList());
     if (!toCreate.isEmpty()) {
+      log.trace("Creating metrics {} in {} storage", toCreate, persist ? "DB" : "Memory");
       if (persist) {
         toCreate.forEach(Metric::generateUUID);
         Metric.db().saveAll(toCreate);
@@ -132,6 +133,7 @@ public class MetricService {
 
     List<Metric> toUpdate = toCreateAndUpdate.getOrDefault(UPDATE, Collections.emptyList());
     if (!toUpdate.isEmpty()) {
+      log.trace("Updating metrics {} in {} storage", toUpdate, persist ? "DB" : "Memory");
       if (persist) {
         Metric.db().updateAll(toUpdate);
       } else {
@@ -179,7 +181,11 @@ public class MetricService {
   }
 
   private void deleteInternal(Collection<Metric> toDelete, boolean persist) {
+    if (toDelete.isEmpty()) {
+      return;
+    }
     int deleted;
+    log.trace("Deleting metrics {} from {} storage", toDelete, persist ? "DB" : "Memory");
     if (persist) {
       MetricFilter deleteFilter =
           MetricFilter.builder()
@@ -238,7 +244,6 @@ public class MetricService {
     setStatusMetric(metric, StringUtils.EMPTY);
   }
 
-  @Transactional
   public void setFailureStatusMetric(Metric metric) {
     metric.setValue(STATUS_NOT_OK);
     cleanAndSave(Collections.singletonList(metric));
@@ -308,6 +313,8 @@ public class MetricService {
       result.setValue(metric.getValue());
       result.setLabels(metric.getLabels());
       result.setExpireTime(metric.getExpireTime());
+    } else if (result.getUuid() != null) {
+      log.warn("Trying to save metric with uuid, which is not found in storage: {}", result);
     }
     return result;
   }
@@ -392,13 +399,14 @@ public class MetricService {
       }
       metricKeyLock.acquireLocks(keysToLock);
       if (CollectionUtils.isNotEmpty(dirtyKeys)) {
-        List<Metric> toSave = metricStorage.list(MetricFilter.builder().keys(dirtyKeys).build());
+        // querying in-memory metrics here to update persistent storage.
+        List<Metric> toSave = list(MetricFilter.builder().keys(dirtyKeys).build(), false);
         saveInternal(toSave, true);
-        metricStorage.getDirtyMetrics().removeAll(deletedKeys);
+        metricStorage.getDirtyMetrics().removeAll(dirtyKeys);
       }
       if (CollectionUtils.isNotEmpty(deletedKeys)) {
-        List<Metric> toDelete =
-            metricStorage.list(MetricFilter.builder().keys(deletedKeys).build());
+        // querying persistent metrics here to delete them.
+        List<Metric> toDelete = list(MetricFilter.builder().keys(deletedKeys).build(), true);
         deleteInternal(toDelete, true);
         metricStorage.getDeletedMetrics().removeAll(deletedKeys);
       }

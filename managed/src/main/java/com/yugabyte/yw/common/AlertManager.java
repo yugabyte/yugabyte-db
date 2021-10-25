@@ -105,7 +105,7 @@ public class AlertManager {
       if (!configuration.isDefaultDestination()) {
         return new NotificationStrategy();
       }
-      log.debug("Using default destination {} for alert {}", configurationUuid, alert.getUuid());
+      log.trace("Using default destination {} for alert {}", configurationUuid, alert.getUuid());
       defaultDestination = true;
       destination = alertDestinationService.getDefaultDestination(configuration.getCustomerUUID());
     } else {

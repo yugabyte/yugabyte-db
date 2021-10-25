@@ -29,8 +29,8 @@ from six import string_types, PY2, PY3
 
 
 # Try to read home dir from environment variable, else assume it's /home/yugabyte.
-ALERT_ENHANCEMENTS_RELEASE = "2.6.0.0"
-RELEASE_VERSION_PATTERN = "(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)(.*)"
+ALERT_ENHANCEMENTS_RELEASE_BUILD = "2.6.0.0-b0"
+RELEASE_BUILD_PATTERN = "(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)[-]b(\\d+).*"
 YB_HOME_DIR = os.environ.get("YB_HOME_DIR", "/home/yugabyte")
 YB_TSERVER_DIR = os.path.join(YB_HOME_DIR, "tserver")
 YB_CORES_DIR = os.path.join(YB_HOME_DIR, "cores/")
@@ -442,18 +442,18 @@ class NodeChecker():
 
         try:
             json_version = json.loads(output)
-            version = json_version["version_number"] + "-b" + json_version["build_number"]
+            release_build = json_version["version_number"] + "-b" + json_version["build_number"]
         except Exception as ex:
             message = str(ex)
             return e.fill_and_return_entry([message], True)
 
-        matched = version == expected
+        matched = is_equal_release_build(release_build, expected)
         if not matched:
             return e.fill_and_return_entry(
                 ['Version from platform metadata {}, version reported by instance process {}'.
-                 format(expected, version)],
+                 format(expected, release_build)],
                 True)
-        return e.fill_and_return_entry([version])
+        return e.fill_and_return_entry([release_build])
 
     def check_master_yb_version(self, process):
         return self.check_yb_version(
@@ -756,28 +756,48 @@ def local_time():
     return datetime.utcnow().replace(tzinfo=tz.tzutc())
 
 
-def is_equal_or_newer_release(current_version, threshold_version):
-    if not current_version:
+def parse_release_build(release_build):
+    if not release_build:
+        return None
+
+    match = re.match(RELEASE_BUILD_PATTERN, release_build)
+    if match is None:
+        raise RuntimeError("Invalid release build format: {}".format(release_build))
+
+    return match
+
+
+def is_equal_release_build(release_build1, release_build2):
+    parsed_release_build_1 = parse_release_build(release_build1)
+    parsed_release_build_2 = parse_release_build(release_build2)
+    if not parsed_release_build_1 or not parsed_release_build_2:
         return False
 
-    c_match = re.match(RELEASE_VERSION_PATTERN, current_version)
-    t_match = re.match(RELEASE_VERSION_PATTERN, threshold_version)
+    for i in range(1, 6):
+        component1 = int(parsed_release_build_1.group(i))
+        component2 = int(parsed_release_build_2.group(i))
+        if component1 != component2:
+            # If any component is behind or ahead, release builds are not equal.
+            return False
+    return True
 
-    if c_match is None:
-        raise RuntimeError("Invalid universe version format: {}".format(current_version))
-    if t_match is None:
-        raise RuntimeError("Invalid threshold version format: {}".format(threshold_version))
 
-    for i in range(1, 5):
-        c = int(c_match.group(i))
-        t = int(t_match.group(i))
+def is_equal_or_newer_release_build(current_release_build, threshold_release_build):
+    parsed_current_release_build = parse_release_build(current_release_build)
+    parsed_threshold_release_build = parse_release_build(threshold_release_build)
+    if not parsed_current_release_build or not parsed_threshold_release_build:
+        return False
+
+    for i in range(1, 6):
+        c = int(parsed_current_release_build.group(i))
+        t = int(parsed_threshold_release_build.group(i))
         if c < t:
-            # If any component is behind, the whole version is older.
+            # If any component is behind, the whole release build is older.
             return False
         elif c > t:
-            # If any component is ahead, the whole version is newer.
+            # If any component is ahead, the whole release build is newer.
             return True
-    # If all components were equal, then the versions are compatible.
+    # If all components were equal, then release builds are compatible.
     return True
 
 
@@ -934,8 +954,8 @@ def main():
         # Technically, each cluster can have its own version, but in practice,
         # we disallow that in YW.
         universe_version = universe.clusters[0].yb_version if universe.clusters else None
-        alert_enhancements_version = is_equal_or_newer_release(
-            universe_version, ALERT_ENHANCEMENTS_RELEASE)
+        alert_enhancements_version = is_equal_or_newer_release_build(
+            universe_version, ALERT_ENHANCEMENTS_RELEASE_BUILD)
         report = Report(universe_version)
         for c in universe.clusters:
             master_nodes = c.master_nodes

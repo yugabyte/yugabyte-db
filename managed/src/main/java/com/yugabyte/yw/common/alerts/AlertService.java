@@ -91,7 +91,7 @@ public class AlertService {
       Alert.db().updateAll(toUpdate);
     }
 
-    log.debug("{} alerts saved", toCreate.size() + toUpdate.size());
+    log.trace("{} alerts saved", toCreate.size() + toUpdate.size());
     return alerts;
   }
 
@@ -188,13 +188,13 @@ public class AlertService {
       return;
     }
     alert.delete();
-    log.debug("Alert {} deleted", uuid);
+    log.trace("Alert {} deleted", uuid);
   }
 
   @Transactional
   public int delete(AlertFilter filter) {
     int deleted = createQueryByFilter(filter).delete();
-    log.debug("{} alerts deleted", deleted);
+    log.trace("{} alerts deleted", deleted);
     return deleted;
   }
 
