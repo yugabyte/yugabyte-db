@@ -58,7 +58,6 @@ YSQL_CATALOG_VERSION_RE = re.compile(r'[\S\s]*Version: (?P<version>.*)')
 ROCKSDB_PATH_PREFIX = '/yb-data/tserver/data/rocksdb'
 
 SNAPSHOT_DIR_GLOB = '*' + ROCKSDB_PATH_PREFIX + '/table-*/tablet-*.snapshots/*'
-SNAPSHOT_DIR_DEPTH = 7
 SNAPSHOT_DIR_SUFFIX_RE = re.compile(
     '^.*/tablet-({})[.]snapshots/({})$'.format(UUID_RE_STR, UUID_RE_STR))
 
@@ -66,7 +65,6 @@ TABLE_PATH_PREFIX_TEMPLATE = ROCKSDB_PATH_PREFIX + '/table-{}'
 
 TABLET_MASK = 'tablet-????????????????????????????????'
 TABLET_DIR_GLOB = '*' + TABLE_PATH_PREFIX_TEMPLATE + '/' + TABLET_MASK
-TABLET_DIR_DEPTH = 6
 
 METADATA_FILE_NAME = 'SnapshotInfoPB'
 SQL_DUMP_FILE_NAME = 'YSQLDump'
@@ -1378,11 +1376,11 @@ class YBBackup:
                     # Find all tablets for this table on this TS in this data_dir:
                     output = self.run_ssh_cmd(
                       ['find', data_dir,
-                       '-mindepth', TABLET_DIR_DEPTH,
-                       '-maxdepth', TABLET_DIR_DEPTH,
+                       '!', '-readable', '-prune', '-o',
                        '-name', TABLET_MASK,
                        '-and',
-                       '-wholename', TABLET_DIR_GLOB.format(table_id)],
+                       '-wholename', TABLET_DIR_GLOB.format(table_id),
+                       '-print'],
                       tserver_ip)
                     tablet_dirs += [line.strip() for line in output.split("\n") if line.strip()]
 
@@ -1443,10 +1441,10 @@ class YBBackup:
         """
         output = self.run_ssh_cmd(
             ['find', data_dir,
-             '-mindepth', SNAPSHOT_DIR_DEPTH,
-             '-maxdepth', SNAPSHOT_DIR_DEPTH,
+             '!', '-readable', '-prune', '-o',
              '-name', snapshot_id, '-and',
-             '-wholename', SNAPSHOT_DIR_GLOB],
+             '-wholename', SNAPSHOT_DIR_GLOB,
+             '-print'],
             tserver_ip)
         return [line.strip() for line in output.split("\n") if line.strip()]
 
