@@ -27,6 +27,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -35,6 +36,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.UUID;
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.IOUtils;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -159,27 +161,11 @@ public class CertificateControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testUploadCertificate() {
+  public void testUploadCertificate() throws IOException {
     String cert_content =
-        "-----BEGIN CERTIFICATE-----\n"
-            + "MIIDDjCCAfagAwIBAgIGAXVXb5y/MA0GCSqGSIb3DQEBCwUAMDQxHDAaBgNVBAMM\n"
-            + "E3liLWFkbWluLXRlc3QtYXJuYXYxFDASBgNVBAoMC2V4YW1wbGUuY29tMB4XDTIw\n"
-            + "MTAyMzIxNDg1M1oXDTIxMTAyMzIxNDg1M1owNDEcMBoGA1UEAwwTeWItYWRtaW4t\n"
-            + "dGVzdC1hcm5hdjEUMBIGA1UECgwLZXhhbXBsZS5jb20wggEiMA0GCSqGSIb3DQEB\n"
-            + "AQUAA4IBDwAwggEKAoIBAQCVWSZiQhr9e+L2MkSXP38dwXwF7RlZGhrYKrL7pp6l\n"
-            + "aHkLZ0lsFgxI6h0Yyn5S+Hhi/jGWbBso6kXw7frUwVY5kX2Q6iv+E+rKqbYQgNV3\n"
-            + "0vpCtOmNNolhNN3x4SKAIXyKOB5dXMGesjvba/qD6AstKS8bvRCUZcYDPjIUQGPu\n"
-            + "cYLmywV/EdXgB+7WLhUOOY2eBRWBrnGxk60pcHJZeW44g1vas9cfiw81OWVp5/V5\n"
-            + "apA631bE0MTgg283OCyYz+CV/YtnytUTg/+PUEqzM2cWsWdvpEz7TkKYXinRdN4d\n"
-            + "SwgOQEIvb7A/GYYmVf3yk4moUxEh4NLoV9CBDljEBUjZAgMBAAGjJjAkMBIGA1Ud\n"
-            + "EwEB/wQIMAYBAf8CAQEwDgYDVR0PAQH/BAQDAgLkMA0GCSqGSIb3DQEBCwUAA4IB\n"
-            + "AQAFR0m7r1I3FyoatuLBIG+alaeGHqsgNqseAJTDGlEyajGDz4MT0c76ZIQkTSGM\n"
-            + "vsM49Ad2D04sJR44/WlI2AVijubzHBr6Sj8ZdB909nPvGtB+Z8OnvKxJ0LUKyG1K\n"
-            + "VUbcCnN3qSoVeY5PaPeFMmWF0Qv4S8lRTZqAvCnk34bckwkWoHkuuNGO49CsNb40\n"
-            + "Z2NBy9Ckp0KkfeDpGcv9lHuUrl13iakCY09irvYRbfi0lVGF3+wXZtefV8ZAxfnN\n"
-            + "Vt4faawkJ79oahlXDYs6WCKEd3zVM3mR3STnzwxvtB6WacjhqgP4ozXdt6PUbTfZ\n"
-            + "jZPSP3OuL0IXk96wFHScay8S\n"
-            + "-----END CERTIFICATE-----\n";
+        IOUtils.toString(
+            getClass().getClassLoader().getResourceAsStream("platform.dev.crt"),
+            StandardCharsets.UTF_8);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("label", "test");
     bodyJson.put("certContent", cert_content);
