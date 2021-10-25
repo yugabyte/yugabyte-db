@@ -143,7 +143,7 @@ yb_demo=# \d products
 
 You should see an output like the following:
 
-```
+```output
                                         Table "public.products"
    Column   |            Type             | Collation | Nullable |               Default                
 ------------+-----------------------------+-----------+----------+--------------------------------------
@@ -168,7 +168,7 @@ yb_demo=# SELECT count(*) FROM products;
 
 You should see an output which looks like the following:
 
-```
+```output
  count
 -------
    200
@@ -185,7 +185,7 @@ yb_demo=# SELECT id, title, category, price, rating
 
 You should see an output like the following:
 
-```
+```output
  id  |           title            | category |      price       | rating 
 -----+----------------------------+----------+------------------+--------
   22 | Enormous Marble Shoes      | Gizmo    | 21.4245199604423 |    4.2
@@ -206,7 +206,7 @@ yb_demo=# SELECT id, title, category, price, rating
 
 You should see an output which looks like the following:
 
-```
+```output
  id  |           title           | category  |      price       | rating 
 -----+---------------------------+-----------+------------------+--------
  152 | Enormous Aluminum Clock   | Widget    | 32.5971248660044 |    3.6
@@ -229,7 +229,7 @@ yb_demo=# SELECT users.id, users.name, users.email, orders.id, orders.total
 
 You should see something like the following:
 
-```
+```output
   id  |        name         |             email             |  id   |      total
 ------+---------------------+-------------------------------+-------+------------------
   616 | Rex Thiel           | rex-thiel@gmail.com           |  4443 | 101.414602060277
@@ -257,7 +257,7 @@ Before running the transaction, you can verify that you have `5000` units of pro
 yb_demo=# SELECT id, category, price, quantity FROM products WHERE id=2;
 ```
 
-```
+```output
 SELECT id, category, price, quantity FROM products WHERE id=2;
  id | category  |      price       | quantity
 ----+-----------+------------------+----------
@@ -297,7 +297,7 @@ We can verify that the order got inserted by running the following:
 yb_demo=# select * from orders where id = (select max(id) from orders);
 ```
 
-```
+```output
   id   |         created_at         | user_id | product_id | discount | quantity |     subtotal     | tax |      total       
 -------+----------------------------+---------+------------+----------+----------+------------------+-----+------------------
  18761 | 2020-01-30 09:24:29.784078 |       1 |          2 |        0 |       10 | 700.798961307176 |   0 | 700.798961307176
@@ -310,7 +310,7 @@ We can also verify that total quantity of product id `2` in the inventory is `49
 yb_demo=# SELECT id, category, price, quantity FROM products WHERE id=2;
 ```
 
-```
+```output
  id | category  |      price       | quantity
 ----+-----------+------------------+----------
   2 | Doohickey | 70.0798961307176 |     4990
@@ -329,7 +329,7 @@ To answer this question, you should list the unique set of `source` channels pre
 yb_demo=# SELECT DISTINCT(source) FROM users;
 ```
 
-```
+```output
 source
 -----------
  Facebook
@@ -346,7 +346,7 @@ source
 yb_demo=# SELECT MIN(price), MAX(price), AVG(price) FROM products;
 ```
 
-```
+```output
 min               |       max        |       avg
 ------------------+------------------+------------------
  15.6919436739704 | 98.8193368436819 | 55.7463996679207
@@ -366,7 +366,7 @@ yb_demo=# SELECT source, count(*) AS num_user_signups
           ORDER BY num_user_signups DESC;
 ```
 
-```
+```output
 source     | num_user_signups
 -----------+------------------
  Facebook  |              512
@@ -386,7 +386,7 @@ yb_demo=# SELECT source, ROUND(SUM(orders.total)) AS total_sales
           ORDER BY total_sales DESC;
 ```
 
-```
+```output
   source   | total_sales
 -----------+-------------
  Facebook  |      333454
@@ -417,7 +417,7 @@ Now that the view is created, you can see it in our list of relations.
 yb_demo=# \d
 ```
 
-```
+```output
                List of relations
  Schema |      Name       |   Type   |  Owner
 --------+-----------------+----------+----------
@@ -440,7 +440,7 @@ yb_demo=# SELECT source,
           WHERE source='Facebook';
 ```
 
-```
+```output
   source  |  percent_sales
 ----------+------------------
  Facebook | 20.8927150492159

@@ -87,7 +87,7 @@ CONTAINER ID        IMAGE                 COMMAND                  CREATED      
 
 ## 3. Check cluster status with Admin UI
 
-The [yb-master Admin UI](../../../reference/configuration/yb-master/#admin-ui) is available at http://localhost:7000 and the [yb-tserver Admin UI](../../../reference/configuration/yb-tserver/#admin-ui) is available at http://localhost:9000. To avoid port conflicts, you should make sure other processes on your machine do not have these ports mapped to `localhost`.
+The [yb-master Admin UI](../../../reference/configuration/yb-master/#admin-ui) is available at <http://localhost:7000> and the [yb-tserver Admin UI](../../../reference/configuration/yb-tserver/#admin-ui) is available at <http://localhost:9000>. To avoid port conflicts, you should make sure other processes on your machine do not have these ports mapped to `localhost`.
 
 ### Overview and YB-Master status
 
