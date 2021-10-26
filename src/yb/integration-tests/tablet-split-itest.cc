@@ -2516,7 +2516,7 @@ TEST_F(TabletSplitRemoteBootstrapEnabledTest, TestSplitAfterFailedRbsCreatesDire
   const auto get_tablet_meta_dirs =
       [this](ExternalTabletServer* node) -> Result<std::vector<string>> {
     auto tablet_meta_dirs = VERIFY_RESULT(env_->GetChildren(
-        JoinPathSegments(node->GetDataDir(), "yb-data", "tserver", "tablet-meta")));
+        JoinPathSegments(node->GetRootDir(), "yb-data", "tserver", "tablet-meta")));
     std::sort(tablet_meta_dirs.begin(), tablet_meta_dirs.end());
     return tablet_meta_dirs;
   };
