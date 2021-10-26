@@ -137,7 +137,8 @@ export const DELETE_SCHEDULE = 'DELETE_SCHEDULE';
 export const DELETE_SCHEDULE_RESPONSE = 'DELETE_SCHEDULE_RESPONSE';
 
 export const CREATE_USER = 'CREATE_USER';
-export const CREATE_USER_RESPONSE = 'CREATE_USER_RESPONSE';
+export const CREATE_USER_SUCCESS = 'CREATE_USER_SUCCESS';
+export const CREATE_USER_FAILURE = 'CREATE_USER_FAILURE';
 
 export const DELETE_USER = 'DELETE_USER';
 export const DELETE_USER_RESPONSE = 'DELETE_USER_RESPONSE';
@@ -912,10 +913,17 @@ export function createUser(formValues) {
   };
 }
 
-export function createUserResponse(response) {
+export function createUserSuccess(response) {
   return {
-    type: CREATE_USER_RESPONSE,
+    type: CREATE_USER_SUCCESS,
     payload: response
+  };
+}
+
+export function createUserFailure(error) {
+  return {
+    type: CREATE_USER_FAILURE,
+    payload: error
   };
 }
 
