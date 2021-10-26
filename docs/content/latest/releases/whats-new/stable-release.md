@@ -23,6 +23,67 @@ Release v2.6.1.0 contains an authentication vulnerability in YCQL LDAP. _YSQL is
 If you're using YCQL LDAP with v2.6.1.0 and can't upgrade immediately, see the note in the [Version 2.6.1.0 section](#v2-6-1-0-sept-3-2021) for mitigation instructions.
 {{< /warning >}}
 
+## v2.6.4.0 - Oct 26, 2021
+
+**Build:** `2.6.4.0-b3`
+
+### Downloads
+
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.6.4.0-darwin.tar.gz">
+  <button>
+    <i class="fab fa-apple"></i><span class="download-text">macOS</span>
+  </button>
+</a>
+&nbsp; &nbsp; &nbsp;
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.6.4.0-linux.tar.gz">
+  <button>
+    <i class="fab fa-linux"></i><span class="download-text">Linux</span>
+  </button>
+</a>
+<br />
+
+### Docker
+
+```sh
+docker pull yugabytedb/yugabyte:2.6.4.0-b3
+```
+
+### Improvements
+
+#### Database
+
+* [[10150](https://github.com/yugabyte/yugabyte-db/issues/10150)] [YSQL] Add functionality for the yb_extension role
+* [[10317](https://github.com/yugabyte/yugabyte-db/issues/10317)] [YSQL] Import "Allow users with BYPASSRLS to alter their own passwords."
+
+#### Yugabyte Platform
+
+* [[9612](https://github.com/yugabyte/yugabyte-db/issues/9612)] [PLAT-26] [PLAT-1674] [Platform] Add logs purge threshold option to zip_purge_yb_logs.sh
+* [PLAT-1897] Make client_max_body_size configurable in replicated
+
+### Bug fixes
+
+#### Database
+
+* [[9909](https://github.com/yugabyte/yugabyte-db/issues/9909)] [YSQL] Further fix backup restore for NULL col attr
+* [[9957](https://github.com/yugabyte/yugabyte-db/issues/9957)] [YSQL] Fix memory usage when translating decimal data into Postgres's datum format.
+* [[9963](https://github.com/yugabyte/yugabyte-db/issues/9963)] [Backup] Fix to reallow YEDIS on restore
+* [[10240](https://github.com/yugabyte/yugabyte-db/issues/10240)] Add IPv6 address filters to default value of net_address_filter
+* [[10364](https://github.com/yugabyte/yugabyte-db/issues/10364)] [YCQL] Fix issue when dropping col that is not in an existing non-partial secondary index
+
+#### Yugabyte Platform
+
+N/A
+
+### Known issues
+
+#### Database
+
+N/A
+
+#### Yugabyte Platform
+
+N/A
+
 ## v2.6.3.0 - Oct 22, 2021
 
 **Build:** `2.6.3.0-b12`
