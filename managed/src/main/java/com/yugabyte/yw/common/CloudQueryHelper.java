@@ -53,7 +53,7 @@ public class CloudQueryHelper extends DevopsBase {
     List<String> commandArgs = new ArrayList<>();
     if (p.code.equals("gcp")) {
       // TODO: ideally we shouldn't have this hardcoded string present in multiple places.
-      String potentialGcpNetwork = p.getUnmaskedConfig().get("CUSTOM_GCE_NETWORK");
+      String potentialGcpNetwork = p.getConfig().get("CUSTOM_GCE_NETWORK");
       if (potentialGcpNetwork != null && !potentialGcpNetwork.isEmpty()) {
         commandArgs.add("--network");
         commandArgs.add(potentialGcpNetwork);

@@ -1994,11 +1994,11 @@ public class PlacementInfoUtil {
   public static Map<UUID, Map<String, String>> getConfigPerAZ(PlacementInfo pi) {
     Map<UUID, Map<String, String>> azToConfig = new HashMap<>();
     for (PlacementCloud pc : pi.cloudList) {
-      Map<String, String> cloudConfig = Provider.get(pc.uuid).getUnmaskedConfig();
+      Map<String, String> cloudConfig = Provider.get(pc.uuid).getConfig();
       for (PlacementRegion pr : pc.regionList) {
-        Map<String, String> regionConfig = Region.get(pr.uuid).getUnmaskedConfig();
+        Map<String, String> regionConfig = Region.get(pr.uuid).getConfig();
         for (PlacementAZ pa : pr.azList) {
-          Map<String, String> zoneConfig = AvailabilityZone.get(pa.uuid).getUnmaskedConfig();
+          Map<String, String> zoneConfig = AvailabilityZone.get(pa.uuid).getConfig();
           if (cloudConfig.containsKey("KUBECONFIG")) {
             azToConfig.put(pa.uuid, cloudConfig);
           } else if (regionConfig.containsKey("KUBECONFIG")) {
@@ -2079,8 +2079,7 @@ public class PlacementInfoUtil {
 
     for (Entry<UUID, Integer> entry : azToNumMasters.entrySet()) {
       AvailabilityZone az = AvailabilityZone.get(entry.getKey());
-      String namespace =
-          getKubernetesNamespace(isMultiAZ, nodePrefix, az.code, az.getUnmaskedConfig());
+      String namespace = getKubernetesNamespace(isMultiAZ, nodePrefix, az.code, az.getConfig());
       String domain = azToDomain.get(entry.getKey());
       for (int idx = 0; idx < entry.getValue(); idx++) {
         // TODO(bhavin192): might need to change when we have multiple
@@ -2100,7 +2099,7 @@ public class PlacementInfoUtil {
     for (PlacementCloud pc : pi.cloudList) {
       for (PlacementRegion pr : pc.regionList) {
         for (PlacementAZ pa : pr.azList) {
-          Map<String, String> config = AvailabilityZone.get(pa.uuid).getUnmaskedConfig();
+          Map<String, String> config = AvailabilityZone.get(pa.uuid).getConfig();
           if (config.containsKey("KUBE_DOMAIN")) {
             azToDomain.put(pa.uuid, String.format("%s.%s", "svc", config.get("KUBE_DOMAIN")));
           } else {

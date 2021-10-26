@@ -107,11 +107,11 @@ public abstract class DevopsBase {
       commandList.add(region.provider.code);
       commandList.add("--region");
       commandList.add(region.code);
-      extraVars.putAll(region.provider.getUnmaskedConfig());
+      extraVars.putAll(region.provider.getConfig());
     } else if (providerUUID != null) {
       provider = Provider.get(providerUUID);
       commandList.add(provider.code);
-      extraVars.putAll(provider.getUnmaskedConfig());
+      extraVars.putAll(provider.getConfig());
     } else if (cloudType != null) {
       commandList.add(cloudType.toString());
     } else {
