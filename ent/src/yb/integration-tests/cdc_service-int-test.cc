@@ -88,6 +88,11 @@ const client::YBTableName kTableName(YQL_DATABASE_CQL, kCDCTestKeyspace, kCDCTes
 const client::YBTableName kCdcStateTableName(
     YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
 
+CDCServiceImpl* CDCService(tserver::TabletServer* tserver) {
+  return down_cast<CDCServiceImpl*>(
+      tserver->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+}
+
 class CDCServiceTest : public YBMiniClusterTestBase<MiniCluster>,
                        public testing::WithParamInterface<bool> {
  protected:
@@ -553,8 +558,7 @@ TEST_P(CDCServiceTest, TestMetricsOnDeletedReplication) {
     ASSERT_FALSE(write_resp.has_error());
   }
 
-  auto cdc_service = dynamic_cast<CDCServiceImpl*>(
-      tserver->rpc_server()->service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+  auto cdc_service = CDCService(tserver);
   // Assert that leader lag > 0.
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     auto metrics = cdc_service->GetCDCTabletMetrics({"" /* UUID */, stream_id, tablet_id});
@@ -630,8 +634,7 @@ TEST_P(CDCServiceTest, TestGetChanges) {
     }
 
     // Verify the CDC Service-level metrics match what we just did.
-    auto cdc_service = dynamic_cast<CDCServiceImpl*>(
-        tserver->rpc_server()->service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+    auto cdc_service = CDCService(tserver);
     auto metrics = cdc_service->GetCDCTabletMetrics({"" /* UUID */, stream_id, tablet_id});
     ASSERT_EQ(metrics->last_read_opid_index->value(), metrics->last_readable_opid_index->value());
     ASSERT_EQ(metrics->last_read_opid_index->value(), change_resp.records_size() + 1 /* checkpt */);
@@ -839,8 +842,7 @@ TEST_P(CDCServiceTestMultipleServersOneTablet, TestMetricsAfterServerFailure) {
   auto leader_proxy = std::make_unique<CDCServiceProxy>(
       &client_->proxy_cache(),
       HostPort::FromBoundEndpoint(leader_mini_tserver->bound_rpc_addr()));
-  auto cdc_service = dynamic_cast<CDCServiceImpl*>(
-    leader_tserver->rpc_server()->service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+  auto cdc_service = CDCService(leader_tserver);
   cdc_service->UpdateLagMetrics();
   auto metrics = cdc_service->GetCDCTabletMetrics({"" /* UUID */, stream_id, tablet_id});
   auto timestamp_after_write = GetCurrentTimeMicros();
@@ -891,10 +893,8 @@ TEST_P(CDCServiceTestMultipleServersOneTablet, TestUpdateLagMetrics) {
   // Use proxy for to most accurately simulate normal requests.
   const auto& proxy = leader_tserver->proxy();
 
-  auto cdc_service = dynamic_cast<CDCServiceImpl*>(
-      leader_tserver->rpc_server()->service_pool("yb.cdc.CDCService")->TEST_get_service().get());
-  auto cdc_service_follower = dynamic_cast<CDCServiceImpl*>(
-      follower_tserver->rpc_server()->service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+  auto cdc_service = CDCService(leader_tserver);
+  auto cdc_service_follower = CDCService(follower_tserver);
 
   // At the start of time, assert both leader and follower at 0 lag.
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
@@ -1153,8 +1153,7 @@ TEST_P(CDCServiceTestMultipleServers, TestGetChangesProxyRouting) {
 
   // Verify the CDC metrics match what we just did.
   const auto& tserver = cluster_->mini_tablet_server(0)->server();
-  auto cdc_service = dynamic_cast<CDCServiceImpl*>(
-      tserver->rpc_server()->service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+  auto cdc_service = CDCService(tserver);
   auto server_metrics = cdc_service->GetCDCServerMetrics();
   ASSERT_EQ(server_metrics->cdc_rpc_proxy_count->value(), remote_tablets.size());
 }
