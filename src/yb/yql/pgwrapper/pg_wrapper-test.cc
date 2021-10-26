@@ -298,7 +298,7 @@ TEST_F(PgWrapperOneNodeClusterTest, YB_DISABLE_TEST_IN_TSAN(TestPostgresPid)) {
   MonoDelta timeout = 15s;
   int tserver_count = 1;
 
-  std::string pid_file = JoinPathSegments(pg_ts_->GetDataDir(), "pg_data", "postmaster.pid");
+  std::string pid_file = JoinPathSegments(pg_ts_->GetRootDir(), "pg_data", "postmaster.pid");
   // Wait for postgres server to start and setup postmaster.pid file
   ASSERT_OK(LoggedWaitFor(
       [this, &pid_file] {

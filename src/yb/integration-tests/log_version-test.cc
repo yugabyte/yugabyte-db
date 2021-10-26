@@ -86,7 +86,7 @@ TEST_F(LogRollingTest, Rolling) {
   version = util::TrimStr(version);
   ASSERT_TRUE(std::regex_match(
       version, std::regex(R"(version \S+ build \S+ revision \S+ build_type \S+ built at .+)")));
-  const auto log_path = JoinPathSegments(master->GetFullDataDir(), "logs", BaseName(exe) + ".INFO");
+  const auto log_path = JoinPathSegments(master->GetDataDirs()[0], "logs", BaseName(exe) + ".INFO");
   const auto fingerprint = "Application fingerprint: " + version;
   const LogHeader header(log_path);
   ASSERT_NE(header.GetByPrefix(fingerprint), "");
