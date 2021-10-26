@@ -10,6 +10,7 @@ import {
   FETCH_FAILED_TASK_DETAIL,
   FETCH_FAILED_TASK_DETAIL_RESPONSE
 } from '../actions/tasks';
+import moment from 'moment';
 
 import {
   getInitialState,
@@ -45,7 +46,7 @@ export default function (state = INITIAL_STATE, action) {
       });
       return {
         ...state,
-        customerTaskList: taskListResultArray.sort((a, b) => b.createTime - a.createTime)
+        customerTaskList: taskListResultArray.sort((a, b) => moment(b.createTime).isBefore(a.createTime) ? -1 : 1)
       };
     case FETCH_CUSTOMER_TASKS_FAILURE:
       if ('data' in action.payload) {
