@@ -6,8 +6,8 @@ headcontent: Indexes
 image: /images/section_icons/secure/create-roles.png
 menu:
   stable:
-    identifier: indexes-constraints-indexes-1
-    parent: explore-indexes-constraints
+    identifier: indexes-1
+    parent: explore-ysql-language-features
     weight: 300
 isTocNested: true
 showAsideToc: true
@@ -21,7 +21,7 @@ YSQL allows you to create, drop, and list indexes, as well as use indexes on exp
 
 You create indexes in YSQL using the `CREATE INDEX` statement that has the following syntax:
 
-```
+```sql
 CREATE INDEX index_name ON table_name(column_list);
 ```
 
@@ -75,7 +75,7 @@ EXPLAIN SELECT * FROM employees WHERE department = 'Operations';
 
 The following is the output produced by the preceding example:
 
-```
+```output
 QUERY PLAN                        
 -----------------------------------------------------------------------------------
 Index Scan using index_employees_department on employees (cost=0.00..5.22 rows=10 width=68)
@@ -113,7 +113,7 @@ For additional information and examples, see [Unique index with HASH column orde
 
 YSQL enables you to create an index based on an expression involving table columns, as per the following syntax:
 
-```
+```ysql
 CREATE INDEX index_name ON table_name(expression);
 ```
 
@@ -135,7 +135,7 @@ EXPLAIN SELECT * FROM employees
 
 The following is the output produced by the preceding example:
 
-```
+```output
 QUERY PLAN                        
 -----------------------------------------------------------------------------------
 Index Scan using index_employees_department_lc on employees  (cost=0.00..5.25 rows=10 width=68)
@@ -148,7 +148,7 @@ Partial indexes allow you to improve the query performance by reducing the index
 
 You can define a partial index using the following syntax:
 
-```
+```ysql
 CREATE INDEX index_name ON table_name(column_list) WHERE condition;
 ```
 
@@ -158,7 +158,7 @@ For examples, see [Partial Indexes](/latest/api/ysql/the-sql-language/statements
 
 You can remove one or more existing indexes using the `DROP INDEX` statement that has the following syntax:
 
-```
+```ysql
 DROP INDEX index_name1, index_name2, index_name3, ... ;
 ```
 
@@ -169,4 +169,3 @@ DROP INDEX index_employees_department;
 ```
 
 If you execute the same `SELECT` query with the `EXPLAIN` statement as in [Create indexes](#create-indexes), the query plan will not include any information about the index. 
-

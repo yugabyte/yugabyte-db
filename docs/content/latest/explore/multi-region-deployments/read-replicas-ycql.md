@@ -18,21 +18,20 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/multi-region-deployments/read-replicas-ysql/" class="nav-link">
+    <a href="../read-replicas-ysql/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/latest/explore/multi-region-deployments/read-replicas-ycql/" class="nav-link active">
+    <a href="../read-replicas-ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
   </li>
 
 </ul>
-
 
 YugabyteDB supports the following types of reads: 
 
@@ -61,7 +60,7 @@ $ ./bin/yb-ctl create --rf 3 --placement_info "c.r.z1,c.r.z2,c.r.z3" --tserver_f
 
 Output:
 
-```
+```output
 Creating cluster.
 Waiting for cluster to be ready.
 ....
@@ -103,7 +102,7 @@ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
 
 Output:
 
-```
+```output
 0 [main] INFO com.yugabyte.sample.Main  - Starting sample app...
 35 [main] INFO com.yugabyte.sample.common.CmdLineOpts  - Using NO UUID
 44 [main] INFO com.yugabyte.sample.common.CmdLineOpts  - App: CassandraKeyValue
@@ -148,7 +147,7 @@ $ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
 
 Output:
 
-```
+```output
 0 [main] INFO com.yugabyte.sample.Main - Starting sample app...
 22 [main] INFO com.yugabyte.sample.common.CmdLineOpts - Using NO UUID
 27 [main] INFO com.yugabyte.sample.common.CmdLineOpts - App: CassandraKeyValue
@@ -298,4 +297,3 @@ The following illustration demonstrates that the entire read load moved to the o
 ![img](/images/explore/multi-region-deployments/read-replicas11.png)
 
 For additional information, see [Fault Tolerance](../../fault-tolerance/macos/).
-

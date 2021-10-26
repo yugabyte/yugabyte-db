@@ -1,7 +1,7 @@
 ---
-title: YSQL vs DistributedSQL
-headerTitle: YSQL vs DistributedSQL
-linkTitle: YSQL vs DistributedSQL
+title: Distributed SQL features
+headerTitle: Distributed SQL features
+linkTitle: Distributed SQL features
 description: PostgreSQL features in YSQL
 headcontent: PostgreSQL features in YSQL
 image: /images/section_icons/api/ysql.png
