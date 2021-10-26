@@ -59,6 +59,10 @@ class LoadBalancerMultiTableTest : public YBTableTestBase {
     return 5;
   }
 
+  int num_drives() override {
+    return 4;
+  }
+
   client::YBTableName table_name() override {
     return table_names_[0];
   }

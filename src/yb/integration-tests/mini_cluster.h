@@ -81,7 +81,7 @@ struct MiniClusterOptions {
   // Number of TS to start.
   int num_tablet_servers = 1;
 
-  // Number of drives to use on TS. MiniCluster only.
+  // Number of drives to use on TS.
   int num_drives = 1;
 
   Env* master_env = Env::Default();
