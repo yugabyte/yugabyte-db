@@ -9,6 +9,7 @@ import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import moment from 'moment';
 import { YBPanelItem } from '../../panels';
 import { YBCopyButton } from '../../common/descriptors';
+import { get } from '../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { isAvailable, isNotHidden } from '../../../utils/LayoutUtils';
 import { timeFormatter, successStringFormatter } from '../../../utils/TableFormatters';
@@ -180,7 +181,10 @@ export default class ListBackups extends Component {
           >
             Table Name
           </TableHeaderColumn>
-          {isNotHidden(currentCustomer.data.features, 'universes.details.backups.storageLocation') && (
+          {isNotHidden(
+            currentCustomer.data.features,
+            'universes.details.backups.storageLocation'
+          ) && (
             <TableHeaderColumn
               dataField="storageLocation"
               dataFormat={this.copyStorageLocation}
@@ -241,7 +245,10 @@ export default class ListBackups extends Component {
         >
           Table Name
         </TableHeaderColumn>
-        {isNotHidden(currentCustomer.data.features, 'universes.details.backups.storageLocation') && (
+        {isNotHidden(
+          currentCustomer.data.features,
+          'universes.details.backups.storageLocation'
+        ) && (
           <TableHeaderColumn
             dataField="storageLocation"
             dataFormat={this.copyStorageLocation}
@@ -295,9 +302,9 @@ export default class ListBackups extends Component {
    * @returns Boolean
    */
   onRowSelect = ({ backupUUID }, isSelected) => {
-    isSelected ?
-      this.setState({ selected: [...this.state.selected, backupUUID].sort() }) :
-      this.setState({ selected: this.state.selected.filter((id) => id !== backupUUID) });
+    isSelected
+      ? this.setState({ selected: [...this.state.selected, backupUUID].sort() })
+      : this.setState({ selected: this.state.selected.filter((id) => id !== backupUUID) });
 
     return true;
   };
@@ -312,14 +319,14 @@ export default class ListBackups extends Component {
    */
   onSelectAll = (isSelected, rows) => {
     if (isSelected) {
-      const selected = [...this.state.selected, ...rows.map(row => row.backupUUID)];
+      const selected = [...this.state.selected, ...rows.map((row) => row.backupUUID)];
       this.setState({ selected: selected });
     } else {
       this.setState({ selected: [] });
     }
 
     return true;
-  }
+  };
 
   render() {
     const {
@@ -354,12 +361,12 @@ export default class ListBackups extends Component {
     ) {
       return <YBLoadingCircleIcon size="medium" />;
     }
-    const universePaused = currentUniverse?.universeDetails?.universePaused;
+    const universePaused = get(currentUniverse, 'universeDetails.universePaused');
     const backupInfos = universeBackupList.data
       .map((b) => {
         const backupInfo = b.backupInfo;
         if (
-          (backupInfo.actionType === 'CREATE' &&  backupInfo.status !== 'Deleted') ||
+          (backupInfo.actionType === 'CREATE' && backupInfo.status !== 'Deleted') ||
           (showDeletedBackups && backupInfo.status === 'Deleted')
         ) {
           backupInfo.backupUUID = b.backupUUID;
@@ -396,7 +403,7 @@ export default class ListBackups extends Component {
           >
             <TableAction
               currentRow={row}
-              disabled={currentUniverse.universeDetails.backupInProgress}
+              disabled={get(currentUniverse, 'universeDetails.backupInProgress')}
               actionType="restore-backup"
               onSubmit={(data) => this.handleModalSubmit('Restore', data)}
               onError={() => this.handleModalSubmit('Restore')}
@@ -449,7 +456,7 @@ export default class ListBackups extends Component {
     };
     return (
       <div id="list-backups-content">
-        {currentUniverse.universeDetails.backupInProgress && (
+        {get(currentUniverse, 'universeDetails.backupInProgress') && (
           <Alert bsStyle="info">Backup is in progress at the moment</Alert>
         )}
         {showAlert && (
@@ -461,8 +468,7 @@ export default class ListBackups extends Component {
               </div>
             ) : (
               <div>
-                {alertType} started successfully. See{' '}
-                <Link to="/tasks">task progress</Link>
+                {alertType} started successfully. See <Link to="/tasks">task progress</Link>
               </div>
             )}
           </Alert>
@@ -477,10 +483,13 @@ export default class ListBackups extends Component {
               <div className="pull-right">
                 {isAvailable(currentCustomer.data.features, 'universes.backup') && (
                   <div className="backup-action-btn-group">
-                    {!universePaused &&
+                    {!universePaused && (
                       <>
                         <TableAction
-                          disabled={currentUniverse.universeDetails.backupInProgress || currentUniverse.universeConfig.takeBackups === "false"}
+                          disabled={
+                            get(currentUniverse, 'universeDetails.backupInProgress') ||
+                            get(currentUniverse, 'universeConfig.takeBackups') === 'false'
+                          }
                           className="table-action"
                           btnClass="btn-orange"
                           actionType="create-backup"
@@ -489,7 +498,7 @@ export default class ListBackups extends Component {
                           onError={() => this.handleModalSubmit('Backup')}
                         />
                         <TableAction
-                          disabled={currentUniverse.universeDetails.backupInProgress}
+                          disabled={get(currentUniverse, 'universeDetails.backupInProgress')}
                           className="table-action"
                           btnClass="btn-default"
                           actionType="restore-backup"
@@ -498,9 +507,12 @@ export default class ListBackups extends Component {
                           onError={() => this.handleModalSubmit('Restore')}
                         />
                         <TableAction
-                          disabled={currentUniverse.universeDetails.backupInProgress || this.state.selected.length < 1}
+                          disabled={
+                            get(currentUniverse, 'universeDetails.backupInProgress') ||
+                            this.state.selected.length < 1
+                          }
                           currentRow={{
-                            type: "bulkDelete",
+                            type: 'bulkDelete',
                             data: selected
                           }}
                           className="table-action"
@@ -521,7 +533,7 @@ export default class ListBackups extends Component {
                           />
                         </div>
                       </>
-                    }
+                    )}
                   </div>
                 )}
               </div>
@@ -594,7 +606,7 @@ export default class ListBackups extends Component {
               >
                 Status
               </TableHeaderColumn>
-              {!universePaused &&
+              {!universePaused && (
                 <TableHeaderColumn
                   dataField={'actions'}
                   columnClassName={'no-border yb-actions-cell'}
@@ -606,7 +618,7 @@ export default class ListBackups extends Component {
                 >
                   Actions
                 </TableHeaderColumn>
-              }
+              )}
             </BootstrapTable>
           }
         />
