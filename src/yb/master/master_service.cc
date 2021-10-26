@@ -209,19 +209,6 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
   if (!req->has_tablet_report() || req->tablet_report().is_incremental()) {
     // Only process split tablets if we have plenty of time to process the work (> 50% of timeout).
     auto safe_time_left = CoarseMonoClock::Now() + (FLAGS_heartbeat_rpc_timeout_ms * 1ms / 2);
-    if (rpc.GetClientDeadline() > safe_time_left) {
-      for (const auto& tablet : req->tablets_for_split()) {
-        VLOG(1) << "Got tablet to split: " << AsString(tablet);
-        const auto split_status = server_->catalog_manager()->SplitTablet(tablet.tablet_id());
-        if (!split_status.ok()) {
-          if (MasterError(split_status) == MasterErrorPB::REACHED_SPLIT_LIMIT) {
-            YB_LOG_EVERY_N_SECS(WARNING, 60 * 60) << split_status;
-          } else {
-            LOG(WARNING) << split_status;
-          }
-        }
-      }
-    }
 
     safe_time_left = CoarseMonoClock::Now() + (FLAGS_heartbeat_rpc_timeout_ms * 1ms / 2);
     if (rpc.GetClientDeadline() > safe_time_left) {

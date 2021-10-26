@@ -843,7 +843,7 @@ message TSHeartbeatRequestPB {
   optional int32 cluster_config_version = 8;
 
   // List of candidate tablets for split based on tablet splitting strategy and settings.
-  repeated TabletForSplitPB tablets_for_split = 9;
+  repeated TabletForSplitPB DEPRECATED_tablets_for_split = 9;
 
   // Physical time on tablet server
   optional fixed64 ts_physical_time = 10;

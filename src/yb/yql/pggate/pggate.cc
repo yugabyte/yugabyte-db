@@ -918,8 +918,7 @@ Status PgApiImpl::ProcessYBTupleId(const YBCPgYBTupleIdDescriptor& descr,
   google::protobuf::RepeatedPtrField<PgsqlExpressionPB> hashed_values;
   vector<docdb::PrimitiveValue> hashed_components, range_components;
   hashed_components.reserve(target_desc->num_hash_key_columns());
-  range_components.reserve(
-      target_desc->num_hash_key_columns() - target_desc->num_hash_key_columns());
+  range_components.reserve(target_desc->num_key_columns() - target_desc->num_hash_key_columns());
   size_t remain_attr = descr.nattrs;
   // DocDB API requires that partition columns must be listed in their created-order.
   // Order from target_desc should be used as attributes sequence may have different order.
@@ -1381,10 +1380,10 @@ Status PgApiImpl::CommitTransaction() {
   return pg_txn_manager_->CommitTransaction();
 }
 
-Status PgApiImpl::AbortTransaction() {
+void PgApiImpl::AbortTransaction() {
   pg_session_->InvalidateForeignKeyReferenceCache();
   pg_session_->DropBufferedOperations();
-  return pg_txn_manager_->AbortTransaction();
+  pg_txn_manager_->AbortTransaction();
 }
 
 Status PgApiImpl::SetTransactionIsolationLevel(int isolation) {
@@ -1405,21 +1404,18 @@ Status PgApiImpl::EnterSeparateDdlTxnMode() {
   return pg_txn_manager_->EnterSeparateDdlTxnMode();
 }
 
-Status PgApiImpl::ExitSeparateDdlTxnMode(bool success) {
+Status PgApiImpl::ExitSeparateDdlTxnMode() {
   // Flush all buffered operations as ddl txn use its own transaction session.
-  if (success) {
-    RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
-  } else {
-    pg_session_->DropBufferedOperations();
-  }
-
-  RETURN_NOT_OK(pg_txn_manager_->ExitSeparateDdlTxnMode(success));
-  ReadHybridTime read_time;
-  if (success) {
-    // Next reads from catalog tables have to see changes made by the DDL transaction.
-    ResetCatalogReadTime();
-  }
+  RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
+  RETURN_NOT_OK(pg_txn_manager_->ExitSeparateDdlTxnMode());
+  // Next reads from catalog tables have to see changes made by the DDL transaction.
+  ResetCatalogReadTime();
   return Status::OK();
+}
+
+void PgApiImpl::ClearSeparateDdlTxnMode() {
+  pg_session_->DropBufferedOperations();
+  pg_txn_manager_->ClearSeparateDdlTxnMode();
 }
 
 Status PgApiImpl::SetActiveSubTransaction(SubTransactionId id) {

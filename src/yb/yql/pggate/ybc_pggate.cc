@@ -888,8 +888,8 @@ YBCStatus YBCPgCommitTransaction() {
   return ToYBCStatus(pgapi->CommitTransaction());
 }
 
-YBCStatus YBCPgAbortTransaction() {
-  return ToYBCStatus(pgapi->AbortTransaction());
+void YBCPgAbortTransaction() {
+  pgapi->AbortTransaction();
 }
 
 YBCStatus YBCPgSetTransactionIsolationLevel(int isolation) {
@@ -908,8 +908,12 @@ YBCStatus YBCPgEnterSeparateDdlTxnMode() {
   return ToYBCStatus(pgapi->EnterSeparateDdlTxnMode());
 }
 
-YBCStatus YBCPgExitSeparateDdlTxnMode(bool success) {
-  return ToYBCStatus(pgapi->ExitSeparateDdlTxnMode(success));
+YBCStatus YBCPgExitSeparateDdlTxnMode() {
+  return ToYBCStatus(pgapi->ExitSeparateDdlTxnMode());
+}
+
+void YBCPgClearSeparateDdlTxnMode() {
+  pgapi->ClearSeparateDdlTxnMode();
 }
 
 YBCStatus YBCPgSetActiveSubTransaction(uint32_t id) {
