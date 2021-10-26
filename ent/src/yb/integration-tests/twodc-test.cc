@@ -816,7 +816,7 @@ TEST_P(TwoDCTest, PollAndObserveIdleDampening) {
 
   // Find the CDCTabletMetric associated with the above pair.
   auto cdc_service = dynamic_cast<cdc::CDCServiceImpl*>(
-    cdc_ts->rpc_server()->service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+    cdc_ts->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
   std::shared_ptr<cdc::CDCTabletMetrics> metrics =
       cdc_service->GetCDCTabletMetrics({"", stream_id, tablet_id});
 

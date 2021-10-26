@@ -59,6 +59,8 @@ class CQLServiceImpl : public CQLServerServiceIf,
 
   void Shutdown() override;
 
+  void FillEndpoints(const rpc::RpcServicePtr& service, rpc::RpcEndpointMap* map) override;
+
   // Processing all incoming request from RPC and sending response back.
   void Handle(yb::rpc::InboundCallPtr call) override;
 
