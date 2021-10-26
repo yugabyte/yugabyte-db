@@ -1342,11 +1342,26 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @return the created task group.
    */
   public SubTaskGroup createModifyBlackListTask(List<NodeDetails> nodes, boolean isAdd) {
+    if (isAdd) {
+      return createModifyBlackListTask(nodes, null);
+    }
+    return createModifyBlackListTask(null, nodes);
+  }
+
+  /**
+   * Creates a task to add/remove nodes from blacklist on server.
+   *
+   * @param addNodes The nodes that have to be added to the blacklist.
+   * @param removeNodes The nodes that have to be removed from the blacklist.
+   * @return
+   */
+  public SubTaskGroup createModifyBlackListTask(
+      Collection<NodeDetails> addNodes, Collection<NodeDetails> removeNodes) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("ModifyBlackList", executor);
     ModifyBlackList.Params params = new ModifyBlackList.Params();
     params.universeUUID = taskParams().universeUUID;
-    params.isAdd = isAdd;
-    params.nodes = new HashSet<NodeDetails>(nodes);
+    params.addNodes = addNodes;
+    params.removeNodes = removeNodes;
     // Create the task.
     ModifyBlackList modifyBlackList = createTask(ModifyBlackList.class);
     modifyBlackList.initialize(params);

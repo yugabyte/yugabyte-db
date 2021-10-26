@@ -20,6 +20,8 @@ import java.util.Collection;
 import java.util.List;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+
+import org.apache.commons.collections.CollectionUtils;
 import org.yb.Common.HostPortPB;
 import org.yb.client.ModifyMasterClusterConfigBlacklist;
 import org.yb.client.YBClient;
@@ -36,12 +38,11 @@ public class ModifyBlackList extends UniverseTaskBase {
 
   // Parameters for placement info update task.
   public static class Params extends UniverseTaskParams {
-    // When true, the collection of nodes below are added to the blacklist on the master leader,
-    // else they are removed.
-    public boolean isAdd;
+    // The list of nodes to be added to the blacklist.
+    public Collection<NodeDetails> addNodes;
 
-    // The list of nodes being added or removed to this universes' configuration.
-    public Collection<NodeDetails> nodes;
+    // The list of nodes to be removed from the blacklist.
+    public Collection<NodeDetails> removeNodes;
   }
 
   @Override
@@ -54,10 +55,10 @@ public class ModifyBlackList extends UniverseTaskBase {
     return super.getName()
         + "("
         + taskParams().universeUUID
-        + ", isAdd="
-        + taskParams().isAdd
-        + ", numNodes="
-        + taskParams().nodes.size()
+        + ", numAddNodes="
+        + (CollectionUtils.isEmpty(taskParams().addNodes) ? 0 : taskParams().addNodes.size())
+        + ", numRemoveNodes="
+        + (CollectionUtils.isEmpty(taskParams().removeNodes) ? 0 : taskParams().removeNodes.size())
         + ")";
   }
 
@@ -69,19 +70,11 @@ public class ModifyBlackList extends UniverseTaskBase {
     YBClient client = null;
     try {
       log.info("Running {}: masterHostPorts={}.", getName(), masterHostPorts);
-      List<HostPortPB> modifyHosts = new ArrayList<HostPortPB>();
-      for (NodeDetails node : taskParams().nodes) {
-        String ip = node.cloudInfo.private_ip;
-        if (ip == null) {
-          NodeDetails onDiskNode = universe.getNode(node.nodeName);
-          ip = onDiskNode.cloudInfo.private_ip;
-        }
-        HostPortPB.Builder hpb = HostPortPB.newBuilder().setPort(node.tserverRpcPort).setHost(ip);
-        modifyHosts.add(hpb.build());
-      }
+      List<HostPortPB> addHosts = getHostPortPBs(universe, taskParams().addNodes);
+      List<HostPortPB> removeHosts = getHostPortPBs(universe, taskParams().removeNodes);
       client = ybService.getClient(masterHostPorts, certificate);
       ModifyMasterClusterConfigBlacklist modifyBlackList =
-          new ModifyMasterClusterConfigBlacklist(client, modifyHosts, taskParams().isAdd);
+          new ModifyMasterClusterConfigBlacklist(client, addHosts, removeHosts);
       modifyBlackList.doCall();
       universe.incrementVersion();
     } catch (Exception e) {
@@ -90,5 +83,22 @@ public class ModifyBlackList extends UniverseTaskBase {
     } finally {
       ybService.closeClient(client, masterHostPorts);
     }
+  }
+
+  private List<HostPortPB> getHostPortPBs(Universe universe, Collection<NodeDetails> nodes) {
+    List<HostPortPB> hostPorts = null;
+    if (CollectionUtils.isNotEmpty(nodes)) {
+      hostPorts = new ArrayList<>(nodes.size());
+      for (NodeDetails node : nodes) {
+        String ip = node.cloudInfo.private_ip;
+        if (ip == null) {
+          NodeDetails onDiskNode = universe.getNode(node.nodeName);
+          ip = onDiskNode.cloudInfo.private_ip;
+        }
+        HostPortPB.Builder hpb = HostPortPB.newBuilder().setPort(node.tserverRpcPort).setHost(ip);
+        hostPorts.add(hpb.build());
+      }
+    }
+    return hostPorts;
   }
 }
