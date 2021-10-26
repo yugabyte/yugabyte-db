@@ -69,7 +69,8 @@ import {
   GET_CUSTOMER_USERS_SUCCESS,
   GET_CUSTOMER_USERS_FAILURE,
   CREATE_USER,
-  CREATE_USER_RESPONSE,
+  CREATE_USER_SUCCESS,
+  CREATE_USER_FAILURE,
   CREATE_ALERT_CHANNEL,
   CREATE_ALERT_CHANNEL_RESPONSE,
   GET_ALERT_CHANNELS,
@@ -374,8 +375,10 @@ export default function (state = INITIAL_STATE, action) {
 
     case CREATE_USER:
       return setLoadingState(state, 'createUser', {});
-    case CREATE_USER_RESPONSE:
-      return setPromiseResponse(state, 'createUser', action);
+    case CREATE_USER_SUCCESS:
+      return setSuccessState(state, 'createUser', action);
+    case CREATE_USER_FAILURE:
+      return setFailureState(state, 'createUser', action);
 
     case GET_RELEASES:
       return setLoadingState(state, 'releases', []);
