@@ -29,6 +29,7 @@ class RedisServiceImpl : public RedisServerServiceIf {
   RedisServiceImpl(RedisServer* server, std::string yb_tier_master_address);
   ~RedisServiceImpl();
 
+  void FillEndpoints(const rpc::RpcServicePtr& service, rpc::RpcEndpointMap* map) override;
   void Handle(yb::rpc::InboundCallPtr call) override;
 
  private:

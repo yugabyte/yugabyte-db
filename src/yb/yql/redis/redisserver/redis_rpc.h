@@ -126,8 +126,10 @@ class RedisInboundCall : public rpc::QueueableInboundCall {
   RedisClientBatch& client_batch() { return client_batch_; }
   RedisConnectionContext& connection_context() const;
 
-  const std::string& service_name() const override;
-  const std::string& method_name() const override;
+  Slice serialized_remote_method() const override;
+  Slice method_name() const override;
+
+  static Slice static_serialized_remote_method();
 
   void Respond(size_t idx, bool is_success, RedisResponsePB* resp);
 

@@ -62,7 +62,7 @@ message RequestHeader {
   //   -2: Invalid call ID.
   //   -3: Connection context call ID.
   //   -33: SASL negotiation call ID.
-  required int32 call_id = 1;
+  optional int32 call_id = 1;
 
   // RPC method being invoked.
   // Not used for "connection setup" calls.

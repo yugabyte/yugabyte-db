@@ -95,7 +95,8 @@ static void AssertShutdown(yb::Thread* thread, const Status* status) {
   ASSERT_OK(ThreadJoiner(thread).warn_every(500ms).Join());
   string msg = status->ToString();
   ASSERT_TRUE(msg.find("Service unavailable") != string::npos ||
-              msg.find("Network error") != string::npos)
+              msg.find("Network error") != string::npos ||
+              msg.find("Resource unavailable") != string::npos)
               << "Status is actually: " << msg;
 }
 
@@ -211,7 +212,7 @@ TEST_F(MultiThreadedRpcTest, TestBlowOutServiceQueue) {
   latch.Wait();
 
   // The rest would time out after 10 sec, but we help them along.
-  ASSERT_OK(server_messenger->UnregisterService(service_name));
+  server_messenger->UnregisterAllServices();
   service_pool->Shutdown();
   thread_pool.Shutdown();
   server_messenger->Shutdown();

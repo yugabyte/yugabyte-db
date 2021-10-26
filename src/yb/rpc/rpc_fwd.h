@@ -20,12 +20,14 @@
 #include <functional>
 
 #include <boost/version.hpp>
+#include <boost/functional/hash_fwd.hpp>
 
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/rpc/rpc_introspection.pb.h"
 
 #include "yb/util/enums.h"
+#include "yb/util/slice.h"
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
@@ -43,7 +45,6 @@ class ReactorTask;
 class RpcConnectionPB;
 class RpcContext;
 class RpcController;
-class RpcService;
 class Rpcs;
 class Poller;
 class Protocol;
@@ -63,6 +64,11 @@ struct CallData;
 struct ProcessCallsResult;
 struct RpcMethodMetrics;
 struct RpcMetrics;
+
+class RpcService;
+using RpcServicePtr = scoped_refptr<RpcService>;
+using RpcEndpointMap = std::unordered_map<
+    Slice, std::pair<RpcServicePtr, size_t>, boost::hash<Slice>>;
 
 class RpcCommand;
 typedef std::shared_ptr<RpcCommand> RpcCommandPtr;
@@ -104,6 +110,7 @@ class StreamFactory;
 typedef std::shared_ptr<StreamFactory> StreamFactoryPtr;
 
 YB_STRONGLY_TYPED_BOOL(ReadBufferFull);
+YB_STRONGLY_TYPED_BOOL(Queue);
 
 typedef int64_t ScheduledTaskId;
 constexpr ScheduledTaskId kInvalidTaskId = -1;
