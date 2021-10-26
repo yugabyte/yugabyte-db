@@ -303,6 +303,15 @@ public class CertificateInfo extends Model {
     return certificateInfo;
   }
 
+  public static List<CertificateInfo> getWhereLabelStartsWith(String label, Type certType) {
+    List<CertificateInfo> certificateInfoList =
+        find.query().where().eq("cert_type", certType).like("label", label + "%").findList();
+    return certificateInfoList
+        .stream()
+        .filter(certificateInfo -> !CertificateInfo.isTemporary(certificateInfo))
+        .collect(Collectors.toList());
+  }
+
   public static List<CertificateInfo> getAllNoChecksum() {
     List<CertificateInfo> certificateInfoList = find.query().where().isNull("checksum").findList();
     return certificateInfoList
