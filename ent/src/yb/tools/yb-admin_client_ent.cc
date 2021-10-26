@@ -605,16 +605,23 @@ Status ClusterAdminClient::CreateSnapshotMetaFile(const string& snapshot_id,
     req.set_snapshot_id(StringToSnapshotId(snapshot_id));
 
     // Format 0 - latest format (== Format 2 at the moment).
+    // Format -1 - old format (no 'namespace_name' in the Table entry).
     // Format 1 - old format.
     // Format 2 - new format.
-    if (FLAGS_TEST_metadata_file_format_version != 1) {
+    if (FLAGS_TEST_metadata_file_format_version == 0 ||
+        FLAGS_TEST_metadata_file_format_version >= 2) {
       req.set_prepare_for_backup(true);
     }
     return master_backup_proxy_->ListSnapshots(req, &resp, rpc);
   }));
 
-  const SnapshotInfoPB* snapshot = nullptr;
-  for (const auto& snapshot_entry : resp.snapshots()) {
+  if (resp.snapshots_size() > 1) {
+    LOG(WARNING) << "Requested snapshot metadata for snapshot '" << snapshot_id << "', but got "
+                 << resp.snapshots_size() << " snapshots in the response";
+  }
+
+  SnapshotInfoPB* snapshot = nullptr;
+  for (SnapshotInfoPB& snapshot_entry : *resp.mutable_snapshots()) {
     if (SnapshotIdToString(snapshot_entry.id()) == snapshot_id) {
       snapshot = &snapshot_entry;
       break;
@@ -625,9 +632,17 @@ Status ClusterAdminClient::CreateSnapshotMetaFile(const string& snapshot_id,
         InternalError, "Response contained $0 entries but no entry for snapshot '$1'",
         resp.snapshots_size(), snapshot_id);
   }
-  if (resp.snapshots_size() > 1) {
-    LOG(WARNING) << "Requested snapshot metadata for snapshot '" << snapshot_id << "', but got "
-                 << resp.snapshots_size() << " snapshots in the response";
+
+  if (FLAGS_TEST_metadata_file_format_version == -1) {
+    // Remove 'namespace_name' from SysTablesEntryPB.
+    SysSnapshotEntryPB& sys_entry = *snapshot->mutable_entry();
+    for (SysRowEntry& entry : *sys_entry.mutable_entries()) {
+      if (entry.type() == SysRowEntry::TABLE) {
+        auto meta = VERIFY_RESULT(ParseFromSlice<SysTablesEntryPB>(entry.data()));
+        meta.clear_namespace_name();
+        entry.set_data(meta.SerializeAsString());
+      }
+    }
   }
 
   cout << "Exporting snapshot " << snapshot_id << " ("
@@ -716,10 +731,6 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
           return STATUS(IllegalState, "Could not find table name from snapshot metadata");
         }
 
-        if (meta.namespace_name().empty()) {
-          return STATUS(IllegalState, "Could not find keyspace name from snapshot metadata");
-        }
-
         // Update the table name if needed.
         if (update_meta) {
           entry.set_data(meta.SerializeAsString());
@@ -745,7 +756,9 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
         }
 
         cout << (meta.colocated() ? "Colocated t" : "T") << "able being imported: "
-             << meta.namespace_name() << "." << meta.name() << endl;
+             << (meta.namespace_name().empty() ?
+                 "[" + meta.namespace_id() + "]" : meta.namespace_name())
+             << "." << meta.name() << endl;
         ++table_index;
         break;
       }
