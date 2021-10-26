@@ -13,6 +13,7 @@ import {
 import './MetricsPanel.scss';
 import { METRIC_FONT } from '../MetricsConfig';
 import _ from 'lodash';
+import moment from "moment";
 
 const Plotly = require('plotly.js/lib/core');
 
@@ -45,7 +46,8 @@ export default class MetricsPanel extends Component {
         }
       }
 
-      metric.layout.xaxis.hoverformat = '%H:%M:%S, %b %d, %Y';
+
+      metric.layout.xaxis.hoverformat = '%H:%M:%S, %b %d, %Y ' + moment().format('[UTC]ZZ');
 
       // TODO: send this data from backend.
       let max = 0;
@@ -109,7 +111,6 @@ export default class MetricsPanel extends Component {
         metric.layout.xaxis = { range: [0, 2] };
         metric.layout.yaxis = { range: [0, 2] };
       }
-
       Plotly.newPlot(metricKey, metric.data, metric.layout, { displayModeBar: false });
     }
   };

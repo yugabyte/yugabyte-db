@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.forms;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import java.util.Date;
 import java.util.UUID;
 
@@ -12,8 +13,10 @@ public class CustomerTaskFormData {
 
   public int percentComplete;
 
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
   public Date createTime;
 
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
   public Date completionTime;
 
   public String target;

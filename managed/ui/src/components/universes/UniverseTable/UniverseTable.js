@@ -3,6 +3,7 @@
 import React, { Component } from 'react';
 import { Row, Col, ListGroup, ListGroupItem } from 'react-bootstrap';
 import { Link } from 'react-router';
+
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { isObject } from 'lodash';
 import { isNonEmptyArray, isNonEmptyObject } from '../../../utils/ObjectUtils';
@@ -10,6 +11,7 @@ import './UniverseTable.scss';
 import { UniverseReadWriteMetrics } from '../../metrics';
 import { YBCost } from '../../common/descriptors';
 import { UniverseStatusContainer } from '../../universes';
+
 import {
   getUniverseNodes,
   getPlacementRegions,

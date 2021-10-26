@@ -60,7 +60,7 @@ public class Customer extends Model {
   public String name;
 
   @Column(nullable = false)
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
   public Date creationDate;
 
   @Column(nullable = true, columnDefinition = "TEXT")
