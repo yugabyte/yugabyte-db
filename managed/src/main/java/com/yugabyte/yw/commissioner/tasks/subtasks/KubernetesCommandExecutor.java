@@ -151,7 +151,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     // (for backwards compatibility).
     Map<String, String> config = taskParams().config;
     if (config == null) {
-      config = Provider.get(taskParams().providerUUID).getUnmaskedConfig();
+      config = Provider.get(taskParams().providerUUID).getConfig();
     }
     if (taskParams().commandType != CommandType.POD_INFO && taskParams().namespace == null) {
       throw new IllegalArgumentException("namespace can be null only in case of POD_INFO");
@@ -407,7 +407,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     // it is always at the provider level.
     Provider provider = Provider.get(taskParams().providerUUID);
     if (provider != null) {
-      Map<String, String> config = provider.getUnmaskedConfig();
+      Map<String, String> config = provider.getConfig();
       if (config.containsKey("KUBECONFIG_IMAGE_PULL_SECRET_NAME")) {
         return config.get("KUBECONFIG_PULL_SECRET");
       }
@@ -434,7 +434,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     overrides = yaml.load(application.resourceAsStream("k8s-expose-all.yml"));
 
     Provider provider = Provider.get(taskParams().providerUUID);
-    Map<String, String> config = provider.getUnmaskedConfig();
+    Map<String, String> config = provider.getConfig();
     Map<String, String> azConfig = new HashMap<String, String>();
     Map<String, String> regionConfig = new HashMap<String, String>();
 
@@ -482,8 +482,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             numNodes = zone.numNodesInAZ;
             replicationFactorZone = zone.replicationFactor;
             replicationFactor = userIntent.replicationFactor;
-            azConfig = AvailabilityZone.get(zone.uuid).getUnmaskedConfig();
-            regionConfig = Region.get(region.uuid).getUnmaskedConfig();
+            azConfig = AvailabilityZone.get(zone.uuid).getConfig();
+            regionConfig = Region.get(region.uuid).getConfig();
           }
         }
       }

@@ -104,7 +104,7 @@ public class KubernetesWaitForPod extends AbstractTaskBase {
   private String waitForPod() {
     Map<String, String> config = taskParams().config;
     if (taskParams().config == null) {
-      config = Provider.get(taskParams().providerUUID).getUnmaskedConfig();
+      config = Provider.get(taskParams().providerUUID).getConfig();
     }
     ShellResponse podResponse =
         kubernetesManager.getPodStatus(config, taskParams().namespace, taskParams().podName);
