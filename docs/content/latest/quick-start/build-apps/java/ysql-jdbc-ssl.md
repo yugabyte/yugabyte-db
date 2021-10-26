@@ -213,7 +213,7 @@ To build a Java application that connects to YugabyteDB over an SSL connection, 
 1. Run your new program.
 
     ```sh
-    $ java -Djavax.net.ssl.trustStore=ybtruststore -Djavax.net.ssl.trustStorePassword=yugabyte -cp "target/MySample-1.0-SNAPSHOT.jar:target/lib/*" -jar target/MySample-1.0-SNAPSHOT.jar
+    $ mvn -q package exec:java -DskipTests -Djavax.net.ssl.trustStore=ybtruststore -Djavax.net.ssl.trustStorePassword=yugabyte -Dexec.mainClass=com.yugabyte.HelloSqlSslApp
     ```
 
     You should see the following output:
