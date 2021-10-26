@@ -109,19 +109,28 @@ constexpr std::chrono::milliseconds kDefaultKeepAlive = 1s;
 const MessengerOptions kDefaultClientMessengerOptions = {1, kDefaultKeepAlive};
 const MessengerOptions kDefaultServerMessengerOptions = {3, kDefaultKeepAlive};
 
+void GenericCalculatorService::AddMethodToMap(
+    const RpcServicePtr& service, RpcEndpointMap* map, const char* method_name, Method method) {
+  size_t index = methods_.size();
+  methods_.emplace_back(
+      RemoteMethod(CalculatorServiceIf::static_service_name(), method_name), method);
+  map->emplace(methods_.back().first.serialized_body(), std::make_pair(service, index));
+}
+
+void GenericCalculatorService::FillEndpoints(const RpcServicePtr& service, RpcEndpointMap* map) {
+  AddMethodToMap(
+      service, map, CalculatorServiceMethods::kAddMethodName, &GenericCalculatorService::DoAdd);
+  AddMethodToMap(
+      service, map, CalculatorServiceMethods::kSleepMethodName, &GenericCalculatorService::DoSleep);
+  AddMethodToMap(
+      service, map, CalculatorServiceMethods::kEchoMethodName, &GenericCalculatorService::DoEcho);
+  AddMethodToMap(
+      service, map, CalculatorServiceMethods::kSendStringsMethodName,
+      &GenericCalculatorService::DoSendStrings);
+}
+
 void GenericCalculatorService::Handle(InboundCallPtr incoming) {
-  if (incoming->method_name() == CalculatorServiceMethods::kAddMethodName) {
-    DoAdd(incoming.get());
-  } else if (incoming->method_name() == CalculatorServiceMethods::kSleepMethodName) {
-    DoSleep(incoming.get());
-  } else if (incoming->method_name() == CalculatorServiceMethods::kEchoMethodName) {
-    DoEcho(incoming.get());
-  } else if (incoming->method_name() == CalculatorServiceMethods::kSendStringsMethodName) {
-    DoSendStrings(incoming.get());
-  } else {
-    incoming->RespondFailure(ErrorStatusPB::ERROR_NO_SUCH_METHOD,
-        STATUS(InvalidArgument, "bad method"));
-  }
+  (this->*methods_[incoming->method_index()].second)(incoming.get());
 }
 
 void GenericCalculatorService::GenericCalculatorService::DoAdd(InboundCall* incoming) {
@@ -338,17 +347,14 @@ TestServer::TestServer(std::unique_ptr<ServiceIf> service,
 TestServer::~TestServer() {
   thread_pool_.Shutdown();
   if (service_pool_) {
-    const Status unregister_service_status = messenger_->UnregisterService(service_name_);
-    if (!unregister_service_status.IsServiceUnavailable()) {
-      EXPECT_OK(unregister_service_status);
-    }
+    messenger_->UnregisterAllServices();
     service_pool_->Shutdown();
   }
   messenger_->Shutdown();
 }
 
 void TestServer::Shutdown() {
-  ASSERT_OK(messenger_->UnregisterService(service_name_));
+  messenger_->UnregisterAllServices();
   service_pool_->Shutdown();
   messenger_->Shutdown();
 }

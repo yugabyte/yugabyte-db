@@ -113,6 +113,7 @@ class GenericCalculatorService : public ServiceIf {
     // this test doesn't generate metrics, so we ignore the argument.
   }
 
+  void FillEndpoints(const RpcServicePtr& service, RpcEndpointMap* map) override;
   void Handle(InboundCallPtr incoming) override;
 
   std::string service_name() const override {
@@ -120,10 +121,16 @@ class GenericCalculatorService : public ServiceIf {
   }
 
  private:
+  typedef void (GenericCalculatorService::*Method)(InboundCall*);
+
   void DoAdd(InboundCall *incoming);
   void DoSendStrings(InboundCall* incoming);
   void DoSleep(InboundCall *incoming);
   void DoEcho(InboundCall *incoming);
+  void AddMethodToMap(
+      const RpcServicePtr& service, RpcEndpointMap* map, const char* method_name, Method method);
+
+  std::deque<std::pair<RemoteMethod, Method>> methods_;
 };
 
 struct MessengerOptions {

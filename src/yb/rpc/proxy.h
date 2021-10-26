@@ -73,11 +73,7 @@ class ProxyContext {
   // that reactor to assign and send the call.
   virtual void QueueOutboundCall(OutboundCallPtr call) = 0;
 
-  // Enqueue a call for processing on the server.
-  virtual void QueueInboundCall(InboundCallPtr call) = 0;
-
-  // Invoke the RpcService to handle a call directly.
-  virtual void Handle(InboundCallPtr call) = 0;
+  virtual void Handle(InboundCallPtr call, Queue queue) = 0;
 
   virtual const Protocol* DefaultProtocol() = 0;
 

@@ -212,11 +212,11 @@ class ServicePoolImpl final : public InboundCallHandler {
 
   void Overflow(const InboundCallPtr& call, const char* type, size_t limit) {
     const auto err_msg =
-        Substitute("$0 request on $1 from $2 dropped due to backpressure. "
+        Format("$0 request on $1 from $2 dropped due to backpressure. "
                    "The $3 queue is full, it has $4 items.",
-            call->method_name(),
+            call->method_name().ToBuffer(),
             service_->service_name(),
-            yb::ToString(call->remote_address()),
+            call->remote_address(),
             type,
             limit);
     YB_LOG_EVERY_N_SECS(WARNING, 3) << LogPrefix() << err_msg;
@@ -242,6 +242,10 @@ class ServicePoolImpl final : public InboundCallHandler {
         << call->remote_address() << " dropped because of: " << status.ToString();
     const auto response_status = STATUS(ServiceUnavailable, "Service is shutting down");
     call->RespondFailure(ErrorStatusPB::FATAL_SERVER_SHUTTING_DOWN, response_status);
+  }
+
+  void FillEndpoints(const RpcServicePtr& service, RpcEndpointMap* map) {
+    service_->FillEndpoints(service, map);
   }
 
   void Handle(InboundCallPtr incoming) override {
@@ -477,6 +481,10 @@ void ServicePool::QueueInboundCall(InboundCallPtr call) {
 
 void ServicePool::Handle(InboundCallPtr call) {
   impl_->Handle(std::move(call));
+}
+
+void ServicePool::FillEndpoints(RpcEndpointMap* map) {
+  impl_->FillEndpoints(RpcServicePtr(this), map);
 }
 
 const Counter* ServicePool::RpcsTimedOutInQueueMetricForTests() const {

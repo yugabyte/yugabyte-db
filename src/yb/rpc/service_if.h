@@ -37,6 +37,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/rpc/rpc_fwd.h"
+#include "yb/rpc/remote_method.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/sockaddr.h"
 
@@ -58,10 +59,17 @@ struct RpcMethodMetrics {
   scoped_refptr<Histogram> handler_latency;
 };
 
+struct RpcMethodDesc {
+  RemoteMethod method;
+  std::function<void(InboundCallPtr)> handler;
+  RpcMethodMetrics metrics;
+};
+
 // Handles incoming messages that initiate an RPC.
 class ServiceIf {
  public:
   virtual ~ServiceIf();
+  virtual void FillEndpoints(const RpcServicePtr& service, RpcEndpointMap* map) = 0;
   virtual void Handle(InboundCallPtr incoming) = 0;
 
   virtual void Shutdown();

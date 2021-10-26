@@ -178,8 +178,8 @@ void RpcServer::Shutdown() {
   }
 }
 
-const rpc::ServicePool* RpcServer::service_pool(const string& service_name) const {
-  return down_cast<rpc::ServicePool*>(messenger_->rpc_service(service_name).get());
+const rpc::ServicePool* RpcServer::TEST_service_pool(const string& service_name) const {
+  return down_cast<rpc::ServicePool*>(messenger_->TEST_rpc_service(service_name).get());
 }
 
 } // namespace server

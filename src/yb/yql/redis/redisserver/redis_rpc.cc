@@ -219,6 +219,7 @@ Status RedisInboundCall::ParseFrom(
 
   consumption_ = ScopedTrackedConsumption(mem_tracker, data->size());
 
+  request_data_memory_usage_.store(data->size(), std::memory_order_release);
   request_data_ = std::move(*data);
   serialized_request_ = Slice(request_data_.data(), request_data_.size());
 
@@ -251,14 +252,22 @@ Status RedisInboundCall::ParseFrom(
   return Status::OK();
 }
 
-const std::string& RedisInboundCall::service_name() const {
-  static std::string result = "yb.redisserver.RedisServerService"s;
-  return result;
+namespace {
+
+const rpc::RemoteMethod remote_method("yb.redisserver.RedisServerService", "anyMethod");
+
 }
 
-const std::string& RedisInboundCall::method_name() const {
-  static std::string result = "anyMethod"s;
-  return result;
+Slice RedisInboundCall::static_serialized_remote_method() {
+  return remote_method.serialized_body();
+}
+
+Slice RedisInboundCall::serialized_remote_method() const {
+  return remote_method.serialized_body();
+}
+
+Slice RedisInboundCall::method_name() const {
+  return remote_method.method_name();
 }
 
 CoarseTimePoint RedisInboundCall::GetClientDeadline() const {

@@ -89,6 +89,8 @@ uint64_t RWOperationCounter::Update(uint64_t delta) {
 bool RWOperationCounter::WaitMutexAndIncrement(CoarseTimePoint deadline) {
   if (deadline == CoarseTimePoint()) {
     deadline = CoarseMonoClock::now() + 10ms;
+  } else if (deadline == CoarseTimePoint::min()) {
+    return false;
   }
   for (;;) {
     std::unique_lock<decltype(disable_)> lock(disable_, deadline);

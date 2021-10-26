@@ -195,7 +195,7 @@ class MethodSubstitutions : public Substituter {
         ReplaceNamespaceDelimiters(
             StripNamespaceIfPossible(method_->service()->full_name(),
                                      method_->output_type()->full_name()));
-    (*map)["metric_enum_key"] = strings::Substitute("kMetricIndex$0", method_->name());
+    (*map)["metric_enum_key"] = strings::Substitute("kMethodIndex$0", method_->name());
   }
 
   // Strips the package from method arguments if they are in the same package as
@@ -430,10 +430,10 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
     printer->Print(subs, text);
   }
 
-  void GenerateMetricIndexesEnum(
+  void GenerateMethodIndexesEnum(
       Printer *printer, SubstitutionContext *subs, const ServiceDescriptor &service) const {
     Print(printer, *subs,
-          "\n  enum RpcMetricIndexes {\n"
+          "\n  enum RpcMethodIndexes {\n"
     );
     for (int method_idx = 0; method_idx < service.method_count(); ++method_idx) {
       ScopedSubstituter method_subs(subs, service.method(method_idx));
@@ -483,8 +483,10 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
         " public:\n"
         "  explicit $service_name$If(const scoped_refptr<MetricEntity>& entity);\n"
         "  virtual ~$service_name$If();\n"
-        "  virtual void Handle(::yb::rpc::InboundCallPtr call);\n"
-        "  virtual std::string service_name() const;\n"
+        "  void Handle(::yb::rpc::InboundCallPtr call) override;\n"
+        "  void FillEndpoints("
+            "const ::yb::rpc::RpcServicePtr& service, ::yb::rpc::RpcEndpointMap* map) override;\n"
+        "  std::string service_name() const override;\n"
         "  static std::string static_service_name();\n"
         "\n"
         );
@@ -501,11 +503,11 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
         );
       }
 
-      GenerateMetricIndexesEnum(printer, subs, *service);
+      GenerateMethodIndexesEnum(printer, subs, *service);
 
       Print(printer, *subs,
-                "  ::yb::rpc::RpcMethodMetrics GetMetric(RpcMetricIndexes index) {\n"
-                "    return metrics_[index];\n"
+                "  ::yb::rpc::RpcMethodMetrics GetMetric(RpcMethodIndexes index) {\n"
+                "    return methods_[index].metrics;\n"
                 "  }\n"
       );
 
@@ -518,9 +520,9 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
         "  static const int kMethodCount = $service_method_count$;\n"
         "\n"
         "  // Pre-initialize metrics because calling METRIC_foo.Instantiate() is expensive.\n"
-        "  void InitMetrics(const scoped_refptr<MetricEntity>& ent);\n"
+        "  void InitMethods(const scoped_refptr<MetricEntity>& ent);\n"
         "\n"
-        "  ::yb::rpc::RpcMethodMetrics metrics_[kMethodCount];\n"
+        "  ::yb::rpc::RpcMethodDesc methods_[kMethodCount];\n"
         "};\n"
       );
     }
@@ -557,21 +559,55 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
     }
   }
 
-  void GenerateMetricAssignments(
+  void GenerateHandlerAssignment(Printer *printer, SubstitutionContext *subs) const {
+    Print(printer, *subs,
+          "    .handler = [this](::yb::rpc::InboundCallPtr call) {\n"
+          "      auto yb_call = std::static_pointer_cast<::yb::rpc::YBInboundCall>(call);\n"
+          "      call->SetRpcMethodMetrics(methods_[$metric_enum_key$].metrics);\n"
+          "      auto rpc_context = yb_call->IsLocalCall() ?\n"
+          "          ::yb::rpc::RpcContext(\n"
+          "              std::static_pointer_cast<::yb::rpc::LocalYBInboundCall>(yb_call)) :\n"
+          "          ::yb::rpc::RpcContext(\n"
+          "              yb_call, \n"
+          "              std::make_shared<$request$>(),\n"
+          "              std::make_shared<$response$>());\n"
+          "      if (!rpc_context.responded()) {\n"
+          "        const auto* req = static_cast<const $request$*>(rpc_context.request_pb());\n"
+          "        auto* resp = static_cast<$response$*>(rpc_context.response_pb());\n"
+          "        $rpc_name$(req, resp, std::move(rpc_context));\n"
+          "      }\n"
+          "    },\n");
+  }
+
+  void GenerateMethodAssignments(
       Printer *printer, SubstitutionContext *subs, const ServiceDescriptor &service,
-      const std::string &mutable_metric_fmt,
+      const std::string &mutable_metric_fmt, bool method,
       const std::vector<MetricDescriptor>& metric_descriptors) const {
     // Expose per-RPC metrics.
     for (int method_idx = 0; method_idx < service.method_count(); ++method_idx) {
       ScopedSubstituter method_subs(subs, service.method(method_idx));
 
       Print(printer, *subs, ("  " + mutable_metric_fmt + " = {\n").c_str());
+      if (method) {
+        Print(printer, *subs,
+              "    .method = ::yb::rpc::RemoteMethod(\"$full_service_name$\", \"$rpc_name$\"),\n");
+        GenerateHandlerAssignment(printer, subs);
+        Print(printer, *subs,
+              "    .metrics = {\n");
+      }
       for (const auto& desc : metric_descriptors) {
         subs->Push(MakeSubstituter(&desc));
+        if (method) {
+          Print(printer, *subs, "  ");
+        }
         Print(printer, *subs,
               "    .$metric_name$ = "
                   "METRIC_$metric_prefix$$metric_name$_$rpc_full_name_plainchars$."
                   "Instantiate(entity),\n");
+      }
+      if (method) {
+        Print(printer, *subs,
+              "    }\n");
       }
       Print(printer, *subs, "  };\n\n");
     }
@@ -592,6 +628,7 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
       "#include \"yb/rpc/local_call.h\"\n"
       "#include \"yb/rpc/remote_method.h\"\n"
       "#include \"yb/rpc/rpc_context.h\"\n"
+      "#include \"yb/rpc/rpc_service.h\"\n"
       "#include \"yb/rpc/service_if.h\"\n"
       "#include \"yb/util/metrics.h\"\n"
       "\n");
@@ -608,40 +645,29 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
 
       Print(printer, *subs,
         "$service_name$If::$service_name$If(const scoped_refptr<MetricEntity>& entity) {\n"
-        "  InitMetrics(entity);\n"
+        "  InitMethods(entity);\n"
         "}\n"
         "\n"
         "$service_name$If::~$service_name$If() {\n"
         "}\n"
         "\n"
-        "void $service_name$If::Handle(::yb::rpc::InboundCallPtr call) {\n"
-        "  auto yb_call = std::static_pointer_cast<::yb::rpc::YBInboundCall>(call);\n");
+        "void $service_name$If::FillEndpoints("
+            "const ::yb::rpc::RpcServicePtr& service, ::yb::rpc::RpcEndpointMap* map) {\n");
 
       for (int method_idx = 0; method_idx < service->method_count(); ++method_idx) {
         ScopedSubstituter method_subs(subs, service->method(method_idx));
 
         Print(printer, *subs,
-        "  if (call->method_name() == \"$rpc_name$\") {\n"
-        "    call->SetRpcMethodMetrics(metrics_[$metric_enum_key$]);\n"
-        "    auto rpc_context = yb_call->IsLocalCall() ?\n"
-        "        ::yb::rpc::RpcContext(\n"
-        "            std::static_pointer_cast<::yb::rpc::LocalYBInboundCall>(yb_call)) :\n"
-        "        ::yb::rpc::RpcContext(\n"
-        "            yb_call, \n"
-        "            std::make_shared<$request$>(),\n"
-        "            std::make_shared<$response$>());\n"
-        "    if (!rpc_context.responded()) {\n"
-        "      const auto* req = static_cast<const $request$*>(rpc_context.request_pb());\n"
-        "      auto* resp = static_cast<$response$*>(rpc_context.response_pb());\n"
-        "      $rpc_name$(req, resp, std::move(rpc_context));\n"
-        "    }\n"
-        "    return;\n"
-        "  }\n"
-        "\n");
+        "  map->emplace(methods_[$metric_enum_key$].method.serialized_body(), "
+              "std::make_pair(service, static_cast<size_t>($metric_enum_key$)));\n");
       }
 
       Print(printer, *subs,
-        "  yb_call->RespondBadMethod();\n"
+        "}\n"
+        "\n"
+        "void $service_name$If::Handle(::yb::rpc::InboundCallPtr call) {\n"
+        "  auto index = call->method_index();\n"
+        "  methods_[index].handler(std::move(call));\n"
         "}\n"
         "\n"
         "std::string $service_name$If::service_name() const {\n"
@@ -654,11 +680,11 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
       );
 
       Print(printer, *subs,
-        "void $service_name$If::InitMetrics(const scoped_refptr<MetricEntity>& entity) {\n"
+        "void $service_name$If::InitMethods(const scoped_refptr<MetricEntity>& entity) {\n"
       );
 
-      GenerateMetricAssignments(
-          printer, subs, *service, "metrics_[$metric_enum_key$]", inbound_metrics);
+      GenerateMethodAssignments(
+          printer, subs, *service, "methods_[$metric_enum_key$]", true, inbound_metrics);
 
       Print(printer, *subs,
         "}\n"
@@ -724,7 +750,7 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
         );
       }
 
-      GenerateMetricIndexesEnum(printer, subs, *service);
+      GenerateMethodIndexesEnum(printer, subs, *service);
 
       Print(printer, *subs,
         "};\n\n");
@@ -768,9 +794,9 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
         "  auto result = std::make_shared<::yb::rpc::ProxyMetricsImpl<$service_method_count$>>();\n"
       );
 
-      GenerateMetricAssignments(
+      GenerateMethodAssignments(
           printer, subs, *service, "result->value[$service_name$Proxy::$metric_enum_key$]",
-          outbound_metrics);
+          false, outbound_metrics);
 
       Print(printer, *subs,
         "  return result;\n}\n\n"

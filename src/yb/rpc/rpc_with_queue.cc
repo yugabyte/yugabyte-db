@@ -65,7 +65,7 @@ void ConnectionContextWithQueue::Enqueue(std::shared_ptr<QueueableInboundCall> c
     first_without_reply_.store(call.get(), std::memory_order_release);
   }
   if (size <= max_concurrent_calls_) {
-    reactor->messenger()->QueueInboundCall(call);
+    reactor->messenger()->Handle(call, Queue::kTrue);
   }
 }
 
@@ -97,7 +97,7 @@ void ConnectionContextWithQueue::CallProcessed(InboundCall* call) {
   --replies_being_sent_;
   if (calls_queue_.size() >= max_concurrent_calls_) {
     auto call_ptr = calls_queue_[max_concurrent_calls_ - 1];
-    reactor->messenger()->QueueInboundCall(call_ptr);
+    reactor->messenger()->Handle(call_ptr, Queue::kTrue);
   }
   if (Idle() && idle_listener_) {
     idle_listener_();

@@ -151,6 +151,11 @@ class Slice {
     return Slice(begin_, n);
   }
 
+  Slice WithoutPrefix(size_t n) const {
+    DCHECK_LE(n, size());
+    return Slice(begin_ + n, end_);
+  }
+
   // Drop the last "n" bytes from this slice.
   void remove_suffix(size_t n) {
     DCHECK_LE(n, size());
@@ -160,6 +165,11 @@ class Slice {
   Slice Suffix(size_t n) const {
     DCHECK_LE(n, size());
     return Slice(end_ - n, end_);
+  }
+
+  Slice WithoutSuffix(size_t n) const {
+    DCHECK_LE(n, size());
+    return Slice(begin_, end_ - n);
   }
 
   void CopyTo(void* buffer) const {
@@ -372,6 +382,10 @@ inline size_t Slice::hash() const noexcept {
     result = (result * kFnvPrime) ^ *i;
   }
   return result;
+}
+
+inline size_t hash_value(const Slice& slice) {
+  return slice.hash();
 }
 
 inline size_t Slice::difference_offset(const Slice& b) const {

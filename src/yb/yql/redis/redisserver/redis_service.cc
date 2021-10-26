@@ -1548,5 +1548,9 @@ void RedisServiceImpl::Handle(yb::rpc::InboundCallPtr call) {
   impl_->Handle(std::move(call));
 }
 
+void RedisServiceImpl::FillEndpoints(const rpc::RpcServicePtr& service, rpc::RpcEndpointMap* map) {
+  map->emplace(RedisInboundCall::static_serialized_remote_method(), std::make_pair(service, 0ULL));
+}
+
 }  // namespace redisserver
 }  // namespace yb

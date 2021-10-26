@@ -2975,7 +2975,7 @@ void TabletServiceImpl::Shutdown() {
 }
 
 scoped_refptr<Histogram> TabletServer::GetMetricsHistogram(
-    TabletServerServiceIf::RpcMetricIndexes metric) {
+    TabletServerServiceIf::RpcMethodIndexes metric) {
   // Returns the metric Histogram by holding a lock to make sure tablet_server_service_ remains
   // unchanged during the operation.
   std::lock_guard<simple_spinlock> l(lock_);
