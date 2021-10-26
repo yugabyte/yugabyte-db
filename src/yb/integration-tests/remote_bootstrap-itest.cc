@@ -215,7 +215,7 @@ void RemoteBootstrapITest::CheckCheckpointsCleared() {
   auto deadline = MonoTime::Now() + 10s * kTimeMultiplier;
   for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
     auto tablet_server = cluster_->tablet_server(i);
-    auto data_dir = tablet_server->GetFullDataDir();
+    auto data_dir = tablet_server->GetDataDirs()[0];
     SCOPED_TRACE(Format("Index: $0", i));
     SCOPED_TRACE(Format("UUID: $0", tablet_server->uuid()));
     SCOPED_TRACE(Format("Data dir: $0", data_dir));
@@ -1409,7 +1409,7 @@ TEST_F(RemoteBootstrapITest, TestFailedTabletIsRemoteBootstrapped) {
   ASSERT_OK(WaitUntilTabletInState(non_leader_ts, tablet_id, tablet::RUNNING, kTimeout));
 
   auto* env = Env::Default();
-  const string& data_dir = cluster_->tablet_server_by_uuid(non_leader_ts->uuid())->GetFullDataDir();
+  const string data_dir = cluster_->tablet_server_by_uuid(non_leader_ts->uuid())->GetDataDirs()[0];
   auto meta_dir = FsManager::GetRaftGroupMetadataDir(data_dir);
   auto metadata_path = JoinPathSegments(meta_dir, tablet_id);
   tablet::RaftGroupReplicaSuperBlockPB superblock;

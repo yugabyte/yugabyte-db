@@ -2153,7 +2153,7 @@ TEST_F_EX(PgLibPqTest,
   // server.
   for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
     ExternalTabletServer* ts = cluster_->tablet_server(i);
-    const string pg_pid_file = JoinPathSegments(ts->GetDataDir(), "pg_data",
+    const string pg_pid_file = JoinPathSegments(ts->GetRootDir(), "pg_data",
                                                 "postmaster.pid");
 
     LOG(INFO) << "pg_pid_file: " << pg_pid_file;
