@@ -149,18 +149,18 @@ public class Provider extends Model {
 
   @JsonProperty("config")
   public void setConfig(Map<String, String> configMap) {
-    Map<String, String> newConfigMap = this.getUnmaskedConfig();
+    Map<String, String> newConfigMap = this.getConfig();
     newConfigMap.putAll(configMap);
     this.config = newConfigMap;
   }
 
   @JsonProperty("config")
   public Map<String, String> getMaskedConfig() {
-    return maskConfigNew(this.getUnmaskedConfig());
+    return maskConfigNew(this.getConfig());
   }
 
   @JsonIgnore
-  public Map<String, String> getUnmaskedConfig() {
+  public Map<String, String> getConfig() {
     if (this.config == null) {
       return new HashMap<>();
     } else {
@@ -170,7 +170,7 @@ public class Provider extends Model {
 
   @JsonIgnore
   public String getYbHome() {
-    String ybHomeDir = this.getUnmaskedConfig().getOrDefault("YB_HOME_DIR", "");
+    String ybHomeDir = this.getConfig().getOrDefault("YB_HOME_DIR", "");
     if (ybHomeDir.isEmpty()) {
       ybHomeDir = DEFAULT_YB_HOME_DIR;
     }
@@ -300,14 +300,12 @@ public class Provider extends Model {
 
   @ApiModelProperty(required = false)
   public String getHostedZoneId() {
-    return getUnmaskedConfig()
-        .getOrDefault("HOSTED_ZONE_ID", getUnmaskedConfig().get("AWS_HOSTED_ZONE_ID"));
+    return getConfig().getOrDefault("HOSTED_ZONE_ID", getConfig().get("AWS_HOSTED_ZONE_ID"));
   }
 
   @ApiModelProperty(required = false)
   public String getHostedZoneName() {
-    return getUnmaskedConfig()
-        .getOrDefault("HOSTED_ZONE_NAME", getUnmaskedConfig().get("AWS_HOSTED_ZONE_NAME"));
+    return getConfig().getOrDefault("HOSTED_ZONE_NAME", getConfig().get("AWS_HOSTED_ZONE_NAME"));
   }
 
   /**
@@ -322,7 +320,7 @@ public class Provider extends Model {
 
   // Update host zone.
   public void updateHostedZone(String hostedZoneId, String hostedZoneName) {
-    Map<String, String> currentProviderConfig = getUnmaskedConfig();
+    Map<String, String> currentProviderConfig = getConfig();
     currentProviderConfig.put("HOSTED_ZONE_ID", hostedZoneId);
     currentProviderConfig.put("HOSTED_ZONE_NAME", hostedZoneName);
     this.setConfig(currentProviderConfig);

@@ -1366,13 +1366,13 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     Map<UUID, Map<String, String>> expectedConfigs = new HashMap<>();
     config.put("KUBECONFIG", "az1");
     az1.updateConfig(config);
-    expectedConfigs.put(az1.uuid, az1.getUnmaskedConfig());
+    expectedConfigs.put(az1.uuid, az1.getConfig());
     config.put("KUBECONFIG", "az2");
     az2.updateConfig(config);
-    expectedConfigs.put(az2.uuid, az2.getUnmaskedConfig());
+    expectedConfigs.put(az2.uuid, az2.getConfig());
     config.put("KUBECONFIG", "az3");
     az3.updateConfig(config);
-    expectedConfigs.put(az3.uuid, az3.getUnmaskedConfig());
+    expectedConfigs.put(az3.uuid, az3.getConfig());
 
     PlacementInfo pi = new PlacementInfo();
     PlacementInfoUtil.addPlacementZone(az1.uuid, pi);

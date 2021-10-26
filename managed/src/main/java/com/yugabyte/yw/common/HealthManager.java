@@ -75,7 +75,7 @@ public class HealthManager extends DevopsBase {
 
     // Start with a copy of the cloud config env vars.
     HashMap<String, String> extraEnvVars =
-        provider == null ? new HashMap<>() : new HashMap<>(provider.getUnmaskedConfig());
+        provider == null ? new HashMap<>() : new HashMap<>(provider.getConfig());
 
     return shellProcessHandler.run(commandArgs, extraEnvVars, shouldLogOutput, description);
   }

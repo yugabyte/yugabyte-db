@@ -17,7 +17,6 @@ import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertValues;
 import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
-import static com.yugabyte.yw.common.AssertHelper.assertYWSEInTransaction;
 import static com.yugabyte.yw.common.AssertHelper.assertYWSuccess;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
@@ -47,8 +46,8 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestHelper;
-import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
@@ -285,7 +284,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   public void testCreateMultiInstanceProviderWithSameNameAndCloud() {
     ModelFactory.awsProvider(customer);
     Result result =
-        assertYWSEInTransaction(
+        assertYWSE(
             () ->
                 createProviderTest(
                     buildProviderReq("aws", "Amazon"),
@@ -315,7 +314,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("code", "aws");
     Result result =
-        assertYWSEInTransaction(
+        assertYWSE(
             () ->
                 createProviderTest(
                     buildProviderReq("aws", null), REGION_CODES_FROM_CLOUD_API, UUID.randomUUID()));
@@ -342,7 +341,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     providerReq.setConfig(reqConfig);
     Provider createdProvider =
         createProviderTest(providerReq, REGION_CODES_FROM_CLOUD_API, UUID.randomUUID());
-    Map<String, String> config = createdProvider.getUnmaskedConfig();
+    Map<String, String> config = createdProvider.getConfig();
     assertFalse(config.isEmpty());
     // We should technically check the actual content, but the keys are different between the
     // input payload and the saved config. (So what?! check the expected keys)
@@ -460,7 +459,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   }
 
   //  @Test
-  public void testCreateAwsProviderWithInvalidAWSCredentials() {
+  public void testCreateAwsProviderWithInValidAWSCredentials() {
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("code", "aws");
     bodyJson.put("name", "aws-Provider");
@@ -472,7 +471,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     bodyJson.set("config", configJson);
     CloudAPI mockCloudAPI = mock(CloudAPI.class);
     when(mockCloudAPIFactory.get(any())).thenReturn(mockCloudAPI);
-    Result result = assertYWSEInTransaction(() -> createProvider(bodyJson));
+    Result result = assertYWSE(() -> createProvider(bodyJson));
     assertBadRequest(result, "Invalid AWS Credentials.");
     assertAuditEntry(0, customer.uuid);
   }
@@ -487,7 +486,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     bodyJson.set("config", configJson);
 
     mockDnsManagerListFailure("fail", 0);
-    Result result = assertYWSEInTransaction(() -> createProvider(bodyJson));
+    Result result = assertYWSE(() -> createProvider(bodyJson));
     verify(mockDnsManager, times(1)).listDnsRecord(any(), any());
     assertInternalServerError(result, "Invalid devops API response: ");
     assertAuditEntry(0, customer.uuid);
@@ -503,7 +502,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     bodyJson.set("config", configJson);
 
     mockDnsManagerListFailure("fail", 1);
-    Result result = assertYWSEInTransaction(() -> createProvider(bodyJson));
+    Result result = assertYWSE(() -> createProvider(bodyJson));
     verify(mockDnsManager, times(1)).listDnsRecord(any(), any());
     assertInternalServerError(result, "Invalid devops API response: ");
     assertAuditEntry(0, customer.uuid);
