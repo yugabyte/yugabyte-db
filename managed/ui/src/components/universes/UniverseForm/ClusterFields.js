@@ -203,7 +203,8 @@ export default class ClusterFields extends Component {
           enableYCQL: userIntent.enableYCQL,
           enableYCQLAuth: userIntent.enableYCQLAuth,
           isReadOnlyExists: false,
-          editNotAllowed: false
+          editNotAllowed: false,
+          useSystemd:userIntent.useSystemd
         };
       }
     } else {
@@ -215,7 +216,9 @@ export default class ClusterFields extends Component {
           enableYSQLAuth: tempState.enableYSQLAuth,
           enableYCQL: tempState.enableYCQL,
           enableYCQLAuth: tempState.enableYCQLAuth,
-          isReadOnlyExists: tempState.provider && this.props.type === 'Create' && this.props.clusterType === 'async'
+          isReadOnlyExists: tempState.provider && this.props.type === 'Create' && this.props.clusterType === 'async',
+          useSystemd:tempState.useSystemd
+
         }
       }
       this.state = tempState? tempState : initialState;
@@ -334,7 +337,8 @@ export default class ClusterFields extends Component {
           'async.enableYEDIS': userIntent.enableYEDIS,
           'async.enableNodeToNodeEncrypt': userIntent.enableNodeToNodeEncrypt,
           'async.enableClientToNodeEncrypt': userIntent.enableClientToNodeEncrypt,
-          'async.enableEncryptionAtRest': userIntent.enableEncryptionAtRest
+          'async.enableEncryptionAtRest': userIntent.enableEncryptionAtRest,
+          'async.useSystemd': userIntent.useSystemd
         });
       }
       if (userIntent && providerUUID) {
@@ -363,7 +367,8 @@ export default class ClusterFields extends Component {
           deviceInfo: userIntent.deviceInfo,
           storageType: storageType,
           regionList: userIntent.regionList,
-          volumeType: storageType === null ? 'SSD' : 'EBS' //TODO(wesley): fixme - establish volumetype/storagetype relationship
+          volumeType: storageType === null ? 'SSD' : 'EBS', //TODO(wesley): fixme - establish volumetype/storagetype relationship
+          useSystemd: userIntent.useSystemd,
         });
       }
 
@@ -435,6 +440,9 @@ export default class ClusterFields extends Component {
             this.setState({
               enableClientToNodeEncrypt: formValues['primary'].enableClientToNodeEncrypt
             });
+          }
+          if (formValues[clusterType].useSystemd) {
+            this.setState({ useSystemd: formValues['primary'].useSystemd });
           }
         }
       } else {
@@ -1010,9 +1018,19 @@ export default class ClusterFields extends Component {
   }
 
   toggleUseSystemd(event) {
-    const { updateFormField, clusterType } = this.props;
-    updateFormField(`${clusterType}.useSystemd`, event.target.checked);
-    this.setState({ useSystemd: event.target.checked });
+    const { clusterType } = this.props;
+
+    if (clusterType === 'primary') {
+      
+      this.updateFormFields({
+        'primary.useSystemd': event.target.checked,
+        'async.useSystemd': event.target.checked
+      });
+      
+      this.setState({
+        useSystemd: event.target.checked
+      });
+    }
   }
 
   handleAwsArnChange(event) {
