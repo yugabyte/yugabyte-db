@@ -202,7 +202,21 @@ class RetryingTSRpcTask : public MonitoredTask {
   const std::unique_ptr<TSPicker> replica_picker_;
   const scoped_refptr<TableInfo> table_;
 
+  enum MetricType {
+    TaskMetric,
+    AttemptMetric,
+  };
+
+  void UpdateMetrics(scoped_refptr<Histogram> metric, MonoTime start_time,
+                     const string& metric_name,
+                     const string& metric_type);
+
+  // Functon that returns a object pointer to a RPC's histogram metric. If a histogram
+  // metric pointer is not created, it will create a new object pointer and return it.
+  scoped_refptr<Histogram> GetMetric(const std::string& metric_identifier, MetricType type);
+
   MonoTime start_ts_;
+  MonoTime attempt_start_ts_;
   MonoTime end_ts_;
   MonoTime deadline_;
 
@@ -323,6 +337,7 @@ class AsyncCreateReplica : public RetrySpecificTSRpcTask {
   bool SendRequest(int attempt) override;
 
  private:
+  scoped_refptr<Histogram> histogram_;
   const TabletId tablet_id_;
   tserver::CreateTabletRequestPB req_;
   tserver::CreateTabletResponsePB resp_;
