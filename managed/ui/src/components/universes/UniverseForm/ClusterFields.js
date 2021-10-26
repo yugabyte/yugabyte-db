@@ -1297,7 +1297,11 @@ export default class ClusterFields extends Component {
       updateFormField,
       cloud: { providers }
     } = this.props;
-    this.setState({ nodeSetViaAZList: false, regionList: value });
+
+    updateFormField(`${clusterType}.regionList`, value || []);
+
+    this.setState({ nodeSetViaAZList: false, regionList: value || [] });
+
     const currentProvider = providers.data.find((a) => a.uuid === formValues[clusterType].provider);
     if (!isNonEmptyString(formValues[clusterType].instanceType)) {
       updateFormField(
