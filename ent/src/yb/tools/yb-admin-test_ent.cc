@@ -299,6 +299,11 @@ TEST_F(AdminCliTest, TestImportSnapshotInOldFormat1) {
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
+TEST_F(AdminCliTest, TestImportSnapshotInOldFormatNoNamespaceName) {
+  DoTestImportSnapshot("-1");
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
 TEST_F(AdminCliTest, TestExportImportSnapshot) {
   CreateTable(Transactional::kFalse);
   const string& table_name = table_.name().table_name();
