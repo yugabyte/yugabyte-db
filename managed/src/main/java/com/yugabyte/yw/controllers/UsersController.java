@@ -4,29 +4,26 @@ package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.models.Users.Role;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
+import com.yugabyte.yw.common.user.UserService;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.UserRegisterFormData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.extended.UserWithFeatures;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-import java.io.IOException;
-import java.io.InputStream;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import javax.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.Environment;
 import play.data.Form;
 import play.libs.Json;
 import play.mvc.Result;
@@ -37,22 +34,29 @@ import play.mvc.Result;
 public class UsersController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(UsersController.class);
-  @Inject protected RuntimeConfigFactory runtimeConfigFactory;
 
-  @Inject Environment environment;
+  private final PasswordPolicyService passwordPolicyService;
+  private final UserService userService;
 
-  @Inject PasswordPolicyService passwordPolicyService;
+  @Inject
+  public UsersController(PasswordPolicyService passwordPolicyService, UserService userService) {
+    this.passwordPolicyService = passwordPolicyService;
+    this.userService = userService;
+  }
 
   /**
    * GET endpoint for listing the provider User.
    *
    * @return JSON response with user.
    */
-  @ApiOperation(value = "Get a user's details", nickname = "getUserDetails", response = Users.class)
+  @ApiOperation(
+      value = "Get a user's details",
+      nickname = "getUserDetails",
+      response = UserWithFeatures.class)
   public Result index(UUID customerUUID, UUID userUUID) {
-    Customer.getOrBadRequest(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
     Users user = Users.getOrBadRequest(userUUID);
-    return PlatformResults.withData(user);
+    return PlatformResults.withData(userService.getUserWithFeatures(customer, user));
   }
 
   /**
@@ -63,12 +67,17 @@ public class UsersController extends AuthenticatedController {
   @ApiOperation(
       value = "List all users",
       nickname = "listUsers",
-      response = Users.class,
+      response = UserWithFeatures.class,
       responseContainer = "List")
   public Result list(UUID customerUUID) {
-    Customer.getOrBadRequest(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
     List<Users> users = Users.getAll(customerUUID);
-    return PlatformResults.withData(users);
+    List<UserWithFeatures> userWithFeaturesList =
+        users
+            .stream()
+            .map(user -> userService.getUserWithFeatures(customer, user))
+            .collect(Collectors.toList());
+    return PlatformResults.withData(userWithFeaturesList);
   }
 
   /**
@@ -76,7 +85,7 @@ public class UsersController extends AuthenticatedController {
    *
    * @return JSON response of newly created user.
    */
-  @ApiOperation(value = "Create a user", nickname = "createUser", response = Users.class)
+  @ApiOperation(value = "Create a user", nickname = "createUser", response = UserWithFeatures.class)
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "User",
@@ -86,8 +95,7 @@ public class UsersController extends AuthenticatedController {
         paramType = "body")
   })
   public Result create(UUID customerUUID) {
-
-    Customer.getOrBadRequest(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
     Form<UserRegisterFormData> form =
         formFactory.getFormDataOrBadRequest(UserRegisterFormData.class);
 
@@ -96,9 +104,8 @@ public class UsersController extends AuthenticatedController {
     Users user =
         Users.create(
             formData.getEmail(), formData.getPassword(), formData.getRole(), customerUUID, false);
-    updateFeatures(user);
     auditService().createAuditEntry(ctx(), request(), Json.toJson(formData));
-    return PlatformResults.withData(user);
+    return PlatformResults.withData(userService.getUserWithFeatures(customer, user));
   }
 
   /**
@@ -125,8 +132,7 @@ public class UsersController extends AuthenticatedController {
       throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
-              "Cannot delete primary user %s for customer %s",
-              userUUID.toString(), customerUUID.toString()));
+              "Cannot delete primary user %s for customer %s", userUUID.toString(), customerUUID));
     }
     if (user.delete()) {
       auditService().createAuditEntry(ctx(), request());
@@ -161,7 +167,6 @@ public class UsersController extends AuthenticatedController {
     }
     user.setRole(Role.valueOf(role));
     user.save();
-    updateFeatures(user);
     auditService().createAuditEntry(ctx(), request());
     return YBPSuccess.empty();
   }
@@ -207,26 +212,5 @@ public class UsersController extends AuthenticatedController {
       }
     }
     throw new PlatformServiceException(BAD_REQUEST, "Invalid user credentials.");
-  }
-
-  private void updateFeatures(Users user) {
-    Customer customer = Customer.getOrBadRequest(user.customerUUID);
-    try {
-      String configFile = user.getRole().getFeaturesFile();
-      if (customer.code.equals("cloud")) {
-        configFile = "cloudFeatureConfig.json";
-      }
-      if (configFile == null) {
-        user.setFeatures(Json.newObject());
-        user.save();
-        return;
-      }
-      InputStream featureStream = environment.resourceAsStream(configFile);
-      ObjectMapper mapper = new ObjectMapper();
-      JsonNode features = mapper.readTree(featureStream);
-      user.upsertFeatures(features);
-    } catch (IOException e) {
-      LOG.error("Failed to parse sample feature config file for OSS mode.");
-    }
   }
 }
