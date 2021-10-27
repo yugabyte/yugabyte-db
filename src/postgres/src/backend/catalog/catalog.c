@@ -672,6 +672,30 @@ GetTableOidFromRelOptions(List *relOptions,
 }
 
 /*
+ * GetTablegroupOidFromRelOptions
+ *		Scans through relOptions for any 'tablegroup' options.
+ *		Returns that oid, or InvalidOid if unspecified.
+ */
+Oid
+GetTablegroupOidFromRelOptions(List *relOptions)
+{
+	ListCell   *opt_cell;
+	Oid			tablegroup_oid;
+
+	foreach(opt_cell, relOptions)
+	{
+		DefElem *def = (DefElem *) lfirst(opt_cell);
+		if (strcmp(def->defname, "tablegroup") == 0)
+		{
+			tablegroup_oid = strtol(defGetString(def), NULL, 10);
+			if (OidIsValid(tablegroup_oid))
+				return tablegroup_oid;
+		}
+	}
+
+	return InvalidOid;
+}
+/*
  * GetRowTypeOidFromRelOptions
  *		Scans through relOptions for any 'row_type_oid' options, and ensures
  *		that oid is available. Returns that oid, or InvalidOid if unspecified.
