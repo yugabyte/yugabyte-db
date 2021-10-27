@@ -69,31 +69,6 @@ using strings::Substitute;
 using consensus::RaftPeerPB;
 using tserver::TabletServerErrorPB;
 
-void RetryingTSRpcTask::UpdateMetrics(scoped_refptr<Histogram> metric, MonoTime start_time,
-                                      const std::string& metric_name,
-                                      const std::string& metric_type) {
-  metric->Increment(MonoTime::Now().GetDeltaSince(start_time).ToMicroseconds());
-}
-
-scoped_refptr<Histogram> RetryingTSRpcTask::GetMetric(
-    const std::string& metric_identifier, MetricType type) {
-  std::string temp_metric_identifier = Format("$0_$1", metric_identifier,
-      (type == TaskMetric ? "Task" : "Attempt"));
-  auto master_metrics = master_->master_metrics();
-  EscapeMetricNameForPrometheus(&temp_metric_identifier);
-  auto it = master_metrics->find(temp_metric_identifier);
-  if (it == master_metrics->end()) {
-    std::unique_ptr<HistogramPrototype> histogram = std::make_unique<OwningHistogramPrototype>(
-        "server", temp_metric_identifier, description(), yb::MetricUnit::kMicroseconds,
-        description(), yb::MetricLevel::kInfo, 0, 10000000, 2);
-    scoped_refptr<Histogram> temp =
-        master_->metric_entity()->FindOrCreateHistogram(std::move(histogram));
-    (*master_metrics)[temp_metric_identifier] = temp;
-    return temp;
-  }
-  return it->second;
-}
-
 // ============================================================================
 //  Class PickSpecificUUID.
 // ============================================================================
@@ -153,8 +128,6 @@ RetryingTSRpcTask::~RetryingTSRpcTask() {
 
 // Send the subclass RPC request.
 Status RetryingTSRpcTask::Run() {
-  VLOG_WITH_PREFIX(1) << "Start Running";
-  attempt_start_ts_ = MonoTime::Now();
   ++attempt_;
   VLOG_WITH_PREFIX(1) << "Start Running, attempt: " << attempt_;
   for (;;) {
@@ -290,8 +263,6 @@ void RetryingTSRpcTask::DoRpcCallback() {
   } else if (state() != MonitoredTaskState::kAborted) {
     HandleResponse(attempt_);  // Modifies state_.
   }
-  UpdateMetrics(GetMetric(type_name(), AttemptMetric), attempt_start_ts_, type_name(),
-                "attempt metric");
 
   // Schedule a retry if the RPC call was not successful.
   if (RescheduleWithBackoffDelay()) {
@@ -415,8 +386,6 @@ void RetryingTSRpcTask::UnregisterAsyncTask() {
   // Retain a reference to the object, in case RemoveTask would have removed the last one.
   auto self = shared_from_this();
   std::unique_lock<decltype(unregister_mutex_)> lock(unregister_mutex_);
-  UpdateMetrics(GetMetric(type_name(), TaskMetric), start_ts_, type_name(), "task metric");
-
   auto s = state();
   if (!IsStateTerminal(s)) {
     LOG_WITH_PREFIX(FATAL) << "Invalid task state " << s;
