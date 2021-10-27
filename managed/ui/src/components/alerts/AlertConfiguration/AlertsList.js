@@ -14,11 +14,13 @@ import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import { YBLoading } from '../../common/indicators';
 import { YBConfirmModal } from '../../modals';
 import { YBPanelItem } from '../../panels';
+import { isNonAvailable } from '../../../utils/LayoutUtils';
 
 /**
  * This is the header for YB Panel Item.
  */
 const header = (
+  isReadOnly,
   alertsCount,
   onCreateAlert,
   enablePlatformAlert,
@@ -29,7 +31,7 @@ const header = (
     <h5 className="table-container-title pull-left">{`${alertsCount} Alert Configurations`}</h5>
     <FlexContainer className="pull-right">
       <FlexShrink>
-        <DropdownButton
+        {!isReadOnly && (<DropdownButton
           className="alert-config-actions btn btn-orange"
           title="Create Alert Config"
           id="bg-nested-dropdown"
@@ -60,6 +62,7 @@ const header = (
             <i className="fa fa-clone tab-logo" aria-hidden="true"></i> Platform Alert
           </MenuItem>
         </DropdownButton>
+        )}
       </FlexShrink>
     </FlexContainer>
   </>
@@ -80,6 +83,7 @@ export const AlertsList = (props) => {
   const [alertDestinationList, setAlertDestinationList] = useState([]);
   const [defaultDestination, setDefaultDestination] = useState([]);
   const {
+    customer,
     alertConfigs,
     alertUniverseList,
     alertDestinations,
@@ -99,6 +103,8 @@ export const AlertsList = (props) => {
     defaultSortName: 'name',
     defaultSortOrder: 'asc'
   });
+  const isReadOnly = isNonAvailable(
+    customer.data.features, 'alert.configuration.actions');
 
   const onInit = () => {
     alertConfigs(payload).then((res) => {
@@ -336,6 +342,7 @@ export const AlertsList = (props) => {
   }
 
   // This method will handle all the required actions for the particular row.
+  const editActionLabel = isReadOnly ? "Alert Details" : "Edit Alert";
   const formatConfigActions = (cell, row) => {
     return (
       <>
@@ -351,10 +358,10 @@ export const AlertsList = (props) => {
               onEditAlertConfig(row);
             }}
           >
-            <i className="fa fa-pencil"></i> Edit Alert
+            <i className="fa fa-pencil"></i> {editActionLabel}
           </MenuItem>
 
-          {!row.active ? (<MenuItem
+          {!row.active && !isReadOnly ? (<MenuItem
             onClick={() => {
               onToggleActive(row);
             }}
@@ -362,7 +369,7 @@ export const AlertsList = (props) => {
             <i className="fa fa-toggle-on"></i> Activate
           </MenuItem>) : null}
 
-          {row.active ? (<MenuItem
+          {row.active && !isReadOnly ? (<MenuItem
             onClick={() => {
               onToggleActive(row);
             }}
@@ -370,9 +377,9 @@ export const AlertsList = (props) => {
             <i className="fa fa-toggle-off"></i> Deactivate
           </MenuItem>) : null}
 
-          <MenuItem onClick={() => showDeleteModal(row?.uuid)}>
+          {!isReadOnly ? (<MenuItem onClick={() => showDeleteModal(row?.uuid)}>
             <i className="fa fa-trash"></i> Delete Alert
-          </MenuItem>
+          </MenuItem>) : null}
         </DropdownButton>
         <YBConfirmModal
           name="delete-alert-config"
@@ -395,6 +402,7 @@ export const AlertsList = (props) => {
   return (
     <YBPanelItem
       header={header(
+        isReadOnly,
         alertList.length,
         onCreateAlert,
         enablePlatformAlert,

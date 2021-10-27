@@ -9,6 +9,7 @@ import {
   YBTextInputWithLabel
 } from '../../common/forms/fields';
 import { AddDestinationChannelForm } from './AddDestinationChannelForm';
+import { isNonAvailable } from '../../../utils/LayoutUtils';
 
 import './AlertDestinationConfiguration.scss';
 
@@ -16,6 +17,7 @@ const required = (value) => (value ? undefined : 'This field is required.');
 
 const AlertDestinationConfiguration = (props) => {
   const [destinationChannelList, setDestinationChannelList] = useState([]);
+
 
   const onInit = () => {
     props.getAlertChannels().then((channels) => {
@@ -63,11 +65,14 @@ const AlertDestinationConfiguration = (props) => {
   };
 
   const {
+    customer,
     handleSubmit,
     onAddCancel,
     setInitialValues,
     modal: { showModal, visibleModal }
   } = props;
+  const isReadOnly = isNonAvailable(
+    customer.data.features, 'alert.destinations.actions');
 
   return (
     <>
@@ -81,7 +86,7 @@ const AlertDestinationConfiguration = (props) => {
                 placeHolder="Enter an alert destination"
                 component={YBTextInputWithLabel}
                 validate={required}
-                isReadOnly={false}
+                isReadOnly={isReadOnly}
               />
             </Col>
           </Row>
@@ -90,6 +95,7 @@ const AlertDestinationConfiguration = (props) => {
               <Field
                 name="defaultDestination"
                 component={YBCheckBox}
+                disabled={isReadOnly}
                 checkState={props.initialValues.defaultDestination ? true : false}
                 label="Make this destination as the default destination"
               />
@@ -103,10 +109,12 @@ const AlertDestinationConfiguration = (props) => {
                 component={YBMultiSelectWithLabel}
                 options={destinationChannelList}
                 hideSelectedOptions={false}
+                isReadOnly={isReadOnly}
                 isMulti={true}
                 validate={required}
               />
             </Col>
+            {!isReadOnly && (
             <Col md={6} className="add-destination-container">
               <Row>
                 <Col lg={3} className="pd-0">
@@ -120,6 +128,7 @@ const AlertDestinationConfiguration = (props) => {
                 </Col>
               </Row>
             </Col>
+            )}
           </Row>
           <Row className="alert-action-button-container">
             <Col lg={6} lgOffset={6}>
@@ -131,7 +140,9 @@ const AlertDestinationConfiguration = (props) => {
                   onAddCancel(false);
                 }}
               />
-              <YBButton btnText="Save" btnType="submit" btnClass="btn btn-orange" />
+              {!isReadOnly && (
+                <YBButton btnText="Save" btnType="submit" btnClass="btn btn-orange" />
+              )}
             </Col>
           </Row>
         </Row>

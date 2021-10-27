@@ -7,7 +7,7 @@
  *
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
-package com.yugabyte.yw.common.alerts.impl;
+package com.yugabyte.yw.models.extended;
 
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 
