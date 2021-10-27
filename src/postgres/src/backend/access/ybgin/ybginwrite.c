@@ -25,9 +25,12 @@
 #include "postgres.h"
 
 #include "access/genam.h"
+#include "access/sysattr.h"
 #include "access/ybgin_private.h"
 #include "c.h"
 #include "catalog/index.h"
+#include "catalog/pg_type_d.h"
+#include "executor/ybcExpr.h"
 #include "executor/ybcModifyTable.h"
 #include "nodes/execnodes.h"
 #include "nodes/parsenodes.h"
@@ -53,6 +56,66 @@ typedef struct
 	MemoryContext funcCtx;
 	uint64_t   *backfilltime;
 } YbginBuildState;
+
+/*
+ * Utility method to bind const to column.
+ */
+static void
+bindColumn(YBCPgStatement stmt,
+		   int attr_num,
+		   Oid type_id,
+		   Oid collation_id,
+		   Datum datum,
+		   bool is_null)
+{
+	YBCPgExpr expr = YBCNewConstant(stmt, type_id, collation_id, datum,
+									is_null);
+	HandleYBStatus(YBCPgDmlBindColumn(stmt, attr_num, expr));
+}
+
+/*
+ * Utility method to set binds for index write statement.
+ */
+static void
+doBindsForWrite(YBCPgStatement stmt,
+				void *indexstate,
+				Relation index,
+				Datum *values,
+				bool *isnull,
+				int natts,
+				Datum ybbasectid,
+				bool ybctid_as_value)
+{
+	GinState *ginstate = (GinState *) indexstate;
+	TupleDesc tupdesc = RelationGetDescr(index);
+
+	if (ybbasectid == 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("missing base table ybctid in index write request")));
+
+	for (AttrNumber attnum = 1; attnum <= natts; ++attnum)
+	{
+		Oid			type_id = GetTypeId(attnum, tupdesc);
+		Oid			collation_id = YBEncodingCollation(stmt, attnum,
+													   ginstate->supportCollation[attnum - 1]);
+		Datum		value   = values[attnum - 1];
+		bool		is_null = isnull[attnum - 1];
+
+		bindColumn(stmt, attnum, type_id, collation_id, value, is_null);
+	}
+
+	/* Gin indexes cannot be unique. */
+	Assert(!index->rd_index->indisunique);
+
+	/* Write base ctid column because it is a key column. */
+	bindColumn(stmt,
+			   YBIdxBaseTupleIdAttributeNumber,
+			   BYTEAOID,
+			   InvalidOid,
+			   ybbasectid,
+			   false /* is_null */);
+}
 
 /*
  * Extract entries and write values.
@@ -92,11 +155,13 @@ ybginTupleWrite(GinState *ginstate, OffsetNumber attnum,
 		/* Assume single-column index for parameters values and isnull. */
 		if (isinsert)
 			YBCExecuteInsertIndex(index, &entries[i], &isnull, ybctid,
-								  backfilltime /* backfill_write_time */);
+								  backfilltime /* backfill_write_time */,
+								  doBindsForWrite, (void *) ginstate);
 		else
 		{
 			Assert(!backfilltime);
-			YBCExecuteDeleteIndex(index, &entries[i], &isnull, ybctid);
+			YBCExecuteDeleteIndex(index, &entries[i], &isnull, ybctid,
+								  doBindsForWrite, (void *) ginstate);
 		}
 	}
 
