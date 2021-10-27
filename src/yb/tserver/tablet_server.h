@@ -210,7 +210,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
     return log_prefix_;
   }
 
-  const HostPort pgsql_proxy_bind_address() const { return pgsql_proxy_bind_address_; }
+  const HostPort& pgsql_proxy_bind_address() const { return pgsql_proxy_bind_address_; }
 
   client::LocalTabletFilter CreateLocalTabletFilter() override;
 
