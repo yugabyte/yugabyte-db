@@ -166,7 +166,11 @@ postgresql://admin:qwerty@4242424.aws.ybdb.io:5433/yugabyte?ssl=true& \
 sslmode=verify-full&sslrootcert=~/.postgresql/root.crt
 ```
 
+The connection string includes parameters for TLS settings (`ssl`, `sslmode` and `sslrootcert`). The generated `ysqlsh` connection string uses the `verify-full` SSL mode by default. 
+
 If you're connecting to a Hasura Cloud project, which doesn't use the CA certificate, select **Optimize for Hasura Cloud** to modify the string. Before using the string to connect in a Hasura project, be sure to encode any special characters. For an example of connecting a Hasura Cloud project to Yugabyte Cloud, refer to [Connect Hasura Cloud to Yugabyte Cloud](../../cloud-develop/hasura-cloud/).
+
+For information on using other SSL modes, refer to [SSL modes in YSQL](#ssl-modes-in-ysql).
 
 ### YCQL
 
@@ -201,6 +205,20 @@ To run the sample application:
 1. Copy the connect string for YSQL or YCQL.
 1. Run the command in docker from your computer, replacing `<path to CA cert>`, `<db user>`, and `<db password>` with the path to the CA certificate for the cluster and your database credentials.
 -->
+
+## SSL modes in YSQL
+
+Yugabyte Cloud requires SSL connections. The generated `ysqlsh` shell command and application connection string use the `verify-full` SSL mode by default to verify the cluster’s identity. This mode encrypts the data in transit to ensure a secure connection to your cluster, and prevents man in the middle (MITM) attacks, impersonation attacks, and eavesdropping. Connections using SSL mode `disable` will fail. You can use other SSL modes to connect to clusters as described in the following table.
+
+| sslmode | MITM protection | Notes |
+|---|---|---|
+| allow | No | Effectively works as _require_ (always uses the SSL connection without verification). |
+| prefer | No | Effectively works as _require_ (always uses the SSL connection without verification). |
+| require | No | Uses the SSL connection without verification. You do not need to provide the _sslrootcert_ parameter. |
+| verify-ca | Yes | Uses the SSL connection and verifies that the server certificate is issued by a trusted certificate authority (CA). Requires the _sslrootcert_ parameter with the path to the cluster certificate. |
+| verify-full | Yes | Uses the SSL connection and verifies that the server certificate is issued by a trusted CA and that the requested server host name matches that in the certificate. Requires the _sslrootcert_ parameter with the path to the cluster certificate. |
+
+For information on SSL modes, refer to [Protection Provided in Different Modes](https://www.postgresql.org/docs/11/libpq-ssl.html#LIBPQ-SSL-PROTECTION) in the PostgreSQL documentation.
 
 ## Connect using third party clients
 
