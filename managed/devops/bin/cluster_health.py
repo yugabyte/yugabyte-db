@@ -38,7 +38,10 @@ YB_PROCESS_LOG_PATH_FORMAT = os.path.join(YB_HOME_DIR, "{}/logs/")
 VM_ROOT_CERT_FILE_PATH = os.path.join(YB_HOME_DIR, "yugabyte-tls-config/ca.crt")
 
 K8S_CERTS_PATH = "/opt/certs/yugabyte/"
+K8S_CLIENT_CERTS_PATH = "/root/.yugabytedb/"
 K8S_CERT_FILE_PATH = os.path.join(K8S_CERTS_PATH, "ca.crt")
+K8S_CLIENT_CA_CERT_FILE_PATH = os.path.join(K8S_CLIENT_CERTS_PATH, "root.crt")
+K8S_CLIENT_CERT_FILE_PATH = os.path.join(K8S_CLIENT_CERTS_PATH, "yugabytedb.crt")
 
 RECENT_FAILURE_THRESHOLD_SEC = 8 * 60
 FATAL_TIME_THRESHOLD_MINUTES = 12
@@ -354,7 +357,23 @@ class NodeChecker():
             False,
             days_till_expiry)
 
+    def get_node_to_node_ca_certificate_path(self):
+        if self.is_k8s:
+            return K8S_CERT_FILE_PATH
+
+        return VM_ROOT_CERT_FILE_PATH
+
+    def get_node_to_node_certificate_path(self):
+        if self.is_k8s:
+            return os.path.join(K8S_CERTS_PATH, "node.{}.crt".format(self.node))
+
+        return os.path.join(YB_HOME_DIR,
+                            "yugabyte-tls-config/node.{}.crt".format(self.node))
+
     def get_client_to_node_ca_certificate_path(self):
+        if self.is_k8s:
+            return K8S_CLIENT_CA_CERT_FILE_PATH
+
         remote_cmd = 'if [ -f "{0}" ]; then echo "{0}";'.format(
             os.path.join(YB_HOME_DIR, "yugabyte-client-tls-config/ca.crt"))
 
@@ -365,33 +384,31 @@ class NodeChecker():
         remote_cmd += ' fi;'
         return self._remote_check_output(remote_cmd).strip()
 
-    def check_node_to_node_ca_certificate_expiration(self):
-        return self.check_certificate_expiration("Node To Node CA",
-                                                 VM_ROOT_CERT_FILE_PATH if not self.is_k8s
-                                                 else K8S_CERT_FILE_PATH)
-
-    def check_node_to_node_certificate_expiration(self):
-        if not self.is_k8s:
-            cert_path = os.path.join(YB_HOME_DIR,
-                                     "yugabyte-tls-config/node.{}.crt".format(self.node))
-        else:
-            cert_path = os.path.join(K8S_CERTS_PATH, "node.{}.crt".format(self.node))
-        return self.check_certificate_expiration("Node To Node", cert_path)
-
-    def check_client_to_node_ca_certificate_expiration(self):
-        return self.check_certificate_expiration(
-            "Client To Node CA", self.get_client_to_node_ca_certificate_path())
-
     def get_client_to_node_certificate_path(self):
+        if self.is_k8s:
+            return K8S_CLIENT_CERT_FILE_PATH
+
         cert_path = os.path.join(
             YB_HOME_DIR, "yugabyte-client-tls-config/node.{}.crt".format(self.node))
-        remote_cmd = 'if [ -f "{0}" ]; then echo "{0}"; elif [ -f "{1}" ]; then echo "{1}"; fi'.\
+        remote_cmd = 'if [ -f "{0}" ]; then echo "{0}"; elif [ -f "{1}" ]; then echo "{1}"; fi'. \
             format(cert_path, os.path.join(YB_HOME_DIR, ".yugabytedb/yugabytedb.crt"))
         return self._remote_check_output(remote_cmd).strip()
 
+    def check_node_to_node_ca_certificate_expiration(self):
+        return self.check_certificate_expiration("Node To Node CA",
+                                                 self.get_node_to_node_ca_certificate_path())
+
+    def check_node_to_node_certificate_expiration(self):
+        return self.check_certificate_expiration("Node To Node",
+                                                 self.get_node_to_node_certificate_path())
+
+    def check_client_to_node_ca_certificate_expiration(self):
+        return self.check_certificate_expiration("Client To Node CA",
+                                                 self.get_client_to_node_ca_certificate_path())
+
     def check_client_to_node_certificate_expiration(self):
-        return self.check_certificate_expiration(
-            "Client To Node", self.get_client_to_node_certificate_path())
+        return self.check_certificate_expiration("Client To Node",
+                                                 self.get_client_to_node_certificate_path())
 
     def get_yb_version(self, host_port):
         try:
@@ -586,10 +603,7 @@ class NodeChecker():
         cqlsh = '{}/bin/cqlsh'.format(YB_TSERVER_DIR)
         remote_cmd = '{} {} {} -e "SHOW HOST"'.format(cqlsh, self.node, self.ycql_port)
         if self.enable_tls_client:
-            if self.is_k8s:
-                cert_file = K8S_CERT_FILE_PATH
-            else:
-                cert_file = self.get_client_to_node_ca_certificate_path()
+            cert_file = self.get_client_to_node_ca_certificate_path()
             protocols = re.split('\\W+', self.ssl_protocol or "")
             ssl_version = DEFAULT_SSL_VERSION
             for protocol in protocols:
