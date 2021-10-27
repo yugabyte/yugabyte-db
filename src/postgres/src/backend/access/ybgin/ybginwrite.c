@@ -1,0 +1,323 @@
+/*-------------------------------------------------------------------------
+ *
+ * ybginwrite.c
+ *	  insert and delete routines for the Yugabyte inverted index access method.
+ *
+ * Copyright (c) YugaByte, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not
+ * use this file except in compliance with the License.  You may obtain a copy
+ * of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
+ *
+ * IDENTIFICATION
+ *			src/backend/access/ybgin/ybginwrite.c
+ *-------------------------------------------------------------------------
+ */
+
+#include "postgres.h"
+
+#include "access/genam.h"
+#include "access/ybgin_private.h"
+#include "c.h"
+#include "catalog/index.h"
+#include "executor/ybcModifyTable.h"
+#include "nodes/execnodes.h"
+#include "nodes/parsenodes.h"
+#include "storage/off.h"
+#include "utils/memutils.h"
+#include "utils/rel.h"
+#include "utils/relcache.h"
+
+/*
+ * Parts copied from GinBuildState.  Differences:
+ * - no buildStats because those are tied to postgres storage
+ * - no tmpCtx because that's tied to bulk inserts, which we won't do because
+ *   it seems to be particularly beneficial for postgres btrees and not for
+ *   Yugabyte DocDB
+ * - no accum for the same reason
+ * - add backfilltime to both indicate that the build is for online index
+ *   backfill and specify the write time for it
+ */
+typedef struct
+{
+	GinState	ginstate;
+	double		indtuples;
+	MemoryContext funcCtx;
+	uint64_t   *backfilltime;
+} YbginBuildState;
+
+/*
+ * Extract entries and write values.
+ *
+ * The first part here is identical to first part of ginHeapTupleInsert.
+ */
+static int32
+ybginTupleWrite(GinState *ginstate, OffsetNumber attnum,
+				 Relation index, Datum value, bool isNull,
+				 Datum ybctid, uint64_t *backfilltime,
+				 bool isinsert)
+{
+	Datum	   *entries;
+	GinNullCategory *categories;
+	int32		i,
+				nentries;
+
+	entries = ginExtractEntries(ginstate, attnum, value, isNull,
+								&nentries, &categories);
+
+	/* Make sure that this is a single-column index. */
+	Assert(RelationGetNumberOfAttributes(index) == 1);
+
+	for (i = 0; i < nentries; i++)
+	{
+		bool		isnull = categories[i] != 0;
+
+		/* TODO(jason): handle the different null categories. */
+		if (categories[i] != GIN_CAT_NORM_KEY)
+			ereport(ERROR,
+					(errcode(ERRCODE_DATA_EXCEPTION),
+					 errmsg("unsupported ybgin index write"),
+					 errdetail("ybgin index method does not support"
+							   " non-normal null category: %s.",
+							   ybginNullCategoryToString(categories[i]))));
+
+		/* Assume single-column index for parameters values and isnull. */
+		if (isinsert)
+			YBCExecuteInsertIndex(index, &entries[i], &isnull, ybctid,
+								  backfilltime /* backfill_write_time */);
+		else
+		{
+			Assert(!backfilltime);
+			YBCExecuteDeleteIndex(index, &entries[i], &isnull, ybctid);
+		}
+	}
+
+	return nentries;
+}
+
+/*
+ * Insert index entries for a single indexable item during "normal"
+ * (non-fast-update) insertion
+ */
+static int32
+ybginTupleInsert(GinState *ginstate, OffsetNumber attnum,
+				 Relation index, Datum value, bool isNull,
+				 Datum ybctid, uint64_t *backfilltime)
+{
+	return ybginTupleWrite(ginstate, attnum, index, value, isNull, ybctid,
+						   backfilltime, true /* isinsert */);
+}
+
+/*
+ * Delete index entries for a single indexable item during "normal"
+ * (non-fast-update) insertion
+ */
+static int32
+ybginTupleDelete(GinState *ginstate, OffsetNumber attnum,
+				 Relation index, Datum value, bool isNull,
+				 Datum ybctid)
+{
+	return ybginTupleWrite(ginstate, attnum, index, value, isNull, ybctid,
+						   NULL /* backfilltime */, false /* isinsert */);
+}
+
+/*
+ * Callback to insert index tuples after a base table tuple is retrieved.  See
+ * similar ybcinbuildCallback.
+ */
+static void
+ybginBuildCallback(Relation index, HeapTuple heapTuple, Datum *values,
+				   bool *isnull, bool tupleIsAlive, void *state)
+{
+	YbginBuildState *buildstate = (YbginBuildState *) state;
+	GinState   *ginstate = &buildstate->ginstate;
+	MemoryContext oldCtx;
+	int			i;
+	int32		nentries = 0;
+
+	oldCtx = MemoryContextSwitchTo(buildstate->funcCtx);
+	for (i = 0; i < ginstate->origTupdesc->natts; i++)
+		nentries += ybginTupleInsert(ginstate, (OffsetNumber) (i + 1),
+									 index, values[i], isnull[i],
+									 heapTuple->t_ybctid,
+									 buildstate->backfilltime);
+
+	buildstate->indtuples += nentries;
+
+	MemoryContextSwitchTo(oldCtx);
+	MemoryContextReset(buildstate->funcCtx);
+}
+
+/*
+ * Build code for both ybginbuild and ybginbackfill.
+ *
+ * Parts copied from ginbuild.  Differences are
+ * - don't deal with postgres storage (e.g. buffers, pages, tmpCtx)
+ * - additionally pass through backfill parameters
+ * - name memory context Ybgin
+ */
+static IndexBuildResult *
+ybginBuildCommon(Relation heap, Relation index, struct IndexInfo *indexInfo,
+				 struct YbBackfillInfo *bfinfo,
+				 struct YbPgExecOutParam *bfresult)
+{
+	IndexBuildResult *result;
+	double		reltuples;
+	YbginBuildState buildstate;
+
+	initGinState(&buildstate.ginstate, index);
+	buildstate.indtuples = 0;
+	if (bfinfo)
+		buildstate.backfilltime = &bfinfo->read_time;
+	else
+		buildstate.backfilltime = NULL;
+
+	/*
+	 * create a temporary memory context that is used for calling
+	 * ginExtractEntries(), and can be reset after each tuple
+	 */
+	buildstate.funcCtx = AllocSetContextCreate(GetCurrentMemoryContext(),
+											   "Ybgin build temporary context for user-defined function",
+											   ALLOCSET_DEFAULT_SIZES);
+
+	/*
+	 * Do the heap scan.
+	 */
+	if (!bfinfo)
+		reltuples = IndexBuildHeapScan(heap, index, indexInfo, true,
+									   ybginBuildCallback, (void *) &buildstate,
+									   NULL /* HeapScanDesc */);
+	else
+		reltuples = IndexBackfillHeapRangeScan(heap, index, indexInfo,
+											   ybginBuildCallback,
+											   (void *) &buildstate,
+											   bfinfo,
+											   bfresult);
+
+	MemoryContextDelete(buildstate.funcCtx);
+
+	/*
+	 * Return statistics
+	 */
+	result = (IndexBuildResult *) palloc(sizeof(IndexBuildResult));
+
+	result->heap_tuples = reltuples;
+	result->index_tuples = buildstate.indtuples;
+
+	return result;
+}
+
+IndexBuildResult *
+ybginbuild(Relation heap, Relation index, struct IndexInfo *indexInfo)
+{
+	return ybginBuildCommon(heap, index, indexInfo,
+							NULL /* bfinfo */, NULL /* bfresult */);
+}
+
+void
+ybginbuildempty(Relation index)
+{
+	YBC_LOG_WARNING("Unexpected building of empty unlogged index");
+}
+
+IndexBulkDeleteResult *
+ybginbulkdelete(IndexVacuumInfo *info, IndexBulkDeleteResult *stats,
+				IndexBulkDeleteCallback callback, void *callback_state)
+{
+	YBC_LOG_WARNING("Unexpected bulk delete of index via vacuum");
+	return NULL;
+}
+
+IndexBulkDeleteResult *
+ybginvacuumcleanup(IndexVacuumInfo *info, IndexBulkDeleteResult *stats)
+{
+	YBC_LOG_WARNING("Unexpected index cleanup via vacuum");
+	return NULL;
+}
+
+/*
+ * Write code for both ybgininsert and ybgindelete.
+ *
+ * Parts copied from gininsert.  Differences are
+ * - don't copy fastupdate code since it's not supported
+ * - additionally handle deletes
+ * - name memory context Ybgin
+ */
+static void
+ybginWrite(Relation index, Datum *values, bool *isnull, Datum ybctid,
+		   Relation heap, struct IndexInfo *indexInfo, bool isinsert)
+{
+	GinState   *ginstate = (GinState *) indexInfo->ii_AmCache;
+	MemoryContext oldCtx;
+	MemoryContext writeCtx;
+	int			i;
+
+	/* Initialize GinState cache if first call in this statement */
+	if (ginstate == NULL)
+	{
+		oldCtx = MemoryContextSwitchTo(indexInfo->ii_Context);
+		ginstate = (GinState *) palloc(sizeof(GinState));
+		initGinState(ginstate, index);
+		indexInfo->ii_AmCache = (void *) ginstate;
+		MemoryContextSwitchTo(oldCtx);
+	}
+
+	writeCtx = AllocSetContextCreate(GetCurrentMemoryContext(),
+									 "Ybgin write temporary context",
+									 ALLOCSET_DEFAULT_SIZES);
+
+	oldCtx = MemoryContextSwitchTo(writeCtx);
+
+	if (GinGetUseFastUpdate(index))
+		ereport(DEBUG2,
+				(errmsg("fast update is not yet supported for ybgin")));
+	for (i = 0; i < ginstate->origTupdesc->natts; i++)
+	{
+		if (isinsert)
+			ybginTupleInsert(ginstate, (OffsetNumber) (i + 1),
+							 index, values[i], isnull[i],
+							 ybctid, NULL /* backfilltime */);
+		else
+			ybginTupleDelete(ginstate, (OffsetNumber) (i + 1),
+							 index, values[i], isnull[i],
+							 ybctid);
+	}
+
+	MemoryContextSwitchTo(oldCtx);
+	MemoryContextDelete(writeCtx);
+}
+
+bool
+ybgininsert(Relation index, Datum *values, bool *isnull, Datum ybctid,
+			Relation heap, IndexUniqueCheck checkUnique,
+			struct IndexInfo *indexInfo, bool shared_insert)
+{
+	ybginWrite(index, values, isnull, ybctid, heap, indexInfo,
+			   true /* isinsert */);
+
+	/* index cannot be unique */
+	return false;
+}
+
+void
+ybgindelete(Relation index, Datum *values, bool *isnull, Datum ybctid,
+			Relation heap, struct IndexInfo *indexInfo)
+{
+	ybginWrite(index, values, isnull, ybctid, heap, indexInfo,
+			   false /* isinsert */);
+}
+
+IndexBuildResult *
+ybginbackfill(Relation heap, Relation index, struct IndexInfo *indexInfo,
+			  struct YbBackfillInfo *bfinfo, struct YbPgExecOutParam *bfresult)
+{
+	return ybginBuildCommon(heap, index, indexInfo, bfinfo, bfresult);
+}

@@ -143,6 +143,12 @@ CREATE TABLE array_op_test (
 	t			text[]
 );
 
+CREATE TABLE array_index_op_test (
+	seqno		int4,
+	i			int4[],
+	t			text[]
+);
+
 CREATE TABLE testjsonb (
        j jsonb
 );

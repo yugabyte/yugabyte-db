@@ -2895,8 +2895,10 @@ SELECT count(*) FROM testjsonb WHERE j @? '$.bar';
      0
 (1 row)
 
--- TODO(jason) uncomment when issue #1337 is closed or closing.
--- CREATE INDEX jidx ON testjsonb USING gin (j);
+CREATE INDEX jidx ON testjsonb USING gin (j);
+NOTICE:  replacing access method "gin" with "ybgin"
+ERROR:  Aborted: ERROR:  unsupported ybgin index write
+DETAIL:  ybgin index method does not support non-normal null category: empty-item.
 SET enable_seqscan = off;
 SELECT count(*) FROM testjsonb WHERE j @> '{"wait":null}';
  count
@@ -3158,8 +3160,10 @@ SELECT count(*) FROM testjsonb WHERE j @? '$.bar';
 (1 row)
 
 -- array exists - array elements should behave as keys (for GIN index scans too)
--- TODO(jason) uncomment when issue #1337 is closed or closing.
--- CREATE INDEX jidx_array ON testjsonb USING gin((j->'array'));
+CREATE INDEX jidx_array ON testjsonb USING gin((j->'array'));
+NOTICE:  replacing access method "gin" with "ybgin"
+ERROR:  Aborted: ERROR:  unsupported ybgin index write
+DETAIL:  ybgin index method does not support non-normal null category: null-item.
 SELECT count(*) from testjsonb  WHERE j->'array' ? 'bar';
  count
 -------
@@ -3250,11 +3254,12 @@ SELECT distinct * FROM (values (jsonb '{}' || ''::text),('{}')) v(j);
 SET enable_sort = on;
 RESET enable_hashagg;
 RESET enable_sort;
--- TODO(jason) uncomment when issue #1337 is closed or closing.
--- DROP INDEX jidx;
--- DROP INDEX jidx_array;
--- -- btree
--- CREATE INDEX jidx ON testjsonb USING btree (j);
+DROP INDEX jidx;
+DROP INDEX jidx_array;
+-- btree
+CREATE INDEX jidx ON testjsonb USING btree (j);
+NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+ERROR:  INDEX on column of type 'JSONB' not yet supported
 SET enable_seqscan = off;
 SELECT count(*) FROM testjsonb WHERE j > '{"p":1}';
  count
@@ -3269,9 +3274,12 @@ SELECT count(*) FROM testjsonb WHERE j = '{"pos":98, "line":371, "node":"CBA", "
 (1 row)
 
 --gin path opclass
--- TODO(jason) uncomment when issue #1337 is closed or closing.
--- DROP INDEX jidx;
--- CREATE INDEX jidx ON testjsonb USING gin (j jsonb_path_ops);
+DROP INDEX jidx;
+ERROR:  index "jidx" does not exist
+CREATE INDEX jidx ON testjsonb USING gin (j jsonb_path_ops);
+NOTICE:  replacing access method "gin" with "ybgin"
+ERROR:  Aborted: ERROR:  unsupported ybgin index write
+DETAIL:  ybgin index method does not support non-normal null category: empty-item.
 SET enable_seqscan = off;
 SELECT count(*) FROM testjsonb WHERE j @> '{"wait":null}';
  count
@@ -3464,8 +3472,7 @@ SELECT count(*) FROM testjsonb WHERE j @? '$.bar';
 (1 row)
 
 RESET enable_seqscan;
--- TODO(jason) uncomment when issue #1337 is closed or closing.
--- DROP INDEX jidx;
+DROP INDEX jidx;
 -- nested tests
 SELECT '{"ff":{"a":12,"b":16}}'::jsonb;
            jsonb
@@ -3622,8 +3629,7 @@ create temp table nestjsonb (j jsonb);
 insert into nestjsonb (j) values ('{"a":[["b",{"x":1}],["b",{"x":2}]],"c":3}');
 insert into nestjsonb (j) values ('[[14,2,3]]');
 insert into nestjsonb (j) values ('[1,[14,2,3]]');
--- TODO(jason) uncomment when issue #1337 is closed or closing.
--- create index on nestjsonb using gin(j jsonb_path_ops);
+create index on nestjsonb using gin(j jsonb_path_ops);
 set enable_seqscan = on;
 set enable_bitmapscan = off;
 select * from nestjsonb where j @> '{"a":[[{"x":2}]]}'::jsonb;
@@ -4508,26 +4514,26 @@ ERROR:  path element at position 3 is null
 \pset null NULL
 -- pass though non nulls to jsonb_set
 select jsonb_set_lax('{"a":1,"b":2}','{b}','5') ;
-  jsonb_set_lax   
+  jsonb_set_lax
 ------------------
  {"a": 1, "b": 5}
 (1 row)
 
 select jsonb_set_lax('{"a":1,"b":2}','{d}','6', true) ;
-      jsonb_set_lax       
+      jsonb_set_lax
 --------------------------
  {"a": 1, "b": 2, "d": 6}
 (1 row)
 
 -- using the default treatment
 select jsonb_set_lax('{"a":1,"b":2}','{b}',null);
-    jsonb_set_lax    
+    jsonb_set_lax
 ---------------------
  {"a": 1, "b": null}
 (1 row)
 
 select jsonb_set_lax('{"a":1,"b":2}','{d}',null,true);
-        jsonb_set_lax        
+        jsonb_set_lax
 -----------------------------
  {"a": 1, "b": 2, "d": null}
 (1 row)
@@ -4543,19 +4549,19 @@ ERROR:  JSON value must not be null
 DETAIL:  Exception was raised because null_value_treatment is "raise_exception".
 HINT:  To avoid, either change the null_value_treatment argument or ensure that an SQL NULL is not passed.
 select jsonb_set_lax('{"a":1,"b":2}', '{b}', null, null_value_treatment => 'return_target') as return_target;
-  return_target   
+  return_target
 ------------------
  {"a": 1, "b": 2}
 (1 row)
 
 select jsonb_set_lax('{"a":1,"b":2}', '{b}', null, null_value_treatment => 'delete_key') as delete_key;
- delete_key 
+ delete_key
 ------------
  {"a": 1}
 (1 row)
 
 select jsonb_set_lax('{"a":1,"b":2}', '{b}', null, null_value_treatment => 'use_json_null') as use_json_null;
-    use_json_null    
+    use_json_null
 ---------------------
  {"a": 1, "b": null}
 (1 row)

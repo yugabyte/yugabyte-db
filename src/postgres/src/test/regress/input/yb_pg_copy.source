@@ -22,3 +22,5 @@ COPY test_tsvector FROM '@abs_srcdir@/data/tsearch.data';
 COPY testjsonb FROM '@abs_srcdir@/data/jsonb.data';
 
 COPY array_op_test FROM '@abs_srcdir@/data/array.data';
+
+COPY array_index_op_test FROM '@abs_srcdir@/data/array.data';

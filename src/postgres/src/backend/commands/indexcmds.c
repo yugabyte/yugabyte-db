@@ -792,7 +792,8 @@ DefineIndex(Oid relationId,
 	}
 	accessMethodId = HeapTupleGetOid(tuple);
 
-	if (IsYBRelation(rel) && accessMethodId != LSM_AM_OID)
+	if (IsYBRelation(rel) && (accessMethodId != LSM_AM_OID &&
+							  accessMethodId != YBGIN_AM_OID))
 		ereport(ERROR,
 				(errmsg("index method \"%s\" not supported yet",
 						accessMethodName),

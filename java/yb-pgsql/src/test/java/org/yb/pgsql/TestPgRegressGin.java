@@ -22,7 +22,7 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
 public class TestPgRegressGin extends BasePgSQLTest {
   @Override
   public int getTestMethodTimeoutSec() {
-    return BuildTypeUtil.nonSanitizerVsSanitizer(360, 450);
+    return BuildTypeUtil.nonSanitizerVsSanitizer(2100, 2700);
   }
 
   @Test
