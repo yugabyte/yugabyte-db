@@ -75,15 +75,92 @@ And current key size is always `shared_prefix_size + non_shared_1_size + shared_
 We will store `non_shared_i_size_delta = non_shared_i_size - prev_key_non_shared_i_size` (i = 1, 2) for efficiency, because for DocDB these deltas are `0` in most cases and we can encode this more efficiently.
 
 So, to be able to decode key-value pair it is enough to know whole previous key and store the following:
-- `shared_prefix_size`
-- `non_shared_1_size`
-- `non_shared_1_size_delta`
-- `shared_middle_size`
-- `non_shared_2_size`,
-- `non_shared_2_size_delta`
-- `bool is_last_internal_component_reused` 
-- `bool is_last_internal_component_inc`
-- `non_shared_1` bytes
-- `non_shared_2` bytes
-- `value_size`
-- `value` bytes
+- Sizes & flags:
+  - `shared_prefix_size`
+  - `non_shared_1_size`
+  - `non_shared_1_size_delta`
+  - `non_shared_2_size`
+  - `non_shared_2_size_delta`
+  - `bool is_last_internal_component_reused` 
+  - `bool is_last_internal_component_inc`
+  - `value_size`
+- Non shared bytes:
+  - `non_shared_1` bytes
+  - `non_shared_2` bytes
+  - `value` bytes
+
+The general encoding format is therefore: `<sizes & flags encoded ><non_shared_1 bytes>[<non_shared_2 bytes>]<value bytes>`.
+
+## Sizes & flags encoding
+
+In general, sizes & flags encoding format is:
+`<encoded_1><...>`, where `encoded_1` is an encoded varint64 containing the following information:
+- bit 0: is it most frequent case (see below)?
+- bit 1: `is_last_internal_component_inc`
+- bits 2-...: `value_size`
+
+We encode these two flags together with the `value_size`, because if `value_size` is less than 32 bytes, then `encoded_1` will still be encoded as 1 byte. 
+Otherwise one more byte is negligible comparing to size of the value that is not delta compressed.
+
+We have several cases that occur most frequently and we encode them in a special way for space-efficiency, depending on the case `<...>` is encoded differently:
+
+1. Most frequent case:
+- `is_last_internal_component_reused == true`
+- `non_shared_1_size == 1`
+- `non_shared_2_size == 1`
+- `non_shared_1_size_delta == 0`
+- `non_shared_2_size_delta == 0`
+
+In this case we know all sizes and flags except `shared_prefix_size`, so we just need to store: `<encoded_1><shared_prefix_size>`
+
+2. The format is: `<encoded_1><encoded_2><...>`, where `encoded_2` is one byte that determines which subcase we are dealing with. In some cases `encoded_2` also contains some more useful information.
+
+2.1. Something is reused from the previous key (meaning `shared_prefix_size + shared_middle_size + last_internal_component_reuse_size > 0`):
+
+2.1.1. Optimized for the following case:
+- `is_last_internal_component_reused == true`
+- `non_shared_1_size_delta == 0`
+- `non_shared_2_size_delta == 0`
+- `non_shared_1_size < 8`
+- `non_shared_2_size < 4`
+
+In this case `encoded_2` is:
+- bit 0: `1`
+- bit 1: `0`
+- bit 2: `non_shared_2_size_delta == 1`
+- bits 3-5: `non_shared_1_size`
+- bits 6-7: `non_shared_2_size`
+
+We store: `<encoded_1><encoded_2><shared_prefix_size>` and the rest of sizes and flags is computed based on this.
+
+2.1.2: Rest of the cases when we reuse bytes from the previous key.
+
+In this case `encoded_2` is:
+- bit 0: `1`
+- bit 1: `1`
+- bit 2: `is_last_internal_component_reused`
+- bit 3: non_shared_1_size_delta != 0
+- bit 4: non_shared_2_size != 0
+- bit 5: non_shared_2_size_delta != 0
+- bits 6-7: not used
+
+We store: `<encoded_1><encoded_2><non_shared_1_size>[<non_shared_1_size_delta>][<non_shared_2_size>][<non_shared_2_size_delta>]<shared_prefix_size>`, sizes that we know based on `encoded_2` bits are zeros are not stored to save space.
+
+2.2. Nothing is reused from the previous key (mostly restart keys).
+In this case we just need to store key size and value size.
+
+2.2.1. 0 < `key_size` < 128.
+
+In this case `encoded_2` is:
+- bit 0: `0`
+- bits 1-7: `key_size` (>0)
+
+And we just need to store: `<encoded_1><encoded_2>` to be able to decode key size and value size.
+
+2.2.2. `key_size == 0 || key_size >= 128`
+
+In this case `encoded_2` is just `0`:
+- bit 0: `0`
+- bits 1-7: `0`
+
+We store: `<encoded_1><encoded_2=0><key_size>` that is enough to decode key size and value size.
