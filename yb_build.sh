@@ -35,7 +35,9 @@ Options:
   --help, -h
     Show help.
   --verbose
-    Show debug output from CMake.
+    Show debug output
+  --bash-debug
+    Show detailed debug information for each command executed by this script.
   --force-run-cmake, --frcm
     Ensure that we explicitly invoke CMake from this script. CMake may still run as a result of
     changes made to CMakeLists.txt files if we just invoke make on the CMake-generated Makefile.
@@ -699,6 +701,9 @@ while [[ $# -gt 0 ]]; do
       verbose=true
       export YB_VERBOSE=1
     ;;
+    --bash-debug)
+      yb_activate_debug_mode
+    ;;
     --force-run-cmake|--frcm)
       force_run_cmake=true
     ;;
@@ -1239,6 +1244,8 @@ fi
 # -------------------------------------------------------------------------------------------------
 # End of the section for supporting --save-log.
 # -------------------------------------------------------------------------------------------------
+
+check_arc_wrapper
 
 if "$verbose"; then
   log "$script_name command line: ${original_args[*]}"
