@@ -87,8 +87,6 @@ class RpcServerBase {
 
   MetricRegistry* metric_registry() { return metric_registry_.get(); }
 
-  std::map<std::string, scoped_refptr<Histogram>>* master_metrics() { return &master_metrics_;}
-
   // Returns this server's clock.
   Clock* clock() { return clock_.get(); }
 
@@ -152,7 +150,6 @@ class RpcServerBase {
   CountDownLatch stop_metrics_logging_latch_;
 
   std::unique_ptr<ScopedGLogMetrics> glog_metrics_;
-  std::map<string, scoped_refptr<Histogram>> master_metrics_;
 
   DISALLOW_COPY_AND_ASSIGN(RpcServerBase);
 };
