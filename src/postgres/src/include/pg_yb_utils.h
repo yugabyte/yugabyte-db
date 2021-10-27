@@ -275,6 +275,12 @@ extern void YBCRollbackSubTransaction(SubTransactionId id);
 extern bool YBIsPgLockingEnabled();
 
 /*
+ * Get the type ID of a real or virtual attribute (column).
+ * Returns InvalidOid if the attribute number is invalid.
+ */
+extern Oid GetTypeId(int attrNum, TupleDesc tupleDesc);
+
+/*
  * Return a string representation of the given type id, or say it is unknown.
  * What is returned is always a static C string constant.
  */
