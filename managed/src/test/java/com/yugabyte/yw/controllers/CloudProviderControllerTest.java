@@ -315,7 +315,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
       assertOk(result);
       assertValue(json, "name", providerName);
       Provider provider = Provider.get(customer.uuid, UUID.fromString(json.path("uuid").asText()));
-      Map<String, String> config = provider.getConfig();
+      Map<String, String> config = provider.getUnmaskedConfig();
       assertFalse(config.isEmpty());
       // We should technically check the actual content, but the keys are different between the
       // input payload and the saved config.
@@ -344,7 +344,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     assertOk(result);
     assertValue(json, "name", providerName);
     Provider provider = Provider.get(customer.uuid, UUID.fromString(json.path("uuid").asText()));
-    Map<String, String> config = provider.getConfig();
+    Map<String, String> config = provider.getUnmaskedConfig();
     assertTrue(config.isEmpty());
     assertAuditEntry(1, customer.uuid);
   }
@@ -368,7 +368,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     assertOk(result);
     assertValue(json, "name", providerName);
     Provider provider = Provider.get(customer.uuid, UUID.fromString(json.path("uuid").asText()));
-    Map<String, String> config = provider.getConfig();
+    Map<String, String> config = provider.getUnmaskedConfig();
     assertTrue(config.isEmpty());
     assertAuditEntry(1, customer.uuid);
   }
@@ -405,7 +405,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     assertOk(result);
     assertValue(json, "name", providerName);
     Provider provider = Provider.get(customer.uuid, UUID.fromString(json.path("uuid").asText()));
-    Map<String, String> config = provider.getConfig();
+    Map<String, String> config = provider.getUnmaskedConfig();
     assertFalse(config.isEmpty());
     List<Region> createdRegions = Region.getByProvider(provider.uuid);
     assertEquals(1, createdRegions.size());
@@ -665,7 +665,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(p.uuid, UUID.fromString(json.get("uuid").asText()));
     p.refresh();
-    assertEquals("slow", p.getConfig().get("KUBECONFIG_STORAGE_CLASSES"));
+    assertEquals("slow", p.getUnmaskedConfig().get("KUBECONFIG_STORAGE_CLASSES"));
     assertAuditEntry(1, customer.uuid);
   }
 
@@ -689,8 +689,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(p.uuid, UUID.fromString(json.get("uuid").asText()));
     p.refresh();
-    assertTrue(p.getConfig().get("KUBECONFIG").contains("test2.conf"));
-    Path path = Paths.get(p.getConfig().get("KUBECONFIG"));
+    assertTrue(p.getUnmaskedConfig().get("KUBECONFIG").contains("test2.conf"));
+    Path path = Paths.get(p.getUnmaskedConfig().get("KUBECONFIG"));
     try {
       List<String> contents = Files.readAllLines(path);
       assertEquals(contents.get(0), "test5678");
@@ -711,7 +711,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(p.uuid, UUID.fromString(json.get("uuid").asText()));
     p.refresh();
-    assertEquals("1234", p.getConfig().get("HOSTED_ZONE_ID"));
+    assertEquals("1234", p.getUnmaskedConfig().get("HOSTED_ZONE_ID"));
     assertAuditEntry(1, customer.uuid);
   }
 
@@ -756,8 +756,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     assertNotNull(provider);
     assertEquals("1234", provider.getHostedZoneId());
     assertEquals("test", provider.getHostedZoneName());
-    assertEquals("1234", provider.getConfig().get("HOSTED_ZONE_ID"));
-    assertEquals("test", provider.getConfig().get("HOSTED_ZONE_NAME"));
+    assertEquals("1234", provider.getUnmaskedConfig().get("HOSTED_ZONE_ID"));
+    assertEquals("test", provider.getUnmaskedConfig().get("HOSTED_ZONE_NAME"));
     assertAuditEntry(1, customer.uuid);
   }
 

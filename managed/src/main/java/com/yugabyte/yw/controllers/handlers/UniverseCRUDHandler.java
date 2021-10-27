@@ -156,8 +156,9 @@ public class UniverseCRUDHandler {
             UniverseDefinitionTaskParams.ExposingServiceState.UNEXPOSED;
       }
       if (c.userIntent.providerType.equals(Common.CloudType.onprem)) {
-        if (provider.getConfig().containsKey("USE_HOSTNAME")) {
-          c.userIntent.useHostname = Boolean.parseBoolean(provider.getConfig().get("USE_HOSTNAME"));
+        if (provider.getUnmaskedConfig().containsKey("USE_HOSTNAME")) {
+          c.userIntent.useHostname =
+              Boolean.parseBoolean(provider.getUnmaskedConfig().get("USE_HOSTNAME"));
         }
       }
 
@@ -737,7 +738,7 @@ public class UniverseCRUDHandler {
     boolean isNamespaceSet = false;
     for (Region r : Region.getByProvider(providerToCheck.uuid)) {
       for (AvailabilityZone az : AvailabilityZone.getAZsForRegion(r.uuid)) {
-        if (az.getConfig().containsKey("KUBENAMESPACE")) {
+        if (az.getUnmaskedConfig().containsKey("KUBENAMESPACE")) {
           isNamespaceSet = true;
         }
       }

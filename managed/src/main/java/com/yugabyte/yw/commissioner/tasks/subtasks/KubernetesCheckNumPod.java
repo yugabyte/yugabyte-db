@@ -97,7 +97,7 @@ public class KubernetesCheckNumPod extends AbstractTaskBase {
   private boolean waitForPods() {
     Map<String, String> config = taskParams().config;
     if (taskParams().config == null) {
-      config = Provider.get(taskParams().providerUUID).getConfig();
+      config = Provider.get(taskParams().providerUUID).getUnmaskedConfig();
     }
     ShellResponse podResponse =
         kubernetesManager.getPodInfos(config, taskParams().nodePrefix, taskParams().namespace);

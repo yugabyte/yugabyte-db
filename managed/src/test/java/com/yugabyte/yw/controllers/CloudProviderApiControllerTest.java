@@ -341,7 +341,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     providerReq.setConfig(reqConfig);
     Provider createdProvider =
         createProviderTest(providerReq, REGION_CODES_FROM_CLOUD_API, UUID.randomUUID());
-    Map<String, String> config = createdProvider.getConfig();
+    Map<String, String> config = createdProvider.getUnmaskedConfig();
     assertFalse(config.isEmpty());
     // We should technically check the actual content, but the keys are different between the
     // input payload and the saved config. (So what?! check the expected keys)
@@ -459,7 +459,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   }
 
   //  @Test
-  public void testCreateAwsProviderWithInValidAWSCredentials() {
+  public void testCreateAwsProviderWithInvalidAWSCredentials() {
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("code", "aws");
     bodyJson.put("name", "aws-Provider");

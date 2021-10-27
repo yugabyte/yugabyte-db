@@ -383,7 +383,7 @@ public class CustomerController extends AuthenticatedController {
         }
         namespaces.add(
             PlacementInfoUtil.getKubernetesNamespace(
-                isMultiAZ, nodePrefix, az.code, az.getConfig()));
+                isMultiAZ, nodePrefix, az.code, az.getUnmaskedConfig()));
       }
     }
 
