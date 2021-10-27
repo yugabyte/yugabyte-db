@@ -23,6 +23,63 @@ Release v2.6.1.0 contains an authentication vulnerability in YCQL LDAP. _YSQL is
 If you're using YCQL LDAP with v2.6.1.0 and can't upgrade immediately, see the note in the [Version 2.6.1.0 section](#v2-6-1-0-sept-3-2021) for mitigation instructions.
 {{< /warning >}}
 
+## v2.6.5.0 - Oct 28, 2021
+
+**Build:** `2.6.5.0-b1`
+
+### Downloads
+
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.6.5.0-darwin.tar.gz">
+  <button>
+    <i class="fab fa-apple"></i><span class="download-text">macOS</span>
+  </button>
+</a>
+&nbsp; &nbsp; &nbsp;
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.6.5.0-linux.tar.gz">
+  <button>
+    <i class="fab fa-linux"></i><span class="download-text">Linux</span>
+  </button>
+</a>
+<br />
+
+### Docker
+
+```sh
+docker pull yugabytedb/yugabyte:2.6.5.0-b1
+```
+
+### Improvements
+
+#### Database
+
+[#9606] [DocDB] Add flag --force for command delete_tablet to set state TABLET_DATA_DELETED for tool yb-ts-cli
+
+#### Yugabyte Platform
+
+N/A
+
+### Bug fixes
+
+#### Database
+
+[#9924] [YSQL] Always check schema name on backup import
+[#10042] [Backup] Allow system table for YEDIS restore
+
+#### Yugabyte Platform
+
+[PLAT-1634] Backup page is not loading because of empty config column
+[PLAT-1934] Adding UI to set KUBE_DOMAIN
+
+### Known issues
+
+#### Database
+
+N/A
+
+#### Yugabyte Platform
+
+N/A
+
 ## v2.6.4.0 - Oct 26, 2021
 
 **Build:** `2.6.4.0-b3`
