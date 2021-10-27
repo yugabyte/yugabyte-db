@@ -13,6 +13,7 @@ package com.yugabyte.yw.common.kms.util;
 import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.BasicAWSCredentials;
+import com.amazonaws.client.builder.AwsClientBuilder.EndpointConfiguration;
 import com.amazonaws.services.identitymanagement.AmazonIdentityManagement;
 import com.amazonaws.services.identitymanagement.AmazonIdentityManagementClientBuilder;
 import com.amazonaws.services.identitymanagement.model.GetRoleRequest;
@@ -98,9 +99,21 @@ public class AwsEARServiceUtil {
 
       return AWSKMSClientBuilder.defaultClient();
     }
+
+    if (authConfig.path("AWS_KMS_ENDPOINT").isMissingNode()
+        || StringUtils.isBlank(authConfig.path("AWS_KMS_ENDPOINT").asText())) {
+      return AWSKMSClientBuilder.standard()
+          .withCredentials(new AWSStaticCredentialsProvider(awsCredentials))
+          .withRegion(authConfig.get("AWS_REGION").asText())
+          .build();
+    }
+
     return AWSKMSClientBuilder.standard()
         .withCredentials(new AWSStaticCredentialsProvider(awsCredentials))
-        .withRegion(authConfig.get("AWS_REGION").asText())
+        .withEndpointConfiguration(
+            new EndpointConfiguration(
+                authConfig.path("AWS_KMS_ENDPOINT").asText(),
+                authConfig.get("AWS_REGION").asText()))
         .build();
   }
 

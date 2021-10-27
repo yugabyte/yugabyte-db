@@ -181,6 +181,26 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCreateAwsKmsProviderWithValidCreds() {
+    String kmsConfigUrl = "/api/customers/" + customer.uuid + "/kms_configs/AWS";
+    ObjectNode kmsConfigReq =
+        Json.newObject()
+            .put(EncryptionAtRestController.AWS_ACCESS_KEY_ID_FIELDNAME, "valid_accessKey")
+            .put(EncryptionAtRestController.AWS_REGION_FIELDNAME, "ap-south-1")
+            .put(EncryptionAtRestController.AWS_SECRET_ACCESS_KEY_FIELDNAME, "valid_secretKey")
+            .put(
+                EncryptionAtRestController.AWS_KMS_ENDPOINT_FIELDNAME,
+                "https://kms.ap-south-1.amazonaws.com")
+            .put("name", "test");
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(TaskType.class), any(KMSConfigTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    Result createKMSResult =
+        doRequestWithAuthTokenAndBody("POST", kmsConfigUrl, authToken, kmsConfigReq);
+    assertOk(createKMSResult);
+  }
+
+  @Test
   public void testRecoverKeyNotFound() {
     UUID configUUID =
         ModelFactory.createKMSConfig(customer.uuid, "SMARTKEY", Json.newObject()).configUUID;

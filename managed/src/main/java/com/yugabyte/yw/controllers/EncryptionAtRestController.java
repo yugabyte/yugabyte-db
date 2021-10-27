@@ -47,6 +47,11 @@ import com.yugabyte.yw.models.helpers.CommonUtils;
 public class EncryptionAtRestController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(EncryptionAtRestController.class);
 
+  public static final String AWS_ACCESS_KEY_ID_FIELDNAME = "AWS_ACCESS_KEY_ID";
+  public static final String AWS_SECRET_ACCESS_KEY_FIELDNAME = "AWS_SECRET_ACCESS_KEY";
+  public static final String AWS_REGION_FIELDNAME = "AWS_REGION";
+  public static final String AWS_KMS_ENDPOINT_FIELDNAME = "AWS_KMS_ENDPOINT";
+
   @Inject EncryptionAtRestManager keyManager;
 
   @Inject Commissioner commissioner;
