@@ -695,7 +695,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return (val != additional_metadata_.end()) ? val->second : nullptr;
   }
 
-  void InitRocksDBOptions(rocksdb::Options* options, const std::string& log_prefix);
+  void InitRocksDBOptions(
+      rocksdb::Options* options, const std::string& log_prefix,
+      rocksdb::BlockBasedTableOptions table_options = rocksdb::BlockBasedTableOptions());
 
   TabletRetentionPolicy* RetentionPolicy() override {
     return retention_policy_.get();
@@ -903,7 +905,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   docdb::SharedLockManager shared_lock_manager_;
 
   // For the block cache and memory manager shared across tablets
-  TabletOptions tablet_options_;
+  const TabletOptions tablet_options_;
 
   // A lightweight way to reject new operations when the tablet is shutting down. This is used to
   // prevent race conditions between destroying the RocksDB instance and read/write operations.
