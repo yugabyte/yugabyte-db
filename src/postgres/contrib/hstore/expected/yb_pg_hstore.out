@@ -1308,8 +1308,8 @@ ERROR:  index method "gist" not supported yet
 HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1337. Click '+' on the description to raise its priority
 create index hidx on testhstore using gin (h);
 NOTICE:  replacing access method "gin" with "ybgin"
-ERROR:  index method "ybgin" not supported yet
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1337. Click '+' on the description to raise its priority
+ERROR:  data type hstore has no default operator class for access method "ybgin"
+HINT:  You must specify an operator class for the index or define a default operator class for the data type.
 -- btree
 create index hidx on testhstore using btree (h);
 NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
