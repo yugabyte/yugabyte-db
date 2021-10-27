@@ -4,41 +4,6 @@
   <property name="cloud" value="${yb.cloud.enabled}"/>
   <conversionRule conversionWord="coloredLevel" converterClass="play.api.libs.logback.ColoredLevel" />
 
-  <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-    <file>${log.override.path:-${application.home:-.}/logs}/application.log</file>
-    <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-        <!-- Daily rollover with compression -->
-        <fileNamePattern>
-          ${log.override.path:-${application.home:-.}/logs}/application-log-%d{yyyy-MM-dd}.gz
-        </fileNamePattern>
-        <!-- keep 30 days worth of history -->
-        <maxHistory>30</maxHistory>
-    </rollingPolicy>
-    <encoder>
-      <pattern>%date [%level] from %logger{0} in %thread - %message%n%xException</pattern>
-    </encoder>
-
-    <!--
-      this is to conditionally log to a specific appender using markers
-      a similar block is used for the console appender below
-      for a usage example see ShellProcessHandler
-    -->
-    <if condition='property("cloud").equals("true")'>
-      <then>
-        <filter class="ch.qos.logback.core.filter.EvaluatorFilter">
-          <evaluator class="ch.qos.logback.classic.boolex.OnMarkerEvaluator">
-              <marker>consoleOnly</marker>
-          </evaluator>
-          <onMatch>DENY</onMatch>
-        </filter>
-      </then>
-    </if>
-
-    <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
-      <level>${APPLICATION_LOG_LEVEL:-DEBUG}</level>
-    </filter>
-  </appender>
-
   <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
     <if condition='property("cloud").equals("true")'>
       <then>
@@ -89,16 +54,10 @@
     <includeCallerData>true</includeCallerData>
   </appender>
 
-  <appender name="ASYNCFILE" class="ch.qos.logback.classic.AsyncAppender">
-    <appender-ref ref="FILE" />
-    <includeCallerData>true</includeCallerData>
-  </appender>
-
   <logger name="play" level="INFO" />
   <logger name="org.yb" level="INFO" />
   <logger name="application" level="TRACE" />
   <logger name="com.yugabyte.yw" level="TRACE" />
-  <logger name="org.flywaydb.core" level="TRACE" />
 
   <!-- Off these ones as they are annoying, and anyway we manage configuration ourselves -->
   <logger name="com.gargoylesoftware.htmlunit.javascript" level="OFF" />
