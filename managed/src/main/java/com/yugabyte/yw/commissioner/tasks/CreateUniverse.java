@@ -67,26 +67,12 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       if (taskParams().getPrimaryCluster().userIntent.enableYCQL
           && taskParams().getPrimaryCluster().userIntent.enableYCQLAuth) {
         ycqlPassword = taskParams().getPrimaryCluster().userIntent.ycqlPassword;
-        String ycqlPassLength = ((Integer) ycqlPassword.length()).toString();
-        String ycqlRegex = "(.)" + "{" + ycqlPassLength + "}";
-        taskParams().getPrimaryCluster().userIntent.ycqlPassword =
-            taskParams()
-                .getPrimaryCluster()
-                .userIntent
-                .ycqlPassword
-                .replaceAll(ycqlRegex, "REDACTED");
+        taskParams().getPrimaryCluster().userIntent.ycqlPassword = Util.redactString(ycqlPassword);
       }
       if (taskParams().getPrimaryCluster().userIntent.enableYSQL
           && taskParams().getPrimaryCluster().userIntent.enableYSQLAuth) {
         ysqlPassword = taskParams().getPrimaryCluster().userIntent.ysqlPassword;
-        String ysqlPassLength = ((Integer) ysqlPassword.length()).toString();
-        String ysqlRegex = "(.)" + "{" + ysqlPassLength + "}";
-        taskParams().getPrimaryCluster().userIntent.ysqlPassword =
-            taskParams()
-                .getPrimaryCluster()
-                .userIntent
-                .ysqlPassword
-                .replaceAll(ysqlRegex, "REDACTED");
+        taskParams().getPrimaryCluster().userIntent.ysqlPassword = Util.redactString(ysqlPassword);
       }
 
       if (taskParams().firstTry) {
