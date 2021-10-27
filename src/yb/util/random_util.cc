@@ -75,6 +75,16 @@ std::vector<uint8_t> RandomBytes(size_t len, std::mt19937_64* rng) {
   return data;
 }
 
+std::string RandomString(size_t len, std::mt19937_64* rng) {
+  std::string str;
+  str.reserve(len);
+  while (len > 0) {
+    str += yb::RandomUniformInt<char>();
+    len--;
+  }
+  return str;
+}
+
 std::string RandomHumanReadableString(int len, Random* rnd) {
   // TODO: https://yugabyte.atlassian.net/browse/ENG-1508: Avoid code duplication in yb::Random and
   // rocksdb::Random. Currently this does not allow to reuse the same function in both code bases.

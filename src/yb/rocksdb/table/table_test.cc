@@ -31,6 +31,8 @@
 #include <string>
 #include <vector>
 
+#include <boost/optional.hpp>
+
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/memtable.h"
 #include "yb/rocksdb/db/write_batch_internal.h"
@@ -2431,15 +2433,28 @@ TEST_P(IndexBlockRestartIntervalTest, IndexBlockRestartInterval) {
 
   int index_block_restart_interval = GetParam();
 
-  for (auto remove_encoding_format_property : {false, true}) {
+  std::vector<boost::optional<KeyValueEncodingFormat>> formats_to_test;
+  for (const auto& format : kKeyValueEncodingFormatList) {
+    formats_to_test.push_back(format);
+  }
+  // Also test backward compatibility with SST files without
+  // BlockBasedTablePropertyNames::kDataBlockKeyValueEncodingFormat property.
+  formats_to_test.push_back(boost::none);
+
+  for (const auto& format : formats_to_test) {
     Options options;
     BlockBasedTableOptions table_options;
     table_options.block_size = 64;  // small block size to get big index block
     table_options.index_block_restart_interval = index_block_restart_interval;
+    // SST files without BlockBasedTablePropertyNames::kDataBlockKeyValueEncodingFormat only could
+    // be written with using KeyValueEncodingFormat::kKeyDeltaEncodingSharedPrefix, because there
+    // were no other formats before we added this property.
+    table_options.data_block_key_value_encoding_format =
+        format.get_value_or(KeyValueEncodingFormat::kKeyDeltaEncodingSharedPrefix);
     options.table_factory.reset(new BlockBasedTableFactory(table_options));
 
     TableConstructor c(BytewiseComparator());
-    if (remove_encoding_format_property) {
+    if (!format.has_value()) {
       // Backward compatibility: test that we can read files without
       // BlockBasedTablePropertyNames::kDataBlockKeyValueEncodingFormat property.
       c.TEST_skip_writing_key_value_encoding_format = true;

@@ -284,6 +284,7 @@ DECLARE_int32(rocksdb_level0_slowdown_writes_trigger);
 DECLARE_int32(rocksdb_level0_stop_writes_trigger);
 DECLARE_uint64(rocksdb_max_file_size_for_compaction);
 DECLARE_int64(apply_intents_task_injected_delay_ms);
+DECLARE_string(regular_tablets_data_block_key_value_encoding);
 
 using namespace std::placeholders;
 
@@ -664,8 +665,18 @@ Status Tablet::OpenKeyValueTablet() {
   static const std::string kRegularDB = "RegularDB"s;
   static const std::string kIntentsDB = "IntentsDB"s;
 
+  rocksdb::BlockBasedTableOptions table_options;
+  if (!metadata()->primary_table_info()->index_info || metadata()->colocated()) {
+    // This tablet is not dedicated to the index table, so it should be effective to use
+    // advanced key-value encoding algorithm optimized for docdb keys structure.
+    table_options.use_delta_encoding = true;
+    table_options.data_block_key_value_encoding_format =
+        VERIFY_RESULT(docdb::GetConfiguredKeyValueEncodingFormat(
+            FLAGS_regular_tablets_data_block_key_value_encoding));
+  }
   rocksdb::Options rocksdb_options;
-  InitRocksDBOptions(&rocksdb_options, LogPrefix(docdb::StorageDbType::kRegular));
+  InitRocksDBOptions(
+      &rocksdb_options, LogPrefix(docdb::StorageDbType::kRegular), std::move(table_options));
   rocksdb_options.mem_tracker = MemTracker::FindOrCreateTracker(kRegularDB, mem_tracker_);
   rocksdb_options.block_based_table_mem_tracker =
       MemTracker::FindOrCreateTracker(
@@ -4081,8 +4092,11 @@ void Tablet::ListenNumSSTFilesChanged(std::function<void()> listener) {
   num_sst_files_changed_listener_ = std::move(listener);
 }
 
-void Tablet::InitRocksDBOptions(rocksdb::Options* options, const std::string& log_prefix) {
-  docdb::InitRocksDBOptions(options, log_prefix, regulardb_statistics_, tablet_options_);
+void Tablet::InitRocksDBOptions(
+    rocksdb::Options* options, const std::string& log_prefix,
+    rocksdb::BlockBasedTableOptions table_options) {
+  docdb::InitRocksDBOptions(
+      options, log_prefix, regulardb_statistics_, tablet_options_, std::move(table_options));
 }
 
 rocksdb::Env& Tablet::rocksdb_env() const {

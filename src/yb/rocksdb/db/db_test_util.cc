@@ -415,6 +415,12 @@ Options DBTestBase::CurrentOptions(
       options.enable_write_thread_adaptive_yield = true;
       break;
     }
+    case kBlockBasedTableWithThreeSharedPartsKeyDeltaEncoding: {
+      table_options.use_delta_encoding = true;
+      table_options.data_block_key_value_encoding_format =
+          KeyValueEncodingFormat::kKeyDeltaEncodingThreeSharedParts;
+      break;
+    }
 
     default:
       break;

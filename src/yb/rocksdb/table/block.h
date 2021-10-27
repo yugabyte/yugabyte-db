@@ -224,7 +224,7 @@ class BlockIter : public InternalIterator {
   }
 
   void SetError(const Status& error);
-  void CorruptionError();
+  void CorruptionError(const std::string& error_details);
 
   bool ParseNextKey();
 

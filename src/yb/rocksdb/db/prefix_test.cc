@@ -443,8 +443,9 @@ TEST_F(PrefixTest, PrefixValid) {
       db->Flush(FlushOptions());
       read_options.prefix_same_as_start = true;
       std::unique_ptr<Iterator> iter(db->NewIterator(read_options));
+      ASSERT_OK(iter->status());
       SeekIterator(iter.get(), 12345, 6);
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(iter->Valid()) << "iter->status(): " << iter->status();
       ASSERT_TRUE(v16 == iter->value());
 
       iter->Next();

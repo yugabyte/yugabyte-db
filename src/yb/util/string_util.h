@@ -169,6 +169,13 @@ vector<string> ToStringVector(Args&&... args) {
   return result;
 }
 
+inline void EnlargeBufferIfNeeded(std::string* buffer, const size_t new_capacity) {
+  if (new_capacity <= buffer->capacity()) {
+    return;
+  }
+  buffer->reserve(new_capacity);
+}
+
 }  // namespace yb
 
 namespace rocksdb {

@@ -24,6 +24,7 @@
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/rate_limiter.h"
 #include "yb/rocksdb/table.h"
+#include "yb/rocksdb/types.h"
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/version_edit.h"
 #include "yb/rocksdb/db/version_set.h"
@@ -110,6 +111,11 @@ DEFINE_int32(max_nexts_to_avoid_seek, 2,
 
 DEFINE_bool(use_multi_level_index, true, "Whether to use multi-level data index.");
 
+DEFINE_string(
+    regular_tablets_data_block_key_value_encoding, "shared_prefix",
+    "Key-value encoding to use for regular data blocks in RocksDB. Possible options: "
+    "shared_prefix, three_shared_parts");
+
 DEFINE_uint64(initial_seqno, 1ULL << 50, "Initial seqno for new RocksDB instances.");
 
 DEFINE_int32(num_reserved_small_compaction_threads, -1, "Number of reserved small compaction "
@@ -131,6 +137,7 @@ DEFINE_int32(block_restart_interval, kDefaultBlockStartInterval,
              "Controls the number of keys to look at for computing the diff encoding.");
 
 namespace yb {
+
 namespace {
 
 Result<rocksdb::CompressionType> GetConfiguredCompressionType(const std::string& flag_value) {
@@ -157,6 +164,21 @@ Result<rocksdb::CompressionType> GetConfiguredCompressionType(const std::string&
 }
 
 } // namespace
+
+namespace docdb {
+
+Result<rocksdb::KeyValueEncodingFormat> GetConfiguredKeyValueEncodingFormat(
+    const std::string& flag_value) {
+  for (const auto& encoding_format : rocksdb::kKeyValueEncodingFormatList) {
+    if (flag_value == KeyValueEncodingFormatToString(encoding_format)) {
+      return encoding_format;
+    }
+  }
+  return STATUS_FORMAT(InvalidArgument, "Key-value encoding format $0 is not valid.", flag_value);
+}
+
+} // namespace docdb
+
 } // namespace yb
 
 namespace {
@@ -172,10 +194,21 @@ bool CompressionTypeValidator(const char* flagname, const std::string& flag_comp
   return true;
 }
 
+bool KeyValueEncodingFormatValidator(const char* flag_name, const std::string& flag_value) {
+  auto res = yb::docdb::GetConfiguredKeyValueEncodingFormat(flag_value);
+  bool ok = res.ok();
+  if (!ok) {
+    LOG(ERROR) << flag_name << ": " << res.status();
+  }
+  return ok;
+}
+
 } // namespace
 
 __attribute__((unused))
 DEFINE_validator(compression_type, &CompressionTypeValidator);
+__attribute__((unused))
+DEFINE_validator(regular_tablets_data_block_key_value_encoding, &KeyValueEncodingFormatValidator);
 
 using std::shared_ptr;
 using std::string;
@@ -523,7 +556,8 @@ int32_t GetGlobalRocksDBPriorityThreadPoolSize() {
 void InitRocksDBOptions(
     rocksdb::Options* options, const string& log_prefix,
     const shared_ptr<rocksdb::Statistics>& statistics,
-    const tablet::TabletOptions& tablet_options) {
+    const tablet::TabletOptions& tablet_options,
+    rocksdb::BlockBasedTableOptions table_options) {
   AutoInitFromRocksDBFlags(options);
   SetLogPrefix(options, log_prefix);
   options->create_if_missing = true;
@@ -556,7 +590,6 @@ void InitRocksDBOptions(
       tablet_options.listeners.end()); // Append listeners
 
   // Set block cache options.
-  rocksdb::BlockBasedTableOptions table_options;
   if (tablet_options.block_cache) {
     table_options.block_cache = tablet_options.block_cache;
     // Cache the bloom filters in the block cache.
@@ -571,7 +604,7 @@ void InitRocksDBOptions(
   // Set our custom bloom filter that is docdb aware.
   if (FLAGS_use_docdb_aware_bloom_filter) {
     const auto filter_block_size_bits = table_options.filter_block_size * 8;
-    table_options.filter_policy = std::make_unique<const DocDbAwareV3FilterPolicy>(
+    table_options.filter_policy = std::make_shared<const DocDbAwareV3FilterPolicy>(
         filter_block_size_bits, options->info_log.get());
     table_options.supported_filter_policies =
         std::make_shared<rocksdb::BlockBasedTableOptions::FilterPoliciesMap>();

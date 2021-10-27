@@ -43,6 +43,7 @@ namespace tablet {
 
 YB_STRONGLY_TYPED_BOOL(IsDropTable);
 
+// Common for all tablets within TabletManager.
 struct TabletOptions {
   std::shared_ptr<rocksdb::Cache> block_cache;
   std::shared_ptr<rocksdb::MemoryMonitor> memory_monitor;
@@ -59,7 +60,7 @@ struct TabletInitData {
   std::shared_ptr<MemTracker> block_based_table_mem_tracker;
   MetricRegistry* metric_registry = nullptr;
   log::LogAnchorRegistryPtr log_anchor_registry;
-  TabletOptions tablet_options;
+  const TabletOptions tablet_options;
   std::string log_prefix_suffix;
   TransactionParticipantContext* transaction_participant_context = nullptr;
   client::LocalTabletFilter local_tablet_filter;
