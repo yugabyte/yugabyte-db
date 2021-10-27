@@ -89,7 +89,7 @@ export class YBNewMultiSelect extends Component {
         styles={customStyles}
         {...input}
         options={options}
-        disabled={isReadOnly}
+        isDisabled={isReadOnly}
         isMulti={true}
         onBlur={() => {}}
         onChange={onChange}

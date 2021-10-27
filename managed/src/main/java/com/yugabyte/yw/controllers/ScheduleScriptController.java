@@ -18,7 +18,7 @@ import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.Authorization;
@@ -60,8 +60,8 @@ public class ScheduleScriptController extends AuthenticatedController {
     taskParams.timeLimitMins = Long.toString(timeLimitMins);
     taskParams.platformUrl = request().host();
     taskParams.universeUUID = universeUUID;
-    Users user = (Users) Http.Context.current().args.get("user");
-    taskParams.userUUID = user.uuid;
+    UserWithFeatures user = (UserWithFeatures) Http.Context.current().args.get("user");
+    taskParams.userUUID = user.getUser().uuid;
 
     // Using RuntimeConfig to save the script params because this isn't intended to be that commonly
     // used. If we start using it more commonly, we should migrate to a separate db table for these
@@ -132,8 +132,8 @@ public class ScheduleScriptController extends AuthenticatedController {
     taskParams.timeLimitMins = Long.toString(timeLimitMins);
     taskParams.platformUrl = request().host();
     taskParams.universeUUID = universeUUID;
-    Users user = (Users) Http.Context.current().args.get("user");
-    taskParams.userUUID = user.uuid;
+    UserWithFeatures user = (UserWithFeatures) Http.Context.current().args.get("user");
+    taskParams.userUUID = user.getUser().uuid;
 
     Universe universe = Universe.getOrBadRequest(universeUUID);
     RuntimeConfig<Universe> config = sConfigFactory.forUniverse(universe);

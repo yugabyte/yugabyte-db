@@ -22,7 +22,7 @@ import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.swagger.annotations.Api;
@@ -72,7 +72,7 @@ public class BackupsController extends AuthenticatedController {
             Customer.get(customerUUID).getFeatures(), "universes.details.backups.storageLocation");
     boolean isStorageLocMasked = custStorageLoc != null && custStorageLoc.asText().equals("hidden");
     if (!isStorageLocMasked) {
-      Users user = (Users) ctx().args.get("user");
+      UserWithFeatures user = (UserWithFeatures) ctx().args.get("user");
       JsonNode userStorageLoc =
           CommonUtils.getNodeProperty(
               user.getFeatures(), "universes.details.backups.storageLocation");

@@ -21,7 +21,7 @@ import com.yugabyte.yw.common.alerts.AlertChannelService;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.alerts.AlertService;
-import com.yugabyte.yw.common.alerts.impl.AlertConfigurationTemplate;
+import com.yugabyte.yw.models.extended.AlertConfigurationTemplate;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.forms.AlertChannelFormData;
 import com.yugabyte.yw.forms.AlertDestinationFormData;

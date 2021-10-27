@@ -4576,6 +4576,53 @@
       "required" : [ "email", "role" ],
       "type" : "object"
     },
+    "UserWithFeatures" : {
+      "description" : "A user with set of features, associated with a customer",
+      "properties" : {
+        "authTokenIssueDate" : {
+          "description" : "API token creation date",
+          "example" : "1624255408795",
+          "format" : "date-time",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "creationDate" : {
+          "description" : "User creation date",
+          "example" : "2021-06-17 15:00:05",
+          "format" : "date-time",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "customerUUID" : {
+          "description" : "Customer UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "email" : {
+          "description" : "User email address",
+          "example" : "username1@example.com",
+          "type" : "string"
+        },
+        "isPrimary" : {
+          "description" : "True if the user is the primary user",
+          "type" : "boolean"
+        },
+        "role" : {
+          "description" : "User role",
+          "enum" : [ "Admin", "ReadOnly", "SuperAdmin", "BackupAdmin" ],
+          "type" : "string"
+        },
+        "uuid" : {
+          "description" : "User UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        }
+      },
+      "required" : [ "email" ],
+      "type" : "object"
+    },
     "Users" : {
       "description" : "A user associated with a customer",
       "properties" : {
@@ -9608,7 +9655,7 @@
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "$ref" : "#/definitions/Users"
+                "$ref" : "#/definitions/UserWithFeatures"
               },
               "type" : "array"
             }
@@ -9642,7 +9689,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/Users"
+              "$ref" : "#/definitions/UserWithFeatures"
             }
           }
         },
@@ -9704,7 +9751,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/Users"
+              "$ref" : "#/definitions/UserWithFeatures"
             }
           }
         },

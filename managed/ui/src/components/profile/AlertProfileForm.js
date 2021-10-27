@@ -83,6 +83,7 @@ export default class AlertProfileForm extends Component {
     const { customer = {}, users = [], updateCustomerDetails } = this.props;
 
     showOrRedirect(customer.data.features, 'main.profile');
+    const isReadOnly = isDisabled(customer.data.features, 'health.configure');
 
     // Filter users for userUUID set during login
     const loginUserId = localStorage.getItem('userId');
@@ -163,6 +164,7 @@ export default class AlertProfileForm extends Component {
                     component={YBFormInput}
                     label="Alert emails"
                     placeholder="Emails to forward alerts to"
+                    disabled={isReadOnly}
                   />
                   <Field name="alertingData.sendAlertsToYb">
                     {({ field }) => (
@@ -173,6 +175,7 @@ export default class AlertProfileForm extends Component {
                           value: field.value,
                           onChange: field.onChange
                         }}
+                        isReadOnly={isReadOnly}
                         label="Send alert emails to YugaByte team"
                         subLabel="Whether or not to send alerting emails to the YugaByte team."
                       />
@@ -186,6 +189,7 @@ export default class AlertProfileForm extends Component {
                     onInputChanged={handleChange}
                     selectVal={values.callhomeLevel}
                     options={callhomeOptions}
+                    isReadOnly={isReadOnly}
                   />
                   <Field
                     name="alertingData.checkIntervalMs"
@@ -193,6 +197,7 @@ export default class AlertProfileForm extends Component {
                     component={YBFormInput}
                     label="Health check interval"
                     placeholder="Milliseconds to check universe status"
+                    disabled={isReadOnly}
                   />
                   <Field
                     name="alertingData.statusUpdateIntervalMs"
@@ -200,6 +205,7 @@ export default class AlertProfileForm extends Component {
                     component={YBFormInput}
                     label="Report email interval"
                     placeholder="Milliseconds to send a status report email"
+                    disabled={isReadOnly}
                   />
                   <Field name="alertingData.reportOnlyErrors">
                     {({ field }) => (
@@ -212,6 +218,7 @@ export default class AlertProfileForm extends Component {
                         }}
                         label="Only include errors in alert emails"
                         subLabel="Whether or not to include errors in alert emails."
+                        isReadOnly={isReadOnly}
                       />
                     )}
                   </Field>
@@ -231,6 +238,7 @@ export default class AlertProfileForm extends Component {
                         }}
                         label={<h3>Custom SMTP Configuration</h3>}
                         subLabel="Whether or not to use custom SMTP Configuration."
+                        isReadOnly={isReadOnly}
                       />
                     )}
                   </Field>
@@ -241,6 +249,7 @@ export default class AlertProfileForm extends Component {
                       component={YBFormInput}
                       label="Server"
                       placeholder="SMTP server address"
+                      disabled={isReadOnly}
                     />
                     <Field
                       name="smtpData.smtpPort"
@@ -248,6 +257,7 @@ export default class AlertProfileForm extends Component {
                       component={YBFormInput}
                       label="Port"
                       placeholder="SMTP server port"
+                      disabled={isReadOnly}
                     />
                     <Field
                       name="smtpData.emailFrom"
@@ -255,6 +265,7 @@ export default class AlertProfileForm extends Component {
                       component={YBFormInput}
                       label="Email From"
                       placeholder="Send outgoing emails from"
+                      disabled={isReadOnly}
                     />
                     <Field
                       name="smtpData.smtpUsername"
@@ -262,6 +273,7 @@ export default class AlertProfileForm extends Component {
                       component={YBFormInput}
                       label="Username"
                       placeholder="SMTP server username"
+                      disabled={isReadOnly}
                     />
                     <Field
                       name="smtpData.smtpPassword"
@@ -270,6 +282,7 @@ export default class AlertProfileForm extends Component {
                       component={YBFormInput}
                       label="Password"
                       placeholder="SMTP server password"
+                      disabled={isReadOnly}
                     />
                     <Field name="smtpData.useSSL">
                       {({ field }) => (
@@ -282,6 +295,7 @@ export default class AlertProfileForm extends Component {
                           }}
                           label="SSL"
                           subLabel="Whether or not to use SSL."
+                          isReadOnly={isReadOnly}
                         />
                       )}
                     </Field>
@@ -296,22 +310,25 @@ export default class AlertProfileForm extends Component {
                           }}
                           label="TLS"
                           subLabel="Whether or not to use TLS."
+                          isReadOnly={isReadOnly}
                         />
                       )}
                     </Field>
                   </div>
                 </Col>
               </Row>
+              {!isReadOnly && (
               <div className="form-action-button-container">
                 <Col sm={12}>
                   <YBButton
                     btnText="Save"
                     btnType="submit"
-                    disabled={isSubmitting || isDisabled(customer.data.features, 'universe.create')}
+                    disabled={isSubmitting}
                     btnClass="btn btn-orange pull-right"
                   />
                 </Col>
               </div>
+              )}
             </Form>
           )}
         </Formik>

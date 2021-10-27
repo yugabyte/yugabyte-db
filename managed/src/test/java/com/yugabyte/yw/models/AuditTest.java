@@ -18,6 +18,7 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.audit.AuditService;
+import com.yugabyte.yw.models.extended.UserWithFeatures;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -46,7 +47,7 @@ public class AuditTest extends FakeDBApplication {
     customer = ModelFactory.testCustomer("tc1", "Test Customer 1");
     user = ModelFactory.testUser(customer);
     Map<String, String> flashData = Collections.emptyMap();
-    Map<String, Object> argData = ImmutableMap.of("user", user);
+    Map<String, Object> argData = ImmutableMap.of("user", new UserWithFeatures().setUser(user));
     request = mock(Http.Request.class);
     Long id = 2L;
     play.api.mvc.RequestHeader header = mock(play.api.mvc.RequestHeader.class);
@@ -58,7 +59,7 @@ public class AuditTest extends FakeDBApplication {
   }
 
   public Audit createEntry(UUID taskUUID, Users user) {
-    return Audit.create(user.uuid, user.customerUUID, "/test/api/call", "PUT", null, taskUUID);
+    return Audit.create(user, "/test/api/call", "PUT", null, taskUUID);
   }
 
   @Test

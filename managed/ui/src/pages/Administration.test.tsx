@@ -69,11 +69,4 @@ describe('Administration page', () => {
     setup(store);
     expect(browserHistoryPush).toBeCalledWith('/');
   });
-
-  it('should replace short url to full one', () => {
-    const browserHistoryReplace = jest.fn();
-    jest.spyOn(browserHistory, 'replace').mockImplementation(browserHistoryReplace);
-    setup();
-    expect(browserHistoryReplace).toBeCalledWith('/admin/ha/replication');
-  });
 });

@@ -126,6 +126,7 @@ export class AlertListNew extends Component {
 
   render() {
     const { filter_groups, universesList } = this.state;
+    const { customer } = this.props;
     return (
       <div>
         <h2 className="content-title">Alerts</h2>
@@ -203,7 +204,7 @@ export class AlertListNew extends Component {
                 ))}
               </Col>
               <Col lg={10}>
-                <AlertsTable filters={filter_groups} />
+                <AlertsTable filters={filter_groups} customer={customer} />
               </Col>
             </Row>
           </Col>

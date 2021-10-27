@@ -18,13 +18,11 @@ import com.jayway.jsonpath.JsonPath;
 import com.jayway.jsonpath.spi.json.JacksonJsonNodeJsonProvider;
 import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
 import com.yugabyte.yw.models.Audit;
-import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.extended.UserWithFeatures;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Singleton;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import play.mvc.Http;
 
 @Singleton
@@ -107,11 +105,11 @@ public class AuditService {
   @Deprecated
   public void createAuditEntry(
       Http.Context ctx, Http.Request request, JsonNode params, UUID taskUUID) {
-    Users user = (Users) ctx.args.get("user");
+    UserWithFeatures user = (UserWithFeatures) ctx.args.get("user");
     String method = request.method();
     String path = request.path();
     JsonNode redactedParams = filterSecretFields(params);
-    Audit.create(user.uuid, user.customerUUID, path, method, redactedParams, taskUUID);
+    Audit.create(user.getUser(), path, method, redactedParams, taskUUID);
   }
 
   public List<Audit> getAll(UUID customerUUID) {
