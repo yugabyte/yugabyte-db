@@ -180,7 +180,8 @@ public class RegionController extends AuthenticatedController {
   // TODO: Move this to CloudQueryHelper after getting rid of region.delete()
   private JsonNode getZoneInfoOrFail(Provider provider, Region region) {
     JsonNode zoneInfo =
-        cloudQueryHelper.getZones(region.uuid, provider.getConfig().get("CUSTOM_GCE_NETWORK"));
+        cloudQueryHelper.getZones(
+            region.uuid, provider.getUnmaskedConfig().get("CUSTOM_GCE_NETWORK"));
     if (zoneInfo.has("error") || !zoneInfo.has(region.code)) {
       region.delete();
       throw new PlatformServiceException(
