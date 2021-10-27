@@ -4,12 +4,14 @@ package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.models.Users.Role;
 
+import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
-import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.user.UserService;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
-import java.util.Optional;
+import com.yugabyte.yw.models.extended.UserWithFeatures;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -25,17 +27,31 @@ import play.mvc.Result;
 import play.mvc.Results;
 
 public class TokenAuthenticator extends Action.Simple {
+  public static final Set<String> READ_POST_ENDPOINTS =
+      ImmutableSet.of(
+          "/alerts/page",
+          "/alert_templates",
+          "/alert_configurations/page",
+          "/alert_configurations/list");
   public static final String COOKIE_AUTH_TOKEN = "authToken";
   public static final String AUTH_TOKEN_HEADER = "X-AUTH-TOKEN";
   public static final String COOKIE_API_TOKEN = "apiToken";
   public static final String API_TOKEN_HEADER = "X-AUTH-YW-API-TOKEN";
   public static final String COOKIE_PLAY_SESSION = "PLAY_SESSION";
 
-  @Inject ConfigHelper configHelper;
+  private final Config config;
 
-  @Inject Config config;
+  private final PlaySessionStore playSessionStore;
 
-  @Inject private PlaySessionStore playSessionStore;
+  private final UserService userService;
+
+  @Inject
+  public TokenAuthenticator(
+      Config config, PlaySessionStore playSessionStore, UserService userService) {
+    this.config = config;
+    this.playSessionStore = playSessionStore;
+    this.userService = userService;
+  }
 
   private Users getCurrentAuthenticatedUser(Http.Context ctx) {
     String token;
@@ -114,7 +130,7 @@ public class TokenAuthenticator extends Action.Simple {
       // TODO: withUsername returns new request that is ignored. Maybe a bug.
       ctx.request().withUsername(user.getEmail());
       ctx.args.put("customer", cust);
-      ctx.args.put("user", user);
+      ctx.args.put("user", userService.getUserWithFeatures(cust, user));
     } else {
       // Send Forbidden Response if Authentication Fails.
       return CompletableFuture.completedFuture(Results.forbidden("Unable To Authenticate User"));
@@ -132,10 +148,14 @@ public class TokenAuthenticator extends Action.Simple {
       user = Users.authWithToken(token);
     }
     if (user != null) {
-      // So we can audit any super admin actions.
-      // If there is a use case also lookup customer and put it in context
-      ctx.args.put("user", user);
-      return user.getRole() == Role.SuperAdmin;
+      boolean isSuperAdmin = user.getRole() == Role.SuperAdmin;
+      if (isSuperAdmin) {
+        // So we can audit any super admin actions.
+        // If there is a use case also lookup customer and put it in context
+        UserWithFeatures superAdmin = new UserWithFeatures().setUser(user);
+        ctx.args.put("user", superAdmin);
+      }
+      return isSuperAdmin;
     }
     return false;
   }
@@ -173,6 +193,10 @@ public class TokenAuthenticator extends Action.Simple {
 
     // All users have access to get, metrics and setting an API token.
     if (requestType.equals("GET") || endPoint.equals("/metrics") || endPoint.equals("/api_token")) {
+      return true;
+    }
+    // Also some read requests are using POST query, because of complex body.
+    if (requestType.equals("POST") && READ_POST_ENDPOINTS.contains(endPoint)) {
       return true;
     }
     // If the user is readonly, then don't get any further access.
