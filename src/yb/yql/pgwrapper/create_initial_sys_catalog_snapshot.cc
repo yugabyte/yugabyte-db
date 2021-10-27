@@ -44,6 +44,7 @@ class CreateInitialSysCatalogSnapshotTest : public PgWrapperTestBase {
     LOG(INFO) << "Creating initial system catalog snapshot at: "
               << FLAGS_initial_sys_catalog_snapshot_dest_path;
     options->extra_master_flags.emplace_back("--create_initial_sys_catalog_snapshot");
+    options->extra_master_flags.emplace_back("--net_address_filter=ipv4_external,ipv4_all");
     options->extra_master_flags.emplace_back(
         "--initial_sys_catalog_snapshot_path=" + FLAGS_initial_sys_catalog_snapshot_dest_path);
     options->extra_master_flags.emplace_back("--master_auto_run_initdb");
