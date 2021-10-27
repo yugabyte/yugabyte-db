@@ -387,11 +387,7 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 							errmsg("users cannot create system catalog tables")));
 		}
 		else if (strcmp(def->defname, "tablegroup") == 0)
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("cannot supply tablegroup through WITH clause")));
-		}
+			(void) strtol(defGetString(def), NULL, 10);
 		else if (strcmp(def->defname, "colocated") == 0)
 			(void) defGetBoolean(def);
 		else if (strcmp(def->defname, "table_oid") == 0)

@@ -326,6 +326,8 @@ struct DropRelationCallbackState
 #define child_dependency_type(child_is_partition)	\
 	((child_is_partition) ? DEPENDENCY_AUTO : DEPENDENCY_NORMAL)
 
+static Oid GetTablegroupOidFromCommand(OptTableGroup *tablegroup);
+static Oid GetTablegroupOidFromCreateStmt(CreateStmt *stmt);
 static void truncate_check_rel(Relation rel);
 static List *MergeAttributes(List *schema, List *supers, char relpersistence,
 				bool is_partition, List **supconstr, int *supOidCount);
@@ -768,57 +770,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 		}
 	}
 
-	/*
-	 * Select tablegroup to use. If not specified, InvalidOid.
-	 * Disallow mixing of COLOCATED=true/false syntax and TABLEGROUP. Cannot use tablegroups
-	 * in colocated databases.
-	 * If the pg_tablegroup system table has not been created, get_tablegroup_oid will produce
-	 * an error.
-	 */
-	Oid tablegroupId = InvalidOid;
-	if (stmt->tablegroup)
-	{
-		OptTableGroup *grp = stmt->tablegroup;
-		if (MyDatabaseColocated)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("cannot use tablegroups in a colocated database")));
-		else if (!grp->has_tablegroup)
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					 errmsg("Cannot use NO TABLEGROUP in CREATE TABLE statement.")));
-		}
-		else
-			tablegroupId = get_tablegroup_oid(grp->tablegroup_name, false);
-	}
-
-	/*
-	 * Check permissions for tablegroup. To create a table within a tablegroup, a user must
-	 * either be a superuser, the owner of the tablegroup, or have create perms on it.
-	 */
-	if (OidIsValid(tablegroupId) && !pg_tablegroup_ownercheck(tablegroupId, GetUserId()))
-	{
-		AclResult  aclresult;
-
-		aclresult = pg_tablegroup_aclcheck(tablegroupId, GetUserId(), ACL_CREATE);
-		if (aclresult != ACLCHECK_OK)
-			aclcheck_error(aclresult, OBJECT_TABLEGROUP,
-						   get_tablegroup_name(tablegroupId));
-	}
-
-	/*
-	 * Prepend to stmt->options to be parsed for reloptions if tablegroupId is valid.
-	 * We set this here instead of in parse_utilcmd since we need to do the above
-	 * preprocessing and RBAC checks first. This still happens before transformReloptions
-	 * so this option is included in the reloptions text array.
-	 */
-	if (OidIsValid(tablegroupId))
-	{
-		stmt->options = lcons(makeDefElem("tablegroup",
-										  (Node *) makeInteger(tablegroupId), -1),
-										  stmt->options);
-	}
+	Oid tablegroupId = GetTablegroupOidFromCreateStmt(stmt);
 
 	/* Identify user ID that will own the table */
 	if (!OidIsValid(ownerId))
@@ -1235,6 +1187,92 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	relation_close(rel, NoLock);
 
 	return address;
+}
+
+/*
+ * Select tablegroup to use. If not specified, InvalidOid.
+ * Will produce an error if the pg_tablegroup system table has not been created.
+ * Checks both
+ *  - the reloptions array (for syntax `CREATE TABLE (...) WITH (tablegroup=###);`)
+ *  - the tablegroup syntax (for syntax `CREATE TABLE (...) TABLEGROUP grp;`)
+ * Disallows
+ *  - mixing the two tablegroup syntaxes
+ *  - supplying an invalid tablegroup oid
+ *  - creating a table within a tablegroup without the correct permissions
+ */
+static Oid
+GetTablegroupOidFromCreateStmt(CreateStmt *stmt)
+{
+	Oid tablegroupId = InvalidOid;
+
+	Oid tablegroupIdFromOptions = GetTablegroupOidFromRelOptions(stmt->options);
+	Oid tablegroupIdFromCommand = GetTablegroupOidFromCommand(stmt->tablegroup);
+
+	if (tablegroupIdFromOptions != InvalidOid && tablegroupIdFromCommand != InvalidOid)
+		ereport(ERROR,
+		        (errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+		         errmsg("cannot specify both tablegroup and tablegroup oid")));
+	else if (tablegroupIdFromOptions != InvalidOid)
+	{
+		/* Check that this OID corresponds to a tablegroup */
+		char *name = get_tablegroup_name(tablegroupIdFromOptions);
+		if (name == NULL)
+			ereport(ERROR,
+			        (errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+			         errmsg("tablegroup with oid %d does not exist", tablegroupIdFromOptions)));
+
+		tablegroupId = tablegroupIdFromOptions;
+	}
+	else if (tablegroupIdFromCommand != InvalidOid)
+		tablegroupId = tablegroupIdFromCommand;
+	else
+		return InvalidOid;
+
+	/*
+	 * Check permissions for tablegroup. To create a table within a tablegroup, a user must
+	 * either be a superuser, the owner of the tablegroup, or have create perms on it.
+	 */
+	if (!pg_tablegroup_ownercheck(tablegroupId, GetUserId()))
+	{
+		AclResult  aclresult;
+
+		aclresult = pg_tablegroup_aclcheck(tablegroupId, GetUserId(), ACL_CREATE);
+		if (aclresult != ACLCHECK_OK)
+			aclcheck_error(aclresult, OBJECT_TABLEGROUP,
+						   get_tablegroup_name(tablegroupId));
+	}
+
+	if (tablegroupIdFromCommand != InvalidOid)
+	{
+		/*
+		 * Prepend to stmt->options to be parsed for reloptions if tablegroupId is valid. We need
+		 * to do the preprocessing and RBAC checks first. This still happens before
+		 * transformReloptions so this option is included in the reloptions text array.
+		 */
+		stmt->options = lcons(makeDefElem("tablegroup",
+										  (Node *) makeInteger(tablegroupIdFromCommand), -1),
+										  stmt->options);
+	}
+
+	return tablegroupId;
+}
+
+/*
+ * Returns the Oid of the tablegroup from the CREATE TABLE ... TABLEGROUP grp; syntax
+ * Returns InvalidOid if no tablegroup was specified.
+ */
+static Oid
+GetTablegroupOidFromCommand(OptTableGroup *tablegroup)
+{
+	if (!tablegroup)
+		return InvalidOid;
+
+	if (!tablegroup->has_tablegroup)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("Cannot use NO TABLEGROUP in CREATE TABLE statement.")));
+
+	return get_tablegroup_oid(tablegroup->tablegroup_name, false);
 }
 
 /*
