@@ -80,7 +80,7 @@ public class AvailabilityZone extends Model {
 
   @ApiModelProperty(value = "Path to Kubernetes configuration file", accessMode = READ_ONLY)
   public String getKubeconfigPath() {
-    Map<String, String> configMap = this.getConfig();
+    Map<String, String> configMap = this.getUnmaskedConfig();
     return configMap.getOrDefault("KUBECONFIG", null);
   }
 
@@ -89,14 +89,14 @@ public class AvailabilityZone extends Model {
   }
 
   public void updateConfig(Map<String, String> configMap) {
-    Map<String, String> config = getConfig();
+    Map<String, String> config = getUnmaskedConfig();
     config.putAll(configMap);
     setConfig(config);
     save();
   }
 
   @JsonIgnore
-  public Map<String, String> getConfig() {
+  public Map<String, String> getUnmaskedConfig() {
     return this.config == null ? new HashMap<>() : this.config;
   }
 

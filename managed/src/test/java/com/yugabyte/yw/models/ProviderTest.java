@@ -44,7 +44,7 @@ public class ProviderTest extends FakeDBApplication {
   public void testNullConfig() {
     Provider provider = ModelFactory.awsProvider(defaultCustomer);
     assertNotNull(provider.uuid);
-    assertTrue(provider.getConfig().isEmpty());
+    assertTrue(provider.getUnmaskedConfig().isEmpty());
   }
 
   @Test
@@ -53,7 +53,8 @@ public class ProviderTest extends FakeDBApplication {
         Provider.create(
             defaultCustomer.uuid, Common.CloudType.aws, "Amazon", ImmutableMap.of("Foo", "Bar"));
     assertNotNull(provider.uuid);
-    assertNotNull(provider.getConfig().toString(), allOf(notNullValue(), equalTo("{Foo=Bar}")));
+    assertNotNull(
+        provider.getUnmaskedConfig().toString(), allOf(notNullValue(), equalTo("{Foo=Bar}")));
   }
 
   @Test
@@ -76,7 +77,7 @@ public class ProviderTest extends FakeDBApplication {
             ImmutableMap.of("AWS_ACCESS_KEY_ID", "BarBarBarBar"));
     assertNotNull(provider.uuid);
     assertEquals("Ba********ar", provider.getMaskedConfig().get("AWS_ACCESS_KEY_ID"));
-    assertEquals("BarBarBarBar", provider.getConfig().get("AWS_ACCESS_KEY_ID"));
+    assertEquals("BarBarBarBar", provider.getUnmaskedConfig().get("AWS_ACCESS_KEY_ID"));
   }
 
   @Test
@@ -89,7 +90,7 @@ public class ProviderTest extends FakeDBApplication {
             ImmutableMap.of("AWS_ACCESS_ID", "BarBarBarBar"));
     assertNotNull(provider.uuid);
     assertEquals("BarBarBarBar", provider.getMaskedConfig().get("AWS_ACCESS_ID"));
-    assertEquals("BarBarBarBar", provider.getConfig().get("AWS_ACCESS_ID"));
+    assertEquals("BarBarBarBar", provider.getUnmaskedConfig().get("AWS_ACCESS_ID"));
   }
 
   @Test
