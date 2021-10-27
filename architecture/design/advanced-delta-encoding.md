@@ -1,3 +1,5 @@
+# Motivation
+
 Assume we have a table created with `CREATE TABLE t (h int, r int, c1 int, c2 int, PRIMARY KEY (h, r));`
 And we've inserted a single row using `INSERT INTO t(h, r, c1, c2) VALUES (1, 2, 12, 24);`
 
@@ -43,11 +45,45 @@ Here we can store 1+1=2 bytes that are not reused from the previous key (plus ad
 
 More columns per row we have - more space we can save using this approach.
 
-In order to implement this at rocksdb level we try to match previous and current encoded keys to the following keys pattern:
+In order to implement this at rocksdb level we try to match previous and current encoded keys to the following keys pattern and maximize `<shared_prefix>` and `<shared_middle>` size:
 
-Prev key: `<shared_prefix>[<prev_key_non_shared_1>[<shared_middle>[<prev_key_non_shared_2>]]][<last_internal_component_to_reuse>]`
+Previous key: `<shared_prefix>[<prev_key_non_shared_1>[<shared_middle>[<prev_key_non_shared_2>]]][<last_internal_component_to_reuse>]`
 
 Current key: `<shared_prefix>[<non_shared_1>[<shared_middle>[<non_shared_2>]]][<last_internal_component_to_reuse> (optionally incremented)]`
 
-And then we encode information about these component sizes and whether `last_internal_component` is reused and if it is incremented or reused as is (this can happen in snapshot SST files where the sequence number is reset to zero). 
+`<last_internal_component_to_reuse>` always has size of 8 bytes (if internal rocksdb component is the same in previous and current keys or just its embedded sequence number is incremented) or 0 bytes (in other cases).
+
+Then we encode information about these component sizes and whether `last_internal_component` is reused and if it is incremented or reused as is (this can happen in snapshot SST files where the sequence number is reset to zero). 
 After this information we just need to store `<non_shared_1><non_shared_2><value>` instead of `<non_shared><value>` (where `<non_shared>` is everything after `<shared_prefix>`).
+
+# Encoding format details
+
+As a results of the approach described above we have following components sizes/flag that fully determine difference between previous key and current key:
+- `shared_prefix_size`
+- `prev_key_non_shared_1_size`
+- `non_shared_1_size`
+- `shared_middle_size`
+- `prev_key_non_shared_2_size`
+- `non_shared_2_size`
+- `last_internal_component_reuse_size` (0 or 8)
+- `is_last_internal_component_inc` (whether last internal component reused from previous key is incremented)
+
+Note that previous key size is always `shared_prefix_size + prev_key_non_shared_1_size + shared_middle_size + prev_key_non_shared_2_size + last_internal_component_reuse_size`, so we can compute `shared_middle_size` based on `shared_prefix_size`, `prev_key_non_shared_1_size`, `prev_key_non_shared_2_size`, `last_internal_component_reuse_size` and previous key size.
+
+And current key size is always `shared_prefix_size + non_shared_1_size + shared_middle_size + non_shared_2_size + last_internal_component_reuse_size`. 
+
+We will store `non_shared_i_size_delta = non_shared_i_size - prev_key_non_shared_i_size` (i = 1, 2) for efficiency, because for DocDB these deltas are `0` in most cases and we can encode this more efficiently.
+
+So, to be able to decode key-value pair it is enough to know whole previous key and store the following:
+- `shared_prefix_size`
+- `non_shared_1_size`
+- `non_shared_1_size_delta`
+- `shared_middle_size`
+- `non_shared_2_size`,
+- `non_shared_2_size_delta`
+- `bool is_last_internal_component_reused` 
+- `bool is_last_internal_component_inc`
+- `non_shared_1` bytes
+- `non_shared_2` bytes
+- `value_size`
+- `value` bytes
