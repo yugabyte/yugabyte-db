@@ -100,7 +100,8 @@
         state: present
       when: >
         'policycoreutils-python' not in ansible_facts.packages and
-        ansible_distribution == 'CentOS' and ansible_distribution_major_version == '7'
+        ((ansible_distribution == 'CentOS' and ansible_distribution_major_version == '7') or
+        (ansible_distribution == 'OracleLinux' and ansible_distribution_major_version == '7'))
       tags: yb-prebuilt-ami
     - name: Accept target in firewalld on Oracle Linux
       raw: sudo firewall-cmd --set-target=ACCEPT --permanent && sudo systemctl restart firewalld
