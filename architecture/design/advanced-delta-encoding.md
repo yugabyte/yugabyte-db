@@ -89,7 +89,7 @@ So, to be able to decode key-value pair it is enough to know whole previous key 
   - `non_shared_2` bytes
   - `value` bytes
 
-The general encoding format is therefore: `<sizes & flags encoded ><non_shared_1 bytes>[<non_shared_2 bytes>]<value bytes>`.
+The general encoding format is therefore: `<sizes & flags encoded><non_shared_1 bytes>[<non_shared_2 bytes>]<value bytes>`.
 
 ## Sizes & flags encoding
 
