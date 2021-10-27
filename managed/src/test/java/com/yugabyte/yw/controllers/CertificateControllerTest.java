@@ -212,9 +212,9 @@ public class CertificateControllerTest extends FakeDBApplication {
   public void testUploadCustomCertificate() {
     String cert_content =
         "-----BEGIN CERTIFICATE-----\n"
-            + "MIIDBzCCAe+gAwIBAgIJAN6UoE7iaPKwMA0GCSqGSIb3DQEBCwUAMC8xETAPBgNV\n"
+            + "MIIDBzCCAe+gAwIBAgIJAL7bAzcb39/1MA0GCSqGSIb3DQEBCwUAMC8xETAPBgNV\n"
             + "BAoMCFl1Z2FieXRlMRowGAYDVQQDDBFDQSBmb3IgWXVnYWJ5dGVEQjAeFw0yMTEw\n"
-            + "MjQxNTEwMjFaFw0yMTEwMjYxNTEwMjFaMC8xETAPBgNVBAoMCFl1Z2FieXRlMRow\n"
+            + "MjcwNDM1NDNaFw0zMTEwMjUwNDM1NDNaMC8xETAPBgNVBAoMCFl1Z2FieXRlMRow\n"
             + "GAYDVQQDDBFDQSBmb3IgWXVnYWJ5dGVEQjCCASIwDQYJKoZIhvcNAQEBBQADggEP\n"
             + "ADCCAQoCggEBALxVsptMqQLXh9twRJuhxLbukLm4Gba68rSxpFyyVUUD3++MarVu\n"
             + "8QIzCrhjBfZQDY+06OegzgwjK6I+8pMEGKB/j911ywq5YF165xWtHz1+aOBOVe7p\n"
@@ -222,14 +222,14 @@ public class CertificateControllerTest extends FakeDBApplication {
             + "jGI3tbqNjNT2unnpSsdRJ3Tn+Bt8vk0qdp2aIhcFfNaM9P0trWTCFajjqA4DcbXC\n"
             + "5ZeRvd+Zu1mLbaAXLalTskgkstFUJ4ZHTZx2SXufgN1BjdmPbcyGKPVxAihYHAoP\n"
             + "YjOR8tX0Cl6Ii/ic2C8HV9q3fX3NsYGP5GMCAwEAAaMmMCQwDgYDVR0PAQH/BAQD\n"
-            + "AgLkMBIGA1UdEwEB/wQIMAYBAf8CAQEwDQYJKoZIhvcNAQELBQADggEBAHUwRCs/\n"
-            + "P+XgoBEiuKMMiRCw2wdiNTNEwLXtWmZAafznjApuz8Ip878w7F56P/QF4W3FsvPV\n"
-            + "A8H2jRcgjhfeDSkWzafOYO90563ii469rWlKldq+JiPuYnwubHOaR9LUb/pURAnC\n"
-            + "tMGqujONO1UckodvN2rgHDZG62vrIKF3WOcZpsKElSc5fzPW52jVybsK05IQQDWw\n"
-            + "qUDTJ3Pqk/QDqeckrv8H4wm0asMWhImp+8d8KLJjq205L0Sw8LwIE+Jk/QnxAYaN\n"
-            + "axgCZvwWel6BHVng+ga/16eziCEYEa9FOf4AA570zTl19coMrfWaskOc1dKgNz9k\n"
-            + "ANNmfkg0N9ISj9U=\n"
-            + "-----END CERTIFICATE-----\n";
+            + "AgLkMBIGA1UdEwEB/wQIMAYBAf8CAQEwDQYJKoZIhvcNAQELBQADggEBAHVBCvSl\n"
+            + "BqDeM+At1whJ8eEazwN1E8X1CRdNyl9hHwVADrIoP10g1GwqmAOOuYUWl6Gdm+ba\n"
+            + "RRjoRGnNBtqpiC6wZDZrlsixyNrVSjWlxa9umFQc/BFQ1OL28GEVqJcA+E9NfG7v\n"
+            + "0OpQHRgLoWDpIM6l0AuQblTCCWSJhVqlEtqBUfCt3MKjG9NPTEQwkivVHa/xO1o5\n"
+            + "Vx9JFmYN4LgYkK+thxmfoKwjAepSDs0VMG8JYpAxHQjKFcZfHf11qTnrwEqPYQLe\n"
+            + "KfCPpfclL4oB6aHmf/egj/QVvyTy51KJ6rbCj8jQCcv7OcnXqV+rpDLfa8lFd+/n\n"
+            + "6tbtHYASDgJLePg=\n"
+            + "-----END CERTIFICATE-----";
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("label", "test");
     bodyJson.put("certContent", cert_content);
