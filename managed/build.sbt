@@ -364,6 +364,7 @@ libraryDependencies ++= Seq(
   "com.cronutils" % "cron-utils" % "9.1.5",
   "com.nimbusds" % "nimbus-jose-jwt" % "9.11.3",
   "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor" % "2.9.10",
+  "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.9.10",
   "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % "2.9.10"
 )
 // https://mvnrepository.com/artifact/eu.unicredit/sbt-swagger-codegen-lib
