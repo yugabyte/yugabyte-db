@@ -1415,7 +1415,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 			int len;
 			len = read_query_buffer(bucketid, queryid, query_txt);
 			if (len != MAX_QUERY_BUFFER_BUCKET)
-				snprintf(query_txt, 32, "%s", "<insufficient disk/shared space>");
+				snprintf(query_txt, 32, "%s", "insufficient disk/shared space");
 		}
 
 		/* copy counters to a local variable to keep locking time short */

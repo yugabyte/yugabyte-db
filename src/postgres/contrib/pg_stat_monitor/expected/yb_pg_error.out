@@ -23,7 +23,6 @@ WARNING:  warning message
 SELECT query, elevel, sqlcode, message FROM pg_stat_monitor ORDER BY query COLLATE "C",elevel;
                                              query                                              | elevel | sqlcode |              message
 ------------------------------------------------------------------------------------------------+--------+---------+-----------------------------------
- <insufficient disk/shared space                                                                |     20 | 42601   | syntax error at or near "ELECET"
  SELECT * FROM unknown;                                                                         |     20 | 42P01   | relation "unknown" does not exist
  SELECT 1/0;                                                                                    |     20 | 22012   | division by zero
  SELECT pg_stat_monitor_reset();                                                                |      0 |         |
@@ -32,6 +31,7 @@ SELECT query, elevel, sqlcode, message FROM pg_stat_monitor ORDER BY query COLLA
  BEGIN                                                                                         +|        |         |
  RAISE WARNING 'warning message';                                                              +|        |         |
  END $$;                                                                                        |        |         |
+ insufficient disk/shared space                                                                 |     20 | 42601   | syntax error at or near "ELECET"
 (6 rows)
 
 SELECT pg_stat_monitor_reset();
