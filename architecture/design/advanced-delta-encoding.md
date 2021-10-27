@@ -149,7 +149,7 @@ We store: `<encoded_1><encoded_2><non_shared_1_size>[<non_shared_1_size_delta>][
 2.2. Nothing is reused from the previous key (mostly restart keys).
 In this case we just need to store key size and value size.
 
-2.2.1. 0 < `key_size` < 128.
+2.2.1. `0 < key_size < 128`.
 
 In this case `encoded_2` is:
 - bit 0: `0`
