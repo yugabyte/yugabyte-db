@@ -58,6 +58,8 @@ extern Oid GetTableOidFromRelOptions(List *relOptions, Oid reltablespace,
 
 extern Oid GetRowTypeOidFromRelOptions(List *relOptions);
 
+extern Oid GetTablegroupOidFromRelOptions(List *relOptions);
+
 extern bool YbGetUseInitdbAclFromRelOptions(List *options);
 
 #endif							/* CATALOG_H */

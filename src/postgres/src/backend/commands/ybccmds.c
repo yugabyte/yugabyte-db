@@ -495,7 +495,7 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 
 		if (strcmp(def->defname, "colocated") == 0)
 		{
-			if (stmt->tablegroup)
+			if (tablegroupId != InvalidOid)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("cannot use \'colocated=true/false\' with tablegroup")));
