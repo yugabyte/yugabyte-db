@@ -218,7 +218,7 @@ public class RegionTest extends FakeDBApplication {
   public void testNullConfig() {
     Region r = Region.create(defaultProvider, "region-1", "region 1", "default-image");
     assertNotNull(r.uuid);
-    assertTrue(r.getConfig().isEmpty());
+    assertTrue(r.getUnmaskedConfig().isEmpty());
   }
 
   @Test
@@ -227,6 +227,6 @@ public class RegionTest extends FakeDBApplication {
     r.setConfig(ImmutableMap.of("Foo", "Bar"));
     r.save();
     assertNotNull(r.uuid);
-    assertNotNull(r.getConfig().toString(), allOf(notNullValue(), equalTo("{Foo=Bar}")));
+    assertNotNull(r.getUnmaskedConfig().toString(), allOf(notNullValue(), equalTo("{Foo=Bar}")));
   }
 }

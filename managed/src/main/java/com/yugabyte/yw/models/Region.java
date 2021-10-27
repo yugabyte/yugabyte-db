@@ -164,7 +164,7 @@ public class Region extends Model {
 
   @JsonProperty("config")
   public void setConfig(Map<String, String> configMap) {
-    Map<String, String> currConfig = this.getConfig();
+    Map<String, String> currConfig = this.getUnmaskedConfig();
     for (String key : configMap.keySet()) {
       currConfig.put(key, configMap.get(key));
     }
@@ -173,11 +173,11 @@ public class Region extends Model {
 
   @JsonProperty("config")
   public Map<String, String> getMaskedConfig() {
-    return maskConfigNew(getConfig());
+    return maskConfigNew(getUnmaskedConfig());
   }
 
   @JsonIgnore
-  public Map<String, String> getConfig() {
+  public Map<String, String> getUnmaskedConfig() {
     if (this.config == null) {
       return new HashMap<>();
     } else {

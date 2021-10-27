@@ -11,8 +11,9 @@
 package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.api.client.util.Throwables;
 import com.google.inject.Inject;
-import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.forms.EditProviderRequest;
@@ -29,12 +30,14 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.io.IOException;
 import java.util.UUID;
+import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 import play.mvc.Result;
 
 @Api(
     value = "Cloud providers",
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
+@Slf4j
 public class CloudProviderApiController extends AuthenticatedController {
 
   @Inject private CloudProviderHandler cloudProviderHandler;
@@ -99,19 +102,38 @@ public class CloudProviderApiController extends AuthenticatedController {
     Provider reqProvider = formFactory.getFormDataOrBadRequest(requestBody, Provider.class);
     Customer customer = Customer.getOrBadRequest(customerUUID);
     reqProvider.customerUUID = customerUUID;
-    Provider providerEbean =
-        cloudProviderHandler.createProvider(
-            customer,
-            Common.CloudType.valueOf(reqProvider.code),
-            reqProvider.name,
-            reqProvider.getConfig(),
-            getFirstRegionCode(reqProvider));
 
-    CloudBootstrap.Params taskParams = CloudBootstrap.Params.fromProvider(reqProvider);
+    CloudType providerCode = CloudType.valueOf(reqProvider.code);
+    Provider providerEbean;
+    if (providerCode.equals(CloudType.kubernetes)) {
+      providerEbean = cloudProviderHandler.createKubernetesNew(customer, reqProvider);
+    } else {
+      providerEbean =
+          cloudProviderHandler.createProvider(
+              customer,
+              providerCode,
+              reqProvider.name,
+              reqProvider.getUnmaskedConfig(),
+              getFirstRegionCode(reqProvider));
+    }
 
-    UUID taskUUID = cloudProviderHandler.bootstrap(customer, providerEbean, taskParams);
-    auditService().createAuditEntry(ctx(), request(), requestBody, taskUUID);
-    return new YBPTask(taskUUID, providerEbean.uuid).asResult();
+    if (providerCode.isRequiresBootstrap()) {
+      UUID taskUUID = null;
+      try {
+        CloudBootstrap.Params taskParams = CloudBootstrap.Params.fromProvider(reqProvider);
+
+        taskUUID = cloudProviderHandler.bootstrap(customer, providerEbean, taskParams);
+        auditService().createAuditEntry(ctx(), request(), requestBody, taskUUID);
+      } catch (Throwable e) {
+        log.warn("Bootstrap failed. Deleting provider");
+        providerEbean.delete();
+        Throwables.propagate(e);
+      }
+      return new YBPTask(taskUUID, providerEbean.uuid).asResult();
+    } else {
+      auditService().createAuditEntry(ctx(), request(), requestBody, null);
+      return new YBPTask(null, providerEbean.uuid).asResult();
+    }
   }
 
   private static String getFirstRegionCode(Provider provider) {
