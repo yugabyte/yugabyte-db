@@ -601,6 +601,7 @@ class DBTestBase : public testing::Test {
     kLevelSubcompactions = 30,
     kUniversalSubcompactions = 31,
     kBlockBasedTableWithIndexRestartInterval = 32,
+    kBlockBasedTableWithThreeSharedPartsKeyDeltaEncoding = 33,
   };
   int option_config_;
 

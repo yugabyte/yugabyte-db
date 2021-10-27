@@ -55,6 +55,7 @@ void RandomString(void* dest, size_t n, Random* rng);
 uint32_t GetRandomSeed32();
 
 std::vector<uint8_t> RandomBytes(size_t len, std::mt19937_64* rng = nullptr);
+std::string RandomString(size_t len, std::mt19937_64* rng = nullptr);
 
 std::string RandomHumanReadableString(int len, Random* rnd);
 
