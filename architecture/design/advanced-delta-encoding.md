@@ -45,6 +45,8 @@ Here we can store 1+1=2 bytes that are not reused from the previous key (plus ad
 
 More columns per row we have - more space we can save using this approach.
 
+# Approach
+
 In order to implement this at rocksdb level we try to match previous and current encoded keys to the following keys pattern and maximize `<shared_prefix>` and `<shared_middle>` size:
 
 Previous key: `<shared_prefix>[<prev_key_non_shared_1>[<shared_middle>[<prev_key_non_shared_2>]]][<last_internal_component_to_reuse>]`
