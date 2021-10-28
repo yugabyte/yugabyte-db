@@ -68,7 +68,11 @@ public class AlertsGarbageCollector {
 
   @VisibleForTesting
   void scheduleRunner() {
-    Customer.getAll().forEach(this::checkCustomer);
+    try {
+      Customer.getAll().forEach(this::checkCustomer);
+    } catch (Exception e) {
+      log.error("Error running alerts garbage collector", e);
+    }
   }
 
   private void checkCustomer(Customer c) {
