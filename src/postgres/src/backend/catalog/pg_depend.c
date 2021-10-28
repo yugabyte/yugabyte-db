@@ -435,7 +435,7 @@ changeDependencyFor(Oid classId, Oid objectId,
 static bool
 isObjectPinned(const ObjectAddress *object, Relation rel)
 {
-	if (YBHasPinnedObjectsCache())
+	if (YBIsPinnedObjectsCacheAvailable())
 		return YBIsObjectPinned(object->classId, object->objectId);
 
 	bool		ret = false;

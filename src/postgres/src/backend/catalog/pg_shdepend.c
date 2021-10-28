@@ -1135,7 +1135,7 @@ storeObjectDescription(StringInfo descs,
 static bool
 isSharedObjectPinned(Oid classId, Oid objectId, Relation sdepRel)
 {
-	if (YBHasPinnedObjectsCache())
+	if (YBIsPinnedObjectsCacheAvailable())
 		return YBIsSharedObjectPinned(classId, objectId);
 
 	bool		result = false;
