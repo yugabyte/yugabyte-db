@@ -1016,7 +1016,7 @@ typedef struct YBPinnedObjectsCacheData
 } YBPinnedObjectsCacheData;
 
 /* Stores all pinned objects */
-static YBPinnedObjectsCacheData YBPinnedObjectsCache = {.regular = NULL, .shared = NULL};
+static YBPinnedObjectsCacheData YBPinnedObjectsCache = {0};
 
 static CatCache *SysCache[SysCacheSize];
 
@@ -1428,11 +1428,9 @@ YBBuildPinnedObjectCache(const char *name,
 	return cache;
 }
 
-void
-YBLoadPinnedObjectsCache() {
-	/* Avoid cache building in case of `initdb`. Also avoid cache rebuilding. */
-	if (YBHasPinnedObjectsCache() || YBCIsInitDbModeEnvVarSet())
-		return;
+static void
+YBLoadPinnedObjectsCache()
+{
 	YBPinnedObjectsCacheData cache = {
 		.shared = YBBuildPinnedObjectCache("Shared pinned objects cache",
 		                                   20, /* Number of pinned objects in pg_shdepend is 9 */
@@ -1450,26 +1448,35 @@ YBLoadPinnedObjectsCache() {
 }
 
 bool
-YBHasPinnedObjectsCache() {
-	/* Both 'regular' and 'shared' fields are set at same time. Checking any of them is enough. */
+YBIsPinnedObjectsCacheAvailable()
+{
+	/*
+	 * Build the cache in case it is not yet ready.
+	 * Both 'regular' and 'shared' fields are set at same time. Checking any of them is enough.
+	 * Avoid cache building in case of `initdb`.
+	 */
+	if (!(YBPinnedObjectsCache.regular || YBCIsInitDbModeEnvVarSet()))
+		YBLoadPinnedObjectsCache();
 	return YBPinnedObjectsCache.regular;
 }
 
 static bool
-YBIsPinned(HTAB *pinned_cache, Oid classId, Oid objectId) {
+YBIsPinned(HTAB *pinned_cache, Oid classId, Oid objectId)
+{
+	Assert(pinned_cache);
 	YBPinnedObjectKey key = {.classid = classId, .objid = objectId};
 	return hash_search(pinned_cache, &key, HASH_FIND, NULL);
 }
 
 bool
-YBIsObjectPinned(Oid classId, Oid objectId) {
-	Assert(YBHasPinnedObjectsCache());
+YBIsObjectPinned(Oid classId, Oid objectId)
+{
 	return YBIsPinned(YBPinnedObjectsCache.regular, classId, objectId);
 }
 
 bool
-YBIsSharedObjectPinned(Oid classId, Oid objectId) {
-	Assert(YBHasPinnedObjectsCache());
+YBIsSharedObjectPinned(Oid classId, Oid objectId)
+{
 	return YBIsPinned(YBPinnedObjectsCache.shared, classId, objectId);
 }
 
