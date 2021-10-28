@@ -211,9 +211,22 @@ EXPLAIN (COSTS FALSE) UPDATE single_row_comp_key SET v = 1 WHERE k1 = 1 and k2 =
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 3 - k WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = v1 - k WHERE k = 1;
 
--- Random is not a stable function so it should NOT USE single-row.
--- TODO However it technically does not read/write data so later on it could be allowed.
-EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = ceil(random()) WHERE k = 1;
+-- Test the impact of functions on single row optimization.
+CREATE TABLE single_row_function_test (k INTEGER NOT NULL, date_pk TIMESTAMPTZ, random_field INTEGER, v varchar, created_at TIMESTAMP, PRIMARY KEY(k, date_pk));
+
+-- Verify that using unsupported non-immutable functions in the WHERE clause disables the use of fast path.
+EXPLAIN (COSTS OFF) UPDATE single_row_function_test SET random_field = 2 WHERE k = 1 AND date_pk = timeofday()::TIMESTAMP;
+
+-- Verify that using unsupported non-immutable functions to assign values disables the use of fast path.
+EXPLAIN (COSTS OFF) UPDATE single_row_function_test SET v=getpgusername() WHERE k = 1 AND date_pk = NOW();
+
+-- Verify that using supported non-immutable functions (like random(), NOW(), timestamp, timestampz etc) which do not perform reads or writes to the database
+-- to assign values/WHERE clause does not prevent the use of fast-path.
+EXPLAIN (COSTS OFF) UPDATE single_row_function_test SET created_at = '2022-01-01 00:00:00'::TIMESTAMP WITH TIME ZONE, random_field = ceil(random())::int  WHERE date_pk = NOW() AND k = 1;
+
+-- Verify that even if the function used in the WHERE clause is a supported but volatile function, the fast path is still disabled.
+EXPLAIN (COSTS OFF) UPDATE single_row_function_test SET created_at = '2022-01-01 00:00:00'::TIMESTAMP WITH TIME ZONE, random_field = ceil(random())::int  WHERE date_pk = NOW() AND k = random()::int;
+DROP TABLE single_row_function_test;
 
 -- Test execution.
 INSERT INTO single_row_comp_key VALUES (1, 2, 3);
