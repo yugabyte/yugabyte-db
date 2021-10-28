@@ -902,6 +902,13 @@
           "example" : "AWS",
           "type" : "string"
         },
+        "config" : {
+          "additionalProperties" : {
+            "type" : "string"
+          },
+          "description" : "AZ configuration values",
+          "type" : "object"
+        },
         "kubeconfigPath" : {
           "description" : "Path to Kubernetes configuration file",
           "readOnly" : true,

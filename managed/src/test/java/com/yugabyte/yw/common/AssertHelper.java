@@ -145,12 +145,6 @@ public class AssertHelper {
     assertEquals(expectedMessage, ybpSuccess.message);
   }
 
-  private static void assertYWSuccessNoMessage(Result result) {
-    assertOk(result);
-    YBPSuccess ybpSuccess = Json.fromJson(Json.parse(contentAsString(result)), YBPSuccess.class);
-    assertNull(ybpSuccess.message);
-  }
-
   public static Result assertYWSE(ThrowingRunnable runnable) {
     return assertThrows(PlatformServiceException.class, runnable).getResult();
   }
