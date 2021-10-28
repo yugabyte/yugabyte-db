@@ -54,19 +54,19 @@ For a tutorial on building a sample C++ application with `libpqxx`, see [Build a
 
 To build and install the libpqxx driver for use with YugabyteDB, follow these steps:
 
-1. Clone the libpqxx repository.
+- Clone the libpqxx repository.
 
 ```sh
 $ git clone https://github.com/jtv/libpqxx.git
 ```
 
-2. For dependencies on the PostgreSQL binaries, add the PostgreSQL `bin` directory to the command path by running the following command.
+- For dependencies on the PostgreSQL binaries, add the PostgreSQL `bin` directory to the command path by running the following command.
 
 ```sh
 $ export PATH=$PATH:<yugabyte-install-dir>/postgres/bin
 ```
 
-3. Build and install the driver.
+- Build and install the driver.
 
 ```sh
 $ cd libpqxx
@@ -125,11 +125,17 @@ The `pq` driver is ready for building Go applications that connect to and intera
 
 ## Java
 
+### Yugabyte JDBC Driver
+
+The [Yugabyte JDBC Driver](../../../integrations/jdbc-driver) is a distributed JDBC driver for [YSQL](../../../quick-start/explore/ysql/) built on the [PostgreSQL JDBC Driver](https://jdbc.postgresql.org/)
+
+For a tutorial on building a sample Java application with the Yugabyte JDBC driver, see [Build a Java application](../../../quick-start/build-apps/java/ysql-yb-jdbc/).
+
 ### PostgreSQL JDBC Driver (PgJDBC)
 
 The [PostgreSQL JDBC Driver](https://jdbc.postgresql.org/) is the official JDBC driver for PostgreSQL. PgJDBC is not based on [`libpq`](#libpq), but supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
-For a tutorial on building a sample Go application with the PostgreSQL JDBC Driver, see [Build a Java application](../../../quick-start/build-apps/java/ysql-jdbc/) and click **YSQL-JDBC**.
+For a tutorial on building a sample Go application with the PostgreSQL JDBC Driver, see [Build a Java application](../../../quick-start/build-apps/java/ysql-jdbc/).
 
 #### Install the PostgreSQL JDBC Driver
 

@@ -45,6 +45,12 @@ showAsideToc: true
       YCQL (4.6)
     </a>
   </li>
+  <li >
+    <a href="/latest/quick-start/build-apps/java/ysql-yb-jdbc" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - YB - JDBC
+    </a>
+  </li>
 </ul>
 
 ## Prerequisites
