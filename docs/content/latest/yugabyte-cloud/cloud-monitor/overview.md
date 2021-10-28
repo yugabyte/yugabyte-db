@@ -1,14 +1,14 @@
 ---
-title: Cluster overview
-linkTitle: Cluster overview
-description: Cluster Overview tab
+title: Performance metrics
+linkTitle: Performance metrics
+description: View time series charts of cluster metrics.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
   latest:
     identifier: overview-clusters
-    parent: cloud-clusters
-    weight: 150
+    parent: cloud-monitor
+    weight: 100
 isTocNested: true
 showAsideToc: true
 ---

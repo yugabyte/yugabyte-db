@@ -13,9 +13,9 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The **Settings** tab provides a single point of access to scale and configure network access for the cluster.
-
 Yugabyte Cloud suppports both horizontal and vertical scaling of paid clusters. If your workloads have increased, you can dynamically add nodes to a running cluster to improve latency, throughput, and memory. Likewise, if your cluster is over-scaled, you can reduce nodes to reduce costs. You cannot change the fault tolerance of a cluster once it is created.
+
+You scale clusters using the **Edit Infrastructure** option on the **Settings** tab.
 
 ![Cloud Cluster Settings page](/images/yb-cloud/cloud-clusters-settings.png)
 
@@ -51,18 +51,6 @@ The cluster host address and port numbers for the YSQL and YCQL client APIs.
 ### VPC Peering
 
 Lists the [VPC peers](../../cloud-network/vpc-peers/) assigned to paid clusters. VPC peers must be assigned when the cluster is created.
-<!--
-To add a connection:
-
-1. Click **Add Connection** to display the **Remote Connections** sheet.
-1. Select the **Private Endpoints** tab to display the private endpoints configured for your cloud.
-1. To assign endpoints to the cluster, choose the **Select from list** option and select the endpoints you want to allow to access the cluster.
-1. To create an endpoint, choose the **Create new Pivate Endpoint** option and enter the endpoint details. For information on endpoint configuration, refer to [Endpoints](../../cloud-network/endpoints/).
-1. Select the **VPC Peers** tab to display the peers configured for your cloud.
-1. To assign peers to the cluster, choose the **Select from list** option and select the peers you want to allow to access the cluster.
-1. To create a peer, choose the **Create new VPC Peer** option and enter the peer details. For information on VPC peer configuration, refer to [VPC Peers](../../cloud-network/vpc-peers/).
-1. Click **Save** when you are done.
--->
 
 ### IP Allow Lists
 
