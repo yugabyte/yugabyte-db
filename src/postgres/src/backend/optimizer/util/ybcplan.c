@@ -90,16 +90,14 @@ bool YBCIsSupportedSingleRowModifyWhereExpr(Expr *expr)
 				funcid = op_expr->opfuncid;
 			}
 
-			/*
-			 * Only allow immutable functions as they cannot modify the
-			 * database or do lookups.
-			 */
 			tuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcid));
 			if (!HeapTupleIsValid(tuple))
 				elog(ERROR, "cache lookup failed for function %u", funcid);
 			char provolatile = ((Form_pg_proc) GETSTRUCT(tuple))->provolatile;
 			ReleaseSysCache(tuple);
-			if (provolatile != PROVOLATILE_IMMUTABLE)
+
+			if (provolatile != PROVOLATILE_IMMUTABLE &&
+				!YbIsFuncIdSupportedForSingleRowModifyOpt(funcid))
 			{
 				return false;
 			}
@@ -117,6 +115,21 @@ bool YBCIsSupportedSingleRowModifyWhereExpr(Expr *expr)
 			break;
 	}
 
+	return false;
+}
+
+bool YbIsFuncIdSupportedForSingleRowModifyOpt(Oid funcid)
+{
+	/*
+	 * Check whether this non-immutable function is safe for single row modify
+	 * optimization - i.e. it does not perform any lookups or writes to the
+	 * database that will convert this to a cross-shard operation.
+	 */
+	for (int i = 0; i < yb_funcs_safe_for_modify_fast_path_count; ++i)
+	{
+		if (funcid == yb_funcs_safe_for_modify_fast_path[i])
+			return true;
+	}
 	return false;
 }
 
@@ -311,15 +324,16 @@ static bool YBCAnalyzeExpression(Expr *expr, AttrNumber target_attnum, bool *has
 			}
 
 			/*
-			 * Only allow immutable functions as they cannot modify the
-			 * database or do lookups.
+			 * Only allow functions that cannot modify the database or do
+			 * lookups.
 			 */
 			tuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcid));
 			if (!HeapTupleIsValid(tuple))
 				elog(ERROR, "cache lookup failed for function %u", funcid);
 			Form_pg_proc pg_proc = ((Form_pg_proc) GETSTRUCT(tuple));
 
-			if (pg_proc->provolatile != PROVOLATILE_IMMUTABLE)
+			if (pg_proc->provolatile != PROVOLATILE_IMMUTABLE &&
+				!YbIsFuncIdSupportedForSingleRowModifyOpt(funcid))
 			{
 				ReleaseSysCache(tuple);
 				return false;
@@ -592,16 +606,17 @@ bool YBCIsSupportedSingleRowModifyReturningExpr(Expr *expr) {
 				funcid = op_expr->opfuncid;
 			}
 
-			/*
-			 * Only allow immutable functions as they cannot modify the
-			 * database or do lookups.
-			 */
 			tuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcid));
 			if (!HeapTupleIsValid(tuple))
 				elog(ERROR, "cache lookup failed for function %u", funcid);
 			Form_pg_proc pg_proc = ((Form_pg_proc) GETSTRUCT(tuple));
 
-			if (pg_proc->provolatile != PROVOLATILE_IMMUTABLE)
+			/*
+			 * Only allow functions that cannot modify the database or do
+			 * lookups.
+			 */
+			if (pg_proc->provolatile != PROVOLATILE_IMMUTABLE &&
+				!YbIsFuncIdSupportedForSingleRowModifyOpt(funcid))
 			{
 				ReleaseSysCache(tuple);
 				return false;

@@ -17,7 +17,7 @@ override CPPFLAGS := -I. -I$(srcdir) $(CPPFLAGS)
 OBJS = backend_random.o guc.o help_config.o pg_config.o pg_controldata.o \
        pg_rusage.o ps_status.o queryenvironment.o rls.o sampling.o \
        superuser.o timeout.o tzparser.o \
-       pg_yb_utils.o
+       pg_yb_utils.o yb_safe_funcs_for_modify_fast_path.o
 
 # This location might depend on the installation directories. Therefore
 # we can't substitute it into pg_config.h.

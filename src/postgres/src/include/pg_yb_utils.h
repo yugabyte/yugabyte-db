@@ -505,7 +505,7 @@ bool YBIsCollationValidNonC(Oid collation_id);
  * for the column string value.
  */
 Oid YBEncodingCollation(YBCPgStatement handle, int attr_num, Oid attcollation);
- 
+
 /*
  * Check whether the user ID is of a user who has the yb_extension role.
  */
@@ -515,5 +515,18 @@ bool IsYbExtensionUser(Oid member);
  * Check whether the user ID is of a user who has the yb_fdw role.
  */
 bool IsYbFdwUser(Oid member);
+
+/*
+ * Array of IDs of non-immutable functions that do not perform any database
+ * lookups or writes. When these functions are used in an INSERT/UPDATE/DELETE
+ * statement, they will not cause the actual modify statement to become a
+ * cross shard operation.
+ */
+extern const uint32 yb_funcs_safe_for_modify_fast_path[];
+
+/*
+ * Number of functions in 'yb_funcs_safe_for_modify_fast_path' above.
+ */
+extern const int yb_funcs_safe_for_modify_fast_path_count;
 
 #endif /* PG_YB_UTILS_H */
