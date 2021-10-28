@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Pagination } from 'react-bootstrap';
+import clsx from 'clsx';
 
 const nav = {
   FIRST: 'first',
@@ -96,19 +97,17 @@ const YBPagination = (props) => {
     }
   }
   return (
-    <React.Fragment>
-      <Pagination>
-        <Pagination.Prev
-          onClick={() => handlePageChange(nav.PREV)}
-          disabled={curActivePage === firstPage}
-        />
-        {items}
-        <Pagination.Next
-          onClick={() => handlePageChange(nav.NEXT)}
-          disabled={curActivePage === numPages}
-        />
-      </Pagination>
-    </React.Fragment>
+    <Pagination className={clsx(props.className && props.className)}>
+      <Pagination.Prev
+        onClick={() => handlePageChange(nav.PREV)}
+        disabled={curActivePage === firstPage}
+      />
+      {items}
+      <Pagination.Next
+        onClick={() => handlePageChange(nav.NEXT)}
+        disabled={curActivePage === numPages}
+      />
+    </Pagination>
   );
 };
 

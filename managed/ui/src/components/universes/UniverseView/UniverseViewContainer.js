@@ -25,6 +25,7 @@ const mapDispatchToProps = (dispatch) => {
         }
       });
     },
+
     resetUniverseTasks: () => {
       dispatch(resetUniverseTasks());
     }

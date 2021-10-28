@@ -54,7 +54,7 @@ export const useSlowQueriesApi = ({ universeUUID, enabled, defaultStaleTime = 60
     () => fetchSlowQueries(universeUUID),
     {
       enabled,
-      staleTime: defaultStaleTime      
+      staleTime: defaultStaleTime
     }
   );
 
@@ -82,6 +82,14 @@ export const useSlowQueriesApi = ({ universeUUID, enabled, defaultStaleTime = 60
     loading: isFetching,
     getSlowQueries: refetch
   };
+};
+
+const hasMatch = (textString, patternString, caseSensitive = false) => {
+  if (!caseSensitive) {
+    textString = textString.toLowerCase();
+    patternString = patternString.toLowerCase();
+  }
+  return textString.includes(patternString);
 };
 
 const comparisonRegex = /(^([><]=?)(\d+))|(^(\d+|\*)\.\.(\d+|\*))/;
@@ -168,13 +176,16 @@ export const filterBySearchTokens = (arr, searchTokens, keyMap) => {
             }
             return query[column.value].includes(token.value.trim());
           } else if (column.type === 'stringArray') {
-            return column.value in query && query[column.value].some(element => element.includes(token.value));
+            return (
+              column.value in query &&
+              query[column.value].some((element) => hasMatch(element, token.value))
+            );
           } else {
-            return column.value in query && query[column.value].includes(token.value);
+            return column.value in query && hasMatch(query[column.value], token.value);
           }
         } else {
           // Search through all properties for token value
-          return Object.values(query).some((val) => String(val).includes(token.value));
+          return Object.values(query).some((val) => hasMatch(String(val), token.value));
         }
       });
     }
