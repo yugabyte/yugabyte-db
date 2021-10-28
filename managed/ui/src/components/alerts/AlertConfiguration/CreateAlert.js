@@ -70,10 +70,10 @@ const CreateAlert = (props) => {
   }, [alertDestinations]);
 
   useEffect(() => {
-    setCurrentMetric(
+    setCurrentMetric(currentMetric =>
       initialValues.ALERT_METRICS_CONDITION
         ? metricsData.find((metric) => metric.template === initialValues.ALERT_METRICS_CONDITION)
-        : undefined
+        : currentMetric
     );
   }, [metricsData, initialValues.ALERT_METRICS_CONDITION]);
 
