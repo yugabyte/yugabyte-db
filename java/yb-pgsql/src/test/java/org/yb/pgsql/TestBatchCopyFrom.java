@@ -47,6 +47,8 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
   private static final String BATCH_TXN_SESSION_VARIABLE_NAME =
       "yb_default_copy_from_rows_per_transaction";
   private static final int BATCH_TXN_SESSION_VARIABLE_DEFAULT_ROWS = 1000;
+  private static final String NON_TXN_WRITE_SESSION_VARIABLE_NAME =
+      "yb_force_non_transactional_writes";
 
   private String getAbsFilePath(String fileName) {
     return TestUtils.getBaseTmpDir() + "/" + fileName;
@@ -440,7 +442,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
   }
 
   @Test
-  public void testSessionVariable() throws Exception {
+  public void testBatchTxnSessionVariable() throws Exception {
     String absFilePath = getAbsFilePath("batch-copyfrom-sessionvar.txt");
     String tableName = "batchSessionTable";
     int totalValidLines = 7;
@@ -479,6 +481,37 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
       statement.execute("SET " + BATCH_TXN_SESSION_VARIABLE_NAME + " = DEFAULT");
       assertOneRow(statement, "SHOW " + BATCH_TXN_SESSION_VARIABLE_NAME,
           String.valueOf(BATCH_TXN_SESSION_VARIABLE_DEFAULT_ROWS));
+    }
+  }
+
+  @Test
+  public void testNonTxnWriteSessionVariable() throws Exception {
+    String absFilePath = getAbsFilePath("batch-copyfrom-nontxn-sessionvar.txt");
+    String tableName = "nontxnSessionVarTable";
+    int totalValidLines = 5;
+    int expectedCopiedLines = totalValidLines;
+
+    createFileInTmpDir(absFilePath, totalValidLines);
+
+    try (Statement statement = connection.createStatement()) {
+      // ensure non-txn session variable is off by default
+      assertOneRow(statement, "SHOW " + NON_TXN_WRITE_SESSION_VARIABLE_NAME, "off");
+      // set non-txn session variable
+      statement.execute("SET " + NON_TXN_WRITE_SESSION_VARIABLE_NAME + "=true");
+      statement.execute(String.format(
+          "CREATE TABLE %s (a Integer, b serial, c varchar, d int)", tableName));
+      statement.execute(String.format(
+          "COPY %s FROM \'%s\' WITH (FORMAT CSV, HEADER)", tableName, absFilePath));
+
+      // ensure no discrepency in result
+      assertOneRow(statement, "SELECT COUNT(*) FROM " + tableName, expectedCopiedLines);
+      // ensure DDL's, DML's execute without error
+      statement.execute("ALTER TABLE " + tableName + " ADD COLUMN e INT");
+      statement.execute("ALTER TABLE " + tableName + " DROP COLUMN e");
+      statement.execute("INSERT INTO " + tableName + " VALUES (100)");
+      statement.execute("TRUNCATE TABLE " + tableName);
+      statement.execute("DROP TABLE " + tableName);
+      statement.execute("CREATE TABLE " + tableName + " (a int primary key, b text)");
     }
   }
 
