@@ -9,6 +9,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertValues;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.models.CustomerTask.TaskType.Create;
 import static com.yugabyte.yw.models.CustomerTask.TaskType.GFlagsUpgrade;
+import static com.yugabyte.yw.models.CustomerTask.TaskType.TlsToggle;
 import static com.yugabyte.yw.models.CustomerTask.TaskType.Update;
 import static com.yugabyte.yw.models.CustomerTask.TaskType.UpgradeSoftware;
 import static org.hamcrest.CoreMatchers.allOf;
@@ -126,6 +127,28 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
       String status,
       double percentComplete,
       ObjectNode responseJson) {
+    return createTaskWithStatusAndResponse(
+        targetUUID,
+        targetType,
+        taskType,
+        taskInfoType,
+        targetName,
+        status,
+        percentComplete,
+        null,
+        responseJson);
+  }
+
+  private UUID createTaskWithStatusAndResponse(
+      UUID targetUUID,
+      CustomerTask.TargetType targetType,
+      CustomerTask.TaskType taskType,
+      TaskType taskInfoType,
+      String targetName,
+      String status,
+      double percentComplete,
+      String customTypeName,
+      ObjectNode responseJson) {
     UUID taskUUID = UUID.randomUUID();
     TaskInfo taskInfo = new TaskInfo(taskInfoType);
     taskInfo.setTaskUUID(taskUUID);
@@ -133,7 +156,8 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     taskInfo.setOwner("");
     taskInfo.save();
     CustomerTask task =
-        CustomerTask.create(customer, targetUUID, taskUUID, targetType, taskType, targetName);
+        CustomerTask.create(
+            customer, targetUUID, taskUUID, targetType, taskType, targetName, customTypeName);
     responseJson.put("status", status);
     responseJson.put("percent", percentComplete);
     responseJson.put("title", task.getFriendlyDescription());
@@ -622,5 +646,32 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     String resultString = contentAsString(result);
     assertThat(resultString, allOf(notNullValue(), equalTo("Unable To Authenticate User")));
     assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testCustomTaskTypeName() {
+    String authToken = user.createAuthToken();
+    ObjectNode responseJson = Json.newObject();
+    UUID taskUUID =
+        createTaskWithStatusAndResponse(
+            universe.universeUUID,
+            CustomerTask.TargetType.Universe,
+            TlsToggle,
+            TaskType.TlsToggle,
+            "Foo",
+            "Success",
+            99.0,
+            "TLS Toggle ON",
+            responseJson);
+    when(mockCommissioner.mayGetStatus(taskUUID)).thenReturn(Optional.of(responseJson));
+    Result result =
+        FakeApiHelper.doRequestWithAuthToken(
+            "GET", "/api/customers/" + customer.uuid + "/tasks", authToken);
+    assertEquals(OK, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    JsonNode universeTasks = json.get(universe.universeUUID.toString());
+    assertTrue(universeTasks.isArray());
+    JsonNode task = universeTasks.get(0);
+    MatcherAssert.assertThat(task.get("typeName").asText(), equalTo("TLS Toggle ON"));
   }
 }
