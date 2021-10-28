@@ -74,7 +74,6 @@ export default class AlertDetails extends Component {
             <Row>
               <Col
                 lg={12}
-                title={alertDetails.message}
                 className="alert-label noLeftPadding noMarginBottom"
               >
                 <h6 className="alert-label-header">DESCRIPTION</h6>
