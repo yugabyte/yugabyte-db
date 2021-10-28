@@ -64,6 +64,7 @@ public class Util {
   public static final String DEFAULT_YSQL_ADMIN_ROLE_NAME = "yb_superuser";
   public static final String DEFAULT_YCQL_USERNAME = "cassandra";
   public static final String DEFAULT_YCQL_PASSWORD = "cassandra";
+  public static final String REDACT = "REDACTED";
   public static final String YUGABYTE_DB = "yugabyte";
 
   /**
@@ -79,6 +80,13 @@ public class Util {
       inetAddrs.add(new InetSocketAddress(privateIp, yqlRPCPort));
     }
     return inetAddrs;
+  }
+
+  public static String redactString(String input) {
+    String length = ((Integer) input.length()).toString();
+    String regex = "(.)" + "{" + length + "}";
+    String output = input.replaceAll(regex, REDACT);
+    return output;
   }
 
   /**
