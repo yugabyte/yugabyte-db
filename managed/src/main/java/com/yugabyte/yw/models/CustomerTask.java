@@ -20,6 +20,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.GeneratedValue;
@@ -382,6 +383,14 @@ public class CustomerTask extends Model {
     return completionTime;
   }
 
+  @Column
+  @ApiModelProperty(value = "Custom type name", accessMode = READ_ONLY, example = "TLS Toggle ON")
+  private String customTypeName;
+
+  public String getCustomTypeName() {
+    return customTypeName;
+  }
+
   public void markAsCompleted() {
     markAsCompleted(new Date());
   }
@@ -403,7 +412,8 @@ public class CustomerTask extends Model {
       UUID taskUUID,
       TargetType targetType,
       TaskType type,
-      String targetName) {
+      String targetName,
+      @Nullable String customTypeName) {
     CustomerTask th = new CustomerTask();
     th.customerUUID = customer.uuid;
     th.targetUUID = targetUUID;
@@ -412,8 +422,19 @@ public class CustomerTask extends Model {
     th.type = type;
     th.targetName = targetName;
     th.createTime = new Date();
+    th.customTypeName = customTypeName;
     th.save();
     return th;
+  }
+
+  public static CustomerTask create(
+      Customer customer,
+      UUID targetUUID,
+      UUID taskUUID,
+      TargetType targetType,
+      TaskType type,
+      String targetName) {
+    return create(customer, targetUUID, taskUUID, targetType, type, targetName, null);
   }
 
   public static CustomerTask get(Long id) {

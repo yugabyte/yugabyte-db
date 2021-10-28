@@ -86,7 +86,10 @@ public class CustomerTaskController extends AuthenticatedController {
       taskData.completionTime = task.getCompletionTime();
       taskData.target = task.getTarget().name();
       taskData.type = task.getType().name();
-      taskData.typeName = task.getType().getFriendlyName();
+      taskData.typeName =
+          task.getCustomTypeName() != null
+              ? task.getCustomTypeName()
+              : task.getType().getFriendlyName();
       taskData.targetUUID = task.getTargetUUID();
       ObjectNode versionNumbers = Json.newObject();
       JsonNode taskDetails = taskInfo.getTaskDetails();
