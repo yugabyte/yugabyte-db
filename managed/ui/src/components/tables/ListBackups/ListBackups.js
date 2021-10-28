@@ -12,7 +12,11 @@ import { YBCopyButton } from '../../common/descriptors';
 import { get } from '../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { isAvailable, isNotHidden } from '../../../utils/LayoutUtils';
-import { timeFormatter, successStringFormatter } from '../../../utils/TableFormatters';
+import {
+  timeFormatter,
+  successStringFormatter,
+  backupConfigFormatter
+} from '../../../utils/TableFormatters';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import { TableAction } from '../../tables';
 import ListTablesModal from './ListTablesModal';
@@ -606,6 +610,15 @@ export default class ListBackups extends Component {
                 dataAlign="left"
               >
                 Expiry Time
+              </TableHeaderColumn>
+              <TableHeaderColumn
+                dataFormat={(_cell, row) => backupConfigFormatter(row, this.props.storageConfigs)}
+                columnClassName="no-border "
+                className="no-border"
+                expandable={false}
+                dataAlign="left"
+              >
+                Backup Config
               </TableHeaderColumn>
               <TableHeaderColumn
                 dataFormat={getBackupDuration}
