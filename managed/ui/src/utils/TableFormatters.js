@@ -13,6 +13,14 @@ export function timeFormatter(cell) {
   }
 }
 
+export function backupConfigFormatter(row, configList) {
+  if (row.storageConfigUUID) {
+    const storageConfig = configList.find((config) => config.configUUID === row.storageConfigUUID);
+    if (storageConfig) return storageConfig.configName;
+  }
+  return 'Config UUID (Missing)';
+}
+
 export function percentFormatter(cell, row) {
   return <YBFormattedNumber value={cell / 100} formattedNumberStyle={'percent'} />;
 }
