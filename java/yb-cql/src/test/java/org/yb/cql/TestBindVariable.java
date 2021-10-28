@@ -44,6 +44,14 @@ import org.slf4j.LoggerFactory;
 public class TestBindVariable extends BaseCQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestBindVariable.class);
 
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    // testPrepareInsertBindLongJson needs more memory than the default of 5%.
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("read_buffer_memory_limit", "-100");
+    return flagMap;
+  }
+
   private void testInvalidBindStatement(String stmt, Object... values) {
     try {
       session.execute(stmt, values);

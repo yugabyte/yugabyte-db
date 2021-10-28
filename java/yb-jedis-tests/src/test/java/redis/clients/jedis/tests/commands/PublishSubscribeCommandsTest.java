@@ -49,6 +49,14 @@ public class PublishSubscribeCommandsTest extends JedisCommandTestBase {
     t.start();
   }
 
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    // handleClientOutputBufferLimitForSubscribeTooSlow needs more memory than the default of 5%.
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("read_buffer_memory_limit", "-100");
+    return flagMap;
+  }
+
   @Test
   public void subscribe() throws InterruptedException {
     jedis.subscribe(new JedisPubSub() {

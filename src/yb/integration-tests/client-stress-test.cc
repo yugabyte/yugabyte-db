@@ -494,6 +494,7 @@ TEST_F_EX(ClientStressTest, PauseFollower, ClientStressTest_FollowerOom) {
   ts->mutable_flags()->push_back("--TEST_yb_inbound_big_calls_parse_delay_ms=30000");
   ts->mutable_flags()->push_back("--binary_call_parser_reject_on_mem_tracker_hard_limit=true");
   ts->mutable_flags()->push_back(Format("--rpc_throttle_threshold_bytes=$0", 1_MB));
+  ts->mutable_flags()->push_back("--read_buffer_memory_limit=-10");
   ASSERT_OK(ts->Restart());
 
   ThrottleLogCounter log_counter(ts);
