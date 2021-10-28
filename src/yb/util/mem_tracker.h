@@ -592,7 +592,11 @@ class ScopedTrackedConsumption {
 template <class F>
 int64_t AbsRelMemLimit(int64_t value, const F& f) {
   if (value < 0) {
-    return f() * std::min<int64_t>(-value, 100) / 100;
+    auto base_memory_limit = f();
+    if (base_memory_limit < 0) {
+      return -1;
+    }
+    return base_memory_limit * std::min<int64_t>(-value, 100) / 100;
   }
   if (value == 0) {
     return -1;

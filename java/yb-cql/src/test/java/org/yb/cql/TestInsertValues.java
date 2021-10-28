@@ -46,6 +46,14 @@ public class TestInsertValues extends BaseCQLTest {
     return 240;
   }
 
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    // testLargeInsert needs more memory than the default of 5%.
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("read_buffer_memory_limit", "-100");
+    return flagMap;
+  }
+
   @Test
   public void testSimpleInsert() throws Exception {
     LOG.info("TEST INSERT VALUES - Start");

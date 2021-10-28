@@ -24,7 +24,7 @@
 DEFINE_int64(read_buffer_memory_limit, -5,
              "Overall limit for read buffers. "
              "Positive value - limit in bytes. "
-             "Negative value - percents of RAM. "
+             "Negative value - percent of root process memory. "
              "Zero - unlimited.");
 
 namespace yb {
@@ -41,14 +41,12 @@ ConnectionContextFactory::ConnectionContextFactory(
     int64_t memory_limit, const std::string& name,
     const std::shared_ptr<MemTracker>& parent_mem_tracker)
     : parent_tracker_(parent_mem_tracker) {
-  int64_t root_limit = AbsRelMemLimit(FLAGS_read_buffer_memory_limit, [] {
-    int64_t total_ram;
-    CHECK_OK(Env::Default()->GetTotalRAMBytes(&total_ram));
-    return total_ram;
+  int64_t root_buffer_limit = AbsRelMemLimit(FLAGS_read_buffer_memory_limit, [] {
+    return MemTracker::GetRootTracker()->limit();
   });
 
   auto root_buffer_tracker = MemTracker::FindOrCreateTracker(
-      root_limit, "Read Buffer", parent_mem_tracker);
+      root_buffer_limit, "Read Buffer", parent_mem_tracker);
   memory_limit = AbsRelMemLimit(memory_limit, [&root_buffer_tracker] {
     return root_buffer_tracker->limit();
   });
