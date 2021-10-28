@@ -625,7 +625,7 @@ Default: `true`
 
 ##### --regular_tablets_data_block_key_value_encoding
 
-Key-value encoding to use for regular data blocks in RocksDB. Possible options: `shared_prefix, `three_shared_parts`.
+Key-value encoding to use for regular data blocks in RocksDB. Possible options: `shared_prefix`, `three_shared_parts`.
 
 Default: `shared_prefix`.
 
