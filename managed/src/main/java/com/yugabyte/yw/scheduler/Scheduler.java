@@ -12,6 +12,7 @@
 package com.yugabyte.yw.scheduler;
 
 import static com.cronutils.model.CronType.UNIX;
+
 import akka.actor.ActorSystem;
 import com.cronutils.model.Cron;
 import com.cronutils.model.definition.CronDefinitionBuilder;
@@ -40,7 +41,6 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
@@ -50,16 +50,14 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 import scala.concurrent.ExecutionContext;
 import scala.concurrent.duration.Duration;
 
 @Singleton
+@Slf4j
 public class Scheduler {
-
-  private static final Logger LOG = LoggerFactory.getLogger(Scheduler.class);
 
   private final int YB_SCHEDULER_INTERVAL = 2;
   private final int MIN_TO_SEC = 60;
@@ -78,7 +76,7 @@ public class Scheduler {
     this.commissioner = commissioner;
     this.initialize();
 
-    LOG.info("Starting scheduling service");
+    log.info("Starting scheduling service");
   }
 
   private void initialize() {
@@ -94,26 +92,24 @@ public class Scheduler {
   /** Iterates through all the schedule entries and runs the tasks that are due to be scheduled. */
   @VisibleForTesting
   void scheduleRunner() {
-    if (HighAvailabilityConfig.isFollower()) {
-      LOG.debug("Skipping scheduler for follower platform");
+    if (!running.compareAndSet(false, true)) {
+      log.info("Previous run of scheduler is still underway");
       return;
     }
 
-    // Check if last scheduled thread is still running.
-    if (running.get()) {
-      LOG.info("Previous scheduler still running");
-      return;
-    }
-
-    LOG.info("Running scheduler");
     try {
-      running.set(true);
+      if (HighAvailabilityConfig.isFollower()) {
+        log.debug("Skipping scheduler for follower platform");
+        return;
+      }
+
+      log.info("Running scheduler");
       for (Schedule schedule : Schedule.getAllActive()) {
         Date currentTime = new Date();
         long frequency = schedule.getFrequency();
         String cronExpression = schedule.getCronExpression();
         if (cronExpression == null && frequency == 0) {
-          LOG.error(
+          log.error(
               "Scheduled task does not have a recurrence specified {}", schedule.getScheduleUUID());
           continue;
         }
@@ -167,7 +163,7 @@ public class Scheduler {
             // iteration completely.
             shouldRunTask = true;
             if (lastScheduledTime != null && lastCompletedTime == null) {
-              LOG.warn(
+              log.warn(
                   "Previous scheduled task still running, skipping this iteration's task. "
                       + "Will try again next at {}.",
                   executionTime.nextExecution(utcNow).get());
@@ -192,7 +188,7 @@ public class Scheduler {
             deleteExpiredBackupsForCustomer(customer, backups);
           });
     } catch (Exception e) {
-      LOG.error("Error Running scheduler thread", e);
+      log.error("Error Running scheduler thread", e);
     } finally {
       running.set(false);
     }
@@ -262,14 +258,14 @@ public class Scheduler {
 
   private void runDeleteBackupTask(Customer customer, Backup backup) {
     if (backup.state != Backup.BackupState.Completed) {
-      LOG.warn("Cannot delete backup {} since it is not in completed state.", backup.backupUUID);
+      log.warn("Cannot delete backup {} since it is not in completed state.", backup.backupUUID);
       return;
     }
     DeleteBackup.Params taskParams = new DeleteBackup.Params();
     taskParams.customerUUID = customer.getUuid();
     taskParams.backupUUID = backup.backupUUID;
     UUID taskUUID = commissioner.submit(TaskType.DeleteBackup, taskParams);
-    LOG.info("Submitted task to delete backup {}, task uuid = {}.", backup.backupUUID, taskUUID);
+    log.info("Submitted task to delete backup {}, task uuid = {}.", backup.backupUUID, taskUUID);
     CustomerTask.create(
         customer,
         backup.backupUUID,
@@ -288,7 +284,7 @@ public class Scheduler {
       universe = Universe.getOrBadRequest(taskParams.universeUUID);
     } catch (Exception e) {
       schedule.stopSchedule();
-      LOG.info(
+      log.info(
           "External script scheduler is stopped for the universe {} as universe was deleted.",
           taskParams.universeUUID);
       return;
@@ -302,7 +298,7 @@ public class Scheduler {
         CustomerTask.TargetType.Universe,
         CustomerTask.TaskType.ExternalScript,
         universe.name);
-    LOG.info(
+    log.info(
         "Submitted external script task with task uuid = {} for universe {}.",
         taskUUID,
         universe.universeUUID);
