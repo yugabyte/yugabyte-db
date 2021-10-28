@@ -4611,13 +4611,8 @@ RelationCacheInitializePhase3(void)
 	 * During initdb also preload catalog caches (not just relation cache) as
 	 * they will be used heavily.
 	 */
-	if (IsYugaByteEnabled())
-	{
-		if (YBIsPreparingTemplates())
-			YBPreloadCatalogCaches();
-
-		YBLoadPinnedObjectsCache();
-	}
+	if (IsYugaByteEnabled() && YBIsPreparingTemplates())
+		YBPreloadCatalogCaches();
 }
 
 /*
