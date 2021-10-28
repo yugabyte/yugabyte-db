@@ -623,6 +623,19 @@ Enable Snappy compression at the the cluster level.
 
 Default: `true`
 
+##### --regular_tablets_data_block_key_value_encoding
+
+Key-value encoding to use for regular data blocks in RocksDB. Possible options: `shared_prefix, `three_shared_parts`.
+
+Default: `shared_prefix`.
+
+{{< note title="Note" >}}
+
+Only change this flag to `three_shared_parts` after migration the whole cluster to the YugabyteDB version that supports it.
+
+{{< /note >}}
+
+
 ##### --rocksdb_compact_flush_rate_limit_bytes_per_sec
 
 Used to control rate of memstore flush and SSTable file compaction.
