@@ -183,7 +183,10 @@ class UniverseDetail extends Component {
         this.setState({
           showAlert: true,
           alertType: 'success',
-          alertMessage: 'Encryption key has been set!'
+          alertMessage:
+            JSON.parse(res.payload.config.data).key_op === 'ENABLE'
+              ? 'Encryption key has been set!'
+              : 'Encryption-at-Rest has been disabled!'
         });
       }
       setTimeout(() => this.setState({ showAlert: false }), 3000);
