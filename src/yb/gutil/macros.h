@@ -21,8 +21,8 @@
 // any changes here, make sure that you're not breaking any platforms.
 //
 
-#ifndef BASE_MACROS_H_
-#define BASE_MACROS_H_
+#ifndef YB_GUTIL_MACROS_H
+#define YB_GUTIL_MACROS_H
 
 #include <stddef.h>         // For size_t
 #include "yb/gutil/port.h"
@@ -290,4 +290,15 @@ enum LinkerInitialized { LINKER_INITIALIZED };
 #define FALLTHROUGH_INTENDED do { } while (0)
 #endif
 
-#endif  // BASE_MACROS_H_
+// Generally it is better to not initialize variables with default values to let the compiler find
+// branches where we don't set it and then use instead of masking issues and silently use dummy
+// values incorrectly.
+// But for FASTDEBUG build GCC 5.5 can't handle this correctly and issues false alarm, so
+// we use default initialization specifically for this case.
+#ifdef FASTDEBUG
+#define FASTDEBUG_FAKE_INIT(x) {x}
+#else
+#define FASTDEBUG_FAKE_INIT(x)
+#endif
+
+#endif  // YB_GUTIL_MACROS_H

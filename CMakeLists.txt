@@ -430,7 +430,7 @@ ADD_CXX_FLAGS(-DYB_HEADERS_NO_STUBS=1)
 #   3. Build again with CMAKE_BUILD_TYPE_PROFILE_BUILD
 #     -fprofile-use: Compiler will use the profile outputs for optimizations
 set(CXX_FLAGS_DEBUG "-ggdb")
-set(CXX_FLAGS_FASTDEBUG "-ggdb -O1 -fno-omit-frame-pointer")
+set(CXX_FLAGS_FASTDEBUG "-ggdb -O1 -fno-omit-frame-pointer -DFASTDEBUG")
 set(CXX_FLAGS_RELEASE "-O3 -g -DNDEBUG -fno-omit-frame-pointer")
 
 # Nullify CMake's predefined flags since we are handling different build types on our own.
