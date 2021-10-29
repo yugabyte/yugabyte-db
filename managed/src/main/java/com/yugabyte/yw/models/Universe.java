@@ -6,7 +6,6 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.net.HostAndPort;
@@ -28,23 +27,20 @@ import io.ebean.SqlUpdate;
 import io.ebean.annotation.DbJson;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.ConcurrentModificationException;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.HashSet;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import javax.persistence.CascadeType;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
-import javax.persistence.OneToMany;
 import javax.persistence.Table;
 import javax.persistence.Transient;
 import javax.persistence.UniqueConstraint;
@@ -149,6 +145,19 @@ public class Universe extends Model {
   public void resetVersion() {
     this.version = -1;
     this.update();
+  }
+
+  @JsonIgnore
+  public List<String> getVersions() {
+    if (null == universeDetails || null == universeDetails.clusters) {
+      return new ArrayList<>();
+    }
+    return universeDetails
+        .clusters
+        .stream()
+        .filter(c -> c != null && c.userIntent != null)
+        .map(c -> c.userIntent.ybSoftwareVersion)
+        .collect(Collectors.toList());
   }
 
   public static final Finder<UUID, Universe> find = new Finder<UUID, Universe>(Universe.class) {};
