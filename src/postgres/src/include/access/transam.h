@@ -111,8 +111,6 @@ typedef struct VariableCacheData
 	Oid			nextOid;		/* next OID to assign */
 	uint32		oidCount;		/* OIDs available before must do XLOG work */
 
-	Oid			ysqlUpgradeNextOid;		/* next OID to assign during YSQL upgrade */
-
 
 	/*
 	 * These fields are protected by XidGenLock.
