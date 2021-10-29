@@ -103,6 +103,6 @@ Clicking `See all nodes` takes you to the Tablet Servers page where you can obse
 
 {{<tip title="Next step" >}}
 
-[Explore YSQL](../../explore-ysql/)
+[Explore YSQL](../../explore/ysql/)
 
 {{< /tip >}}

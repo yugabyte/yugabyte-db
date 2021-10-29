@@ -129,6 +129,6 @@ Click **See all nodes** to go to the **Tablet Servers** page where you can obser
 
 {{<tip title="Next step" >}}
 
-[Explore YSQL](../../explore-ysql/)
+[Explore YSQL](../../explore/ysql/)
 
 {{< /tip >}}
