@@ -24,6 +24,7 @@ import com.yugabyte.yw.models.paging.PagedQuery.SortByIF;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
+import io.ebean.PersistenceContextScope;
 import io.ebean.annotation.DbJson;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -178,7 +179,8 @@ public class AlertConfiguration extends Model {
 
   public static ExpressionList<AlertConfiguration> createQueryByFilter(
       AlertConfigurationFilter filter) {
-    ExpressionList<AlertConfiguration> query = find.query().where();
+    ExpressionList<AlertConfiguration> query =
+        find.query().setPersistenceContextScope(PersistenceContextScope.QUERY).where();
     appendInClause(query, "uuid", filter.getUuids());
     if (filter.getCustomerUuid() != null) {
       query.eq("customerUUID", filter.getCustomerUuid());

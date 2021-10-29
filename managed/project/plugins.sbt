@@ -26,3 +26,5 @@ addSbtPlugin("com.swoval" % "sbt-jvm-format" % "0.3.1")
 //addSbtPlugin("com.hootsuite" %% "sbt-swagger" % "1.0.0")
 
 addSbtPlugin("io.kamon" % "sbt-kanela-runner-play-2.6" % "2.0.9")
+
+addSbtPlugin("net.virtual-void" % "sbt-dependency-graph" % "0.10.0-RC1")

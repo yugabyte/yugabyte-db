@@ -20,6 +20,7 @@ import com.yugabyte.yw.models.paging.PagedQuery.SortByIF;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
+import io.ebean.PersistenceContextScope;
 import io.ebean.annotation.Formula;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -248,7 +249,11 @@ public class Alert extends Model implements AlertLabelsProvider {
   }
 
   public static ExpressionList<Alert> createQueryByFilter(AlertFilter filter) {
-    ExpressionList<Alert> query = find.query().fetch("labels").where();
+    ExpressionList<Alert> query =
+        find.query()
+            .setPersistenceContextScope(PersistenceContextScope.QUERY)
+            .fetch("labels")
+            .where();
     appendInClause(query, "uuid", filter.getUuids());
     appendNotInClause(query, "uuid", filter.getExcludeUuids());
     if (filter.getCustomerUuid() != null) {

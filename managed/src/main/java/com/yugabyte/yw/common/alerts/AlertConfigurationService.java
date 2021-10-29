@@ -469,6 +469,7 @@ public class AlertConfigurationService {
               // If it exists - we need to update existing one just in case group is updated.
               definition = currentDefinitions.get(0);
             }
+            definition.setConfigWritten(false);
             definition.setQuery(configuration.getTemplate().buildTemplate(customer));
             if (!configuration.getTemplate().isSkipTargetLabels()) {
               definition.setLabels(
