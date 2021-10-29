@@ -23,9 +23,9 @@ Release v2.6.1.0 contains an authentication vulnerability in YCQL LDAP. _YSQL is
 If you're using YCQL LDAP with v2.6.1.0 and can't upgrade immediately, see the note in the [Version 2.6.1.0 section](#v2-6-1-0-sept-3-2021) for mitigation instructions.
 {{< /warning >}}
 
-## v2.6.5.0 - Oct 28, 2021
+## v2.6.5.0 - Oct 29, 2021
 
-**Build:** `2.6.5.0-b1`
+**Build:** `2.6.5.0-b4`
 
 ### Downloads
 
@@ -45,14 +45,14 @@ If you're using YCQL LDAP with v2.6.1.0 and can't upgrade immediately, see the n
 ### Docker
 
 ```sh
-docker pull yugabytedb/yugabyte:2.6.5.0-b1
+docker pull yugabytedb/yugabyte:2.6.5.0-b4
 ```
 
 ### Improvements
 
 #### Database
 
-[#9606] [DocDB] Add flag --force for command delete_tablet to set state TABLET_DATA_DELETED for tool yb-ts-cli
+[9606](https://github.com/yugabyte/yugabyte-db/issues/9606) [DocDB] Add flag --force for command delete_tablet to set state TABLET_DATA_DELETED for tool yb-ts-cli
 
 #### Yugabyte Platform
 
@@ -62,13 +62,15 @@ N/A
 
 #### Database
 
-[#9924] [YSQL] Always check schema name on backup import
-[#10042] [Backup] Allow system table for YEDIS restore
+[9924](https://github.com/yugabyte/yugabyte-db/issues/9924) [YSQL] Always check schema name on backup import
+[10042](https://github.com/yugabyte/yugabyte-db/issues/10042) [Backup] Allow system table for YEDIS restore
+[10415](https://github.com/yugabyte/yugabyte-db/issues/10415) [backup] Backup-restore failures for old backups.
 
 #### Yugabyte Platform
 
 [PLAT-1634] Backup page is not loading because of empty config column
 [PLAT-1934] Adding UI to set KUBE_DOMAIN
+[PLAT-2113] [PLAT-2116] Fix HA failing with entity_too_large
 
 ### Known issues
 
