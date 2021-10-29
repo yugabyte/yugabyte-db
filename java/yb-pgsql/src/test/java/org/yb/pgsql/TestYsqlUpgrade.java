@@ -764,6 +764,11 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
 
     assertMigrationsWorked(preSnapshotCustom, postSnapshotCustom);
     assertMigrationsWorked(preSnapshotTemplate1, postSnapshotTemplate1);
+
+    assertEquals("Maximum system-generated OID differs between databases!"
+        + " Migration bug?",
+        getMaxSysGeneratedOid(postSnapshotTemplate1),
+        getMaxSysGeneratedOid(postSnapshotCustom));
   }
 
   /** Invalid stuff which doesn't belong to other test cases. */
@@ -1152,6 +1157,19 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     assertTrue(oid + " is not generated in system OID range", isSysGeneratedOid(oid));
   }
 
+  private Long getMaxSysGeneratedOid(SysCatalogSnapshot snapshot) {
+    return snapshot.catalog.get("pg_class").stream()
+        .filter((classRow) -> classRow.getBoolean(18 /* relhasoids, with reltuples filtered out */))
+        .mapToLong((classRow) -> {
+          String tableName = classRow.getString(1);
+          return snapshot.catalog.get(tableName).stream()
+              .mapToLong((r) -> r.getLong(0))
+              .filter(this::isSysGeneratedOid)
+              .max().orElse(0L);
+        })
+        .max().orElse(0L);
+  }
+
   /**
    * Given two system catalog snapshots (fresh one created by reinitdb, and an older one migrated to
    * the latest), verify that they are equivalent for all practical purposes (e.g. OIDs from
@@ -1291,7 +1309,9 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       return copy;
 
     final long pgTypeOid = 1247;
+    final long pgProcOid = 1255;
     final long pgClassOid = 1259;
+    final long pgNamespaceOid = 2615;
 
     Map<Long, String> flatEntityNamesMap = new HashMap<>();
     entityNamesMap.values().forEach(flatEntityNamesMap::putAll);
@@ -1341,8 +1361,9 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
         String nodeTree = ((PGobject) row.get(nodeTreeColIdx)).getValue();
         String[] nodeTreeParts = nodeTree.split("\\s+");
         for (int i = 0; i < nodeTreeParts.length; i++) {
-          if (nodeTreeParts[i].matches("1\\d{4}" /* 10000 to 19999 for simplicity */)) {
-            long oid = Long.parseLong(nodeTreeParts[i]);
+          if (nodeTreeParts[i].matches("1\\d{4}\\)?" /* 10000 to 19999 for simplicity */)) {
+            /* There may be ending ')' such as "13032)" and we need to remove the trailing ')'. */
+            long oid = Long.parseLong(nodeTreeParts[i].replaceAll("\\)", ""));
             if (isSysGeneratedOid(oid)) {
               nodeTreeParts[i] = flatEntityNamesMap.get(oid);
             }
@@ -1360,14 +1381,19 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     //       aren't affected by migrations, so we don't care (yet).
     switch (tableName) {
       case "pg_class":
+        replace.accept(2 /* relnamespace */, entityNamesMap.get(pgNamespaceOid));
         replace.accept(3 /* reltype */, entityNamesMap.get(pgTypeOid));
         replace.accept(7 /* relfilenode */, entityNamesMap.get(pgClassOid));
         break;
       case "pg_type":
+        replace.accept(2 /* typnamespace */, entityNamesMap.get(pgNamespaceOid));
         replace.accept(11 /* typrelid */, entityNamesMap.get(pgClassOid));
+        replace.accept(12 /* typelem */, entityNamesMap.get(pgTypeOid));
+        replace.accept(13 /* typarray */, entityNamesMap.get(pgTypeOid));
         break;
       case "pg_attribute":
         replace.accept(0 /* attrelid */, entityNamesMap.get(pgClassOid));
+        replace.accept(2 /* atttypid */, entityNamesMap.get(pgTypeOid));
         break;
       case "pg_description":
       case "pg_shdescription":
@@ -1381,6 +1407,19 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       case "pg_rewrite":
         replace.accept(2 /* ev_class */, entityNamesMap.get(pgClassOid));
         simplifyPgNodeTree.accept(7 /* ev_action */);
+        break;
+      case "pg_constraint":
+        replace.accept(2 /* connamespace */, entityNamesMap.get(pgNamespaceOid));
+        replace.accept(8 /* contypid */, entityNamesMap.get(pgTypeOid));
+        break;
+      case "pg_language":
+        replace.accept(5 /* lanplcallfoid */, entityNamesMap.get(pgProcOid));
+        replace.accept(6 /* laninline */, entityNamesMap.get(pgProcOid));
+        replace.accept(7 /* lanvalidator */, entityNamesMap.get(pgProcOid));
+        break;
+      case "pg_proc":
+        replace.accept(2 /* pronamespace */, entityNamesMap.get(pgNamespaceOid));
+        break;
       default:
         return copy;
     }
