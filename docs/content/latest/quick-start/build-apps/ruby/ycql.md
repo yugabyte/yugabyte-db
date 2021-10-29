@@ -49,7 +49,7 @@ $ gem install yugabyte-ycql-driver
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start YCQL](../../../../api/ycql/quick-start/).
+- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start YCQL](../../../explore/ycql/).
 
 ### Write the sample Ruby application
 

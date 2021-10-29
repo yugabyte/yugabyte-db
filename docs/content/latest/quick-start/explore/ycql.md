@@ -38,7 +38,7 @@ showAsideToc: true
   
 </ul>
 
-After [creating a local cluster](../../create-local-cluster/), follow the instructions below to explore YugabyteDB's semi-relational [Yugabyte Cloud QL](../../../api/ycql) API.
+After [creating a local cluster](../../create-local-cluster/macos/), follow the instructions below to explore YugabyteDB's semi-relational [Yugabyte Cloud QL](../../../api/ycql/) API.
 
 [**ycqlsh**](../../../admin/ycqlsh/) is the command line shell for interacting with the YCQL API. You will use ycqlsh for this tutorial.
 

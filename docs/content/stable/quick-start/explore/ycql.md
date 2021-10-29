@@ -18,14 +18,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/quick-start/explore/ysql" class="nav-link">
+    <a href="../ysql/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
  <li >
-    <a href="/latest/quick-start/explore/ycql" class="nav-link active">
+    <a href="../ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -33,7 +33,7 @@ showAsideToc: true
   
 </ul>
 
-After [creating a local cluster](../../create-local-cluster/), follow the instructions below to explore YugabyteDB's semi-relational [Yugabyte Cloud QL](../../../api/ycql) API.
+After [creating a local cluster](../../create-local-cluster/macos/), follow the instructions below to explore YugabyteDB's semi-relational [Yugabyte Cloud QL](../../../api/ycql/) API.
 
 [**ycqlsh**](../../../admin/ycqlsh/) is the command line shell for interacting with the YCQL API. You will use ycqlsh for this tutorial.
 

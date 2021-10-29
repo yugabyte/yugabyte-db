@@ -5,7 +5,7 @@ linkTitle: 2. Create a local cluster
 description: Create a local cluster on macOS in less than five minutes.
 aliases:
   - /quick-start/create-local-cluster/
-  - ../
+  - /latest/quick-start/create-local-cluster/
 menu/:
   latest:
     parent: quick-start
@@ -16,7 +16,6 @@ type: page
 isTocNested: true
 showAsideToc: true
 ---
-
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
