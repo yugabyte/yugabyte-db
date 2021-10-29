@@ -40,13 +40,16 @@ public class AlertChannelEmail implements AlertChannelInterface {
 
     if (CollectionUtils.isEmpty(recipients)) {
       throw new PlatformNotificationException(
-          String.format("Error sending email for alert %s: No recipients found.", alert.getName()));
+          String.format(
+              "Error sending email for alert %s: No recipients found for channel %s",
+              alert.getName(), channel.getName()));
     }
 
     if (smtpData == null) {
       throw new PlatformNotificationException(
           String.format(
-              "Error sending email for alert %s: Invalid SMTP settings found.", alert.getName()));
+              "Error sending email for alert %s: SMTP settings not found for channel %s.",
+              alert.getName(), channel.getName()));
     }
 
     try {

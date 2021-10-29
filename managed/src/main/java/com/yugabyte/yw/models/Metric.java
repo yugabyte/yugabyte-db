@@ -16,6 +16,7 @@ import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Junction;
 import io.ebean.Model;
+import io.ebean.PersistenceContextScope;
 import io.prometheus.client.Collector;
 import java.util.Comparator;
 import java.util.Date;
@@ -160,7 +161,11 @@ public class Metric extends Model {
   }
 
   public static ExpressionList<Metric> createQueryByFilter(MetricFilter filter) {
-    ExpressionList<Metric> query = find.query().fetch("labels").where();
+    ExpressionList<Metric> query =
+        find.query()
+            .setPersistenceContextScope(PersistenceContextScope.QUERY)
+            .fetch("labels")
+            .where();
     if (filter.getCustomerUuid() != null) {
       query.eq("customerUUID", filter.getCustomerUuid());
     }
