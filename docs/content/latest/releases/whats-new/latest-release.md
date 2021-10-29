@@ -24,11 +24,60 @@ For Yugabyte Platform, the class is `yugaware.storageClass`. For YugabyteDB, the
 
 {{< /tip >}}
 
+## v2.9.1.0 - Oct 29, 2021
+
+**Build:** `2.9.1.0-b140`
+
+### Downloads
+
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.9.1.0-darwin.tar.gz">
+  <button>
+    <i class="fab fa-apple"></i><span class="download-text">macOS</span>
+  </button>
+</a>
+&nbsp; &nbsp; &nbsp;
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.9.1.0-linux.tar.gz">
+  <button>
+    <i class="fab fa-linux"></i><span class="download-text">Linux</span>
+  </button>
+</a>
+<br />
+
+### Docker
+
+```sh
+docker pull yugabytedb/yugabyte:2.9.1.0-b140
+```
+
+### New Features
+
+#### Yugabyte Platform
+
+#### Database
+
+### Improvements
+
+#### Yugabyte Platform
+
+#### Database
+
+### Bug Fixes
+
+### Known Issues
+
+#### Yugabyte Platform
+
+N/A
+
+#### Database
+
+N/A
+
 ## v2.9.0.0 - August 31, 2021
 
 Version 2.9 introduces many new features and refinements. To learn more, check out the [Announcing YugabyteDB 2.9: Pushing the Boundaries of Relational Databases](https://blog.yugabyte.com/announcing-yugabytedb-2-9/) blog post.
 
-Yugabyte release 2.9 builds on our work in the 2.7 series, which fed into the 2.6 stable release.
+Yugabyte release 2.9 builds on our work in the 2.7 series.
 
 **Build:** `2.9.0.0-b4`
 
