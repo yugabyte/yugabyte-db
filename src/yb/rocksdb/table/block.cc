@@ -110,7 +110,7 @@ static inline const char* DecodeRestartEntry(
           p, limit, read_allowed_from, &shared_prefix_size, key_size, &non_shared_1_size_delta,
           &is_something_shared, &non_shared_2_size, &non_shared_2_size_delta,
           &shared_last_component_size, &shared_last_component_increase, &value_size);
-      if (PREDICT_FALSE(is_something_shared)) {
+      if (PREDICT_FALSE(!result || is_something_shared)) {
         // This means corruption or decode failure, restart key is stored fully without reusing any
         // data from the previous key.
         return nullptr;
