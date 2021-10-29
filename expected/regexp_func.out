@@ -511,7 +511,7 @@ SELECT REGEXP_SUBSTR('number of your street, zipcode town, FR', ',\s+[Zf][^,]+',
 SELECT REGEXP_SUBSTR('number of your street, zipcode town, FR', ',\s+([Zf][^,]+)', 1, 1, 'i', 1);
  regexp_substr 
 ---------------
- 
+ zipcode town
 (1 row)
 
 -- ORACLE> SELECT REGEXP_SUBSTR('1234567890 1234567890', '(123)(4(56)(78))', 1, 1, 'i', 4) FROM DUAL; -> 78
@@ -675,3 +675,256 @@ ERROR:  argument 'occurrence' must be a positive number
 -- ORACLE> SELECT REGEXP_REPLACE ('A PostgreSQL function', 'a|e|i|o|u', 'X', 1, 1, 'g') FROM DUAL; -> ORA-01760
 SELECT oracle.REGEXP_REPLACE ('A PostgreSQL function', 'a|e|i|o|u', 'X', 1, 1, 'g');
 ERROR:  argument 'flags' has unsupported modifier(s).
+--
+-- Test NULL input in the regexp_* functions that must returned NULL except for the modifier
+-- or regexp flag. There is an exception with regexp_replace(), if the pattern is null (second
+-- parameter) the original string is returned. We don't test functions witht the STRICT attribute
+--
+SELECT oracle.REGEXP_LIKE(NULL, '\d+', 'i');
+ regexp_like 
+-------------
+ 
+(1 row)
+
+SELECT oracle.REGEXP_LIKE('1234', NULL, 'i');
+ regexp_like 
+-------------
+ 
+(1 row)
+
+SELECT oracle.REGEXP_LIKE('1234', '\d+', NULL);
+ regexp_like 
+-------------
+ t
+(1 row)
+
+SELECT oracle.REGEXP_LIKE('1234', '\d+', '');
+ regexp_like 
+-------------
+ t
+(1 row)
+
+SELECT oracle.REGEXP_COUNT('1234', '\d', NULL) ;
+ regexp_count 
+--------------
+             
+(1 row)
+
+SELECT oracle.REGEXP_COUNT('1234', '\d', 1, NULL) ;
+ regexp_count 
+--------------
+            4
+(1 row)
+
+SELECT oracle.REGEXP_COUNT('1234', '\d', 1, '') ;
+ regexp_count 
+--------------
+            4
+(1 row)
+
+SELECT oracle.REGEXP_COUNT('1234', '\d', NULL, NULL) ;
+ regexp_count 
+--------------
+             
+(1 row)
+
+SELECT oracle.REGEXP_COUNT(NULL, '4', 1, 'i');
+ regexp_count 
+--------------
+             
+(1 row)
+
+SELECT oracle.REGEXP_INSTR('1234', '4', NULL);
+ regexp_instr 
+--------------
+             
+(1 row)
+
+SELECT oracle.REGEXP_INSTR('1234', '4', 1, NULL);
+ regexp_instr 
+--------------
+             
+(1 row)
+
+SELECT oracle.REGEXP_INSTR('1234', '4', 1, 1, NULL);
+ regexp_instr 
+--------------
+             
+(1 row)
+
+SELECT oracle.REGEXP_INSTR('1234', '4', 1, 1, 1, NULL);
+ regexp_instr 
+--------------
+            5
+(1 row)
+
+SELECT oracle.REGEXP_INSTR('1234', '4', 1, 1, 0, NULL);
+ regexp_instr 
+--------------
+            4
+(1 row)
+
+SELECT oracle.REGEXP_INSTR('1234', '4', 1, 1, 0, 'i', NULL);
+ regexp_instr 
+--------------
+             
+(1 row)
+
+SELECT oracle.REGEXP_INSTR('1234', '4', 1, 1, 0, '', NULL);
+ regexp_instr 
+--------------
+             
+(1 row)
+
+SELECT oracle.REGEXP_INSTR(NULL, '4', 1, 1, 0, 'i', 2);
+ regexp_instr 
+--------------
+             
+(1 row)
+
+SELECT oracle.REGEXP_INSTR(NULL, '4', 1, 1, 0, 'i', 2);
+ regexp_instr 
+--------------
+             
+(1 row)
+
+SELECT oracle.REGEXP_SUBSTR('1234', '1(.*)', null);
+ regexp_substr 
+---------------
+ 
+(1 row)
+
+SELECT oracle.REGEXP_SUBSTR('1234', '234', 1, null);
+ regexp_substr 
+---------------
+ 
+(1 row)
+
+SELECT oracle.REGEXP_SUBSTR('1234', '234', 1, 1, null);
+ regexp_substr 
+---------------
+ 234
+(1 row)
+
+SELECT oracle.REGEXP_SUBSTR('1234', '234', 1, 1, '');
+ regexp_substr 
+---------------
+ 234
+(1 row)
+
+SELECT oracle.REGEXP_SUBSTR('1234', '234', 1, 1, 'i', null);
+ regexp_substr 
+---------------
+ 
+(1 row)
+
+-- test for capture group
+SELECT oracle.REGEXP_SUBSTR('1234', '2(3)(4)', 1, 1, 'i', 1);
+ regexp_substr 
+---------------
+ 3
+(1 row)
+
+SELECT oracle.REGEXP_SUBSTR('1234', '2(3)(4)', 1, 1, 'i', 2);
+ regexp_substr 
+---------------
+ 4
+(1 row)
+
+SELECT oracle.REGEXP_SUBSTR('1234', '2(3)(4)', 1, 1, 'i', 0);
+ regexp_substr 
+---------------
+ 234
+(1 row)
+
+-- Special case for second parameter in REGEXP_REPLACE, when null returns the original value.
+SELECT oracle.REGEXP_REPLACE(null, '\d', 'a');
+ regexp_replace 
+----------------
+ 
+(1 row)
+
+SELECT oracle.REGEXP_REPLACE('1234', null, 'a');
+ regexp_replace 
+----------------
+ 1234
+(1 row)
+
+SELECT oracle.REGEXP_REPLACE('1234', null, null);
+ regexp_replace 
+----------------
+ 1234
+(1 row)
+
+SELECT oracle.REGEXP_REPLACE('1234', '\d', null);
+ regexp_replace 
+----------------
+ 
+(1 row)
+
+SELECT oracle.REGEXP_REPLACE('1234', '\d', 'a', null);
+ regexp_replace 
+----------------
+ 
+(1 row)
+
+SELECT oracle.REGEXP_REPLACE('1234', null, 'a', 2);
+ regexp_replace 
+----------------
+ 1234
+(1 row)
+
+SELECT oracle.REGEXP_REPLACE('1234', null, 'a', null);
+ regexp_replace 
+----------------
+ 
+(1 row)
+
+SELECT oracle.REGEXP_REPLACE('1234', null, 'a', 1);
+ regexp_replace 
+----------------
+ 1234
+(1 row)
+
+SELECT oracle.REGEXP_REPLACE('1234', null, 'a', 1, null);
+ regexp_replace 
+----------------
+ 
+(1 row)
+
+SELECT oracle.REGEXP_REPLACE('1234', '\d', 'a', 1, null);
+ regexp_replace 
+----------------
+ 
+(1 row)
+
+SELECT oracle.REGEXP_REPLACE('1234', '\d', 'a', 1, null);
+ regexp_replace 
+----------------
+ 
+(1 row)
+
+SELECT oracle.REGEXP_REPLACE('1234', '\d', 'a', 1, null);
+ regexp_replace 
+----------------
+ 
+(1 row)
+
+SELECT oracle.REGEXP_REPLACE('1234', '\d', 'a', 1, 1, null);
+ regexp_replace 
+----------------
+ a234
+(1 row)
+
+SELECT oracle.REGEXP_REPLACE('1234', '\d', 'a', 1, NULL, 'i');
+ regexp_replace 
+----------------
+ 
+(1 row)
+
+SELECT oracle.REGEXP_REPLACE('1234', null, 'a', 1, 1, 'i');
+ regexp_replace 
+----------------
+ 1234
+(1 row)
+
