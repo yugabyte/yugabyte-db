@@ -22,8 +22,9 @@
 * [Setup](#setup)
 * [Building from source code](#building-from-source)
 * [How to contribute](#how-to-contribute)
+* [Support, discussions and forums](#support-discussions-and-forums)
 * [License](#license)
-* [Copyright](#copyright)
+* [Copyright notice](#copyright-notice)
 
 ## Overview
 
@@ -208,6 +209,13 @@ To learn more about `pg_stat_monitor` features and usage, see [User Guide](https
 
 
 ### Building from source
+
+To build `pg_stat_monitor` from source code, you require the following:
+
+* git
+* make
+* gcc
+* pg_config
 
 You can download the source code of the latest release of `pg_stat_monitor` from [the releases page on GitHub](https://github.com/Percona/pg_stat_monitor/releases) or using git:
 

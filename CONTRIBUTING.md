@@ -64,6 +64,8 @@ To build `pg_stat_monitor` from source code, you require the following:
 
 * git
 * make
+* gcc
+* pg_config
 
 Refer to the [Building from source code](https://github.com/percona/pg_stat_monitor#installing-from-source-code) section for guidelines.
 
