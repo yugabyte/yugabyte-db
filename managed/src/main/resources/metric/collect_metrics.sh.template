@@ -97,7 +97,7 @@ collect_metric 'yb_node_boot_time{process="master"}' "get_boot_time $PROCESS_MAS
 collect_metric 'yb_node_boot_time{process="tserver"}' "get_boot_time $PROCESS_TSERVER"
 
 if [ "$output" = "file" ]; then
-  mkdir -p "$(dirname "$(realpath "$filename")")" && echo -e "$metrics" > "$filename"
+  mkdir -p "$(dirname "$filename")" && echo -e "$metrics" > "$filename"
 else
   echo -e "$metrics"
 fi
