@@ -1,4 +1,4 @@
-/* orafce--3.16.sql */
+/* orafce--3.17.sql */
 
 -- complain if script is sourced in psql, rather than via CREATE EXTENSION
 \echo Use "CREATE EXTENSION orafce" to load this file. \quit
@@ -3565,17 +3565,19 @@ CREATE OR REPLACE FUNCTION oracle.translate_oracle_modifiers(text, bool)
 RETURNS text
 AS $$
 DECLARE
-  modifiers text;
+  modifiers text := '';
 BEGIN
-  -- Check that we don't have modifier not supported by Oracle
-  IF $1 ~ '[^icnsmx]' THEN
-    -- Modifier 's' is not supported by Oracle but it is a synonym
-    -- of 'n', we translate 'n' into 's' bellow. It is safe to allow it.
-    RAISE EXCEPTION 'argument ''flags'' has unsupported modifier(s).';
+  IF $1 IS NOT NULL THEN
+    -- Check that we don't have modifier not supported by Oracle
+    IF $1 ~ '[^icnsmx]' THEN
+      -- Modifier 's' is not supported by Oracle but it is a synonym
+      -- of 'n', we translate 'n' into 's' bellow. It is safe to allow it.
+      RAISE EXCEPTION 'argument ''flags'' has unsupported modifier(s).';
+    END IF;
+    -- Oracle 'n' modifier correspond to 's' POSIX modifier
+    -- Oracle 'm' modifier correspond to 'n' POSIX modifier
+    modifiers := translate($1, 'nm', 'sn');
   END IF;
-  -- Oracle 'n' modifier correspond to 's' POSIX modifier
-  -- Oracle 'm' modifier correspond to 'n' POSIX modifier
-  modifiers := translate($1, 'nm', 'sn');
   IF $2 THEN
     modifiers := modifiers || 'g';
   END IF;
@@ -3585,6 +3587,7 @@ $$
 LANGUAGE plpgsql;
 
 -- REGEXP_LIKE( string text, pattern text) -> boolean
+-- If one of the param is NULL returns NULL, declared STRICT
 CREATE OR REPLACE FUNCTION oracle.regexp_like(text, text)
 RETURNS boolean
 AS $$
@@ -3593,7 +3596,7 @@ AS $$
   -- newline-sensitivity but not ^ and $ search.
   SELECT CASE WHEN (count(*) > 0) THEN true ELSE false END FROM regexp_matches($1, $2, 'p');
 $$
-LANGUAGE 'sql';
+LANGUAGE 'sql' STRICT;
 
 -- REGEXP_LIKE( string text, pattern text, flags text ) -> boolean
 CREATE OR REPLACE FUNCTION oracle.regexp_like(text, text, text)
@@ -3602,6 +3605,10 @@ AS $$
 DECLARE
   modifiers text;
 BEGIN
+  -- Only modifier can be NULL
+  IF $1 IS NULL OR $2 IS NULL THEN
+    RETURN NULL;
+  END IF;
   modifiers := oracle.translate_oracle_modifiers($3, false);
   IF (regexp_matches($1, $2, modifiers))[1] IS NOT NULL THEN
     RETURN true;
@@ -3620,7 +3627,7 @@ AS $$
   -- newline-sensitivity but not ^ and $ search.
   SELECT count(*)::integer FROM regexp_matches($1, $2, 'pg');
 $$
-LANGUAGE 'sql';
+LANGUAGE 'sql' STRICT;
 
 -- REGEXP_COUNT( string text, pattern text, position int ) -> integer
 CREATE OR REPLACE FUNCTION oracle.regexp_count(text, text, integer)
@@ -3641,7 +3648,7 @@ BEGIN
   RETURN v_cnt;
 END;
 $$
-LANGUAGE plpgsql;
+LANGUAGE plpgsql STRICT;
 
 -- REGEXP_COUNT( string text, pattern text, position int, flags text ) -> integer
 CREATE OR REPLACE FUNCTION oracle.regexp_count(text, text, integer, text)
@@ -3651,6 +3658,10 @@ DECLARE
   modifiers text;
   v_cnt   integer;
 BEGIN
+  -- Only modifier can be NULL
+  IF $1 IS NULL OR $2 IS NULL OR $3 IS NULL THEN
+    RETURN NULL;
+  END IF;
   -- Check numeric arguments
   IF $3 < 1 THEN
     RAISE EXCEPTION 'argument ''position'' must be a number greater than 0';
@@ -3688,7 +3699,7 @@ BEGIN
   RETURN 0;
 END;
 $$
-LANGUAGE plpgsql;
+LANGUAGE plpgsql STRICT;
 
 --  REGEXP_INSTR( string text, pattern text, position int ) -> integer
 CREATE OR REPLACE FUNCTION oracle.regexp_instr(text, text, integer)
@@ -3718,7 +3729,7 @@ BEGIN
   RETURN 0;
 END;
 $$
-LANGUAGE plpgsql;
+LANGUAGE plpgsql STRICT;
 
 --  REGEXP_INSTR( string text, pattern text, position int, occurence int ) -> integer
 CREATE OR REPLACE FUNCTION oracle.regexp_instr(text, text, integer, integer)
@@ -3752,7 +3763,7 @@ BEGIN
   RETURN 0;
 END;
 $$
-LANGUAGE plpgsql;
+LANGUAGE plpgsql STRICT;
 
 --  REGEXP_INSTR( string text, pattern text, position int, occurence int, return_opt int ) -> integer
 CREATE OR REPLACE FUNCTION oracle.regexp_instr(text, text, integer, integer, integer)
@@ -3795,7 +3806,7 @@ BEGIN
   RETURN 0;
 END;
 $$
-LANGUAGE plpgsql;
+LANGUAGE plpgsql STRICT;
 
 --  REGEXP_INSTR( string text, pattern text, position int, occurence int, return_opt int, flags text ) -> integer
 CREATE OR REPLACE FUNCTION oracle.regexp_instr(text, text, integer, integer, integer, text)
@@ -3807,6 +3818,10 @@ DECLARE
   modifiers text;
   v_pattern text;
 BEGIN
+  -- Only modifier can be NULL
+  IF $1 IS NULL OR $2 IS NULL OR $3 IS NULL OR $4 IS NULL OR $5 IS NULL THEN
+    RETURN NULL;
+  END IF;
   -- Check numeric arguments
   IF $3 < 1 THEN
     RAISE EXCEPTION 'argument ''position'' must be a number greater than 0';
@@ -3853,6 +3868,10 @@ DECLARE
   v_pattern text;
   v_subexpr integer := $7;
 BEGIN
+  -- Only modifier can be NULL
+  IF $1 IS NULL OR $2 IS NULL OR $3 IS NULL OR $4 IS NULL OR $5 IS NULL OR $7 IS NULL THEN
+    RETURN NULL;
+  END IF;
   -- Check numeric arguments
   IF $3 < 1 THEN
       RAISE EXCEPTION 'argument ''position'' must be a number greater than 0';
@@ -3926,7 +3945,7 @@ BEGIN
   RETURN v_substr;
 END;
 $$
-LANGUAGE plpgsql;
+LANGUAGE plpgsql STRICT;
 
 -- REGEXP_SUBSTR( string text, pattern text, position int ) -> text
 CREATE OR REPLACE FUNCTION oracle.regexp_substr(text, text, int)
@@ -3953,7 +3972,7 @@ BEGIN
   RETURN v_substr;
 END;
 $$
-LANGUAGE plpgsql;
+LANGUAGE plpgsql STRICT;
 
 -- REGEXP_SUBSTR( string text, pattern text, position int, occurence int ) -> text
 CREATE OR REPLACE FUNCTION oracle.regexp_substr(text, text, integer, integer)
@@ -3983,7 +4002,7 @@ BEGIN
   RETURN v_substr;
 END;
 $$
-LANGUAGE plpgsql;
+LANGUAGE plpgsql STRICT;
 
 -- REGEXP_SUBSTR( string text, pattern text, position int, occurence int, flags text ) -> text
 CREATE OR REPLACE FUNCTION oracle.regexp_substr(text, text, integer, integer, text)
@@ -3994,6 +4013,10 @@ DECLARE
   v_pattern text;
   modifiers text;
 BEGIN
+  -- Only modifier can be NULL
+  IF $1 IS NULL OR $2 IS NULL OR $3 IS NULL OR $4 IS NULL THEN
+    RETURN NULL;
+  END IF;
   -- Check numeric arguments
   IF $3 < 1 THEN
     RAISE EXCEPTION 'argument ''position'' must be a number greater than 0';
@@ -4029,6 +4052,10 @@ DECLARE
   v_subexpr integer := $6;
   has_group integer;
 BEGIN
+  -- Only modifier can be NULL
+  IF $1 IS NULL OR $2 IS NULL OR $3 IS NULL OR $4 IS NULL OR $6 IS NULL THEN
+    RETURN NULL;
+  END IF;
   -- Check numeric arguments
   IF $3 < 1 THEN
     RAISE EXCEPTION 'argument ''position'' must be a number greater than 0';
@@ -4041,7 +4068,7 @@ BEGIN
   END IF;
 
   -- Check that with v_subexpr = 1 we have a capture group otherwise return NULL
-  has_group := (SELECT count(*) FROM regexp_matches(v_pattern, '\(.*\)'));
+  has_group := (SELECT count(*) FROM regexp_matches($2, '(?:[^\\]|^)\(', 'g'));
   IF $6 = 1 AND has_group = 0 THEN
     RETURN NULL;
   END IF;
@@ -4069,12 +4096,20 @@ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION oracle.regexp_replace(text, text, text)
 RETURNS text
 AS $$
+DECLARE
+  str text;
+BEGIN
+  IF $2 IS NULL AND $1 IS NOT NULL THEN
+    RETURN $1;
+  END IF;
   -- Oracle default behavior is to replace all occurence
   -- whereas PostgreSQL only replace the first occurrence
   -- so we need to add 'g' modifier.
-  SELECT pg_catalog.regexp_replace($1, $2, $3, 'g');
+  SELECT pg_catalog.regexp_replace($1, $2, $3, 'g') INTO str;
+  RETURN str;
+END;
 $$
-LANGUAGE sql;
+LANGUAGE plpgsql;
 
 -- REGEXP_REPLACE( string text, pattern text, replace_string text, position int ) -> text
 CREATE OR REPLACE FUNCTION oracle.regexp_replace(text, text, text, integer)
@@ -4084,6 +4119,12 @@ DECLARE
   v_replaced_str text;
   v_before text;
 BEGIN
+  IF $1 IS NULL OR $3 IS NULL OR $4 IS NULL THEN
+    RETURN NULL;
+  END IF;
+  IF $2 IS NULL THEN
+    RETURN $1;
+  END IF;
   -- Check numeric arguments
   IF $4 < 1 THEN
     RAISE EXCEPTION 'argument ''position'' must be a number greater than 0';
@@ -4107,9 +4148,15 @@ AS $$
 DECLARE
   v_replaced_str text;
   v_pos integer := $4;
-  v_nummatch integer;
   v_before text := '';
+  v_nummatch integer;
 BEGIN
+  IF $1 IS NULL OR $3 IS NULL OR $4 IS NULL OR $5 IS NULL THEN
+    RETURN NULL;
+  END IF;
+  IF $2 IS NULL THEN
+    RETURN $1;
+  END IF;
   -- Check numeric arguments
   IF $4 < 1 THEN
     RAISE EXCEPTION 'argument ''position'' must be a number greater than 0';
@@ -4131,6 +4178,7 @@ BEGIN
   END IF;
   -- Get the substring before this position we will need to restore it
   v_before := substr($1, 1, v_pos - 1);
+
   -- Replace all occurrences
   IF $5 = 0 THEN
     v_replaced_str := v_before || pg_catalog.regexp_replace(substr($1, v_pos), $2, $3, 'g');
@@ -4155,6 +4203,12 @@ DECLARE
   v_before text := '';
   modifiers text := '';
 BEGIN
+  IF $1 IS NULL OR $3 IS NULL OR $4 IS NULL OR $5 IS NULL THEN
+    RETURN NULL;
+  END IF;
+  IF $2 IS NULL THEN
+    RETURN $1;
+  END IF;
   -- Check numeric arguments
   IF $4 < 1 THEN
     RAISE EXCEPTION 'argument ''position'' must be a number greater than 0';
@@ -4188,4 +4242,3 @@ BEGIN
 END;
 $$
 LANGUAGE plpgsql;
-

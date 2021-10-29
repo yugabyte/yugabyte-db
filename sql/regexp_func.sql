@@ -247,3 +247,51 @@ SELECT oracle.REGEXP_REPLACE ('A PostgreSQL function', 'a|e|i|o|u', 'X', 1, -1, 
 -- ORACLE> SELECT REGEXP_REPLACE ('A PostgreSQL function', 'a|e|i|o|u', 'X', 1, 1, 'g') FROM DUAL; -> ORA-01760
 SELECT oracle.REGEXP_REPLACE ('A PostgreSQL function', 'a|e|i|o|u', 'X', 1, 1, 'g');
 
+--
+-- Test NULL input in the regexp_* functions that must returned NULL except for the modifier
+-- or regexp flag. There is an exception with regexp_replace(), if the pattern is null (second
+-- parameter) the original string is returned. We don't test functions witht the STRICT attribute
+--
+SELECT oracle.REGEXP_LIKE(NULL, '\d+', 'i');
+SELECT oracle.REGEXP_LIKE('1234', NULL, 'i');
+SELECT oracle.REGEXP_LIKE('1234', '\d+', NULL);
+SELECT oracle.REGEXP_LIKE('1234', '\d+', '');
+SELECT oracle.REGEXP_COUNT('1234', '\d', NULL) ;
+SELECT oracle.REGEXP_COUNT('1234', '\d', 1, NULL) ;
+SELECT oracle.REGEXP_COUNT('1234', '\d', 1, '') ;
+SELECT oracle.REGEXP_COUNT('1234', '\d', NULL, NULL) ;
+SELECT oracle.REGEXP_COUNT(NULL, '4', 1, 'i');
+SELECT oracle.REGEXP_INSTR('1234', '4', NULL);
+SELECT oracle.REGEXP_INSTR('1234', '4', 1, NULL);
+SELECT oracle.REGEXP_INSTR('1234', '4', 1, 1, NULL);
+SELECT oracle.REGEXP_INSTR('1234', '4', 1, 1, 1, NULL);
+SELECT oracle.REGEXP_INSTR('1234', '4', 1, 1, 0, NULL);
+SELECT oracle.REGEXP_INSTR('1234', '4', 1, 1, 0, 'i', NULL);
+SELECT oracle.REGEXP_INSTR('1234', '4', 1, 1, 0, '', NULL);
+SELECT oracle.REGEXP_INSTR(NULL, '4', 1, 1, 0, 'i', 2);
+SELECT oracle.REGEXP_INSTR(NULL, '4', 1, 1, 0, 'i', 2);
+SELECT oracle.REGEXP_SUBSTR('1234', '1(.*)', null);
+SELECT oracle.REGEXP_SUBSTR('1234', '234', 1, null);
+SELECT oracle.REGEXP_SUBSTR('1234', '234', 1, 1, null);
+SELECT oracle.REGEXP_SUBSTR('1234', '234', 1, 1, '');
+SELECT oracle.REGEXP_SUBSTR('1234', '234', 1, 1, 'i', null);
+-- test for capture group
+SELECT oracle.REGEXP_SUBSTR('1234', '2(3)(4)', 1, 1, 'i', 1);
+SELECT oracle.REGEXP_SUBSTR('1234', '2(3)(4)', 1, 1, 'i', 2);
+SELECT oracle.REGEXP_SUBSTR('1234', '2(3)(4)', 1, 1, 'i', 0);
+-- Special case for second parameter in REGEXP_REPLACE, when null returns the original value.
+SELECT oracle.REGEXP_REPLACE(null, '\d', 'a');
+SELECT oracle.REGEXP_REPLACE('1234', null, 'a');
+SELECT oracle.REGEXP_REPLACE('1234', null, null);
+SELECT oracle.REGEXP_REPLACE('1234', '\d', null);
+SELECT oracle.REGEXP_REPLACE('1234', '\d', 'a', null);
+SELECT oracle.REGEXP_REPLACE('1234', null, 'a', 2);
+SELECT oracle.REGEXP_REPLACE('1234', null, 'a', null);
+SELECT oracle.REGEXP_REPLACE('1234', null, 'a', 1);
+SELECT oracle.REGEXP_REPLACE('1234', null, 'a', 1, null);
+SELECT oracle.REGEXP_REPLACE('1234', '\d', 'a', 1, null);
+SELECT oracle.REGEXP_REPLACE('1234', '\d', 'a', 1, null);
+SELECT oracle.REGEXP_REPLACE('1234', '\d', 'a', 1, null);
+SELECT oracle.REGEXP_REPLACE('1234', '\d', 'a', 1, 1, null);
+SELECT oracle.REGEXP_REPLACE('1234', '\d', 'a', 1, NULL, 'i');
+SELECT oracle.REGEXP_REPLACE('1234', null, 'a', 1, 1, 'i');
