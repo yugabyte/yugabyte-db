@@ -418,7 +418,7 @@ class IterKey {
 
     const auto new_key_size = new_shared_last_component_start + shared_last_component_size;
 
-    uint64_t last_component;
+    uint64_t last_component FASTDEBUG_FAKE_INIT(0);
     if (shared_last_component_size > 0) {
       // Get shared last component from key_ and increase it by shared_last_component_increase
       // (could be 0 if we just reuse last component as is).
