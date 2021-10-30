@@ -860,10 +860,12 @@ TEST_P(CDCServiceTestMultipleServersOneTablet, TestUpdateLagMetrics) {
   GetTablet(&tablet_id);
 
   // Get the leader and a follower for the tablet.
-  tserver::MiniTabletServer* leader_mini_tserver;
-  tserver::MiniTabletServer* follower_mini_tserver;
+  tserver::MiniTabletServer* leader_mini_tserver = nullptr;
+  tserver::MiniTabletServer* follower_mini_tserver = nullptr;
 
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    leader_mini_tserver = nullptr;
+    follower_mini_tserver = nullptr;
     for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
       std::shared_ptr<tablet::TabletPeer> tablet_peer;
       Status s = cluster_->mini_tablet_server(i)->server()->tablet_manager()->

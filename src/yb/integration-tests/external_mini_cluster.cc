@@ -2066,8 +2066,8 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
   AddExtraFlagsFromEnvVar("YB_EXTRA_DAEMON_FLAGS", &argv);
 
   std::unique_ptr<Subprocess> p(new Subprocess(exe_, argv));
-  p->ShareParentStdout(false);
-  p->ShareParentStderr(false);
+  p->PipeParentStdout();
+  p->PipeParentStderr();
   auto default_output_prefix = Substitute("[$0]", daemon_id_);
   LOG(INFO) << "Running " << default_output_prefix << ": " << exe_ << "\n"
     << JoinStrings(argv, "\n");
