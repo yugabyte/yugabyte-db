@@ -202,7 +202,7 @@ Options:
     Specify compiler type, e.g. gcc, clang, or a specific version, e.g. gcc10 or clang12.
   --gcc, --gcc<version> --clang, --clang<version>
     A shorter way to achieve the same thing as --compiler-type.
-  --export-compile-commands
+  --export-compile-commands, --ccmds
     Export the C/C++ compilation database. Equivalent to setting YB_EXPORT_COMPILE_COMMANDS to 1.
   --
     Pass all arguments after -- to repeat_unit_test.
@@ -1060,7 +1060,7 @@ while [[ $# -gt 0 ]]; do
     --cmake-unit-tests)
       run_cmake_unit_tests=true
     ;;
-    --export-compile-commands)
+    --export-compile-commands|--ccmds)
       export YB_EXPORT_COMPILE_COMMANDS=1
     ;;
     *)

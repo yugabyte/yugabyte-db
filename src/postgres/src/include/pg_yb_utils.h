@@ -38,7 +38,6 @@
 #include "yb/common/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
-
 /*
  * Version of the catalog entries in the relcache and catcache.
  * We (only) rely on a following invariant: If the catalog cache version here is
@@ -534,5 +533,13 @@ extern const uint32 yb_funcs_safe_for_modify_fast_path[];
  * Number of functions in 'yb_funcs_safe_for_modify_fast_path' above.
  */
 extern const int yb_funcs_safe_for_modify_fast_path_count;
+
+/** 
+ * Use the YB_PG_PDEATHSIG environment variable to set the signal to be sent to 
+ * the current process in case the parent process dies. This is Linux-specific
+ * and can only be done from the child process (the postmaster process). The
+ * parent process here is yb-master or yb-tserver.
+ */
+void YBSetParentDeathSignal();
 
 #endif /* PG_YB_UTILS_H */
