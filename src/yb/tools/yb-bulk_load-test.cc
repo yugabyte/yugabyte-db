@@ -148,7 +148,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
   CHECKED_STATUS StartProcessAndGetStreams(string exe_path, vector<string> argv, FILE** out,
                                            FILE** in, std::unique_ptr<Subprocess>* process) {
     process->reset(new Subprocess(exe_path, argv));
-    (*process)->ShareParentStdout(false);
+    (*process)->PipeParentStdout();
     RETURN_NOT_OK((*process)->Start());
 
     *out = fdopen((*process)->ReleaseChildStdinFd(), "w");

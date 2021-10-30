@@ -95,10 +95,6 @@ DEFINE_bool(writable_file_use_fsync, false,
             "data to disk.");
 TAG_FLAG(writable_file_use_fsync, advanced);
 
-DEFINE_bool(suicide_on_eio, true,
-            "Kill the process if an I/O operation results in EIO");
-TAG_FLAG(suicide_on_eio, advanced);
-
 #ifdef __APPLE__
 // Never fsync on Mac OS X as we are getting many slow fsync errors in Jenkins and the fsync
 // implementation is very different in production (on Linux) anyway.
@@ -137,25 +133,6 @@ static __thread uint64_t thread_local_id;
 static Atomic64 cur_thread_local_id_;
 
 namespace yb {
-
-Status IOError(const std::string& context, int err_number, const char* file, int line) {
-  Errno err(err_number);
-  switch (err_number) {
-    case ENOENT:
-      return Status(Status::kNotFound, file, line, context, err);
-    case EEXIST:
-      return Status(Status::kAlreadyPresent, file, line, context, err);
-    case EOPNOTSUPP:
-      return Status(Status::kNotSupported, file, line, context, err);
-    case EIO:
-      if (FLAGS_suicide_on_eio) {
-        // TODO: This is very, very coarse-grained. A more comprehensive
-        // approach is described in KUDU-616.
-        LOG(FATAL) << "Fatal I/O error, context: " << context;
-      }
-  }
-  return Status(Status::kIOError, file, line, context, err);
-}
 
 namespace {
 
@@ -213,7 +190,8 @@ class ScopedFdCloser {
   int fd_;
 };
 
-#define STATUS_IO_ERROR(context, err_number) IOError(context, err_number, __FILE__, __LINE__)
+#define STATUS_IO_ERROR(context, err_number) \
+    STATUS_FROM_ERRNO_SPECIAL_EIO_HANDLING(context, err_number)
 
 static Status DoSync(int fd, const string& filename) {
   ThreadRestrictions::AssertIOAllowed();

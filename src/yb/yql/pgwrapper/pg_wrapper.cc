@@ -423,7 +423,8 @@ Status PgWrapper::Start() {
   pg_proc_->SetEnv("LD_LIBRARY_PATH", boost::join(ld_library_path, ":"));
   pg_proc_->ShareParentStderr();
   pg_proc_->ShareParentStdout();
-  pg_proc_->SetParentDeathSignal(SIGINT);
+  // See YBSetParentDeathSignal in pg_yb_utils.c for how this is used.
+  pg_proc_->SetEnv("YB_PG_PDEATHSIG", Format("$0", SIGINT));
   pg_proc_->InheritNonstandardFd(conf_.tserver_shm_fd);
   SetCommonEnv(&pg_proc_.get(), /* yb_enabled */ true);
   RETURN_NOT_OK(pg_proc_->Start());

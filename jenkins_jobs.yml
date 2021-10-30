@@ -1,8 +1,8 @@
 # This file determines the jobs that we run in this branch on Jenkins.
 # Default architecture is x86_64
 jobs:
-  - os: centos7
-    compiler: clang7
+  - os: alma8
+    compiler: clang12
     build_type: asan
   - os: centos7
     compiler: clang7

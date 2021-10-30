@@ -213,6 +213,16 @@ def log_heading(msg: str) -> None:
     logging.info('\n%s\n%s\n%s' % ('-' * 80, msg, '-' * 80))
 
 
+def find_python_interpreter() -> str:
+    # We are not using "which" here because we don't want to pick up the python3 script inside the
+    # virtualenv's bin directory.
+    candidates = ['/usr/local/bin/python3', '/usr/bin/python3']
+    for python_interpreter_path in candidates:
+        if os.path.isfile(python_interpreter_path):
+            return python_interpreter_path
+    raise ValueError("Could not find Python interpreter at any of the paths: %s" % candidates)
+
+
 # Initializes the spark context. The details list will be incorporated in the Spark application
 # name visible in the Spark web UI.
 def init_spark_context(details: List[str] = []) -> None:
@@ -247,7 +257,9 @@ def init_spark_context(details: List[str] = []) -> None:
     if 'BUILD_URL' in os.environ:
         details.append('URL: {}'.format(os.environ['BUILD_URL']))
 
-    SparkContext.setSystemProperty("spark.pyspark.python", "/usr/local/bin/python3")
+    python_interpreter = find_python_interpreter()
+    logging.info("Using this Python interpreter for Spark: %s", python_interpreter)
+    SparkContext.setSystemProperty("spark.pyspark.python", python_interpreter)
     spark_context = SparkContext(spark_master_url, "YB tests: {}".format(' '.join(details)))
     yb_python_zip_path = yb_dist_tests.get_tmp_filename(
             prefix='yb_python_module_for_spark_workers_', suffix='.zip', auto_remove=True)
@@ -1284,7 +1296,7 @@ def main() -> None:
             failed_test_desc_strs.append(result.test_descriptor.descriptor_str)
         if result.num_errors_copying_artifacts > 0:
             logging.info("Test had errors copying artifacts to build host: %s",
-                         result.test_descriptors)
+                         result.test_descriptor)
         num_tests_by_language[test_language] += 1
 
     if had_errors_copying_artifacts and global_exit_code == 0:

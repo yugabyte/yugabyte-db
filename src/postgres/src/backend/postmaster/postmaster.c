@@ -571,6 +571,16 @@ HANDLE		PostmasterHandle;
 #endif
 
 /*
+ * Wrap strdup so we can suppress LeakSanitizer (LSAN) warnings here without
+ * suppressing them in all occurrences of strdup.
+ */
+char *
+postmaster_strdup(const char *in)
+{
+	return strdup(in);
+}
+
+/*
  * Postmaster main entry point
  */
 void
@@ -582,6 +592,9 @@ PostmasterMain(int argc, char *argv[])
 	bool		listen_addr_saved = false;
 	int			i;
 	char	   *output_config_variable = NULL;
+
+	// This should be done as the first thing after process start.
+	YBSetParentDeathSignal();
 
 	MyProcPid = PostmasterPid = getpid();
 
@@ -694,11 +707,11 @@ PostmasterMain(int argc, char *argv[])
 				break;
 
 			case 'C':
-				output_config_variable = strdup(optarg);
+				output_config_variable = postmaster_strdup(optarg);
 				break;
 
 			case 'D':
-				userDoption = strdup(optarg);
+				userDoption = postmaster_strdup(optarg);
 				break;
 
 			case 'd':

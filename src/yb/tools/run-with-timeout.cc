@@ -179,7 +179,8 @@ int main(int argc, char** argv) {
 
     const bool subprocess_is_running = subprocess.IsRunning();
     LOG(INFO) << "Reaper thread: finished=" << finished_local
-              << ", subprocess_is_running=" << subprocess_is_running;
+              << ", subprocess_is_running=" << subprocess_is_running
+              << ", timeout_sec=" << timeout_sec;
 
     if (!finished_local && subprocess_is_running) {
       timed_out = true;

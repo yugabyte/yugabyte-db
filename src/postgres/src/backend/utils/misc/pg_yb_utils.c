@@ -61,6 +61,10 @@
 #include "yb/common/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
+#ifdef __linux__
+#include <sys/prctl.h>
+#endif
+
 uint64_t yb_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 
 uint64_t YBGetActiveCatalogCacheVersion() {
@@ -1922,4 +1926,38 @@ bool IsYbExtensionUser(Oid member) {
 
 bool IsYbFdwUser(Oid member) {
 	return IsYugaByteEnabled() && has_privs_of_role(member, DEFAULT_ROLE_YB_FDW);
+}
+
+void YBSetParentDeathSignal()
+{
+#ifdef __linux__
+	char* pdeathsig_str = getenv("YB_PG_PDEATHSIG");
+	if (pdeathsig_str)
+	{
+		char* end_ptr = NULL;
+		long int pdeathsig = strtol(pdeathsig_str, &end_ptr, 10);
+		if (end_ptr == pdeathsig_str + strlen(pdeathsig_str)) {
+			if (pdeathsig >= 1 && pdeathsig <= 31) {
+				// TODO: prctl(PR_SET_PDEATHSIG) is Linux-specific, look into portable ways to
+				// prevent orphans when parent is killed.
+				prctl(PR_SET_PDEATHSIG, pdeathsig);
+			}
+			else
+			{
+				fprintf(
+					stderr,
+					"Error: YB_PG_PDEATHSIG is an invalid signal value: %ld",
+					pdeathsig);
+			}
+
+		}
+		else
+		{
+			fprintf(
+				stderr,
+				"Error: failed to parse the value of YB_PG_PDEATHSIG: %s",
+				pdeathsig_str);
+		}
+	}
+#endif
 }

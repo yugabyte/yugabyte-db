@@ -34,8 +34,6 @@
 #include "yb/util/malloc.h"
 #include "yb/util/thread_restrictions.h"
 
-DECLARE_bool(suicide_on_eio);
-
 // For platforms without fdatasync (like OS X)
 #ifndef fdatasync
 #define fdatasync fsync
@@ -58,8 +56,6 @@ DECLARE_bool(suicide_on_eio);
 
 namespace yb {
 
-Status IOError(const std::string& context, int err_number, const char* file, int line);
-
 namespace {
 
 // A wrapper for fadvise, if the platform doesn't support fadvise, it will simply return
@@ -72,7 +68,8 @@ int Fadvise(int fd, off_t offset, size_t len, int advice) {
 #endif
 }
 
-#define STATUS_IO_ERROR(context, err_number) IOError(context, err_number, __FILE__, __LINE__)
+#define STATUS_IO_ERROR(context, err_number) \
+    STATUS_FROM_ERRNO_SPECIAL_EIO_HANDLING(context, err_number)
 
 } // namespace
 

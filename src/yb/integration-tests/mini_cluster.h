@@ -223,11 +223,6 @@ class MiniCluster : public MiniClusterBase {
 
  private:
 
-  enum {
-    kTabletReportWaitTimeSeconds = 5,
-    kRegistrationWaitTimeSeconds = NonTsanVsTsan(30, 60)
-  };
-
   void ConfigureClientBuilder(client::YBClientBuilder* builder) override;
 
   Result<HostPort> DoGetLeaderMasterBoundRpcAddr() override;

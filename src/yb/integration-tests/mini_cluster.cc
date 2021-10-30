@@ -108,7 +108,9 @@ using yb::master::SysClusterConfigEntryPB;
 namespace {
 
 const std::vector<uint16_t> EMPTY_MASTER_RPC_PORTS = {};
-const int kMasterLeaderElectionWaitTimeSeconds = NonTsanVsTsan(20, 60);
+const int kMasterLeaderElectionWaitTimeSeconds = 20 * kTimeMultiplier;
+const int kRegistrationWaitTimeSeconds = 45 * kTimeMultiplier;
+const int kTabletReportWaitTimeSeconds = 5;
 
 std::string GetClusterDataDirName(const MiniClusterOptions& options) {
   std::string cluster_name = "minicluster-data";
