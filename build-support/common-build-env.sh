@@ -183,6 +183,8 @@ readonly -a VALID_COMPILER_TYPES=(
   gcc8
   gcc9
   gcc10
+  gcc11
+  gcc12
   clang
   clang7
   clang8
