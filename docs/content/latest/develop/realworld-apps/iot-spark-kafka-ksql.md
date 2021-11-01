@@ -153,7 +153,7 @@ CREATE STREAM traffic_stream (
            TIMESTAMP_FORMAT='yyyy-MM-dd HH:mm:ss');
 ```
 
-Various aggreations/queries can now be run on the above stream with results of each type of query stored in a topic of its own. This application uses 3 such queries/topics. Thereafter, the [Kafka Connect Sink Connector for YugabyteDB](https://github.com/yugabyte/yb-kafka-connector) reads these 3 topics and persists the results into the 3 corresponding tables in YugabyteDB.
+Various aggregations/queries can now be run on the above stream with results of each type of query stored in a topic of its own. This application uses 3 such queries/topics. Thereafter, the [Kafka Connect Sink Connector for YugabyteDB](https://github.com/yugabyte/yb-kafka-connector) reads these 3 topics and persists the results into the 3 corresponding tables in YugabyteDB.
 
 ```sql
 CREATE TABLE total_traffic
@@ -434,7 +434,7 @@ public interface TotalTrafficDataRepository extends CassandraRepository<TotalTra
 }
 ```
 
-In order to connect to YugabyteDB cluster and get connection for database operations, you write the CassandraConfig class. This is done as follows:
+In order to connect to YugabyteDB cluster and get connection for database operations, you write the `CassandraConfig` class. This is done as follows:
 
 ```java
 public class CassandraConfig extends AbstractCassandraConfiguration {
@@ -455,4 +455,4 @@ Note that currently the Dashboard does not use the raw events table and relies o
 
 ## Summary
 
-This application is a blue print for building IoT applications. The instructions to build and run the application, as well as the source code can be found in the [IoT Fleet Management GitHub repository](https://github.com/yugabyte/yb-iot-fleet-management).
+This application is a blueprint for building IoT applications. The instructions to build and run the application, as well as the source code can be found in the [IoT Fleet Management GitHub repository](https://github.com/yugabyte/yb-iot-fleet-management).
