@@ -1650,6 +1650,12 @@ Status ClusterAdminClient::ModifyTablePlacementInfo(
   const YBTableName& table_name, const std::string& placement_info, int replication_factor,
   const std::string& optional_uuid) {
 
+  YBTableName global_transactions(
+      YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
+  if (table_name == global_transactions) {
+    return STATUS(InvalidCommand, "Placement cannot be modified for the global transactions table");
+  }
+
   std::vector<std::string> placement_info_split = strings::Split(
       placement_info, ",", strings::SkipEmpty());
   if (placement_info_split.size() < 1) {
@@ -1941,6 +1947,19 @@ CHECKED_STATUS ClusterAdminClient::SplitTablet(const std::string& tablet_id) {
   const auto resp = VERIFY_RESULT(
       InvokeRpc(&MasterServiceProxy::SplitTablet, master_proxy_.get(), req));
   std::cout << "Response: " << AsString(resp) << std::endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::CreateTransactionsStatusTable(const std::string& table_name) {
+  if (table_name.rfind(yb::master::kTransactionTablePrefix, 0) != 0) {
+    return STATUS_FORMAT(
+        InvalidArgument, "Name '$0' for transaction table does not start with '$1'", table_name,
+        yb::master::kTransactionTablePrefix);
+  }
+  master::CreateTransactionStatusTableRequestPB req;
+  req.set_table_name(table_name);
+  const auto resp = VERIFY_RESULT(
+      InvokeRpc(&MasterServiceProxy::CreateTransactionStatusTable, master_proxy_.get(), req));
   return Status::OK();
 }
 
