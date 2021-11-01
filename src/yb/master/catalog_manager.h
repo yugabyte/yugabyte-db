@@ -1582,6 +1582,8 @@ class CatalogManager :
       TabletReportUpdatesPB* full_report_update,
       std::vector<RetryingTSRpcTaskPtr>* rpcs);
 
+  size_t GetNumLiveTServersForPlacement(const PlacementId& placement_id);
+
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};
 
