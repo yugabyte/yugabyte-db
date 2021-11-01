@@ -75,87 +75,87 @@ docker pull yugabytedb/yugabyte:2.9.1.0-b140
 
 #### Yugabyte Platform
 
-[5236] [PLAT-59] Allow log levels to be changed through POST /logging_config endpoint
-[7396] Splitting up create/provision tasks to delete orphaned resources
-[7645] [PLAT-523] Show error summary at the top of the health check email
-[9131] Enable/disable YCQL endpoint while universe creation and force password requirement
-[9407] [PLAT-386] Implement base YSQL/YCQL alerts
-[9580] Add restore_time field for all universes.
-[9613] Update UI to accommodate Authentication changes
-[9668] Alert configurations implement missing parts and few small changes
-[9794] [PLAT-1530] Creates static IP during cluster creation for cloud free tier clusters. Releases IPs on deletion.
-[9892] Mask sensitive gflag info
-[9978] Platform UI: Change stop backup icon and label to abort icon and label.
-[CLOUDGA-2345] Implement MDC propagation and add request/universe ID to MDC
-[PLAT-525] Add IP address to SAN of node certificates
-[PLAT-541] Allow configuring no destination for alert config + UI improvements
-[PLAT-1523] Update Alert APIs to be consistent with UI terminology
-[PLAT-1528] Change YWError handler to default to JSON response on client error.
-[PLAT-1546] [PLAT-1547] [PLAT-1571] [PLAT-1572] Add API docs for UniverseClustersController, and other misc fixes
-[PLAT-1549] Add (non-generated client, "simple") Python API examples
-[PLAT-1549] Cleanup list/create provider API usage examples
-[PLAT-1555] Add Python API client example for create Universe
-[PLAT-1555] Add Python API client example for list Universe
-[PLAT-1556] List Storage Configs Create Scheduled backup examples
-[PLAT-1582] [Alert] Limit Severity to maximum 2(Severe/warn), now we can add multiple severity's but after edit we are displaying only 2 (1 Severe/1 Warn)
-[PLAT-1611] Add python depedencies required for executing external scripts
-[PLAT-1647] Provide more details for default channel on UI
-[PLAT-1664] Enable new alert UIs and remove deprecated alert UI + configs from Health tab + config from replication tab
-[PLAT-1691] Set oshi LinuxFileSystem log level to ERROR
-[PLAT-1691] Task, API and thread pool metrics
-[PLAT-1705] Add auditing and transaction for /register API action
-[PLAT-1723] Allow disabling prometheus management + write alerts and metrics effectively
-[PLAT-1766] [Alerts] UI: Cleanup
-[PLAT-1774] Add a customer ID field in Customer Profile page
-[PLAT-1791] Use hibernate validator for all alert related entities
-[PLAT-1818] Add pagination to Tables tab and add classNames
-Added new AWS regions to metadata files.
-Hooking GCP Create Method into Create Root Volumes method
+* [5236] [PLAT-59] Allow log levels to be changed through POST /logging_config endpoint
+* [7396] Splitting up create/provision tasks to delete orphaned resources
+* [7645] [PLAT-523] Show error summary at the top of the health check email
+* [9131] Enable/disable YCQL endpoint while universe creation and force password requirement
+* [9407] [PLAT-386] Implement base YSQL/YCQL alerts
+* [9580] Add restore_time field for all universes.
+* [9613] Update UI to accommodate Authentication changes
+* [9668] Alert configurations implement missing parts and few small changes
+* [9794] [PLAT-1530] Creates static IP during cluster creation for cloud free tier clusters. Releases IPs on deletion.
+* [9892] Mask sensitive gflag info
+* [9978] Platform UI: Change stop backup icon and label to abort icon and label.
+* [CLOUDGA-2345] Implement MDC propagation and add request/universe ID to MDC
+* [PLAT-525] Add IP address to SAN of node certificates
+* [PLAT-541] Allow configuring no destination for alert config + UI improvements
+* [PLAT-1523] Update Alert APIs to be consistent with UI terminology
+* [PLAT-1528] Change YWError handler to default to JSON response on client error.
+* [PLAT-1546] [PLAT-1547] [PLAT-1571] [PLAT-1572] Add API docs for UniverseClustersController, and other misc fixes
+* [PLAT-1549] Add (non-generated client, "simple") Python API examples
+* [PLAT-1549] Cleanup list/create provider API usage examples
+* [PLAT-1555] Add Python API client example for create Universe
+* [PLAT-1555] Add Python API client example for list Universe
+* [PLAT-1556] List Storage Configs Create Scheduled backup examples
+* [PLAT-1582] [Alert] Limit Severity to maximum 2(Severe/warn), now we can add multiple severity's but after edit we are displaying only 2 (1 Severe/1 Warn)
+* [PLAT-1611] Add python depedencies required for executing external scripts
+* [PLAT-1647] Provide more details for default channel on UI
+* [PLAT-1664] Enable new alert UIs and remove deprecated alert UI + configs from Health tab + config from replication tab
+* [PLAT-1691] Set oshi LinuxFileSystem log level to ERROR
+* [PLAT-1691] Task, API and thread pool metrics
+* [PLAT-1705] Add auditing and transaction for /register API action
+* [PLAT-1723] Allow disabling prometheus management + write alerts and metrics effectively
+* [PLAT-1766] [Alerts] UI: Cleanup
+* [PLAT-1774] Add a customer ID field in Customer Profile page
+* [PLAT-1791] Use hibernate validator for all alert related entities
+* [PLAT-1818] Add pagination to Tables tab and add classNames
+* Added new AWS regions to metadata files.
+* Hooking GCP Create Method into Create Root Volumes method
 
 #### Database
 
-[2220] [YSQL] Enabling relation size estimation for temporary tables in optimizer
-[5492] yb-admin: Added error message when attempting to create snapshot of YCQL system tables
-[7612] [DocDB] Allow TTL-expired SST files that are too large for compaction to be directly expired
-[7612] [DocDB] Modified compaction file filter to filter files out of order
-[7889] Reduce timeout for ysql backfill.
-[8043] [YBase] Remove information about LB skipping deleted tables from the admin UI
-[8162] [YSQL] Support single-request optimization for UPDATE with RETURNING clause
-[8229] [backup] repartition table if needed on YSQL restore
-[8452] Speed up restoring YSQL system catalog
-[8501] [DocDB] Add metric to monitor server uptime
-[8508] [DocDB] moved GetSplitKey from TabletServerAdminService into TabletServerService
-[8580] [9489] [YSQL] Inherit default PGSQL proxy bind address from rpc bind address
-[8804] [YSQL] [backup] Support in backups the same table name across different schemas.
-[8807] [YBase] Add a limit on number of metrics for the prometheus metrics endpoint
-[8979] [DocDB] Improve master load balancer state presentation
-[9279] [YSQL] Enable -Wextra on pgwrapper
-[9279] [YSQL] Enable -Wextra on yql folder
-[9418] [xCluster] Add cdc_state Schema Caching to Producer Cluster
-[9439] [YBase] Allow sst-dump to decode DocDB keys and dump data in human readable format
-[9467] [YSQL] Increase scope of cases where transparent retries are performed
-[9685] [xCluster] Make delete_universe_replication fault tolerant
-[9739] Added placement info to /api/v1/tablet-servers
-[9746] Set WAL footer close_timestamp_micros on Bootstrap
-[9762] [Part-1] Populate partial index predicate in "options" column of system_schema.indexes
-[9803] [YSQL] Import Avoid trying to lock OLD/NEW in a rule with FOR UPDATE.
-[9831] [YSQL] Import Fix broken snapshot handling in parallel workers.
-[9862] [PITR] Allow consecutive restore
-[9862] Allow PITR in conjunction with tablet split
-[9899] [YSQL] Import Fix corner-case uninitialized-variable issues in plpgsql.
-[9911] [YSQL] Import In pg_dump, avoid doing per-table queries for RLS policies.
-[9922] [YSQL] Import Fix float4/float8 hash functions to produce uniform results for NaNs.
-[9926] [YSQL] Import Disallow creating an ICU collation if the DB encoding won't support it.
-[9935] [YSQL] Import Fix bitmap AND/OR scans on the inside of a nestloop partition-wise join.
-[9936] Remove YBClient from Postgres: Introduce PgClient and implement ReserveOids using it; Open table via PgClient; Remove all direct YBClient usage from PgSession
-[9966] [YSQL] Import Rearrange pgstat_bestart() to avoid failures within its critical section.
-[9995] [YSQL] Import Fix EXIT out of outermost block in plpgsql.
-[10025] [YSQL] Import jit: Do not try to shut down LLVM state in case of LLVM triggered errors.
-[10034] [YSQL] Preserve operation buffering state in case of transparent retries
-[10064] [xCluster] Lag Metric Improvements
-[10111] [YSQL] Import Force NO SCROLL for plpgsql's implicit cursors.
-[10121] [YSQL] Import Avoid misbehavior when persisting a non-stable cursor.
-[YSQL] Import Fix performance bug in regexp's citerdissect/creviterdissect.
+* [2220] [YSQL] Enabling relation size estimation for temporary tables in optimizer
+* [5492] yb-admin: Added error message when attempting to create snapshot of YCQL system tables
+* [7612] [DocDB] Allow TTL-expired SST files that are too large for compaction to be directly expired
+* [7612] [DocDB] Modified compaction file filter to filter files out of order
+* [7889] Reduce timeout for ysql backfill.
+* [8043] [YBase] Remove information about LB skipping deleted tables from the admin UI
+* [8162] [YSQL] Support single-request optimization for UPDATE with RETURNING clause
+* [8229] [backup] repartition table if needed on YSQL restore
+* [8452] Speed up restoring YSQL system catalog
+* [8501] [DocDB] Add metric to monitor server uptime
+* [8508] [DocDB] moved GetSplitKey from TabletServerAdminService into TabletServerService
+* [8580] [9489] [YSQL] Inherit default PGSQL proxy bind address from rpc bind address
+* [8804] [YSQL] [backup] Support in backups the same table name across different schemas.
+* [8807] [YBase] Add a limit on number of metrics for the prometheus metrics endpoint
+* [8979] [DocDB] Improve master load balancer state presentation
+* [9279] [YSQL] Enable -Wextra on pgwrapper
+* [9279] [YSQL] Enable -Wextra on yql folder
+* [9418] [xCluster] Add cdc_state Schema Caching to Producer Cluster
+* [9439] [YBase] Allow sst-dump to decode DocDB keys and dump data in human readable format
+* [9467] [YSQL] Increase scope of cases where transparent retries are performed
+* [9685] [xCluster] Make delete_universe_replication fault tolerant
+* [9739] Added placement info to /api/v1/tablet-servers
+* [9746] Set WAL footer close_timestamp_micros on Bootstrap
+* [9762] [Part-1] Populate partial index predicate in "options" column of system_schema.indexes
+* [9803] [YSQL] Import Avoid trying to lock OLD/NEW in a rule with FOR UPDATE.
+* [9831] [YSQL] Import Fix broken snapshot handling in parallel workers.
+* [9862] [PITR] Allow consecutive restore
+* [9862] Allow PITR in conjunction with tablet split
+* [9899] [YSQL] Import Fix corner-case uninitialized-variable issues in plpgsql.
+* [9911] [YSQL] Import In pg_dump, avoid doing per-table queries for RLS policies.
+* [9922] [YSQL] Import Fix float4/float8 hash functions to produce uniform results for NaNs.
+* [9926] [YSQL] Import Disallow creating an ICU collation if the DB encoding won't support it.
+* [9935] [YSQL] Import Fix bitmap AND/OR scans on the inside of a nestloop partition-wise join.
+* [9936] Remove YBClient from Postgres: Introduce PgClient and implement ReserveOids using it; Open table via PgClient; Remove all direct YBClient usage from PgSession
+* [9966] [YSQL] Import Rearrange pgstat_bestart() to avoid failures within its critical section.
+* [9995] [YSQL] Import Fix EXIT out of outermost block in plpgsql.
+* [10025] [YSQL] Import jit: Do not try to shut down LLVM state in case of LLVM triggered errors.
+* [10034] [YSQL] Preserve operation buffering state in case of transparent retries
+* [10064] [xCluster] Lag Metric Improvements
+* [10111] [YSQL] Import Force NO SCROLL for plpgsql's implicit cursors.
+* [10121] [YSQL] Import Avoid misbehavior when persisting a non-stable cursor.
+* [YSQL] Import Fix performance bug in regexp's citerdissect/creviterdissect.
 
 ### Bug Fixes
 
