@@ -268,7 +268,11 @@ DECLARE_int32(yb_num_shards_per_tserver);
 
 DEFINE_uint64(transaction_table_num_tablets, 0,
     "Number of tablets to use when creating the transaction status table."
-    "0 to use the same default num tablets as for regular tables.");
+    "0 to use transaction_table_num_tablets_per_tserver.");
+
+DEFINE_int32(transaction_table_num_tablets_per_tserver, kAutoDetectNumShardsPerTServer,
+    "The default number of tablets per tablet server for transaction status table. If the value is "
+    "-1, the system automatically determines an appropriate value based on number of CPU cores.");
 
 DEFINE_bool(master_enable_metrics_snapshotter, false, "Should metrics snapshotter be enabled");
 
@@ -652,6 +656,26 @@ void FillRetainedBySnapshotSchedules(
   }
 }
 
+int GetTransactionTableNumShardsPerTServer() {
+  int value = 8;
+  if (IsTsan()) {
+    value = 2;
+  } else if (base::NumCPUs() <= 2) {
+    value = 4;
+  }
+  return value;
+}
+
+void InitMasterFlags() {
+  yb::InitCommonFlags();
+  if (GetAtomicFlag(&FLAGS_transaction_table_num_tablets_per_tserver) ==
+      kAutoDetectNumShardsPerTServer) {
+    const auto value = GetTransactionTableNumShardsPerTServer();
+    VLOG(1) << "Auto setting FLAGS_transaction_table_num_tablets_per_tserver to " << value;
+    SetAtomicFlag(value, &FLAGS_transaction_table_num_tablets_per_tserver);
+  }
+}
+
 }  // anonymous namespace
 
 ////////////////////////////////////////////////////////////
@@ -690,7 +714,7 @@ CatalogManager::CatalogManager(Master* master)
       tablespace_manager_(std::make_shared<YsqlTablespaceManager>(nullptr, nullptr)),
       tablespace_bg_task_running_(false),
       tablet_split_manager_(this, this) {
-  yb::InitCommonFlags();
+  InitMasterFlags();
   CHECK_OK(ThreadPoolBuilder("leader-initialization")
            .set_max_threads(1)
            .Build(&leader_initialization_pool_));
@@ -2758,6 +2782,13 @@ Status CatalogManager::CopyPgsqlSysTables(const NamespaceId& namespace_id,
   return Status::OK();
 }
 
+size_t CatalogManager::GetNumLiveTServersForPlacement(const PlacementId& placement_id) {
+  BlacklistSet blacklist = BlacklistSetFromPB();
+  TSDescriptorVector ts_descs;
+  master_->ts_manager()->GetAllLiveDescriptorsInCluster(&ts_descs, placement_id, blacklist);
+  return ts_descs.size();
+}
+
 // Create a new table.
 // See README file in this directory for a description of the design.
 Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
@@ -2942,15 +2973,12 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   if (num_tablets <= 0) {
     // Use default as client could have gotten the value before any tserver had heartbeated
     // to (a new) master leader.
-    BlacklistSet blacklist = BlacklistSetFromPB();
-    TSDescriptorVector ts_descs;
-    master_->ts_manager()->GetAllLiveDescriptorsInCluster(
-        &ts_descs, replication_info.live_replicas().placement_uuid(),
-        blacklist);
-    num_tablets = ts_descs.size() * (is_pg_table ? FLAGS_ysql_num_shards_per_tserver
-                                                 : FLAGS_yb_num_shards_per_tserver);
+    const auto num_live_tservers =
+        GetNumLiveTServersForPlacement(replication_info.live_replicas().placement_uuid());
+    num_tablets = num_live_tservers * (is_pg_table ? FLAGS_ysql_num_shards_per_tserver
+                                                   : FLAGS_yb_num_shards_per_tserver);
     LOG(INFO) << "Setting default tablets to " << num_tablets << " with "
-              << ts_descs.size() << " primary servers";
+              << num_live_tservers << " primary servers";
   }
 
   // Create partitions.
@@ -3504,10 +3532,17 @@ CHECKED_STATUS CatalogManager::CreateTransactionStatusTableInternal(rpc::RpcCont
 
   // Explicitly set the number tablets if the corresponding flag is set, otherwise CreateTable
   // will use the same defaults as for regular tables.
+  size_t num_tablets;
   if (FLAGS_transaction_table_num_tablets > 0) {
-    req.mutable_schema()->mutable_table_properties()->set_num_tablets(
-        FLAGS_transaction_table_num_tablets);
+    num_tablets = FLAGS_transaction_table_num_tablets;
+  } else {
+    num_tablets = GetNumLiveTServersForPlacement(cluster_config_->LockForRead()
+                                                     ->pb.replication_info()
+                                                     .live_replicas()
+                                                     .placement_uuid()) *
+                  FLAGS_transaction_table_num_tablets_per_tserver;
   }
+  req.mutable_schema()->mutable_table_properties()->set_num_tablets(num_tablets);
 
   ColumnSchema hash(kRedisKeyColumnName, BINARY, /* is_nullable */ false, /* is_hash_key */ true);
   ColumnSchemaToPB(hash, req.mutable_schema()->mutable_columns()->Add());
