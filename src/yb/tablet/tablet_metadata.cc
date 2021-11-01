@@ -616,7 +616,7 @@ Status RaftGroupMetadata::ReadSuperBlockFromDisk(RaftGroupReplicaSuperBlockPB* s
   // Migration for backward compatibility with versions which don't have separate
   // TableType::TRANSACTION_STATUS_TABLE_TYPE.
   if (superblock->obsolete_table_type() == TableType::REDIS_TABLE_TYPE &&
-      superblock->obsolete_table_name() == kTransactionsTableName) {
+      superblock->obsolete_table_name() == kGlobalTransactionsTableName) {
     superblock->set_obsolete_table_type(TableType::TRANSACTION_STATUS_TABLE_TYPE);
   }
   return Status::OK();

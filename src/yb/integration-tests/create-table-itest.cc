@@ -547,7 +547,7 @@ TEST_F(CreateTableITest, YB_DISABLE_TEST_IN_TSAN(TestTransactionStatusTableCreat
   // Check that the transaction table hasn't been created yet.
   YQLDatabase db = YQL_DATABASE_CQL;
   YBTableName transaction_status_table(db, master::kSystemNamespaceId,
-                                  master::kSystemNamespaceName, kTransactionsTableName);
+                                  master::kSystemNamespaceName, kGlobalTransactionsTableName);
   bool exists = ASSERT_RESULT(client_->TableExists(transaction_status_table));
   ASSERT_FALSE(exists) << "Transaction table exists even though the "
                           "requirement for the minimum number of TS not met";
