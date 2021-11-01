@@ -19,6 +19,7 @@
 
 #include "yb/integration-tests/cql_test_util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/load_balancer_test_util.h"
 
 #include "yb/master/master_backup.pb.h"
 
@@ -1259,6 +1260,84 @@ TEST_F(YbAdminSnapshotScheduleTest, ConsecutiveRestore) {
   ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time1));
 
   ASSERT_OK(WaitTabletsCleaned(CoarseMonoClock::now() + retention + kInterval));
+}
+
+class YbAdminSnapshotScheduleTestWithLB : public YbAdminSnapshotScheduleTest {
+  std::vector<std::string> ExtraMasterFlags() override {
+    std::vector<std::string> flags;
+    flags = YbAdminSnapshotScheduleTest::ExtraMasterFlags();
+    flags.push_back("--enable_load_balancing=true");
+    flags.push_back("--TEST_load_balancer_skip_inactive_tablets=false");
+
+    return flags;
+  }
+
+ public:
+  void WaitForLoadBalanceCompletion(yb::MonoDelta timeout) {
+    ASSERT_OK(WaitFor([&]() -> Result<bool> {
+      bool is_idle = VERIFY_RESULT(client_->IsLoadBalancerIdle());
+      return !is_idle;
+    }, timeout, "IsLoadBalancerActive"));
+
+    ASSERT_OK(WaitFor([&]() -> Result<bool> {
+      return client_->IsLoadBalancerIdle();
+    }, timeout, "IsLoadBalancerIdle"));
+  }
+
+  void WaitForLoadToBeBalanced(yb::MonoDelta timeout) {
+    ASSERT_OK(WaitFor([&]() -> Result<bool> {
+      std::vector<uint32_t> tserver_loads;
+      for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+        auto proxy = cluster_->GetTServerProxy<tserver::TabletServerServiceProxy>(i);
+        tserver::ListTabletsRequestPB req;
+        tserver::ListTabletsResponsePB resp;
+        rpc::RpcController controller;
+        controller.set_timeout(timeout);
+        RETURN_NOT_OK(proxy->ListTablets(req, &resp, &controller));
+        int tablet_count = 0;
+        for (const auto& tablet : resp.status_and_schema()) {
+          if (tablet.tablet_status().table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+            continue;
+          }
+          if (tablet.tablet_status().namespace_name() == client::kTableName.namespace_name()) {
+            if (tablet.tablet_status().tablet_data_state() != tablet::TABLET_DATA_TOMBSTONED) {
+              ++tablet_count;
+            }
+          }
+        }
+        LOG(INFO) << "For TS " << cluster_->tablet_server(i)->id() << ", load: " << tablet_count;
+        tserver_loads.push_back(tablet_count);
+      }
+
+      return integration_tests::AreLoadsBalanced(tserver_loads);
+    }, timeout, "Are loads balanced"));
+  }
+};
+
+TEST_F(YbAdminSnapshotScheduleTestWithLB, TestLBHiddenTables) {
+  // Create a schedule.
+  auto schedule_id = ASSERT_RESULT(PrepareCql());
+
+  // Create a table with 8 tablets.
+  LOG(INFO) << "Create table " << client::kTableName.table_name() << " with 8 tablets";
+  ASSERT_NO_FATALS(client::kv_table_test::CreateTable(
+      client::Transactional::kTrue, 8, client_.get(), &table_));
+
+  // Drop the table so that it becomes Hidden.
+  LOG(INFO) << "Hiding table " << client::kTableName.table_name();
+  ASSERT_OK(client_->DeleteTable(client::kTableName));
+
+  // Add a tserver and wait for LB to balance the load.
+  LOG(INFO) << "Adding a fourth tablet server";
+  std::vector<std::string> ts_flags = ExtraTSFlags();
+  ASSERT_OK(cluster_->AddTabletServer(true, ts_flags));
+  ASSERT_OK(cluster_->WaitForTabletServerCount(4, 30s));
+
+  // Wait for LB to be idle.
+  WaitForLoadBalanceCompletion(30s * kTimeMultiplier * 10);
+
+  // Validate loads are balanced.
+  WaitForLoadToBeBalanced(30s * kTimeMultiplier * 10);
 }
 
 }  // namespace tools

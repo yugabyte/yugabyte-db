@@ -4587,6 +4587,13 @@ TableInfo::WriteLock CatalogManager::MaybeTransitionTableToDeleted(const TableIn
     // tablets have been successfully removed from tservers.
     // For any hiding table we will want to mark it as HIDDEN once all its respective
     // tablets have been successfully hidden on tservers.
+    if (lock->is_deleted()) {
+      // Clear the tablets_ and partitions_ maps if table has already been DELETED.
+      // Usually this would have been done except for tables that were hidden and are now deleted.
+      // Also, this is a catch all in case any other path misses clearing the maps.
+      table->ClearTabletMaps();
+      return TableInfo::WriteLock();
+    }
     hide_only = !lock->is_deleting();
     if (hide_only && !lock->is_hiding()) {
       return TableInfo::WriteLock();
@@ -4613,6 +4620,8 @@ TableInfo::WriteLock CatalogManager::MaybeTransitionTableToDeleted(const TableIn
   if (lock->is_hiding()) {
     LOG(INFO) << "Marking table as HIDDEN: " << table->ToString();
     lock.mutable_data()->pb.set_hide_state(SysTablesEntryPB::HIDDEN);
+    // Erase all the tablets from partitions_ structure.
+    table->ClearTabletMaps(DeactivateOnly::kTrue);
     return lock;
   }
   if (lock->is_deleting()) {
@@ -4620,6 +4629,8 @@ TableInfo::WriteLock CatalogManager::MaybeTransitionTableToDeleted(const TableIn
     LOG(INFO) << "Marking table as DELETED: " << table->ToString();
     lock.mutable_data()->set_state(SysTablesEntryPB::DELETED,
         Substitute("Deleted with tablets at $0", LocalTimeAsString()));
+    // Erase all the tablets from tablets_ and partitions_ structures.
+    table->ClearTabletMaps();
     return lock;
   }
   return TableInfo::WriteLock();
@@ -8099,15 +8110,18 @@ Status CatalogManager::DeleteTabletListAndSendRequests(
     auto& tablet_lock = tablet_and_lock.lock;
 
     bool was_hidden = tablet_lock->ListedAsHidden();
+    // Inactive tablet now, so remove it from partitions_.
+    // After all the tablets have been deleted from the tservers, we remove it from tablets_.
+    tablet->table()->RemoveTablet(tablet->id(), DeactivateOnly::kTrue);
+
     if (hide_only) {
-      LOG(INFO) << "Hiding tablet " << tablet->tablet_id() << " ...";
+      LOG(INFO) << "Hiding tablet " << tablet->tablet_id();
       tablet_lock.mutable_data()->pb.set_hide_hybrid_time(hide_hybrid_time.ToUint64());
       *tablet_lock.mutable_data()->pb.mutable_retained_by_snapshot_schedules() =
           retained_by_snapshot_schedules;
     } else {
-      LOG(INFO) << "Deleting tablet " << tablet->tablet_id() << " ...";
+      LOG(INFO) << "Deleting tablet " << tablet->tablet_id();
       tablet_lock.mutable_data()->set_state(SysTabletsEntryPB::DELETED, deletion_msg);
-      tablet->table()->RemoveTablet(tablet->id(), InactiveOnly::kTrue);
     }
     if (tablet_lock->ListedAsHidden() && !was_hidden) {
       marked_as_hidden.push_back(tablet);
