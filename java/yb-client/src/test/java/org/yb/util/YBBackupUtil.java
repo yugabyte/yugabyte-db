@@ -51,8 +51,7 @@ public final class YBBackupUtil {
 
   public static void setTSAddresses(Map<HostAndPort, MiniYBDaemon> tserversMap) {
     String hostsAndPorts = "";
-    List<MiniYBDaemon> tservers = new ArrayList<>(tserversMap.values());
-    for (MiniYBDaemon tserver : tservers) {
+    for (MiniYBDaemon tserver : tserversMap.values()) {
       hostsAndPorts += (hostsAndPorts.isEmpty() ? "" : ",") + tserver.getWebHostAndPort();
     }
     setTSWebAddresses(hostsAndPorts);
@@ -151,10 +150,14 @@ public final class YBBackupUtil {
   }
 
   public static void runYbBackupCreate(String... args) throws Exception {
+    runYbBackupCreate(Arrays.asList(args));
+  }
+
+  public static void runYbBackupCreate(List<String> args) throws Exception {
     List<String> processCommand = new ArrayList<String>(Arrays.asList(
         "--backup_location", getTempBackupDir(),
         "create"));
-    processCommand.addAll(Arrays.asList(args));
+    processCommand.addAll(args);
     final String output = runYbBackup(processCommand);
     JSONObject json = new JSONObject(output);
     final String url = json.getString("snapshot_url");
@@ -162,10 +165,14 @@ public final class YBBackupUtil {
   }
 
   public static void runYbBackupRestore(String... args) throws Exception {
+    runYbBackupRestore(Arrays.asList(args));
+  }
+
+  public static void runYbBackupRestore(List<String> args) throws Exception {
     List<String> processCommand = new ArrayList<String>(Arrays.asList(
         "--backup_location", getTempBackupDir(),
         "restore"));
-    processCommand.addAll(Arrays.asList(args));
+    processCommand.addAll(args);
     final String output = runYbBackup(processCommand);
     JSONObject json = new JSONObject(output);
     final boolean resultOk = json.getBoolean("success");
@@ -186,7 +193,6 @@ public final class YBBackupUtil {
     processCommand.addAll(Arrays.asList(args));
     final String output = runProcess(processCommand, defaultYbBackupTimeoutInSeconds);
     LOG.info("yb-admin output: " + output);
-
     return output;
   }
 
@@ -198,6 +204,5 @@ public final class YBBackupUtil {
                  .filter(line -> !line.startsWith("Tablet-UUID"))
                  .map(line -> line.split(" ")[0])
                  .collect(Collectors.toList());
-
   }
 }

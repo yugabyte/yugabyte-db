@@ -59,6 +59,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class BasePgSQLTest extends BaseMiniClusterTest {
   private static final Logger LOG = LoggerFactory.getLogger(BasePgSQLTest.class);
@@ -674,7 +675,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return value;
   }
 
-  protected static List<String> getTabletsForTable(
+  protected List<String> getTabletsForTable(
     String database, String tableName) throws Exception {
     try {
       return YBBackupUtil.getTabletsForTable("ysql." + database, tableName);
@@ -686,6 +687,19 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected String getOwnerForTable(Statement stmt, String tableName) throws Exception {
     return getSingleRow(stmt, "SELECT pg_get_userbyid(relowner) FROM pg_class WHERE relname = '" +
         tableName + "'").getString(0);
+  }
+
+  protected String getTablespaceForTable(Statement stmt, String tableName) throws Exception {
+    ResultSet rs = stmt.executeQuery(
+        "SELECT ts.spcname FROM pg_tablespace ts INNER JOIN pg_class c " +
+        "ON ts.oid = c.reltablespace WHERE c.oid = '" + tableName + "'::regclass");
+    if (!rs.next()) {
+      return null; // No tablespace for the table.
+    }
+
+    Row row = Row.fromResultSet(rs);
+    assertFalse("Result set has more than one row", rs.next());
+    return row.getString(0);
   }
 
   protected long getMetricCounter(String metricName) throws Exception {
@@ -1217,7 +1231,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return systemTableQueryHelper(stmt, () -> stmt.executeUpdate(dml));
   }
 
-  protected static List<Row> getSystemTableRowsList(
+  protected List<Row> getSystemTableRowsList(
       Statement stmt, String query) throws SQLException {
     return systemTableQueryHelper(stmt, () -> {
       try (ResultSet result = stmt.executeQuery(query)) {
@@ -1243,7 +1257,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
-  protected static List<Row> getRowList(ResultSet rs) throws SQLException {
+  protected List<Row> getRowList(ResultSet rs) throws SQLException {
     List<Row> rows = new ArrayList<>();
     while (rs.next()) {
       rows.add(Row.fromResultSet(rs));
@@ -1361,6 +1375,11 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     try (ResultSet rs = statement.executeQuery(query)) {
       assertEquals(expectedRows, getRowSet(rs));
     }
+  }
+
+  @SafeVarargs
+  protected final <T> Set<T> asSet(T... ts) {
+    return Stream.of(ts).collect(Collectors.toSet());
   }
 
   protected void assertRowList(Statement statement,

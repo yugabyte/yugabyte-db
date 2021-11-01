@@ -12,13 +12,18 @@
 //
 package org.yb.pgsql;
 
+import java.io.File;
 import java.sql.Connection;
 import java.sql.Statement;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -28,10 +33,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.yb.minicluster.MiniYBCluster;
+import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.util.TableProperties;
 import org.yb.util.YBBackupException;
 import org.yb.util.YBBackupUtil;
 import org.yb.util.YBTestRunnerNonSanitizersOrMac;
+
+import com.google.common.collect.ImmutableMap;
 
 import static org.yb.AssertionWrappers.assertArrayEquals;
 import static org.yb.AssertionWrappers.assertEquals;
@@ -48,6 +56,23 @@ public class TestYbBackup extends BasePgSQLTest {
     YBBackupUtil.setTSAddresses(miniCluster.getTabletServers());
     YBBackupUtil.setMasterAddresses(masterAddresses);
     YBBackupUtil.setPostgresContactPoint(miniCluster.getPostgresContactPoints().get(0));
+  }
+
+  @Override
+  protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
+    super.customizeMiniClusterBuilder(builder);
+
+    List<Map<String, String>> perTserverZonePlacementFlags = Arrays.asList(
+        ImmutableMap.of("placement_cloud", "cloud1",
+                        "placement_region", "region1",
+                        "placement_zone", "zone1"),
+        ImmutableMap.of("placement_cloud", "cloud2",
+                        "placement_region", "region2",
+                        "placement_zone", "zone2"),
+        ImmutableMap.of("placement_cloud", "cloud3",
+                        "placement_region", "region3",
+                        "placement_zone", "zone3"));
+    builder.perTServerFlags(perTserverZonePlacementFlags);
   }
 
   @Override
@@ -630,5 +655,207 @@ public class TestYbBackup extends BasePgSQLTest {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("DROP DATABASE yb2");
     }
+  }
+
+  public Set<String> subDirs(String path) throws Exception {
+    Set<String> dirs = new HashSet<String>();
+    for (File f : new File(path).listFiles(File::isDirectory)) {
+      dirs.add(f.getName());
+    }
+    return dirs;
+  }
+
+  public void checkTabletsInDir(String path, List<String>... tabletLists) throws Exception {
+    Set<String> dirs = subDirs(path);
+    for(List<String> tablets : tabletLists) {
+      for (String tabletID : tablets) {
+        assertTrue(dirs.contains("tablet-" + tabletID));
+      }
+    }
+  }
+
+  public void doTestGeoPartitionedBackup(
+      String targetDB, int numRegions, boolean useTablespaces) throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute(
+          " CREATE TABLESPACE region1_ts " +
+          "  WITH (replica_placement=" +
+          "'{\"num_replicas\":1, \"placement_blocks\":" +
+          "[{\"cloud\":\"cloud1\",\"region\":\"region1\",\"zone\":\"zone1\"," +
+          "\"min_num_replicas\":1}]}')");
+      stmt.execute(
+          " CREATE TABLESPACE region2_ts " +
+          "  WITH (replica_placement=" +
+          "'{\"num_replicas\":1, \"placement_blocks\":" +
+          "[{\"cloud\":\"cloud2\",\"region\":\"region2\",\"zone\":\"zone2\"," +
+          "\"min_num_replicas\":1}]}')");
+      stmt.execute(
+          " CREATE TABLESPACE region3_ts " +
+          "  WITH (replica_placement=" +
+          "'{\"num_replicas\":1, \"placement_blocks\":" +
+          "[{\"cloud\":\"cloud3\",\"region\":\"region3\",\"zone\":\"zone3\"," +
+          "\"min_num_replicas\":1}]}')");
+
+      stmt.execute("CREATE TABLE tbl (id INT, geo VARCHAR) PARTITION BY LIST (geo)");
+      stmt.execute("CREATE TABLE tbl_r1 PARTITION OF tbl (id, geo, PRIMARY KEY (id HASH, geo))" +
+                   "FOR VALUES IN ('R1') TABLESPACE region1_ts");
+      stmt.execute("CREATE TABLE tbl_r2 PARTITION OF tbl (id, geo, PRIMARY KEY (id HASH, geo))" +
+                   "FOR VALUES IN ('R2') TABLESPACE region2_ts");
+      stmt.execute("CREATE TABLE tbl_r3 PARTITION OF tbl (id, geo, PRIMARY KEY (id HASH, geo))" +
+                   "FOR VALUES IN ('R3') TABLESPACE region3_ts");
+      // Check tablespaces for tables.
+      assertEquals(null, getTablespaceForTable(stmt, "tbl"));
+      assertEquals("region1_ts", getTablespaceForTable(stmt, "tbl_r1"));
+      assertEquals("region2_ts", getTablespaceForTable(stmt, "tbl_r2"));
+      assertEquals("region3_ts", getTablespaceForTable(stmt, "tbl_r3"));
+
+      for (int i = 1; i <= 2000; ++i) {
+        stmt.execute("INSERT INTO tbl (id, geo) VALUES" +
+          " (" + String.valueOf(i) +                  // id
+          ", 'R" + String.valueOf(1 + i % 3) + "')"); // geo
+      }
+
+      List<String> tblTablets = getTabletsForTable("yugabyte", "tbl");
+      List<String> tblR1Tablets = getTabletsForTable("yugabyte", "tbl_r1");
+      List<String> tblR2Tablets = getTabletsForTable("yugabyte", "tbl_r2");
+      List<String> tblR3Tablets = getTabletsForTable("yugabyte", "tbl_r3");
+
+      final String backupDir = YBBackupUtil.getTempBackupDir();
+      List<String> args = new ArrayList<>(Arrays.asList("--keyspace", "ysql.yugabyte"));
+      if (useTablespaces) {
+        args.add("--use_tablespaces");
+      }
+
+      switch (numRegions) {
+        case 0:
+          YBBackupUtil.runYbBackupCreate(args);
+          checkTabletsInDir(backupDir, tblTablets, tblR1Tablets, tblR2Tablets, tblR3Tablets);
+          break;
+        case 1:
+          args.addAll(Arrays.asList(
+              "--region", "region1", "--region_location", backupDir + "_reg1"));
+          YBBackupUtil.runYbBackupCreate(args);
+          checkTabletsInDir(backupDir, tblR2Tablets, tblR3Tablets);
+          checkTabletsInDir(backupDir + "_reg1", tblR1Tablets);
+          break;
+        case 3:
+          args.addAll(Arrays.asList(
+            "--region", "region1", "--region_location", backupDir + "_reg1",
+            "--region", "region2", "--region_location", backupDir + "_reg2",
+            "--region", "region3", "--region_location", backupDir + "_reg3"));
+          YBBackupUtil.runYbBackupCreate(args);
+          assertTrue(subDirs(backupDir).isEmpty());
+          checkTabletsInDir(backupDir + "_reg1", tblR1Tablets);
+          checkTabletsInDir(backupDir + "_reg2", tblR2Tablets);
+          checkTabletsInDir(backupDir + "_reg3", tblR3Tablets);
+          break;
+        default:
+          throw new IllegalArgumentException("Unexpected numRegions: " + numRegions);
+      }
+
+      stmt.execute("INSERT INTO tbl (id, geo) VALUES (9999, 'R1')");
+      assertQuery(stmt, "SELECT * FROM tbl WHERE id=1", new Row(1, "R2"));
+      assertQuery(stmt, "SELECT * FROM tbl WHERE id=2000", new Row(2000, "R3"));
+      assertQuery(stmt, "SELECT * FROM tbl WHERE id=9999", new Row(9999, "R1"));
+      assertQuery(stmt, "SELECT COUNT(*) FROM tbl", new Row(2001));
+
+      args.clear();
+      if (useTablespaces) {
+        args.add("--use_tablespaces");
+      }
+
+      if (!targetDB.equals("yugabyte")) {
+        // Drop TABLEs and TABLESPACEs.
+        stmt.execute("DROP TABLE tbl_r1");
+        stmt.execute("DROP TABLE tbl_r2");
+        stmt.execute("DROP TABLE tbl_r3");
+        stmt.execute("DROP TABLE tbl");
+        stmt.execute("DROP TABLESPACE region1_ts");
+        stmt.execute("DROP TABLESPACE region2_ts");
+        stmt.execute("DROP TABLESPACE region3_ts");
+
+        // Check global TABLESPACEs.
+        assertRowSet(stmt, "SELECT spcname FROM pg_tablespace",
+            asSet(new Row("pg_default"), new Row("pg_global")));
+
+        args.addAll(Arrays.asList("--keyspace", "ysql." + targetDB));
+      }
+      // else - overwriting existing tables in DB "yugabyte".
+
+      YBBackupUtil.runYbBackupRestore(args);
+    }
+
+    try (Connection connection2 = getConnectionBuilder().withDatabase(targetDB).connect();
+         Statement stmt = connection2.createStatement()) {
+      assertQuery(stmt, "SELECT * FROM tbl WHERE id=1", new Row(1, "R2"));
+      assertQuery(stmt, "SELECT * FROM tbl WHERE id=2000", new Row(2000, "R3"));
+      assertQuery(stmt, "SELECT COUNT(*) FROM tbl", new Row(2000));
+      // This row was inserted after backup so it is absent here.
+      assertNoRows(stmt, "SELECT * FROM tbl WHERE id=9999");
+
+      assertEquals(null, getTablespaceForTable(stmt, "tbl"));
+      // Check global TABLESPACEs.
+      Set<Row> expectedTablespaces = asSet(new Row("pg_default"), new Row("pg_global"));
+      if (useTablespaces || targetDB.equals("yugabyte")) {
+        assertEquals("region1_ts", getTablespaceForTable(stmt, "tbl_r1"));
+        assertEquals("region2_ts", getTablespaceForTable(stmt, "tbl_r2"));
+        assertEquals("region3_ts", getTablespaceForTable(stmt, "tbl_r3"));
+
+        expectedTablespaces.addAll(
+            asSet(new Row("region1_ts"), new Row("region2_ts"), new Row("region3_ts")));
+      } else {
+        assertEquals(null, getTablespaceForTable(stmt, "tbl_r1"));
+        assertEquals(null, getTablespaceForTable(stmt, "tbl_r2"));
+        assertEquals(null, getTablespaceForTable(stmt, "tbl_r3"));
+      }
+      assertRowSet(stmt, "SELECT spcname FROM pg_tablespace", expectedTablespaces);
+    }
+
+    if (!targetDB.equals("yugabyte")) {
+      // Cleanup.
+      try (Statement stmt = connection.createStatement()) {
+        stmt.execute("DROP DATABASE " + targetDB);
+      }
+    }
+  }
+
+  @Test
+  public void testGeoPartitioning() throws Exception {
+    doTestGeoPartitionedBackup("db2", 3, false);
+  }
+
+  @Test
+  public void testGeoPartitioningNoRegions() throws Exception {
+    doTestGeoPartitionedBackup("db2", 0, false);
+  }
+
+  @Test
+  public void testGeoPartitioningOneRegion() throws Exception {
+    doTestGeoPartitionedBackup("db2", 1, false);
+  }
+
+  @Test
+  public void testGeoPartitioningRestoringIntoExisting() throws Exception {
+    doTestGeoPartitionedBackup("yugabyte", 3, false);
+  }
+
+  @Test
+  public void testGeoPartitioningWithTablespaces() throws Exception {
+    doTestGeoPartitionedBackup("db2", 3, true);
+  }
+
+  @Test
+  public void testGeoPartitioningNoRegionsWithTablespaces() throws Exception {
+    doTestGeoPartitionedBackup("db2", 0, true);
+  }
+
+  @Test
+  public void testGeoPartitioningOneRegionWithTablespaces() throws Exception {
+    doTestGeoPartitionedBackup("db2", 1, true);
+  }
+
+  @Test
+  public void testGeoPartitioningRestoringIntoExistingWithTablespaces() throws Exception {
+    doTestGeoPartitionedBackup("yugabyte", 3, true);
   }
 }
