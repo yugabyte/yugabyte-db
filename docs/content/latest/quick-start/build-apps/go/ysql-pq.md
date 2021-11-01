@@ -21,19 +21,19 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/quick-start/build-apps/go/ysql-pq" class="nav-link active">
+    <a href="../ysql-pq/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - PQ
     </a>
   </li>
   <li >
-    <a href="/latest/quick-start/build-apps/go/ysql-gorm" class="nav-link">
+    <a href="../ysql-gorm/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - GORM
     </a>
   </li>
   <li>
-    <a href="/latest/quick-start/build-apps/go/ycql" class="nav-link">
+    <a href="../ycql/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -149,7 +149,7 @@ $ go run ybsql_hello_world.go
 
 You should see the following output.
 
-```
+```output
 Created table employee
 Inserted data: INSERT INTO employee(id, name, age, language) VALUES (1, 'John', 35, 'Go')
 Query for id=1 returned: Row[John, 35, Go]

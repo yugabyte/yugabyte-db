@@ -36,12 +36,11 @@ showAsideToc: true
   </li>
 </ul>
 
-
 ## Prerequisites
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../../quick-start/explore/ysql/).
+- installed YugabyteDB and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../../quick-start/install/macos/).
 
 ## Clone the orm-examples repo
 
@@ -69,7 +68,7 @@ npm install
 
 ## Run the application
 
-Bring the NodeJS API server at http://localhost:8080 with DEBUG logs on.
+Bring the NodeJS API server at <http://localhost:8080> with DEBUG logs on.
 
 ```sh
 $ DEBUG=sequelize:* npm start
@@ -83,6 +82,7 @@ Create 2 users.
 $ curl --data '{ "firstName" : "John", "lastName" : "Smith", "email" : "jsmith@yb.com" }' \
    -v -X POST -H 'Content-Type:application/json' http://localhost:8080/users
 ```
+
 ```sh
 $ curl --data '{ "firstName" : "Tom", "lastName" : "Stewart", "email" : "tstewart@yb.com" }' \
    -v -X POST -H 'Content-Type:application/json' http://localhost:8080/users
@@ -124,7 +124,7 @@ $ curl \
 $ ./bin/ysqlsh 
 ```
 
-```
+```output
 ysqlsh (11.2)
 Type "help" for help.
 
@@ -135,7 +135,7 @@ yugabyte=#
 yugabyte=# SELECT count(*) FROM users;
 ```
 
-```
+```output
  count 
 -------
      2
@@ -146,7 +146,7 @@ yugabyte=# SELECT count(*) FROM users;
 yugabyte=# SELECT count(*) FROM products;
 ```
 
-```
+```output
  count 
 -------
      2
@@ -157,7 +157,7 @@ yugabyte=# SELECT count(*) FROM products;
 yugabyte=# SELECT count(*) FROM orders;
 ```
 
-```
+```output
  count 
 -------
      2
@@ -170,7 +170,7 @@ yugabyte=# SELECT count(*) FROM orders;
 $ curl http://localhost:8080/users
 ```
 
-```
+```output.json
 {
   "content": [
     {
@@ -193,7 +193,8 @@ $ curl http://localhost:8080/users
 ```sh
 $ curl http://localhost:8080/products
 ```
-```
+
+```output.json
 {
   "content": [
     {
@@ -217,7 +218,7 @@ $ curl http://localhost:8080/products
 $ curl http://localhost:8080/orders
 ```
 
-```
+```output.json
 {
   "content": [
     {
