@@ -582,7 +582,8 @@ TEST_F(QLTabletTest, TransactionsTableTablets) {
   ASSERT_OK(table.Create(kTable1Name, 8, client_.get(), &builder));
 
   // Wait for transactions table to be created.
-  YBTableName table_name(YQL_DATABASE_CQL, master::kSystemNamespaceName, kTransactionsTableName);
+  YBTableName table_name(
+      YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
   master::IsCreateTableDoneResponsePB resp;
   ASSERT_OK(WaitForTableCreation(table_name, &resp));
   ASSERT_TRUE(resp.done());

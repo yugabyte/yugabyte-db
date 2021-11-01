@@ -830,6 +830,18 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
+      "create_transaction_table", " <table_name>",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() < 1) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+        const string table_name = args[0];
+        RETURN_NOT_OK_PREPEND(client->CreateTransactionsStatusTable(table_name),
+                              Format("Unable to create transaction table named $0", table_name));
+        return Status::OK();
+      });
+
+  Register(
       "ysql_catalog_version", "",
       [client](const CLIArguments&) -> Status {
         RETURN_NOT_OK_PREPEND(client->GetYsqlCatalogVersion(),

@@ -2138,6 +2138,14 @@ message SplitTabletResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message CreateTransactionStatusTableRequestPB {
+  required string table_name = 1;
+}
+
+message CreateTransactionStatusTableResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 message DeleteNotServingTabletRequestPB {
   required bytes tablet_id = 1;
 }
@@ -2306,6 +2314,8 @@ service MasterService {
       returns (HasUniverseKeyInMemoryResponsePB);
 
   rpc SplitTablet(SplitTabletRequestPB) returns (SplitTabletResponsePB);
+  rpc CreateTransactionStatusTable(CreateTransactionStatusTableRequestPB)
+      returns (CreateTransactionStatusTableResponsePB);
   rpc DeleteNotServingTablet(DeleteNotServingTabletRequestPB)
       returns (DeleteNotServingTabletResponsePB);
 
