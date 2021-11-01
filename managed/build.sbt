@@ -185,6 +185,7 @@ libraryDependencies ++= Seq(
   "commons-codec" % "commons-codec" % "1.15",
   "com.google.cloud" % "google-cloud-storage" % "1.115.0",
   "org.projectlombok" % "lombok" % "1.18.20",
+  "com.squareup.okhttp3" % "okhttp" % "4.9.1",
   "com.squareup.okhttp3" % "mockwebserver" % "4.9.1" % Test,
   "io.kamon" %% "kamon-bundle" % "2.2.2",
   "io.kamon" %% "kamon-prometheus" % "2.2.2",

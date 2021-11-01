@@ -146,7 +146,7 @@ public class MetricService {
   private void deleteInternal(Collection<Metric> toDelete) {
     MetricFilter deleteFilter =
         MetricFilter.builder()
-            .uuids(toDelete.stream().map(Metric::getUuid).collect(Collectors.toSet()))
+            .keys(toDelete.stream().map(MetricKey::from).collect(Collectors.toSet()))
             .build();
     int deleted = createQueryByFilter(deleteFilter).delete();
     log.trace("{} metrics deleted", deleted);

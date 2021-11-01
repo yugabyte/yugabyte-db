@@ -25,7 +25,6 @@ import lombok.Value;
 @Value
 @Builder
 public class MetricFilter {
-  Set<UUID> uuids;
   UUID customerUuid;
   UUID sourceUuid;
   List<PlatformMetrics> metrics;
@@ -34,20 +33,9 @@ public class MetricFilter {
   Boolean expired;
 
   public static class MetricFilterBuilder {
-    Set<UUID> uuids = new HashSet<>();
     List<PlatformMetrics> metrics = new ArrayList<>();
     Set<MetricSourceKey> sourceKeys = new HashSet<>();
     Set<MetricKey> keys = new HashSet<>();
-
-    public MetricFilterBuilder uuids(@NonNull Collection<UUID> uuids) {
-      this.uuids.addAll(uuids);
-      return this;
-    }
-
-    public MetricFilterBuilder uuid(@NonNull UUID uuid) {
-      this.uuids.add(uuid);
-      return this;
-    }
 
     public MetricFilterBuilder customerUuid(@NonNull UUID customerUuid) {
       this.customerUuid = customerUuid;

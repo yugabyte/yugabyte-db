@@ -77,7 +77,7 @@ export default class AlertDetails extends Component {
                 className="alert-label noLeftPadding noMarginBottom"
               >
                 <h6 className="alert-label-header">DESCRIPTION</h6>
-                <div className="alert-label-value">{alertDetails.message}</div>
+                <div className="alert-label-message">{alertDetails.message}</div>
               </Col>
               <Col lg={12} className="noLeftPadding">
                 {getSeverityLabel(alertDetails.severity)}
