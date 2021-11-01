@@ -43,6 +43,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.Api;
@@ -130,7 +131,7 @@ public class CustomerController extends AuthenticatedController {
     responseJson.put(
         "callhomeLevel", CustomerConfig.getOrCreateCallhomeLevel(customerUUID).toString());
 
-    Users user = (Users) ctx().args.get("user");
+    UserWithFeatures user = (UserWithFeatures) ctx().args.get("user");
     if (customer.getFeatures().size() != 0 && user.getFeatures().size() != 0) {
       JsonNode featureSet = user.getFeatures();
       CommonUtils.deepMerge(featureSet, customer.getFeatures());

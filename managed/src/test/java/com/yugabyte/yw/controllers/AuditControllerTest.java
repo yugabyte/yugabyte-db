@@ -46,12 +46,12 @@ public class AuditControllerTest extends FakeDBApplication {
     authToken2 = user2.createAuthToken();
     ObjectNode params = Json.newObject();
     params.put("foo", "bar");
-    audit1 = Audit.create(user1.uuid, customer1.uuid, "/test/call", "GET", params, null);
+    audit1 = Audit.create(user1, "/test/call", "GET", params, null);
     taskUUID1 = UUID.randomUUID();
     taskUUID2 = UUID.randomUUID();
-    audit2 = Audit.create(user1.uuid, customer1.uuid, "/test/call1", "DELETE", params, taskUUID1);
-    audit3 = Audit.create(user2.uuid, customer2.uuid, "/test/call2", "PUT", params, taskUUID2);
-    audit4 = Audit.create(user2.uuid, customer2.uuid, "/test/call4", "GET", params, null);
+    audit2 = Audit.create(user1, "/test/call1", "DELETE", params, taskUUID1);
+    audit3 = Audit.create(user2, "/test/call2", "PUT", params, taskUUID2);
+    audit4 = Audit.create(user2, "/test/call4", "GET", params, null);
   }
 
   @Test

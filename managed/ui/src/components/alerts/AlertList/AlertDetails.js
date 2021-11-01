@@ -1,6 +1,7 @@
 import React, { Component } from 'react';
 import { Row, Col, Label, ButtonGroup, DropdownButton, MenuItem } from 'react-bootstrap';
 import './AlertDetails.scss';
+import { isNonAvailable } from '../../../utils/LayoutUtils';
 
 const findValueforlabel = (labels, labelToFind) => {
   const label = labels.find((l) => l.name === labelToFind);
@@ -49,7 +50,9 @@ export default class AlertDetails extends Component {
   }
 
   render() {
-    const { onHide, alertDetails, onAcknowledge } = this.props;
+    const { customer, onHide, alertDetails, onAcknowledge } = this.props;
+    const isReadOnly = isNonAvailable(
+      customer.data.features, 'alert.list.actions');
 
     if (!alertDetails) return null;
 
@@ -113,7 +116,7 @@ export default class AlertDetails extends Component {
 
                 <div className="alert-label-value">{alertDetails.state}</div>
               </Col>
-              {alertDetails.state === 'ACTIVE' && (
+              {alertDetails.state === 'ACTIVE' && !isReadOnly && (
                 <Col lg={3} className="noLeftPadding">
                   <ButtonGroup>
                     <DropdownButton id="alert-mark-as-button" title="Mark as">

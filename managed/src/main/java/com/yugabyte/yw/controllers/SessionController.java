@@ -31,17 +31,17 @@ import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
+import com.yugabyte.yw.common.user.UserService;
 import com.yugabyte.yw.forms.CustomerLoginFormData;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.forms.PasswordPolicyFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.SetSecurityFormData;
-import com.yugabyte.yw.forms.UniverseResp;
-import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.extended.UserWithFeatures;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -50,15 +50,14 @@ import io.swagger.annotations.Authorization;
 import java.io.File;
 import java.io.FileFilter;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.FileNotFoundException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.ListIterator;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletionStage;
@@ -67,13 +66,12 @@ import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 import java.util.stream.Collectors;
 import java.util.zip.GZIPInputStream;
-import javax.persistence.PersistenceException;
 import lombok.Data;
-import lombok.extern.slf4j.Slf4j;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.io.IOCase;
 import org.apache.commons.io.comparator.LastModifiedFileComparator;
 import org.apache.commons.io.filefilter.WildcardFileFilter;
-import org.apache.commons.io.IOCase;
 import org.apache.commons.io.input.ReversedLinesFileReader;
 import org.pac4j.core.profile.CommonProfile;
 import org.pac4j.core.profile.ProfileManager;
@@ -83,8 +81,8 @@ import org.pac4j.play.store.PlaySessionStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.unix4j.Unix4j;
-import org.unix4j.unix.grep.GrepOption;
 import org.unix4j.unix.Sort;
+import org.unix4j.unix.grep.GrepOption;
 import play.Configuration;
 import play.Environment;
 import play.data.Form;
@@ -131,6 +129,8 @@ public class SessionController extends AbstractPlatformController {
 
   @Inject private HttpExecutionContext ec;
 
+  @Inject private UserService userService;
+
   public static final String AUTH_TOKEN = "authToken";
   public static final String API_TOKEN = "apiToken";
   public static final String CUSTOMER_UUID = "customerUUID";
@@ -169,7 +169,7 @@ public class SessionController extends AbstractPlatformController {
       response = SessionInfo.class)
   @With(TokenAuthenticator.class)
   public Result getSessionInfo() {
-    Users user = (Users) Http.Context.current().args.get("user");
+    Users user = getCurrentUser();
     Customer cust = Customer.get(user.customerUUID);
     Cookie authCookie = request().cookie(AUTH_TOKEN);
     SessionInfo sessionInfo =
@@ -411,7 +411,7 @@ public class SessionController extends AbstractPlatformController {
     } else {
       Customer cust = Customer.get(user.customerUUID);
       ctx().args.put("customer", cust);
-      ctx().args.put("user", user);
+      ctx().args.put("user", userService.getUserWithFeatures(cust, user));
       response()
           .setCookie(
               Http.Cookie.builder("customerId", cust.uuid.toString())
@@ -479,7 +479,7 @@ public class SessionController extends AbstractPlatformController {
     SetSecurityFormData data = formData.get();
     configHelper.loadConfigToDB(Security, ImmutableMap.of("level", data.level));
     if (data.level.equals("insecure")) {
-      Users user = (Users) Http.Context.current().args.get("user");
+      Users user = getCurrentUser();
       String apiToken = user.getApiToken();
       if (apiToken == null || apiToken.isEmpty()) {
         user.upsertApiToken();
@@ -500,7 +500,7 @@ public class SessionController extends AbstractPlatformController {
   @With(TokenAuthenticator.class)
   @ApiOperation(value = "UI_ONLY", hidden = true, response = SessionInfo.class)
   public Result api_token(UUID customerUUID) {
-    Users user = (Users) Http.Context.current().args.get("user");
+    Users user = getCurrentUser();
 
     if (user == null) {
       throw new PlatformServiceException(
@@ -574,7 +574,7 @@ public class SessionController extends AbstractPlatformController {
                 .build());
     // When there is no authenticated user in context; we just pretend that the user
     // created himself for auditing purpose.
-    ctx().args.putIfAbsent("user", user);
+    ctx().args.putIfAbsent("user", userService.getUserWithFeatures(cust, user));
     auditService().createAuditEntry(ctx(), request());
     return sessionInfo;
   }
@@ -583,7 +583,7 @@ public class SessionController extends AbstractPlatformController {
   @With(TokenAuthenticator.class)
   public Result logout() {
     response().discardCookie(AUTH_TOKEN);
-    Users user = (Users) Http.Context.current().args.get("user");
+    Users user = getCurrentUser();
     if (user != null) {
       user.deleteAuthToken();
     }
@@ -673,5 +673,10 @@ public class SessionController extends AbstractPlatformController {
                 return internalServerError(errorMsg);
               }
             });
+  }
+
+  private Users getCurrentUser() {
+    UserWithFeatures userWithFeatures = (UserWithFeatures) Http.Context.current().args.get("user");
+    return userWithFeatures.getUser();
   }
 }
