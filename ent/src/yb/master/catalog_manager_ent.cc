@@ -1536,20 +1536,41 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
       return STATUS(InternalError, msg, MasterError(MasterErrorPB::SNAPSHOT_FAILED));
     }
 
-    if (table_data->num_tablets > 0 && new_num_tablets != table_data->num_tablets) {
-      // TODO(#8229): Also recreate tables besides num tablets mismatching since it is possible for
-      // splits to be off while num tablets matches. For example, [start, 0x777f), [0x777f, end] vs
-      // [start, 0x8000), [0x8000, end]. That particular example may not occur in practice, but the
-      // issue should show up when restoring tablets that have been dynamically split.
+    if (table_data->num_tablets > 0) {
       if (meta.table_type() == TableType::PGSQL_TABLE_TYPE) {
-        RETURN_NOT_OK(RepartitionTable(table, table_data));
-      } else {
-        const string msg = Format(
-            "Wrong number of tablets in created $0 table '$1' in namespace id $2: $3 (expected $4)",
-            TableType_Name(meta.table_type()), meta.name(), new_namespace_id,
-            new_num_tablets, table_data->num_tablets);
-        LOG_WITH_FUNC(WARNING) << msg;
-        return STATUS(InternalError, msg, MasterError(MasterErrorPB::SNAPSHOT_FAILED));
+        bool partitions_match = true;
+        if (new_num_tablets != table_data->num_tablets) {
+          partitions_match = false;
+        } else {
+          // Check if partition boundaries match.  Only check the starts; assume the ends are fine.
+          size_t i = 0;
+          vector<PartitionKey> partition_starts(table_data->num_tablets);
+          for (const auto& partition_pb : table_data->partitions) {
+            partition_starts[i] = partition_pb.partition_key_start();
+            LOG_IF(DFATAL, (i == 0) ? partition_starts[i] != ""
+                                    : partition_starts[i] <= partition_starts[i-1])
+                << "Wrong partition key start: " << b2a_hex(partition_starts[i]);
+            i++;
+          }
+          if (!table->HasPartitions(partition_starts)) {
+            LOG_WITH_FUNC(INFO) << "Partition boundaries mismatch for table " << table->id();
+            partitions_match = false;
+          }
+        }
+
+        if (!partitions_match) {
+          RETURN_NOT_OK(RepartitionTable(table, table_data));
+        }
+      } else { // not PGSQL_TABLE_TYPE
+        if (new_num_tablets != table_data->num_tablets) {
+          const string msg = Format(
+              "Wrong number of tablets in created $0 table '$1' in namespace id $2:"
+              " $3 (expected $4)",
+              TableType_Name(meta.table_type()), meta.name(), new_namespace_id,
+              new_num_tablets, table_data->num_tablets);
+          LOG_WITH_FUNC(WARNING) << msg;
+          return STATUS(InternalError, msg, MasterError(MasterErrorPB::SNAPSHOT_FAILED));
+        }
       }
     }
 
