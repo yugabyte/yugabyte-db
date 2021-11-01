@@ -1155,7 +1155,7 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
       *output << "Unable to decode partition schema: " << s.ToString();
       return;
     }
-    tablets = table->GetTablets();
+    tablets = table->GetTablets(IncludeInactive::kTrue);
   }
 
   HtmlOutputSchemaTable(schema, output);
@@ -1254,7 +1254,7 @@ std::vector<TabletInfoPtr> MasterPathHandlers::GetNonSystemTablets() {
     if (master_->catalog_manager()->IsSystemTable(*table.get())) {
       continue;
     }
-    TabletInfos ts = table->GetTablets();
+    TabletInfos ts = table->GetTablets(IncludeInactive::kTrue);
 
     for (TabletInfoPtr t : ts) {
       nonsystem_tablets.push_back(t);
@@ -2197,7 +2197,7 @@ void MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
       continue;
     }
 
-    TabletInfos tablets = table->GetTablets();
+    TabletInfos tablets = table->GetTablets(IncludeInactive::kTrue);
     bool is_user_table = master_->catalog_manager()->IsUserCreatedTable(*table);
 
     for (const auto& tablet : tablets) {
@@ -2246,7 +2246,7 @@ Status MasterPathHandlers::CalculateTServerTree(TServerTree* tserver_tree) {
       continue;
     }
 
-    TabletInfos tablets = table->GetTablets();
+    TabletInfos tablets = table->GetTablets(IncludeInactive::kTrue);
 
     for (const auto& tablet : tablets) {
       auto replica_locations = tablet->GetReplicaLocations();

@@ -369,12 +369,23 @@ void TableInfo::AddTablets(const TabletInfos& tablets) {
   }
 }
 
+void TableInfo::ClearTabletMaps(DeactivateOnly deactivate_only) {
+  std::lock_guard<decltype(lock_)> l(lock_);
+  partitions_.clear();
+  if (!deactivate_only) {
+    tablets_.clear();
+  }
+}
+
 void TableInfo::AddTabletUnlocked(const TabletInfoPtr& tablet) {
   const auto& dirty = tablet->metadata().dirty();
+  if (dirty.is_deleted()) {
+    return;
+  }
   const auto& tablet_meta = dirty.pb;
   tablets_.emplace(tablet->id(), tablet.get());
 
-  if (dirty.is_hidden() || dirty.is_deleted()) {
+  if (dirty.is_hidden()) {
     return;
   }
 
@@ -405,23 +416,23 @@ void TableInfo::AddTabletUnlocked(const TabletInfoPtr& tablet) {
   // uncommitted state.
 }
 
-bool TableInfo::RemoveTablet(const TabletId& tablet_id, InactiveOnly inactive_only) {
+bool TableInfo::RemoveTablet(const TabletId& tablet_id, DeactivateOnly deactivate_only) {
   std::lock_guard<decltype(lock_)> l(lock_);
-  return RemoveTabletUnlocked(tablet_id, inactive_only);
+  return RemoveTabletUnlocked(tablet_id, deactivate_only);
 }
 
-bool TableInfo::RemoveTablets(const TabletInfos& tablets, InactiveOnly inactive_only) {
+bool TableInfo::RemoveTablets(const TabletInfos& tablets, DeactivateOnly deactivate_only) {
   std::lock_guard<decltype(lock_)> l(lock_);
   bool all_were_removed = true;
   for (const auto& tablet : tablets) {
-    if (!RemoveTabletUnlocked(tablet->id(), inactive_only)) {
+    if (!RemoveTabletUnlocked(tablet->id(), deactivate_only)) {
       all_were_removed = false;
     }
   }
   return all_were_removed;
 }
 
-bool TableInfo::RemoveTabletUnlocked(const TabletId& tablet_id, InactiveOnly inactive_only) {
+bool TableInfo::RemoveTabletUnlocked(const TabletId& tablet_id, DeactivateOnly deactivate_only) {
   auto it = tablets_.find(tablet_id);
   if (it == tablets_.end()) {
     return false;
@@ -430,13 +441,12 @@ bool TableInfo::RemoveTabletUnlocked(const TabletId& tablet_id, InactiveOnly ina
   auto partitions_it = partitions_.find(
       it->second->metadata().dirty().pb.partition().partition_key_start());
   if (partitions_it != partitions_.end() && partitions_it->second == it->second) {
-    if (inactive_only) {
-      return false;
-    }
     partitions_.erase(partitions_it);
     result = true;
   }
-  tablets_.erase(it);
+  if (!deactivate_only) {
+    tablets_.erase(it);
+  }
   return result;
 }
 
