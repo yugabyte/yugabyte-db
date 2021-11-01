@@ -66,7 +66,7 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
   auto& pb = l.mutable_data()->pb;
   pb.CopyFrom(metadata);
 
-  if (pb.table_type() == TableType::REDIS_TABLE_TYPE && pb.name() == kTransactionsTableName) {
+  if (pb.table_type() == TableType::REDIS_TABLE_TYPE && pb.name() == kGlobalTransactionsTableName) {
     pb.set_table_type(TableType::TRANSACTION_STATUS_TABLE_TYPE);
   }
 

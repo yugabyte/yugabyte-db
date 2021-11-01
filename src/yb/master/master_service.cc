@@ -382,6 +382,7 @@ BOOST_PP_SEQ_FOR_EACH(
     (IsLoadBalancerIdle)
     (AreLeadersOnPreferredOnly)
     (SplitTablet)
+    (CreateTransactionStatusTable)
     (DeleteNotServingTablet)
     (DdlLog)
 )

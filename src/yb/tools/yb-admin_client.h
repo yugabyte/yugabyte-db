@@ -260,6 +260,8 @@ class ClusterAdminClient {
 
   CHECKED_STATUS SplitTablet(const std::string& tablet_id);
 
+  CHECKED_STATUS CreateTransactionsStatusTable(const std::string& table_name);
+
   Result<TableNameResolver> BuildTableNameResolver();
 
   Result<std::string> GetMasterLeaderUuid();

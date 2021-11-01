@@ -24,7 +24,7 @@ DEFINE_int64(transaction_rpc_timeout_ms, 5000 * yb::kTimeMultiplier,
 
 namespace yb {
 
-const std::string kTransactionsTableName = "transactions";
+const std::string kGlobalTransactionsTableName = "transactions";
 const std::string kMetricsSnapshotsTableName = "metrics";
 
 TransactionStatusResult::TransactionStatusResult(TransactionStatus status_, HybridTime status_time_)

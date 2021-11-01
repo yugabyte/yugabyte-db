@@ -329,6 +329,10 @@ class MasterServiceImpl : public MasterServiceIf,
   void SplitTablet(
       const SplitTabletRequestPB* req, SplitTabletResponsePB* resp, rpc::RpcContext rpc) override;
 
+  void CreateTransactionStatusTable(const CreateTransactionStatusTableRequestPB* req,
+                                    CreateTransactionStatusTableResponsePB* resp,
+                                    rpc::RpcContext rpc) override;
+
   void DeleteNotServingTablet(
       const DeleteNotServingTabletRequestPB* req,
       DeleteNotServingTabletResponsePB* resp,

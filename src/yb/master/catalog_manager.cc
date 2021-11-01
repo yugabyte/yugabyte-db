@@ -989,7 +989,7 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
       // of live replicas is set through an RPC from YugaWare, and we won't be able to calculate
       // the number of primary (non-read-replica) tablet servers until that happens.
       while (true) {
-        const auto s = CreateTransactionsStatusTableIfNeeded(/* rpc */ nullptr);
+        const auto s = CreateGlobalTransactionStatusTableIfNeeded(/* rpc */ nullptr);
         if (s.ok()) {
           break;
         }
@@ -2778,7 +2778,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   // If this is a transactional table, we need to create the transaction status table (if it does
   // not exist already).
   if (is_transactional && (!is_pg_catalog_table || !FLAGS_create_initial_sys_catalog_snapshot)) {
-    Status s = CreateTransactionsStatusTableIfNeeded(rpc);
+    Status s = CreateGlobalTransactionStatusTableIfNeeded(rpc);
     if (!s.ok()) {
       return s.CloneAndPrepend("Error while creating transaction status table");
     }
@@ -3474,17 +3474,31 @@ Result<bool> CatalogManager::TableExists(
   return DoesTableExist(FindTable(table_id_pb));
 }
 
-Status CatalogManager::CreateTransactionsStatusTableIfNeeded(rpc::RpcContext *rpc) {
-  if (VERIFY_RESULT(TableExists(kSystemNamespaceName, kTransactionsTableName))) {
-    VLOG(1) << "Transaction status table already exists, not creating.";
-    return Status::OK();
+CHECKED_STATUS CatalogManager::CreateTransactionStatusTable(
+    const CreateTransactionStatusTableRequestPB* req, CreateTransactionStatusTableResponsePB* resp,
+    rpc::RpcContext *rpc) {
+  const string& table_name = req->table_name();
+  Status s = CreateTransactionStatusTableInternal(rpc, table_name);
+  if (s.IsAlreadyPresent()) {
+    return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_ALREADY_PRESENT, s);
+  }
+  if (!s.ok()) {
+    return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, s);
+  }
+  return Status::OK();
+}
+
+CHECKED_STATUS CatalogManager::CreateTransactionStatusTableInternal(rpc::RpcContext *rpc,
+                                                                    const string& table_name) {
+  if (VERIFY_RESULT(TableExists(kSystemNamespaceName, table_name))) {
+    return STATUS_SUBSTITUTE(AlreadyPresent, "Table already exists: $0", table_name);
   }
 
-  LOG(INFO) << "Creating the transaction status table";
+  LOG(INFO) << "Creating transaction status table " << table_name;
   // Set up a CreateTable request internally.
   CreateTableRequestPB req;
   CreateTableResponsePB resp;
-  req.set_name(kTransactionsTableName);
+  req.set_name(table_name);
   req.mutable_namespace_()->set_name(kSystemNamespaceName);
   req.set_table_type(TableType::TRANSACTION_STATUS_TABLE_TYPE);
 
@@ -3506,6 +3520,15 @@ Status CatalogManager::CreateTransactionsStatusTableIfNeeded(rpc::RpcContext *rp
   }
 
   return Status::OK();
+}
+
+CHECKED_STATUS CatalogManager::CreateGlobalTransactionStatusTableIfNeeded(rpc::RpcContext *rpc) {
+  Status s = CreateTransactionStatusTableInternal(rpc, kGlobalTransactionsTableName);
+  if (s.IsAlreadyPresent()) {
+    VLOG(1) << "Transaction status table already exists, not creating.";
+    return Status::OK();
+  }
+  return s;
 }
 
 Status CatalogManager::CreateMetricsSnapshotsTableIfNeeded(rpc::RpcContext *rpc) {
@@ -3680,7 +3703,7 @@ Status CatalogManager::WaitForCreateTableToFinish(const TableId& table_id) {
 Status CatalogManager::IsTransactionStatusTableCreated(IsCreateTableDoneResponsePB* resp) {
   IsCreateTableDoneRequestPB req;
 
-  req.mutable_table()->set_table_name(kTransactionsTableName);
+  req.mutable_table()->set_table_name(kGlobalTransactionsTableName);
   req.mutable_table()->mutable_namespace_()->set_name(kSystemNamespaceName);
 
   return IsCreateTableDone(&req, resp);
