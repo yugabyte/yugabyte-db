@@ -44,7 +44,7 @@ Yugabyte Platform also requires the following:
 
 - Connectivity to the Internet, either directly or via an HTTP proxy.
 - Ability to install and configure [docker-engine](https://docs.docker.com/engine/).
-- Ability to install and configure [Replicated](https://www.replicated.com/), which is a containerized application itself and needs to pull containers from its own Replicated.com container registry.
+- Ability to install and configure [Replicated](https://www.replicated.com/install-options/), which is a containerized application itself and needs to pull containers from its own [Replicated.com container registry](https://help.replicated.com/docs/native/getting-started/docker-registries/).
 - Ability to pull Yugabyte container images from [Quay.io](https://quay.io/) container registry (this will be done by Replicated automatically).
 - The following ports open on the platform host: `8800` (replicated ui), `80` (http access to the Yugabyte Platform Console), `22` (ssh).
 - Attached disk storage (such as persistent EBS volumes on AWS): 100 GB SSD minimum.
@@ -53,7 +53,7 @@ Yugabyte Platform also requires the following:
 
 For a complete list of prerequisites, refer to [Prerequisites](../../yugabyte-platform/install-yugabyte-platform/prerequisites/).
 
-## What are the OS requirements and permissions to run YugabyteDB data nodes?
+## What are the requirements to run YugabyteDB data nodes?
 
 Prerequisites for YugabyteDB data nodes are listed in the YugabyteDB [Deployment checklist](../../../deploy/checklist).
 
@@ -61,7 +61,7 @@ Prerequisites for YugabyteDB data nodes are listed in the YugabyteDB [Deployment
 
 Yugabyte Platform software is packaged as a set of Docker container images hosted on the [Quay.io](https://quay.io/) container registry and managed by the [Replicated](https://www.replicated.com/) management tool. Replicated ensures that Yugabyte Platform remains highly available, and allows for instant upgrades by simply pulling the incremental container images associated with a newer platform release. If the host running the Yugabyte Platform console does not have Internet connectivity, a fully air-gapped installation option is also available.
 
-Installation of the admin console starts with installing Replicated on a Linux host. Replicated installs the [docker-engine](https://docs.docker.com/engine/), the Docker container runtime, and then pulls its own container images from the Replicated.com container registry. Yugabyte Platform then becomes a managed application of Replicated, which starts by pulling the Yugabyte Platform (`yugaware`) container images from Quay.io for the very first time. 
+Installation of the admin console starts with installing Replicated on a Linux host. Replicated installs the [docker-engine](https://docs.docker.com/engine/), the Docker container runtime, and then pulls its own container images from the [Replicated.com container registry](https://help.replicated.com/docs/native/getting-started/docker-registries/). Yugabyte Platform then becomes a managed application of Replicated, which starts by pulling the Yugabyte Platform (`yugaware`) container images from Quay.io for the very first time. 
 
 The data node (YugabyteDB) software is packaged into the Yugabyte Platform application. Yugabyte Platform distributes and installs YugabyteDB on the hosts identified to run the data nodes. Since it's already packaged into existing artifacts, the data node does not require any Internet connectivity.
 
