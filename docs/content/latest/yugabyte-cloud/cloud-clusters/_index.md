@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: cloud-clusters
     parent: yugabyte-cloud
-    weight: 100
+    weight: 150
 ---
 
 To ensure the cluster configuration matches its performance requirements, you can [monitor key database performance metrics](../cloud-monitor/) and scale the cluster vertically or horizontally as your requirements change. You can also change the default backup policy for clusters and perform on-demand backups. You access your clusters from the **Clusters** page.

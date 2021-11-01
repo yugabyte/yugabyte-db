@@ -12,7 +12,9 @@ menu:
     weight: 100
 ---
 
-To ensure the cluster configuration matches its performance requirements, you can monitor key database performance metrics and [scale the cluster vertically or horizontally](../cloud-clusters/configure-clusters/) as your requirements change. Yugabyte Cloud provides the following tools to monitor evert aspect of your cluster:
+To ensure the cluster configuration matches its performance requirements, you can monitor key database performance metrics and [scale the cluster vertically or horizontally](../cloud-clusters/configure-clusters/) as your requirements change. 
+
+Yugabyte Cloud provides the following tools to monitor your clusters:
 
 - Performance metrics charted over time.
 - A list of live queries.
@@ -20,6 +22,8 @@ To ensure the cluster configuration matches its performance requirements, you ca
 - Tables, databases, and namespaces on your cluster.
 - Status of the nodes in the cluster.
 - Activity log of changes made to the cluster.
+
+You access your clusters from the **Clusters** page.
 
 <div class="row">
 
@@ -36,7 +40,7 @@ To ensure the cluster configuration matches its performance requirements, you ca
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="queries-live/">
+    <a class="section-link icon-offset" href="cloud-queries-live/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
         <div class="title">View live queries</div>
@@ -48,7 +52,7 @@ To ensure the cluster configuration matches its performance requirements, you ca
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="queries-slow/">
+    <a class="section-link icon-offset" href="cloud-queries-slow/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
         <div class="title">View slow YSQL queries</div>

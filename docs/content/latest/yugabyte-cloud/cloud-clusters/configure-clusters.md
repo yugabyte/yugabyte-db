@@ -13,74 +13,33 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Yugabyte Cloud suppports both horizontal and vertical scaling of paid clusters. If your workloads have increased, you can dynamically add nodes to a running cluster to improve latency, throughput, and memory. Likewise, if your cluster is over-scaled, you can reduce nodes to reduce costs. You cannot change the fault tolerance of a cluster once it is created.
+Yugabyte Cloud suppports both horizontal and vertical scaling of clusters. If your workloads have increased, you can dynamically add nodes to a running cluster to improve latency, throughput, and memory. Likewise, if your cluster is over-scaled, you can reduce nodes to reduce costs.
+
+The **Infrastructure** section on the cluster **Settings** tab summarizes the cluster setup, including the region, number of nodes and vCPUs, the disk size, and fault tolerance. 
 
 You scale clusters using the **Edit Infrastructure** option on the **Settings** tab.
 
-![Cloud Cluster Settings page](/images/yb-cloud/cloud-clusters-settings.png)
+You can modify the number of nodes, vCPUs, and increase the disk size of clusters. The scaling operation is performed without any downtime, with a rolling restart of the underlying nodes.
 
-## General
+{{< note title="Note" >}}
 
-Displays the cluster name.
+You cannot change the fault tolerance of a cluster once it is created. You cannot reduce disk size. You cannot scale clusters with a fault tolerance of None (this includes Free clusters).
 
-## Infrastructure
+{{< /note >}}
 
-Summarizes the cluster setup, including the region, number of nodes and vCPUs, the disk size, and fault tolerance. 
-
-You can modify the number of nodes, vCPUs, and increase the disk size of paid clusters. You cannot reduce disk size. The scaling operation is performed without any downtime, with a rolling restart of the underlying nodes.
+## Scaling clusters
 
 To scale the cluster:
 
+1. On the **Clusters** page, select your cluster, then select the **Settings** tab.
 1. Click **Edit Infrastructure** to display the **Edit Infrastructure** dialog.
+
+    ![Cluster Edit Infrastructure](/images/yb-cloud/cloud-clusters-settings-edit.png)
+
 1. Enter the number of nodes, vCPUs, and disk size in GB for the cluster.
     \
     **Cost** displays the estimated new cost for the cluster; **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
 
 1. Click **Save** when you are done.
 
-## Network Access
-
-The Network Access section provides the cluster connection parameters and a summary of network connections and IP allow lists.
-
-For information on managing cloud network access, refer to [Configure Networking](../../cloud-network/).
-
-### Connection Parameters
-
-The cluster host address and port numbers for the YSQL and YCQL client APIs.
-
-### VPC Peering
-
-Lists the [VPC peers](../../cloud-network/vpc-peers/) assigned to paid clusters. VPC peers must be assigned when the cluster is created.
-
-### IP Allow Lists
-
-Lists the IP allow lists assigned to the cluster.
-
-To assign a list to the cluster:
-
-1. Click **Edit List** to display the **Add IP Allow List** sheet. The sheet lists the IP allow lists that have been configured for your cloud.
-1. To include an IP allow list in the cluster, select it in the list.
-1. To remove an IP allow list from the cluster, deselect it in the list.
-1. To create a new list:
-    - Click **Create New List and Add to Cluster**.
-    - Enter a name and description for the list.
-    - Enter the IP addresses and ranges to want to include in the list. Click **Detect and add my IP to this list** to add the IP address of your computer.
-1. Click **Save** when you are done.
-
-To manage your cloud IP allow lists, refer to [Manage IP Allow Lists](../../cloud-network/ip-whitelists/).
-
-<!--
-## Database Users
-
-Lists the users assigned to the cluster.
-
-To manage users for your cloud, refer to [Manage Cloud Access](../../cloud-admin/manage-access/).
-
-To modify the users assigned to the cluster:
-
-1. Click **Edit Users**.
-
-## Database Security
-
-- Edit Security
--->
+Depending on the number of nodes, the scaling operation can take several minutes or more, during which time some cloud operations will not be available.

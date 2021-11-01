@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The **Nodes** tab lists the nodes in the cluster, including the name, cloud, RAM, SST size, and read and write operations per second, along with the node status.
+Review the status of the nodes in your cluster using the **Nodes** tab. The **Nodes** tab lists the nodes in the cluster, including the name, cloud, RAM, SST size, and read and write operations per second, and the node status.
 
 ![Cloud Cluster Nodes tab](/images/yb-cloud/cloud-clusters-nodes.png)
 

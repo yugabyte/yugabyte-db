@@ -6,14 +6,14 @@ headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
   latest:
-    identifier: queries-slow
+    identifier: cloud-queries-slow
     parent: cloud-monitor
     weight: 300
 isTocNested: true
 showAsideToc: true
 ---
 
-You can monitor and display slow queries that have run on your cluster to evaluate their performance. Use this data to:
+Evaluate the performance of slow queries that have run on your cluster using the **Slow Queries** option on the cluster **Performance** tab. Use this data to:
 
 - Visually identify slower running database operations.
 - Evaluate query execution times over time.
@@ -21,8 +21,8 @@ You can monitor and display slow queries that have run on your cluster to evalua
 
 Slow queries are not available for YCQL.
 
-![Cloud Cluster Live Queries tab](/images/yb-cloud/cloud-clusters-slow.png)
+![Cloud Cluster Slow Queries tab](/images/yb-cloud/cloud-clusters-slow.png)
 
-To filter the query list, enter query text in the filter filed. To sort the list by column, click the column heading. Click **Options** to select the columns to display.
+To filter the query list, enter query text in the filter field. To sort the list by column, click the column heading. Click **Options** to select the columns to display.
 
 To view query details, click the right-arrow button for the query in the list to display the **Query Details** sheet.
