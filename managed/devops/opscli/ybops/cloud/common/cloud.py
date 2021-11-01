@@ -341,13 +341,20 @@ class AbstractCloud(AbstractCommandParser):
 
     def verify_certs(self, root_crt_path, node_crt_path, ssh_options, verify_hostname=False):
         remote_shell = RemoteShell(ssh_options)
-
+        # Verify that both cert are present in FS and have read rights
+        root_file_verify = remote_shell.run_command_raw("test -r {}".format(root_crt_path))
+        if root_file_verify.exited == 1:
+            raise YBOpsRuntimeError(
+                            "Root cert: {} is absent or is not readable.".format(root_crt_path))
+        node_file_verify = remote_shell.run_command_raw("test -r {}".format(node_crt_path))
+        if node_file_verify.exited == 1:
+            raise YBOpsRuntimeError(
+                            "Node cert: {} is absent or is not readable.".format(node_crt_path))
         try:
             remote_shell.run_command('which openssl')
         except YBOpsRuntimeError:
             logging.debug("Openssl not found, skipping certificate verification.")
             return
-
         # Verify if the node cert is not expired
         validity_verify = remote_shell.run_command_raw(
             "openssl x509 -noout -checkend 86400 -in {}".format(node_crt_path))
