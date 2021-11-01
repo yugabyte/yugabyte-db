@@ -16,7 +16,7 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
-    <a href="/latest/quick-start/build-apps/scala/ycql" class="nav-link active">
+    <a href="../ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -37,7 +37,7 @@ libraryDependencies += "com.yugabyte" % "cassandra-driver-core" % "3.8.0-yb-5"
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe and are able to interact with it using the YCQL shell. If not, follow these steps in [Quick start](../../../../api/ycql/quick-start/).
+- installed YugabyteDB, created a universe and are able to interact with it using the YCQL shell. If not, follow these steps in [Quick start](../../../explore/ycql/).
 - installed Scala version 2.12 or later.
 - installed sbt 1.3.8  or later.
 
@@ -150,10 +150,9 @@ $ sbt run
 
 You should see the following as the output.
 
-```
+```output
 Created keyspace ybdemo
 Created table employee
 Inserted data: INSERT INTO ybdemo.employee (id, name, age, language) VALUES (1, 'John', 35, 'Scala');
 Query returned 1 row: name=John, age=35, language=Scala
 ```
-

@@ -122,7 +122,7 @@ $ node yb-ysql-helloworld.js
 
 You should see the following output.
 
-```
+```output
 Creating table employee
 Inserting row with: INSERT INTO employee (id, name, age, language) VALUES (1, 'John', 35, 'NodeJS');
 Query for id=1 returned: name=John, age=35, language=NodeJS

@@ -34,7 +34,7 @@ showAsideToc: true
     </a>
   </li>
   <li>
-    <a href="" class="nav-link active">
+    <a href="{{< relref "./ycql.md" >}}" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -55,7 +55,7 @@ $ pip install yb-cassandra-driver
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start YCQL](../../../../api/ycql/quick-start/).
+- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start YCQL](../../../explore/ycql/).
 
 ### Write the sample Python application
 
@@ -109,7 +109,7 @@ $ python yb-cql-helloworld.py
 
 You should see the following output.
 
-```
+```output
 Created keyspace ybdemo
 Created table employee
 Inserted (id, name, age, language) = (1, 'John', 35, 'Python')

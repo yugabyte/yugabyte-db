@@ -49,7 +49,7 @@ $ npm install yb-ycql-driver
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell. If not, follow these steps in [Quick start YCQL guide](../../../../api/ycql/quick-start/).
+- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell. If not, follow these steps in [Quick start YCQL guide](../../../explore/ycql/).
 - installed a recent version of [Node.js](https://nodejs.org/en/download/).
 - installed the [async](https://github.com/caolan/async) utility to work with asynchronous Javascript.
 

@@ -14,32 +14,31 @@ isTocNested: true
 showAsideToc: true
 ---
 
-
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/quick-start/create-local-cluster/macos" class="nav-link active">
+    <a href="../macos/" class="nav-link active">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="/latest/quick-start/create-local-cluster/linux" class="nav-link">
+    <a href="../linux/" class="nav-link">
       <i class="fab fa-linux" aria-hidden="true"></i>
       Linux
     </a>
   </li>
 
   <li >
-    <a href="/latest/quick-start/create-local-cluster/docker" class="nav-link">
+    <a href="../docker/" class="nav-link">
       <i class="fab fa-docker" aria-hidden="true"></i>
       Docker
     </a>
   </li>
 
   <li >
-    <a href="/latest/quick-start/create-local-cluster/kubernetes" class="nav-link">
+    <a href="../kubernetes/" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
@@ -104,6 +103,6 @@ Clicking `See all nodes` takes you to the Tablet Servers page where you can obse
 
 {{<tip title="Next step" >}}
 
-[Explore YSQL](../../explore-ysql/)
+[Explore YSQL](../../explore/ysql/)
 
 {{< /tip >}}

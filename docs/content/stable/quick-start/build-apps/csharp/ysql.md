@@ -113,10 +113,10 @@ Run the C# app from menu select `Run -> Start Without Debugging`
 
 You should see the following as the output.
 
-```
+```output
 Created table Employee
 Inserted data (1, 'John', 35, 'CSharp')
 Query returned:
-Name	Age	Language
-John	35	CSharp
+Name  Age  Language
+John  35   CSharp
 ```

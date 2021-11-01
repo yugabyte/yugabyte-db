@@ -28,7 +28,7 @@ showAsideToc: true
     </a>
   </li>
   <li >
-    <a href="" class="nav-link active">
+    <a href="{{< relref "./ysql-sqlalchemy.md" >}}" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - SQL Alchemy
     </a>
@@ -86,9 +86,8 @@ $ git clone https://github.com/yugabyte/orm-examples.git
 
 Update the database settings in the `src/config.py` file to match the following. If YSQL authentication is enabled, add the password (default for the `yugabyte` user is `yugabyte`).
 
-```
+```python
 import logging
-
 
 listen_port = 8080
 db_user = 'yugabyte'
@@ -164,7 +163,7 @@ $ curl \
 $ ./bin/ysqlsh
 ```
 
-```
+```output
 ysqlsh (11.2)
 Type "help" for help.
 
@@ -175,7 +174,7 @@ yugabyte=#
 yugabyte=# SELECT count(*) FROM users;
 ```
 
-```
+```output
  count
 -------
      2
@@ -186,7 +185,7 @@ yugabyte=# SELECT count(*) FROM users;
 yugabyte=# SELECT count(*) FROM products;
 ```
 
-```
+```output
  count
 -------
      2
@@ -197,7 +196,7 @@ yugabyte=# SELECT count(*) FROM products;
 yugabyte=# SELECT count(*) FROM orders;
 ```
 
-```
+```output
  count
 -------
      2
@@ -210,7 +209,7 @@ yugabyte=# SELECT count(*) FROM orders;
 $ curl http://localhost:8080/users
 ```
 
-```json
+```output.json
 {
   "content": [
     {
@@ -234,7 +233,7 @@ $ curl http://localhost:8080/users
 $ curl http://localhost:8080/products
 ```
 
-```json
+```output.json
 {
   "content": [
     {
@@ -258,7 +257,7 @@ $ curl http://localhost:8080/products
 $ curl http://localhost:8080/orders
 ```
 
-```json
+```output.json
 {
   "content": [
     {

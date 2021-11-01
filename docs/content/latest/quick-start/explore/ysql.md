@@ -28,14 +28,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/quick-start/explore/ysql" class="nav-link active">
+    <a href="../ysql/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
  <li >
-    <a href="/latest/quick-start/explore/ycql" class="nav-link">
+    <a href="../ycql/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -43,7 +43,7 @@ showAsideToc: true
   
 </ul>
 
-After [creating a local cluster](../../create-local-cluster/), you can start exploring YugabyteDB's PostgreSQL-compatible, fully-relational [Yugabyte SQL API](../../../api/ysql/).
+After [creating a local cluster](../../create-local-cluster/macos/), you can start exploring YugabyteDB's PostgreSQL-compatible, fully-relational [Yugabyte SQL API](../../../api/ysql/).
 
 [**ysqlsh**](../../../admin/ysqlsh/) is the command line shell for interacting with the YSQL API. You will use `ysqlsh` for this tutorial.
 
