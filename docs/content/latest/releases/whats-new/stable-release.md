@@ -71,6 +71,7 @@ N/A
 [PLAT-1634] Backup page is not loading because of empty config column
 [PLAT-1934] Adding UI to set KUBE_DOMAIN
 [PLAT-2113] [PLAT-2116] Fix HA failing with entity_too_large
+[PLAT-2020] [PLAT-2041] Fix HA on IPv6-enabled K8s setup 
 
 ### Known issues
 
