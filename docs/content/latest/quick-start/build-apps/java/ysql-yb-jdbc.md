@@ -8,7 +8,7 @@ aliases:
   - /latest/develop/client-drivers/java/
   - /latest/develop/build-apps/java/
   - /latest/quick-start/build-apps/java/
-  - /latest/
+  - /latest/integrations/jdbc-driver
 menu:
   latest:
     parent: build-apps

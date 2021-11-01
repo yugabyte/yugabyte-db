@@ -135,7 +135,7 @@ For a tutorial on building a sample Java application with the Yugabyte JDBC driv
 
 The [PostgreSQL JDBC Driver](https://jdbc.postgresql.org/) is the official JDBC driver for PostgreSQL. PgJDBC is not based on [`libpq`](#libpq), but supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
-For a tutorial on building a sample Go application with the PostgreSQL JDBC Driver, see [Build a Java application](../../../quick-start/build-apps/java/ysql-jdbc/).
+For a tutorial on building a sample Java application with the PostgreSQL JDBC Driver, see [Build a Java application](../../../quick-start/build-apps/java/ysql-jdbc/).
 
 #### Install the PostgreSQL JDBC Driver
 
