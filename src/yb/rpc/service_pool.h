@@ -71,6 +71,7 @@ class ServicePool : public RpcService {
   void StartShutdown() override;
   void CompleteShutdown() override;
 
+  void FillEndpoints(RpcEndpointMap* map) override;
   void QueueInboundCall(InboundCallPtr call) override;
   void Handle(InboundCallPtr call) override;
   const Counter* RpcsTimedOutInQueueMetricForTests() const;

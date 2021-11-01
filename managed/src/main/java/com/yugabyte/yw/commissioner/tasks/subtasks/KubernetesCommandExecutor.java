@@ -151,7 +151,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     // (for backwards compatibility).
     Map<String, String> config = taskParams().config;
     if (config == null) {
-      config = Provider.get(taskParams().providerUUID).getConfig();
+      config = Provider.get(taskParams().providerUUID).getUnmaskedConfig();
     }
     if (taskParams().commandType != CommandType.POD_INFO && taskParams().namespace == null) {
       throw new IllegalArgumentException("namespace can be null only in case of POD_INFO");
@@ -407,7 +407,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     // it is always at the provider level.
     Provider provider = Provider.get(taskParams().providerUUID);
     if (provider != null) {
-      Map<String, String> config = provider.getConfig();
+      Map<String, String> config = provider.getUnmaskedConfig();
       if (config.containsKey("KUBECONFIG_IMAGE_PULL_SECRET_NAME")) {
         return config.get("KUBECONFIG_PULL_SECRET");
       }
@@ -434,7 +434,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     overrides = yaml.load(application.resourceAsStream("k8s-expose-all.yml"));
 
     Provider provider = Provider.get(taskParams().providerUUID);
-    Map<String, String> config = provider.getConfig();
+    Map<String, String> config = provider.getUnmaskedConfig();
     Map<String, String> azConfig = new HashMap<String, String>();
     Map<String, String> regionConfig = new HashMap<String, String>();
 
@@ -482,8 +482,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             numNodes = zone.numNodesInAZ;
             replicationFactorZone = zone.replicationFactor;
             replicationFactor = userIntent.replicationFactor;
-            azConfig = AvailabilityZone.get(zone.uuid).getConfig();
-            regionConfig = Region.get(region.uuid).getConfig();
+            azConfig = AvailabilityZone.get(zone.uuid).getUnmaskedConfig();
+            regionConfig = Region.get(region.uuid).getUnmaskedConfig();
           }
         }
       }
@@ -661,6 +661,19 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
     // Go over tserver flags.
     Map<String, Object> tserverOverrides = new HashMap<String, Object>(userIntent.tserverGFlags);
+    if (!userIntent.enableYSQL) {
+      tserverOverrides.put("enable_ysql", "false");
+    }
+    if (!userIntent.enableYCQL) {
+      tserverOverrides.put("start_cql_proxy", "false");
+    }
+    if (userIntent.enableYSQL && userIntent.enableYSQLAuth) {
+      tserverOverrides.put("ysql_enable_auth", "true");
+      tserverOverrides.put("ysql_hba_conf_csv", "local all yugabyte trust");
+    }
+    if (userIntent.enableYCQL && userIntent.enableYCQLAuth) {
+      tserverOverrides.put("use_cassandra_authentication", "true");
+    }
     if (placementCloud != null && tserverOverrides.get("placement_cloud") == null) {
       tserverOverrides.put("placement_cloud", placementCloud);
     }

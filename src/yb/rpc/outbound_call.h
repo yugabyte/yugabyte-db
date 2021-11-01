@@ -365,7 +365,7 @@ class OutboundCall : public RpcCall {
   // This will only be non-NULL if status().IsRemoteError().
   const ErrorStatusPB* error_pb() const;
 
-  CHECKED_STATUS InitHeader(RequestHeader* header, bool copy);
+  CHECKED_STATUS InitHeader(RequestHeader* header);
 
   // Lock for state_ status_, error_pb_ fields, since they
   // may be mutated by the reactor thread while the client thread
@@ -377,6 +377,8 @@ class OutboundCall : public RpcCall {
 
   // Invokes the user-provided callback. Uses callback_thread_pool_ if set.
   void InvokeCallback();
+
+  Result<uint32_t> TimeoutMs() const;
 
   int32_t call_id_;
 

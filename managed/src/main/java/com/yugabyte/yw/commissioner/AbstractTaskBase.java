@@ -3,6 +3,7 @@
 package com.yugabyte.yw.commissioner;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.util.concurrent.MoreExecutors;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
@@ -21,6 +22,8 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import play.Application;
@@ -98,6 +101,16 @@ public abstract class AbstractTaskBase implements ITask {
 
   @Override
   public abstract void run();
+
+  @Override
+  public void terminate() {
+    if (executor != null && !executor.isShutdown()) {
+      MoreExecutors.shutdownAndAwaitTermination(executor, 5, TimeUnit.MINUTES);
+    }
+    if (subTaskGroupQueue != null) {
+      subTaskGroupQueue.cleanup();
+    }
+  }
 
   // Create an task pool which can handle an unbounded number of tasks, while using an initial set
   // of threads which get spawned upto TASK_THREADS limit.

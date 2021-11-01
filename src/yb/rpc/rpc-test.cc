@@ -281,7 +281,7 @@ TEST_F(TestRpc, TestInvalidMethodCall) {
       rpc_test::CalculatorServiceIf::static_service_name(), "ThisMethodDoesNotExist");
   Status s = DoTestSyncCall(&p, &method);
   ASSERT_TRUE(s.IsRemoteError()) << "unexpected status: " << s.ToString();
-  ASSERT_STR_CONTAINS(s.ToString(), "bad method");
+  ASSERT_STR_CONTAINS(s.ToString(), "invalid method name");
 }
 
 // Test that the error message returned when connecting to the wrong service

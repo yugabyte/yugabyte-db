@@ -385,5 +385,9 @@ server::Clock* CQLServiceImpl::clock() {
   return server_->clock();
 }
 
+void CQLServiceImpl::FillEndpoints(const rpc::RpcServicePtr& service, rpc::RpcEndpointMap* map) {
+  map->emplace(CQLInboundCall::static_serialized_remote_method(), std::make_pair(service, 0ULL));
+}
+
 }  // namespace cqlserver
 }  // namespace yb

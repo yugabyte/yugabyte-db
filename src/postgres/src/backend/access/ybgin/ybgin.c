@@ -26,9 +26,10 @@
 
 #include "access/amapi.h"
 #include "access/gin.h"
-#include "c.h"
+#include "access/ybgin.h"
 #include "fmgr.h"
 #include "nodes/nodes.h"
+#include "postgres_ext.h"
 
 /*
  * YBGIN handler function: return IndexAmRoutine with access method parameters
@@ -56,29 +57,29 @@ ybginhandler(PG_FUNCTION_ARGS)
 	amroutine->amcaninclude = false;
 	amroutine->amkeytype = InvalidOid;
 
-	amroutine->ambuild = NULL;
-	amroutine->ambuildempty = NULL;
+	amroutine->ambuild = ybginbuild;
+	amroutine->ambuildempty = ybginbuildempty;
 	amroutine->aminsert = NULL; /* use yb_aminsert below instead */
-	amroutine->ambulkdelete = NULL;
-	amroutine->amvacuumcleanup = NULL;
+	amroutine->ambulkdelete = ybginbulkdelete;
+	amroutine->amvacuumcleanup = ybginvacuumcleanup;
 	amroutine->amcanreturn = NULL;
-	amroutine->amcostestimate = NULL;
-	amroutine->amoptions = NULL;
+	amroutine->amcostestimate = ybgincostestimate;
+	amroutine->amoptions = ybginoptions;
 	amroutine->amproperty = NULL;
-	amroutine->amvalidate = NULL;
-	amroutine->ambeginscan = NULL;
-	amroutine->amrescan = NULL;
-	amroutine->amgettuple = NULL;
+	amroutine->amvalidate = ybginvalidate;
+	amroutine->ambeginscan = ybginbeginscan;
+	amroutine->amrescan = ybginrescan;
+	amroutine->amgettuple = ybgingettuple;
 	amroutine->amgetbitmap = NULL; /* TODO(jason): support bitmap scan */
-	amroutine->amendscan = NULL;
+	amroutine->amendscan = ybginendscan;
 	amroutine->ammarkpos = NULL;
 	amroutine->amrestrpos = NULL;
 	amroutine->amestimateparallelscan = NULL;
 	amroutine->aminitparallelscan = NULL;
 	amroutine->amparallelrescan = NULL;
-	amroutine->yb_aminsert = NULL;
-	amroutine->yb_amdelete = NULL;
-	amroutine->yb_ambackfill = NULL;
+	amroutine->yb_aminsert = ybgininsert;
+	amroutine->yb_amdelete = ybgindelete;
+	amroutine->yb_ambackfill = ybginbackfill;
 
 	PG_RETURN_POINTER(amroutine);
 }

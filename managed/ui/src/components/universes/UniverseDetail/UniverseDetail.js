@@ -51,10 +51,8 @@ import { SecurityMenu } from '../SecurityModal/SecurityMenu';
 const INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY = ['i3', 'c5d'];
 
 export const isEphemeralAwsStorageInstance = (instanceType) => {
-  return INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY.includes(
-    instanceType?.split?.('.')[0]
-  );
-}
+  return INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY.includes(instanceType?.split?.('.')[0]);
+};
 
 class UniverseDetail extends Component {
   constructor(props) {
@@ -185,7 +183,10 @@ class UniverseDetail extends Component {
         this.setState({
           showAlert: true,
           alertType: 'success',
-          alertMessage: 'Encryption key has been set!'
+          alertMessage:
+            JSON.parse(res.payload.config.data).key_op === 'ENABLE'
+              ? 'Encryption key has been set!'
+              : 'Encryption-at-Rest has been disabled!'
         });
       }
       setTimeout(() => this.setState({ showAlert: false }), 3000);
@@ -421,6 +422,7 @@ class UniverseDetail extends Component {
               tasks={tasks}
               isCommunityEdition={!!customer.INSECURE_apiToken}
               fetchCustomerTasks={this.props.fetchCustomerTasks}
+              refreshUniverseData={this.getUniverseInfo}
             />
           </Tab.Pane>
         )
@@ -694,22 +696,23 @@ class UniverseDetail extends Component {
 
                       {/*
                       Read-only users should not be given the rights to "Pause Universe"
-                      */
-                      }
+                      */}
 
                       {isPausableUniverse(currentUniverse?.data) &&
                         !isEphemeralAwsStorage &&
                         (featureFlags.test['pausedUniverse'] ||
                           featureFlags.released['pausedUniverse']) && (
-                          <YBMenuItem 
+                          <YBMenuItem
                             onClick={showToggleUniverseStateModal}
                             availability={getFeatureState(
                               currentCustomer.data.features,
                               'universes.details.overview.pausedUniverse'
                             )}
                           >
-                            <YBLabelWithIcon icon="fa fa-pause-circle-o">
-                              {!universePaused ? 'Pause Universe' : 'Resume Universe'}
+                            <YBLabelWithIcon
+                              icon={universePaused ? 'fa fa-play-circle-o' : 'fa fa-pause-circle-o'}
+                            >
+                              {universePaused ? 'Resume Universe' : 'Pause Universe'}
                             </YBLabelWithIcon>
                           </YBMenuItem>
                         )}
@@ -730,7 +733,7 @@ class UniverseDetail extends Component {
                   subMenus={{
                     security: (backToMainMenu) => (
                       <>
-                      <SecurityMenu
+                        <SecurityMenu
                           backToMainMenu={backToMainMenu}
                           showTLSConfigurationModal={showTLSConfigurationModal}
                           editTLSAvailability={editTLSAvailability}

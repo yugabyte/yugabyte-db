@@ -124,8 +124,11 @@ class CQLInboundCall : public rpc::InboundCall {
 
   uint16_t stream_id() const { return stream_id_; }
 
-  const std::string& service_name() const override;
-  const std::string& method_name() const override;
+  Slice serialized_remote_method() const override;
+  Slice method_name() const override;
+
+  static Slice static_serialized_remote_method();
+
   void RespondFailure(rpc::ErrorStatusPB::RpcErrorCodePB error_code, const Status& status) override;
   void RespondSuccess(const RefCntBuffer& buffer);
   void GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress_pb) const;

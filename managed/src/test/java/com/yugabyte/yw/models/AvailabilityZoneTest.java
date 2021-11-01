@@ -94,7 +94,7 @@ public class AvailabilityZoneTest extends FakeDBApplication {
     AvailabilityZone az =
         AvailabilityZone.createOrThrow(defaultRegion, "az-1", "A Zone", "subnet-1");
     assertNotNull(az.uuid);
-    assertTrue(az.getConfig().isEmpty());
+    assertTrue(az.getUnmaskedConfig().isEmpty());
   }
 
   @Test
@@ -104,6 +104,6 @@ public class AvailabilityZoneTest extends FakeDBApplication {
     az.updateConfig(ImmutableMap.of("Foo", "Bar"));
     az.save();
     assertNotNull(az.uuid);
-    assertNotNull(az.getConfig().toString(), allOf(notNullValue(), equalTo("{Foo=Bar}")));
+    assertNotNull(az.getUnmaskedConfig().toString(), allOf(notNullValue(), equalTo("{Foo=Bar}")));
   }
 }

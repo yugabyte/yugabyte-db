@@ -161,7 +161,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   TabletServiceImpl* tablet_server_service();
 
-  scoped_refptr<Histogram> GetMetricsHistogram(TabletServerServiceIf::RpcMetricIndexes metric);
+  scoped_refptr<Histogram> GetMetricsHistogram(TabletServerServiceIf::RpcMethodIndexes metric);
 
   void SetPublisher(rpc::Publisher service) {
     publish_service_ptr_.reset(new rpc::Publisher(std::move(service)));
@@ -210,7 +210,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
     return log_prefix_;
   }
 
-  const HostPort pgsql_proxy_bind_address() const { return pgsql_proxy_bind_address_; }
+  const HostPort& pgsql_proxy_bind_address() const { return pgsql_proxy_bind_address_; }
 
   client::LocalTabletFilter CreateLocalTabletFilter() override;
 

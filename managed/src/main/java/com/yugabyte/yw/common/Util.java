@@ -69,6 +69,7 @@ public class Util {
   public static final String DEFAULT_YCQL_PASSWORD = "cassandra";
   public static final String YUGABYTE_DB = "yugabyte";
   public static final int MIN_NUM_BACKUPS_TO_RETAIN = 3;
+  public static final String REDACT = "REDACTED";
 
   /**
    * Returns a list of Inet address objects in the proxy tier. This is needed by Cassandra clients.
@@ -83,6 +84,13 @@ public class Util {
       inetAddrs.add(new InetSocketAddress(privateIp, yqlRPCPort));
     }
     return inetAddrs;
+  }
+
+  public static String redactString(String input) {
+    String length = ((Integer) input.length()).toString();
+    String regex = "(.)" + "{" + length + "}";
+    String output = input.replaceAll(regex, REDACT);
+    return output;
   }
 
   /**

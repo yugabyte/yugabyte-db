@@ -234,7 +234,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
       MiniTabletServer* server = cluster_->mini_tablet_server(i);
       if (server->is_started()) {
         ASSERT_EQ(0, server->server()->rpc_server()->
-            service_pool("yb.tserver.TabletServerService")->
+            TEST_service_pool("yb.tserver.TabletServerService")->
             RpcsQueueOverflowMetric()->value());
       }
     }

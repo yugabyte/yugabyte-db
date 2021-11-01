@@ -39,12 +39,7 @@
 #include "access/tupdesc.h"
 #include "access/xact.h"
 #include "executor/ybcExpr.h"
-#include "utils/lsyscache.h"
-#include "utils/pg_locale.h"
-#include "utils/rel.h"
 #include "catalog/pg_authid.h"
-#include "catalog/pg_database.h"
-#include "utils/builtins.h"
 #include "catalog/pg_collation_d.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_type.h"
@@ -65,6 +60,10 @@
 
 #include "yb/common/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
+
+#ifdef __linux__
+#include <sys/prctl.h>
+#endif
 
 uint64_t yb_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 
@@ -564,6 +563,33 @@ YBSetPreparingTemplates() {
 bool
 YBIsPreparingTemplates() {
 	return yb_preparing_templates;
+}
+
+Oid
+GetTypeId(int attrNum, TupleDesc tupleDesc)
+{
+	switch (attrNum)
+	{
+		case SelfItemPointerAttributeNumber:
+			return TIDOID;
+		case ObjectIdAttributeNumber:
+			return OIDOID;
+		case MinTransactionIdAttributeNumber:
+			return XIDOID;
+		case MinCommandIdAttributeNumber:
+			return CIDOID;
+		case MaxTransactionIdAttributeNumber:
+			return XIDOID;
+		case MaxCommandIdAttributeNumber:
+			return CIDOID;
+		case TableOidAttributeNumber:
+			return OIDOID;
+		default:
+			if (attrNum > 0 && attrNum <= tupleDesc->natts)
+				return TupleDescAttr(tupleDesc, attrNum - 1)->atttypid;
+			else
+				return InvalidOid;
+	}
 }
 
 const char*
@@ -1896,4 +1922,42 @@ Oid YBEncodingCollation(YBCPgStatement handle, int attr_num, Oid attcollation) {
 
 bool IsYbExtensionUser(Oid member) {
 	return IsYugaByteEnabled() && has_privs_of_role(member, DEFAULT_ROLE_YB_EXTENSION);
+}
+
+bool IsYbFdwUser(Oid member) {
+	return IsYugaByteEnabled() && has_privs_of_role(member, DEFAULT_ROLE_YB_FDW);
+}
+
+void YBSetParentDeathSignal()
+{
+#ifdef __linux__
+	char* pdeathsig_str = getenv("YB_PG_PDEATHSIG");
+	if (pdeathsig_str)
+	{
+		char* end_ptr = NULL;
+		long int pdeathsig = strtol(pdeathsig_str, &end_ptr, 10);
+		if (end_ptr == pdeathsig_str + strlen(pdeathsig_str)) {
+			if (pdeathsig >= 1 && pdeathsig <= 31) {
+				// TODO: prctl(PR_SET_PDEATHSIG) is Linux-specific, look into portable ways to
+				// prevent orphans when parent is killed.
+				prctl(PR_SET_PDEATHSIG, pdeathsig);
+			}
+			else
+			{
+				fprintf(
+					stderr,
+					"Error: YB_PG_PDEATHSIG is an invalid signal value: %ld",
+					pdeathsig);
+			}
+
+		}
+		else
+		{
+			fprintf(
+				stderr,
+				"Error: failed to parse the value of YB_PG_PDEATHSIG: %s",
+				pdeathsig_str);
+		}
+	}
+#endif
 }

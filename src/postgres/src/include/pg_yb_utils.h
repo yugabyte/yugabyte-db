@@ -38,7 +38,6 @@
 #include "yb/common/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
-
 /*
  * Version of the catalog entries in the relcache and catcache.
  * We (only) rely on a following invariant: If the catalog cache version here is
@@ -275,6 +274,12 @@ extern void YBCRollbackSubTransaction(SubTransactionId id);
 extern bool YBIsPgLockingEnabled();
 
 /*
+ * Get the type ID of a real or virtual attribute (column).
+ * Returns InvalidOid if the attribute number is invalid.
+ */
+extern Oid GetTypeId(int attrNum, TupleDesc tupleDesc);
+
+/*
  * Return a string representation of the given type id, or say it is unknown.
  * What is returned is always a static C string constant.
  */
@@ -505,10 +510,36 @@ bool YBIsCollationValidNonC(Oid collation_id);
  * for the column string value.
  */
 Oid YBEncodingCollation(YBCPgStatement handle, int attr_num, Oid attcollation);
- 
+
 /*
  * Check whether the user ID is of a user who has the yb_extension role.
  */
 bool IsYbExtensionUser(Oid member);
+
+/*
+ * Check whether the user ID is of a user who has the yb_fdw role.
+ */
+bool IsYbFdwUser(Oid member);
+
+/*
+ * Array of IDs of non-immutable functions that do not perform any database
+ * lookups or writes. When these functions are used in an INSERT/UPDATE/DELETE
+ * statement, they will not cause the actual modify statement to become a
+ * cross shard operation.
+ */
+extern const uint32 yb_funcs_safe_for_modify_fast_path[];
+
+/*
+ * Number of functions in 'yb_funcs_safe_for_modify_fast_path' above.
+ */
+extern const int yb_funcs_safe_for_modify_fast_path_count;
+
+/** 
+ * Use the YB_PG_PDEATHSIG environment variable to set the signal to be sent to 
+ * the current process in case the parent process dies. This is Linux-specific
+ * and can only be done from the child process (the postmaster process). The
+ * parent process here is yb-master or yb-tserver.
+ */
+void YBSetParentDeathSignal();
 
 #endif /* PG_YB_UTILS_H */

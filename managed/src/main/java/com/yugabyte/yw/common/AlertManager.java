@@ -284,14 +284,11 @@ public class AlertManager {
       try {
         alertChannelService.validate(channel);
       } catch (PlatformServiceException e) {
+
         if (report.failuresByChannel(channel.getUuid()) == 0) {
-          log.warn("Channel {} skipped: {}", channel.getUuid(), e.getMessage(), e);
+          log.warn(String.format("Channel %s skipped: %s", channel.getUuid(), e.getMessage()), e);
         }
-        report.failChannel(channel.getUuid());
-        setChannelStatusMetric(
-            PlatformMetrics.ALERT_MANAGER_STATUS,
-            channel,
-            "Misconfigured alert channel: " + e.getMessage());
+        handleChannelSendError(channel, report, "Misconfigured alert channel: " + e.getMessage());
         continue;
       }
 
@@ -301,21 +298,28 @@ public class AlertManager {
         handler.sendNotification(customer, tempAlert, channel);
         atLeastOneSucceeded = true;
         setOkChannelStatusMetric(PlatformMetrics.ALERT_MANAGER_CHANNEL_STATUS, channel);
+      } catch (PlatformServiceException e) {
+        if (report.failuresByChannel(channel.getUuid()) == 0) {
+          log.error(e.getMessage(), e);
+        }
+        handleChannelSendError(channel, report, e.getMessage());
       } catch (Exception e) {
         if (report.failuresByChannel(channel.getUuid()) == 0) {
-          log.error(e.getMessage());
+          log.error(e.getMessage(), e);
         }
-        report.failChannel(channel.getUuid());
-        setChannelStatusMetric(
-            PlatformMetrics.ALERT_MANAGER_CHANNEL_STATUS,
-            channel,
-            "Error sending notification: " + e.getMessage());
+        handleChannelSendError(channel, report, "Error sending notification: " + e.getMessage());
       }
     }
 
     return atLeastOneSucceeded
         ? SendNotificationResult.SUCCEEDED
         : SendNotificationResult.FAILED_TO_RESCHEDULE;
+  }
+
+  private void handleChannelSendError(
+      AlertChannel channel, AlertNotificationReport report, String alertMessage) {
+    report.failChannel(channel.getUuid());
+    setChannelStatusMetric(PlatformMetrics.ALERT_MANAGER_CHANNEL_STATUS, channel, alertMessage);
   }
 
   @VisibleForTesting

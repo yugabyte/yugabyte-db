@@ -37,6 +37,8 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 
+#include "yb/rocksdb/types.h"
+
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_retention_policy.h"
 
@@ -81,6 +83,8 @@ DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(TEST_preparer_batch_inject_latency_ms);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_int32(TEST_backfill_sabotage_frequency);
+DECLARE_string(regular_tablets_data_block_key_value_encoding);
+DECLARE_string(compression_type);
 
 namespace yb {
 namespace client {
@@ -121,13 +125,20 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
     CreateTable(kTable2Name, &table2_);
   }
 
-  void SetValue(const YBSessionPtr& session, int32_t key, int32_t value, const TableHandle& table) {
+  std::shared_ptr<YBqlWriteOp> CreateSetValueOp(
+      int32_t key, int32_t value, const TableHandle& table) {
     const auto op = table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, key);
     table.AddInt32ColumnValue(req, kValueColumn, value);
+    return op;
+  }
+
+  void SetValue(const YBSessionPtr& session, int32_t key, int32_t value, const TableHandle& table) {
+    auto op = CreateSetValueOp(key, value, table);
     ASSERT_OK(session->ApplyAndFlush(op));
-    ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, op->response().status());
+    ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, op->response().status())
+        << op->response().error_message();
   }
 
   boost::optional<int32_t> GetValue(
@@ -181,6 +192,22 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
     }
     VerifyTable(begin, end, table);
     ASSERT_OK(WaitSync(begin, end, table));
+  }
+
+  CHECKED_STATUS BatchedFillTable(
+      const int begin, const int end, const int batch_size, const TableHandle& table) {
+    {
+      auto session = CreateSession();
+      for (int i = begin; i != end; ++i) {
+        auto op = CreateSetValueOp(i, ValueForKey(i), table);
+        if ((i - begin + 1) % batch_size == 0 || i == end) {
+          RETURN_NOT_OK(session->ApplyAndFlush(op));
+        } else {
+          session->Apply(op);
+        }
+      }
+    }
+    return WaitSync(begin, end, table);
   }
 
   void VerifyTable(int begin, int end, const TableHandle& table) {
@@ -1577,6 +1604,62 @@ TEST_F(QLTabletTest, FollowerRestartDuringWrite) {
 
     ASSERT_OK(cluster_->RestartSync());
   }
+}
+
+TEST_F_EX(QLTabletTest, DataBlockKeyValueEncoding, QLTabletRf1Test) {
+  constexpr auto kNumRows = 4000;
+  constexpr auto kNumRowsPerBatch = 100;
+  // We are testing delta encoding, but not compression.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_compression_type) = "NoCompression";
+
+  struct SstSizes {
+    size_t regular_table = 0;
+    size_t index_table = 0;
+  };
+  std::unordered_map<rocksdb::KeyValueEncodingFormat, SstSizes, EnumHash> sst_sizes;
+
+  constexpr auto kEncodingSharedPrefix =
+      rocksdb::KeyValueEncodingFormat::kKeyDeltaEncodingSharedPrefix;
+  constexpr auto kEncodingThreeSharedParts =
+      rocksdb::KeyValueEncodingFormat::kKeyDeltaEncodingThreeSharedParts;
+
+  for (auto encoding : {kEncodingSharedPrefix, kEncodingThreeSharedParts}) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_regular_tablets_data_block_key_value_encoding) =
+        KeyValueEncodingFormatToString(encoding);
+    const YBTableName table_name(
+        YQL_DATABASE_CQL, "my_keyspace", Format("ql_client_test_table_$0", encoding));
+    TableHandle table;
+    CreateTable(table_name, &table, /* num_tablets = */ 1);
+    ASSERT_OK(BatchedFillTable(/* begin = */ 0, /* end = */ kNumRows, kNumRowsPerBatch, table));
+
+    TableHandle index_table;
+    kv_table_test::CreateIndex(
+        yb::client::Transactional::kTrue, /* indexed_column_index = */ 1,
+        /* use_mangled_names = */ false, table, client_.get(), &index_table);
+    ASSERT_OK(client_->WaitUntilIndexPermissionsAtLeast(
+        table_name, index_table.name(), INDEX_PERM_READ_WRITE_AND_DELETE, /* max_wait = */ 10s));
+
+    ASSERT_OK(cluster_->FlushTablets());
+
+    auto get_tablet_size = [](tablet::Tablet* tablet) -> Result<size_t> {
+      RETURN_NOT_OK(tablet->Flush(tablet::FlushMode::kSync));
+      RETURN_NOT_OK(tablet->ForceFullRocksDBCompact());
+      return tablet->GetCurrentVersionSstFilesSize();
+    };
+
+    for (const auto& tablet_peer : ListTableTabletPeers(cluster_.get(), table->id())) {
+      sst_sizes[encoding].regular_table += ASSERT_RESULT(get_tablet_size(tablet_peer->tablet()));
+    }
+    for (const auto& tablet_peer : ListTableTabletPeers(cluster_.get(), index_table->id())) {
+      sst_sizes[encoding].index_table += ASSERT_RESULT(get_tablet_size(tablet_peer->tablet()));
+    }
+  }
+  ASSERT_GT(
+      1.0 * sst_sizes[kEncodingSharedPrefix].regular_table /
+          sst_sizes[kEncodingThreeSharedParts].regular_table,
+      1.3);
+  ASSERT_EQ(sst_sizes[kEncodingSharedPrefix].index_table,
+            sst_sizes[kEncodingThreeSharedParts].index_table);
 }
 
 } // namespace client

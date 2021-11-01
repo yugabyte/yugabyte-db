@@ -98,6 +98,7 @@
   <logger name="org.yb" level="INFO" />
   <logger name="application" level="TRACE" />
   <logger name="com.yugabyte.yw" level="TRACE" />
+  <logger name="org.flywaydb.core" level="TRACE" />
 
   <!-- Off these ones as they are annoying, and anyway we manage configuration ourselves -->
   <logger name="com.gargoylesoftware.htmlunit.javascript" level="OFF" />

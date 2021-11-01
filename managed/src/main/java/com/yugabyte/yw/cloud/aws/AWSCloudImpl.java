@@ -35,7 +35,7 @@ class AWSCloudImpl implements CloudAPI {
 
   // TODO use aws sdk 2.x and switch to async
   public AmazonEC2 getEcC2Client(Provider provider, Region r) {
-    return getEC2ClientInternal(provider.getConfig(), r.code);
+    return getEC2ClientInternal(provider.getUnmaskedConfig(), r.code);
   }
 
   private AmazonEC2 getEC2ClientInternal(Map<String, String> config, String regionCode) {

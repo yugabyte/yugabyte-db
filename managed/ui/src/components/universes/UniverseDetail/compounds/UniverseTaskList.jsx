@@ -73,6 +73,7 @@ export class UniverseTaskList extends Component {
           taskUUIDs={universeTaskUUIDs}
           type="StepBar"
           timeoutInterval={TASK_SHORT_TIMEOUT}
+          onTaskSuccess={this.props.refreshUniverseData}
         />
       );
     }
