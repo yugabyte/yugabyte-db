@@ -16,7 +16,7 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="" class="nav-link active">
+    <a href="{{< relref "./ysql-psycopg2.md" >}}" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - psycopg2
     </a>
@@ -133,7 +133,7 @@ $ python yb-sql-helloworld.py
 
 You should see the following output.
 
-```
+```output
 Created table employee
 Inserted (id, name, age, language) = (1, 'John', 35, 'Python')
 Query returned: John, 35, Python

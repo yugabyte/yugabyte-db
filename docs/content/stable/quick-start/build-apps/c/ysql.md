@@ -15,7 +15,7 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/quick-start/build-apps/c/ysql" class="nav-link active">
+    <a href="../ysql/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
@@ -71,7 +71,7 @@ main(int argc, char **argv)
   if (PQstatus(conn) != CONNECTION_OK)
   {
       fprintf(stderr, "Connection to database failed: %s",
-	      PQerrorMessage(conn));
+        PQerrorMessage(conn));
       PQfinish(conn);
       exit(1);
   }
@@ -122,7 +122,7 @@ main(int argc, char **argv)
   {
       printf("Query returned: ");
       for (j = 0; j < nFields; j++)
-	printf("%s ", PQgetvalue(res, i, j));
+        printf("%s ", PQgetvalue(res, i, j));
       printf("\n");
   }
   PQclear(res);
@@ -151,7 +151,7 @@ $ ./ybsql_hello_world
 
 You should see the following output:
 
-```
+```output
 Created table employee
 Inserted data (1, 'John', 35, 'C')
 Query returned: John 35 C 
