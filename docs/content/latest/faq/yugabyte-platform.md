@@ -26,13 +26,13 @@ See also Yugabyte Platform at [yugabyte.com](https://www.yugabyte.com/platform/)
 
 Yugabyte Platform software is packaged as a set of Docker container images hosted on the [Quay.io](https://quay.io/) container registry and managed by the [Replicated](https://www.replicated.com/) management tool. Replicated ensures that Yugabyte Platform remains highly available, and allows for instant upgrades by simply pulling the incremental container images associated with a newer platform release. If the host running the Yugabyte Platform console does not have Internet connectivity, a fully air-gapped installation option is also available.
 
-The data node (YugabyteDB) software is packaged into the Yugabyte Platform application. Since it's already packaged into existing artifacts, the data node does not require any Internet connectivity.
+The data node (YugabyteDB) software is packaged into the Yugabyte Platform application.
 
 ## How does Yugabyte Platform installation work?
 
 Yugabyte Platform first needs to be installed on a machine. The next step is to configure Yugabyte Platform to work with public and/or private clouds. In the case of public clouds, Yugabyte Platform spawns the machines to orchestrate bringing up the data platform. In the case of private clouds, you add the nodes you want to be a part of the data platform into Yugabyte Platform. Yugabyte Platform needs SSH access into these nodes to manage them.
 
-Installation of Yugabyte Platform starts with installing Replicated on a Linux host. Replicated installs the [docker-engine](https://docs.docker.com/engine/), the Docker container runtime, and then pulls its own container images from the [Replicated.com container registry](https://help.replicated.com/docs/native/getting-started/docker-registries/). Yugabyte Platform then becomes a managed application of Replicated, which starts by pulling the Yugabyte Platform (`yugaware`) container images from Quay.io for the very first time. Yugabyte Platform then distributes and installs YugabyteDB on the hosts identified to run the data nodes.
+Installation of Yugabyte Platform starts with installing Replicated on a Linux host. Replicated installs the [docker-engine](https://docs.docker.com/engine/), the Docker container runtime, and then pulls its own container images from the [Replicated.com container registry](https://help.replicated.com/docs/native/getting-started/docker-registries/). Yugabyte Platform then becomes a managed application of Replicated, which starts by pulling the Yugabyte Platform (`yugaware`) container images from Quay.io for the very first time. Yugabyte Platform then distributes and installs YugabyteDB on the hosts identified to run the data nodes. Since the YugabyteDB software is already packaged into existing artifacts, the data node does not require any Internet connectivity.
 
 For instructions on installing Yugabyte Platform, refer to [Install Yugabyte Platform](../../yugabyte-platform/install-yugabyte-platform/).
 
