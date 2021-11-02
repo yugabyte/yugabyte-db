@@ -15,6 +15,7 @@
 
 #include <boost/none.hpp>
 
+#include "yb/util/flag_tags.h"
 
 DECLARE_int32(min_leader_stepdown_retry_interval_ms);
 

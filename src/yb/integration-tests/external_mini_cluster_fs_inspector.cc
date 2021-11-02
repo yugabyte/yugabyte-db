@@ -69,6 +69,26 @@ ExternalMiniClusterFsInspector::ExternalMiniClusterFsInspector(ExternalMiniClust
 
 ExternalMiniClusterFsInspector::~ExternalMiniClusterFsInspector() {}
 
+void ExternalMiniClusterFsInspector::TabletsWithDataOnTS(
+    int index,
+    std::function<void (const std::string&, const std::string&)> handler) {
+  static const std::string kTabletDirPrefix = "tablet-";
+  for (const auto& data_dir : cluster_->tablet_server(index)->GetDataDirs()) {
+    string wal_dir = JoinPathSegments(data_dir, FsManager::kWalDirName);
+    vector<string> tables;
+    vector<string> table_tablets;
+    CHECK_OK(ListFilesInDir(wal_dir, &tables));
+    for (const auto& table : tables) {
+      auto table_wal_dir = JoinPathSegments(wal_dir, table);
+      CHECK_OK(ListFilesInDir(table_wal_dir, &table_tablets));
+      for (const auto& tablet : table_tablets) {
+        CHECK(Slice(tablet).starts_with(kTabletDirPrefix));
+        handler(data_dir, tablet.substr(kTabletDirPrefix.size()));
+      }
+    }
+  }
+}
+
 Status ExternalMiniClusterFsInspector::ListFilesInDir(const string& path,
                                                       vector<string>* entries) {
   RETURN_NOT_OK(env_->GetChildren(path, entries));
@@ -130,23 +150,19 @@ vector<string> ExternalMiniClusterFsInspector::ListTabletsOnTS(int index) {
   return all_tablets;
 }
 
+unordered_map<string, vector<string>> ExternalMiniClusterFsInspector::DrivesOnTS(int index) {
+  unordered_map<string, vector<string>> drives;
+  TabletsWithDataOnTS(index, [&](const std::string& drive, const std::string& tablet) {
+    drives[drive].push_back(tablet);
+  });
+  return drives;
+}
+
 vector<string> ExternalMiniClusterFsInspector::ListTabletsWithDataOnTS(int index) {
-  static const std::string kTabletDirPrefix = "tablet-";
   vector<string> all_tablets;
-  for (const auto& data_dir : cluster_->tablet_server(index)->GetDataDirs()) {
-    string wal_dir = JoinPathSegments(data_dir, FsManager::kWalDirName);
-    vector<string> tables;
-    vector<string> table_tablets;
-    CHECK_OK(ListFilesInDir(wal_dir, &tables));
-    for (const auto& table : tables) {
-      auto table_wal_dir = JoinPathSegments(wal_dir, table);
-      CHECK_OK(ListFilesInDir(table_wal_dir, &table_tablets));
-      for (const auto& tablet : table_tablets) {
-        CHECK(Slice(tablet).starts_with(kTabletDirPrefix));
-        all_tablets.push_back(tablet.substr(kTabletDirPrefix.size()));
-      }
-    }
-  }
+  TabletsWithDataOnTS(index, [&](const std::string& drive, const std::string& tablet) {
+    all_tablets.push_back(tablet);
+  });
   return all_tablets;
 }
 
