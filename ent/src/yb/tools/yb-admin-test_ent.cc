@@ -26,6 +26,7 @@
 #include "yb/tools/yb-admin_util.h"
 
 #include "yb/tserver/mini_tablet_server.h"
+#include "yb/client/table_alterer.h"
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/date_time.h"
@@ -33,6 +34,7 @@
 #include "yb/util/path_util.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
 
 DECLARE_string(certs_dir);
 
@@ -116,8 +118,12 @@ class AdminCliTest : public client::KeyValueTableTest<MiniCluster> {
     30s, "Waiting for snapshot restore to complete");
   }
 
-  Result<ListSnapshotsResponsePB> WaitForAllSnapshots() {
-    auto* proxy = VERIFY_RESULT(BackupServiceProxy());
+  Result<ListSnapshotsResponsePB> WaitForAllSnapshots(
+    MasterBackupServiceProxy* const alternate_proxy = nullptr) {
+    auto proxy = alternate_proxy;
+    if (!proxy) {
+      proxy = VERIFY_RESULT(BackupServiceProxy());
+    }
 
     ListSnapshotsRequestPB req;
     ListSnapshotsResponsePB resp;
@@ -137,8 +143,9 @@ class AdminCliTest : public client::KeyValueTableTest<MiniCluster> {
   }
 
   Result<string> GetCompletedSnapshot(int num_snapshots = 1,
-                                      int idx = 0) {
-    auto resp = VERIFY_RESULT(WaitForAllSnapshots());
+                                      int idx = 0,
+                                      MasterBackupServiceProxy* const proxy = nullptr) {
+    auto resp = VERIFY_RESULT(WaitForAllSnapshots(proxy));
 
     if (resp.snapshots_size() != num_snapshots) {
       return STATUS_FORMAT(Corruption, "Wrong snapshot count $0", resp.snapshots_size());
@@ -689,10 +696,22 @@ class XClusterAdminCliTest : public AdminCliTest {
     return Status::OK();
   }
 
+  Result<MasterBackupServiceProxy*> ProducerBackupServiceProxy() {
+    if (!producer_backup_service_proxy_) {
+      producer_backup_service_proxy_.reset(new MasterBackupServiceProxy(
+          &producer_cluster_client_->proxy_cache(),
+          VERIFY_RESULT(producer_cluster_->GetLeaderMasterBoundRpcAddr())));
+    }
+    return producer_backup_service_proxy_.get();
+  }
+
   const string kProducerClusterId = "producer";
   std::unique_ptr<client::YBClient> producer_cluster_client_;
   std::unique_ptr<MiniCluster> producer_cluster_;
   MiniClusterOptions opts;
+
+ private:
+  std::unique_ptr<MasterBackupServiceProxy> producer_backup_service_proxy_;
 };
 
 TEST_F(XClusterAdminCliTest, TestSetupUniverseReplication) {
@@ -710,6 +729,77 @@ TEST_F(XClusterAdminCliTest, TestSetupUniverseReplication) {
 
   // Check that the stream was properly created for this table.
   ASSERT_OK(CheckTableIsBeingReplicated({producer_cluster_table->id()}));
+
+  // Delete this universe so shutdown can proceed.
+  ASSERT_OK(RunAdminToolCommand("delete_universe_replication", kProducerClusterId));
+}
+
+TEST_F(XClusterAdminCliTest, TestSetupUniverseReplicationChecksForColumnIdMismatch) {
+  client::TableHandle producer_table;
+  client::TableHandle consumer_table;
+  const YBTableName table_name(YQL_DATABASE_CQL,
+                               "my_keyspace",
+                               "column_id_mismatch_test_table");
+
+  client::kv_table_test::CreateTable(Transactional::kTrue,
+                                     NumTablets(),
+                                     producer_cluster_client_.get(),
+                                     &producer_table,
+                                     table_name);
+  client::kv_table_test::CreateTable(Transactional::kTrue,
+                                     NumTablets(),
+                                     client_.get(),
+                                     &consumer_table,
+                                     table_name);
+
+  // Drop a column from the consumer table.
+  {
+    auto table_alterer = client_.get()->NewTableAlterer(table_name);
+    ASSERT_OK(table_alterer->DropColumn(kValueColumn)->Alter());
+  }
+
+  // Add the same column back into the producer table. This results in a schema mismatch
+  // between the producer and consumer versions of the table.
+  {
+    auto table_alterer = client_.get()->NewTableAlterer(table_name);
+    table_alterer->AddColumn(kValueColumn)->Type(INT32);
+    ASSERT_OK(table_alterer->timeout(MonoDelta::FromSeconds(60 * kTimeMultiplier))->Alter());
+  }
+
+  // Try setting up replication, this should fail due to the schema mismatch.
+  ASSERT_NOK(RunAdminToolCommand("setup_universe_replication",
+                                 kProducerClusterId,
+                                 producer_cluster_->GetMasterAddresses(),
+
+                                 producer_table->id()));
+
+  // Make a snapshot of the producer table.
+  auto timestamp = DateTime::TimestampToString(DateTime::TimestampNow());
+  auto producer_backup_proxy = ASSERT_RESULT(ProducerBackupServiceProxy());
+  ASSERT_OK(yb::RunAdminToolCommand(producer_cluster_->GetMasterAddresses(),
+                                    "create_snapshot",
+                                    producer_table.name().namespace_name(),
+                                    producer_table.name().table_name()));
+
+  const auto snapshot_id = ASSERT_RESULT(GetCompletedSnapshot(1, 0, producer_backup_proxy));
+  ASSERT_RESULT(WaitForAllSnapshots(producer_backup_proxy));
+
+  string tmp_dir;
+  ASSERT_OK(Env::Default()->GetTestDirectory(&tmp_dir));
+  const auto snapshot_file = JoinPathSegments(tmp_dir, "exported_producer_snapshot.dat");
+  ASSERT_OK(yb::RunAdminToolCommand(producer_cluster_->GetMasterAddresses(),
+                                    "export_snapshot", snapshot_id, snapshot_file));
+
+  // Delete consumer table, then import snapshot of producer table into the existing
+  // consumer table. This should fix the schema mismatch issue.
+  ASSERT_OK(client_->DeleteTable(table_name, /* wait */ true));
+  ASSERT_OK(RunAdminToolCommand("import_snapshot", snapshot_file));
+
+  // Try running SetupUniverseReplication again, this time it should succeed.
+  ASSERT_OK(RunAdminToolCommand("setup_universe_replication",
+                                kProducerClusterId,
+                                producer_cluster_->GetMasterAddresses(),
+                                producer_table->id()));
 
   // Delete this universe so shutdown can proceed.
   ASSERT_OK(RunAdminToolCommand("delete_universe_replication", kProducerClusterId));
