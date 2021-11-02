@@ -19,15 +19,19 @@ The **Infrastructure** section on the cluster **Settings** tab summarizes the cl
 
 You scale clusters using the **Edit Infrastructure** option on the **Settings** tab.
 
-You can modify the number of nodes, vCPUs, and increase the disk size of clusters. The scaling operation is performed without any downtime, with a rolling restart of the underlying nodes.
+You can modify the number of nodes and vCPUs per node, and increase the disk size of clusters. The scaling operation is performed without any downtime, with a rolling restart of the underlying nodes.
 
 {{< note title="Note" >}}
 
-You cannot change the fault tolerance of a cluster once it is created. You cannot reduce disk size. You cannot scale clusters with a fault tolerance of None (this includes Free clusters).
+You cannot change the fault tolerance of a cluster once it is created. You cannot reduce disk size. You cannot scale Free clusters.
 
 {{< /note >}}
 
 ## Scaling clusters
+
+You cannot change the number of nodes or vCPUs per node in clusters with a fault tolerance of None. You can horizontally scale nodes in clusters with Node Level fault tolerance in increments of 1. Nodes in clusters with Availability Zone fault tolerance must be scaled in increments of 3.
+
+Clusters include a minimum of 50GB of storage per vCPU. Disk size per node is adjusted automatically when you change the number of vCPUs. You can add additional storage by changing the disk size per node. To have more than 16 vCPUs per node, send your request to [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
 
 To scale the cluster:
 
@@ -36,7 +40,7 @@ To scale the cluster:
 
     ![Cluster Edit Infrastructure](/images/yb-cloud/cloud-clusters-settings-edit.png)
 
-1. Enter the number of nodes, vCPUs, and disk size in GB for the cluster.
+1. Enter the number of nodes, vCPUs per node, and disk size in GB per node for the cluster.
     \
     **Cost** displays the estimated new cost for the cluster; **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
 
