@@ -75,6 +75,9 @@ class ExternalMiniClusterFsInspector {
   // This may include tablets that are tombstoned and not running.
   std::vector<std::string> ListTabletsOnTS(int index);
 
+  // List all fs_data_roots with running tablets conut on the given tablet server index.
+  std::unordered_map<std::string, std::vector<std::string>> DrivesOnTS(int index);
+
   // List the tablet IDs on the given tablet which actually have data (as
   // evidenced by their having a WAL). This excludes those that are tombstoned.
   std::vector<std::string> ListTabletsWithDataOnTS(int index);
@@ -132,6 +135,9 @@ class ExternalMiniClusterFsInspector {
       const MonoDelta& timeout = MonoDelta::FromSeconds(30));
 
  private:
+  void TabletsWithDataOnTS(int index,
+                           std::function<void (const std::string&, const std::string&)> handler);
+
   Env* const env_;
   ExternalMiniCluster* const cluster_;
 
