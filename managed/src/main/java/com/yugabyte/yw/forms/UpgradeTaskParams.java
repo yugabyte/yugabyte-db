@@ -15,7 +15,7 @@ import play.mvc.Http.Status;
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonDeserialize(converter = UpgradeTaskParams.Converter.class)
 public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
-  public static final int DEFAULT_SLEEP_AFTER_RESTART_MS = 240000;
+  public static final int DEFAULT_SLEEP_AFTER_RESTART_MS = 180000;
 
   public UpgradeOption upgradeOption = UpgradeOption.ROLLING_UPGRADE;
   public Integer sleepAfterMasterRestartMillis = DEFAULT_SLEEP_AFTER_RESTART_MS;
