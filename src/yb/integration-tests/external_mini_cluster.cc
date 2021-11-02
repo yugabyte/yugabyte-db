@@ -2594,6 +2594,16 @@ Status ExternalTabletServer::Restart(
   return Start(start_cql_proxy, true /* set_proxy_addrs */, flags);
 }
 
+Status ExternalTabletServer::SetNumDrives(uint16_t num_drives) {
+  if (IsProcessAlive()) {
+    return STATUS(IllegalState, "Cann't set num drives on running Tablet server. "
+                                "Must call Shutdown() first.");
+  }
+  num_drives_ = num_drives;
+  data_dirs_ = FsDataDirs(root_dir_, "tserver", num_drives_);
+  return Status::OK();
+}
+
 Status RestartAllMasters(ExternalMiniCluster* cluster) {
   for (int i = 0; i != cluster->num_masters(); ++i) {
     cluster->master(i)->Shutdown();
