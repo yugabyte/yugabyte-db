@@ -631,7 +631,7 @@ Default: `shared_prefix`
 
 {{< note title="Note" >}}
 
-Only change this flag to `three_shared_parts` after migration the whole cluster to the YugabyteDB version that supports it.
+Only change this flag to `three_shared_parts` after you migrate the whole cluster to the YugabyteDB version that supports it.
 
 {{< /note >}}
 
