@@ -574,7 +574,7 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
 
   virtual void Shutdown();
 
-  const std::vector<std::string>& GetDataDirs() const { return data_dirs_; }
+  std::vector<std::string> GetDataDirs() const { return data_dirs_; }
 
   const std::string& exe() const { return exe_; }
 
@@ -657,7 +657,7 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   rpc::ProxyCache* proxy_cache_;
   const std::string exe_;
   const std::string root_dir_;
-  const std::vector<std::string> data_dirs_;
+  std::vector<std::string> data_dirs_;
   std::vector<std::string> extra_flags_;
 
   std::unique_ptr<Subprocess> process_;
@@ -761,6 +761,8 @@ class ExternalTabletServer : public ExternalDaemon {
   CHECKED_STATUS Restart(
       bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy,
       std::vector<std::pair<string, string>> flags = {});
+
+  CHECKED_STATUS SetNumDrives(uint16_t num_drives);
 
   // IP addresses to bind to.
   const std::string& bind_host() const {
