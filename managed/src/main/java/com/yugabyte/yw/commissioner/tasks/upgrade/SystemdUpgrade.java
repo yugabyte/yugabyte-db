@@ -59,6 +59,9 @@ public class SystemdUpgrade extends UpgradeTaskBase {
       return;
     }
 
+    // Needed for read replica details
+    taskParams().clusters = getUniverse().getUniverseDetails().clusters;
+
     // Conditional Provisioning
     createSetupServerTasks(nodes, true /* isSystemdUpgrade */)
         .setSubTaskGroupType(SubTaskGroupType.Provisioning);
