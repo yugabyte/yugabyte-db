@@ -89,7 +89,8 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
       // Wait for Master Leader before doing Master operations, like blacklisting.
       createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
       // Create a task for removal of this server from blacklist on master leader.
-      createModifyBlackListTask(Arrays.asList(currentNode), false /* isAdd */)
+      createModifyBlackListTask(
+              Arrays.asList(currentNode), false /* isAdd */, false /* isLeaderBlacklist */)
           .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
 
       UserIntent userIntent =

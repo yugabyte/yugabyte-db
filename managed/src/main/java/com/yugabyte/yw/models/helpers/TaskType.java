@@ -175,6 +175,8 @@ public enum TaskType {
 
   WaitForDataMove("subtasks.WaitForDataMove"),
 
+  WaitForLeaderBlacklistCompletion("subtasks.WaitForLeaderBlacklistCompletion"),
+
   WaitForLoadBalance("subtasks.WaitForLoadBalance"),
 
   WaitForMasterLeader("subtasks.WaitForMasterLeader"),

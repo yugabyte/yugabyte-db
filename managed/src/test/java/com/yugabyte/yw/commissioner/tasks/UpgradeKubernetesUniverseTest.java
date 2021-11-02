@@ -418,7 +418,7 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
     taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
     taskParams.nodePrefix = nodePrefix;
     taskParams.expectedUniverseVersion = 2;
-    // Need not sleep for default 4min in tests.
+    // Need not sleep for default 3min in tests.
     taskParams.sleepAfterMasterRestartMillis = 5;
     taskParams.sleepAfterTServerRestartMillis = 5;
 

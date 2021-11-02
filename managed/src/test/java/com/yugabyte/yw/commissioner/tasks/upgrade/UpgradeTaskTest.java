@@ -176,7 +176,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
       int expectedVersion) {
     taskParams.universeUUID = defaultUniverse.universeUUID;
     taskParams.expectedUniverseVersion = expectedVersion;
-    // Need not sleep for default 4min in tests.
+    // Need not sleep for default 3min in tests.
     taskParams.sleepAfterMasterRestartMillis = 5;
     taskParams.sleepAfterTServerRestartMillis = 5;
 

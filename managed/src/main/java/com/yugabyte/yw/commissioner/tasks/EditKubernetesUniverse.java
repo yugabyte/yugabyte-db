@@ -200,7 +200,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       if (!tserversToRemove.isEmpty()) {
         removeDeployments(
             newPI, provider, userIntentChange, universeDetails.communicationPorts.masterRpcPort);
-        createModifyBlackListTask(new ArrayList<>(tserversToRemove), false /* isAdd */)
+        createModifyBlackListTask(
+                new ArrayList<>(tserversToRemove), false /* isAdd */, false /* isLeaderBlacklist */)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
