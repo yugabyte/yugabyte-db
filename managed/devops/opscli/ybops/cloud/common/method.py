@@ -647,6 +647,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument('--client_key_path')
         self.parser.add_argument('--cert_rotate_action', default=None,
                                  choices=self.CERT_ROTATE_ACTIONS)
+        self.parser.add_argument('--skip_cert_hostname_validation',
+                                 default=False, action="store_true")
         self.parser.add_argument('--cert_valid_duration', default=365)
         self.parser.add_argument('--org_name', default="example.com")
         self.parser.add_argument('--encryption_key_source_file')
@@ -879,7 +881,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                 args.server_key_path,
                 args.certs_location,
                 args.certs_node_dir,
-                rotate_certs)
+                rotate_certs,
+                args.skip_cert_hostname_validation)
 
         if args.root_cert_path_client_to_server is not None:
             logging.info("Server clientRootCA Certificate Exists: {}.".format(
@@ -891,7 +894,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                 args.server_key_path_client_to_server,
                 args.certs_location_client_to_server,
                 args.certs_client_dir,
-                rotate_certs)
+                rotate_certs,
+                args.skip_cert_hostname_validation)
 
         # Copying client certs
         if args.client_cert_path is not None:

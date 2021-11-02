@@ -12,6 +12,7 @@ package com.yugabyte.yw.common;
 
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
@@ -66,6 +67,7 @@ public class NodeManager extends DevopsBase {
   public static final String CERT_LOCATION_PLATFORM = "platform";
   private static final List<String> VALID_CONFIGURE_PROCESS_TYPES =
       ImmutableList.of(ServerType.MASTER.name(), ServerType.TSERVER.name());
+  static final String VERIFY_SERVER_ENDPOINT_GFLAG = "verify_server_endpoint";
 
   @Inject ReleaseManager releaseManager;
 
@@ -277,30 +279,35 @@ public class NodeManager extends DevopsBase {
   }
 
   private List<String> getCertificatePaths(
-      AnsibleConfigureServers.Params taskParam, String nodeIP, String yb_home_dir) {
+      UserIntent userIntent,
+      AnsibleConfigureServers.Params taskParam,
+      String nodeIP,
+      String ybHomeDir) {
     return getCertificatePaths(
+        userIntent,
         taskParam,
         CertificateHelper.isRootCARequired(taskParam),
         CertificateHelper.isClientRootCARequired(taskParam),
         nodeIP,
-        yb_home_dir);
+        ybHomeDir);
   }
 
   // Return the List of Strings which gives the certificate paths for the specific taskParams
   private List<String> getCertificatePaths(
+      UserIntent userIntent,
       AnsibleConfigureServers.Params taskParam,
       boolean isRootCARequired,
       boolean isClientRootCARequired,
       String nodeIP,
-      String yb_home_dir) {
-    ArrayList<String> subcommandStrings = new ArrayList<>();
+      String ybHomeDir) {
+    List<String> subcommandStrings = new ArrayList<>();
 
     String serverCertFile = String.format("node.%s.crt", nodeIP);
     String serverKeyFile = String.format("node.%s.key", nodeIP);
 
     if (isRootCARequired) {
       subcommandStrings.add("--certs_node_dir");
-      subcommandStrings.add(yb_home_dir + "/yugabyte-tls-config");
+      subcommandStrings.add(ybHomeDir + "/yugabyte-tls-config");
 
       CertificateInfo rootCert = CertificateInfo.get(taskParam.rootCA);
       if (rootCert == null) {
@@ -394,7 +401,7 @@ public class NodeManager extends DevopsBase {
     }
     if (isClientRootCARequired) {
       subcommandStrings.add("--certs_client_dir");
-      subcommandStrings.add(yb_home_dir + "/yugabyte-client-tls-config");
+      subcommandStrings.add(ybHomeDir + "/yugabyte-client-tls-config");
 
       CertificateInfo clientRootCert = CertificateInfo.get(taskParam.clientRootCA);
       if (clientRootCert == null) {
@@ -464,6 +471,10 @@ public class NodeManager extends DevopsBase {
       subcommandStrings.add(serverKeyPath);
       subcommandStrings.add("--certs_location_client_to_server");
       subcommandStrings.add(certsLocation);
+    }
+
+    if (isSkipCertHostValidation(userIntent, taskParam)) {
+      subcommandStrings.add("--skip_cert_hostname_validation");
     }
 
     return subcommandStrings;
@@ -623,7 +634,8 @@ public class NodeManager extends DevopsBase {
           if (CertificateHelper.isClientRootCARequired(taskParam)) {
             extra_gflags.put("certs_for_client_dir", yb_home_dir + "/yugabyte-client-tls-config");
           }
-          subcommand.addAll(getCertificatePaths(taskParam, node.cloudInfo.private_ip, yb_home_dir));
+          subcommand.addAll(
+              getCertificatePaths(userIntent, taskParam, node.cloudInfo.private_ip, yb_home_dir));
         }
         if (taskParam.callhomeLevel != null) {
           extra_gflags.put(
@@ -787,6 +799,7 @@ public class NodeManager extends DevopsBase {
               {
                 subcommand.addAll(
                     getCertificatePaths(
+                        userIntent,
                         taskParam,
                         taskParam.rootCARotationType != CertRotationType.None,
                         taskParam.clientRootCARotationType != CertRotationType.None,
@@ -827,13 +840,13 @@ public class NodeManager extends DevopsBase {
           String clientToNodeString = String.valueOf(taskParam.enableClientToNodeEncrypt);
           String allowInsecureString = String.valueOf(taskParam.allowInsecure);
 
-          String yb_home_dir =
+          String ybHomeDir =
               Provider.getOrBadRequest(
                       UUID.fromString(
                           universe.getUniverseDetails().getPrimaryCluster().userIntent.provider))
                   .getYbHome();
-          String certsDir = yb_home_dir + "/yugabyte-tls-config";
-          String certsForClientDir = yb_home_dir + "/yugabyte-client-tls-config";
+          String certsDir = ybHomeDir + "/yugabyte-tls-config";
+          String certsForClientDir = ybHomeDir + "/yugabyte-client-tls-config";
 
           if (UpgradeTaskParams.UpgradeTaskSubType.CopyCerts.name().equals(subType)) {
             if (taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt) {
@@ -841,7 +854,8 @@ public class NodeManager extends DevopsBase {
               subcommand.add(CertRotateAction.ROTATE_CERTS.toString());
             }
             subcommand.addAll(
-                getCertificatePaths(taskParam, node.cloudInfo.private_ip, yb_home_dir));
+                getCertificatePaths(userIntent, taskParam, node.cloudInfo.private_ip, ybHomeDir));
+
           } else if (UpgradeTaskParams.UpgradeTaskSubType.Round1GFlagsUpdate.name()
               .equals(subType)) {
             Map<String, String> gflags = new HashMap<>();
@@ -901,6 +915,25 @@ public class NodeManager extends DevopsBase {
         break;
     }
     return subcommand;
+  }
+
+  @VisibleForTesting
+  static boolean isSkipCertHostValidation(
+      UserIntent userIntent, AnsibleConfigureServers.Params taskParam) {
+    if (taskParam.gflagsToRemove.contains(VERIFY_SERVER_ENDPOINT_GFLAG)) {
+      return false;
+    }
+    if (taskParam.gflags.containsKey(VERIFY_SERVER_ENDPOINT_GFLAG)) {
+      return taskParam.gflags.get(VERIFY_SERVER_ENDPOINT_GFLAG).equalsIgnoreCase("false");
+    }
+    return userIntent
+            .masterGFlags
+            .getOrDefault(VERIFY_SERVER_ENDPOINT_GFLAG, "true")
+            .equalsIgnoreCase("false")
+        || userIntent
+            .tserverGFlags
+            .getOrDefault(VERIFY_SERVER_ENDPOINT_GFLAG, "true")
+            .equalsIgnoreCase("false");
   }
 
   private Map<String, String> getAnsibleEnvVars(UUID universeUUID) {
@@ -1173,7 +1206,6 @@ public class NodeManager extends DevopsBase {
             // Systemd for new universes
             commandArgs.add("--systemd_services");
           }
-
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           if (nodeTaskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(nodeTaskParam));
