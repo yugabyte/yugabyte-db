@@ -2458,6 +2458,7 @@ Result<PgsqlBackfillSpecPB> QueryPostgresToDoBackfill(
 struct BackfillParams {
   explicit BackfillParams(const CoarseTimePoint deadline)
       : start_time(CoarseMonoClock::Now()),
+        deadline(deadline),
         rate_per_sec(GetAtomicFlag(&FLAGS_backfill_index_rate_rows_per_sec)),
         batch_size(GetAtomicFlag(&FLAGS_backfill_index_write_batch_size)) {
     auto grace_margin_ms = GetAtomicFlag(&FLAGS_backfill_index_timeout_grace_margin_ms);
@@ -2473,6 +2474,7 @@ struct BackfillParams {
   }
 
   CoarseTimePoint start_time;
+  CoarseTimePoint deadline;
   size_t rate_per_sec;
   size_t batch_size;
   CoarseTimePoint modified_deadline;
@@ -2753,7 +2755,7 @@ Status Tablet::BackfillIndexes(
 
     DVLOG(2) << "Building index for fetched row: " << row.ToString();
     RETURN_NOT_OK(UpdateIndexInBatches(
-        row, indexes, read_time, backfill_params.modified_deadline, &index_requests,
+        row, indexes, read_time, backfill_params.deadline, &index_requests,
         failed_indexes));
 
     if (++(*number_of_rows_processed) % kProgressInterval == 0) {
@@ -2773,7 +2775,7 @@ Status Tablet::BackfillIndexes(
 
   VLOG(1) << "Processed " << *number_of_rows_processed << " rows";
   RETURN_NOT_OK(FlushWriteIndexBatch(
-      read_time, backfill_params.modified_deadline, &index_requests, failed_indexes));
+      read_time, backfill_params.deadline, &index_requests, failed_indexes));
   MaybeSleepToThrottleBackfill(backfill_params.start_time, *number_of_rows_processed);
   *backfilled_until = resume_backfill_from;
   LOG(INFO) << "Done BackfillIndexes at " << read_time << " for " << AsString(index_ids)
