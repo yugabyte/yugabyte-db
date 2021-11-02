@@ -8,12 +8,13 @@ import com.yugabyte.yw.commissioner.*;
 import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
+import com.yugabyte.yw.common.ha.PlatformReplicationHelper;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUniverseKeyCache;
 import com.yugabyte.yw.common.services.LocalYBClientService;
 import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.common.ha.PlatformReplicationHelper;
+import com.yugabyte.yw.common.ybflyway.YBFlywayInit;
 import com.yugabyte.yw.controllers.PlatformHttpActionAdapter;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.queries.QueryHelper;
@@ -45,6 +46,11 @@ public class Module extends AbstractModule {
 
   @Override
   public void configure() {
+    if (!config.getBoolean("play.evolutions.enabled")) {
+      // We want to init flyway only when evolutions are not enabled
+      bind(YBFlywayInit.class).asEagerSingleton();
+    }
+
     bind(RuntimeConfigFactory.class).to(SettableRuntimeConfigFactory.class).asEagerSingleton();
     // TODO: other clouds
     install(new AWSCloudModule());
