@@ -192,7 +192,8 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
 
         // Clear the host from master's blacklist.
         if (currentNode.state == NodeState.Removed) {
-          createModifyBlackListTask(Arrays.asList(currentNode), false /* isAdd */)
+          createModifyBlackListTask(
+                  Arrays.asList(currentNode), false /* isAdd */, false /* isLeaderBlacklist */)
               .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
         }
 
