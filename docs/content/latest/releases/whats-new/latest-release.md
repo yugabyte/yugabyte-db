@@ -24,11 +24,286 @@ For Yugabyte Platform, the class is `yugaware.storageClass`. For YugabyteDB, the
 
 {{< /tip >}}
 
+## v2.9.1.0 - Oct 29, 2021
+
+**Build:** `2.9.1.0-b140`
+
+### Downloads
+
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.9.1.0-darwin.tar.gz">
+  <button>
+    <i class="fab fa-apple"></i><span class="download-text">macOS</span>
+  </button>
+</a>
+&nbsp; &nbsp; &nbsp;
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.9.1.0-linux.tar.gz">
+  <button>
+    <i class="fab fa-linux"></i><span class="download-text">Linux</span>
+  </button>
+</a>
+<br />
+
+### Docker
+
+```sh
+docker pull yugabytedb/yugabyte:2.9.1.0-b140
+```
+
+### New Features
+
+#### Yugabyte Platform
+
+* [[9124](https://github.com/yugabyte/yugabyte-db/issues/9124)] Create REST endpoints to manage async replication relationships
+* [[9733](https://github.com/yugabyte/yugabyte-db/issues/9733)] [Alerts] Implement alert listing
+* [PLAT-417] Add support for Ubuntu 18.04 distributions
+* [PLAT-1573] Adding 'create new cert' in enable TLS new feature
+* [PLAT-1620] Added secondary subnet for allowing two network interfaces
+* [PLAT-1669] Initial OEL 8 support
+* [PLAT-1695] Create new API endpoint to be able to query logs by Universe
+* [PLAT-1753] Enable taking backups using custom ports
+
+#### Database
+
+* [[1127](https://github.com/yugabyte/yugabyte-db/issues/1127)] [YSQL] Collation Support (part 2)
+* [[1127](https://github.com/yugabyte/yugabyte-db/issues/1127)] [YSQL] Collation Support (part 3)
+* [[6541](https://github.com/yugabyte/yugabyte-db/issues/6541)] [YSQL] Enable row-locking feature in CURSOR
+* [[7850](https://github.com/yugabyte/yugabyte-db/issues/7850)] [YSQL] create new access method ybgin
+* [[8402](https://github.com/yugabyte/yugabyte-db/issues/8402)] [YSQL] change gin to ybgin for YB indexes
+* [YSQL] Foreign Data Wrapper Support
+
+### Improvements
+
+#### Yugabyte Platform
+
+* [[5236](https://github.com/yugabyte/yugabyte-db/issues/5236)] [PLAT-59] Allow log levels to be changed through POST /logging_config endpoint
+* [[7396](https://github.com/yugabyte/yugabyte-db/issues/7396)] Splitting up create/provision tasks to delete orphaned resources
+* [[7645](https://github.com/yugabyte/yugabyte-db/issues/7645)] [PLAT-523] Show error summary at the top of the health check email
+* [[9131](https://github.com/yugabyte/yugabyte-db/issues/9131)] Enable/disable YCQL endpoint while universe creation and force password requirement
+* [[9407](https://github.com/yugabyte/yugabyte-db/issues/9407)] [PLAT-386] Implement base YSQL/YCQL alerts
+* [[9580](https://github.com/yugabyte/yugabyte-db/issues/9580)] Add restore_time field for all universes.
+* [[9613](https://github.com/yugabyte/yugabyte-db/issues/9613)] Update UI to accommodate Authentication changes
+* [[9668](https://github.com/yugabyte/yugabyte-db/issues/9668)] Alert configurations implement missing parts and few small changes
+* [[9794](https://github.com/yugabyte/yugabyte-db/issues/9794)] [PLAT-1530] Creates static IP during cluster creation for cloud free tier clusters. Releases IPs on deletion.
+* [[9892](https://github.com/yugabyte/yugabyte-db/issues/9892)] Mask sensitive gflag info
+* [[9978](https://github.com/yugabyte/yugabyte-db/issues/9978)] Platform UI: Change stop backup icon and label to abort icon and label.
+* [CLOUDGA-2345] Implement MDC propagation and add request/universe ID to MDC
+* [PLAT-525] Add IP address to SAN of node certificates
+* [PLAT-541] Allow configuring no destination for alert config + UI improvements
+* [PLAT-1523] Update Alert APIs to be consistent with UI terminology
+* [PLAT-1528] Change YWError handler to default to JSON response on client error.
+* [PLAT-1546] [PLAT-1547] [PLAT-1571] [PLAT-1572] Add API docs for UniverseClustersController, and other misc fixes
+* [PLAT-1549] Add (non-generated client, "simple") Python API examples
+* [PLAT-1549] Cleanup list/create provider API usage examples
+* [PLAT-1555] Add Python API client example for create Universe
+* [PLAT-1555] Add Python API client example for list Universe
+* [PLAT-1556] List Storage Configs Create Scheduled backup examples
+* [PLAT-1582] [Alert] Limit Severity to maximum 2(Severe/warn), now we can add multiple severity's but after edit we are displaying only 2 (1 Severe/1 Warn)
+* [PLAT-1611] Add python depedencies required for executing external scripts
+* [PLAT-1647] Provide more details for default channel on UI
+* [PLAT-1664] Enable new alert UIs and remove deprecated alert UI + configs from Health tab + config from replication tab
+* [PLAT-1691] Set oshi LinuxFileSystem log level to ERROR
+* [PLAT-1691] Task, API and thread pool metrics
+* [PLAT-1705] Add auditing and transaction for /register API action
+* [PLAT-1723] Allow disabling prometheus management + write alerts and metrics effectively
+* [PLAT-1766] [Alerts] UI: Cleanup
+* [PLAT-1774] Add a customer ID field in Customer Profile page
+* [PLAT-1791] Use hibernate validator for all alert related entities
+* [PLAT-1818] Add pagination to Tables tab and add classNames
+* Added new AWS regions to metadata files.
+* Hooking GCP Create Method into Create Root Volumes method
+
+#### Database
+
+* [[2220](https://github.com/yugabyte/yugabyte-db/issues/2220)] [YSQL] Enabling relation size estimation for temporary tables in optimizer
+* [[5492](https://github.com/yugabyte/yugabyte-db/issues/5492)] yb-admin: Added error message when attempting to create snapshot of YCQL system tables
+* [[7612](https://github.com/yugabyte/yugabyte-db/issues/7612)] [DocDB] Allow TTL-expired SST files that are too large for compaction to be directly expired
+* [[7612](https://github.com/yugabyte/yugabyte-db/issues/7612)] [DocDB] Modified compaction file filter to filter files out of order
+* [[7889](https://github.com/yugabyte/yugabyte-db/issues/7889)] Reduce timeout for ysql backfill.
+* [[8043](https://github.com/yugabyte/yugabyte-db/issues/8043)] [YBase] Remove information about LB skipping deleted tables from the admin UI
+* [[8162](https://github.com/yugabyte/yugabyte-db/issues/8162)] [YSQL] Support single-request optimization for UPDATE with RETURNING clause
+* [[8229](https://github.com/yugabyte/yugabyte-db/issues/8229)] [backup] repartition table if needed on YSQL restore
+* [[8452](https://github.com/yugabyte/yugabyte-db/issues/8452)] Speed up restoring YSQL system catalog
+* [[8501](https://github.com/yugabyte/yugabyte-db/issues/8501)] [DocDB] Add metric to monitor server uptime
+* [[8508](https://github.com/yugabyte/yugabyte-db/issues/8508)] [DocDB] moved GetSplitKey from TabletServerAdminService into TabletServerService
+* [[8580](https://github.com/yugabyte/yugabyte-db/issues/8580)] [[9489](https://github.com/yugabyte/yugabyte-db/issues/9489)] [YSQL] Inherit default PGSQL proxy bind address from rpc bind address
+* [[8804](https://github.com/yugabyte/yugabyte-db/issues/8804)] [YSQL] [backup] Support in backups the same table name across different schemas.
+* [[8807](https://github.com/yugabyte/yugabyte-db/issues/8807)] [YBase] Add a limit on number of metrics for the prometheus metrics endpoint
+* [[8979](https://github.com/yugabyte/yugabyte-db/issues/8979)] [DocDB] Improve master load balancer state presentation
+* [[9279](https://github.com/yugabyte/yugabyte-db/issues/9279)] [YSQL] Enable -Wextra on pgwrapper
+* [[9279](https://github.com/yugabyte/yugabyte-db/issues/9279)] [YSQL] Enable -Wextra on yql folder
+* [[9418](https://github.com/yugabyte/yugabyte-db/issues/9418)] [xCluster] Add cdc_state Schema Caching to Producer Cluster
+* [[9439](https://github.com/yugabyte/yugabyte-db/issues/9439)] [YBase] Allow sst-dump to decode DocDB keys and dump data in human readable format
+* [[9467](https://github.com/yugabyte/yugabyte-db/issues/9467)] [YSQL] Increase scope of cases where transparent retries are performed
+* [[9685](https://github.com/yugabyte/yugabyte-db/issues/9685)] [xCluster] Make delete_universe_replication fault tolerant
+* [[9739](https://github.com/yugabyte/yugabyte-db/issues/9739)] Added placement info to /api/v1/tablet-servers
+* [[9746](https://github.com/yugabyte/yugabyte-db/issues/9746)] Set WAL footer close_timestamp_micros on Bootstrap
+* [[9762](https://github.com/yugabyte/yugabyte-db/issues/9762)] [Part-1] Populate partial index predicate in "options" column of system_schema.indexes
+* [[9803](https://github.com/yugabyte/yugabyte-db/issues/9803)] [YSQL] Import Avoid trying to lock OLD/NEW in a rule with FOR UPDATE.
+* [[9831](https://github.com/yugabyte/yugabyte-db/issues/9831)] [YSQL] Import Fix broken snapshot handling in parallel workers.
+* [[9862](https://github.com/yugabyte/yugabyte-db/issues/9862)] [PITR] Allow consecutive restore
+* [[9862](https://github.com/yugabyte/yugabyte-db/issues/9862)] Allow PITR in conjunction with tablet split
+* [[9899](https://github.com/yugabyte/yugabyte-db/issues/9899)] [YSQL] Import Fix corner-case uninitialized-variable issues in plpgsql.
+* [[9911](https://github.com/yugabyte/yugabyte-db/issues/9911)] [YSQL] Import In pg_dump, avoid doing per-table queries for RLS policies.
+* [[9922](https://github.com/yugabyte/yugabyte-db/issues/9922)] [YSQL] Import Fix float4/float8 hash functions to produce uniform results for NaNs.
+* [[9926](https://github.com/yugabyte/yugabyte-db/issues/9926)] [YSQL] Import Disallow creating an ICU collation if the DB encoding won't support it.
+* [[9935](https://github.com/yugabyte/yugabyte-db/issues/9935)] [YSQL] Import Fix bitmap AND/OR scans on the inside of a nestloop partition-wise join.
+* [[9936](https://github.com/yugabyte/yugabyte-db/issues/9936)] Remove YBClient from Postgres: Introduce PgClient and implement ReserveOids using it; Open table via PgClient; Remove all direct YBClient usage from PgSession
+* [[9966](https://github.com/yugabyte/yugabyte-db/issues/9966)] [YSQL] Import Rearrange pgstat_bestart() to avoid failures within its critical section.
+* [[9995](https://github.com/yugabyte/yugabyte-db/issues/9995)] [YSQL] Import Fix EXIT out of outermost block in plpgsql.
+* [[10025](https://github.com/yugabyte/yugabyte-db/issues/10025)] [YSQL] Import jit: Do not try to shut down LLVM state in case of LLVM triggered errors.
+* [[10034](https://github.com/yugabyte/yugabyte-db/issues/10034)] [YSQL] Preserve operation buffering state in case of transparent retries
+* [[10064](https://github.com/yugabyte/yugabyte-db/issues/10064)] [xCluster] Lag Metric Improvements
+* [[10111](https://github.com/yugabyte/yugabyte-db/issues/10111)] [YSQL] Import Force NO SCROLL for plpgsql's implicit cursors.
+* [[10121](https://github.com/yugabyte/yugabyte-db/issues/10121)] [YSQL] Import Avoid misbehavior when persisting a non-stable cursor.
+* [YSQL] Import Fix performance bug in regexp's citerdissect/creviterdissect.
+
+### Bug Fixes
+
+#### Yugabyte Platform
+
+* [[1525](https://github.com/yugabyte/yugabyte-db/issues/1525)] New Universe creation gets public IP assigned even with flag = false
+* [[1598](https://github.com/yugabyte/yugabyte-db/issues/1598)] [UI] Suggested Default File Path for CA Signed Certificate and Private Key is Incorrect
+* [[7573](https://github.com/yugabyte/yugabyte-db/issues/7573)] [PLAT-482] Health Checks should run when Backup/Restore Tasks are in progress
+* [[7738](https://github.com/yugabyte/yugabyte-db/issues/7738)] [PLAT-611] Health checks can overlap with universe update operations started after them
+* [[8510](https://github.com/yugabyte/yugabyte-db/issues/8510)] Allow the deletion of Failed Backups
+* [[9014](https://github.com/yugabyte/yugabyte-db/issues/9014)] [PLAT-509] Refresh Pricing data for Azure provider seems to be stuck
+* [[9315](https://github.com/yugabyte/yugabyte-db/issues/9315)] [PLAT-521] BackupsController: small fixes required
+* [[9366](https://github.com/yugabyte/yugabyte-db/issues/9366)] [PLAT-368] Disable Delete Configuration button for backups when in use.
+* [[9850](https://github.com/yugabyte/yugabyte-db/issues/9850)] [YW] Correct the node path (#9864)
+* [CLOUDGA-1893] fix client-to-node cert path in health checks
+* [PLAT-253] Fix the backupTable params while creating Table backups using Apis.
+* [PLAT-253] Fix universe's backupInprogress flag to avoid multiple backup at a time due to low frequency scheduler.
+* [PLAT-289] Stopped node should not allow Release action
+* [PLAT-580] Fix create xCluster config API call
+* [PLAT-599] Fix error messages in alert destination and configuration services
+* [PLAT-1520] Stop displaying external script schedule among Backup Schedules.
+* [PLAT-1522] Fix s3 release breakage
+* [PLAT-1549] [PLAT-1697] Fix Stop backup race condition. Add non-schedlued backup examples
+* [PLAT-1559] Stop the external script scheduler if the universe is not present.
+* [PLAT-1563] Fix instance down alerts + make sure instance restart alert is not fired on universe operations
+* [PLAT-1578] Do not specify storage class (use default if provided)
+* [PLAT-1586] [Alert] Able to add multiple alert configuration with same name. Add duplicate check for alert configuration name
+* [PLAT-1599] [UI] Root Certificate and node-node and client-node TLS missing on Edit Universe
+* [PLAT-1603] [Platform]YBFormInput's OnBlur throws error on AddCertificateForm
+* [PLAT-1605] Fix duplicate alert definitions handling + all locks to avoid duplicates creation
+* [PLAT-1606] Disk name too long for Google Cloud clone disk
+* [PLAT-1613] Alerts: Logs filled with NPE related to "Error while sending notification for alert "
+* [PLAT-1617] Added GCP region metadata for missing regions.
+* [PLAT-1617] Fix issue with GCP Subnet CIDR
+* [PLAT-1619] Check for FAILED status in wait_for_snapshot method.
+* [PLAT-1621] Health check failed in K8s portal
+* [PLAT-1625] Fix task details NPE
+* [PLAT-1626] Skip preprovision for systemd upgrade.
+* [PLAT-1631] [Alert] Universe filter is not working in Alert Listing
+* [PLAT-1638] Fix naming convention for external script endpoints as per our standards
+* [PLAT-1639] [PLAT-1681] Make proxy requests async to keep them from blocking other requests
+* [PLAT-1639] [PLAT-1681] Reduce log spew from akka-http-core for proxy requests.
+* [PLAT-1644] Fix k8s universe creation failure for platform configured with HA
+* [PLAT-1646] Remove Unsupported Instance types from pull down menu for Azure
+* [PLAT-1650] Added yum lock_timeout to prevent yum lockfile errors for use_custom_ssh_port.yml
+* [PLAT-1653] Fix region get/list.
+* [PLAT-1656] [UI] [Alert] Group Type filter is not working in Alert Listing
+* [PLAT-1661] Fix alert messages for notification failures
+* [PLAT-1667] Platform should not scrape all per-table metrics from db hosts (part 2)
+* [PLAT-1668] Yugabundle failing because can't find YWErrorHandler
+* [PLAT-1682] Fix node comparison function from accessing undefined cluster
+* [PLAT-1687] ALERT: Not able to create destination channel using "default recipients + default smtp settings + empty email field"
+* [PLAT-1694] Fix Intermittent failure to back up k8s universe
+* [PLAT-1707] Fix performance issue
+* [PLAT-1715] Check for YB version only for 2.6+ release DB
+* [PLAT-1717] Full move fails midway if system tablet takes more than 2 mins to bootstrap
+* [PLAT-1721] Stop storage type from automatically changing when instance type is changed
+* [PLAT-1726] Allow user to completely remove all gFlags after addtion of several gFlags.
+* [PLAT-1730] Fix resize node logic for RF1 clusters
+* [PLAT-1736] Create default alert configs and destination on DB seed
+* [PLAT-1737] "This field is required" error message is shown on alert configuration creation with default threshold == 0
+* [PLAT-1746] Delete prometheus_snapshot directory once platform backup package is created
+* [PLAT-1757] Health Check failure message has Actual and expected values interchanged
+* [PLAT-1761] Fix alert message in case of unprovisioned nodes
+* [PLAT-1768] Universe tasks take lot more time because thread pool executors do not reach max_threads
+* [PLAT-1780] Redact YSQL/YCQL passwords from task_info table.
+* [PLAT-1793] DB Error logs alert
+* [PLAT-1796] Edit Universe page has password fields editable
+* [PLAT-1802] Replication graphs stopped showing on replication tab (replicated.yml change)
+* [PLAT-1804] Fix 'Querying for {} metric keys - may affect performance' log
+* [PLAT-1816] Forward port restricted user creation to master
+* [PLAT-1819] [PLAT-1828] Release backup lock when Platform restarts, and update Backup state
+* [PLAT-1829] [ycql/ysql] auth password: wrong error message
+* [PLAT-1833] Fix missing create time on alert configuration creation issue
+* [PLAT-1839] Fix typo in DB migration
+* [PLAT-1892] Make error alert be disabled by default
+* [PLAT-1969] [UI] Universe creation - Create button is disabled when YSQL/YCQL auth is disabled
+* Backup and Restore failing in k8s auth enabled environment
+* Fix NPE in VM image upgrade for TLS enabled universes
+* Use TaskInfo instead of CustomerTask in shouldIncrementVersion check
+
+#### Database
+
+* [[1252](https://github.com/yugabyte/yugabyte-db/issues/1252)] Do not link with system libpq
+* [[5920](https://github.com/yugabyte/yugabyte-db/issues/5920)] Fix bootstrapping with preallocated log segment
+* [[7528](https://github.com/yugabyte/yugabyte-db/issues/7528)] [YSQL] Error out when Tablespaces are set for colocated tables
+* [[8675](https://github.com/yugabyte/yugabyte-db/issues/8675)] [DocDB] Prevent tablet splitting when there is post split data
+* [[8772](https://github.com/yugabyte/yugabyte-db/issues/8772)] Fix fatal that occurs when running alter_universe_replication and producer master has
+* [[9061](https://github.com/yugabyte/yugabyte-db/issues/9061)] [DocDB] Master task tracking should point to the table it is operating on
+* [[9216](https://github.com/yugabyte/yugabyte-db/issues/9216)] [YSQL] Fix NULL pointer access in case of failed test
+* [[9436](https://github.com/yugabyte/yugabyte-db/issues/9436)] [YSQL] Statement reads rows it has inserted
+* [[9475](https://github.com/yugabyte/yugabyte-db/issues/9475)] Fetch Universe Key From Masters on TS Init
+* [[9616](https://github.com/yugabyte/yugabyte-db/issues/9616)] Fix master crash when restoring snapshot schedule with deleted namespace
+* [[9655](https://github.com/yugabyte/yugabyte-db/issues/9655)] [xCluster] Label cdc streams with relevant metadata
+* [[9743](https://github.com/yugabyte/yugabyte-db/issues/9743)] Fix universe reset config option (#9863)
+* [[9781](https://github.com/yugabyte/yugabyte-db/issues/9781)] Mark snapshot as deleted if tablet was removed
+* [[9782](https://github.com/yugabyte/yugabyte-db/issues/9782)] [DocDB] Tablet Splitting - Wait for all peers to finish compacting during throttling
+* [[9786](https://github.com/yugabyte/yugabyte-db/issues/9786)] Universe Actions -> Add Read Replica is failing
+* [[9789](https://github.com/yugabyte/yugabyte-db/issues/9789)] [DocDB] Load Balancer should use tablet count while looking tablets to move
+* [[9802](https://github.com/yugabyte/yugabyte-db/issues/9802)] [xCluster] Set proper deadline for YBSession in CDCServiceImpl
+* [[9806](https://github.com/yugabyte/yugabyte-db/issues/9806)] DocDB: fixed Batcher::FlushBuffersIsReady
+* [[9812](https://github.com/yugabyte/yugabyte-db/issues/9812)] [YSQL] Check database is colocated before adding colocated option for Alter Table
+* [[9822](https://github.com/yugabyte/yugabyte-db/issues/9822)] DocDB: Check table pointer is not nullptr before dereferencing
+* [[9855](https://github.com/yugabyte/yugabyte-db/issues/9855)] [DocDB] Set aborted subtransaction data on local apply
+* [[9860](https://github.com/yugabyte/yugabyte-db/issues/9860)] [YSQL] fix limit vars to uint64
+* [[9865](https://github.com/yugabyte/yugabyte-db/issues/9865)] Fix internal retry of kReadRestart for SELECT func() with a DML in the func
+* [[9867](https://github.com/yugabyte/yugabyte-db/issues/9867)] [YSQL] Fix double type overflow in case of SET yb_transaction_priority_lower_bound/yb_transaction_priority_upperr_bound command
+* [[9906](https://github.com/yugabyte/yugabyte-db/issues/9906)] [YSQL] Fix not being able to add a range primary key
+* [[9909](https://github.com/yugabyte/yugabyte-db/issues/9909)] [YSQL] further fix backup restore for NULL col attr
+* [[9924](https://github.com/yugabyte/yugabyte-db/issues/9924)] [YSQL] always check schema name on backup import
+* [[9927](https://github.com/yugabyte/yugabyte-db/issues/9927)] YCQL - Handle unset correctly
+* [[9932](https://github.com/yugabyte/yugabyte-db/issues/9932)] [YSQL] Initialize t_ybctid field in acquire_sample_rows()
+* [[9933](https://github.com/yugabyte/yugabyte-db/issues/9933)] [Part-0] Update logic for using num_tablets from internal or user requests.
+* [[9933](https://github.com/yugabyte/yugabyte-db/issues/9933)] [YCQL] [Part-1] DESC TABLE does not directly match the "CREATE TABLE" command for number of tablets.
+* [[9934](https://github.com/yugabyte/yugabyte-db/issues/9934)] [DocDB] Don't update rocksdb_dir on Remote Bootstrap
+* [[9936](https://github.com/yugabyte/yugabyte-db/issues/9936)] Fix ysql_dump in encrypted k8s environment
+* [[9936](https://github.com/yugabyte/yugabyte-db/issues/9936)] Fix ysql_dump in TLS encrypted environment
+* [[9940](https://github.com/yugabyte/yugabyte-db/issues/9940)] DocDB: use correct kv_store_id for post-split tablets
+* [[9947](https://github.com/yugabyte/yugabyte-db/issues/9947)] [YSQL] remove runtime tag for ysql_disable_index_backfill
+* [[9963](https://github.com/yugabyte/yugabyte-db/issues/9963)] backup: fix to reallow YEDIS on restore
+* [[9965](https://github.com/yugabyte/yugabyte-db/issues/9965)] [YSQL] Fix copy/paste error causing incorrect conversion
+* [[9981](https://github.com/yugabyte/yugabyte-db/issues/9981)] Fix transaction coordinator returning wrong status hybrid time
+* [[10042](https://github.com/yugabyte/yugabyte-db/issues/10042)] [backup] allow system table for YEDIS restore
+* [[10051](https://github.com/yugabyte/yugabyte-db/issues/10051)] DocDB: use RETURN_NOT_OK on an unchecked status
+* [[10085](https://github.com/yugabyte/yugabyte-db/issues/10085)] YSQL fix FATAL caused by wrong sum pushdown
+* [[10098](https://github.com/yugabyte/yugabyte-db/issues/10098)] [YSQL] Fix index creation on temp table via ALTER TABLE
+* [[10139](https://github.com/yugabyte/yugabyte-db/issues/10139)] ybase: Avoid unnecessary table locking in CatalogManager::DeleteYsqlDBTables
+* [ybase] Properly pass number of tables via MetricPrometheusOptions
+* [YSQL] [[9572](https://github.com/yugabyte/yugabyte-db/issues/9572)] Correctly determine is_yb_relation for row-marked relations when preparing target list
+* Fix for resource leaks
+* Fixed bug in yb-ctl for stopping processes, when os.kill raises an exception
+* Make SSH wait behavior consistent across operations
+
+### Known Issues
+
+#### Yugabyte Platform
+
+N/A
+
+#### Database
+
+N/A
+
 ## v2.9.0.0 - August 31, 2021
 
 Version 2.9 introduces many new features and refinements. To learn more, check out the [Announcing YugabyteDB 2.9: Pushing the Boundaries of Relational Databases](https://blog.yugabyte.com/announcing-yugabytedb-2-9/) blog post.
 
-Yugabyte release 2.9 builds on our work in the 2.7 series, which fed into the 2.6 stable release.
+Yugabyte release 2.9 builds on our work in the 2.7 series.
 
 **Build:** `2.9.0.0-b4`
 
