@@ -245,7 +245,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
     if (!newTservers.isEmpty()) {
       // Blacklist all the new tservers before starting so that they do not join
-      createModifyBlackListTask(newTservers, null /* To remove */)
+      createModifyBlackListTask(newTservers, null /* To remove */, false /* isLeaderBlacklist */)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Start the tservers in the clusters.
@@ -265,7 +265,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     Collection<NodeDetails> tserversToBeRemoved = PlacementInfoUtil.getTserversToBeRemoved(nodes);
 
     // Swap the blacklisted tservers
-    createModifyBlackListTask(tserversToBeRemoved, newTservers)
+    createModifyBlackListTask(tserversToBeRemoved, newTservers, false /* isLeaderBlacklist */)
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
     // Update placement info on master leader.

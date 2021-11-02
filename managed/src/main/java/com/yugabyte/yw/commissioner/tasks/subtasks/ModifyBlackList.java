@@ -43,6 +43,10 @@ public class ModifyBlackList extends UniverseTaskBase {
 
     // The list of nodes to be removed from the blacklist.
     public Collection<NodeDetails> removeNodes;
+
+    // When true, the tablet leaders on this node will move to another node, otherwise, move all
+    // tablets on this node to other nodes
+    public boolean isLeaderBlacklist;
   }
 
   @Override
@@ -59,6 +63,8 @@ public class ModifyBlackList extends UniverseTaskBase {
         + (CollectionUtils.isEmpty(taskParams().addNodes) ? 0 : taskParams().addNodes.size())
         + ", numRemoveNodes="
         + (CollectionUtils.isEmpty(taskParams().removeNodes) ? 0 : taskParams().removeNodes.size())
+        + ", isLeaderBlacklist="
+        + taskParams().isLeaderBlacklist
         + ")";
   }
 
@@ -74,7 +80,8 @@ public class ModifyBlackList extends UniverseTaskBase {
       List<HostPortPB> removeHosts = getHostPortPBs(universe, taskParams().removeNodes);
       client = ybService.getClient(masterHostPorts, certificate);
       ModifyMasterClusterConfigBlacklist modifyBlackList =
-          new ModifyMasterClusterConfigBlacklist(client, addHosts, removeHosts);
+          new ModifyMasterClusterConfigBlacklist(
+              client, addHosts, removeHosts, taskParams().isLeaderBlacklist);
       modifyBlackList.doCall();
       universe.incrementVersion();
     } catch (Exception e) {
@@ -90,10 +97,12 @@ public class ModifyBlackList extends UniverseTaskBase {
     if (CollectionUtils.isNotEmpty(nodes)) {
       hostPorts = new ArrayList<>(nodes.size());
       for (NodeDetails node : nodes) {
-        String ip = node.cloudInfo.private_ip;
-        if (ip == null) {
+        String ip = null;
+        if (node.cloudInfo == null || node.cloudInfo.private_ip == null) {
           NodeDetails onDiskNode = universe.getNode(node.nodeName);
           ip = onDiskNode.cloudInfo.private_ip;
+        } else {
+          ip = node.cloudInfo.private_ip;
         }
         HostPortPB.Builder hpb = HostPortPB.newBuilder().setPort(node.tserverRpcPort).setHost(ip);
         hostPorts.add(hpb.build());

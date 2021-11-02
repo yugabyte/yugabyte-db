@@ -11,12 +11,14 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesWaitForPod;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -28,8 +30,13 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
+
+  protected boolean isBlacklistLeaders = false;
+  protected int leaderBacklistWaitTimeMs;
 
   @Inject
   protected KubernetesTaskBase(BaseTaskDependencies baseTaskDependencies) {
@@ -240,6 +247,13 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                       Function.identity(), serversToUpdate::get, (a, b) -> a, LinkedHashMap::new));
     }
 
+    if (serverType == ServerType.TSERVER && isBlacklistLeaders && !edit) {
+      // clear blacklist
+      List<NodeDetails> tServerNodes = getUniverse().getTServers();
+      createModifyBlackListTask(tServerNodes, false /* isAdd */, true /* isLeaderBlacklist */)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    }
+
     for (Entry<UUID, Integer> entry : serversToUpdate.entrySet()) {
       UUID azUUID = entry.getKey();
       String azCode = isMultiAz ? AvailabilityZone.get(azUUID).code : null;
@@ -288,6 +302,22 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         int tserverPartition = tserverChanged ? (edit ? currNumTservers : newNumTservers) : 0;
         masterPartition = serverType == ServerType.MASTER ? partition : masterPartition;
         tserverPartition = serverType == ServerType.TSERVER ? partition : tserverPartition;
+
+        NodeDetails node = getPodName(partition, azCode, serverType, isMultiAz);
+        boolean isLeaderBlacklistValidRF = isLeaderBlacklistValidRF(node.nodeName);
+        List<NodeDetails> nodeList = new ArrayList<>();
+        nodeList.add(node);
+        if (serverType == ServerType.TSERVER
+            && isBlacklistLeaders
+            && isLeaderBlacklistValidRF
+            && !edit) {
+          createModifyBlackListTask(
+                  Arrays.asList(node), true /* isAdd */, true /* isLeaderBlacklist */)
+              .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+          createWaitForLeaderBlacklistCompletionTask(leaderBacklistWaitTimeMs)
+              .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+        }
+
         createSingleKubernetesExecutorTaskForServerType(
             CommandType.HELM_UPGRADE,
             tempPI,
@@ -304,13 +334,19 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         createKubernetesWaitForPodTask(
             KubernetesWaitForPod.CommandType.WAIT_FOR_POD, podName, azCode, config);
 
-        NodeDetails node = getPodName(partition, azCode, serverType, isMultiAz);
-        List<NodeDetails> nodeList = new ArrayList<>();
-        nodeList.add(node);
         createWaitForServersTasks(nodeList, serverType)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
         createWaitForServerReady(node, serverType, waitTime)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+        if (serverType == ServerType.TSERVER
+            && isBlacklistLeaders
+            && isLeaderBlacklistValidRF
+            && !edit) {
+          createModifyBlackListTask(
+                  Arrays.asList(node), false /* isAdd */, true /* isLeaderBlacklist */)
+              .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+        }
       }
     }
   }

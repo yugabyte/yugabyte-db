@@ -48,6 +48,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateSoftwareVersion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForDataMove;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForEncryptionKeyInMemory;
+import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLeaderBlacklistCompletion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLeadersOnPreferredOnly;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLoadBalance;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
@@ -153,6 +154,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       }
       return universe;
     }
+  }
+
+  protected boolean isLeaderBlacklistValidRF(String nodeName) {
+    Cluster curCluster = Universe.getCluster(getUniverse(), nodeName);
+    if (curCluster == null) {
+      return false;
+    }
+    return curCluster.userIntent.replicationFactor > 1;
   }
 
   protected UserIntent getUserIntent() {
@@ -1310,6 +1319,22 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  public SubTaskGroup createWaitForLeaderBlacklistCompletionTask(int waitTimeMs) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("WaitForLeaderBlacklistCompletion", executor);
+    WaitForLeaderBlacklistCompletion.Params params = new WaitForLeaderBlacklistCompletion.Params();
+    params.universeUUID = taskParams().universeUUID;
+    params.waitTimeMs = waitTimeMs;
+    // Create the task.
+    WaitForLeaderBlacklistCompletion leaderBlacklistCompletion =
+        createTask(WaitForLeaderBlacklistCompletion.class);
+    leaderBlacklistCompletion.initialize(params);
+    // Add it to the task list.
+    subTaskGroup.addTask(leaderBlacklistCompletion);
+    // Add the task list to the task queue.
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
   /** Creates a task to wait for leaders to be on preferred regions only. */
   public void createWaitForLeadersOnPreferredOnlyTask() {
     SubTaskGroup subTaskGroup = new SubTaskGroup("WaitForLeadersOnPreferredOnly", executor);
@@ -1351,13 +1376,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *
    * @param nodes The nodes that have to be removed from the blacklist.
    * @param isAdd true if the node are added to server blacklist, else removed.
+   * @param isLeaderBlacklist true if we are leader blacklisting the node
    * @return the created task group.
    */
-  public SubTaskGroup createModifyBlackListTask(List<NodeDetails> nodes, boolean isAdd) {
+  public SubTaskGroup createModifyBlackListTask(
+      List<NodeDetails> nodes, boolean isAdd, boolean isLeaderBlacklist) {
     if (isAdd) {
-      return createModifyBlackListTask(nodes, null);
+      return createModifyBlackListTask(nodes, null, isLeaderBlacklist);
     }
-    return createModifyBlackListTask(null, nodes);
+    return createModifyBlackListTask(null, nodes, isLeaderBlacklist);
   }
 
   /**
@@ -1365,15 +1392,19 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *
    * @param addNodes The nodes that have to be added to the blacklist.
    * @param removeNodes The nodes that have to be removed from the blacklist.
+   * @param isLeaderBlacklist true if we are leader blacklisting the node
    * @return
    */
   public SubTaskGroup createModifyBlackListTask(
-      Collection<NodeDetails> addNodes, Collection<NodeDetails> removeNodes) {
+      Collection<NodeDetails> addNodes,
+      Collection<NodeDetails> removeNodes,
+      boolean isLeaderBlacklist) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("ModifyBlackList", executor);
     ModifyBlackList.Params params = new ModifyBlackList.Params();
     params.universeUUID = taskParams().universeUUID;
     params.addNodes = addNodes;
     params.removeNodes = removeNodes;
+    params.isLeaderBlacklist = isLeaderBlacklist;
     // Create the task.
     ModifyBlackList modifyBlackList = createTask(ModifyBlackList.class);
     modifyBlackList.initialize(params);

@@ -16,17 +16,23 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.List;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class StopNodeInUniverse extends UniverseTaskBase {
+
+  protected boolean isBlacklistLeaders;
+  protected int leaderBacklistWaitTimeMs;
 
   @Inject
   protected StopNodeInUniverse(BaseTaskDependencies baseTaskDependencies) {
@@ -42,6 +48,7 @@ public class StopNodeInUniverse extends UniverseTaskBase {
   public void run() {
     NodeDetails currentNode = null;
     boolean hitException = false;
+
     try {
       checkUniverseVersion();
       // Create the task list sequence.
@@ -55,6 +62,11 @@ public class StopNodeInUniverse extends UniverseTaskBase {
           taskParams().universeUUID,
           universe.name);
 
+      isBlacklistLeaders =
+          runtimeConfigFactory.forUniverse(universe).getBoolean(Util.BLACKLIST_LEADERS);
+      leaderBacklistWaitTimeMs =
+          runtimeConfigFactory.forUniverse(universe).getInt(Util.BLACKLIST_LEADER_WAIT_TIME_MS);
+
       currentNode = universe.getNode(taskParams().nodeName);
       if (currentNode == null) {
         String msg = "No node " + taskParams().nodeName + " found in universe " + universe.name;
@@ -63,6 +75,12 @@ public class StopNodeInUniverse extends UniverseTaskBase {
       }
 
       preTaskActions();
+      isBlacklistLeaders = isBlacklistLeaders && isLeaderBlacklistValidRF(currentNode.nodeName);
+      if (isBlacklistLeaders) {
+        List<NodeDetails> tServerNodes = universe.getTServers();
+        createModifyBlackListTask(tServerNodes, false /* isAdd */, true /* isLeaderBlacklist */)
+            .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+      }
 
       // Update Node State to Stopping
       createSetNodeStateTask(currentNode, NodeState.Stopping)
@@ -71,9 +89,26 @@ public class StopNodeInUniverse extends UniverseTaskBase {
       taskParams().azUuid = currentNode.azUuid;
       taskParams().placementUuid = currentNode.placementUuid;
       if (instanceExists(taskParams())) {
+
+        // set leader blacklist and poll
+        if (isBlacklistLeaders) {
+          createModifyBlackListTask(
+                  Arrays.asList(currentNode), true /* isAdd */, true /* isLeaderBlacklist */)
+              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+          createWaitForLeaderBlacklistCompletionTask(leaderBacklistWaitTimeMs)
+              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+        }
+
         // Stop the tserver.
         createTServerTaskForNode(currentNode, "stop")
             .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+
+        // remove leader blacklist
+        if (isBlacklistLeaders) {
+          createModifyBlackListTask(
+                  Arrays.asList(currentNode), false /* isAdd */, true /* isLeaderBlacklist */)
+              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+        }
 
         // Stop the master process on this node.
         if (currentNode.isMaster) {
@@ -121,6 +156,14 @@ public class StopNodeInUniverse extends UniverseTaskBase {
         setNodeState(taskParams().nodeName, currentNode.state);
       }
 
+      // remove leader blacklist for current node if task failed and leader blacklist is not removed
+      if (isBlacklistLeaders) {
+        subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
+        createModifyBlackListTask(
+                Arrays.asList(currentNode), false /* isAdd */, true /* isLeaderBlacklist */)
+            .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+        subTaskGroupQueue.run();
+      }
       unlockUniverseForUpdate();
     }
 

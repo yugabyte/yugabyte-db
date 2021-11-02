@@ -68,6 +68,10 @@ public class Util {
   public static final String YUGABYTE_DB = "yugabyte";
   public static final int MIN_NUM_BACKUPS_TO_RETAIN = 3;
 
+  public static final String BLACKLIST_LEADERS = "yb.upgrade.blacklist_leaders";
+  public static final String BLACKLIST_LEADER_WAIT_TIME_MS =
+      "yb.upgrade.blacklist_leader_wait_time_ms";
+
   /**
    * Returns a list of Inet address objects in the proxy tier. This is needed by Cassandra clients.
    */
