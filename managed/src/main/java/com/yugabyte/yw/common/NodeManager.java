@@ -12,6 +12,7 @@ package com.yugabyte.yw.common;
 
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
@@ -51,6 +52,7 @@ public class NodeManager extends DevopsBase {
   private static final String YB_CLOUD_COMMAND_TYPE = "instance";
   private static final List<String> VALID_CONFIGURE_PROCESS_TYPES =
       ImmutableList.of(ServerType.MASTER.name(), ServerType.TSERVER.name());
+  static final String VERIFY_SERVER_ENDPOINT_GFLAG = "verify_server_endpoint";
 
   @Inject ReleaseManager releaseManager;
 
@@ -388,6 +390,9 @@ public class NodeManager extends DevopsBase {
               subcommand.add(customCertInfo.clientKeyPath);
             }
           }
+          if (isSkipCertHostValidation(userIntent, taskParam)) {
+              subcommand.add("--skip_cert_hostname_validation");
+          }
         }
         if (taskParam.callhomeLevel != null) {
           extra_gflags.put(
@@ -527,6 +532,9 @@ public class NodeManager extends DevopsBase {
             subcommand.add(customCertInfo.clientCertPath);
             subcommand.add("--client_key_path");
             subcommand.add(customCertInfo.clientKeyPath);
+          }
+          if (isSkipCertHostValidation(userIntent, taskParam)) {
+            subcommand.add("--skip_cert_hostname_validation");
           }
         }
         break;
@@ -776,6 +784,26 @@ public class NodeManager extends DevopsBase {
         commandArgs,
         getCloudArgs(nodeTaskParam));
   }
+
+  @VisibleForTesting
+  static boolean isSkipCertHostValidation(
+          UserIntent userIntent, AnsibleConfigureServers.Params taskParam) {
+    if (taskParam.gflagsToRemove.contains(VERIFY_SERVER_ENDPOINT_GFLAG)) {
+      return false;
+    }
+    if (taskParam.gflags.containsKey(VERIFY_SERVER_ENDPOINT_GFLAG)) {
+      return taskParam.gflags.get(VERIFY_SERVER_ENDPOINT_GFLAG).equalsIgnoreCase("false");
+    }
+    return userIntent
+            .masterGFlags
+            .getOrDefault(VERIFY_SERVER_ENDPOINT_GFLAG, "true")
+            .equalsIgnoreCase("false")
+            || userIntent
+            .tserverGFlags
+            .getOrDefault(VERIFY_SERVER_ENDPOINT_GFLAG, "true")
+            .equalsIgnoreCase("false");
+  }
+
 
   private List<String> addArguments(List<String> commandArgs, String nodeIP, String instanceType) {
     commandArgs.add("--instance_type");

@@ -770,7 +770,7 @@ public class NodeManagerTest extends FakeDBApplication {
       List<String> expectedCommand = new ArrayList<>(t.baseCommand);
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Provision, params, t));
       List<String> accessKeyCommands =
-          new ArrayList<String>(
+          new ArrayList<>(
               ImmutableList.of(
                   "--vars_file",
                   "/path/to/vault_file",
@@ -935,7 +935,7 @@ public class NodeManagerTest extends FakeDBApplication {
           new UniverseDefinitionTaskParams.UserIntent();
       userIntent.numNodes = 3;
       userIntent.accessKeyCode = "demo-access";
-      userIntent.regionList = new ArrayList<UUID>();
+      userIntent.regionList = new ArrayList<>();
       userIntent.regionList.add(t.region.uuid);
       userIntent.providerType = t.cloudType;
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
@@ -1823,5 +1823,39 @@ public class NodeManagerTest extends FakeDBApplication {
       verify(shellProcessHandler, times(1))
           .run(eq(expectedCommand), eq(data.region.provider.getConfig()), anyString());
     }
+  }
+
+  @Test
+  public void testSkipHostnameValidation() {
+    AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+    UserIntent userIntent = new UserIntent();
+    userIntent.tserverGFlags.put(NodeManager.VERIFY_SERVER_ENDPOINT_GFLAG, "false");
+    assertEquals(true, NodeManager.isSkipCertHostValidation(userIntent, params));
+  }
+
+  @Test
+  public void testNotSkipHostnameValidation() {
+    AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+    UserIntent userIntent = new UserIntent();
+    userIntent.tserverGFlags.put(NodeManager.VERIFY_SERVER_ENDPOINT_GFLAG, "true");
+    assertEquals(false, NodeManager.isSkipCertHostValidation(userIntent, params));
+  }
+
+  @Test
+  public void testNotSkipHostnameValidationForErasingGFlag() {
+    AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+    params.gflagsToRemove.add(NodeManager.VERIFY_SERVER_ENDPOINT_GFLAG);
+    UserIntent userIntent = new UserIntent();
+    userIntent.tserverGFlags.put(NodeManager.VERIFY_SERVER_ENDPOINT_GFLAG, "false");
+    assertEquals(false, NodeManager.isSkipCertHostValidation(userIntent, params));
+  }
+
+  @Test
+  public void testSkipHostnameValidationForAddingGFlag() {
+    AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+    params.gflags.put(NodeManager.VERIFY_SERVER_ENDPOINT_GFLAG, "false");
+    UserIntent userIntent = new UserIntent();
+    userIntent.tserverGFlags.put(NodeManager.VERIFY_SERVER_ENDPOINT_GFLAG, "true");
+    assertEquals(true, NodeManager.isSkipCertHostValidation(userIntent, params));
   }
 }

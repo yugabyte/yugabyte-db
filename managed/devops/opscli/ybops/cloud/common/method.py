@@ -511,6 +511,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument('--client_key_path')
         self.parser.add_argument('--cert_rotate_action', default=None,
                                  choices=self.CERT_ROTATE_ACTIONS)
+        self.parser.add_argument('--skip_cert_hostname_validation',
+                                 default=False, action="store_true")
         self.parser.add_argument('--cert_valid_duration', default=365)
         self.parser.add_argument('--org_name', default="example.com")
         self.parser.add_argument('--certs_node_dir',
@@ -684,7 +686,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                 if args.cert_rotate_action == "ROTATE_CERTS":
                     rotate_certs = True
             logging.info("Copying custom certificates to {}.".format(args.search_pattern))
-            self.cloud.copy_certs(self.extra_vars, ssh_options, rotate_certs)
+            self.cloud.copy_certs(self.extra_vars, ssh_options, rotate_certs,
+                                  args.skip_cert_hostname_validation)
         else:
             if args.rootCA_cert and args.rootCA_key is not None:
                 logging.info("Creating and copying over client TLS certificate to {}".format(

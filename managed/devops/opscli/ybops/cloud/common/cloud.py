@@ -278,6 +278,7 @@ class AbstractCloud(AbstractCommandParser):
     def __verify_certs_hostname(self, node_crt_path, ssh_options):
         host = ssh_options["ssh_host"]
         remote_shell = RemoteShell(ssh_options)
+        logging.info("Verifying Subject for certs {}".format(node_crt_path))
 
         # Get readable text version of cert
         cert_text = remote_shell.run_command(
@@ -343,7 +344,8 @@ class AbstractCloud(AbstractCommandParser):
         if verify_hostname:
             self.__verify_certs_hostname(node_crt_path, ssh_options)
 
-    def copy_certs(self, extra_vars, ssh_options, rotate_certs=False):
+    def copy_certs(self, extra_vars, ssh_options, rotate_certs=False,
+                   skip_cert_hostname_validation=False):
         remote_shell = RemoteShell(ssh_options)
         node_ip = ssh_options["ssh_host"]
         root_cert_path = extra_vars["root_cert_path"]
@@ -356,7 +358,12 @@ class AbstractCloud(AbstractCommandParser):
         yb_server_cert_path = os.path.join(certs_dir, cert_file)
         yb_server_key_path = os.path.join(certs_dir, key_file)
 
-        self.verify_certs(root_cert_path, node_cert_path, ssh_options, verify_hostname=True)
+        verify_hostname = True
+        if skip_cert_hostname_validation:
+            logging.info("Skipping host name validation for certs")
+            verify_hostname = False
+
+        self.verify_certs(root_cert_path, node_cert_path, ssh_options, verify_hostname)
 
         copy_root = True
         if rotate_certs:
