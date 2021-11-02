@@ -240,17 +240,19 @@ public class NodeManagerTest extends FakeDBApplication {
   }
 
   private List<String> getCertificatePaths(
-      AnsibleConfigureServers.Params configureParams, String yb_home_dir) {
+      UserIntent userIntent, AnsibleConfigureServers.Params configureParams, String ybHomeDir) {
     return getCertificatePaths(
+        userIntent,
         configureParams,
         configureParams.enableNodeToNodeEncrypt
             || (configureParams.rootAndClientRootCASame
                 && configureParams.enableClientToNodeEncrypt),
         !configureParams.rootAndClientRootCASame && configureParams.enableClientToNodeEncrypt,
-        yb_home_dir);
+        ybHomeDir);
   }
 
   private List<String> getCertificatePaths(
+      UserIntent userIntent,
       AnsibleConfigureServers.Params configureParams,
       boolean isRootCARequired,
       boolean isClientRootCARequired,
@@ -379,6 +381,9 @@ public class NodeManagerTest extends FakeDBApplication {
         expectedCommand.add("--certs_location_client_to_server");
         expectedCommand.add(certsLocation);
       }
+    }
+    if (NodeManager.isSkipCertHostValidation(userIntent, configureParams)) {
+      expectedCommand.add("--skip_cert_hostname_validation");
     }
 
     return expectedCommand;
@@ -677,7 +682,8 @@ public class NodeManagerTest extends FakeDBApplication {
           if ((configureParams.enableNodeToNodeEncrypt
               || configureParams.enableClientToNodeEncrypt)) {
             expectedCommand.addAll(
-                getCertificatePaths(configureParams, configureParams.getProvider().getYbHome()));
+                getCertificatePaths(
+                    userIntent, configureParams, configureParams.getProvider().getYbHome()));
           }
           expectedCommand.add("--extra_gflags");
           expectedCommand.add(Json.stringify(Json.toJson(gflags)));
@@ -745,10 +751,10 @@ public class NodeManagerTest extends FakeDBApplication {
           String clientToNodeString = String.valueOf(configureParams.enableClientToNodeEncrypt);
           String allowInsecureString = String.valueOf(configureParams.allowInsecure);
 
-          String yb_home_dir =
+          String ybHomeDir =
               Provider.getOrBadRequest(UUID.fromString(userIntent.provider)).getYbHome();
-          String certsDir = yb_home_dir + "/yugabyte-tls-config";
-          String certsForClientDir = yb_home_dir + "/yugabyte-client-tls-config";
+          String certsDir = ybHomeDir + "/yugabyte-tls-config";
+          String certsForClientDir = ybHomeDir + "/yugabyte-client-tls-config";
 
           String subType = configureParams.getProperty("taskSubType");
           if (UpgradeTaskParams.UpgradeTaskSubType.CopyCerts.name().equals(subType)) {
@@ -766,7 +772,7 @@ public class NodeManagerTest extends FakeDBApplication {
                 && configureParams.enableClientToNodeEncrypt) {
               gflags.put("certs_for_client_dir", certsForClientDir);
             }
-            expectedCommand.addAll(getCertificatePaths(configureParams, yb_home_dir));
+            expectedCommand.addAll(getCertificatePaths(userIntent, configureParams, ybHomeDir));
           } else if (UpgradeTaskParams.UpgradeTaskSubType.Round1GFlagsUpdate.name()
               .equals(subType)) {
             gflags = new HashMap<>();
@@ -859,6 +865,7 @@ public class NodeManagerTest extends FakeDBApplication {
             case ROTATE_CERTS:
               expectedCommand.addAll(
                   getCertificatePaths(
+                      userIntent,
                       configureParams,
                       configureParams.rootCARotationType != CertRotationType.None,
                       configureParams.clientRootCARotationType != CertRotationType.None,
@@ -1201,7 +1208,7 @@ public class NodeManagerTest extends FakeDBApplication {
       List<String> expectedCommand = new ArrayList<>(t.baseCommand);
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Provision, params, t));
       List<String> accessKeyCommands =
-          new ArrayList<String>(
+          new ArrayList<>(
               ImmutableList.of(
                   "--vars_file",
                   "/path/to/vault_file",
@@ -1378,7 +1385,7 @@ public class NodeManagerTest extends FakeDBApplication {
           new UniverseDefinitionTaskParams.UserIntent();
       userIntent.numNodes = 3;
       userIntent.accessKeyCode = "demo-access";
-      userIntent.regionList = new ArrayList<UUID>();
+      userIntent.regionList = new ArrayList<>();
       userIntent.regionList.add(t.region.uuid);
       userIntent.providerType = t.cloudType;
       AnsibleCreateServer.Params params = new AnsibleCreateServer.Params();
@@ -1401,7 +1408,7 @@ public class NodeManagerTest extends FakeDBApplication {
       List<String> expectedCommand = new ArrayList<>(t.baseCommand);
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Create, params, t));
       List<String> accessKeyCommands =
-          new ArrayList<String>(
+          new ArrayList<>(
               ImmutableList.of(
                   "--vars_file",
                   "/path/to/vault_file",
@@ -1601,7 +1608,7 @@ public class NodeManagerTest extends FakeDBApplication {
           new UniverseDefinitionTaskParams.UserIntent();
       userIntent.numNodes = 3;
       userIntent.accessKeyCode = "demo-access";
-      userIntent.regionList = new ArrayList<UUID>();
+      userIntent.regionList = new ArrayList<>();
       userIntent.regionList.add(t.region.uuid);
       userIntent.providerType = t.cloudType;
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
@@ -2864,5 +2871,39 @@ public class NodeManagerTest extends FakeDBApplication {
             re.getMessage(), containsString("No cert rotation can be done with the given params"));
       }
     }
+  }
+
+  @Test
+  public void testSkipHostnameValidation() {
+    AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+    UserIntent userIntent = new UserIntent();
+    userIntent.tserverGFlags.put(NodeManager.VERIFY_SERVER_ENDPOINT_GFLAG, "false");
+    assertEquals(true, NodeManager.isSkipCertHostValidation(userIntent, params));
+  }
+
+  @Test
+  public void testNotSkipHostnameValidation() {
+    AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+    UserIntent userIntent = new UserIntent();
+    userIntent.tserverGFlags.put(NodeManager.VERIFY_SERVER_ENDPOINT_GFLAG, "true");
+    assertEquals(false, NodeManager.isSkipCertHostValidation(userIntent, params));
+  }
+
+  @Test
+  public void testNotSkipHostnameValidationForErasingGFlag() {
+    AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+    params.gflagsToRemove.add(NodeManager.VERIFY_SERVER_ENDPOINT_GFLAG);
+    UserIntent userIntent = new UserIntent();
+    userIntent.tserverGFlags.put(NodeManager.VERIFY_SERVER_ENDPOINT_GFLAG, "false");
+    assertEquals(false, NodeManager.isSkipCertHostValidation(userIntent, params));
+  }
+
+  @Test
+  public void testSkipHostnameValidationForAddingGFlag() {
+    AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+    params.gflags.put(NodeManager.VERIFY_SERVER_ENDPOINT_GFLAG, "false");
+    UserIntent userIntent = new UserIntent();
+    userIntent.tserverGFlags.put(NodeManager.VERIFY_SERVER_ENDPOINT_GFLAG, "true");
+    assertEquals(true, NodeManager.isSkipCertHostValidation(userIntent, params));
   }
 }
