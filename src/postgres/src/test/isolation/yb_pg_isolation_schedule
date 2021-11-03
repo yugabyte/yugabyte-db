@@ -1,0 +1,4 @@
+test: yb_pg_skip-locked
+test: yb_pg_skip-locked-2
+test: yb-modification-followed-by-lock
+test: yb-skip-locked-after-update
