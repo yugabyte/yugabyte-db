@@ -95,7 +95,8 @@ struct DecodedIntentValue {
 // Returned DecodedIntentValue will have a Nil transaction_id unless transaction_id_slice was
 // non-null.
 Result<DecodedIntentValue> DecodeIntentValue(
-    const Slice& encoded_intent_value, const Slice* transaction_id_slice = nullptr);
+    const Slice& encoded_intent_value, const Slice* transaction_id_slice = nullptr,
+    bool has_strong_intent = true);
 
 // Decodes transaction ID from intent value. Consumes it from intent_value slice.
 Result<TransactionId> DecodeTransactionIdFromIntentValue(Slice* intent_value);

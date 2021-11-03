@@ -114,7 +114,7 @@ public class TestYsqlDump extends BasePgSQLTest {
     restartCluster(); // create a new cluster for this test
     markClusterNeedsRecreation(); // create a new cluster for the next test
 
-    File pgRegressDir = PgRegressBuilder.getPgRegressDir();
+    File pgRegressDir = PgRegressBuilder.PG_REGRESS_DIR;
 
     final int tserverIndex = 0;
     File pgBinDir = PgRegressBuilder.getPgBinDir();
@@ -173,7 +173,7 @@ public class TestYsqlDump extends BasePgSQLTest {
                         final String expectedFileRelativePath,
                         final boolean includeYbMetadata) throws Exception {
     // Location of Postgres regression tests
-    File pgRegressDir = PgRegressBuilder.getPgRegressDir();
+    File pgRegressDir = PgRegressBuilder.PG_REGRESS_DIR;
 
     // Create the data
     try (BufferedReader inputIn = createFileReader(new File(pgRegressDir,

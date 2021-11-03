@@ -25,9 +25,9 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 /**
  * Build a ProcessBuilder for pg_regress.  Also, set up the output directory.
@@ -35,13 +35,19 @@ import java.util.Map;
 public class PgRegressBuilder {
   protected static final Logger LOG = LoggerFactory.getLogger(PgRegressBuilder.class);
 
-  protected static File pgBinDir = new File(TestUtils.getBuildRootDir(), "postgres/bin");
-  protected static File pgRegressDir = new File(TestUtils.getBuildRootDir(),
-                                                "postgres_build/src/test/regress");
-  protected static File pgRegressExecutable = new File(pgRegressDir, "pg_regress");
+  protected static final File PG_REGRESS_DIR = new File(TestUtils.getBuildRootDir(),
+                                                        "postgres_build/src/test/regress");
+  public static final File PG_REGRESS_EXECUTABLE = new File(PG_REGRESS_DIR, "pg_regress");
 
+  protected static final File PG_ISOLATION_REGRESS_DIR =
+    new File(TestUtils.getBuildRootDir(), "postgres_build/src/test/isolation");
+  public static final File PG_ISOLATION_REGRESS_EXECUTABLE = new File(PG_ISOLATION_REGRESS_DIR,
+                                                                      "pg_isolation_regress");
+
+  protected static final File pgBinDir = new File(TestUtils.getBuildRootDir(), "postgres/bin");
+  protected File executable;
   protected List<String> args;
-  protected Map<String, String> extraEnvVars;
+  protected Map<String, String> extraEnvVars = new TreeMap<>();
 
   protected File inputDir;
   protected File outputDir;
@@ -50,16 +56,20 @@ public class PgRegressBuilder {
     return pgBinDir;
   }
 
-  public static File getPgRegressDir() {
-    return pgRegressDir;
+  private boolean isRegressExecutable() {
+    return executable.compareTo(PG_REGRESS_EXECUTABLE) == 0;
   }
 
-  protected PgRegressBuilder() {
+  protected PgRegressBuilder(File executable) {
+    this.executable = executable;
     this.args = new ArrayList<>(Arrays.asList(
-        pgRegressExecutable.toString(),
+        executable.toString(),
         "--bindir=" + pgBinDir,
-        "--dlpath=" + pgRegressDir,
         "--use-existing"));
+
+    if (isRegressExecutable()) {
+      args.add("--dlpath=" + PG_REGRESS_DIR);
+    }
   }
 
   public PgRegressBuilder setDirs(File inputDir, File outputDir) throws RuntimeException {
@@ -71,32 +81,34 @@ public class PgRegressBuilder {
       throw new RuntimeException("Failed to create directory " + outputDir);
     }
 
-    // Copy files needed by pg_regress.  "input" and "ouput" don't need to be copied since they can
-    // be read from inputDir.  Their purpose is to generate files into "expected" and "sql" in
-    // outputDir (implying "expected" and "sql" should be copied).  "data" doesn't need to be copied
-    // since it's only read from (by convention), which can be done from inputDir.
-    try {
-      for (String name : new String[]{"expected", "sql"}) {
-        FileUtils.copyDirectory(new File(inputDir, name), new File(outputDir, name));
+    if (isRegressExecutable()) {
+      // Copy files needed by pg_regress.  "input" and "ouput" don't need to be copied since they
+      // can be read from inputDir.  Their purpose is to generate files into "expected" and "sql" in
+      // outputDir (implying "expected" and "sql" should be copied).  "data" doesn't need to be
+      // copied since it's only read from (by convention), which can be done from inputDir.
+      try {
+        for (String name : new String[]{"expected", "sql"}) {
+          FileUtils.copyDirectory(new File(inputDir, name), new File(outputDir, name));
+        }
+      } catch (IOException ex) {
+        LOG.error("Failed to copy a directory from " + inputDir + " to " + outputDir);
+        throw new RuntimeException(ex);
       }
-    } catch (IOException ex) {
-      LOG.error("Failed to copy a directory from " + inputDir + " to " + outputDir);
-      throw new RuntimeException(ex);
-    }
 
-    // TODO(dmitry): Workaround for #1721, remove after fix.
-    try {
-      for (File f : (new File(outputDir, "sql")).listFiles()) {
-        if (!f.setWritable(true)) {
-          throw new IOException("Couldn't set write permissions for " + f.getAbsolutePath());
+      // TODO(dmitry): Workaround for #1721, remove after fix.
+      try {
+        for (File f : (new File(outputDir, "sql")).listFiles()) {
+          if (!f.setWritable(true)) {
+            throw new IOException("Couldn't set write permissions for " + f.getAbsolutePath());
+          }
+          try (FileWriter fr = new FileWriter(f, true)) {
+            fr.write("\n-- YB_DATA_END\nROLLBACK;DISCARD TEMP;");
+          }
         }
-        try (FileWriter fr = new FileWriter(f, true)) {
-          fr.write("\n-- YB_DATA_END\nROLLBACK;DISCARD TEMP;");
-        }
+      } catch (IOException ex) {
+        LOG.error("Failed to write YB_DATA_END footer to sql file");
+        throw new RuntimeException(ex);
       }
-    } catch (IOException ex) {
-      LOG.error("Failed to write YB_DATA_END footer to sql file");
-      throw new RuntimeException(ex);
     }
 
     args.add("--inputdir=" + inputDir);
@@ -113,27 +125,32 @@ public class PgRegressBuilder {
     }
 
     File scheduleInputFile = new File(inputDir, schedule);
-    File scheduleOutputFile = new File(outputDir, schedule);
 
-    // Copy the schedule file, replacing some lines based on the operating system.
-    try (BufferedReader scheduleReader = new BufferedReader(new FileReader(scheduleInputFile));
-         PrintWriter scheduleWriter = new PrintWriter(new FileWriter(scheduleOutputFile))) {
-      String line;
-      while ((line = scheduleReader.readLine()) != null) {
-        line = line.trim();
-        if (line.equals("test: yb_pg_inet") && !TestUtils.IS_LINUX) {
-          // We only support IPv6-specific tests in yb_pg_inet.sql on Linux, not on macOS.
-          line = "test: yb_pg_inet_ipv4only";
+    if (isRegressExecutable()) {
+      File scheduleOutputFile = new File(outputDir, schedule);
+
+      // Copy the schedule file, replacing some lines based on the operating system.
+      try (BufferedReader scheduleReader = new BufferedReader(new FileReader(scheduleInputFile));
+          PrintWriter scheduleWriter = new PrintWriter(new FileWriter(scheduleOutputFile))) {
+        String line;
+        while ((line = scheduleReader.readLine()) != null) {
+          line = line.trim();
+          if (line.equals("test: yb_pg_inet") && !TestUtils.IS_LINUX) {
+            // We only support IPv6-specific tests in yb_pg_inet.sql on Linux, not on macOS.
+            line = "test: yb_pg_inet_ipv4only";
+          }
+          LOG.info("Schedule output line: " + line);
+          scheduleWriter.println(line);
         }
-        LOG.info("Schedule output line: " + line);
-        scheduleWriter.println(line);
+      } catch (IOException ex) {
+        LOG.error("Failed to write schedule to " + outputDir);
+        throw new RuntimeException(ex);
       }
-    } catch (IOException ex) {
-      LOG.error("Failed to write schedule to " + outputDir);
-      throw new RuntimeException(ex);
+      args.add("--schedule=" + new File(outputDir, schedule));
+    } else {
+      args.add("--schedule=" + scheduleInputFile);
     }
 
-    args.add("--schedule=" + new File(outputDir, schedule));
     return this;
   }
 

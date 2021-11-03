@@ -160,7 +160,8 @@ bool HasStrong(IntentTypeSet inp) {
                                    transaction_id_slice.ToDebugHexString()))
 
 Result<DecodedIntentValue> DecodeIntentValue(
-    const Slice& encoded_intent_value, const Slice* verify_transaction_id_slice) {
+    const Slice& encoded_intent_value, const Slice* verify_transaction_id_slice,
+    bool has_strong_intent) {
   DecodedIntentValue decoded_value;
   auto intent_value = encoded_intent_value;
   auto transaction_id_slice = Slice();
@@ -183,10 +184,12 @@ Result<DecodedIntentValue> DecodeIntentValue(
     decoded_value.subtransaction_id = kMinSubTransactionId;
   }
 
-  RETURN_NOT_OK(intent_value.consume_byte(ValueTypeAsChar::kWriteId));
-  INTENT_VALUE_SCHECK(intent_value.size(), GE, sizeof(IntraTxnWriteId), "write id expected");
-  decoded_value.write_id = BigEndian::Load32(intent_value.data());
-  intent_value.remove_prefix(sizeof(IntraTxnWriteId));
+  if (has_strong_intent) {
+    RETURN_NOT_OK(intent_value.consume_byte(ValueTypeAsChar::kWriteId));
+    INTENT_VALUE_SCHECK(intent_value.size(), GE, sizeof(IntraTxnWriteId), "write id expected");
+    decoded_value.write_id = BigEndian::Load32(intent_value.data());
+    intent_value.remove_prefix(sizeof(IntraTxnWriteId));
+  }
 
   decoded_value.body = intent_value;
 
