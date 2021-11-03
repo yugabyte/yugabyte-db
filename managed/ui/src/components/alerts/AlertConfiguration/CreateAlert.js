@@ -45,8 +45,7 @@ const CreateAlert = (props) => {
   );
   const [alertDestination, setAlertDestination] = useState([]);
   const [currentMetric, setCurrentMetric] = useState(undefined);
-  const isReadOnly = isNonAvailable(
-    customer.data.features, 'alert.configuration.actions');
+  const isReadOnly = isNonAvailable(customer.data.features, 'alert.configuration.actions');
 
   useEffect(() => {
     alertDestinations().then((res) => {
@@ -69,7 +68,7 @@ const CreateAlert = (props) => {
   }, [alertDestinations]);
 
   useEffect(() => {
-    setCurrentMetric(currentMetric =>
+    setCurrentMetric((currentMetric) =>
       initialValues.ALERT_METRICS_CONDITION
         ? metricsData.find((metric) => metric.template === initialValues.ALERT_METRICS_CONDITION)
         : currentMetric
@@ -284,25 +283,35 @@ const CreateAlert = (props) => {
             </Col>
           </Row>
         )}
-                    isReadOnly={isReadOnly}
         {currentMetric && <hr />}
         {currentMetric && (
           <Row>
             <Col md={12}>
               <h4>Conditions</h4>
             </Col>
-            <Row>
-              <Col md={3} className="durationInput">
-                <div className="form-item-custom-label">Duration, sec</div>
-                <Field
-                  name="ALERT_METRICS_DURATION"
-                  component={YBTextInputWithLabel}
-                  validate={required}
-                  placeHolder="Enter duration in minutes"
-                  isReadOnly={isReadOnly}
-                />
+            <Col md={12}>
+              <div className="form-item-custom-label">Duration</div>
+            </Col>
+            <div className="form-field-grid">
+              <Col md={12}>
+                <Row>
+                  <Col lg={2}>
+                    <Field
+                      name="ALERT_METRICS_DURATION"
+                      component={YBTextInputWithLabel}
+                      validate={required}
+                      placeHolder="Enter duration in minutes"
+                      isReadOnly={isReadOnly}
+                    />
+                  </Col>
+                  <Col lg={1}>
+                    <div className="flex-container">
+                      <p className="percent-text">sec</p>
+                    </div>
+                  </Col>
+                </Row>
               </Col>
-            </Row>
+            </div>
             <Row>
               <Col md={12}>
                 <div className="form-field-grid">
