@@ -428,11 +428,11 @@ CREATE TABLE garrays (i serial PRIMARY KEY, a int[]) TABLEGROUP g;
 INSERT INTO garrays (a) VALUES ('{11, 22}');
 CREATE INDEX ON garrays USING ybgin (a) TABLEGROUP g;
 INSERT INTO garrays (a) VALUES ('{22, 33}'), ('{33, 11}');
-EXPLAIN
+EXPLAIN (costs off)
 SELECT * FROM garrays WHERE a && '{11}';
-                                   QUERY PLAN
----------------------------------------------------------------------------------
- Index Scan using garrays_a_idx on garrays  (cost=0.00..4.01 rows=1000 width=36)
+                QUERY PLAN
+-------------------------------------------
+ Index Scan using garrays_a_idx on garrays
    Index Cond: (a && '{11}'::integer[])
 (2 rows)
 
@@ -448,11 +448,11 @@ CREATE TABLE nogarrays (i serial PRIMARY KEY, a int[]);
 INSERT INTO nogarrays (a) VALUES ('{11, 22}');
 CREATE INDEX ON nogarrays USING ybgin (a) TABLEGROUP g;
 INSERT INTO nogarrays (a) VALUES ('{22, 33}'), ('{33, 11}');
-EXPLAIN
+EXPLAIN (costs off)
 SELECT * FROM nogarrays WHERE a && '{11}';
-                                     QUERY PLAN
--------------------------------------------------------------------------------------
- Index Scan using nogarrays_a_idx on nogarrays  (cost=0.00..4.01 rows=1000 width=36)
+                  QUERY PLAN
+-----------------------------------------------
+ Index Scan using nogarrays_a_idx on nogarrays
    Index Cond: (a && '{11}'::integer[])
 (2 rows)
 
