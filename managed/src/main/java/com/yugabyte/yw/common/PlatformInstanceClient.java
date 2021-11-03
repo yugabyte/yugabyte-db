@@ -74,7 +74,7 @@ public class PlatformInstanceClient {
     }
 
     if (response == null || response.get("error") != null) {
-      LOG.error("Error received from remote instance {}", this.remoteAddress);
+      LOG.error("Error received from remote instance {}: {}", this.remoteAddress, response);
 
       throw new RuntimeException("Error received from remote instance " + this.remoteAddress);
     }
