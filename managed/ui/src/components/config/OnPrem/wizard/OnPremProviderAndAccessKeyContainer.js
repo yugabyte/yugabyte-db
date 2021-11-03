@@ -23,8 +23,7 @@ const mapDispatchToProps = (dispatch, ownProps) => {
           provider: {
             name: formData.name,
             config: {
-              YB_HOME_DIR: formData.homeDir,
-              USE_HOSTNAME: _.get(formData, 'useHostnames', false).toString()
+              YB_HOME_DIR: formData.homeDir
             }
           },
           key: {
@@ -52,7 +51,6 @@ const mapStateToProps = (state, ownProps) => {
   let initialFormValues = {
     sshPort: 22,
     airGapInstall: false,
-    useHostnames: false,
     installNodeExporter: true,
     nodeExporterUser: DEFAULT_NODE_EXPORTER_USER,
     nodeExporterPort: DEFAULT_NODE_EXPORTER_PORT,
@@ -70,7 +68,6 @@ const mapStateToProps = (state, ownProps) => {
       sshPort: onPremJsonFormData.key.sshPort,
       airGapInstall: onPremJsonFormData.key.airGapInstall,
       skipProvisioning: onPremJsonFormData.key.skipProvisioning,
-      useHostnames: _.get(onPremJsonFormData, 'provider.config.USE_HOSTNAME', 'false') === 'true',
       installNodeExporter: onPremJsonFormData.key.installNodeExporter,
       nodeExporterUser: onPremJsonFormData.key.nodeExporterUser,
       nodeExporterPort: onPremJsonFormData.key.nodeExporterPort,
@@ -132,7 +129,6 @@ const onPremProviderConfigForm = reduxForm({
     'privateKeyContent',
     'airGapInstall',
     'skipProvisioning',
-    'useHostnames',
     'homeDir',
     'installNodeExporter',
     'nodeExporterUser',

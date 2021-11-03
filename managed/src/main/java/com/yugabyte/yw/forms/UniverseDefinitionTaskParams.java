@@ -397,7 +397,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // When this is set to true, YW will setup the universe to communicate by way of hostnames
     // instead of ip addresses. These hostnames will have been provided during on-prem provider
     // setup and will be in-place of privateIP
-    @ApiModelProperty() public boolean useHostname = false;
+    @Deprecated @ApiModelProperty() public boolean useHostname = false;
 
     @ApiModelProperty() public boolean useSystemd = false;
 
