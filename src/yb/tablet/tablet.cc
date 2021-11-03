@@ -258,6 +258,9 @@ DECLARE_uint64(rocksdb_max_file_size_for_compaction);
 DECLARE_int64(apply_intents_task_injected_delay_ms);
 DECLARE_string(regular_tablets_data_block_key_value_encoding);
 
+DEFINE_test_flag(uint64, inject_sleep_before_applying_intents_ms, 0,
+                 "Sleep before applying intents to docdb after transaction commit");
+
 using namespace std::placeholders;
 
 using std::shared_ptr;
@@ -1666,6 +1669,12 @@ Status Tablet::ImportData(const std::string& source_dir) {
 Result<docdb::ApplyTransactionState> Tablet::ApplyIntents(const TransactionApplyData& data) {
   VLOG_WITH_PREFIX(4) << __func__ << ": " << data.transaction_id;
 
+  // This flag enables tests to induce a situation where a transaction has committed but its intents
+  // haven't yet moved to regular db for a sufficiently long period. For example, it can help a test
+  // to reliably assert that conflict resolution/ concurrency control with a conflicting committed
+  // transaction is done properly in the rare situation where the committed transaction's intents
+  // are still in intents db and not yet in regular db.
+  AtomicFlagSleepMs(&FLAGS_TEST_inject_sleep_before_applying_intents_ms);
   rocksdb::WriteBatch regular_write_batch;
   auto new_apply_state = VERIFY_RESULT(docdb::PrepareApplyIntentsBatch(
       tablet_id(), data.transaction_id, data.aborted, data.commit_ht, &key_bounds_,
