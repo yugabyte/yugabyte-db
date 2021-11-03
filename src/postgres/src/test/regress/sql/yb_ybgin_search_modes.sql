@@ -10,7 +10,11 @@ CREATE INDEX NONCONCURRENTLY idx_partial ON arrays
 SELECT * FROM arrays WHERE a <@ '{1}';
 -- GIN_SEARCH_MODE_ALL
 SELECT * FROM arrays WHERE a @> '{}';
+/*+IndexScan(arrays)*/
+SELECT * FROM arrays WHERE a @> '{}';
 -- GIN_CAT_NULL_ITEM
+SELECT * FROM arrays WHERE a is null;
+/*+IndexScan(arrays)*/
 SELECT * FROM arrays WHERE a is null;
 
 -- Cleanup
