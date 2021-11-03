@@ -94,7 +94,7 @@ To use the Smart Driver, do the following:
   To specify topology keys, you set the `topology-keys` property to comma separated values, as per the following example:
 
   ```java
-  String yburl = "jdbc:yugabytedb://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte&load-balance=true&topology-keys=region1:zone1,region1.zone2";
+  String yburl = "jdbc:yugabytedb://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte&load-balance=true&topology-keys=cloud1.region1:zone1,cloud1.region1.zone2";
   DriverManager.getConnection(yburl);
   ```
 
@@ -105,7 +105,7 @@ To use the Smart Driver, do the following:
   YBClusterAwareDataSource ds = new YBClusterAwareDataSource();
   ds.setUrl(jdbcUrl);
   // Set topology keys to enable topology-aware distribution
-  ds.setTopologyKeys("region1.zone1,region2.zone2");
+  ds.setTopologyKeys("cloud1.region1.zone1,cloud1.region2.zone2");
   // Provide more end points to prevent first connection failure 
   // if an initial contact point is not available 
   ds.setAdditionalEndpoints("127.0.0.2:5433,127.0.0.3:5433");
@@ -128,7 +128,7 @@ To use the Smart Driver, do the following:
   String additionalEndpoints = "127.0.0.2:5433,127.0.0.3:5433,127.0.0.4:5433,127.0.0.5:5433";
   poolProperties.setProperty("dataSource.additionalEndpoints", additionalEndpoints);
   // Load balance between specific geo-locations using topology keys
-  String geoLocations = "region1.zone1,region2.zone2";
+  String geoLocations = "cloud1.region1.zone1,cloud1.region2.zone2";
   poolProperties.setProperty("dataSource.topologyKeys", geoLocations);
   
   poolProperties.setProperty("poolName", name);
