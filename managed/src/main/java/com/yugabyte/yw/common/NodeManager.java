@@ -62,11 +62,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
 
 @Singleton
+@Slf4j
 public class NodeManager extends DevopsBase {
   static final String BOOT_SCRIPT_PATH = "yb.universe_boot_script";
   private static final String YB_CLOUD_COMMAND_TYPE = "instance";
@@ -75,6 +77,7 @@ public class NodeManager extends DevopsBase {
   private static final List<String> VALID_CONFIGURE_PROCESS_TYPES =
       ImmutableList.of(ServerType.MASTER.name(), ServerType.TSERVER.name());
   static final String VERIFY_SERVER_ENDPOINT_GFLAG = "verify_server_endpoint";
+  static final String SKIP_CERT_VALIDATION = "yb.tls.skip_cert_validation";
 
   @Inject ReleaseManager releaseManager;
 
@@ -120,6 +123,10 @@ public class NodeManager extends DevopsBase {
 
   private UserIntent getUserIntentFromParams(NodeTaskParams nodeTaskParam) {
     Universe universe = Universe.getOrBadRequest(nodeTaskParam.universeUUID);
+    return getUserIntentFromParams(universe, nodeTaskParam);
+  }
+
+  private UserIntent getUserIntentFromParams(Universe universe, NodeTaskParams nodeTaskParam) {
     NodeDetails nodeDetails = universe.getNode(nodeTaskParam.nodeName);
     if (nodeDetails == null) {
       nodeDetails = universe.getUniverseDetails().nodeDetailsSet.iterator().next();
@@ -301,11 +308,13 @@ public class NodeManager extends DevopsBase {
   }
 
   private List<String> getCertificatePaths(
+      Config config,
       UserIntent userIntent,
       AnsibleConfigureServers.Params taskParam,
       String nodeIP,
       String ybHomeDir) {
     return getCertificatePaths(
+        config,
         userIntent,
         taskParam,
         CertificateHelper.isRootCARequired(taskParam),
@@ -316,6 +325,7 @@ public class NodeManager extends DevopsBase {
 
   // Return the List of Strings which gives the certificate paths for the specific taskParams
   private List<String> getCertificatePaths(
+      Config config,
       UserIntent userIntent,
       AnsibleConfigureServers.Params taskParam,
       boolean isRootCARequired,
@@ -495,8 +505,10 @@ public class NodeManager extends DevopsBase {
       subcommandStrings.add(certsLocation);
     }
 
-    if (isSkipCertHostValidation(userIntent, taskParam)) {
-      subcommandStrings.add("--skip_cert_hostname_validation");
+    SkipCertValidationType skipType = getSkipCertValidationType(config, userIntent, taskParam);
+    if (skipType != SkipCertValidationType.NONE) {
+      subcommandStrings.add("--skip_cert_validation");
+      subcommandStrings.add(skipType.name());
     }
 
     return subcommandStrings;
@@ -593,9 +605,10 @@ public class NodeManager extends DevopsBase {
   }
 
   private List<String> getConfigureSubCommand(AnsibleConfigureServers.Params taskParam) {
-    UserIntent userIntent = getUserIntentFromParams(taskParam);
-    List<String> subcommand = new ArrayList<>();
     Universe universe = Universe.getOrBadRequest(taskParam.universeUUID);
+    Config config = runtimeConfigFactory.forUniverse(universe);
+    UserIntent userIntent = getUserIntentFromParams(universe, taskParam);
+    List<String> subcommand = new ArrayList<>();
     String masterAddresses = universe.getMasterAddresses(false);
     subcommand.add("--master_addresses_for_tserver");
     subcommand.add(masterAddresses);
@@ -677,6 +690,7 @@ public class NodeManager extends DevopsBase {
         if ((taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt)) {
           subcommand.addAll(
               getCertificatePaths(
+                  config,
                   userIntent,
                   taskParam,
                   node.cloudInfo.private_ip,
@@ -751,6 +765,7 @@ public class NodeManager extends DevopsBase {
             if ((taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt)) {
               subcommand.addAll(
                   getCertificatePaths(
+                      runtimeConfigFactory.forUniverse(universe),
                       userIntent,
                       taskParam,
                       node.cloudInfo.private_ip,
@@ -882,6 +897,7 @@ public class NodeManager extends DevopsBase {
               {
                 subcommand.addAll(
                     getCertificatePaths(
+                        config,
                         userIntent,
                         taskParam,
                         taskParam.rootCARotationType != CertRotationType.None,
@@ -937,7 +953,8 @@ public class NodeManager extends DevopsBase {
               subcommand.add(CertRotateAction.ROTATE_CERTS.toString());
             }
             subcommand.addAll(
-                getCertificatePaths(userIntent, taskParam, node.cloudInfo.private_ip, ybHomeDir));
+                getCertificatePaths(
+                    config, userIntent, taskParam, node.cloudInfo.private_ip, ybHomeDir));
 
           } else if (UpgradeTaskParams.UpgradeTaskSubType.Round1GFlagsUpdate.name()
               .equals(subType)) {
@@ -1000,23 +1017,40 @@ public class NodeManager extends DevopsBase {
     return subcommand;
   }
 
+  enum SkipCertValidationType {
+    ALL,
+    HOSTNAME,
+    NONE
+  }
+
   @VisibleForTesting
-  static boolean isSkipCertHostValidation(
-      UserIntent userIntent, AnsibleConfigureServers.Params taskParam) {
+  static SkipCertValidationType getSkipCertValidationType(
+      Config config, UserIntent userIntent, AnsibleConfigureServers.Params taskParam) {
+    String configValue = config.getString(SKIP_CERT_VALIDATION);
+    if (!configValue.isEmpty()) {
+      try {
+        return SkipCertValidationType.valueOf(configValue);
+      } catch (Exception e) {
+        log.error("Incorrect config value {} for {} ", configValue, SKIP_CERT_VALIDATION);
+      }
+    }
     if (taskParam.gflagsToRemove.contains(VERIFY_SERVER_ENDPOINT_GFLAG)) {
-      return false;
+      return SkipCertValidationType.NONE;
     }
+
+    boolean skipHostValidation;
     if (taskParam.gflags.containsKey(VERIFY_SERVER_ENDPOINT_GFLAG)) {
-      return taskParam.gflags.get(VERIFY_SERVER_ENDPOINT_GFLAG).equalsIgnoreCase("false");
+      skipHostValidation = shouldSkipServerEndpointVerification(taskParam.gflags);
+    } else {
+      skipHostValidation =
+          shouldSkipServerEndpointVerification(userIntent.masterGFlags)
+              || shouldSkipServerEndpointVerification(userIntent.tserverGFlags);
     }
-    return userIntent
-            .masterGFlags
-            .getOrDefault(VERIFY_SERVER_ENDPOINT_GFLAG, "true")
-            .equalsIgnoreCase("false")
-        || userIntent
-            .tserverGFlags
-            .getOrDefault(VERIFY_SERVER_ENDPOINT_GFLAG, "true")
-            .equalsIgnoreCase("false");
+    return skipHostValidation ? SkipCertValidationType.HOSTNAME : SkipCertValidationType.NONE;
+  }
+
+  private static boolean shouldSkipServerEndpointVerification(Map<String, String> gflags) {
+    return gflags.getOrDefault(VERIFY_SERVER_ENDPOINT_GFLAG, "true").equalsIgnoreCase("false");
   }
 
   private Map<String, String> getAnsibleEnvVars(UUID universeUUID) {
