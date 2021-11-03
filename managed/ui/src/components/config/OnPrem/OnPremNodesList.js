@@ -1,6 +1,5 @@
 // Copyright (c) YugaByte, Inc.
 
-import _ from 'lodash';
 import React, { Component } from 'react';
 import { Row, Col, Alert } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
@@ -362,9 +361,7 @@ class OnPremNodesList extends Component {
 
     let provisionMessage = <span />;
     const onPremProvider = this.findProvider();
-    let useHostname = false;
     if (isDefinedNotNull(onPremProvider)) {
-      useHostname = _.get(onPremProvider, 'config.USE_HOSTNAME', false) === 'true';
       const onPremKey = accessKeys.data.find(
         (accessKey) => accessKey.idKey.providerUUID === onPremProvider.uuid
       );
@@ -426,13 +423,12 @@ class OnPremNodesList extends Component {
                     component={InstanceTypeForRegion}
                     zoneOptions={zoneOptions}
                     machineTypeOptions={machineTypeOptions}
-                    useHostname={useHostname}
                     formType={'modal'}
-                  />
-                </div>
+                />
               </div>
-            );
-          })
+            </div>
+          );
+        })
       : null;
     const deleteConfirmationText = `Are you sure you want to delete node${
       isNonEmptyObject(this.state.nodeToBeDeleted) && this.state.nodeToBeDeleted.nodeName
@@ -442,7 +438,7 @@ class OnPremNodesList extends Component {
     const precheckConfirmationText = `Are you sure you want to run precheck on node${
       isNonEmptyObject(this.state.nodeToBePrechecked) ? ' ' + this.state.nodeToBePrechecked.ip : ''
     }?`;
-    const modalAddressSpecificText = useHostname ? 'hostnames' : 'IP addresses';
+    const modalAddressSpecificText = 'IP addresses/hostnames';
     return (
       <div className="onprem-node-instances">
         <span className="buttons pull-right">

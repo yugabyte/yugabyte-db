@@ -68,6 +68,7 @@ import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 
 import org.apache.commons.collections.MapUtils;
+import org.apache.commons.validator.routines.InetAddressValidator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -520,11 +521,11 @@ public class NodeManager extends DevopsBase {
   }
 
   // Return the map of default gflags which will be passed as extra gflags to the db nodes.
-  private Map<String, String> addExtraGFlags(AnsibleConfigureServers.Params taskParam) {
+  private Map<String, String> addExtraGFlags(
+      AnsibleConfigureServers.Params taskParam, boolean useHostname) {
     UserIntent userIntent = getUserIntentFromParams(taskParam);
     Universe universe = Universe.getOrBadRequest(taskParam.universeUUID);
     NodeDetails node = universe.getNode(taskParam.nodeName);
-    boolean useHostname = universe.getUniverseDetails().getPrimaryCluster().userIntent.useHostname;
     Map<String, String> extra_gflags = new HashMap<>();
     extra_gflags.put("undefok", "enable_ysql");
     if (taskParam.isMaster) {
@@ -677,7 +678,9 @@ public class NodeManager extends DevopsBase {
     subcommand.add("--redis_proxy_rpc_port");
     subcommand.add(Integer.toString(node.redisServerRpcPort));
 
-    boolean useHostname = universe.getUniverseDetails().getPrimaryCluster().userIntent.useHostname;
+    boolean useHostname =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.useHostname
+            || !isIpAddress(node.cloudInfo.private_ip);
 
     switch (taskParam.type) {
       case Everything:
@@ -704,7 +707,7 @@ public class NodeManager extends DevopsBase {
 
         // adds default gflags based on the user's initial preference.
         subcommand.add("--extra_gflags");
-        subcommand.add(Json.stringify(Json.toJson(addExtraGFlags(taskParam))));
+        subcommand.add(Json.stringify(Json.toJson(addExtraGFlags(taskParam, useHostname))));
         break;
       case Software:
         {
@@ -776,7 +779,7 @@ public class NodeManager extends DevopsBase {
                       node.cloudInfo.private_ip,
                       taskParam.getProvider().getYbHome()));
             }
-            Map<String, String> default_extra_gflags = addExtraGFlags(taskParam);
+            Map<String, String> default_extra_gflags = addExtraGFlags(taskParam, useHostname);
             if (processType == ServerType.TSERVER.name()) {
               if (userIntent.enableYEDIS) {
                 default_extra_gflags.put(
@@ -1020,6 +1023,12 @@ public class NodeManager extends DevopsBase {
         break;
     }
     return subcommand;
+  }
+
+  static boolean isIpAddress(String maybeIp) {
+    InetAddressValidator ipValidator = InetAddressValidator.getInstance();
+    return InetAddressValidator.getInstance().isValidInet4Address(maybeIp)
+        || InetAddressValidator.getInstance().isValidInet6Address(maybeIp);
   }
 
   enum SkipCertValidationType {

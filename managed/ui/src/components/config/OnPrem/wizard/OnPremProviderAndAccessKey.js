@@ -43,8 +43,7 @@ export default class OnPremProviderAndAccessKey extends Component {
       pkHelpContent,
       skipProvisioningHelp,
       airGapInstallHelp,
-      portHelpContent,
-      useHostnameHelp
+      portHelpContent
     } = constants;
     const isReadOnly = this.props.isEditProvider;
 
@@ -118,17 +117,6 @@ export default class OnPremProviderAndAccessKey extends Component {
                   onToggle={this.toggleShowAdvanced}
                   checkedVal={this.state.showAdvanced}
                 />
-                {this.state.showAdvanced && (
-                  <Field
-                    name="useHostnames"
-                    component={YBToggle}
-                    label="Use Hostnames"
-                    defaultChecked={false}
-                    isReadOnly={isReadOnly}
-                    infoContent={useHostnameHelp}
-                    infoTitle="Use Hostnames"
-                  />
-                )}
                 {this.state.showAdvanced && (
                   <Field
                     name="homeDir"

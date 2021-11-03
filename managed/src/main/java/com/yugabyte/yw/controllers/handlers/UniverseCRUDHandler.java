@@ -197,12 +197,6 @@ public class UniverseCRUDHandler {
         c.userIntent.enableExposingService =
             UniverseDefinitionTaskParams.ExposingServiceState.UNEXPOSED;
       }
-      if (c.userIntent.providerType.equals(Common.CloudType.onprem)) {
-        if (provider.getUnmaskedConfig().containsKey("USE_HOSTNAME")) {
-          c.userIntent.useHostname =
-              Boolean.parseBoolean(provider.getUnmaskedConfig().get("USE_HOSTNAME"));
-        }
-      }
 
       if (c.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
         try {

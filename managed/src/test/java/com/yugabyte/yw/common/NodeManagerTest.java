@@ -461,7 +461,8 @@ public class NodeManagerTest extends FakeDBApplication {
   private Map<String, String> getExtraGflags(
       AnsibleConfigureServers.Params configureParams,
       NodeTaskParams params,
-      UserIntent userIntent) {
+      UserIntent userIntent,
+      boolean useHostname) {
     Map<String, String> gflags = new HashMap<>();
     gflags.put("undefok", "enable_ysql");
     if (configureParams.isMaster) {
@@ -470,13 +471,21 @@ public class NodeManagerTest extends FakeDBApplication {
     }
     gflags.put("placement_uuid", String.valueOf(params.placementUuid));
     gflags.put("metric_node_name", params.nodeName);
+
+    String pgsqlProxyBindAddress = configureParams.nodeName;
+    String cqlProxyBindAddress = configureParams.nodeName;
+    if (useHostname) {
+      pgsqlProxyBindAddress = "0.0.0.0";
+      cqlProxyBindAddress = "0.0.0.0";
+    }
+
     if (configureParams.enableYSQL) {
       gflags.put("enable_ysql", "true");
       gflags.put(
           "pgsql_proxy_bind_address",
           String.format(
               "%s:%s",
-              configureParams.nodeName,
+              pgsqlProxyBindAddress,
               Universe.getOrBadRequest(configureParams.universeUUID)
                   .getNode(configureParams.nodeName)
                   .ysqlServerRpcPort));
@@ -495,7 +504,7 @@ public class NodeManagerTest extends FakeDBApplication {
           "cql_proxy_bind_address",
           String.format(
               "%s:%s",
-              configureParams.nodeName,
+              cqlProxyBindAddress,
               Universe.getOrBadRequest(configureParams.universeUUID)
                   .getNode(configureParams.nodeName)
                   .yqlServerRpcPort));
@@ -672,6 +681,8 @@ public class NodeManagerTest extends FakeDBApplication {
           expectedCommand.add("/yb/release.tar.gz");
         }
 
+        boolean useHostname = !NodeManager.isIpAddress(configureParams.nodeName);
+
         if (configureParams.getProperty("taskSubType") != null) {
           UpgradeTaskSubType taskSubType =
               UpgradeTaskParams.UpgradeTaskSubType.valueOf(
@@ -700,7 +711,12 @@ public class NodeManagerTest extends FakeDBApplication {
         }
 
         if (configureParams.type == Everything) {
-          gflags.putAll(getExtraGflags(configureParams, params, userIntent));
+          gflags.putAll(getExtraGflags(configureParams, params, userIntent, useHostname));
+          if (useHostname) {
+            expectedCommand.add("--server_broadcast_addresses");
+            // NodeName and privateIp are now the same, see ApiUtils.getDummyNodeDetails()
+            expectedCommand.add(configureParams.nodeName);
+          }
           if ((configureParams.enableNodeToNodeEncrypt
               || configureParams.enableClientToNodeEncrypt)) {
             expectedCommand.addAll(
@@ -734,8 +750,15 @@ public class NodeManagerTest extends FakeDBApplication {
           if (configureParams.addDefaultGFlags) {
             expectedCommand.add("--add_default_gflags");
             expectedCommand.add("true");
+
+            if (useHostname) {
+              expectedCommand.add("--server_broadcast_addresses");
+              // NodeName and privateIp are now the same, see ApiUtils.getDummyNodeDetails()
+              expectedCommand.add(configureParams.nodeName);
+            }
+
             Map<String, String> default_gflags =
-                getExtraGflags(configureParams, params, userIntent);
+                getExtraGflags(configureParams, params, userIntent, useHostname);
             if (processType == ServerType.TSERVER.name()) {
               if (userIntent.enableYEDIS) {
                 default_gflags.put(
