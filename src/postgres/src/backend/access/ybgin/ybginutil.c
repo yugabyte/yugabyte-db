@@ -29,6 +29,7 @@
 #include "c.h"
 #include "nodes/relation.h"
 #include "nodes/nodes.h"
+#include "utils/index_selfuncs.h"
 
 void
 ybgincostestimate(struct PlannerInfo *root, struct IndexPath *path,
@@ -36,12 +37,8 @@ ybgincostestimate(struct PlannerInfo *root, struct IndexPath *path,
 				  Cost *indexTotalCost, Selectivity *indexSelectivity,
 				  double *indexCorrelation, double *indexPages)
 {
-	/* TODO(jason): finish implementing this.  Also, do issue #9960. */
-	*indexStartupCost = 0;
-	*indexTotalCost = 0;
-	*indexSelectivity = 0;
-	*indexCorrelation = 0;
-	*indexPages = 0;
+	gincostestimate(root, path, loop_count, indexStartupCost, indexTotalCost,
+					indexSelectivity, indexCorrelation, indexPages);
 }
 
 bytea *
