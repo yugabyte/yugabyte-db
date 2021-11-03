@@ -125,21 +125,21 @@ The `pq` driver is ready for building Go applications that connect to and intera
 
 ## Java
 
-### Yugabyte JDBC Driver
+### Yugabyte JDBC driver
 
-The [Yugabyte JDBC Driver](../../../integrations/jdbc-driver) is a distributed JDBC driver for [YSQL](../../../quick-start/explore/ysql/) built on the [PostgreSQL JDBC Driver](https://jdbc.postgresql.org/)
+The [Yugabyte JDBC driver](../../../integrations/jdbc-driver) is a distributed JDBC driver for [YSQL](../../../api/ysql) built on the [PostgreSQL JDBC driver](https://jdbc.postgresql.org/).
 
 For a tutorial on building a sample Java application with the Yugabyte JDBC driver, see [Build a Java application](../../../quick-start/build-apps/java/ysql-yb-jdbc/).
 
-### PostgreSQL JDBC Driver (PgJDBC)
+### PostgreSQL JDBC driver (PgJDBC)
 
-The [PostgreSQL JDBC Driver](https://jdbc.postgresql.org/) is the official JDBC driver for PostgreSQL. PgJDBC is not based on [`libpq`](#libpq), but supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
+The [PostgreSQL JDBC driver](https://jdbc.postgresql.org/) is the official JDBC driver for PostgreSQL. PgJDBC is not based on [`libpq`](#libpq), but supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
 For a tutorial on building a sample Java application with the PostgreSQL JDBC Driver, see [Build a Java application](../../../quick-start/build-apps/java/ysql-jdbc/).
 
-#### Install the PostgreSQL JDBC Driver
+#### Install the PostgreSQL JDBC driver
 
-To download binary JAR files, go to [PostgreSQL JDBC Driver – Downloads](https://jdbc.postgresql.org/download.html).  Because Java is platform neutral, download the appropriate JAR file and drop it into the classpath.
+To download binary JAR files, go to [PostgreSQL JDBC driver – Downloads](https://jdbc.postgresql.org/download.html).  Because Java is platform neutral, download the appropriate JAR file and drop it into the classpath.
 
 To get the latest versions for projects using [Apache Maven](https://maven.apache.org), see [Maven Central Repository Search](https://search.maven.org/artifact/org.postgresql/postgresql/42.2.14.jre7/jar).
 

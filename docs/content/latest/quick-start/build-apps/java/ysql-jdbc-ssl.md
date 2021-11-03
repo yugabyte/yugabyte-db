@@ -16,6 +16,12 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
+    <a href="/latest/quick-start/build-apps/java/ysql-yb-jdbc" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - YB - JDBC
+    </a>
+  </li>
+  <li >
     <a href="/latest/quick-start/build-apps/java/ysql-jdbc" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - JDBC
@@ -43,12 +49,6 @@ showAsideToc: true
     <a href="/latest/quick-start/build-apps/java/ycql-4.6" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL (4.6)
-    </a>
-  </li>
-  <li >
-    <a href="/latest/quick-start/build-apps/java/ysql-yb-jdbc" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - YB - JDBC
     </a>
   </li>
 </ul>
