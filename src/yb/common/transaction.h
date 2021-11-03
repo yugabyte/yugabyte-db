@@ -320,7 +320,7 @@ std::ostream& operator<<(std::ostream& out, const TransactionMetadata& metadata)
 MonoDelta TransactionRpcTimeout();
 CoarseTimePoint TransactionRpcDeadline();
 
-extern const std::string kTransactionsTableName;
+extern const std::string kGlobalTransactionsTableName;
 extern const std::string kMetricsSnapshotsTableName;
 
 YB_DEFINE_ENUM(CleanupType, (kGraceful)(kImmediate))

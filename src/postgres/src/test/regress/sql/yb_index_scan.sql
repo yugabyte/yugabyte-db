@@ -24,6 +24,9 @@ INSERT INTO pk_multi(h, r, v) VALUES (1, 0, '1-0'),(1, 1, '1-1'),(1, 2, '1-2'),(
 EXPLAIN (COSTS OFF) SELECT * FROM pk_multi WHERE h = 1;
 SELECT * FROM pk_multi WHERE h = 1;
 
+EXPLAIN (COSTS OFF) SELECT * FROM pk_multi WHERE yb_hash_code(h) = yb_hash_code(1);
+SELECT * FROM pk_multi WHERE yb_hash_code(h) = yb_hash_code(1);
+
 -- Test unique secondary index ordering
 CREATE TABLE usc_asc(k int, v int);
 CREATE UNIQUE INDEX ON usc_asc(v ASC NULLS FIRST);
@@ -64,20 +67,32 @@ CREATE INDEX on sc_desc_nl(h HASH, r DESC NULLS LAST);
 INSERT INTO sc_desc_nl(h,r,v) values (1,1,1), (1,2,2), (1,3,3), (1,4,4), (1,5,5), (1, null, 6);
 -- Rows should be ordered DESC NULLS LAST by r.
 SELECT * FROM sc_desc_nl WHERE h = 1;
+SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1);
 SELECT * FROM sc_desc_nl WHERE h = 1 AND r >= 2;
+SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) AND r >= 2;
 SELECT * FROM sc_desc_nl WHERE h = 1 AND r < 4;
+SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) AND r < 4;
 SELECT * FROM sc_desc_nl WHERE h = 1 AND r > 1 AND r <= 4;
+SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) AND r > 1 AND r <= 4;
 
 -- <value> >/>=/=/<=/< null is never true per SQL semantics.
 SELECT * FROM sc_desc_nl WHERE h = 1 AND r = null;
+SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) AND r = null;
 SELECT * FROM sc_desc_nl WHERE h = 1 AND r >= null;
+SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) AND r >= null;
 SELECT * FROM sc_desc_nl WHERE h = 1 AND r > null;
+SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) AND r > null;
 SELECT * FROM sc_desc_nl WHERE h = 1 AND r <= null;
+SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) AND r <= null;
 SELECT * FROM sc_desc_nl WHERE h = 1 AND r < null;
+SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) AND r < null;
 
 -- IS NULL should be pushed down and return the expected result.
 SELECT * FROM sc_desc_nl WHERE h = 1 AND r IS null;
 EXPLAIN (COSTS OFF) SELECT * FROM sc_desc_nl WHERE h = 1 AND r IS null;
+
+SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) AND r IS null;
+EXPLAIN (COSTS OFF) SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) AND r IS null;
 
 DROP TABLE sc_desc_nl;
 

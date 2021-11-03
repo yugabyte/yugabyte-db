@@ -133,6 +133,7 @@ static const char* const kColocatedParentTableIdSuffix = ".colocated.parent.uuid
 static const char* const kColocatedParentTableNameSuffix = ".colocated.parent.tablename";
 static const char* const kTablegroupParentTableIdSuffix = ".tablegroup.parent.uuid";
 static const char* const kTablegroupParentTableNameSuffix = ".tablegroup.parent.tablename";
+static const char* const kTransactionTablePrefix = "transactions_";
 static const int32 kDelayAfterFailoverSecs = 120;
 
 using PlacementId = std::string;
@@ -211,10 +212,19 @@ class CatalogManager :
                              CreateTableResponsePB* resp,
                              rpc::RpcContext* rpc);
 
-  // Create the transaction status table if needed (i.e. if it does not exist already).
+  // Create a new transaction status table.
+  CHECKED_STATUS CreateTransactionStatusTable(const CreateTransactionStatusTableRequestPB* req,
+                                              CreateTransactionStatusTableResponsePB* resp,
+                                              rpc::RpcContext *rpc);
+
+  // Create a transaction status table with the given name.
+  CHECKED_STATUS CreateTransactionStatusTableInternal(rpc::RpcContext *rpc,
+                                                      const string& table_name);
+
+  // Create the global transaction status table if needed (i.e. if it does not exist already).
   //
   // This is called at the end of CreateTable if the table has transactions enabled.
-  CHECKED_STATUS CreateTransactionsStatusTableIfNeeded(rpc::RpcContext *rpc);
+  CHECKED_STATUS CreateGlobalTransactionStatusTableIfNeeded(rpc::RpcContext *rpc);
 
   // Create the metrics snapshots table if needed (i.e. if it does not exist already).
   //
@@ -1571,6 +1581,8 @@ class CatalogManager :
       ReportedTablets::const_iterator end,
       TabletReportUpdatesPB* full_report_update,
       std::vector<RetryingTSRpcTaskPtr>* rpcs);
+
+  size_t GetNumLiveTServersForPlacement(const PlacementId& placement_id);
 
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};

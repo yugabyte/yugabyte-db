@@ -73,6 +73,8 @@ DECLARE_int32(memstore_size_mb);
 DECLARE_int64(global_memstore_size_mb_max);
 DECLARE_bool(TEST_allow_stop_writes);
 DECLARE_int32(yb_num_shards_per_tserver);
+DECLARE_int32(ysql_num_shards_per_tserver);
+DECLARE_int32(transaction_table_num_tablets_per_tserver);
 DECLARE_int32(TEST_tablet_inject_latency_on_apply_write_txn_ms);
 DECLARE_bool(TEST_log_cache_skip_eviction);
 DECLARE_uint64(sst_files_hard_limit);
@@ -569,6 +571,10 @@ TEST_F(QLTabletTest, VerifyIndexRangeWithInconsistentTable) {
 
 // Test expected number of tablets for transactions table - added for #2293.
 TEST_F(QLTabletTest, TransactionsTableTablets) {
+  FLAGS_yb_num_shards_per_tserver = 1;
+  FLAGS_ysql_num_shards_per_tserver = 2;
+  FLAGS_transaction_table_num_tablets_per_tserver = 4;
+
   YBSchemaBuilder builder;
   builder.AddColumn(kKeyColumn)->Type(INT32)->HashPrimaryKey()->NotNull();
   builder.AddColumn(kValueColumn)->Type(INT32);
@@ -582,13 +588,16 @@ TEST_F(QLTabletTest, TransactionsTableTablets) {
   ASSERT_OK(table.Create(kTable1Name, 8, client_.get(), &builder));
 
   // Wait for transactions table to be created.
-  YBTableName table_name(YQL_DATABASE_CQL, master::kSystemNamespaceName, kTransactionsTableName);
+  YBTableName table_name(
+      YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
   master::IsCreateTableDoneResponsePB resp;
   ASSERT_OK(WaitForTableCreation(table_name, &resp));
   ASSERT_TRUE(resp.done());
 
   auto tablets = ASSERT_RESULT(GetTabletInfos(table_name));
-  ASSERT_EQ(tablets.size(), cluster_->num_tablet_servers() * FLAGS_yb_num_shards_per_tserver);
+  ASSERT_EQ(
+      tablets.size(),
+      cluster_->num_tablet_servers() * FLAGS_transaction_table_num_tablets_per_tserver);
 }
 
 void DoStepDowns(MiniCluster* cluster) {

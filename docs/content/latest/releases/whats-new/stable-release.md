@@ -23,6 +23,67 @@ Release v2.6.1.0 contains an authentication vulnerability in YCQL LDAP. _YSQL is
 If you're using YCQL LDAP with v2.6.1.0 and can't upgrade immediately, see the note in the [Version 2.6.1.0 section](#v2-6-1-0-sept-3-2021) for mitigation instructions.
 {{< /warning >}}
 
+## v2.6.5.0 - Oct 29, 2021
+
+**Build:** `2.6.5.0-b4`
+
+### Downloads
+
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.6.5.0-darwin.tar.gz">
+  <button>
+    <i class="fab fa-apple"></i><span class="download-text">macOS</span>
+  </button>
+</a>
+&nbsp; &nbsp; &nbsp;
+<a class="download-binary-link" href="https://downloads.yugabyte.com/yugabyte-2.6.5.0-linux.tar.gz">
+  <button>
+    <i class="fab fa-linux"></i><span class="download-text">Linux</span>
+  </button>
+</a>
+<br />
+
+### Docker
+
+```sh
+docker pull yugabytedb/yugabyte:2.6.5.0-b4
+```
+
+### Improvements
+
+#### Database
+
+[9606](https://github.com/yugabyte/yugabyte-db/issues/9606) [DocDB] Add flag --force for command delete_tablet to set state TABLET_DATA_DELETED for tool yb-ts-cli
+
+#### Yugabyte Platform
+
+N/A
+
+### Bug fixes
+
+#### Database
+
+* [9924](https://github.com/yugabyte/yugabyte-db/issues/9924) [YSQL] Always check schema name on backup import
+* [10042](https://github.com/yugabyte/yugabyte-db/issues/10042) [Backup] Allow system table for YEDIS restore
+* [10415](https://github.com/yugabyte/yugabyte-db/issues/10415) [backup] Backup-restore failures for old backups.
+
+#### Yugabyte Platform
+
+* [PLAT-1634] Backup page is not loading because of empty config column
+* [PLAT-1934] Adding UI to set KUBE_DOMAIN
+* [PLAT-2113] [PLAT-2116] Fix HA failing with entity_too_large
+* [PLAT-2020] [PLAT-2041] Fix HA on IPv6-enabled K8s setup 
+* [YB] Replaced the Busybox image with a YB image, as some environments are unable to access Busybox
+
+### Known issues
+
+#### Database
+
+N/A
+
+#### Yugabyte Platform
+
+N/A
+
 ## v2.6.4.0 - Oct 26, 2021
 
 **Build:** `2.6.4.0-b3`
@@ -566,7 +627,7 @@ These functions are enabled by default for _new installations_ on 2.6. But, if y
 * [[7687](https://github.com/yugabyte/yugabyte-db/issues/7687)] YSQL health check fails when YSQL auth is enabled
 * [[7698](https://github.com/yugabyte/yugabyte-db/issues/7698)] Custom SMTP Configuration API returns unmasked SMTP password
 * [[7703](https://github.com/yugabyte/yugabyte-db/issues/7703)] Can't send email for custom SMTP settings without authentication (empty username)
-* [[7704](https://github.com/yugabyte/yugabyte-db/issues/7704)] Backup to S3 fails using Yugaware instance's IAM role
+* [[7704](https://github.com/yugabyte/yugabyte-db/issues/7704)] Backup to S3 fails using Yugabyte Platform instance's IAM role
 * [[7727](https://github.com/yugabyte/yugabyte-db/issues/7727)] [[7728](https://github.com/yugabyte/yugabyte-db/issues/7728)] Fix UI issues with k8s provider creation and deletion
 * [[7769](https://github.com/yugabyte/yugabyte-db/issues/7769)] Prevent adding on-prem node instance with duplicate IP
 * [[7779](https://github.com/yugabyte/yugabyte-db/issues/7779)] Health check fails on k8s portal for all the universes on clock synchronization with FailedClock synchronization and Error getting NTP state

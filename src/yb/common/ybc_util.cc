@@ -301,6 +301,33 @@ void YBCResolveHostname() {
   }
 }
 
+inline double YBCGetNumHashBuckets() {
+  return 64.0;
+}
+
+/* Gets the number of hash buckets for a DocDB table */
+inline double YBCGetHashBucketFromValue(uint32_t hash_val) {
+  /*
+  * Since hash values are 16 bit for now and there are (1 << 6)
+  * buckets, we must right shift a hash value by 16 - 6 = 10 to
+  * obtain its bucket number
+  */
+  return hash_val >> 10;
+}
+
+double YBCEvalHashValueSelectivity(int32_t hash_low, int32_t hash_high) {
+      hash_high = hash_high <= USHRT_MAX ? hash_high : USHRT_MAX;
+      hash_high = hash_high >= 0 ? hash_high : 0;
+      hash_low = hash_low >= 0 ? hash_low : 0;
+      hash_low = hash_low <= USHRT_MAX ? hash_low : USHRT_MAX;
+
+      uint32_t greatest_bucket = YBCGetHashBucketFromValue(hash_high);
+      uint32_t lowest_bucket = YBCGetHashBucketFromValue(hash_low);
+      return hash_high >= hash_low ?
+          ((greatest_bucket - lowest_bucket + 1.0) / YBCGetNumHashBuckets())
+          : 0.0;
+}
+
 void YBCInitThreading() {
   InitThreading();
 }

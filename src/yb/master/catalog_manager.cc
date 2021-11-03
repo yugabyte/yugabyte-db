@@ -268,7 +268,11 @@ DECLARE_int32(yb_num_shards_per_tserver);
 
 DEFINE_uint64(transaction_table_num_tablets, 0,
     "Number of tablets to use when creating the transaction status table."
-    "0 to use the same default num tablets as for regular tables.");
+    "0 to use transaction_table_num_tablets_per_tserver.");
+
+DEFINE_int32(transaction_table_num_tablets_per_tserver, kAutoDetectNumShardsPerTServer,
+    "The default number of tablets per tablet server for transaction status table. If the value is "
+    "-1, the system automatically determines an appropriate value based on number of CPU cores.");
 
 DEFINE_bool(master_enable_metrics_snapshotter, false, "Should metrics snapshotter be enabled");
 
@@ -652,6 +656,26 @@ void FillRetainedBySnapshotSchedules(
   }
 }
 
+int GetTransactionTableNumShardsPerTServer() {
+  int value = 8;
+  if (IsTsan()) {
+    value = 2;
+  } else if (base::NumCPUs() <= 2) {
+    value = 4;
+  }
+  return value;
+}
+
+void InitMasterFlags() {
+  yb::InitCommonFlags();
+  if (GetAtomicFlag(&FLAGS_transaction_table_num_tablets_per_tserver) ==
+      kAutoDetectNumShardsPerTServer) {
+    const auto value = GetTransactionTableNumShardsPerTServer();
+    VLOG(1) << "Auto setting FLAGS_transaction_table_num_tablets_per_tserver to " << value;
+    SetAtomicFlag(value, &FLAGS_transaction_table_num_tablets_per_tserver);
+  }
+}
+
 }  // anonymous namespace
 
 ////////////////////////////////////////////////////////////
@@ -690,7 +714,7 @@ CatalogManager::CatalogManager(Master* master)
       tablespace_manager_(std::make_shared<YsqlTablespaceManager>(nullptr, nullptr)),
       tablespace_bg_task_running_(false),
       tablet_split_manager_(this, this) {
-  yb::InitCommonFlags();
+  InitMasterFlags();
   CHECK_OK(ThreadPoolBuilder("leader-initialization")
            .set_max_threads(1)
            .Build(&leader_initialization_pool_));
@@ -989,7 +1013,7 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
       // of live replicas is set through an RPC from YugaWare, and we won't be able to calculate
       // the number of primary (non-read-replica) tablet servers until that happens.
       while (true) {
-        const auto s = CreateTransactionsStatusTableIfNeeded(/* rpc */ nullptr);
+        const auto s = CreateGlobalTransactionStatusTableIfNeeded(/* rpc */ nullptr);
         if (s.ok()) {
           break;
         }
@@ -2758,6 +2782,13 @@ Status CatalogManager::CopyPgsqlSysTables(const NamespaceId& namespace_id,
   return Status::OK();
 }
 
+size_t CatalogManager::GetNumLiveTServersForPlacement(const PlacementId& placement_id) {
+  BlacklistSet blacklist = BlacklistSetFromPB();
+  TSDescriptorVector ts_descs;
+  master_->ts_manager()->GetAllLiveDescriptorsInCluster(&ts_descs, placement_id, blacklist);
+  return ts_descs.size();
+}
+
 // Create a new table.
 // See README file in this directory for a description of the design.
 Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
@@ -2778,7 +2809,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   // If this is a transactional table, we need to create the transaction status table (if it does
   // not exist already).
   if (is_transactional && (!is_pg_catalog_table || !FLAGS_create_initial_sys_catalog_snapshot)) {
-    Status s = CreateTransactionsStatusTableIfNeeded(rpc);
+    Status s = CreateGlobalTransactionStatusTableIfNeeded(rpc);
     if (!s.ok()) {
       return s.CloneAndPrepend("Error while creating transaction status table");
     }
@@ -2942,15 +2973,12 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   if (num_tablets <= 0) {
     // Use default as client could have gotten the value before any tserver had heartbeated
     // to (a new) master leader.
-    BlacklistSet blacklist = BlacklistSetFromPB();
-    TSDescriptorVector ts_descs;
-    master_->ts_manager()->GetAllLiveDescriptorsInCluster(
-        &ts_descs, replication_info.live_replicas().placement_uuid(),
-        blacklist);
-    num_tablets = ts_descs.size() * (is_pg_table ? FLAGS_ysql_num_shards_per_tserver
-                                                 : FLAGS_yb_num_shards_per_tserver);
+    const auto num_live_tservers =
+        GetNumLiveTServersForPlacement(replication_info.live_replicas().placement_uuid());
+    num_tablets = num_live_tservers * (is_pg_table ? FLAGS_ysql_num_shards_per_tserver
+                                                   : FLAGS_yb_num_shards_per_tserver);
     LOG(INFO) << "Setting default tablets to " << num_tablets << " with "
-              << ts_descs.size() << " primary servers";
+              << num_live_tservers << " primary servers";
   }
 
   // Create partitions.
@@ -3474,26 +3502,47 @@ Result<bool> CatalogManager::TableExists(
   return DoesTableExist(FindTable(table_id_pb));
 }
 
-Status CatalogManager::CreateTransactionsStatusTableIfNeeded(rpc::RpcContext *rpc) {
-  if (VERIFY_RESULT(TableExists(kSystemNamespaceName, kTransactionsTableName))) {
-    VLOG(1) << "Transaction status table already exists, not creating.";
-    return Status::OK();
+CHECKED_STATUS CatalogManager::CreateTransactionStatusTable(
+    const CreateTransactionStatusTableRequestPB* req, CreateTransactionStatusTableResponsePB* resp,
+    rpc::RpcContext *rpc) {
+  const string& table_name = req->table_name();
+  Status s = CreateTransactionStatusTableInternal(rpc, table_name);
+  if (s.IsAlreadyPresent()) {
+    return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_ALREADY_PRESENT, s);
+  }
+  if (!s.ok()) {
+    return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, s);
+  }
+  return Status::OK();
+}
+
+CHECKED_STATUS CatalogManager::CreateTransactionStatusTableInternal(rpc::RpcContext *rpc,
+                                                                    const string& table_name) {
+  if (VERIFY_RESULT(TableExists(kSystemNamespaceName, table_name))) {
+    return STATUS_SUBSTITUTE(AlreadyPresent, "Table already exists: $0", table_name);
   }
 
-  LOG(INFO) << "Creating the transaction status table";
+  LOG(INFO) << "Creating transaction status table " << table_name;
   // Set up a CreateTable request internally.
   CreateTableRequestPB req;
   CreateTableResponsePB resp;
-  req.set_name(kTransactionsTableName);
+  req.set_name(table_name);
   req.mutable_namespace_()->set_name(kSystemNamespaceName);
   req.set_table_type(TableType::TRANSACTION_STATUS_TABLE_TYPE);
 
   // Explicitly set the number tablets if the corresponding flag is set, otherwise CreateTable
   // will use the same defaults as for regular tables.
+  size_t num_tablets;
   if (FLAGS_transaction_table_num_tablets > 0) {
-    req.mutable_schema()->mutable_table_properties()->set_num_tablets(
-        FLAGS_transaction_table_num_tablets);
+    num_tablets = FLAGS_transaction_table_num_tablets;
+  } else {
+    num_tablets = GetNumLiveTServersForPlacement(cluster_config_->LockForRead()
+                                                     ->pb.replication_info()
+                                                     .live_replicas()
+                                                     .placement_uuid()) *
+                  FLAGS_transaction_table_num_tablets_per_tserver;
   }
+  req.mutable_schema()->mutable_table_properties()->set_num_tablets(num_tablets);
 
   ColumnSchema hash(kRedisKeyColumnName, BINARY, /* is_nullable */ false, /* is_hash_key */ true);
   ColumnSchemaToPB(hash, req.mutable_schema()->mutable_columns()->Add());
@@ -3506,6 +3555,15 @@ Status CatalogManager::CreateTransactionsStatusTableIfNeeded(rpc::RpcContext *rp
   }
 
   return Status::OK();
+}
+
+CHECKED_STATUS CatalogManager::CreateGlobalTransactionStatusTableIfNeeded(rpc::RpcContext *rpc) {
+  Status s = CreateTransactionStatusTableInternal(rpc, kGlobalTransactionsTableName);
+  if (s.IsAlreadyPresent()) {
+    VLOG(1) << "Transaction status table already exists, not creating.";
+    return Status::OK();
+  }
+  return s;
 }
 
 Status CatalogManager::CreateMetricsSnapshotsTableIfNeeded(rpc::RpcContext *rpc) {
@@ -3680,7 +3738,7 @@ Status CatalogManager::WaitForCreateTableToFinish(const TableId& table_id) {
 Status CatalogManager::IsTransactionStatusTableCreated(IsCreateTableDoneResponsePB* resp) {
   IsCreateTableDoneRequestPB req;
 
-  req.mutable_table()->set_table_name(kTransactionsTableName);
+  req.mutable_table()->set_table_name(kGlobalTransactionsTableName);
   req.mutable_table()->mutable_namespace_()->set_name(kSystemNamespaceName);
 
   return IsCreateTableDone(&req, resp);
@@ -4564,6 +4622,13 @@ TableInfo::WriteLock CatalogManager::MaybeTransitionTableToDeleted(const TableIn
     // tablets have been successfully removed from tservers.
     // For any hiding table we will want to mark it as HIDDEN once all its respective
     // tablets have been successfully hidden on tservers.
+    if (lock->is_deleted()) {
+      // Clear the tablets_ and partitions_ maps if table has already been DELETED.
+      // Usually this would have been done except for tables that were hidden and are now deleted.
+      // Also, this is a catch all in case any other path misses clearing the maps.
+      table->ClearTabletMaps();
+      return TableInfo::WriteLock();
+    }
     hide_only = !lock->is_deleting();
     if (hide_only && !lock->is_hiding()) {
       return TableInfo::WriteLock();
@@ -4590,6 +4655,8 @@ TableInfo::WriteLock CatalogManager::MaybeTransitionTableToDeleted(const TableIn
   if (lock->is_hiding()) {
     LOG(INFO) << "Marking table as HIDDEN: " << table->ToString();
     lock.mutable_data()->pb.set_hide_state(SysTablesEntryPB::HIDDEN);
+    // Erase all the tablets from partitions_ structure.
+    table->ClearTabletMaps(DeactivateOnly::kTrue);
     return lock;
   }
   if (lock->is_deleting()) {
@@ -4597,6 +4664,8 @@ TableInfo::WriteLock CatalogManager::MaybeTransitionTableToDeleted(const TableIn
     LOG(INFO) << "Marking table as DELETED: " << table->ToString();
     lock.mutable_data()->set_state(SysTablesEntryPB::DELETED,
         Substitute("Deleted with tablets at $0", LocalTimeAsString()));
+    // Erase all the tablets from tablets_ and partitions_ structures.
+    table->ClearTabletMaps();
     return lock;
   }
   return TableInfo::WriteLock();
@@ -8076,15 +8145,18 @@ Status CatalogManager::DeleteTabletListAndSendRequests(
     auto& tablet_lock = tablet_and_lock.lock;
 
     bool was_hidden = tablet_lock->ListedAsHidden();
+    // Inactive tablet now, so remove it from partitions_.
+    // After all the tablets have been deleted from the tservers, we remove it from tablets_.
+    tablet->table()->RemoveTablet(tablet->id(), DeactivateOnly::kTrue);
+
     if (hide_only) {
-      LOG(INFO) << "Hiding tablet " << tablet->tablet_id() << " ...";
+      LOG(INFO) << "Hiding tablet " << tablet->tablet_id();
       tablet_lock.mutable_data()->pb.set_hide_hybrid_time(hide_hybrid_time.ToUint64());
       *tablet_lock.mutable_data()->pb.mutable_retained_by_snapshot_schedules() =
           retained_by_snapshot_schedules;
     } else {
-      LOG(INFO) << "Deleting tablet " << tablet->tablet_id() << " ...";
+      LOG(INFO) << "Deleting tablet " << tablet->tablet_id();
       tablet_lock.mutable_data()->set_state(SysTabletsEntryPB::DELETED, deletion_msg);
-      tablet->table()->RemoveTablet(tablet->id(), InactiveOnly::kTrue);
     }
     if (tablet_lock->ListedAsHidden() && !was_hidden) {
       marked_as_hidden.push_back(tablet);

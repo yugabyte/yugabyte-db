@@ -23,8 +23,10 @@
 #include "catalog/pg_collation.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_opfamily.h"
+#include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
+#include "pg_yb_utils.h"
 #include "optimizer/clauses.h"
 #include "optimizer/cost.h"
 #include "optimizer/pathnode.h"
@@ -37,6 +39,7 @@
 #include "utils/bytea.h"
 #include "utils/lsyscache.h"
 #include "utils/pg_locale.h"
+#include "utils/rel.h"
 #include "utils/selfuncs.h"
 
 
@@ -2203,6 +2206,12 @@ match_clause_to_index(IndexOptInfo *index,
 	}
 }
 
+static bool is_yb_hash_code_call(Node *clause)
+{
+	return clause && IsA(clause, FuncExpr)
+				&& (((FuncExpr *) clause)->funcid == YB_HASH_CODE_OID);
+}
+
 /*
  * match_clause_to_indexcol()
  *	  Determines whether a restriction clause matches a column of an index.
@@ -2353,8 +2362,14 @@ match_clause_to_indexcol(IndexOptInfo *index,
 		!bms_is_member(index_relid, right_relids) &&
 		!contain_volatile_functions(rightop))
 	{
-		if (IndexCollMatchesExprColl(idxcollation, expr_coll) &&
-			is_indexable_operator(expr_op, opfamily, true))
+		if (is_yb_hash_code_call(leftop)) {
+				return is_indexable_operator(expr_op,
+							INTEGER_LSM_FAM_OID, true)
+						&& is_opclause(clause);
+		}
+
+		if (IndexCollMatchesExprColl(idxcollation, expr_coll)
+			&& is_indexable_operator(expr_op, opfamily, true))
 			return true;
 
 		/*
@@ -2373,6 +2388,12 @@ match_clause_to_indexcol(IndexOptInfo *index,
 		!bms_is_member(index_relid, left_relids) &&
 		!contain_volatile_functions(leftop))
 	{
+		if (is_yb_hash_code_call(rightop)) {
+				return is_indexable_operator(expr_op,
+							INTEGER_LSM_FAM_OID, true)
+						&& is_opclause(clause);
+		}
+
 		if (IndexCollMatchesExprColl(idxcollation, expr_coll) &&
 			is_indexable_operator(expr_op, opfamily, false))
 			return true;
@@ -3164,6 +3185,90 @@ match_index_to_operand(Node *operand,
 	indkey = index->indexkeys[indexcol];
 	if (indkey != 0)
 	{
+
+		if (operand && IsA(operand, FuncExpr))
+		{
+			/*
+			 * YB: Forming an estimate to see if this call can be pushed down
+			 * by assessing whether or not its parameters are all column
+			 * variables and whether or not the number of arguments to the call
+			 * is the same as the number of hash columns in the primary key
+			 * of the index in question
+			 */
+			FuncExpr *fn = (FuncExpr *) operand;
+			if (fn->funcid == YB_HASH_CODE_OID
+				&& fn->args->length > 0
+				&& index->nhashcolumns == fn->args->length)
+			{
+				Relation indrel = RelationIdGetRelation(index->indexoid);
+				Bitmapset *hash_keys = NULL;
+				for (int natt = 1;
+						natt <= indrel->rd_index->indnkeyatts; natt++)
+				{
+					if (indrel->rd_indoption[natt - 1] & INDOPTION_HASH)
+					{
+						int table_att = index->indexkeys[natt - 1];
+						hash_keys = bms_add_member(hash_keys,
+										YBAttnumToBmsIndex(indrel, table_att));
+					}
+				}
+				ListCell *ls;
+				bool can_pushdown_hash_call = true;
+				Bitmapset *args_bms = NULL;
+				int last_index_att = -1;
+				foreach(ls, fn->args)
+				{
+					Expr *arg = (Expr *) lfirst(ls);
+					if (!IsA(arg, Var))
+					{
+						can_pushdown_hash_call = false;
+						break;
+					}
+
+					Var *var = (Var *) arg;
+
+					if (index->rel->relid != var->varno)
+					{
+						can_pushdown_hash_call = false;
+						break;
+					}
+
+					/* YB: Need to make sure that the arguments to
+					 * yb_hash_code are in the correct order
+					 * we can make this for loop to map from index att
+					 * to table att slightly more efficient by starting the
+					 * loop from last_index_att */
+					int index_att = -1;
+					for (int natt = 1;
+						natt <= indrel->rd_index->indnkeyatts; natt++)
+					{
+						int cand_table_att = index->indexkeys[natt - 1];
+						if (cand_table_att == var->varattno)
+						{
+							index_att = natt;
+							break;
+						}
+					}
+
+					if (index_att <= last_index_att) {
+						can_pushdown_hash_call = false;
+						break;
+					} else {
+						last_index_att = index_att;
+					}
+
+					int arg_bms_index = YBAttnumToBmsIndex(indrel,
+															var->varattno);
+					args_bms = bms_add_member(args_bms, arg_bms_index);
+				}
+				can_pushdown_hash_call &= bms_equal(args_bms, hash_keys);
+
+				RelationClose(indrel);
+				bms_free(args_bms);
+				bms_free(hash_keys);
+				return can_pushdown_hash_call;
+			}
+		}
 		/*
 		 * Simple index column; operand must be a matching Var.
 		 */

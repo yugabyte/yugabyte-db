@@ -32,6 +32,8 @@ class DocPgsqlScanSpec : public common::PgsqlScanSpec {
   DocPgsqlScanSpec(const Schema& schema,
                    const rocksdb::QueryId query_id,
                    const DocKey& doc_key,
+                   const boost::optional<int32_t> hash_code = boost::none,
+                   const boost::optional<int32_t> max_hash_code = boost::none,
                    const DocKey& start_doc_key = DocKey(),
                    bool is_forward_scan = true);
 

@@ -54,7 +54,7 @@ namespace yb {
 namespace master {
 
 YB_STRONGLY_TYPED_BOOL(IncludeInactive);
-YB_STRONGLY_TYPED_BOOL(InactiveOnly);
+YB_STRONGLY_TYPED_BOOL(DeactivateOnly);
 
 // Drive usage information on a current replica of a tablet.
 // This allows us to look at individual resource usage per replica of a tablet.
@@ -438,11 +438,18 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // Add multiple tablets to this table.
   void AddTablets(const TabletInfos& tablets);
 
-  // Return true if tablet has been removed from 'partitions_' below.
-  bool RemoveTablet(const TabletId& tablet_id, InactiveOnly inactive_only = InactiveOnly::kFalse);
+  // Removes the tablet from 'partitions_' and 'tablets_' structures.
+  // Return true if the tablet was removed from 'partitions_'.
+  // If deactivate_only is set to true then it only
+  // deactivates the tablet (i.e. removes it only from partitions_ and not from tablets_).
+  // See the declaration of partitions_ structure to understand what constitutes inactive tablets.
+  bool RemoveTablet(const TabletId& tablet_id,
+                    DeactivateOnly deactivate_only = DeactivateOnly::kFalse);
 
-  // Remove multiple tablets from this table. Return true if all given tablets were removed.
-  bool RemoveTablets(const TabletInfos& tablets, InactiveOnly inactive_only = InactiveOnly::kFalse);
+  // Remove multiple tablets from this table.
+  // Return true if all given tablets were removed from 'partitions_'.
+  bool RemoveTablets(const TabletInfos& tablets,
+                     DeactivateOnly deactivate_only = DeactivateOnly::kFalse);
 
   // This only returns tablets which are in RUNNING state.
   void GetTabletsInRange(const GetTableLocationsRequestPB* req, TabletInfos *ret) const;
@@ -456,8 +463,8 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   bool HasPartitions(const std::vector<PartitionKey> other) const;
 
   // Get all tablets of the table.
-  // If include_split_tablets is true, also returns not yet deleted split parent tablets for
-  // which we've already registered child split tablets.
+  // If include_inactive is true then it also returns inactive tablets along with the active ones.
+  // See the declaration of partitions_ structure to understand what constitutes inactive tablets.
   TabletInfos GetTablets(IncludeInactive include_inactive = IncludeInactive::kFalse) const;
 
   // Get the tablet of the table.  The table must be colocated.
@@ -471,6 +478,10 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // Returns true if all tablets of the table are deleted or hidden.
   bool AreAllTabletsHidden() const;
+
+  // Clears partitons_ and tablets_.
+  // If deactivate_only is set to true then clear only the partitions_.
+  void ClearTabletMaps(DeactivateOnly deactivate_only = DeactivateOnly::kFalse);
 
   // Returns true if the table creation is in-progress.
   bool IsCreateInProgress() const;
@@ -531,9 +542,9 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   ~TableInfo();
 
   void AddTabletUnlocked(const TabletInfoPtr& tablet) REQUIRES(lock_);
-  bool RemoveTabletUnlocked(const TableId& tablet_id,
-                            InactiveOnly inactive_only = InactiveOnly::kFalse)
-      REQUIRES(lock_);
+  bool RemoveTabletUnlocked(
+      const TableId& tablet_id,
+      DeactivateOnly deactivate_only = DeactivateOnly::kFalse) REQUIRES(lock_);
 
   void AbortTasksAndCloseIfRequested(bool close);
 
@@ -547,10 +558,16 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // Sorted index of tablet start partition-keys to TabletInfo.
   // The TabletInfo objects are owned by the CatalogManager.
+  // At any point in time it contains only the active tablets.
   std::map<PartitionKey, TabletInfo*> partitions_ GUARDED_BY(lock_);
+  // At any point in time it contains both active and inactive tablets.
+  // Currently there are two cases for a tablet to be categorized as inactive:
+  // 1) Not yet deleted split parent tablets for which we've already
+  //    registered child split tablets.
+  // 2) Tablets that are marked as HIDDEN for PITR.
   std::unordered_map<TabletId, TabletInfo*> tablets_ GUARDED_BY(lock_);
 
-  // Protects tablet_map_ and pending_tasks_.
+  // Protects partitions_, tablets_ and pending_tasks_.
   mutable rw_spinlock lock_;
 
   // If closing, requests to AddTask will be promptly aborted.
