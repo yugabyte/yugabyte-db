@@ -39,6 +39,7 @@ import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.CertificateInfo;
@@ -56,6 +57,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -1091,6 +1093,9 @@ public class NodeManager extends DevopsBase {
     commandArgs.addAll(
         getAccessKeySpecificCommand(
             nodeTaskParam, type, keyInfo, Common.CloudType.onprem, accessKey.getKeyCode()));
+    commandArgs.addAll(
+        getCommunicationPortsParams(
+            new UserIntent(), accessKey, new UniverseTaskParams.CommunicationPorts()));
 
     InstanceType instanceType = InstanceType.get(provider.uuid, nodeTaskParam.getInstanceType());
     commandArgs.add("--mount_points");
@@ -1498,6 +1503,10 @@ public class NodeManager extends DevopsBase {
           if (nodeTaskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(nodeTaskParam));
           }
+          AccessKey accessKey =
+              AccessKey.getOrBadRequest(nodeTaskParam.getProvider().uuid, userIntent.accessKeyCode);
+          commandArgs.addAll(
+              getCommunicationPortsParams(userIntent, accessKey, nodeTaskParam.communicationPorts));
           break;
         }
     }
@@ -1520,6 +1529,42 @@ public class NodeManager extends DevopsBase {
         }
       }
     }
+  }
+
+  private Collection<String> getCommunicationPortsParams(
+      UserIntent userIntent, AccessKey accessKey, UniverseTaskParams.CommunicationPorts ports) {
+    List<String> result = new ArrayList<>();
+    result.add("--master_http_port");
+    result.add(Integer.toString(ports.masterHttpPort));
+    result.add("--master_rpc_port");
+    result.add(Integer.toString(ports.masterRpcPort));
+    result.add("--tserver_http_port");
+    result.add(Integer.toString(ports.tserverHttpPort));
+    result.add("--tserver_rpc_port");
+    result.add(Integer.toString(ports.tserverRpcPort));
+    if (userIntent.enableYCQL) {
+      result.add("--cql_proxy_http_port");
+      result.add(Integer.toString(ports.yqlServerHttpPort));
+      result.add("--cql_proxy_rpc_port");
+      result.add(Integer.toString(ports.yqlServerRpcPort));
+    }
+    if (userIntent.enableYCQL) {
+      result.add("--ysql_proxy_http_port");
+      result.add(Integer.toString(ports.ysqlServerHttpPort));
+      result.add("--ysql_proxy_rpc_port");
+      result.add(Integer.toString(ports.ysqlServerRpcPort));
+    }
+    if (userIntent.enableYEDIS) {
+      result.add("--redis_proxy_http_port");
+      result.add(Integer.toString(ports.redisServerHttpPort));
+      result.add("--redis_proxy_rpc_port");
+      result.add(Integer.toString(ports.redisServerRpcPort));
+    }
+    if (accessKey.getKeyInfo().installNodeExporter) {
+      result.add("--node_exporter_http_port");
+      result.add(Integer.toString(ports.nodeExporterPort));
+    }
+    return result;
   }
 
   private List<String> addArguments(List<String> commandArgs, String nodeIP, String instanceType) {

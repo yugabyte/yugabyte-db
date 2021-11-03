@@ -17,6 +17,7 @@ yb_home_dir="/home/yugabyte"
 # they might not exist in the provided instance depending on how old it is.
 result_kvs=""
 YB_SUDO_PASS=""
+ports_to_check=""
 
 preflight_provision_check() {
   # Check python is installed.
@@ -61,6 +62,16 @@ preflight_provision_check() {
   IFS="," read -ra mount_points_arr <<< "$mount_points"
   for path in "${mount_points_arr[@]}"; do
     check_filepath "Mount Point" "$path" false
+  done
+
+  # Check ports are available.
+  IFS="," read -ra ports_to_check_arr <<< "$ports_to_check"
+  for port in "${ports_to_check_arr[@]}"; do
+    check_passed=true
+    if sudo netstat -tulpn | grep ":$port\s"; then
+      check_passed=false
+    fi
+    update_result_json "Port $port is available" "$check_passed"
   done
 
   # Check yugabyte user belongs to yugabyte group if it exists.
@@ -152,6 +163,8 @@ Options:
     Home directory of yugabyte user.
   --sudo_pass_file
     Bash file containing the sudo password variable.
+  --ports_to_check PORTS_TO_CHECK
+    Comma-separated list of ports to check availability
   --cleanup
     Deletes this script after being run. Allows `scp` commands to port over new preflight scripts.
   -h, --help
@@ -188,6 +201,10 @@ while [[ $# -gt 0 ]]; do
     ;;
     --mount_points)
       mount_points="$2"
+      shift
+    ;;
+    --ports_to_check)
+      ports_to_check="$2"
       shift
     ;;
     --yb_home_dir)

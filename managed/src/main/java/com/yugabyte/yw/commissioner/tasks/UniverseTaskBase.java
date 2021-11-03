@@ -1463,25 +1463,30 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     if (cluster.userIntent.providerType != com.yugabyte.yw.commissioner.Common.CloudType.onprem) {
       return null;
     }
-    NodeTaskParams taskParams = new NodeTaskParams();
+    NodeTaskParams preflightTaskParams = new NodeTaskParams();
     UserIntent userIntent = cluster.userIntent;
-    taskParams.nodeName = currentNode.nodeName;
-    taskParams.deviceInfo = userIntent.deviceInfo;
-    taskParams.azUuid = currentNode.azUuid;
-    taskParams.universeUUID = taskParams().universeUUID;
-    taskParams.extraDependencies.installNodeExporter =
+    preflightTaskParams.nodeName = currentNode.nodeName;
+    preflightTaskParams.deviceInfo = userIntent.deviceInfo;
+    preflightTaskParams.azUuid = currentNode.azUuid;
+    preflightTaskParams.universeUUID = taskParams().universeUUID;
+    UniverseTaskParams.CommunicationPorts.exportToCommunicationPorts(
+        preflightTaskParams.communicationPorts, currentNode);
+    preflightTaskParams.extraDependencies.installNodeExporter =
         taskParams().extraDependencies.installNodeExporter;
     // Create the process to fetch information about the node from the cloud provider.
     NodeManager nodeManager = Play.current().injector().instanceOf(NodeManager.class);
-    log.info("Running preflight checks for node {}.", taskParams.nodeName);
+    log.info("Running preflight checks for node {}.", preflightTaskParams.nodeName);
     ShellResponse response =
-        nodeManager.nodeCommand(NodeManager.NodeCommandType.Precheck, taskParams);
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.Precheck, preflightTaskParams);
     if (response.code == 0) {
       JsonNode responseJson = Json.parse(response.message);
       for (JsonNode nodeContent : responseJson) {
         if (!nodeContent.isBoolean() || !nodeContent.asBoolean()) {
           String errString =
-              "Failed preflight checks for node " + taskParams.nodeName + ":\n" + response.message;
+              "Failed preflight checks for node "
+                  + preflightTaskParams.nodeName
+                  + ":\n"
+                  + response.message;
           log.error(errString);
           return response.message;
         }
