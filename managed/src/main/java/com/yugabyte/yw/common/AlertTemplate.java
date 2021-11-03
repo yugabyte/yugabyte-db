@@ -354,16 +354,10 @@ public enum AlertTemplate {
   DB_INSTANCE_RESTART(
       "DB Instance restart",
       "Unexpected Master or TServer process restart(s) occurred during last 30 minutes",
-      "max by (universe_uuid) (label_replace(changes("
-          + "ybp_health_check_master_boot_time_sec{universe_uuid=\"__universeUuid__\"}[30m]) "
-          + "and on (universe_uuid) (max_over_time("
-          + "ybp_universe_update_in_progress{universe_uuid=\"__universeUuid__\"}[30m]) == 0), "
-          + "\"export_type\", \"master_export\", \"universe_uuid\",\".*\") or "
-          + "(label_replace(changes("
-          + "ybp_health_check_tserver_boot_time_sec{universe_uuid=\"__universeUuid__\"}[30m]) "
-          + "and on (universe_uuid) (max_over_time("
-          + "ybp_universe_update_in_progress{universe_uuid=\"__universeUuid__\"}[30m]) == 0), "
-          + "\"export_type\", \"tserver_export\", \"universe_uuid\",\".*\"))) "
+      "max by (node_prefix) (changes("
+          + "yb_node_boot_time{node_prefix=\"__nodePrefix__\"}[30m]) and on (node_prefix) "
+          + "(max_over_time("
+          + "ybp_universe_update_in_progress{node_prefix=\"__nodePrefix__\"}[31m]) == 0)) "
           + "{{ query_condition }} {{ query_threshold }}",
       "Universe '{{ $labels.source_name }}'"
           + " Master or TServer is restarted {{ $value | printf \\\"%.0f\\\" }} times"
