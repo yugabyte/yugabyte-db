@@ -383,7 +383,7 @@ class AbstractCloud(AbstractCommandParser):
             certs_location,
             certs_dir,
             rotate_certs,
-            skip_cert_hostname_validation):
+            skip_cert_validation):
         remote_shell = RemoteShell(ssh_options)
         node_ip = ssh_options["ssh_host"]
         cert_file = 'node.{}.crt'.format(node_ip)
@@ -424,12 +424,16 @@ class AbstractCloud(AbstractCommandParser):
         remote_shell.run_command('chmod -f 666 {}/* || true'.format(certs_dir))
 
         if certs_location == self.CERT_LOCATION_NODE:
-            verify_hostname = True
-            if skip_cert_hostname_validation:
-                logging.info("Skipping host name validation for certs")
-                verify_hostname = False
-            self.verify_certs(root_cert_path, server_cert_path,
-                              ssh_options, verify_hostname)
+            if skip_cert_validation == 'ALL':
+                logging.info("Skipping all validations for certs for node {}".format(node_ip))
+            else:
+                verify_hostname = True
+                if skip_cert_validation == 'HOSTNAME':
+                    logging.info(
+                      "Skipping host name validation for certs for node {}".format(node_ip))
+                    verify_hostname = False
+                self.verify_certs(root_cert_path, server_cert_path,
+                                  ssh_options, verify_hostname)
             if copy_root:
                 remote_shell.run_command("cp '{}' '{}'".format(root_cert_path,
                                                                yb_root_cert_path))
