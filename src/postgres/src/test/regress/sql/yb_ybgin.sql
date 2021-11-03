@@ -5,6 +5,10 @@
 -- Disable sequential scan so that index scan is always chosen.
 SET enable_seqscan = off;
 
+-- Despite that, some scans still don't use index scan.  Use pg_hint_plan in
+-- those cases.
+CREATE EXTENSION pg_hint_plan;
+
 --
 -- Create non-temp table which uses Yugabyte storage.
 --
@@ -91,6 +95,10 @@ EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ == 2)' ORDER 
 SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ == 2)' ORDER BY i;
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @@ '$.ggg starts with "aa"' ORDER BY i;
 SELECT * FROM jsonbs WHERE j @@ '$.ggg starts with "aa"' ORDER BY i;
+/*+IndexScan(jsonbs)*/
+EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @@ '$.ggg starts with "aa"' ORDER BY i;
+/*+IndexScan(jsonbs)*/
+SELECT * FROM jsonbs WHERE j @@ '$.ggg starts with "aa"' ORDER BY i;
 EXPLAIN (costs off) SELECT count(*) FROM jsonbs WHERE j ? 'aaa';
 SELECT count(*) FROM jsonbs WHERE j ? 'aaa';
 
@@ -109,6 +117,10 @@ SELECT * FROM jsonbs WHERE j @> '{"aaa":{"bbb":[4]}}' ORDER BY i;
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ == 2)' ORDER BY i;
 SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ == 2)' ORDER BY i;
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @@ '$.ggg starts with "aa"' ORDER BY i;
+SELECT * FROM jsonbs WHERE j @@ '$.ggg starts with "aa"' ORDER BY i;
+/*+IndexScan(jsonbs)*/
+EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @@ '$.ggg starts with "aa"' ORDER BY i;
+/*+IndexScan(jsonbs)*/
 SELECT * FROM jsonbs WHERE j @@ '$.ggg starts with "aa"' ORDER BY i;
 
 --
@@ -154,6 +166,10 @@ INSERT INTO partial VALUES
     (to_tsvector('simple', 'a b c'), ARRAY['d', 'd'], '{"g":"g"}'); -- test aminsert
 EXPLAIN (costs off) SELECT count(*) FROM partial WHERE v @@ 'b';
 EXPLAIN (costs off) SELECT count(*) FROM partial WHERE v @@ 'c';
+SELECT count(*) FROM partial WHERE v @@ 'c';
+/*+IndexOnlyScan(partial)*/
+EXPLAIN (costs off) SELECT count(*) FROM partial WHERE v @@ 'c';
+/*+IndexOnlyScan(partial)*/
 SELECT count(*) FROM partial WHERE v @@ 'c';
 EXPLAIN (costs off) SELECT count(*) FROM partial WHERE a && ARRAY['e'];
 EXPLAIN (costs off) SELECT count(*) FROM partial
