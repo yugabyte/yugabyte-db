@@ -76,14 +76,14 @@ _Connection property:_
 
 A new property is being added: _load-balance_
 
-It expects **true/false** as its possible values. It is _false_ by default in which case it will not attempt to distribute connection load to all available servers.
+It expects **true/false** as its possible values. \
+In YBClusterAwareDataSource load balancing is true by default. However when using the DriverManager.getConnection() API the 'load-balance' property needs to be set to 'true'.
 
 _How does it work:_
 
-1. Connection url or property bag to contain ‘load-balance=true’ property
-2. First connection attempt creates a connection to the url given as is and fetches server information using the discovery query **“select * from yb_servers()’. **It then randomly chooses one from the obtained list of hosts and creates a new connection by just modifying the “PGHOST” property.
-3. Subsequent connection creation chooses the least loaded server. The driver keeps track of the number of connections it has created on each server and hence knows about the least loaded server from it’s perspective.
-4. Servers list can change with time because of many reasons. New servers added/removed from the cluster. Some servers crashed or became unreachable yet the cluster has enough quorum to continue operating. Therefore it is essential to refresh the server list frequently. The driver explicitly refreshes this information every time a new connection request comes to it if the information which it has is more than 5 minutes old.
+1. The driver transparently fetches the list of all servers when it creates the first connection.
+2. After that the driver chooses the least loaded server for subsequent connections. The driver keeps track of the number of connections it has created on each server and hence knows about the least loaded server from it's perspective.
+3. Servers list can change with time because of many reasons. Servers can get added/removed from the cluster. Therefore it is essential to refresh the server list frequently. The driver explicitly refreshes this information every time a new connection request comes to it and if the information which it has is more than 5 minutes old.
 
 ### Topology Awareness
 

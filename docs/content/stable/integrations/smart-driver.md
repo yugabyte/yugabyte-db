@@ -36,7 +36,7 @@ To get the driver from Maven, add the following lines to your Maven project:
 <dependency>
   <groupId>com.yugabyte</groupId>
   <artifactId>jdbc-yugabytedb</artifactId>
-  <version>42.2.7-5-beta.1</version>
+  <version>42.3.0</version>
 </dependency>
 ```
 
@@ -44,22 +44,27 @@ To get the driver from Maven, add the following lines to your Maven project:
 
 To build the driver locally, follow this procedure:
 
+
+To build the driver locally, follow this procedure:
+
+0. Build environment
+
+   gpgsuite needs to be present on the machine where build is performed.
+   ```
+   https://gpgtools.org/
+   ```
+   Please install gpg and create a key.
+
 1. Clone the following repository:
 
    ```sh
-   git clone https://github.com/yugabyte/jdbc-yugabytedb.git && cd jdbc-yugabytedb
+   git clone https://github.com/yugabyte/pgjdbc.git && cd pgjdbc
    ```
 
 2. Build and install into your local Maven folder by executing the following command:
 
    ```sh
-   mvn clean install -DskipTests
-   ```
-
-   If you encounter a GPG key error, you can avoid it by using the following command instead:
-
-   ```sh
-   mvn clean install -DskipTests -Dgpg.skip
+   ./gradlew publishToMavenLocal -x test -x checkstyleMain
    ```
 
 3. Add the following lines to your Maven project:
@@ -68,13 +73,14 @@ To build the driver locally, follow this procedure:
    <dependency>
        <groupId>com.yugabyte</groupId>
        <artifactId>jdbc-yugabytedb</artifactId>
-       <version>42.2.7-yb-5-beta.1</version>
+       <version>42.3.0</version>
    </dependency> 
    ```
 
+
 ## Using the Smart Driver
 
-**Cluster-aware** load balancing is performed using the `load-balance` connection property, which is disabled by default. You can enable it by setting its value to `true`.
+**Cluster-aware** load balancing is performed using the `load-balance` connection property, which  takes `true` or `false` as valid values. In YBClusterAwareDataSource load balancing is true by default. However when using the DriverManager.getConnection() API the 'load-balance' property needs to be set to 'true'.
 
 **Topology-aware** load balancing additionally requires the `topology-keys` connection property, which accepts a comma-separated list of geolocation values. You can specify a geolocation as cloud:region:zone.
 
@@ -85,24 +91,23 @@ To use the Smart Driver, do the following:
   To enable uniform load balancing across all servers, you set the `load-balance` property to `true` in the URL, as per the following example:
 
   ```java
-  String yburl = "jdbc:postgresql://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte&load-balance=true";
+  String yburl = "jdbc:yugabytedb://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte&load-balance=true";
   DriverManager.getConnection(yburl);
   ```
 
   To specify topology keys, you set the `topology-keys` property to comma separated values, as per the following example:
 
   ```java
-  String yburl = "jdbc:postgresql://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte&load-balance=true&topology-keys=cloud1:region1:zone1,cloud1:region1.zone2";
+  String yburl = "jdbc:yugabytedb://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte&load-balance=true&topology-keys=cloud1:region1:zone1,cloud1:region1.zone2";
   DriverManager.getConnection(yburl);
   ```
 
 - Configure `YBClusterAwareDataSource` for uniform load balancing and then use it to create a connection, as per the following example:
 
   ```java
-  String jdbcUrl = "jdbc:postgresql://127.0.0.1:5433/yugabyte";
+  String jdbcUrl = "jdbc:yugabytedb://127.0.0.1:5433/yugabyte";
   YBClusterAwareDataSource ds = new YBClusterAwareDataSource();
   ds.setUrl(jdbcUrl);
-  ds.setLoadBalance("true");
   // Set topology keys to enable topology-aware distribution
   ds.setTopologyKeys("cloud1.region1.zone1,cloud1.region2.zone2");
   // Provide more end points to prevent first connection failure 
@@ -123,7 +128,6 @@ To use the Smart Driver, do the following:
   poolProperties.setProperty("dataSource.databaseName", "yugabyte");
   poolProperties.setProperty("dataSource.user", "yugabyte");
   poolProperties.setProperty("dataSource.password", "yugabyte");
-  poolProperties.setProperty("dataSource.loadBalance", "true");
   // Provide additional end points
   String additionalEndpoints = "127.0.0.2:5433,127.0.0.3:5433,127.0.0.4:5433,127.0.0.5:5433";
   poolProperties.setProperty("dataSource.additionalEndpoints", additionalEndpoints);
