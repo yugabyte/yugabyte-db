@@ -20,7 +20,7 @@
     display: flex;
     justify-content: flex-start;
     align-items: center;
-    height:40px;
+    height: 40px;
   }
   .actionBtnsMargin {
     margin-bottom: 71px;
@@ -50,7 +50,7 @@
     position: relative;
     top: 10px;
   }
-  .alert-dest-count{
+  .alert-dest-count {
     margin-top: 50px;
     margin-bottom: 20px;
   }
@@ -117,9 +117,7 @@
       display: flex;
     }
   }
-  .durationInput input {
-    width: 256px;
-  }
+
   .marginBottom {
     margin-bottom: 8px !important;
   }
@@ -137,7 +135,7 @@
 
 .alertDestinationDetail {
   padding: 20px 10px 0px 10px;
-  h5{
+  h5 {
     margin-top: 30px;
   }
   label {
