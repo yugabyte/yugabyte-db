@@ -249,7 +249,7 @@ class AwsCloud(AbstractCloud):
         elif metadata_type in ["role"]:
             # Arg timeout is in MS.
             fetcher = InstanceMetadataFetcher(
-                timeout=1000 * self.METADATA_API_TIMEOUT_SECONDS, num_attempts=2)
+                timeout=self.METADATA_API_TIMEOUT_SECONDS, num_attempts=2)
             c = fetcher.retrieve_iam_role_credentials()
             # This will return None in case of no assigned role on the instance.
             return c.get("role_name")
