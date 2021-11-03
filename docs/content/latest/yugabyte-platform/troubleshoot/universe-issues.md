@@ -42,14 +42,14 @@ The following tables describe metrics available via the Yugabyte Platform UI.
 
 ### YSQL Ops and Latency
 
-| **Graph**             | **Description**                                              | **Alert / Troubleshooting Guidance**                         | **Example**                     |
+| **Graph**             | **Description**                                              | **Alert Guidance**                                           | **Example**                     |
 | :-------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ | ------------------------------- |
 | Total YSQL Ops / Sec  | The count of DELETE, INSERT, SELECT, and UPDATE statements through the YSQL API. <br>This does not include index writes. | An alert should be issued if count drops significantly lower than your average count, as this might indicate an application connection failure. In addition, an alert should be issued if the count is much higher than your average count, as this could indicate a DDoS, security incident, and so on.<br>It is recommended to coordinate this with the application team because there could be legitimate reasons for dips and spikes. | ![img](/images/yp/metrics1.png) |
 | YSQL Op Latency (Avg) | Average time (in milliseconds) of DELETE, INSERT, SELECT, and UPDATE statements through the SQL API. | An alert should be issued when the overall latency is close to or higher than your application SLA.<br>Note that the overall latency metric is less helpful for troubleshooting specific queries. It is recommended that the application track query latency.<br>Also note that there could be reasons your traffic experiences spikes in latency. For example, ad-hoc queries such as count(*) are executed. | ![img](/images/yp/metrics2.png) |
 
 ### YCQL Ops and Latency
 
-| **Graph**             | **Description**                                              | **Alert / Troubleshooting Guidance**                         | **Example**                     |
+| **Graph**             | **Description**                                              | **Alert Guidance**                                           | **Example**                     |
 | :-------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ | ------------------------------- |
 | Total YCQL Ops / Sec  | The count of DELETE, INSERT, SELECT, and UPDATE transactions, as well as other statements through the YCQL API. | An alert should be issued if count drops significantly lower than your average count, as this could indicate an application connection failure. | ![img](/images/yp/metrics3.png) |
 | YCQL Op Latency (Avg) | The average time (in milliseconds) of DELETE, INSERT, SELECT, and UPDATE transactions, as well as other statements through the YCQL API. | An alert should be issued when latency is close to or higher than your application SLA. | ![img](/images/yp/metrics4.png) |
@@ -59,7 +59,7 @@ The following tables describe metrics available via the Yugabyte Platform UI.
 
 Node metrics should be considered on a per-node basis.
 
-| Graph                                 | **Description**                                              | **Alert / Troubleshooting Guidance**                         | **Example**                      |
+| Graph                                 | **Description**                                              | **Alert Guidance**                                           | **Example**                      |
 | :------------------------------------ | ------------------------------------------------------------ | ------------------------------------------------------------ | -------------------------------- |
 | CPU Usage                             | The percentage of CPU utilization on nodes being consumed by the tablet or master server Yugabyte processes, as well as other processes, if any.<br>In general, CPU usage is a measure of all processes running on the server.<br><br>The user CPU time is the amount of time the processor worked on all the processes.<br><br>The system CPU time is the amount of time the processor worked on the operating system’s functions connected to the processes. | If you have alerts enabled, you should check  if you received any high CPU utilization alerts. This type of alerts could indicate a problem and may require debugging by Yugabyte Support. | ![img](/images/yp/metrics6.png)  |
 | Memory Usage (Buffered, Cached, Free) | The amount of RAM (in GB) available to the nodes in the cluster.<br><br>The buffered memory is the size of in-memory block input/output buffers.<br><br>The cached memory is the size of the page cache.<br><br>Free memory is not in use. | An alert should not be issued on memory metrics directly. It is recommended to use another metric to troubleshoot the underlying problem causing any memory bottlenecks.<br>The assumption is that the computer is dedicated to Yugabyte processes, therefore Yugabyte processes aggressively use the memory provided for caches and other operations. | ![img](/images/yp/metrics7.png)  |
@@ -73,7 +73,7 @@ Node metrics should be considered on a per-node basis.
 
 ### YCQL Advanced
 
-| **Graph**                     | **Description**                                              | **Alert / Troubleshooting Guidance**                         | **Example**                      |
+| **Graph**                     | **Description**                                              | **Alert Guidance**                                           | **Example**                      |
 | ----------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ | -------------------------------- |
 | YCQL Latency Breakdown        | The average time (in milliseconds) spent by the CQL API parsing and executing operations. | Information pending                                          | ![img](/images/yp/metrics15.png) |
 | YBClient Ops Local vs Remote  | The count of local and remote read and write requests.<br>Local requests are executed on the same node that has received the request.<br>Remote requests are re-routed internally to a different node for executing the operation. | If an application is using a Yugabyte driver that supports local query routing optimization and prepared statements, the expected value for this is close to 100% local for local reads and writes.<br>If using the Cassandra driver or not using prepared statements, expect to see a relatively even split (for example, ~33% local and ~66% remote for a 3-node cluster). | ![img](/images/yp/metrics16.png) |
@@ -86,11 +86,11 @@ Node metrics should be considered on a per-node basis.
 
 ### Tablet Server
 
-| **Graph**                     | **Description**                                              | **Alert / Troubleshooting Guidance**                         | **Example**                      |
+| **Graph**                     | **Description**                                              | **Alert Guidance**                                           | **Example**                      |
 | ----------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ | -------------------------------- |
 | Ops / Sec / Node                     | This is the key throughput measure.<br><br>Read: the count of read operations at the tablet level.<br>Write: the count of write operations at the tablet level. | Information pending                                          | ![img](/images/yp/metrics23.png)                             |
 | Average Latency                      | Read: the average latency of read operations at the tablet level.<br>Write: the average latency of write operations at the tablet level. | Information pending                                          | ![img](/images/yp/metrics24.png) |
-| Reactor Delays                       | The number of microseconds incoming RPC requests spend in the worker queue.<br><br>Note that Reactor is a software implementation of a ring queue. | If this metric remains at a high level, it indicates that the queues are full. | ![img](/images/yp/metrics25.png) |
+| Reactor Delays                       | The number of microseconds the incoming RPC requests spend in the worker queue before the beginning of processing.<br><br>Note that Reactor is a software implementation of a ring queue. | If this metric spikes or remains at a high level, it indicates a network issue or that the queues are full. | ![img](/images/yp/metrics25.png) |
 | Threads                              | Running: the current number of running threads.<br>Started: the total number of threads started on this server. | Information pending                                          | ![img](/images/yp/metrics26.png) |
 | Consensus Ops / Sec                  | Yugabyte implements the RAFT consensus protocol, with minor modifications.<br><br><br>Update: replicas implement an RPC method called UpdateConsensus which allows a leader to replicate a batch of log entries to the follower. Only a leader may call this RPC method, and a follower can only accept an UpdateConsensus call with a term equal to or higher than its currentTerm.<br>Request: replicas also implement an RPC method called RequestConsensusVote, which is invoked by candidates to gather votes. | A high number for the Request Consensus indicates that a lot of replicas are looking for a new election because they have not received a heartbeat from the leader.<br>A high CPU or a network partition can cause this condition, and therefore it should result in issueing an alert. | ![img](/images/yp/metrics27.png) |
 | Total Consensus Change Config        | This metric is related to the RAFT Consensus Process.<br><br>ChangeConfig: the number of times a peer was added or removed from the consensus group.<br>LeaderStepDown: the number of leader changes.<br>LeaderElectionLost:<br/>the number of times a leader election has failed.<br>RunLeaderElection: the count of leader elections due to a node failure or network partition. | You should issue an alert on LeaderElectionLost.<br>An increase in ChangeConfig typically happens when Yugabyte Platform needs to move data around. This may happen as a result of a planned server addition or decommission, or a server crash looping.<br>A LeaderStepDown can indicate a normal change in leader, or it could be an indicator of a high CPU, blocked RPC queues, server retstarts, and so on. You should issue an alert on LeaderStepDown as a proxy for other system issues. | ![img](/images/yp/metrics28.png) |
@@ -113,7 +113,7 @@ Node metrics should be considered on a per-node basis.
 
 ### Master Server
 
-| **Graph**                           | **Description**                                              | **Alert / Troubleshooting Guidance**                         | **Example**                      |
+| **Graph**                           | **Description**                                              | **Alert Guidance**                                           | **Example**                      |
 | ----------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ | -------------------------------- |
 | Overall RPCs / sec                  | The number of created RPC inbound calls to the master servers. | The limit is 1000 TPS on the master, but under normal circumstances this number should be much lower than the limit.<br>It is recommended to issue an alert at a range under the limit, yet higher than your average. | ![img](/images/yp/metrics47.png) |
 | GetTabletLocations / sec            | The number of times the locations of the replicas for a given tablet were fetched from the master servers. | Information pending                                          | ![img](/images/yp/metrics48.png) |
@@ -130,7 +130,7 @@ Node metrics should be considered on a per-node basis.
 
 DocDB uses a highly customized version of[ RocksDB](http://rocksdb.org/), a log-structured merge tree (LSM)-based key-value store. The majority of the following metrics are used internally by engineers when troubleshooting a deployment, and, therefore, should not be subject to alerting.
 
-| **Graph**                   | **Description**                                              | **Alert / Troubleshooting Guidance**                         | **Example**                      |
+| **Graph**                   | **Description**                                              | **Alert Guidance**                                           | **Example**                      |
 | --------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ | -------------------------------- |
 | LSM-DB Seek / Next Num Ops  | The number of calls to seek / next.                          | Alerting is not recommended.                                 | ![img](/images/yp/metrics58.png) |
 | LSM-DB Seeks / Sec / Node   | The number of calls to seek per second per node.             | Alerting is not recommended.                                 | ![img](/images/yp/metrics59.png) |
@@ -153,9 +153,9 @@ DocDB uses a highly customized version of[ RocksDB](http://rocksdb.org/), a log-
 
 ### Replication
 
-| **Graph**             | **Description**                                              | **Alert / Troubleshooting Guidance** | **Example** |
-| --------------------- | ------------------------------------------------------------ | ------------------------------------ | ----------- |
-| Async Replication Lag | The time (in milliseconds) that represents a delay from a Producer universe to a Consumer universe.<br>The value of this metric is only shown on the Producer universe, unless there is a bi-directional replication. | Information pending                  |             |
+| **Graph**             | **Description**                                              | **Alert Guidance**  | **Example** |
+| --------------------- | ------------------------------------------------------------ | ------------------- | ----------- |
+| Async Replication Lag | The maximum lag (in milliseconds) across all tables in an xCluster replication deployment.<br>This time represents a delay from a Producer universe to a Consumer universe.<br>The value of this metric is only shown on the Producer universe, unless there is a bi-directional replication. | Information pending |             |
 
 ## Use Nodes Status
 
