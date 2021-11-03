@@ -627,7 +627,7 @@ These functions are enabled by default for _new installations_ on 2.6. But, if y
 * [[7687](https://github.com/yugabyte/yugabyte-db/issues/7687)] YSQL health check fails when YSQL auth is enabled
 * [[7698](https://github.com/yugabyte/yugabyte-db/issues/7698)] Custom SMTP Configuration API returns unmasked SMTP password
 * [[7703](https://github.com/yugabyte/yugabyte-db/issues/7703)] Can't send email for custom SMTP settings without authentication (empty username)
-* [[7704](https://github.com/yugabyte/yugabyte-db/issues/7704)] Backup to S3 fails using Yugaware instance's IAM role
+* [[7704](https://github.com/yugabyte/yugabyte-db/issues/7704)] Backup to S3 fails using Yugabyte Platform instance's IAM role
 * [[7727](https://github.com/yugabyte/yugabyte-db/issues/7727)] [[7728](https://github.com/yugabyte/yugabyte-db/issues/7728)] Fix UI issues with k8s provider creation and deletion
 * [[7769](https://github.com/yugabyte/yugabyte-db/issues/7769)] Prevent adding on-prem node instance with duplicate IP
 * [[7779](https://github.com/yugabyte/yugabyte-db/issues/7779)] Health check fails on k8s portal for all the universes on clock synchronization with FailedClock synchronization and Error getting NTP state
