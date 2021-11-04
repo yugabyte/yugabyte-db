@@ -3264,8 +3264,6 @@ match_index_to_operand(Node *operand,
 				can_pushdown_hash_call &= bms_equal(args_bms, hash_keys);
 
 				RelationClose(indrel);
-				bms_free(args_bms);
-				bms_free(hash_keys);
 				return can_pushdown_hash_call;
 			}
 		}

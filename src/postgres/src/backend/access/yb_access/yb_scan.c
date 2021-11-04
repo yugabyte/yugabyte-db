@@ -754,10 +754,11 @@ ybcBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan) {
 		{
 			int bind_key_attnum = scan_plan->bind_key_attnums[i];
 			int idx = YBAttnumToBmsIndex(relation, bind_key_attnum);
-			bool is_hashed = IsHashCodeSearch(ybScan->key[i].sk_flags);
-			if (is_hashed || bms_is_member(idx, scan_plan->sk_cols))
+			if (IsHashCodeSearch(ybScan->key[i].sk_flags)
+				|| bms_is_member(idx, scan_plan->sk_cols))
 			{
 				bool is_null = (ybScan->key[i].sk_flags & SK_ISNULL) == SK_ISNULL;
+				bool is_hashed = IsHashCodeSearch(ybScan->key[i].sk_flags);
 
 				ybcBindColumn(ybScan, scan_plan->bind_desc, scan_plan->bind_key_attnums[i],
 							  ybScan->key[i].sk_argument, is_null, is_hashed);
