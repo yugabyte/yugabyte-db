@@ -1,0 +1,6 @@
+# contrib/pg_trgm/yb_schedule
+
+# Ported.  Use the same order as REGRESS in Makefile.
+test: yb_pg_pg_trgm
+test: yb_pg_pg_word_trgm
+test: yb_pg_pg_strict_word_trgm
