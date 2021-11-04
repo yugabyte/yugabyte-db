@@ -668,6 +668,12 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	/* Register owner dependency */
 	recordDependencyOnOwner(DatabaseRelationId, dboid, datdba);
 
+	/*
+	 * Register tablespace dependency to prevent dropping database default
+	 * tablespace.
+	 */
+	recordDependencyOnTablespace(DatabaseRelationId, dboid, dst_deftablespace);
+
 	/* Create pg_shdepend entries for objects within database */
 	copyTemplateDependencies(src_dboid, dboid);
 

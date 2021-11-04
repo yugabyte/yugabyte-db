@@ -11106,6 +11106,8 @@ AlterDatabaseStmt:
 			| ALTER DATABASE database_name SET TABLESPACE name
 				 {
 					parser_ybc_not_support(@1, "ALTER DATABASE SET TABLESPACE");
+					// TODO(Deepayan): Ensure database shdep on tablespace updates to
+					// new tablespace
 					AlterDatabaseStmt *n = makeNode(AlterDatabaseStmt);
 					n->dbname = $3;
 					n->options = list_make1(makeDefElem("tablespace",

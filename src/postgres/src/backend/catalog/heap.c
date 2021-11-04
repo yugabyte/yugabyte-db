@@ -397,6 +397,15 @@ heap_create(const char *relname,
 		RelationCreateStorage(rel->rd_node, relpersistence);
 	}
 
+	/*
+	 * If a tablespace is specified, removal of that tablespace is normally
+	 * protected by the existence of a physical file; but for Yugabyte relations
+	 * and relations with no files, add a pg_shdepend entry to account for that.
+	 */
+	if ((IsYBRelation(rel) || !create_storage) && reltablespace != InvalidOid)
+		recordDependencyOnTablespace(RelationRelationId, relid,
+									 reltablespace);
+
 	return rel;
 }
 
@@ -1502,8 +1511,6 @@ heap_create_with_catalog(const char *relname,
 			recordDependencyOnNewAcl(RelationRelationId, relid, 0, ownerid, relacl);
 
 			recordDependencyOnCurrentExtension(&myself, false);
-
-			recordDependencyOnTablespace(RelationRelationId, relid, reltablespace);
 
 			if (reloftypeid)
 			{

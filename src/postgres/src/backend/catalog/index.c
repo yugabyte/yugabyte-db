@@ -1247,9 +1247,6 @@ index_create(Relation heapRelation,
 												DEPENDENCY_NORMAL,
 												DEPENDENCY_AUTO, false);
 			}
-
-			/* Store dependency on tablespace */
-			recordDependencyOnTablespace(RelationRelationId, indexRelationId, tableSpaceId);
 		}
 	}
 	else

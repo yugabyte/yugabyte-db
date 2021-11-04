@@ -501,6 +501,8 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 	HeapTuple	tuple;
 	ScanKeyData entry[1];
 	Oid			tablespaceoid;
+	char	   *detail;
+	char	   *detail_log;
 
 	/*
 	 * Find the target tuple
@@ -549,8 +551,6 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 					   tablespacename);
 
 	/* Check for pg_shdepend entries depending on this tablespace */
-	char	  *detail;
-	char	  *detail_log;
 	if (checkSharedDependencies(TableSpaceRelationId, tablespaceoid,
 								&detail, &detail_log))
 	{
