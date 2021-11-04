@@ -11,7 +11,7 @@ menu:
 isTocNested: true
 showAsideToc: true
 ---
-This section shows that the literal for both a `jsonb` value and a `json` value, as these are used both in SQL statements and in PL/pgSQL code, is the enquoted and appropriately typecasted RFC 7159-compliant `text` value that represents the JSON value,
+This section shows that the literal for both a `jsonb` value and a `json` value, as these are used both in SQL statements and in PL/pgSQL code, is the enquoted and appropriately typecast RFC 7159-compliant `text` value that represents the JSON value.
 
 The mutual relationship between a JSON value and its `::text` typecast is an instance of the general rule that governs the mutual relationship between a value of _any_ data type and its `::text` typecast. This general rule is explained in the section [The text typecast of a value, the literal for that value, and how they are related](../../type_array/literals/text-typecasting-and-literals/).
 
