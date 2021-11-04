@@ -1655,7 +1655,9 @@ pgaudit_ddl_command_end(PG_FUNCTION_ARGS)
         CreateCommandTag(eventData->parsetree);
 
     /* Return objects affected by the (non drop) DDL statement */
-    query = "SELECT UPPER(object_type), object_identity, UPPER(command_tag)\n"
+    query = "SELECT pg_catalog.upper(object_type),\n"
+            "       object_identity,\n"
+            "       pg_catalog.upper(command_tag)\n"
             "  FROM pg_catalog.pg_event_trigger_ddl_commands()";
 
     /* Attempt to connect */
@@ -1754,11 +1756,11 @@ pgaudit_sql_drop(PG_FUNCTION_ARGS)
     contextOld = MemoryContextSwitchTo(contextQuery);
 
     /* Return objects affected by the drop statement */
-    query = "SELECT UPPER(object_type),\n"
-        "       object_identity\n"
-        "  FROM pg_catalog.pg_event_trigger_dropped_objects()\n"
-        " WHERE lower(object_type) <> 'type'\n"
-        "   AND schema_name <> 'pg_toast'";
+    query = "SELECT pg_catalog.upper(object_type),\n"
+            "       object_identity\n"
+            "  FROM pg_catalog.pg_event_trigger_dropped_objects()\n"
+            " WHERE pg_catalog.lower(object_type) operator(pg_catalog.<>) 'type'\n"
+            "   AND schema_name operator(pg_catalog.<>) 'pg_toast'";
 
     /* Attempt to connect */
     result = SPI_connect();

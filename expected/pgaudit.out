@@ -2476,6 +2476,31 @@ NOTICE:  AUDIT: OBJECT,1,1,READ,SELECT,TABLE,public.account,<not logged>,<not lo
 --
 -- Change back to superuser to do exhaustive tests
 \connect - :current_user
+--
+-- Test that pgaudit event triggers are immune to search-path-based attacks
+-- Attempt to capture unqualified references to standard functions
+CREATE FUNCTION upper(text) RETURNS text
+LANGUAGE SQL AS 'SELECT (1/0)::text';
+CREATE FUNCTION lower(text) RETURNS text
+LANGUAGE SQL AS 'SELECT (1/0)::text';
+CREATE FUNCTION my_ne(text, text) RETURNS bool
+LANGUAGE SQL AS 'SELECT (1/0)::bool';
+CREATE OPERATOR <> (FUNCTION = my_ne, LEFTARG = text, RIGHTARG = text);
+CREATE EXTENSION IF NOT EXISTS pgaudit;
+SET pgaudit.log = 'DDL';
+-- Put public schema before pg_catalog to capture unqualified references
+SET search_path = public, pg_catalog;
+-- If there was a vulnerability, these would fail with division by zero error
+CREATE TABLE wombat ();
+NOTICE:  AUDIT: SESSION,1,1,DDL,CREATE TABLE,TABLE,public.wombat,CREATE TABLE wombat ();,<not logged>
+DROP TABLE wombat;
+NOTICE:  AUDIT: SESSION,2,1,DDL,DROP TABLE,TABLE,public.wombat,DROP TABLE wombat;,<not logged>
+SET pgaudit.log = 'NONE';
+DROP EXTENSION pgaudit;
+DROP OPERATOR <> (text, text);
+DROP FUNCTION my_ne(text, text);
+DROP FUNCTION lower(text);
+DROP FUNCTION upper(text);
 -- Cleanup
 -- Set client_min_messages up to warning to avoid noise
 SET client_min_messages = 'warning';
