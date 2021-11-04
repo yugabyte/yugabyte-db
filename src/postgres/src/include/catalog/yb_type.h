@@ -37,6 +37,11 @@
 #define YB_TEXTARRAYOID 1009 /* text[] */
 #define YB_ACLITEMARRAYOID 1034 /* aclitem[] */
 
+/*
+ * Special type entity used for ybgin null categories.
+ */
+extern const YBCPgTypeEntity YBCGinNullTypeEntity;
+
 extern const YBCPgTypeEntity *YbDataTypeFromOidMod(int attnum, Oid type_id);
 
 /*

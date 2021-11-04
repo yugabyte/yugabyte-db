@@ -96,6 +96,8 @@ enum DataType {
   UINT16 = 101;
   UINT32 = 102;
   UINT64 = 103;
+
+  GIN_NULL = 104;
 }
 
 // This must exactly match YBTableType in client.h.
@@ -628,6 +630,8 @@ message QLValuePB {
     uint64 uint64_value = 24;
     // Represent various system values.
     QLVirtualValuePB virtual_value = 25;
+    // Null category for GIN indexes.
+    uint32 gin_null_value = 26;
   }
 }
 
