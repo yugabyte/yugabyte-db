@@ -136,6 +136,7 @@ namespace docdb {
     /* TTL value in milliseconds, optionally present at the start of a value. */ \
     ((kTtl, 't'))  /* ASCII code 116 */ \
     ((kUserTimestamp, 'u'))  /* ASCII code 117 */ \
+    ((kGinNull, 'v')) /* ASCII code 118 */ \
     ((kWriteId, 'w')) /* ASCII code 119 */ \
     ((kTransactionId, 'x')) /* ASCII code 120 */ \
     ((kTableId, 'y')) /* ASCII code 121 */ \
