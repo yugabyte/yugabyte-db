@@ -49,6 +49,9 @@ public class PlatformReplicationManager {
   private static final String BACKUP_SCRIPT = "bin/yb_platform_backup.sh";
   static final String DB_PASSWORD_ENV_VAR_KEY = "PGPASSWORD";
 
+  @VisibleForTesting
+  public static final String NO_LOCAL_INSTANCE_MSG = "NO LOCAL INSTANCE! Won't sync";
+
   private final AtomicReference<Cancellable> schedule;
 
   private final ActorSystem actorSystem;
@@ -188,6 +191,9 @@ public class PlatformReplicationManager {
     // Remotely demote any instance reporting to be a leader.
     config.getRemoteInstances().forEach(replicationHelper::demoteRemoteInstance);
     // Promote the new local leader.
+    // we need to refresh because i.setIsLocalAndUpdate updated the underlying db bypassing
+    // newLeader bean.
+    newLeader.refresh();
     newLeader.promote();
   }
 
@@ -197,7 +203,7 @@ public class PlatformReplicationManager {
    * been deleted on the leader, and thus should be deleted here too.
    *
    * @param config the local HA Config model
-   * @param instancesJson the JSON payload received from the leader instance
+   * @param newInstances the JSON payload received from the leader instance
    */
   public Set<PlatformInstance> importPlatformInstances(
       HighAvailabilityConfig config, List<PlatformInstance> newInstances) {
@@ -267,6 +273,11 @@ public class PlatformReplicationManager {
           .ifPresent(
               config -> {
                 try {
+                  if (!config.getLocal().isPresent()) {
+                    log.error(NO_LOCAL_INSTANCE_MSG);
+                    return;
+                  }
+
                   List<PlatformInstance> remoteInstances = config.getRemoteInstances();
                   // No point in taking a backup if there is no one to send it to.
                   if (remoteInstances.isEmpty()) {
