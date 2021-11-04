@@ -5,12 +5,12 @@
 # https://docs.netlify.com/configure-builds/file-based-configuration/#deploy-contexts
 
 [context.deploy-preview.environment]
-  HUGO_VERSION = "0.88.1"
+  HUGO_VERSION = "0.89.0"
   NODE_VERSION = "16"
   CXXFLAGS = "-std=c++17"
 
 [context.branch-deploy.environment]
-  HUGO_VERSION = "0.88.1"
+  HUGO_VERSION = "0.89.0"
   NODE_VERSION = "16"
   CXXFLAGS = "-std=c++17"
 
@@ -73,6 +73,25 @@
 [[redirects]]
   from = "/:version/troubleshoot/*"
   to = "/latest/troubleshoot/:splat"
+  force = true
+
+# Cloud should point to latest
+
+[[redirects]]
+  from = "/:version/yugabyte-cloud/*"
+  to = "/latest/yugabyte-cloud/:splat"
+  force = true
+
+# Integrations should point to latest
+
+[[redirects]]
+  from = "/:version/integrations/*"
+  to = "/latest/integrations/:splat"
+  force = true
+
+[[redirects]]
+  from = "/:version/develop/ecosystem-integrations/*"
+  to = "/latest/integrations/:splat"
   force = true
 
 # Stable quick-starts need defaults,
