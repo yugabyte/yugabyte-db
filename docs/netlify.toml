@@ -79,19 +79,19 @@
 
 [[redirects]]
   from = "/:version/yugabyte-cloud/*"
-  to = "/latest/yugabyte-cloud/:splat"
+  to = "/latest/yugabyte-cloud/"
   force = true
 
 # Integrations should point to latest
 
 [[redirects]]
   from = "/:version/integrations/*"
-  to = "/latest/integrations/:splat"
+  to = "/latest/integrations/"
   force = true
 
 [[redirects]]
   from = "/:version/develop/ecosystem-integrations/*"
-  to = "/latest/integrations/:splat"
+  to = "/latest/integrations/"
   force = true
 
 # Stable quick-starts need defaults,
