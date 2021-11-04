@@ -93,7 +93,8 @@ typedef enum PgDataType {
   YB_YQL_DATA_TYPE_UINT8 = 100,
   YB_YQL_DATA_TYPE_UINT16 = 101,
   YB_YQL_DATA_TYPE_UINT32 = 102,
-  YB_YQL_DATA_TYPE_UINT64 = 103
+  YB_YQL_DATA_TYPE_UINT64 = 103,
+  YB_YQL_DATA_TYPE_GIN_NULL = 104,
 } YBCPgDataType;
 
 // Datatypes that are internally designated to be unsupported.

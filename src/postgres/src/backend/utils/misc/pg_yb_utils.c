@@ -1822,9 +1822,14 @@ void YBGetCollationInfo(
 		 * A character array type is processed as YB_YQL_DATA_TYPE_BINARY but it
 		 * can have a collation. For example:
 		 *   CREATE TABLE t (id text[] COLLATE "en_US.utf8");
+		 *
+		 * GIN indexes have null categories, so ybgin indexes pass the category
+		 * number down using GIN_NULL type.  Even if the column is collatable,
+		 * nulls should be unaffected by collation.
 		 */
 		Assert(collation_id == InvalidOid ||
-			   type_entity->yb_type == YB_YQL_DATA_TYPE_BINARY);
+			   type_entity->yb_type == YB_YQL_DATA_TYPE_BINARY ||
+			   type_entity->yb_type == YB_YQL_DATA_TYPE_GIN_NULL);
 		collation_info->collate_is_valid_non_c = false;
 		collation_info->sortkey = NULL;
 		return;

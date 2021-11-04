@@ -30,7 +30,7 @@
 #include "c.h"
 #include "catalog/index.h"
 #include "catalog/pg_type_d.h"
-#include "executor/ybcExpr.h"
+#include "catalog/yb_type.h"
 #include "executor/ybcModifyTable.h"
 #include "nodes/execnodes.h"
 #include "nodes/parsenodes.h"
@@ -58,6 +58,34 @@ typedef struct
 } YbginBuildState;
 
 /*
+ * Utility method to create constant.
+ */
+static void
+newConstant(YBCPgStatement stmt,
+			Oid type_id,
+			Oid collation_id,
+			Datum datum,
+			bool is_null,
+			YBCPgExpr *expr)
+{
+	const YBCPgTypeEntity *type_entity;
+
+	if (is_null)
+		type_entity = &YBCGinNullTypeEntity;
+	else
+		type_entity = YbDataTypeFromOidMod(InvalidAttrNumber, type_id);
+
+	YBCPgCollationInfo collation_info;
+	YBGetCollationInfo(collation_id, type_entity, datum, is_null,
+					   &collation_info);
+
+	HandleYBStatus(YBCPgNewConstant(stmt, type_entity,
+									collation_info.collate_is_valid_non_c,
+									collation_info.sortkey,
+									datum, is_null, expr));
+}
+
+/*
  * Utility method to bind const to column.
  */
 static void
@@ -68,8 +96,9 @@ bindColumn(YBCPgStatement stmt,
 		   Datum datum,
 		   bool is_null)
 {
-	YBCPgExpr expr = YBCNewConstant(stmt, type_id, collation_id, datum,
-									is_null);
+	YBCPgExpr	expr;
+
+	newConstant(stmt, type_id, collation_id, datum, is_null, &expr);
 	HandleYBStatus(YBCPgDmlBindColumn(stmt, attr_num, expr));
 }
 
@@ -143,14 +172,12 @@ ybginTupleWrite(GinState *ginstate, OffsetNumber attnum,
 	{
 		bool		isnull = categories[i] != 0;
 
-		/* TODO(jason): handle the different null categories. */
+		/*
+		 * Pass the null category down using the spot where the data usually
+		 * goes.
+		 */
 		if (categories[i] != GIN_CAT_NORM_KEY)
-			ereport(ERROR,
-					(errcode(ERRCODE_DATA_EXCEPTION),
-					 errmsg("unsupported ybgin index write"),
-					 errdetail("ybgin index method does not support"
-							   " non-normal null category: %s.",
-							   ybginNullCategoryToString(categories[i]))));
+			entries[i] = categories[i];
 
 		/* Assume single-column index for parameters values and isnull. */
 		if (isinsert)

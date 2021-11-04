@@ -136,6 +136,8 @@ class YBColumnSchema {
         return InternalType::kVarintValue;
       case FROZEN:
         return InternalType::kFrozenValue;
+      case GIN_NULL:
+        return InternalType::kGinNullValue;
 
       case TUPLE: FALLTHROUGH_INTENDED; // TODO (mihnea) Tuple type not fully supported yet
       case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;

@@ -205,6 +205,10 @@ class KeyBytes {
     util::AppendInt32ToKey(~x, &data_);
   }
 
+  void AppendUint8(uint8_t x) {
+    data_.push_back(static_cast<char>(x));
+  }
+
   void AppendUInt16(uint16_t x) {
     AppendUInt16ToKey(x, &data_);
   }
