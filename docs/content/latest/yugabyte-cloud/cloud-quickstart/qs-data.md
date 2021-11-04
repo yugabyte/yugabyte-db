@@ -1,111 +1,37 @@
 ---
-title: Quickstart
-linkTitle: Quickstart
-description: Use a Free cluster to get started using YugabyteDB, explore core features, and develop applications.
+title: Create a database and load data
+linkTitle: Load data
+description: Create a database and load data on a cluster in Yugabyte Cloud.
 headcontent:
 image: /images/section_icons/index/quick_start.png
-aliases:
-  - /latest/deploy/yugabyte-cloud/free-tier/
-  - /latest/yugabyte-cloud/free-tier/
 menu:
   latest:
-    identifier: cloud-quickstart
-    parent: yugabyte-cloud
-    weight: 10
+    identifier: qs-data
+    parent: cloud-quickstart
+    weight: 300
 isTocNested: true
 showAsideToc: true
 ---
 
-The quickest way to get started with Yugabyte Cloud is to set up a free cluster. Although not suitable for production workloads, the free cluster includes enough resources to learn and develop applications with YugabyteDB.
+After [creating a free cluster](../qs-add/) and [connecting to the cluster](../qs-connect/) using the cloud shell, you can create a database and load some data. This exercise assumes you are already connected to your cluster in cloud shell using the `ysqlsh` shell.
 
-You can get started with Yugabyte Cloud by setting up a free cluster in a few simple steps:
+## Create a database
 
-1. Sign up.
-1. Add a free cluster.
-1. Connect to the cluster.
-1. Create a database and load data.
-1. Explore YugabyteDB.
+To create a database (`yb_demo`), do the following:
 
-## Sign up
-
-1. Go to <http://cloud.yugabyte.com>. 
-    
-1. Enter your details (name, email, and create a password), and click **Start using Yugabyte Cloud**.
-
-1. Verify your email address by clicking the link in the verification email sent to your email address.
-
-1. Sign in using your email address and the password you created.
-
-Once the Sign up process completes, the **Getting Started** page of the Yugabyte Cloud console is displayed.
-
-## Add a free cluster
-
-1. On the **Getting Started** page, click **Create a free cluster** to open the **Create Cluster** wizard. 
-
-1. Select **Yugabyte Cloud Free** and click **Next**.
-
-1. Choose the provider (AWS or GCP), enter a name for the cluster, and choose the region, then click **Next**.
-
-1. Choose the credentials you'll use to connect to your YugabyteDB database in the cloud. You can choose the default set with a database user named "admin", or create your own.
-
-1. Click **Download credentials** and save your credentials in a secure location.
-
-1. Verify that your credentials are downloaded, and click **Create Cluster**.
-
-Once you complete the wizard, Yugabyte Cloud bootstraps and provisions the cluster, and configures YugabyteDB. The process takes up to 15 minutes.
-
-Once the cluster is ready, the cluster [Overview](../cloud-clusters/overview) is displayed. You now have a fully configured YugabyteDB cluster provisioned in Yugabyte Cloud.
-
-## Connect to your cluster using the cloud shell
-
-Once the **Overview** tab is displayed, you can connect to the cluster.
-
-Using the cloud shell, you can connect to and interact with your YugabyteDB database from your browser. You have the option of using the following CLIs in the cloud shell:
-
-- [ysqlsh](../../admin/ysqlsh/) - YSQL shell for interacting with YugabyteDB using the [YSQL API](../../api/ysql) 
-- [ycqlsh](../../admin/ycqlsh/) - YCQL shell which uses the [YCQL API](../../api/ycql)
-
-To use `ysqlsh` to create and manage YugabyteDB databases and tables in your Yugabyte Cloud cluster, do the following:
-
-1. Click **Connect** to display the **Connect to Cluster** dialog.
-
-1. Under **Cloud Shell**, click **Launch Cloud Shell**.
-
-1. Enter the database name (`yugabyte`), the user name (`admin`), select the YSQL API and click **Confirm**.
-
-    The cloud shell opens in a separate browser window. Cloud shell can take up to 30 seconds to be ready.
-
-    ```output
-    Password for user admin: 
-    ```
-
-1. Enter the password for the admin user that you saved previously.
-
-The `ysqlsh` shell prompt appears and is ready to use.
-
-```output
-ysqlsh (11.2-YB-2.2.0.0-b0)
-SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
-Type "help" for help.
-
-yugabyte=#
-```
-
-## Create a database and load data
-
-You can now create a database and load some sample data.
-
-1. Create a database (`yb_demo`) by using the following `CREATE DATABASE` command.
+1. From the cloud shell, enter the following `CREATE DATABASE` command:
 
     ```sql
     yugabyte=# CREATE DATABASE yb_demo;
     ```
 
-1. Connect to the new database using the following YSQL shell `\c` meta command.
+1. Connect to the new database using the following YSQL shell `\c` meta command:
 
     ```sql
     yugabyte=# \c yb_demo;
     ```
+
+## Create the schema
 
 1. Create the database schema, which includes four tables, by running the following commands.
 
@@ -165,6 +91,8 @@ You can now create a database and load some sample data.
       body       text
     );
     ```
+
+## Load data
 
 1. Load some data into the products table by running the following commands.
 
@@ -248,219 +176,10 @@ You can now create a database and load some sample data.
 
     You now have sample data and are ready to begin exploring YSQL in YugabyteDB.
 
-## Explore YugabyteDB
-
-Display the schema of the `products` table as follows:
-
-```sql
-yb_demo=# \d products
-```
-
-```output
-                                        Table "public.products"
-   Column   |            Type             | Collation | Nullable |               Default                
-------------+-----------------------------+-----------+----------+--------------------------------------
- id         | bigint                      |           | not null | nextval('products_id_seq'::regclass)
- created_at | timestamp without time zone |           |          | 
- category   | text                        |           |          | 
- ean        | text                        |           |          | 
- price      | double precision            |           |          | 
- quantity   | integer                     |           |          | 5000
- rating     | double precision            |           |          | 
- title      | text                        |           |          | 
- vendor     | text                        |           |          | 
-Indexes:
-    "products_pkey" PRIMARY KEY, lsm (id HASH)
-```
-
-### Simple queries
-
-To see how many products there are in this table, run the following query.
-
-```sql
-yb_demo=# SELECT count(*) FROM products;
-```
-
-```output
- count
--------
-   15
-(1 row)
-```
-
-The following query selects the `id`, `title`, `category`, and `price` columns for the first five products.
-
-```sql
-yb_demo=# SELECT id, title, category, price, rating
-          FROM products
-          LIMIT 5;
-```
-
-```output
- id |           title           | category  |      price       | rating 
-----+---------------------------+-----------+------------------+--------
-  3 | Synergistic Granite Chair | Doohickey | 35.3887448815391 |      4
- 14 | Awesome Concrete Shoes    | Widget    | 25.0987635927189 |      4
-  9 | Practical Bronze Computer | Widget    | 58.3131209852614 |    4.2
- 12 | Sleek Paper Toucan        | Gizmo     | 77.3428505441222 |    4.4
-  5 | Enormous Marble Wallet    | Gadget    | 82.7450976850356 |      4
-(5 rows)
-```
-
-### The JOIN clause
-
-Use a JOIN clause to combine rows from two or more tables, based on a related column between them.
-
-The following JOIN query selects the `total` column from the `orders` table, and for each of these orders, fetches the `id`, `name`, and `email` from the `users` table of the corresponding users that placed those orders. The related column between the two tables is the user's id.
-
-```sql
-yb_demo=# SELECT users.id, users.name, users.email, orders.id, orders.total
-          FROM orders INNER JOIN users ON orders.user_id=users.id
-          LIMIT 5;
-```
-
-```output
- id |     name           |         email                | id |      total       
-----+--------------------+------------------------------+----+------------------
-  4 | Arnold Adams       | adams.arnold@gmail.com       | 22 | 49.0560710142838
- 15 | Bertrand Romaguera | romaguera.bertrand@gmail.com | 76 | 28.0989026289413
-  1 | Hudson Borer       | borer-hudson@yahoo.com       |  9 | 81.6742695904106
- 10 | Tressa White       | white.tressa@yahoo.com       | 54 | 122.116378514938
-  4 | Arnold Adams       | adams.arnold@gmail.com       | 23 | 56.5115886738793
-(5 rows)
-```
-
-### Distributed transactions
-
-To track quantities accurately, each product being ordered in some quantity by a user has to decrement the corresponding product inventory quantity. These operations should be performed inside a transaction.
-
-Imagine the user with id `1` wants to order `10` units of the product with id `2`.
-
-Before running the transaction, you can verify the quantity of product `2` in stock by running the following query:
-
-```sql
-yb_demo=# SELECT id, category, price, quantity FROM products WHERE id=2;
-```
-
-```output
-SELECT id, category, price, quantity FROM products WHERE id=2;
- id | category  |      price       | quantity
-----+-----------+------------------+----------
-  2 | Doohickey | 70.0798961307176 |     5000
-(1 row)
-```
-
-To place the order, you can run the following transaction:
-
-```sql
-yb_demo=# BEGIN TRANSACTION;
-
-/* First insert a new order into the orders table. */
-INSERT INTO orders
-  (id, created_at, user_id, product_id, discount, quantity, subtotal, tax, total)
-VALUES (
-  (SELECT max(id)+1 FROM orders)                 /* id */,
-  now()                                          /* created_at */,
-  1                                              /* user_id */,
-  2                                              /* product_id */, 
-  0                                              /* discount */,
-  10                                             /* quantity */,
-  (10 * (SELECT price FROM products WHERE id=2)) /* subtotal */,
-  0                                              /* tax */,
-  (10 * (SELECT price FROM products WHERE id=2)) /* total */
-) RETURNING id;
-
-/* Next decrement the total quantity from the products table. */
-UPDATE products SET quantity = quantity - 10 WHERE id = 2;
-
-COMMIT;
-```
-
-Verify that the order got inserted by running the following command:
-
-```sql
-yb_demo=# SELECT * FROM orders WHERE id = (SELECT max(id) FROM orders);
-```
-
-```output
- id |         created_at         | user_id | product_id | discount | quantity |     subtotal     | tax |      total       
-----+----------------------------+---------+------------+----------+----------+------------------+-----+------------------
- 77 | 2021-09-08 20:03:12.308302 |       1 |          2 |        0 |       10 | 700.798961307176 |   0 | 700.798961307176
-(1 row)
-```
-
-To verify that total quantity of product id `2` in the inventory has been updated, run the following query:
-
-```sql
-yb_demo=# SELECT id, category, price, quantity FROM products WHERE id=2;
-```
-
-```output
- id | category  |      price       | quantity
-----+-----------+------------------+----------
-  2 | Doohickey | 70.0798961307176 |     4990
-(1 row)
-```
-
-### Create a view
-
-To answer questions such as what percentage of the total sales is from the Facebook channel, you can create a view.
-
-```sql
-yb_demo=# CREATE VIEW channel AS
-            (SELECT source, ROUND(SUM(orders.total)) AS total_sales
-             FROM users LEFT JOIN orders ON users.id=orders.user_id
-             GROUP BY source
-             ORDER BY total_sales DESC);
-```
-
-Now that the view is created, you can see it in the list of relations.
-
-```sql
-yb_demo=# \d
-```
-
-```output
-               List of relations
- Schema |      Name       |   Type   |  Owner
---------+-----------------+----------+----------
- public | channel         | view     | yugabyte
- public | orders          | table    | yugabyte
- public | orders_id_seq   | sequence | yugabyte
- public | products        | table    | yugabyte
- public | products_id_seq | sequence | yugabyte
- public | reviews         | table    | yugabyte
- public | reviews_id_seq  | sequence | yugabyte
- public | users           | table    | yugabyte
- public | users_id_seq    | sequence | yugabyte
-(9 rows)
-```
-
-```sql
-yb_demo=# SELECT source, 
-            total_sales * 100.0 / (SELECT SUM(total_sales) FROM channel) AS percent_sales
-          FROM channel
-          WHERE source='Facebook';
-```
-
-```output
-  source  |  percent_sales   
-----------+------------------
- Facebook | 31.3725490196078
-(1 row)
-```
-
 ### Learn more
 
-For more information on the `ysqlsh` and `ycqlsh` shells, refer to [ysqlsh](../../admin/ysqlsh/) and [ycqlsh](../../admin/ycqlsh/).
+More sample datasets are available for you to use to explore YugabyteDB. Refer to [Sample datasets](../../../sample-data/).
 
-For more information on the YSQL and YCQL APIs, refer to [YSQL API](../../api/ysql/) and [YCQL API](../../api/ycql/).
+## Next step
 
-## Next steps
-
-- Learn [cluster management basics](../cloud-basics), including how to
-
-  - [Add paid clusters](../cloud-basics/create-clusters/)
-  - [Assign IP allow lists](../cloud-basics/add-connections/)
-  - [Connect to clusters](../cloud-basics/connect-to-clusters/)
-  - [Add database users](../cloud-basics/add-users/)
+- [Explore distributed SQL](../qs-explore)
