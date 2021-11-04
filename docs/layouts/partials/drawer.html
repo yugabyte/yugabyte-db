@@ -23,7 +23,7 @@
       <div class="toc">
 
         {{ partial "detect_version" . }}
-        {{ partialCached "version_switcher" . }}
+        {{ partial "version_switcher" . }}
 
         {{ if $.menu }}
           {{ partial "nav" (dict "context" . "menu" $.menu) }}
