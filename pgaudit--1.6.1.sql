@@ -3,6 +3,8 @@
 
 CREATE FUNCTION pgaudit_ddl_command_end()
 	RETURNS event_trigger
+	SECURITY DEFINER
+	SET search_path = 'pg_catalog, pg_temp'
 	LANGUAGE C
 	AS 'MODULE_PATHNAME', 'pgaudit_ddl_command_end';
 
@@ -12,6 +14,8 @@ CREATE EVENT TRIGGER pgaudit_ddl_command_end
 
 CREATE FUNCTION pgaudit_sql_drop()
 	RETURNS event_trigger
+	SECURITY DEFINER
+	SET search_path = 'pg_catalog, pg_temp'
 	LANGUAGE C
 	AS 'MODULE_PATHNAME', 'pgaudit_sql_drop';
 
