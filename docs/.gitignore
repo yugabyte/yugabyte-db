@@ -15,3 +15,5 @@ static/js/site.js
 .session.vim*
 
 *.sw?
+
+.hugo_build.lock
