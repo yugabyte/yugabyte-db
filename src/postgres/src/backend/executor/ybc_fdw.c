@@ -125,23 +125,24 @@ ybcGetForeignPaths(PlannerInfo *root,
 	/* Estimate costs */
 	ybcCostEstimate(baserel, YBC_FULL_SCAN_SELECTIVITY,
 					false /* is_backwards scan */,
+					true /* is_seq_scan */,
 					false /* is_uncovered_idx_scan */,
 					&startup_cost,
 					&total_cost,
-					baserel->reltablespace /* tablespace of current path */);
+					baserel->reltablespace /* index_tablespace_oid */);
 
 	/* Create a ForeignPath node and it as the scan path */
 	add_path(baserel,
-	         (Path *) create_foreignscan_path(root,
-	                                          baserel,
-	                                          NULL, /* default pathtarget */
-	                                          baserel->rows,
-	                                          startup_cost,
-	                                          total_cost,
-	                                          NIL,  /* no pathkeys */
-	                                          NULL, /* no outer rel either */
-	                                          NULL, /* no extra plan */
-	                                          NULL  /* no options yet */ ));
+			 (Path *) create_foreignscan_path(root,
+											  baserel,
+											  NULL, /* default pathtarget */
+											  baserel->rows,
+											  startup_cost,
+											  total_cost,
+											  NIL,  /* no pathkeys */
+											  NULL, /* no outer rel either */
+											  NULL, /* no extra plan */
+											  NULL  /* no options yet */ ));
 
 	/* Add primary key and secondary index paths also */
 	create_index_paths(root, baserel);
