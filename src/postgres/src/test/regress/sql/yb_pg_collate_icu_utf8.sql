@@ -434,31 +434,31 @@ drop type textrange_en_us;
 CREATE TABLE tab1(id varchar(10));
 INSERT INTO tab1 values ('aaaa');
 \d tab1
-ALTER TABLE tab1 ALTER COLUMN id SET DATA TYPE varchar(10) collate "en_US.utf8"; -- fail
+ALTER TABLE tab1 ALTER COLUMN id SET DATA TYPE varchar(10) collate "en-US-x-icu"; -- fail
 \d tab1
 
-CREATE TABLE tab2(id varchar(10) collate "en_US.utf8");
+CREATE TABLE tab2(id varchar(10) collate "en-US-x-icu");
 CREATE INDEX tab2_id_idx on tab2(id collate "C" desc);
 INSERT INTO tab2 VALUES ('aaaa');
 \d tab2
-ALTER TABLE tab2 alter COLUMN id SET DATA TYPE varchar(20) collate "en_US.utf8"; -- ok;
+ALTER TABLE tab2 alter COLUMN id SET DATA TYPE varchar(20) collate "en-US-x-icu"; -- ok;
 \d tab2
 
-CREATE DATABASE test_db LC_COLLATE = "en_US.utf8" TEMPLATE template0; -- fail;
+CREATE DATABASE test_db LC_COLLATE = "en-US-x-icu" TEMPLATE template0; -- fail;
 
-CREATE TABLE tab3(id char(10) collate "en_US.utf8");
+CREATE TABLE tab3(id char(10) collate "en-US-x-icu");
 CREATE INDEX tab3_id_idx ON tab3(id bpchar_pattern_ops asc); -- fail;
 \d tab3
 CREATE INDEX tab3_id_idx ON tab3(id collate "C" asc); -- ok;
 \d tab3
 
-CREATE TABLE tab4(id varchar(10) collate "en_US.utf8");
+CREATE TABLE tab4(id varchar(10) collate "en-US-x-icu");
 CREATE INDEX tab4_id_idx ON tab4(id varchar_pattern_ops asc); -- fail;
 \d tab4
 CREATE INDEX tab4_id_idx ON tab4(id collate "C" asc); -- ok;
 \d tab4
 
-CREATE TABLE tab5(id text collate "en_US.utf8");
+CREATE TABLE tab5(id text collate "en-US-x-icu");
 CREATE INDEX tab5_id_idx ON tab5(id text_pattern_ops asc); -- fail;
 \d tab5
 CREATE INDEX tab5_id_idx ON tab5(id collate "C" asc); -- ok;
