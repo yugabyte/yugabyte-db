@@ -110,9 +110,11 @@ public enum TaskType {
 
   CreateXClusterConfig("CreateXClusterConfig"),
 
+  EditXClusterConfig("EditXClusterConfig"),
+
   DeleteXClusterConfig("DeleteXClusterConfig"),
 
-  EditXClusterConfig("EditXClusterConfig"),
+  SyncXClusterConfig("SyncXClusterConfig"),
 
   CreateSupportBundle("CreateSupportBundle"),
 
@@ -200,11 +202,15 @@ public enum TaskType {
   // Tasks belonging to subtasks.xcluster classpath
   XClusterConfigSetup("subtasks.xcluster.XClusterConfigSetup"),
 
-  XClusterConfigDelete("subtasks.xcluster.XClusterConfigDelete"),
-
   XClusterConfigSetStatus("subtasks.xcluster.XClusterConfigSetStatus"),
 
   XClusterConfigModifyTables("subtasks.xcluster.XClusterConfigModifyTables"),
+
+  XClusterConfigRename("subtasks.xcluster.XClusterConfigRename"),
+
+  XClusterConfigDelete("subtasks.xcluster.XClusterConfigDelete"),
+
+  XClusterConfigSync("subtasks.xcluster.XClusterConfigSync"),
 
   // Tasks belonging to subtasks.cloud classpath
   CloudAccessKeyCleanup("subtasks.cloud.CloudAccessKeyCleanup"),

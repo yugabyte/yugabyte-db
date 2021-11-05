@@ -14,7 +14,6 @@ package org.yb.client;
 
 import com.google.protobuf.Message;
 import java.util.Set;
-import java.util.UUID;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.yb.Common;
 import org.yb.Common.HostPortPB;
@@ -23,22 +22,19 @@ import org.yb.util.Pair;
 
 public class SetupUniverseReplicationRequest extends YRpc<SetupUniverseReplicationResponse> {
 
-  private final UUID sourceUniverseUUID;
+  private final String replicationGroupName;
   private final Set<String> sourceTableIDs;
   private final Set<Common.HostPortPB> sourceMasterAddresses;
-  private final Set<String> sourceBootstrapIDs;
 
   SetupUniverseReplicationRequest(
     YBTable table,
-    UUID sourceUniverseUUID,
+    String replicationGroupName,
     Set<String> sourceTableIDs,
-    Set<HostPortPB> sourceMasterAddresses,
-    Set<String> sourceBootstrapIDs) {
+    Set<HostPortPB> sourceMasterAddresses) {
     super(table);
-    this.sourceUniverseUUID = sourceUniverseUUID;
+    this.replicationGroupName = replicationGroupName;
     this.sourceTableIDs = sourceTableIDs;
     this.sourceMasterAddresses = sourceMasterAddresses;
-    this.sourceBootstrapIDs = sourceBootstrapIDs;
   }
 
   @Override
@@ -47,10 +43,9 @@ public class SetupUniverseReplicationRequest extends YRpc<SetupUniverseReplicati
 
     final Master.SetupUniverseReplicationRequestPB.Builder builder =
       Master.SetupUniverseReplicationRequestPB.newBuilder()
-        .setProducerId(sourceUniverseUUID.toString())
+        .setProducerId(replicationGroupName)
         .addAllProducerTableIds(sourceTableIDs)
-        .addAllProducerMasterAddresses(sourceMasterAddresses)
-        .addAllProducerBootstrapIds(sourceBootstrapIDs);
+        .addAllProducerMasterAddresses(sourceMasterAddresses);
 
     return toChannelBuffer(header, builder.build());
   }

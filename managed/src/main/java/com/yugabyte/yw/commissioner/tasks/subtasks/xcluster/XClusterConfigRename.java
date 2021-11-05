@@ -6,18 +6,16 @@ import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
-import java.util.HashSet;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.yb.client.SetupUniverseReplicationResponse;
+import org.yb.client.AlterUniverseReplicationResponse;
 import org.yb.client.YBClient;
-import org.yb.util.NetUtil;
 
 @Slf4j
-public class XClusterConfigSetup extends XClusterConfigTaskBase {
+public class XClusterConfigRename extends XClusterConfigTaskBase {
 
   @Inject
-  protected XClusterConfigSetup(BaseTaskDependencies baseTaskDependencies) {
+  protected XClusterConfigRename(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
   }
 
@@ -31,7 +29,6 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
     log.info("Running {}", getName());
 
     XClusterConfig xClusterConfig = refreshXClusterConfig();
-    Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.sourceUniverseUUID);
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.targetUniverseUUID);
 
     String targetUniverseMasterAddresses = targetUniverse.getMasterAddresses();
@@ -39,19 +36,28 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
     YBClient client = ybService.getClient(targetUniverseMasterAddresses, targetUniverseCertificate);
 
     try {
-      SetupUniverseReplicationResponse resp =
-          client.setupUniverseReplication(
-              xClusterConfig.getReplicationGroupName(),
-              taskParams().createFormData.tables,
-              new HashSet<>(NetUtil.parseStringsAsPB(sourceUniverse.getMasterAddresses())));
+      String newName = taskParams().editFormData.name;
+
+      log.info(
+          "Renaming XClusterConfig({}): `{}` -> `{}`",
+          xClusterConfig.uuid,
+          xClusterConfig.name,
+          newName);
+
+      String newReplicationGroupName = xClusterConfig.sourceUniverseUUID + "_" + newName;
+
+      AlterUniverseReplicationResponse resp =
+          client.alterUniverseReplicationName(
+              xClusterConfig.getReplicationGroupName(), newReplicationGroupName);
       if (resp.hasError()) {
         throw new RuntimeException(
             String.format(
-                "Failed to create XClusterConfig(%s): %s",
+                "Failed to rename XClusterConfig(%s): %s",
                 xClusterConfig.uuid, resp.errorMessage()));
       }
 
-      waitForXClusterOperation(client::isSetupUniverseReplicationDone);
+      xClusterConfig.name = newName;
+      xClusterConfig.update();
 
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
