@@ -22,7 +22,7 @@ fi
 
 COMMAND="SELECT greatest(1, current_setting('max_connections')::int - current_setting('superuser_reserved_connections')::int - (SELECT count(*) FROM pg_stat_activity) - 2)"
 
-if PARALLEL_CONN=`psql -d ${PGDATABASE:-postgres} -qtc "$COMMAND" 2> /dev/null`; then
+if PARALLEL_CONN=`psql -d ${PGDATABASE:-postgres} -P pager=off -P tuples_only=true -qAXtc "$COMMAND" 2> /dev/null`; then
     if [ $PARALLEL_CONN -ge 1 ] 2>/dev/null; then
         # We know it's a number at this point
         [ $PARALLEL_CONN -eq 1 ] && error "NOTICE: unable to run tests in parallel; not enough connections"

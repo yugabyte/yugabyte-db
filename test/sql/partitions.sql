@@ -8,8 +8,8 @@ SELECT plan(102);
 SET client_min_messages = warning;
 
 -- Create inherited tables (not partitions).
-CREATE TABLE public.parent(id INT PRIMARY KEY);
-CREATE TABLE public.child(id INT PRIMARY KEY) INHERITS (public.parent);
+CREATE TABLE public.base(id INT PRIMARY KEY);
+CREATE TABLE public.sub(id INT PRIMARY KEY) INHERITS (public.base);
 
 -- Create a partitioned table with two partitions.
 CREATE TABLE public.parted(id INT NOT NULL) PARTITION BY RANGE (id);
@@ -67,7 +67,7 @@ SELECT * FROM check_test(
 
 -- is_partition_of() should fail for inherited but not partitioned tables.
 SELECT * FROM check_test(
-    is_partition_of( 'public', 'child', 'public', 'parent', 'whatevs' ),
+    is_partition_of( 'public', 'sub', 'public', 'base', 'whatevs' ),
     false,
     'is_partition_of( csch, non-part ctab, psch, non-part ptab, desc )',
     'whatevs',
@@ -75,16 +75,16 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    is_partition_of( 'child', 'parent', 'whatevs' ),
+    is_partition_of( 'sub', 'base', 'whatevs' ),
     false,
     'is_partition_of( non-part ctab, non-part ptab, desc )',
     'whatevs',
     ''
 );
 
--- is_partition_of() should fail for parted table and non-part child.
+-- is_partition_of() should fail for parted table and non-part sub.
 SELECT * FROM check_test(
-    is_partition_of( 'public', 'child', 'public', 'parted', 'whatevs' ),
+    is_partition_of( 'public', 'sub', 'public', 'parted', 'whatevs' ),
     false,
     'is_partition_of( csch, non-part ctab, psch, ptab, desc )',
     'whatevs',
@@ -92,16 +92,16 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    is_partition_of( 'child', 'parted', 'whatevs' ),
+    is_partition_of( 'sub', 'parted', 'whatevs' ),
     false,
     'is_partition_of( non-part ctab, ptab, desc )',
     'whatevs',
     ''
 );
 
--- is_partition_of() should fail for partition child but wrong parent.
+-- is_partition_of() should fail for partition sub but wrong base.
 SELECT * FROM check_test(
-    is_partition_of( 'public', 'part1', 'public', 'parent', 'whatevs' ),
+    is_partition_of( 'public', 'part1', 'public', 'base', 'whatevs' ),
     false,
     'is_partition_of( csch, ctab, psch, non-part ptab, desc )',
     'whatevs',
@@ -109,7 +109,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    is_partition_of( 'part1', 'parent', 'whatevs' ),
+    is_partition_of( 'part1', 'base', 'whatevs' ),
     false,
     'is_partition_of( ctab, non-part ptab, desc )',
     'whatevs',
@@ -152,7 +152,7 @@ SELECT * FROM check_test(
     ''
 );
 
--- Should find public partition for hidden parent.
+-- Should find public partition for hidden base.
 SELECT * FROM check_test(
     is_partition_of( 'public', 'not_hidden_part3', 'hide', 'hidden_parted', 'whatevs' ),
     true,
@@ -307,21 +307,21 @@ SELECT * FROM check_test(
 
 -- Should not work for unpartitioned but inherited table
 SELECT * FROM check_test(
-    partitions_are( 'public', 'parent', '{child}', 'hi' ),
+    partitions_are( 'public', 'base', '{sub}', 'hi' ),
     false,
     'partitions_are( sch, non-parted tab, inherited tab, desc )',
     'hi',
     '    Missing partitions:
-        child'
+        sub'
 );
 
 SELECT * FROM check_test(
-    partitions_are( 'parent', '{child}'::name[], 'hi' ),
+    partitions_are( 'base', '{sub}'::name[], 'hi' ),
     false,
     'partitions_are( non-parted tab, inherited tab, desc )',
     'hi',
     '    Missing partitions:
-        child'
+        sub'
 );
 
 -- Should not work for non-existent table.
