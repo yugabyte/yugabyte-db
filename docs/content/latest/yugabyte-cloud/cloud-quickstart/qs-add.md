@@ -13,25 +13,19 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The quickest way to get started with Yugabyte Cloud is to set up a free cluster. Although not suitable for production workloads, the free cluster includes enough resources to learn and develop applications with YugabyteDB.
-
-After setting up your Yugabyte Cloud account, [log in](https://cloud.yugabyte.com/login) to display the Yugabyte Cloud console. The console has the following main sections, accessed via the left menu:
-
-- **Getting Started** - Create your free cluster and access documentation.
-
-- [Clusters](../../cloud-clusters/) - Add, monitor, and manage clusters. 
-
-- [Network Access](../../cloud-network) - Authorize access to your clusters using IP allow lists.
-
-- [Admin](../../cloud-admin/) - Manage billing and payment methods and cloud users.
-
-Use the **Help** icon in the top right corner to access documentation and support.
-
-Use the **Profile** icon in the top right corner to sign out and change your user profile. To view your profile, click the profile icon and choose **Profile**. You can update your display name and password.
-
-## Add a free cluster
+The free cluster provides a fully functioning single node YugabyteDB cluster deployed to the region of your choice. The cluster is free forever and includes enough resources to explore the core features available for developing applications with YugabyteDB. No credit card information is required. You can only have one free cluster.
 
 To add a free cluster:
+
+1. After setting up your Yugabyte Cloud account, [log in](https://cloud.yugabyte.com/login) to display the Yugabyte Cloud console. The console has the following main sections, accessed via the left menu:
+
+    - **Getting Started** - Create your free cluster and access documentation.
+
+    - [Clusters](../../cloud-clusters/) - Add, monitor, and manage clusters. 
+
+    - [Network Access](../../cloud-network) - Authorize access to your clusters using IP allow lists.
+
+    - [Admin](../../cloud-admin/) - Manage billing and payment methods and cloud users.
 
 1. On the **Getting Started** page, click **Create a free cluster** to open the **Create Cluster** wizard. 
 

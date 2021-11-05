@@ -14,14 +14,14 @@ menu:
     weight: 10
 ---
 
-Get started with Yugabyte Cloud by setting up a free cluster in a few simple steps:
+The quickest way to get started with YugabyteDB is to [sign up for Yugabyte Cloud](http://cloud.yugabyte.com) and create a free cluster. Although not suitable for production workloads, the free cluster includes enough resources to learn and develop applications with YugabyteDB.
 
-1. Add a free cluster.
-1. Connect to the cluster.
-1. Create a database and load data.
-1. Explore YugabyteDB.
+Get started with YugabyteDB on Yugabyte Cloud in a few simple steps:
 
-To sign up, visit <http://cloud.yugabyte.com>. 
+1. [Add a free cluster](qs-add/).
+1. [Connect to the cluster](qs-connect).
+1. [Create a database and load data](qs-data/).
+1. [Explore YugabyteDB](qs-explore/).
     
 ## Get started yourself
 

@@ -56,6 +56,6 @@ For more information on the `ysqlsh` and `ycqlsh` shells, refer to [ysqlsh](../.
 
 For more information on the YSQL and YCQL APIs, refer to [YSQL API](../../../api/ysql/) and [YCQL API](../../../api/ycql/).
 
-## Next steps
+## Next step
 
 - [Create a database and load data](../qs-data)
