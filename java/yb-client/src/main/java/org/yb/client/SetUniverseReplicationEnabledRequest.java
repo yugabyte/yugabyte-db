@@ -13,7 +13,6 @@
 package org.yb.client;
 
 import com.google.protobuf.Message;
-import java.util.UUID;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.yb.master.Master;
 import org.yb.util.Pair;
@@ -21,12 +20,15 @@ import org.yb.util.Pair;
 public class SetUniverseReplicationEnabledRequest
   extends YRpc<SetUniverseReplicationEnabledResponse> {
 
-  private final UUID sourceUniverseUUID;
+  private final String replicationGroupName;
   private final boolean enabled;
 
-  SetUniverseReplicationEnabledRequest(YBTable table, UUID sourceUniverseUUID, boolean enabled) {
+  SetUniverseReplicationEnabledRequest(
+    YBTable table,
+    String replicationGroupName,
+    boolean enabled) {
     super(table);
-    this.sourceUniverseUUID = sourceUniverseUUID;
+    this.replicationGroupName = replicationGroupName;
     this.enabled = enabled;
   }
 
@@ -36,7 +38,7 @@ public class SetUniverseReplicationEnabledRequest
 
     final Master.SetUniverseReplicationEnabledRequestPB.Builder builder =
       Master.SetUniverseReplicationEnabledRequestPB.newBuilder()
-        .setProducerId(sourceUniverseUUID.toString())
+        .setProducerId(replicationGroupName)
         .setIsEnabled(enabled);
 
     return toChannelBuffer(header, builder.build());
@@ -63,8 +65,7 @@ public class SetUniverseReplicationEnabledRequest
     final Master.MasterErrorPB error = builder.hasError() ? builder.getError() : null;
 
     SetUniverseReplicationEnabledResponse response =
-      new SetUniverseReplicationEnabledResponse(deadlineTracker.getElapsedMillis(),
-        tsUUID, error);
+      new SetUniverseReplicationEnabledResponse(deadlineTracker.getElapsedMillis(), tsUUID, error);
 
     return new Pair<>(response, error);
   }

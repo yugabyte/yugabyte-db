@@ -36,9 +36,13 @@ public class EditXClusterConfig extends XClusterConfigTaskBase {
                 xClusterConfig.uuid));
       }
 
+      XClusterConfigStatusType initialStatus = xClusterConfig.status;
+      setXClusterConfigStatus(XClusterConfigStatusType.Updating);
+
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
       if (editFormData.name != null) {
-        renameXClusterConfig();
+        createXClusterConfigRenameTask()
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
       } else if (editFormData.status != null) {
         createXClusterConfigToggleStatusTask()
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
@@ -49,6 +53,12 @@ public class EditXClusterConfig extends XClusterConfigTaskBase {
       createMarkUniverseUpdateSuccessTasks()
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
       subTaskGroupQueue.run();
+
+      // ToggleStatus already handles updating the status
+      if (editFormData.status == null) {
+        refreshXClusterConfig();
+        setXClusterConfigStatus(initialStatus);
+      }
 
       if (shouldIncrementVersion()) {
         getUniverse().incrementVersion();
@@ -63,19 +73,5 @@ public class EditXClusterConfig extends XClusterConfigTaskBase {
     }
 
     log.info("Completed {}", getName());
-  }
-
-  private void renameXClusterConfig() {
-    XClusterConfig xClusterConfig = taskParams().xClusterConfig;
-    XClusterConfigEditFormData editFormData = taskParams().editFormData;
-
-    log.info(
-        "Renaming XClusterConfig({}): `{}` -> `{}`",
-        xClusterConfig.uuid,
-        xClusterConfig.name,
-        editFormData.name);
-
-    xClusterConfig.name = editFormData.name;
-    xClusterConfig.update();
   }
 }
