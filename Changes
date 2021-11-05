@@ -36,6 +36,11 @@ Revision history for pgTAP
 * Improved the output of `results_eq()` and `results_ne()` when the number of
   columns or their types are different (#37). Thanks to Wolfgang Walther for
   the pull request (#255).
+* Fixed testing issue where tests for unsupported features were not properly
+  skipped on Postgres 9.6 and earlier. Only appeared when tests were run
+  serially (#279).
+* Fixed an issue where tests might not run in parallel even when the server
+  supported it (#279).
 
 1.1.0 2019-11-25T19:05:38Z
 --------------------------
