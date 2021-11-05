@@ -106,12 +106,6 @@ You connect to a database node as follows:
 
 Yugabyte Platform includes a number of sample applications enclosed in Docker containers. 
 
-The jdbc connection string is only needed if you're hooking up a Java application to the database. 
-
-The YSQL, YCQL, and Yedis endpoints are passed into the driver to let it know what IP addresses and ports to use to connect to the database. 
-
-The sample apps include the endpoint information in the command that is run on the platform node anyway.
-
 To access instructions on how to run sample applications, select your universe's **Overview** and then click **Actions > Run Sample Apps** to open the **Run Sample Apps** dialog shown in the following illustration:
 
 ![Multi-zone universe sample apps](/images/yp/multi-zone-universe-sample-apps-1.png)
