@@ -597,7 +597,11 @@ message QLValuePB {
     int64 int64_value = 4;
     float float_value = 5;
     double double_value = 6;
-    string string_value = 7;
+    // Sometimes YB sends non-UTF8 string in string field. For example, this can happen
+    // with a collated string: under "en_US.utf8" collation, string 'abc' is encoded
+    // as string_value: "\000\201\014\r\016\001\t\t\t\001\t\t\t\000abc" which is not
+    // a valid UTF8 string. That is why 'bytes' is used for string_value field.
+    bytes string_value = 7;
     bool bool_value = 8;
     int64 timestamp_value = 9;
     bytes binary_value = 10;

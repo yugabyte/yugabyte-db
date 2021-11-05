@@ -7792,7 +7792,7 @@ gincostestimate(PlannerInfo *root, IndexPath *path, double loop_count,
 	 * Obtain statistical information from the meta page, if possible.  Else
 	 * set ginStats to zeroes, and we'll cope below.
 	 */
-	if (!index->hypothetical)
+	if (!index->hypothetical && !IsYBRelationById(index->indexoid))
 	{
 		indexRel = index_open(index->indexoid, AccessShareLock);
 		ginGetStats(indexRel, &ginStats);

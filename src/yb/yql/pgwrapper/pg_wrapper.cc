@@ -41,7 +41,7 @@ DEFINE_bool(pg_verbose_error_log, false,
             "True to enable verbose logging of errors in PostgreSQL server");
 DEFINE_int32(pgsql_proxy_webserver_port, 13000, "Webserver port for PGSQL");
 
-DEFINE_test_flag(bool, pg_collation_enabled, false,
+DEFINE_test_flag(bool, pg_collation_enabled, true,
                  "True to enable collation support in YugaByte PostgreSQL.");
 
 DECLARE_string(metric_node_name);

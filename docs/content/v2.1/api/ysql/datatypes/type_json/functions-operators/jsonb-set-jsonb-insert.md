@@ -17,7 +17,7 @@ showAsideToc: true
 
 **Signature:** For `jsonb_set()`:
 
-```
+```output
 jsonb_in:           jsonb
 path:               text[]
 replacement:        jsonb
@@ -27,13 +27,14 @@ return value:       jsonb
 
 **Signature:** For `jsonb_insert()`:
 
-```
+```output
 jsonb_in:           jsonb
 path:               text[]
 replacement:        jsonb
 insert_after:       boolean default false
 return value:       jsonb
 ```
+
 **Notes:**
 
 - There is no `json` variant.
@@ -44,10 +45,11 @@ return value:       jsonb
 
 - The input JSON value must be either an _object_ or an _array_—in other words, it must have elements that can be addressed by a path.
 
-## Semantics when "jsonb&#95;in" is a JSON object
-parsed, or when two JSON values are concatenated, and if a key is repeated, then the last-mentioned in left-to-right order wins.) The functionality is sufficiently illustrated by a _"json_in"_ value that has just primitive values. The result of each function invocation is the same.
+## Semantics when "jsonb_in" is a JSON object
 
-```postgresql
+parsed, or when two JSON values are concatenated, and if a key is repeated, then the last-mentioned in left-to-right order wins.) The functionality is sufficiently illustrated by a "_json_in_" value that has just primitive values. The result of each function invocation is the same.
+
+```plpgsql
 do $body$
 declare
   j constant jsonb := '{"a": 1, "b": 2, "c": 3}';
@@ -77,23 +79,20 @@ end;
 $body$;
 ```
 
-<<<<<<< HEAD
-Notice that the key _"d"_ , specified by _path_, doesn't yet exist. Each function call asks to produce the result that the key _"d"_ should exist with  the value `4`. The `DO` block shows that the effect of each, as written above, is the same.
-=======
 Notice that the specified `path`, the key `"d"` doesn't yet exist. Each function call asks to produce the result that the key `"d"` should exist with  the value `4`. So, as you see, the effect of each, as written above, is the same.
->>>>>>> 456c332e4... Update wording for examples
 
-If `jsonb_set()` is invoked with _"create_if_missing"_ set to `FALSE`, then its result is the same as the input. But if `jsonb_insert()` is invoked with _"insert_after"_ set to `TRUE`, then its output is the same as when it's invoked with _"insert_after"_ set to `FALSE`. This reflects the fact that the order of key-value pairs in an _object_ is insignificant.
+If `jsonb_set()` is invoked with "_create_if_missing_" set to `FALSE`, then its result is the same as the input. But if `jsonb_insert()` is invoked with "_insert_after_" set to `TRUE`, then its output is the same as when it's invoked with "_insert_after_" set to `FALSE`. This reflects the fact that the order of key-value pairs in an _object_ is insignificant.
 
-What if _"path"_ specifies a key that does already exist? Now `jsonb_insert()` causes this error when it's invoked both with _"insert_after"_ set to `TRUE` and with _"insert_after"_ set to `FALSE`:
-```
+What if "_path_" specifies a key that does already exist? Now `jsonb_insert()` causes this error when it's invoked both with "_insert_after_" set to `TRUE` and with "_insert_after_" set to `FALSE`:
+
+```output
 cannot replace existing key
 Try using the function jsonb_set to replace key value.
 ```
 
-And this `DO` block quietly succeeds, both when it's invoked with _"create_if_missing"_ set to `FALSE` and when it's invoked with _"create_if_missing"_ set to `TRUE`.
+And this `DO` block quietly succeeds, both when it's invoked with "_create_if_missing_" set to `FALSE` and when it's invoked with "_create_if_missing_" set to `TRUE`.
 
-```postgresql
+```plpgsql
 do $body$
 declare
   j constant jsonb := '{"a": 1, "b": 2, "c": 3}';
@@ -115,11 +114,12 @@ begin
 end;
 $body$;
 ```
-## Semantics when "jsonb&#95;in" is an JSON array
+
+## Semantics when "jsonb_in" is an JSON array
 
 A JSON _array_ is a list of index-addressable values—in other words, the order is defined and significant. Again, the functionality is sufficiently illustrated by a `json_in` value that has just primitive values. Now the result of `jsonb_set()` differs from that of `jsonb_insert()`. 
 
-```postgresql
+```plpgsql
 do $body$
 declare
   j constant jsonb := '["a", "b", "c", "d"]';
@@ -152,11 +152,11 @@ $body$;
 
 Notice that the path denotes the fourth value and that this already exists.
 
-Here, `jsonb_set()` located the fourth value and set it to _"x"_ while `jsonb_insert()` located the fourth value and, as requested by _"insert_after"_ set to `TRUE`, inserted _"x"_ after it. Of course, with _"insert_after"_ set to `FALSE`, _"x"_ is inserted before _"d"_. And (of course, again) the choice for _"create_if_missing"_ has no effect on the result of `jsonb_set()`.
+Here, `jsonb_set()` located the fourth value and set it to "_x_" while `jsonb_insert()` located the fourth value and, as requested by "_insert_after_" set to `TRUE`, inserted "_x_" after it. Of course, with "_insert_after_" set to `FALSE`, "_x_" is inserted before "_d_". And (of course, again) the choice for "_create_if_missing_" has no effect on the result of `jsonb_set()`.
 
 What if the path denotes a value beyond the end of the array?
 
-```postgresql
+```plpgsql
 do $body$
 declare
   j constant jsonb := '["a", "b", "c", "d"]';
@@ -188,13 +188,13 @@ $body$;
 
 Here, each function had the same effect.
 
-The path, for `jsonb_set()`, is taken to mean the as yet nonexistent fifth value. So, with _"create_if_missing"_ set to `FALSE`, `jsonb_set()` has no effect.
+The path, for `jsonb_set()`, is taken to mean the as yet nonexistent fifth value. So, with "_create_if_missing_" set to `FALSE`, `jsonb_set()` has no effect.
 
-The path, for `jsonb_insert()`, is also taken to mean the as yet nonexistent fifth value. But now, the choice of `TRUE` or `FALSE` for _"insert_after"_ makes no difference because before, or after, a nonexistent element is taken to mean insert it.
+The path, for `jsonb_insert()`, is also taken to mean the as yet nonexistent fifth value. But now, the choice of `TRUE` or `FALSE` for "_insert_after_" makes no difference because before, or after, a nonexistent element is taken to mean insert it.
 
 Notice that if the path is specified as `-42` (i.e. an impossible _array_ index) the result is to establish the specified new value at the _start_ of the _array_. `jsonb_set` and `jsonb_insert` produce the same result, this:
 
-```postgresql
+```plpgsql
 do $body$
 declare
   j constant jsonb := '["a", "b", "c", "d"]';
@@ -224,6 +224,6 @@ end;
 $body$;
 ```
 
-The path, for `jsonb_set()`, is taken to mean a new first value (implying that the existing values all move along one place). So, again, with _"create_if_missing"_ set to `FALSE`, `jsonb_set()` has no effect. 
+The path, for `jsonb_set()`, is taken to mean a new first value (implying that the existing values all move along one place). So, again, with "_create_if_missing_" set to `FALSE`, `jsonb_set()` has no effect. 
 
-The path, for `jsonb_insert()`, is also taken to mean a new first value. So again, the choice of `TRUE` or `FALSE` for _"insert_after"_ makes no difference because before or after, a nonexistent element is taken to mean insert it.
+The path, for `jsonb_insert()`, is also taken to mean a new first value. So again, the choice of `TRUE` or `FALSE` for "_insert_after_" makes no difference because before or after, a nonexistent element is taken to mean insert it.
