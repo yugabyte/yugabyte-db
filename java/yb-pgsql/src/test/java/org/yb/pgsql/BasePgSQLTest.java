@@ -658,6 +658,22 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return count;
   }
 
+  protected AggregatedValue getTServerMetric(String metricName) throws Exception {
+    AggregatedValue value = new AggregatedValue();
+    for (JsonArray rawMetric : getRawTSMetric()) {
+      for (JsonElement elem : rawMetric.getAsJsonArray()) {
+        JsonObject obj = elem.getAsJsonObject();
+        if (obj.get("type").getAsString().equals("server")) {
+          assertEquals(obj.get("id").getAsString(), "yb.tabletserver");
+          Metrics.Histogram histogram = new Metrics(obj).getHistogram(metricName);
+          value.count += histogram.totalCount;
+          value.value += histogram.totalSum;
+        }
+      }
+    }
+    return value;
+  }
+
   protected static List<String> getTabletsForTable(
     String database, String tableName) throws Exception {
     try {
