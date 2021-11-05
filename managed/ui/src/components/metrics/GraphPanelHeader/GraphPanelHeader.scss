@@ -22,8 +22,11 @@
     font-size: 18px;
   }
 
-  .graph-setting-dropdown {
+  .graph-filter-dropdown {
     margin-right: 10px;
+  }
+
+  .graph-setting-dropdown {
     button {
       padding: 9px 12px 9px;
     }
@@ -31,6 +34,41 @@
 
   .dropdown-header {
     padding: 5px 20px;
+  }
+
+  .graph-interval-container {
+    display: inline-block;
+    padding-right: 15px;
+    margin-right: 15px;
+    border-right: 1px solid $YB_GRAY;
+
+    .dropdown {
+      margin-left: 10px;
+    }
+
+    .dropdown-menu {
+      min-width: 100%;
+    }
+
+    .dropdown-toggle-button {
+      padding: 6px 11px;
+      font-size: 14px;
+    }
+
+    .chip {
+      font-size: 12px;
+      line-height: 14px;
+      padding: 7px;
+      margin: 0 3px;
+      display: inline-block;
+      color: $YB_TEXT_BLACK;
+      background-color: rgba(0, 0, 0, 0.08);
+      border-radius: 8px;
+    }
+  }
+
+  .timezone{
+    display: inline;
   }
 
   .universe-picker,
