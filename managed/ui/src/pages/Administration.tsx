@@ -1,5 +1,6 @@
 import React, { FC, useEffect } from 'react';
 import { Tab } from 'react-bootstrap';
+import { browserHistory } from 'react-router';
 import { Selector, useSelector } from 'react-redux';
 import { RouteComponentProps } from 'react-router-dom';
 import { YBTabsPanel, YBTabsWithLinksPanel } from '../components/panels';
@@ -61,7 +62,12 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
 
   useEffect(() => {
     showOrRedirect(currentCustomer.data.features, 'menu.administration');
-  }, [currentCustomer, params.tab, params.section]);
+    // redirect to a proper url on navigation from sidebar "Admin" button (the "/admin" route)
+    if (!params.tab && !params.section) {
+      const url = `/admin/${defaultTab}`;
+      browserHistory.replace(url);
+    }
+  }, [currentCustomer, defaultTab, params.tab, params.section]);
 
   const getAlertTab = () => {
     return test?.adminAlertsConfig || released?.adminAlertsConfig ? (
