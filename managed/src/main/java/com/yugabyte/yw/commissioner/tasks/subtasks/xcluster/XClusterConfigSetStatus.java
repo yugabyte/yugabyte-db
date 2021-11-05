@@ -29,7 +29,7 @@ public class XClusterConfigSetStatus extends XClusterConfigTaskBase {
   public void run() {
     log.info("Running {}", getName());
 
-    XClusterConfig xClusterConfig = taskParams().xClusterConfig;
+    XClusterConfig xClusterConfig = refreshXClusterConfig();
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.targetUniverseUUID);
 
     String targetUniverseMasterAddresses = targetUniverse.getMasterAddresses();
@@ -48,7 +48,8 @@ public class XClusterConfigSetStatus extends XClusterConfigTaskBase {
 
       SetUniverseReplicationEnabledResponse resp =
           client.setUniverseReplicationEnabled(
-              xClusterConfig.sourceUniverseUUID, desiredStatus == XClusterConfigStatusType.Running);
+              xClusterConfig.getReplicationGroupName(),
+              desiredStatus == XClusterConfigStatusType.Running);
       if (resp.hasError()) {
         throw new RuntimeException(
             String.format(

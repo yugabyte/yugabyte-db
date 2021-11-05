@@ -17,15 +17,13 @@ import org.jboss.netty.buffer.ChannelBuffer;
 import org.yb.master.Master;
 import org.yb.util.Pair;
 
-import java.util.UUID;
-
 public class DeleteUniverseReplicationRequest extends YRpc<DeleteUniverseReplicationResponse> {
 
-  private final UUID sourceUniverseUUID;
+  private final String replicationGroupName;
 
-  DeleteUniverseReplicationRequest(YBTable table, UUID sourceUniverseUUID) {
+  DeleteUniverseReplicationRequest(YBTable table, String replicationGroupName) {
     super(table);
-    this.sourceUniverseUUID = sourceUniverseUUID;
+    this.replicationGroupName = replicationGroupName;
   }
 
   @Override
@@ -33,8 +31,7 @@ public class DeleteUniverseReplicationRequest extends YRpc<DeleteUniverseReplica
     assert header.isInitialized();
 
     final Master.DeleteUniverseReplicationRequestPB.Builder builder =
-      Master.DeleteUniverseReplicationRequestPB.newBuilder()
-        .setProducerId(sourceUniverseUUID.toString());
+      Master.DeleteUniverseReplicationRequestPB.newBuilder().setProducerId(replicationGroupName);
 
     return toChannelBuffer(header, builder.build());
   }

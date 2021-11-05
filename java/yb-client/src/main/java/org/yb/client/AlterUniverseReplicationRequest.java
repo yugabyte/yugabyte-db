@@ -14,7 +14,6 @@ package org.yb.client;
 
 import com.google.protobuf.Message;
 import java.util.Set;
-import java.util.UUID;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.yb.Common;
 import org.yb.Common.HostPortPB;
@@ -23,22 +22,25 @@ import org.yb.util.Pair;
 
 public class AlterUniverseReplicationRequest extends YRpc<AlterUniverseReplicationResponse> {
 
-  private final UUID sourceUniverseUUID;
+  private final String replicationGroupName;
   private final Set<String> sourceTableIDsToAdd;
   private final Set<String> sourceTableIDsToRemove;
   private final Set<HostPortPB> sourceMasterAddresses;
+  private final String newReplicationGroupName;
 
   AlterUniverseReplicationRequest(
     YBTable table,
-    UUID sourceUniverseUUID,
+    String replicationGroupName,
     Set<String> sourceTableIDsToAdd,
     Set<String> sourceTableIDsToRemove,
-    Set<Common.HostPortPB> sourceMasterAddresses) {
+    Set<Common.HostPortPB> sourceMasterAddresses,
+    String newReplicationGroupName) {
     super(table);
-    this.sourceUniverseUUID = sourceUniverseUUID;
+    this.replicationGroupName = replicationGroupName;
     this.sourceTableIDsToAdd = sourceTableIDsToAdd;
     this.sourceTableIDsToRemove = sourceTableIDsToRemove;
     this.sourceMasterAddresses = sourceMasterAddresses;
+    this.newReplicationGroupName = newReplicationGroupName;
   }
 
   @Override
@@ -47,10 +49,14 @@ public class AlterUniverseReplicationRequest extends YRpc<AlterUniverseReplicati
 
     final Master.AlterUniverseReplicationRequestPB.Builder builder =
       Master.AlterUniverseReplicationRequestPB.newBuilder()
-        .setProducerId(sourceUniverseUUID.toString())
+        .setProducerId(replicationGroupName)
         .addAllProducerTableIdsToAdd(sourceTableIDsToAdd)
         .addAllProducerTableIdsToRemove(sourceTableIDsToRemove)
         .addAllProducerMasterAddresses(sourceMasterAddresses);
+
+    if (newReplicationGroupName != null) {
+      builder.setNewProducerUniverseId(newReplicationGroupName);
+    }
 
     return toChannelBuffer(header, builder.build());
   }

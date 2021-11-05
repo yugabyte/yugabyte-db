@@ -26,7 +26,4 @@ public class XClusterConfigCreateFormData {
   @Required
   @ApiModelProperty(value = "Source Universe table IDs", required = true)
   public Set<String> tables;
-
-  @ApiModelProperty(value = "Bootstrap IDs")
-  public Set<String> bootstrapIds;
 }

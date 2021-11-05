@@ -31,7 +31,7 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
   public void run() {
     log.info("Running {}", getName());
 
-    XClusterConfig xClusterConfig = taskParams().xClusterConfig;
+    XClusterConfig xClusterConfig = refreshXClusterConfig();
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.targetUniverseUUID);
 
     String targetUniverseMasterAddresses = targetUniverse.getMasterAddresses();
@@ -50,7 +50,7 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
         log.info("Adding tables to XClusterConfig({}): {}", xClusterConfig.uuid, tablesToAdd);
         AlterUniverseReplicationResponse resp =
             client.alterUniverseReplicationAddTables(
-                xClusterConfig.sourceUniverseUUID, tablesToAdd);
+                xClusterConfig.getReplicationGroupName(), tablesToAdd);
         if (resp.hasError()) {
           throw new RuntimeException(resp.errorMessage());
         }
@@ -63,7 +63,7 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
             "Removing tables from XClusterConfig({}): {}", xClusterConfig.uuid, tablesToRemove);
         AlterUniverseReplicationResponse resp =
             client.alterUniverseReplicationRemoveTables(
-                xClusterConfig.sourceUniverseUUID, tablesToRemove);
+                xClusterConfig.getReplicationGroupName(), tablesToRemove);
         if (resp.hasError()) {
           throw new RuntimeException(resp.errorMessage());
         }

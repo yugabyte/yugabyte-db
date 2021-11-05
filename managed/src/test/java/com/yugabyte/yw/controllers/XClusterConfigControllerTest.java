@@ -30,6 +30,7 @@ import com.yugabyte.yw.models.CustomerTask.TaskType;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
+import com.yugabyte.yw.models.XClusterTableConfig;
 import java.util.HashSet;
 import java.util.List;
 import java.util.UUID;
@@ -97,7 +98,11 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     assertEquals(xClusterConfig.name, configName);
     assertEquals(xClusterConfig.status, XClusterConfigStatusType.Init);
     assertEquals(
-        xClusterConfig.tables.stream().map((table) -> table.tableID).collect(Collectors.toSet()),
+        xClusterConfig
+            .tables
+            .stream()
+            .map(XClusterTableConfig::getTableID)
+            .collect(Collectors.toSet()),
         exampleTables);
 
     JsonNode resultJson = Json.parse(contentAsString(result));
