@@ -114,12 +114,12 @@ Yugabyte Cloud uses a shared responsibility model for cloud security. For more i
 
 ### What cluster configurations can I create?
 
-From the cloud console you can create single region clusters that can be deployed across multiple and single availability zones. 
+From the cloud console you can create single region clusters that can be deployed across multiple and single availability zones.
 
 The Fault Tolerance of a cluster determines how resilient the cluster is to node and cloud zone failues and, by extension, the cluster configuration. You can configure clusters with the following fault tolerances in Yugabyte Cloud:
 
 - **None** - single node, with no replication or resiliency. Recommended for development and testing only.
-- **Node Level** - a minimum of 3 nodes deployed in a single availability zone with a [replication factor](../../architecture/docdb-replication/replication/) (RF) of 3. YugabyteDB can continue to do reads and writes even in case of a node failure, but this configuration is not resilient to cloud availability zone outages. For horizontal scaling, you can scale nodes in increments of 1. 
+- **Node Level** - a minimum of 3 nodes deployed in a single availability zone with a [replication factor](../../architecture/docdb-replication/replication/) (RF) of 3. YugabyteDB can continue to do reads and writes even in case of a node failure, but this configuration is not resilient to cloud availability zone outages. For horizontal scaling, you can scale nodes in increments of 1.
 - **Availability Zone Level** - a minimum of 3 nodes spread across multiple availability zones with a RF of 3. YugabyteDB can continue to do reads and writes even in case of a cloud availability zone failure. This configuration provides the maximum protection for a data center failure. Recommended for production deployments. For horizontal scaling, nodes are scaled in increments of 3.
 
 Free clusters are limited to a single node in a single region.
@@ -132,7 +132,7 @@ Upgrades are automatically handled by Yugabyte. There are two types of upgrades:
 
 - Cloud console - During a maintenance window, Yugabyte Cloud console may be in read-only mode and not allow any edit changes. The upgrade has no impact on running clusters. Customers will be notified in advance of the maintenance schedule.
 
-- Cluster (yugabyteDB) version upgrade - To keep up with the latest bug fixes, improvements, and security fixes, Yugabyte will upgrade your cluster to the latest version. We will notify customers of any upcoming upgrade schedule via email and Slack. All database upgrades are done on a rolling basis to avoid any downtime. 
+- Cluster (yugabyteDB) version upgrade - To keep up with the latest bug fixes, improvements, and security fixes, Yugabyte will upgrade your cluster to the latest version. We will notify customers of any upcoming upgrade schedule via email and Slack. All database upgrades are done on a rolling basis to avoid any downtime.
 
 ### How do I connect to my cluster?
 
@@ -165,7 +165,7 @@ Applications
 
 : Before you can connect, your application has to be able to reach your Yugabyte Cloud. To add inbound network access from your application environment to Yugabyte Cloud, add the public IP addresses to the [cluster IP access list](../cloud-basics/add-connections), or use [VPC peering](../cloud-network/vpc-peers) to add private IP addresses.
 
-For more details, refer to [Connect to clusters](../cloud-basics/connect-to-clusters). 
+For more details, refer to [Connect to clusters](../cloud-basics/connect-to-clusters).
 
 ## Backups
 
