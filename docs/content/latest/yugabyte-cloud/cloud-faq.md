@@ -49,22 +49,22 @@ Yugabyte Cloud runs on the YugabyteDB 2.6 [stable release](../../releases/whats-
 
 To test locally, [download](https://download.yugabyte.com) and install YugabyteDB on a local machine. Refer to [Quick Start](../../quick-start). For accurate comparison with cloud, be sure to download the version that is running on Yugabyte Cloud.
 
-### What are the differences between Free and Paid clusters?
+### What are the differences between free and standard clusters?
 
-Use the **Free** cluster to get started with YugabyteDB. The free cluster is limited to a single node, and although not suitable for production workloads, the cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB. You can only have one Free cluster.
+Use the free cluster to get started with YugabyteDB. The free cluster is limited to a single node and 10GB of storage, and although not suitable for production workloads, the cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB. You can only have one free cluster.
 
-**Paid** clusters can have unlimited nodes and storage and are suitable for production workloads. Paid clusters support horizontal and vertical scaling - nodes and storage can be added or removed to suit your production loads. Paid clusters also support VPC peering, and scheduled and manual backups.
+Standard clusters can have unlimited nodes and storage and are suitable for production workloads. They also support horizontal and vertical scaling - nodes and storage can be added or removed to suit your production loads. Standard clusters also support VPC peering, and scheduled and manual backups.
 
-A Yugabyte Cloud account is limited to a single Free cluster; you can add as many Paid clusters as you need.
+A Yugabyte Cloud account is limited to a single free cluster; you can add as many standard clusters as you need.
 
-| Feature | Free | Paid |
+| Feature | Free | Standard |
 | :----------- | :---------- | :---------- |
 | Cluster | Single Node | Any |
-| vCPU/Storage | Up to 2 vCPU / 10 GB RAM | Any |
+| vCPU/Storage | Up to 2 vCPU / 2 GB RAM / 10 GB storage | Any |
 | Regions | All | All |
 | Upgrades | Automatic | Automatic |
 | VPC Peering | No | Yes |
-| Fault Tolerance | None (Single node, RF -1) | Multi node RF-3 clusters with Availability zone and Node level |
+| Fault Tolerance | None (Single node, RF-1) | Multi node RF-3 clusters with Availability zone and Node level |
 | Scaling | None | Horizontal and Vertical |
 | Backups | None | Scheduled and on-demand |
 | Support | Slack Community | Enterprise Support |
@@ -74,9 +74,9 @@ A Yugabyte Cloud account is limited to a single Free cluster; you can add as man
 If you want to continue testing YugabyteDB with more resource-intensive scenarios, you can:
 
 - Download and run YugabyteDB on a local machine. For instructions, refer to [Quick Start](../../quick-start).
-- Upgrade to a [paid cluster](../cloud-basics/create-clusters) to access bigger clusters with more resources.
+- Upgrade to a [standard cluster](../cloud-basics/create-clusters) to access bigger clusters with more resources.
 
-### Can I migrate my Free cluster to a Paid cluster?
+### Can I migrate my free cluster to a standard cluster?
 
 Currently self-service migration is not supported. Contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) for help with migration.
 
@@ -84,9 +84,9 @@ Currently self-service migration is not supported. Contact [Yugabyte Support](ht
 
 ### Is support included in the base price?
 
-Enterprise Support is included in the base price for paid clusters. Refer to the [Yugabyte Cloud Support Services Terms and Conditions](https://www.yugabyte.com/yugabyte-cloud-support-services-terms-and-conditions/).
+Enterprise Support is included in the base price for standard clusters. Refer to the [Yugabyte Cloud Support Services Terms and Conditions](https://www.yugabyte.com/yugabyte-cloud-support-services-terms-and-conditions/).
 
-Free and paid cluster customers can also use the [YugabyteDB Slack community](https://www.yugabyte.com/slack).
+Free and standard cluster customers can also use the [YugabyteDB Slack community](https://www.yugabyte.com/slack).
 
 ### Where can I find the support policy and Service Level Agreement (SLA) for Yugabyte Cloud?
 
@@ -171,15 +171,15 @@ For more details, refer to [Connect to clusters](../cloud-basics/connect-to-clus
 
 ### How are clusters backed up?
 
-Currently, Yugabyte Cloud does not support backups of free clusters.
-
-By default, every paid cluster is backed up automatically every 24 hours, and these automatic backups are retained for 8 days. The first automatic backup is triggered 24 hours after creating a table, and is scheduled every 24 hours thereafter. You can change the default backup intervals by adjusting the backup policy settings.
+By default, every cluster is backed up automatically every 24 hours, and these automatic backups are retained for 8 days. The first automatic backup is triggered 24 hours after creating a table, and is scheduled every 24 hours thereafter. You can change the default backup intervals by adjusting the backup policy settings.
 
 Yugabyte Cloud runs full backups, not incremental.
 
 Backups are retained in the same region as the cluster.
 
 Backups for AWS clusters are encrypted using AWS S3’s server-side encryption and backups for GCP clusters are encrypted using Google-managed server-side encryption keys.
+
+Currently, Yugabyte Cloud does not support backups of free clusters.
 
 ### Can I download backups?
 
