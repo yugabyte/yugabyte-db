@@ -537,10 +537,17 @@ public class TestPgSelect extends BasePgSQLTest {
 
   public void doSelect(boolean use_ordered_by, boolean get_count, Statement statement,
                        boolean enable_follower_read, List<Row> rows_list,
-                       long expected_num_tablet_requests) throws Exception {
+                       long expected_num_tablet_requests, long max_status_calls) throws Exception {
     String follower_read_setting = (enable_follower_read ? "on" : "off");
     int row_count = rows_list.size();
+    LOG.info("Sleeping to stabilize GetTransactionstatus metrics");
+    final int kSleepToStabilizeInProcessCallsMs = 500;
+    Thread.sleep(kSleepToStabilizeInProcessCallsMs);
     LOG.info("Reading rows with follower reads " + follower_read_setting);
+    final String kGetStatusKey =
+        "handler_latency_yb_tserver_TabletServerService_GetTransactionStatus";
+    long old_num_status_calls = getTServerMetric(kGetStatusKey).count;
+    LOG.info("Number of total Status calls before : " + old_num_status_calls);
     long old_count_reqs = getCountForTable("consistent_prefix_read_requests", "consistentprefix");
     long old_count_rows = getCountForTable("pgsql_consistent_prefix_read_rows", "consistentprefix");
     if (get_count) {
@@ -567,6 +574,13 @@ public class TestPgSelect extends BasePgSQLTest {
                  !enable_follower_read || row_count == 0
                      ? 0
                      : (get_count ? expected_num_tablet_requests : row_count));
+    LOG.info("Sleeping to stabilize GetTransactionstatus metrics");
+    Thread.sleep(kSleepToStabilizeInProcessCallsMs);
+    long num_status_calls = getTServerMetric(kGetStatusKey).count;
+    LOG.info("Number of total Status calls : " + num_status_calls
+                + " . new calls are " + (num_status_calls - old_num_status_calls)
+                + " Expected to be less than " + max_status_calls);
+    assertTrue(num_status_calls - old_num_status_calls <= max_status_calls);
   }
 
   public void testConsistentPrefix(int kNumRows, boolean use_ordered_by, boolean get_count)
@@ -588,48 +602,94 @@ public class TestPgSelect extends BasePgSQLTest {
         }
       }
       LOG.info("Done writing");
+      long doneWriteMs = System.currentTimeMillis();
+
       Set<Row> expected_rows_set = new HashSet<Row>(all_rows);
       Set<Row> expected_rows_unchanged_set = new HashSet<Row>(unchanged_rows);
-
-      final long kFollowerReadStalenessMs = BuildTypeUtil.adjustTimeout(3000);
-      statement.execute("SET yb_read_from_followers = true;");
-      statement.execute("SET yb_follower_read_staleness_ms = " + kFollowerReadStalenessMs);
-      LOG.info("Using staleness of " + kFollowerReadStalenessMs + " ms.");
-
       final int kNumTablets = 3;
       final int kNumRowsPerTablet = (int)Math.ceil(kNumRows / (1.0 * kNumTablets));
       final int kNumTabletRequests = kNumTablets * (int)Math.ceil(kNumRowsPerTablet / 1024.0);
+      final int kOpDurationMs = 2500;
 
-      final int kReadDurationMs = 1000;
-      if (System.currentTimeMillis() + kReadDurationMs - kFollowerReadStalenessMs < startWriteMs) {
-        doSelect(use_ordered_by, get_count, statement, true, Collections.emptyList(),
-                 kNumTabletRequests);
-      } else {
-        LOG.info("Skipping the initial doSelect due to slow timing.");
-      }
+      Thread.sleep(kOpDurationMs);
 
-      // Sleep for the updates to be visible during follower reads.
-      Thread.sleep(kFollowerReadStalenessMs);
+      statement.execute("SET yb_read_from_followers = true;");
 
-      doSelect(use_ordered_by, get_count, statement, true, all_rows, kNumTabletRequests);
+      // Set staleness so that the read happens before the initial writes have started.
+      long staleness_ms = System.currentTimeMillis() + kOpDurationMs - startWriteMs;
+      statement.execute("SET yb_follower_read_staleness_ms = " + staleness_ms);
+      LOG.info("Using staleness of " + staleness_ms + " ms.");
+      long max_status_calls = 0;  // No txns in progress.
+      doSelect(use_ordered_by, get_count, statement, true, Collections.emptyList(),
+               kNumTablets, max_status_calls);
+
+
+      // Set staleness so that the read happens after the initial writes are done.
+      staleness_ms = System.currentTimeMillis() - doneWriteMs;
+      statement.execute("SET yb_follower_read_staleness_ms = " + staleness_ms);
+      LOG.info("Using staleness of " + staleness_ms + " ms.");
+      max_status_calls = 0;  // No txns in progress.
+      doSelect(use_ordered_by, get_count, statement, true, all_rows, kNumTabletRequests, 0);
 
       Connection write_connection = getConnectionBuilder().connect();
-      Statement write_txn = write_connection.createStatement();
+      ArrayList<Statement> write_txns = new ArrayList<Statement>();
       LOG.info("Start delete");
-      write_txn.execute("START TRANSACTION");
-      write_txn.execute("DELETE FROM consistentprefix where k < " + kNumRowsDeleted);
-      write_txn.execute("COMMIT");
+      long startDeleteMs = System.currentTimeMillis();
+      for (int i = 0; i < kNumRowsDeleted; i++) {
+        write_txns.add(write_connection.createStatement());
+        Statement write_txn = write_txns.get(i);
+        write_txn.execute("START TRANSACTION");
+        write_txn.execute("DELETE FROM consistentprefix where k = " + i);
+      }
+      long writtenDeleteMs = System.currentTimeMillis();
+      Thread.sleep(kOpDurationMs);
+
+      max_status_calls = kNumTabletRequests * kNumRowsDeleted;
+      doSelect(use_ordered_by, get_count, statement, false, all_rows, 0, max_status_calls);
+
+      // Set staleness so the read happens after the initial writes are done. Before deletes start.
+      staleness_ms = System.currentTimeMillis() - (doneWriteMs + startDeleteMs) / 2;
+      statement.execute("SET yb_follower_read_staleness_ms = " + staleness_ms);
+      LOG.info("Using staleness of " + staleness_ms + " ms.");
+      // Shouldn't call GetTransactionStatus for each pending Transaction(s) during follower reads.
+      // But we may do up to 1 call per tablet to calculate MinRunningHybridTime.
+      max_status_calls = kNumTabletRequests;
+      doSelect(use_ordered_by, get_count, statement, true, all_rows, kNumTabletRequests,
+               max_status_calls);
+
+      long startCommitMs = System.currentTimeMillis();
+      for (int i = 0; i < kNumRowsDeleted; i++) {
+        Statement write_txn = write_txns.get(i);
+        write_txn.execute("COMMIT");
+      }
+      long committedDeleteMs = System.currentTimeMillis();
       LOG.info("Done delete");
+      Thread.sleep(kOpDurationMs);
 
-      doSelect(use_ordered_by, get_count, statement, false, unchanged_rows, 0);
+      // If UpdateTransaction has been processed, then it will be marked committed and there wil be
+      // no GetTransactionStatus calls. If not, there may be a call made for each row. +1 for
+      // computing MinHybridTime.
+      max_status_calls = kNumTabletRequests + kNumRowsDeleted;
+      doSelect(use_ordered_by, get_count, statement, false, unchanged_rows, 0, max_status_calls);
 
-      doSelect(use_ordered_by, get_count, statement, true, all_rows, kNumTabletRequests);
+      // Set staleness so that the read happens before deletes are committed.
+      staleness_ms = System.currentTimeMillis() - (writtenDeleteMs + startCommitMs) / 2;
+      statement.execute("SET yb_follower_read_staleness_ms = " + staleness_ms);
+      LOG.info("Using staleness of " + staleness_ms + " ms.");
+      // Transactions should have already been known to have committed.
+      // Max 1 call allowed per tablet for computing MinRunningHybridTime
+      max_status_calls = kNumTabletRequests;
+      doSelect(use_ordered_by, get_count, statement, true, all_rows, kNumTabletRequests,
+               max_status_calls);
 
-      // Sleep for the updates to be visible during follower reads.
-      LOG.info("Sleeping to make the delete show up for follower reads.");
-      Thread.sleep(kFollowerReadStalenessMs);
-
-      doSelect(use_ordered_by, get_count, statement, true, unchanged_rows, kNumTabletRequests);
+      // Set staleness so that the read happens after deletes are committed.
+      staleness_ms = System.currentTimeMillis() - (committedDeleteMs + kOpDurationMs / 2);
+      statement.execute("SET yb_follower_read_staleness_ms = " + staleness_ms);
+      LOG.info("Using staleness of " + staleness_ms + " ms.");
+      // Max 1 call allowed per tablet for computing MinRunningHybridTime
+      max_status_calls = kNumTabletRequests;
+      doSelect(use_ordered_by, get_count, statement, true, unchanged_rows, kNumTabletRequests,
+               max_status_calls);
     }
   }
 
