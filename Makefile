@@ -345,6 +345,7 @@ REGRESS_OPTS = --inputdir=test --max-connections=$(PARALLEL_CONN) --schedule $(S
 SETUP_SCH = test/schedule/main.sch # schedule to use for test setup; this can be forcibly changed by some targets!
 IGNORE_TESTS = $(notdir $(EXCLUDE_TEST_FILES:.sql=))
 PARALLEL_TESTS = $(filter-out $(IGNORE_TESTS),$(filter-out $(SERIAL_TESTS),$(ALL_TESTS)))
+SERIAL_SCHEDULE_TESTS = $(filter-out $(IGNORE_TESTS),$(ALL_TESTS))
 PG_PROVE_PARALLEL_TESTS = $(filter-out $(PG_PROVE_EXCLUDE_TESTS),$(PARALLEL_TESTS))
 PG_PROVE_SERIAL_TESTS = $(filter-out $(PG_PROVE_EXCLUDE_TESTS),$(SERIAL_TESTS))
 PG_PROVE_PARALLEL_FILES = $(call get_test_file,$(PG_PROVE_PARALLEL_TESTS))
@@ -384,7 +385,10 @@ $(TB_DIR)/exclude_tests: $(TB_DIR)/ $(TB_DIR)/all_tests
 	@[ "`cat $@ 2>/dev/null`" = "$(EXCLUDE_TEST)" ] || (echo "Rebuilding $@"; echo "$(EXCLUDE_TEST)" > $@)
 
 $(TB_DIR)/serial.sch: $(GENERATED_SCHEDULE_DEPS)
-	@(for f in $(IGNORE_TESTS); do echo "ignore: $$f"; done; for f in $(ALL_TESTS); do echo "test: $$f"; done) > $@
+	@( \
+		for f in $(IGNORE_TESTS); do echo "ignore: $$f"; done; \
+		for f in $(SERIAL_SCHEDULE_TESTS); do echo "test: $$f"; done \
+	) > $@
 
 $(TB_DIR)/parallel.sch: $(GENERATED_SCHEDULE_DEPS)
 	@( \
@@ -395,6 +399,7 @@ $(TB_DIR)/parallel.sch: $(GENERATED_SCHEDULE_DEPS)
 
 $(TB_DIR)/run.sch: $(TB_DIR)/which_schedule $(GENERATED_SCHEDULES)
 	cp `cat $<` $@
+
 
 # Don't generate noise if we're not running tests...
 .PHONY: extension_check
