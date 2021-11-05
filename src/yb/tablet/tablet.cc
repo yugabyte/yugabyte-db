@@ -1744,6 +1744,7 @@ Status Tablet::HandlePgsqlReadRequest(
     const SubTransactionMetadataPB& subtransaction_metadata,
     PgsqlReadRequestResult* result,
     size_t* num_rows_read) {
+  TRACE(LogPrefix());
   auto scoped_read_operation = CreateNonAbortableScopedRWOperation(deadline);
   RETURN_NOT_OK(scoped_read_operation);
   // TODO(neil) Work on metrics for PGSQL.
