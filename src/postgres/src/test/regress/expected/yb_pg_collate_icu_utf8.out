@@ -1090,7 +1090,7 @@ INSERT INTO tab1 values ('aaaa');
 --------+-----------------------+-----------+----------+---------
  id     | character varying(10) |           |          |
 
-ALTER TABLE tab1 ALTER COLUMN id SET DATA TYPE varchar(10) collate "en_US.utf8"; -- fail
+ALTER TABLE tab1 ALTER COLUMN id SET DATA TYPE varchar(10) collate "en-US-x-icu"; -- fail
 ERROR:  This ALTER TABLE command is not yet supported.
 \d tab1
                    Table "collate_tests.tab1"
@@ -1098,79 +1098,79 @@ ERROR:  This ALTER TABLE command is not yet supported.
 --------+-----------------------+-----------+----------+---------
  id     | character varying(10) |           |          |
 
-CREATE TABLE tab2(id varchar(10) collate "en_US.utf8");
+CREATE TABLE tab2(id varchar(10) collate "en-US-x-icu");
 CREATE INDEX tab2_id_idx on tab2(id collate "C" desc);
 INSERT INTO tab2 VALUES ('aaaa');
 \d tab2
                     Table "collate_tests.tab2"
- Column |         Type          | Collation  | Nullable | Default
---------+-----------------------+------------+----------+---------
- id     | character varying(10) | en_US.utf8 |          |
+ Column |         Type          |  Collation  | Nullable | Default
+--------+-----------------------+-------------+----------+---------
+ id     | character varying(10) | en-US-x-icu |          |
 Indexes:
     "tab2_id_idx" lsm (id COLLATE "C" DESC)
 
-ALTER TABLE tab2 alter COLUMN id SET DATA TYPE varchar(20) collate "en_US.utf8"; -- ok;
+ALTER TABLE tab2 alter COLUMN id SET DATA TYPE varchar(20) collate "en-US-x-icu"; -- ok;
 \d tab2
                     Table "collate_tests.tab2"
- Column |         Type          | Collation  | Nullable | Default
---------+-----------------------+------------+----------+---------
- id     | character varying(20) | en_US.utf8 |          |
+ Column |         Type          |  Collation  | Nullable | Default
+--------+-----------------------+-------------+----------+---------
+ id     | character varying(20) | en-US-x-icu |          |
 Indexes:
     "tab2_id_idx" lsm (id COLLATE "C" DESC)
 
-CREATE DATABASE test_db LC_COLLATE = "en_US.utf8" TEMPLATE template0; -- fail;
+CREATE DATABASE test_db LC_COLLATE = "en-US-x-icu" TEMPLATE template0; -- fail;
 ERROR:  Value other than 'C' for lc_collate option is not yet supported at character 25
-CREATE TABLE tab3(id char(10) collate "en_US.utf8");
+CREATE TABLE tab3(id char(10) collate "en-US-x-icu");
 CREATE INDEX tab3_id_idx ON tab3(id bpchar_pattern_ops asc); -- fail;
-ERROR:  could not use operator class "bpchar_pattern_ops" with column collation "en_US.utf8"
+ERROR:  could not use operator class "bpchar_pattern_ops" with column collation "en-US-x-icu"
 \d tab3
                 Table "collate_tests.tab3"
- Column |     Type      | Collation  | Nullable | Default
---------+---------------+------------+----------+---------
- id     | character(10) | en_US.utf8 |          |
+ Column |     Type      |  Collation  | Nullable | Default
+--------+---------------+-------------+----------+---------
+ id     | character(10) | en-US-x-icu |          |
 
 CREATE INDEX tab3_id_idx ON tab3(id collate "C" asc); -- ok;
 \d tab3
                 Table "collate_tests.tab3"
- Column |     Type      | Collation  | Nullable | Default
---------+---------------+------------+----------+---------
- id     | character(10) | en_US.utf8 |          |
+ Column |     Type      |  Collation  | Nullable | Default
+--------+---------------+-------------+----------+---------
+ id     | character(10) | en-US-x-icu |          |
 Indexes:
     "tab3_id_idx" lsm (id COLLATE "C" ASC)
 
-CREATE TABLE tab4(id varchar(10) collate "en_US.utf8");
+CREATE TABLE tab4(id varchar(10) collate "en-US-x-icu");
 CREATE INDEX tab4_id_idx ON tab4(id varchar_pattern_ops asc); -- fail;
-ERROR:  could not use operator class "varchar_pattern_ops" with column collation "en_US.utf8"
+ERROR:  could not use operator class "varchar_pattern_ops" with column collation "en-US-x-icu"
 \d tab4
                     Table "collate_tests.tab4"
- Column |         Type          | Collation  | Nullable | Default
---------+-----------------------+------------+----------+---------
- id     | character varying(10) | en_US.utf8 |          |
+ Column |         Type          |  Collation  | Nullable | Default
+--------+-----------------------+-------------+----------+---------
+ id     | character varying(10) | en-US-x-icu |          |
 
 CREATE INDEX tab4_id_idx ON tab4(id collate "C" asc); -- ok;
 \d tab4
                     Table "collate_tests.tab4"
- Column |         Type          | Collation  | Nullable | Default
---------+-----------------------+------------+----------+---------
- id     | character varying(10) | en_US.utf8 |          |
+ Column |         Type          |  Collation  | Nullable | Default
+--------+-----------------------+-------------+----------+---------
+ id     | character varying(10) | en-US-x-icu |          |
 Indexes:
     "tab4_id_idx" lsm (id COLLATE "C" ASC)
 
-CREATE TABLE tab5(id text collate "en_US.utf8");
+CREATE TABLE tab5(id text collate "en-US-x-icu");
 CREATE INDEX tab5_id_idx ON tab5(id text_pattern_ops asc); -- fail;
-ERROR:  could not use operator class "text_pattern_ops" with column collation "en_US.utf8"
+ERROR:  could not use operator class "text_pattern_ops" with column collation "en-US-x-icu"
 \d tab5
-           Table "collate_tests.tab5"
- Column | Type | Collation  | Nullable | Default
---------+------+------------+----------+---------
- id     | text | en_US.utf8 |          |
+            Table "collate_tests.tab5"
+ Column | Type |  Collation  | Nullable | Default
+--------+------+-------------+----------+---------
+ id     | text | en-US-x-icu |          |
 
 CREATE INDEX tab5_id_idx ON tab5(id collate "C" asc); -- ok;
 \d tab5
-           Table "collate_tests.tab5"
- Column | Type | Collation  | Nullable | Default
---------+------+------------+----------+---------
- id     | text | en_US.utf8 |          |
+            Table "collate_tests.tab5"
+ Column | Type |  Collation  | Nullable | Default
+--------+------+-------------+----------+---------
+ id     | text | en-US-x-icu |          |
 Indexes:
     "tab5_id_idx" lsm (id COLLATE "C" ASC)
 
