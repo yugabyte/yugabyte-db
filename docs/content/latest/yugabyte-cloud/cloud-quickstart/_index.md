@@ -22,8 +22,6 @@ Get started with YugabyteDB on Yugabyte Cloud in a few simple steps:
 1. [Connect to the cluster](qs-connect).
 1. [Create a database and load data](qs-data/).
 1. [Explore YugabyteDB](qs-explore/).
-    
-## Get started yourself
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
