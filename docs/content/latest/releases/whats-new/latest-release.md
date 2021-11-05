@@ -55,10 +55,8 @@ docker pull yugabytedb/yugabyte:2.9.1.0-b140
 
 * [[9124](https://github.com/yugabyte/yugabyte-db/issues/9124)] Create REST endpoints to manage async replication relationships
 * [[9733](https://github.com/yugabyte/yugabyte-db/issues/9733)] [Alerts] Implement alert listing
-* [PLAT-417] Add support for Ubuntu 18.04 distributions
 * [PLAT-1573] Adding 'create new cert' in enable TLS new feature
 * [PLAT-1620] Added secondary subnet for allowing two network interfaces
-* [PLAT-1669] Initial OEL 8 support
 * [PLAT-1695] Create new API endpoint to be able to query logs by Universe
 * [PLAT-1753] Enable taking backups using custom ports
 
