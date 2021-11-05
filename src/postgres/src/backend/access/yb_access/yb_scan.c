@@ -1557,9 +1557,16 @@ void ybc_heap_endscan(HeapScanDesc scan_desc)
 /* --------------------------------------------------------------------------------------------- */
 
 void ybcCostEstimate(RelOptInfo *baserel, Selectivity selectivity,
-					 bool is_backwards_scan, bool is_uncovered_idx_scan,
-					 Cost *startup_cost, Cost *total_cost, Oid index_tablespace_oid)
+					 bool is_backwards_scan, bool is_seq_scan,
+					 bool is_uncovered_idx_scan,
+					 Cost *startup_cost, Cost *total_cost,
+					 Oid index_tablespace_oid)
 {
+	if (is_seq_scan && !enable_seqscan)
+		*startup_cost = disable_cost;
+	else
+		*startup_cost = 0;
+
 	/*
 	 * Yugabyte-specific per-tuple cost considerations:
 	 *   - 10x the regular CPU cost to account for network/RPC + DocDB overhead.
@@ -1592,7 +1599,7 @@ void ybcCostEstimate(RelOptInfo *baserel, Selectivity selectivity,
 	Cost cost_per_tuple = cpu_tuple_cost * yb_per_tuple_cost_factor +
 	                      baserel->baserestrictcost.per_tuple;
 
-	*startup_cost = baserel->baserestrictcost.startup;
+	*startup_cost += baserel->baserestrictcost.startup;
 
 	*total_cost   = *startup_cost + cost_per_tuple * baserel->tuples * selectivity;
 }
@@ -1803,7 +1810,9 @@ void ybcIndexCostEstimate(IndexPath *path, Selectivity *selectivity,
 	}
 
 	ybcCostEstimate(baserel, *selectivity, is_backwards_scan,
-	                is_uncovered_idx_scan, startup_cost, total_cost, path->indexinfo->reltablespace);
+					false /* is_seq_scan */, is_uncovered_idx_scan,
+					startup_cost, total_cost,
+					path->indexinfo->reltablespace);
 
 	/*
 	 * Try to evaluate the number of rows this baserel might return.

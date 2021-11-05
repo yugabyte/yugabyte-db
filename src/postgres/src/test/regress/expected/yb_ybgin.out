@@ -3,9 +3,6 @@
 --
 -- Disable sequential scan so that index scan is always chosen.
 SET enable_seqscan = off;
--- Despite that, some scans still don't use index scan.  Use pg_hint_plan in
--- those cases.
-CREATE EXTENSION pg_hint_plan;
 --
 -- Create non-temp table which uses Yugabyte storage.
 --
@@ -299,22 +296,6 @@ SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ == 2)' ORDER BY i;
 (1 row)
 
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @@ '$.ggg starts with "aa"' ORDER BY i;
-                          QUERY PLAN
----------------------------------------------------------------
- Sort
-   Sort Key: i
-   ->  Seq Scan on jsonbs
-         Filter: (j @@ '($."ggg" starts with "aa")'::jsonpath)
-(4 rows)
-
-SELECT * FROM jsonbs WHERE j @@ '$.ggg starts with "aa"' ORDER BY i;
- i |       j
----+----------------
- 2 | {"ggg": "aaa"}
-(1 row)
-
-/*+IndexScan(jsonbs)*/
-EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @@ '$.ggg starts with "aa"' ORDER BY i;
                             QUERY PLAN
 -------------------------------------------------------------------
  Sort
@@ -323,7 +304,6 @@ EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @@ '$.ggg starts with "aa"' ORD
          Index Cond: (j @@ '($."ggg" starts with "aa")'::jsonpath)
 (4 rows)
 
-/*+IndexScan(jsonbs)*/
 SELECT * FROM jsonbs WHERE j @@ '$.ggg starts with "aa"' ORDER BY i;
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
@@ -406,22 +386,6 @@ SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ == 2)' ORDER BY i;
 (1 row)
 
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @@ '$.ggg starts with "aa"' ORDER BY i;
-                          QUERY PLAN
----------------------------------------------------------------
- Sort
-   Sort Key: i
-   ->  Seq Scan on jsonbs
-         Filter: (j @@ '($."ggg" starts with "aa")'::jsonpath)
-(4 rows)
-
-SELECT * FROM jsonbs WHERE j @@ '$.ggg starts with "aa"' ORDER BY i;
- i |       j
----+----------------
- 2 | {"ggg": "aaa"}
-(1 row)
-
-/*+IndexScan(jsonbs)*/
-EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @@ '$.ggg starts with "aa"' ORDER BY i;
                             QUERY PLAN
 -------------------------------------------------------------------
  Sort
@@ -430,7 +394,6 @@ EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @@ '$.ggg starts with "aa"' ORD
          Index Cond: (j @@ '($."ggg" starts with "aa")'::jsonpath)
 (4 rows)
 
-/*+IndexScan(jsonbs)*/
 SELECT * FROM jsonbs WHERE j @@ '$.ggg starts with "aa"' ORDER BY i;
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
@@ -521,28 +484,12 @@ EXPLAIN (costs off) SELECT count(*) FROM partial WHERE v @@ 'b';
 (3 rows)
 
 EXPLAIN (costs off) SELECT count(*) FROM partial WHERE v @@ 'c';
-               QUERY PLAN
------------------------------------------
- Aggregate
-   ->  Seq Scan on partial
-         Filter: (v @@ '''c'''::tsquery)
-(3 rows)
-
-SELECT count(*) FROM partial WHERE v @@ 'c';
- count
--------
-     1
-(1 row)
-
-/*+IndexOnlyScan(partial)*/
-EXPLAIN (costs off) SELECT count(*) FROM partial WHERE v @@ 'c';
                       QUERY PLAN
 ------------------------------------------------------
  Aggregate
    ->  Index Only Scan using partial_v_idx on partial
 (2 rows)
 
-/*+IndexOnlyScan(partial)*/
 SELECT count(*) FROM partial WHERE v @@ 'c';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: everything.
