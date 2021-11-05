@@ -46,6 +46,7 @@ DECLARE_int32(rocksdb_base_background_compactions);
 DECLARE_int32(rocksdb_max_background_compactions);
 DECLARE_uint64(rocksdb_max_file_size_for_compaction);
 DECLARE_bool(file_expiration_ignore_value_ttl);
+DECLARE_bool(file_expiration_value_ttl_overrides_table_ttl);
 DECLARE_bool(TEST_disable_adding_user_frontier_to_sst);
 DECLARE_bool(TEST_disable_getting_user_frontier_from_mem_table);
 
@@ -522,6 +523,7 @@ class CompactionTestWithFileExpiration : public CompactionTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_enable_ttl_file_filter) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_file_expiration_ignore_value_ttl) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_file_expiration_value_ttl_overrides_table_ttl) = false;
     // Disable automatic compactions, but continue to allow manual compactions.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_base_background_compactions) = 0;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_background_compactions) = 0;
@@ -533,6 +535,8 @@ class CompactionTestWithFileExpiration : public CompactionTest {
   uint64_t CountUnfilteredSSTFiles();
   void LogSizeAndFilesInDbs(bool after_compaction);
   void WriteRecordsAllExpire();
+  void AssertNoFilesExpired();
+  void AssertAllFilesExpired();
   int table_ttl_to_use() override {
     return kTableTTLSec;
   }
@@ -589,6 +593,26 @@ void CompactionTestWithFileExpiration::LogSizeAndFilesInDbs(bool after_compactio
       ", num files: " << files_before_compaction;
 }
 
+void CompactionTestWithFileExpiration::AssertAllFilesExpired() {
+  auto size_after_manual_compaction = GetTotalSizeOfDbs();
+  auto files_after_compaction = GetNumFilesInDbs();
+  LOG(INFO) << "Total size after compaction: " << size_after_manual_compaction <<
+      ", num files: " << files_after_compaction;
+  EXPECT_EQ(size_after_manual_compaction, 0);
+  EXPECT_EQ(files_after_compaction, 0);
+  ASSERT_GT(CountFilteredSSTFiles(), 0);
+}
+
+void CompactionTestWithFileExpiration::AssertNoFilesExpired() {
+  auto size_after_manual_compaction = GetTotalSizeOfDbs();
+  auto files_after_compaction = GetNumFilesInDbs();
+  LOG(INFO) << "Total size after compaction: " << size_after_manual_compaction <<
+      ", num files: " << files_after_compaction;
+  EXPECT_GT(size_after_manual_compaction, 0);
+  EXPECT_GT(files_after_compaction, 0);
+  ASSERT_EQ(CountFilteredSSTFiles(), 0);
+}
+
 void CompactionTestWithFileExpiration::WriteRecordsAllExpire() {
   SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
 
@@ -603,12 +627,8 @@ void CompactionTestWithFileExpiration::WriteRecordsAllExpire() {
 
   ASSERT_OK(ExecuteManualCompaction());
   // Assert that the data size is all wiped up now.
-  auto size_after_manual_compaction = GetTotalSizeOfDbs();
-  auto files_after_compaction = GetNumFilesInDbs();
-  LOG(INFO) << "Total size after compaction: " << size_after_manual_compaction <<
-      ", num files: " << files_after_compaction;
-  EXPECT_EQ(size_after_manual_compaction, 0);
-  EXPECT_EQ(files_after_compaction, 0);
+  EXPECT_EQ(GetTotalSizeOfDbs(), 0);
+  EXPECT_EQ(GetNumFilesInDbs(), 0);
 }
 
 TEST_F(CompactionTestWithFileExpiration, CompactionNoFileExpiration) {
@@ -620,8 +640,7 @@ TEST_F(CompactionTestWithFileExpiration, CompactionNoFileExpiration) {
 
 TEST_F(CompactionTestWithFileExpiration, FileExpirationAfterExpiry) {
   WriteRecordsAllExpire();
-  auto num_sst_files = CountFilteredSSTFiles();
-  ASSERT_GT(num_sst_files, 0);
+  ASSERT_GT(CountFilteredSSTFiles(), 0);
 }
 
 TEST_F(CompactionTestWithFileExpiration, ValueTTLOverridesTableTTL) {
@@ -637,13 +656,7 @@ TEST_F(CompactionTestWithFileExpiration, ValueTTLOverridesTableTTL) {
 
   ASSERT_OK(ExecuteManualCompaction());
   // Assert that the data is not completely removed
-  auto size_after_manual_compaction = GetTotalSizeOfDbs();
-  auto files_after_compaction = GetNumFilesInDbs();
-  LOG(INFO) << "Total size after compaction: " << size_after_manual_compaction <<
-      ", num files: " << files_after_compaction;
-  EXPECT_GT(size_after_manual_compaction, 0);
-  EXPECT_GT(files_after_compaction, 0);
-  ASSERT_EQ(CountFilteredSSTFiles(), 0);
+  AssertNoFilesExpired();
 }
 
 TEST_F(CompactionTestWithFileExpiration, ValueTTLWillNotOverrideTableTTLWhenTableOnlyFlagSet) {
@@ -660,13 +673,41 @@ TEST_F(CompactionTestWithFileExpiration, ValueTTLWillNotOverrideTableTTLWhenTabl
 
   ASSERT_OK(ExecuteManualCompaction());
   // Assert that the data is completely removed (i.e. value-level TTL was ignored)
-  auto size_after_manual_compaction = GetTotalSizeOfDbs();
-  auto files_after_compaction = GetNumFilesInDbs();
-  LOG(INFO) << "Total size after compaction: " << size_after_manual_compaction <<
-      ", num files: " << files_after_compaction;
-  EXPECT_EQ(size_after_manual_compaction, 0);
-  EXPECT_EQ(files_after_compaction, 0);
-  ASSERT_GT(CountFilteredSSTFiles(), 0);
+  AssertAllFilesExpired();
+}
+
+TEST_F(CompactionTestWithFileExpiration, ValueTTLWillOverrideTableTTLWhenFlagSet) {
+  SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
+  // Change the table TTL to a large value that won't expire.
+  ASSERT_OK(ChangeTableTTL(workload_->table_name(), 1000000));
+  // Set the value-level TTL that will expire.
+  const auto kValueExpiryTimeSec = 1;
+  workload_->set_ttl(kValueExpiryTimeSec);
+
+  ASSERT_OK(WriteAtLeastFilesPerDb(10));
+
+  LOG(INFO) << "Sleeping long enough to expire all data (based on value-level TTL)";
+  SleepFor(2s * kValueExpiryTimeSec);
+
+  ASSERT_OK(ExecuteManualCompaction());
+  // Add data will be deleted by compaction, but no files should expire after the
+  // first compaction (protected by table TTL).
+  EXPECT_EQ(GetTotalSizeOfDbs(), 0);
+  EXPECT_EQ(GetNumFilesInDbs(), 0);
+  ASSERT_EQ(CountFilteredSSTFiles(), 0);
+
+  // Change the file_expiration_value_ttl_overrides_table_ttl flag and create more files.
+  // Then, run another compaction and assert that all files have expired.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_file_expiration_value_ttl_overrides_table_ttl) = true;
+  rocksdb_listener_->Reset();
+  ASSERT_OK(WriteAtLeastFilesPerDb(10));
+  LogSizeAndFilesInDbs();
+  LOG(INFO) << "Sleeping long enough to expire all data (based on value-level TTL)";
+  SleepFor(MonoDelta::FromSeconds(2 * kValueExpiryTimeSec));
+
+  ASSERT_OK(ExecuteManualCompaction());
+  // Assert that the data is completely removed (i.e. table-level TTL was ignored)
+  AssertAllFilesExpired();
 }
 
 TEST_F(CompactionTestWithFileExpiration, MixedExpiringAndNonExpiring) {
@@ -748,13 +789,7 @@ TEST_F(CompactionTestWithFileExpiration, ShouldNotExpireDueToHistoryRetention) {
 
   ASSERT_OK(ExecuteManualCompaction());
   // Assert that there is still data after compaction, and no SST files have been filtered.
-  auto size_after_manual_compaction = GetTotalSizeOfDbs();
-  auto files_after_compaction = GetNumFilesInDbs();
-  LOG(INFO) << "Total size after compaction: " << size_after_manual_compaction <<
-      ", num files: " << files_after_compaction;
-  EXPECT_GT(size_after_manual_compaction, 0);
-  EXPECT_GT(files_after_compaction, 0);
-  ASSERT_EQ(CountFilteredSSTFiles(), 0);
+  AssertNoFilesExpired();
 }
 
 TEST_F(CompactionTestWithFileExpiration, TableTTLChangesWillChangeWhetherFilesExpire) {
@@ -773,13 +808,7 @@ TEST_F(CompactionTestWithFileExpiration, TableTTLChangesWillChangeWhetherFilesEx
   ASSERT_OK(ExecuteManualCompaction());
 
   // Assert the data hasn't changed, as we don't expect any expirations.
-  auto size_after_manual_compaction = GetTotalSizeOfDbs();
-  auto files_after_compaction = GetNumFilesInDbs();
-  LOG(INFO) << "Total size after first compaction: " << size_after_manual_compaction <<
-      ", num files: " << files_after_compaction;
-  EXPECT_GT(size_after_manual_compaction, 0);
-  EXPECT_GT(files_after_compaction, 0);
-  ASSERT_EQ(CountFilteredSSTFiles(), 0);
+  AssertNoFilesExpired();
 
   // Change the table TTL back to a small value and execute a manual compaction.
   ASSERT_OK(ChangeTableTTL(workload_->table_name(), kTableTTLSec));
@@ -792,13 +821,7 @@ TEST_F(CompactionTestWithFileExpiration, TableTTLChangesWillChangeWhetherFilesEx
 
   ASSERT_OK(ExecuteManualCompaction());
   // Assert data has expired.
-  size_after_manual_compaction = GetTotalSizeOfDbs();
-  files_after_compaction = GetNumFilesInDbs();
-  LOG(INFO) << "Total size after second compaction: " << size_after_manual_compaction <<
-      ", num files: " << files_after_compaction;
-  EXPECT_EQ(size_after_manual_compaction, 0);
-  EXPECT_EQ(files_after_compaction, 0);
-  ASSERT_GT(CountFilteredSSTFiles(), 0);
+  AssertAllFilesExpired();
 }
 
 } // namespace tserver
