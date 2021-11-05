@@ -100,7 +100,7 @@ pgTAP requires PostgreSQL 9.1 or higher.
 Copyright and License
 ---------------------
 
-Copyright (c) 2008-2020 David E. Wheeler. Some rights reserved.
+Copyright (c) 2008-2021 David E. Wheeler. Some rights reserved.
 
 Permission to use, copy, modify, and distribute this software and its
 documentation for any purpose, without fee, and without a written agreement is
