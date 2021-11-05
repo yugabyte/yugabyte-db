@@ -36,6 +36,7 @@ CREATE FUNCTION pg_stat_monitor_internal(IN showtext boolean,
     OUT query_plan          text,
     OUT state_code 			int8,
     OUT top_queryid         text,
+    OUT top_query           text,
 	OUT application_name	text,
 
 	OUT relations			text, -- 11
@@ -148,7 +149,7 @@ CREATE VIEW pg_stat_monitor AS SELECT
 	comments,
 	planid,
 	query_plan,
-	(SELECT query from pg_stat_monitor_internal(true) s where s.queryid = p.top_queryid) AS top_query,
+    top_query,
 	application_name,
 	string_to_array(relations, ',') AS relations,
 	cmd_type,
@@ -157,17 +158,17 @@ CREATE VIEW pg_stat_monitor AS SELECT
 	sqlcode,
 	message,
     calls,
-	round( CAST(total_time as numeric), 4)::float8 as total_time,
-	round( CAST(min_time as numeric), 4)::float8 as min_time,
-	round( CAST(max_time as numeric), 4)::float8 as max_time,
-	round( CAST(mean_time as numeric), 4)::float8 as mean_time,
-	round( CAST(stddev_time as numeric), 4)::float8 as stddev_time,
+	total_time,
+	min_time,
+	max_time,
+	mean_time,
+	stddev_time,
 	rows_retrieved,
 	plans_calls,
-	round( CAST(plan_total_time as numeric), 4)::float8 as plan_total_time,
-	round( CAST(plan_min_time as numeric), 4)::float8 as plan_min_time,
-	round( CAST(plan_max_time as numeric), 4)::float8 as plan_max_time,
-	round( CAST(plan_mean_time as numeric), 4)::float8 as plan_mean_time,
+	plan_total_time,
+	plan_min_time,
+	plan_max_time,
+	plan_mean_time,
  
 	shared_blks_hit,
     shared_blks_read,
@@ -182,8 +183,8 @@ CREATE VIEW pg_stat_monitor AS SELECT
     blk_read_time,
     blk_write_time,
 	(string_to_array(resp_calls, ',')) resp_calls,
-	round(cpu_user_time::numeric, 4) as cpu_user_time,
-	round(cpu_sys_time::numeric, 4) as cpu_sys_time,
+	cpu_user_time,
+	cpu_sys_time,
     wal_records,
     wal_fpi,
     wal_bytes,
@@ -226,6 +227,27 @@ return next rec;
 end loop;
 END
 $$ language plpgsql;
+
+CREATE FUNCTION pg_stat_monitor_hook_stats(
+    OUT hook text,
+    OUT min_time float8,
+    OUT max_time float8,
+    OUT total_time float8,
+    OUT ncalls int8
+)
+RETURNS SETOF record
+AS 'MODULE_PATHNAME', 'pg_stat_monitor_hook_stats'
+LANGUAGE C STRICT VOLATILE PARALLEL SAFE;
+
+CREATE VIEW pg_stat_monitor_hook_stats AS SELECT
+    hook,
+    min_time,
+    max_time,
+    total_time,
+    total_time / greatest(ncalls, 1) as avg_time,
+    ncalls,
+    ROUND(CAST(total_time / greatest(sum(total_time) OVER(), 0.00000001) * 100 as numeric), 2)::text || '%' as load_comparison
+FROM pg_stat_monitor_hook_stats();
 
 GRANT SELECT ON pg_stat_monitor TO PUBLIC;
 GRANT SELECT ON pg_stat_monitor_settings TO PUBLIC;

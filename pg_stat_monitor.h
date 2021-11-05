@@ -294,6 +294,7 @@ typedef struct pgssEntry
 	Counters		counters;		/* the statistics for this query */
 	int				encoding;		/* query text encoding */
 	slock_t			mutex;			/* protects the counters only */
+	size_t			query_pos;      /* query location within query buffer */
 } pgssEntry;
 
 /*
@@ -301,18 +302,16 @@ typedef struct pgssEntry
  */
 typedef struct pgssSharedState
 {
-	LWLock			*lock;				/* protects hashtable search/modification */
-	double			cur_median_usage;	/* current median usage in hashtable */
-	slock_t			mutex;				/* protects following fields only: */
-	Size			extent;				/* current extent of query file */
-	int64			n_writers;			/* number of active writers to query file */
-	uint64			current_wbucket;
-	uint64			prev_bucket_usec;
-	uint64			bucket_entry[MAX_BUCKETS];
-	int64			query_buf_size_bucket;
-	char			relations[REL_LST][REL_LEN];
-	int				num_relations;							/*  Number of relation in the query */
-	char			bucket_start_time[MAX_BUCKETS][60];   	/* start time of the bucket */
+	LWLock				*lock;				/* protects hashtable search/modification */
+	double				cur_median_usage;	/* current median usage in hashtable */
+	slock_t				mutex;				/* protects following fields only: */
+	Size				extent;				/* current extent of query file */
+	int64				n_writers;			/* number of active writers to query file */
+	pg_atomic_uint64	current_wbucket;
+	pg_atomic_uint64	prev_bucket_usec;
+	uint64				bucket_entry[MAX_BUCKETS];
+	int64				query_buf_size_bucket;
+	char				bucket_start_time[MAX_BUCKETS][60];   	/* start time of the bucket */
 } pgssSharedState;
 
 #define ResetSharedState(x) \
@@ -320,8 +319,8 @@ do { \
 		x->cur_median_usage = ASSUMED_MEDIAN_INIT; \
 		x->cur_median_usage = ASSUMED_MEDIAN_INIT; \
 		x->n_writers = 0; \
-		x->current_wbucket = 0; \
-		x->prev_bucket_usec = 0; \
+		pg_atomic_init_u64(&x->current_wbucket, 0); \
+		pg_atomic_init_u64(&x->prev_bucket_usec, 0); \
 		memset(&x->bucket_entry, 0, MAX_BUCKETS * sizeof(uint64)); \
 } while(0)
 
@@ -363,7 +362,12 @@ typedef struct JumbleState
 
 /* Links to shared memory state */
 
-bool SaveQueryText(uint64 bucketid, uint64 queryid, unsigned char *buf, const char *query, uint64 query_len);
+bool SaveQueryText(uint64 bucketid,
+				   uint64 queryid,
+				   unsigned char *buf,
+				   const char *query,
+				   uint64 query_len,
+				   size_t *query_pos);
 
 /* guc.c */
 void init_guc(void);
@@ -376,20 +380,18 @@ void pgss_shmem_shutdown(int code, Datum arg);
 int pgsm_get_bucket_size(void);
 pgssSharedState* pgsm_get_ss(void);
 HTAB *pgsm_get_plan_hash(void);
-HTAB *pgsm_get_query_hash(void);
 HTAB *pgsm_get_hash(void);
 HTAB *pgsm_get_plan_hash(void);
-HTAB* pgsm_get_query_hash(void);
 void hash_entry_reset(void);
 void hash_query_entryies_reset(void);
 void hash_query_entries();
-void hash_query_entry_dealloc(int bucket, unsigned char *buf);
-bool hash_entry_dealloc(int bucket);
+void hash_query_entry_dealloc(int new_bucket_id, int old_bucket_id, unsigned char *query_buffer[]);
+void hash_entry_dealloc(int new_bucket_id, int old_bucket_id, unsigned char *query_buffer[]);
 pgssEntry* hash_entry_alloc(pgssSharedState *pgss, pgssHashKey *key, int encoding);
 Size hash_memsize(void);
 
 int read_query_buffer(int bucket_id, uint64 queryid, char *query_txt);
-uint64 read_query(unsigned char *buf, uint64 bucketid, uint64 queryid, char * query);
+uint64 read_query(unsigned char *buf, uint64 queryid, char * query, size_t pos);
 pgssQueryEntry* hash_find_query_entry(uint64 bucket_id, uint64 queryid, uint64 dbid, uint64 userid, uint64 ip, uint64 appid);
 pgssQueryEntry* hash_create_query_entry(uint64 bucket_id, uint64 queryid, uint64 dbid, uint64 userid, uint64 ip, uint64 appid);
 void pgss_startup(void);
@@ -412,5 +414,77 @@ void pgss_startup(void);
 #define PGSM_OVERFLOW_TARGET get_conf(12)->guc_variable
 #define PGSM_QUERY_PLAN get_conf(12)->guc_variable
 #define PGSM_TRACK_PLANNING get_conf(13)->guc_variable
+
+/*---- Benchmarking ----*/
+#ifdef BENCHMARK
+/* 
+ * These enumerator values are used as index in the hook stats array.
+ * STATS_START and STATS_END are used only to delimit the range.
+ * STATS_END is also the length of the valid items in the enum.
+ */
+enum pg_hook_stats_id {
+	STATS_START = -1,
+	STATS_PGSS_POST_PARSE_ANALYZE,
+	STATS_PGSS_EXECUTORSTART,
+	STATS_PGSS_EXECUTORUN,
+	STATS_PGSS_EXECUTORFINISH,
+	STATS_PGSS_EXECUTOREND,
+	STATS_PGSS_PROCESSUTILITY,
+#if PG_VERSION_NUM >= 130000
+	STATS_PGSS_PLANNER_HOOK,
+#endif
+	STATS_PGSM_EMIT_LOG_HOOK,
+	STATS_PGSS_EXECUTORCHECKPERMS,
+	STATS_END
+};
+
+/* Hold time to execute statistics for a hook. */
+struct pg_hook_stats_t {
+	char hook_name[64];
+	double min_time;
+	double max_time;
+	double total_time;
+	uint64 ncalls;
+};
+
+#define HOOK_STATS_SIZE MAXALIGN((size_t)STATS_END * sizeof(struct pg_hook_stats_t))
+
+/* Allocate a pg_hook_stats_t array of size HOOK_STATS_SIZE on shared memory. */
+void init_hook_stats(void);
+
+/* Update hook time execution statistics. */
+void update_hook_stats(enum pg_hook_stats_id hook_id, double time_elapsed);
+
+/*
+ * Macro used to declare a hook function:
+ * Example:
+ *    DECLARE_HOOK(void my_hook, const char *query, size_t length);
+ * Will expand to:
+ *    static void my_hook(const char *query, size_t length);
+ *    static void my_hook_benchmark(const char *query, size_t length);
+ */
+#define DECLARE_HOOK(hook, ...) \
+        static hook(__VA_ARGS__); \
+        static hook##_benchmark(__VA_ARGS__);
+
+/*
+ * Macro used to wrap a hook when pg_stat_monitor is compiled with -DBENCHMARK.
+ *
+ * It is intended to be used as follows in _PG_init():
+ *     pg_hook_function = HOOK(my_hook_function);
+ * Then, if pg_stat_monitor is compiled with -DBENCHMARK this will expand to:
+ *     pg_hook_name = my_hook_function_benchmark;
+ * Otherwise it will simple expand to:
+ *     pg_hook_name = my_hook_function;
+ */
+#define HOOK(name) name##_benchmark
+
+#else /* #ifdef BENCHMARK */
+
+#define DECLARE_HOOK(hook, ...) \
+        static hook(__VA_ARGS__);
+#define HOOK(name) name
+#define HOOK_STATS_SIZE 0
+#endif
 
 #endif

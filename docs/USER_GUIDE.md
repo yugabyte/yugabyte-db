@@ -30,6 +30,7 @@ The following are the key features of pg_stat_monitor:
 * [Integration with Percona Monitoring and Management (PMM) tool](#integration-with-pmm),
 * [Histograms](#histogram) - visual representation of query performance.
 
+
 ### Time buckets
 
 Instead of supplying one set of ever-increasing counts, `pg_stat_monitor` computes stats for a configured number of time intervals; time buckets. This allows for much better data accuracy, especially in the case of high-resolution or unreliable networks.
@@ -38,7 +39,9 @@ Instead of supplying one set of ever-increasing counts, `pg_stat_monitor` comput
 
 `pg_stat_monitor` collects the information about what tables were accessed by a statement. This allows you to identify all queries which access a given table easily.
 
+
 ### Query and client information
+
 
 `pg_stat_monitor` provides  additional metrics for detailed analysis of query performance from various perspectives, including client connection details like user name, application name, IP address to name a few relevant columns.
 With this information, `pg_stat_monitor` enables users to track a query to the originating application. More details about the application or query may be incorporated in the SQL query in a [Google’s Sqlcommenter](https://google.github.io/sqlcommenter/) format.
@@ -46,6 +49,7 @@ With this information, `pg_stat_monitor` enables users to track a query to the o
 ### Query timing information
 
 Understanding query execution time stats helps you identify what affects query performance and take measures to optimize it. `pg_stat_monitor` collects the total, min, max and average (mean) time it took to execute a particular query and provides this data in separate columns. See the [Query timing information](#usage-examples-query-timing-information) example for the sample output.
+
 
 ### Query execution plan information
 
@@ -179,6 +183,7 @@ The following table shows setup options for each configuration parameter and whe
 | [pg_stat_monitor.pgsm_track_planning](#pg-stat-monitorpgsm-track-planning) | :heavy_check_mark:   |  :x:  |  :x:  |   :heavy_check_mark: |  :x:  |
 
 #### Parameters description:
+
 
 ##### pg_stat_monitor.pgsm_max
 

@@ -1,114 +1,200 @@
-![pg11-test](https://github.com/percona/pg_stat_monitor/workflows/pg11-test/badge.svg)
-![pg12-test](https://github.com/percona/pg_stat_monitor/workflows/pg12-test/badge.svg)
-![pg13-test](https://github.com/percona/pg_stat_monitor/workflows/pg13-test/badge.svg)
-![pg14-test](https://github.com/percona/pg_stat_monitor/workflows/pg14-test/badge.svg)
+![PostgreSQL-11](https://github.com/percona/pg_stat_monitor/workflows/pg11-test/badge.svg)
+![PostgreSQL-12](https://github.com/percona/pg_stat_monitor/workflows/pg12-test/badge.svg)
+![PostgreSQL-13](https://github.com/percona/pg_stat_monitor/workflows/pg13-test/badge.svg)
+![PostgreSQL-14](https://github.com/percona/pg_stat_monitor/workflows/pg14-test/badge.svg)
+![PostgreSQL-11-Package](https://github.com/percona/pg_stat_monitor/workflows/pg11package-test/badge.svg)
+![PostgreSQL-12-Packages](https://github.com/percona/pg_stat_monitor/workflows/pg12package-test/badge.svg)
+![PostgreSQL-13-Packages](https://github.com/percona/pg_stat_monitor/workflows/pg13package-test/badge.svg)
 
 [![Coverage Status](https://coveralls.io/repos/github/percona/pg_stat_monitor/badge.svg)](https://coveralls.io/github/percona/pg_stat_monitor)
 
-## What is pg_stat_monitor?
+# pg_stat_monitor: Query Performance Monitoring Tool for PostgreSQL
 
-The **pg_stat_monitor** is a **Query Performance Monitoring** tool for [Percona Distribution for PostgreSQL](https://www.percona.com/software/postgresql-distribution) and PostgreSQL. **pg_stat_monitor** is based on PostgreSQL's contrib module ``pg_stat_statements``. pg_stat_statements provides the basic statistics, which is sometimes not enough. The major shortcoming in pg_stat_statements is that it accumulates all the queries and their statistics and does not provide aggregated statistics nor histogram information. In this case, a user needs to calculate the aggregate which is quite expensive. 
+## Table of Contents
 
-**pg_stat_monitor** is developed on the basis of pg_stat_statements as its more advanced replacement. It provides all the features of pg_stat_statements plus its own feature set.  
+* [Overview](#overview)
+* [Supported versions](#supported-versions)
+* [Features](#features)
+* [Documentation](#documentation)
+* [Supported platforms](#supported-platforms)
+* [Installation guidelines](#installation-guidelines)
+* [Configuration](#configuration)
+* [Setup](#setup)
+* [Building from source code](#building-from-source)
+* [How to contribute](#how-to-contribute)
+* [License](#license)
+* [Copyright](#copyright)
 
-### How pg_stat_monitor works?
+## Overview
 
-``pg_stat_monitor`` accumulates the information in the form of buckets. All the aggregated information is bucket based. The size of a bucket and the number of buckets should be configured using GUC (Grand Unified Configuration). When a bucket time elapses, ``pg_stat_monitor`` resets all the statistics and switches to the next bucket. After the last bucket elapses, ``pg_stat_monitor`` goes back to the first bucket. All the data on the first bucket is cleared out with new writes; therefore, to not lose the data, users must read the buckets before that.
+**NOTE**: This is a beta release and is subject to further changes. We recommend using it in testing environments only.
 
-## Documentation
-1. [Supported PostgreSQL Versions](#supported-postgresql-versions)
-2. [Installation](#installation)
-3. [Setup](#setup) 
-4. [User Guide](https://github.com/percona/pg_stat_monitor/blob/master/docs/USER_GUIDE.md)
-6. [Release Notes](https://github.com/percona/pg_stat_monitor/blob/master/docs/RELEASE_NOTES.md)
-7. [License](https://github.com/percona/pg_stat_monitor/blob/master/LICENSE)
-8. [Submitting Bug Reports](#submitting-bug-reports)
-9. [Copyright Notice](#copyright-notice)
+The `pg_stat_monitor` is a **_Query Performance Monitoring_** tool for PostgreSQL. It attempts to provide a more holistic picture by providing much-needed query performance insights in a single view.
 
-## Supported PostgreSQL Versions
-The ``pg_stat_monitor`` should work on the latest version of both [Percona Distribution for PostgreSQL](https://www.percona.com/software/postgresql-distribution) and PostgreSQL but is only tested with these versions:
+`pg_stat_monitor` provides improved insights that allow database users to understand query origins, execution, planning statistics and details, query information, and metadata. This significantly improves observability, enabling users to debug and tune query performance. `pg_stat_monitor` is developed on the basis of `pg_stat_statements` as its more advanced replacement.
 
-| Distribution                        | Version | Supported          |
-| ------------------------------------|---------|--------------------|
-| PostgreSQL                          |  < 11   | :x:                |
-| PostgreSQL                          |  11     | :heavy_check_mark: |
-| PostgreSQL                          |  12     | :heavy_check_mark: |
-| PostgreSQL                          |  13     | :heavy_check_mark: |
-| Percona Distribution for PostgreSQL |  < 11   | :x:                |
-| [Percona Distribution for PostgreSQL](https://www.percona.com/downloads/percona-postgresql-11/)               |  11     | :heavy_check_mark: |
-| [Percona Distribution for PostgreSQL](https://www.percona.com/downloads/percona-postgresql-12/)               |  12     | :heavy_check_mark: |
-| [Percona Distribution for PostgreSQL](https://www.percona.com/downloads/percona-postgresql-13/)               |  13     | :heavy_check_mark: |
+While `pg_stat_statements` provides ever-increasing metrics, `pg_stat_monitor` aggregates the collected data, saving user efforts for doing it themselves. `pg_stat_monitor`  stores statistics in configurable time-based units – buckets. This allows focusing on statistics generated for shorter time periods and makes query timing information such as max/min/mean time more accurate.
 
-## Installation
+To learn about other features, available in `pg_stat_monitor`, see the [Features](#pg_stat_monitor-features) section and the [User Guide](https://github.com/percona/pg_stat_monitor/blob/master/docs/USER_GUIDE.md).
 
-You can install ``pg_stat_monitor`` from [Percona repositories](#installing-from-percona-repositories) and from [source code](#installing-from-source-code).
+`pg_stat_monitor` supports PostgreSQL versions 11 and above. It is compatible with both PostgreSQL provided by PostgreSQL Global Development Group (PGDG) and [Percona Distribution for PostgreSQL](https://www.percona.com/software/postgresql-distribution).
 
-### Installing from Percona repositories
+The RPM (for RHEL and CentOS) and the DEB (for Debian and Ubuntu) packages are available from Percona repositories for PostgreSQL versions [11](https://www.percona.com/downloads/percona-postgresql-11/LATEST/), [12](https://www.percona.com/downloads/postgresql-distribution-12/LATEST/), and [13](https://www.percona.com/downloads/postgresql-distribution-13/LATEST/).
 
-``pg_stat_monitor`` is supplied as part of Percona Distribution for PostgreSQL. The rpm/deb packages are available from Percona repositories. To install ``pg_stat_monitor``, follow [the installation instructions](https://www.percona.com/doc/postgresql/LATEST/installing.html). 
+The RPM packages are also available in the official PostgreSQL (PGDG) yum repositories.
 
-### Installing from PGXN
+### Supported versions
 
-You can install ``pg_stat_monitor`` from PGXN (PostgreSQL Extensions Network) using the [PGXN client](https://pgxn.github.io/pgxnclient/). 
+The `pg_stat_monitor` should work on the latest version of both [Percona Distribution for PostgreSQL](https://www.percona.com/software/postgresql-distribution) and PostgreSQL, but is only tested with these versions:
 
+| **Distribution** | **Version**     | **Provider** |
+| ---------------- | --------------- | ------------ |
+|[Percona Distribution for PostgreSQL](https://www.percona.com/software/postgresql-distribution)| [11](https://www.percona.com/downloads/percona-postgresql-11/LATEST/), [12](https://www.percona.com/downloads/postgresql-distribution-12/LATEST/) and [13](https://www.percona.com/downloads/postgresql-distribution-13/LATEST/)| Percona|
+| PostgreSQL       | 11, 12, and 13 | PostgreSQL Global Development Group (PGDG) |
+
+
+### Features
+
+`pg_stat_monitor` simplifies query observability by providing a more holistic view of query from performance, application and analysis perspectives. This is achieved by grouping data in configurable time buckets that allow capturing of load and performance information for smaller time windows. So performance issues and patterns can be identified based on time and workload.
+
+
+* **Time Interval Grouping:** Instead of supplying one set of ever-increasing counts, `pg_stat_monitor` computes stats for a configured number of time intervals - time buckets. This allows for much better data accuracy, especially in the case of high resolution or unreliable networks.
+* **Multi-Dimensional Grouping:** While `pg_stat_statements` groups counters by userid, dbid, queryid,  `pg_stat_monitor` uses a more detailed group for higher precision. This allows a user to drill down into the performance of queries.
+* **Capture Actual Parameters in the Queries:** `pg_stat_monitor` allows you to choose if you want to see queries with placeholders for parameters or actual parameter data. This simplifies debugging and analysis processes by enabling users to execute the same query.
+* **Query Plan:** Each SQL is now accompanied by its actual plan that was constructed for its execution. That’s a huge advantage if you want to understand why a particular query is slower than expected.
+* **Tables Access Statistics for a Statement:** This allows us to easily identify all queries that accessed a given table. This set is at par with the information provided by the `pg_stat_statements`.
+* **Histogram:** Visual representation is very helpful as it can help identify issues. With the help of the histogram function, one can now view a timing/calling data histogram in response to an SQL query. And yes, it even works in psql.
+
+
+### Documentation
+
+1. [User guide](https://github.com/percona/pg_stat_monitor/blob/master/docs/USER_GUIDE.md)
+2. pg_stat_monitor vs pg_stat_statements
+3. pg_stat_monitor view reference
+4. [Release notes](https://github.com/percona/pg_stat_monitor/blob/master/docs/RELEASE_NOTES.md)
+5. Contributing guide (https://github.com/percona/pg_stat_monitor/blob/master/CONTRIBUTING.md)
+
+
+### Supported platforms
+
+The PostgreSQL YUM repository supports `pg_stat_monitor` for all [supported versions](#supported-versions) for the following platforms:
+
+* Red Hat Enterprise/Rocky/CentOS/Oracle Linux 7 and 8
+* Fedora 33 and 34
+
+Find the list of supported platforms for `pg_stat_monitor` within [Percona Distribution for PostgreSQL](https://www.percona.com/software/postgresql-distribution) on the [Percona Release Lifecycle Overview](https://www.percona.com/services/policies/percona-software-support-lifecycle#pgsql) page.
+
+
+### Installation Guidelines
+
+You can install `pg_stat_monitor` from the following sources:
+
+* [Percona repositories](#installing-from-percona-repositories),
+* [PostgreSQL PGDG yum repositories](#installing-from-postgresql-yum-repositories),
+* [PGXN](#installing-from-pgxn) and
+* [source code](#building-from-source).
+
+
+#### Installing from Percona repositories
+
+To install `pg_stat_monitor` from Percona repositories, you need to use the `percona-release` repository management tool.
+
+1. [Install percona-release](https://www.percona.com/doc/percona-repo-config/installing.html) following the instructions relevant to your operating system
+2. Enable Percona repository:
+
+``` sh
+percona-release setup ppgXX
+```
+
+Replace XX with the desired PostgreSQL version. For example, to install `pg_stat_monitor ` for PostgreSQL 13, specify `ppg13`.
+
+3.  Install `pg_stat_monitor` package
+    * For Debian and Ubuntu:
+      ``` sh
+      apt-get install percona-pg-stat-monitor13
+      ```
+    * For RHEL and CentOS:
+      ``` sh
+      yum install percona-pg-stat-monitor13
+      ```
+
+#### Installing from PostgreSQL yum repositories
+
+Install the PostgreSQL repositories following the instructions in the [Linux downloads (Red Hat family)](https://www.postgresql.org/download/linux/redhat/) chapter in PostgreSQL documentation.
+
+Install `pg_stat_monitor`:
+
+```
+dnf install -y pg_stat_monitor_<VERSION>
+```
+
+Replace the `VERSION` variable with the PostgreSQL version you are using (e.g. specify `pg_stat_monitor_13` for PostgreSQL 13)
+
+
+#### Installing from PGXN
+
+You can install `pg_stat_monitor` from PGXN (PostgreSQL Extensions Network) using the [PGXN client](https://pgxn.github.io/pgxnclient/).
 
 Use the following command:
 
-```sh
+```
 pgxn install pg_stat_monitor
 ```
 
-### Installing from source code
+### Configuration
 
-You can download the source code of the latest release of ``pg_stat_monitor``  from [the releases page on GitHub](https://github.com/Percona/pg_stat_monitor/releases) or using git:
-```sh
-git clone git://github.com/Percona/pg_stat_monitor.git
-```
+You can find the configuration parameters of the `pg_stat_monitor` extension in the `pg_stat_monitor_settings` view. To change the default configuration, specify new values for the desired parameters using the GUC (Grant Unified Configuration) system. To learn more, refer to the [Configuration](https://github.com/percona/pg_stat_monitor/blob/master/docs/USER_GUIDE.md#configuration) section of the user guide.
 
-Compile and install the extension
-```sh
-cd pg_stat_monitor
-make USE_PGXS=1
-make USE_PGXS=1 install
-```
 
-## Setup
-``pg_stat_monitor`` cannot be enabled in your running ``postgresql`` instance. ``pg_stat_monitor`` needs to be loaded at the start time. This requires adding the  ``pg_stat_monitor`` extension for the ``shared_preload_libraries`` parameter and restarting the ``postgresql`` instance.
+### Setup
 
-You can set the  ``pg_stat_monitor`` extension in the ``postgresql.conf`` file.
+You can enable `pg_stat_monitor` when your `postgresql` instance is not running.
+
+`pg_stat_monitor` needs to be loaded at the start time. The extension requires additional shared memory; therefore,  add the `pg_stat_monitor` value for the `shared_preload_libraries` parameter and restart the `postgresql` instance.
+
+Use the [ALTER SYSTEM](https://www.postgresql.org/docs/current/sql-altersystem.html)command from `psql` terminal to modify the `shared_preload_libraries` parameter.
 
 ```
-# - Shared Library Preloading -
-
-shared_preload_libraries = 'pg_stat_monitor' # (change requires restart)
-#local_preload_libraries = ''
-#session_preload_libraries = ''
-```
-
-Or you can set it from `psql` terminal using the ``ALTER SYSTEM`` command.
-
-```sql
 ALTER SYSTEM SET shared_preload_libraries = 'pg_stat_monitor';
+
 ALTER SYSTEM
 ```
 
-```sh
+**NOTE**: If you’ve added other values to the shared_preload_libraries parameter, list all of them separated by commas for the `ALTER SYSTEM` command. For example, `ALTER SYSTEM SET shared_preload_libraries = 'foo, bar, pg_stat_monitor'`
+
+Start or restart the `postgresql` instance to apply the changes.
+
+* On Debian and Ubuntu:
+
+```
+sudo systemctl restart postgresql.service
+```
+
+* On Red Hat Enterprise Linux and CentOS:
+
+
+```
 sudo systemctl restart postgresql-13
 ```
 
+Create the extension using the [CREATE EXTENSION](https://www.postgresql.org/docs/current/sql-createextension.html) command. Using this command requires the privileges of a superuser or a database owner. Connect to `psql` as a superuser for a database and run the following command:
 
-Create the extension using the ``CREATE EXTENSION`` command.
-```sql
+
+```
 CREATE EXTENSION pg_stat_monitor;
 CREATE EXTENSION
 ```
 
-```sql
+
+This allows you to see the stats collected by `pg_stat_monitor`.
+
+
+```
 -- Select some of the query information, like client_ip, username and application_name etc.
 
-postgres=# SELECT application_name, userid AS user_name, datname AS database_name, substr(query,0, 50) AS query, calls, client_ip 
+postgres=# SELECT application_name, userid AS user_name, datname AS database_name, substr(query,0, 50) AS query, calls, client_ip
            FROM pg_stat_monitor;
- application_name | user_name | database_name |                       query                       | calls | client_ip 
+ application_name | user_name | database_name |                       query                       | calls | client_ip
 ------------------+-----------+---------------+---------------------------------------------------+-------+-----------
  psql             | vagrant   | postgres      | SELECT application_name, userid::regrole AS user_ |     1 | 127.0.0.1
  psql             | vagrant   | postgres      | SELECT application_name, userid AS user_name, dat |     3 | 127.0.0.1
@@ -116,51 +202,47 @@ postgres=# SELECT application_name, userid AS user_name, datname AS database_nam
  psql             | vagrant   | postgres      | SELECT application_name, userid AS user_name, dat |     8 | 127.0.0.1
  psql             | vagrant   | postgres      | SELECT bucket, substr(query,$1, $2) AS query, cmd |     1 | 127.0.0.1
 (5 rows)
+```
+
+To learn more about `pg_stat_monitor` features and usage, see [User Guide](https://github.com/percona/pg_stat_monitor/blob/master/docs/USER_GUIDE.md). To view all other data elements provided by `pg_stat_monitor`, please see the reference.
+
+
+### Building from source
+
+You can download the source code of the latest release of `pg_stat_monitor` from [the releases page on GitHub](https://github.com/Percona/pg_stat_monitor/releases) or using git:
 
 
 ```
-
-```sql
--- Select queries along with elevel, message and sqlcode which have some errors.
-
-SELECT  decode_error_level(elevel) AS elevel, sqlcode, query, message FROM pg_stat_monitor WHERE elevel != 0;
- elevel.   | sqlcode |                                           query                                           |                    message                     
---------------------+---------+-------------------------------------------------------------------------------------------+------------------------------------------------
- ERROR     |     132 | select count(*) from pgbench_branches                                                     | permission denied for table pgbench_branches
- ERROR     |     130 | select 1/0;                                                                               | division by zero
- ERROR     |     132 | SELECT decode_elevel(elevel), sqlcode, message from pg_stat_monitor where elevel != 0;    | function decode_elevel(integer) does not exist
- ERROR     |     132 | drop table if exists pgbench_accounts, pgbench_branches, pgbench_history, pgbench_tellers | must be owner of table pgbench_accounts
-(4 rows)
-
+git clone git://github.com/Percona/pg_stat_monitor.git
 ```
 
-To learn more about ``pg_stat_monitor`` configuration and usage, see [User Guide](https://github.com/percona/pg_stat_monitor/blob/master/docs/USER_GUIDE.md).
+Compile and install the extension
 
-## Submitting Bug Reports
+```
+cd pg_stat_monitor
+make USE_PGXS=1
+make USE_PGXS=1 install
+```
 
-If you found a bug in ``pg_stat_monitor``, please submit the report to the [Jira issue tracker](https://jira.percona.com/projects/PG/issues).
+### How to contribute
 
-Start by searching the open tickets for a similar report. If you find that someone else has already reported your issue, then you can upvote that report to increase its visibility.
+We welcome and strongly encourage community participation and contributions, and are always looking for new members that are as dedicated to serving the community as we are.
 
-If there is no existing report, submit your report following these steps:
-
-1. Sign in to [Jira issue tracker](https://jira.percona.com/projects/PG/issues). You will need to create an account if you do not have one.
-
-2. In the *Summary*, *Description*, *Steps To Reproduce*, *Affects Version* fields describe the problem you have detected. 
-
-3. As a general rule of thumb, try to create bug reports that are:
-
-- Reproducible: describe the steps to reproduce the problem.
-
-- Unique: check if there already exists a JIRA ticket to describe the problem.
-
-- Scoped to a Single Bug: only report one bug in one JIRA ticket.
+The [Contributing Guide](https://github.com/percona/pg_stat_monitor/blob/master/CONTRIBUTING.md) contains the guidelines on how you can contribute.
 
 
-## Copyright Notice
+### Support, discussions and forums
 
-Portions Copyright © 2018-2021, Percona LLC and/or its affiliates
+We welcome your feedback on your experience with `pg_stat_monitor`. Join our [technical forum](https://forums.percona.com/) or [Discord](https://discord.gg/mQEyGPkNbR) channel for help with `pg_stat_monitor` and Percona's open source software for MySQL®, [PostgreSQL](https://www.percona.com/software/postgresql-distribution), and MongoDB® databases.
 
-Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
 
-Portions Copyright (c) 1994, The Regents of the University of California
+### License
+
+This project is licensed under the same open liberal terms and conditions as the PostgreSQL project itself. Please refer to the [LICENSE](https://github.com/percona/pg_stat_monitor/blob/master/LICENSE) file for more details.
+
+
+### Copyright notice
+
+* Portions Copyright © 2018-2021, Percona LLC and/or its affiliates
+* Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+* Portions Copyright (c) 1994, The Regents of the University of California

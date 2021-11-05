@@ -1,0 +1,63 @@
+name: Test-with-pg12-pgdg-packages
+on: [push]
+
+jobs:
+  build:
+    name: pg12-test-with-pgdg-packages
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone pg_stat_monitor repository
+        uses: actions/checkout@v2
+        with:
+          path: 'src/pg_stat_monitor'
+
+      - name: Delete old postgresql files
+        run: |
+          sudo apt-get update
+          sudo apt purge postgresql-client-common postgresql-common postgresql postgresql*
+          sudo rm -rf /var/lib/postgresql/
+          sudo rm -rf /var/log/postgresql/
+          sudo rm -rf /etc/postgresql/
+          sudo rm -rf /usr/lib/postgresql
+          sudo rm -rf /usr/include/postgresql
+          sudo rm -rf /usr/share/postgresql
+          sudo rm -rf /etc/postgresql
+          sudo rm -f /usr/bin/pg_config
+
+      - name: Install PG Distribution Postgresql 12
+        run: |
+          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+          sudo apt-get update
+          sudo apt-get -y install postgresql-12 
+          sudo apt-get update 
+          sudo apt-get -y install postgresql-client-12 
+          sudo apt-get update
+          sudo apt install postgresql-server-dev-12
+          sudo chown -R postgres:postgres src/
+
+      - name: Build pg_stat_monitor
+        run: |
+          export PATH="/usr/lib/postgresql/12/bin:$PATH"
+          sudo cp /usr/lib/postgresql/12/bin/pg_config /usr/bin
+          sudo make USE_PGXS=1
+          sudo make USE_PGXS=1 install
+        working-directory: src/pg_stat_monitor/
+
+      - name: Start pg_stat_monitor_tests
+        run: |
+          sudo service postgresql stop
+          echo "shared_preload_libraries = 'pg_stat_monitor'" | sudo tee -a /etc/postgresql/12/main/postgresql.conf
+          sudo service postgresql start
+          sudo -u postgres bash -c 'make installcheck USE_PGXS=1'
+        working-directory: src/pg_stat_monitor/
+
+      - name: Report on test fail
+        uses: actions/upload-artifact@v2
+        if: ${{ failure() }}
+        with:
+          name: Regressions diff and postgresql log
+          path: |
+            src/pg_stat_monitor/regression.diffs
+            src/pg_stat_monitor/logfile
+          retention-days: 1
