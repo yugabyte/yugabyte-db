@@ -16,7 +16,7 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
  <li >
-    <a href="/latest/quick-start/build-apps/java/ysql-yb-jdbc" class="nav-link">
+    <a href="../ysql-yb-jdbc/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - YB - JDBC
     </a>

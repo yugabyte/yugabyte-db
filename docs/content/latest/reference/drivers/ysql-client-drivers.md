@@ -127,7 +127,9 @@ The `pq` driver is ready for building Go applications that connect to and intera
 
 ### Yugabyte JDBC driver
 
-The [Yugabyte JDBC driver](../../../integrations/jdbc-driver) is a distributed JDBC driver for [YSQL](../../../api/ysql) built on the [PostgreSQL JDBC driver](https://jdbc.postgresql.org/).
+The Yugabyte JDBC driver is a distributed JDBC driver for YSQL built on the PostgreSQL JDBC driver, with features that eliminate the need for external load balancers.
+
+For information on the Yugabyte JDBC driver and its load balancing features, see [Yugabyte JDBC driver](../../../integrations/jdbc-driver).
 
 For a tutorial on building a sample Java application with the Yugabyte JDBC driver, see [Build a Java application](../../../quick-start/build-apps/java/ysql-yb-jdbc/).
 

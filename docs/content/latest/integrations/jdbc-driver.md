@@ -13,7 +13,7 @@ showAsideToc: true
 ---
 
 [Yugabyte JDBC driver](https://github.com/yugabyte/pgjdbc) is a distributed JDBC driver for [YSQL](/latest/api/ysql/) built on the [PostgreSQL JDBC driver](https://github.com/pgjdbc/pgjdbc). 
-Although the upstream PostgreSQL JDBC driver works with YugabyteDB, the driver enhances YugabyteDB by eliminating the need for external load balancers.
+Although the upstream PostgreSQL JDBC driver works with YugabyteDB, the Yugabyte driver enhances YugabyteDB by eliminating the need for external load balancers.
 The driver has the following features:
 
 - It is **cluster-aware**, which eliminates the need for an external load balancer.
@@ -26,7 +26,7 @@ The driver has the following features:
 
 ## Load balancing
   
-The Yugabyte JDBC Driver has the following load balancing features in it:
+The Yugabyte JDBC driver has the following load balancing features:
 
 - Uniform load balancing
 
@@ -34,7 +34,7 @@ The Yugabyte JDBC Driver has the following load balancing features in it:
 
 - Topology-aware load balancing
 
-   Because YugabyteDB clusters can have servers in different regions and availability zones, the YugabyteDB JDBC driver is topology-aware, and can be configured to create connections only on servers that are in specific regions and zones. This is useful for client applications that need to connect to the geographically nearest regions and availability zones for lower latency; the driver tries to uniformly load only those servers that belong to the specified regions and zones.    
+   Because YugabyteDB clusters can have servers in different regions and availability zones, the YugabyteDB JDBC driver is topology-aware, and can be configured to create connections only on servers that are in specific regions and zones. This is useful for client applications that need to connect to the geographically nearest regions and availability zone for lower latency; the driver tries to uniformly load only those servers that belong to the specified regions and zone.    
 
 The Yugabyte JDBC driver can be configured with popular pooling solutions such as Hikari and Tomcat. Different pools can be configured with different load balancing policies if required. For example, an application can configure one pool with topology awareness for one region and availability zones, and it can also configure another pool to talk to a completely different region and availability zones.
 
@@ -55,9 +55,9 @@ To get the driver and HikariPool from Maven, add the following lines to your Mav
 
 <!-- https://mvnrepository.com/artifact/com.zaxxer/HikariCP -->
 <dependency>
-    <groupId>com.zaxxer</groupId>
-    <artifactId>HikariCP</artifactId>
-    <version>4.0.3</version>
+  <groupId>com.zaxxer</groupId>
+  <artifactId>HikariCP</artifactId>
+  <version>4.0.3</version>
 </dependency>
 ```
 
@@ -65,7 +65,7 @@ To get the driver and HikariPool from Maven, add the following lines to your Mav
 
 To build the driver locally, follow this procedure:
 
-1. Build environment : [gpgsuite](https://gpgtools.org/) needs to be present on the machine where build is performed. Install GPG and create a key.
+1. For the build environment, [gpgsuite](https://gpgtools.org/) needs to be present on the machine where the build is performed. Install GPG and create a key.
 
 2. Clone the following repository:
 
@@ -95,7 +95,7 @@ To build the driver locally, follow this procedure:
    </dependency> 
    ```
 
-{{< note Title="Note">}}
+{{< note title="Note">}}
 
 The driver requires YugabyteDB version 2.7.2.0 or higher, and Java 8 or above.
 
@@ -172,10 +172,10 @@ To use the Yugabyte JDBC Driver, do the following:
 
 ## Try it out
 
-This tutorial shows how to use the Yugabyte JDBC Driver with YugabyteDB. First, you’ll start by creating a three-node cluster with a replication factor of 3. This tutorial uses the [yb-ctl](https://docs.yugabyte.com/latest/admin/yb-ctl/#root) utility.
+This tutorial shows how to use the Yugabyte JDBC Driver with YugabyteDB. You’ll start by creating a three-node cluster with a replication factor of 3. This tutorial uses the [yb-ctl](https://docs.yugabyte.com/latest/admin/yb-ctl/#root) utility.
 Next, you’ll use [yb-sample-apps](https://github.com/yugabyte/yb-sample-apps/tree/master) to demonstrate the driver's load balancing features and create a Maven project to learn how to use the driver in an application.
 
-{{< note Title="Note">}}
+{{< note title="Note">}}
 The driver requires YugabyteDB version 2.7.2.0 or higher, and Java 8 or above.
 {{< /note>}}
 
@@ -206,15 +206,14 @@ $ cd <path-to-yugabytedb-installation>
        --nodes 127.0.0.1:5433,127.0.0.2:5433,127.0.0.3:5433
   ```
 
-The application will create 30 connections, 1 for each reader and writer threads. To verify the behavior, wait for the app to create connections and then visit `http://<host>:13000/rpcz` from your browser for each node to see that the connections are equally distributed among the nodes. 
+The application creates 30 connections, 1 for each reader and writer threads. To verify the behavior, wait for the app to create connections and then visit `http://<host>:13000/rpcz` from your browser for each node to see that the connections are equally distributed among the nodes. 
 This URL presents a list of connections where each element of the list has some information about the connection as shown in the following screenshot. You can count the number of connections from that list, or simply search for the occurrence count of the `host` keyword on that webpage. Each node should have 10 connections.
-  
-  <br/><br/>
-  ![Load balancing with host connections](/images/develop/ecosystem-integrations/jdbc-load-balancing.png)
+
+![Load balancing with host connections](/images/develop/ecosystem-integrations/jdbc-load-balancing.png)
 
 ### Check Topology-aware load balancing using yb-sample-apps
 
-- For topology-aware load balancing, run the SqlInserts workload application with the `topology-keys1` property set to `aws.us-west.us-west-2a`; only two nodes will be used in this case.  
+For topology-aware load balancing, run the SqlInserts workload application with the `topology-keys1` property set to `aws.us-west.us-west-2a`; only two nodes will be used in this case.  
 
   ```sh
   java -jar yb-sample-apps.jar \
@@ -224,7 +223,7 @@ This URL presents a list of connections where each element of the list has some 
         --topology_keys aws.us-west.us-west-2a
   ```
 
-- To verify the behavior, wait for the app to create connections and follow the same steps as before. To verify the behavior, wait for the app to create connections and then navigate to `http://<host>:13000/rpcz`. The first two nodes should have 15 connections each, and the third node should have zero connections.
+To verify the behavior, wait for the app to create connections and then navigate to `http://<host>:13000/rpcz`. The first two nodes should have 15 connections each, and the third node should have zero connections.
 
 ## Clean up
 
@@ -236,9 +235,9 @@ When you're done experimenting, run the following command to destroy the local c
 
 ## Other examples
 
-To access a sample application that uses Yugabyte JDBC driver, visit [YugabyteDB JDBC driver](https://github.com/yugabyte/pgjdbc).
+To access sample applications that uses Yugabyte JDBC driver, visit [YugabyteDB JDBC driver](https://github.com/yugabyte/pgjdbc).
 
-To use the samples, you need to complete the following steps: 
+To use the samples, complete the following steps: 
 
 - Install YugabyteDB by following instructions provided in [Quick Start Guide](/latest/quick-start/install/). 
 
@@ -268,7 +267,7 @@ To use the samples, you need to complete the following steps:
 
   The `run` script starts a YugabyteDB cluster, demonstrates load balancing through Java applications, and then destroys the cluster.
 
-  In the beginning, the script displays a menu with two options: `UniformLoadBalance` and `TopologyAwareLoadBalance`. Selecting one of these options starts running the corresponding script with its Java application in the background.
+  When started, the script displays a menu with two options: `UniformLoadBalance` and `TopologyAwareLoadBalance`. Choose one of these options to run the corresponding script with its Java application in the background.
 
 ## Further Reading
 

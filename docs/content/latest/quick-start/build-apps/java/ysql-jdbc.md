@@ -12,7 +12,7 @@ menu:
   latest:
     parent: build-apps
     name: Java
-    identifier: java-1
+    identifier: java-6
     weight: 550
 type: page
 isTocNested: true
@@ -21,7 +21,7 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="../ysql-yb-jdbc" class="nav-link">
+    <a href="../ysql-yb-jdbc/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - YB - JDBC
     </a>
