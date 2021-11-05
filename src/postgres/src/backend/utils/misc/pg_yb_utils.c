@@ -329,6 +329,18 @@ YBTransactionsEnabled()
 }
 
 bool
+IsYBReadCommitted()
+{
+	static int cached_value = -1;
+	if (cached_value == -1)
+	{
+		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_yb_enable_read_committed_isolation", false);
+	}
+	return IsYugaByteEnabled() && cached_value &&
+				 (XactIsoLevel == XACT_READ_COMMITTED || XactIsoLevel == XACT_READ_UNCOMMITTED);
+}
+
+bool
 YBSavepointsEnabled()
 {
 	static int cached_value = -1;

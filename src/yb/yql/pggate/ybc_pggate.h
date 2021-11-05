@@ -432,6 +432,7 @@ YBCStatus YBCPgExecSelect(YBCPgStatement handle, const YBCPgExecParameters *exec
 YBCStatus YBCPgBeginTransaction();
 YBCStatus YBCPgRecreateTransaction();
 YBCStatus YBCPgRestartTransaction();
+YBCStatus YBCPgMaybeResetTransactionReadPoint();
 YBCStatus YBCPgCommitTransaction();
 void YBCPgAbortTransaction();
 YBCStatus YBCPgSetTransactionIsolationLevel(int isolation);

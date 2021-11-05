@@ -379,6 +379,21 @@ Status PgTxnManager::RestartTransaction() {
   return Status::OK();
 }
 
+/* This is called at the start of each statement in READ COMMITTED isolation level */
+Status PgTxnManager::MaybeResetTransactionReadPoint() {
+  CHECK_NOTNULL(session_);
+  // If a txn_ has been created, session_->read_point() returns the read point stored in txn_.
+  ConsistentReadPoint* rp = session_->read_point();
+  if (rp->RecentlyRestartedReadPoint()) {
+    rp->UnSetRecentlyRestartedReadPoint();
+    return Status::OK();
+  }
+  rp->SetCurrentReadTime();
+
+  VLOG(1) << "Setting current ht as read point " << rp->GetReadTime();
+  return Status::OK();
+}
+
 Status PgTxnManager::CommitTransaction() {
   if (!txn_in_progress_) {
     VLOG_TXN_STATE(2) << "No transaction in progress, nothing to commit.";

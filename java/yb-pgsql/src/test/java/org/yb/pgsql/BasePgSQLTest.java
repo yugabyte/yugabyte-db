@@ -305,6 +305,16 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     pgInitialized = true;
   }
 
+  public void restartClusterWithFlags(
+      Map<String, String> additionalMasterFlags,
+      Map<String, String> additionalTserverFlags) throws Exception {
+    destroyMiniCluster();
+
+    createMiniCluster(additionalMasterFlags, additionalTserverFlags);
+    pgInitialized = false;
+    initPostgresBefore();
+  }
+
   @Override
   protected void resetSettings() {
     super.resetSettings();

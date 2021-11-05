@@ -376,6 +376,7 @@ extern bool TransactionIdIsCurrentTransactionId(TransactionId xid);
 extern void CommandCounterIncrement(void);
 extern void ForceSyncCommit(void);
 extern void YBInitializeTransaction(void);
+extern void YBMaybeResetTransactionReadPoint(void);
 extern void StartTransactionCommand(void);
 extern void YBCRestartWriteTransaction(void);
 extern void SetTxnWithPGRel(void);
