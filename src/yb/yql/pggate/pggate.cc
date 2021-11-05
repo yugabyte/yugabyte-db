@@ -1383,6 +1383,10 @@ Status PgApiImpl::RestartTransaction() {
   return pg_txn_manager_->RestartTransaction();
 }
 
+Status PgApiImpl::MaybeResetTransactionReadPoint() {
+  return pg_txn_manager_->MaybeResetTransactionReadPoint();
+}
+
 Status PgApiImpl::CommitTransaction() {
   pg_session_->InvalidateForeignKeyReferenceCache();
   RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
