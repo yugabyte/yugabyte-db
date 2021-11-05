@@ -23,9 +23,10 @@ top_query          | text                       | Shows the top query used in a 
 query              | text                       | The actual text of the query |
 application_name   | text                       | Shows the name of the application connected to the database
 relations          | text[]                     | The list of tables involved in the query
-cmd_type           | text[]                     | Type of the query executed
+cmd_type           | integer                    | Type of the query executed
+cmd_type_text      | text[]                     | The description of the query executed
 elevel             | integer                    | Shows the error level of a query (WARNING, ERROR, LOG)
-sqlcode            | integer                    |
+sqlcode            | integer                    | SQL error code
 message            | text                       | The error message
 plans_calls        | bigint                     | The number of times the statement was planned
 plan_total_time    | double precision           | The total time (in ms) spent on planning the statement
