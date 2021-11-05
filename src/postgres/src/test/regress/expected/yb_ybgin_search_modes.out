@@ -1,6 +1,8 @@
 --
 -- Yugabyte-owned test for ybgin index access method and search modes.
 --
+-- Disable sequential scan so that index scan is always chosen.
+SET enable_seqscan = off;
 CREATE INDEX NONCONCURRENTLY idx_partial ON arrays
     USING ybgin (a)
     WHERE a <@ '{1}' or a @> '{}' or a is null;
@@ -10,27 +12,9 @@ ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: include-empty.
 -- GIN_SEARCH_MODE_ALL
 SELECT * FROM arrays WHERE a @> '{}';
- i |     a
----+------------
- 5 | {3,3,3}
- 1 | {1,3,5}
- 6 | {10,20,30}
- 4 | {3}
- 2 | {2,3,5}
- 3 | {7,1,6,4}
-(6 rows)
-
-/*+IndexScan(arrays)*/
-SELECT * FROM arrays WHERE a @> '{}';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 -- GIN_CAT_NULL_ITEM
-SELECT * FROM arrays WHERE a is null;
- i | a
----+---
-(0 rows)
-
-/*+IndexScan(arrays)*/
 SELECT * FROM arrays WHERE a is null;
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: everything.
