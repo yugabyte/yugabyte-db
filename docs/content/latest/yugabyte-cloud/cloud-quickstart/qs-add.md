@@ -43,6 +43,10 @@ Once you complete the wizard, Yugabyte Cloud bootstraps and provisions the clust
 
 Once the cluster is ready, the cluster [Overview](../../cloud-clusters/overview) is displayed. You now have a fully configured YugabyteDB cluster provisioned in Yugabyte Cloud.
 
+### Learn more
+
+- [Differences between free and standard clusters](../../cloud-faq/#what-are-the-differences-between-free-and-standard-clusters/)
+
 ## Next step
 
 - [Connect to your cluster](../qs-connect) using the Cloud Shell.
