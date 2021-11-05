@@ -675,6 +675,9 @@ class YBTransaction::Impl final {
 
   void CompleteInit(IsolationLevel isolation) {
     metadata_.isolation = isolation;
+    // TODO(Piyush): read_point_ might not represent the correct start time for
+    // a READ COMMITTED txn since it might have been updated several times
+    // before a YBTransaction is created. Fix this.
     if (read_point_.GetReadTime()) {
       metadata_.start_time = read_point_.GetReadTime().read;
     } else {
