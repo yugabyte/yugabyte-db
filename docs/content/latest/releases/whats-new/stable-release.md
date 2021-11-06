@@ -44,29 +44,29 @@ docker pull yugabytedb/yugabyte:2.8.0.0-b29
 
 ### New features
 
-#### Database
-
 #### Yugabyte Platform
+
+#### Database
 
 ### Improvements
 
-#### Database
-
 #### Yugabyte Platform
+
+#### Database
 
 ### Bug fixes
 
-#### Database
-
 #### Yugabyte Platform
+
+#### Database
 
 ### Known issues
 
-#### Database
+#### Yugabyte Platform
 
 N/A
 
-#### Yugabyte Platform
+#### Database
 
 N/A
 
