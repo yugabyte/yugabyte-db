@@ -31,10 +31,10 @@ You access your clusters from the **Clusters** page.
     <a class="section-link icon-offset" href="overview/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
-        <div class="title">View key metrics</div>
+        <div class="title">View performance metrics</div>
       </div>
       <div class="body">
-        Evaluate cluster performance with time series charts of key metrics.
+        Evaluate cluster performance with time series charts of performance metrics.
       </div>
     </a>
   </div>

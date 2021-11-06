@@ -13,21 +13,32 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Monitor key performance metrics for your cluster to ensure the cluster configuration matches its performance requirements using the cluster **Overview** and **Performance Metrics** tabs.
+Monitor performance metrics for your cluster to ensure the cluster configuration matches its performance requirements using the cluster **Overview** and **Performance Metrics** tabs.
 
-- The **Overview** tab displays a summary of the cluster infrastructure, along with time series charts of performance metrics for all the nodes in the cluster.
+- The **Overview** tab displays a summary of the cluster infrastructure, along with time series charts of four key performance metrics for all the nodes in the cluster - Operations/sec, Average Latency, CPU Usage, and Disk Usage.
 
-- The **Performance** tab **Metrics** display time series charts of performance metrics for the nodes in the cluster; you can view metrics for all the nodes in the cluster, and for individual nodes.
+- The **Performance** tab **Metrics** display the same metrics as the Overview, along with additional performance metrics.
 
-You can show metrics for the past hour, 6 hours, 12 hours, 24 hours, or 7 days. On the **Performance** tab you can further view metrics for specific nodes.
+You can show metrics for the past hour, 6 hours, 12 hours, 24 hours, or 7 days. The **Overview** tab shows metrics averaged over all the nodes in the cluster. On the **Performance** tab you can additionally view the metrics for specific nodes.
 
 ![Cloud Cluster Performance Metrics](/images/yb-cloud/cloud-clusters-metrics.png)
 
-The following **Key Metrics** are tracked on the **Overview** and **Performance** tabs:
+To choose the metrics to display, on the **Performance** tab, click **Metrics** and then click **Options**.
 
-- Operations/sec - Shows the read and write operations on the cluster over time.
-- Average Latency - Shows the average amount of time in milliseconds taken for read and write operations.
-- CPU Usage - Shows the percentage of CPU use for the cluster.
-- Disk Usage - Shows the amount of disk space provisioned for and used by the cluster.
+The following **Metrics** are available:
+
+| Graph | **Description** | **Use** |
+| :---| --- | --- |
+| Operations/sec | The number of disk input / output read and write operations (IOPS) per second. | Large spikes usually indicate large compactions. Rarely, in cases of a spiky workload, this could indicate block cache misses.<br>Since random reads always hit disk, you should increase IOPS capacity for this type of workload. |
+| Average Latency | Read: the average latency of read operations at the tablet level.<br>Write: the average latency of write operations at the tablet level. | When latency starts to degrade, performance may be impacted by the storage layer. |
+| CPU Usage | The percentage of CPU use being consumed by the tablet or master server Yugabyte processes, as well as other processes, if any. In general, CPU usage is a measure of all processes running on the server. | High CPU use could indicate a problem and may require debugging by Yugabyte Support. |
+| Disk Usage | Shows the amount of disk space provisioned for and used by the cluster. | Typically you would scale up at 80%, but consider this metric in the context of your environment. For example, usage can be higher on larger disks; some file systems issue an alert at 75% usage due to performance degradation. |
+| Network Bytes / Sec | The size (in bytes; scale: millions) of network packets received (RX) and transmitted (TX) per second, averaged over nodes. | Provides a view of the intensity of the network activity on the server. |
+| Disk Bytes / Sec | The number of bytes (scale: millions) being read or written to disk per second, averaged over each node. | If the maximum IOPS for the instance volume type has high utilization, you should ensure that the schema and query are optimized. In addition, consider increasing the instance volume IOPS capacity. |
+| Network Errors | The number of errors related to network packets received (RX) and transmitted (TX) per second, averaged over nodes. | You should issue an alert for any error, unless the environment produces a lot of errors. |
+| RPC Queue Size | The number of remote procedure calls (RPC) in service queues for tablet servers, including the following services: CDC (Change Data Capture); Remote Bootstrap; TS RPC (Tablet Server Service); Consensus; Admin; Generic; Backup. | The queue size is an indicator of the incoming traffic. If the backends get overloaded, requests pile up in the queues. When the queue is full, the system responds with backpressure errors. |
+| Average SSTables / Node | The average number of SSTable (SST) files across nodes. |   |
+| WAL Bytes Written / Sec / Node | The number of bytes written to the write-ahead logging (WAL) since the tablet start. |  |
+| Compaction | The number of bytes being read and written to do compaction. | If not a lot of data is being deleted, these levels are similar. In some cases, you might see a large delete indicated by large reads but low writes afterwards (because a large percentage of data was removed in compaction). |
 
 To change or scale your cluster, refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
