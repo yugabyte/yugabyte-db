@@ -5,9 +5,8 @@ use warnings;
 
 my $invert = shift;
 my %keep = map { chomp; $_ => 1 } <DATA>;
-
-
 my ($name, $type) = $invert ? ('Schema', 'schema-testing') : ('Core', 'assertion');
+
 print qq{
 -- This file defines pgTAP $name, a portable collection of $type
 -- functions for TAP-based unit testing on PostgreSQL 9.1 or higher. It is
@@ -83,6 +82,7 @@ throws_ok
 lives_ok
 performs_ok
 performs_within
+_time_trial_type
 _time_trials
 _ident_array_to_string
 _prokind
@@ -128,8 +128,16 @@ _returns
 function_returns
 _definer
 is_definer
-_agg
+isnt_definer
+_type_func
 is_aggregate
+isnt_aggregate
+is_normal_function
+isnt_normal_function
+is_window
+isnt_window
+is_procedure
+isnt_procedure
 _strict
 is_strict
 isnt_strict
@@ -174,3 +182,5 @@ _get_dtype
 domain_type_is
 domain_type_isnt
 row_eq
+_error_diag
+

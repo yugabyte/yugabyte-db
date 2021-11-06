@@ -5609,6 +5609,87 @@ If the function does not exist, a handy diagnostic message will let you know:
 
 But then you check with `has_function()` first, right?
 
+### `is_normal_function()` ###
+
+    SELECT is_normal_function( :schema, :function, :args, :description );
+    SELECT is_normal_function( :schema, :function, :args );
+    SELECT is_normal_function( :schema, :function, :description );
+    SELECT is_normal_function( :schema, :function );
+    SELECT is_normal_function( :function, :args, :description );
+    SELECT is_normal_function( :function, :args );
+    SELECT is_normal_function( :function, :description );
+    SELECT is_normal_function( :function );
+
+**Parameters**
+
+`:schema`
+: Schema in which to find the function.
+
+`:function`
+: Function name.
+
+`:args`
+: Array of data types for the function arguments.
+
+`:description`
+: A short description of the test.
+
+Tests that a function is a normal function --- that is, not an aggregate,
+window, or procedural function. If the `:schema` argument is omitted, then the
+function must be visible in the search path. If the `:args[]` argument is
+passed, then the function with that argument signature will be the one tested;
+otherwise, a function with any signature will be checked (pass an empty array to
+specify a function with an empty signature). If the `:description` is omitted, a
+reasonable substitute will be created. Fails if the function is not a normal
+function or if the function does not exist. Examples:
+
+    SELECT is_normal_function( 'myschema', 'foo',  ARRAY['integer', 'text'] );
+    SELECT is_normal_function( 'do_something' );
+    SELECT is_normal_function( 'do_something', ARRAY['integer'] );
+    SELECT is_normal_function( 'do_something', ARRAY['numeric'] );
+
+If no such function exists, a handy diagnostic message will let you know:
+
+    # Failed test 290: "Function nasty() should be a normal function"
+    #     Function nasty() does not exist
+
+But then you check with `has_function()` first, right?
+
+### `isnt_normal_function()` ###
+
+    SELECT isnt_normal_function( :schema, :function, :args, :description );
+    SELECT isnt_normal_function( :schema, :function, :args );
+    SELECT isnt_normal_function( :schema, :function, :description );
+    SELECT isnt_normal_function( :schema, :function );
+    SELECT isnt_normal_function( :function, :args, :description );
+    SELECT isnt_normal_function( :function, :args );
+    SELECT isnt_normal_function( :function, :description );
+    SELECT isnt_normal_function( :function );
+
+**Parameters**
+
+`:schema`
+: Schema in which to find the function.
+
+`:function`
+: Function name.
+
+`:args`
+: Array of data types for the function arguments.
+
+`:description`
+: A short description of the test.
+
+This function is the inverse of `is_normal_function()`. The test passes if the
+specified function exists and is not a normal function.
+
+If no such function exists, a handy diagnostic message will let you know:
+
+    # Failed test 290: "Function nasty() should not be a normal function"
+    #     Function nasty() does not exist
+
+But then you check with `has_function()` first, right?
+
 ### `is_aggregate()` ###
 
     SELECT is_aggregate( :schema, :function, :args, :description );
@@ -5635,11 +5716,12 @@ But then you check with `has_function()` first, right?
 : A short description of the test.
 
 Tests that a function is an aggregate function. If the `:schema` argument is
-omitted, then the function must be visible in the search path. If the
-`:args[]` argument is passed, then the function with that argument signature
-will be the one tested; otherwise, a function with any signature will be
-checked (pass an empty array to specify a function with an empty signature).
-If the `:description` is omitted, a reasonable substitute will be created.
+omitted, then the function must be visible in the search path. If the `:args[]`
+argument is passed, then the function with that argument signature will be the
+one tested; otherwise, a function with any signature will be checked (pass an
+empty array to specify a function with an empty signature). If the
+`:description` is omitted, a reasonable substitute will be created. Fails if the
+function is not an aggregate function, or if the function does not exist.
 Examples:
 
     SELECT is_aggregate( 'myschema', 'foo',  ARRAY['integer', 'text'] );
@@ -5647,7 +5729,7 @@ Examples:
     SELECT is_aggregate( 'do_something', ARRAY['integer'] );
     SELECT is_aggregate( 'do_something', ARRAY['numeric'] );
 
-If the function does not exist, a handy diagnostic message will let you know:
+If no such function exists, a handy diagnostic message will let you know:
 
     # Failed test 290: "Function nasty() should be an aggregate function"
     #     Function nasty() does not exist
@@ -5679,12 +5761,172 @@ But then you check with `has_function()` first, right?
 `:description`
 : A short description of the test.
 
-This function is the inverse of `is_aggregate()`. The test passes if the specified
-function is not an aggregate function.
+This function is the inverse of `is_aggregate()`. The test passes if the
+specified function exists and is not an aggregate function.
 
-If the function does not exist, a handy diagnostic message will let you know:
+If no such function exists, a handy diagnostic message will let you know:
 
     # Failed test 290: "Function nasty() should not be an aggregate function"
+    #     Function nasty() does not exist
+
+But then you check with `has_function()` first, right?
+
+### `is_window()` ###
+
+    SELECT is_window( :schema, :function, :args, :description );
+    SELECT is_window( :schema, :function, :args );
+    SELECT is_window( :schema, :function, :description );
+    SELECT is_window( :schema, :function );
+    SELECT is_window( :function, :args, :description );
+    SELECT is_window( :function, :args );
+    SELECT is_window( :function, :description );
+    SELECT is_window( :function );
+
+**Parameters**
+
+`:schema`
+: Schema in which to find the function.
+
+`:function`
+: Function name.
+
+`:args`
+: Array of data types for the function arguments.
+
+`:description`
+: A short description of the test.
+
+Tests that a function is a window function. If the `:schema` argument is
+omitted, then the function must be visible in the search path. If the `:args[]`
+argument is passed, then the function with that argument signature will be the
+one tested; otherwise, a function with any signature will be checked (pass an
+empty array to specify a function with an empty signature). If the
+`:description` is omitted, a reasonable substitute will be created. Fails if the
+function is not a window function or if the function does not exist. Examples:
+
+    SELECT is_window( 'myschema', 'foo',  ARRAY['integer', 'text'] );
+    SELECT is_window( 'do_something' );
+    SELECT is_window( 'do_something', ARRAY['integer'] );
+    SELECT is_window( 'do_something', ARRAY['numeric'] );
+
+If no such function exists, a handy diagnostic message will let you know:
+
+    # Failed test 290: "Function nasty() should be a window function"
+    #     Function nasty() does not exist
+
+But then you check with `has_function()` first, right?
+
+### `isnt_window()` ###
+
+    SELECT isnt_window( :schema, :function, :args, :description );
+    SELECT isnt_window( :schema, :function, :args );
+    SELECT isnt_window( :schema, :function, :description );
+    SELECT isnt_window( :schema, :function );
+    SELECT isnt_window( :function, :args, :description );
+    SELECT isnt_window( :function, :args );
+    SELECT isnt_window( :function, :description );
+    SELECT isnt_window( :function );
+
+**Parameters**
+
+`:schema`
+: Schema in which to find the function.
+
+`:function`
+: Function name.
+
+`:args`
+: Array of data types for the function arguments.
+
+`:description`
+: A short description of the test.
+
+This function is the inverse of `is_window()`. The test passes if the
+specified function exists and is not a window function.
+
+If no such function exists, a handy diagnostic message will let you know:
+
+    # Failed test 290: "Function nasty() should not be a window function"
+    #     Function nasty() does not exist
+
+But then you check with `has_function()` first, right?
+
+### `is_procedure()` ###
+
+    SELECT is_procedure( :schema, :function, :args, :description );
+    SELECT is_procedure( :schema, :function, :args );
+    SELECT is_procedure( :schema, :function, :description );
+    SELECT is_procedure( :schema, :function );
+    SELECT is_procedure( :function, :args, :description );
+    SELECT is_procedure( :function, :args );
+    SELECT is_procedure( :function, :description );
+    SELECT is_procedure( :function );
+
+**Parameters**
+
+`:schema`
+: Schema in which to find the function.
+
+`:function`
+: Function name.
+
+`:args`
+: Array of data types for the function arguments.
+
+`:description`
+: A short description of the test.
+
+Tests that a function is a procedural function. If the `:schema` argument is
+omitted, then the function must be visible in the search path. If the `:args[]`
+argument is passed, then the function with that argument signature will be the
+one tested; otherwise, a function with any signature will be checked (pass an
+empty array to specify a function with an empty signature). If the
+`:description` is omitted, a reasonable substitute will be created. Fails if the
+function is not a procedure or if the function does not exist. Examples:
+
+    SELECT is_procedure( 'myschema', 'foo',  ARRAY['integer', 'text'] );
+    SELECT is_procedure( 'do_something' );
+    SELECT is_procedure( 'do_something', ARRAY['integer'] );
+    SELECT is_procedure( 'do_something', ARRAY['numeric'] );
+
+If no such function exists, a handy diagnostic message will let you know:
+
+    # Failed test 290: "Function nasty() should be a procedure"
+    #     Function nasty() does not exist
+
+But then you check with `has_function()` first, right?
+
+### `isnt_procedure()` ###
+
+    SELECT isnt_procedure( :schema, :function, :args, :description );
+    SELECT isnt_procedure( :schema, :function, :args );
+    SELECT isnt_procedure( :schema, :function, :description );
+    SELECT isnt_procedure( :schema, :function );
+    SELECT isnt_procedure( :function, :args, :description );
+    SELECT isnt_procedure( :function, :args );
+    SELECT isnt_procedure( :function, :description );
+    SELECT isnt_procedure( :function );
+
+**Parameters**
+
+`:schema`
+: Schema in which to find the function.
+
+`:function`
+: Function name.
+
+`:args`
+: Array of data types for the function arguments.
+
+`:description`
+: A short description of the test.
+
+This function is the inverse of `is_procedure()`. The test passes if the
+specified function exists and is not a procedure.
+
+If no such function exists, a handy diagnostic message will let you know:
+
+    # Failed test 290: "Function nasty() should not be a procedure"
     #     Function nasty() does not exist
 
 But then you check with `has_function()` first, right?

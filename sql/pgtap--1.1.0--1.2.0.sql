@@ -261,3 +261,555 @@ RETURNS TEXT AS $$
          NOT _op_exists($1, $2, NULL ),
         'Right operator ' || $2 || '(' || $1 || ',NONE) should not exist'
     );
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _prokind( p_oid oid )
+RETURNS "char" AS $$
+BEGIN
+    IF pg_version_num() >= 110000 THEN
+        RETURN prokind FROM pg_catalog.pg_proc WHERE oid = p_oid;
+    ELSE
+        RETURN CASE WHEN proisagg THEN 'a' WHEN proiswindow THEN 'w' ELSE 'f' END
+            FROM pg_catalog.pg_proc WHERE oid = p_oid;
+    END IF;
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+CREATE OR REPLACE FUNCTION _type_func ( "char", NAME, NAME, NAME[] )
+RETURNS BOOLEAN AS $$
+    SELECT kind = $1
+      FROM tap_funky
+     WHERE schema = $2
+       AND name   = $3
+       AND args   = array_to_string($4, ',')
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _type_func ( "char", NAME, NAME )
+RETURNS BOOLEAN AS $$
+    SELECT kind = $1 FROM tap_funky WHERE schema = $2 AND name = $3
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _type_func ( "char", NAME, NAME[] )
+RETURNS BOOLEAN AS $$
+    SELECT kind = $1
+      FROM tap_funky
+     WHERE name = $2
+       AND args = array_to_string($3, ',')
+       AND is_visible;
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _type_func ( "char", NAME )
+RETURNS BOOLEAN AS $$
+    SELECT kind = $1 FROM tap_funky WHERE name = $2 AND is_visible;
+$$ LANGUAGE SQL;
+
+-- is_aggregate( schema, function, args[], description )
+CREATE OR REPLACE FUNCTION is_aggregate ( NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare($1, $2, $3, _type_func( 'a', $1, $2, $3), $4 );
+$$ LANGUAGE SQL;
+
+-- is_aggregate( schema, function, args[] )
+CREATE OR REPLACE FUNCTION is_aggregate( NAME, NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT _func_compare(
+        $1, $2, $3, _type_func('a', $1, $2, $3),
+        'Function ' || quote_ident($1) || '.' || quote_ident($2) || '(' ||
+        array_to_string($3, ', ') || ') should be an aggregate function'
+    );
+$$ LANGUAGE sql;
+
+-- is_aggregate( schema, function, description )
+CREATE OR REPLACE FUNCTION is_aggregate ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare($1, $2, _type_func('a', $1, $2), $3 );
+$$ LANGUAGE SQL;
+
+-- is_aggregate( schema, function )
+CREATE OR REPLACE FUNCTION is_aggregate( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT _func_compare(
+        $1, $2, _type_func('a', $1, $2),
+        'Function ' || quote_ident($1) || '.' || quote_ident($2) || '() should be an aggregate function'
+    );
+$$ LANGUAGE sql;
+
+-- is_aggregate( function, args[], description )
+CREATE OR REPLACE FUNCTION is_aggregate ( NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare( NULL, $1, $2, _type_func('a', $1, $2), $3 );
+$$ LANGUAGE SQL;
+
+-- is_aggregate( function, args[] )
+CREATE OR REPLACE FUNCTION is_aggregate( NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT _func_compare(
+        NULL, $1, $2, _type_func('a', $1, $2),
+        'Function ' || quote_ident($1) || '(' ||
+        array_to_string($2, ', ') || ') should be an aggregate function'
+    );
+$$ LANGUAGE sql;
+
+-- is_aggregate( function, description )
+CREATE OR REPLACE FUNCTION is_aggregate( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare(NULL, $1, _type_func('a', $1), $2 );
+$$ LANGUAGE sql;
+
+-- is_aggregate( function )
+CREATE OR REPLACE FUNCTION is_aggregate( NAME )
+RETURNS TEXT AS $$
+    SELECT _func_compare(
+        NULL, $1,  _type_func('a', $1),
+        'Function ' || quote_ident($1) || '() should be an aggregate function'
+    );
+$$ LANGUAGE sql;
+
+-- isnt_aggregate( schema, function, args[], description )
+CREATE OR REPLACE FUNCTION isnt_aggregate ( NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare($1, $2, $3, NOT _type_func('a', $1, $2, $3), $4 );
+$$ LANGUAGE SQL;
+
+-- isnt_aggregate( schema, function, args[] )
+CREATE OR REPLACE FUNCTION isnt_aggregate( NAME, NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT _func_compare(
+        $1, $2, $3, NOT _type_func('a', $1, $2, $3),
+        'Function ' || quote_ident($1) || '.' || quote_ident($2) || '(' ||
+        array_to_string($3, ', ') || ') should not be an aggregate function'
+    );
+$$ LANGUAGE sql;
+
+-- isnt_aggregate( schema, function, description )
+CREATE OR REPLACE FUNCTION isnt_aggregate ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare($1, $2, NOT _type_func('a', $1, $2), $3 );
+$$ LANGUAGE SQL;
+
+-- isnt_aggregate( schema, function )
+CREATE OR REPLACE FUNCTION isnt_aggregate( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT _func_compare(
+        $1, $2, NOT _type_func('a', $1, $2),
+        'Function ' || quote_ident($1) || '.' || quote_ident($2) || '() should not be an aggregate function'
+    );
+$$ LANGUAGE sql;
+
+-- isnt_aggregate( function, args[], description )
+CREATE OR REPLACE FUNCTION isnt_aggregate ( NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare(NULL, $1, $2, NOT _type_func('a', $1, $2), $3 );
+$$ LANGUAGE SQL;
+
+-- isnt_aggregate( function, args[] )
+CREATE OR REPLACE FUNCTION isnt_aggregate( NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT _func_compare(
+        NULL, $1, $2, NOT _type_func('a', $1, $2),
+        'Function ' || quote_ident($1) || '(' ||
+        array_to_string($2, ', ') || ') should not be an aggregate function'
+    );
+$$ LANGUAGE sql;
+
+-- isnt_aggregate( function, description )
+CREATE OR REPLACE FUNCTION isnt_aggregate( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare(NULL, $1, NOT _type_func('a', $1), $2 );
+$$ LANGUAGE sql;
+
+-- isnt_aggregate( function )
+CREATE OR REPLACE FUNCTION isnt_aggregate( NAME )
+RETURNS TEXT AS $$
+    SELECT _func_compare(
+        NULL, $1, NOT _type_func('a', $1),
+        'Function ' || quote_ident($1) || '() should not be an aggregate function'
+    );
+$$ LANGUAGE sql;
+
+DROP FUNCTION _agg ( NAME );
+DROP FUNCTION _agg ( NAME, NAME[] );
+DROP FUNCTION _agg ( NAME, NAME );
+DROP FUNCTION _agg ( NAME, NAME, NAME[] );
+DROP FUNCTION _agg ( NAME );
+DROP FUNCTION _agg ( NAME, NAME[] );
+DROP FUNCTION _agg ( NAME, NAME );
+DROP FUNCTION _agg ( NAME, NAME, NAME[] );
+DROP FUNCTION _agg ( NAME );
+DROP FUNCTION _agg ( NAME, NAME[] );
+DROP FUNCTION _agg ( NAME, NAME );
+DROP FUNCTION _agg ( NAME, NAME, NAME[] );
+
+-- is_normal_function( schema, function, args[], description )
+CREATE OR REPLACE FUNCTION is_normal_function ( NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare($1, $2, $3, _type_func('f', $1, $2, $3), $4 );
+$$ LANGUAGE SQL;
+
+-- is_normal_function( schema, function, args[] )
+CREATE OR REPLACE FUNCTION is_normal_function( NAME, NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT _func_compare(
+        $1, $2, $3,
+        _type_func('f', $1, $2, $3),
+        'Function ' || quote_ident($1) || '.' || quote_ident($2) || '(' ||
+        array_to_string($3, ', ') || ') should be a normal function'
+    );
+$$ LANGUAGE sql;
+
+-- is_normal_function( schema, function, description )
+CREATE OR REPLACE FUNCTION is_normal_function ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare($1, $2, _type_func('f', $1, $2), $3 );
+$$ LANGUAGE SQL;
+
+-- is_normal_function( schema, function )
+CREATE OR REPLACE FUNCTION is_normal_function( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT _func_compare(
+        $1, $2, _type_func('f', $1, $2),
+        'Function ' || quote_ident($1) || '.' || quote_ident($2) || '() should be a normal function'
+    );
+$$ LANGUAGE sql;
+
+-- is_normal_function( function, args[], description )
+CREATE OR REPLACE FUNCTION is_normal_function ( NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare(NULL, $1, $2, _type_func('f', $1, $2), $3 );
+$$ LANGUAGE SQL;
+
+-- is_normal_function( function, args[] )
+CREATE OR REPLACE FUNCTION is_normal_function( NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT _func_compare(
+        NULL, $1, $2, _type_func('f', $1, $2),
+        'Function ' || quote_ident($1) || '(' ||
+        array_to_string($2, ', ') || ') should be a normal function'
+    );
+$$ LANGUAGE sql;
+
+-- is_normal_function( function, description )
+CREATE OR REPLACE FUNCTION is_normal_function( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare(NULL, $1, _type_func('f', $1), $2 );
+$$ LANGUAGE sql;
+
+-- is_normal_function( function )
+CREATE OR REPLACE FUNCTION is_normal_function( NAME )
+RETURNS TEXT AS $$
+    SELECT _func_compare(
+        NULL, $1, _type_func('f', $1),
+        'Function ' || quote_ident($1) || '() should be a normal function'
+    );
+$$ LANGUAGE sql;
+
+-- isnt_normal_function( schema, function, args[], description )
+CREATE OR REPLACE FUNCTION isnt_normal_function ( NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare($1, $2, $3, NOT _type_func('f', $1, $2, $3), $4 );
+$$ LANGUAGE SQL;
+
+-- isnt_normal_function( schema, function, args[] )
+CREATE OR REPLACE FUNCTION isnt_normal_function( NAME, NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT _func_compare(
+        $1, $2, $3, NOT _type_func('f', $1, $2, $3),
+        'Function ' || quote_ident($1) || '.' || quote_ident($2) || '(' ||
+        array_to_string($3, ', ') || ') should not be a normal function'
+    );
+$$ LANGUAGE sql;
+
+-- isnt_normal_function( schema, function, description )
+CREATE OR REPLACE FUNCTION isnt_normal_function ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare($1, $2, NOT _type_func('f', $1, $2), $3 );
+$$ LANGUAGE SQL;
+
+-- isnt_normal_function( schema, function )
+CREATE OR REPLACE FUNCTION isnt_normal_function( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT _func_compare(
+        $1, $2, NOT _type_func('f', $1, $2),
+        'Function ' || quote_ident($1) || '.' || quote_ident($2) || '() should not be a normal function'
+    );
+$$ LANGUAGE sql;
+
+-- isnt_normal_function( function, args[], description )
+CREATE OR REPLACE FUNCTION isnt_normal_function ( NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare(NULL, $1, $2, NOT _type_func('f', $1, $2), $3 );
+$$ LANGUAGE SQL;
+
+-- isnt_normal_function( function, args[] )
+CREATE OR REPLACE FUNCTION isnt_normal_function( NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT _func_compare(
+        NULL, $1, $2,
+        NOT _type_func('f', $1, $2),
+        'Function ' || quote_ident($1) || '(' ||
+        array_to_string($2, ', ') || ') should not be a normal function'
+    );
+$$ LANGUAGE sql;
+
+-- isnt_normal_function( function, description )
+CREATE OR REPLACE FUNCTION isnt_normal_function( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare(NULL, $1, NOT _type_func('f', $1), $2 );
+$$ LANGUAGE sql;
+
+-- isnt_normal_function( function )
+CREATE OR REPLACE FUNCTION isnt_normal_function( NAME )
+RETURNS TEXT AS $$
+    SELECT _func_compare(
+        NULL, $1, NOT _type_func('f', $1),
+        'Function ' || quote_ident($1) || '() should not be a normal function'
+    );
+$$ LANGUAGE sql;
+
+-- is_window( schema, function, args[], description )
+CREATE OR REPLACE FUNCTION is_window ( NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare($1, $2, $3, _type_func( 'w', $1, $2, $3), $4 );
+$$ LANGUAGE SQL;
+
+-- is_window( schema, function, args[] )
+CREATE OR REPLACE FUNCTION is_window( NAME, NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT _func_compare(
+        $1, $2, $3, _type_func('w', $1, $2, $3),
+        'Function ' || quote_ident($1) || '.' || quote_ident($2) || '(' ||
+        array_to_string($3, ', ') || ') should be a window function'
+    );
+$$ LANGUAGE sql;
+
+-- is_window( schema, function, description )
+CREATE OR REPLACE FUNCTION is_window ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare($1, $2, _type_func('w', $1, $2), $3 );
+$$ LANGUAGE SQL;
+
+-- is_window( schema, function )
+CREATE OR REPLACE FUNCTION is_window( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT _func_compare(
+        $1, $2, _type_func('w', $1, $2),
+        'Function ' || quote_ident($1) || '.' || quote_ident($2) || '() should be a window function'
+    );
+$$ LANGUAGE sql;
+
+-- is_window( function, args[], description )
+CREATE OR REPLACE FUNCTION is_window ( NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare(NULL, $1, $2, _type_func('w', $1, $2), $3 );
+$$ LANGUAGE SQL;
+
+-- is_window( function, args[] )
+CREATE OR REPLACE FUNCTION is_window( NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT _func_compare(
+        NULL, $1, $2, _type_func('w', $1, $2),
+        'Function ' || quote_ident($1) || '(' ||
+        array_to_string($2, ', ') || ') should be a window function'
+    );
+$$ LANGUAGE sql;
+
+-- is_window( function, description )
+CREATE OR REPLACE FUNCTION is_window( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare(NULL, $1, _type_func('w', $1), $2 );
+$$ LANGUAGE sql;
+
+-- is_window( function )
+CREATE OR REPLACE FUNCTION is_window( NAME )
+RETURNS TEXT AS $$
+    SELECT _func_compare(
+        NULL, $1, _type_func('w', $1),
+        'Function ' || quote_ident($1) || '() should be a window function'
+    );
+$$ LANGUAGE sql;
+
+-- isnt_window( schema, function, args[], description )
+CREATE OR REPLACE FUNCTION isnt_window ( NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare($1, $2, $3, NOT _type_func('w', $1, $2, $3), $4 );
+$$ LANGUAGE SQL;
+
+-- isnt_window( schema, function, args[] )
+CREATE OR REPLACE FUNCTION isnt_window( NAME, NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT _func_compare(
+        $1, $2, $3, NOT _type_func('w', $1, $2, $3),
+        'Function ' || quote_ident($1) || '.' || quote_ident($2) || '(' ||
+        array_to_string($3, ', ') || ') should not be a window function'
+    );
+$$ LANGUAGE sql;
+
+-- isnt_window( schema, function, description )
+CREATE OR REPLACE FUNCTION isnt_window ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare($1, $2, NOT _type_func('w', $1, $2), $3 );
+$$ LANGUAGE SQL;
+
+-- isnt_window( schema, function )
+CREATE OR REPLACE FUNCTION isnt_window( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT _func_compare(
+        $1, $2, NOT _type_func('w', $1, $2),
+        'Function ' || quote_ident($1) || '.' || quote_ident($2) || '() should not be a window function'
+    );
+$$ LANGUAGE sql;
+
+-- isnt_window( function, args[], description )
+CREATE OR REPLACE FUNCTION isnt_window ( NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare(NULL, $1, $2, NOT _type_func('w', $1, $2), $3 );
+$$ LANGUAGE SQL;
+
+-- isnt_window( function, args[] )
+CREATE OR REPLACE FUNCTION isnt_window( NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT _func_compare(
+        NULL, $1, $2, NOT _type_func('w', $1, $2),
+        'Function ' || quote_ident($1) || '(' ||
+        array_to_string($2, ', ') || ') should not be a window function'
+    );
+$$ LANGUAGE sql;
+
+-- isnt_window( function, description )
+CREATE OR REPLACE FUNCTION isnt_window( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare(NULL, $1, NOT _type_func('w', $1), $2 );
+$$ LANGUAGE sql;
+
+-- isnt_window( function )
+CREATE OR REPLACE FUNCTION isnt_window( NAME )
+RETURNS TEXT AS $$
+    SELECT _func_compare(
+        NULL, $1, NOT _type_func('w', $1),
+        'Function ' || quote_ident($1) || '() should not be a window function'
+    );
+$$ LANGUAGE sql;
+
+-- is_procedure( schema, function, args[], description )
+CREATE OR REPLACE FUNCTION is_procedure ( NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare($1, $2, $3, _type_func( 'p', $1, $2, $3), $4 );
+$$ LANGUAGE SQL;
+
+-- is_procedure( schema, function, args[] )
+CREATE OR REPLACE FUNCTION is_procedure( NAME, NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT _func_compare(
+        $1, $2, $3, _type_func('p', $1, $2, $3),
+        'Function ' || quote_ident($1) || '.' || quote_ident($2) || '(' ||
+        array_to_string($3, ', ') || ') should be a procedure'
+    );
+$$ LANGUAGE sql;
+
+-- is_procedure( schema, function, description )
+CREATE OR REPLACE FUNCTION is_procedure ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare($1, $2, _type_func('p', $1, $2), $3 );
+$$ LANGUAGE SQL;
+
+-- is_procedure( schema, function )
+CREATE OR REPLACE FUNCTION is_procedure( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT _func_compare(
+        $1, $2, _type_func('p', $1, $2),
+        'Function ' || quote_ident($1) || '.' || quote_ident($2) || '() should be a procedure'
+    );
+$$ LANGUAGE sql;
+
+-- is_procedure( function, args[], description )
+CREATE OR REPLACE FUNCTION is_procedure ( NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare(NULL, $1, $2, _type_func('p', $1, $2), $3 );
+$$ LANGUAGE SQL;
+
+-- is_procedure( function, args[] )
+CREATE OR REPLACE FUNCTION is_procedure( NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT _func_compare(
+        NULL, $1, $2, _type_func('p', $1, $2),
+        'Function ' || quote_ident($1) || '(' ||
+        array_to_string($2, ', ') || ') should be a procedure'
+    );
+$$ LANGUAGE sql;
+
+-- is_procedure( function, description )
+CREATE OR REPLACE FUNCTION is_procedure( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare(NULL, $1, _type_func('p', $1), $2 );
+$$ LANGUAGE sql;
+
+-- is_procedure( function )
+CREATE OR REPLACE FUNCTION is_procedure( NAME )
+RETURNS TEXT AS $$
+    SELECT _func_compare(
+        NULL, $1, _type_func('p', $1),
+        'Function ' || quote_ident($1) || '() should be a procedure'
+    );
+$$ LANGUAGE sql;
+
+-- isnt_procedure( schema, function, args[], description )
+CREATE OR REPLACE FUNCTION isnt_procedure ( NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare($1, $2, $3, NOT _type_func('p', $1, $2, $3), $4 );
+$$ LANGUAGE SQL;
+
+-- isnt_procedure( schema, function, args[] )
+CREATE OR REPLACE FUNCTION isnt_procedure( NAME, NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT _func_compare(
+        $1, $2, $3, NOT _type_func('p', $1, $2, $3),
+        'Function ' || quote_ident($1) || '.' || quote_ident($2) || '(' ||
+        array_to_string($3, ', ') || ') should not be a procedure'
+    );
+$$ LANGUAGE sql;
+
+-- isnt_procedure( schema, function, description )
+CREATE OR REPLACE FUNCTION isnt_procedure ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare($1, $2, NOT _type_func('p', $1, $2), $3 );
+$$ LANGUAGE SQL;
+
+-- isnt_procedure( schema, function )
+CREATE OR REPLACE FUNCTION isnt_procedure( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT _func_compare(
+        $1, $2,  NOT _type_func('p', $1, $2),
+        'Function ' || quote_ident($1) || '.' || quote_ident($2) || '() should not be a procedure'
+    );
+$$ LANGUAGE sql;
+
+-- isnt_procedure( function, args[], description )
+CREATE OR REPLACE FUNCTION isnt_procedure ( NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare(NULL, $1, $2, NOT _type_func('p', $1, $2), $3 );
+$$ LANGUAGE SQL;
+
+-- isnt_procedure( function, args[] )
+CREATE OR REPLACE FUNCTION isnt_procedure( NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT _func_compare(
+        NULL, $1, $2, NOT _type_func('p', $1, $2),
+        'Function ' || quote_ident($1) || '(' ||
+        array_to_string($2, ', ') || ') should not be a procedure'
+    );
+$$ LANGUAGE sql;
+
+-- isnt_procedure( function, description )
+CREATE OR REPLACE FUNCTION isnt_procedure( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare(NULL, $1, NOT _type_func('p', $1), $2 );
+$$ LANGUAGE sql;
+
+-- isnt_procedure( function )
+CREATE OR REPLACE FUNCTION isnt_procedure( NAME )
+RETURNS TEXT AS $$
+    SELECT _func_compare(
+        NULL, $1, NOT _type_func('p', $1),
+        'Function ' || quote_ident($1) || '() should not be a procedure'
+    );
+$$ LANGUAGE sql;

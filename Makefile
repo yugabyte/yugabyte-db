@@ -138,6 +138,11 @@ ifeq ($(shell echo $(VERSION) | grep -qE "^[89][.]" && echo yes || echo no),yes)
 EXCLUDE_TEST_FILES += test/sql/partitions.sql
 endif
 
+# Stored procecures not supported prior to Postgres 11.
+ifeq ($(shell echo $(VERSION) | grep -qE "^([89]|10)[.]" && echo yes || echo no),yes)
+EXCLUDE_TEST_FILES += test/sql/proctap.sql
+endif
+
 #
 # Check for missing extensions
 #
@@ -399,7 +404,6 @@ $(TB_DIR)/parallel.sch: $(GENERATED_SCHEDULE_DEPS)
 
 $(TB_DIR)/run.sch: $(TB_DIR)/which_schedule $(GENERATED_SCHEDULES)
 	cp `cat $<` $@
-
 
 # Don't generate noise if we're not running tests...
 .PHONY: extension_check

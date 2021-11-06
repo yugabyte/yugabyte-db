@@ -1,8 +1,8 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(640);
---SELECT * FROM no_plan();
+SELECT plan(1012);
+-- SELECT * FROM no_plan();
 
 CREATE SCHEMA someschema;
 CREATE FUNCTION someschema.huh () RETURNS BOOL AS 'SELECT TRUE' LANGUAGE SQL;
@@ -1041,7 +1041,550 @@ SELECT * FROM check_test(
 );
 
 /****************************************************************************/
+-- Test is_normal_function() and isnt_normal_function().
+
+-- is_normal_function ( NAME, NAME, NAME[], TEXT )
+-- isnt_normal_function ( NAME, NAME, NAME[], TEXT )
+SELECT * FROM check_test(
+    is_normal_function( 'someschema', 'huh', '{}', 'whatever' ),
+    true,
+    'is_normal_function(schema, func, noargs, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_normal_function( 'public', 'tap_accum', ARRAY[etype()], 'whatever' ),
+    false,
+    'is_normal_function(schema, agg, arg, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_normal_function( 'someschema', 'huh', '{}', 'whatever' ),
+    false,
+    'isnt_normal_function(schema, func, noargs, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_normal_function( 'public', 'tap_accum', ARRAY[etype()], 'whatever' ),
+    true,
+    'isnt_normal_function(schema, agg, noargs, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_normal_function( 'someschema', 'bah', ARRAY['integer', 'text'], 'whatever' ),
+    true,
+    'is_normal_function(schema, func, args, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_normal_function( 'public', 'tap_accum', ARRAY[etype()], 'whatever' ),
+    false,
+    'is_normal_function(schema, agg, args, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_normal_function( 'someschema', 'bah', ARRAY['integer', 'text'], 'whatever' ),
+    false,
+    'is_normal_function(schema, func, args, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_normal_function( 'public', 'tap_accum', ARRAY[etype()], 'whatever' ),
+    true,
+    'isnt_normal_function(schema, agg, args, desc)',
+    'whatever',
+    ''
+);
+
+-- Test diagnostics
+SELECT * FROM check_test(
+    is_normal_function( 'someschema', 'nonesuch', '{}', 'whatever' ),
+    false,
+    'is_normal_function(schema, nofunc, noargs, desc)',
+    'whatever',
+    '    Function someschema.nonesuch() does not exist'
+);
+
+SELECT * FROM check_test(
+    isnt_normal_function( 'someschema', 'nonesuch', ARRAY[etype()], 'whatever' ),
+    false,
+    'isnt_normal_function(schema, noagg, args, desc)',
+    'whatever',
+    '    Function someschema.nonesuch(' || etype() || ') does not exist'
+);
+
+-- is_normal_function( NAME, NAME, NAME[] )
+-- isnt_normal_function( NAME, NAME, NAME[] )
+SELECT * FROM check_test(
+    is_normal_function( 'someschema', 'huh', '{}'::name[] ),
+    true,
+    'is_normal_function(schema, func, noargs)',
+    'Function someschema.huh() should be a normal function',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_normal_function( 'public', 'tap_accum', ARRAY[etype()] ),
+    false,
+    'is_normal_function(schema, agg, noargs)',
+    'Function public.tap_accum(' || etype() || ') should be a normal function',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_normal_function( 'someschema', 'huh', '{}'::name[] ),
+    false,
+    'isnt_normal_function(schema, func, noargs)',
+    'Function someschema.huh() should not be a normal function',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_normal_function( 'public', 'tap_accum', ARRAY[etype()] ),
+    true,
+    'isnt_normal_function(schema, agg, noargs)',
+    'Function public.tap_accum(' || etype() || ') should not be a normal function',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_normal_function( 'someschema', 'bah', ARRAY['integer', 'text'] ),
+    true,
+    'is_normal_function(schema, func2, args)',
+    'Function someschema.bah(integer, text) should be a normal function',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_normal_function( 'someschema', 'bah', ARRAY['integer', 'text'] ),
+    false,
+    'isnt_normal_function(schema, func2, args)',
+    'Function someschema.bah(integer, text) should not be a normal function',
+    ''
+);
+
+-- Test diagnostics
+SELECT * FROM check_test(
+    is_normal_function( 'someschema', 'nonesuch', '{}'::name[] ),
+    false,
+    'is_normal_function(schema, func, noargs)',
+    'Function someschema.nonesuch() should be a normal function',
+    '    Function someschema.nonesuch() does not exist'
+);
+
+SELECT * FROM check_test(
+    is_normal_function( 'public', 'nonesuch', ARRAY[etype()] ),
+    false,
+    'is_normal_function(schema, nofunc, noargs)',
+    'Function public.nonesuch(' || etype() || ') should be a normal function',
+    '    Function public.nonesuch(' || etype() || ') does not exist'
+    ''
+);
+
+-- is_normal_function ( NAME, NAME, TEXT )
+-- isnt_normal_function ( NAME, NAME, TEXT )
+SELECT * FROM check_test(
+    is_normal_function( 'someschema', 'huh', 'whatever' ),
+    true,
+    'is_normal_function(schema, func, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_normal_function( 'public', 'tap_accum', 'whatever' ),
+    false,
+    'is_normal_function(schema, agg, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_normal_function( 'someschema', 'huh', 'whatever' ),
+    false,
+    'isnt_normal_function(schema, func, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_normal_function( 'public', 'tap_accum', 'whatever' ),
+    true,
+    'isnt_normal_function(schema, agg, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_normal_function( 'someschema', 'bah', 'whatever' ),
+    true,
+    'is_normal_function(schema, func2, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_normal_function( 'someschema', 'bah', 'whatever' ),
+    false,
+    'isnt_normal_function(schema, func2, desc)',
+    'whatever',
+    ''
+);
+
+-- Test diagnostics
+SELECT * FROM check_test(
+    is_normal_function( 'someschema', 'nonesuch', 'whatever' ),
+    false,
+    'is_normal_function(schema, nofunc, desc)',
+    'whatever',
+    '    Function someschema.nonesuch() does not exist'
+);
+
+SELECT * FROM check_test(
+    is_normal_function( 'public', 'nonesuch', 'whatever' ),
+    false,
+    'is_normal_function(schema, noagg, desc)',
+    'whatever',
+    '    Function public.nonesuch() does not exist'
+);
+
+-- is_normal_function( NAME, NAME )
+-- isnt_normal_function( NAME, NAME )
+SELECT * FROM check_test(
+    is_normal_function( 'someschema', 'huh'::name ),
+    true,
+    'is_normal_function(schema, func)',
+    'Function someschema.huh() should be a normal function',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_normal_function( 'public', 'tap_accum'::name ),
+    false,
+    'is_normal_function(schema, agg)',
+    'Function public.tap_accum() should be a normal function',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_normal_function( 'someschema', 'huh'::name ),
+    false,
+    'isnt_normal_function(schema, func)',
+    'Function someschema.huh() should not be a normal function',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_normal_function( 'public', 'tap_accum'::name ),
+    true,
+    'isnt_normal_function(schema, agg)',
+    'Function public.tap_accum() should not be a normal function',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_normal_function( 'someschema', 'bah'::name ),
+    true,
+    'is_normal_function(schema, func2, args)',
+    'Function someschema.bah() should be a normal function',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_normal_function( 'someschema', 'bah'::name ),
+    false,
+    'isnt_normal_function(schema, func2)',
+    'Function someschema.bah() should not be a normal function',
+    ''
+);
+
+-- Test diagnostics
+SELECT * FROM check_test(
+    is_normal_function( 'someschema', 'nonesuch'::name ),
+    false,
+    'is_normal_function(schema, nofunc)',
+    'Function someschema.nonesuch() should be a normal function',
+    '    Function someschema.nonesuch() does not exist'
+);
+
+SELECT * FROM check_test(
+    is_normal_function( 'public', 'nonesuch'::name ),
+    false,
+    'is_normal_function(schema, nogg)',
+    'Function public.nonesuch() should be a normal function',
+    '    Function public.nonesuch() does not exist'
+);
+
+-- is_normal_function ( NAME, NAME[], TEXT )
+-- isnt_normal_function ( NAME, NAME[], TEXT )
+SELECT * FROM check_test(
+    is_normal_function( 'yay', '{}'::name[], 'whatever' ),
+    true,
+    'is_normal_function(func, noargs, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_normal_function( 'tap_accum', ARRAY[etype()], 'whatever' ),
+    false,
+    'is_normal_function(func, agg, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_normal_function( 'yay', '{}'::name[], 'whatever' ),
+    false,
+    'isnt_normal_function(func, noargs, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_normal_function( 'tap_accum', ARRAY[etype()], 'whatever' ),
+    true,
+    'isnt_normal_function(func, agg, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_normal_function( 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    true,
+    'is_normal_function(func, args, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_normal_function( 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    false,
+    'isnt_normal_function(func, args, desc)',
+    'whatever',
+    ''
+);
+
+-- test diagnostics
+SELECT * FROM check_test(
+    is_normal_function( 'nonesuch', '{}'::name[], 'whatever' ),
+    false,
+    'is_normal_function(nofunc, noargs, desc)',
+    'whatever',
+    '    Function nonesuch() does not exist'
+);
+
+SELECT * FROM check_test(
+    is_normal_function( 'nonesuch', ARRAY[etype()], 'whatever' ),
+    false,
+    'is_normal_function(func, noagg, desc)',
+    'whatever',
+    '    Function nonesuch(' || etype() || ') does not exist'
+);
+
+-- is_normal_function( NAME, NAME[] )
+-- isnt_normal_function( NAME, NAME[] )
+SELECT * FROM check_test(
+    is_normal_function( 'yay', '{}'::name[] ),
+    true,
+    'is_normal_function(func, noargs)',
+    'Function yay() should be a normal function',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_normal_function( 'yay', '{}'::name[] ),
+    false,
+    'isnt_normal_function(func, noargs)',
+    'Function yay() should not be a normal function',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_normal_function( 'oww', ARRAY['integer', 'text'] ),
+    true,
+    'is_normal_function(func, noargs)',
+    'Function oww(integer, text) should be a normal function',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_normal_function( 'oww', ARRAY['integer', 'text'] ),
+    false,
+    'isnt_normal_function(func, noargs)',
+    'Function oww(integer, text) should not be a normal function',
+    ''
+);
+
+-- Test diagnostics
+SELECT * FROM check_test(
+    is_normal_function( 'nope', '{}'::name[] ),
+    false,
+    'is_normal_function(nofunc, noargs)',
+    'Function nope() should be a normal function',
+    '    Function nope() does not exist'
+);
+
+SELECT * FROM check_test(
+    isnt_normal_function( 'nope', '{}'::name[] ),
+    false,
+    'isnt_normal_function(fnounc, noargs)',
+    'Function nope() should not be a normal function',
+    '    Function nope() does not exist'
+);
+
+-- is_normal_function( NAME, TEXT )
+-- isnt_normal_function( NAME, TEXT )
+SELECT * FROM check_test(
+    is_normal_function( 'yay', 'whatever' ),
+    true,
+    'is_normal_function(func, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_normal_function( 'tap_accum', 'whatever' ),
+    false,
+    'is_normal_function(agg, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_normal_function( 'yay', 'howdy' ),
+    false,
+    'isnt_normal_function(func, desc)',
+    'howdy',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_normal_function( 'tap_accum', 'whatever' ),
+    true,
+    'isnt_normal_function(agg, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_normal_function( 'oww', 'coyote' ),
+    true,
+    'is_normal_function(func2, desc)',
+    'coyote',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_normal_function( 'oww', 'hi there' ),
+    false,
+    'isnt_normal_function(func2, desc)',
+    'hi there',
+    ''
+);
+
+-- Test diagnostics
+SELECT * FROM check_test(
+    is_normal_function( 'none', 'whatever' ),
+    false,
+    'is_normal_function(nofunc, desc)',
+    'whatever',
+    '    Function "none"() does not exist'
+);
+
+SELECT * FROM check_test(
+    is_normal_function( 'none', 'whatever' ),
+    false,
+    'is_normal_function(noagg, desc)',
+    'whatever',
+    '    Function "none"() does not exist'
+);
+
+-- is_normal_function( NAME )
+-- isnt_normal_function( NAME )
+SELECT * FROM check_test(
+    is_normal_function( 'yay' ),
+    true,
+    'is_normal_function(func)',
+    'Function yay() should be a normal function',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_normal_function( 'tap_accum' ),
+    false,
+    'is_normal_function(agg)',
+    'Function tap_accum() should be a normal function',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_normal_function( 'yay' ),
+    false,
+    'isnt_normal_function(func)',
+    'Function yay() should not be a normal function',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_normal_function( 'tap_accum' ),
+    true,
+    'isnt_normal_function(agg)',
+    'Function tap_accum() should not be a normal function',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_normal_function( 'oww' ),
+    true,
+    'is_normal_function(func2)',
+    'Function oww() should be a normal function',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_normal_function( 'oww' ),
+    false,
+    'isnt_normal_function(func2,)',
+    'Function oww() should not be a normal function',
+    ''
+);
+
+-- Test diagnostics
+SELECT * FROM check_test(
+    is_normal_function( 'zippo' ),
+    false,
+    'is_normal_function(nofunc)',
+    'Function zippo() should be a normal function',
+    '    Function zippo() does not exist'
+);
+
+SELECT * FROM check_test(
+    is_normal_function( 'zippo' ),
+    false,
+    'is_normal_function(noagg)',
+    'Function zippo() should be a normal function',
+    '    Function zippo() does not exist'
+);
+
+/****************************************************************************/
 -- Test is_aggregate() and isnt_aggregate().
+
+-- is_aggregate ( NAME, NAME, NAME[], TEXT )
+-- isnt_aggregate ( NAME, NAME, NAME[], TEXT )
 SELECT * FROM check_test(
     is_aggregate( 'public', 'tap_accum', ARRAY[etype()], 'whatever' ),
     true,
@@ -1053,24 +1596,8 @@ SELECT * FROM check_test(
 SELECT * FROM check_test(
     isnt_aggregate( 'public', 'tap_accum', ARRAY[etype()], 'whatever' ),
     false,
-    'isnt_aggregate(schema, func, arg, desc)',
+    'isnt_aggregate(schema, agg, arg, desc)',
     'whatever',
-    ''
-);
-
-SELECT * FROM check_test(
-    is_aggregate( 'public', 'tap_accum', ARRAY[etype()] ),
-    true,
-    'is_aggregate(schema, func, arg)',
-    'Function public.tap_accum(' || etype() || ') should be an aggregate function',
-    ''
-);
-
-SELECT * FROM check_test(
-    isnt_aggregate( 'public', 'tap_accum', ARRAY[etype()] ),
-    false,
-    'isnt_aggregate(schema, func, arg)',
-    'Function public.tap_accum(' || etype() || ') should not be an aggregate function',
     ''
 );
 
@@ -1090,74 +1617,29 @@ SELECT * FROM check_test(
     ''
 );
 
+-- Test diagnostics
 SELECT * FROM check_test(
-    is_aggregate( 'public', 'oww', ARRAY['integer', 'text'] ),
+    is_aggregate( 'public', 'nope', ARRAY[etype()], 'whatever' ),
     false,
-    'is_aggregate(schema, func, args)',
-    'Function public.oww(integer, text) should be an aggregate function',
-    ''
-);
-
-SELECT * FROM check_test(
-    isnt_aggregate( 'public', 'oww', ARRAY['integer', 'text'] ),
-    true,
-    'isnt_aggregate(schema, func, args)',
-    'Function public.oww(integer, text) should not be an aggregate function',
-    ''
-);
-
-SELECT * FROM check_test(
-    is_aggregate( 'public', 'tap_accum', 'whatever' ),
-    true,
-    'is_aggregate(schema, func, desc)',
+    'is_aggregate(schema, nofunc, arg, desc)',
     'whatever',
-    ''
+    '    Function public.nope(' || etype() || ') does not exist'
 );
 
 SELECT * FROM check_test(
-    isnt_aggregate( 'public', 'tap_accum', 'whatever' ),
+    isnt_aggregate( 'public', 'nope', ARRAY[etype()], 'whatever' ),
     false,
-    'isnt_aggregate(schema, func, desc)',
+    'isnt_aggregate(schema, noagg, arg, desc)',
     'whatever',
-    ''
+    '    Function public.nope(' || etype() || ') does not exist'
 );
 
-SELECT * FROM check_test(
-    is_aggregate( 'public', 'tap_accum'::name ),
-    true,
-    'is_aggregate(schema, func)',
-    'Function public.tap_accum() should be an aggregate function',
-    ''
-);
-
-SELECT * FROM check_test(
-    isnt_aggregate( 'public', 'tap_accum'::name ),
-    false,
-    'isnt_aggregate(schema, func)',
-    'Function public.tap_accum() should not be an aggregate function',
-    ''
-);
-
-SELECT * FROM check_test(
-    is_aggregate( 'public', 'tap_accum', ARRAY[etype()], 'whatever' ),
-    true,
-    'is_aggregate(schema, func, arg, desc)',
-    'whatever',
-    ''
-);
-
-SELECT * FROM check_test(
-    isnt_aggregate( 'public', 'tap_accum', ARRAY[etype()], 'whatever' ),
-    false,
-    'isnt_aggregate(schema, func, arg, desc)',
-    'whatever',
-    ''
-);
-
+-- is_aggregate( NAME, NAME, NAME[] )
+-- isnt_aggregate( NAME, NAME, NAME[] )
 SELECT * FROM check_test(
     is_aggregate( 'public', 'tap_accum', ARRAY[etype()] ),
     true,
-    'is_aggregate(schema, func, arg)',
+    'is_aggregate(schema, agg, arg)',
     'Function public.tap_accum(' || etype() || ') should be an aggregate function',
     ''
 );
@@ -1165,24 +1647,8 @@ SELECT * FROM check_test(
 SELECT * FROM check_test(
     isnt_aggregate( 'public', 'tap_accum', ARRAY[etype()] ),
     false,
-    'isnt_aggregate(schema, func, arg)',
+    'isnt_aggregate(schema, agg, arg)',
     'Function public.tap_accum(' || etype() || ') should not be an aggregate function',
-    ''
-);
-
-SELECT * FROM check_test(
-    is_aggregate( 'public', 'oww', ARRAY['integer', 'text'], 'whatever' ),
-    false,
-    'is_aggregate(schema, func, args, desc)',
-    'whatever',
-    ''
-);
-
-SELECT * FROM check_test(
-    isnt_aggregate( 'public', 'oww', ARRAY['integer', 'text'], 'whatever' ),
-    true,
-    'isnt_aggregate(schema, func, args, desc)',
-    'whatever',
     ''
 );
 
@@ -1202,10 +1668,29 @@ SELECT * FROM check_test(
     ''
 );
 
+-- Test diagnostics
+SELECT * FROM check_test(
+    is_aggregate( 'public', 'uhuh', ARRAY[etype()] ),
+    false,
+    'is_aggregate(schema, noagg, arg)',
+    'Function public.uhuh(' || etype() || ') should be an aggregate function',
+    '    Function public.uhuh(' || etype() || ') does not exist'
+);
+
+SELECT * FROM check_test(
+    isnt_aggregate( 'public', 'uhuh', ARRAY[etype()] ),
+    false,
+    'isnt_aggregate(schema, noagg, arg)',
+    'Function public.uhuh(' || etype() || ') should not be an aggregate function',
+    '    Function public.uhuh(' || etype() || ') does not exist'
+);
+
+-- is_aggregate ( NAME, NAME, TEXT )
+-- isnt_aggregate ( NAME, NAME, TEXT )
 SELECT * FROM check_test(
     is_aggregate( 'public', 'tap_accum', 'whatever' ),
     true,
-    'is_aggregate(schema, func, desc)',
+    'is_aggregate(schema, agg, desc)',
     'whatever',
     ''
 );
@@ -1213,15 +1698,34 @@ SELECT * FROM check_test(
 SELECT * FROM check_test(
     isnt_aggregate( 'public', 'tap_accum', 'whatever' ),
     false,
-    'isnt_aggregate(schema, func, desc)',
+    'isnt_aggregate(schema, agg, desc)',
     'whatever',
     ''
 );
 
+-- Test diagnostics
+SELECT * FROM check_test(
+    is_aggregate( 'public', 'nada', 'whatever' ),
+    false,
+    'is_aggregate(schema, noagg, desc)',
+    'whatever',
+    '    Function public.nada() does not exist'
+);
+
+SELECT * FROM check_test(
+    isnt_aggregate( 'public', 'nada', 'whatever' ),
+    false,
+    'isnt_aggregate(schema, noagg, desc)',
+    'whatever',
+    '    Function public.nada() does not exist'
+);
+
+-- is_aggregate( NAME, NAME )
+-- isnt_aggregate( NAME, NAME )
 SELECT * FROM check_test(
     is_aggregate( 'public', 'tap_accum'::name ),
     true,
-    'is_aggregate(schema, func)',
+    'is_aggregate(schema, agg)',
     'Function public.tap_accum() should be an aggregate function',
     ''
 );
@@ -1229,15 +1733,34 @@ SELECT * FROM check_test(
 SELECT * FROM check_test(
     isnt_aggregate( 'public', 'tap_accum'::name ),
     false,
-    'isnt_aggregate(schema, func)',
+    'isnt_aggregate(schema, agg)',
     'Function public.tap_accum() should not be an aggregate function',
     ''
 );
 
+-- Test diagnostics
+SELECT * FROM check_test(
+    is_aggregate( 'public', 'nope'::name ),
+    false,
+    'is_aggregate(schema, noagg)',
+    'Function public.nope() should be an aggregate function',
+    '    Function public.nope() does not exist'
+);
+
+SELECT * FROM check_test(
+    isnt_aggregate( 'public', 'nope'::name ),
+    false,
+    'isnt_aggregate(schema, noagg)',
+    'Function public.nope() should not be an aggregate function',
+    '    Function public.nope() does not exist'
+);
+
+-- is_aggregate ( NAME, NAME[], TEXT )
+-- isnt_aggregate ( NAME, NAME[], TEXT )
 SELECT * FROM check_test(
     is_aggregate( 'tap_accum', ARRAY[etype()], 'whatever' ),
     true,
-    'is_aggregate(func, arg, desc)',
+    'is_aggregate(agg, arg, desc)',
     'whatever',
     ''
 );
@@ -1245,24 +1768,8 @@ SELECT * FROM check_test(
 SELECT * FROM check_test(
     isnt_aggregate( 'tap_accum', ARRAY[etype()], 'whatever' ),
     false,
-    'isnt_aggregate(func, arg, desc)',
+    'isnt_aggregate(agg, arg, desc)',
     'whatever',
-    ''
-);
-
-SELECT * FROM check_test(
-    is_aggregate( 'tap_accum', ARRAY[etype()] ),
-    true,
-    'is_aggregate(func, arg)',
-    'Function tap_accum(' || etype() || ') should be an aggregate function',
-    ''
-);
-
-SELECT * FROM check_test(
-    isnt_aggregate( 'tap_accum', ARRAY[etype()] ),
-    false,
-    'isnt_aggregate(func, arg)',
-    'Function tap_accum(' || etype() || ') should not be an aggregate function',
     ''
 );
 
@@ -1282,6 +1789,41 @@ SELECT * FROM check_test(
     ''
 );
 
+-- Test diagnostics
+SELECT * FROM check_test(
+    is_aggregate( 'nonesuch', ARRAY[etype()], 'whatever' ),
+    false,
+    'is_aggregate(noagg, arg, desc)',
+    'whatever',
+    '    Function nonesuch(' || etype() || ') does not exist'
+);
+
+SELECT * FROM check_test(
+    isnt_aggregate( 'nonesuch', ARRAY[etype()], 'whatever' ),
+    false,
+    'isnt_aggregate(noagg, arg, desc)',
+    'whatever',
+    '    Function nonesuch(' || etype() || ') does not exist'
+);
+
+-- is_aggregate( NAME, NAME[] )
+-- isnt_aggregate( NAME, NAME[] )
+SELECT * FROM check_test(
+    is_aggregate( 'tap_accum', ARRAY[etype()] ),
+    true,
+    'is_aggregate(agg, arg)',
+    'Function tap_accum(' || etype() || ') should be an aggregate function',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_aggregate( 'tap_accum', ARRAY[etype()] ),
+    false,
+    'isnt_aggregate(agg, arg)',
+    'Function tap_accum(' || etype() || ') should not be an aggregate function',
+    ''
+);
+
 SELECT * FROM check_test(
     is_aggregate( 'oww', ARRAY['integer', 'text'] ),
     false,
@@ -1298,6 +1840,25 @@ SELECT * FROM check_test(
     ''
 );
 
+-- Test diagnostics
+SELECT * FROM check_test(
+    is_aggregate( '_zip', ARRAY[etype()] ),
+    false,
+    'is_aggregate(noagg, arg)',
+    'Function _zip(' || etype() || ') should be an aggregate function',
+    '    Function _zip(' || etype() || ') does not exist'
+);
+
+SELECT * FROM check_test(
+    isnt_aggregate( '_zip', ARRAY[etype()] ),
+    false,
+    'isnt_aggregate(noagg, arg)',
+    'Function _zip(' || etype() || ') should not be an aggregate function',
+    '    Function _zip(' || etype() || ') does not exist'
+);
+
+-- is_aggregate( NAME, TEXT )
+-- isnt_aggregate( NAME, TEXT )
 SELECT * FROM check_test(
     is_aggregate( 'tap_accum', 'whatever' ),
     true,
@@ -1309,15 +1870,34 @@ SELECT * FROM check_test(
 SELECT * FROM check_test(
     isnt_aggregate( 'tap_accum', 'whatever' ),
     false,
-    'isnt_aggregate(func, desc)',
+    'isnt_aggregate(agg, desc)',
     'whatever',
     ''
 );
 
+-- Test diagnostics
+SELECT * FROM check_test(
+    is_aggregate( 'nope', 'whatever' ),
+    false,
+    'is_aggregate(nofunc, desc)',
+    'whatever',
+    '    Function nope() does not exist'
+);
+
+SELECT * FROM check_test(
+    isnt_aggregate( 'nope', 'whatever' ),
+    false,
+    'isnt_aggregate(noagg, desc)',
+    'whatever',
+    '    Function nope() does not exist'
+);
+
+-- is_aggregate( NAME )
+-- isnt_aggregate( NAME )
 SELECT * FROM check_test(
     is_aggregate( 'tap_accum'::name ),
     true,
-    'is_aggregate(func)',
+    'is_aggregate(agg)',
     'Function tap_accum() should be an aggregate function',
     ''
 );
@@ -1325,109 +1905,601 @@ SELECT * FROM check_test(
 SELECT * FROM check_test(
     isnt_aggregate( 'tap_accum'::name ),
     false,
-    'isnt_aggregate(func)',
+    'isnt_aggregate(agg)',
     'Function tap_accum() should not be an aggregate function',
     ''
 );
 
+-- Test diagnostics
+SELECT * FROM check_test(
+    is_aggregate( 'nope'::name ),
+    false,
+    'is_aggregate(noagg)',
+    'Function nope() should be an aggregate function',
+    '    Function nope() does not exist'
+);
+
+SELECT * FROM check_test(
+    isnt_aggregate( 'nope'::name ),
+    false,
+    'isnt_aggregate(noagg)',
+    'Function nope() should not be an aggregate function',
+    '    Function nope() does not exist'
+);
+
+/****************************************************************************/
+-- Test is_window() and isnt_window().
+
+-- is_window ( NAME, NAME, NAME[], TEXT )
+-- isnt_window ( NAME, NAME, NAME[], TEXT )
+SELECT * FROM check_test(
+    is_window( 'pg_catalog', 'ntile', ARRAY['integer'], 'whatever' ),
+    true,
+    'is_window(schema, win, arg, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_window( 'pg_catalog', 'ntile', ARRAY['integer'], 'whatever' ),
+    false,
+    'isnt_window(schema, win, arg, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_window( 'someschema', 'bah', ARRAY['integer', 'text'], 'whatever' ),
+    false,
+    'is_window(schema, func, arg, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_window( 'someschema', 'bah', ARRAY['integer', 'text'], 'whatever' ),
+    true,
+    'isnt_window(schema, func, arg, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_window( 'pg_catalog', 'dense_rank', '{}'::name[], 'whatever' ),
+    true,
+    'is_window(schema, win, noargs, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_window( 'pg_catalog', 'dense_rank', '{}'::name[], 'whatever' ),
+    false,
+    'isnt_window(schema, win, noargs, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_window( 'someschema', 'huh', '{}'::name[], 'whatever' ),
+    false,
+    'is_window(schema, func, noarg, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_window( 'pg_catalog', 'dense_rank', '{}'::name[], 'whatever' ),
+    false,
+    'is_window(schema, win, noargs, desc)',
+    'whatever',
+    ''
+);
+
+-- Test diagnostics
+SELECT * FROM check_test(
+    is_window( 'someschema', 'nope', ARRAY['integer'], 'whatever' ),
+    false,
+    'is_window(schema, nowin, arg, desc)',
+    'whatever',
+    '    Function someschema.nope(integer) does not exist'
+);
+
+SELECT * FROM check_test(
+    isnt_window( 'someschema', 'nope', ARRAY['integer'], 'whatever' ),
+    false,
+    'isnt_window(schema, nowin, arg, desc)',
+    'whatever',
+    '    Function someschema.nope(integer) does not exist'
+);
+
+-- is_window ( NAME, NAME, NAME[] )
+-- isnt_window ( NAME, NAME, NAME[] )
+SELECT * FROM check_test(
+    is_window( 'pg_catalog', 'ntile', ARRAY['integer'] ),
+    true,
+    'is_window(schema, win, arg)',
+    'Function pg_catalog.ntile(integer) should be a window function',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_window( 'pg_catalog', 'ntile', ARRAY['integer'] ),
+    false,
+    'isnt_window(schema, win, arg)',
+    'Function pg_catalog.ntile(integer) should not be a window function',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_window( 'someschema', 'bah', ARRAY['integer', 'text'] ),
+    false,
+    'is_window(schema, func, arg)',
+    'Function someschema.bah(integer, text) should be a window function',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_window( 'someschema', 'bah', ARRAY['integer', 'text'] ),
+    true,
+    'isnt_window(schema, func, arg)',
+    'Function someschema.bah(integer, text) should not be a window function',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_window( 'pg_catalog', 'dense_rank', '{}'::name[] ),
+    true,
+    'is_window(schema, win, noargs)',
+    'Function pg_catalog.dense_rank() should be a window function',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_window( 'pg_catalog', 'dense_rank', '{}'::name[] ),
+    false,
+    'isnt_window(schema, win, noargs)',
+    'Function pg_catalog.dense_rank() should not be a window function',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_window( 'someschema', 'huh', '{}'::name[] ),
+    false,
+    'is_window(schema, func, noarg)',
+    'Function someschema.huh() should be a window function',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_window( 'pg_catalog', 'dense_rank', '{}'::name[] ),
+    false,
+    'isnt_window(schema, win, noargs)',
+    'Function pg_catalog.dense_rank() should not be a window function',
+    ''
+);
+
+-- Test diagnostics
+SELECT * FROM check_test(
+    is_window( 'someschema', 'nada', ARRAY['integer'] ),
+    false,
+    'is_window(schema, nowin, arg)',
+    'Function someschema.nada(integer) should be a window function',
+    '    Function someschema.nada(integer) does not exist'
+);
+
+SELECT * FROM check_test(
+    isnt_window( 'someschema', 'nada', ARRAY['integer'] ),
+    false,
+    'isnt_window(schema, nowin, arg)',
+    'Function someschema.nada(integer) should not be a window function',
+    '    Function someschema.nada(integer) does not exist'
+);
+
+-- is_window ( NAME, NAME, TEXT )
+-- isnt_window ( NAME, NAME, TEXT )
+SELECT * FROM check_test(
+    is_window( 'pg_catalog', 'ntile'::name, 'whatever' ),
+    true,
+    'is_window(schema, win, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_window( 'pg_catalog', 'ntile'::name, 'whatever' ),
+    false,
+    'isnt_window(schema, win, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_window( 'someschema', 'bah'::name, 'whatever' ),
+    false,
+    'is_window(schema, func, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_window( 'someschema', 'bah'::name, 'whatever' ),
+    true,
+    'isnt_window(schema, func, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_window( 'someschema', 'huh'::name, 'whatever' ),
+    false,
+    'is_window(schema, func, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_window( 'pg_catalog', 'dense_rank'::name, 'whatever' ),
+    false,
+    'isnt_window(schema, win, desc)',
+    'whatever',
+    ''
+);
+
+-- Test diagnostics
+SELECT * FROM check_test(
+    is_window( 'someschema', 'nil'::name, 'whatever' ),
+    false,
+    'is_window(schema, nowin, desc)',
+    'whatever',
+    '    Function someschema.nil() does not exist'
+);
+
+SELECT * FROM check_test(
+    isnt_window( 'someschema', 'nil'::name, 'whatever' ),
+    false,
+    'isnt_window(schema, nowin, desc)',
+    'whatever',
+    '    Function someschema.nil() does not exist'
+);
+
+-- is_window( NAME, NAME )
+-- isnt_window( NAME, NAME )
+SELECT * FROM check_test(
+    is_window( 'pg_catalog', 'ntile'::name ),
+    true,
+    'is_window(schema, win)',
+    'Function pg_catalog.ntile() should be a window function',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_window( 'pg_catalog', 'ntile'::name ),
+    false,
+    'isnt_window(schema, win)',
+    'Function pg_catalog.ntile() should not be a window function',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_window( 'someschema', 'bah'::name ),
+    false,
+    'is_window(schema, func)',
+    'Function someschema.bah() should be a window function',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_window( 'someschema', 'bah'::name ),
+    true,
+    'isnt_window(schema, func)',
+    'Function someschema.bah() should not be a window function',
+    ''
+);
+
+-- Test diagnostics
+SELECT * FROM check_test(
+    is_window( 'someschema', 'zilch'::name ),
+    false,
+    'is_window(schema, nowin)',
+    'Function someschema.zilch() should be a window function',
+    '    Function someschema.zilch() does not exist'
+);
+
+SELECT * FROM check_test(
+    isnt_window( 'someschema', 'zilch'::name ),
+    false,
+    'isnt_window(schema, nowin)',
+    'Function someschema.zilch() should not be a window function',
+    '    Function someschema.zilch() does not exist'
+);
+
+-- is_window ( NAME, NAME[], TEXT )
+-- isnt_window ( NAME, NAME[], TEXT )
+SELECT * FROM check_test(
+    is_window( 'ntile', ARRAY['integer'], 'whatever' ),
+    true,
+    'is_window(win, arg, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_window( 'ntile', ARRAY['integer'], 'whatever' ),
+    false,
+    'isnt_window(win, arg, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_window( 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    false,
+    'is_window(func, arg, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_window( 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    true,
+    'isnt_window(func, arg, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_window( 'dense_rank', '{}'::name[], 'whatever' ),
+    true,
+    'is_window(win, noargs, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_window( 'dense_rank', '{}'::name[], 'whatever' ),
+    false,
+    'isnt_window(win, noargs, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_window( 'yay', '{}'::name[], 'whatever' ),
+    false,
+    'is_window(func, noarg, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_window( 'dense_rank', '{}'::name[], 'whatever' ),
+    false,
+    'isnt_window(win, noargs, desc)',
+    'whatever',
+    ''
+);
+
+-- Test diagnostics
+SELECT * FROM check_test(
+    is_window( 'nada', ARRAY['integer'], 'whatever' ),
+    false,
+    'is_window(nowin, arg, desc)',
+    'whatever',
+    '    Function nada(integer) does not exist'
+);
+
+SELECT * FROM check_test(
+    isnt_window( 'nada', ARRAY['integer'], 'whatever' ),
+    false,
+    'isnt_window(nowin, arg, desc)',
+    'whatever',
+    '    Function nada(integer) does not exist'
+);
+
+-- is_window( NAME, NAME[] )
+-- isnt_window( NAME, NAME[] )
+SELECT * FROM check_test(
+    is_window( 'ntile', ARRAY['integer'] ),
+    true,
+    'is_window(win, arg, desc)',
+    'Function ntile(integer) should be a window function',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_window( 'ntile', ARRAY['integer'] ),
+    false,
+    'isnt_window(win, arg, desc)',
+    'Function ntile(integer) should not be a window function',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_window( 'oww', ARRAY['integer', 'text'] ),
+    false,
+    'is_window(func, arg, desc)',
+    'Function oww(integer, text) should be a window function',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_window( 'oww', ARRAY['integer', 'text'] ),
+    true,
+    'isnt_window(func, arg, desc)',
+    'Function oww(integer, text) should not be a window function',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_window( 'dense_rank', '{}'::name[] ),
+    true,
+    'is_window(win, noargs, desc)',
+    'Function dense_rank() should be a window function',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_window( 'dense_rank', '{}'::name[] ),
+    false,
+    'isnt_window(win, noargs, desc)',
+    'Function dense_rank() should not be a window function',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_window( 'yay', '{}'::name[] ),
+    false,
+    'is_window(func, noarg, desc)',
+    'Function yay() should be a window function',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_window( 'dense_rank', '{}'::name[] ),
+    false,
+    'isnt_window(win, noargs, desc)',
+    'Function dense_rank() should not be a window function',
+    ''
+);
+
+-- Test diagnostics
+SELECT * FROM check_test(
+    is_window( 'nope', ARRAY['integer'] ),
+    false,
+    'is_window(nowin, arg, desc)',
+    'Function nope(integer) should be a window function',
+    '    Function nope(integer) does not exist'
+);
+
+SELECT * FROM check_test(
+    isnt_window( 'nope', ARRAY['integer'] ),
+    false,
+    'isnt_window(nowin, arg, desc)',
+    'Function nope(integer) should not be a window function',
+    '    Function nope(integer) does not exist'
+);
+
+-- is_window( NAME, TEXT )
+-- isnt_window( NAME, TEXT )
+SELECT * FROM check_test(
+    is_window( 'ntile'::name, 'whatever' ),
+    true,
+    'is_window(win, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_window( 'ntile'::name, 'whatever' ),
+    false,
+    'isnt_window(win, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_window( 'oww'::name, 'whatever' ),
+    false,
+    'is_window(func, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_window('oww'::name, 'whatever' ),
+    true,
+    'isnt_window(func, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_window( 'yay'::name, 'whatever' ),
+    false,
+    'is_window(func, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_window( 'dense_rank'::name, 'whatever' ),
+    false,
+    'isnt_window(win, desc)',
+    'whatever',
+    ''
+);
+
+-- Test diagnostics
+SELECT * FROM check_test(
+    is_window( 'nonesuch'::name, 'whatever' ),
+    false,
+    'is_window(nowin, desc)',
+    'whatever',
+    '    Function nonesuch() does not exist'
+);
+
+SELECT * FROM check_test(
+    isnt_window( 'nonesuch'::name, 'whatever' ),
+    false,
+    'isnt_window(nowin, desc)',
+    'whatever',
+    '    Function nonesuch() does not exist'
+);
+
+-- is_window( NAME )
+-- isnt_window( NAME )
+SELECT * FROM check_test(
+    is_window( 'ntile' ),
+    true,
+    'is_window(win)',
+    'Function ntile() should be a window function',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_window( 'ntile' ),
+    false,
+    'isnt_window(win)',
+    'Function ntile() should not be a window function',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_window( 'oww' ),
+    false,
+    'is_window(func)',
+    'Function oww() should be a window function',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_window('oww' ),
+    true,
+    'isnt_window(func)',
+    'Function oww() should not be a window function',
+    ''
+);
+
+-- Test diagnostics
+SELECT * FROM check_test(
+    is_window( 'nooo' ),
+    false,
+    'is_window(nowin)',
+    'Function nooo() should be a window function',
+    '    Function nooo() does not exist'
+);
+
+SELECT * FROM check_test(
+    isnt_window( 'nooo' ),
+    false,
+    'isnt_window(nowin)',
+    'Function nooo() should not be a window function',
+    '    Function nooo() does not exist'
+);
+
 /****************************************************************************/
 -- Test is_strict() and isnt_strict().
-SELECT * FROM check_test(
-    is_strict( 'public', 'yay', '{}'::name[], 'whatever' ),
-    true,
-    'is_strict(schema, func, 0 args, desc)',
-    'whatever',
-    ''
-);
-
-SELECT * FROM check_test(
-    isnt_strict( 'public', 'yay', '{}'::name[], 'whatever' ),
-    false,
-    'isnt_strict(schema, func, 0 args, desc)',
-    'whatever',
-    ''
-);
-
-SELECT * FROM check_test(
-    is_strict( 'public', 'yay', '{}'::name[] ),
-    true,
-    'is_strict(schema, func, 0 args)',
-    'Function public.yay() should be strict',
-    ''
-);
-
-SELECT * FROM check_test(
-    isnt_strict( 'public', 'yay', '{}'::name[] ),
-    false,
-    'isnt_strict(schema, func, 0 args)',
-    'Function public.yay() should not be strict',
-    ''
-);
-
-SELECT * FROM check_test(
-    is_strict( 'public', 'oww', ARRAY['integer', 'text'], 'whatever' ),
-    false,
-    'is_strict(schema, func, args, desc)',
-    'whatever',
-    ''
-);
-
-SELECT * FROM check_test(
-    isnt_strict( 'public', 'oww', ARRAY['integer', 'text'], 'whatever' ),
-    true,
-    'is_strict(schema, func, args, desc)',
-    'whatever',
-    ''
-);
-
-SELECT * FROM check_test(
-    is_strict( 'public', 'oww', ARRAY['integer', 'text'] ),
-    false,
-    'is_strict(schema, func, args)',
-    'Function public.oww(integer, text) should be strict',
-    ''
-);
-
-SELECT * FROM check_test(
-    isnt_strict( 'public', 'oww', ARRAY['integer', 'text'] ),
-    true,
-    'is_strict(schema, func, args)',
-    'Function public.oww(integer, text) should not be strict',
-    ''
-);
-
-SELECT * FROM check_test(
-    is_strict( 'public', 'yay', 'whatever' ),
-    true,
-    'is_strict(schema, func, desc)',
-    'whatever',
-    ''
-);
-
-SELECT * FROM check_test(
-    isnt_strict( 'public', 'yay', 'whatever' ),
-    false,
-    'isnt_strict(schema, func, desc)',
-    'whatever',
-    ''
-);
-
-SELECT * FROM check_test(
-    is_strict( 'public', 'yay'::name ),
-    true,
-    'is_strict(schema, func)',
-    'Function public.yay() should be strict',
-    ''
-);
-
-SELECT * FROM check_test(
-    isnt_strict( 'public', 'yay'::name ),
-    false,
-    'isnt_strict(schema, func)',
-    'Function public.yay() should not be strict',
-    ''
-);
-
 SELECT * FROM check_test(
     is_strict( 'public', 'yay', '{}'::name[], 'whatever' ),
     true,
@@ -1521,6 +2593,22 @@ SELECT * FROM check_test(
     false,
     'isnt_strict(schema, func)',
     'Function public.yay() should not be strict',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_strict( 'public', 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    true,
+    'isnt_strict(schema, func, args, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_strict( 'public', 'oww', ARRAY['integer', 'text'] ),
+    true,
+    'isnt_strict(schema, func, args)',
+    'Function public.oww(integer, text) should not be strict',
     ''
 );
 
@@ -1631,14 +2719,6 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    volatility_is( 'public', 'yay', '{}'::name[], 'VOLATILE', 'whatever' ),
-    true,
-    'function_volatility(schema, func, 0 args, VOLATILE, desc)',
-    'whatever',
-    ''
-);
-
-SELECT * FROM check_test(
     volatility_is( 'public', 'yay', '{}'::name[], 'v', 'whatever' ),
     true,
     'function_volatility(schema, func, 0 args, v, desc)',
@@ -1714,14 +2794,6 @@ SELECT * FROM check_test(
     volatility_is( 'yay', '{}'::name[], 'volatile', 'whatever' ),
     true,
     'function_volatility(func, 0 args, volatile, desc)',
-    'whatever',
-    ''
-);
-
-SELECT * FROM check_test(
-    volatility_is( 'yay', '{}'::name[], 'VOLATILE', 'whatever' ),
-    true,
-    'function_volatility(func, 0 args, VOLATILE, desc)',
     'whatever',
     ''
 );

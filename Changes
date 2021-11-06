@@ -150,7 +150,18 @@ Revision history for pgTAP
     + `partitions_are()`
 * Added the materialized view-testing assertion functions to the v0.95.0 upgrade
   script; they were inadvertently omitted in the v0.95.0 release.
-* Fixed faling tests on Postgres 8.1.
+* Fixed failing tests on Postgres 8.1.
+* Added function type testing functions to complement `is_aggregate()` and
+  `isnt_aggregate()`:
+    + `is_normal_function()`
+    + `isnt_normal_function()`
+    + `is_window()`
+    + `isnt_window()`
+    + `is_procedure()`
+    + `isnt_procedure()`
+* Made the diagnostic output of `is_aggregate()` and `isnt_aggregate()`
+  consistent. Previously, when the function did not exist, some instances would
+  generate diagnostic output and some would not.
 
 0.97.0 2016-11-28T22:18:29Z
 ---------------------------
