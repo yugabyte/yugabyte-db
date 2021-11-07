@@ -94,7 +94,7 @@ You access your clusters from the **Clusters** page.
         <div class="title">Monitor cluster activity</div>
       </div>
       <div class="body">
-        Monitor cluster activity.
+        Review the activity on your cluster.
       </div>
     </a>
   </div>
