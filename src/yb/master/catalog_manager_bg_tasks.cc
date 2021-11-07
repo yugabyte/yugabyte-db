@@ -55,6 +55,8 @@ DEFINE_bool(sys_catalog_respect_affinity_task, true,
             "Whether the master sys catalog tablet respects cluster config preferred zones "
             "and sends step down requests to a preferred leader.");
 
+DECLARE_bool(enable_ysql);
+
 namespace yb {
 namespace master {
 
@@ -171,8 +173,10 @@ void CatalogManagerBgTasks::Run() {
         }
       }
 
-      // Start the tablespace background task.
-      catalog_manager_->StartTablespaceBgTaskIfStopped();
+      if (FLAGS_enable_ysql) {
+        // Start the tablespace background task.
+        catalog_manager_->StartTablespaceBgTaskIfStopped();
+      }
     } else {
       // Reset Metrics when leader_status is not ok.
       catalog_manager_->ResetMetrics();
