@@ -221,10 +221,11 @@ yb_demo=# SELECT source,
 
 ## Next steps
 
-- [Develop an application](../../cloud-develop/)
-- Learn [cluster basics](../../cloud-basics), including how to
+[Develop an application](../../cloud-develop/)
 
-  - [Authorize access to your cluster](../../cloud-basics/add-connections/)
-  - [Connect to clusters](../../cloud-basics/connect-to-clusters/)
-  - [Add database users](../../cloud-basics/add-users/)
-  - [Add production clusters](../../cloud-basics/create-clusters/)
+Learn [cluster basics](../../cloud-basics), including how to
+
+- [Authorize access to your cluster](../../cloud-basics/add-connections/)
+- [Connect to clusters](../../cloud-basics/connect-to-clusters/)
+- [Add database users](../../cloud-basics/add-users/)
+- [Add production clusters](../../cloud-basics/create-clusters/)

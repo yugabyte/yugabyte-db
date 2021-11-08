@@ -1,6 +1,6 @@
 ---
 title: Create a database and load data
-linkTitle: Load data
+linkTitle: Create a database
 description: Create a database and load data on a cluster in Yugabyte Cloud.
 headcontent:
 image: /images/section_icons/index/quick_start.png
@@ -94,7 +94,7 @@ To create a database (`yb_demo`), do the following:
 
 ## Load data
 
-1. Load some data into the products table by running the following commands.
+1. Load some data into the `products` table by running the following commands.
 
     ```sql
     yb_demo=# INSERT INTO products (id, category, created_at, ean, price, rating, title, vendor) VALUES (1,'Gizmo','2017-07-19T19:44:56.582Z',1018947080336,29.463261130679875,4.6,'Rustic Paper Wallet','Swaniawski, Casper and Hilll');
@@ -114,7 +114,7 @@ To create a database (`yb_demo`), do the following:
     INSERT INTO products (id, category, created_at, ean, price, rating, title, vendor) VALUES (15,'Widget','2016-09-08T14:42:57.264Z',5881647583898,25.09876359271891,4.0,'Aerodynamic Paper Computer','Friesen-Anderson');
     ```
 
-1. Load some data into the users table by running the following commands.
+1. Load some data into the `users` table by running the following commands.
 
     ```sql
     yb_demo=# INSERT INTO users(created_at,source,name,city,birth_date,latitude,zip,password,id,longitude,address,state,email) VALUES ('2017-10-07T01:34:35.462Z','Twitter','Hudson Borer','Wood River','1986-12-12',40.71314890000001,68883,'ccca881f-3e4b-4e5c-8336-354103604af6',1,-98.5259864,'9611-9809 West Rosedale Road','NE','borer-hudson@yahoo.com');
@@ -134,7 +134,7 @@ To create a database (`yb_demo`), do the following:
     INSERT INTO users(created_at,source,name,city,birth_date,latitude,zip,password,id,longitude,address,state,email) VALUES ('2018-12-20T17:50:32.296Z','Twitter','Bertrand Romaguera','El Paso','2000-02-14',35.1080351,72045,'2734ae7a-aa25-4907-9d2e-a6992750db60',15,-92.0101859,'258 Opal Road','AR','romaguera.bertrand@gmail.com');
     ```
 
-1. Load some data into the orders table by running the following commands.
+1. Load some data into the `orders` table by running the following commands.
 
     ```sql
     yb_demo=# INSERT INTO orders(id,created_at,discount,product_id,quantity,subtotal,tax,total,user_id) VALUES (9,'2017-05-03T16:00:54.923Z',3.594742155259162,184,3,77.3982748679465,4.26,81.6742695904106,1);
@@ -154,7 +154,7 @@ To create a database (`yb_demo`), do the following:
     INSERT INTO orders(id,created_at,discount,product_id,quantity,subtotal,tax,total,user_id) VALUES (76,'2016-12-19T19:40:17.782Z',NULL,185,2,26.384667225677738,1.72,28.098902628941254,15);
     ```
 
-1. Load some data into the reviews table by running the following commands.
+1. Load some data into the `reviews` table by running the following commands.
 
     ```sql
     yb_demo=# INSERT INTO reviews(id,body,created_at,product_id,rating,reviewer) VALUES (1,'Ad perspiciatis quis et consectetur. Laboriosam fuga voluptas ut et modi ipsum. Odio et eum numquam eos nisi. Assumenda aut magnam libero maiores nobis vel beatae officia.','2018-05-15T20:25:48.517Z',1,5,'christ');
@@ -182,4 +182,4 @@ More sample datasets are available for you to use to explore YugabyteDB. Refer t
 
 ## Next step
 
-- [Explore distributed SQL](../qs-explore)
+[Explore distributed SQL](../qs-explore)

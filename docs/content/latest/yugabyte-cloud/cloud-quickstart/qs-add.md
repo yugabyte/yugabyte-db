@@ -1,7 +1,7 @@
 ---
-title: Add a free cluster
-linkTitle: Add a free cluster
-description: Add a Free cluster to get started using Yugabyte Cloud.
+title: Create a free cluster
+linkTitle: Create a free cluster
+description: Create a Free cluster to get started using Yugabyte Cloud.
 headcontent:
 image: /images/section_icons/index/quick_start.png
 menu:
@@ -15,7 +15,7 @@ showAsideToc: true
 
 The free cluster provides a fully functioning single node YugabyteDB cluster deployed to the region of your choice. The cluster is free forever and includes enough resources to explore the core features available for developing applications with YugabyteDB. No credit card information is required. You can only have one free cluster.
 
-To add a free cluster:
+To create a free cluster:
 
 1. After setting up your Yugabyte Cloud account, [log in](https://cloud.yugabyte.com/login) to display the Yugabyte Cloud console. The console has the following main sections, accessed via the left menu:
 
@@ -45,8 +45,8 @@ Once the cluster is ready, the cluster [Overview](../../cloud-clusters/overview)
 
 ### Learn more
 
-- [Differences between free and standard clusters](../../cloud-faq/#what-are-the-differences-between-free-and-standard-clusters/)
+[Differences between free and standard clusters](../../cloud-faq/#what-are-the-differences-between-free-and-standard-clusters/)
 
 ## Next step
 
-- [Connect to your cluster](../qs-connect) using the Cloud Shell.
+[Connect to your cluster](../qs-connect) using the Cloud Shell.

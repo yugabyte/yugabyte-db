@@ -1,6 +1,6 @@
 ---
-title: Connect to your cluster
-linkTitle: Connect to your cluster
+title: Connect to the cluster
+linkTitle: Connect to the cluster
 description: Connect to your cluster using the cloud shell.
 headcontent:
 image: /images/section_icons/index/quick_start.png
@@ -24,7 +24,9 @@ The cloud shell allows you to connect to and interact with your Yugabyte Cloud c
 
 To use `ysqlsh` to create and manage YugabyteDB databases and tables in your Yugabyte Cloud cluster, do the following:
 
-1. On the **Clusters** page, click **Connect** to display the **Connect to Cluster** dialog.
+1. On the **Clusters** page, ensure your cluster is selected.
+
+1. Click **Connect** to display the **Connect to Cluster** dialog.
 
 1. Under **Cloud Shell**, click **Launch Cloud Shell**.
 
@@ -58,4 +60,4 @@ For more information on the YSQL and YCQL APIs, refer to [YSQL API](../../../api
 
 ## Next step
 
-- [Create a database and load data](../qs-data)
+[Create a database and load data](../qs-data)
