@@ -395,8 +395,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   public void unlockUniverseForUpdate(String error) {
+    UUID universeUUID = taskParams().universeUUID;
     if (!universeLocked) {
-      log.warn("Unlock universe called when it was not locked.");
+      log.warn("Unlock universe({}) called when it was not locked.", universeUUID);
       return;
     }
     final String err = error;
@@ -419,10 +420,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             universe.setUniverseDetails(universeDetails);
           }
         };
-    // Perform the update. If unsuccessful, this will throw a runtime exception which we do not
-    // catch as we want to fail.
-    saveUniverseDetails(updater);
-    log.trace("Unlocked universe {} for updates.", taskParams().universeUUID);
+    // Update the progress flag to false irrespective of the version increment failure.
+    // Universe version in master does not need to be updated as this does not change
+    // the Universe state. It simply sets updateInProgress flag to false.
+    Universe.saveDetails(universeUUID, updater, shouldIncrementVersion());
+    log.trace("Unlocked universe {} for updates.", universeUUID);
   }
 
   /** Create a task to mark the change on a universe as success. */

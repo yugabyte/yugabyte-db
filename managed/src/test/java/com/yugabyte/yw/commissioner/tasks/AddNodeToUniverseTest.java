@@ -271,7 +271,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
       // a bump on the cluster config version. The actual number depends on the
       // number of invocations of saveUniverseDetails so it can vary but the
       // important thing is that it is much more than the other case.
-      verify(mockClient, times(8)).changeMasterClusterConfig(any());
+      verify(mockClient, times(7)).changeMasterClusterConfig(any());
     } else {
       verify(mockClient, times(1)).changeMasterClusterConfig(any());
     }
