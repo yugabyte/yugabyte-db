@@ -216,15 +216,13 @@ You’ll create two java applications, `UniformLoadBalance` and `TopologyAwareLo
         System.out.println("Closing the Hikari Connection Pool!!");
         hikariDataSource.close();   
 
-       }
+      }
 
-     }
+    }
     ```
 
     {{< note title="Note">}}
-
-     When using `DriverManager.getConnection()`, you need to include the `load-balance=true` property in the connection URL. In the case of `YBClusterAwareDataSource`, load balancing is enabled by default.
-
+When using `DriverManager.getConnection()`, you need to include the `load-balance=true` property in the connection URL. In the case of `YBClusterAwareDataSource`, load balancing is enabled by default.
     {{< /note >}}
 
 1. Run the application.
@@ -290,12 +288,12 @@ You’ll create two java applications, `UniformLoadBalance` and `TopologyAwareLo
             connection.close();
           }
 
-         }
+        }
         catch (SQLException exception) {
           exception.printStackTrace();
-         } 
+        } 
 
-       }
+      }
 
       public static void makeConnectionUsingYbClusterAwareDataSource() {
         System.out.println("Now, Lets create 10 connections using YbClusterAwareDataSource and Hikari Pool");
@@ -330,15 +328,13 @@ You’ll create two java applications, `UniformLoadBalance` and `TopologyAwareLo
         System.out.println("Closing the Hikari Connection Pool!!");
         hikariDataSource.close();
         
-       }
+      }
   
-     }
+    }
     ```
 
     {{< note title="Note" >}}
-
-     When using `DriverManager.getConnection()`, you need to include the `load-balance=true` property in the connection URL. In the case of `YBClusterAwareDataSource`, load balancing is enabled by default, but you must set property `dataSource.topologyKeys`.
-
+When using `DriverManager.getConnection()`, you need to include the `load-balance=true` property in the connection URL. In the case of `YBClusterAwareDataSource`, load balancing is enabled by default, but you must set property `dataSource.topologyKeys`.
     {{< /note >}}
 
 1. Run the application.

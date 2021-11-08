@@ -35,7 +35,7 @@ The Yugabyte JDBC driver has the following load balancing features:
 
 - Topology-aware load balancing
   
-  <br></br>
+   <br></br>
    Because YugabyteDB clusters can have servers in different regions and availability zones, the YugabyteDB JDBC driver is topology-aware, and can be configured to create connections only on servers that are in specific regions and zones. This is useful for client applications that need to connect to the geographically nearest regions and availability zone for lower latency; the driver tries to uniformly load only those servers that belong to the specified regions and zone.    
 
 The Yugabyte JDBC driver can be configured with popular pooling solutions such as Hikari and Tomcat. Different pools can be configured with different load balancing policies if required. For example, an application can configure one pool with topology awareness for one region and availability zones, and it can also configure another pool to talk to a completely different region and availability zones.
@@ -91,9 +91,9 @@ To build the driver locally, follow this procedure:
 
    ```xml
    <dependency>
-       <groupId>com.yugabyte</groupId>
-       <artifactId>jdbc-yugabytedb</artifactId>
-       <version>42.3.0</version>
+     <groupId>com.yugabyte</groupId>
+     <artifactId>jdbc-yugabytedb</artifactId>
+     <version>42.3.0</version>
    </dependency> 
    ```
 
@@ -103,7 +103,9 @@ The driver requires YugabyteDB version 2.7.2.0 or higher, and Java 8 or above.
 
 {{< /note >}}
 
-### Connection properties added for load balancing
+### Load balancing connection properties
+
+The following connection properties need to be added to enable load balancing:
 
 - load-balance - enable cluster-aware load balancing by setting this property to `true`; disabled by default.
 - topology-keys - provide comma-separated geo-location values to enable topology-aware load balancing. Geo-locations can be provided as `cloud:region:zone`.
@@ -237,7 +239,7 @@ When you're done experimenting, run the following command to destroy the local c
 
 ## Other examples
 
-To access sample applications that uses Yugabyte JDBC driver, visit [YugabyteDB JDBC driver](https://github.com/yugabyte/pgjdbc).
+To access sample applications that use the Yugabyte JDBC driver, visit [YugabyteDB JDBC driver](https://github.com/yugabyte/pgjdbc).
 
 To use the samples, complete the following steps: 
 
