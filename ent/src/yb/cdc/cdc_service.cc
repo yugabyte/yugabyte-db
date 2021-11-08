@@ -72,7 +72,10 @@ DEFINE_int32(cdc_state_checkpoint_update_interval_ms, kUpdateIntervalMs,
              "Rate at which CDC state's checkpoint is updated.");
 
 DEFINE_string(certs_for_cdc_dir, "",
-              "Directory that contains certificate authorities for CDC producer universes.");
+              "The parent directory of where all certificates for xCluster producer universes will "
+              "be stored, for when the producer and consumer clusters use different certificates. "
+              "Place the certificates for each producer cluster in "
+              "<certs_for_cdc_dir>/<producer_cluster_id>/*.");
 
 DEFINE_int32(update_min_cdc_indices_interval_secs, 60,
              "How often to read cdc_state table to get the minimum applied index for each tablet "
