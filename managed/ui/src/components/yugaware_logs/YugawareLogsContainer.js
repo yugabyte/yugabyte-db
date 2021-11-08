@@ -2,13 +2,14 @@
 
 import { connect } from 'react-redux';
 import { YugawareLogs } from '../yugaware_logs';
-import { reduxForm } from 'redux-form';
-import { getLogs, getLogsSuccess, getLogsFailure } from '../../actions/customers';
+import { getLogs, getLogsSuccess, getLogsFailure, setLogsLoading } from '../../actions/customers';
+import { fetchUniverseList, fetchUniverseListResponse } from '../../actions/universe';
 
 const mapDispatchToProps = (dispatch) => {
   return {
-    getLogs: () => {
-      return dispatch(getLogs()).then((response) => {
+    getLogs: (maxLines, regex, universe) => {
+      dispatch(setLogsLoading());
+      return dispatch(getLogs(maxLines, regex, universe)).then((response) => {
         if (response.payload.status !== 200) {
           dispatch(getLogsFailure(response.payload));
           const payload = response.payload;
@@ -17,6 +18,14 @@ const mapDispatchToProps = (dispatch) => {
         } else {
           dispatch(getLogsSuccess(response.payload));
         }
+      });
+    },
+    fetchUniverseList: () => {
+      return new Promise((resolve) => {
+        dispatch(fetchUniverseList()).then((response) => {
+          dispatch(fetchUniverseListResponse(response.payload));
+          resolve(response.payload.data);
+        });
       });
     }
   };
@@ -30,14 +39,4 @@ function mapStateToProps(state) {
   };
 }
 
-function validate(values) {
-  return false;
-}
-
-const getYugawareLogs = reduxForm({
-  form: 'getYugawareLogs',
-  fields: [],
-  validate
-});
-
-export default connect(mapStateToProps, mapDispatchToProps)(getYugawareLogs(YugawareLogs));
+export default connect(mapStateToProps, mapDispatchToProps)(YugawareLogs);

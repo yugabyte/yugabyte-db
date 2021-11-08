@@ -1,57 +1,98 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { useEffect, useMemo } from 'react';
-import { isDefinedNotNull, isNonEmptyObject } from '../../utils/ObjectUtils';
+import React, { useState } from 'react';
 import { showOrRedirect } from '../../utils/LayoutUtils';
 import AceEditor from 'react-ace';
 import 'ace-builds/src-noconflict/ext-searchbox';
 import 'ace-builds/src-noconflict/mode-java';
 import 'ace-builds/src-noconflict/theme-github';
+import { Col, Row } from 'react-bootstrap';
+import { YBControlledNumericInput, YBInputField, YBSelectWithLabel } from '../common/forms/fields';
+import { useDebounce, useMount } from 'react-use';
 
-const YugawareLogs = ({ currentCustomer, yugawareLogs, getLogs, logError }) => {
+const YugawareLogs = ({ currentCustomer, yugawareLogs, getLogs, logError, fetchUniverseList }) => {
   const editorStyle = {
     width: '100%',
     height: 'calc(100vh - 150px)'
   };
 
-  const logContent = useMemo(() => {
-    // Hard limit set so even if 50k lines we show 10k lines only
-    // When pagination for logs implemented this hard limit can be removed .
-    const hardLimit = 10000;
+  const [maxLines, setMaxLines] = useState(100);
+  const [regex, setRegex] = useState(undefined);
+  const [selectedUniverse, setSelectedUniverse] = useState(undefined);
+  const [universeList, setUniverseList] = useState([<option key={'loading'}>Loading..</option>]);
 
-    if (isDefinedNotNull(yugawareLogs) && isNonEmptyObject(yugawareLogs)) {
-      return yugawareLogs
-        .slice(yugawareLogs.length - hardLimit)
-        .join('\n');
-    } else {
-      return 'Loading ...';
-    }
-  }, [yugawareLogs]);
+  useDebounce(
+    () => {
+      getLogs(maxLines, regex, selectedUniverse);
+    },
+    500,
+    [maxLines, regex, selectedUniverse]
+  );
 
-  useEffect(() => {
+  useMount(() => {
     showOrRedirect(currentCustomer.data.features, 'main.logs');
-    getLogs(); // call to get logs
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    getLogs(maxLines, regex, selectedUniverse);
+    fetchUniverseList().then((resp) => {
+      const universesOptions = resp.map((uni) => (
+        <option key={uni.universeUUID} value={uni.name}>
+          {uni.name}
+        </option>
+      ));
+      setUniverseList([
+        <option value={''} key={'default'}>
+          Select a universe
+        </option>,
+        ...universesOptions
+      ]);
+    });
+  });
 
   return (
     <div>
       <h2 className="content-title">
         <b>YugaWare logs</b>
       </h2>
+      <Row>
+        <Col lg={8}>
+          <YBInputField
+            placeHolder="Enter your regex here"
+            onValueChanged={(val) => setRegex(val)}
+          />
+        </Col>
+        <Col lg={2}>
+          <YBSelectWithLabel
+            options={universeList}
+            onInputChanged={(value) => setSelectedUniverse(value ? value : undefined)}
+          />
+        </Col>
+        <Col lg={2}>
+          <YBControlledNumericInput
+            placeHolder="max lines"
+            minVal={10}
+            val={maxLines}
+            onInputChanged={setMaxLines}
+          />
+        </Col>
+      </Row>
+
       <div>
         {logError ? (
           <div>Something went wrong fetching logs.</div>
         ) : (
-          <AceEditor
-            theme="github"
-            mode="java"
-            name="dc-config-val"
-            value={logContent}
-            style={editorStyle}
-            readOnly
-            showPrintMargin={false}
-            wrapEnabled={true}
-          />
+          <Row>
+            <Col lg={12}>
+              <AceEditor
+                theme="github"
+                mode="java"
+                name="dc-config-val"
+                value={yugawareLogs || 'Loading...'}
+                style={editorStyle}
+                readOnly
+                showPrintMargin={false}
+                wrapEnabled={true}
+              />
+            </Col>
+          </Row>
         )}
       </div>
     </div>
