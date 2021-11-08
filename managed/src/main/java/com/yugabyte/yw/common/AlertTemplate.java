@@ -487,6 +487,63 @@ public enum AlertTemplate {
           .thresholdUnitName("instance(s)")
           .build()),
 
+  DB_MEMORY_OVERLOAD(
+      "DB memory overload",
+      "DB memory rejections detected during last 10 minutes",
+      "sum by (node_prefix) (sum_over_time("
+          + "leader_memory_pressure_rejections{node_prefix=\"__nodePrefix__\"}[10m])) + "
+          + "sum by (node_prefix) (sum_over_time("
+          + "follower_memory_pressure_rejections{node_prefix=\"__nodePrefix__\"}[10m])) + "
+          + "sum by (node_prefix) (sum_over_time("
+          + "operation_memory_pressure_rejections{node_prefix=\"__nodePrefix__\"}[10m])) "
+          + "{{ query_condition }} {{ query_threshold }}",
+      "DB memory rejections detected for universe '{{ $labels.source_name }}'.",
+      15,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      TargetType.UNIVERSE,
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, 0D)
+          .defaultThresholdUnit(COUNT)
+          .thresholdUnitName("rejection(s)")
+          .thresholdConditionReadOnly(true)
+          .build()),
+
+  DB_COMPACTION_OVERLOAD(
+      "DB compaction overload",
+      "DB compaction rejections detected during last 10 minutes",
+      "sum by (node_prefix) (sum_over_time("
+          + "majority_sst_files_rejections{node_prefix=\"__nodePrefix__\"}[10m])) "
+          + "{{ query_condition }} {{ query_threshold }}",
+      "DB compaction rejections detected for universe '{{ $labels.source_name }}'.",
+      15,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      TargetType.UNIVERSE,
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, 0D)
+          .defaultThresholdUnit(COUNT)
+          .thresholdUnitName("rejection(s)")
+          .thresholdConditionReadOnly(true)
+          .build()),
+
+  DB_QUEUES_OVERFLOW(
+      "DB queues overflow",
+      "DB queues overflow detected during last 10 minutes",
+      "sum by (node_prefix) (sum_over_time("
+          + "rpcs_queue_overflow{node_prefix=\"__nodePrefix__\"}[10m])) + "
+          + "sum by (node_prefix) (sum_over_time("
+          + "rpcs_timed_out_in_queue{node_prefix=\"__nodePrefix__\"}[10m])) "
+          + "{{ query_condition }} {{ query_threshold }}",
+      "DB queues overflow detected for universe '{{ $labels.source_name }}'.",
+      15,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      TargetType.UNIVERSE,
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, 0D)
+          .defaultThresholdUnit(COUNT)
+          .thresholdUnitName("occurrence(s)")
+          .thresholdConditionReadOnly(true)
+          .build()),
+
   NODE_TO_NODE_CA_CERT_EXPIRY(
       "Node to node CA cert expiry",
       "Node to node CA certificate expires soon",
