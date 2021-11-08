@@ -4,7 +4,7 @@ import { YBLoadingCircleIcon } from '../../common/indicators';
 
 import _ from 'lodash';
 
-const status = {
+export const status = {
   GOOD: {
     statusText: 'Ready',
     statusClassName: 'good'
@@ -25,7 +25,7 @@ const status = {
     statusText: 'Error',
     statusClassName: 'bad'
   },
-  UNKOWN: {
+  UNKNOWN: {
     statusText: 'Loading',
     statusClassName: 'unknown'
   }
@@ -55,7 +55,7 @@ export const getUniverseStatus = (universe, universePendingTask) => {
       ? { status: status.WARNING, warning: errorString }
       : { status: status.BAD, warning: errorString };
   }
-  return { status: status.UNKOWN, warning: '' };
+  return { status: status.UNKNOWN, warning: '' };
 };
 
 export const getUniverseStatusIcon = (curStatus) => {
@@ -74,7 +74,7 @@ export const getUniverseStatusIcon = (curStatus) => {
   if (_.isEqual(curStatus, status.BAD)) {
     return <i className="fa fa-warning" />;
   }
-  if (_.isEqual(curStatus, status.UNKOWN)) {
+  if (_.isEqual(curStatus, status.UNKNOWN)) {
     return <YBLoadingCircleIcon size="small" />;
   }
 };

@@ -30,12 +30,15 @@ class ToggleUniverseState extends Component {
       universePaused,
       universe: {
         currentUniverse: { data }
-      }
+      },
+      focusedUniverse = null
     } = this.props;
+    const { universeUUID } = focusedUniverse ? focusedUniverse : data;
+
     this.props.onHide();
     universePaused
-      ? this.props.submitRestartUniverse(data.universeUUID)
-      : this.props.submitPauseUniverse(data.universeUUID);
+      ? this.props.submitRestartUniverse(universeUUID)
+      : this.props.submitPauseUniverse(universeUUID);
   };
 
   componentDidUpdate(prevProps) {
@@ -46,7 +49,9 @@ class ToggleUniverseState extends Component {
         getPromiseState(this.props.universe.restartUniverse).isSuccess())
     ) {
       this.props.fetchUniverseMetadata();
-      browserHistory.push('/universes');
+      if (this.props.location.pathname !== '/universes') {
+        browserHistory.push('/universes');
+      }
     }
   }
 
@@ -60,8 +65,9 @@ class ToggleUniverseState extends Component {
       universe: {
         currentUniverse: { data }
       },
+      focusedUniverse = null
     } = this.props;
-    const { name } = data;
+    const { name } = focusedUniverse ? focusedUniverse : data;
 
     return (
       <YBModal

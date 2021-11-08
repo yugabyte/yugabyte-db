@@ -39,32 +39,30 @@ export default class DeleteUniverse extends Component {
     const {
       body,
       universe: {
-        currentUniverse: {
-          data: {
-            name,
-            universeDetails
-          }
-        }
-      }
+        currentUniverse: { data }
+      },
+      focusedUniverse = null
     } = this.props;
+    const { name, universeDetails } = focusedUniverse ? focusedUniverse : data;
+
     const universePaused = universeDetails?.universePaused;
 
     return (
       <>
-        {universePaused ?
+        {universePaused ? (
           <>
             Are you sure you want to delete the universe?
             <Alert bsStyle="danger">
-              <strong>Note: </strong>Terminating paused universes won't
-              delete backup objects. If you want to delete backup objects,
-              resume this universe and then delete it.
+              <strong>Note: </strong>Terminating paused universes won't delete backup objects. If
+              you want to delete backup objects, resume this universe and then delete it.
             </Alert>
-          </> :
+          </>
+        ) : (
           <>
             {body}
             <br />
           </>
-        }
+        )}
         <br />
         <label>Enter universe name to confirm delete:</label>
         <YBTextInput
@@ -82,16 +80,19 @@ export default class DeleteUniverse extends Component {
       universe: {
         currentUniverse: { data }
       },
+      focusedUniverse,
       submitDeleteUniverse,
       submitDeleteReadReplica
     } = this.props;
+    const { universeUUID, universeDetails } = focusedUniverse ? focusedUniverse : data;
+
     this.props.onHide();
     if (type === 'primary') {
-      submitDeleteUniverse(data.universeUUID, this.state.isForceDelete, this.state.isDeleteBackups);
+      submitDeleteUniverse(universeUUID, this.state.isForceDelete, this.state.isDeleteBackups);
     } else {
-      const cluster = getReadOnlyCluster(data.universeDetails.clusters);
+      const cluster = getReadOnlyCluster(universeDetails.clusters);
       if (isEmptyObject(cluster)) return;
-      submitDeleteReadReplica(cluster.uuid, data.universeUUID, this.state.isForceDelete);
+      submitDeleteReadReplica(cluster.uuid, universeUUID, this.state.isForceDelete);
     }
   };
 
@@ -101,7 +102,9 @@ export default class DeleteUniverse extends Component {
       getPromiseState(this.props.universe.deleteUniverse).isSuccess()
     ) {
       this.props.fetchUniverseMetadata();
-      browserHistory.push('/universes');
+      if (this.props.location.pathname !== '/universes') {
+        browserHistory.push('/universes');
+      }
     }
   }
 
@@ -112,14 +115,12 @@ export default class DeleteUniverse extends Component {
       error,
       onHide,
       universe: {
-        currentUniverse: {
-          data: {
-            name,
-            universeDetails
-          }
-        }
-      }
+        currentUniverse: { data }
+      },
+      focusedUniverse
     } = this.props;
+    const { name, universeDetails } = focusedUniverse ? focusedUniverse : data;
+
     const universePaused = universeDetails?.universePaused;
 
     return (
