@@ -71,9 +71,15 @@
 
     - name: s3cmd | Install dateutil
       command: "chdir={{ python_dateutil_package_path }} python setup.py install"
+      environment:
+        PYTHONPATH: "{{ setuptools_package_path }}:{{ python_magic_package_path }}:\
+                      {{ setuptools_scm_package_path }}"
 
     - name: s3cmd | Install s3cmd
       command: "chdir={{ s3cmd_package_path }} python setup.py install"
+      environment:
+        PYTHONPATH: "{{ setuptools_package_path }}:{{ python_magic_package_path }}:\
+                     {{ setuptools_scm_package_path }}:{{ python_dateutil_package_path }}"
 
     - name: s3cmd | Create symlinks to {{ bin_path }}
       file:
