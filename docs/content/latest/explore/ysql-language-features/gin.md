@@ -26,7 +26,7 @@ Limitations:
 
 ### DELETE, INSERT, UPDATE
 
-Writes to the index, whether though query or index build, currently have limitations:
+Writes to the index, whether through query or index build, currently have limitations:
 
 - Writing nulls to the index is not supported.
   - Columns cannot have null elements (for example, an array with element `null`).
