@@ -474,7 +474,10 @@ class FetchState {
     }
     prefix_ = prefix;
     finished_ = false;
-    return Update();
+    last_deleted_key_bytes_.clear();
+    last_deleted_key_write_time_ = DocHybridTime::kInvalid;
+    RETURN_NOT_OK(Update());
+    return NextNonDeletedEntry();
   }
 
   bool finished() const {
@@ -482,16 +485,49 @@ class FetchState {
   }
 
   Slice key() const {
-    return key_;
+    return key_.key;
   }
 
   Slice value() const {
     return iterator_->value();
   }
 
-  CHECKED_STATUS Next() {
-    iterator_->SeekOutOfSubDoc(key_);
+  docdb::FetchKeyResult FullKey() const {
+    return key_;
+  }
+
+  CHECKED_STATUS NextEntry() {
+    iterator_->SeekPastSubKey(key_.key);
     return Update();
+  }
+
+  CHECKED_STATUS Next() {
+    RETURN_NOT_OK(NextEntry());
+    return NextNonDeletedEntry();
+  }
+
+  // Returns true if the entry corresponds to a deleted row
+  // in rocksdb.
+  Result<bool> IsDeletedRowEntry() {
+    bool is_tombstoned = false;
+    is_tombstoned = VERIFY_RESULT(docdb::Value::IsTombstoned(value()));
+
+    // Because Postgres doesn't have a concept of frozen types, kGroupEnd will only demarcate the
+    // end of hashed and range components. It is reasonable to assume then that if the last byte
+    // is kGroupEnd then it does not have any subkeys.
+    bool no_subkey =
+        key()[key().size() - 1] == docdb::ValueTypeAsChar::kGroupEnd;
+
+    return no_subkey && is_tombstoned;
+  }
+
+  // Returns true if it has been deleted since the time it was inserted.
+  bool IsDeletedSinceInsertion() {
+    if (last_deleted_key_bytes_.size() == 0) {
+      return false;
+    }
+    return key().starts_with(last_deleted_key_bytes_.AsSlice()) &&
+           FullKey().write_time < last_deleted_key_write_time_;
   }
 
  private:
@@ -500,9 +536,12 @@ class FetchState {
       finished_ = true;
       return Status::OK();
     }
-    auto fetched_key = VERIFY_RESULT(iterator_->FetchKey());
-    key_ = fetched_key.key;
-    if (!key_.starts_with(prefix_)) {
+    key_ = VERIFY_RESULT(iterator_->FetchKey());
+    if (VERIFY_RESULT(IsDeletedRowEntry())) {
+      last_deleted_key_write_time_ = key_.write_time;
+      last_deleted_key_bytes_ = key_.key;
+    }
+    if (!key_.key.starts_with(prefix_)) {
       finished_ = true;
       return Status::OK();
     }
@@ -510,9 +549,23 @@ class FetchState {
     return Status::OK();
   }
 
+  CHECKED_STATUS NextNonDeletedEntry() {
+    while (!finished()) {
+      if (VERIFY_RESULT(IsDeletedRowEntry()) ||
+          IsDeletedSinceInsertion()) {
+        RETURN_NOT_OK(NextEntry());
+        continue;
+      }
+      break;
+    }
+    return Status::OK();
+  }
+
   std::unique_ptr<docdb::IntentAwareIterator> iterator_;
   Slice prefix_;
-  Slice key_;
+  docdb::FetchKeyResult key_;
+  KeyBuffer last_deleted_key_bytes_;
+  DocHybridTime last_deleted_key_write_time_;
   bool finished_ = false;
 };
 
