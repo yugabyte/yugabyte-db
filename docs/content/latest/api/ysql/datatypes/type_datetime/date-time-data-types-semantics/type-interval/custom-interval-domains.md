@@ -120,7 +120,7 @@ If you need to do _interval_ arithmetic with values of the _time_ data type, the
 Both of these exercises are left to the reader.
 {{< /note >}}
 
-Each of the three domains, _interval_months_t_, _interval_days_t_, and _interval_seconds_t_, is provided with a matching set of four functions. The first checks that the value of the relevant field of the _[&#91;mm, dd, ss&#93;](../interval-representation/)_ tuple is within the meaningful range for that field. And the remaining three construct a value of the domain: _either_ using an explicit parameterization; _or_ by subtracting one _timestamptz_ value from another; _or_ by multiplying an existing domain value by a number.
+Each of the three domains, _interval_months_t_, _interval_days_t_, and _interval_seconds_t_, is provided with a matching set of four functions. The first checks that the value of the relevant field of the _[\[mm, dd, ss\]](../interval-representation/)_ tuple is within the meaningful range for that field. And the remaining three construct a value of the domain: _either_ using an explicit parameterization; _or_ by subtracting one _timestamptz_ value from another; _or_ by multiplying an existing domain value by a number.
 
 The _interval_months_t_ domain has these procedures and functions:
 
@@ -147,7 +147,7 @@ The _interval_seconds_t_ domain has these procedures and functions:
 
 ##### procedure assert_interval_months_in_range (months in bigint)
 
-Because the internal _interval_ representation records the _mm_ component of the _[&#91;mm, dd, ss&#93;](../interval-representation/)_ tuple using a four-byte integer, this allows a value that is hugely greater than the number of months between the earliest and the latest legal _timestamptz_ values. This procedure ensures sanity by constraining the _mm_ value to the biggest meaningful value (the number of months between the earliest and the latest legal _timestamptz_ values) and by implementing a helpful error behavior.
+Because the internal _interval_ representation records the _mm_ component of the _[\[mm, dd, ss\]](../interval-representation/)_ tuple using a four-byte integer, this allows a value that is hugely greater than the number of months between the earliest and the latest legal _timestamptz_ values. This procedure ensures sanity by constraining the _mm_ value to the biggest meaningful value (the number of months between the earliest and the latest legal _timestamptz_ values) and by implementing a helpful error behavior.
 
 ```plpgsql
 drop procedure if exists assert_interval_months_in_range(bigint);
@@ -278,6 +278,7 @@ This is the result:
 ```output
  6 years 18 days 02:09:36
 ```
+
 Try the native `*` operator on the corresponding _interval_months_t_ value instead:
 
 ```plpgsql
@@ -290,7 +291,7 @@ The attempt causes this error:
 23514: value for domain interval_months_t violates check constraint "interval_months_t_check"
 ```
 
-The function _interval&#95;months(interval&#95;months&#95;t, double precision)_ fixes this. Create it thus:
+The function _interval\_months(interval\_months\_t, double precision)_ fixes this. Create it thus:
 
 ```plpgsql
 drop function if exists interval_months(interval_months_t, double precision) cascade;
@@ -323,7 +324,7 @@ This is the result:
 
 Compare this with the result (above) that the native `*` operator produces with a native _interval_ value:
 
-```
+```output
 6 years 18 days 02:09:36
 ```
 
@@ -333,7 +334,7 @@ The "impure" part, _18 days 02:09:36_, is more than half way through the month, 
 
 ##### procedure assert_interval_days_in_range (days in bigint)
 
-Because the [internal _interval_ representation](../interval-representation/) records the _dd_ component of the _&#91;mm, dd, ss&#93;_ tuple using a four-byte integer, this allows a value that is hugely greater than the number of days between the earliest and the latest legal _timestamptz_ values. This procedure ensures sanity by constraining the _dd_ value to the biggest meaningful value and by implementing a helpful error behavior.
+Because the [internal _interval_ representation](../interval-representation/) records the _dd_ component of the _\[mm, dd, ss\]_ tuple using a four-byte integer, this allows a value that is hugely greater than the number of days between the earliest and the latest legal _timestamptz_ values. This procedure ensures sanity by constraining the _dd_ value to the biggest meaningful value and by implementing a helpful error behavior.
 
 ```plpgsql
 drop procedure if exists assert_interval_days_in_range(bigint);
@@ -424,7 +425,7 @@ This is the result:
  2419 days
 ```
 
-Notice that the two _timestamptz_ actual arguments for this test are the same as those that were used for the _interval_months(timestamptz, timestamptz)_ test. That produced the result _6 years 8 mons_. But _(6*12 + 8)&#42;30_ is _2400_. The disagreement between _2419 days_ for the _interval_days()_ test and the effective _2400_ for the _interval_months()_ test reflects the critical difference between _"days interval"_ arithmetic semantics and _"months interval"_ arithmetic semantics.
+Notice that the two _timestamptz_ actual arguments for this test are the same as those that were used for the _interval_months(timestamptz, timestamptz)_ test. That produced the result _6 years 8 mons_. But _(6\*12 + 8)\*30_ is _2400_. The disagreement between _2419 days_ for the _interval_days()_ test and the effective _2400_ for the _interval_months()_ test reflects the critical difference between _"days interval"_ arithmetic semantics and _"months interval"_ arithmetic semantics.
 
 ##### function interval_days (i in interval_days_t, f in double precision)
 
@@ -452,7 +453,7 @@ The attempt causes this error:
 23514: value for domain interval_days_t violates check constraint "interval_days_t_check"
 ```
 
-The function _interval&#95;days(interval&#95;days&#95;t, double precision)_ fixes this. Create it thus:
+The function _interval\_days(interval\_days\_t, double precision)_ fixes this. Create it thus:
 
 ```plpgsql
 drop function if exists interval_days(interval_days_t, double precision) cascade;
@@ -495,7 +496,7 @@ The "impure" part, _05:48:46.08_, isn't half way through the day, so the approxi
 
 ##### procedure assert_interval_seconds_in_range (secs in bigint)
 
-Because the [internal _interval_ representation](../interval-representation/) records the _ss_ component of the _&#91;mm, dd, ss&#93;_ tuple using an eight-byte integer for microseconds, this allows only a value that is somewhat smaller than the number of seconds between the earliest and the latest legal _timestamptz_ values. This procedure ensures sanity by constraining the _ss_ value to the biggest legal value and by implementing a helpful error behavior.
+Because the [internal _interval_ representation](../interval-representation/) records the _ss_ component of the _\[mm, dd, ss\]_ tuple using an eight-byte integer for microseconds, this allows only a value that is somewhat smaller than the number of seconds between the earliest and the latest legal _timestamptz_ values. This procedure ensures sanity by constraining the _ss_ value to the biggest legal value and by implementing a helpful error behavior.
 
 ```plpgsql
 drop procedure if exists assert_interval_seconds_in_range(bigint);
@@ -578,7 +579,7 @@ end;
 $body$;
 ```
 
-So how big is the _max_secs_ constant, _(2^31 - 1)&#42;60*60 + 59&#42;60 + 59_? Try this:
+So how big is the _max_secs_ constant, _(2^31 - 1)\*60*60 + 59\*60 + 59_? Try this:
 
 ```plpgsql
 select (2^31 - 1)*60*60 + 59*60 + 59;
@@ -625,7 +626,7 @@ This is the result:
 
 ##### function interval_seconds (i in interval_seconds_t, f in double precision)
 
-The logic of this function is trivial. Moreover, it isn't essential because the _ss_ field of the internal _[&#91;mm, dd, ss&#93;](../interval-representation/)_ tuple is a real number with microseconds precision and there is no "spill up" possibility from the _ss_ field to the _dd_, or _mm_, fields. Try this:
+The logic of this function is trivial. Moreover, it isn't essential because the _ss_ field of the internal _[\[mm, dd, ss\]](../interval-representation/)_ tuple is a real number with microseconds precision and there is no "spill up" possibility from the _ss_ field to the _dd_, or _mm_, fields. Try this:
 
 ```plpgsq
 select make_interval(hours=>99)*3.6297;
@@ -645,7 +646,7 @@ select (interval_seconds(hours=>99)*3.6297)::interval_seconds_t;
 
 It brings the same result as when you use the native _interval_.
 
-The function _interval&#95;seconds(interval&#95;seconds&#95;t, double precision)_ is provided in the interests of symmetry and possible future extensibility. For example, you might, later, decide to implement a specific error message for the case that you try to multiply an _interval&#95;seconds&#95;_ value by a factor that would take the _ss_ value outside of  its limits. Create it thus:
+The function _interval\_seconds(interval\_seconds\_t, double precision)_ is provided in the interests of symmetry and possible future extensibility. For example, you might, later, decide to implement a specific error message for the case that you try to multiply an _interval\_seconds\__ value by a factor that would take the _ss_ value outside of  its limits. Create it thus:
 
 ```plpgsql
 drop function if exists interval_seconds(interval_seconds_t, double precision) cascade;
@@ -822,7 +823,7 @@ The table function _seconds_days_months_comparison()_ creates a report thus:
 - It initializes _i_days_ using _interval_days(t1, t0)_.
 - It initializes _i_months_ using _interval_months(t1, t0)_.
 - It evaluates _interval_mm_dd_ss()_ for each of these _interval_ domain values and records the _ss_ value that _i_secs_ represents, the _dd_ value that _i_days_ represents, and the _mm_ value that _i_months_ represents.
-- It converts each of the values _ss_, _dd_, and _mm_ to a real number of _years_ using these facts: the _fixed_ number of seconds per day is _24&#42;60&#42;60_ and the _fixed_ number of months per year is _12_; and the _average_ number of days per year is _365.2425_ (see the Wikipedia article [Year](https://en.wikipedia.org/wiki/Year)).
+- It converts each of the values _ss_, _dd_, and _mm_ to a real number of _years_ using these facts: the _fixed_ number of seconds per day is _24\*60\*60_ and the _fixed_ number of months per year is _12_; and the _average_ number of days per year is _365.2425_ (see the Wikipedia article [Year](https://en.wikipedia.org/wiki/Year)).
 
 - It outputs the values that it has calculated.
 
@@ -964,6 +965,7 @@ Finally, test the error behavior with an input number of seconds that exceeds th
 ```plpgsql
 select x from seconds_days_months_comparison(7730941132800);
 ```
+
 It causes this error. (The leading _INFO_ text from _raise info_ has been manually removed.)
 
 ```output

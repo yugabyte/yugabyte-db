@@ -34,7 +34,7 @@ end;
 $body$;
 ```
 
-The _extract(epoch&nbsp;from...)_ function, for a _timestamp_ argument, determines the number of seconds from the so-called start of the epoch, _'1970-01-01 00:00:00'_, to the specified moment. For a _timestamptz_ argument, the epoch simply starts, as you'd expect, at _'1970-01-01 00:00:00 +00'_. And for a _time_ argument, the epoch starts at midnight.
+The _extract(epoch from...)_ function, for a _timestamp_ argument, determines the number of seconds from the so-called start of the epoch, _'1970-01-01 00:00:00'_, to the specified moment. For a _timestamptz_ argument, the epoch simply starts, as you'd expect, at _'1970-01-01 00:00:00 +00'_. And for a _time_ argument, the epoch starts at midnight.
 
 See the section _[justify_hours](../../justfy-and-extract-epoch/#justify-hours)_ for the explanation of the semantics of the function. This semantics is dubious for the case of creating an _interval_ value by subtracting one _timestamptz_ value from another because you are very likely to produce a hybrid _interval_ value.
 
@@ -79,4 +79,4 @@ However, when you have a hybrid _dd_ and _mm_ _interval_ value, you need also to
 Yugabyte staff members have discussed this carefully and believe that the attempt to understand and memorize these rules is counterproductive—and therefore foolish. Rather, you should decide which of the three kinds of semantics your application needs and arrange that you produce only pure, rather than hybrid, _interval_ values. Yugabyte recommends, therefore, that  you adopt the practice that the section [Custom domain types for specializing the native _interval_ functionality](../../custom-interval-domains/) explains.
 {{< /tip >}}
 
-The section _"The moment-interval overloads of the "+" and "-" operators for timestamptz, timestamp, and time"_, [here](../moment-interval-overloads-of-plus-and-minus/#hybrid-interval-arithmetic-is-dangerous) emphasizes the dangers of hybrid _interval_ arithmetic. 
+The section _"The moment-interval overloads of the "+" and "-" operators for timestamptz, timestamp, and time"_, [here](../moment-interval-overloads-of-plus-and-minus/#hybrid-interval-arithmetic-is-dangerous) emphasizes the dangers of hybrid _interval_ arithmetic.

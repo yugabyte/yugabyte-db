@@ -70,15 +70,15 @@ The outcomes of the typecasts between _date-time_ values and _text_ values, corr
 
 ## Summary table
 
-| &nbsp;              | &nbsp;                                                  | &nbsp;                                                  | &nbsp;                                                       | &nbsp;                                                       | &nbsp;                                    | &nbsp;                                                  |
-| ------------------- | ------------------------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ | ----------------------------------------- | ------------------------------------------------------- |
-| _from\to_           | **DATE**                                                | **TIME**                                                | **PLAIN TIMESTAMP**                                          | **TIMESTAMPTZ**                                              | **INTERVAL**                              | **TEXT**                                                |
-| **DATE**            |                                                         |                                                         | [_date_ to plain _timestamp_](#date-to-plain-timestamp)      | [_date_ to _timestamptz_](#date-to-timestamptz)              |                                           | [_date_ to _text_](#date-to-text)                       |
-| **TIME**            |                                                         |                                                         |                                                              |                                                              | [_time_ to _interval_](#time-to-interval) | [_time_ to _text_](#time-to-text)                       |
-| **PLAIN TIMESTAMP** | [plain _timestamp_ to _date_](#plain-timestamp-to-date) | [plain _timestamp_ to _time_](#plain-timestamp-to-time) |                                                              | [plain _timestamp_ to _timestamptz_](#plain-timestamp-to-timestamptz) |                                           | [plain _timestamp_ to _text_](#plain-timestamp-to-text) |
-| **TIMESTAMPTZ**     | [_timestamptz_ to _date_](#timestamptz-to-date)         | [_timestamptz_ to _time_](#timestamptz-to-time)         | [_timestamptz_ to plain _timestamp_](#timestamptz-to-plain-timestamp) |                                                              |                                           | [_timestamptz_ to _text_](#timestamptz-to-text)         |
-| **INTERVAL**        |                                                         | [_interval_ to _time_](#interval-to-time)               |                                                              |                                                              |                                           | [_interval_ to _text_](#interval-to-text)               |
-| **TEXT**            | [_text_ to _date_](#from-text)                          | [_text_ to _time_](#from-text)                          | [_text_ to plain _timestamp_](#from-text)                    | [_text_ to _timestamptz_](#from-text)                        | [_text_ to _interval_](#from-text)        |                                                         |
+|                     |                                                         |                                                         |                                                                       |                                                                       |                                           |                                                         |
+| ------------------- | ------------------------------------------------------- | ------------------------------------------------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------- | ----------------------------------------- | ------------------------------------------------------- |
+| _from\to_           | **DATE**                                                | **TIME**                                                | **PLAIN TIMESTAMP**                                                   | **TIMESTAMPTZ**                                                       | **INTERVAL**                              | **TEXT**                                                |
+| **DATE**            |                                                         |                                                         | [_date_ to plain _timestamp_](#date-to-plain-timestamp)               | [_date_ to _timestamptz_](#date-to-timestamptz)                       |                                           | [_date_ to _text_](#date-to-text)                       |
+| **TIME**            |                                                         |                                                         |                                                                       |                                                                       | [_time_ to _interval_](#time-to-interval) | [_time_ to _text_](#time-to-text)                       |
+| **PLAIN TIMESTAMP** | [plain _timestamp_ to _date_](#plain-timestamp-to-date) | [plain _timestamp_ to _time_](#plain-timestamp-to-time) |                                                                       | [plain _timestamp_ to _timestamptz_](#plain-timestamp-to-timestamptz) |                                           | [plain _timestamp_ to _text_](#plain-timestamp-to-text) |
+| **TIMESTAMPTZ**     | [_timestamptz_ to _date_](#timestamptz-to-date)         | [_timestamptz_ to _time_](#timestamptz-to-time)         | [_timestamptz_ to plain _timestamp_](#timestamptz-to-plain-timestamp) |                                                                       |                                           | [_timestamptz_ to _text_](#timestamptz-to-text)         |
+| **INTERVAL**        |                                                         | [_interval_ to _time_](#interval-to-time)               |                                                                       |                                                                       |                                           | [_interval_ to _text_](#interval-to-text)               |
+| **TEXT**            | [_text_ to _date_](#from-text)                          | [_text_ to _time_](#from-text)                          | [_text_ to plain _timestamp_](#from-text)                             | [_text_ to _timestamptz_](#from-text)                                 | [_text_ to _interval_](#from-text)        |                                                         |
 
 ## The twenty supported typecasts
 
@@ -112,7 +112,7 @@ This is the result:
 
 Notice that what you see is actually the result of a [plain _timestamp_ to _text_](#plain-timestamp-to-text) typecast.
 
-The typecasted _date_ value becomes the date component of the _timestamptz_ value; and the time-of-day component of the _timestamptz_ value is set to _00:00:00_.
+The typecast _date_ value becomes the date component of the _timestamptz_ value; and the time-of-day component of the _timestamptz_ value is set to _00:00:00_.
 
 #### _date_ to _timestamptz_
 
@@ -173,6 +173,7 @@ as $body$
   select make_time(12, 13, 42.123456);
 $body$;
 ```
+
 #### _time_ to _interval_
 
 Try this:
@@ -189,7 +190,7 @@ This is the result:
 
 You're actually seeing the _::text_ typecast of the resulting _interval_ value.
 
-The rule here is trivial. The to-be-typecasted _time_ value is taken as a real number of seconds—counting, of course, from midnight. Suppose that the answer is _n_. The resulting _interval_ value is given by _make_interval(n)_. test the rule like this:
+The rule here is trivial. The to-be-typecast _time_ value is taken as a real number of seconds—counting, of course, from midnight. Suppose that the answer is _n_. The resulting _interval_ value is given by _make_interval(n)_. test the rule like this:
 
 ```plpgsql
 select (
@@ -254,7 +255,7 @@ This is the result:
 
 You're actually seeing the _::text_ typecast of the resulting _date_ value.
 
-The typecast simply ignores the time-of-day component of the to-be-typecasted _timestamp_ value and uses its date component to set the resulting _date_ value.
+The typecast simply ignores the time-of-day component of the to-be-typecast _timestamp_ value and uses its date component to set the resulting _date_ value.
 
 You might prefer to understand it like this:
 
@@ -289,7 +290,7 @@ This is the result:
 
 You're actually seeing the _::text_ typecast of the resulting _time_ value.
 
-The typecast simply ignores the date component of the to-be-typecasted _timestamp_ value and uses its time-of-day component to set the resulting _time_ value.
+The typecast simply ignores the date component of the to-be-typecast _timestamp_ value and uses its time-of-day component to set the resulting _time_ value.
 
 You might prefer to understand it like this:
 
@@ -375,11 +376,13 @@ Try this:
 set timezone = 'UTC';
 select timestamptz_value()::date;
 ```
+
 This is the result:
 
 ```output
  2021-06-02
 ```
+
 You're actually seeing the _::text_ typecast of the resulting _date_ value.
 
 Notice that the date displayed here, _2-June_, is later that the date that defines the _timestamptz_ value. The test was contrived to produce this result. You need to have a solid mental model of the joint semantics of the plain _timestamp_ and the _timestamptz_ data types in order confidently to predict this outcome.
@@ -473,12 +476,13 @@ This is the result:
 ```output
  2021-06-02 03:13:19.123456+00
 ```
-<p id="tz-function">&nbsp;</p>
+
+<a name="tz-function"></a>
 {{< tip title="Create the 'tz(timestamp)' function" >}}
 The code that follows
 
- - "This best defines the semantics of the _::text_ typecast of a _timestamptz_ value" below [here](#uses-tz-1), and
- - "Think of it like this" below [here](#text-to-timestamptz)
+ - "This best defines the semantics of the _::text_ typecast of a _timestamptz_ value" below, [here](#uses-tz-1), and
+ - "Think of it like this" below, [here](#text-to-timestamptz)
 
 depends on the user-defined function _tz(timestamp)_. It shows the session's current _UTC offset_ as a text string. It turns out that the _::text_ typecast that the present subsection addresses uses rather whimsical rules to format the _UTC offset_. Briefly, the sign is always shown, even when it is positive; and when the minutes component of the offset is zero, this is elided. (A _UTC offset_ never has a non-zero seconds component.)
 
@@ -546,10 +550,9 @@ These are the results—just as is required:
  +11
  +10:30
 ```
-
 {{< /tip >}}
 
-<p id="uses-tz-1">&nbsp;</p>This best defines the semantics of the <i>::text</i> typecast of a <i>timestamptz</i> value:
+<a name="uses-tz-1"></a>This best defines the semantics of the _::text_ typecast of a _timestamptz_ value:
 
 ```plpgsql
 set timezone = 'Asia/Tehran';

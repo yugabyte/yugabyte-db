@@ -21,7 +21,7 @@ See the section [Recommended practice for specifying the _UTC offset_](../recomm
 
 ### Directly as an interval value
 
-To specify an _interval_ value for the session's _'TimeZone'_ setting, you must use the _set time zone &#60;arg&#62;_ syntax and not the _set timezone = &#60;arg&#62;_ syntax. For example:
+To specify an _interval_ value for the session's _'TimeZone'_ setting, you must use the _set time zone \<arg\>_ syntax and not the _set timezone = \<arg\>_ syntax. For example:
 
 ```plpgsql
 set time zone interval '-7 hours';
@@ -76,6 +76,7 @@ This is the result:
 ```output
  <-07:30>+07:30
 ```
+
 This is a legal argument for _set timezone_ thus:
 
 ```plpgsql
@@ -89,6 +90,7 @@ Of course, the result is exactly the same as what you set. It turns out that alm
 set timezone = 'FooBar5';
 show timezone;
 ```
+
 This is the result:
 
 ```output
@@ -98,8 +100,6 @@ This is the result:
 ```
 
 You can easily confirm that _FOOBAR5_ is not found in any of the columns (_pg_timezone_names.name_, _pg_timezone_names.abbrev_, or _pg_timezone_abbrevs.abbrev_) where timezone names or abbreviations are found.
-
-
 
 Now see what effect this has, like this:
 

@@ -16,9 +16,7 @@ showAsideToc: true
 A string that's intended to identify _a UTC_ offset is resolved first in _pg_timezone_abbrevs.abbrev_ and, only if this fails, then in _pg_timezone_names.name_.
 
 This applies only in those syntax contexts where _pg_timezone_abbrevs.abbrev_ is a candidate for the resolution—so not for _set timezone_, which looks only in _pg_timezone_names.name_.
-{{< /tip >}}
-
-&nbsp;
+{{< /tip >}}</br>
 
 {{< tip title="Download and install the date-time utilities code." >}}
 The code on this page depends on the code presented in the [_extended_timezone_names_ view](../../../extended-timezone-names/) section. This is included in the larger [code kit](../../../../download-date-time-utilities/) that includes all of the reusable code that the overall _[date-time](../../../../../type_datetime)_ section describes and uses.
@@ -62,6 +60,7 @@ This is the result:
  select timezone('Europe/Amsterdam', '2021-06-07 12:00:00');  > OK
  select '2021-06-07 12:00:00 Europe/Amsterdam'::timestamptz;  > OK
 ```
+
 So _pg_timezone_names.name_ is searched in each of the three syntax contexts.
 
 ## Test with a string that's found both in 'pg_timezone_names.name' and in 'pg_timezone_abbrevs.abbrev'

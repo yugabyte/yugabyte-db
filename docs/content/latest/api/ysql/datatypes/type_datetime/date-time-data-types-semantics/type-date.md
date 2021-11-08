@@ -28,7 +28,7 @@ This is the result:
  integer
 ```
 
-Notice that this example takes advantage of the fact that the value of any data type, _d_,  can be _::text_ typecasted to a canonical representation and that a _text_ value that uses the canonical representation format can be _::d_ typecasted to a _d_ value—and that the round trip is non-lossy.
+Notice that this example takes advantage of the fact that the value of any data type, _d_,  can be _::text_ typecast to a canonical representation and that a _text_ value that uses the canonical representation format can be _::d_ typecast to a _d_ value—and that the round trip is non-lossy.
 
 Now try this:
 

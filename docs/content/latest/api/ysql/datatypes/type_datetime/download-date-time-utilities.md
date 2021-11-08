@@ -28,4 +28,3 @@ Moreover, some of the code examples depend on some of this code. Yugabyte recomm
 
 You'll find _README.pdf_ at the top level. It describes the rest of the content and tells you simply to start the master script _0.sql_ at the _ysqlsh_ prompt (or at the _psql_ prompt). You can run it time and again. It will always finish silently.
 {{< /tip >}}
-

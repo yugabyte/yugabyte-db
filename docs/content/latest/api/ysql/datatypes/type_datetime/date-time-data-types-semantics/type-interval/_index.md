@@ -143,7 +143,7 @@ This is the result:
 
 How can it be that, while _'1 day'_ is equal to _'24 hours'_, _t0 + '1 day'_ is _not_ equal to _t0 + '24 hours'_? The short answer, of course, is that  _'1 day'_ is _not_ equal to _'24 hours'_ when _interval_ equality is defined strictly. The native _interval-interval_ overload of the `=` operator implements only a loose notion of _interval_ equality. You also need a _strict_ _interval_ equality notion. The section [The "strict equals" operator](./interval-arithmetic/interval-interval-comparison/#the-strict-equals-interval-interval-operator) shows you how to do this.
 
-In the present contrived but crucial example, _t0_ is just before the "spring forward" moment in the _America/Los_Angeles_ timezone. And the loosely, but not strictly, equal durations of _'1 day'_ and _'24 hours'_ are both long enough to take you from _Pacific Standard Time_ to _Pacific Daylight Savings Time_. Bearing in mind the _[&#91;mm, dd, ss&#93;](./interval-representation/)_ internal representation, you can immediately see this:
+In the present contrived but crucial example, _t0_ is just before the "spring forward" moment in the _America/Los_Angeles_ timezone. And the loosely, but not strictly, equal durations of _'1 day'_ and _'24 hours'_ are both long enough to take you from _Pacific Standard Time_ to _Pacific Daylight Savings Time_. Bearing in mind the _[\[mm, dd, ss\]](./interval-representation/)_ internal representation, you can immediately see this:
 
 - The semantics of _interval_ arithmetic is different for the _dd_ field of the internal representation than for the _ss_ field.
 

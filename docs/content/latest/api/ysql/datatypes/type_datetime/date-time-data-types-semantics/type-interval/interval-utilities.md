@@ -16,7 +16,7 @@ showAsideToc: true
 Download and install the code as the instructions [here](../../../download-date-time-utilities/) explain. The code that this page presents is included in the kit.
 {{< /tip >}}
 
-The code presented on this page defines two user-defined types, _interval_parameterization_t_ and _interval_mm_dd_ss_t_. They model, respectively, the conventional parameterization of an _interval_ value as a _[yy, mm, dd, hh, mi, ss]_ tuple and the internal representation of an _interval_ value as a _[&#91;mm, dd, ss&#93;](../interval-representation/)_ tuple. Together with the _interval_ data type itself, this makes three types—and therefore three possible pairs and six mutual transformation functions. Here is the summary:
+The code presented on this page defines two user-defined types, _interval_parameterization_t_ and _interval_mm_dd_ss_t_. They model, respectively, the conventional parameterization of an _interval_ value as a _[yy, mm, dd, hh, mi, ss]_ tuple and the internal representation of an _interval_ value as a _[\[mm, dd, ss\]](../interval-representation/)_ tuple. Together with the _interval_ data type itself, this makes three types—and therefore three possible pairs and six mutual transformation functions. Here is the summary:
 
 ```output
 ┌———————————————————————————————————————————————————————————————————┬————————————————————————————————————————————————┐
@@ -46,7 +46,7 @@ The code presented on this page defines two user-defined types, _interval_parame
 └————————————————————————————┴———————————————————————————————┘
 ```
 
-The code that the remainder of this section presents defines the _interval_parameterization_t_ and _interval_mm_dd_ss_t_ types, and all but one of the six mutual transformation functions. The design of the five functions that are shown here is straightforward—but it does depend on knowing that the internal representation of an _interval_ value is a _[&#91;mm, dd, ss&#93;](../interval-representation/)_ tuple that uses four-byte integers to record the _months_ and _days_ fields and an eight-byte integer to record the _seconds_ field as a microseconds value.
+The code that the remainder of this section presents defines the _interval_parameterization_t_ and _interval_mm_dd_ss_t_ types, and all but one of the six mutual transformation functions. The design of the five functions that are shown here is straightforward—but it does depend on knowing that the internal representation of an _interval_ value is a _[\[mm, dd, ss\]](../interval-representation/)_ tuple that uses four-byte integers to record the _months_ and _days_ fields and an eight-byte integer to record the _seconds_ field as a microseconds value.
 
 The section [Modeling the internal representation and comparing the model with the actual implementation](../interval-representation/internal-representation-model/) defines and tests the function that the present page doesn't show: _function interval_mm_dd_ss(interval_parameterization_t)_. It implements, using PL/pgSQL, the rather complex algorithm that PostgreSQL, and therefore YSQL, use in their C code to transform a value, presented as a _text_ literal, to the internal _interval_ representation. 
 
@@ -212,7 +212,7 @@ select
 
 It produces the same result as using the _::interval_ typecast approach. Notice that the _::interval_ typecast approach allows real number values for each of the six parameters. In contrast, the _make_interval()_ function defines all of its formal parameters except for _secs_ with the data type _integer_, and It defines _secs_ with the data type _double precision_.
 
-Each approach allows other parameters to specify, for example, _centuries_, _weeks_, or _microseconds_. But the six parameters shown above are the most-commonly used. They are jointly more than sufficient to define non-zero values for each of the three fields of the internal representation. The bare minimum that gets an obviously predictable result is just _months_, _days_, and _seconds_. (See the section [How does YSQL represent an _interval_ value?](../interval-representation))
+Each approach allows other parameters to specify, for example, _centuries_, _weeks_, or _microseconds_. But the six parameters shown above are the most-commonly used. They are jointly more than sufficient to define non-zero values for each of the three fields of the internal representation. The bare minimum that gets an obviously predictable result is just _months_, _days_, and _seconds_. (See the section [How does YSQL represent an _interval_ value?](../interval-representation).)
 
 Omitting one of the parameters has the same effect as specifying zero for it. Create the type _interval_parameterization_t_ to represent this six-field tuple.
 
@@ -360,7 +360,7 @@ This is the result:
 
 ### function approx_equals (p1_in in interval_parameterization_t, p2_in in interval_parameterization_t) returns boolean
 
-Create a function to test a pair of "interval_parameterization_t values" for equality. The function _parameterization(i in interval)_ uses _extract()_ and this accesses the internal _[&#91;mm, dd, ss&#93;](../interval-representation/)_ representation. There's a risk of rounding errors here. For example, when the _ss_ field corresponds _04:48:00_, this might be extracted as _04:47,59.99999999..._. The _approx_equals()_ implementation needs to accommodate this.
+Create a function to test a pair of "interval_parameterization_t values" for equality. The function _parameterization(i in interval)_ uses _extract()_ and this accesses the internal _[\[mm, dd, ss\]](../interval-representation/)_ representation. There's a risk of rounding errors here. For example, when the _ss_ field corresponds _04:48:00_, this might be extracted as _04:47,59.99999999..._. The _approx_equals()_ implementation needs to accommodate this.
 
 ```plpgsql
 drop function if exists approx_equals(interval_parameterization_t, interval_parameterization_t) cascade;
@@ -603,7 +603,7 @@ The result is _true_.
 
 This function is discussed in the section [The justify() and extract(epoch ...) functions for interval values](../justfy-and-extract-epoch/#the-justified-seconds-user-defined-function). And the section [Comparing two _interval_ values](../interval-arithmetic/interval-interval-comparison/#modeling-the-interval-interval-comparison-test) relies on this function to model the implementation of the comparison algorithm.
 
-The semantics of the _justify_interval()_ built-in function (explained [here](../justfy-and-extract-epoch/#justify-interval) in the section [The _justify()_ and _extract(epoch ...)_ functions for _interval_ values](../justfy-and-extract-epoch/)) suggests a scheme to map an _interval_ value (a vector with three components) to  a real number. The same rule of thumb that _justify_interval()_ uses to normalize the _ss_ and the _dd_ fields of the internal representation (_24 hours_ is deemed to be the same as _1 day_ and _30 days_ is deemed to be the same as _1 month_) can be used to compute a number of seconds from an _interval_ value.
+The semantics of the _justify_interval()_ built-in function (explained [here](../justfy-and-extract-epoch/#justify-interval) in the section [The _justify()_ and _extract(epoch ...)_ functions for _interval_ values](../justfy-and-extract-epoch/) suggests a scheme to map an _interval_ value (a vector with three components) to  a real number. The same rule of thumb that _justify_interval()_ uses to normalize the _ss_ and the _dd_ fields of the internal representation (_24 hours_ is deemed to be the same as _1 day_ and _30 days_ is deemed to be the same as _1 month_) can be used to compute a number of seconds from an _interval_ value.
 
 You probably won't use this function in application code. But it's used in the section [Comparing two _interval_ values](../interval-arithmetic/interval-interval-comparison/#modeling-the-interval-interval-comparison-test) to model the implementation of the comparison algorithm. It also allows you to understand how it's possible to use an _order by_ predicate with an _interval_ table column (like, for example, _pg_timezone_names.utc_offset_) and to create an index on such a column.
 
@@ -647,7 +647,7 @@ The [subsection that describes this function](../justfy-and-extract-epoch/#the-j
 {{< tip title="Use the 'strict equals' operator, '==', rather than the native '=', to compare 'interval' values." >}}
 Yugabyte staff members have carefully considered the practical value of the native _interval-interval_ overload of the `=` operator that YSQL inherits from PostgreSQL.
 
-They believe that the use-cases where the functionality will be useful are rare—and that, rather, a "strict equals" notion, that requires pairwise equality of the individual fields of the [_&#91;mm, dd, ss&#93;_ internal representations](../interval-representation/) of the _interval_ values that are compared, will generally be more valuable.
+They believe that the use-cases where the functionality will be useful are rare—and that, rather, a "strict equals" notion, that requires pairwise equality of the individual fields of the [_\[mm, dd, ss\]_ internal representations](../interval-representation/) of the _interval_ values that are compared, will generally be more valuable.
 {{< /tip >}}
 
 See the section [Comparing two _interval_ values](../interval-arithmetic/interval-interval-comparison/) for the larger discussion on this topic. 
@@ -761,6 +761,7 @@ This is the result:
 ```output
  05:17:42.123456
 ```
+
 ## Bonus functions
 
 The three functions shown below aren't used anywhere else in the documentation of the _interval_ data type. But they were used extensively for _ad hoc_ experiments and as a tracing tool while the code examples that this overall _interval_ section uses were being developed. You might find them useful for the same reason.

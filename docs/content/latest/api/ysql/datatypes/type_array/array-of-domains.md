@@ -553,7 +553,7 @@ This is the result (after manual whitespace formatting):
 
 Finally, check that even this exotic structure conforms to the universal rule, copied from [The non-lossy round trip: value to text typecast and back to value](../literals/text-typecasting-and-literals/#the-non-lossy-round-trip-value-to-text-typecast-and-back-to-value):
 
-> - Any value of any data type, primitive or composite, can be `::text` typecasted. Similarly, there always exists a `text` value that, when properly spelled, can be typecasted to a value of any desired data type, primitive or composite.
+> - Any value of any data type, primitive or composite, can be `::text` typecast. Similarly, there always exists a `text` value that, when properly spelled, can be typecast to a value of any desired data type, primitive or composite.
 > - If you `::text` typecast a value of any data type and then typecast that `text` value to the original value's data type, then the value that you get is identical to the original value.
 
 ```plpgsql
