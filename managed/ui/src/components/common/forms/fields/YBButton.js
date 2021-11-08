@@ -2,6 +2,8 @@
 
 import React, { PureComponent, Fragment } from 'react';
 import { Button } from 'react-bootstrap';
+import clsx from 'clsx';
+
 import { YBLoadingLinearIcon } from '../../indicators';
 import { isDefinedNotNull } from '../../../../utils/ObjectUtils';
 
@@ -16,9 +18,10 @@ export default class YBButton extends PureComponent {
       btnStyle,
       disabled,
       loading,
+      className,
       ...otherProps
     } = this.props;
-    const className = isDefinedNotNull(btnText) ? btnIcon : `${btnIcon} no-margin no-padding`;
+    const btnClassName = isDefinedNotNull(btnText) ? btnIcon : `${btnIcon} no-margin no-padding`;
     return (
       <Button
         bsClass={btnClass}
@@ -27,13 +30,14 @@ export default class YBButton extends PureComponent {
         bsSize={btnSize}
         bsStyle={btnStyle}
         disabled={!!disabled}
+        className={clsx(className)}
         {...otherProps}
       >
         {loading ? (
           <YBLoadingLinearIcon />
         ) : (
           <Fragment>
-            {className && <i className={className}></i>}
+            {btnClassName && <i className={btnClassName}></i>}
             {btnText}
           </Fragment>
         )}
