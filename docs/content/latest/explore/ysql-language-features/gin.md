@@ -1,23 +1,42 @@
 # Generalized inverted indexes
 
+In YugabyteDB, tables and secondary indexes are both key-value stores.
+For tables, the key-value store maps primary keys to values.
+For secondary indexes, the key-value store maps index keys to primary keys.
+
 Regular indexes index columns.
+This makes queries with conditions on the columns more efficient.
+For example, if one had a regular index on a single int array column (currently not possible in Yugabyte), queries like `WHERE myintarray = '{1,3,6}'` would be more efficient when using the index.
+However, queries like `WHERE myintarray ? 3` (meaning "is 3 an element?") would not benefit from the regular index.
+
 Generalized inverted indexes (GIN indexes) index elements inside container columns.
-By default,
+This makes queries with conditions on elements inside the columns more efficient.
+The above example would benefit from a GIN index since we can look up the key `3` in the gin index.
 
-- GIN index on tsvector indexes text elements
-- GIN index on array indexes array elements
-- GIN index on jsonb indexes keys/values
+## Compatible types
 
-Use GIN indexes when queries condition on elements within these container columns.
-If the query is supported by GIN, a GIN index scan may be significantly faster.
+By default, there are only a few types that can use GIN indexes:
 
-## Queries
+- a GIN index on a tsvector column indexes text elements
+- a GIN index on a array column indexes array elements
+- a GIN index on a jsonb column indexes keys/values
+
+With extensions, more types can be supported.
+However, extension support is still in progress:
+
+- [ ] btree_gin
+- [ ] hstore
+- [x] pg_trgm
+
+## Grammar
 
 ### CREATE INDEX
 
 Create the index using `USING ybgin` to specify the index access method.
 
 `CREATE INDEX ON mytable USING ybgin (mycol);`
+
+The `gin` access method is reserved for temporary relations while `ybgin` is for Yugabyte-backed relations.
 
 Limitations:
 
@@ -26,13 +45,10 @@ Limitations:
 
 ### DELETE, INSERT, UPDATE
 
-Writes to the index, whether through query or index build, currently have limitations:
-
-- Fast update is not supported: this isn't practical for a distributed, log-structured database.
+Writes are fully supported.
+However, note that UPDATEs may be expensive since they are currently implemented as DELETE + INSERT.
 
 ### SELECT
-
-Since cost estimates currently aren't implemented, you can `SET enable_indexscan TO on;` to ensure that index scans are always used when possible.
 
 Only [certain SELECTs][operators] use the GIN index.
 Even among them, there are currently some limitations:
@@ -40,12 +56,13 @@ Even among them, there are currently some limitations:
 - Special scans are not supported.
   - Scans cannot include rows whose column has zero index keys.
   - Scans cannot scan the entire index.
-- Scans involving more than one index key are limited.
-  - Scans cannot ask for more than one index key.
-    For example, a request for all rows whose array contains elements 1 or 3 will fail, but one that asks for elements 1 _and_ 3 can succeed by choosing one of the elements for index scan and rechecking the entire condition later.
-    However, the choice between 1 and 3 is currently unoptimized, so 3 may be chosen even though 1 corresponds to less rows.
-- Recheck is always done rather than on a case-by-case basis.
-- Fuzzy search limit is not supported: it can be in the future.
+- Scans cannot ask for more than one index key.
+  For example, a request for all rows whose array contains elements 1 or 3 will fail, but one that asks for elements 1 _and_ 3 can succeed by choosing one of the elements for index scan and rechecking the entire condition later.
+  However, the choice between 1 and 3 is currently unoptimized, so 3 may be chosen even though 1 corresponds to less rows.
+- Recheck is always done rather than on a case-by-case basis, meaning there can be an unnecessary performance penalty.
+
+If a query is unsupported, you may avoid the error by disabling index scan: `SET enable_indexscan TO off;` before the query and `SET enable_indexscan TO on;` afterwards.
+In the near future, cost estimates should route such queries to sequential scan.
 
 [operators]: https://www.postgresql.org/docs/13/gin-builtin-opclasses.html
 
@@ -55,13 +72,5 @@ For those familiar with upstream PostgreSQL GIN indexes, Yugabyte GIN indexes ar
 
 - Upstream PostgreSQL uses bitmap index scan; Yugabyte uses index scan.
 - Deletes to the index are written explicitly: this is due to storage-layer architecture differences, and it's also true for regular indexes.
-
-## Extensions
-
-Support for extensions providing GIN support are in progress.
-
-- [ ] btree_gin
-- [ ] hstore
-- [x] pg_trgm
-
-Regarding extensibility in general, some parts are currently not extensible, like partial match, so code changes to Yugabyte, rather than just the extension, would be needed to support them.
+- Fast update is not supported: this isn't practical for a distributed, log-structured database.
+- Fuzzy search limit is not supported: it can be in the future.
