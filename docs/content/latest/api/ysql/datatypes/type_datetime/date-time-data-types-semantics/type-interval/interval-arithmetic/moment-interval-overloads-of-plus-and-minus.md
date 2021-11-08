@@ -171,7 +171,7 @@ This explains why the arithmetic semantics is different for the three kinds of p
 
 ## Hybrid interval arithmetic is dangerous
 
-The term _hybrid interval_ value will be used to denote an _interval_ value where more than one of the fields of  the _[&#91;mm, dd, ss&#93;](../../interval-representation/)_ internal representation is non-zero.
+The term _hybrid interval_ value will be used to denote an _interval_ value where more than one of the fields of  the _[\[mm, dd, ss\]](../../interval-representation/)_ internal representation is non-zero.
 
 Try this. It uses hybrid "days-seconds" _interval values.
 

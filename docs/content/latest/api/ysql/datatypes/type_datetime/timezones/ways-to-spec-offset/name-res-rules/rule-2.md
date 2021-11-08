@@ -77,6 +77,7 @@ This is the result:
 ---------------------+----------------------
  12:00:00 WET +00:00 | 13:00:00 WEST +01:00
 ```
+
 The strings _WET_ and _WEST_ are respectively the _Winter Time_ and _Summer Time_ abbreviations for the _Atlantic/Faeroe_ timezone.
 
 **Note:** the strings in the _pg_timezone_names.abbrev_ column don't necessarily uniquely denote a _utc_offset_ value. You should think of these abbreviations, therefore, not as globally understood mappings. Suppose that you live in Los Angeles and your friend lives in Manila, and that you're planning a Holiday phone call. Imagine the confusion that would ensue if you said _"Let's schedule our call for Saturday at seven PM PST"_— (as people often do). Maybe you even speak that into a modern artificially "intelligent" assistant for your calendar app.
@@ -117,11 +118,11 @@ This is the result:
 
 The calendar assistant, at least if it knew already what your location and your friend's location were and could map from these to timezones, would have to ask you _"Do you mean PST in Los Angeles or PST in Manila on that date?"_.
 
-<p>A timezone abbreviation (in the world of human convention) is unique <i>only</i> within the scope of the timezone to which it belongs. Even then, it's not a very useful notion. with one caveat<i>[1]</i>, because the combination of date-time and timezone tells you unambiguously if it's Winter Time or Summer Time.</p>
+A timezone abbreviation (in the world of human convention) is unique _only_ within the scope of the timezone to which it belongs. Even then, it's not a very useful notion. with one caveat<sup>[1]</sup>, because the combination of date-time and timezone tells you unambiguously if it's Winter Time or Summer Time.
 
 This is why _pg_timezone_names.abbrev_ is never used to resolve a string that's intended to identify a _UTC offset_.
 
-_[1]_ The caveat is that the abbreviation _is_ useful, just once per year, during the period of one hour at the "fall back" moment when your wall-clock reads the same time after that moment as it did before. See the [discussion](../../../../date-time-data-types-semantics/type-timestamp/#just-after-fall-back), in the section _"The plain timestamp and timestamptz data types"_ of this code example:
+[1] The caveat is that the abbreviation _is_ useful, just once per year, during the period of one hour at the "fall back" moment when your wall-clock reads the same time after that moment as it did before. See the [discussion](../../../../date-time-data-types-semantics/type-timestamp/#just-after-fall-back), in the section _"The plain timestamp and timestamptz data types"_ of this code example:
 
 ```plpgsql
 set timezone = 'America/Los_Angeles';
