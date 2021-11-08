@@ -120,6 +120,9 @@ void cypher_yyerror(YYLTYPE *llocp, ag_scanner_t scanner,
                     ag_scanner_errposition(*llocp, scanner)));
 }
 
+/* declaration to make mac os x compiler happy */
+int cypher_yyparse(ag_scanner_t scanner, cypher_yy_extra *extra);
+
 List *parse_cypher(const char *s)
 {
     ag_scanner_t scanner;
