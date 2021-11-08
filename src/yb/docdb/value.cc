@@ -202,5 +202,12 @@ void Value::ClearIntentDocHt() {
   intent_doc_ht_ = DocHybridTime::kInvalid;
 }
 
+Result<bool> Value::IsTombstoned(const Slice& slice) {
+  Value doc_value;
+  Slice value = slice;
+  RETURN_NOT_OK(doc_value.DecodeControlFields(&value));
+  return value[0] == ValueTypeAsChar::kTombstone;
+}
+
 }  // namespace docdb
 }  // namespace yb
