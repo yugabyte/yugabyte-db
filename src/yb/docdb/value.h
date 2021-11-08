@@ -129,6 +129,8 @@ class Value {
 
   static std::string DebugSliceToString(const Slice& encoded_value);
 
+  static Result<bool> IsTombstoned(const Slice& slice);
+
  private:
   // Consume the timestamp portion of the slice assuming the beginning of the slice points to
   // the timestamp.
