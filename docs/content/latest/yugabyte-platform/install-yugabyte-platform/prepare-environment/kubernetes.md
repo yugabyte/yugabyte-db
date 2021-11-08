@@ -84,10 +84,3 @@ The output should be similar to the following:
 ```output
 version.BuildInfo{Version:"v3.2.1", GitCommit:"fe51cd1e31e6a202cba7dead9552a6d418ded79a", GitTreeState:"clean", GoVersion:"go1.13.10"}
 ```
-
-You can use Helm to configure the CPU and memory allocation for each Yugabyte Platform container. For example, the following command sets the container to 3 GB and Prometheus CPU to 3 cores:
-
-```shell
-helm install --namespace mytest-1 mytest-1 yugaware --set=yugaware.resources.requests.memory=3Gi,prometheus.resources.requests.cpu=3
-```
-
