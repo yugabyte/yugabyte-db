@@ -28,10 +28,6 @@ Limitations:
 
 Writes to the index, whether through query or index build, currently have limitations:
 
-- Writing nulls to the index is not supported.
-  - Columns cannot have null elements (for example, an array with element `null`).
-  - Columns cannot have zero index keys (for example, an empty array).
-  - Columns cannot be set to `null`.
 - Fast update is not supported: this isn't practical for a distributed, log-structured database.
 
 ### SELECT
@@ -41,7 +37,6 @@ Since cost estimates currently aren't implemented, you can `SET enable_indexscan
 Only [certain SELECTs][operators] use the GIN index.
 Even among them, there are currently some limitations:
 
-- tsvector prefix match is not supported.
 - Special scans are not supported.
   - Scans cannot include rows whose column has zero index keys.
   - Scans cannot scan the entire index.
@@ -65,8 +60,8 @@ For those familiar with upstream PostgreSQL GIN indexes, Yugabyte GIN indexes ar
 
 Support for extensions providing GIN support are in progress.
 
-- btree_gin
-- hstore
-- pg_trgm
+- [ ] btree_gin
+- [ ] hstore
+- [x] pg_trgm
 
 Regarding extensibility in general, some parts are currently not extensible, like partial match, so code changes to Yugabyte, rather than just the extension, would be needed to support them.
