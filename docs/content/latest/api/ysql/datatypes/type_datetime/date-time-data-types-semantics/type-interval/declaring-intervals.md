@@ -24,7 +24,7 @@ However, if you follow the approach described in the section [Custom domain type
 
 ## Summary
 
-The explanations and the supporting code below address the semantics of the different spellings of _interval_ declarations—in other words, how these different spellings differently constrain the _interval_ values that can be represented. The code and the explanations presented below show that though there are several syntax spellings for each, there are in fact just six kinds of _interval_ declaration. It's convenient to call these kinds _year_, _month_, _day_, _hour_, _minute_, and _second_. The constraints are applied whenever a new _interval_ value is created, just before recording it in the [internal _&#91;mm, dd, ss&#93;_ tuple format](../interval-representation/). The effects of each of the six constraints are conveniently described by this PL/pgSQL code:
+The explanations and the supporting code below address the semantics of the different spellings of _interval_ declarations—in other words, how these different spellings differently constrain the _interval_ values that can be represented. The code and the explanations presented below show that though there are several syntax spellings for each, there are in fact just six kinds of _interval_ declaration. It's convenient to call these kinds _year_, _month_, _day_, _hour_, _minute_, and _second_. The constraints are applied whenever a new _interval_ value is created, just before recording it in the [internal _\[mm, dd, ss\]_ tuple format](../interval-representation/). The effects of each of the six constraints are conveniently described by this PL/pgSQL code:
 
 ```output
 -- Here with [mm, dd, ss] computed with, so far, no constraints.
