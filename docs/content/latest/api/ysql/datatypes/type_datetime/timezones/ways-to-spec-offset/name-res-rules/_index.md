@@ -34,24 +34,22 @@ The syntax contexts of interest are described in the section [Three syntax conte
 
 **Note:** The code that substantiates _Rule 4_ is able to do this only because there do exist cases where the same string is found in _both_ resolution contexts but with different _utc_offset_ values in the two contexts.
 
-<p id="syntax-contexts-table">&nbsp;</p>
+<a name="syntax-contexts-table"></a>This table summarises [Rule 2](./rule-3/), [Rule 3](./rule-3/), and [Rule 4](./rule-4/):
 
-This table summarises [Rule 2](./rule-3/), [Rule 3](./rule-3/), and [Rule 4](./rule-4/):
+| Syntax context \ View column                    | pg_timezone_names.name | pg_timezone_names.abbrev    | pg_timezone_abbrevs.abbrev                 |
+| ----------------------------------------------- | ---------------------- | --------------------------- |------------------------------------------- |
+| _set timezone_<sup>[\[1\]](#note-1)</sup>       | **here only** _[Rule 3](./rule-3/)_         | never _[Rule 2](./rule-2/)_ | not for set timezone  |
+| _at time zone_<sup>[\[2\]](#note-2)</sup>       | **second** priority _[Rule 4](./rule-4/)_   | never _[Rule 2](./rule-2/)_ | **first** priority    |
+| _timestamptz_ value <sup>[\[3\]](#note-3)</sup> | **second** priority _[Rule 4](./rule-4/)_   | never _[Rule 2](./rule-2/)_ | **first** priority    |
 
-| Syntax context \ View column    | pg_timezone_names.name | pg_timezone_names.abbrev    | pg_timezone_abbrevs.abbrev                 |
-| ------------------------------- | ---------------------- | --------------------------- |------------------------------------------- |
-| _set timezone_ &nbsp; [1]       | **here only** _[Rule 3](./rule-3/)_         | never _[Rule 2](./rule-2/)_ | not for set timezone  |
-| _at time zone_ &nbsp; [2]       | **second** priority _[Rule 4](./rule-4/)_   | never _[Rule 2](./rule-2/)_ | **first** priority    |
-| _timestamptz_ value  &nbsp; [3] | **second** priority _[Rule 4](./rule-4/)_   | never _[Rule 2](./rule-2/)_ | **first** priority    |
-
-**Note 1:** This row applies for the two alternative syntax spellings:
+<a name="note-1"></a>**Note 1:** This row applies for the two alternative syntax spellings:
 
 ```plpgsql
   set timezone = 'Europe/Amsterdam';
   set time zone 'Europe/Amsterdam';
 ```
 
-**Note 2:** This row applies for both the _operator syntax_ and the _function syntax_:
+<a name="note-2"></a>**Note 2:** This row applies for both the _operator syntax_ and the _function syntax_:
 
 ```plpgsql
      select (
@@ -59,9 +57,10 @@ This table summarises [Rule 2](./rule-3/), [Rule 3](./rule-3/), and [Rule 4](./r
          (select timezone('Europe/Amsterdam', '2021-06-02 12:00:00'::timestamp))
        )::text;
 ```
+
 You usually see the _operator syntax_ in blog posts and the like. But there are good reasons to prefer the _function syntax_ in industrial strength application code. The section [Recommended practice for specifying the _UTC offset_](../../recommendation/) explains why and encourages you to use the overloads of the _timezone()_ built-in function only via the user-defined wrapper function [_at_timezone()_](../../recommendation/#the-at-timezone-function-overloads).
 
-**Note 3:**  This row applies for both the _::timestamptz_ typecast of a _text_ literal and the invocation of the _make_timestamptz()_ built-in function:
+<a name="note-3"></a>**Note 3:**  This row applies for both the _::timestamptz_ typecast of a _text_ literal and the invocation of the _make_timestamptz()_ built-in function:
 
 ```plpgsql
      select (
