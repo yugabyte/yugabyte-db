@@ -150,6 +150,22 @@ class Master : public tserver::DbServerBase {
     return *async_client_init_;
   }
 
+  enum MasterMetricType {
+    TaskMetric,
+    AttemptMetric,
+  };
+
+  // Functon that returns a object pointer to a RPC's histogram metric. If a histogram
+  // metric pointer is not created, it will create a new object pointer and return it.
+  scoped_refptr<Histogram> GetMetric(const std::string& metric_identifier,
+                                     Master::MasterMetricType type,
+                                     const std::string& description);
+
+  std::map<std::string, scoped_refptr<Histogram>>* master_metrics()
+    REQUIRES (master_metrics_mutex_) {
+      return &master_metrics_;
+  }
+
  protected:
   virtual CHECKED_STATUS RegisterServices();
 
@@ -205,6 +221,8 @@ class Master : public tserver::DbServerBase {
   std::unique_ptr<MasterTabletServer> master_tablet_server_;
 
   std::unique_ptr<yb::client::AsyncClientInitialiser> async_client_init_;
+  std::mutex master_metrics_mutex_;
+  std::map<string, scoped_refptr<Histogram>> master_metrics_ GUARDED_BY(master_metrics_mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(Master);
 };
