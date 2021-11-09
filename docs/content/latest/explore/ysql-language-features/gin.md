@@ -236,3 +236,121 @@ SELECT * FROM jsonbs WHERE j ? 'some';
 ...
 Time: 2.115 ms
 ```
+
+### Unsupported queries
+
+Sometimes, an unsupported query may be encountered by getting an ERROR.
+Here, I show workarounds to some of these cases.
+
+#### more than one required scan entry
+
+Perhaps the most common issue would be "cannot use more than one required scan entry".
+It means that the GIN index scan internally tries to fetch more than one index key.
+Since this is currently not supported, it throws an ERROR.
+
+```sql
+RESET enable_indexscan;
+\timing off
+
+SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'quick | lazy');
+```
+
+```output
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method cannot use more than one required scan entry: got 2.
+Time: 2.885 ms
+```
+
+One way to get around this is to use `OR` outside the tsquery:
+
+```sql
+SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'quick')
+                      OR v @@ to_tsquery('simple', 'lazy');
+```
+
+```output
+                  v                  | k
+-------------------------------------+---
+ 'brown':3 'fox':4 'quick':2 'the':1 | 1
+ 'dog':2 'lazy':1                    | 3
+(2 rows)
+
+Time: 10.169 ms
+```
+
+However, this doesn't use the index:
+
+```sql
+EXPLAIN
+SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'quick')
+                      OR v @@ to_tsquery('simple', 'lazy');
+```
+
+```output
+                              QUERY PLAN
+-----------------------------------------------------------------------
+ Seq Scan on vectors  (cost=0.00..105.00 rows=1000 width=36)
+   Filter: ((v @@ '''quick'''::tsquery) OR (v @@ '''lazy'''::tsquery))
+(2 rows)
+
+Time: 1.050 ms
+```
+
+Another way that does use the index is `UNION`:
+
+```sql
+EXPLAIN
+SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'quick') UNION
+SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'lazy');
+```
+
+```output
+                                                  QUERY PLAN
+--------------------------------------------------------------------------------------------------------------
+ Unique  (cost=163.76..178.76 rows=2000 width=36)
+   ->  Sort  (cost=163.76..168.76 rows=2000 width=36)
+         Sort Key: vectors.v, vectors.k
+         ->  Append  (cost=4.00..54.10 rows=2000 width=36)
+               ->  Index Scan using vectors_v_idx on vectors  (cost=4.00..12.05 rows=1000 width=36)
+                     Index Cond: (v @@ '''quick'''::tsquery)
+               ->  Index Scan using vectors_v_idx on vectors vectors_1  (cost=4.00..12.05 rows=1000 width=36)
+                     Index Cond: (v @@ '''lazy'''::tsquery)
+(8 rows)
+
+Time: 1.143 ms
+```
+
+```sql
+SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'quick') UNION
+SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'lazy');
+```
+
+```output
+                  v                  | k
+-------------------------------------+---
+ 'dog':2 'lazy':1                    | 3
+ 'brown':3 'fox':4 'quick':2 'the':1 | 1
+(2 rows)
+
+Time: 5.559 ms
+```
+
+If performance doesn't matter, the universal fix is to disable index scan so that sequential scan is used.
+For sequential scan to be chosen, make sure that sequential scan is not also disabled.
+
+```sql
+SET enable_indexscan = off;
+SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'quick | lazy');
+```
+
+```output
+                  v                  | k
+-------------------------------------+---
+ 'brown':3 'fox':4 'quick':2 'the':1 | 1
+ 'dog':2 'lazy':1                    | 3
+(2 rows)
+
+Time: 11.188 ms
+```
+
+Notice that the modified query using the index is still 2x faster than the original query to the main table.
