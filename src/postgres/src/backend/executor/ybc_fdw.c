@@ -279,7 +279,6 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 	ybc_state->exec_params = &estate->yb_exec_params;
 
 	ybc_state->exec_params->rowmark = -1;
-	ybc_state->exec_params->read_from_followers = YBReadFromFollowersEnabled();
 	if (YBReadFromFollowersEnabled()) {
 		ereport(DEBUG2, (errmsg("Doing read from followers")));
 	}

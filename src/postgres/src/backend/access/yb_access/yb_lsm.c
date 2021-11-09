@@ -348,8 +348,6 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 	ybscan->exec_params = scan->yb_exec_params;
 	if (!ybscan->exec_params) {
 		ereport(DEBUG1, (errmsg("null exec_params")));
-	} else {
-		ybscan->exec_params->read_from_followers = YBReadFromFollowersEnabled();
 	}
 	Assert(PointerIsValid(ybscan));
 
@@ -369,9 +367,6 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 	}
 	else
 	{
-		if (ybscan->exec_params && ybscan->exec_params->read_from_followers) {
-			ereport(DEBUG2, (errmsg("ybcingettuple read from followers")));
-		}
 		HeapTuple tuple = ybc_getnext_heaptuple(ybscan, is_forward_scan, &scan->xs_recheck);
 		if (tuple)
 		{
