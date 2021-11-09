@@ -38,6 +38,8 @@ import { CreateUniverse } from './redesign/universe/CreateUniverse';
 import { EditUniverse } from './redesign/universe/EditUniverse';
 import { Administration } from './pages/Administration';
 import ToggleFeaturesInTest from './pages/ToggleFeaturesInTest';
+import { ReplicationDetails } from './components/xcluster';
+
 
 /**
  * Redirects to base url if no queryParmas is set else redirects to path set in queryParam
@@ -226,6 +228,7 @@ export default (store) => {
           </Route>
           <Route path="/universes/:uuid/:tab" component={UniverseDetail} />
           <Route path="/universes/:uuid/tables/:tableUUID" component={TableDetail} />
+          <Route path="/universes/:uuid/replication/:replicationUUID" component={ReplicationDetails} />
         </Route>
 
         {/* ------------------------------------------------------------------------*/}

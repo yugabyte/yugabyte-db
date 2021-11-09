@@ -588,6 +588,16 @@ export default class ClusterFields extends Component {
     }
   }
 
+  componentDidMount() {
+    const { cloud, clusterType, updateFormField } = this.props;
+
+    if (isNonEmptyArray(cloud.providers?.data)) {
+      const firstProviderUuid = cloud.providers.data[0]?.uuid;
+      updateFormField(`${clusterType}.provider`, firstProviderUuid)
+      this.providerChanged(firstProviderUuid);
+    }
+  }
+
   componentDidUpdate(prevProps, prevState) {
     const {
       universe: { currentUniverse, universeConfigTemplate },
@@ -1948,8 +1958,6 @@ export default class ClusterFields extends Component {
         />
       );
     }
-
-    universeProviderList.unshift(<option key="" value=""></option>);
 
     let universeRegionList = [];
     if (self.state.providerSelected) {

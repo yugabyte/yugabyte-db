@@ -18,7 +18,6 @@ Yugabyte Platform is a containerized application that is installed and managed u
 
 Yugabyte Platform offers three levels of user accounts: Super Admin, Admin, and Read-only, with the latter having rather limited access to functionality. Unless otherwise specified, the Yugabyte Platform documentation describes the funtionality available to a Super Admin user. 
 
-
 ## Getting Started with Yugabyte Platform
 
 <div class="row">

@@ -47,6 +47,7 @@ import {
 } from '../../../utils/LayoutUtils';
 import './UniverseDetail.scss';
 import { SecurityMenu } from '../SecurityModal/SecurityMenu';
+import Replication from '../../xcluster/Replication';
 
 const INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY = ['i3', 'c5d'];
 
@@ -404,7 +405,13 @@ class UniverseDetail extends Component {
             unmountOnExit={true}
             disabled={isDisabled(currentCustomer.data.features, 'universes.details.replication')}
           >
-            <ReplicationContainer />
+            {
+              featureFlags.released.enableXCluster || featureFlags.test.enableXCluster ? (
+                <Replication currentUniverseUUID={currentUniverse.data.universeUUID}/>
+              ): (
+                <ReplicationContainer />
+              )
+            }
           </Tab.Pane>
         ),
 
