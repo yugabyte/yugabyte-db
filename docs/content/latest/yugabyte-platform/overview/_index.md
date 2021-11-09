@@ -16,8 +16,7 @@ Yugabyte Platform is best fit for mission-critical deployments, such as producti
 
 Yugabyte Platform is a containerized application that is installed and managed using <a href="https://www.replicated.com/" target="_blank">Replicated</a> for mission-critical environments (for example, production, performance, or failure mode testing). Replicated is a purpose-built tool for on-premises deployments and life cycle management of containerized applications. For environments that are not mission-critical, such as those needed for local development or simple functional testing, you can also use <a href="../../quick-start/install">YugabyteDB</a>.
 
-Yugabyte Platform offers three levels of user accounts: Super Admin, Admin, and Read-only, with the latter having rather limited access to functionality. Unless otherwise specified, the Yugabyte Platform documentation provides description of the funtionality available to a Super Admin user. 
-
+Yugabyte Platform offers three levels of user accounts: Super Admin, Admin, and Read-only, with the latter having rather limited access to functionality. Unless otherwise specified, the Yugabyte Platform documentation describes the funtionality available to a Super Admin user. 
 
 ## Getting Started with Yugabyte Platform
 
