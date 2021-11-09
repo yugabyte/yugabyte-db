@@ -357,6 +357,65 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(FollowerReads)) {
   ASSERT_EQ(value, "NEW is fine");
 }
 
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(MultiColFollowerReads)) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k int PRIMARY KEY, c1 TEXT, c2 TEXT)"));
+  ASSERT_OK(conn.Execute("SET yb_debug_log_docdb_requests = true"));
+  ASSERT_OK(conn.Execute("SET yb_read_from_followers = true"));
+
+  constexpr int32_t kSleepTimeMs = 1200 * kTimeMultiplier;
+
+  ASSERT_OK(conn.Execute("INSERT INTO t (k, c1, c2) VALUES (1, 'old', 'old')"));
+  auto kUpdateTime0 = MonoTime::Now();
+
+  SleepFor(MonoDelta::FromMilliseconds(kSleepTimeMs));
+
+  ASSERT_OK(conn.Execute("UPDATE t SET c1 = 'NEW' WHERE k = 1"));
+  auto kUpdateTime1 = MonoTime::Now();
+
+  SleepFor(MonoDelta::FromMilliseconds(kSleepTimeMs));
+
+  ASSERT_OK(conn.Execute("UPDATE t SET c2 = 'NEW' WHERE k = 1"));
+  auto kUpdateTime2 = MonoTime::Now();
+
+  auto result =
+      ASSERT_RESULT(conn.Fetch("/*+ Set(transaction_read_only off) */ "
+                               "SELECT * FROM t WHERE k = 1"));
+  ASSERT_EQ(1, ASSERT_RESULT(GetInt32(result.get(), 0, 0)));
+  ASSERT_EQ("NEW", ASSERT_RESULT(GetString(result.get(), 0, 1)));
+  ASSERT_EQ("NEW", ASSERT_RESULT(GetString(result.get(), 0, 2)));
+
+  const int32_t kOpDurationMs = 10;
+  auto staleness_ms = (MonoTime::Now() - kUpdateTime0).ToMilliseconds() - kOpDurationMs;
+  ASSERT_OK(conn.Execute(Format("SET yb_follower_read_staleness_ms = $0", staleness_ms)));
+  result =
+      ASSERT_RESULT(conn.Fetch("/*+ Set(transaction_read_only on) */ "
+                               "SELECT * FROM t WHERE k = 1"));
+  ASSERT_EQ(1, ASSERT_RESULT(GetInt32(result.get(), 0, 0)));
+  ASSERT_EQ("old", ASSERT_RESULT(GetString(result.get(), 0, 1)));
+  ASSERT_EQ("old", ASSERT_RESULT(GetString(result.get(), 0, 2)));
+
+  staleness_ms = (MonoTime::Now() - kUpdateTime1).ToMilliseconds() - kOpDurationMs;
+  ASSERT_OK(conn.Execute(Format("SET yb_follower_read_staleness_ms = $0", staleness_ms)));
+  result =
+      ASSERT_RESULT(conn.Fetch("/*+ Set(transaction_read_only on) */ "
+                               "SELECT * FROM t WHERE k = 1"));
+  ASSERT_EQ(1, ASSERT_RESULT(GetInt32(result.get(), 0, 0)));
+  ASSERT_EQ("NEW", ASSERT_RESULT(GetString(result.get(), 0, 1)));
+  ASSERT_EQ("old", ASSERT_RESULT(GetString(result.get(), 0, 2)));
+
+  SleepFor(MonoDelta::FromMilliseconds(kSleepTimeMs));
+
+  staleness_ms = (MonoTime::Now() - kUpdateTime2).ToMilliseconds();
+  ASSERT_OK(conn.Execute(Format("SET yb_follower_read_staleness_ms = $0", staleness_ms)));
+  result =
+      ASSERT_RESULT(conn.Fetch("/*+ Set(transaction_read_only on) */ "
+                               "SELECT * FROM t WHERE k = 1"));
+  ASSERT_EQ(1, ASSERT_RESULT(GetInt32(result.get(), 0, 0)));
+  ASSERT_EQ("NEW", ASSERT_RESULT(GetString(result.get(), 0, 1)));
+  ASSERT_EQ("NEW", ASSERT_RESULT(GetString(result.get(), 0, 2)));
+}
+
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(Simple)) {
   auto conn = ASSERT_RESULT(Connect());
 
