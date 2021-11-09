@@ -49,7 +49,7 @@ You install Yugabyte Platform on a Kubernetes cluster as follows:
 1. Apply the Yugabyte Platform secret that you obtained from [Yugabyte](https://www.yugabyte.com/platform/#request-trial-form) by running the following `kubectl create` command:
 
     ```sh
-    $ kubectl create -f yugabyte-k8s-secret.yml -n yb-platform
+    kubectl create -f yugabyte-k8s-secret.yml -n yb-platform
     ```
 
     Expect the following output notifying you that the secret was created:
@@ -61,7 +61,7 @@ You install Yugabyte Platform on a Kubernetes cluster as follows:
 1. Run the following `helm repo add` command to clone the [YugabyteDB charts repository](https://charts.yugabyte.com/):
 
     ```sh
-    $ helm repo add yugabytedb https://charts.yugabyte.com
+    helm repo add yugabytedb https://charts.yugabyte.com
     ```
 
     A message similar to the following should appear:
@@ -73,7 +73,7 @@ You install Yugabyte Platform on a Kubernetes cluster as follows:
     To search for the available chart version, run this command:
 
     ```sh
-    $ helm search repo yugabytedb/yugaware -l
+    helm search repo yugabytedb/yugaware -l
     ```
 
     The latest Helm Chart version and App version will be displayed:
@@ -83,7 +83,7 @@ You install Yugabyte Platform on a Kubernetes cluster as follows:
     yugabytedb/yugabyte  2.9.1          2.9.1.0      YugabyteDB is the high-performance distributed ...
     ```
 
-1. Run the following `helm install` command to install Yugabyte Platform (`yugaware`) Helm chart:
+1. Run the following `helm install` command to install the Yugabyte Platform (`yugaware`) Helm chart:
 
     ```sh
     helm install yw-test yugabytedb/yugaware --version 2.9.1 -n yb-platform --wait
@@ -108,33 +108,33 @@ You install Yugabyte Platform on a Kubernetes cluster as follows:
     yw-test-yugaware-ui   LoadBalancer   10.111.241.9   34.93.169.64   80:32006/TCP,9090:30691/TCP   2m12s
     ```
 
-## Customization
+## Customize Yugabyte Platform
 
-1. To change CPU & memory resources:
+You can customize Yugabyte Platform on a Kubernetes cluster in a number of ways, such as the following:
 
+- You can change CPU and memory resources by executing a command similar to the following:
+
+  ```sh
+  helm install yw-test yugabytedb/yugaware -n yb-platform \
+    --set yugaware.resources.requests.cpu=2 \
+    --set yugaware.resources.requests.memory=4Gi \
+    --set yugaware.resources.limits.cpu=2 \
+    --set yugaware.resources.limits.memory=4Gi \
+    --set prometheus.resources.requests.mem=6Gi
+  ```
+
+- You can disable the public-facing load balancer by providing the annotations to Yugabyte Platform service for disabling that load balancer. Since every cloud provider has different annontations for doing this, refer to the following documentation:
+
+  - For Google Cloud, see [GKE](https://cloud.google.com/kubernetes-engine/docs/how-to/internal-load-balancing).
+  - For Azure, see [AKS](https://docs.microsoft.com/en-us/azure/aks/internal-lb).
+  - For AWS, see [EKS](https://docs.aws.amazon.com/eks/latest/userguide/load-balancing.html).
+  
+  
+   For example, for a GKE version earlier than 1.17, you would execute a command similar to the following:
+  
     ```sh
-    helm install yw-test yugabytedb/yugaware -n yb-platform \
-      --set yugaware.resources.requests.cpu=2 \
-      --set yugaware.resources.requests.memory=4Gi \
-      --set yugaware.resources.limits.cpu=2 \
-      --set yugaware.resources.limits.memory=4Gi
-    ```
-
-1. To disable the internet/public facing LB, provide the annotations to YW service for disabling the public-facing LB.
-
-    \
-    Every cloud has different annontations to disable the LB. Use the following docs links to know more:
-
-    * [GKE](https://cloud.google.com/kubernetes-engine/docs/how-to/internal-load-balancing)
-    * [AKS](https://docs.microsoft.com/en-us/azure/aks/internal-lb)
-    * [EKS](https://docs.aws.amazon.com/eks/latest/userguide/load-balancing.html)
-
-    \
-    For example, for GKE lower than v1.17:
-
-    ```sh
-    helm install yw-test yugabytedb/yugaware -n yb-platform \
-      --set yugaware.service.annotations."cloud\.google\.com\/load-balancer-type"="Internal"
+  helm install yw-test yugabytedb/yugaware -n yb-platform \
+    --set yugaware.service.annotations."cloud\.google\.com\/load-balancer-type"="Internal"
     ```
 
 ## Delete the Helm Installation of Yugabyte Platform

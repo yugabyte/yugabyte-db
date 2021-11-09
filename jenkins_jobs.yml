@@ -10,9 +10,6 @@ jobs:
   - os: centos7
     compiler: clang11
     build_type: debug
-  - os: centos7
-    compiler: clang11
-    build_type: release
   - os: centos8
     compiler: clang11
     build_type: release
@@ -30,18 +27,12 @@ jobs:
   - os: alma8
     compiler: gcc9
     build_type: debug    
-  - os: alma8
-    compiler: gcc9
-    build_type: release
   - os: macos
     compiler: clang
     build_type: debug
   - os: macos
     compiler: clang
     build_type: release
-  - os: ubuntu18.04
-    compiler: gcc7
-    build_type: debug
   - os: ubuntu20.04
     compiler: gcc9
-    build_type: release
+    build_type: debug

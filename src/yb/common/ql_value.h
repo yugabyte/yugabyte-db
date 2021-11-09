@@ -42,7 +42,8 @@
   case UINT8:  FALLTHROUGH_INTENDED;    \
   case UINT16: FALLTHROUGH_INTENDED;    \
   case UINT32: FALLTHROUGH_INTENDED;    \
-  case UINT64
+  case UINT64: FALLTHROUGH_INTENDED;    \
+  case GIN_NULL
 
 namespace yb {
 
@@ -128,6 +129,7 @@ class QLValue {
   QLVALUE_PRIMITIVE_GETTER(const QLSeqValuePB&, set);
   QLVALUE_PRIMITIVE_GETTER(const QLSeqValuePB&, list);
   QLVALUE_PRIMITIVE_GETTER(const QLSeqValuePB&, frozen);
+  QLVALUE_PRIMITIVE_GETTER(uint8_t, gin_null);
   #undef QLVALUE_PRIMITIVE_GETTER
 
   static Timestamp timestamp_value(const QLValuePB& pb) {
@@ -315,6 +317,10 @@ class QLValue {
   }
   virtual void set_varint_value(const util::VarInt& val) {
     pb_.set_varint_value(val.EncodeToComparable());
+  }
+
+  virtual void set_gin_null_value(uint8_t val) {
+    pb_.set_gin_null_value(val);
   }
 
   //--------------------------------- mutable value methods ----------------------------------

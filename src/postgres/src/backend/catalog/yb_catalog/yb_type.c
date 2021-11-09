@@ -603,6 +603,18 @@ Datum YbIntervalToDatum(const void *data, int64 bytes, const YBCPgTypeAttrs *typ
 	return IntervalPGetDatum(result);
 }
 
+void YbDatumToGinNull(Datum datum, uint8 *data, int64 *bytes)
+{
+	*data = DatumGetUInt8(datum);
+}
+
+Datum YbGinNullToDatum(const uint8 *data,
+					   int64 bytes,
+					   const YBCPgTypeAttrs *type_attrs)
+{
+	return UInt8GetDatum(*data);
+}
+
 /*
  * Workaround: These conversion functions can be used as a quick workaround to support a type.
  * - Used for Datum that contains address or pointer of actual data structure.
@@ -1323,6 +1335,14 @@ static const YBCPgTypeEntity YBCVarLenByRefTypeEntity =
 	{ InvalidOid, YB_YQL_DATA_TYPE_BINARY, false, -1,
 		(YBCPgDatumToData)YbDatumToBinary,
 		(YBCPgDatumFromData)YbBinaryToDatum };
+
+/*
+ * Special type entity used for ybgin null categories.
+ */
+const YBCPgTypeEntity YBCGinNullTypeEntity =
+	{ InvalidOid, YB_YQL_DATA_TYPE_GIN_NULL, true, -1,
+		(YBCPgDatumToData)YbDatumToGinNull,
+		(YBCPgDatumFromData)YbGinNullToDatum };
 
 void YbGetTypeTable(const YBCPgTypeEntity **type_table, int *count) {
 	*type_table = YbTypeEntityTable;

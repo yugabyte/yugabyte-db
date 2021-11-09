@@ -87,6 +87,7 @@ int ybc_disable_pg_locking = -1;
 static void YBCInstallTxnDdlHook();
 
 bool yb_read_from_followers = false;
+int32_t yb_follower_read_staleness_ms = 0;
 
 bool
 IsYugaByteEnabled()
@@ -1404,6 +1405,10 @@ bool YBReadFromFollowersEnabled() {
   return yb_read_from_followers;
 }
 
+int32_t YBFollowerReadStalenessMs() {
+  return yb_follower_read_staleness_ms;
+}
+
 YBCPgYBTupleIdDescriptor* YBCCreateYBTupleIdDescriptor(Oid db_oid, Oid table_oid, int nattrs) {
 	void* mem = palloc(sizeof(YBCPgYBTupleIdDescriptor) + nattrs * sizeof(YBCPgAttrValueDescriptor));
 	YBCPgYBTupleIdDescriptor* result = mem;
@@ -1822,9 +1827,20 @@ void YBGetCollationInfo(
 		 * A character array type is processed as YB_YQL_DATA_TYPE_BINARY but it
 		 * can have a collation. For example:
 		 *   CREATE TABLE t (id text[] COLLATE "en_US.utf8");
+		 *
+		 * GIN indexes have null categories, so ybgin indexes pass the category
+		 * number down using GIN_NULL type.  Even if the column is collatable,
+		 * nulls should be unaffected by collation.
+		 *
+		 * pg_trgm GIN indexes have key type int32 but also valid collation for
+		 * regex purposes on the indexed type text.  Add an exception here for
+		 * int32.  Since this relaxes the assert for other situations involving
+		 * int32, a proper fix should be done in the future.
 		 */
 		Assert(collation_id == InvalidOid ||
-			   type_entity->yb_type == YB_YQL_DATA_TYPE_BINARY);
+			   type_entity->yb_type == YB_YQL_DATA_TYPE_BINARY ||
+			   type_entity->yb_type == YB_YQL_DATA_TYPE_GIN_NULL ||
+			   type_entity->yb_type == YB_YQL_DATA_TYPE_INT32);
 		collation_info->collate_is_valid_non_c = false;
 		collation_info->sortkey = NULL;
 		return;
