@@ -6,6 +6,7 @@ const initialStateFeatureInTest = {
   adminAlertsConfig:true,
   enableNewEncryptionInTransitModal: true,
   addRestoreTimeStamp: false,
+  enableXCluster: false,
 };
 
 const initialStateFeatureReleased = {
@@ -14,6 +15,7 @@ const initialStateFeatureReleased = {
   adminAlertsConfig:true,
   enableNewEncryptionInTransitModal: true,
   addRestoreTimeStamp: false,
+  enableXCluster: false,
 };
 
 export const FeatureFlag = (
