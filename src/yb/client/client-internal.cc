@@ -88,6 +88,8 @@ DEFINE_test_flag(string, assert_tablet_server_select_is_in_zone, "",
                  "Verify that SelectTServer selected a talet server in the AZ specified by this "
                  "flag.");
 
+DECLARE_int64(reset_master_leader_timeout_ms);
+
 DECLARE_string(flagfile);
 
 namespace yb {
@@ -1218,7 +1220,7 @@ class ClientMasterRpc : public Rpc {
 
   virtual void ProcessResponse(const Status& status) = 0;
 
-  void ResetLeaderMasterAndRetry();
+  void ResetMasterLeader(Retry retry);
 
   void NewLeaderMasterDeterminedCb(const Status& status);
 
@@ -1364,13 +1366,14 @@ void ClientMasterRpc<Req, Resp>::SendRpc() {
 }
 
 template <class Req, class Resp>
-void ClientMasterRpc<Req, Resp>::ResetLeaderMasterAndRetry() {
+void ClientMasterRpc<Req, Resp>::ResetMasterLeader(Retry retry) {
   client_->data_->SetMasterServerProxyAsync(
-      retrier().deadline(),
+      retry ? retrier().deadline()
+            : CoarseMonoClock::now() + FLAGS_reset_master_leader_timeout_ms * 1ms,
       false /* skip_resolution */,
       true, /* wait for leader election */
-      Bind(&ClientMasterRpc::NewLeaderMasterDeterminedCb,
-           Unretained(this)));
+      retry ? std::bind(&ClientMasterRpc::NewLeaderMasterDeterminedCb, this, _1)
+            : StdStatusCallback([](auto){}));
 }
 
 template <class Req, class Resp>
@@ -1394,19 +1397,20 @@ void ClientMasterRpc<Req, Resp>::Finished(const Status& status) {
   if (new_status.ok() && resp_.has_error()) {
     if (resp_.error().code() == MasterErrorPB::NOT_THE_LEADER ||
         resp_.error().code() == MasterErrorPB::CATALOG_MANAGER_NOT_INITIALIZED) {
-      LOG(WARNING) << "Leader Master has changed ("
+      LOG(WARNING) << resp_.GetTypeName() << ": Leader Master has changed ("
                    << client_->data_->leader_master_hostport().ToString()
                    << " is no longer the leader), re-trying...";
-      ResetLeaderMasterAndRetry();
+      ResetMasterLeader(Retry::kTrue);
       return;
     }
 
     if (resp_.error().status().code() == AppStatusPB::LEADER_NOT_READY_TO_SERVE ||
         resp_.error().status().code() == AppStatusPB::LEADER_HAS_NO_LEASE) {
-      LOG(WARNING) << "Leader Master " << client_->data_->leader_master_hostport().ToString()
+      LOG(WARNING) << resp_.GetTypeName() << ": Leader Master "
+                   << client_->data_->leader_master_hostport().ToString()
                    << " does not have a valid exclusive lease: "
                    << resp_.error().status().ShortDebugString() << ", re-trying...";
-      ResetLeaderMasterAndRetry();
+      ResetMasterLeader(Retry::kTrue);
       return;
     }
     VLOG(2) << "resp.error().status()=" << resp_.error().status().DebugString();
@@ -1414,24 +1418,26 @@ void ClientMasterRpc<Req, Resp>::Finished(const Status& status) {
   }
 
   if (new_status.IsTimedOut()) {
-    if (CoarseMonoClock::Now() < retrier().deadline()) {
-      LOG(WARNING) << "Leader Master ("
+    auto now = CoarseMonoClock::Now();
+    if (now < retrier().deadline()) {
+      LOG(WARNING) << resp_.GetTypeName() << ": Leader Master ("
           << client_->data_->leader_master_hostport().ToString()
-          << ") timed out, re-trying...";
-      ResetLeaderMasterAndRetry();
+          << ") timed out, " << MonoDelta(retrier().deadline() - now) << " left, re-trying...";
+      ResetMasterLeader(Retry::kTrue);
       return;
     } else {
       // Operation deadline expired during this latest RPC.
       new_status = new_status.CloneAndPrepend(
           "RPC timed out after deadline expired");
+      ResetMasterLeader(Retry::kFalse);
     }
   }
 
   if (new_status.IsNetworkError()) {
-    LOG(WARNING) << "Encountered a network error from the Master("
+    LOG(WARNING) << resp_.GetTypeName() << ": Encountered a network error from the Master("
                  << client_->data_->leader_master_hostport().ToString() << "): "
                  << new_status.ToString() << ", retrying...";
-    ResetLeaderMasterAndRetry();
+    ResetMasterLeader(Retry::kTrue);
     return;
   }
 
@@ -2162,10 +2168,10 @@ void YBClient::Data::LeaderMasterDetermined(const Status& status,
   VLOG(4) << "YBClient: Leader master determined: status="
           << status.ToString() << ", host port ="
           << host_port.ToString();
-  std::vector<StatusCallback> cbs;
+  std::vector<StdStatusCallback> callbacks;
   {
     std::lock_guard<simple_spinlock> l(leader_master_lock_);
-    cbs.swap(leader_master_callbacks_);
+    callbacks.swap(leader_master_callbacks_);
 
     if (new_status.ok()) {
       leader_master_hostport_ = host_port;
@@ -2175,8 +2181,8 @@ void YBClient::Data::LeaderMasterDetermined(const Status& status,
     rpcs_.Unregister(&leader_master_rpc_);
   }
 
-  for (const StatusCallback& cb : cbs) {
-    cb.Run(new_status);
+  for (const auto& callback : callbacks) {
+    callback(new_status);
   }
 }
 
@@ -2186,14 +2192,14 @@ Status YBClient::Data::SetMasterServerProxy(CoarseTimePoint deadline,
 
   Synchronizer sync;
   SetMasterServerProxyAsync(deadline, skip_resolution,
-      wait_for_leader_election, sync.AsStatusCallback());
+      wait_for_leader_election, sync.AsStdStatusCallback());
   return sync.Wait();
 }
 
 void YBClient::Data::SetMasterServerProxyAsync(CoarseTimePoint deadline,
                                                bool skip_resolution,
                                                bool wait_for_leader_election,
-                                               const StatusCallback& cb) {
+                                               const StdStatusCallback& callback) {
   DCHECK(deadline != CoarseTimePoint::max());
 
   server::MasterAddresses master_addrs;
@@ -2202,7 +2208,7 @@ void YBClient::Data::SetMasterServerProxyAsync(CoarseTimePoint deadline,
   {
     std::lock_guard<simple_spinlock> l(master_server_addrs_lock_);
     if (!s.ok() && full_master_server_addrs_.empty()) {
-      cb.Run(s);
+      callback(s);
       return;
     }
     for (const string &master_server_addr : full_master_server_addrs_) {
@@ -2210,11 +2216,11 @@ void YBClient::Data::SetMasterServerProxyAsync(CoarseTimePoint deadline,
       // TODO: Do address resolution asynchronously as well.
       s = HostPort::ParseStrings(master_server_addr, master::kMasterDefaultPort, &addrs);
       if (!s.ok()) {
-        cb.Run(s);
+        callback(s);
         return;
       }
       if (addrs.empty()) {
-        cb.Run(STATUS_FORMAT(
+        callback(STATUS_FORMAT(
             InvalidArgument,
             "No master address specified by '$0' (all master server addresses: $1)",
             master_server_addr, full_master_server_addrs_));
@@ -2237,7 +2243,7 @@ void YBClient::Data::SetMasterServerProxyAsync(CoarseTimePoint deadline,
   // Instead, we simply piggy-back onto the existing request by adding our own
   // callback to leader_master_callbacks_.
   std::unique_lock<simple_spinlock> l(leader_master_lock_);
-  leader_master_callbacks_.push_back(cb);
+  leader_master_callbacks_.push_back(callback);
   if (skip_resolution && !master_addrs.empty() && !master_addrs.front().empty()) {
     l.unlock();
     LeaderMasterDetermined(Status::OK(), master_addrs.front().front());
