@@ -354,3 +354,33 @@ Time: 11.188 ms
 ```
 
 Notice that the modified query using the index is still 2x faster than the original query to the main table.
+
+#### non-default search mode
+
+All search modes/strategies besides the default one are currently unsupported.
+Many of these are best off using a sequential scan.
+In fact, the query planner avoids many of these types of index scans by increasing the cost, leading to sequential scan being chosen as the better alternative.
+Nevertheless, here are some cases that hit the ERROR.
+
+```sql
+RESET enable_indexscan;
+\timing off
+
+SELECT * FROM arrays WHERE a = '{}';
+```
+
+```output
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method does not support non-default search mode: include-empty.
+```
+
+```sql
+SELECT * FROM arrays WHERE a <@ '{6,1,1,null}';
+```
+
+```output
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method does not support non-default search mode: include-empty.
+```
+
+There's currently no choice but to use a sequential scan on these.
