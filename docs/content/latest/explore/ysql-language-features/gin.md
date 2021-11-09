@@ -384,3 +384,21 @@ DETAIL:  ybgin index method does not support non-default search mode: include-em
 ```
 
 There's currently no choice but to use a sequential scan on these.
+
+### `jsonb_path_ops`
+
+By default, jsonb GIN indexes use the opclass `jsonb_ops`.
+There is another opclass `jsonb_path_ops` that can be used instead.
+
+The difference is the way they extract elements out of a jsonb.
+`jsonb_ops` extracts keys and values and encodes them as `<flag_byte><value>`.
+For example, `'{"abc":[123,true]}'` maps to three GIN keys: `\001abc`, `\004123`, `\003t`.
+The flag bytes here indicate the types key, numeric, and boolean, respectively.
+
+On the other hand, `jsonb_path_ops` extracts hashed paths.
+Using the above example, there are two paths: `"abc" -> 123` and `"abc" -> true`.
+Then, there are two GIN keys based on those paths using an internal hashing mechanism: `-1570777299`, `-1227915239`.
+
+`jsonb_path_ops` is better suited for queries involving paths, such as the `jsonb @> jsonb` operator.
+However, it doesn't support as many operators as `jsonb_ops`.
+If write performance and storage aren't an issue, it may be worth creating a GIN index of each jsonb opclass so that reads can choose the faster one.
