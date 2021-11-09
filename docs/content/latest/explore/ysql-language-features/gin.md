@@ -74,3 +74,165 @@ For those familiar with upstream PostgreSQL GIN indexes, Yugabyte GIN indexes ar
 - Deletes to the index are written explicitly: this is due to storage-layer architecture differences, and it's also true for regular indexes.
 - Fast update is not supported: this isn't practical for a distributed, log-structured database.
 - Fuzzy search limit is not supported: it can be in the future.
+
+## Examples
+
+### Setup
+
+To begin, I set up a cluster using `yb-ctl`.
+
+```sh
+./bin/yb-ctl --data_dir /tmp/gindemo --rf 3 create --ip_start 201
+./bin/ysqlsh --host 127.0.0.201
+```
+
+Set up the tables, indexes, and data.
+
+```sql
+CREATE TABLE vectors (v tsvector, k serial PRIMARY KEY);
+CREATE TABLE arrays (a int[], k serial PRIMARY KEY);
+CREATE TABLE jsonbs (j jsonb, k serial PRIMARY KEY);
+
+-- Use NONCONCURRENTLY since there is no risk of online ops.
+CREATE INDEX NONCONCURRENTLY ON vectors USING ybgin (v);
+CREATE INDEX NONCONCURRENTLY ON arrays USING ybgin (a);
+CREATE INDEX NONCONCURRENTLY ON jsonbs USING ybgin (j);
+
+INSERT INTO vectors VALUES
+    (to_tsvector('simple', 'the quick brown fox')),
+    (to_tsvector('simple', 'jumps over the')),
+    (to_tsvector('simple', 'lazy dog'));
+-- Add some filler rows to make sequential scan more costly.
+INSERT INTO vectors SELECT to_tsvector('simple', 'filler') FROM generate_series(1, 1000);
+
+INSERT INTO arrays VALUES
+    ('{1,1,6}'),
+    ('{1,6,1}'),
+    ('{2,3,6}'),
+    ('{2,5,8}'),
+    ('{null}'),
+    ('{}'),
+    (null);
+INSERT INTO arrays SELECT '{0}' FROM generate_series(1, 1000);
+
+INSERT INTO jsonbs VALUES
+    ('{"a":{"number":5}}'),
+    ('{"some":"body"}'),
+    ('{"some":"one"}'),
+    ('{"some":"thing"}'),
+    ('{"some":["where","how"]}'),
+    ('{"some":{"nested":"jsonb"}, "and":["another","element","not","a","number"]}');
+INSERT INTO jsonbs SELECT '"filler"' FROM generate_series(1, 1000);
+```
+
+### Timing
+
+Here are some examples to show the speed improvement of queries using GIN index.
+First, enable timing for future queries.
+
+```sql
+\timing on
+```
+
+First, test GIN index on tsvector:
+
+```
+SET enable_indexscan = off;
+SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'the');
+-- Run it several times to reduce cache bias.
+SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'the');
+SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'the');
+```
+
+```output
+                  v                  | k
+-------------------------------------+---
+ 'brown':3 'fox':4 'quick':2 'the':1 | 1
+ 'jumps':1 'over':2 'the':3          | 2
+(2 rows)
+
+Time: 11.141 ms
+```
+
+```sql
+SET enable_indexscan = on;
+SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'the');
+-- Run it several times to reduce cache bias.
+SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'the');
+SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'the');
+```
+
+```output
+...
+Time: 2.838 ms
+```
+
+Notice the over 3x timing improvement when using GIN index.
+This is on a relatively small table: a little over 1000 rows.
+With more and/or bigger rows, the timing improvement should get better.
+
+Next, int array:
+
+```sql
+SET enable_indexscan = off;
+SELECT * FROM arrays WHERE a @> '{6}';
+SELECT * FROM arrays WHERE a @> '{6}';
+SELECT * FROM arrays WHERE a @> '{6}';
+```
+
+```output
+    a    | k
+---------+---
+ {1,1,6} | 1
+ {1,6,1} | 2
+ {2,3,6} | 3
+(3 rows)
+
+Time: 9.501 ms
+```
+
+```sql
+SET enable_indexscan = on;
+SELECT * FROM arrays WHERE a @> '{6}';
+SELECT * FROM arrays WHERE a @> '{6}';
+SELECT * FROM arrays WHERE a @> '{6}';
+```
+
+```output
+...
+Time: 2.989 ms
+```
+
+Next, jsonb:
+
+```sql
+SET enable_indexscan = off;
+SELECT * FROM jsonbs WHERE j ? 'some';
+SELECT * FROM jsonbs WHERE j ? 'some';
+SELECT * FROM jsonbs WHERE j ? 'some';
+```
+
+```output
+                                         j                                          | k
+------------------------------------------------------------------------------------+---
+ {"some": ["where", "how"]}                                                         | 5
+ {"and": ["another", "element", "not", "a", "number"], "some": {"nested": "jsonb"}} | 6
+ {"some": "thing"}                                                                  | 4
+ {"some": "body"}                                                                   | 2
+ {"some": "one"}                                                                    | 3
+(5 rows)
+
+Time: 13.451 ms
+```
+
+```sql
+SET enable_indexscan = on;
+SELECT * FROM jsonbs WHERE j ? 'some';
+SELECT * FROM jsonbs WHERE j ? 'some';
+SELECT * FROM jsonbs WHERE j ? 'some';
+```
+
+```output
+...
+Time: 2.115 ms
+```
