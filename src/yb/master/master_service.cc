@@ -76,6 +76,9 @@ DEFINE_int32(tablet_report_limit, 1000,
              "If this is set to INT32_MAX, then heartbeat will report all dirty tablets.");
 TAG_FLAG(tablet_report_limit, advanced);
 
+DEFINE_test_flag(bool, timeout_non_leader_get_table_locations, false,
+                 "Timeout all GetTableLocations requests to non leader.");
+
 DECLARE_CAPABILITY(TabletReportLimit);
 DECLARE_int32(heartbeat_rpc_timeout_ms);
 
@@ -393,6 +396,12 @@ void MasterServiceImpl::GetTableLocations(const GetTableLocationsRequestPB* req,
                                           RpcContext rpc) {
   // We can't use the HANDLE_ON_LEADER_WITH_LOCK macro here because we have to inject latency
   // before acquiring the leader lock.
+  if (FLAGS_TEST_timeout_non_leader_get_table_locations) {
+    ScopedLeaderSharedLock lock(server_->catalog_manager(), __FILE__, __LINE__, __func__);
+    if (!lock.leader_status().ok()) {
+      std::this_thread::sleep_until(rpc.GetClientDeadline());
+    }
+  }
   HandleOnLeader(req, resp, &rpc, [&]() -> Status {
     if (PREDICT_FALSE(FLAGS_master_inject_latency_on_tablet_lookups_ms > 0)) {
       SleepFor(MonoDelta::FromMilliseconds(FLAGS_master_inject_latency_on_tablet_lookups_ms));
