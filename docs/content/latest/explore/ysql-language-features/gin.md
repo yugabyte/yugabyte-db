@@ -15,7 +15,7 @@ The above example would benefit from a GIN index since we can look up the key `3
 
 ## Compatible types
 
-By default, there are only a few types that can use GIN indexes:
+GIN indexes can only be created over a few types:
 
 - a GIN index on a tsvector column indexes text elements
 - a GIN index on a array column indexes array elements
