@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { useQuery } from 'react-query';
+import { useQuery, useQueryClient } from 'react-query';
 import * as Yup from 'yup';
 import { Field } from 'formik';
 import { YBButton, YBFormInput, YBFormToggle } from '../../common/forms/fields';
@@ -38,7 +38,7 @@ export const ReplicationAlertModalBtn = ({ universeUUID, disabled }) => {
       name: ALERT_NAME,
       targetUuid: universeUUID
   }
-
+  const queryClient = useQueryClient();
   const { isFetching } = useQuery(
     ['getAlertConfigurations', configurationFilter],
     () => getAlertConfigurations(configurationFilter),
@@ -55,6 +55,7 @@ export const ReplicationAlertModalBtn = ({ universeUUID, disabled }) => {
              enableAlert: configuration.active,
              lagThreshold: configuration.thresholds.SEVERE.threshold
            });
+
         }
       }
     }
@@ -95,6 +96,7 @@ export const ReplicationAlertModalBtn = ({ universeUUID, disabled }) => {
 
       formikBag.setSubmitting(false);
       toggleModalVisibility();
+      queryClient.invalidateQueries(['getConfiguredThreshold',configurationFilter]);
     } catch (error) {
       setSubmissionError(error.message);
       formikBag.setSubmitting(false);
