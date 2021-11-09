@@ -680,16 +680,16 @@ Use the following two gflags to configure RPC compression:
 
 ##### --enable_stream_compression
 
-Controls whether YugabyteDB uses RPC compression. If you set this flag to `true`, you must also specify a stream compression algorithm.
+Controls whether YugabyteDB uses RPC compression. Valid values are `true` or `false`.
 
 ##### --stream_compression_algo
 
-Specifies which compression algorithm to use, if stream compression is enabled. Valid values are:
+Specifies which compression algorithm to use. Requires `enable_stream_compression` to be set to true. Valid values are:
 
-- 0: no compression
-- 1: gzip
-- 2: snappy
-- 3: lz4
+- 0: No compression (default value)
+- 1: Gzip
+- 2: Snappy
+- 3: LZ4
 
 In most cases, LZ4 (`--stream_compression_algo=3`) offers the best compromise of compression performance versus CPU overhead.
 
@@ -697,8 +697,13 @@ In most cases, LZ4 (`--stream_compression_algo=3`) offers the best compromise of
 
 To upgrade from an older version that doesn't support RPC compression (such as 2.4), to a newer version that does (such as 2.6), you need to do the following:
 
-1. Rolling restart to upgrade YugabyteDB, such as from 2.4 to 2.6.
+1. Rolling restart to upgrade YugabyteDB to a version that supports compression.
+
 1. Rolling restart to enable compression, on both master and tserver, by setting `enable_stream_compression=true`.
+
+    \
+    **Note** You can omit this step if the version you're upgrading to already has compression enabled by default. For the stable release series, versions from 2.6.3.0 and above (including all 2.8 releases) have `enable_stream_compression` set to true by default. For the latest release series, this is all releases beyond 2.9.0.
+
 1. Rolling restart to set the compression algorithm to use, on both master and tserver, such as by setting `stream_compression_algo=3`.
 
 {{< /note >}}
