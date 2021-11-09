@@ -81,6 +81,6 @@ $ helm version
 
 The output should be similar to the following:
 
-```
+```output
 version.BuildInfo{Version:"v3.2.1", GitCommit:"fe51cd1e31e6a202cba7dead9552a6d418ded79a", GitTreeState:"clean", GoVersion:"go1.13.10"}
 ```
