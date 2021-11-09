@@ -1097,6 +1097,10 @@ Result<client::TabletServersInfo> PgSession::ListTabletServers() {
   return pg_client_.ListLiveTabletServers(false);
 }
 
+bool PgSession::ShouldUseFollowerReads() const {
+  return pg_txn_manager_->ShouldUseFollowerReads();
+}
+
 void PgSession::SetTimeout(const int timeout_ms) {
   session_->SetTimeout(MonoDelta::FromMilliseconds(timeout_ms));
 }

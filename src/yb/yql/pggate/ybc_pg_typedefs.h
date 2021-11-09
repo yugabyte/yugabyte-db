@@ -289,7 +289,6 @@ typedef struct PgExecParameters {
   char *bfinstr = NULL;
   uint64_t* statement_read_time = NULL;
   char *partition_key = NULL;
-  bool read_from_followers = false;
   PgExecOutParam *out_param = NULL;
   bool is_index_backfill = false;
 #else
@@ -300,7 +299,6 @@ typedef struct PgExecParameters {
   char *bfinstr;
   uint64_t* statement_read_time;
   char *partition_key;
-  bool read_from_followers;
   PgExecOutParam *out_param;
   bool is_index_backfill;
 #endif

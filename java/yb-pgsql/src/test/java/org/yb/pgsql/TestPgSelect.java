@@ -18,15 +18,17 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.util.BuildTypeUtil;
-import org.yb.util.YBTestRunnerNonTsanOnly;
 import org.yb.util.RegexMatcher;
+import org.yb.util.YBTestRunnerNonTsanOnly;
 
 import java.math.BigDecimal;
+import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -533,76 +535,117 @@ public class TestPgSelect extends BasePgSQLTest {
     }
   }
 
-  @Test
-  public void testCountConsistentPrefix() throws Exception {
+  public void doSelect(boolean use_ordered_by, boolean get_count, Statement statement,
+                       boolean enable_follower_read, List<Row> rows_list,
+                       long expected_num_tablet_requests) throws Exception {
+    String follower_read_setting = (enable_follower_read ? "on" : "off");
+    int row_count = rows_list.size();
+    LOG.info("Reading rows with follower reads " + follower_read_setting);
+    long old_count_reqs = getCountForTable("consistent_prefix_read_requests", "consistentprefix");
+    long old_count_rows = getCountForTable("pgsql_consistent_prefix_read_rows", "consistentprefix");
+    if (get_count) {
+      assertOneRow(statement,
+                   "/*+ Set(transaction_read_only " + follower_read_setting + ") */ "
+                       + "SELECT count(*) FROM consistentprefix",
+                   row_count);
+    } else if (use_ordered_by) {
+      assertRowList(statement,
+                    "/*+ Set(transaction_read_only " + follower_read_setting + ") */ "
+                        + "SELECT * FROM consistentprefix ORDER BY k",
+                    rows_list);
+    } else {
+      assertRowSet(statement,
+                   "/*+ Set(transaction_read_only " + follower_read_setting + ") */ "
+                       + "SELECT * FROM consistentprefix k",
+                   new HashSet(rows_list));
+    }
+    long count_reqs = getCountForTable("consistent_prefix_read_requests", "consistentprefix");
+    assertEquals(count_reqs - old_count_reqs,
+                 !enable_follower_read ? 0 : expected_num_tablet_requests);
+    long count_rows = getCountForTable("pgsql_consistent_prefix_read_rows", "consistentprefix");
+    assertEquals(count_rows - old_count_rows,
+                 !enable_follower_read || row_count == 0
+                     ? 0
+                     : (get_count ? expected_num_tablet_requests : row_count));
+  }
+
+  public void testConsistentPrefix(int kNumRows, boolean use_ordered_by, boolean get_count)
+      throws Exception {
     try (Statement statement = connection.createStatement()) {
-      statement.execute("CREATE TABLE consistentprefixcount(k int primary key)");
-      for (int i = 0; i < 100; i++) {
-        statement.execute(String.format("INSERT INTO consistentprefixcount(k) VALUES(%d)", i));
+      statement.execute("CREATE TABLE consistentprefix(k int primary key)");
+
+      final int kNumRowsDeleted = 10;
+      final int kNumRowsUnchanged = kNumRows - kNumRowsDeleted;
+      ArrayList<Row> all_rows = new ArrayList<Row>();
+      ArrayList<Row> unchanged_rows = new ArrayList<Row>();
+      LOG.info("Start writing");
+      long startWriteMs = System.currentTimeMillis();
+      for (int i = 0; i < kNumRows; i++) {
+        statement.execute(String.format("INSERT INTO consistentprefix(k) VALUES(%d)", i));
+        all_rows.add(new Row(i));
+        if (i >= kNumRowsDeleted) {
+          unchanged_rows.add(new Row(i));
+        }
+      }
+      LOG.info("Done writing");
+      Set<Row> expected_rows_set = new HashSet<Row>(all_rows);
+      Set<Row> expected_rows_unchanged_set = new HashSet<Row>(unchanged_rows);
+
+      final long kFollowerReadStalenessMs = BuildTypeUtil.adjustTimeout(3000);
+      statement.execute("SET yb_read_from_followers = true;");
+      statement.execute("SET yb_follower_read_staleness_ms = " + kFollowerReadStalenessMs);
+      LOG.info("Using staleness of " + kFollowerReadStalenessMs + " ms.");
+
+      final int kNumTablets = 3;
+      final int kNumRowsPerTablet = (int)Math.ceil(kNumRows / (1.0 * kNumTablets));
+      final int kNumTabletRequests = kNumTablets * (int)Math.ceil(kNumRowsPerTablet / 1024.0);
+
+      final int kReadDurationMs = 1000;
+      if (System.currentTimeMillis() + kReadDurationMs - kFollowerReadStalenessMs < startWriteMs) {
+        doSelect(use_ordered_by, get_count, statement, true, Collections.emptyList(),
+                 kNumTabletRequests);
+      } else {
+        LOG.info("Skipping the initial doSelect due to slow timing.");
       }
 
-      statement.execute(
-          "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL READ COMMITTED");
-      statement.execute("SET yb_read_from_followers = true;");
-      assertOneRow(statement, "SELECT count(*) FROM consistentprefixcount", 100L);
+      // Sleep for the updates to be visible during follower reads.
+      Thread.sleep(kFollowerReadStalenessMs);
 
-      long count = getCountForTable("consistent_prefix_read_requests", "consistentprefixcount");
-      assertEquals(count, 3); // 3 tablets, 3 consistent prefix requests.
+      doSelect(use_ordered_by, get_count, statement, true, all_rows, kNumTabletRequests);
+
+      Connection write_connection = getConnectionBuilder().connect();
+      Statement write_txn = write_connection.createStatement();
+      LOG.info("Start delete");
+      write_txn.execute("START TRANSACTION");
+      write_txn.execute("DELETE FROM consistentprefix where k < " + kNumRowsDeleted);
+      write_txn.execute("COMMIT");
+      LOG.info("Done delete");
+
+      doSelect(use_ordered_by, get_count, statement, false, unchanged_rows, 0);
+
+      doSelect(use_ordered_by, get_count, statement, true, all_rows, kNumTabletRequests);
+
+      // Sleep for the updates to be visible during follower reads.
+      LOG.info("Sleeping to make the delete show up for follower reads.");
+      Thread.sleep(kFollowerReadStalenessMs);
+
+      doSelect(use_ordered_by, get_count, statement, true, unchanged_rows, kNumTabletRequests);
     }
+  }
+
+  @Test
+  public void testCountConsistentPrefix() throws Exception {
+    testConsistentPrefix(100, /* use_ordered_by */ false, /* get_count */ true);
   }
 
   @Test
   public void testOrderedSelectConsistentPrefix() throws Exception {
-    List<Row> expected_rows = new ArrayList<>();
-    try (Statement statement = connection.createStatement()) {
-      statement.execute("CREATE TABLE consistentprefixorderedselect(k int primary key)");
-      for (int i = 0; i < 5000; i++) {
-        statement.execute(String.format(
-            "INSERT INTO consistentprefixorderedselect(k) VALUES(%d)", i));
-        expected_rows.add(new Row(i));
-      }
-
-      statement.execute(
-          "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL READ COMMITTED");
-      statement.execute("SET yb_read_from_followers = true;");
-      assertRowList(statement,
-          "SELECT * FROM consistentprefixorderedselect ORDER BY k", expected_rows);
-
-      long count = getCountForTable("consistent_prefix_read_requests",
-          "consistentprefixorderedselect");
-      // Max number of records per request is 1024, so we will need to issue two requests per
-      // tablet.
-      assertEquals(6, count);
-
-      count = getCountForTable("pgsql_consistent_prefix_read_rows",
-          "consistentprefixorderedselect");
-      assertEquals(5000, count);
-    }
+    testConsistentPrefix(5000, /* use_ordered_by */ true, /* get_count */ false);
   }
 
   @Test
   public void testSelectConsistentPrefix() throws Exception {
-    List<Row> expected_rows = new ArrayList<>();
-    try (Statement statement = connection.createStatement()) {
-      statement.execute("CREATE TABLE consistentprefixselect(k int primary key)");
-      for (int i = 0; i < 7000; i++) {
-        statement.execute(String.format("INSERT INTO consistentprefixselect(k) VALUES(%d)", i));
-        expected_rows.add(new Row(i));
-      }
-
-      statement.execute(
-          "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL READ COMMITTED");
-      statement.execute("SET yb_read_from_followers = true;");
-      statement.executeQuery("SELECT * from consistentprefixselect");
-
-      long count = getCountForTable("consistent_prefix_read_requests", "consistentprefixselect");
-      // Max number of records per request is 1024, so we will need to issue three requests per
-      // tablet.
-      assertEquals(9, count);
-
-      count = getCountForTable("pgsql_consistent_prefix_read_rows", "consistentprefixselect");
-      assertEquals(7000, count);
-    }
+    testConsistentPrefix(7000, /* use_ordered_by */ false, /* get_count */ false);
   }
 
   @Test
