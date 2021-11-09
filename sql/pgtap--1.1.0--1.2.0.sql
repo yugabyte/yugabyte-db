@@ -263,6 +263,13 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE SQL;
 
+/*
+ * tap_funky used to just be a simple view, but the problem with that is the
+ * definition of pg_proc changed in version 11. Thanks to how pg_dump (and
+ * hence pg_upgrade) works, this made it impossible to upgrade Postgres if
+ * pgTap was installed. In order to fix that, we need code that will actually
+ * work on both < PG11 and >= PG11.
+ */
 CREATE OR REPLACE FUNCTION _prokind( p_oid oid )
 RETURNS "char" AS $$
 BEGIN
@@ -275,6 +282,11 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql STABLE;
 
+-- Returns true if the specified function exists and is the specified type,
+-- false if it exists and is not the specified type, and NULL if it does not
+-- exist. Types are f for a normal function, p for a procedure, a for an
+-- aggregate function, or w for a window function
+-- _type_func(type, schema, function, args[])
 CREATE OR REPLACE FUNCTION _type_func ( "char", NAME, NAME, NAME[] )
 RETURNS BOOLEAN AS $$
     SELECT kind = $1
@@ -284,11 +296,13 @@ RETURNS BOOLEAN AS $$
        AND args   = array_to_string($4, ',')
 $$ LANGUAGE SQL;
 
+-- _type_func(type, schema, function)
 CREATE OR REPLACE FUNCTION _type_func ( "char", NAME, NAME )
 RETURNS BOOLEAN AS $$
     SELECT kind = $1 FROM tap_funky WHERE schema = $2 AND name = $3
 $$ LANGUAGE SQL;
 
+-- _type_func(type, function, args[])
 CREATE OR REPLACE FUNCTION _type_func ( "char", NAME, NAME[] )
 RETURNS BOOLEAN AS $$
     SELECT kind = $1
@@ -298,6 +312,7 @@ RETURNS BOOLEAN AS $$
        AND is_visible;
 $$ LANGUAGE SQL;
 
+-- _type_func(type, function)
 CREATE OR REPLACE FUNCTION _type_func ( "char", NAME )
 RETURNS BOOLEAN AS $$
     SELECT kind = $1 FROM tap_funky WHERE name = $2 AND is_visible;

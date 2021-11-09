@@ -5893,6 +5893,11 @@ RETURNS TEXT AS $$
     SELECT ok( NOT _definer($1), 'Function ' || quote_ident($1) || '() should not be security definer' );
 $$ LANGUAGE sql;
 
+-- Returns true if the specified function exists and is the specified type,
+-- false if it exists and is not the specified type, and NULL if it does not
+-- exist. Types are f for a normal function, p for a procedure, a for an
+-- aggregate function, or w for a window function
+-- _type_func(type, schema, function, args[])
 CREATE OR REPLACE FUNCTION _type_func ( "char", NAME, NAME, NAME[] )
 RETURNS BOOLEAN AS $$
     SELECT kind = $1
@@ -5902,11 +5907,13 @@ RETURNS BOOLEAN AS $$
        AND args   = array_to_string($4, ',')
 $$ LANGUAGE SQL;
 
+-- _type_func(type, schema, function)
 CREATE OR REPLACE FUNCTION _type_func ( "char", NAME, NAME )
 RETURNS BOOLEAN AS $$
     SELECT kind = $1 FROM tap_funky WHERE schema = $2 AND name = $3
 $$ LANGUAGE SQL;
 
+-- _type_func(type, function, args[])
 CREATE OR REPLACE FUNCTION _type_func ( "char", NAME, NAME[] )
 RETURNS BOOLEAN AS $$
     SELECT kind = $1
@@ -5916,6 +5923,7 @@ RETURNS BOOLEAN AS $$
        AND is_visible;
 $$ LANGUAGE SQL;
 
+-- _type_func(type, function)
 CREATE OR REPLACE FUNCTION _type_func ( "char", NAME )
 RETURNS BOOLEAN AS $$
     SELECT kind = $1 FROM tap_funky WHERE name = $2 AND is_visible;
