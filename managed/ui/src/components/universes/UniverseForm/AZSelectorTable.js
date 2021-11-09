@@ -110,11 +110,17 @@ export default class AZSelectorTable extends Component {
 
   handleAZNodeCountChange(zoneId, value) {
     const {
-      universe: { currentPlacementStatus, universeConfigTemplate }
+      universe: { universeConfigTemplate },
+      clusterType
     } = this.props;
     const universeTemplate = _.clone(universeConfigTemplate.data);
     const currentAZState = _.cloneDeep(this.state.azItemState);
-    const replicationFactor = currentPlacementStatus.replicationFactor;
+
+    const clusters = universeTemplate.clusters;
+    const activeCluster =
+      clusterType === 'primary' ? getPrimaryCluster(clusters) : getReadOnlyCluster(clusters);
+    const replicationFactor = activeCluster?.userIntent?.replicationFactor;
+
     const item = currentAZState.find((item) => item.value === zoneId);
     const originalValue = item.count;
     let totalNumNodes = 0;

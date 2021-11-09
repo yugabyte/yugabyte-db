@@ -125,7 +125,11 @@ public class UniverseCRUDHandler {
       primaryIntent.accessKeyCode = appConfig.getString("yb.security.default.access.key");
     }
     if (PlacementInfoUtil.checkIfNodeParamsValid(taskParams, c)) {
-      PlacementInfoUtil.updateUniverseDefinition(taskParams, customer.getCustomerId(), c.uuid);
+      try {
+        PlacementInfoUtil.updateUniverseDefinition(taskParams, customer.getCustomerId(), c.uuid);
+      } catch (IllegalStateException e) {
+        throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
+      }
     } else {
       throw new PlatformServiceException(
           BAD_REQUEST,
