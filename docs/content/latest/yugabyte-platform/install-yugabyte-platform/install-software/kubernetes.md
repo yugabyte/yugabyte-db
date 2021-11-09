@@ -112,7 +112,7 @@ You install Yugabyte Platform on a Kubernetes cluster as follows:
 
 You can customize Yugabyte Platform on a Kubernetes cluster in a number of ways, such as the following:
 
-- You can change CPU and memory resources by executing a command similar to the following:
+- You can change CPU and memory resources by executing a command similar to one of the following:
 
   ```sh
   helm install yw-test yugabytedb/yugaware -n yb-platform \
@@ -122,19 +122,24 @@ You can customize Yugabyte Platform on a Kubernetes cluster in a number of ways,
     --set yugaware.resources.limits.memory=4Gi
   ```
 
+  ```shell
+  helm install --namespace yw-test yw-test yugabytedb/yugaware 
+    --set yugaware.resources.requests.memory=3Gi, prometheus.resources.requests.cpu=3
+  ```
+
 - You can disable the public-facing load balancer by providing the annotations to Yugabyte Platform service for disabling that load balancer. Since every cloud provider has different annontations for doing this, refer to the following documentation:
 
   - For Google Cloud, see [GKE](https://cloud.google.com/kubernetes-engine/docs/how-to/internal-load-balancing).
   - For Azure, see [AKS](https://docs.microsoft.com/en-us/azure/aks/internal-lb).
   - For AWS, see [EKS](https://docs.aws.amazon.com/eks/latest/userguide/load-balancing.html).
-
-
-  For example, for a GKE version earlier than 1.17, you would execute a command similar to the following:
-
-  ```sh
+  
+  
+   For example, for a GKE version earlier than 1.17, you would execute a command similar to the following:
+  
+    ```sh
   helm install yw-test yugabytedb/yugaware -n yb-platform \
     --set yugaware.service.annotations."cloud\.google\.com\/load-balancer-type"="Internal"
-  ```
+    ```
 
 ## Delete the Helm Installation of Yugabyte Platform
 
