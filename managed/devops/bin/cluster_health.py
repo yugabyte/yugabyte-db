@@ -440,20 +440,12 @@ class NodeChecker():
         return self.check_certificate_expiration("Client To Node",
                                                  self.get_client_to_node_certificate_path())
 
-    def get_yb_version(self, host_port):
-        try:
-            url = 'http://{}/api/v1/version'.format(host_port)
-            response = requests.get(url, timeout=2)
-            return response.text
-        except Exception as ex:
-            message = str(ex)
-            return "Error querying for version: " + message
-
     def check_yb_version(self, ip_address, process, port, expected):
         logging.info("Checking YB Version on node {} process {}".format(self.node, process))
         e = self._new_entry("YB Version")
 
-        output = self.get_yb_version('{}:{}'.format(ip_address, port))
+        remote_cmd = 'curl --silent http://{}:{}/api/v1/version'.format(ip_address, port)
+        output = self._remote_check_output(remote_cmd)
         if has_errors(output):
             return e.fill_and_return_entry([output], True)
 
