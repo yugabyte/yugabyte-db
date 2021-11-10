@@ -505,4 +505,9 @@ Oid YBEncodingCollation(YBCPgStatement handle, int attr_num, Oid attcollation);
  */
 bool IsYbExtensionUser(Oid member);
 
+/*
+ * Check whether the user ID is of a user who has the yb_fdw role.
+ */
+bool IsYbFdwUser(Oid member);
+
 #endif /* PG_YB_UTILS_H */
