@@ -1779,7 +1779,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 				if (enc != query_txt)
 					pfree(enc);
 				/* plan at column number 7 */
-				if (planid && tmp.planinfo.plan_text)
+				if (planid && strlen(tmp.planinfo.plan_text) > 0)
 					values[i++] = CStringGetTextDatum(tmp.planinfo.plan_text);
 				else
 					nulls[i++] = true;
