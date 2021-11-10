@@ -62,6 +62,9 @@ class KeyManagementConfiguration extends Component {
       switch (kmsProvider.value) {
         case 'AWS':
           data['AWS_REGION'] = values.region.value;
+
+          if (values.kmsEndPoint) data['AWS_KMS_ENDPOINT'] = values.kmsEndPoint;
+
           if (!this.state.enabledIAMProfile) {
             data['AWS_ACCESS_KEY_ID'] = values.accessKeyId;
             data['AWS_SECRET_ACCESS_KEY'] = values.secretKeyId;
@@ -161,10 +164,7 @@ class KeyManagementConfiguration extends Component {
             />
           </Col>
           <Col lg={1} className="config-zone-tooltip">
-            <YBInfoTip
-              title="Access Key Id"
-              content="Enter your AWS access key ID."
-            />
+            <YBInfoTip title="Access Key Id" content="Enter your AWS access key ID." />
           </Col>
         </Row>
         <Row className="config-provider-row" key={'secret-key-field'}>
@@ -180,10 +180,7 @@ class KeyManagementConfiguration extends Component {
             />
           </Col>
           <Col lg={1} className="config-zone-tooltip">
-            <YBInfoTip
-              title="Secret Key Id"
-              content="Enter your AWS access key secret."
-            />
+            <YBInfoTip title="Secret Key Id" content="Enter your AWS access key secret." />
           </Col>
         </Row>
         <Row className="config-provider-row" key={'region-field'}>
@@ -222,6 +219,22 @@ class KeyManagementConfiguration extends Component {
               title="Customer Master Key Id"
               content="Enter the identifier for the customer master key. If an identifier is not entered, a CMK ID will be auto-generated."
             />
+          </Col>
+        </Row>
+        <Row className="kms-endpoint-row" key={'kms-endpoint-field'}>
+          <Col lg={3}>
+            <div className="form-item-custom-label">AWS KMS Endpoint</div>
+          </Col>
+          <Col lg={7}>
+            <Field
+              name={'kmsEndPoint'}
+              component={YBFormInput}
+              placeholder={'AWS KMS Endpoint'}
+              className={'kube-provider-input-field'}
+            />
+          </Col>
+          <Col lg={1} className="config-zone-tooltip">
+            <YBInfoTip title="AWS KMS Endpoint" content="Enter your AWS KMS Endpoint." />
           </Col>
         </Row>
         <Row>
@@ -271,7 +284,7 @@ class KeyManagementConfiguration extends Component {
    */
   showListView = () => {
     this.setState({ listView: true });
-  }
+  };
 
   render() {
     const { configList } = this.props;
@@ -288,8 +301,7 @@ class KeyManagementConfiguration extends Component {
           onDelete={this.deleteAuthConfig}
         />
       );
-
-    };
+    }
 
     const validationSchema = Yup.object().shape({
       apiUrl: Yup.string(),
@@ -371,16 +383,8 @@ class KeyManagementConfiguration extends Component {
                 </Col>
               </Row>
               <div className="form-action-button-container">
-                <YBButton
-                  btnText="Save"
-                  btnClass="btn btn-orange"
-                  btnType="submit"
-                />
-                <YBButton
-                  btnText="Cancel"
-                  btnClass="btn btn-orange"
-                  onClick={this.showListView}
-                />
+                <YBButton btnText="Save" btnClass="btn btn-orange" btnType="submit" />
+                <YBButton btnText="Cancel" btnClass="btn btn-orange" onClick={this.showListView} />
               </div>
             </form>
           )}
