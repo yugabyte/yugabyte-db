@@ -5,9 +5,9 @@ description: Defining constraints
 headcontent: Constraints
 image: /images/section_icons/secure/create-roles.png
 menu:
-  stable:
-    identifier: indexes-constraints-constraints
-    parent: explore-indexes-constraints
+  latest:
+    identifier: constraints
+    parent: explore-ysql-language-features
     weight: 300
 isTocNested: true
 showAsideToc: true
