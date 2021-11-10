@@ -425,6 +425,6 @@ This is the result:
 
 Notice that while _make_interval()_ has a formal parameter called _weeks_, you cannot use the name _weeks_ to denote a field for _extract(... from interval_value)_. (The attempt causes the _22023_ error.)
 
-{{< tip title="Don't use make_interval() to create hybrid interval values." >}}
+{{< tip title="Don't use 'make_interval()' to create hybrid 'interval' values." >}}
 This function tempts you to create hybrid _interval_ values (i.e. values where more than one field of the internal _[\[mm, dd, ss\]](../../date-time-data-types-semantics/type-interval/interval-representation/)_ representation is non-zero). Yugabyte recommends that you avoid creating such hybrid values and that, rather, you follow the approach described in the section [Custom domain types for specializing the native interval functionality](../../date-time-data-types-semantics/type-interval/custom-interval-domains/).
 {{< /tip >}}

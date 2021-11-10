@@ -323,7 +323,7 @@ Of course, you might prefer to use larger units so that you can quote smaller nu
 
 The section [Interval arithmetic](../../type_datetime/date-time-data-types-semantics/type-interval/#interval-arithmetic), within the enclosing section [The _interval_ data type and its variants](../../type_datetime/date-time-data-types-semantics/type-interval/), explains the semantics of computing an _interval_ value by subtracting one _timestamp(tz)_ value from another or adding an _interval_ value to, for example, a _timestamp(tz)_ value. Briefly, _calendar-time_semantics_ is always used for the years, months, and days fields. And _clock-time-semantics_ is always used for the hours, minutes, and seconds fields. _Clock-time-semantics_ is used to compute the days field when one _timestamp(tz)_ value is subtracted from another (using the rule of thumb that one day is _always_ exactly twenty-four hours). And _calendar-time-semantics_ is used when a days field is added to a _timestamp(tz)_ value. This asymmetry might surprise you.
 
-{{< note title="Interval arithmetic across the moment that the US adopted Standard Time." >}}
+{{< note title="'Interval' arithmetic across the moment that the US adopted Standard Time." >}}
 See the section [The strange history of timezones](#the-strange-history-of-timezones) above. Try this:
 
 ```plpgsql

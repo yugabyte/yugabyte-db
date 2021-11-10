@@ -67,7 +67,7 @@ PostgreSQL, and therefore YSQL, support the use of several special manifest _tex
 
 Their meanings are given in section [8.5.1.4. Special Values](https://www.postgresql.org/docs/11/datatype-datetime.html#DATATYPE-DATETIME-SPECIAL-VALUES) in the PostgreSQL documentation.
 
-{{< tip title="Avoid using all of these special constants except for _'infinity'_ and _'-infinity'_." >}}
+{{< tip title="Avoid using all of these special constants except for 'infinity' and '-infinity'." >}}
 
 The implementation of the function [random_test_report_for_modeled_age()](./functions/miscellaneous/age/#function-random-test-report-for-modeled-age) shows a common locution where _'infinity'_ and _'-infinity'_ are used to initialize maximum and minimum values for _timestamp_ values that are updated as new _timestamp_ values arise during a loop's execution.
 
