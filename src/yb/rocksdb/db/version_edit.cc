@@ -110,6 +110,12 @@ Slice FileMetaData::UserFilter() const {
   return largest.user_frontier ? largest.user_frontier->Filter() : Slice();
 }
 
+std::string FileMetaData::FrontiersToString() const {
+  return yb::Format("frontiers: { smallest: $0 largest: $1 }",
+      smallest.user_frontier ? smallest.user_frontier->ToString() : "none",
+      largest.user_frontier ? largest.user_frontier->ToString() : "none");
+}
+
 std::string FileMetaData::ToString() const {
   return yb::Format("{ number: $0 total_size: $1 base_size: $2 refs: $3 "
                     "being_compacted: $4 smallest: $5 largest: $6 }",

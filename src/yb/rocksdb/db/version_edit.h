@@ -136,6 +136,9 @@ struct FileMetaData {
 
   Slice UserFilter() const; // Extracts user filter from largest boundary value if present.
 
+  // Outputs smallest and largest user frontiers to string, if they exist.
+  std::string FrontiersToString() const;
+
   std::string ToString() const;
 };
 
