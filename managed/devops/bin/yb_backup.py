@@ -621,7 +621,7 @@ class YBBackup:
                 return subprocess_result
             except subprocess.CalledProcessError as e:
                 logging.error("Failed to run command [[ {} ]]: code={} output={}".format(
-                    cmd_as_str, e.returncode, str(e.output.decode('utf-8'))))
+                    cmd_as_str, e.returncode, str(e.output.decode('utf-8', errors='replace'))))
                 self.sleep_or_raise(num_retry, timeout, e)
             except Exception as ex:
                 logging.error("Failed to run command [[ {} ]]: {}".format(cmd_as_str, ex))
