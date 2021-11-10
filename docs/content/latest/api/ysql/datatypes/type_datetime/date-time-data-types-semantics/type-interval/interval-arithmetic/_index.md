@@ -145,7 +145,7 @@ One thing, at least, is clear: a practice that the user might adopt to use only 
 
 ## Recommendation
 
-{{< tip title="Avoid native interval-interval addition/subtraction and interval-number multiplication/division." >}}
+{{< tip title="Avoid native 'interval'-'interval' addition/subtraction and 'interval'-number multiplication/division." >}}
 Yugabyte recommends that you avoid performing operations whose results can easily thwart an adopted principle for good practice and especially that you avoid operations whose outcomes  must be considered to be unpredictable. It recommends that instead you adopt the practice that the section [Defining and using custom domain types to specialize the native _interval_ functionality](../custom-interval-domains/) explains. Doing this will let you perform the addition, subtraction, multiplication, and division operations that are unsafe with native _interval_ values in a controlled fashion that brings safety.
 {{< /tip >}}
 

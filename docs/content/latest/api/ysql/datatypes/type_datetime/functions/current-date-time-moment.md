@@ -54,7 +54,7 @@ There are five moment data types. (This number includes _timetz_. But the Postgr
 
 - There are three differently named "start of transaction" functions that return a _timestamptz_ value: _transaction_timestamp()_, _now()_, and _current_timestamp_.
 
-{{< tip title="Aim to use only transaction_timestamp(), statement_timestamp(), and clock_timestamp() to get the current moment." >}}
+{{< tip title="Aim to use only 'transaction_timestamp()', 'statement_timestamp()', and 'clock_timestamp()' to get the current moment." >}}
 Modern applications almost invariably must work globally—in other words, they must be timezone-aware. When, as is recommended, _timetz_ is avoided, the only timezone-aware moment data type is _timestamptz_. Therefore, when you need to get any kind of current moment, you must use a function that returns this data type. And the set _transaction_timestamp()_, _statement_timestamp()_, and _clock_timestamp()_ does indeed cover all three kinds of moment for this data type.
 
 The functions _now()_ and _current_timestamp_ both have identical semantics to _transaction_timestamp()_. But the latter has the name that best expresses its purpose. Yugabyte therefore recommends that you avoid using _now()_ or _current_timestamp_.

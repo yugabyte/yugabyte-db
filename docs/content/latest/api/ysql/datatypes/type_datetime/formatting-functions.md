@@ -197,7 +197,7 @@ This is the result:
  PM
 ```
 
-{{< tip title="Prefer uncluttered code to explicit typecasting with to_char() for date and time values." >}}
+{{< tip title="Prefer uncluttered code to explicit typecasting with 'to_char()' for 'date' and 'time' values." >}}
 
 Usually, users avoid writing code that brings an implicit typecast and prefer, instead, to write the typecast that they want explicitly. The tests above show that in the case that _to_char()_ is to be used to render a _date_ value or a _time_ value, the result is the same when the implicit typecast (respectively to _timestamptz_ or to _interval_) is allowed and when the explicit typecast is written. More carefully stated, writing the explicit typecast of a _date_ value either to a plain _timestamp_ value or to a _timestamptz_ value has the same effect as not writing a typecast; and writing the explicit typecast of a _time_ value to an _interval_ value has the same effect as not writing the typecast.
 
@@ -1069,7 +1069,7 @@ This is the result:
 
 The input _text_ value has been exactly recreated in the output. 
 
-{{< tip title="Always use SS.US in to_timestamp()." >}}
+{{< tip title="Always use 'SS.US' in to_timestamp()." >}}
 Yugabyte recommends that you Always use _SS.US_ in to _timestamp()_ when your input _text_ value has a "seconds" substring. The demonstration above shows that specifying _US_ (for microseconds) has no harmful effect over all range of possible trailing digits after the decimal point, from _zero_ through the maximum supported precision of _six_.
 
 If you use _SS.MS_ throughout, then input values that have _four_, _five_, or _six_ digits after the decimal point for the "seconds" substring will cause the _22008_ error:

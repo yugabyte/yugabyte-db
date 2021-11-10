@@ -58,7 +58,7 @@ Here is the interesting part of the output from \\_df age()_. The rows were re-o
  interval         | timestamp with time zone
 ```
 
-{{< note title="The xid overload of age() has nothing to do with date-time data types" >}}
+{{< note title="The 'xid' overload of 'age()' has nothing to do with date-time data types" >}}
 There's an overload with _xid_ argument data type (and with _integer_ return). The present [Date and time data types](../../../type_datetime/) major section does not describe the _xid_ overload of _age()_.
 {{< /note >}}
 
@@ -101,7 +101,7 @@ This is the result:
  106285063 days
 ```
 
-{{< note title="The value of the dd field has an upper limit of 109,203,124" >}}
+{{< note title="The value of the 'dd' field has an upper limit of 109,203,124" >}}
 See the subsection [procedure assert_interval_days_in_range (days in bigint)](../../date-time-data-types-semantics/type-interval/custom-interval-domains/#procedure-assert-interval-days-in-range-days-in-bigint) on the [Custom domain types for specializing the native interval functionality](../../date-time-data-types-semantics/type-interval/custom-interval-domains/) page.
 {{< /note >}}
 
@@ -163,7 +163,7 @@ You can easily derive the function _age_in_months()_ from the function _age_in_y
 
 ### The semantics of the built-in function age()
 
-{{< note title="The following account relies on understanding the internal representation of an interval value" >}}
+{{< note title="The following account relies on understanding the internal representation of an 'interval' value" >}}
 The internal representation of an _interval_ value is a _[mm, dd, ss]_ tuple. This is explained in the section [How does YSQL represent an _interval_ value?](../../date-time-data-types-semantics/type-interval/interval-representation/).
 {{< /note >}}
 
@@ -203,7 +203,7 @@ with this result:
 
 Because the result data type is _interval_, and there's no such thing as a "symbolic" _interval_ value, this description is simply nonsense. It presumably means that the result is a hybrid _interval_ value where the _yy_ field might be non-zero.
 
-{{< note title="age(t2, ts1) versus justify_interval(ts2 - ts1)" >}}
+{{< note title="'age(t2, ts1)' versus 'justify_interval(ts2 - ts1)'" >}}
 While, as was shown above, subtracting one _timestamp[tz]_ value from another produces an _interval_ value whose _mm_ component is always _zero_, you can use _justify_interval()_ to produce a value that, in general, has a _non-zero_ value for each of the _mm_, dd_, and _ss_ components. However, the actual value produced by doing this will, in general, differ from that produced by invoking _age()_, even when the results are compared with the native equals operator, `=`, (and not the [user-defined "strict equals"](../../date-time-data-types-semantics/type-interval/interval-utilities/#the-user-defined-strict-equals-interval-interval-operator) operator, `==`). Try this:
 
 ```plpsql
@@ -268,7 +268,7 @@ However, the borrowing rules get very tricky with dates because "borrowed" month
 
 <a name="avoid-using-age"></a>The full account of _age()_ is presented on its own <a href = "./age">dedicated child page</a>.
 
-{{< tip title="Avoid using the built-in age() function." >}}
+{{< tip title="Avoid using the built-in 'age()' function." >}}
 The rule that _age()_ uses to produce its result cannot be expressed clearly in prose. And, anyway, it produces a result with an entirely inappropriate apparent precision. Yugabyte recommends that you decide how you want to define age for your present use case and then implement the definition that you choose along the lines used in the user-defined functions _age_in_days()_ and _age_in_years()_ shown above in the subsection [The definition of age is a matter of convention](#the-definition-of-age-is-a-matter-of-convention).
 {{< /tip >}}
 
