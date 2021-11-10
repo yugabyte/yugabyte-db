@@ -853,10 +853,11 @@ Status CompactionJob::FinishCompactionOutputFile(
       info.job_id = job_id_;
       RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
           "[%s] [JOB %d] Generated table #%" PRIu64 ": %" PRIu64
-          " keys, %" PRIu64 " bytes%s",
+          " keys, %" PRIu64 " bytes%s %s",
           cfd->GetName().c_str(), job_id_, output_number, current_entries,
           current_total_bytes,
-          meta->marked_for_compaction ? " (need compaction)" : "");
+          meta->marked_for_compaction ? " (need compaction)" : "",
+          meta->FrontiersToString().c_str());
       EventHelpers::LogAndNotifyTableFileCreation(
           event_logger_, cfd->ioptions()->listeners, meta->fd, info);
     }
