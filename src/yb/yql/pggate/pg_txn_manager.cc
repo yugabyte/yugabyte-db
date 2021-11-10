@@ -313,6 +313,7 @@ Status PgTxnManager::BeginWriteTransactionIfNecessary(bool read_only_op,
       }
       tserver::TakeTransactionRequestPB req;
       tserver::TakeTransactionResponsePB resp;
+      req.set_is_global(yb_force_global_transaction);
       rpc::RpcController controller;
       // TODO(dtxn) propagate timeout from higher level
       controller.set_timeout(10s);

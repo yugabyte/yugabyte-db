@@ -214,6 +214,7 @@ message AbortTransactionResponsePB {
 }
 
 message TakeTransactionRequestPB {
+  optional bool is_global = 1;
 }
 
 message TakeTransactionResponsePB {
