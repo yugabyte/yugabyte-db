@@ -12,7 +12,6 @@
 //
 
 #include "yb/docdb/compaction_file_filter.h"
-#include <algorithm>
 
 #include "yb/common/hybrid_time.h"
 #include "yb/docdb/consensus_frontier.h"
@@ -98,7 +97,7 @@ FilterDecision DocDBCompactionFileFilter::Filter(const FileMetaData* file) {
           << " file: " << file->ToString();
       return FilterDecision::kKeep;
     }
-    LOG(INFO) << "Filtering file, TTL expired: "
+    VLOG(2) << "Filtering file, TTL expired: "
         << " filter: " << ToString()
         << " file: " << file->ToString();
     return FilterDecision::kDiscard;
