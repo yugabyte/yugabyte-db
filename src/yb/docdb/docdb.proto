@@ -41,6 +41,8 @@ message KeyValueWriteBatchPB {
   repeated KeyValuePairPB read_pairs = 5;
   optional RowMarkType row_mark_type = 6;
   repeated ApplyExternalTransactionPB apply_external_transactions = 7;
+
+  optional int64 ttl = 9;
 }
 
 message ConsensusFrontierPB {

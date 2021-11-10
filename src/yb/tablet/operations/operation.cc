@@ -108,13 +108,6 @@ HybridTime Operation::WriteHybridTime() const {
   return hybrid_time();
 }
 
-void Operation::UpdateIfMaxTtl(const MonoDelta& ttl) {
-  std::lock_guard<simple_spinlock> l(mutex_);
-  if (!ttl_.Initialized() || ttl > ttl_) {
-    ttl_ = ttl;
-  }
-}
-
 void Operation::AddedToLeader(const OpId& op_id, const OpId& committed_op_id) {
   HybridTime hybrid_time;
   if (use_mvcc()) {

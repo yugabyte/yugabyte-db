@@ -16,7 +16,9 @@
 #include "yb/client/transaction_pool.h"
 
 #include "yb/common/table_properties_constants.h"
+#include "yb/consensus/consensus.h"
 #include "yb/docdb/compaction_file_filter.h"
+#include "yb/docdb/consensus_frontier.h"
 #include "yb/gutil/integral_types.h"
 #include "yb/integration-tests/test_workload.h"
 #include "yb/integration-tests/mini_cluster.h"
@@ -32,6 +34,7 @@
 
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/monotime.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
@@ -132,14 +135,16 @@ class CompactionTest : public YBTest {
 
     // Start cluster.
     MiniClusterOptions opts;
-    opts.num_tablet_servers = 1;
+    opts.num_tablet_servers = NumTabletServers();
     cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
     // These flags should be set after minicluster start, so it wouldn't override them.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) = kMemStoreSize;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = 3;
     // Patch tablet options inside tablet manager, will be applied to newly created tablets.
-    cluster_->GetTabletManager(0)->TEST_tablet_options()->listeners.push_back(rocksdb_listener_);
+    for (int i = 0 ; i < NumTabletServers(); i++) {
+      cluster_->GetTabletManager(i)->TEST_tablet_options()->listeners.push_back(rocksdb_listener_);
+    }
 
     client_ = ASSERT_RESULT(cluster_->CreateClient());
     transaction_manager_ = std::make_unique<client::TransactionManager>(
@@ -180,6 +185,10 @@ class CompactionTest : public YBTest {
   // -1 implies no table ttl.
   virtual int table_ttl_to_use() {
     return -1;
+  }
+
+  virtual int NumTabletServers() {
+    return 1;
   }
 
   size_t BytesWritten() {
@@ -822,6 +831,89 @@ TEST_F(CompactionTestWithFileExpiration, TableTTLChangesWillChangeWhetherFilesEx
   ASSERT_OK(ExecuteManualCompaction());
   // Assert data has expired.
   AssertAllFilesExpired();
+}
+
+class FileExpirationWithRF3 : public CompactionTestWithFileExpiration {
+ public:
+  void SetUp() override {
+    CompactionTestWithFileExpiration::SetUp();
+  }
+ protected:
+  bool AllFilesHaveTTLMetadata();
+  void WaitUntilAllCommittedOpsApplied(const MonoDelta timeout);
+  void ExpirationWhenReplicated(bool withValueTTL);
+  int NumTabletServers() override {
+    return 3;
+  }
+  int ttl_to_use() override {
+    return kTTLSec;
+  }
+  const int kTTLSec = 1;
+};
+
+bool FileExpirationWithRF3::AllFilesHaveTTLMetadata() {
+  auto dbs = GetAllRocksDbs(cluster_.get(), false);
+  for (auto* db : dbs) {
+    auto metas = db->GetLiveFilesMetaData();
+    for (auto file : metas) {
+      const docdb::ConsensusFrontier largest =
+          down_cast<docdb::ConsensusFrontier&>(*file.largest.user_frontier);
+      auto max_ttl_expiry = largest.max_value_level_ttl_expiration_time();
+      // If value is not valid, then it wasn't initialized.
+      // If value is kInitial, then the table-level TTL will be used (no value metadata).
+      if (!max_ttl_expiry.is_valid() || max_ttl_expiry == HybridTime::kInitial) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+void FileExpirationWithRF3::WaitUntilAllCommittedOpsApplied(const MonoDelta timeout) {
+  const auto completion_deadline = MonoTime::Now() + timeout;
+  for (auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
+    auto consensus = peer->shared_consensus();
+    if (consensus) {
+      ASSERT_OK(Wait([consensus]() -> Result<bool> {
+        return consensus->GetLastAppliedOpId() >= consensus->GetLastCommittedOpId();
+      }, completion_deadline, "Waiting for all committed ops to be applied"));
+    }
+  }
+}
+
+void FileExpirationWithRF3::ExpirationWhenReplicated(bool withValueTTL) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
+  SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
+  if (withValueTTL) {
+    // Change the table TTL to a large value that won't expire.
+    ASSERT_OK(ChangeTableTTL(workload_->table_name(), 1000000));
+  } else {
+    // Set workload to not have value TTL.
+    workload_->set_ttl(-1);
+  }
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_file_expiration_value_ttl_overrides_table_ttl) = withValueTTL;
+
+  ASSERT_OK(WriteAtLeastFilesPerDb(5));
+  WaitUntilAllCommittedOpsApplied(15s);
+  ASSERT_EQ(AllFilesHaveTTLMetadata(), withValueTTL);
+
+  LOG(INFO) << "Sleeping to expire files according to value TTL";
+  auto timeToSleep = 2 * (withValueTTL ? kTTLSec : kTableTTLSec);
+  SleepFor(MonoDelta::FromSeconds(timeToSleep));
+
+  ASSERT_OK(ExecuteManualCompaction());
+  // Assert that all data has been deleted, and that we're filtering SST files.
+  AssertAllFilesExpired();
+}
+
+TEST_F_EX(
+    CompactionTestWithFileExpiration, ReplicatedMetadataCanExpireFile, FileExpirationWithRF3) {
+  ExpirationWhenReplicated(true);
+}
+
+TEST_F_EX(
+    CompactionTestWithFileExpiration, ReplicatedNoMetadataUsesTableTTL, FileExpirationWithRF3) {
+  ExpirationWhenReplicated(false);
 }
 
 } // namespace tserver

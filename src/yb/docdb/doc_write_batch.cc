@@ -416,6 +416,7 @@ Status DocWriteBatch::ExtendSubDocument(
     RETURN_NOT_OK(SetPrimitive(doc_path, Value(value, ttl, user_timestamp),
                                read_ht, deadline, query_id));
   }
+  UpdateMaxValueTtl(ttl);
   return Status::OK();
 }
 
@@ -588,6 +589,17 @@ Status DocWriteBatch::ReplaceRedisInList(
   }
 }
 
+void DocWriteBatch::UpdateMaxValueTtl(const MonoDelta& ttl) {
+  // Don't update the max value TTL if the value is uninitialized or if it is set to
+  // kMaxTtl (i.e. use table TTL).
+  if (!ttl.Initialized() || ttl.Equals(Value::kMaxTtl)) {
+    return;
+  }
+  if (!ttl_.Initialized() || ttl > ttl_) {
+    ttl_ = ttl;
+  }
+}
+
 Status DocWriteBatch::ReplaceCqlInList(
     const DocPath& doc_path,
     const int target_cql_index,
@@ -697,6 +709,9 @@ void DocWriteBatch::MoveToWriteBatchPB(KeyValueWriteBatchPB *kv_pb) {
     kv_pair->mutable_key()->swap(entry.first);
     kv_pair->mutable_value()->swap(entry.second);
   }
+  if (has_ttl()) {
+    kv_pb->set_ttl(ttl_ns());
+  }
 }
 
 void DocWriteBatch::TEST_CopyToWriteBatchPB(KeyValueWriteBatchPB *kv_pb) const {
@@ -705,6 +720,9 @@ void DocWriteBatch::TEST_CopyToWriteBatchPB(KeyValueWriteBatchPB *kv_pb) const {
     KeyValuePairPB* kv_pair = kv_pb->add_write_pairs();
     kv_pair->mutable_key()->assign(entry.first);
     kv_pair->mutable_value()->assign(entry.second);
+  }
+  if (has_ttl()) {
+    kv_pb->set_ttl(ttl_ns());
   }
 }
 

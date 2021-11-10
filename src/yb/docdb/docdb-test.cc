@@ -19,6 +19,7 @@
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/ql_value.h"
 #include "yb/docdb/doc_key.h"
+#include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/db.h"
@@ -50,6 +51,7 @@
 #include "yb/util/path_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
@@ -3311,6 +3313,50 @@ SubDocKey(DocKey([], ["k1"]), ["s3", "s4"; HT{ physical: 10000 }]) -> "v1"; user
 SubDocKey(DocKey([], ["k1"]), ["s3", "s5"; HT{ physical: 10000 w: 1 }]) -> "v1"; \
     user timestamp: 2000
       )#");
+}
+
+CHECKED_STATUS InsertToWriteBatchWithTTL(DocWriteBatch* dwb, const MonoDelta ttl) {
+  const DocKey doc_key(PrimitiveValues("k1"));
+  KeyBytes encoded_doc_key(doc_key.Encode());
+  SubDocument subdoc;
+  subdoc.SetChildPrimitive(PrimitiveValue("sk1"), PrimitiveValue("v1"));
+
+  return dwb->InsertSubDocument(
+      DocPath(encoded_doc_key, PrimitiveValue("s1"), PrimitiveValue("s2")),
+      subdoc, ReadHybridTime::Max(), CoarseTimePoint::max(),
+      rocksdb::kDefaultQueryId, ttl);
+}
+
+TEST_P(DocDBTestWrapper, TestUpdateDocWriteBatchTTL) {
+  auto dwb = MakeDocWriteBatch();
+  KeyValueWriteBatchPB kv_pb;
+  dwb.TEST_CopyToWriteBatchPB(&kv_pb);
+  ASSERT_FALSE(kv_pb.has_ttl());
+
+  // Write a subdoc with kMaxTtl, which should not show up in the the kv ttl.
+  ASSERT_OK(InsertToWriteBatchWithTTL(&dwb, Value::kMaxTtl));
+  dwb.TEST_CopyToWriteBatchPB(&kv_pb);
+  ASSERT_FALSE(kv_pb.has_ttl());
+
+  // Write a subdoc with 10s TTL, which should show up in the the kv ttl.
+  ASSERT_OK(InsertToWriteBatchWithTTL(&dwb, 10s));
+  dwb.TEST_CopyToWriteBatchPB(&kv_pb);
+  ASSERT_EQ(kv_pb.ttl(), 10 * MonoTime::kNanosecondsPerSecond);
+
+  // Write a subdoc with 5s TTL, which should make the kv ttl unchanged.
+  ASSERT_OK(InsertToWriteBatchWithTTL(&dwb, 5s));
+  dwb.TEST_CopyToWriteBatchPB(&kv_pb);
+  ASSERT_EQ(kv_pb.ttl(), 10 * MonoTime::kNanosecondsPerSecond);
+
+  // Write a subdoc with 15s TTL, which should show up in the the kv ttl.
+  ASSERT_OK(InsertToWriteBatchWithTTL(&dwb, 15s));
+  dwb.TEST_CopyToWriteBatchPB(&kv_pb);
+  ASSERT_EQ(kv_pb.ttl(), 15 * MonoTime::kNanosecondsPerSecond);
+
+  // Write a subdoc with kMaxTTL, which should make the kv ttl unchanged.
+  ASSERT_OK(InsertToWriteBatchWithTTL(&dwb, Value::kMaxTtl));
+  dwb.TEST_CopyToWriteBatchPB(&kv_pb);
+  ASSERT_EQ(kv_pb.ttl(), 15 * MonoTime::kNanosecondsPerSecond);
 }
 
 TEST_P(DocDBTestWrapper, TestCompactionWithUserTimestamp) {
