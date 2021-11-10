@@ -506,7 +506,7 @@ and:
 
 You can define these shortcuts in the _psqlrc_ file (on the _postgres/etc_ directory under the directory where you've installed the YugabyteDB client code).
 
-{{< tip title="ysqlsh metacommand syntax" >}}
+{{< tip title="'ysqlsh' metacommand syntax" >}}
 The section [ysqlsh](../../../../../admin/ysqlsh/) describes the \\_gset_ and the \\_set_ metacommands.
 
 (\\_gset_ is allowed on the same line as the SQL statement that it terminates, just as a new SQL statement is allowed on the same line as a previous SQL statement that's terminated with a semicolon.)
