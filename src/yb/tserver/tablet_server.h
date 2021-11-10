@@ -184,6 +184,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
     }
   }
 
+  void UpdateTransactionStatusHash(uint64_t new_hash);
+
   virtual Env* GetEnv();
 
   virtual rocksdb::Env* GetRocksDBEnv();

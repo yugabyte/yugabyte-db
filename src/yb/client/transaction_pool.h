@@ -50,6 +50,10 @@ class TransactionPool {
   // See Take for details.
   Result<YBTransactionPtr> TakeRestarted(const YBTransactionPtr& source);
 
+  // Gets the last transaction returned by the pool. Only for testing, returns nullptr unless the
+  // TEST_track_last_transaction gflag is set.
+  YBTransactionPtr GetLastTransaction();
+
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;

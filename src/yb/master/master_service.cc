@@ -247,6 +247,9 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
                  << s.ToUserMessage();
   }
 
+  uint64_t transaction_status_hash = server_->catalog_manager()->GetTransactionStatusHash();
+  resp->set_transaction_status_hash(transaction_status_hash);
+
   rpc.RespondSuccess();
 }
 

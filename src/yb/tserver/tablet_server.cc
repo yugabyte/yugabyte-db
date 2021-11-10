@@ -558,6 +558,12 @@ void TabletServer::SetYSQLCatalogVersion(uint64_t new_version, uint64_t new_brea
   }
 }
 
+void TabletServer::UpdateTransactionStatusHash(uint64_t new_hash) {
+  if (transaction_manager_holder_) {
+    transaction_manager_holder_->UpdateTransactionStatusHash(new_hash);
+  }
+}
+
 TabletPeerLookupIf* TabletServer::tablet_peer_lookup() {
   return tablet_manager_.get();
 }
