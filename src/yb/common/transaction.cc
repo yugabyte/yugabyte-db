@@ -49,6 +49,13 @@ Result<TransactionMetadata> TransactionMetadata::FromPB(const TransactionMetadat
     result.priority = source.priority();
     result.start_time = HybridTime(source.start_hybrid_time());
   }
+
+  if (source.has_locality()) {
+    result.locality = source.locality();
+  } else {
+    result.locality = TransactionLocality::GLOBAL;
+  }
+
   return result;
 }
 
@@ -70,6 +77,7 @@ void TransactionMetadata::ForceToPB(TransactionMetadataPB* dest) const {
   dest->set_status_tablet(status_tablet);
   dest->set_priority(priority);
   dest->set_start_hybrid_time(start_time.ToUint64());
+  dest->set_locality(locality);
 }
 
 bool operator==(const TransactionMetadata& lhs, const TransactionMetadata& rhs) {
@@ -77,7 +85,8 @@ bool operator==(const TransactionMetadata& lhs, const TransactionMetadata& rhs) 
          lhs.isolation == rhs.isolation &&
          lhs.status_tablet == rhs.status_tablet &&
          lhs.priority == rhs.priority &&
-         lhs.start_time == rhs.start_time;
+         lhs.start_time == rhs.start_time &&
+         lhs.locality == rhs.locality;
 }
 
 std::ostream& operator<<(std::ostream& out, const TransactionMetadata& metadata) {
