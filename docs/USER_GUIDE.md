@@ -301,6 +301,7 @@ There are 10 timebase buckets of the time **`pg_stat_monitor.pgsm_respose_time_s
 #### Object Information.
 
 **`relations`**: The list of tables involved in the query
+Views will be added with * like VIEW_NAME*
 
 ##### Example 1: List all the table names involved in the query.
 ```sql
@@ -342,7 +343,7 @@ Now when we query ``pg_stat_monitor``, it will show the view name and also all t
 SELECT relations, query FROM pg_stat_monitor;
       relations      |                                                query                                                 
 ---------------------+------------------------------------------------------------------------------------------------------
- {test_view,foo,bar} | select * from test_view
+ {test_view*,foo,bar} | select * from test_view
  {foo,bar}           | select * from foo,bar
 (2 rows)
 ```
