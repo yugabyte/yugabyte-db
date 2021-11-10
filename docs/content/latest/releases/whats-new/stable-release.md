@@ -19,7 +19,7 @@ Included here are the release notes for all releases in the v2.8 stable release 
 
 ## v2.8.0.0 - November 8, 2021
 
-**Build:** `2.8.0.0-b29`
+**Build:** `2.8.0.0-b32`
 
 ### Downloads
 
@@ -39,7 +39,7 @@ Included here are the release notes for all releases in the v2.8 stable release 
 ### Docker
 
 ```sh
-docker pull yugabytedb/yugabyte:2.8.0.0-b29
+docker pull yugabytedb/yugabyte:2.8.0.0-b32
 ```
 
 ### New features
