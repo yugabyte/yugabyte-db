@@ -247,6 +247,9 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
                  << s.ToUserMessage();
   }
 
+  uint64_t txn_table_versions_hash = server_->catalog_manager()->GetTxnTableVersionsHash();
+  resp->set_txn_table_versions_hash(txn_table_versions_hash);
+
   rpc.RespondSuccess();
 }
 
