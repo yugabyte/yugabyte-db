@@ -504,6 +504,10 @@ Status Heartbeater::Thread::TryHeartbeat() {
 
   RETURN_NOT_OK(server_->tablet_manager()->UpdateSnapshotsInfo(last_hb_response_.snapshots_info()));
 
+  if (last_hb_response_.has_txn_table_versions_hash()) {
+    server_->UpdateTxnTableVersionsHash(last_hb_response_.txn_table_versions_hash());
+  }
+
   // Update the live tserver list.
   return server_->PopulateLiveTServers(last_hb_response_);
 }

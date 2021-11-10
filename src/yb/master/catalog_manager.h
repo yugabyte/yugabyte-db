@@ -470,6 +470,10 @@ class CatalogManager :
 
   CHECKED_STATUS GetYsqlCatalogVersion(uint64_t* catalog_version, uint64_t* last_breaking_version);
 
+  void RecomputeTxnTableVersionsHash() EXCLUDES(mutex_);
+
+  uint64_t GetTxnTableVersionsHash();
+
   virtual CHECKED_STATUS FillHeartbeatResponse(const TSHeartbeatRequestPB* req,
                                                TSHeartbeatResponsePB* resp);
 
@@ -1588,6 +1592,9 @@ class CatalogManager :
 
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};
+
+  // Hash of transaction status table ids and versions.
+  std::atomic<uint64_t> txn_table_versions_hash_{0};
 
   rpc::ScheduledTaskTracker refresh_yql_partitions_task_;
 

@@ -36,6 +36,8 @@ class DbServerBase : public server::RpcAndWebServerBase {
     return shared_object_.GetFd();
   }
 
+  client::TransactionManager* TransactionManager();
+
   client::TransactionPool* TransactionPool();
 
   virtual const std::shared_future<client::YBClient*>& client_future() const = 0;

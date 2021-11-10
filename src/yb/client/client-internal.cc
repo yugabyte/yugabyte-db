@@ -314,6 +314,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE(IsLoadBalanced);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsLoadBalancerIdle);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsCreateNamespaceDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsDeleteNamespaceDone);
+YB_CLIENT_SPECIALIZE_SIMPLE(CreateTransactionStatusTable);
 
 YBClient::Data::Data()
     : leader_master_rpc_(rpcs_.InvalidHandle()),

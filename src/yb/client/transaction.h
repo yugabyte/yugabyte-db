@@ -87,7 +87,8 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   class PrivateOnlyTag {};
 
  public:
-  explicit YBTransaction(TransactionManager* manager);
+  explicit YBTransaction(TransactionManager* manager,
+                         TransactionLocality locality = TransactionLocality::GLOBAL);
 
   // Trick to allow std::make_shared with this ctor only from methods of this class.
   YBTransaction(TransactionManager* manager, const TransactionMetadata& metadata, PrivateOnlyTag);

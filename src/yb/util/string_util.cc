@@ -63,6 +63,10 @@ vector<string> StringSplit(const string& arg, char delim) {
   return splits;
 }
 
+bool StringStartsWithOrEquals(const string& s, const char* start, size_t start_len) {
+  return s.rfind(start, 0) == 0;
+}
+
 bool StringEndsWith(const string& s, const char* end, size_t end_len, string* left) {
   // For our purpose, s should always have at least one character before the string we are looking
   // for.
