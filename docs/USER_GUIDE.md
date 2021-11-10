@@ -192,6 +192,7 @@ Values:
 - Max: 1000
 - Default: 100
 
+
 This parameter defines the limit of shared memory (in MB) for ``pg_stat_monitor``. This memory is used by buckets in a circular manner. The memory is divided between the buckets equally, at the start of the PostgreSQL. Requires the server restart.
 
 ##### pg_stat_monitor.pgsm_query_max_len
@@ -307,7 +308,7 @@ For versions 11 and 12, please consult the [pg_stat_monitor reference](https://g
 
 ### Querying buckets
 
-```sql
+
 postgres=# select bucket, bucket_start_time, query,calls from pg_stat_monitor order by bucket;
 -[ RECORD 1 ]-----+------------------------------------------------------------------------------------
 bucket | 0
