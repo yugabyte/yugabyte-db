@@ -193,8 +193,18 @@ Result<uint64_t> Executor::WhereClauseToPB(QLReadRequestPB *req,
         }
 
         std::set<QLValuePB> set_values;
+        bool has_null = false;
         for (QLValuePB& value_pb : *col_pb.mutable_value()->mutable_list_value()->mutable_elems()) {
-          set_values.insert(std::move(value_pb));
+          if (QLValue::IsNull(value_pb)) {
+            has_null = true;
+          } else {
+            set_values.insert(std::move(value_pb));
+          }
+        }
+
+        // Special case: WHERE x IN (null)
+        if (has_null && set_values.empty() && req->hashed_column_values().empty()) {
+          req->add_hashed_column_values();
         }
 
         // Adding partition options information to the execution context.
@@ -290,12 +300,15 @@ Status Executor::WhereOpToPB(QLConditionPB *condition, const ColumnOp& col_op) {
     QLExpressionPB tmp_expr_pb;
     RETURN_NOT_OK(PTExprToPB(col_op.expr(), &tmp_expr_pb));
     std::set<QLValuePB> opts_set;
-    for (auto &value_pb : *tmp_expr_pb.mutable_value()->mutable_list_value()->mutable_elems()) {
-      opts_set.insert(std::move(value_pb));
+    for (QLValuePB& value_pb :
+        *tmp_expr_pb.mutable_value()->mutable_list_value()->mutable_elems()) {
+      if (!QLValue::IsNull(value_pb)) {
+        opts_set.insert(std::move(value_pb));
+      }
     }
 
     expr_pb->mutable_value()->mutable_list_value(); // Set value type to list.
-    for (auto &value_pb : opts_set) {
+    for (const QLValuePB& value_pb : opts_set) {
       *expr_pb->mutable_value()->mutable_list_value()->add_elems() = value_pb;
     }
     return Status::OK();
