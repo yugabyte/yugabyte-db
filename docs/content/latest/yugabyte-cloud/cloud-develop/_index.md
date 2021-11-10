@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: cloud-develop
     parent: yugabyte-cloud
-    weight: 700
+    weight: 25
 isTocNested: true
 showAsideToc: true
 ---
