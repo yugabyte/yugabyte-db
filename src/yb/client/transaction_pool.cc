@@ -269,9 +269,10 @@ class TransactionPool::Impl {
 
   ~Impl() = default;
 
-  YBTransactionPtr Take() EXCLUDES(mutex_) {
-    const auto is_global = FLAGS_force_global_transactions ||
-        !manager_->LocalTransactionsPossible();
+  YBTransactionPtr Take(ForceGlobalTransaction force_global_transaction) EXCLUDES(mutex_) {
+    const auto is_global = force_global_transaction ||
+                           FLAGS_force_global_transactions ||
+                           !manager_->LocalTransactionsPossible();
     auto transaction = (is_global ? &global_pool_ : &local_pool_)->Take();
     if (FLAGS_TEST_track_last_transaction) {
       std::lock_guard<std::mutex> lock(mutex_);
@@ -300,19 +301,24 @@ TransactionPool::TransactionPool(TransactionManager* manager, MetricEntity* metr
 TransactionPool::~TransactionPool() {
 }
 
-YBTransactionPtr TransactionPool::Take() {
-  return impl_->Take();
+YBTransactionPtr TransactionPool::Take(ForceGlobalTransaction force_global_transaction) {
+  return impl_->Take(force_global_transaction);
 }
 
 Result<YBTransactionPtr> TransactionPool::TakeAndInit(
     IsolationLevel isolation, const ReadHybridTime& read_time) {
-  auto result = impl_->Take();
+  auto result = impl_->Take(ForceGlobalTransaction::kTrue);
   RETURN_NOT_OK(result->Init(isolation, read_time));
   return result;
 }
 
 Result<YBTransactionPtr> TransactionPool::TakeRestarted(const YBTransactionPtr& source) {
-  auto result = impl_->Take();
+  const auto &metadata = source->GetMetadata().get();
+  RETURN_NOT_OK(metadata);
+  const auto force_global =
+      metadata->locality == TransactionLocality::GLOBAL ? ForceGlobalTransaction::kTrue
+                                                        : ForceGlobalTransaction::kFalse;
+  auto result = impl_->Take(force_global);
   RETURN_NOT_OK(source->FillRestartedTransaction(result));
   return result;
 }
