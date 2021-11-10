@@ -24,13 +24,19 @@ function ReplicationItem({
 }) {
   
   return (
-    <div className="replication-item">
+    <div className="replication-item" key={replication.uuid}>
       <ListGroupItem>
         <Link to={`/universes/${currentUniverseUUID}/replication/${replication.uuid}`}>
           <Row>
             <Col lg={5} className="replication-name">
               {replication.name}
+              {
+              currentUniverseUUID !== replication.sourceUniverseUUID && <span className="replication-target-universe">
+                Target Universe
+              </span>
+            }
             </Col>
+            
             <Col lg={2} className="replication-date">
               <div className="replication-label">Started</div>
               <div className="replication-label-value">{replication.createTime}</div>

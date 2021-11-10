@@ -139,7 +139,7 @@ export function TargetUniverseForm({
         <Col lg={12}>
           <Field 
             name="name"
-            placeHolder="Replication name"
+            placeholder="Replication name"
             component={YBFormInput}
           />
         </Col>
