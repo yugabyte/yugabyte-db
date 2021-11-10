@@ -907,6 +907,10 @@ message TSHeartbeatResponsePB {
   optional TSSnapshotsInfoPB snapshots_info = 17;
 
   optional int64 DEPRECATED_tablet_split_size_threshold_bytes = 14;
+
+  // Hash of transaction status table ids and versions, so that the TS knows when
+  // to update the cached list of status tablet ids in the transaction manager.
+  optional uint64 transaction_status_hash = 18;
 }
 
 message TSInformationPB {

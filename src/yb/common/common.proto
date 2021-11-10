@@ -500,6 +500,11 @@ enum TransactionStatus {
   GRACEFUL_CLEANUP = 23;
 }
 
+enum TransactionLocality {
+  GLOBAL = 1;
+  LOCAL = 2;
+}
+
 message TransactionMetadataPB {
   optional bytes transaction_id = 1; // 16 byte uuid
   optional IsolationLevel isolation = 2 [default=NON_TRANSACTIONAL];
@@ -511,6 +516,10 @@ message TransactionMetadataPB {
   // Stores time when metadata was written to provisional records RocksDB on a
   // participating tablet. So it could be used for cleanup.
   optional fixed64 metadata_write_time = 6;
+
+  // Stores whether the transaction is local or global; treated as global if not present
+  // for backwards compatability.
+  optional TransactionLocality locality = 7;
 }
 
 message AbortedSubTransactionSetPB {

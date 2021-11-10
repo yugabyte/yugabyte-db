@@ -70,6 +70,9 @@ DEFINE_test_flag(int32, transaction_inject_flushed_delay_ms, 0,
 DEFINE_test_flag(bool, disable_proactive_txn_cleanup_on_abort, false,
                 "Disable cleanup of intents in abort path.");
 
+DECLARE_string(placement_cloud);
+DECLARE_string(placement_region);
+
 namespace yb {
 namespace client {
 
@@ -127,7 +130,7 @@ const SubTransactionMetadata& YBSubTransaction::get() { return sub_txn_; }
 
 class YBTransaction::Impl final {
  public:
-  Impl(TransactionManager* manager, YBTransaction* transaction)
+  Impl(TransactionManager* manager, YBTransaction* transaction, TransactionLocality locality)
       : trace_(new Trace),
         start_(CoarseMonoClock::Now()),
         manager_(manager),
@@ -135,6 +138,7 @@ class YBTransaction::Impl final {
         read_point_(manager->clock()),
         child_(Child::kFalse) {
     metadata_.priority = RandomUniformInt<uint64_t>();
+    metadata_.locality = locality;
     CompleteConstruction();
     VLOG_WITH_PREFIX(2) << "Started, metadata: " << metadata_;
   }
@@ -265,24 +269,69 @@ class YBTransaction::Impl final {
     return trace_.get();
   }
 
+  CHECKED_STATUS CheckTransactionLocality(InFlightOpsGroupsWithMetadata* ops_info)
+      REQUIRES(mutex_) {
+    if (metadata_.locality != TransactionLocality::LOCAL) {
+      return Status::OK();
+    }
+    for (auto& group : ops_info->groups) {
+      auto& first_op = *group.begin;
+      const auto& tablet = first_op.tablet;
+      const auto& tablet_id = tablet->tablet_id();
+
+      auto tservers = tablet->GetRemoteTabletServers(internal::IncludeFailedReplicas::kTrue);
+      for (const auto &tserver : tservers) {
+        auto pb = tserver->cloud_info();
+        if (pb.placement_cloud() != FLAGS_placement_cloud ||
+            pb.placement_region() != FLAGS_placement_region) {
+          VLOG_WITH_PREFIX(4) << "Aborting (accessing nonlocal tablet in local transaction)";
+          return STATUS_FORMAT(
+              IllegalState, "Nonlocal tablet accessed in local transaction: tablet $0", tablet_id);
+        }
+      }
+    }
+    return Status::OK();
+  }
+
   bool Prepare(InFlightOpsGroupsWithMetadata* ops_info,
                ForceConsistentRead force_consistent_read,
                CoarseTimePoint deadline,
                Initial initial,
-               Waiter waiter) {
+               Waiter waiter) EXCLUDES(mutex_) {
     VLOG_WITH_PREFIX(2) << "Prepare(" << AsString(ops_info->groups) << ", "
                         << force_consistent_read << ", " << initial << ")";
     TRACE_TO(trace_, "Perparing $0 ops", AsString(ops_info->groups.size()));
     VTRACE_TO(2, trace_, "Perparing $0 ops", AsString(ops_info->groups));
+
     {
       UNIQUE_LOCK(lock, mutex_);
       const bool defer = !ready_;
 
       if (!defer || initial) {
+        Status status = CheckTransactionLocality(ops_info);
+        if (!status.ok()) {
+          bool abort = false;
+          auto state = state_.load(std::memory_order_acquire);
+          if (state == TransactionState::kRunning) {
+            // State will be changed to aborted in SetErrorUnlocked
+            abort = true;
+          }
+          SetErrorUnlocked(status);
+          lock.unlock();
+          if (waiter) {
+            waiter(status);
+          }
+          if (abort) {
+            DoAbort(TransactionRpcDeadline(), transaction_->shared_from_this());
+          }
+          return false;
+        }
         for (auto& group : ops_info->groups) {
           auto& first_op = *group.begin;
           const auto should_add_intents = first_op.yb_op->should_add_intents(metadata_.isolation);
-          const auto& tablet_id = first_op.tablet->tablet_id();
+          const auto& tablet = first_op.tablet;
+          const auto& tablet_id = tablet->tablet_id();
+
           bool has_metadata;
           if (initial && should_add_intents) {
             auto& tablet_state = tablets_[tablet_id];
@@ -874,7 +923,8 @@ class YBTransaction::Impl final {
     auto transaction = transaction_->shared_from_this();
     if (metadata_.status_tablet.empty()) {
       manager_->PickStatusTablet(
-          std::bind(&Impl::StatusTabletPicked, this, _1, deadline, transaction));
+          std::bind(&Impl::StatusTabletPicked, this, _1, deadline, transaction),
+          metadata_.locality);
     } else {
       LookupStatusTablet(metadata_.status_tablet, deadline, transaction);
     }
@@ -1215,8 +1265,8 @@ CoarseTimePoint AdjustDeadline(CoarseTimePoint deadline) {
   return deadline;
 }
 
-YBTransaction::YBTransaction(TransactionManager* manager)
-    : impl_(new Impl(manager, this)) {
+YBTransaction::YBTransaction(TransactionManager* manager, TransactionLocality locality)
+    : impl_(new Impl(manager, this, locality)) {
 }
 
 YBTransaction::YBTransaction(

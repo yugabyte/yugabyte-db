@@ -67,6 +67,7 @@ ADD_YB_TEST(pg_on_conflict-test)
 ADD_YB_TEST(pg_txn-test)
 ADD_YB_TEST(pg_wrapper-test)
 ADD_YB_TEST(alter_table_with_concurrent_txn-test)
+ADD_YB_TEST(geo_transactions-test)
 
 # This is really a tool, not a test, but uses a lot of existing test infrastructure.
 ADD_YB_TEST(create_initial_sys_catalog_snapshot)
