@@ -4450,10 +4450,12 @@ collection_expr:
 
 in_expr:
   tuple_expr {
+    $1->set_is_in_operand();
     $$ = $1;
   }
   | bindvar {
     if ($1 != nullptr) {
+      $1->set_is_in_operand();
       parser_->AddBindVariable(static_cast<PTBindVar*>($1.get()));
     }
     $$ = $1;

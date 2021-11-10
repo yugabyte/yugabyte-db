@@ -115,6 +115,7 @@ class PTExpr : public TreeNode {
         internal_type_(internal_type),
         ql_type_(ql_type),
         expected_internal_type_(InternalType::VALUE_NOT_SET),
+        is_in_operand_(false),
         index_name_(MCMakeShared<MCString>(memctx)) {}
   virtual ~PTExpr() {}
 
@@ -168,6 +169,14 @@ class PTExpr : public TreeNode {
 
   bool has_valid_ql_type_id() {
     return ql_type_->main() != DataType::UNKNOWN_DATA;
+  }
+
+  virtual void set_is_in_operand(bool in_operand = true) {
+    is_in_operand_ = in_operand;
+  }
+
+  bool is_in_operand() const {
+    return is_in_operand_;
   }
 
   // Seeks index-columns that referenced by this expression and output mangled colum names.
@@ -375,6 +384,7 @@ class PTExpr : public TreeNode {
   InternalType internal_type_;
   QLType::SharedPtr ql_type_;
   InternalType expected_internal_type_;
+  bool is_in_operand_; // Is it right operand of IN / NOT IN operator.
 
   // Fields that should be resolved by semantic analysis.
   // An expression might be a reference to a column in an INDEX.
