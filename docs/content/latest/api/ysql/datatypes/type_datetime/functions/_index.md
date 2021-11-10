@@ -122,7 +122,7 @@ call assert_timeofday_semantics();
 
 <a name="avoid-timeofday"></a>Presumably, because it takes time to execute each individual PL/pgSQL statement, the moment values returned by the first calls to _clock_timestamp()_ and _timeofday()_, and then by the second calls to these two functions, will not be pairwise identical. However, they are the same to within a one microsecond precision. This is fortunate because it does away with the need to implement a tolerance notion and therefore simplifies the design of the test.
 
-{{< tip title="Don't use timeofday()." >}}
+{{< tip title="Don't use 'timeofday()'." >}}
 Using _clock_timestamp()_, and formatting the result to _text_, can bring the identical result to using _timeofday()_—if this meets your requirement. However, you might well want a different formatting notion and might want to render day and month names or abbreviations in a language other than English. Moreover, you might want to do arithmetic with the moment value, for example by subtracting it from some other moment value. Yugabyte recommends, therefore, that you simply avoid ever using _timeofday()_ and, rather, always start with _clock_timestamp()_.
 
 For this reason, this section won't say any more about the _timeofday()_ builtin function.
