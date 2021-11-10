@@ -29,10 +29,10 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
     <a class="section-link icon-offset" href="ysql-language-features/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/fault_tolerance.png" aria-hidden="true" />
-        <div class="title">PostgreSQL features in YSQL</div>
+        <div class="title">Distributed SQL features</div>
       </div>
       <div class="body">
-        YSQL supports most PostgreSQL language features.
+        Distributed SQL features in YSQL.
       </div>
     </a>
   </div>
@@ -74,18 +74,6 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="indexes-constraints/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
-        <div class="title">Indexes and constraints</div>
-      </div>
-      <div class="body">
-        Improve database performance with indexes and constraints.
-      </div>
-    </a>
-  </div>  
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="json-support/jsonb-ysql/">
       <div class="head">
         <div class="icon"><i class="far fa-file-code"></i></div>
@@ -117,18 +105,6 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
       </div>
       <div class="body">
         Optimize query performance.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="follower-reads/fr-ycql/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
-        <div class="title">Follower reads</div>
-      </div>
-      <div class="body">
-        Reduce read latency by reading from follower replicas.
       </div>
     </a>
   </div>

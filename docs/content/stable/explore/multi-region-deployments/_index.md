@@ -82,5 +82,4 @@ The deployment types are explained in the following sections:
       </div>
     </a>
   </div>
-
 </div>

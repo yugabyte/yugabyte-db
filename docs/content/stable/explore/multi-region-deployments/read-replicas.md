@@ -15,7 +15,7 @@ showAsideToc: true
 
 YugabyteDB supports the following types of reads: 
 
-- [Follower reads](../../follower-reads/fr-ycql/) that enable spreading the read workload across all replicas in the primary cluster.
+- [Follower reads](../../multi-region-deployments/follower-reads-ycql/) that enable spreading the read workload across all replicas in the primary cluster.
 - Observer reads that use read replicas. The latter obtain their data via [asynchronous replication](../asynchronous-replication-ycql) which allows for the read workload to be offloaded from the primary cluster. Read replicas are created as a separate cluster that may be located in a different region, possibly closer to the consumers of the data which would result in lower-latency access and enhanced support of analytics workloads. 
 
 A datacenter (also known as universe) can have one primary cluster and several read replica clusters.
@@ -40,7 +40,7 @@ $ ./bin/yb-ctl create --rf 3 --placement_info "c.r.z1,c.r.z2,c.r.z3" --tserver_f
 
 Output:
 
-```
+```output
 Creating cluster.
 Waiting for cluster to be ready.
 ....
@@ -82,7 +82,7 @@ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
 
 Output:
 
-```
+```output
 0 [main] INFO com.yugabyte.sample.Main  - Starting sample app...
 35 [main] INFO com.yugabyte.sample.common.CmdLineOpts  - Using NO UUID
 44 [main] INFO com.yugabyte.sample.common.CmdLineOpts  - App: CassandraKeyValue
@@ -127,7 +127,7 @@ $ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
 
 Output:
 
-```
+```output
 0 [main] INFO com.yugabyte.sample.Main - Starting sample app...
 22 [main] INFO com.yugabyte.sample.common.CmdLineOpts - Using NO UUID
 27 [main] INFO com.yugabyte.sample.common.CmdLineOpts - App: CassandraKeyValue
@@ -277,4 +277,3 @@ The following illustration demonstrates that the entire read load moved to the o
 ![img](/images/explore/multi-region-deployments/read-replicas11.png)
 
 For additional information, see [Fault Tolerance](../../fault-tolerance/macos/).
-
