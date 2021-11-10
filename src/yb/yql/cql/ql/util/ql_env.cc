@@ -99,7 +99,7 @@ Result<YBTransactionPtr> QLEnv::NewTransaction(const YBTransactionPtr& transacti
       return STATUS(InternalError, "No transaction pool provider");
     }
   }
-  auto result = transaction_pool_->Take();
+  auto result = transaction_pool_->Take(client::ForceGlobalTransaction::kTrue);
   RETURN_NOT_OK(result->Init(isolation_level));
   return result;
 }
