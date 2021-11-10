@@ -18,7 +18,10 @@ You can access Yugabyte Platform health monitor and configure alerts by navigati
 
 ![Configure alerts](/images/yp/config-alerts1.png)
 
-The **Alert Creation** view allows you to create new alerts for specific universes or for your instance of Yugabyte Platform, as well as configure or delete existing alerts.
+The **Alert Creation** view allows you to perform the following for specific universes or for your instance of Yugabyte Platform: 
+
+- Create new alerts.
+- Configure, delete, activate or deactivate existing alerts via **Actions**.
 
 Regardless of the alert level, you create and configure an alert as follows: 
 
@@ -30,9 +33,11 @@ Regardless of the alert level, you create and configure an alert as follows:
 
   <br><br>
 
-  Templates are available for alerts related to Yugabyte Platform operations, YugabyteDB operations, as well as YSQL and YCQL performance. 
+  Templates are available for alerts related to Yugabyte Platform operations, YugabyteDB operations, as well as YSQL and YCQL performance.<br>
 
-  The **Threshold** field allows you to define the value (for example, number of milliseconds, resets, errors, nodes) that must be reached in order to trigger the alert.
+  The **Active** field allows you to define the alert as initially active or inactive.<br>
+
+  The **Threshold** field allows you to define the value (for example, number of milliseconds, resets, errors, nodes) that must be reached in order to trigger the alert.<br>
 
   The **Destination** field allows you to select one of the previously defined recipients of the alert. 
 
