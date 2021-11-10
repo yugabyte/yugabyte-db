@@ -47,6 +47,7 @@
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/port/likely.h"
 #include "yb/rocksdb/port/port.h"
+#include "yb/rocksdb/compaction_filter.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/statistics.h"
@@ -294,11 +295,11 @@ Result<FileNumbersHolder> FlushJob::WriteLevel0Table(
     }
     RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
         "[%s] [JOB %d] Level-0 flush table #%" PRIu64 ": %" PRIu64
-        " bytes %s"
-        "%s",
+        " bytes %s%s %s",
         cfd_->GetName().c_str(), job_context_->job_id, meta->fd.GetNumber(),
         meta->fd.GetTotalFileSize(), s.ToString().c_str(),
-        meta->marked_for_compaction ? " (needs compaction)" : "");
+        meta->marked_for_compaction ? " (needs compaction)" : "",
+        meta->FrontiersToString().c_str());
 
     // output to event logger
     if (s.ok()) {

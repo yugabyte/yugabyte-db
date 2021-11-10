@@ -3570,6 +3570,11 @@ InternalIterator* VersionSet::MakeInputIterator(Compaction* c) {
         for (size_t i = 0; i < flevel->num_files; i++) {
           FileMetaData* fmd = c->input(which, i);
           if (c->input(which, i)->delete_after_compaction) {
+            RLOG(
+                InfoLogLevel::INFO_LEVEL, db_options_->info_log,
+                yb::Format(
+                    "[$0] File marked for deletion, will be removed after compaction. file: $1",
+                    c->column_family_data()->GetName(), fmd->ToString()).c_str());
             RecordTick(cfd->ioptions()->statistics, COMPACTION_FILES_FILTERED);
             continue;
           }
