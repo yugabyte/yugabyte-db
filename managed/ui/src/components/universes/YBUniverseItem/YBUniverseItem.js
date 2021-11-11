@@ -3,7 +3,6 @@
 import React from 'react';
 import { Row, Col, ListGroupItem } from 'react-bootstrap';
 import { Link } from 'react-router';
-import moment from 'moment';
 
 import { isAvailable } from '../../../utils/LayoutUtils';
 import { isKubernetesUniverse } from '../../../utils/UniverseUtils';
@@ -11,6 +10,7 @@ import { YBCost } from '../../common/descriptors';
 import { UniverseStatusContainer } from '..';
 import { CellLocationPanel } from './CellLocationPanel';
 import { CellResourcesPanel } from './CellResourcePanel';
+import {timeFormatter} from "../../../utils/TableFormatters";
 
 export const YBUniverseItem = (props) => {
   const {
@@ -29,7 +29,7 @@ export const YBUniverseItem = (props) => {
               </Col>
               <Col sm={6} className="universe-create-date-container">
                 <div>Created: </div>
-                {moment(universe.creationDate).format('MMM Do YYYY, hh:mm a')}
+                {timeFormatter(universe.creationDate)}
               </Col>
             </Row>
             <div className="list-universe-status-container">
