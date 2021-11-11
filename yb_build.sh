@@ -906,7 +906,7 @@ while [[ $# -gt 0 ]]; do
       if [[ ${#make_targets[@]} -eq 0 ]]; then
         fatal "Failed to identify the set of targets to build for the release package"
       fi
-      make_targets+=( "initial_sys_catalog_snapshot" )
+      make_targets+=( "initial_sys_catalog_snapshot" "update_ysql_migrations" )
     ;;
     --skip-build|--sb)
       set_flags_to_skip_build
@@ -1374,8 +1374,9 @@ create_build_descriptor_file
 create_build_root_file
 
 if [[ ${#make_targets[@]} -eq 0 && -n $java_test_name ]]; then
-  # Only build yb-master / yb-tserver / postgres when we're only trying to run a Java test.
-  make_targets+=( yb-master yb-tserver postgres )
+  # Build only yb-master / yb-tserver / postgres / update_ysql_migrations when we're only trying
+  # to run a Java test.
+  make_targets+=( yb-master yb-tserver postgres update_ysql_migrations )
 fi
 
 if [[ $build_type == "compilecmds" ]]; then
