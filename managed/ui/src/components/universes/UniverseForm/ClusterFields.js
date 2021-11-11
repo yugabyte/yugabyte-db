@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
-import { Field, FieldArray, formValues } from 'redux-form';
+import { Field, FieldArray } from 'redux-form';
 import { browserHistory } from 'react-router';
 import _ from 'lodash';
 import {
@@ -614,7 +614,7 @@ export default class ClusterFields extends Component {
       type,
       formValues,
       universe: { currentUniverse }
-    } = this.props;    
+    } = this.props;
     if (!formValues[clusterType] && isNonEmptyArray(cloud.providers?.data)) {
       // AC: Editing Read-Replica is type 'Async'. We should change this at some point
       if (type === 'Edit' || type === 'Async') {
