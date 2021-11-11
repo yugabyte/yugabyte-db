@@ -65,7 +65,7 @@ void PgMiniTestBase::SetUp() {
 
   ASSERT_OK(WaitForInitDb(cluster_.get()));
 
-  auto pg_ts = PickPgTabletServer(cluster_->mini_tablet_servers());
+  auto pg_ts = RandomElement(cluster_->mini_tablet_servers());
   auto port = cluster_->AllocateFreePort();
   PgProcessConf pg_process_conf = ASSERT_RESULT(PgProcessConf::CreateValidateAndRunInitDb(
       yb::ToString(Endpoint(pg_ts->bound_rpc_addr().address(), port)),
@@ -88,11 +88,6 @@ void PgMiniTestBase::SetUp() {
   pg_host_port_ = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
 
   DontVerifyClusterBeforeNextTearDown();
-}
-
-const std::shared_ptr<tserver::MiniTabletServer> PgMiniTestBase::PickPgTabletServer(
-    const MiniCluster::MiniTabletServers& servers) {
-  return RandomElement(servers);
 }
 
 } // namespace pgwrapper
