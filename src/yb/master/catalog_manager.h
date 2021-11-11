@@ -470,8 +470,6 @@ class CatalogManager :
 
   CHECKED_STATUS GetYsqlCatalogVersion(uint64_t* catalog_version, uint64_t* last_breaking_version);
 
-  uint64_t GetTransactionStatusHash() EXCLUDES(mutex_);
-
   virtual CHECKED_STATUS FillHeartbeatResponse(const TSHeartbeatRequestPB* req,
                                                TSHeartbeatResponsePB* resp);
 

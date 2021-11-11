@@ -62,7 +62,6 @@
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_util.h"
-#include "yb/master/catalog_manager.h"
 #include "yb/util/monotime.h"
 #include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/yql/redis/redisserver/redis_parser.h"
@@ -148,10 +147,6 @@ using yb::master::GetCDCStreamRequestPB;
 using yb::master::GetCDCStreamResponsePB;
 using yb::master::UpdateCDCStreamRequestPB;
 using yb::master::UpdateCDCStreamResponsePB;
-using yb::master::GetMasterClusterConfigRequestPB;
-using yb::master::GetMasterClusterConfigResponsePB;
-using yb::master::CreateTransactionStatusTableRequestPB;
-using yb::master::CreateTransactionStatusTableResponsePB;
 using yb::rpc::Messenger;
 using std::string;
 using std::vector;
@@ -1582,48 +1577,6 @@ Result<bool> YBClient::IsLoadBalancerIdle() {
   } else {
     return s;
   }
-}
-
-Status YBClient::ModifyTablePlacementInfo(const YBTableName& table_name,
-                                          master::PlacementInfoPB* replicas) {
-  master::ReplicationInfoPB replication_info;
-  // Merge the obtained info with the existing table replication info.
-  std::shared_ptr<client::YBTable> table;
-  RETURN_NOT_OK_PREPEND(OpenTable(table_name, &table), "Fetching table schema failed!");
-
-  // If it does not exist, fetch the cluster replication info.
-  if (!table->replication_info()) {
-    GetMasterClusterConfigRequestPB req;
-    GetMasterClusterConfigResponsePB resp;
-    CALL_SYNC_LEADER_MASTER_RPC(req, resp, GetMasterClusterConfig);
-    master::SysClusterConfigEntryPB* sys_cluster_config_entry = resp.mutable_cluster_config();
-    replication_info.CopyFrom(sys_cluster_config_entry->replication_info());
-    // TODO(bogdan): Figure out how to handle read replias and leader affinity.
-    replication_info.clear_read_replicas();
-    replication_info.clear_affinitized_leaders();
-  } else {
-    // Table replication info exists, copy it over.
-    replication_info.CopyFrom(table->replication_info().get());
-  }
-
-  // Put in the new live placement info.
-  replication_info.set_allocated_live_replicas(replicas);
-
-  std::unique_ptr<yb::client::YBTableAlterer> table_alterer(NewTableAlterer(table_name));
-  return table_alterer->replication_info(replication_info)->Alter();
-}
-
-Status YBClient::CreateTransactionsStatusTable(const string& table_name) {
-  if (table_name.rfind(yb::master::kTransactionTablePrefix, 0) != 0) {
-    return STATUS_FORMAT(
-        InvalidArgument, "Name '$0' for transaction table does not start with '$1'", table_name,
-        yb::master::kTransactionTablePrefix);
-  }
-  master::CreateTransactionStatusTableRequestPB req;
-  master::CreateTransactionStatusTableResponsePB resp;
-  req.set_table_name(table_name);
-  CALL_SYNC_LEADER_MASTER_RPC(req, resp, CreateTransactionStatusTable);
-  return Status::OK();
 }
 
 Status YBClient::GetTabletsFromTableId(const string& table_id,

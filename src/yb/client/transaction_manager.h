@@ -22,7 +22,6 @@
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/clock.h"
-#include "yb/common/common.pb.h"
 #include "yb/common/hybrid_time.h"
 
 #include "yb/rpc/rpc_fwd.h"
@@ -44,15 +43,7 @@ class TransactionManager {
   TransactionManager(TransactionManager&& rhs);
   TransactionManager& operator=(TransactionManager&& rhs);
 
-  // Updates transaction status hash of transaction table ids and versions, to let
-  // TransactionManager decide whether a refresh of cached status tablets is needed.
-  //
-  // In the unlikely case of a hash collision (~1/2^32), where the hash calculated before
-  // and after an update is identical, the change will not be observed by the transaction
-  // manager, and the old list of cached tablets will be used.
-  void UpdateTransactionStatusHash(uint64_t hash);
-
-  void PickStatusTablet(PickStatusTabletCallback callback, TransactionLocality locality);
+  void PickStatusTablet(PickStatusTabletCallback callback);
 
   rpc::Rpcs& rpcs();
   YBClient* client() const;
@@ -62,10 +53,6 @@ class TransactionManager {
   HybridTimeRange NowRange() const;
 
   void UpdateClock(HybridTime time);
-
-  bool LocalTransactionsPossible();
-
-  uint64_t GetLoadedStatusTabletsVersion();
 
  private:
   class Impl;
