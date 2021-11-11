@@ -6,6 +6,8 @@ const initialStateFeatureInTest = {
   adminAlertsConfig:true,
   enableNewEncryptionInTransitModal: true,
   addRestoreTimeStamp: false,
+  enableXCluster: false,
+  enableGeoPartitioning: false,
 };
 
 const initialStateFeatureReleased = {
@@ -14,6 +16,8 @@ const initialStateFeatureReleased = {
   adminAlertsConfig:true,
   enableNewEncryptionInTransitModal: true,
   addRestoreTimeStamp: false,
+  enableXCluster: false,
+  enableGeoPartitioning: false,
 };
 
 export const FeatureFlag = (

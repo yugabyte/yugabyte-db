@@ -1150,6 +1150,9 @@ void YBSetSysCacheTuple(Relation rel, HeapTuple tup)
 			SetCatCacheTuple(SysCache[ATTNUM], tup, tupdesc);
 			SetCatCacheTuple(SysCache[ATTNAME], tup, tupdesc);
 			break;
+		case PartitionedRelationId:
+			SetCatCacheTuple(SysCache[PARTRELID], tup, tupdesc);
+			break;
 
 		default:
 			/* For non-critical tables/indexes nothing to do */

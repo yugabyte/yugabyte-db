@@ -111,6 +111,19 @@ string PrimitiveValue::ToString(AutoDecodeKeys auto_decode_keys) const {
     case ValueType::kNullHigh: FALLTHROUGH_INTENDED;
     case ValueType::kNullLow:
       return "null";
+    case ValueType::kGinNull:
+      switch (gin_null_val_) {
+        // case 0, gin:norm-key, should not exist since the actual data would be used instead.
+        case 1:
+          return "GinNullKey";
+        case 2:
+          return "GinEmptyItem";
+        case 3:
+          return "GinNullItem";
+        // case -1, gin:empty-query, should not exist since that's internal to postgres.
+        default:
+          LOG(FATAL) << "Unexpected gin null category: " << gin_null_val_;
+      }
     case ValueType::kCounter:
       return "counter";
     case ValueType::kSSForward:
@@ -441,6 +454,10 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
       key_bytes->AppendIntentTypeSet(IntentTypeSet(uint16_val_));
       return;
 
+    case ValueType::kGinNull:
+      key_bytes->AppendUint8(gin_null_val_);
+      return;
+
     IGNORE_NON_PRIMITIVE_VALUE_TYPES_IN_SWITCH;
   }
   FATAL_INVALID_ENUM_VALUE(ValueType, type_);
@@ -584,6 +601,10 @@ string PrimitiveValue::ToValue() const {
     case ValueType::kUInt16Hash:
       // Hashes are not allowed in a value.
       break;
+
+    case ValueType::kGinNull:
+      result.push_back(static_cast<char>(gin_null_val_));
+      return result;
 
     case ValueType::kIntentTypeSet: FALLTHROUGH_INTENDED;
     case ValueType::kObsoleteIntentTypeSet: FALLTHROUGH_INTENDED;
@@ -746,6 +767,20 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
         new(&out->varint_val_) string(varint.EncodeToComparable());
       }
       slice->remove_prefix(num_decoded_bytes);
+      type_ref = value_type;
+      return Status::OK();
+    }
+
+    case ValueType::kGinNull: {
+      if (slice->size() < sizeof(uint8_t)) {
+        return STATUS_SUBSTITUTE(Corruption,
+                                 "Not enough bytes to decode an 8-bit integer: $0",
+                                 slice->size());
+      }
+      if (out) {
+        out->gin_null_val_ = slice->data()[0];
+      }
+      slice->remove_prefix(sizeof(uint8_t));
       type_ref = value_type;
       return Status::OK();
     }
@@ -1069,6 +1104,15 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
       type_ = value_type;
       return Status::OK();
 
+    case ValueType::kGinNull:
+      if (slice.size() != sizeof(uint8_t)) {
+        return STATUS_FORMAT(Corruption, "Invalid number of bytes for a $0: $1",
+            value_type, slice.size());
+      }
+      type_ = value_type;
+      gin_null_val_ = slice.data()[0];
+      return Status::OK();
+
     case ValueType::kInt32: FALLTHROUGH_INTENDED;
     case ValueType::kInt32Descending: FALLTHROUGH_INTENDED;
     case ValueType::kFloatDescending: FALLTHROUGH_INTENDED;
@@ -1350,6 +1394,13 @@ PrimitiveValue PrimitiveValue::Jsonb(const std::string& json) {
   return primitive_value;
 }
 
+PrimitiveValue PrimitiveValue::GinNull(uint8_t v) {
+  PrimitiveValue primitive_value;
+  primitive_value.type_ = ValueType::kGinNull;
+  primitive_value.gin_null_val_ = v;
+  return primitive_value;
+}
+
 KeyBytes PrimitiveValue::ToKeyBytes() const {
   KeyBytes kb;
   AppendToKey(&kb);
@@ -1435,6 +1486,7 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
     case ValueType::kColumnId: FALLTHROUGH_INTENDED;
     case ValueType::kSystemColumnId: return column_id_val_ == other.column_id_val_;
     case ValueType::kHybridTime: return hybrid_time_val_.CompareTo(other.hybrid_time_val_) == 0;
+    case ValueType::kGinNull: return gin_null_val_ == other.gin_null_val_;
     IGNORE_NON_PRIMITIVE_VALUE_TYPES_IN_SWITCH;
   }
   FATAL_INVALID_ENUM_VALUE(ValueType, type_);
@@ -1546,6 +1598,8 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
     case ValueType::kHybridTime:
       // HybridTimes are sorted in reverse order when wrapped in a PrimitiveValue.
       return -hybrid_time_val_.CompareTo(other.hybrid_time_val_);
+    case ValueType::kGinNull:
+      return CompareUsingLessThan(gin_null_val_, other.gin_null_val_);
     IGNORE_NON_PRIMITIVE_VALUE_TYPES_IN_SWITCH;
   }
   LOG(FATAL) << "Comparing invalid PrimitiveValues: " << *this << " and " << other;
@@ -1685,6 +1739,8 @@ PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value,
       return PrimitiveValue(value.virtual_value() == QLVirtualValuePB::LIMIT_MAX ?
                                 docdb::ValueType::kHighest :
                                 docdb::ValueType::kLowest);
+    case QLValuePB::kGinNullValue:
+      return PrimitiveValue::GinNull(value.gin_null_value());
 
     // default: fall through
   }
@@ -1702,6 +1758,14 @@ void PrimitiveValue::ToQLValuePB(const PrimitiveValue& primitive_value,
       primitive_value.value_type() == ValueType::kInvalid ||
       primitive_value.value_type() == ValueType::kTombstone) {
     SetNull(ql_value);
+    return;
+  }
+
+  // For ybgin indexes, null category can be set on any index key column, regardless of the column's
+  // actual type.  The column's actual type cannot be kGinNull, so it throws error in the below
+  // switch.
+  if (primitive_value.value_type() == ValueType::kGinNull) {
+    ql_value->set_gin_null_value(primitive_value.GetGinNull());
     return;
   }
 
@@ -1832,7 +1896,8 @@ void PrimitiveValue::ToQLValuePB(const PrimitiveValue& primitive_value,
 
     case UINT8:  FALLTHROUGH_INTENDED;
     case UINT16: FALLTHROUGH_INTENDED;
-    case UNKNOWN_DATA:
+    case UNKNOWN_DATA: FALLTHROUGH_INTENDED;
+    case GIN_NULL:
       break;
 
     // default: fall through

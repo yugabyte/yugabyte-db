@@ -1886,9 +1886,16 @@ YBInitializeTransaction(void)
 	{
 		HandleYBStatus(YBCPgBeginTransaction());
 		HandleYBStatus(YBCPgSetTransactionIsolationLevel(XactIsoLevel));
+		HandleYBStatus(YBCPgEnableFollowerReads(YBReadFromFollowersEnabled(), YBFollowerReadStalenessMs()));
 		HandleYBStatus(YBCPgSetTransactionReadOnly(XactReadOnly));
 		HandleYBStatus(YBCPgSetTransactionDeferrable(XactDeferrable));
 	}
+}
+
+void
+YBMaybeResetTransactionReadPoint(void)
+{
+	HandleYBStatus(YBCPgMaybeResetTransactionReadPoint());
 }
 
 /*
@@ -2874,6 +2881,35 @@ StartTransactionCommand(void)
 		case TBLOCK_INPROGRESS:
 		case TBLOCK_IMPLICIT_INPROGRESS:
 		case TBLOCK_SUBINPROGRESS:
+			/*
+			 * YB specific logic.
+			 *
+			 * For READ COMMITTED isolation, we want to reset the read point to current ht time so that
+			 * the query works on a newer snapshot that will include all txns committed before this
+			 * command. There is an exception when we don't pick a new read point: in case we reach here
+			 * as part of a read restart retry, we just have to use the restart read point.
+			 *
+			 * Read restart handling per statement
+			 * -----------------------------------
+			 * Note that by "all txns committed before this command" we intend to include any txn that
+			 * might have been committed before the statement was issued, as per real time (i.e., as
+			 * perceived by any client).
+			 *
+			 * Since there might be clock skew, during a read, if a txn participant finds committed
+			 * records with ht after the chosen read ht and is unsure if the records were committed before
+			 * the client issued read (as per real time), a kReadRestart will be received by postgres.
+			 *
+			 * Read restart retries are handled transparently for the first statement in the txn. In case
+			 * we reach here and see that the read point exists and was restarted recently as part of a
+			 * retry, we don't pick a new read point using current time.
+			 *
+			 * TODO: Such read restart errors need to be handled transparently for each statement.
+			 */
+			if (YBTransactionsEnabled() && IsYBReadCommitted()) {
+				elog(DEBUG2, "Maybe resetting read point for statement in Read Committed txn");
+				YBMaybeResetTransactionReadPoint();
+			}
+
 			break;
 
 			/*

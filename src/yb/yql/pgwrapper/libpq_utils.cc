@@ -208,6 +208,7 @@ void PGResultClear::operator()(PGresult* result) const {
 }
 
 Status PGConn::Execute(const std::string& command, bool show_query_in_error) {
+  VLOG(1) << __func__ << " " << command;
   PGResultPtr res(PQexec(impl_.get(), command.c_str()));
   auto status = PQresultStatus(res.get());
   if (ExecStatusType::PGRES_COMMAND_OK != status) {
@@ -240,6 +241,7 @@ Result<PGResultPtr> CheckResult(PGResultPtr result, const std::string& command) 
 }
 
 Result<PGResultPtr> PGConn::Fetch(const std::string& command) {
+  VLOG(1) << __func__ << " " << command;
   return CheckResult(
       PGResultPtr(simple_query_protocol_
           ? PQexec(impl_.get(), command.c_str())

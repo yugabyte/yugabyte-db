@@ -2897,8 +2897,6 @@ SELECT count(*) FROM testjsonb WHERE j @? '$.bar';
 
 CREATE INDEX jidx ON testjsonb USING gin (j);
 NOTICE:  replacing access method "gin" with "ybgin"
-ERROR:  Aborted: ERROR:  unsupported ybgin index write
-DETAIL:  ybgin index method does not support non-normal null category: empty-item.
 SET enable_seqscan = off;
 SELECT count(*) FROM testjsonb WHERE j @> '{"wait":null}';
  count
@@ -2944,11 +2942,8 @@ SELECT count(*) FROM testjsonb WHERE j @> '{"array":["bar"]}';
 
 -- exercise GIN_SEARCH_MODE_ALL
 SELECT count(*) FROM testjsonb WHERE j @> '{}';
- count
--------
-  1012
-(1 row)
-
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT count(*) FROM testjsonb WHERE j ? 'public';
  count
 -------
@@ -2962,11 +2957,8 @@ SELECT count(*) FROM testjsonb WHERE j ? 'bar';
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j ?| ARRAY['public','disabled'];
- count
--------
-   337
-(1 row)
-
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method cannot use more than one required scan entry: got 2.
 SELECT count(*) FROM testjsonb WHERE j ?& ARRAY['public','disabled'];
  count
 -------
@@ -2975,11 +2967,11 @@ SELECT count(*) FROM testjsonb WHERE j ?& ARRAY['public','disabled'];
 
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == null';
-                      QUERY PLAN
--------------------------------------------------------
+                        QUERY PLAN
+-----------------------------------------------------------
  Aggregate
-   ->  Seq Scan on testjsonb
-         Filter: (j @@ '($."wait" == null)'::jsonpath)
+   ->  Index Scan using jidx on testjsonb
+         Index Cond: (j @@ '($."wait" == null)'::jsonpath)
 (3 rows)
 
 SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == null';
@@ -3055,42 +3047,27 @@ SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.array[*] ? (@ == "bar"))';
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @@ 'exists($)';
- count
--------
-  1012
-(1 row)
-
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.public)';
- count
--------
-   194
-(1 row)
-
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.bar)';
- count
--------
-     0
-(1 row)
-
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.public) || exists($.disabled)';
- count
--------
-   337
-(1 row)
-
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.public) && exists($.disabled)';
- count
--------
-    42
-(1 row)
-
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method does not support non-default search mode: all.
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? (@ == null)';
-                       QUERY PLAN
----------------------------------------------------------
+                         QUERY PLAN
+-------------------------------------------------------------
  Aggregate
-   ->  Seq Scan on testjsonb
-         Filter: (j @? '$."wait"?(@ == null)'::jsonpath)
+   ->  Index Scan using jidx on testjsonb
+         Index Cond: (j @? '$."wait"?(@ == null)'::jsonpath)
 (3 rows)
 
 SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? (@ == null)';
@@ -3142,28 +3119,17 @@ SELECT count(*) FROM testjsonb WHERE j @? '$.array[*] ? (@ == "bar")';
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @? '$';
- count
--------
-  1012
-(1 row)
-
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT count(*) FROM testjsonb WHERE j @? '$.public';
- count
--------
-   194
-(1 row)
-
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT count(*) FROM testjsonb WHERE j @? '$.bar';
- count
--------
-     0
-(1 row)
-
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method does not support non-default search mode: all.
 -- array exists - array elements should behave as keys (for GIN index scans too)
 CREATE INDEX jidx_array ON testjsonb USING gin((j->'array'));
 NOTICE:  replacing access method "gin" with "ybgin"
-ERROR:  Aborted: ERROR:  unsupported ybgin index write
-DETAIL:  ybgin index method does not support non-normal null category: null-item.
 SELECT count(*) from testjsonb  WHERE j->'array' ? 'bar';
  count
 -------
@@ -3278,8 +3244,6 @@ DROP INDEX jidx;
 ERROR:  index "jidx" does not exist
 CREATE INDEX jidx ON testjsonb USING gin (j jsonb_path_ops);
 NOTICE:  replacing access method "gin" with "ybgin"
-ERROR:  Aborted: ERROR:  unsupported ybgin index write
-DETAIL:  ybgin index method does not support non-normal null category: empty-item.
 SET enable_seqscan = off;
 SELECT count(*) FROM testjsonb WHERE j @> '{"wait":null}';
  count
@@ -3313,11 +3277,8 @@ SELECT count(*) FROM testjsonb WHERE j @> '{"age":25.0}';
 
 -- exercise GIN_SEARCH_MODE_ALL
 SELECT count(*) FROM testjsonb WHERE j @> '{}';
- count
--------
-  1012
-(1 row)
-
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == null';
  count
 -------
@@ -3391,18 +3352,15 @@ SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.array[*] ? (@ == "bar"))';
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @@ 'exists($)';
- count
--------
-  1012
-(1 row)
-
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method does not support non-default search mode: all.
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? (@ == null)';
-                       QUERY PLAN
----------------------------------------------------------
+                         QUERY PLAN
+-------------------------------------------------------------
  Aggregate
-   ->  Seq Scan on testjsonb
-         Filter: (j @? '$."wait"?(@ == null)'::jsonpath)
+   ->  Index Scan using jidx on testjsonb
+         Index Cond: (j @? '$."wait"?(@ == null)'::jsonpath)
 (3 rows)
 
 SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? (@ == null)';
@@ -3454,23 +3412,14 @@ SELECT count(*) FROM testjsonb WHERE j @? '$.array[*] ? (@ == "bar")';
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @? '$';
- count
--------
-  1012
-(1 row)
-
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT count(*) FROM testjsonb WHERE j @? '$.public';
- count
--------
-   194
-(1 row)
-
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT count(*) FROM testjsonb WHERE j @? '$.bar';
- count
--------
-     0
-(1 row)
-
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method does not support non-default search mode: all.
 RESET enable_seqscan;
 DROP INDEX jidx;
 -- nested tests

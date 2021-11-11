@@ -473,11 +473,13 @@ class PgApiImpl {
   CHECKED_STATUS BeginTransaction();
   CHECKED_STATUS RecreateTransaction();
   CHECKED_STATUS RestartTransaction();
+  CHECKED_STATUS MaybeResetTransactionReadPoint();
   CHECKED_STATUS CommitTransaction();
   void AbortTransaction();
   CHECKED_STATUS SetTransactionIsolationLevel(int isolation);
   CHECKED_STATUS SetTransactionReadOnly(bool read_only);
   CHECKED_STATUS SetTransactionDeferrable(bool deferrable);
+  CHECKED_STATUS EnableFollowerReads(bool enable_follower_reads, int32_t staleness_ms);
   CHECKED_STATUS EnterSeparateDdlTxnMode();
   CHECKED_STATUS ExitSeparateDdlTxnMode();
   void ClearSeparateDdlTxnMode();

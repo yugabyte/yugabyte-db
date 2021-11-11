@@ -143,8 +143,10 @@ Status PgDml::BindColumn(int attr_num, PgExpr *attr_value) {
   PgColumn& column = VERIFY_RESULT(bind_.ColumnForAttr(attr_num));
 
   // Check datatype.
-  SCHECK_EQ(column.internal_type(), attr_value->internal_type(), Corruption,
-            "Attribute value type does not match column type");
+  if (attr_value->internal_type() != InternalType::kGinNullValue) {
+    SCHECK_EQ(column.internal_type(), attr_value->internal_type(), Corruption,
+              "Attribute value type does not match column type");
+  }
 
   // Alloc the protobuf.
   PgsqlExpressionPB *bind_pb = column.bind_pb();

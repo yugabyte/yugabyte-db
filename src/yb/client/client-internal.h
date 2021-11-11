@@ -64,6 +64,8 @@ class MasterServiceProxy;
 
 namespace client {
 
+YB_STRONGLY_TYPED_BOOL(Retry);
+
 class YBClient::Data {
  public:
   Data();
@@ -328,7 +330,7 @@ class YBClient::Data {
   void SetMasterServerProxyAsync(CoarseTimePoint deadline,
                                  bool skip_resolution,
                                  bool wait_for_leader_election,
-                                 const StatusCallback& cb);
+                                 const StdStatusCallback& cb);
 
   // Synchronous version of SetMasterServerProxyAsync method above.
   //
@@ -435,7 +437,7 @@ class YBClient::Data {
   // itself, as to avoid a "use-after-free" scenario.
   rpc::Rpcs rpcs_;
   rpc::Rpcs::Handle leader_master_rpc_;
-  std::vector<StatusCallback> leader_master_callbacks_;
+  std::vector<StdStatusCallback> leader_master_callbacks_;
 
   // Protects 'leader_master_rpc_', 'leader_master_hostport_',
   // and master_proxy_

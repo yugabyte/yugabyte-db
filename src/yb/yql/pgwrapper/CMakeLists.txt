@@ -56,6 +56,7 @@ ADD_YB_LIBRARY(ysql_upgrade
 
 set(YB_TEST_LINK_LIBS yb_pgwrapper yb_client ql-dml-test-base pg_wrapper_test_base
    ${YB_MIN_TEST_LIBS})
+ADD_YB_TEST(pg_catalog_perf-test)
 ADD_YB_TEST(pg_ddl_concurrency-test)
 ADD_YB_TEST(pg_gin_index-test)
 ADD_YB_TEST(pg_index_backfill-test)
@@ -92,9 +93,11 @@ add_dependencies(
   initial_sys_catalog_snapshot
   ${CREATE_INITIAL_SYS_CATALOG_SNAPSHOT_TARGET_NAME} yb-master yb-tserver postgres)
 
-file(
-  REMOVE_RECURSE ${YB_BUILD_ROOT}/share/ysql_migrations)
-file(
-  COPY        ysql_migrations
-  DESTINATION ${YB_BUILD_ROOT}/share
-  FILE_PERMISSIONS OWNER_READ)
+add_custom_target(
+  update_ysql_migrations ALL
+  COMMAND ${CMAKE_COMMAND} -E rm -rf
+    ${YB_BUILD_ROOT}/share/ysql_migrations
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_CURRENT_SOURCE_DIR}/ysql_migrations
+    ${YB_BUILD_ROOT}/share/ysql_migrations
+  COMMENT "Updating YSQL migrations")

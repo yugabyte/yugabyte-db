@@ -126,3 +126,9 @@ DEFINE_bool(ysql_sleep_before_retry_on_txn_conflict, true,
 //   PortalRun(). The "ybRunContext" is used for values that are private to one batch.
 // - Use boolean experimental flag just in case introducing "ybRunContext" is a wrong idea.
 DEFINE_bool(ysql_disable_portal_run_context, false, "Whether to use portal ybRunContext.");
+
+DEFINE_bool(yb_enable_read_committed_isolation, false,
+            "Defines how READ COMMITTED (which is our default SQL-layer isolation) and"
+            "READ UNCOMMITTED are mapped internally. If false (default), both map to the stricter "
+            "REPEATABLE READ implementation. If true, both use the new READ COMMITTED "
+            "implementation instead.");

@@ -105,6 +105,7 @@ export const RESET_TOKEN_ERROR = 'RESET_TOKEN_ERROR';
 export const GET_LOGS = 'GET_LOGS';
 export const GET_LOGS_SUCCESS = 'GET_LOGS_SUCCESS';
 export const GET_LOGS_FAILURE = 'GET_LOGS_FAILURE';
+export const LOGS_FETCHING = 'LOGS_FETCHING';
 
 export const GET_RELEASES = 'GET_RELEASES';
 export const GET_RELEASES_RESPONSE = 'GET_RELEASES_RESPONSE';
@@ -817,11 +818,22 @@ export function deleteScheduleResponse(response) {
   };
 }
 
-export function getLogs() {
-  // TODO(bogdan): Maybe make this a URL param somehow?
-  const request = axios.get(`${ROOT_URL}/logs/1000`);
+export function setLogsLoading(){
   return {
-    type: FETCH_HOST_INFO,
+    type: LOGS_FETCHING,
+  }
+}
+
+export function getLogs(maxLines, regex, universe) {
+  const request = axios.get(`${ROOT_URL}/logs`, {
+    params: {
+      maxLines,
+      queryRegex: regex,
+      universeName: universe
+    }
+  });
+  return {
+    type: GET_LOGS,
     payload: request
   };
 }

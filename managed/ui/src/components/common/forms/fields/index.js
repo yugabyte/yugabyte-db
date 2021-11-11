@@ -9,7 +9,8 @@ export { default as YBCheckBox } from './YBCheckBox';
 export {
   default as YBMultiSelectWithLabel,
   YBNewMultiSelect,
-  YBMultiSelect
+  YBMultiSelect,
+  YBMultiSelectRedesiged
 } from './YBMultiSelect';
 export {
   default as YBNumericInputWithLabel,

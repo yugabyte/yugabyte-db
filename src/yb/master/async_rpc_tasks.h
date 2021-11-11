@@ -202,7 +202,12 @@ class RetryingTSRpcTask : public MonitoredTask {
   const std::unique_ptr<TSPicker> replica_picker_;
   const scoped_refptr<TableInfo> table_;
 
+  void UpdateMetrics(scoped_refptr<Histogram> metric, MonoTime start_time,
+                     const string& metric_name,
+                     const string& metric_type);
+
   MonoTime start_ts_;
+  MonoTime attempt_start_ts_;
   MonoTime end_ts_;
   MonoTime deadline_;
 

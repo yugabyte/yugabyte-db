@@ -92,6 +92,7 @@ extern GeolocationDistance get_tablespace_distance (Oid tablespaceoid);
 extern bool IsYugaByteEnabled();
 
 extern bool yb_read_from_followers;
+extern int32_t yb_follower_read_staleness_ms;
 
 /*
  * Iterate over databases and execute a given code snippet.
@@ -194,6 +195,13 @@ extern bool YBRelHasSecondaryIndices(Relation relation);
  * transactions.
  */
 extern bool YBTransactionsEnabled();
+
+/*
+ * Whether the current txn is of READ COMMITTED (or READ UNCOMMITTED) isolation level and it it uses
+ * the new READ COMMITTED implementation instead of mapping to REPEATABLE READ level. The latter
+ * condition is dictated by the value of gflag yb_enable_read_committed_isolation.
+ */
+extern bool IsYBReadCommitted();
 
 /*
  * Whether to allow users to use SAVEPOINT commands at the query layer.
@@ -465,6 +473,7 @@ extern void YBResetOperationsBuffering();
 extern void YBFlushBufferedOperations();
 
 bool YBReadFromFollowersEnabled();
+int32_t YBFollowerReadStalenessMs();
 
 /*
  * Allocates YBCPgYBTupleIdDescriptor with nattrs arguments by using palloc.

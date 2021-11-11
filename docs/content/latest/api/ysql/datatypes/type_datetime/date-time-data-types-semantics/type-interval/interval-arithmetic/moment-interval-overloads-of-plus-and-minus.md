@@ -16,7 +16,7 @@ showAsideToc: true
 The code on this page depends on the code presented in the section [User-defined _interval_ utility functions](../../interval-utilities/). This is included in the larger [code kit](../../../../download-date-time-utilities/) that includes all of the reusable code that the overall _[date-time](../../../../../type_datetime)_ section describes and uses.
 {{< /tip >}}
 
-This section presents PL/pgSQL implementations that model the semantics of the _interval_-moment-overload of the `+` operator for three distinct kinds of _interval_ value: _pure seconds_, _pure days_, and _pure months_. The semantics of the _interval_-moment-overloads of the `-` operator are implied by those of the overload of the `+` operator.
+This section presents PL/pgSQL implementations that model the semantics of the _interval_-moment-overload of the `+` operator for three distinct kinds of _interval_ value: _pure seconds_, _pure days_, and _pure months_. The semantics of the _interval_-moment-overloads of the `-` operator is implied by the semantics of the overload of the `+` operator.
 
 The code examples that this page shows elaborate on those that are shown on the main parent page [The _interval_ data type and its variants](../../../type-interval/).
 
@@ -171,7 +171,7 @@ This explains why the arithmetic semantics is different for the three kinds of p
 
 ## Hybrid interval arithmetic is dangerous
 
-The term _hybrid interval_ value will be used to denote an _interval_ value where more than one of the fields of  the _[&#91;mm, dd, ss&#93;](../../interval-representation/)_ internal representation is non-zero.
+The term _hybrid interval_ value will be used to denote an _interval_ value where more than one of the fields of  the _[\[mm, dd, ss\]](../../interval-representation/)_ internal representation is non-zero.
 
 Try this. It uses hybrid "days-seconds" _interval values.
 
@@ -253,7 +253,7 @@ Notice that the date for the third result, _9-April_, is different from that for
 
 You might be tempted to speculate about priority rules for how the fields of a hybrid _interval_ value are acted on. Don't do this. The PostgreSQL documentation doesn't state the rules and application code that used hybrid _interval_ values would be hard to understand and likely, therefore, to be unreliable.
 
-{{< tip title="Avoid arithmetic that uses hybrid interval values." >}}
+{{< tip title="Avoid arithmetic that uses hybrid 'interval' values." >}}
 Yugabyte recommends that you avoid creating and using _hybrid interval_ values; rather, you should adopt the practice that the section [Custom domain types for specializing the native _interval_ functionality](../../custom-interval-domains/) explains.
 {{< /tip >}}
 
@@ -412,7 +412,7 @@ Once again, the function finishes without an _assert_ violation—showing that a
 
 ## The semantics for the moment-interval overloads of "+" and "-" for pure days interval values
 
-{{< tip title="See the 'sensitivity of timestamptz-interval arithmetic to the current timezone' section for a complementary definition of the semantics of arithmetic that uses pure days intervals." >}}
+{{< tip title="See the 'sensitivity of timestamptz-interval arithmetic to the current timezone' section for a complementary definition of the semantics of arithmetic that uses pure days 'interval' values." >}}
 The explanations that this page presents for the semantics of moment-_interval_ arithmetic for the three different kinds of _interval_ (pure seconds, pure days, and pure months) are oriented to the use-cases that motivate the distinctions. The explanation of the pure days semantics is inextricably bound up with the timezone notion and how this, in turn, determines the _UTC offset_.
 
 See the section [The sensitivity of _timestamptz-interval_ arithmetic to the current timezone](../../../../timezones/timezone-sensitive-operations/timestamptz-interval-day-arithmetic/) in the "Timezones and _UTC offsets_" section for a code example and discussion that models the rules in a different, but ultimately equivalent, way from this present subsection's approach. For a complex topic like this, it helps to solidify your mental model by examining relevant scenarios from different angles.

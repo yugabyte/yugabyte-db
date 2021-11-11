@@ -442,6 +442,10 @@ void PgExpr::InitializeTranslateData() {
       translate_data_ = TranslateDecimal;
       break;
 
+    case YB_YQL_DATA_TYPE_GIN_NULL:
+      translate_data_ = TranslateNumber<uint8_t>;
+      break;
+
     YB_PG_UNSUPPORTED_TYPES_IN_SWITCH:
     YB_PG_INVALID_TYPES_IN_SWITCH:
       LOG(DFATAL) << "Internal error: unsupported type " << type_entity_->yb_type;
@@ -582,6 +586,13 @@ PgConstant::PgConstant(const YBCPgTypeEntity *type_entity,
         util::Decimal yb_decimal(plaintext);
         ql_value_.set_decimal_value(yb_decimal.EncodeToComparable());
       }
+      break;
+
+    case YB_YQL_DATA_TYPE_GIN_NULL:
+      CHECK(is_null) << "gin null type should be marked null";
+      uint8_t value;
+      type_entity_->datum_to_yb(datum, &value, nullptr);
+      ql_value_.set_gin_null_value(value);
       break;
 
     YB_PG_UNSUPPORTED_TYPES_IN_SWITCH:
