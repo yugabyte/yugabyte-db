@@ -76,9 +76,6 @@ public class AnsibleConfigureServers extends NodeTaskBase {
 
     // For cron to systemd upgrades
     public boolean isSystemdUpgrade = false;
-
-    // Add extra gflags while editing gflags
-    public boolean addDefaultGFlags = false;
   }
 
   @Override

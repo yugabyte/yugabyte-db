@@ -356,9 +356,11 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           TaskType.ReplaceRootVolume,
           TaskType.AnsibleSetupServer,
           TaskType.AnsibleConfigureServers,
+          TaskType.AnsibleConfigureServers,
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
+          TaskType.AnsibleConfigureServers,
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
@@ -411,6 +413,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           TaskType.ChangeMasterConfig,
           TaskType.ChangeInstanceType,
           TaskType.UpdateNodeDetails,
+          TaskType.AnsibleConfigureServers,
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.ChangeMasterConfig,
@@ -1117,12 +1120,12 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
   @Test
   public void testResizeNodeUpgradeRF3() {
-    testResizeNodeUpgrade(3, 26);
+    testResizeNodeUpgrade(3, 29);
   }
 
   @Test
   public void testResizeNodeUpgradeRF1() {
-    testResizeNodeUpgrade(1, 14);
+    testResizeNodeUpgrade(1, 15);
   }
 
   @Test

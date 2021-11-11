@@ -111,6 +111,7 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.AnsibleConfigureServers,
+          TaskType.AnsibleConfigureServers,
           TaskType.AnsibleClusterServerCtl,
           TaskType.UpdateNodeProcess,
           TaskType.WaitForServer,
@@ -126,6 +127,7 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
   private static final List<JsonNode> START_MASTER_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
           Json.toJson(ImmutableMap.of("state", "Starting")),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "master", "command", "start")),
           Json.toJson(ImmutableMap.of("processType", "MASTER", "isAdd", true)),
@@ -165,7 +167,7 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
     TaskInfo taskInfo = submitTask(taskParams, "host-n2");
     assertEquals(Success, taskInfo.getTaskState());
 
-    verify(mockNodeManager, times(8)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(9)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));

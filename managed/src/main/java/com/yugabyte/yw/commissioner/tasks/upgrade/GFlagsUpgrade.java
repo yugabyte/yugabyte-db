@@ -116,7 +116,6 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
     AnsibleConfigureServers.Params params =
         getAnsibleConfigureServerParams(
             node, processType, UpgradeTaskType.GFlags, UpgradeTaskSubType.None);
-    params.addDefaultGFlags = true;
     if (processType.equals(ServerType.MASTER)) {
       params.gflags = taskParams().masterGFlags;
       params.gflagsToRemove =

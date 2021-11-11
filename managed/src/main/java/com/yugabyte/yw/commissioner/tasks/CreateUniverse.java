@@ -116,8 +116,6 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       // Override master flags (on primary cluster) and tserver flags as necessary.
       createGFlagsOverrideTasks(primaryNodes, ServerType.MASTER);
 
-      // Set default gflags
-      addDefaultGFlags(primaryCluster.userIntent);
       createGFlagsOverrideTasks(taskParams().nodeDetailsSet, ServerType.TSERVER);
 
       // Get the new masters from the node list.

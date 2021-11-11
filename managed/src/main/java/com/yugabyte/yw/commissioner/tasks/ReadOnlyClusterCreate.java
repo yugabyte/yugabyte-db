@@ -91,8 +91,6 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
       // Set of processes to be started, note that in this case it is same as nodes provisioned.
       Set<NodeDetails> newTservers = PlacementInfoUtil.getTserversToProvision(readOnlyNodes);
 
-      // Set default gflags
-      addDefaultGFlags(cluster.userIntent);
       createGFlagsOverrideTasks(newTservers, ServerType.TSERVER);
 
       // Start the tservers in the clusters.

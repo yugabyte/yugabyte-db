@@ -137,9 +137,6 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
         createConfigureServerTasks(node, true /* isShell */)
             .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
 
-        // Set default gflags
-        addDefaultGFlags(cluster.userIntent);
-
         // All necessary nodes are created. Data moving will coming soon.
         createSetNodeStateTasks(node, NodeDetails.NodeState.ToJoinCluster)
             .setSubTaskGroupType(SubTaskGroupType.Provisioning);
@@ -151,8 +148,9 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
               "Bringing up master for under replicated universe {} ({})",
               universe.universeUUID,
               universe.name);
+
           // Set gflags for master.
-          createGFlagsOverrideTasks(node, ServerType.MASTER);
+          createGFlagsOverrideTasks(node, ServerType.MASTER, true /* isShell */);
 
           // Start a shell master process.
           createStartMasterTasks(node).setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
