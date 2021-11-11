@@ -394,7 +394,7 @@ DETAIL:  ybgin index method does not support non-default search mode: include-em
 
 There's currently no choice but to use a sequential scan on these.
 
-### `jsonb_path_ops`
+### Using opclass `jsonb_path_ops`
 
 By default, jsonb GIN indexes use the opclass `jsonb_ops`.
 There is another opclass `jsonb_path_ops` that can be used instead.
