@@ -1752,7 +1752,7 @@ class YBBackup:
 
     def delete_bucket_obj(self):
         del_cmd = self.storage.delete_obj_cmd(self.args.backup_location)
-        if self.is_nfs:
+        if self.is_nfs():
             self.run_ssh_cmd(del_cmd, self.get_leader_master_ip())
         else:
             self.run_program(del_cmd)
