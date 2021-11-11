@@ -63,8 +63,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.TreeMap;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
+
+import org.apache.commons.collections.MapUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -1224,6 +1227,19 @@ public class NodeManager extends DevopsBase {
             }
           }
 
+          if (Provider.InstanceTagsEnabledProviders.contains(cloudType)) {
+            // Create an ordered shallow copy of the tags.
+            Map<String, String> useTags =
+                MapUtils.isEmpty(userIntent.instanceTags)
+                    ? new TreeMap<>()
+                    : new TreeMap<>(userIntent.getInstanceTagsForInstanceOps());
+            addAdditionalInstanceTags(nodeTaskParam, useTags);
+            if (!useTags.isEmpty()) {
+              commandArgs.add("--instance_tags");
+              commandArgs.add(Json.stringify(Json.toJson(useTags)));
+            }
+          }
+
           if (cloudType.equals(Common.CloudType.aws)) {
             if (taskParam.cmkArn != null) {
               commandArgs.add("--cmk_res_name");
@@ -1235,6 +1251,7 @@ public class NodeManager extends DevopsBase {
               commandArgs.add(taskParam.ipArnString);
             }
           }
+
           if (cloudType.equals(Common.CloudType.azu)) {
             Region r = taskParam.getRegion();
             String vnetName = r.getVnetName();
@@ -1242,14 +1259,6 @@ public class NodeManager extends DevopsBase {
               commandArgs.add("--vpcId");
               commandArgs.add(vnetName);
             }
-          }
-
-          if (Provider.InstanceTagsEnabledProviders.contains(cloudType)
-              && userIntent.instanceTags != null
-              && !userIntent.instanceTags.isEmpty()) {
-            Map<String, String> useTags = userIntent.getInstanceTagsForInstanceOps();
-            commandArgs.add("--instance_tags");
-            commandArgs.add(Json.stringify(Json.toJson(useTags)));
           }
 
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
@@ -1271,7 +1280,6 @@ public class NodeManager extends DevopsBase {
               }
             }
           }
-
           break;
         }
       case Provision:
@@ -1448,12 +1456,16 @@ public class NodeManager extends DevopsBase {
           }
           InstanceActions.Params taskParam = (InstanceActions.Params) nodeTaskParam;
           if (Provider.InstanceTagsEnabledProviders.contains(userIntent.providerType)) {
-            if (userIntent.instanceTags == null || userIntent.instanceTags.isEmpty()) {
+            if (MapUtils.isEmpty(userIntent.instanceTags)) {
               throw new RuntimeException("Invalid instance tags");
             }
-            Map<String, String> useTags = userIntent.getInstanceTagsForInstanceOps();
-            commandArgs.add("--instance_tags");
-            commandArgs.add(Json.stringify(Json.toJson(useTags)));
+            // Create an ordered shallow copy of the tags.
+            Map<String, String> useTags = new TreeMap<>(userIntent.getInstanceTagsForInstanceOps());
+            addAdditionalInstanceTags(nodeTaskParam, useTags);
+            if (!useTags.isEmpty()) {
+              commandArgs.add("--instance_tags");
+              commandArgs.add(Json.stringify(Json.toJson(useTags)));
+            }
             if (!taskParam.deleteTags.isEmpty()) {
               commandArgs.add("--remove_tags");
               commandArgs.add(taskParam.deleteTags);
@@ -1579,5 +1591,14 @@ public class NodeManager extends DevopsBase {
     List<String> lowMemInstanceTypePrefixes = ImmutableList.of("t2.");
     String instanceTypePrefix = instanceType.split("\\.")[0] + ".";
     return lowMemInstanceTypePrefixes.contains(instanceTypePrefix);
+  }
+
+  private void addAdditionalInstanceTags(NodeTaskParams nodeTaskParam, Map<String, String> tags) {
+    if (nodeTaskParam.nodeUuid != null) {
+      tags.put("node-uuid", nodeTaskParam.nodeUuid.toString());
+    }
+    if (nodeTaskParam.universeUUID != null) {
+      tags.put("universe-uuid", nodeTaskParam.universeUUID.toString());
+    }
   }
 }

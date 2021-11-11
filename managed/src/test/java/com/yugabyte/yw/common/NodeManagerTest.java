@@ -82,12 +82,15 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.function.Predicate;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import junitparams.converters.Nullable;
 import junitparams.naming.TestCaseName;
+
+import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
 import org.junit.Rule;
@@ -545,6 +548,15 @@ public class NodeManagerTest extends FakeDBApplication {
     return nodeCommand(type, params, testData, new UserIntent());
   }
 
+  void addAdditionalInstanceTags(NodeTaskParams nodeTaskParam, Map<String, String> tags) {
+    if (nodeTaskParam.nodeUuid != null) {
+      tags.put("node-uuid", nodeTaskParam.nodeUuid.toString());
+    }
+    if (nodeTaskParam.universeUUID != null) {
+      tags.put("universe-uuid", nodeTaskParam.universeUUID.toString());
+    }
+  }
+
   private List<String> nodeCommand(
       NodeManager.NodeCommandType type,
       NodeTaskParams params,
@@ -592,6 +604,13 @@ public class NodeManagerTest extends FakeDBApplication {
           if (createParams.assignPublicIP) {
             expectedCommand.add("--assign_public_ip");
           }
+          Map<String, String> instanceTags =
+              (createParams.clusters.isEmpty() || createParams.clusters.get(0) == null)
+                  ? new TreeMap<>()
+                  : new TreeMap<>(createParams.clusters.get(0).userIntent.instanceTags);
+          addAdditionalInstanceTags(createParams, instanceTags);
+          expectedCommand.add("--instance_tags");
+          expectedCommand.add(Json.stringify(Json.toJson(instanceTags)));
         }
 
         if (cloud.equals(Common.CloudType.aws)) {
@@ -602,13 +621,6 @@ public class NodeManagerTest extends FakeDBApplication {
           if (createParams.ipArnString != null) {
             expectedCommand.add("--iam_profile_arn");
             expectedCommand.add(createParams.ipArnString);
-          }
-          if (!createParams.clusters.isEmpty()
-              && createParams.clusters.get(0) != null
-              && !createParams.clusters.get(0).userIntent.instanceTags.isEmpty()) {
-            expectedCommand.add("--instance_tags");
-            expectedCommand.add(
-                Json.stringify(Json.toJson(createParams.clusters.get(0).userIntent.instanceTags)));
           }
         }
         break;
@@ -912,9 +924,17 @@ public class NodeManagerTest extends FakeDBApplication {
       case Tags:
         InstanceActions.Params tagsParams = (InstanceActions.Params) params;
         if (Provider.InstanceTagsEnabledProviders.contains(cloud)) {
+          Map<String, String> instanceTags =
+              (tagsParams.clusters.isEmpty() || tagsParams.clusters.get(0) == null)
+                  ? new TreeMap<>()
+                  : new TreeMap<>(tagsParams.clusters.get(0).userIntent.instanceTags);
+
+          instanceTags.put("Cust", "Test");
+          addAdditionalInstanceTags(tagsParams, instanceTags);
+
           expectedCommand.add("--instance_tags");
-          // The quotes in format is needed here, so cannot use instanceTags.toString().
-          expectedCommand.add("{\"Cust\":\"Test\"}");
+          expectedCommand.add(Json.stringify(Json.toJson(instanceTags)));
+
           if (!tagsParams.deleteTags.isEmpty()) {
             expectedCommand.add("--remove_tags");
             expectedCommand.add(tagsParams.deleteTags);

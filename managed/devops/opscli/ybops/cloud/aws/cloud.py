@@ -327,6 +327,9 @@ class AwsCloud(AbstractCloud):
                 server_tags = [t["Value"] for t in data["Tags"] if t["Key"] == "yb-server-type"]
                 name_tags = [t["Value"] for t in data["Tags"] if t["Key"] == "Name"]
                 launched_by_tags = [t["Value"] for t in data["Tags"] if t["Key"] == "launched-by"]
+                node_uuid_tags = [t["Value"] for t in data["Tags"] if t["Key"] == "node-uuid"]
+                universe_uuid_tags = [t["Value"] for t in data["Tags"]
+                                      if t["Key"] == "universe-uuid"]
 
             disks = data.get("BlockDeviceMappings")
             root_vol = next(disk for disk in disks if disk.get("DeviceName") == ROOT_VOLUME_LABEL)
@@ -360,6 +363,8 @@ class AwsCloud(AbstractCloud):
                 instance_type=data["InstanceType"],
                 server_type=server_tags[0] if server_tags else None,
                 launched_by=launched_by_tags[0] if launched_by_tags else None,
+                node_uuid=node_uuid_tags[0] if node_uuid_tags else None,
+                universe_uuid=universe_uuid_tags[0] if universe_uuid_tags else None,
                 vpc=data["VpcId"],
                 root_volume=root_vol["Ebs"]["VolumeId"]
             )
