@@ -10,7 +10,7 @@ menu:
     identifier: set-up-cloud-provider-6-on-premises
     parent: configure-yugabyte-platform
     weight: 20
-isTocNested: false
+isTocNested: true
 showAsideToc: true
 ---
 
@@ -69,7 +69,7 @@ This page details how to configure the Onprem cloud provider for YugabyteDB usin
 
 ![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-0.png)
 
-## Step 1. Configuring the on-premises provider
+## Step 1. Configure the on-premises provider
 
 ### On-premise Provider Info {#on-premise-provider-info}
 
@@ -94,7 +94,7 @@ Port number of ssh client connections.
 If you choose to manually set up your database nodes, set this flag to true. Otherwise, the Yugabyte Platform will use the sudo user to set up DB nodes. For manual provisioning, you'll be prompted to run a python script at a later stage, or to run a set of commands on the database nodes.
 
 {{< note title="Note" >}}
-If any of the items from this checklist are true, you need to [provision the nodes manually](#provision-the-nodes-manually).
+If any of the items from this checklist are true, you need to [provision the nodes manually](#provision-nodes-manually).
 
 * Pre-provisioned `yugabyte:yugabyte` user + group
 * Sudo user requires a password
@@ -153,7 +153,7 @@ This is the disk volume of a node.
 
 #### Mount Paths
 
-For mount paths, use a mount point with enough space to contain your node density. Use `/data`. If you have multiple drives, add these as a comma-separated list: `/mnt/d0,/mnt/d1`
+For mount paths, use a mount point with enough space to contain your node density. Use `/data`. If you have multiple drives, add these as a comma-separated list, such as: `/mnt/d0,/mnt/d1`.
 
 ### Region and Zones
 
@@ -163,43 +163,43 @@ Follow the steps below to provide the location of DB nodes. All these fields are
 
 ## Step 2. Provision the YugabyteDB nodes
 
-After finishing the cloud provider configuration, click on “Manage Instances” to provision as many nodes as your application requires:
+After finishing the cloud provider configuration, click Manage Instances to provision as many nodes as your application requires.
 
-### Manage Instances
+### Add nodes
 
 ![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-4.png)
 
-1. Click Add Instances to add the YugabyteDB node. You can use DNS names or IP addresses when adding instances.
-1. Instance ID is an optional user-defined identifier.
+**For each node you want to add**, click Add Instances to add a YugabyteDB node. You can use DNS names or IP addresses when adding instances. (Instance ID is an optional user-defined identifier.)
 
 ![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-5.png)
 
-### Provision the nodes manually
+### Provision nodes manually
 
-To provision the nodes manually, you have two options:
+To provision your nodes manually, you have two options:
 
-* If the SSH user you provided has sudo privileges but requires a password, follow the steps in [Run the pre-provisioning script](#run-the-pre-provisioning-script).
+* If the SSH user you provided has sudo privileges but _requires a password_, you can [run the pre-provisioning script](#run-the-pre-provisioning-script).
 
-* If the SSH user does not have sudo privileges, follow the steps in [Set up database nodes manually](#set-up-database-nodes-manually).
+* If the SSH user doesn't have sudo privileges at all, you need to [set the database nodes up manually](#set-up-database-nodes-manually).
 
 #### Run the pre-provisioning script
 
 {{< note title="Note" >}}
-This step is only required if you set “Manually Provision Nodes” to true; otherwise, you need to skip this step.
+This step is only required if you set Manually Provision Nodes to true **and** the SSH user has sudo privileges which require a password; otherwise, skip this step.
 {{< /note >}}
 
-Follow these steps for manually provisioning each node by executing the pre-provisioning python script. 
+Follow these steps to manually provision each node using the pre-provisioning Python script. 
 
 ![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-6.png)
 
-1. Login (ssh) to the Platform virtual machine.
+1. Log into the Platform virtual machine via SSH.
+
 1. Access the docker `yugaware` container.
 
     ```sh
     $ sudo docker exec -it yugaware bash
     ```
 
-1. Copy/paste the python script prompted in the UI and substitute for a node IP address and mount points. 
+1. Copy and paste the Python script prompted in the UI and substitute for a node IP address and mount points. 
 
     \
     (Optional) Use the `--ask_password` flag if the sudo user requires password authentication.
@@ -210,39 +210,49 @@ Follow these steps for manually provisioning each node by executing the pre-prov
     SUDO password:
     ```
 
-1. Wait for the script to finish with the SUCCESS status.
+1. Wait for the script to finish with SUCCESS status.
 
 1. Repeat step 3 for every node that will participate in the universe.
 
-You’re finished configuring your on-premises cloud provider, and now you can proceed to universe creation. 
+**You’re finished configuring your on-premises cloud provider.** Proceed to [Configure the backup target](../../backup-target/), or [Create deployments](../../../create-deployments/).
 
 #### Set up database nodes manually
 
 {{< note title="Note" >}}
-This step is only required if you set “Manually Provision Nodes” to true; otherwise, you need to skip this step.
+This step is only required if you set Manually Provision Nodes to true **and** the SSH user doesn't have sudo privileges at all; otherwise, skip this step.
 {{< /note >}}
 
 If the SSH user configured in the Onprem Provider does not have sudo privileges, then set up each of the database nodes manually by following the steps in this section. Note that you will need access to a user with sudo privileges in order to complete these steps.
 
-##### Time Synchronisation
+You'll need to do the following for each node:
 
-Database nodes must have time synchronization enabled, therefore a local NTP server or equivalent must be available. For example, ensure an NTP-compatible time service client is installed in the node OS (`chrony` is installed by default in the standard CentOS 7 instance used in this example). Then, configure the time service client to use the available time server. The procedure here includes this step, and assumes chrony is the installed client.
+* [Set up time synchronization](#set-up-time-synchronization)
+* [Open incoming TCP ports](#open-incoming-tcp-ip-ports)
+* [Pre-provision the node](#pre-provision-nodes-manually)
+* [Install Prometheus node exporter](#install-prometheus-node-exporter)
+* [Install backup utilities](#install-backup-utilities)
 
-##### Incoming TCP/IP Port Access
+##### Set up time synchronization
+
+A local NTP server or equivalent must be available.
+
+Ensure an NTP-compatible time service client is installed in the node OS (chrony is installed by default in the standard CentOS 7 instance used in this example). Then, configure the time service client to use the available time server. The procedure here includes this step, and assumes chrony is the installed client.
+
+##### Open incoming TCP/IP ports
 
 Database servers need incoming TCP/IP access enabled to the following ports, for communications between themselves and the Platform server:
 
 | Protocol | Port | Description |
 | :------- | :--- | :---------- |
-| TCP | 22 | ssh (for automatic administration) |
+| TCP | 22 | SSH (for automatic administration) |
 | TCP | 5433 | YSQL client |
 | TCP | 6379 | YEDIS client |
-| TCP | 7000 | YB Master Webserver |
-| TCP | 7100 | YB Master RPC |
-| TCP | 9000 | YB Tserver Webserver |
+| TCP | 7000 | YB master webserver |
+| TCP | 7100 | YB master RPC |
+| TCP | 9000 | YB tablet server webserver |
 | TCP | 9042 | YCQL client |
-| TCP | 9090 | prometheus server |
-| TCP | 9100 | YB Tserver RPC |
+| TCP | 9090 | Prometheus server |
+| TCP | 9100 | YB tablet server RPC |
 | TCP | 9300 | Prometheus node exporter |
 | TCP | 12000 | YCQL HTTP (for DB statistics gathering) |
 | TCP | 13000 | YSQL HTTP (for DB statistics gathering) |
@@ -255,19 +265,22 @@ This process carries out all provisioning tasks on the database nodes which requ
 
 Physical nodes (or cloud instances) are installed with a standard Centos 7 server image. The following steps are to be followed on each physical node, prior to universe creation:
 
-* Log into each database node as a user with sudo enabled (the “centos” user in centos7 images)
+1. Log into each database node as a user with sudo enabled (the “centos” user in centos7 images)
 
-* SUDO NEEDED: add the below line to /etc/chrony.conf file:
+1. (SUDO NEEDED) Add the following line to `/etc/chrony.conf`:
 
-    ```conf
+    ```text
     server <your-time-server-IP-address> prefer iburst
     ```
 
+    \
+    Then, run the following command:
+
     ```sh
-    $ sudo chronyc makestep   # (force instant sync to ntp server)
+    $ sudo chronyc makestep   # (force instant sync to NTP server)
     ```
 
-* SUDO NEEDED: add a new `yugabyte:yugabyte` user and group. Run the following commands:
+1. (SUDO NEEDED) Add a new `yugabyte:yugabyte` user and group.
 
     ```sh
     $ sudo useradd yugabyte   # (add group yugabyte + create /home/yugabyte)
@@ -275,11 +288,15 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
     $ sudo su - yugabyte   # (change to yugabyte user for convenient execution of next steps)
     ```
 
-* Copy the SSH public key to each DB node. This public key should correspond to the private key entered into the Platform Provider elsewhere in this document.
+1. Copy the SSH public key to each DB node.
+    
+    \
+    This public key should correspond to the private key entered into the Platform Provider elsewhere in this document.
 
-* Run the following commands as the `yugabyte` user, in home directory after copying the SSH public key file to the user home directory:
+1. Run the following commands as the `yugabyte` user, after copying the SSH public key file to the user home directory:
 
     ```sh
+    $ cd ~yugabyte
     $ mkdir .ssh
     $ chmod 700 .ssh
     $ cat <pubkey file> >> .ssh/authorized_keys
@@ -287,9 +304,9 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
     $ exit   # (exit from the yugabyte user back to previous user)
     ```
 
-* SUDO NEEDED: add following lines to /etc/security/limits.conf:
+1. (SUDO NEEDED) Add the following lines to `/etc/security/limits.conf`:
 
-    ```conf
+    ```text
     *                -       core            unlimited
     *                -       data            unlimited
     *                -       fsize           unlimited
@@ -304,13 +321,16 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
     *                -       locks           unlimited
     ```
 
-* SUDO NEEDED: modify following line in /etc/security/limits.d/20-nproc.conf:
+1. (SUDO NEEDED) Modify the following line in `/etc/security/limits.d/20-nproc.conf`:
 
-    ```conf
+    ```text
     *          soft    nproc     12000
     ```
 
-* SUDO NEEDED: Install rsync and OpenSSL packages. Most Linux distributions come with rsync and openssl. If your distribution is missing these packages, install them using the following commands:
+1. (SUDO NEEDED) Install the rsync and OpenSSL packages.
+
+    \
+    Most Linux distributions include rsync and openssl. If your distribution is missing these packages, install them using the following commands:
 
     ```sh
     $ sudo yum install openssl
@@ -320,65 +340,66 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
     \
     For airgapped environments, make sure your yum repository mirror contains these packages.
 
-* SUDO NEEDED: Tune kernel settings (ONLY if running on a Virtual machine)
+1. (SUDO NEEDED) Tune kernel settings (_only if running on a Virtual machine_).
 
     ```sh
     $ sudo bash -c 'sysctl vm.swappiness=0 >> /etc/sysctl.conf'
     $ sysctl kernel.core_pattern=/home/yugabyte/cores/core_%e.%p >> /etc/sysctl.conf
     ```
 
-* SUDO NEEDED: Prepare and mount the data volume (separate partition for database data):
+1. (SUDO NEEDED) Prepare and mount the data volume (separate partition for database data):
 
-  * List the available storage volumes with the following command:
+    * List the available storage volumes:
 
       ```sh
       $ lsblk
       ```
 
-  * Perform the following steps for each available volume (all listed volumes other than the root volume): 
+    * Perform the following steps **for each available volume** (all listed volumes other than the root volume): 
 
       ```sh
       $ sudo mkdir /data   # (or /data1, /data2 etc)
-      $ sudo mkdir /data
       $ sudo mkfs -t xfs /dev/nvme1n1   # (create xfs filesystem over entire volume)
       $ sudo vi /etc/fstab
       ```
 
-  * Add the following line to `/etc/fstab`:
+    * Add the following line to `/etc/fstab`:
 
-      ```conf
+      ```text
       /dev/nvme1n1   /data   xfs   noatime   0   0
       ```
 
-  * Exit from vi, and continue:
+    * Exit from vi, and continue:
 
-    ```sh
-    $ sudo mount -av (mounts the new volume using the fstab entry, to validate)
-    $ sudo chown yugabyte:yugabyte /data
-    $ sudo chmod 755 /data
-    ```
+      ```sh
+      $ sudo mount -av (mounts the new volume using the fstab entry, to validate)
+      $ sudo chown yugabyte:yugabyte /data
+      $ sudo chmod 755 /data
+      ```
 
-##### Install Node Exporter
+##### Install Prometheus node exporter
 
-Download 0.13.0 version of Node exporter if you’re using a Platform version that is older than 2.8.0.0 using the following command:
-
-```sh
-$ wget https://github.com/prometheus/node_exporter/releases/download/v0.13.0/node_exporter-0.13.0.linux-amd64.tar.gz
-```
-
-Otherwise, download the 1.2.2 version using the following command:
+For Yugabyte Platform versions 2.8 and later, download the 1.2.2 version of the Prometheus node exporter:
 
 ```sh
 wget https://github.com/prometheus/node_exporter/releases/download/v1.2.2/node_exporter-1.2.2.linux-amd64.tar.gz
 ```
 
-If you’re doing an airgapped installation, download Node Exporter using a computer connected to the internet and copy it over to the database nodes.
+For Yugabyte Platform versions prior to 2.8, download the 0.13.0 version of the exporter:
 
-Copy the `node_exporter-....tar.gz` package file you downloaded into the `/tmp` directory on each of the DB nodes. Ensure this file is readable by the `centos` user on each node (or another user with sudo privileges).
+```sh
+$ wget https://github.com/prometheus/node_exporter/releases/download/v0.13.0/node_exporter-0.13.0.linux-amd64.tar.gz
+```
+
+If you’re doing an airgapped installation, download the node exporter using a computer connected to the internet and copy it over to the database nodes.
 
 Note that the instructions here are for the 0.13.0 version. The same instructions work with the 1.2.2 version, but make sure to use the right filename.
 
-* SUDO NEEDED: On each DB node (as a user with sudo access) execute the following steps:
+**On each node**, do the following as a user with sudo access:
+
+1. Copy the `node_exporter-....tar.gz` package file you downloaded into the `/tmp` directory on each of the DB nodes. Ensure this file is readable by the `centos` user on each node (or another user with sudo privileges).
+
+1. (SUDO NEEDED) Run the following commands:
 
     ```sh
     $ sudo mkdir /opt/prometheus
@@ -395,16 +416,22 @@ Note that the instructions here are for the 0.13.0 version. The same instruction
     $ sudo su - prometheus (user session is now as user “prometheus”)
     ```
 
-* Run the following commands as user `prometheus`:
+1. Run the following commands as user `prometheus`:
 
     ```sh
     $ cd /opt/prometheus
     $ tar zxf node_exporter-0.13.0.linux-amd64.tar.gz
     $ exit   # (exit from prometheus user back to previous user)
+    ```
+
+1. (SUDO NEEDED) Edit the following file:
+
+    ```sh
     $ sudo vi /etc/systemd/system/node_exporter.service
     ```
 
-  * Add the following to the /etc/systemd/system/node_exporter.service file:
+    \
+    Add the following to `/etc/systemd/system/node_exporter.service`:
 
       ```conf
       [Unit]
@@ -429,7 +456,7 @@ Note that the instructions here are for the 0.13.0 version. The same instruction
       ExecStart=/opt/prometheus/node_exporter-0.13.0.linux-amd64/node_exporter  --web.listen-address=:9300 --collector.textfile.directory=/tmp/yugabyte/metrics
       ```
 
-  * Exit from vi, and continue:
+1. (SUDO NEEDED) Exit from vi, and continue:
 
     ```sh
     $ sudo systemctl daemon-reload
@@ -437,7 +464,7 @@ Note that the instructions here are for the 0.13.0 version. The same instruction
     $ sudo systemctl start node_exporter
     ```
 
-* Check the status of the “node_exporter” service with the following command:
+1. (SUDO NEEDED) Check the status of the node_exporter service with the following command:
 
     ```sh
     $ sudo systemctl status node_exporter
@@ -445,55 +472,65 @@ Note that the instructions here are for the 0.13.0 version. The same instruction
 
 ##### Install backup utilities
 
-Platform supports backing up YugabyteDB to AWS S3, Azure Storage, Google Cloud Storage, and NFS. Install the backup utility corresponding to the backup storage you plan to use.
+Platform supports backing up YugabyteDB to AWS S3, Azure Storage, Google Cloud Storage, and NFS. Install the backup utility for the backup storage you plan to use.
 
-**NFS**: Install rsync
+**NFS**: Install rsync. Platform uses rsync to do NFS backups, which you installed in an earlier step.
 
-Platform uses rsync to do NFS backups, which you installed in an earlier step.
+**AWS S3**: Install s3cmd. Platform relies on s3cmd to support copying backups to AWS S3. You have two options to install:
 
-**AWS S3**: Install s3cmd
+* For a regular install:
 
-SUDO NEEDED: Platform relies on s3cmd to support copying backups to AWS S3. Install s3cmd using the following command.
+    ```sh
+    $ sudo yum install s3cmd
+    ```
 
-```sh
-$ sudo yum install s3cmd
-```
+* For an airgapped install, copy `/opt/third-party/s3cmd-2.0.1.tar.gz` from the Platform node to the database node, and extract it into the `/usr/local` directory on the database node.
 
-Alternatively, for an airgapped install, copy `/opt/third-party/s3cmd-2.0.1.tar.gz` from the Platform node to the database node, and extract it into the `/usr/local` directory on the database node.
+    ```sh
+    $ cd /usr/local
+    $ sudo tar xvfz path-to-s3cmd-2.0.1.tar.gz
+    $ sudo ln -s /usr/local/s3cmd-2.0.1/s3cmd /usr/local/bin/s3cmd 
+    ```
 
-```sh
-$ cd /usr/local
-$ sudo tar xvfz path-to-s3cmd-2.0.1.tar.gz
-$ sudo ln -s /usr/local/s3cmd-2.0.1/s3cmd /usr/local/bin/s3cmd 
-```
+**Azure Storage**: Install azcopy. You have two options:
 
-**Azure Storage**: Install azcopy
+* Download azcopy_linux_amd64_10.4.0.tar.gz using this command:
 
-Download azcopy_linux_amd64_10.4.0.tar.gz using this command:
+    ```sh
+    $ wget https://azcopyvnext.azureedge.net/release20200410/azcopy_linux_amd64_10.4.0.tar.gz
+    ```
 
-```sh
-$ wget https://azcopyvnext.azureedge.net/release20200410/azcopy_linux_amd64_10.4.0.tar.gz
-```
+* For airgapped installs, copy `/opt/third-party/azcopy_linux_amd64_10.4.0.tar.gz` from the Platform node.
 
-For airgapped installs, copy `/opt/third-party/azcopy_linux_amd64_10.4.0.tar.gz` from the Platform node.
+    ```sh
+    $ cd /usr/local
+    $ sudo tar xfz path-to-azcopy_linux_amd64_10.4.0.tar.gz -C /usr/local/bin azcopy_linux_amd64_10.4.0/azcopy --strip-components 1
+    ```
 
-```sh
-$ cd /usr/local
-$ sudo tar xfz path-to-azcopy_linux_amd64_10.4.0.tar.gz -C /usr/local/bin azcopy_linux_amd64_10.4.0/azcopy --strip-components 1
-```
+**Google Cloud Storage**: Install gsutil. You have two options:
 
-**Google Cloud Storage**: Install gsutil
+* Download gsutil_4.60.tar.gz using the following command:
 
-Download gsutil_4.60.tar.gz using the following command
+    ```sh
+    $ wget https://storage.googleapis.com/pub/gsutil_4.60.tar.gz
+    ```
 
-```sh
-$ wget https://storage.googleapis.com/pub/gsutil_4.60.tar.gz
-```
+* For airgapped installs, copy `/opt/third-party/gsutil_4.60.tar.gz` from the Platform node:
 
-For airgapped installs, copy `/opt/third-party/gsutil_4.60.tar.gz` from the Platform node.
+    ```sh
+    $ cd /usr/local
+    $ sudo tar xvfz gsutil_4.60.tar.gz
+    $ sudo ln -s /usr/local/gsutil/gsutil /usr/local/bin/gsutil 
+    ```
 
-```sh
-$ cd /usr/local
-$ sudo tar xvfz gsutil_4.60.tar.gz
-$ sudo ln -s /usr/local/gsutil/gsutil /usr/local/bin/gsutil 
-```
+##### Manage liveness checks, logs, and cores
+
+Yugabyte Platform supports performing YugabyteDB liveness checks, log file management, and core file management using cron jobs or systemd services. 
+
+**Sudo is required to set up these services!**
+
+If Platform will be using **cron jobs**, make sure the yugabyte user is allowed to run crontab. If you’re using the cron.allow file to manage crontab access, add the yugabyte user to this file. If you’re using the cron.deny file, remove the yugabyte user from this file.
+
+If you plan to have Platform use **systemd services** to perform the monitoring operations mentioned above, then make sure 
+
+**You’re finished configuring your on-premises cloud provider.** Proceed to [Configure the backup target](../../backup-target/), or [Create deployments](../../../create-deployments/).
