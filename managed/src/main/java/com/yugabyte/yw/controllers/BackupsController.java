@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.TaskInfoManager;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.forms.BackupTableParams;
@@ -54,6 +55,8 @@ public class BackupsController extends AuthenticatedController {
     this.commissioner = commissioner;
     this.customerConfigService = customerConfigService;
   }
+
+  @Inject TaskInfoManager taskManager;
 
   @ApiOperation(
       value = "List a customer's backups",
@@ -238,6 +241,11 @@ public class BackupsController extends AuthenticatedController {
             && backup.state != Backup.BackupState.Failed) {
           LOG.info("Can not delete {} backup as it is still in progress", uuid);
         } else {
+          if (taskManager.isDuplicateDeleteBackupTask(customerUUID, uuid)) {
+            throw new PlatformServiceException(
+                BAD_REQUEST, "Task to delete same backup already exists.");
+          }
+
           DeleteBackup.Params taskParams = new DeleteBackup.Params();
           taskParams.customerUUID = customerUUID;
           taskParams.backupUUID = uuid;
