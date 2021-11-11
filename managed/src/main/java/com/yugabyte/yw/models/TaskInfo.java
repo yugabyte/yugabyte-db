@@ -279,4 +279,15 @@ public class TaskInfo extends Model {
             .findCount();
     return numSubtasksCompleted * 100.0 / numSubtasks;
   }
+
+  public static List<TaskInfo> findDuplicateDeleteBackupTasks(UUID customerUUID, UUID backupUUID) {
+    return TaskInfo.find
+        .query()
+        .where()
+        .eq("task_type", TaskType.DeleteBackup)
+        .ne("task_state", State.Failure)
+        .eq("details->>'customerUUID'", customerUUID.toString())
+        .eq("details->>'backupUUID'", backupUUID.toString())
+        .findList();
+  }
 }

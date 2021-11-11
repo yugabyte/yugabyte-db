@@ -2,6 +2,27 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
+import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
+import static com.yugabyte.yw.common.AssertHelper.assertOk;
+import static com.yugabyte.yw.common.AssertHelper.assertValue;
+import static com.yugabyte.yw.common.AssertHelper.assertValues;
+import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
+import static com.yugabyte.yw.models.CustomerTask.TaskType.Restore;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.FORBIDDEN;
+import static play.test.Helpers.contentAsString;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -328,6 +349,8 @@ public class BackupsControllerTest extends FakeDBApplication {
     backupUUIDList.add(backup.backupUUID.toString());
     UUID fakeTaskUUID = UUID.randomUUID();
     ObjectNode resultNode = Json.newObject();
+    when(mockTaskManager.isDuplicateDeleteBackupTask(defaultCustomer.uuid, backup.backupUUID))
+        .thenReturn(false);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     ArrayNode arrayNode = resultNode.putArray("backupUUID");
     for (String item : backupUUIDList) {
@@ -352,6 +375,8 @@ public class BackupsControllerTest extends FakeDBApplication {
     backupUUIDList.add(backup.backupUUID.toString());
     UUID fakeTaskUUID = UUID.randomUUID();
     ObjectNode resultNode = Json.newObject();
+    when(mockTaskManager.isDuplicateDeleteBackupTask(defaultCustomer.uuid, backup.backupUUID))
+        .thenReturn(false);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     ArrayNode arrayNode = resultNode.putArray("backupUUID");
     for (String item : backupUUIDList) {
@@ -362,5 +387,28 @@ public class BackupsControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(json.get("taskUUID").size(), 1);
     assertAuditEntry(1, defaultCustomer.uuid);
+  }
+
+  @Test
+  public void testDeleteBackupDuplicateTask() {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer);
+    BackupTableParams bp = new BackupTableParams();
+    bp.storageConfigUUID = customerConfig.configUUID;
+    bp.universeUUID = defaultUniverse.universeUUID;
+    Backup backup = Backup.create(defaultCustomer.uuid, bp);
+    backup.transitionState(BackupState.Completed);
+    List<String> backupUUIDList = new ArrayList<>();
+    backupUUIDList.add(backup.backupUUID.toString());
+    UUID fakeTaskUUID = UUID.randomUUID();
+    ObjectNode resultNode = Json.newObject();
+    when(mockTaskManager.isDuplicateDeleteBackupTask(defaultCustomer.uuid, backup.backupUUID))
+        .thenReturn(true);
+    ArrayNode arrayNode = resultNode.putArray("backupUUID");
+    for (String item : backupUUIDList) {
+      arrayNode.add(item);
+    }
+    Result result =
+        assertThrows(YWServiceException.class, () -> deleteBackup(resultNode, null)).getResult();
+    assertBadRequest(result, "Task to delete same backup already exists.");
   }
 }

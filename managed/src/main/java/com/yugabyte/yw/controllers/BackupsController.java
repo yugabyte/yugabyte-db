@@ -9,6 +9,8 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.YWServiceException;
+import com.yugabyte.yw.common.TaskInfoManager;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -30,6 +32,8 @@ public class BackupsController extends AuthenticatedController {
   @Inject FormFactory formFactory;
 
   @Inject Commissioner commissioner;
+
+  @Inject TaskInfoManager taskManager;
 
   public Result list(UUID customerUUID, UUID universeUUID) {
     List<Backup> backups = Backup.fetchByUniverseUUID(customerUUID, universeUUID);
@@ -196,6 +200,11 @@ public class BackupsController extends AuthenticatedController {
             && backup.state != Backup.BackupState.Failed) {
           LOG.info("Can not delete {} backup as it is still in progress", uuid);
         } else {
+          if (taskManager.isDuplicateDeleteBackupTask(customerUUID, uuid)) {
+            throw new YWServiceException(
+                BAD_REQUEST, "Task to delete same backup already exists.");
+          }
+
           DeleteBackup.Params taskParams = new DeleteBackup.Params();
           taskParams.customerUUID = customerUUID;
           taskParams.backupUUID = uuid;
