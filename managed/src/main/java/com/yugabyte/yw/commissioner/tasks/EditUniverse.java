@@ -87,7 +87,6 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
         writeUserIntentToUniverse(false);
 
         for (Cluster cluster : taskParams().clusters) {
-          addDefaultGFlags(cluster.userIntent);
           editCluster(
               universe,
               cluster,
