@@ -43,6 +43,7 @@ Limitations:
 
 - Multicolumn GIN indexes are not supported: this can be done in the future.
 - Unique indexes are not supported: this doesn't make sense.
+- ASC/DESC/HASH cannot be specified: it defaults to ASC only for prefix match purposes, so this can be relaxed in the future.
 
 ### DELETE, INSERT, UPDATE
 
