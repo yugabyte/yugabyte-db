@@ -496,28 +496,17 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   public void createGFlagsOverrideTasks(Collection<NodeDetails> nodes, ServerType taskType) {
-    // Skip if no extra flags for MASTER in primary cluster.
-    if (taskType.equals(ServerType.MASTER)
-        && (taskParams().getPrimaryCluster() == null
-            || taskParams().getPrimaryCluster().userIntent.masterGFlags.isEmpty())) {
-      return;
-    }
+    createGFlagsOverrideTasks(nodes, taskType, false /* isShell */);
+  }
 
-    // Skip if all clusters have no extra TSERVER flags. (No cluster has an extra TSERVER flag.)
-    if (taskType.equals(ServerType.TSERVER)
-        && taskParams().clusters.stream().allMatch(c -> c.userIntent.tserverGFlags.isEmpty())) {
-      return;
-    }
-
+  public void createGFlagsOverrideTasks(
+      Collection<NodeDetails> nodes, ServerType taskType, boolean isMasterInShellMode) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleConfigureServersGFlags", executor);
     for (NodeDetails node : nodes) {
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
       Map<String, String> gflags =
           taskType.equals(ServerType.MASTER) ? userIntent.masterGFlags : userIntent.tserverGFlags;
-      if (gflags == null || gflags.isEmpty()) {
-        continue;
-      }
-
+      Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       // Set the device information (numVolumes, volumeSize, etc.)
       params.deviceInfo = userIntent.deviceInfo;
@@ -528,6 +517,36 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Add the az uuid.
       params.azUuid = node.azUuid;
       params.placementUuid = node.placementUuid;
+      // Sets the isMaster field
+      params.isMaster = node.isMaster;
+      params.enableYSQL = userIntent.enableYSQL;
+      params.enableYCQL = userIntent.enableYCQL;
+      params.enableYCQLAuth = userIntent.enableYCQLAuth;
+      params.enableYSQLAuth = userIntent.enableYSQLAuth;
+
+      // Update gflags conf file for shell mode.
+      params.isMasterInShellMode = isMasterInShellMode;
+
+      // The software package to install for this cluster.
+      params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
+      // Set the InstanceType
+      params.instanceType = node.cloudInfo.instance_type;
+      params.enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
+      params.enableClientToNodeEncrypt = userIntent.enableClientToNodeEncrypt;
+      params.rootAndClientRootCASame = universe.getUniverseDetails().rootAndClientRootCASame;
+
+      params.allowInsecure = universe.getUniverseDetails().allowInsecure;
+      params.setTxnTableWaitCountFlag = universe.getUniverseDetails().setTxnTableWaitCountFlag;
+      params.rootCA = universe.getUniverseDetails().rootCA;
+      params.clientRootCA = universe.getUniverseDetails().clientRootCA;
+      params.enableYEDIS = userIntent.enableYEDIS;
+
+      // Development testing variable.
+      params.itestS3PackagePath = taskParams().itestS3PackagePath;
+
+      UUID custUUID = Customer.get(universe.customerId).uuid;
+      params.callhomeLevel = CustomerConfig.getCallhomeLevel(custUUID);
+
       // Add task type
       params.type = UpgradeTaskParams.UpgradeTaskType.GFlags;
       params.setProperty("processType", taskType.toString());
@@ -858,7 +877,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.azUuid = node.azUuid;
       params.placementUuid = node.placementUuid;
       // Sets the isMaster field
-      params.isMaster = node.isMaster;
+      params.isMaster = isMaster;
       params.enableYSQL = userIntent.enableYSQL;
       params.enableYCQL = userIntent.enableYCQL;
       params.enableYCQLAuth = userIntent.enableYCQLAuth;
@@ -895,8 +914,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         params.type = UpgradeTaskParams.UpgradeTaskType.GFlags;
         if (isMaster) {
           params.setProperty("processType", ServerType.MASTER.toString());
+          params.gflags = userIntent.masterGFlags;
         } else {
           params.setProperty("processType", ServerType.TSERVER.toString());
+          params.gflags = userIntent.tserverGFlags;
         }
       }
       // Create the Ansible task to get the server info.
@@ -976,30 +997,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       }
       PlacementInfoUtil.verifyNodesAndRF(
           cluster.clusterType, cluster.userIntent.numNodes, cluster.userIntent.replicationFactor);
-    }
-  }
-
-  /**
-   * Adds default gflags depending on settings in UserIntent. Currently contains only flags for
-   * TServers.
-   */
-  protected void addDefaultGFlags(UserIntent userIntent) {
-    if (userIntent.enableYEDIS) {
-      userIntent.tserverGFlags.put(
-          "redis_proxy_webserver_port",
-          Integer.toString(taskParams().communicationPorts.redisServerHttpPort));
-    } else {
-      userIntent.tserverGFlags.put("start_redis_proxy", "false");
-    }
-    if (userIntent.enableYCQL) {
-      userIntent.tserverGFlags.put(
-          "cql_proxy_webserver_port",
-          Integer.toString(taskParams().communicationPorts.yqlServerHttpPort));
-    }
-    if (userIntent.enableYSQL) {
-      userIntent.tserverGFlags.put(
-          "pgsql_proxy_webserver_port",
-          Integer.toString(taskParams().communicationPorts.ysqlServerHttpPort));
     }
   }
 
