@@ -136,7 +136,6 @@ To use the Yugabyte JDBC Driver, do the following:
   String jdbcUrl = "jdbc:yugabytedb://127.0.0.1:5433/yugabyte";
   YBClusterAwareDataSource ds = new YBClusterAwareDataSource();
   ds.setUrl(jdbcUrl);
-  ds.setLoadBalance("true");
   // Set topology keys to enable topology-aware distribution
   ds.setTopologyKeys("region1.zone1,region2.zone2");
   // Provide more end points to prevent first connection failure 
@@ -268,6 +267,10 @@ To use the samples, complete the following steps:
   ```sh
   ./run.sh -v -i -D ~/yugabyte-2.7.2.0/
   ```
+
+  {{< note title="Note">}}
+The driver requires YugabyteDB version 2.7.2.0 or higher.
+  {{< /note>}}
 
   The `run` script starts a YugabyteDB cluster, demonstrates load balancing through Java applications, and then destroys the cluster.
 
