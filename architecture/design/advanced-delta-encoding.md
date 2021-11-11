@@ -21,8 +21,8 @@ The last 8 bytes of each binary record representation above is rocksdb internal 
 Standard rocksdb key delta encoding saves some space by extracting common shared prefix and encoding those records using the following scheme: `<shared_prefix_size><non_shared_size><value_size><non_shared><value>`. For our example this will be encoded as:
 ```
 471210488000000121488000000121 4A80 23800185F0027D73BA804A   0114000000000004 -> null => <0><24><0><0x4712104880000001214880000001214A8023800185F0027D73BA804A0114000000000004><>
-471210488000000121488000000121 4B8C 23800185F0027D73BA803FAB 0115000000000004 -> 12 => <15><32><0x4B8C23800185F0027D73BA803FAB0115000000000004><12>
-471210488000000121488000000121 4B8D 23800185F0027D73BA803F8B 0116000000000004 -> 24 => <16><31><0x8C23800185F0027D73BA803FAB0115000000000004><24>
+471210488000000121488000000121 4B8C 23800185F0027D73BA803FAB 0115000000000004 -> 12 => <15><32><4><0x4B8C23800185F0027D73BA803FAB0115000000000004><12>
+471210488000000121488000000121 4B8D 23800185F0027D73BA803F8B 0116000000000004 -> 24 => <16><31><4><0x8D23800185F0027D73BA803FAB0115000000000004><24>
 ```
 
 But the only difference between keys of each of these docdb records and the next one is only `ColumnId` and `w` (write_id) component of hybrid time. In the binary form, we also have the last internal rocksdb component which is usually just got incremented for the next record. So if we can only store this difference, but not the whole key part after shared_prefix - we can save more space.
