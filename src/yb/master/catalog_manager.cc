@@ -142,7 +142,6 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flag_tags.h"
-#include "yb/util/hash_util.h"
 #include "yb/util/logging.h"
 #include "yb/util/math_util.h"
 #include "yb/util/monotime.h"
@@ -7638,21 +7637,6 @@ Status CatalogManager::GetYsqlCatalogVersion(uint64_t* catalog_version,
     *last_breaking_version = l->pb.ysql_catalog_config().version();
   }
   return Status::OK();
-}
-
-uint64_t CatalogManager::GetTransactionStatusHash() {
-  LockGuard lock(mutex_);
-
-  std::stringstream ss;
-  for (const auto& entry : *table_ids_map_) {
-    auto& table_info = *entry.second;
-    if (StringStartsWithOrEquals(table_info.name(), kTransactionTablePrefix)) {
-      auto l = table_info.LockForRead();
-      ss << table_info.id() << "," << l->pb.version() << ",";
-    }
-  }
-  std::string tables = ss.str();
-  return HashUtil::MurmurHash2_64(tables.c_str(), tables.size(), 0 /* seed */);
 }
 
 Status CatalogManager::RegisterTsFromRaftConfig(const consensus::RaftPeerPB& peer) {
