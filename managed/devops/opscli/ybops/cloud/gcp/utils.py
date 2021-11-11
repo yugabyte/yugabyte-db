@@ -701,6 +701,8 @@ class GoogleCloudAdmin():
             disks = data.get("disks", [])
             root_vol = next(disk for disk in disks if disk.get("boot", False))
             server_types = [i["value"] for i in metadata if i["key"] == "server_type"]
+            node_uuid_tags = [i["value"] for i in metadata if i["key"] == "node-uuid"]
+            universe_uuid_tags = [i["value"] for i in metadata if i["key"] == "universe-uuid"]
             interface = [None]
             private_ip = None
             primary_subnet = None
@@ -736,6 +738,8 @@ class GoogleCloudAdmin():
                 zone=zone,
                 instance_type=machine_type,
                 server_type=server_types[0] if server_types else None,
+                node_uuid=node_uuid_tags[0] if node_uuid_tags else None,
+                universe_uuid=universe_uuid_tags[0] if universe_uuid_tags else None,
                 launched_by=None,
                 launch_time=data.get("creationTimestamp"),
                 root_volume=root_vol["source"],
