@@ -129,6 +129,13 @@ INSERT INTO jsonbs SELECT '"filler"' FROM generate_series(1, 1000);
 ### Timing
 
 Here are some examples to show the speed improvement of queries using GIN index.
+GIN indexes currently support IndexScan only, not IndexOnlyScan.
+The difference is that IndexScan uses the results of a scan to the index for filtering on the indexed table whereas an IndexOnlyScan need not go to the indexed table since the results from the index are sufficient.
+Therefore, a GIN index scan can be more costly than a sequential scan straight to the main table if the index scan does not filter out many rows.
+Since cost estimates currently aren't very accurate, the more costly index scan may be chosen in some cases.
+
+The assumption in the following examples is that the user is using the GIN index in ways that take advantage of it.
+
 First, enable timing for future queries.
 
 ```sql
