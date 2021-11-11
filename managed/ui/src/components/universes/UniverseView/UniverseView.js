@@ -39,6 +39,7 @@ import {
   showOrRedirect
 } from '../../../utils/LayoutUtils';
 import { isNonEmptyArray, isNonEmptyObject, isDefinedNotNull } from '../../../utils/ObjectUtils';
+import { getPromiseState } from '../../../utils/PromiseUtils';
 import { QuerySearchInput } from '../../queries/QuerySearchInput';
 import { filterBySearchTokens } from '../../queries/helpers/queriesHelper';
 import { YBControlledSelect, YBButton, YBMultiSelectRedesiged } from '../../common/forms/fields';
@@ -50,6 +51,7 @@ import ellipsisIcon from '../../common/media/more.svg';
 
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import './UniverseView.scss';
+import { YBLoadingCircleIcon } from '../../common/indicators';
 
 /**
  * The tableData key allows us to use a different field from the universe
@@ -323,7 +325,13 @@ export const UniverseView = (props) => {
     };
 
     if (curView === view.LIST) {
-      if (!(_.isObject(universeList) && isNonEmptyArray(universeList.data))) {
+      if (!universeList || !_.isObject(universeList)) {
+        return null;
+      }
+      if (getPromiseState(universeList).isInit() || getPromiseState(universeList).isLoading()) {
+        return <YBLoadingCircleIcon />;
+      }
+      if (!isNonEmptyArray(universeList.data)) {
         return (
           <h5>
             <span>No universes defined.</span>
