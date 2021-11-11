@@ -150,6 +150,34 @@ public class HealthChecker {
       RuntimeConfigFactory runtimeConfigFactory,
       ApplicationLifecycle lifecycle,
       HealthCheckMetrics healthMetrics) {
+    this(
+        environment,
+        actorSystem,
+        config,
+        executionContext,
+        healthManager,
+        healthCheckerReport,
+        emailHelper,
+        metricService,
+        runtimeConfigFactory,
+        lifecycle,
+        healthMetrics,
+        createExecutor(runtimeConfigFactory.globalRuntimeConf()));
+  }
+
+  HealthChecker(
+      Environment environment,
+      ActorSystem actorSystem,
+      Configuration config,
+      ExecutionContext executionContext,
+      HealthManager healthManager,
+      HealthCheckerReport healthCheckerReport,
+      EmailHelper emailHelper,
+      MetricService metricService,
+      RuntimeConfigFactory runtimeConfigFactory,
+      ApplicationLifecycle lifecycle,
+      HealthCheckMetrics healthMetrics,
+      ExecutorService executorService) {
     this.environment = environment;
     this.actorSystem = actorSystem;
     this.config = config;
@@ -161,7 +189,7 @@ public class HealthChecker {
     this.runtimeConfigFactory = runtimeConfigFactory;
     this.lifecycle = lifecycle;
     this.healthMetrics = healthMetrics;
-    this.executor = this.createExecutor();
+    this.executor = executorService;
 
     this.initialize();
   }
@@ -186,6 +214,13 @@ public class HealthChecker {
   // Can be overridden per customer.
   private long healthCheckIntervalMs() {
     Long interval = config.getLong("yb.health.check_interval_ms");
+    return interval == null ? 0 : interval;
+  }
+
+  // The interval at which check result will be stored to DB
+  // Can be overridden per customer.
+  private long healthCheckStoreIntervalMs() {
+    Long interval = config.getLong("yb.health.store_interval_ms");
     return interval == null ? 0 : interval;
   }
 
@@ -399,16 +434,15 @@ public class HealthChecker {
     // We need an alerting config to do work.
     CustomerConfig config = CustomerConfig.getAlertConfig(c.uuid);
 
-    boolean onlyMetrics = true;
     boolean shouldSendStatusUpdate = false;
+    long storeIntervalMs = healthCheckStoreIntervalMs();
     AlertingData alertingData = null;
+    long now = (new Date()).getTime();
     if (config != null && config.data != null) {
       alertingData = Json.fromJson(config.data, AlertingData.class);
-      long now = (new Date()).getTime();
-      long checkIntervalMs =
-          alertingData.checkIntervalMs <= 0
-              ? healthCheckIntervalMs()
-              : alertingData.checkIntervalMs;
+      if (alertingData.checkIntervalMs > 0) {
+        storeIntervalMs = alertingData.checkIntervalMs;
+      }
 
       long statusUpdateIntervalMs =
           alertingData.statusUpdateIntervalMs <= 0
@@ -416,17 +450,16 @@ public class HealthChecker {
               : alertingData.statusUpdateIntervalMs;
       shouldSendStatusUpdate =
           (now - statusUpdateIntervalMs) > lastStatusUpdateTimeMap.getOrDefault(c.uuid, 0L);
-
-      onlyMetrics =
-          !shouldSendStatusUpdate
-              && ((now - checkIntervalMs) < lastCheckTimeMap.getOrDefault(c.uuid, 0L));
-
-      if (!onlyMetrics) {
-        lastCheckTimeMap.put(c.uuid, now);
-      }
       if (shouldSendStatusUpdate) {
         lastStatusUpdateTimeMap.put(c.uuid, now);
       }
+    }
+    boolean onlyMetrics =
+        !shouldSendStatusUpdate
+            && ((now - storeIntervalMs) < lastCheckTimeMap.getOrDefault(c.uuid, 0L));
+
+    if (!onlyMetrics) {
+      lastCheckTimeMap.put(c.uuid, now);
     }
     checkAllUniverses(c, alertingData, shouldSendStatusUpdate, onlyMetrics);
   }
@@ -446,8 +479,8 @@ public class HealthChecker {
     return this.runtimeConfigFactory.globalRuntimeConf();
   }
 
-  private int getThreadpoolParallelism() {
-    return this.getRuntimeConfig().getInt(HealthChecker.MAX_NUM_THREADS_KEY);
+  private static int getThreadpoolParallelism(Config runtimeConfig) {
+    return runtimeConfig.getInt(HealthChecker.MAX_NUM_THREADS_KEY);
   }
 
   @VisibleForTesting
@@ -486,13 +519,9 @@ public class HealthChecker {
     return CompletableFuture.completedFuture(Done.done());
   }
 
-  private ExecutorService createExecutor() {
-    if (this.executor != null) {
-      return this.executor;
-    }
-
+  private static ExecutorService createExecutor(Config runtimeConfig) {
     // TODO: use YBThreadPoolExecutorFactory
-    int numParallelism = this.getThreadpoolParallelism();
+    int numParallelism = getThreadpoolParallelism(runtimeConfig);
 
     // Initialize the health check thread pool.
     ThreadFactory namedThreadFactory =

@@ -11,6 +11,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
@@ -61,6 +62,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
 import javax.mail.MessagingException;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
@@ -93,6 +95,7 @@ public class HealthCheckerTest extends FakeDBApplication {
   @Mock private ExecutionContext mockExecutionContext;
   @Mock private HealthManager mockHealthManager;
   @Mock private Scheduler mockScheduler;
+  @Mock private ExecutorService executorService;
 
   private Customer defaultCustomer;
   private Provider defaultProvider;
@@ -146,6 +149,14 @@ public class HealthCheckerTest extends FakeDBApplication {
 
     when(mockruntimeConfigFactory.forUniverse(any())).thenReturn(mockConfigUniverseScope);
     when(mockConfigUniverseScope.getBoolean("yb.health.logOutput")).thenReturn(false);
+    doAnswer(
+            i -> {
+              Runnable runnable = i.getArgument(0);
+              runnable.run();
+              return null;
+            })
+        .when(executorService)
+        .execute(any(Runnable.class));
 
     metricService = app.injector().instanceOf(MetricService.class);
 
@@ -162,7 +173,8 @@ public class HealthCheckerTest extends FakeDBApplication {
             metricService,
             mockruntimeConfigFactory,
             null,
-            healthMetrics) {
+            healthMetrics,
+            executorService) {
           @Override
           RuntimeConfig<Model> getRuntimeConfig() {
             return new RuntimeConfig<>(mockRuntimeConfig);
@@ -407,7 +419,8 @@ public class HealthCheckerTest extends FakeDBApplication {
   @Test
   public void testCheckCustomer_NoAlertingConfig() {
     setupUniverse("univ1");
-    validateNoDevopsCall();
+    healthChecker.checkCustomer(defaultCustomer);
+    verifyHealthManager(1);
   }
 
   @Test
@@ -494,6 +507,7 @@ public class HealthCheckerTest extends FakeDBApplication {
     long waitMs = 500;
     // Wait one cycle between checks.
     when(mockConfig.getLong("yb.health.check_interval_ms")).thenReturn(waitMs);
+    when(mockConfig.getLong("yb.health.store_interval_ms")).thenReturn(waitMs);
     // Wait two cycles between status updates.
     when(mockConfig.getLong("yb.health.status_interval_ms")).thenReturn(2 * waitMs);
 
