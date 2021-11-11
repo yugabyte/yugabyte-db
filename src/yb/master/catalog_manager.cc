@@ -7536,7 +7536,7 @@ void CatalogManager::SendSplitTabletRequest(
 }
 
 void CatalogManager::DeleteTabletReplicas(
-    TabletInfo* tablet, const std::string& msg, bool hide_only) {
+    TabletInfo* tablet, const std::string& msg, HideOnly hide_only) {
   auto locations = tablet->GetReplicaLocations();
   LOG(INFO) << "Sending DeleteTablet for " << locations->size()
             << " replicas of tablet " << tablet->tablet_id();
@@ -7921,44 +7921,6 @@ Status CatalogManager::HandleTabletSchemaVersionReport(
   return MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(this, table, version);
 }
 
-// Helper class to commit TabletInfo mutations at the end of a scope.
-namespace {
-
-class ScopedTabletInfoCommitter {
- public:
-  explicit ScopedTabletInfoCommitter(const TabletInfos* tablets)
-    : tablets_(DCHECK_NOTNULL(tablets)),
-      aborted_(false) {
-  }
-
-  // This method is not thread safe. Must be called by the same thread
-  // that would destroy this instance.
-  void Abort() {
-    for (const scoped_refptr<TabletInfo>& tablet : *tablets_) {
-      tablet->mutable_metadata()->AbortMutation();
-    }
-    aborted_ = true;
-  }
-
-  void Commit() {
-    if (PREDICT_TRUE(!aborted_)) {
-      for (const scoped_refptr<TabletInfo>& tablet : *tablets_) {
-        tablet->mutable_metadata()->CommitMutation();
-      }
-    }
-  }
-
-  // Commit the transactions.
-  ~ScopedTabletInfoCommitter() {
-    Commit();
-  }
-
- private:
-  const TabletInfos* tablets_;
-  bool aborted_;
-};
-}  // anonymous namespace
-
 Status CatalogManager::ProcessPendingAssignments(const TabletInfos& tablets) {
   VLOG(1) << "Processing pending assignments";
 
@@ -7967,13 +7929,13 @@ Status CatalogManager::ProcessPendingAssignments(const TabletInfos& tablets) {
   for (const scoped_refptr<TabletInfo>& tablet : tablets) {
     tablet->mutable_metadata()->StartMutation();
   }
-  ScopedTabletInfoCommitter unlocker_in(&tablets);
+  ScopedInfoCommitter<TabletInfo> unlocker_in(&tablets);
 
   // Any tablets created by the helper functions will also be created in a
   // locked state, so we must ensure they are unlocked before we return to
   // avoid deadlocks.
   TabletInfos new_tablets;
-  ScopedTabletInfoCommitter unlocker_out(&new_tablets);
+  ScopedInfoCommitter<TabletInfo> unlocker_out(&new_tablets);
 
   DeferredAssignmentActions deferred;
 

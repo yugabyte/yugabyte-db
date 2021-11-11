@@ -1135,7 +1135,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
       rpc::RpcContext* rpc);
 
   // Request tablet servers to delete all replicas of the tablet.
-  void DeleteTabletReplicas(TabletInfo* tablet, const std::string& msg, bool hide_only);
+  void DeleteTabletReplicas(TabletInfo* tablet, const std::string& msg, HideOnly hide_only);
 
   // Returns error if and only if it is forbidden to both:
   // 1) Delete single tablet from table.

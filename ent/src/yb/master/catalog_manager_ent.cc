@@ -1149,6 +1149,151 @@ Status CatalogManager::RecreateTable(const NamespaceId& new_namespace_id,
   return Status::OK();
 }
 
+Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
+                                        const ExternalTableSnapshotData* table_data) {
+  DCHECK_EQ(table->id(), table_data->new_table_id);
+  if (table->GetTableType() != PGSQL_TABLE_TYPE) {
+    return STATUS_FORMAT(InvalidArgument,
+                         "Cannot repartition non-YSQL table: got $0",
+                         TableType_Name(table->GetTableType()));
+  }
+  LOG_WITH_FUNC(INFO) << "Repartition table " << table->id()
+                      << " using external snapshot table " << table_data->old_table_id;
+
+  // Get partitions from external snapshot.
+  size_t i = 0;
+  vector<Partition> partitions(table_data->partitions.size());
+  for (const auto& partition_pb : table_data->partitions) {
+    Partition::FromPB(partition_pb, &partitions[i++]);
+  }
+  VLOG_WITH_FUNC(3) << "Got " << partitions.size()
+                    << " partitions from external snapshot for table " << table->id();
+
+  // Change TableInfo to point to the new tablets.
+  string deletion_msg;
+  vector<scoped_refptr<TabletInfo>> new_tablets;
+  vector<scoped_refptr<TabletInfo>> old_tablets;
+  {
+    // Acquire the TableInfo pb write lock. Although it is not required for some of the individual
+    // steps, we want to hold it through so that we guarantee the state does not change during the
+    // whole process. Consequently, we hold it through some steps that require mutex_, but since
+    // taking mutex_ after TableInfo pb lock is prohibited for deadlock reasons, acquire mutex_
+    // first, then release it when it is no longer needed, still holding table pb lock.
+    TableInfo::WriteLock table_lock;
+    {
+      LockGuard lock(mutex_);
+      TRACE("Acquired catalog manager lock");
+
+      // Make sure the table is in RUNNING state.
+      // This by itself doesn't need a pb write lock: just a read lock. However, we want to prevent
+      // other writers from entering from this point forward, so take the write lock now.
+      table_lock = table->LockForWrite();
+      if (table->old_pb().state() != SysTablesEntryPB::RUNNING) {
+        return STATUS_FORMAT(IllegalState,
+                             "Table $0 not running: $1",
+                             table->ToString(),
+                             SysTablesEntryPB_State_Name(table->old_pb().state()));
+      }
+      // Make sure the table's tablets can be deleted.
+      RETURN_NOT_OK_PREPEND(CheckIfForbiddenToDeleteTabletOf(table),
+                            Format("Cannot repartition table $0", table->id()));
+
+      // Create and mark new tablets for creation.
+
+      // Use partitions from external snapshot to create new tablets in state PREPARING. The tablets
+      // will start CREATING once they are committed in memory.
+      for (const auto& partition : partitions) {
+        PartitionPB partition_pb;
+        partition.ToPB(&partition_pb);
+        new_tablets.push_back(CreateTabletInfo(table.get(), partition_pb));
+      }
+
+      // Add tablets to catalog manager tablet_map_. This should be safe to do after creating
+      // tablets since we're still holding mutex_.
+      auto tablet_map_checkout = tablet_map_.CheckOut();
+      for (auto& new_tablet : new_tablets) {
+        InsertOrDie(tablet_map_checkout.get_ptr(), new_tablet->tablet_id(), new_tablet);
+      }
+      VLOG_WITH_FUNC(3) << "Prepared creation of " << new_tablets.size()
+                        << " new tablets for table " << table->id();
+
+      // mutex_ is no longer needed, so release by going out of scope.
+    }
+    // The table pb write lock is still held, ensuring that the table state does not change. Later
+    // steps, like GetAllTablets or AddTablets, will acquire/release the TableInfo lock_, but it's
+    // probably fine that they are released between the steps since the table pb write lock is held
+    // throughout. In other words, there should be no risk that TableInfo tablets_ changes between
+    // GetAllTablets and RemoveTablets.
+
+    // Abort tablet mutations in case of early returns.
+    ScopedInfoCommitter<TabletInfo> unlocker_new(&new_tablets);
+
+    // Mark old tablets for deletion.
+    table->GetAllTablets(&old_tablets);
+    // Sort so that locking can be done in a deterministic order.
+    std::sort(old_tablets.begin(), old_tablets.end(), [](const auto& lhs, const auto& rhs) {
+      return lhs->tablet_id() < rhs->tablet_id();
+    });
+    deletion_msg = Format("Old tablets of table $0 deleted at $1",
+                          table->id(), LocalTimeAsString());
+    for (auto& old_tablet : old_tablets) {
+      old_tablet->mutable_metadata()->StartMutation();
+      old_tablet->mutable_metadata()->mutable_dirty()->set_state(
+          SysTabletsEntryPB::DELETED, deletion_msg);
+    }
+    VLOG_WITH_FUNC(3) << "Prepared deletion of " << old_tablets.size() << " old tablets for table "
+                      << table->id();
+
+    // Abort tablet mutations in case of early returns.
+    ScopedInfoCommitter<TabletInfo> unlocker_old(&old_tablets);
+
+    // Change table's partition schema to the external snapshot's.
+    table_lock.mutable_data()->pb.mutable_partition_schema()->CopyFrom(
+        table_data->table_entry_pb.partition_schema());
+
+    // Remove old tablets from TableInfo.
+    vector<string> old_partition_key_starts(old_tablets.size());
+    for (int i = 0; i < old_tablets.size(); ++i) {
+      old_partition_key_starts[i] = old_tablets[i]->old_pb().partition().partition_key_start();
+    }
+    table->RemoveTablets(old_partition_key_starts);
+    // Add new tablets to TableInfo. This must be done after removing tablets because
+    // TableInfo::tablet_map_ has key PartitionKey, which old and new tablets may conflict on.
+    vector<TabletInfo*> new_tablet_ptrs(new_tablets.size());
+    for (int i = 0; i < new_tablets.size(); ++i) {
+      new_tablet_ptrs[i] = new_tablets[i].get();
+    }
+    table->AddTablets(new_tablet_ptrs);
+
+    // Commit table and tablets to disk.
+    RETURN_NOT_OK(sys_catalog_->AddItems(new_tablets, leader_ready_term()));
+    RETURN_NOT_OK(sys_catalog_->UpdateItem(table.get(), leader_ready_term()));
+    RETURN_NOT_OK(sys_catalog_->UpdateItems(old_tablets, leader_ready_term()));
+    VLOG_WITH_FUNC(2) << "Committed to disk: table " << table->id() << " repartition from "
+                      << old_tablets.size() << " tablets to " << new_tablets.size() << " tablets";
+
+    // Commit to memory. Commit new tablets (addition) first since that doesn't break anything.
+    // Commit table next since new tablets are already committed and ready to be referenced. Commit
+    // old tablets (deletion) last since the table is not referencing them anymore.
+    unlocker_new.Commit();
+    table_lock.Commit();
+    unlocker_old.Commit();
+    VLOG_WITH_FUNC(1) << "Committed to memory: table " << table->id() << " repartition from "
+                      << old_tablets.size() << " tablets to " << new_tablets.size() << " tablets";
+  }
+
+  // Finally, now that everything is committed, send the delete tablet requests.
+  for (auto& old_tablet : old_tablets) {
+    DeleteTabletReplicas(old_tablet.get(), deletion_msg, HideOnly::kFalse);
+  }
+  VLOG_WITH_FUNC(2) << "Sent delete tablet requests for " << old_tablets.size() << " old tablets"
+                    << " of table " << table->id();
+  // The create tablet requests should be handled by bg tasks which find the PREPARING tablets after
+  // commit.
+
+  return Status::OK();
+}
+
 // Helper function for ImportTableEntry.
 //
 // Given an internal table and an external table snapshot, do some checks to determine if we should
@@ -1347,10 +1492,12 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
   // However, still do the validation for regular colocated tables.
   if (!is_parent_colocated_table) {
     Schema persisted_schema;
+    int new_num_tablets = 0;
     {
       TRACE("Locking table");
       auto table_lock = table->LockForRead();
       RETURN_NOT_OK(table->GetSchema(&persisted_schema));
+      new_num_tablets = table->NumTablets();
     }
 
     // Ignore 'nullable' attribute - due to difference in implementation
@@ -1369,6 +1516,23 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
                           persisted_schema,
                           schema),
                     MasterError(MasterErrorPB::SNAPSHOT_FAILED));
+    }
+
+    if (table_data->num_tablets > 0 && new_num_tablets != table_data->num_tablets) {
+      // TODO(#8229): Also recreate tables besides num tablets mismatching since it is possible for
+      // splits to be off while num tablets matches. For example, [start, 0x777f), [0x777f, end] vs
+      // [start, 0x8000), [0x8000, end]. That particular example may not occur in practice, but the
+      // issue should show up when restoring tablets that have been dynamically split.
+      if (meta.table_type() == TableType::PGSQL_TABLE_TYPE) {
+        RETURN_NOT_OK(RepartitionTable(table, table_data));
+      } else {
+        const string msg = Format(
+            "Wrong number of tablets in created $0 table '$1' in namespace id $2: $3 (expected $4)",
+            TableType_Name(meta.table_type()), meta.name(), new_namespace_id,
+            new_num_tablets, table_data->num_tablets);
+        LOG_WITH_FUNC(WARNING) << msg;
+        return STATUS(InternalError, msg, MasterError(MasterErrorPB::SNAPSHOT_FAILED));
+      }
     }
 
     // Update the table column ids if it's not equal to the stored ids.

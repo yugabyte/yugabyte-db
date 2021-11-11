@@ -115,7 +115,6 @@ class TabletInfo::LeaderChangeReporter {
   TSDescriptor* old_leader_;
 };
 
-
 TabletInfo::TabletInfo(const scoped_refptr<TableInfo>& table, TabletId tablet_id)
     : tablet_id_(std::move(tablet_id)),
       table_(table),
@@ -330,11 +329,6 @@ TableType TableInfo::GetTableType() const {
   return LockForRead()->pb.table_type();
 }
 
-bool TableInfo::RemoveTablet(const string& partition_key_start) {
-  std::lock_guard<decltype(lock_)> l(lock_);
-  return EraseKeyReturnValuePtr(&tablet_map_, partition_key_start) != nullptr;
-}
-
 void TableInfo::AddTablet(TabletInfo *tablet) {
   std::lock_guard<decltype(lock_)> l(lock_);
   AddTabletUnlocked(tablet);
@@ -367,6 +361,26 @@ void TableInfo::AddTabletUnlocked(TabletInfo* tablet) {
     // May be a little tricky since we don't know whether to look at its committed or
     // uncommitted state.
   }
+}
+
+bool TableInfo::RemoveTablet(const string& partition_key_start) {
+  std::lock_guard<decltype(lock_)> l(lock_);
+  return RemoveTabletUnlocked(partition_key_start);
+}
+
+bool TableInfo::RemoveTablets(const vector<string>& partition_key_starts) {
+  std::lock_guard<decltype(lock_)> l(lock_);
+  bool all_were_removed = true;
+  for (const auto& partition_key_start : partition_key_starts) {
+    if (!RemoveTabletUnlocked(partition_key_start)) {
+      all_were_removed = false;
+    }
+  }
+  return all_were_removed;
+}
+
+bool TableInfo::RemoveTabletUnlocked(const string& partition_key_start) {
+  return EraseKeyReturnValuePtr(&tablet_map_, partition_key_start) != nullptr;
 }
 
 void TableInfo::GetTabletsInRange(const GetTableLocationsRequestPB* req, TabletInfos* ret) const {

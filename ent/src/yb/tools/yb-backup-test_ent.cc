@@ -887,5 +887,155 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYCQLBackupWithDefi
   }
 }
 
+// Test backup/restore on table with UNIQUE constraint where the unique constraint is originally
+// range partitioned to multiple tablets. When creating the constraint, split to 3 tablets at custom
+// split points. When restoring, ysql_dump is not able to express the splits, so it will create the
+// constraint as 1 hash tablet. Restore should restore the unique constraint index as 3 tablets
+// since the tablet snapshot files are already split into 3 tablets.
+//
+// TODO(jason): enable test when issue #4873 ([YSQL] Support backup for pre-split multi-tablet range
+// tables) is fixed.
+TEST_F(YBBackupTest, YB_DISABLE_TEST(TestYSQLRangeSplitConstraint)) {
+  const string table_name = "mytbl";
+  const string index_name = "myidx";
+
+  // Create table with unique constraint where the unique constraint is custom range partitioned.
+  ASSERT_NO_FATALS(CreateTable(
+      Format("CREATE TABLE $0 (k SERIAL PRIMARY KEY, v TEXT)", table_name)));
+  ASSERT_NO_FATALS(CreateIndex(
+      Format("CREATE UNIQUE INDEX $0 ON $1 (v ASC) SPLIT AT VALUES (('foo'), ('qux'))",
+             index_name, table_name)));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      Format("ALTER TABLE $0 ADD UNIQUE USING INDEX $1", table_name, index_name),
+      "ALTER TABLE"));
+
+  // Write data in each partition of the index.
+  ASSERT_NO_FATALS(InsertRows(
+      Format("INSERT INTO $0 (v) VALUES ('bar'), ('jar'), ('tar')", table_name), 3));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      Format("SELECT * FROM $0 ORDER BY k", table_name),
+      R"#(
+         k |  v
+        ---+-----
+         1 | bar
+         2 | jar
+         3 | tar
+        (3 rows)
+      )#"
+  ));
+
+  // Backup.
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+
+  // Drop the table (and index) so that, on restore, running the ysql_dump file recreates the table
+  // (and index).
+  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
+
+  // Restore should notice that the index it creates from ysql_dump file (1 tablet) differs from
+  // the external snapshot (3 tablets), so it should adjust to match the snapshot (3 tablets).
+  ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
+
+  // Verify data.
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      Format("SELECT * FROM $0 ORDER BY k", table_name),
+      R"#(
+         k |  v
+        ---+-----
+         1 | bar
+         2 | jar
+         3 | tar
+        (3 rows)
+      )#"
+  ));
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+class YBBackupTestNumTablets : public YBBackupTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    YBBackupTest::UpdateMiniClusterOptions(options);
+
+    options->extra_tserver_flags.push_back("--yb_num_shards_per_tserver=1");
+    options->extra_tserver_flags.push_back("--ysql_num_shards_per_tserver=1");
+  }
+};
+
+// Test backup/restore on table with UNIQUE constraint when default number of tablets differs. When
+// creating the table, the default is 3; when restoring, the default is 2. Restore should restore
+// the unique constraint index as 3 tablets since the tablet snapshot files are already split into 3
+// tablets.
+//
+// For debugging, run ./yb_build.sh with extra flags:
+// - --extra-daemon-flags "--vmodule=client=1,table_creator=1"
+// - --test-args "--verbose_yb_backup"
+TEST_F_EX(YBBackupTest,
+          YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLChangeDefaultNumTablets),
+          YBBackupTestNumTablets) {
+  const string table_name = "mytbl";
+  const string index_name = table_name + "_v_key";
+
+  ASSERT_NO_FATALS(CreateTable(Format(
+      "CREATE TABLE $0 (k INT PRIMARY KEY, v TEXT, UNIQUE (v))", table_name)));
+
+  LOG(INFO) << "pre-backup: get table";
+  std::vector<client::YBTableName> tables = ASSERT_RESULT(client_->ListTables(index_name));
+  ASSERT_EQ(tables.size(), 1);
+  string table_id = tables.front().table_id();
+
+  LOG(INFO) << "pre-backup: get tablets";
+  google::protobuf::RepeatedPtrField<yb::master::TabletLocationsPB> tablets;
+  ASSERT_OK(client_->GetTabletsFromTableId(table_id, -1, &tablets));
+  ASSERT_EQ(tablets.size(), 3);
+
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+
+  // Drop the table (and index) so that, on restore, running the ysql_dump file recreates the table
+  // (and index).
+  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
+
+  // When restore runs the CREATE TABLE, make it run in an environment where the default number of
+  // tablets is different. Namely, run it with new default 2 (previously 3). This won't affect the
+  // table since the table is generated with SPLIT clause specifying 3, but it will change the way
+  // the unique index is created because the unique index has no corresponding grammar to specify
+  // number of splits in ysql_dump file.
+  for (auto ts : cluster_->tserver_daemons()) {
+    ts->Shutdown();
+    ts->mutable_flags()->push_back("--ysql_num_shards_per_tserver=2");
+    ASSERT_OK(ts->Restart());
+  }
+
+  // Check that --ysql_num_shards_per_tserver=2 is working as intended by
+  // 1. running the CREATE TABLE that is expected to be found in the ysql_dump file and
+  // 2. finding 6 index tablets
+  ASSERT_NO_FATALS(CreateTable(Format(
+      "CREATE TABLE $0 (k INT PRIMARY KEY, v TEXT, UNIQUE (v))", table_name)));
+  tables = ASSERT_RESULT(client_->ListTables(index_name));
+  ASSERT_EQ(tables.size(), 1);
+  table_id = tables.front().table_id();
+  ASSERT_OK(client_->GetTabletsFromTableId(table_id, -1, &tablets));
+  ASSERT_EQ(tablets.size(), 6);
+  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
+
+  // Restore should notice that the index it creates from ysql_dump file (6 tablets) differs from
+  // the external snapshot (3 tablets), so it should adjust to match the snapshot (3 tablets).
+  ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
+
+  LOG(INFO) << "post-restore: get table";
+  tables = ASSERT_RESULT(client_->ListTables(index_name));
+  ASSERT_EQ(tables.size(), 1);
+  table_id = tables.front().table_id();
+
+  LOG(INFO) << "post-restore: get tablets";
+  ASSERT_OK(client_->GetTabletsFromTableId(table_id, -1, &tablets));
+  ASSERT_EQ(tablets.size(), 3);
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
 }  // namespace tools
 }  // namespace yb

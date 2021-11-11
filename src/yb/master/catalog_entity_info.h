@@ -36,6 +36,7 @@
 #include <shared_mutex>
 
 #include <mutex>
+#include <vector>
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
@@ -430,6 +431,9 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // removed from 'tablet_map_' below.
   bool RemoveTablet(const std::string& partition_key_start);
 
+  // Remove multiple tablets from this table. Return true if all given tablets were removed.
+  bool RemoveTablets(const std::vector<std::string>& partition_key_starts);
+
   // This only returns tablets which are in RUNNING state.
   void GetTabletsInRange(const GetTableLocationsRequestPB* req, TabletInfos *ret) const;
   void GetTabletsInRange(
@@ -525,7 +529,9 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   friend class RefCountedThreadSafe<TableInfo>;
   ~TableInfo();
 
-  void AddTabletUnlocked(TabletInfo* tablet);
+  void AddTabletUnlocked(TabletInfo* tablet) REQUIRES(lock_);
+  bool RemoveTabletUnlocked(const std::string& partition_key_start) REQUIRES(lock_);
+
   void AbortTasksAndCloseIfRequested(bool close);
 
   std::string LogPrefix() const {
@@ -841,6 +847,41 @@ class DdlLogEntry {
 
  protected:
   DdlLogEntryPB pb_;
+};
+
+// Helper class to commit Info mutations at the end of a scope.
+template <class Info>
+class ScopedInfoCommitter {
+ public:
+  typedef scoped_refptr<Info> InfoPtr;
+  typedef std::vector<InfoPtr> Infos;
+  explicit ScopedInfoCommitter(const Infos* infos) : infos_(DCHECK_NOTNULL(infos)), done_(false) {}
+  ~ScopedInfoCommitter() {
+    if (!done_) {
+      Commit();
+    }
+  }
+  // This method is not thread safe. Must be called by the same thread
+  // that would destroy this instance.
+  void Abort() {
+    if (PREDICT_TRUE(!done_)) {
+      for (const InfoPtr& info : *infos_) {
+        info->mutable_metadata()->AbortMutation();
+      }
+    }
+    done_ = true;
+  }
+  void Commit() {
+    if (PREDICT_TRUE(!done_)) {
+      for (const InfoPtr& info : *infos_) {
+        info->mutable_metadata()->CommitMutation();
+      }
+    }
+    done_ = true;
+  }
+ private:
+  const Infos* infos_;
+  bool done_;
 };
 
 // Convenience typedefs.
