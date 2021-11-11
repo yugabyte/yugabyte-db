@@ -643,14 +643,6 @@ class YBClient {
   Result<bool> IsLoadBalanced(uint32_t num_servers);
   Result<bool> IsLoadBalancerIdle();
 
-  CHECKED_STATUS ModifyTablePlacementInfo(
-      const YBTableName& table_name,
-      master::PlacementInfoPB* replicas);
-
-  // Creates a transaction status table. 'table_name' is required to start with
-  // kTransactionTablePrefix.
-  CHECKED_STATUS CreateTransactionsStatusTable(const std::string& table_name);
-
   // Open the table with the given name or id. This will do an RPC to ensure that
   // the table exists and look up its schema.
   //

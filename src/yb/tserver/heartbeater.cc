@@ -504,10 +504,6 @@ Status Heartbeater::Thread::TryHeartbeat() {
 
   RETURN_NOT_OK(server_->tablet_manager()->UpdateSnapshotsInfo(last_hb_response_.snapshots_info()));
 
-  if (last_hb_response_.has_transaction_status_hash()) {
-    server_->UpdateTransactionStatusHash(last_hb_response_.transaction_status_hash());
-  }
-
   // Update the live tserver list.
   return server_->PopulateLiveTServers(last_hb_response_);
 }

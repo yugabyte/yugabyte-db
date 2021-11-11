@@ -1689,7 +1689,32 @@ Status ClusterAdminClient::ModifyTablePlacementInfo(
     live_replicas->set_placement_uuid(optional_uuid);
   }
 
-  return yb_client_->ModifyTablePlacementInfo(table_name, live_replicas);
+  master::ReplicationInfoPB replication_info;
+  // Merge the obtained info with the existing table replication info.
+  std::shared_ptr<client::YBTable> table;
+  RETURN_NOT_OK_PREPEND(yb_client_->OpenTable(table_name, &table),
+                        "Fetching table schema failed!");
+
+  // If it does not exist, fetch the cluster replication info.
+  if (!table->replication_info()) {
+    auto resp_cluster_config = VERIFY_RESULT(GetMasterClusterConfig());
+    master::SysClusterConfigEntryPB* sys_cluster_config_entry =
+      resp_cluster_config.mutable_cluster_config();
+    replication_info.CopyFrom(sys_cluster_config_entry->replication_info());
+    // TODO(bogdan): Figure out how to handle read replias and leader affinity.
+    replication_info.clear_read_replicas();
+    replication_info.clear_affinitized_leaders();
+  } else {
+    // Table replication info exists, copy it over.
+    replication_info.CopyFrom(table->replication_info().get());
+  }
+
+  // Put in the new live placement info.
+  replication_info.set_allocated_live_replicas(live_replicas);
+
+  std::unique_ptr<yb::client::YBTableAlterer> table_alterer(
+    yb_client_->NewTableAlterer(table_name));
+  return table_alterer->replication_info(replication_info)->Alter();
 }
 
 Status ClusterAdminClient::ModifyPlacementInfo(
@@ -1926,7 +1951,16 @@ CHECKED_STATUS ClusterAdminClient::SplitTablet(const std::string& tablet_id) {
 }
 
 Status ClusterAdminClient::CreateTransactionsStatusTable(const std::string& table_name) {
-  return yb_client_->CreateTransactionsStatusTable(table_name);
+  if (table_name.rfind(yb::master::kTransactionTablePrefix, 0) != 0) {
+    return STATUS_FORMAT(
+        InvalidArgument, "Name '$0' for transaction table does not start with '$1'", table_name,
+        yb::master::kTransactionTablePrefix);
+  }
+  master::CreateTransactionStatusTableRequestPB req;
+  req.set_table_name(table_name);
+  const auto resp = VERIFY_RESULT(
+      InvokeRpc(&MasterServiceProxy::CreateTransactionStatusTable, master_proxy_.get(), req));
+  return Status::OK();
 }
 
 template<class Response, class Request, class Object>

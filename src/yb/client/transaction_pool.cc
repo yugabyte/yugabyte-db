@@ -25,7 +25,6 @@
 #include "yb/rpc/scheduler.h"
 
 #include "yb/util/metrics.h"
-#include "yb/util/flag_tags.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -37,11 +36,6 @@ DEFINE_double(transaction_pool_reserve_factor, 2,
               "During cleanup we will preserve number of transactions in pool that equals to"
                   " average number or take requests during prepration multiplied by this factor");
 
-DEFINE_bool(force_global_transactions, false,
-            "Force all transactions to be global transactions");
-
-DEFINE_test_flag(bool, track_last_transaction, false,
-                 "Keep track of the last transaction taken from pool for testing");
 
 METRIC_DEFINE_coarse_histogram(
     server, transaction_pool_cache, "Rate of hitting transaction pool cache",
@@ -66,15 +60,10 @@ METRIC_DEFINE_gauge_uint32(
 namespace yb {
 namespace client {
 
-namespace {
-
-// Transaction pool where all transactions have a specific locality (LOCAL or GLOBAL).
-class SingleLocalityPool {
+class TransactionPool::Impl {
  public:
-  SingleLocalityPool(TransactionManager* manager,
-                     MetricEntity* metric_entity,
-                     TransactionLocality locality)
-      : manager_(*manager), locality_(locality) {
+  Impl(TransactionManager* manager, MetricEntity* metric_entity)
+      : manager_(*manager) {
     if (metric_entity) {
       cache_histogram_ = METRIC_transaction_pool_cache.Instantiate(metric_entity);
       cache_hits_ = METRIC_transaction_pool_cache_hits.Instantiate(metric_entity);
@@ -84,7 +73,7 @@ class SingleLocalityPool {
     }
   }
 
-  ~SingleLocalityPool() {
+  ~Impl() {
     std::unique_lock<std::mutex> lock(mutex_);
     closing_ = true;
     if (scheduled_task_ != rpc::kUninitializedScheduledTaskId) {
@@ -110,7 +99,7 @@ class SingleLocalityPool {
       if (transactions_.empty()) {
         // Transaction is automatically prepared when batcher is executed, so we don't have to
         // prepare newly created transaction, since it is anyway too late.
-        result = std::make_shared<YBTransaction>(&manager_, locality_);
+        result = std::make_shared<YBTransaction>(&manager_);
         IncrementHistogram(cache_histogram_, 0);
       } else {
         result = Pop();
@@ -119,14 +108,14 @@ class SingleLocalityPool {
         IncrementHistogram(cache_histogram_, 100);
         IncrementCounter(cache_hits_);
       }
-      new_txn = std::make_shared<YBTransaction>(&manager_, locality_);
+      new_txn = std::make_shared<YBTransaction>(&manager_);
       ++preparing_transactions_;
     }
     IncrementGauge(gauge_preparing_);
     InFlightOpsGroupsWithMetadata ops_info;
     if (new_txn->Prepare(
         &ops_info, ForceConsistentRead::kFalse, TransactionRpcDeadline(), Initial::kFalse,
-        std::bind(&SingleLocalityPool::TransactionReady, this, _1, new_txn, old_taken))) {
+        std::bind(&Impl::TransactionReady, this, _1, new_txn, old_taken))) {
       TransactionReady(Status::OK(), new_txn, old_taken);
     }
     return result;
@@ -157,8 +146,7 @@ class SingleLocalityPool {
 
   void ScheduleCleanup() REQUIRES(mutex_) {
     scheduled_task_ = manager_.client()->messenger()->scheduler().Schedule(
-        std::bind(&SingleLocalityPool::Cleanup, this, _1),
-        FLAGS_transaction_pool_cleanup_interval_ms * 1ms);
+        std::bind(&Impl::Cleanup, this, _1), FLAGS_transaction_pool_cleanup_interval_ms * 1ms);
   }
 
   void Cleanup(const Status& status) {
@@ -241,7 +229,6 @@ class SingleLocalityPool {
   };
 
   TransactionManager& manager_;
-  TransactionLocality locality_;
   scoped_refptr<Histogram> cache_histogram_;
   scoped_refptr<Counter> cache_hits_;
   scoped_refptr<Counter> cache_queries_;
@@ -256,41 +243,6 @@ class SingleLocalityPool {
   uint64_t taken_transactions_ GUARDED_BY(mutex_) = 0;
   uint64_t taken_during_preparation_sum_ GUARDED_BY(mutex_) = 0;
   uint64_t taken_transactions_at_last_cleanup_ GUARDED_BY(mutex_) = 0;
-};
-} // namespace
-
-class TransactionPool::Impl {
- public:
-  Impl(TransactionManager* manager, MetricEntity* metric_entity)
-      : manager_(manager),
-        global_pool_(manager, metric_entity, TransactionLocality::GLOBAL),
-        local_pool_(manager, metric_entity, TransactionLocality::LOCAL) {
-  }
-
-  ~Impl() = default;
-
-  YBTransactionPtr Take() EXCLUDES(mutex_) {
-    const auto is_global = FLAGS_force_global_transactions ||
-        !manager_->LocalTransactionsPossible();
-    auto transaction = (is_global ? &global_pool_ : &local_pool_)->Take();
-    if (FLAGS_TEST_track_last_transaction) {
-      std::lock_guard<std::mutex> lock(mutex_);
-      last_transaction_ = transaction;
-    }
-    return transaction;
-  }
-
-  YBTransactionPtr GetLastTransaction() EXCLUDES(mutex_) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    return last_transaction_;
-  }
- private:
-  TransactionManager* manager_;
-  SingleLocalityPool global_pool_;
-  SingleLocalityPool local_pool_;
-
-  std::mutex mutex_;
-  YBTransactionPtr last_transaction_ GUARDED_BY(mutex_);
 };
 
 TransactionPool::TransactionPool(TransactionManager* manager, MetricEntity* metric_entity)
@@ -315,10 +267,6 @@ Result<YBTransactionPtr> TransactionPool::TakeRestarted(const YBTransactionPtr& 
   auto result = impl_->Take();
   RETURN_NOT_OK(source->FillRestartedTransaction(result));
   return result;
-}
-
-YBTransactionPtr TransactionPool::GetLastTransaction() {
-  return impl_->GetLastTransaction();
 }
 
 } // namespace client
