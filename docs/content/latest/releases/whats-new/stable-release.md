@@ -19,7 +19,7 @@ Included here are the release notes for all releases in the v2.8 stable release 
 
 ## v2.8.0.0 - November 8, 2021
 
-**Build:** `2.8.0.0-b32`
+**Build:** `2.8.0.0-b34`
 
 ### Downloads
 
@@ -39,7 +39,7 @@ Included here are the release notes for all releases in the v2.8 stable release 
 ### Docker
 
 ```sh
-docker pull yugabytedb/yugabyte:2.8.0.0-b32
+docker pull yugabytedb/yugabyte:2.8.0.0-b34
 ```
 
 ### New features
@@ -99,10 +99,13 @@ The Yugabyte Platform [REST API documentation](https://api-docs.yugabyte.com/) i
 [PLAT-1867] AWS Provider and Universe examples
 [PLAT-1934] Adding UI to set KUBE_DOMAIN
 [PLAT-1943] Remove feature flagging for enable/disable TLS
+[PLAT-1962] Add optional AWS KMS Endpoint field while creating KMS config.
 [PLAT-1989] Show alert configuration target in page view
 [PLAT-2033] [Alert] [UI] Move seconds in Duration under conditions similar to Threshold in Alert Definition Page
 [PLAT-2071] Implement read-only user functionality for Alert UIs
 [PLAT-2104] Enable/disable Auth in k8s
+[PLAT-2143] [UI] Add an optional field AWS KMS Endpoint while creating KMS config
+[PLAT-2229] Retrieve YB version via ssh/kubectl during health check
 [Platform] Return direct URL to Prometheus for metrics from metrics API call
 
 #### Database
@@ -136,6 +139,7 @@ The Yugabyte Platform [REST API documentation](https://api-docs.yugabyte.com/) i
 [#10141] [DocDB] Remove feature gate on savepoints
 [#10150] [YSQL] Add functionality for the yb_extension role
 [#10240] Add IPv6 address filters to default value of net_address_filter
+[#10430] [YSQL] Limit to IPv4 for sys catalog initialization
 [YSQL] Foreign Data Wrapper Support
 Added more information in logs for understanding concurrency control + downgraded two log lines to VLOG(4)
 Added new AWS regions to metadata files
@@ -240,6 +244,7 @@ Added new AWS regions to metadata files
 [PLAT-1853] Frequent error log related to health checks on portal.k8s
 [PLAT-1862] Backup Frequency cannot be negative number
 [PLAT-1887] fix creation readonly onprem universe + code cleanup
+[PLAT-1891] [Backup] [IAM-Platform] Backup is hanging for universe with read replicas on IAM-enabled platform
 [PLAT-1892] Remove default template for error log + remove error logs from health check report
 [PLAT-1895] Fix backup failure alert in case restore fails
 [PLAT-1897] [PLAT-1995] Make client_max_body_size configurable in replicated
@@ -266,6 +271,7 @@ Added new AWS regions to metadata files
 [PLAT-2094] Fix k8s universe certificate expiry checks
 [PLAT-2096] [UI] Restore backup UI refresh issue
 [PLAT-2097] Fix repeated migration V68 : approach 2
+[PLAT-2098] Certificate details page shows 'invalid date' for certificate start and expiration fields on Safari Browser only.
 [PLAT-2107] Resolve multiple UI fixes in Encryption-at-Rest modal
 [PLAT-2109] Skip hostname validation in certificate
 [PLAT-2110] Fix wrong default destination migration for multitenant Platforms.
