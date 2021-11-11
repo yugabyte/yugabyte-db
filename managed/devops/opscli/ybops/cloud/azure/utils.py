@@ -742,11 +742,14 @@ class AzureCloudAdmin():
 
         subnet = id_to_name(nic.ip_configurations[0].subnet.id)
         server_type = vm.tags.get("yb-server-type", None) if vm.tags else None
+        node_uuid = vm.tags.get("node-uuid", None) if vm.tags else None
+        universe_uuid = vm.tags.get("universe-uuid", None) if vm.tags else None
         zone_full = "{}-{}".format(region, zone) if zone is not None else region
         return {"private_ip": private_ip, "public_ip": public_ip, "region": region,
                 "zone": zone_full, "name": vm.name, "ip_name": ip_name,
                 "instance_type": vm.hardware_profile.vm_size, "server_type": server_type,
-                "subnet": subnet, "nic": nic_name, "id": vm.name}
+                "subnet": subnet, "nic": nic_name, "id": vm.name, "node_uuid": node_uuid,
+                "universe_uuid": universe_uuid}
 
     def list_dns_record_set(self, dns_zone_id):
         return self.dns_client.private_zones.get(*self._get_dns_zone_info(dns_zone_id))
