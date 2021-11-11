@@ -361,7 +361,7 @@ Status SstFileReader::ReadSequential(bool print_kv,
           auto storage_type =
               (output_format_ == OutputFormat::kDecodedRegularDB ? StorageDbType::kRegular
                                                                  : StorageDbType::kIntents);
-          fprintf(stdout, "%s\n", docdb_kv_formatter_.Format(key, value, storage_type).c_str());
+          fprintf(stdout, "%s", docdb_kv_formatter_.Format(key, value, storage_type).c_str());
           break;
       }
     }
