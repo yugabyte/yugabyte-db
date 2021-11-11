@@ -346,6 +346,8 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
     UserIntent userIntent =
         getUniverse().getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
+    Map<String, String> gflags =
+        processType.equals(ServerType.MASTER) ? userIntent.masterGFlags : userIntent.tserverGFlags;
     // Set the device information (numVolumes, volumeSize, etc.)
     params.deviceInfo = userIntent.deviceInfo;
     // Add the node name.
@@ -388,7 +390,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     params.type = type;
     params.setProperty("processType", processType.toString());
     params.setProperty("taskSubType", taskSubType.toString());
-
+    params.gflags = gflags;
     if (userIntent.providerType.equals(CloudType.onprem)) {
       params.instanceType = node.cloudInfo.instance_type;
     }
