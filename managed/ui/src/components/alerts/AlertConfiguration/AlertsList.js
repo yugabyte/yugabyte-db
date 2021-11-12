@@ -404,7 +404,7 @@ export const AlertsList = (props) => {
     );
   };
 
-  if (!getPromiseState(universes).isSuccess()) {
+  if (!getPromiseState(universes).isSuccess() && !getPromiseState(universes).isEmpty()) {
     return <YBLoading />;
   }
 
