@@ -231,6 +231,7 @@ You'll need to do the following for each node:
 * [Pre-provision the node](#pre-provision-nodes-manually)
 * [Install Prometheus node exporter](#install-prometheus-node-exporter)
 * [Install backup utilities](#install-backup-utilities)
+* [Set crontab permissions](#set-crontab-permissions)
 
 ##### Set up time synchronization
 
@@ -523,6 +524,20 @@ Platform supports backing up YugabyteDB to AWS S3, Azure Storage, Google Cloud S
     $ sudo ln -s /usr/local/gsutil/gsutil /usr/local/bin/gsutil 
     ```
 
+##### Set crontab permissions
+
+Platform supports performing yugabyte database liveness checks, log file management, and core file management using cron jobs.
+
+**Sudo is required to set up this service!**
+
+If Platform will be using **cron jobs**, make sure the yugabyte user is allowed to run crontab:
+
+* If you’re using the `cron.allow` file to manage crontab access, add the yugabyte user to this file.
+* If you’re using the `cron.deny` file, remove the yugabyte user from this file.
+
+(And if you’re not using either file, no changes are required.)
+
+<!--
 ##### Manage liveness checks, logs, and cores
 
 Yugabyte Platform supports performing YugabyteDB liveness checks, log file management, and core file management using cron jobs or systemd services. 
@@ -531,6 +546,7 @@ Yugabyte Platform supports performing YugabyteDB liveness checks, log file manag
 
 If Platform will be using **cron jobs**, make sure the yugabyte user is allowed to run crontab. If you’re using the cron.allow file to manage crontab access, add the yugabyte user to this file. If you’re using the cron.deny file, remove the yugabyte user from this file.
 
-If you plan to have Platform use **systemd services** to perform the monitoring operations mentioned above, then make sure 
+If you plan to have Platform use **systemd services** to perform the monitoring operations mentioned above, then make sure ...
+-->
 
 **You’re finished configuring your on-premises cloud provider.** Proceed to [Configure the backup target](../../backup-target/), or [Create deployments](../../../create-deployments/).
