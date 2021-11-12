@@ -411,3 +411,90 @@ Then, there are two GIN keys based on those paths using an internal hashing mech
 `jsonb_path_ops` is better suited for queries involving paths, such as the `jsonb @> jsonb` operator.
 However, it doesn't support as many operators as `jsonb_ops`.
 If write performance and storage aren't an issue, it may be worth creating a GIN index of each jsonb opclass so that reads can choose the faster one.
+
+### Presplitting
+
+By default, ybgin indexes use a single range-partitioned tablet.
+Like regular tables and indexes, it is possible to presplit a ybgin index to multiple tablets at specified split points.
+These split points are for the index, so they need to be represented in the index key format.
+This is simple for tsvector and array types, but it gets complicated for jsonb and text (pg_trgm).
+`jsonb_path_ops` especially should use hash partitioning since the index key is itself a hash, but hash partitioning ybgin indexes is currently unsupported.
+
+```sql
+CREATE INDEX NONCONCURRENTLY vectors_split_idx ON vectors USING ybgin (v) SPLIT AT VALUES (('j'), ('o'));
+CREATE INDEX NONCONCURRENTLY arrays_split_idx ON arrays USING ybgin (a) SPLIT AT VALUES ((2), (3), (5));
+CREATE INDEX NONCONCURRENTLY jsonbs_split_idx1 ON jsonbs USING ybgin (j) SPLIT AT VALUES ((E'\001some'), (E'\005jsonb'));
+CREATE INDEX NONCONCURRENTLY jsonbs_split_idx2 ON jsonbs USING ybgin (j jsonb_path_ops) SPLIT AT VALUES ((-1000000000), (0), (1000000000));
+```
+
+Let's focus on just one index for the remainder of this example: `jsonbs_split_idx1`.
+
+First, check how the index is partitioned.
+
+```sh
+bin/yb-admin \
+  --master_addresses 127.0.0.201,127.0.0.202,127.0.0.203 \
+  list_tablets ysql.yugabyte jsonbs_split_idx1
+```
+
+```
+Tablet-UUID                      	Range                                                    	Leader-IP       	Leader-UUID
+43b2a0f0dac44018b60eebeee489e391 	partition_key_start: "" partition_key_end: "S\001some\000\000!" 	127.0.0.201:9100 	2702ace451fe46bd81dd2a19ea539163
+c32e1066cefb449cb191ff23d626125f 	partition_key_start: "S\001some\000\000!" partition_key_end: "S\005jsonb\000\000!" 	127.0.0.203:9100 	3a80acb8df5d45e38b388ffdc17a59e0
+ba23b657eb5b4bc891ca794bcad06db7 	partition_key_start: "S\005jsonb\000\000!" partition_key_end: "" 	127.0.0.202:9100 	e24423119e734860bb0c3516df948b5c
+```
+
+Then, check the data in each partition.
+Flush it to SST files so that we can read them with `sst_dump`.
+Ignore lines with "filler" because there are too many of them.
+`!!` refers to the previous `list_tablets` command.
+Adjust it if it doesn't work in your shell.
+
+```sh
+bin/yb-admin \
+  --master_addresses 127.0.0.201,127.0.0.202,127.0.0.203 \
+  flush_table ysql.yugabyte jsonbs_split_idx1
+while read -r tablet_id; do
+  bin/sst_dump \
+    --command=scan \
+    --output_format=decoded_regulardb \
+    --file=$(find /tmp/gindemo -name tablet-"$tablet_id" \
+             | grep 'node-1.*rocksdb') \
+  | grep -v filler
+done <<(!! \
+        | tail -n +2 \
+        | awk '{print$1}')
+```
+
+```
+from [] to []
+Process /tmp/gindemo/node-1/disk-1/yb-data/tserver/data/rocksdb/table-000033c000003000800000000000401d/tablet-43b2a0f0dac44018b60eebeee489e391/000010.sst
+Sst file format: block-based
+SubDocKey(DocKey([], ["\x01a", EncodedSubDocKey(DocKey(0x1210, [1], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 73 }]) -> null; intent doc ht: HT{ physical: 1636678107937571 w: 73 }
+SubDocKey(DocKey([], ["\x01a", EncodedSubDocKey(DocKey(0x4e58, [6], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 315 }]) -> null; intent doc ht: HT{ physical: 1636678107947022 w: 142 }
+SubDocKey(DocKey([], ["\x01and", EncodedSubDocKey(DocKey(0x4e58, [6], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 316 }]) -> null; intent doc ht: HT{ physical: 1636678107947022 w: 143 }
+SubDocKey(DocKey([], ["\x01another", EncodedSubDocKey(DocKey(0x4e58, [6], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 317 }]) -> null; intent doc ht: HT{ physical: 1636678107947022 w: 144 }
+SubDocKey(DocKey([], ["\x01element", EncodedSubDocKey(DocKey(0x4e58, [6], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 318 }]) -> null; intent doc ht: HT{ physical: 1636678107947022 w: 145 }
+SubDocKey(DocKey([], ["\x01how", EncodedSubDocKey(DocKey(0x0a73, [5], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 46 }]) -> null; intent doc ht: HT{ physical: 1636678107937571 w: 46 }
+SubDocKey(DocKey([], ["\x01nested", EncodedSubDocKey(DocKey(0x4e58, [6], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 319 }]) -> null; intent doc ht: HT{ physical: 1636678107947022 w: 146 }
+SubDocKey(DocKey([], ["\x01not", EncodedSubDocKey(DocKey(0x4e58, [6], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 320 }]) -> null; intent doc ht: HT{ physical: 1636678107947022 w: 147 }
+SubDocKey(DocKey([], ["\x01number", EncodedSubDocKey(DocKey(0x1210, [1], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 74 }]) -> null; intent doc ht: HT{ physical: 1636678107937571 w: 74 }
+SubDocKey(DocKey([], ["\x01number", EncodedSubDocKey(DocKey(0x4e58, [6], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 321 }]) -> null; intent doc ht: HT{ physical: 1636678107947022 w: 148 }
+from [] to []
+Process /tmp/gindemo/node-1/disk-1/yb-data/tserver/data/rocksdb/table-000033c000003000800000000000401d/tablet-c32e1066cefb449cb191ff23d626125f/000010.sst
+Sst file format: block-based
+SubDocKey(DocKey([], ["\x01some", EncodedSubDocKey(DocKey(0x0a73, [5], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 }]) -> null; intent doc ht: HT{ physical: 1636678107935594 }
+SubDocKey(DocKey([], ["\x01some", EncodedSubDocKey(DocKey(0x4e58, [6], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 3 }]) -> null; intent doc ht: HT{ physical: 1636678107944604 }
+SubDocKey(DocKey([], ["\x01some", EncodedSubDocKey(DocKey(0x9eaf, [4], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 4 }]) -> null; intent doc ht: HT{ physical: 1636678107961642 }
+SubDocKey(DocKey([], ["\x01some", EncodedSubDocKey(DocKey(0xc0c4, [2], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 5 }]) -> null; intent doc ht: HT{ physical: 1636678107973196 }
+SubDocKey(DocKey([], ["\x01some", EncodedSubDocKey(DocKey(0xfca0, [3], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 7 }]) -> null; intent doc ht: HT{ physical: 1636678107973196 w: 2 }
+SubDocKey(DocKey([], ["\x01where", EncodedSubDocKey(DocKey(0x0a73, [5], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 1 }]) -> null; intent doc ht: HT{ physical: 1636678107935594 w: 1 }
+SubDocKey(DocKey([], ["\x045", EncodedSubDocKey(DocKey(0x1210, [1], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 2 }]) -> null; intent doc ht: HT{ physical: 1636678107935594 w: 2 }
+SubDocKey(DocKey([], ["\x05body", EncodedSubDocKey(DocKey(0xc0c4, [2], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 6 }]) -> null; intent doc ht: HT{ physical: 1636678107973196 w: 1 }
+from [] to []
+Process /tmp/gindemo/node-1/disk-1/yb-data/tserver/data/rocksdb/table-000033c000003000800000000000401d/tablet-ba23b657eb5b4bc891ca794bcad06db7/000010.sst
+Sst file format: block-based
+SubDocKey(DocKey([], ["\x05jsonb", EncodedSubDocKey(DocKey(0x4e58, [6], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 }]) -> null; intent doc ht: HT{ physical: 1636678107944677 }
+SubDocKey(DocKey([], ["\x05one", EncodedSubDocKey(DocKey(0xfca0, [3], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 2 }]) -> null; intent doc ht: HT{ physical: 1636678107974363 }
+SubDocKey(DocKey([], ["\x05thing", EncodedSubDocKey(DocKey(0x9eaf, [4], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 1 }]) -> null; intent doc ht: HT{ physical: 1636678107961628 }
+```
