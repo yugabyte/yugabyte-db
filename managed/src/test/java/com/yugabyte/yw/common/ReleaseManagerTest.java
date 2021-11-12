@@ -98,11 +98,12 @@ public class ReleaseManagerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testRemoveRelease() {
+  public void testRemoveReleaseLocal() {
     List<String> versions = ImmutableList.of("0.0.1");
     createDummyReleases(versions, false, false, false, false);
     Object metadata =
-        ReleaseManager.ReleaseMetadata.fromLegacy("0.0.1", "/path/to/yugabyte-0.0.1.tar.gz");
+        ReleaseManager.ReleaseMetadata.fromLegacy(
+            "0.0.1", TMP_STORAGE_PATH + "/path/to/yugabyte-0.0.1.tar.gz");
     when(appConfig.getString("yb.releases.path")).thenReturn(TMP_STORAGE_PATH);
     Map<String, Object> temp = new HashMap<String, Object>();
     temp.put("0.0.1", metadata);
@@ -113,6 +114,25 @@ public class ReleaseManagerTest extends FakeDBApplication {
     releaseManager.removeRelease("0.0.1");
     releases = releaseManager.getLocalReleases(TMP_STORAGE_PATH);
     assertEquals(0, releases.size());
+  }
+
+  @Test
+  public void testRemoveReleaseRemote() {
+    List<String> versions = ImmutableList.of("0.0.9");
+    Object metadata =
+        ReleaseManager.ReleaseMetadata.fromLegacy("0.0.9", "s3://path/to/yugabyte-0.0.9.tar.gz");
+    when(appConfig.getString("yb.releases.path")).thenReturn(TMP_STORAGE_PATH);
+    Map<String, Object> temp = new HashMap<String, Object>();
+    temp.put("0.0.9", metadata);
+    when(configHelper.getConfig(SoftwareReleases)).thenReturn(temp);
+    Map<String, ReleaseManager.ReleaseMetadata> releases =
+        releaseManager.getLocalReleases(TMP_STORAGE_PATH);
+    assertEquals(0, releases.size());
+    Map<String, Object> allReleases = releaseManager.getReleaseMetadata();
+    assertEquals(1, allReleases.size());
+    releaseManager.removeRelease("0.0.9");
+    allReleases = releaseManager.getReleaseMetadata();
+    assertEquals(0, allReleases.size());
   }
 
   @Test
