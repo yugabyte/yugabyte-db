@@ -1579,7 +1579,7 @@ pg_stat_monitor_reset(PG_FUNCTION_ARGS)
 	LWLockAcquire(pgss->lock, LW_EXCLUSIVE);
 	hash_entry_dealloc(-1, -1, NULL);
 	/* Reset query buffers. */
-	for (size_t i = 0; i < MAX_BUCKETS; ++i)
+	for (size_t i = 0; i < PGSM_MAX_BUCKETS; ++i)
 	{
 		*(uint64 *)pgss_qbuf[i] = 0;
 	}
