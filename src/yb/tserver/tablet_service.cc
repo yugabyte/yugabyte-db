@@ -410,8 +410,13 @@ class WriteOperationCompletionCallback {
       tablet::WriteOperation* operation,
       const server::ClockPtr& clock,
       bool trace = false)
-      : tablet_peer_(std::move(tablet_peer)), context_(std::move(context)), response_(response),
-        operation_(operation), clock_(clock), include_trace_(trace) {}
+      : tablet_peer_(std::move(tablet_peer)),
+        context_(std::move(context)),
+        response_(response),
+        operation_(operation),
+        clock_(clock),
+        include_trace_(trace),
+        trace_(include_trace_ ? Trace::CurrentTrace() : nullptr) {}
 
   void operator()(Status status) const {
     VLOG(1) << __PRETTY_FUNCTION__ << " completing with status " << status;
@@ -423,8 +428,13 @@ class WriteOperationCompletionCallback {
       status = Status::OK();
     }
 
+    TRACE("Write completing with status $0", yb::ToString(status));
+
     if (!status.ok()) {
       LOG(INFO) << tablet_peer_->LogPrefix() << "Write failed: " << status;
+      if (include_trace_ && trace_) {
+        response_->set_trace_buffer(trace_->DumpToString(true));
+      }
       SetupErrorAndRespond(get_error(), status, context_.get());
       return;
     }
@@ -463,8 +473,8 @@ class WriteOperationCompletionCallback {
       }
     }
 
-    if (include_trace_ && Trace::CurrentTrace() != nullptr) {
-      response_->set_trace_buffer(Trace::CurrentTrace()->DumpToString(true));
+    if (include_trace_ && trace_) {
+      response_->set_trace_buffer(trace_->DumpToString(true));
     }
     response_->set_propagated_hybrid_time(clock_->Now().ToUint64());
     context_->RespondSuccess();
@@ -482,6 +492,7 @@ class WriteOperationCompletionCallback {
   tablet::WriteOperation* const operation_;
   server::ClockPtr clock_;
   const bool include_trace_;
+  scoped_refptr<Trace> trace_;
 };
 
 // Checksums the scan result.

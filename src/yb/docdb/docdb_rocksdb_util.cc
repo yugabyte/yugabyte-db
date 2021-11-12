@@ -247,7 +247,7 @@ void SeekPossiblyUsingNext(rocksdb::Iterator* iter, const Slice& seek_key,
                            int* next_count, int* seek_count) {
   for (int nexts = FLAGS_max_nexts_to_avoid_seek; nexts-- > 0;) {
     if (!iter->Valid() || iter->key().compare(seek_key) >= 0) {
-      VTRACE(2, "Did $0 Next(s) instead of a Seek", nexts);
+      VTRACE(3, "Did $0 Next(s) instead of a Seek", nexts);
       return;
     }
     VLOG(4) << "Skipping: " << SubDocKey::DebugSliceToString(iter->key());
@@ -256,7 +256,7 @@ void SeekPossiblyUsingNext(rocksdb::Iterator* iter, const Slice& seek_key,
     ++*next_count;
   }
 
-  VTRACE(2, "Forced to do an actual Seek after $0 Next(s)", FLAGS_max_nexts_to_avoid_seek);
+  VTRACE(3, "Forced to do an actual Seek after $0 Next(s)", FLAGS_max_nexts_to_avoid_seek);
   iter->Seek(seek_key);
   ++*seek_count;
 }

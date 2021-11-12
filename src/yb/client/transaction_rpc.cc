@@ -38,7 +38,6 @@ class TransactionRpcBase : public rpc::Rpc, public internal::TabletRpc {
                      internal::RemoteTablet* tablet,
                      YBClient* client)
       : rpc::Rpc(deadline, client->messenger(), &client->proxy_cache()),
-        trace_(new Trace),
         invoker_(false /* local_tserver_only */,
                  false /* consistent_prefix */,
                  client,
@@ -84,7 +83,6 @@ class TransactionRpcBase : public rpc::Rpc, public internal::TabletRpc {
                            rpc::RpcController* controller,
                            rpc::ResponseCallback callback) = 0;
 
-  TracePtr trace_;
   internal::TabletInvoker invoker_;
 };
 
@@ -100,6 +98,7 @@ class TransactionRpc : public TransactionRpcBase {
       : TransactionRpcBase(deadline, tablet, client),
         callback_(std::move(callback)) {
     req_.Swap(req);
+    TRACE_TO(trace_, Traits::kName);
   }
 
   virtual ~TransactionRpc() {}

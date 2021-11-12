@@ -20,6 +20,7 @@
 
 #include "yb/util/flag_tags.h"
 #include "yb/util/tsan_util.h"
+#include "yb/util/trace.h"
 #include "yb/util/yb_pg_errcodes.h"
 
 using namespace std::placeholders;
@@ -206,6 +207,8 @@ boost::optional<TransactionStatus> RunningTransaction::GetStatusAt(
 
 void RunningTransaction::SendStatusRequest(
     int64_t serial_no, const RunningTransactionPtr& shared_self) {
+  TRACE_FUNC();
+  VTRACE(1, yb::ToString(metadata_.transaction_id));
   tserver::GetTransactionStatusRequestPB req;
   req.set_tablet_id(metadata_.status_tablet);
   req.add_transaction_id()->assign(
@@ -268,6 +271,7 @@ void RunningTransaction::DoStatusReceived(const Status& status,
                                           const tserver::GetTransactionStatusResponsePB& response,
                                           int64_t serial_no,
                                           const RunningTransactionPtr& shared_self) {
+  TRACE("$0: $1", __func__, response.ShortDebugString());
   VLOG_WITH_PREFIX(4) << __func__ << "(" << status << ", " << response.ShortDebugString() << ", "
                       << serial_no << ")";
 
