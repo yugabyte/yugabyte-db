@@ -95,7 +95,7 @@ add_dependencies(
 
 add_custom_target(
   update_ysql_migrations ALL
-  COMMAND ${CMAKE_COMMAND} -E rm -rf
+  COMMAND ${CMAKE_COMMAND} -E remove_directory
     ${YB_BUILD_ROOT}/share/ysql_migrations
   COMMAND ${CMAKE_COMMAND} -E copy_directory
     ${CMAKE_CURRENT_SOURCE_DIR}/ysql_migrations
