@@ -82,6 +82,9 @@ DECLARE_int32(tracing_level);
 #define TRACE(format, substitutions...) \
   VTRACE(0, (format), ##substitutions)
 
+#define TRACE_FUNC() \
+  TRACE(__func__)
+
 // Like the above, but takes the trace pointer as an explicit argument.
 #define VTRACE_TO(level, trace, format, substitutions...) \
   do { \
@@ -176,12 +179,12 @@ class Trace : public RefCountedThreadSafe<Trace> {
   // If 'include_time_deltas' is true, calculates and prints the difference between
   // successive trace messages.
   void Dump(std::ostream* out, bool include_time_deltas) const;
-  void Dump(std::ostream* out, const std::string& prefix, bool include_time_deltas) const;
+  void Dump(std::ostream* out, int32_t tracing_depth, bool include_time_deltas) const;
 
   // Dump the trace buffer as a string.
-  std::string DumpToString(const std::string& prefix, bool include_time_deltas) const;
+  std::string DumpToString(int32_t tracing_depth, bool include_time_deltas) const;
   std::string DumpToString(bool include_time_deltas) const {
-    return DumpToString("", include_time_deltas);
+    return DumpToString(0, include_time_deltas);
   }
 
   // Attaches the given trace which will get appended at the end when Dumping.
@@ -278,10 +281,10 @@ class PlainTrace {
 
   void Trace(const char* file_path, int line_number, const char* message);
   void Dump(std::ostream* out, bool include_time_deltas) const;
-  void Dump(std::ostream* out, const std::string& prefix, bool include_time_deltas) const;
-  std::string DumpToString(const std::string& prefix, bool include_time_deltas) const;
+  void Dump(std::ostream* out, int32_t tracing_depth, bool include_time_deltas) const;
+  std::string DumpToString(int32_t tracing_depth, bool include_time_deltas) const;
   std::string DumpToString(bool include_time_deltas) const {
-    return DumpToString("", include_time_deltas);
+    return DumpToString(0, include_time_deltas);
   }
 
  private:

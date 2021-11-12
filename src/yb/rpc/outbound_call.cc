@@ -151,16 +151,15 @@ OutboundCall::OutboundCall(const RemoteMethod* remote_method,
       start_(CoarseMonoClock::Now()),
       controller_(DCHECK_NOTNULL(controller)),
       response_(DCHECK_NOTNULL(response_storage)),
+      trace_(new Trace),
       call_id_(NextCallId()),
       remote_method_(remote_method),
       callback_(std::move(callback)),
       callback_thread_pool_(callback_thread_pool),
-      trace_(new Trace),
       outbound_call_metrics_(outbound_call_metrics),
       rpc_metrics_(rpc_metrics),
       method_metrics_(std::move(method_metrics)) {
-  // Avoid expensive conn_id.ToString() in production.
-  TRACE_TO_WITH_TIME(trace_, start_, "Outbound Call initiated.");
+  TRACE_TO_WITH_TIME(trace_, start_, "$0.", remote_method_->ToString());
 
   if (Trace::CurrentTrace()) {
     Trace::CurrentTrace()->AddChildTrace(trace_.get());
@@ -349,10 +348,10 @@ void OutboundCall::InvokeCallback() {
   if (callback_thread_pool_) {
     callback_task_.SetOutboundCall(shared_from(this));
     callback_thread_pool_->Enqueue(&callback_task_);
-    TRACE_TO(trace_, "Callback called asynchronously.");
+    TRACE_TO(trace_, "Callback will be called asynchronously.");
   } else {
     InvokeCallbackSync();
-    TRACE_TO(trace_, "Callback called.");
+    TRACE_TO(trace_, "Callback called synchronously.");
   }
 }
 
@@ -388,6 +387,8 @@ void OutboundCall::SetResponse(CallResponse&& resp) {
 
   auto now = CoarseMonoClock::Now();
   TRACE_TO_WITH_TIME(trace_, now, "Response received.");
+  // Avoid expensive conn_id.ToString() in production.
+  VTRACE_TO(1, trace_, "from $0", conn_id_.ToString());
   // Track time taken to be responded.
 
   if (outbound_call_metrics_) {
@@ -459,7 +460,6 @@ void OutboundCall::SetFinished() {
   if (SetState(FINISHED_SUCCESS)) {
     InvokeCallback();
   }
-  TRACE_TO(trace_, "Callback called.");
 }
 
 void OutboundCall::SetFailed(const Status &status, std::unique_ptr<ErrorStatusPB> err_pb) {
