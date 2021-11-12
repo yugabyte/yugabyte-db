@@ -11,6 +11,7 @@ import com.yugabyte.yw.models.helpers.BundleDetails;
 import com.yugabyte.yw.forms.SupportBundleFormData;
 import io.ebean.Finder;
 import io.ebean.Model;
+import io.ebean.annotation.DbEnumValue;
 import io.ebean.annotation.DbJson;
 import java.io.File;
 import java.io.InputStream;
@@ -20,6 +21,8 @@ import java.util.UUID;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
+import lombok.Getter;
+import lombok.Setter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,51 +33,62 @@ public class SupportBundle extends Model {
 
   @Id
   @Column(nullable = false, unique = true)
-  public UUID bundleUUID;
+  @Getter
+  private UUID bundleUUID;
 
-  public UUID getBundleUUID() {
-    return this.bundleUUID;
-  }
-
-  public void setBundleUUID(UUID uuid) {
-    this.bundleUUID = uuid;
-  }
+  @Column @Getter @Setter private Path path;
 
   @Column(nullable = false)
-  public Path path;
-
-  public void setPath(Path path) {
-    this.path = path;
-  }
-
-  public Path getPath() {
-    return this.path;
-  }
-
-  @Column(nullable = false)
-  public UUID scopeUUID;
+  @Getter
+  private UUID scopeUUID;
 
   @Column
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
-  public Date startDate;
+  private Date startDate;
 
   @Column
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
-  public Date endDate;
+  private Date endDate;
 
   @Column(nullable = true)
   @DbJson
-  public BundleDetails bundleDetails;
+  private BundleDetails bundleDetails;
 
-  public SupportBundle(Universe universe, Path path, SupportBundleFormData bundle) {
-    this.bundleUUID = UUID.randomUUID();
-    this.path = path;
-    if (bundle != null) {
-      this.scopeUUID = universe.universeUUID;
-      this.startDate = bundle.startDate;
-      this.endDate = bundle.endDate;
-      this.bundleDetails = new BundleDetails(bundle.components);
+  @Column(name = "status", nullable = false)
+  @Getter
+  @Setter
+  private SupportBundleStatusType status;
+
+  public enum SupportBundleStatusType {
+    Running("Running"),
+    Success("Success"),
+    Failed("Failed");
+
+    private final String status;
+
+    private SupportBundleStatusType(String status) {
+      this.status = status;
     }
+
+    @DbEnumValue
+    public String toString() {
+      return this.status;
+    }
+  }
+
+  public static SupportBundle create(SupportBundleFormData bundleData, Universe universe) {
+    SupportBundle supportBundle = new SupportBundle();
+    supportBundle.bundleUUID = UUID.randomUUID();
+    supportBundle.scopeUUID = universe.universeUUID;
+    supportBundle.path = null;
+    if (bundleData != null) {
+      supportBundle.startDate = bundleData.startDate;
+      supportBundle.endDate = bundleData.endDate;
+      supportBundle.bundleDetails = new BundleDetails(bundleData.components);
+    }
+    supportBundle.status = SupportBundleStatusType.Running;
+    supportBundle.save();
+    return supportBundle;
   }
 
   public static final Finder<UUID, SupportBundle> find =
@@ -102,6 +116,9 @@ public class SupportBundle extends Model {
 
   public String getFileName() {
     Path bundlePath = this.getPath();
+    if (bundlePath == null) {
+      return null;
+    }
     return bundlePath.getFileName().toString();
   }
 }
