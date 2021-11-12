@@ -33,7 +33,7 @@ The following are the key features of pg_stat_monitor:
 
 ### Time buckets
 
-Instead of supplying one set of ever-increasing counts, `pg_stat_monitor` computes stats for a configured number of time intervals; time buckets. This allows for much better data accuracy, especially in the case of high-resolution or unreliable networks.
+Instead of supplying one set of ever-increasing counts, `pg_stat_monitor` computes stats for a configured number of time intervals; time buckets. This allows for much better data accuracy, especially in the case of high-resolution or unreliable networks. 
 
 ### Table and index access statistics per statement
 
@@ -42,20 +42,21 @@ Instead of supplying one set of ever-increasing counts, `pg_stat_monitor` comput
 
 ### Query and client information
 
-
 `pg_stat_monitor` provides  additional metrics for detailed analysis of query performance from various perspectives, including client connection details like user name, application name, IP address to name a few relevant columns.
 With this information, `pg_stat_monitor` enables users to track a query to the originating application. More details about the application or query may be incorporated in the SQL query in a [Google’s Sqlcommenter](https://google.github.io/sqlcommenter/) format.
 
+To see how it works, refer to the [usage example](#query-information)
+
 ### Query timing information
 
-Understanding query execution time stats helps you identify what affects query performance and take measures to optimize it. `pg_stat_monitor` collects the total, min, max and average (mean) time it took to execute a particular query and provides this data in separate columns. See the [Query timing information](#usage-examples-query-timing-information) example for the sample output.
+Understanding query execution time stats helps you identify what affects query performance and take measures to optimize it. `pg_stat_monitor` collects the total, min, max and average (mean) time it took to execute a particular query and provides this data in separate columns. See the [Query timing information](#query-timing-information-1) example for the sample output.
 
 
 ### Query execution plan information
 
 Every query has a plan that was constructed for its executing. Collecting the query plan information as well as monitoring query plan timing helps you understand how you can modify the query to optimize its execution. It also helps make communication about the query clearer when discussing query performance with other DBAs and application developers.
 
-See the [Query execution plan](#usage-examples-query-execution-time) example for the sample output.
+See the [Query execution plan](##query-execution-plan) example for the sample output.
 
 ### Use of actual data or parameters placeholders in queries
 
@@ -65,13 +66,13 @@ You can select whether to see queries with parameters placeholders or actual que
 
 `pg_stat_monitor` monitors queries per type (``SELECT``, `INSERT`, `UPDATE` or `DELETE`) and classifies them accordingly in the `cmd_type` column. This way you can separate the queries you are interested in and focus on identifying the issues and optimizing query performance.
 
-See the [Query type filtering example](#usage-examples-query-time-filtering) for the sample output.
+See the [Query type filtering example](#query-type-filtering-1) for the sample output.
 
 ### Query metadata
 
 Google’s Sqlcommenter is a useful tool that in a way bridges that gap between ORM libraries and understanding database performance. And ``pg_stat_monitor`` supports it. So, you can now put any key-value data (like what client executed a query or if it is testing vs production query) in the comments in `/* … */` syntax in your SQL statements, and the information will be parsed by `pg_stat_monitor` and made available in the comments column in the `pg_stat_monitor` view. For details on the comments’ syntax, see [Sqlcommenter documentation](https://google.github.io/sqlcommenter/).
 
-To see how it works, see the [Query metadata](#isage-examples-query-metadata) example.
+To see how it works, see the [Query metadata](#query-metadata-1) example.
 
 ### Top query tracking
 
@@ -81,15 +82,17 @@ Top query indicates the main query. To illustrate, for the SELECT query that is 
 
 This enables you to backtrack to the originating function and thus simplifies the tracking and analysis.
 
-Find more details in the [usage example](#usage-examples-function-execution-tracking).
+Find more details in the [usage example](#top-query-tracking-1).
 
 ### Relations
 
-`pg_stat_monitor` provides the list of tables involved in the query in the relations column. This reduces time on identifying the tables and simplifies the analysis.
+`pg_stat_monitor` provides the list of tables involved in the query in the relations column. This reduces time on identifying the tables and simplifies the analysis. To learn more, see the [usage examples](#relations-1)
 
 ### Monitoring queries terminated with ERROR, WARNING and LOG error levels
 
 Monitoring queries that terminate with ERROR, WARNING, LOG states can give useful information to debug an issue. Such messages have the error level (`elevel`), error code (`sqlcode`), and error message (`message`).  `pg_stat_monitor` collects all this information and aggregates it so that you can measure performance for successful and failed queries separately, as well as understand why a particular query failed to execute successfully.
+
+Find details in the [usage example](#queries-terminated-with-errors)
 
 ### Integration with PMM
 
@@ -101,7 +104,7 @@ To learn how to integrate pg_stat_monitor with PMM, see [Configure pg_stat_monit
 
 Histogram (the `resp_calls` parameter) provides a visual representation of query performance. With the help of the histogram function, you can view a timing/calling data histogram in response to an SQL query.
 
-Learn more about using histograms from the [usage example](#usage-examples-histogram).
+Learn more about using histograms from the [usage example](#histogram-1).
 
 ## Views
 
@@ -166,21 +169,21 @@ The following table shows setup options for each configuration parameter and whe
 
 | Parameter Name                                |  postgresql.conf   | SET | ALTER SYSTEM SET  |  server restart   | configuration reload
 | ----------------------------------------------|--------------------|-----|-------------------|-------------------|---------------------
-| [pg_stat_monitor.pgsm_max](#pg-stat-monitorpgsm-max) | :heavy_check_mark: | :x:                |:x:                |:heavy_check_mark: | :x:
-| [pg_stat_monitor.pgsm_query_max_len](#pg-stat-monitorpgsm-query-max-len)            | :heavy_check_mark: | :x:                |:x:                |:heavy_check_mark: | :x:
-| [pg_stat_monitor.pgsm_enable](#pg-stat-monitorpgsm-enable)                   | :heavy_check_mark: | :x:                |:heavy_check_mark: |:x: | :x:
-| [pg_stat_monitor.pgsm_track_utility](#pg-stat-monitorpgsm-track-utility)            | :heavy_check_mark: | :heavy_check_mark: |:heavy_check_mark: |:x: | :heavy_check_mark:
-| [pg_stat_monitor.pgsm_normalized_query](#pg-stat-monitorpgsm-normalized-query)         | :heavy_check_mark: | :heavy_check_mark: |:heavy_check_mark: |:x: | :heavy_check_mark:
-| [pg_stat_monitor.pgsm_max_buckets](#pg-stat-monitorpgsm-max-buckets)              | :heavy_check_mark: | :x:                |:x:                |:heavy_check_mark: | :heavy_check_mark:
-| [pg_stat_monitor.pgsm_bucket_time](#pg-stat-monitorpgsm-bucket-time)              | :heavy_check_mark: | :x:                |:x:                |:heavy_check_mark: | :x:
+| [pg_stat_monitor.pgsm_max](#pg_stat_monitorpgsm_max) | :heavy_check_mark: | :x:                |:x:                |:heavy_check_mark: | :x:
+| [pg_stat_monitor.pgsm_query_max_len](#pg_stat_monitorpgsm_query_max_len)            | :heavy_check_mark: | :x:                |:x:                |:heavy_check_mark: | :x:
+| [pg_stat_monitor.pgsm_enable](#pg_stat_monitorpgsm_enable)                   | :heavy_check_mark: | :x:                |:heavy_check_mark: |:x: | :x:
+| [pg_stat_monitor.pgsm_track_utility](#pg_stat_monitorpgsm_track_utility)            | :heavy_check_mark: | :heavy_check_mark: |:heavy_check_mark: |:x: | :heavy_check_mark:
+| [pg_stat_monitor.pgsm_normalized_query](#pg_stat_monitorpgsm_normalized_query)         | :heavy_check_mark: | :heavy_check_mark: |:heavy_check_mark: |:x: | :heavy_check_mark:
+| [pg_stat_monitor.pgsm_max_buckets](#pg_stat_monitorpgsm_max_buckets)              | :heavy_check_mark: | :x:                |:x:                |:heavy_check_mark: | :heavy_check_mark:
+| [pg_stat_monitor.pgsm_bucket_time](#pg_stat_monitorpgsm_bucket_time)              | :heavy_check_mark: | :x:                |:x:                |:heavy_check_mark: | :x:
 | [pg_stat_monitor.pgsm_object_cache](#pg-stat-monitorpgsm-object-cache)             | :heavy_check_mark: | :x:                |:x:                |:heavy_check_mark: | :x:
-| [pg_stat_monitor.pgsm_histogram_min](#pg-stat-monitorpgsm-histogram-min) | :heavy_check_mark: | :x:                |:x:                |:heavy_check_mark: | :x:
-| [pg_stat_monitor.pgsm_histogram_max](#pg-stat-monitorpgsm-histogram-max)        | :heavy_check_mark: | :x:                |:x:                |:heavy_check_mark: | :x:
-| [pg_stat_monitor.pgsm_histogram_buckets](#pg-stat-monitorpgsm-histogram-buckets)   | :heavy_check_mark: | :x:                |:x:                |:heavy_check_mark: | :x:
-| [pg_stat_monitor.pgsm_query_shared_buffer](#pg-stat-monitorpgsm-query-shared-buffer)      | :heavy_check_mark: | :x:                |:x:                |:heavy_check_mark: | :x:
-| [pg_stat_monitor.pgsm_overflow_target](#pg-stat-monitorpgsm-overflow-target) | :heavy_check_mark:   |  :x:  |  :x:  |   :heavy_check_mark: |  :x:  |
-| [pg_stat_monitor.pgsm_enable_query_plan](pg-stat-monitorpgsm-enable-query-plan)  | :heavy_check_mark:   |  :x:  |  :x:  |   :heavy_check_mark: |  :x:  |
-| [pg_stat_monitor.pgsm_track_planning](#pg-stat-monitorpgsm-track-planning) | :heavy_check_mark:   |  :x:  |  :x:  |   :heavy_check_mark: |  :x:  |
+| [pg_stat_monitor.pgsm_histogram_min](#pg_stat_monitorpgsm_histogram_min) | :heavy_check_mark: | :x:                |:x:                |:heavy_check_mark: | :x:
+| [pg_stat_monitor.pgsm_histogram_max](#pg_stat_monitorpgsm_histogram_max)        | :heavy_check_mark: | :x:                |:x:                |:heavy_check_mark: | :x:
+| [pg_stat_monitor.pgsm_histogram_buckets](#pg_stat_monitorpgsm_histogram_buckets)   | :heavy_check_mark: | :x:                |:x:                |:heavy_check_mark: | :x:
+| [pg_stat_monitor.pgsm_query_shared_buffer](#pg_stat_monitorpgsm_query_shared_buffer)      | :heavy_check_mark: | :x:                |:x:                |:heavy_check_mark: | :x:
+| [pg_stat_monitor.pgsm_overflow_target](#pg_stat_monitorpgsm_overflow_target) | :heavy_check_mark:   |  :x:  |  :x:  |   :heavy_check_mark: |  :x:  |
+| [pg_stat_monitor.pgsm_enable_query_plan](#pg_stat_monitorpgsm_enable_query_plan)  | :heavy_check_mark:   |  :x:  |  :x:  |   :heavy_check_mark: |  :x:  |
+| [pg_stat_monitor.pgsm_track_planning](#pg_stat_monitorpgsm_track_planning) | :heavy_check_mark:   |  :x:  |  :x:  |   :heavy_check_mark: |  :x:  |
 
 #### Parameters description:
 
@@ -233,12 +236,12 @@ Values:
 
 Requires the server restart.
 
-#### pg_stat_monitor.pgsm_bucket_time
+##### pg_stat_monitor.pgsm_bucket_time
 
 Values:
 - Min: 1
 - Max: 2147483647
-- Default: 300
+- Default: 60
 
 This parameter is used to set the lifetime of the bucket. System switches between buckets on the basis of [pg_stat_monitor.pgsm_bucket_time](#pg-stat-monitorpgsm-bucket-time).
 
@@ -288,7 +291,7 @@ Type: boolean. Default: 1
 
 Sets the overflow target for the `pg_stat_monitor`. Requires the server restart.
 
-#### pg_stat_monitor.pgsm_enable_query_plan
+##### pg_stat_monitor.pgsm_enable_query_plan
 
 Type: boolean. Default: 1
 
@@ -308,7 +311,7 @@ For versions 11 and 12, please consult the [pg_stat_monitor reference](https://g
 
 ### Querying buckets
 
-
+```sql
 postgres=# select bucket, bucket_start_time, query,calls from pg_stat_monitor order by bucket;
 -[ RECORD 1 ]-----+------------------------------------------------------------------------------------
 bucket | 0
@@ -434,6 +437,31 @@ postgres=# SELECT substr(query,0,50), query_plan from pg_stat_monitor limit 10;
 
 The `plan` column does not contain costing, width and other values. This is an expected behavior as each row is an accumulation of statistics based on `plan` and amongst other key columns. Plan is only available when the `pgsm_enable_query_plan` configuration parameter is enabled.
 
+### Query type filtering
+
+``pg_stat_monitor`` monitors queries per type (SELECT, INSERT, UPDATE OR DELETE) and classifies them accordingly in the ``cmd_type`` column thus reducing your efforts.
+
+```sql
+postgres=# SELECT bucket, substr(query,0, 50) AS query, cmd_type FROM pg_stat_monitor WHERE elevel = 0;
+ bucket |                       query                       | cmd_type
+--------+---------------------------------------------------+----------
+      4 | END                                               |
+      4 | SELECT abalance FROM pgbench_accounts WHERE aid = | SELECT
+      4 | vacuum pgbench_branches                           |
+      4 | select count(*) from pgbench_branches             | SELECT
+      4 | UPDATE pgbench_accounts SET abalance = abalance + | UPDATE
+      4 | truncate pgbench_history                          |
+      4 | INSERT INTO pgbench_history (tid, bid, aid, delta | INSERT
+      5 | SELECT relations query FROM pg_stat_monitor       | SELECT
+      9 | SELECT bucket, substr(query,$1, $2) AS query, cmd |
+      4 | vacuum pgbench_tellers                            |
+      4 | BEGIN                                             |
+      5 | SELECT relations,query FROM pg_stat_monitor       | SELECT
+      4 | UPDATE pgbench_tellers SET tbalance = tbalance +  | UPDATE
+      4 | UPDATE pgbench_branches SET bbalance = bbalance + | UPDATE
+(14 rows)
+```
+
 ### Query metadata
 
 The `comments` column contains any text wrapped in `“/*”` and `“*/”` comment tags. The `pg_stat_monitor` extension picks up these comments and makes them available in the comments column. Please note that only the latest comment value is preserved per row. The comments may be put in any format that can be parsed by a tool.
@@ -514,79 +542,6 @@ postgres=# select query, text_to_hstore(comments)->'real_ip' as real_ip from pg_
 (10 rows)
 ```
 
-### Query type filtering
-
-``pg_stat_monitor`` monitors queries per type (SELECT, INSERT, UPDATE OR DELETE) and classifies them accordingly in the ``cmd_type`` column thus reducing your efforts.
-
-```sql
-postgres=# SELECT bucket, substr(query,0, 50) AS query, cmd_type FROM pg_stat_monitor WHERE elevel = 0;
- bucket |                       query                       | cmd_type
---------+---------------------------------------------------+----------
-      4 | END                                               |
-      4 | SELECT abalance FROM pgbench_accounts WHERE aid = | SELECT
-      4 | vacuum pgbench_branches                           |
-      4 | select count(*) from pgbench_branches             | SELECT
-      4 | UPDATE pgbench_accounts SET abalance = abalance + | UPDATE
-      4 | truncate pgbench_history                          |
-      4 | INSERT INTO pgbench_history (tid, bid, aid, delta | INSERT
-      5 | SELECT relations query FROM pg_stat_monitor       | SELECT
-      9 | SELECT bucket, substr(query,$1, $2) AS query, cmd |
-      4 | vacuum pgbench_tellers                            |
-      4 | BEGIN                                             |
-      5 | SELECT relations,query FROM pg_stat_monitor       | SELECT
-      4 | UPDATE pgbench_tellers SET tbalance = tbalance +  | UPDATE
-      4 | UPDATE pgbench_branches SET bbalance = bbalance + | UPDATE
-(14 rows)
-```
-
-### Queries terminated with errors
-
-```sql
-SELECT substr(query,0,50) AS query, decode_error_level(elevel) AS elevel,sqlcode, calls, substr(message,0,50) message
-FROM pg_stat_monitor;
-                       query                       | elevel | sqlcode | calls |                      message
----------------------------------------------------+--------+---------+-------+---------------------------------------------------
- select substr(query,$1,$2) as query, decode_error |        |       0 |     1 |
- select bucket,substr(query,$1,$2),decode_error_le |        |       0 |     3 |
-                                                   | LOG    |       0 |     1 | database system is ready to accept connections
- select 1/0;                                       | ERROR  |     130 |     1 | division by zero
-                                                   | LOG    |       0 |     1 | database system was shut down at 2020-11-11 11:37
- select $1/$2                                      |        |       0 |     1 |
-(6 rows)
-          11277.79 | SELECT * FROM foo
-```
-
-### Histogram
-
-Histogram (the `resp_calls` parameter) provides a visual representation of query performance. With the help of the histogram function, you can view a timing/calling data histogram in response to a SQL query.
-
-
-```sql
-SELECT resp_calls, query FROM pg_stat_monitor;
-                    resp_calls                    |                 query                                        
---------------------------------------------------+----------------------------------------------
-{1," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 0"} | select client_ip, query from pg_stat_monitor
-{3," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 1"} | select * from pg_stat_monitor_reset()
-{3," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 1"} | SELECT * FROM foo
-
-postgres=# SELECT * FROM histogram(0, 'F44CD1B4B33A47AF') AS a(range TEXT, freq INT, bar TEXT);
-       range        | freq |              bar
---------------------+------+--------------------------------
-  (0 - 3)}          |    2 | ■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
-  (3 - 10)}         |    0 |
-  (10 - 31)}        |    1 | ■■■■■■■■■■■■■■■
-  (31 - 100)}       |    0 |
-  (100 - 316)}      |    0 |
-  (316 - 1000)}     |    0 |
-  (1000 - 3162)}    |    0 |
-  (3162 - 10000)}   |    0 |
-  (10000 - 31622)}  |    0 |
-  (31622 - 100000)} |    0 |
-(10 rows)
-```
-
-There are 10 time based buckets of the time **`pg_stat_monitor.pgsm_respose_time_step`** in the field ``resp_calls``. The value in the field shows how many queries run in that period of time.
-
 ### Top query tracking
 
 In the following example we create a function `add2` that adds one parameter value to another one and call this function to calculate 1+2.
@@ -596,7 +551,7 @@ In the following example we create a function `add2` that adds one parameter val
 CREATE OR REPLACE function add2(int, int) RETURNS int as
 $$
 BEGIN
-	return (select $1 + $2);
+   return (select $1 + $2);
 END;
 $$ language plpgsql;
 
@@ -665,3 +620,52 @@ SELECT relations, query FROM pg_stat_monitor;
  {foo,bar}           | select * from foo,bar
 (2 rows)
 ```
+
+### Queries terminated with errors
+
+```sql
+SELECT substr(query,0,50) AS query, decode_error_level(elevel) AS elevel,sqlcode, calls, substr(message,0,50) message
+FROM pg_stat_monitor;
+                       query                       | elevel | sqlcode | calls |                      message
+---------------------------------------------------+--------+---------+-------+---------------------------------------------------
+ select substr(query,$1,$2) as query, decode_error |        |       0 |     1 |
+ select bucket,substr(query,$1,$2),decode_error_le |        |       0 |     3 |
+                                                   | LOG    |       0 |     1 | database system is ready to accept connections
+ select 1/0;                                       | ERROR  |     130 |     1 | division by zero
+                                                   | LOG    |       0 |     1 | database system was shut down at 2020-11-11 11:37
+ select $1/$2                                      |        |       0 |     1 |
+(6 rows)
+          11277.79 | SELECT * FROM foo
+```
+
+### Histogram
+
+Histogram (the `resp_calls` parameter) provides a visual representation of query performance. With the help of the histogram function, you can view a timing/calling data histogram in response to a SQL query.
+
+
+```sql
+SELECT resp_calls, query FROM pg_stat_monitor;
+                    resp_calls                    |                 query                                        
+--------------------------------------------------+----------------------------------------------
+{1," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 0"} | select client_ip, query from pg_stat_monitor
+{3," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 1"} | select * from pg_stat_monitor_reset()
+{3," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 0"," 1"} | SELECT * FROM foo
+
+postgres=# SELECT * FROM histogram(0, 'F44CD1B4B33A47AF') AS a(range TEXT, freq INT, bar TEXT);
+       range        | freq |              bar
+--------------------+------+--------------------------------
+  (0 - 3)}          |    2 | ■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
+  (3 - 10)}         |    0 |
+  (10 - 31)}        |    1 | ■■■■■■■■■■■■■■■
+  (31 - 100)}       |    0 |
+  (100 - 316)}      |    0 |
+  (316 - 1000)}     |    0 |
+  (1000 - 3162)}    |    0 |
+  (3162 - 10000)}   |    0 |
+  (10000 - 31622)}  |    0 |
+  (31622 - 100000)} |    0 |
+(10 rows)
+```
+
+There are 10 time based buckets of the time generated automatically based on total buckets in the field ``resp_calls``. The value in the field shows how many queries run in that period of time.
+
