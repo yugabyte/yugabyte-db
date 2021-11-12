@@ -48,7 +48,7 @@ Limitations:
 ### DELETE, INSERT, UPDATE
 
 Writes are fully supported.
-However, note that UPDATEs may be expensive since they are currently implemented as DELETE + INSERT.
+Note that UPDATEs may be expensive since they are currently implemented as DELETE + INSERT.
 
 ### SELECT
 
