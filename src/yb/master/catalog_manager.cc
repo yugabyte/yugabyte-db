@@ -1787,7 +1787,7 @@ Result<ReplicationInfoPB> CatalogManager::GetTableReplicationInfo(
   return l->pb.replication_info();
 }
 
-std::shared_ptr<YsqlTablespaceManager> CatalogManager::GetTablespaceManager() {
+std::shared_ptr<YsqlTablespaceManager> CatalogManager::GetTablespaceManager() const {
   SharedLock lock(tablespace_mutex_);
   return tablespace_manager_;
 }
@@ -2303,6 +2303,25 @@ Status CatalogManager::ValidateSplitCandidate(const TabletInfo& tablet_info) {
   return Status::OK();
 }
 
+Result<ReplicationInfoPB> CatalogManager::GetTableReplicationInfo(
+    const TabletInfo& tablet_info) const {
+  auto table = tablet_info.table();
+  {
+    auto table_lock = table->LockForRead();
+    if (table_lock->pb.has_replication_info()) {
+      return table_lock->pb.replication_info();
+    }
+  }
+
+  auto replication_info_opt = VERIFY_RESULT(
+      GetTablespaceManager()->GetTableReplicationInfo(table));
+  if (replication_info_opt) {
+    return replication_info_opt.value();
+  }
+
+  return cluster_config_->LockForRead()->pb.replication_info();
+}
+
 bool CatalogManager::ShouldSplitValidCandidate(
     const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const {
   if (PREDICT_FALSE(FLAGS_TEST_select_all_tablets_for_split)) {
@@ -2321,7 +2340,27 @@ bool CatalogManager::ShouldSplitValidCandidate(
     BlacklistSet blacklist = BlacklistSetFromPB();
     master_->ts_manager()->GetAllLiveDescriptors(&ts_descs, blacklist);
   }
-  auto num_servers = ts_descs.size();
+
+  size_t num_servers = 0;
+  auto table_replication_info_or_status = GetTableReplicationInfo(tablet_info);
+
+  // If there is custom placement information present then
+  // only count the tservers which the table has access to
+  // according to the placement policy
+  if (table_replication_info_or_status.ok()
+      && table_replication_info_or_status->has_live_replicas()) {
+    auto pb = table_replication_info_or_status->live_replicas();
+    auto valid_tservers_res = FindTServersForPlacementInfo(
+      table_replication_info_or_status->live_replicas(), ts_descs);
+    if (!valid_tservers_res.ok()) {
+      num_servers = ts_descs.size();
+    } else {
+      num_servers = valid_tservers_res.get().size();
+    }
+  } else {
+    num_servers = ts_descs.size();
+  }
+
   int64 num_tablets_per_server = tablet_info.table()->NumPartitions() / num_servers;
 
   if (num_tablets_per_server < FLAGS_tablet_split_low_phase_shard_count_per_node) {
@@ -8699,7 +8738,7 @@ Status CatalogManager::HandlePlacementUsingPlacementInfo(const PlacementInfoPB& 
 
 Result<vector<shared_ptr<TSDescriptor>>> CatalogManager::FindTServersForPlacementInfo(
     const PlacementInfoPB& placement_info,
-    const TSDescriptorVector& ts_descs) {
+    const TSDescriptorVector& ts_descs) const {
 
   vector<shared_ptr<TSDescriptor>> all_allowed_ts;
   for (const auto& ts : ts_descs) {
