@@ -26,9 +26,8 @@ SELECT * FROM pg_stat_monitor_settings ORDER BY name COLLATE "C";
  pg_stat_monitor.pgsm_overflow_target     |      1 |             1 | Sets the overflow target for pg_stat_monitor                                                             |       0 |          1 |       1
  pg_stat_monitor.pgsm_query_max_len       |   1024 |          1024 | Sets the maximum length of query.                                                                        |    1024 | 2147483647 |       1
  pg_stat_monitor.pgsm_query_shared_buffer |     20 |            20 | Sets the maximum size of shared memory in (MB) used for query tracked by pg_stat_monitor.                |       1 |      10000 |       1
- pg_stat_monitor.pgsm_track_planning      |      1 |             1 | Selects whether planning statistics are tracked.                                                         |       0 |          0 |       0
  pg_stat_monitor.pgsm_track_utility       |      1 |             1 | Selects whether utility commands are tracked.                                                            |       0 |          0 |       0
-(14 rows)
+(13 rows)
 
 SELECT pg_stat_monitor_reset();
  pg_stat_monitor_reset 
