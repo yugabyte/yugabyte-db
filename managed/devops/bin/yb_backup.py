@@ -1190,49 +1190,100 @@ class YBBackup:
                     "Uploading {} to server {}".format(self.cloud_cfg_file_path, server_ip))
 
             output = self.create_remote_tmp_dir(server_ip)
-            if self.is_k8s():
-                k8s_details = KubernetesDetails(server_ip, self.k8s_namespace_to_cfg)
-                output += self.run_program([
-                    'kubectl',
-                    'cp',
-                    self.cloud_cfg_file_path,
-                    '{}/{}:{}'.format(
-                        k8s_details.namespace, k8s_details.pod_name, self.get_tmp_dir()),
-                    '-c',
-                    k8s_details.container,
-                    '--no-preserve=true'
-                ], env=k8s_details.env_config)
-            elif not self.args.no_ssh:
-                if self.needs_change_user():
-                    # TODO: Currently ssh_wrapper_with_sudo.sh will only change users to yugabyte,
-                    # not args.remote_user.
-                    ssh_wrapper_path = os.path.join(SCRIPT_DIR, 'ssh_wrapper_with_sudo.sh')
-                    output += self.run_program(
-                        ['scp',
-                         '-S', ssh_wrapper_path,
-                         '-o', 'StrictHostKeyChecking=no',
-                         '-o', 'UserKnownHostsFile=/dev/null',
-                         '-i', self.args.ssh_key_path,
-                         '-P', self.args.ssh_port,
-                         '-q',
-                         self.cloud_cfg_file_path,
-                         '%s@%s:%s' % (self.args.ssh_user, server_ip, self.get_tmp_dir())])
-                else:
-                    output += self.run_program(
-                        ['scp',
-                         '-o', 'StrictHostKeyChecking=no',
-                         '-o', 'UserKnownHostsFile=/dev/null',
-                         '-i', self.args.ssh_key_path,
-                         '-P', self.args.ssh_port,
-                         '-q',
-                         self.cloud_cfg_file_path,
-                         '%s@%s:%s' % (self.args.ssh_user, server_ip, self.get_tmp_dir())])
+            output += self.upload_file_from_local(server_ip, self.cloud_cfg_file_path,
+                                                  self.get_tmp_dir())
 
             self.server_ips_with_uploaded_cloud_cfg[server_ip] = output
 
             if self.args.verbose:
                 logging.info("Uploading {} to server {} done: {}".format(
                     self.cloud_cfg_file_path, server_ip, output))
+
+    def upload_file_from_local(self, dest_ip, src, dest):
+
+        output = ''
+        if self.is_k8s():
+            k8s_details = KubernetesDetails(dest_ip, self.k8s_namespace_to_cfg)
+            output += self.run_program([
+                'kubectl',
+                'cp',
+                src,
+                '{}/{}:{}'.format(
+                    k8s_details.namespace, k8s_details.pod_name, dest),
+                '-c',
+                k8s_details.container,
+                '--no-preserve=true'
+            ], env=k8s_details.env_config)
+        elif not self.args.no_ssh:
+            if self.needs_change_user():
+                # TODO: Currently ssh_wrapper_with_sudo.sh will only change users to yugabyte,
+                # not args.remote_user.
+                ssh_wrapper_path = os.path.join(SCRIPT_DIR, 'ssh_wrapper_with_sudo.sh')
+                output += self.run_program(
+                    ['scp',
+                        '-S', ssh_wrapper_path,
+                        '-o', 'StrictHostKeyChecking=no',
+                        '-o', 'UserKnownHostsFile=/dev/null',
+                        '-i', self.args.ssh_key_path,
+                        '-P', self.args.ssh_port,
+                        '-q',
+                        src,
+                        '%s@%s:%s' % (self.args.ssh_user, dest_ip, dest)])
+            else:
+                output += self.run_program(
+                    ['scp',
+                        '-o', 'StrictHostKeyChecking=no',
+                        '-o', 'UserKnownHostsFile=/dev/null',
+                        '-i', self.args.ssh_key_path,
+                        '-P', self.args.ssh_port,
+                        '-q',
+                        src,
+                        '%s@%s:%s' % (self.args.ssh_user, dest_ip, dest)])
+
+        return output
+
+    def download_file_to_local(self, src_ip, src, dest):
+
+        output = ''
+        if self.is_k8s():
+            k8s_details = KubernetesDetails(src_ip, self.k8s_namespace_to_cfg)
+            output += self.run_program([
+                'kubectl',
+                'cp',
+                '{}/{}:{}'.format(
+                    k8s_details.namespace, k8s_details.pod_name, src),
+                dest,
+                '-c',
+                k8s_details.container,
+                '--no-preserve=true'
+            ], env=k8s_details.env_config)
+        elif not self.args.no_ssh:
+            if self.needs_change_user():
+                # TODO: Currently ssh_wrapper_with_sudo.sh will only change users to yugabyte,
+                # not args.remote_user.
+                ssh_wrapper_path = os.path.join(SCRIPT_DIR, 'ssh_wrapper_with_sudo.sh')
+                output += self.run_program(
+                    ['scp',
+                        '-S', ssh_wrapper_path,
+                        '-o', 'StrictHostKeyChecking=no',
+                        '-o', 'UserKnownHostsFile=/dev/null',
+                        '-i', self.args.ssh_key_path,
+                        '-P', self.args.ssh_port,
+                        '-q',
+                        '%s@%s:%s' % (self.args.ssh_user, src_ip, src),
+                        dest])
+            else:
+                output += self.run_program(
+                    ['scp',
+                        '-o', 'StrictHostKeyChecking=no',
+                        '-o', 'UserKnownHostsFile=/dev/null',
+                        '-i', self.args.ssh_key_path,
+                        '-P', self.args.ssh_port,
+                        '-q',
+                        '%s@%s:%s' % (self.args.ssh_user, src_ip, src),
+                        dest])
+
+        return output
 
     def run_ssh_cmd(self, cmd, server_ip, upload_cloud_cfg=True, num_ssh_retry=3, env_vars={}):
         """
@@ -1740,15 +1791,36 @@ class YBBackup:
     def upload_encryption_key_file(self):
         key_file = os.path.basename(self.args.backup_keys_source)
         key_file_dest = os.path.join("/".join(self.args.backup_location.split("/")[:-1]), key_file)
-        self.run_program(self.storage.upload_file_cmd(self.args.backup_keys_source, key_file_dest))
+        if self.is_nfs():
+            # Upload keys file from local to NFS mount path on DB node.
+            self.run_ssh_cmd(['mkdir', '-p', os.path.dirname(key_file_dest)],
+                             self.get_main_host_ip(), upload_cloud_cfg=False)
+            output = self.upload_file_from_local(self.get_main_host_ip(),
+                                                 self.args.backup_keys_source,
+                                                 os.path.dirname(key_file_dest))
+            if self.args.verbose:
+                logging.info("Uploading {} to server {} done: {}".format(
+                    self.args.backup_keys_source, self.get_main_host_ip(), output))
+        else:
+            self.run_program(self.storage.upload_file_cmd(self.args.backup_keys_source,
+                             key_file_dest))
         self.run_program(["rm", self.args.backup_keys_source])
 
     def download_encryption_key_file(self):
         key_file = os.path.basename(self.args.restore_keys_destination)
         key_file_src = os.path.join("/".join(self.args.backup_location.split("/")[:-1]), key_file)
-        self.run_program(
-            self.storage.download_file_cmd(key_file_src, self.args.restore_keys_destination)
-        )
+        if self.is_nfs():
+            # Download keys file from NFS mount path on DB node to local.
+            output = self.download_file_to_local(self.get_main_host_ip(),
+                                                 key_file_src,
+                                                 self.args.restore_keys_destination)
+            if self.args.verbose:
+                logging.info("Downloading {} to local done: {}".format(
+                    self.args.restore_keys_destination, output))
+        else:
+            self.run_program(
+                self.storage.download_file_cmd(key_file_src, self.args.restore_keys_destination)
+            )
 
     def delete_bucket_obj(self):
         del_cmd = self.storage.delete_obj_cmd(self.args.backup_location)
