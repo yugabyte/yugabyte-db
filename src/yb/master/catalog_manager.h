@@ -981,6 +981,8 @@ class CatalogManager :
   // This method is thread-safe.
   CHECKED_STATUS InitSysCatalogAsync();
 
+  Result<ReplicationInfoPB> GetTableReplicationInfo(const TabletInfo& tablet_info) const;
+
   // Helper for creating the initial TableInfo state
   // Leaves the table "write locked" with the new info in the
   // "dirty" state field.
@@ -1235,7 +1237,7 @@ class CatalogManager :
 
   void StartTablespaceBgTaskIfStopped();
 
-  std::shared_ptr<YsqlTablespaceManager> GetTablespaceManager();
+  std::shared_ptr<YsqlTablespaceManager> GetTablespaceManager() const;
 
   Result<boost::optional<ReplicationInfoPB>> GetTablespaceReplicationInfoWithRetry(
       const TablespaceId& tablespace_id);
@@ -1524,7 +1526,7 @@ class CatalogManager :
   // satisfied, and not the individual min_num_replicas in each placement block.
   Result<TSDescriptorVector> FindTServersForPlacementInfo(
       const PlacementInfoPB& placement_info,
-      const TSDescriptorVector& ts_descs);
+      const TSDescriptorVector& ts_descs) const;
 
   // Using the TServer info in 'ts_descs', return the TServers that match 'pplacement_block'.
   // Returns error if there aren't enough TServers to fulfill the min_num_replicas requirement
