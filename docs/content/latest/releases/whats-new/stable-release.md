@@ -17,6 +17,8 @@ showAsideToc: true
 
 Included here are the release notes for all releases in the v2.8 stable release series. Content will be added as new notable features and changes are available in the patch releases of the v2.8 stable release series.
 
+For an RSS feed of the release notes for latest and stable releases, point your feed reader to [https://docs.yugabyte.com/latest/releases/whats-new/index.xml](../index.xml).
+
 ## v2.8.0.0 - November 8, 2021
 
 **Build:** `2.8.0.0-b34`
