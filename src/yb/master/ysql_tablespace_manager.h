@@ -56,10 +56,10 @@ class YsqlTablespaceManager {
     const TablespaceId& tablespace_id);
 
   Result<boost::optional<TablespaceId>> GetTablespaceForTable(
-      const scoped_refptr<TableInfo>& table);
+      const scoped_refptr<const TableInfo>& table);
 
   Result<boost::optional<ReplicationInfoPB>> GetTableReplicationInfo(
-    const scoped_refptr<TableInfo>& table);
+    const scoped_refptr<const TableInfo>& table);
 
   // Indicates whether we need to wait for the next run of the tablespace background task to know
   // the tablespace information for a table.
