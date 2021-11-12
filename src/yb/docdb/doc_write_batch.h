@@ -211,6 +211,16 @@ class DocWriteBatch {
     return cache_.Get(encoded_key_prefix);
   }
 
+  void UpdateMaxValueTtl(const MonoDelta& ttl);
+
+  int64_t ttl_ns() const {
+    return ttl_.ToNanoseconds();
+  }
+
+  bool has_ttl() const {
+    return ttl_.Initialized();
+  }
+
  private:
   // This member function performs the necessary operations to set a primitive value for a given
   // docpath assuming the appropriate operations have been taken care of for subkeys with index <
@@ -247,6 +257,8 @@ class DocWriteBatch {
   KeyBytes key_prefix_;
   bool subdoc_exists_ = true;
   DocWriteBatchCache::Entry current_entry_;
+
+  MonoDelta ttl_;
 };
 
 // Converts a RocksDB WriteBatch to a string.

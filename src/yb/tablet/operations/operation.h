@@ -227,18 +227,6 @@ class OperationState {
     return op_id_;
   }
 
-  void UpdateIfMaxTtl(const MonoDelta& ttl);
-
-  const MonoDelta ttl() const {
-    std::lock_guard<simple_spinlock> l(mutex_);
-    return ttl_;
-  }
-
-  bool has_ttl() const {
-    std::lock_guard<simple_spinlock> l(mutex_);
-    return ttl_.Initialized();
-  }
-
   bool has_completion_callback() const {
     return completion_clbk_ != nullptr;
   }
@@ -272,8 +260,6 @@ class OperationState {
 
   // This OpId stores the canonical "anchor" OpId for this transaction.
   OpIdPB op_id_;
-
-  MonoDelta ttl_ GUARDED_BY(mutex_);
 
   scoped_refptr<consensus::ConsensusRound> consensus_round_;
 

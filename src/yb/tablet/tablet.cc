@@ -1054,7 +1054,9 @@ Status Tablet::ApplyOperationState(
       operation_state.hybrid_time(),
       &frontiers);
   if (frontiers_ptr) {
-    auto ttl = operation_state.has_ttl() ? operation_state.ttl() : docdb::Value::kMaxTtl;
+    auto ttl = write_batch.has_ttl()
+        ? MonoDelta::FromNanoseconds(write_batch.ttl())
+        : docdb::Value::kMaxTtl;
     frontiers_ptr->Largest().set_max_value_level_ttl_expiration_time(
         docdb::FileExpirationFromValueTTL(operation_state.hybrid_time(), ttl));
   }
@@ -1453,8 +1455,6 @@ void Tablet::CompleteQLWriteBatch(std::unique_ptr<WriteOperation> operation, con
 
   for (size_t i = 0; i < doc_ops.size(); i++) {
     QLWriteOperation* ql_write_op = down_cast<QLWriteOperation*>(doc_ops[i].get());
-    const MonoDelta ttl = ql_write_op->request_ttl();
-    operation->state()->UpdateIfMaxTtl(ttl);
     if (metadata_->is_unique_index() &&
         ql_write_op->request().type() == QLWriteRequestPB::QL_STMT_INSERT &&
         ql_write_op->response()->has_applied() && !ql_write_op->response()->applied()) {
