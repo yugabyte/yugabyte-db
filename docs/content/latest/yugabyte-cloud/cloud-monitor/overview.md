@@ -17,7 +17,7 @@ Monitor performance metrics for your cluster to ensure the cluster configuration
 
 - The **Overview** tab displays a summary of the cluster infrastructure, along with time series charts of four key performance metrics for all the nodes in the cluster - Operations/sec, Average Latency, CPU Usage, and Disk Usage.
 
-- The **Performance** tab **Metrics** display the same metrics as the Overview, along with additional performance metrics.
+- The **Performance** tab **Metrics** displays a comprehensive array of more specific performance metrics, including for YSQL and YCQL API performance.
 
 Use these metrics to monitor the performance of your cluster and to determine whether the configuration needs to change. For information on changing or scaling your cluster, refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
 
@@ -34,7 +34,7 @@ The following table describes the metrics available on the **Overview**.
 | CPU Usage | The percentage of CPU use being consumed by the tablet or master server Yugabyte processes, as well as other processes, if any. In general, CPU usage is a measure of all processes running on the server. | High CPU use could indicate a problem and may require debugging by Yugabyte Support. |
 | Disk Usage | Shows the amount of disk space provisioned for and used by the cluster. | Typically you would scale up at 80%, but consider this metric in the context of your environment. For example, usage can be higher on larger disks; some file systems issue an alert at 75% usage due to performance degradation. |
 
-In addition to the metrics on the **Overview**, the **Performance** tab provides the following additional metrics. To choose the metrics to display on the **Performance** tab, click **Metrics** and then click **Options**.
+The **Performance** tab provides the following metrics. To choose the metrics to display on the **Performance** tab, click **Metrics** and then click **Options**.
 
 | Graph | **Description** | **Use** |
 | :---| --- | --- |

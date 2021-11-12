@@ -1,6 +1,6 @@
 ---
 title: View live queries
-linkTitle: View live queries
+linkTitle: Live queries
 description: View live queries running on your cluster.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png

@@ -1,7 +1,7 @@
 ---
 title: Monitor cluster activity
-linkTitle: Monitor activity
-description: View slow queries that have run on your cluster.
+linkTitle: Cluster activity
+description: View the activity on your cluster.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
