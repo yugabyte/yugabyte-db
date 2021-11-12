@@ -390,7 +390,7 @@ void hash_entry_dealloc(int new_bucket_id, int old_bucket_id, unsigned char *que
 pgssEntry* hash_entry_alloc(pgssSharedState *pgss, pgssHashKey *key, int encoding);
 Size hash_memsize(void);
 
-int read_query_buffer(int bucket_id, uint64 queryid, char *query_txt);
+int read_query_buffer(int bucket_id, uint64 queryid, char *query_txt, size_t pos);
 uint64 read_query(unsigned char *buf, uint64 queryid, char * query, size_t pos);
 pgssQueryEntry* hash_find_query_entry(uint64 bucket_id, uint64 queryid, uint64 dbid, uint64 userid, uint64 ip, uint64 appid);
 pgssQueryEntry* hash_create_query_entry(uint64 bucket_id, uint64 queryid, uint64 dbid, uint64 userid, uint64 ip, uint64 appid);
@@ -411,7 +411,7 @@ void pgss_startup(void);
 #define PGSM_HISTOGRAM_MAX get_conf(8)->guc_variable
 #define PGSM_HISTOGRAM_BUCKETS get_conf(9)->guc_variable
 #define PGSM_QUERY_SHARED_BUFFER get_conf(10)->guc_variable
-#define PGSM_OVERFLOW_TARGET get_conf(12)->guc_variable
+#define PGSM_OVERFLOW_TARGET get_conf(11)->guc_variable
 #define PGSM_QUERY_PLAN get_conf(12)->guc_variable
 #define PGSM_TRACK_PLANNING get_conf(13)->guc_variable
 
