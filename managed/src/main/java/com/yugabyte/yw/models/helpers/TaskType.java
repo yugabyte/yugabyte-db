@@ -114,6 +114,8 @@ public enum TaskType {
 
   EditXClusterConfig("EditXClusterConfig"),
 
+  CreateSupportBundle("CreateSupportBundle"),
+
   // Tasks belonging to subtasks classpath
   AnsibleClusterServerCtl("subtasks.AnsibleClusterServerCtl"),
 
