@@ -31,6 +31,7 @@ LocalOutboundCall::LocalOutboundCall(
     : OutboundCall(remote_method, outbound_call_metrics, /* method_metrics= */ nullptr,
                    response_storage, controller, rpc_metrics, std::move(callback),
                    /* callback_thread_pool= */ nullptr) {
+  TRACE_TO(trace_, "LocalOutboundCall");
 }
 
 Status LocalOutboundCall::SetRequestParam(

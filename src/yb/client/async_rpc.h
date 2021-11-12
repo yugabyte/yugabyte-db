@@ -86,7 +86,6 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
   std::shared_ptr<const YBTable> table() const;
   const RemoteTablet& tablet() const { return *tablet_invoker_.tablet(); }
   const InFlightOps& ops() const { return ops_; }
-  Trace *trace() { return trace_.get(); }
 
  protected:
   void Finished(const Status& status) override;
@@ -116,9 +115,6 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
   // Pointer back to the batcher. Processes the write response when it
   // completes, regardless of success or failure.
   BatcherPtr batcher_;
-
-  // The trace buffer.
-  scoped_refptr<Trace> trace_;
 
   // Operations which were batched into this RPC.
   // These operations are in kRequestSent state.

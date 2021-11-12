@@ -63,8 +63,6 @@ METRIC_DEFINE_counter(server, consistent_prefix_failed_reads,
     yb::MetricUnit::kRequests,
     "Number of consistent prefix reads that failed to be served by the closest replica.");
 
-DECLARE_bool(collect_end_to_end_traces);
-
 DEFINE_int32(ybclient_print_trace_every_n, 0,
              "Controls the rate at which traces from ybclient are printed. Setting this to 0 "
              "disables printing the collected traces.");
@@ -84,8 +82,9 @@ DEFINE_bool(detect_duplicates_for_retryable_requests, true,
 DEFINE_bool(ysql_forward_rpcs_to_local_tserver, false,
             "When true, forward the PGSQL rpcs to the local tServer.");
 
-
 DEFINE_CAPABILITY(PickReadTimeAtTabletServer, 0x8284d67b);
+
+DECLARE_bool(collect_end_to_end_traces);
 
 using namespace std::placeholders;
 
@@ -134,7 +133,6 @@ AsyncRpc::AsyncRpc(
     const AsyncRpcData& data, YBConsistencyLevel yb_consistency_level)
     : Rpc(data.batcher->deadline(), data.batcher->messenger(), &data.batcher->proxy_cache()),
       batcher_(data.batcher),
-      trace_(new Trace),
       ops_(data.ops),
       tablet_invoker_(LocalTabletServerOnly(ops_),
                       yb_consistency_level == YBConsistencyLevel::CONSISTENT_PREFIX,
@@ -149,9 +147,6 @@ AsyncRpc::AsyncRpc(
       async_rpc_metrics_(data.batcher->async_rpc_metrics()) {
   mutable_retrier()->mutable_controller()->set_allow_local_calls_in_curr_thread(
       data.allow_local_calls_in_curr_thread);
-  if (Trace::CurrentTrace()) {
-    Trace::CurrentTrace()->AddChildTrace(trace_.get());
-  }
 }
 
 AsyncRpc::~AsyncRpc() {
@@ -416,7 +411,7 @@ template <class Req, class Resp>
 void AsyncRpcBase<Req, Resp>::ProcessResponseFromTserver(const Status& status) {
   TRACE_TO(trace_, "ProcessResponseFromTserver($0)", status.ToString(false));
   if (resp_.has_trace_buffer()) {
-    TRACE_TO(trace_, "Received from server: $0", resp_.trace_buffer());
+    TRACE_TO(trace_, "Received from server: \n BEGIN\n$0 END.", resp_.trace_buffer());
   }
   NotifyBatcher(status);
   if (!CommonResponseCheck(status)) {

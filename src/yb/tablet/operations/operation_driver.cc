@@ -179,6 +179,7 @@ void OperationDriver::ExecuteAsync() {
   VLOG_WITH_PREFIX(4) << "ExecuteAsync()";
   TRACE_EVENT_FLOW_BEGIN0("operation", "ExecuteAsync", this);
   ADOPT_TRACE(trace());
+  TRACE_FUNC();
 
   auto delay = GetAtomicFlag(&FLAGS_TEST_delay_execute_async_ms);
   if (delay != 0 &&

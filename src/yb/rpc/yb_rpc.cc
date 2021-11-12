@@ -418,7 +418,7 @@ void YBInboundCall::LogTrace() const {
       // The traces may also be too large to fit in a log message.
       LOG(WARNING) << ToString() << " took " << total_time << "ms (client timeout "
                    << header_.timeout_ms << "ms).";
-      std::string s = trace_->DumpToString("==>", true);
+      std::string s = trace_->DumpToString(1, true);
       if (!s.empty()) {
         LOG(WARNING) << "Trace:\n" << s;
       }

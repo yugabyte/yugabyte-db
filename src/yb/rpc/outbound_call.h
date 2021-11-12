@@ -342,6 +342,9 @@ class OutboundCall : public RpcCall {
   // Can be used only while callback_ object is alive.
   google::protobuf::Message* response_;
 
+  // The trace buffer.
+  scoped_refptr<Trace> trace_;
+
  private:
   friend class RpcController;
 
@@ -399,9 +402,6 @@ class OutboundCall : public RpcCall {
 
   // Once a response has been received for this call, contains that response.
   CallResponse call_response_;
-
-  // The trace buffer.
-  scoped_refptr<Trace> trace_;
 
   std::shared_ptr<OutboundCallMetrics> outbound_call_metrics_;
 
