@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(1012);
+SELECT plan(1009);
 -- SELECT * FROM no_plan();
 
 CREATE SCHEMA someschema;
@@ -2391,7 +2391,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    isnt_window( 'ntile'::name, 'whatever' ),
+    isnt_window( 'lag'::name, 'whatever' ),
     false,
     'isnt_window(win, desc)',
     'whatever',
@@ -2418,14 +2418,6 @@ SELECT * FROM check_test(
     is_window( 'yay'::name, 'whatever' ),
     false,
     'is_window(func, desc)',
-    'whatever',
-    ''
-);
-
-SELECT * FROM check_test(
-    isnt_window( 'dense_rank'::name, 'whatever' ),
-    false,
-    'isnt_window(win, desc)',
     'whatever',
     ''
 );

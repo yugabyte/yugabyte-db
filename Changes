@@ -47,21 +47,22 @@ Revision history for pgTAP
 * Remove support for PostgreSQL older than 9.1. Note that some automated tests
   don't run on versions older than 9.4, so it's recommended you run PostgreSQL
   9.4 at minimum.
-* Add a `throw_excepton` argument to `finish()`. `finish(true)` will raise an
+* Add a `throw_exception` argument to `finish()`. `finish(true)` will raise an
   exception if any tests failed. Thanks to Stephen Paul Weber for the idea
   (#80), and Rodolphe Quiédeville for most of the work (#104)!
-* Make description optional for col_not_null() (#221).
+* Make description optional for `col_not_null()` (#221).
 * Fix syntax of test_user function example in the docs (#208). Thanks to
   PeteDevoy for the patch!
-* Fix issue with pgtap-core referencing pg_proc.proisagg on PostgreSQL 11+ (#197)
+* Fix issue with `pgtap-core` referencing `pg_proc.proisagg` on PostgreSQL 11+
+  (#197).
 * Add PostgreSQL 12.0 to automated tests (#223).
-* Fix pgtap_version(), which incorrectly returned 0.99 when upgrading from
+* Fix `pgtap_version()`, which incorrectly returned 0.99 when upgrading from
   version 0.99.0 to 1.0.0 (#214).
-* Fix issue with using pg_upgrade to PostgreSQL 11+ with pgTap installed (#201,
-  #215).
+* Fix issue with using `pg_upgrade` to PostgreSQL 11+ with pgTAP installed
+  (#201, #215).
 * Start using `DEFAULT` in functions.
 * Add automated testing of extension upgrade scripts (#128), as well as testing
-  of pg_upgrade with pgTap installed (#218, #222).
+  of `pg_upgrade` with pgTAP installed (#218, #222).
 
 1.0.0 2019-02-21T22:39:42Z
 --------------------------

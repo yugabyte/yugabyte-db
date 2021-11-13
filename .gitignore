@@ -27,6 +27,7 @@ bbin
 *.sql.orig
 
 test/build
+/latest-changes.md
 
 # Misc mac crap
 .DS_Store

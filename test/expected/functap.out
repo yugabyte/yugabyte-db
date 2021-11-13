@@ -1,5 +1,5 @@
 \unset ECHO
-1..1012
+1..1009
 ok 1 - simple function should pass
 ok 2 - simple function should have the proper description
 ok 3 - simple function should have the proper diagnostics
@@ -849,166 +849,163 @@ ok 846 - isnt_window(func, desc) should have the proper diagnostics
 ok 847 - is_window(func, desc) should fail
 ok 848 - is_window(func, desc) should have the proper description
 ok 849 - is_window(func, desc) should have the proper diagnostics
-ok 850 - isnt_window(win, desc) should fail
-ok 851 - isnt_window(win, desc) should have the proper description
-ok 852 - isnt_window(win, desc) should have the proper diagnostics
-ok 853 - is_window(nowin, desc) should fail
-ok 854 - is_window(nowin, desc) should have the proper description
-ok 855 - is_window(nowin, desc) should have the proper diagnostics
-ok 856 - isnt_window(nowin, desc) should fail
-ok 857 - isnt_window(nowin, desc) should have the proper description
-ok 858 - isnt_window(nowin, desc) should have the proper diagnostics
-ok 859 - is_window(win) should pass
-ok 860 - is_window(win) should have the proper description
-ok 861 - is_window(win) should have the proper diagnostics
-ok 862 - isnt_window(win) should fail
-ok 863 - isnt_window(win) should have the proper description
-ok 864 - isnt_window(win) should have the proper diagnostics
-ok 865 - is_window(func) should fail
-ok 866 - is_window(func) should have the proper description
-ok 867 - is_window(func) should have the proper diagnostics
-ok 868 - isnt_window(func) should pass
-ok 869 - isnt_window(func) should have the proper description
-ok 870 - isnt_window(func) should have the proper diagnostics
-ok 871 - is_window(nowin) should fail
-ok 872 - is_window(nowin) should have the proper description
-ok 873 - is_window(nowin) should have the proper diagnostics
-ok 874 - isnt_window(nowin) should fail
-ok 875 - isnt_window(nowin) should have the proper description
-ok 876 - isnt_window(nowin) should have the proper diagnostics
-ok 877 - is_strict(schema, func, 0 args, desc) should pass
-ok 878 - is_strict(schema, func, 0 args, desc) should have the proper description
-ok 879 - is_strict(schema, func, 0 args, desc) should have the proper diagnostics
-ok 880 - isnt_strict(schema, func, 0 args, desc) should fail
-ok 881 - isnt_strict(schema, func, 0 args, desc) should have the proper description
-ok 882 - isnt_strict(schema, func, 0 args, desc) should have the proper diagnostics
-ok 883 - is_strict(schema, func, 0 args) should pass
-ok 884 - is_strict(schema, func, 0 args) should have the proper description
-ok 885 - is_strict(schema, func, 0 args) should have the proper diagnostics
-ok 886 - isnt_strict(schema, func, 0 args) should fail
-ok 887 - isnt_strict(schema, func, 0 args) should have the proper description
-ok 888 - isnt_strict(schema, func, 0 args) should have the proper diagnostics
-ok 889 - is_strict(schema, func, args, desc) should fail
-ok 890 - is_strict(schema, func, args, desc) should have the proper description
-ok 891 - is_strict(schema, func, args, desc) should have the proper diagnostics
-ok 892 - isnt_strict(schema, func, args, desc) should pass
-ok 893 - isnt_strict(schema, func, args, desc) should have the proper description
-ok 894 - isnt_strict(schema, func, args, desc) should have the proper diagnostics
-ok 895 - is_strict(schema, func, args) should fail
-ok 896 - is_strict(schema, func, args) should have the proper description
-ok 897 - is_strict(schema, func, args) should have the proper diagnostics
-ok 898 - isnt_strict(schema, func, args) should pass
-ok 899 - isnt_strict(schema, func, args) should have the proper description
-ok 900 - isnt_strict(schema, func, args) should have the proper diagnostics
-ok 901 - is_strict(schema, func, desc) should pass
-ok 902 - is_strict(schema, func, desc) should have the proper description
-ok 903 - is_strict(schema, func, desc) should have the proper diagnostics
-ok 904 - isnt_strict(schema, func, desc) should fail
-ok 905 - isnt_strict(schema, func, desc) should have the proper description
-ok 906 - isnt_strict(schema, func, desc) should have the proper diagnostics
-ok 907 - is_strict(schema, func) should pass
-ok 908 - is_strict(schema, func) should have the proper description
-ok 909 - is_strict(schema, func) should have the proper diagnostics
-ok 910 - isnt_strict(schema, func) should fail
-ok 911 - isnt_strict(schema, func) should have the proper description
-ok 912 - isnt_strict(schema, func) should have the proper diagnostics
-ok 913 - isnt_strict(schema, func, args, desc) should pass
-ok 914 - isnt_strict(schema, func, args, desc) should have the proper description
-ok 915 - isnt_strict(schema, func, args, desc) should have the proper diagnostics
-ok 916 - isnt_strict(schema, func, args) should pass
-ok 917 - isnt_strict(schema, func, args) should have the proper description
-ok 918 - isnt_strict(schema, func, args) should have the proper diagnostics
-ok 919 - is_strict(func, 0 args, desc) should pass
-ok 920 - is_strict(func, 0 args, desc) should have the proper description
-ok 921 - is_strict(func, 0 args, desc) should have the proper diagnostics
-ok 922 - isnt_strict(func, 0 args, desc) should fail
-ok 923 - isnt_strict(func, 0 args, desc) should have the proper description
-ok 924 - isnt_strict(func, 0 args, desc) should have the proper diagnostics
-ok 925 - is_strict(func, 0 args) should pass
-ok 926 - is_strict(func, 0 args) should have the proper description
-ok 927 - is_strict(func, 0 args) should have the proper diagnostics
-ok 928 - isnt_strict(func, 0 args) should fail
-ok 929 - isnt_strict(func, 0 args) should have the proper description
-ok 930 - isnt_strict(func, 0 args) should have the proper diagnostics
-ok 931 - is_strict(func, args, desc) should fail
-ok 932 - is_strict(func, args, desc) should have the proper description
-ok 933 - is_strict(func, args, desc) should have the proper diagnostics
-ok 934 - isnt_strict(func, args, desc) should pass
-ok 935 - isnt_strict(func, args, desc) should have the proper description
-ok 936 - isnt_strict(func, args, desc) should have the proper diagnostics
-ok 937 - is_strict(func, args) should fail
-ok 938 - is_strict(func, args) should have the proper description
-ok 939 - is_strict(func, args) should have the proper diagnostics
-ok 940 - isnt_strict(func, args) should pass
-ok 941 - isnt_strict(func, args) should have the proper description
-ok 942 - isnt_strict(func, args) should have the proper diagnostics
-ok 943 - is_strict(func, desc) should pass
-ok 944 - is_strict(func, desc) should have the proper description
-ok 945 - is_strict(func, desc) should have the proper diagnostics
-ok 946 - isnt_strict(func, desc) should fail
-ok 947 - isnt_strict(func, desc) should have the proper description
-ok 948 - isnt_strict(func, desc) should have the proper diagnostics
-ok 949 - is_strict(func) should pass
-ok 950 - is_strict(func) should have the proper description
-ok 951 - is_strict(func) should have the proper diagnostics
-ok 952 - isnt_strict(func) should fail
-ok 953 - isnt_strict(func) should have the proper description
-ok 954 - isnt_strict(func) should have the proper diagnostics
-ok 955 - function_volatility(schema, func, 0 args, volatile, desc) should pass
-ok 956 - function_volatility(schema, func, 0 args, volatile, desc) should have the proper description
-ok 957 - function_volatility(schema, func, 0 args, volatile, desc) should have the proper diagnostics
-ok 958 - function_volatility(schema, func, 0 args, v, desc) should pass
-ok 959 - function_volatility(schema, func, 0 args, v, desc) should have the proper description
-ok 960 - function_volatility(schema, func, 0 args, v, desc) should have the proper diagnostics
-ok 961 - function_volatility(schema, func, args, immutable, desc) should pass
-ok 962 - function_volatility(schema, func, args, immutable, desc) should have the proper description
-ok 963 - function_volatility(schema, func, args, immutable, desc) should have the proper diagnostics
-ok 964 - function_volatility(schema, func, 0 args, stable, desc) should pass
-ok 965 - function_volatility(schema, func, 0 args, stable, desc) should have the proper description
-ok 966 - function_volatility(schema, func, 0 args, stable, desc) should have the proper diagnostics
-ok 967 - function_volatility(schema, func, 0 args, volatile) should pass
-ok 968 - function_volatility(schema, func, 0 args, volatile) should have the proper description
-ok 969 - function_volatility(schema, func, 0 args, volatile) should have the proper diagnostics
-ok 970 - function_volatility(schema, func, args, immutable) should pass
-ok 971 - function_volatility(schema, func, args, immutable) should have the proper description
-ok 972 - function_volatility(schema, func, volatile, desc) should pass
-ok 973 - function_volatility(schema, func, volatile, desc) should have the proper description
-ok 974 - function_volatility(schema, func, volatile, desc) should have the proper diagnostics
-ok 975 - function_volatility(schema, func, volatile) should pass
-ok 976 - function_volatility(schema, func, volatile) should have the proper description
-ok 977 - function_volatility(schema, func, volatile) should have the proper diagnostics
-ok 978 - function_volatility(schema, func, immutable, desc) should pass
-ok 979 - function_volatility(schema, func, immutable, desc) should have the proper description
-ok 980 - function_volatility(schema, func, immutable, desc) should have the proper diagnostics
-ok 981 - function_volatility(schema, func, stable, desc) should pass
-ok 982 - function_volatility(schema, func, stable, desc) should have the proper description
-ok 983 - function_volatility(schema, func, stable, desc) should have the proper diagnostics
-ok 984 - function_volatility(func, 0 args, volatile, desc) should pass
-ok 985 - function_volatility(func, 0 args, volatile, desc) should have the proper description
-ok 986 - function_volatility(func, 0 args, volatile, desc) should have the proper diagnostics
-ok 987 - function_volatility(func, 0 args, v, desc) should pass
-ok 988 - function_volatility(func, 0 args, v, desc) should have the proper description
-ok 989 - function_volatility(func, 0 args, v, desc) should have the proper diagnostics
-ok 990 - function_volatility(func, args, immutable, desc) should pass
-ok 991 - function_volatility(func, args, immutable, desc) should have the proper description
-ok 992 - function_volatility(func, args, immutable, desc) should have the proper diagnostics
-ok 993 - function_volatility(func, 0 args, stable, desc) should pass
-ok 994 - function_volatility(func, 0 args, stable, desc) should have the proper description
-ok 995 - function_volatility(func, 0 args, stable, desc) should have the proper diagnostics
-ok 996 - function_volatility(func, 0 args, volatile) should pass
-ok 997 - function_volatility(func, 0 args, volatile) should have the proper description
-ok 998 - function_volatility(func, 0 args, volatile) should have the proper diagnostics
-ok 999 - function_volatility(func, args, immutable) should pass
-ok 1000 - function_volatility(func, args, immutable) should have the proper description
-ok 1001 - function_volatility(func, volatile, desc) should pass
-ok 1002 - function_volatility(func, volatile, desc) should have the proper description
-ok 1003 - function_volatility(func, volatile, desc) should have the proper diagnostics
-ok 1004 - function_volatility(func, volatile) should pass
-ok 1005 - function_volatility(func, volatile) should have the proper description
-ok 1006 - function_volatility(func, volatile) should have the proper diagnostics
-ok 1007 - function_volatility(func, immutable, desc) should pass
-ok 1008 - function_volatility(func, immutable, desc) should have the proper description
-ok 1009 - function_volatility(func, immutable, desc) should have the proper diagnostics
-ok 1010 - function_volatility(func, stable, desc) should pass
-ok 1011 - function_volatility(func, stable, desc) should have the proper description
-ok 1012 - function_volatility(func, stable, desc) should have the proper diagnostics
+ok 850 - is_window(nowin, desc) should fail
+ok 851 - is_window(nowin, desc) should have the proper description
+ok 852 - is_window(nowin, desc) should have the proper diagnostics
+ok 853 - isnt_window(nowin, desc) should fail
+ok 854 - isnt_window(nowin, desc) should have the proper description
+ok 855 - isnt_window(nowin, desc) should have the proper diagnostics
+ok 856 - is_window(win) should pass
+ok 857 - is_window(win) should have the proper description
+ok 858 - is_window(win) should have the proper diagnostics
+ok 859 - isnt_window(win) should fail
+ok 860 - isnt_window(win) should have the proper description
+ok 861 - isnt_window(win) should have the proper diagnostics
+ok 862 - is_window(func) should fail
+ok 863 - is_window(func) should have the proper description
+ok 864 - is_window(func) should have the proper diagnostics
+ok 865 - isnt_window(func) should pass
+ok 866 - isnt_window(func) should have the proper description
+ok 867 - isnt_window(func) should have the proper diagnostics
+ok 868 - is_window(nowin) should fail
+ok 869 - is_window(nowin) should have the proper description
+ok 870 - is_window(nowin) should have the proper diagnostics
+ok 871 - isnt_window(nowin) should fail
+ok 872 - isnt_window(nowin) should have the proper description
+ok 873 - isnt_window(nowin) should have the proper diagnostics
+ok 874 - is_strict(schema, func, 0 args, desc) should pass
+ok 875 - is_strict(schema, func, 0 args, desc) should have the proper description
+ok 876 - is_strict(schema, func, 0 args, desc) should have the proper diagnostics
+ok 877 - isnt_strict(schema, func, 0 args, desc) should fail
+ok 878 - isnt_strict(schema, func, 0 args, desc) should have the proper description
+ok 879 - isnt_strict(schema, func, 0 args, desc) should have the proper diagnostics
+ok 880 - is_strict(schema, func, 0 args) should pass
+ok 881 - is_strict(schema, func, 0 args) should have the proper description
+ok 882 - is_strict(schema, func, 0 args) should have the proper diagnostics
+ok 883 - isnt_strict(schema, func, 0 args) should fail
+ok 884 - isnt_strict(schema, func, 0 args) should have the proper description
+ok 885 - isnt_strict(schema, func, 0 args) should have the proper diagnostics
+ok 886 - is_strict(schema, func, args, desc) should fail
+ok 887 - is_strict(schema, func, args, desc) should have the proper description
+ok 888 - is_strict(schema, func, args, desc) should have the proper diagnostics
+ok 889 - isnt_strict(schema, func, args, desc) should pass
+ok 890 - isnt_strict(schema, func, args, desc) should have the proper description
+ok 891 - isnt_strict(schema, func, args, desc) should have the proper diagnostics
+ok 892 - is_strict(schema, func, args) should fail
+ok 893 - is_strict(schema, func, args) should have the proper description
+ok 894 - is_strict(schema, func, args) should have the proper diagnostics
+ok 895 - isnt_strict(schema, func, args) should pass
+ok 896 - isnt_strict(schema, func, args) should have the proper description
+ok 897 - isnt_strict(schema, func, args) should have the proper diagnostics
+ok 898 - is_strict(schema, func, desc) should pass
+ok 899 - is_strict(schema, func, desc) should have the proper description
+ok 900 - is_strict(schema, func, desc) should have the proper diagnostics
+ok 901 - isnt_strict(schema, func, desc) should fail
+ok 902 - isnt_strict(schema, func, desc) should have the proper description
+ok 903 - isnt_strict(schema, func, desc) should have the proper diagnostics
+ok 904 - is_strict(schema, func) should pass
+ok 905 - is_strict(schema, func) should have the proper description
+ok 906 - is_strict(schema, func) should have the proper diagnostics
+ok 907 - isnt_strict(schema, func) should fail
+ok 908 - isnt_strict(schema, func) should have the proper description
+ok 909 - isnt_strict(schema, func) should have the proper diagnostics
+ok 910 - isnt_strict(schema, func, args, desc) should pass
+ok 911 - isnt_strict(schema, func, args, desc) should have the proper description
+ok 912 - isnt_strict(schema, func, args, desc) should have the proper diagnostics
+ok 913 - isnt_strict(schema, func, args) should pass
+ok 914 - isnt_strict(schema, func, args) should have the proper description
+ok 915 - isnt_strict(schema, func, args) should have the proper diagnostics
+ok 916 - is_strict(func, 0 args, desc) should pass
+ok 917 - is_strict(func, 0 args, desc) should have the proper description
+ok 918 - is_strict(func, 0 args, desc) should have the proper diagnostics
+ok 919 - isnt_strict(func, 0 args, desc) should fail
+ok 920 - isnt_strict(func, 0 args, desc) should have the proper description
+ok 921 - isnt_strict(func, 0 args, desc) should have the proper diagnostics
+ok 922 - is_strict(func, 0 args) should pass
+ok 923 - is_strict(func, 0 args) should have the proper description
+ok 924 - is_strict(func, 0 args) should have the proper diagnostics
+ok 925 - isnt_strict(func, 0 args) should fail
+ok 926 - isnt_strict(func, 0 args) should have the proper description
+ok 927 - isnt_strict(func, 0 args) should have the proper diagnostics
+ok 928 - is_strict(func, args, desc) should fail
+ok 929 - is_strict(func, args, desc) should have the proper description
+ok 930 - is_strict(func, args, desc) should have the proper diagnostics
+ok 931 - isnt_strict(func, args, desc) should pass
+ok 932 - isnt_strict(func, args, desc) should have the proper description
+ok 933 - isnt_strict(func, args, desc) should have the proper diagnostics
+ok 934 - is_strict(func, args) should fail
+ok 935 - is_strict(func, args) should have the proper description
+ok 936 - is_strict(func, args) should have the proper diagnostics
+ok 937 - isnt_strict(func, args) should pass
+ok 938 - isnt_strict(func, args) should have the proper description
+ok 939 - isnt_strict(func, args) should have the proper diagnostics
+ok 940 - is_strict(func, desc) should pass
+ok 941 - is_strict(func, desc) should have the proper description
+ok 942 - is_strict(func, desc) should have the proper diagnostics
+ok 943 - isnt_strict(func, desc) should fail
+ok 944 - isnt_strict(func, desc) should have the proper description
+ok 945 - isnt_strict(func, desc) should have the proper diagnostics
+ok 946 - is_strict(func) should pass
+ok 947 - is_strict(func) should have the proper description
+ok 948 - is_strict(func) should have the proper diagnostics
+ok 949 - isnt_strict(func) should fail
+ok 950 - isnt_strict(func) should have the proper description
+ok 951 - isnt_strict(func) should have the proper diagnostics
+ok 952 - function_volatility(schema, func, 0 args, volatile, desc) should pass
+ok 953 - function_volatility(schema, func, 0 args, volatile, desc) should have the proper description
+ok 954 - function_volatility(schema, func, 0 args, volatile, desc) should have the proper diagnostics
+ok 955 - function_volatility(schema, func, 0 args, v, desc) should pass
+ok 956 - function_volatility(schema, func, 0 args, v, desc) should have the proper description
+ok 957 - function_volatility(schema, func, 0 args, v, desc) should have the proper diagnostics
+ok 958 - function_volatility(schema, func, args, immutable, desc) should pass
+ok 959 - function_volatility(schema, func, args, immutable, desc) should have the proper description
+ok 960 - function_volatility(schema, func, args, immutable, desc) should have the proper diagnostics
+ok 961 - function_volatility(schema, func, 0 args, stable, desc) should pass
+ok 962 - function_volatility(schema, func, 0 args, stable, desc) should have the proper description
+ok 963 - function_volatility(schema, func, 0 args, stable, desc) should have the proper diagnostics
+ok 964 - function_volatility(schema, func, 0 args, volatile) should pass
+ok 965 - function_volatility(schema, func, 0 args, volatile) should have the proper description
+ok 966 - function_volatility(schema, func, 0 args, volatile) should have the proper diagnostics
+ok 967 - function_volatility(schema, func, args, immutable) should pass
+ok 968 - function_volatility(schema, func, args, immutable) should have the proper description
+ok 969 - function_volatility(schema, func, volatile, desc) should pass
+ok 970 - function_volatility(schema, func, volatile, desc) should have the proper description
+ok 971 - function_volatility(schema, func, volatile, desc) should have the proper diagnostics
+ok 972 - function_volatility(schema, func, volatile) should pass
+ok 973 - function_volatility(schema, func, volatile) should have the proper description
+ok 974 - function_volatility(schema, func, volatile) should have the proper diagnostics
+ok 975 - function_volatility(schema, func, immutable, desc) should pass
+ok 976 - function_volatility(schema, func, immutable, desc) should have the proper description
+ok 977 - function_volatility(schema, func, immutable, desc) should have the proper diagnostics
+ok 978 - function_volatility(schema, func, stable, desc) should pass
+ok 979 - function_volatility(schema, func, stable, desc) should have the proper description
+ok 980 - function_volatility(schema, func, stable, desc) should have the proper diagnostics
+ok 981 - function_volatility(func, 0 args, volatile, desc) should pass
+ok 982 - function_volatility(func, 0 args, volatile, desc) should have the proper description
+ok 983 - function_volatility(func, 0 args, volatile, desc) should have the proper diagnostics
+ok 984 - function_volatility(func, 0 args, v, desc) should pass
+ok 985 - function_volatility(func, 0 args, v, desc) should have the proper description
+ok 986 - function_volatility(func, 0 args, v, desc) should have the proper diagnostics
+ok 987 - function_volatility(func, args, immutable, desc) should pass
+ok 988 - function_volatility(func, args, immutable, desc) should have the proper description
+ok 989 - function_volatility(func, args, immutable, desc) should have the proper diagnostics
+ok 990 - function_volatility(func, 0 args, stable, desc) should pass
+ok 991 - function_volatility(func, 0 args, stable, desc) should have the proper description
+ok 992 - function_volatility(func, 0 args, stable, desc) should have the proper diagnostics
+ok 993 - function_volatility(func, 0 args, volatile) should pass
+ok 994 - function_volatility(func, 0 args, volatile) should have the proper description
+ok 995 - function_volatility(func, 0 args, volatile) should have the proper diagnostics
+ok 996 - function_volatility(func, args, immutable) should pass
+ok 997 - function_volatility(func, args, immutable) should have the proper description
+ok 998 - function_volatility(func, volatile, desc) should pass
+ok 999 - function_volatility(func, volatile, desc) should have the proper description
+ok 1000 - function_volatility(func, volatile, desc) should have the proper diagnostics
+ok 1001 - function_volatility(func, volatile) should pass
+ok 1002 - function_volatility(func, volatile) should have the proper description
+ok 1003 - function_volatility(func, volatile) should have the proper diagnostics
+ok 1004 - function_volatility(func, immutable, desc) should pass
+ok 1005 - function_volatility(func, immutable, desc) should have the proper description
+ok 1006 - function_volatility(func, immutable, desc) should have the proper diagnostics
+ok 1007 - function_volatility(func, stable, desc) should pass
+ok 1008 - function_volatility(func, stable, desc) should have the proper description
+ok 1009 - function_volatility(func, stable, desc) should have the proper diagnostics

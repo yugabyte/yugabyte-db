@@ -2,6 +2,8 @@ MAINEXT      = pgtap
 EXTENSION    = $(MAINEXT)
 EXTVERSION   = $(shell grep default_version $(MAINEXT).control | \
 			   sed -e "s/default_version[[:space:]]*=[[:space:]]*'\([^']*\)'/\1/")
+DISTVERSION  = $(shell grep -m 1 '[[:space:]]\{3\}"version":' META.json | \
+               sed -e 's/[[:space:]]*"version":[[:space:]]*"\([^"]*\)",\{0,1\}/\1/')
 NUMVERSION   = $(shell echo $(EXTVERSION) | sed -e 's/\([[:digit:]]*[.][[:digit:]]*\).*/\1/')
 VERSION_FILES = sql/$(MAINEXT)--$(EXTVERSION).sql sql/$(MAINEXT)-core--$(EXTVERSION).sql sql/$(MAINEXT)-schema--$(EXTVERSION).sql
 BASE_FILES 	 = $(subst --$(EXTVERSION),,$(VERSION_FILES)) sql/uninstall_$(MAINEXT).sql
@@ -446,9 +448,8 @@ $(B_DIR)/:
 pgtap-version-%: $(EXTENSION_DIR)/pgtap--%.sql
 	@true # Necessary to have a fake action here
 
-
-# Travis will complain if we reinstall too quickly, so don't run make install
-# unless actually necessary.
+# CI/CD workflow might complain if we reinstall too quickly, so don't run make
+# install unless actually necessary.
 $(EXTENSION_DIR)/pgtap--$(EXTVERSION).sql: sql/pgtap--$(EXTVERSION).sql
 	$(MAKE) install
 
@@ -483,6 +484,9 @@ updatecheck_setup: updatecheck_deps
 
 .PHONY: updatecheck_run
 updatecheck_run: updatecheck_setup installcheck
+
+latest-changes.md: Changes
+	perl -e 'while (<>) {last if /^(v?\Q${DISTVERSION}\E)/; } print "Changes for v${DISTVERSION}:\n"; while (<>) { last if /^\s*$$/; s/^\s+//; print }' Changes > $@
 
 #
 # STOLEN FROM pgxntool

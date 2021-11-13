@@ -1,5 +1,5 @@
 .gitignore export-ignore
 .gitattributes export-ignore
 tocgen export-ignore
-.travis.yml export-ignore
 .release.mmd export-ignore
+.github export-ignore

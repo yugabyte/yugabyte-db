@@ -181,7 +181,7 @@ if command -v pg_ctlcluster > /dev/null; then
     new_initdb="sudo pg_createcluster $NEW_VERSION $cluster_name -u $USER -p $NEW_PORT -d $new_dir -- -A trust"
     new_pg_ctl="sudo pg_ctlcluster $NEW_VERSION test_pg_upgrade"
 
-    # See also ../pg-travis-test.sh
+    # See also ../.github/workflows/test.yml
     new_pg_upgrade=/usr/lib/postgresql/$NEW_VERSION/bin/pg_upgrade
 else
     ctl_separator=''
@@ -312,7 +312,7 @@ add_exclude 9.1 9.2 test/sql/throwtap.sql
 add_exclude 9.4 9.5 test/sql/policy.sql test/sql/throwtap.sql 
 add_exclude 9.6 10 test/sql/partitions.sql
 
-# Use this if there's a single test failing in Travis that you can't figure out...
+# Use this if there's a single test failing .github/workflows/test.yml that you can't figure out...
 #(cd $(dirname $0)/..; pg_prove -v --pset tuples_only=1 test/sql/throwtap.sql)
 
 export EXCLUDE_TEST_FILES

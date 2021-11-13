@@ -10,7 +10,7 @@ documentation in `doc/pgtap.mmd` or
 [online](https://pgtap.org/documentation.html "Complete pgTAP Documentation").
 
 [![PGXN version](https://badge.fury.io/pg/pgtap.svg)](https://badge.fury.io/pg/pgtap)
-[![Build Status](https://travis-ci.org/theory/pgtap.png)](https://travis-ci.org/theory/pgtap)
+[![🐘 Postgres](https://github.com/theory/pgtap/actions/workflows/test.yml/badge.svg)](https://github.com/theory/pgtap/actions/workflows/test.yml)
 
 pgTAP must be installed on a host with PostgreSQL server running; it cannot
 be installed remotely.

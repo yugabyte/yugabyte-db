@@ -1,0 +1,63 @@
+name: 🐘 Test
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron:  '0 14 3 * *' # Monthly at 2pm on the third
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - { version: 14,  upgrade_to: "",  update_from: 0.99.0 }
+          - { version: 13,  upgrade_to: 14,  update_from: 0.99.0 }
+          - { version: 12,  upgrade_to: 13,  update_from: 0.99.0 }
+          - { version: 11,  upgrade_to: 12,  update_from: 0.99.0 } # Versions prior to 0.99.0 don't support Postgres 11
+          - { version: 10,  upgrade_to: 11,  update_from: 0.95.0 }
+          - { version: 9.6, upgrade_to: 10,  update_from: 0.95.0 }
+          - { version: 9.5, upgrade_to: 9.6, update_from: 0.95.0 }
+          - { version: 9.4, upgrade_to: 9.5, update_from: 0.95.0 }
+          - { version: 9.3, upgrade_to: 9.4, update_from: 0.95.0 }
+          - { version: 9.2, upgrade_to: 9.3, update_from: "" }     # updatecheck is not supported prior to 9.3
+          - { version: 9.1, upgrade_to: 9.2, update_from: "" }
+          # Also test pg_upgrade across many versions
+          # - { version: 9.1,  upgrade_to: 14, update_from: 0.99.0 }
+          # - { version: 9.4,  upgrade_to: 14, update_from: 0.99.0 }
+    name: 🐘 PostgreSQL ${{ matrix.version }}
+    runs-on: ubuntu-latest
+    container: pgxn/pgxn-tools
+    env:
+      PGUSER: postgres
+      UPDATE_FROM:  "${{ matrix.update_from }}"
+    steps:
+      - run: pg-start ${{ matrix.version }}
+      - uses: actions/checkout@v2
+
+      # Basic regression test.
+      - run: pg-build-test
+
+      # Test update.
+      - run: 'if [ -d "$UPDATE_FROM" ]; then make uninstall clean updatecheck; fi'
+
+      # Test upgrade.
+      # - run: ./test/test_MVU.sh -s 55667 55778 "{{ matrix.version }}" "{{ matrix.upgrade_to }}" "/usr/lib/postgresql/{{ matrix.version }}/bin/" "/usr/lib/postgresql/{{ matrix.upgrade_to }}/bin/"
+
+      # Test all, install, test, test-serial, and test-parallel, both from clean
+      # repo and repeated with existing build, with and without PARALLEL_CONN=1.
+      - run: make uninstall clean all
+      - run: make all
+      - run: make uninstall clean install
+      - run: make install
+      - run: "psql -Ec 'CREATE EXTENSION pgtap'"
+      - run: make uninstall clean test
+      - run: make test
+      - run: make uninstall clean test PARALLEL_CONN=1
+      - run: make test PARALLEL_CONN=1
+      - run: make uninstall clean test-serial
+      - run: make test-serial
+      - run: make uninstall clean test-serial PARALLEL_CONN=1
+      - run: make test-serial PARALLEL_CONN=1
+      - run: make uninstall clean test-parallel
+      - run: make test-parallel
+      - run: make uninstall clean test-parallel PARALLEL_CONN=1
+      - run: make test-parallel PARALLEL_CONN=1
