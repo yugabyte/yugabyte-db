@@ -676,6 +676,9 @@ class YBClient {
   // to reset the client state to point to new master leader.
   Result<HostPort> RefreshMasterLeaderAddress();
 
+  // Refreshes master leader address asynchronously.
+  void RefreshMasterLeaderAddressAsync();
+
   // Once a config change is completed to add/remove a master, update the client to add/remove it
   // from its own master address list.
   CHECKED_STATUS AddMasterToClient(const HostPort& add);
