@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
-import { Field, FieldArray } from 'redux-form';
+import { Field, FieldArray, formValues } from 'redux-form';
 import { browserHistory } from 'react-router';
 import _ from 'lodash';
 import {
@@ -607,12 +607,25 @@ export default class ClusterFields extends Component {
   }
 
   componentDidMount() {
-    const { cloud, clusterType, updateFormField } = this.props;
-
-    if (isNonEmptyArray(cloud.providers?.data)) {
-      const firstProviderUuid = cloud.providers.data[0]?.uuid;
-      updateFormField(`${clusterType}.provider`, firstProviderUuid)
-      this.providerChanged(firstProviderUuid);
+    const {
+      cloud,
+      clusterType,
+      updateFormField,
+      type,
+      formValues,
+      universe: { currentUniverse }
+    } = this.props;    
+    if (!formValues[clusterType] && isNonEmptyArray(cloud.providers?.data)) {
+      // AC: Editing Read-Replica is type 'Async'. We should change this at some point
+      if (type === 'Edit' || type === 'Async') {
+        const currentCluster = type === 'Edit' ? getPrimaryCluster(currentUniverse.data.universeDetails.clusters) : getReadOnlyCluster(currentUniverse.data.universeDetails.clusters);
+        const currentProviderUuid = currentCluster.userIntent.provider;
+        updateFormField(`${clusterType}.provider`, currentProviderUuid);
+      } else {
+        const firstProviderUuid = cloud.providers.data[0]?.uuid;
+        updateFormField(`${clusterType}.provider`, firstProviderUuid)
+        this.providerChanged(firstProviderUuid);
+      }
     }
   }
 
