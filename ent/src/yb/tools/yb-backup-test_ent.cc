@@ -25,6 +25,9 @@
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/yb_op.h"
 #include "yb/gutil/strings/split.h"
+
+#include "yb/tools/tools_test_utils.h"
+
 #include "yb/util/jsonreader.h"
 #include "yb/util/random_util.h"
 #include "yb/util/subprocess.h"
@@ -35,8 +38,6 @@ using std::unique_ptr;
 using std::vector;
 using std::string;
 using strings::Split;
-
-DEFINE_bool(verbose_yb_backup, false, "Add --verbose flag to yb_backup.py.");
 
 namespace yb {
 namespace tools {
@@ -85,87 +86,13 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
     ASSERT_OK(CreateClient());
   }
 
-  void DoBeforeTearDown() override {
-    if (!tmp_dir_.empty()) {
-      LOG(INFO) << "Deleting temporary folder: " << tmp_dir_;
-      ASSERT_OK(Env::Default()->DeleteRecursively(tmp_dir_));
-    }
-  }
-
   string GetTempDir(const string& subdir) {
-    if (tmp_dir_.empty()) {
-      EXPECT_OK(Env::Default()->GetTestDirectory(&tmp_dir_));
-      tmp_dir_ = JoinPathSegments(
-        tmp_dir_, string(CURRENT_TEST_CASE_NAME()) + '_' + RandomHumanReadableString(8));
-    }
-    // Create the directory if it doesn't exist.
-    if (!Env::Default()->DirExists(tmp_dir_)) {
-      EXPECT_OK(Env::Default()->CreateDir(tmp_dir_));
-    }
-
-    return JoinPathSegments(tmp_dir_, subdir);
+    return tmp_dir_ / subdir;
   }
 
   Status RunBackupCommand(const vector<string>& args) {
-    const HostPort pg_hp = cluster_->pgsql_hostport(0);
-    std::stringstream command;
-    command << "python3 " << GetToolPath("../../../managed/devops/bin", "yb_backup.py")
-            << " --masters " << cluster_->GetMasterAddresses()
-            << " --remote_yb_admin_binary=" << GetToolPath("yb-admin")
-            << " --remote_ysql_dump_binary=" << GetPgToolPath("ysql_dump")
-            << " --remote_ysql_shell_binary=" << GetPgToolPath("ysqlsh")
-            << " --ysql_host=" << pg_hp.host()
-            << " --ysql_port=" << pg_hp.port()
-            << " --storage_type nfs"
-            << " --nfs_storage_path " << tmp_dir_
-            << " --no_ssh"
-            << " --no_auto_name";
-#if defined(__APPLE__)
-    command << " --mac";
-#endif // defined(__APPLE__)
-    string backup_cmd;
-    for (const auto& a : args) {
-      command << " " << a;
-      if (a == "create" || a == "restore") {
-        backup_cmd = a;
-      }
-    }
-
-    if (FLAGS_verbose_yb_backup) {
-      command << " --verbose";
-    }
-
-    const auto command_str = command.str();
-    LOG(INFO) << "Run tool: " << command_str;
-    string output;
-    RETURN_NOT_OK(Subprocess::Call(Split(command_str, " "), &output));
-    LOG(INFO) << "Tool output: " << output;
-
-    JsonReader r(output);
-    RETURN_NOT_OK(r.Init());
-    string error;
-    Status s = r.ExtractString(r.root(), "error", &error);
-    if (s.ok()) {
-      LOG(ERROR) << "yb_backup.py error: " << error;
-      return STATUS(RuntimeError, "yb_backup.py error", error);
-    }
-
-    if (backup_cmd == "create") {
-      string url;
-      RETURN_NOT_OK(r.ExtractString(r.root(), "snapshot_url", &url));
-      LOG(INFO) << "Backup-create operation result - snapshot url: " << url;
-    } else if (backup_cmd == "restore") {
-      bool result_ok = false;
-      RETURN_NOT_OK(r.ExtractBool(r.root(), "success", &result_ok));
-      LOG(INFO) << "Backup-restore operation result: " << result_ok;
-      if (!result_ok) {
-        return STATUS(RuntimeError, "Failed backup restore operation");
-      }
-    } else {
-      return STATUS(InvalidArgument, "Unknown backup command", ToString(args));
-    }
-
-    return Status::OK();
+    return tools::RunBackupCommand(
+        cluster_->pgsql_hostport(0), cluster_->GetMasterAddresses(), *tmp_dir_, args);
   }
 
   void RecreateDatabase(const string& db) {
@@ -182,7 +109,7 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
   void DoTestYSQLMultiSchemaKeyspaceBackup(helpers::TableOp tableOp);
 
   client::TableHandle table_;
-  string tmp_dir_;
+  TmpDirProvider tmp_dir_;
 };
 
 TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYCQLKeyspaceBackup)) {

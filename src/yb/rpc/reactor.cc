@@ -774,6 +774,13 @@ void DelayedTask::Run(Reactor* reactor) {
   DCHECK(reactor_ == nullptr) << "Task has already been scheduled";
   DCHECK(reactor->IsCurrentThread());
 
+  const auto reactor_state = reactor->state();
+  if (reactor_state != ReactorState::kRunning) {
+    LOG(WARNING) << "Reactor is not running (state: " << reactor_state
+                 << "), not scheduling a delayed task.";
+    return;
+  }
+
   // Acquire lock to prevent task from being aborted in the middle of scheduling, in case abort
   // will be requested in the middle of scheduling - task will be aborted right after return
   // from this method.

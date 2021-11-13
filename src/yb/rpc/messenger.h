@@ -293,6 +293,10 @@ class Messenger : public ProxyContext {
     return num_connections_to_server_;
   }
 
+  size_t num_reactors() const {
+    return reactors_.size();
+  }
+
   // Use specified IP address as base address for outbound connections from messenger.
   void TEST_SetOutboundIpBase(const IpAddress& value) {
     test_outbound_ip_base_ = value;

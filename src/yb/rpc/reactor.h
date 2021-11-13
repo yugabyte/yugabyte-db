@@ -377,6 +377,10 @@ class Reactor {
     return ScheduleReactorTask(MakeFunctorReactorTask(f, source_location));
   }
 
+  ReactorState state() {
+    return state_.load(std::memory_order_acquire);
+  }
+
  private:
   friend class Connection;
   friend class AssignOutboundCallTask;
