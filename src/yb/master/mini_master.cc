@@ -223,5 +223,9 @@ std::string MiniMaster::bound_rpc_addr_str() const {
   return yb::ToString(bound_rpc_addr());
 }
 
+const std::shared_ptr<tablet::TabletPeer> MiniMaster::tablet_peer() const {
+  return master_->catalog_manager()->tablet_peer();
+}
+
 } // namespace master
 } // namespace yb
