@@ -15,7 +15,6 @@
 
 #include "yb/consensus/raft_consensus.h"
 
-#include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
 
 #include "yb/util/random_util.h"
@@ -24,7 +23,7 @@
 
 using namespace std::literals;
 
-DECLARE_bool(TEST_timeout_non_leader_get_table_locations);
+DECLARE_bool(TEST_timeout_non_leader_master_rpcs);
 DECLARE_int64(cql_processors_limit);
 DECLARE_int32(client_read_write_timeout_ms);
 
@@ -276,7 +275,7 @@ TEST_F_EX(CqlTest, HostnameResolutionFailureInYqlPartitionsTable, CqlThreeMaster
 }
 
 TEST_F_EX(CqlTest, NonRespondingMaster, CqlThreeMastersTest) {
-  FLAGS_TEST_timeout_non_leader_get_table_locations = true;
+  FLAGS_TEST_timeout_non_leader_master_rpcs = true;
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
   ASSERT_OK(session.ExecuteQuery("CREATE TABLE t1 (i INT PRIMARY KEY, j INT)"));
   ASSERT_OK(session.ExecuteQuery("INSERT INTO t1 (i, j) VALUES (1, 1)"));
@@ -285,8 +284,7 @@ TEST_F_EX(CqlTest, NonRespondingMaster, CqlThreeMastersTest) {
   LOG(INFO) << "Prepare";
   auto prepared = ASSERT_RESULT(session.Prepare("INSERT INTO t2 (i, j) VALUES (?, ?)"));
   LOG(INFO) << "Step down";
-  auto peer = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager()
-      ->tablet_peer();
+  auto peer = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->tablet_peer();
   ASSERT_OK(StepDown(peer, std::string(), ForceStepDown::kTrue));
   LOG(INFO) << "Insert";
   FLAGS_client_read_write_timeout_ms = 5000;

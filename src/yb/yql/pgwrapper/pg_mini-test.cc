@@ -26,6 +26,8 @@
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog_constants.h"
 
+#include "yb/tools/tools_test_utils.h"
+
 #include "yb/util/logging.h"
 #include "yb/yql/pggate/pggate_flags.h"
 
@@ -38,6 +40,7 @@ using namespace std::literals;
 
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(TEST_force_master_leader_resolution);
+DECLARE_bool(TEST_timeout_non_leader_master_rpcs);
 DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_double(TEST_transaction_ignore_applying_probability_in_tests);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
@@ -2314,6 +2317,36 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(TestSerializableStrongReadLockNotAbor
       << "fail.\n"
       << "Commit status: " << commit_status << ".\n"
       << "Update status: " << update_status << ".\n";
+}
+
+// Use special mode when non leader master times out all rpcs.
+// Then step down master leader and perform backup.
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(NonRespondingMaster),
+          PgMiniMasterFailoverTest) {
+  FLAGS_TEST_timeout_non_leader_master_rpcs = true;
+  tools::TmpDirProvider tmp_dir;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE DATABASE test"));
+  conn = ASSERT_RESULT(ConnectToDB("test"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t (i INT)"));
+
+  auto peer = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->tablet_peer();
+  LOG(INFO) << "Old leader: " << peer->permanent_uuid();
+  ASSERT_OK(StepDown(peer, /* new_leader_uuid */ std::string(), ForceStepDown::kTrue));
+  ASSERT_OK(WaitFor([this, peer]() -> Result<bool> {
+    auto leader = VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->tablet_peer();
+    if (leader->permanent_uuid() != peer->permanent_uuid()) {
+      LOG(INFO) << "New leader: " << leader->permanent_uuid();
+      return true;
+    }
+    return false;
+  }, 10s, "Wait leader change"));
+
+  ASSERT_OK(tools::RunBackupCommand(
+      pg_host_port(), cluster_->GetMasterAddresses(), *tmp_dir,
+      {"--backup_location", tmp_dir / "backup", "--no_upload", "--keyspace", "ysql.test",
+       "create"}));
 }
 
 } // namespace pgwrapper

@@ -49,6 +49,10 @@ class PgMiniTestBase : public YBMiniClusterTestBase<MiniCluster> {
     return PGConn::Connect(pg_host_port_, dbname);
   }
 
+  const HostPort& pg_host_port() const {
+    return pg_host_port_;
+  }
+
  private:
   std::unique_ptr<PgSupervisor> pg_supervisor_;
   HostPort pg_host_port_;

@@ -163,6 +163,9 @@ target_link_libraries(yb-pbc-dump
 add_library(admin-test-base admin-test-base.cc)
 target_link_libraries(admin-test-base cql_test_util integration-tests yb_test_util yb_util)
 
+add_library(tools_test_utils tools_test_utils.cc)
+target_link_libraries(tools_test_utils yb_util yb_test_util)
+
 set(YB_TEST_LINK_LIBS
   admin-test-base
   ysck
@@ -174,6 +177,7 @@ set(YB_TEST_LINK_LIBS
   yb_docdb_test_common
   ql_util
   ql-dml-test-base
+  tools_test_utils
   ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(ysck-test)
 ADD_YB_TEST(yb-bulk_load-test)

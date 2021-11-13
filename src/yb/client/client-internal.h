@@ -45,6 +45,7 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_fwd.h"
+#include "yb/server/server_base_options.h"
 #include "yb/util/atomic.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
@@ -393,6 +394,10 @@ class YBClient::Data {
 
   void CompleteShutdown();
 
+  void DoSetMasterServerProxy(
+      CoarseTimePoint deadline, bool skip_resolution, bool wait_for_leader_election);
+  Result<server::MasterAddresses> ParseMasterAddresses(const Status& reinit_status);
+
   rpc::Messenger* messenger_ = nullptr;
   std::unique_ptr<rpc::Messenger> messenger_holder_;
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
@@ -459,7 +464,8 @@ class YBClient::Data {
   // aid in detecting local tservers.
   TabletServerId uuid_;
 
-  std::unique_ptr<ThreadPool> cb_threadpool_;
+  bool use_threadpool_for_callbacks_;
+  std::unique_ptr<ThreadPool> threadpool_;
 
   const ClientId id_;
 

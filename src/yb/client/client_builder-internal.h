@@ -50,6 +50,10 @@ class YBClientBuilder::Data {
   Data();
   ~Data();
 
+  // If this is specified for thread pool size, we will use the same number of threads as the number
+  // of reactor threads.
+  static constexpr int kUseNumReactorsAsNumThreads = -1;
+
   // Flag name to fetch master addresses from flagfile.
   std::string master_address_flag_name_;
 

@@ -382,6 +382,26 @@ Status YBClientBuilder::DoBuild(rpc::Messenger* messenger, std::unique_ptr<YBCli
   c->data_->default_rpc_timeout_ = data_->default_rpc_timeout_;
   c->data_->wait_for_leader_election_on_init_ = data_->wait_for_leader_election_on_init_;
 
+  int callback_threadpool_size = data_->threadpool_size_;
+  if (callback_threadpool_size == YBClientBuilder::Data::kUseNumReactorsAsNumThreads) {
+    callback_threadpool_size = c->data_->messenger_->num_reactors();
+  }
+  c->data_->use_threadpool_for_callbacks_ = callback_threadpool_size != 0;
+  if (callback_threadpool_size == 0) {
+    callback_threadpool_size = 1;
+  }
+
+  // Not using an underscore because we sometimes get shortened thread names like "master_c" and it
+  // is clearer to see "mastercb" instead.
+  ThreadPoolBuilder tpb(data_->client_name_ + "cb");
+  tpb.set_max_threads(callback_threadpool_size);
+  std::unique_ptr<ThreadPool> tp;
+  RETURN_NOT_OK_PREPEND(
+      tpb.Build(&tp),
+      Format("Could not create callback threadpool with $0 max threads",
+             callback_threadpool_size));
+  c->data_->threadpool_ = std::move(tp);
+
   // Let's allow for plenty of time for discovering the master the first
   // time around.
   auto deadline = CoarseMonoClock::Now() + c->default_admin_operation_timeout();
@@ -404,13 +424,6 @@ Status YBClientBuilder::DoBuild(rpc::Messenger* messenger, std::unique_ptr<YBCli
                         "Could not determine local host names");
   c->data_->cloud_info_pb_ = data_->cloud_info_pb_;
   c->data_->uuid_ = data_->uuid_;
-  if (data_->threadpool_size_ > 0) {
-    ThreadPoolBuilder tpb(data_->client_name_ + "_cb");
-    tpb.set_max_threads(data_->threadpool_size_);
-    std::unique_ptr<ThreadPool> tp;
-    RETURN_NOT_OK_PREPEND(tpb.Build(&tp), "Could not create callback threadpool");
-    c->data_->cb_threadpool_ = std::move(tp);
-  }
 
   client->swap(c);
   return Status::OK();
@@ -453,8 +466,8 @@ void YBClient::Shutdown() {
   if (data_->meta_cache_) {
     data_->meta_cache_->Shutdown();
   }
-  if (data_->cb_threadpool_) {
-    data_->cb_threadpool_->Shutdown();
+  if (data_->threadpool_) {
+    data_->threadpool_->Shutdown();
   }
   data_->CompleteShutdown();
 }
@@ -1709,7 +1722,7 @@ rpc::ProxyCache& YBClient::proxy_cache() const {
 }
 
 ThreadPool *YBClient::callback_threadpool() {
-  return data_->cb_threadpool_.get();
+  return data_->use_threadpool_for_callbacks_ ? data_->threadpool_.get() : nullptr;
 }
 
 const std::string& YBClient::proxy_uuid() const {
@@ -1824,6 +1837,12 @@ Result<HostPort> YBClient::RefreshMasterLeaderAddress() {
   RETURN_NOT_OK(data_->SetMasterServerProxy(deadline));
 
   return GetMasterLeaderAddress();
+}
+
+void YBClient::RefreshMasterLeaderAddressAsync() {
+  data_->SetMasterServerProxyAsync(
+      CoarseMonoClock::Now() + default_admin_operation_timeout(),
+      false /* skip_resolution */, true /* wait_for_leader_election */, /* callback */ [](auto){});
 }
 
 Status YBClient::RemoveMasterFromClient(const HostPort& remove) {

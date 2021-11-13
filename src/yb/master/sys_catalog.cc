@@ -53,6 +53,7 @@
 #include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
+#include "yb/consensus/raft_consensus.h"
 
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb_pgapi.h"
@@ -394,6 +395,16 @@ void SysCatalogTable::SysCatalogStateChanged(
        (cstate.config().peers_size() == 1 &&
         context->reason == StateChangeReason::TABLET_PEER_STARTED))) {
     CHECK_OK(leader_cb_.Run());
+  }
+
+  if (context->reason == StateChangeReason::NEW_LEADER_ELECTED) {
+    auto client_future = master_->async_client_initializer().get_client_future();
+
+    // Check if client was already initialized, otherwise we don't have to refresh master leader,
+    // since it will be fetched as part of initialization.
+    if (client_future.wait_for(0ms) == std::future_status::ready) {
+      client_future.get()->RefreshMasterLeaderAddressAsync();
+    }
   }
 
   // Perform any further changes for context based reasons.
