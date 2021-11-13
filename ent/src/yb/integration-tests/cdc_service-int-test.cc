@@ -366,7 +366,7 @@ Status CDCServiceTest::GetChangesWithRetries(
 
       // Exit if we exhausted the number of attempts.
       if (num_attempts >= max_attempts) {
-        return s.ok() ? s : STATUS_FORMAT(
+        return s.ok() ? Status::OK() : STATUS_FORMAT(
           TimedOut, "Tried calling GetChanges $0 times with no success.", num_attempts);
       }
 
