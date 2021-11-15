@@ -12,6 +12,16 @@ isTocNested: true
 showAsideToc: true
 ---
 
+## [The "Date and time data types and functionality" parent page](../../type_datetime/)
+
+This section is the top of the entire _date-time_ documentation subtree. Its siblings are the top-of-subtree pages for other data types like [JSON data types and functionality](../../type_json/) and [Array data types and functionality](../../type_array/).
+
+It presents a table that summarizes the properties of the _date-time_ data types, and that links to the dedicated sections for each of these. It recommends avoiding the _timetz_ datatype and states that it will not, therefore, be treated in the _data-time_ major section.
+
+For completeness, it presents a table of the special _date-time_ manifest constants and recommends that you avoid using all of these except for _'infinity'_ and _'-infinity'_.
+
+Finally, it lists the _date-time_ subsections that cover just those topics that you will need to understand if your purpose is only to write brand-new application code.
+
 ## [Conceptual background](../conceptual-background/)
 
 This section explains the background for the accounts of the _date-time_ data types. In particular, it explains the notions that underly the sensitivity to the reigning timezone of these operations:
