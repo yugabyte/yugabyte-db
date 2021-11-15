@@ -17,11 +17,11 @@ showAsideToc: true
 
 Included here are the release notes for all releases in the v2.8 stable release series. Content will be added as new notable features and changes are available in the patch releases of the v2.8 stable release series.
 
-For an RSS feed of the release notes for latest and stable releases, point your feed reader to [https://docs.yugabyte.com/latest/releases/whats-new/index.xml](../index.xml).
+For an RSS feed of the release notes for the latest and stable releases, point your feed reader to [https://docs.yugabyte.com/latest/releases/whats-new/index.xml](../index.xml).
 
 ## v2.8.0.0 - November 8, 2021
 
-**Build:** `2.8.0.0-b34`
+**Build:** `2.8.0.0-b37`
 
 ### Downloads
 
@@ -41,7 +41,7 @@ For an RSS feed of the release notes for latest and stable releases, point your 
 ### Docker
 
 ```sh
-docker pull yugabytedb/yugabyte:2.8.0.0-b34
+docker pull yugabytedb/yugabyte:2.8.0.0-b37
 ```
 
 ### New features
@@ -101,6 +101,7 @@ The Yugabyte Platform [REST API documentation](https://api-docs.yugabyte.com/) i
 [PLAT-1867] AWS Provider and Universe examples
 [PLAT-1934] Adding UI to set KUBE_DOMAIN
 [PLAT-1943] Remove feature flagging for enable/disable TLS
+[PLAT-1956] Expose on-prem node pre-flight checks as a standalone action
 [PLAT-1962] Add optional AWS KMS Endpoint field while creating KMS config.
 [PLAT-1989] Show alert configuration target in page view
 [PLAT-2033] [Alert] [UI] Move seconds in Duration under conditions similar to Threshold in Alert Definition Page
@@ -289,6 +290,7 @@ Added new AWS regions to metadata files
 [PLAT-2180] [PLAT-2182] Missing error response logging when demoteInstance fails
 [PLAT-2189] Fix universe creation on airgap install
 [PLAT-2200] [UI] Fix regression with HA "standby" overlay
+[PLAT-2263] application.log not updating
 [Platform] Fix NPE in VM image upgrade for TLS enabled universes
 [Platform] Hooking GCP Create Method into Create Root Volumes method
 
@@ -391,7 +393,7 @@ Added new AWS regions to metadata files
 [#10364] [YCQL] Fix issue when dropping col that is not in an existing non-partial secondary index
 [#10374] [YSQL] Cannot start a cluster with --ysql_pg_conf_csv='statement_timeout=1000'
 [#10415] [backup] Backup-restore failures for old backups.
-[#10519] Reset master leader on meta cache timeouts
+[#10519] Reset master leader on meta cache timeouts, refresh master leader after election.
 [adhoc] [DocDB] Remove GetTabletPeers method with return argument
 [adhoc] [DST] Reword loud log line in raft_consensus.cc to remove the word Failure
 [xCluster] [#9418] Add cdc_state Schema Caching to Producer Cluster
