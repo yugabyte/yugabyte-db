@@ -89,6 +89,10 @@ Shows the billing details for the current billing cycle, including:
 
 Click **Invoice Details** to view the invoice [Summary](#invoice-summary) for the active invoice.
 
+### Usage Breakdown
+
+Shows a breakdown of costs for the current billing cycle.
+
 ### Invoice History
 
 Lists your invoices with following details:
@@ -126,7 +130,11 @@ To download the invoice as a PDF, click **Download Invoice**.
 - Payment date - the date the invoice was paid.
 - Payment method - the payment method used to pay the invoice.
 
-**Summary by Usage** shows a breakdown of costs for each cluster. Click a cluster to view usage details for each dimension, including:
+**Summary by Cluster** shows a breakdown of costs for each cluster.
+
+**Summary by Infrastructure** shows a breakdown of costs by usage type.
+
+**Summary by Usage** shows detailed costs for each cluster. Click a cluster to view usage details for each dimension, including:
 
 - The instance minutes, price, and amount.
 - Data storage usage, overage in GB-hours, price, and amount.
@@ -134,9 +142,3 @@ To download the invoice as a PDF, click **Download Invoice**.
 - Data transfer usage, overages in GB, price, and amount.
 
 For information on how your invoice is costed, refer to [Cluster costs](../cloud-billing-costs).
-
-<!--
-## Cost Estimator
-
-Use the cost estimator to see estimated monthly and yearly pricing for for your cloud, based on configuration, backup, and data transfer settings.
--->
