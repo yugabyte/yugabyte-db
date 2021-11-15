@@ -4,10 +4,15 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static com.yugabyte.yw.models.TaskInfo.State.Failure;
+import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.anyLong;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -19,6 +24,7 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
@@ -33,17 +39,16 @@ import java.util.stream.Collectors;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.runners.MockitoJUnitRunner;
+import org.yb.client.ChangeConfigResponse;
+import org.yb.client.ChangeMasterClusterConfigResponse;
+import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.YBClient;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
 
-  UniverseDefinitionTaskParams.UserIntent userIntent;
-
-  Universe defaultUniverse;
-  YBClient mockClient;
-  ShellResponse dummyShellResponse;
+  private Universe defaultUniverse;
 
   public void setUp(boolean withMaster, int numNodes, int replicationFactor, boolean multiZone) {
     super.setUp();
@@ -55,7 +60,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
       AvailabilityZone.createOrThrow(region, "az-3", "az-3", "subnet-3");
     }
     // create default universe
-    userIntent = new UniverseDefinitionTaskParams.UserIntent();
+    UserIntent userIntent = new UserIntent();
     userIntent.numNodes = numNodes;
     userIntent.ybSoftwareVersion = "yb-version";
     userIntent.accessKeyCode = "demo-access";
@@ -86,19 +91,27 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     Universe.saveDetails(defaultUniverse.universeUUID, updater);
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.universeUUID);
 
-    mockClient = mock(YBClient.class);
+    YBClient mockClient = mock(YBClient.class);
     ShellResponse dummyShellResponse = new ShellResponse();
     dummyShellResponse.message = "true";
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
 
+    ChangeConfigResponse mockChangeConfigResponse = mock(ChangeConfigResponse.class);
+    ChangeMasterClusterConfigResponse ccr = new ChangeMasterClusterConfigResponse(1111, "", null);
+    GetLoadMovePercentResponse gpr = new GetLoadMovePercentResponse(0, "", 100.0, 0, 0, null);
     try {
       // WaitForTServerHeartBeats mock.
       doNothing().when(mockClient).waitForMasterLeader(anyLong());
+      when(mockClient.changeMasterConfig(anyString(), anyInt(), anyBoolean(), anyBoolean()))
+          .thenReturn(mockChangeConfigResponse);
+      when(mockClient.changeMasterClusterConfig(any())).thenReturn(ccr);
+      when(mockClient.getLoadMoveCompletion()).thenReturn(gpr);
     } catch (Exception e) {
     }
 
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+    when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
     mockWaits(mockClient, 3);
   }
 
@@ -113,7 +126,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     return null;
   }
 
-  List<TaskType> REMOVE_NODE_TASK_SEQUENCE =
+  private static final List<TaskType> REMOVE_NODE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.UpdatePlacementInfo,
@@ -124,7 +137,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           TaskType.SetNodeState,
           TaskType.UniverseUpdateSucceeded);
 
-  List<JsonNode> REMOVE_NODE_TASK_EXPECTED_RESULTS =
+  private static final List<JsonNode> REMOVE_NODE_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
           Json.toJson(ImmutableMap.of("state", "Removing")),
           Json.toJson(ImmutableMap.of()),
@@ -135,7 +148,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of("state", "Removed")),
           Json.toJson(ImmutableMap.of()));
 
-  List<TaskType> REMOVE_NODE_WITH_MASTER =
+  private static final List<TaskType> REMOVE_NODE_WITH_MASTER =
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.WaitForMasterLeader,
@@ -150,7 +163,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           TaskType.SetNodeState,
           TaskType.UniverseUpdateSucceeded);
 
-  List<JsonNode> REMOVE_NODE_WITH_MASTER_RESULTS =
+  private static final List<JsonNode> REMOVE_NODE_WITH_MASTER_RESULTS =
       ImmutableList.of(
           Json.toJson(ImmutableMap.of("state", "Removing")),
           Json.toJson(ImmutableMap.of()),
@@ -165,7 +178,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of("state", "Removed")),
           Json.toJson(ImmutableMap.of()));
 
-  List<TaskType> REMOVE_NOT_EXISTS_NODE_TASK_SEQUENCE =
+  private static final List<TaskType> REMOVE_NOT_EXISTS_NODE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.UpdatePlacementInfo,
@@ -174,7 +187,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           TaskType.SetNodeState,
           TaskType.UniverseUpdateSucceeded);
 
-  List<JsonNode> REMOVE_NOT_EXISTS_NODE_TASK_EXPECTED_RESULTS =
+  private static final List<JsonNode> REMOVE_NOT_EXISTS_NODE_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
           Json.toJson(ImmutableMap.of("state", "Removing")),
           Json.toJson(ImmutableMap.of()),
@@ -249,6 +262,8 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     taskParams.expectedUniverseVersion = 3;
 
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
+    assertEquals(Success, taskInfo.getTaskState());
+
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
@@ -261,7 +276,10 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     NodeTaskParams taskParams = new NodeTaskParams();
     taskParams.universeUUID = defaultUniverse.universeUUID;
     taskParams.expectedUniverseVersion = 3;
+
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
+    assertEquals(Success, taskInfo.getTaskState());
+
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
@@ -274,8 +292,9 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     NodeTaskParams taskParams = new NodeTaskParams();
     taskParams.universeUUID = defaultUniverse.universeUUID;
     taskParams.expectedUniverseVersion = 3;
+
     TaskInfo taskInfo = submitTask(taskParams, "host-n9");
-    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertEquals(Failure, taskInfo.getTaskState());
   }
 
   @Test
@@ -284,10 +303,13 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     NodeTaskParams taskParams = new NodeTaskParams();
     taskParams.universeUUID = defaultUniverse.universeUUID;
     taskParams.expectedUniverseVersion = 3;
-    dummyShellResponse = new ShellResponse();
+    ShellResponse dummyShellResponse = new ShellResponse();
     dummyShellResponse.message = null;
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
+
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
+    assertEquals(Success, taskInfo.getTaskState());
+
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
@@ -300,7 +322,10 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     NodeTaskParams taskParams = new NodeTaskParams();
     taskParams.universeUUID = defaultUniverse.universeUUID;
     taskParams.expectedUniverseVersion = 3;
+
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
+    assertEquals(Success, taskInfo.getTaskState());
+
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
@@ -313,7 +338,10 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     NodeTaskParams taskParams = new NodeTaskParams();
     taskParams.universeUUID = defaultUniverse.universeUUID;
     taskParams.expectedUniverseVersion = 3;
+
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
+    assertEquals(Success, taskInfo.getTaskState());
+
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
@@ -326,7 +354,10 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     NodeTaskParams taskParams = new NodeTaskParams();
     taskParams.universeUUID = defaultUniverse.universeUUID;
     taskParams.expectedUniverseVersion = 3;
+
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
+    assertEquals(Success, taskInfo.getTaskState());
+
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));

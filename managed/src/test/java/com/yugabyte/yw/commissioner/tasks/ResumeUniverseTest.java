@@ -10,8 +10,8 @@ import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
-import static org.mockito.Matchers.any;
-import static org.mockito.Mockito.anyLong;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -44,6 +44,7 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
 
   private Universe defaultUniverse;
 
+  @Override
   @Before
   public void setUp() {
     super.setUp();
@@ -76,7 +77,7 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
             userIntent, nodePrefix, true /* setMasters */, updateInProgress));
   }
 
-  List<TaskType> RESUME_UNIVERSE_TASKS =
+  private static final List<TaskType> RESUME_UNIVERSE_TASKS =
       ImmutableList.of(
           TaskType.ResumeServer,
           TaskType.AnsibleClusterServerCtl,
@@ -86,7 +87,7 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
           TaskType.SwamperTargetsFileUpdate,
           TaskType.UniverseUpdateSucceeded);
 
-  List<JsonNode> RESUME_UNIVERSE_EXPECTED_RESULTS =
+  private static final List<JsonNode> RESUME_UNIVERSE_EXPECTED_RESULTS =
       ImmutableList.of(
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "master", "command", "start")),

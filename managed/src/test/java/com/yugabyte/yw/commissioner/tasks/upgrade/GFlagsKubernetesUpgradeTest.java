@@ -32,9 +32,9 @@ import play.libs.Json;
 @RunWith(MockitoJUnitRunner.class)
 public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
 
-  @InjectMocks GFlagsKubernetesUpgrade gFlagsKubernetesUpgrade;
+  @InjectMocks private GFlagsKubernetesUpgrade gFlagsKubernetesUpgrade;
 
-  List<TaskType> UPGRADE_TASK_SEQUENCE =
+  private static final List<TaskType> UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.UpdateAndPersistGFlags,
           TaskType.KubernetesCommandExecutor,
@@ -162,10 +162,10 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
         .getPodInfos(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedNamespace.capture());
 
-    assertEquals(ybSoftwareVersionOld, expectedYbSoftwareVersion.getValue());
+    assertEquals(YB_SOFTWARE_VERSION_OLD, expectedYbSoftwareVersion.getValue());
     assertEquals(config, expectedConfig.getValue());
-    assertEquals(nodePrefix, expectedNodePrefix.getValue());
-    assertEquals(nodePrefix, expectedNamespace.getValue());
+    assertEquals(NODE_PREFIX, expectedNodePrefix.getValue());
+    assertEquals(NODE_PREFIX, expectedNamespace.getValue());
     assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
@@ -208,10 +208,10 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
         .getPodInfos(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedNamespace.capture());
 
-    assertEquals(ybSoftwareVersionOld, expectedYbSoftwareVersion.getValue());
+    assertEquals(YB_SOFTWARE_VERSION_OLD, expectedYbSoftwareVersion.getValue());
     assertEquals(config, expectedConfig.getValue());
-    assertTrue(expectedNodePrefix.getValue().contains(nodePrefix));
-    assertTrue(expectedNamespace.getValue().contains(nodePrefix));
+    assertTrue(expectedNodePrefix.getValue().contains(NODE_PREFIX));
+    assertTrue(expectedNamespace.getValue().contains(NODE_PREFIX));
     assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();

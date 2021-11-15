@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
+import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
@@ -67,9 +68,9 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
     }
   }
 
-  @InjectMocks VMImageUpgrade vmImageUpgrade;
+  @InjectMocks private VMImageUpgrade vmImageUpgrade;
 
-  List<TaskType> UPGRADE_TASK_SEQUENCE =
+  private static final List<TaskType> UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.AnsibleClusterServerCtl,
           TaskType.AnsibleClusterServerCtl,
@@ -85,6 +86,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
           TaskType.WaitForEncryptionKeyInMemory,
           TaskType.UpdateNodeDetails);
 
+  @Override
   @Before
   public void setUp() {
     super.setUp();
@@ -228,6 +230,6 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
     createVolumeOutput.forEach(
         (key, value) -> assertEquals(value.size(), (int) replaceRootVolumeParams.get(key)));
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
-    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    assertEquals(Success, taskInfo.getTaskState());
   }
 }

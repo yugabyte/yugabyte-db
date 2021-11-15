@@ -4,9 +4,14 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static com.yugabyte.yw.models.TaskInfo.State.Failure;
+import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
-import static org.mockito.Matchers.any;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -33,14 +38,15 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.runners.MockitoJUnitRunner;
+import org.yb.client.YBClient;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class StopNodeInUniverseTest extends CommissionerBaseTest {
 
-  Universe defaultUniverse;
-  ShellResponse dummyShellResponse;
+  private Universe defaultUniverse;
 
+  @Override
   @Before
   public void setUp() {
     super.setUp();
@@ -59,9 +65,17 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
         defaultUniverse.universeUUID,
         ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
 
-    dummyShellResponse = new ShellResponse();
+    ShellResponse dummyShellResponse = new ShellResponse();
     dummyShellResponse.message = "true";
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
+
+    YBClient mockClient = mock(YBClient.class);
+    try {
+      doNothing().when(mockClient).waitForMasterLeader(anyLong());
+    } catch (Exception e) {
+    }
+
+    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
   }
 
   private TaskInfo submitTask(NodeTaskParams taskParams, String nodeName) {
@@ -76,7 +90,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     return null;
   }
 
-  List<TaskType> STOP_NODE_TASK_SEQUENCE =
+  private static final List<TaskType> STOP_NODE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.AnsibleClusterServerCtl,
@@ -84,7 +98,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
           TaskType.SetNodeState,
           TaskType.UniverseUpdateSucceeded);
 
-  List<JsonNode> STOP_NODE_TASK_EXPECTED_RESULTS =
+  private static final List<JsonNode> STOP_NODE_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
           Json.toJson(ImmutableMap.of("state", "Stopping")),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "stop")),
@@ -92,7 +106,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of("state", "Stopped")),
           Json.toJson(ImmutableMap.of()));
 
-  List<TaskType> STOP_NODE_TASK_SEQUENCE_MASTER =
+  private static final List<TaskType> STOP_NODE_TASK_SEQUENCE_MASTER =
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.AnsibleClusterServerCtl,
@@ -104,7 +118,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
           TaskType.SetNodeState,
           TaskType.UniverseUpdateSucceeded);
 
-  List<JsonNode> STOP_NODE_TASK_SEQUENCE_MASTER_RESULTS =
+  private static final List<JsonNode> STOP_NODE_TASK_SEQUENCE_MASTER_RESULTS =
       ImmutableList.of(
           Json.toJson(ImmutableMap.of("state", "Stopping")),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "stop")),
@@ -150,6 +164,8 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     taskParams.universeUUID = defaultUniverse.universeUUID;
 
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
+    assertEquals(Success, taskInfo.getTaskState());
+
     verify(mockNodeManager, times(3)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -173,6 +189,8 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     taskParams.universeUUID = universe.universeUUID;
 
     TaskInfo taskInfo = submitTask(taskParams, "host-n4");
+    assertEquals(Success, taskInfo.getTaskState());
+
     verify(mockNodeManager, times(2)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -187,6 +205,6 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     taskParams.universeUUID = defaultUniverse.universeUUID;
     TaskInfo taskInfo = submitTask(taskParams, "host-n9");
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
-    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertEquals(Failure, taskInfo.getTaskState());
   }
 }

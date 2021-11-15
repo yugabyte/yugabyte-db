@@ -10,8 +10,7 @@ import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
-import static org.mockito.Matchers.any;
-import static org.mockito.Mockito.mock;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -35,18 +34,16 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.runners.MockitoJUnitRunner;
-import org.yb.client.YBClient;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class PauseUniverseTest extends CommissionerBaseTest {
   private Universe defaultUniverse;
-  private final Map<String, String> config = new HashMap<>();
 
+  @Override
   @Before
   public void setUp() {
     super.setUp();
-    YBClient mockClient = mock(YBClient.class);
     ShellResponse dummyShellResponse = new ShellResponse();
     dummyShellResponse.message = "true";
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
@@ -73,7 +70,7 @@ public class PauseUniverseTest extends CommissionerBaseTest {
             userIntent, nodePrefix, true /* setMasters */, updateInProgress));
   }
 
-  List<TaskType> PAUSE_UNIVERSE_TASKS =
+  private static final List<TaskType> PAUSE_UNIVERSE_TASKS =
       ImmutableList.of(
           TaskType.AnsibleClusterServerCtl,
           TaskType.AnsibleClusterServerCtl,
@@ -81,7 +78,7 @@ public class PauseUniverseTest extends CommissionerBaseTest {
           TaskType.SwamperTargetsFileUpdate,
           TaskType.UniverseUpdateSucceeded);
 
-  List<JsonNode> PAUSE_UNIVERSE_EXPECTED_RESULTS =
+  private static final List<JsonNode> PAUSE_UNIVERSE_EXPECTED_RESULTS =
       ImmutableList.of(
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "stop")),
           Json.toJson(ImmutableMap.of("process", "master", "command", "stop")),

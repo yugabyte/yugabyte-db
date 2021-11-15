@@ -1,43 +1,24 @@
 package com.yugabyte.yw.commissioner.tasks;
 
-import java.util.UUID;
-import com.yugabyte.yw.models.Backup;
-import com.yugabyte.yw.models.Schedule;
-import com.yugabyte.yw.models.CustomerConfig;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Customer;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
-import org.mockito.junit.MockitoJUnitRunner;
-import com.yugabyte.yw.models.helpers.TaskType;
-import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.forms.BackupTableParams;
-import java.util.List;
-import com.yugabyte.yw.commissioner.tasks.DeleteCustomerConfig;
-import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
-
-import com.yugabyte.yw.commissioner.AbstractTaskBase;
-import com.yugabyte.yw.common.FakeDBApplication;
-
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
-import org.mockito.junit.MockitoJUnitRunner;
-
-import com.yugabyte.yw.common.ModelFactory;
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerConfig;
+import com.yugabyte.yw.models.Schedule;
+import com.yugabyte.yw.models.Universe;
 import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.junit.MockitoJUnitRunner;
 
 @RunWith(MockitoJUnitRunner.class)
 public class DeleteCustomerConfigTest extends FakeDBApplication {

@@ -3,10 +3,11 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
+import static com.yugabyte.yw.models.TaskInfo.State.Failure;
+import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
-import static org.mockito.Matchers.any;
-import static org.mockito.Mockito.mock;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -15,7 +16,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo.ModifyUniverseConfig;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
@@ -37,7 +37,6 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.runners.MockitoJUnitRunner;
-import org.yb.client.AbstractModifyMasterClusterConfig;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.master.Master;
@@ -46,17 +45,10 @@ import play.libs.Json;
 @RunWith(MockitoJUnitRunner.class)
 public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
 
-  ModifyUniverseConfig modifyUC;
-  AbstractModifyMasterClusterConfig amuc;
-
+  @Override
   @Before
   public void setUp() {
     super.setUp();
-
-    // TODO(bogdan): I don't think these mocks of the AbstractModifyMasterClusterConfig are doing
-    // anything..
-    modifyUC = mock(ModifyUniverseConfig.class);
-    amuc = mock(AbstractModifyMasterClusterConfig.class);
 
     Master.SysClusterConfigEntryPB.Builder configBuilder =
         Master.SysClusterConfigEntryPB.newBuilder().setVersion(1);
@@ -84,7 +76,7 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
     return null;
   }
 
-  List<TaskType> CLUSTER_CREATE_TASK_SEQUENCE =
+  private static final List<TaskType> CLUSTER_CREATE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
@@ -98,7 +90,7 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
           TaskType.SwamperTargetsFileUpdate,
           TaskType.UniverseUpdateSucceeded);
 
-  List<JsonNode> CLUSTER_CREATE_TASK_EXPECTED_RESULTS =
+  private static final List<JsonNode> CLUSTER_CREATE_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -152,6 +144,8 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
       iter++;
     }
     TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+
     // removed unnecessary preflight check
     verify(mockNodeManager, times(7)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
@@ -173,7 +167,7 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.universeUUID = defaultUniverse.universeUUID;
     TaskInfo taskInfo = submitTask(taskParams);
-    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertEquals(Failure, taskInfo.getTaskState());
   }
 
   @Test
@@ -213,7 +207,7 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
     UniverseDefinitionTaskParams univUTP =
         Universe.getOrBadRequest(onPremUniverse.universeUUID).getUniverseDetails();
     assertEquals(2, univUTP.clusters.size());
-    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    assertEquals(Success, taskInfo.getTaskState());
   }
 
   @Test
@@ -246,7 +240,6 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
     }
     preflightResponse.message = "{\"test\": false}";
     TaskInfo taskInfo = submitTask(taskParams);
-
-    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertEquals(Failure, taskInfo.getTaskState());
   }
 }

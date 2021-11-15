@@ -2,6 +2,20 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.models.TaskInfo.State.Failure;
+import static com.yugabyte.yw.models.TaskInfo.State.Success;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
@@ -21,25 +35,13 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
 import play.libs.Json;
-import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 @RunWith(MockitoJUnitRunner.class)
 public class CloudBootstrapTest extends CommissionerBaseTest {
 
-  final String hostVpcRegion = "host-vpc-region";
-  final String hostVpcId = "host-vpc-id";
-  final String destVpcId = "dest-vpc-id";
+  private static final String HOST_VPC_REGION = "host-vpc-region";
+  private static final String HOST_VPC_ID = "host-vpc-id";
+  private static final String DEST_VPC_ID = "dest-vpc-id";
 
   private void mockRegionMetadata(Common.CloudType cloudType) {
     Map<String, Object> regionMetadata = new HashMap<>();
@@ -66,9 +68,9 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
   private CloudBootstrap.Params getBaseTaskParams() {
     CloudBootstrap.Params taskParams = new CloudBootstrap.Params();
     taskParams.providerUUID = defaultProvider.uuid;
-    taskParams.hostVpcRegion = hostVpcRegion;
-    taskParams.hostVpcId = hostVpcId;
-    taskParams.destVpcId = destVpcId;
+    taskParams.hostVpcRegion = HOST_VPC_REGION;
+    taskParams.hostVpcId = HOST_VPC_ID;
+    taskParams.destVpcId = DEST_VPC_ID;
     taskParams.sshPort = 12345;
     taskParams.airGapInstall = false;
     return taskParams;
@@ -121,7 +123,7 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
 
     UUID taskUUID = submitTask(taskParams);
     TaskInfo taskInfo = waitForTask(taskUUID);
-    assertValue(Json.toJson(taskInfo), "taskState", "Success");
+    assertEquals(Success, taskInfo.getTaskState());
     if (expectedProviderCode.equals("aws")) {
       verify(mockAWSInitializer, times(1)).initialize(defaultCustomer.uuid, provider.uuid);
     } else if (expectedProviderCode.equals("gcp")) {
@@ -430,7 +432,7 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
     taskParams.perRegionMetadata.put("fake-region", new CloudBootstrap.Params.PerRegionMetadata());
     UUID taskUUID = submitTask(taskParams);
     TaskInfo taskInfo = waitForTask(taskUUID);
-    assertValue(Json.toJson(taskInfo), "taskState", "Failure");
+    assertEquals(Failure, taskInfo.getTaskState());
   }
 
   @Test
@@ -440,7 +442,7 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
     taskParams.perRegionMetadata.put("us-west-1", new CloudBootstrap.Params.PerRegionMetadata());
     UUID taskUUID = submitTask(taskParams);
     TaskInfo taskInfo = waitForTask(taskUUID);
-    assertValue(Json.toJson(taskInfo), "taskState", "Failure");
+    assertEquals(Failure, taskInfo.getTaskState());
   }
 
   @Test
@@ -451,7 +453,7 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
     taskParams.perRegionMetadata.put("us-west-1", new CloudBootstrap.Params.PerRegionMetadata());
     UUID taskUUID = submitTask(taskParams);
     TaskInfo taskInfo = waitForTask(taskUUID);
-    assertValue(Json.toJson(taskInfo), "taskState", "Failure");
+    assertEquals(Failure, taskInfo.getTaskState());
     Region r = Region.getByCode(defaultProvider, "us-west-1");
     assertNull(r);
   }
