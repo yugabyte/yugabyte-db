@@ -5,6 +5,8 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 import static com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType.DownloadingSoftware;
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.MASTER;
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.TSERVER;
+import static com.yugabyte.yw.models.TaskInfo.State.Failure;
+import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
@@ -40,9 +42,9 @@ import org.mockito.junit.MockitoJUnitRunner;
 @RunWith(MockitoJUnitRunner.class)
 public class SoftwareUpgradeTest extends UpgradeTaskTest {
 
-  @InjectMocks SoftwareUpgrade softwareUpgrade;
+  @InjectMocks private SoftwareUpgrade softwareUpgrade;
 
-  List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE =
+  private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.AnsibleClusterServerCtl,
@@ -53,7 +55,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
           TaskType.WaitForEncryptionKeyInMemory,
           TaskType.SetNodeState);
 
-  List<TaskType> NON_ROLLING_UPGRADE_TASK_SEQUENCE =
+  private static final List<TaskType> NON_ROLLING_UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.AnsibleClusterServerCtl,
@@ -62,6 +64,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
           TaskType.SetNodeState,
           TaskType.WaitForServer);
 
+  @Override
   @Before
   public void setUp() {
     super.setUp();
@@ -174,7 +177,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
 
     TaskInfo taskInfo = submitTask(taskParams);
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
-    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertEquals(Failure, taskInfo.getTaskState());
     defaultUniverse.refresh();
     assertEquals(2, defaultUniverse.version);
     // In case of an exception, no task should be queued.
@@ -186,7 +189,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
     TaskInfo taskInfo = submitTask(taskParams);
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
-    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertEquals(Failure, taskInfo.getTaskState());
     defaultUniverse.refresh();
     assertEquals(2, defaultUniverse.version);
     // In case of an exception, no task should be queued.
@@ -215,7 +218,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true);
     assertEquals(50, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
-    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    assertEquals(Success, taskInfo.getTaskState());
   }
 
   @Test
@@ -258,7 +261,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true);
     assertEquals(74, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
-    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    assertEquals(Success, taskInfo.getTaskState());
   }
 
   @Test
@@ -283,6 +286,6 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     assertCommonTasks(subTasksByPosition, position, UpgradeType.FULL_UPGRADE, true);
     assertEquals(13, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
-    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    assertEquals(Success, taskInfo.getTaskState());
   }
 }

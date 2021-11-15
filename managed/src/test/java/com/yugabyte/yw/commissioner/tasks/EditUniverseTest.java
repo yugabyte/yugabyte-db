@@ -3,6 +3,8 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType.EDIT;
+import static com.yugabyte.yw.models.TaskInfo.State.Failure;
+import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.any;
@@ -13,7 +15,6 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo.ModifyUniverseConfig;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -28,7 +29,6 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.runners.MockitoJUnitRunner;
-import org.yb.client.AbstractModifyMasterClusterConfig;
 import org.yb.client.ChangeConfigResponse;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
@@ -38,17 +38,10 @@ import org.yb.master.Master;
 @RunWith(MockitoJUnitRunner.class)
 public class EditUniverseTest extends UniverseModifyBaseTest {
 
-  ModifyUniverseConfig modifyUC;
-  AbstractModifyMasterClusterConfig amuc;
-
+  @Override
   @Before
   public void setUp() {
     super.setUp();
-
-    // TODO(bogdan): I don't think these mocks of the AbstractModifyMasterClusterConfig are doing
-    // anything..
-    modifyUC = mock(ModifyUniverseConfig.class);
-    amuc = mock(AbstractModifyMasterClusterConfig.class);
 
     Master.SysClusterConfigEntryPB.Builder configBuilder =
         Master.SysClusterConfigEntryPB.newBuilder().setVersion(1);
@@ -92,7 +85,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     Universe universe = defaultUniverse;
     UniverseDefinitionTaskParams taskParams = performExpand(universe);
     TaskInfo taskInfo = submitTask(taskParams);
-    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    assertEquals(Success, taskInfo.getTaskState());
     universe = Universe.getOrBadRequest(universe.universeUUID);
     assertEquals(5, universe.getUniverseDetails().nodeDetailsSet.size());
   }
@@ -106,7 +99,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     Universe universe = onPremUniverse;
     UniverseDefinitionTaskParams taskParams = performExpand(universe);
     TaskInfo taskInfo = submitTask(taskParams);
-    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    assertEquals(Success, taskInfo.getTaskState());
     universe = Universe.getOrBadRequest(universe.universeUUID);
     assertEquals(5, universe.getUniverseDetails().nodeDetailsSet.size());
   }
@@ -116,7 +109,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     Universe universe = onPremUniverse;
     UniverseDefinitionTaskParams taskParams = performExpand(universe);
     TaskInfo taskInfo = submitTask(taskParams);
-    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertEquals(Failure, taskInfo.getTaskState());
   }
 
   @Test
@@ -129,7 +122,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     preflightResponse.message = "{\"test\": false}";
 
     TaskInfo taskInfo = submitTask(taskParams);
-    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertEquals(Failure, taskInfo.getTaskState());
   }
 
   private UniverseDefinitionTaskParams performExpand(Universe universe) {

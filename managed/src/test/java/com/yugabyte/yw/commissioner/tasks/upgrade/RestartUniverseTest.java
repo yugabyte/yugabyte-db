@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.MASTER;
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.TSERVER;
+import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
@@ -30,9 +31,9 @@ import org.mockito.junit.MockitoJUnitRunner;
 @RunWith(MockitoJUnitRunner.class)
 public class RestartUniverseTest extends UpgradeTaskTest {
 
-  @InjectMocks RestartUniverse restartUniverse;
+  @InjectMocks private RestartUniverse restartUniverse;
 
-  List<TaskType> ROLLING_RESTART_TASK_SEQUENCE =
+  private static final List<TaskType> ROLLING_RESTART_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.AnsibleClusterServerCtl,
@@ -42,6 +43,7 @@ public class RestartUniverseTest extends UpgradeTaskTest {
           TaskType.WaitForEncryptionKeyInMemory,
           TaskType.SetNodeState);
 
+  @Override
   @Before
   public void setUp() {
     super.setUp();
@@ -106,6 +108,6 @@ public class RestartUniverseTest extends UpgradeTaskTest {
     assertCommonTasks(subTasksByPosition, position);
     assertEquals(43, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
-    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    assertEquals(Success, taskInfo.getTaskState());
   }
 }
