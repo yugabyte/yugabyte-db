@@ -39,6 +39,7 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
 
   protected YBClient mockClient;
 
+  @Override
   @Before
   public void setUp() {
     super.setUp();

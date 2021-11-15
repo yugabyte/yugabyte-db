@@ -42,7 +42,6 @@ import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
 import org.yb.client.GetMasterClusterConfigResponse;
-import org.yb.client.IsServerReadyResponse;
 import org.yb.client.YBClient;
 import org.yb.master.Master;
 import play.Application;
@@ -52,7 +51,7 @@ import play.modules.swagger.SwaggerModule;
 import play.test.Helpers;
 
 public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseTest {
-  private int maxRetryCount = 200;
+  private static final int MAX_RETRY_COUNT = 2000;
   protected AccessManager mockAccessManager;
   protected NetworkManager mockNetworkManager;
   protected ConfigHelper mockConfigHelper;
@@ -160,7 +159,6 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   }
 
   public void mockWaits(YBClient mockClient, int version) {
-    IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
     try {
       // PlacementUtil mock.
       Master.SysClusterConfigEntryPB.Builder configBuilder =
@@ -175,13 +173,13 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
 
   protected TaskInfo waitForTask(UUID taskUUID) throws InterruptedException {
     int numRetries = 0;
-    while (numRetries < maxRetryCount) {
+    while (numRetries < MAX_RETRY_COUNT) {
       TaskInfo taskInfo = TaskInfo.get(taskUUID);
       if (taskInfo.getTaskState() == TaskInfo.State.Success
           || taskInfo.getTaskState() == TaskInfo.State.Failure) {
         return taskInfo;
       }
-      Thread.sleep(1000);
+      Thread.sleep(100);
       numRetries++;
     }
     throw new RuntimeException(

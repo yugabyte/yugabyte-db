@@ -2,54 +2,20 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import com.typesafe.config.Config;
-
-import org.junit.Test;
-import org.junit.Rule;
-
-import javax.inject.Inject;
-
-import junitparams.Parameters;
-import junitparams.JUnitParamsRunner;
-import junitparams.Parameters;
-import junitparams.converters.Nullable;
-
-import org.junit.Before;
-import org.junit.Test.None;
-import org.junit.runner.RunWith;
-import org.mockito.junit.MockitoRule;
-import org.mockito.junit.MockitoJUnit;
-
-import org.apache.commons.lang3.StringUtils;
-import play.data.validation.ValidationError;
-
-import javax.inject.Inject;
-import javax.inject.Singleton;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.UUID;
-import java.util.stream.Collectors;
-
-import static play.mvc.Http.Status.BAD_REQUEST;
-
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.assertThat;
 import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.mock;
-import org.mockito.Mock;
 
-import org.mockito.InjectMocks;
-import org.mockito.Spy;
-import static org.mockito.Mockito.spy;
-
+import com.typesafe.config.Config;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
-import com.yugabyte.yw.forms.PasswordPolicyFormData;
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
 
 @RunWith(JUnitParamsRunner.class)
 public class PasswordPolicyServiceTest extends CommissionerBaseTest {

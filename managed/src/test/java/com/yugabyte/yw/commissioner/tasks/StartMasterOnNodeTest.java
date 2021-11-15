@@ -4,9 +4,16 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static com.yugabyte.yw.models.TaskInfo.State.Failure;
+import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -14,6 +21,7 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ShellResponse;
@@ -32,14 +40,16 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.runners.MockitoJUnitRunner;
+import org.yb.client.ChangeConfigResponse;
+import org.yb.client.YBClient;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class StartMasterOnNodeTest extends CommissionerBaseTest {
 
-  Universe defaultUniverse;
-  ShellResponse dummyShellResponse;
+  private Universe defaultUniverse;
 
+  @Override
   @Before
   public void setUp() {
     super.setUp();
@@ -62,9 +72,24 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
     gflags.put("foo", "bar");
     defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.masterGFlags = gflags;
 
-    dummyShellResponse = new ShellResponse();
+    ShellResponse dummyShellResponse = new ShellResponse();
     dummyShellResponse.message = "true";
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
+
+    YBClient mockClient = mock(YBClient.class);
+    when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
+
+    ChangeConfigResponse mockChangeConfigResponse = mock(ChangeConfigResponse.class);
+    try {
+      when(mockClient.changeMasterConfig(anyString(), anyInt(), anyBoolean(), anyBoolean()))
+          .thenReturn(mockChangeConfigResponse);
+      when(mockClient.setFlag(any(HostAndPort.class), anyString(), anyString(), anyBoolean()))
+          .thenReturn(true);
+    } catch (Exception e) {
+    }
+
+    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+    when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
   }
 
   private TaskInfo submitTask(NodeTaskParams taskParams, String nodeName) {
@@ -82,7 +107,7 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
   }
 
   // @formatter:off
-  List<TaskType> START_MASTER_TASK_SEQUENCE =
+  private static final List<TaskType> START_MASTER_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.AnsibleConfigureServers,
@@ -98,7 +123,7 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
           TaskType.SwamperTargetsFileUpdate,
           TaskType.UniverseUpdateSucceeded);
 
-  List<JsonNode> START_MASTER_TASK_EXPECTED_RESULTS =
+  private static final List<JsonNode> START_MASTER_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
           Json.toJson(ImmutableMap.of("state", "Starting")),
           Json.toJson(ImmutableMap.of()),
@@ -138,7 +163,9 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
     NodeTaskParams taskParams = new NodeTaskParams();
     taskParams.universeUUID = universe.universeUUID;
     TaskInfo taskInfo = submitTask(taskParams, "host-n2");
-    verify(mockNodeManager, times(3)).nodeCommand(any(), any());
+    assertEquals(Success, taskInfo.getTaskState());
+
+    verify(mockNodeManager, times(8)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
@@ -152,7 +179,7 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
     taskParams.universeUUID = defaultUniverse.universeUUID;
     TaskInfo taskInfo = submitTask(taskParams, "host-n9");
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
-    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertEquals(Failure, taskInfo.getTaskState());
   }
 
   @Test
@@ -162,7 +189,7 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
     // one nodeCommand invocation is made from instanceExists()
     verify(mockNodeManager, times(1)).nodeCommand(any(), any());
-    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertEquals(Failure, taskInfo.getTaskState());
   }
 
   @Test
@@ -177,7 +204,7 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
     TaskInfo taskInfo = submitTask(taskParams, "host-n4");
     // one nodeCommand invocation is made from instanceExists()
     verify(mockNodeManager, times(1)).nodeCommand(any(), any());
-    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertEquals(Failure, taskInfo.getTaskState());
   }
 
   @Test
@@ -195,6 +222,6 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
     TaskInfo taskInfo = submitTask(taskParams, "yb-tserver-0");
     // one nodeCommand invocation is made from instanceExists()
     verify(mockNodeManager, times(1)).nodeCommand(any(), any());
-    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertEquals(Failure, taskInfo.getTaskState());
   }
 }
