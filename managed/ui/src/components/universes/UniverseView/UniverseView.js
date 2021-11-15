@@ -306,8 +306,8 @@ export const UniverseView = (props) => {
       .slice((activePage - 1) * pageSize, activePage * pageSize)
       .map((item, idx) => {
         return (
-          <li className="universe-list-item">
-            <YBUniverseItem {...props} key={item.universeUUID} idx={idx} universe={item} />
+          <li className="universe-list-item" key={item.universeUUID} idx={idx}>
+            <YBUniverseItem {...props} universe={item} />
           </li>
         );
       });

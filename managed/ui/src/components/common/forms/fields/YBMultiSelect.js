@@ -22,10 +22,10 @@ const colourStyles = {
     height: '40px',
     alignContent: 'center'
   }),
-  valueContainer: (styles, { hasValue, isFocused }) => ({
+  valueContainer: (styles, { hasValue }) => ({
     ...styles,
     padding: hasValue ? '5px 0px 5px 8px' : '0',
-    width: isFocused ? 'auto' : 'auto'
+    width: 'auto'
   }),
   multiValue: (styles) => ({
     ...styles,
@@ -35,7 +35,6 @@ const colourStyles = {
   }),
   multiValueLabel: (styles) => ({
     ...styles,
-    // padding: 0,
     padding: '7.5px 0px 7.5px 11px !important',
     borderRadius: '6px',
     fontFamily: 'Inter',
