@@ -315,6 +315,12 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     initPostgresBefore();
   }
 
+  public void restartCluster() throws Exception {
+    restartClusterWithFlags(
+      Collections.<String, String>emptyMap(),
+      Collections.<String, String>emptyMap());
+  }
+
   @Override
   protected void resetSettings() {
     super.resetSettings();
