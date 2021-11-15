@@ -78,7 +78,9 @@ The _UTC offset_ may be specified implicitly (using the session's current _TimeZ
 
 The rules for this, and examples that show all of the possible ways to assign a _timestamptz_ value, are given in the section [Timezones and _UTC offsets_](../../timezones/) and its subsections.
 
-Here is a small illustration:
+### A small illustration
+
+Create a test table with a *timestamptz* column, insert one row, and view the result using, successively, two different values for the session's current timezone setting.
 
 
 ```plpgsql
@@ -121,7 +123,11 @@ You can readily understand that the three values _'2021-02-14 13:30:35+03:00'_, 
 
 The meeting partners both have a background knowledge of their timezone. But the important fact for each, for the day of the meeting, is what time to set the reminder on their clock (which setting is done only in terms of the local time of day): respectively _08:00_ and _17:00_.
 
-Notice that when a timezone respects Daylight Savings Time, this is taken account of just like it is in the example above. Consider this extension of the meeting scenario:
+Notice that when a timezone respects Daylight Savings Time, this is taken account of just like it is in the example above.
+
+### A minimal simulation of a calendar application
+
+Consider this scenario:
 
 - Rickie, who lives in Los Angeles, has constraints set by her family—and she controls the meeting. She can manage only eight o'clock in the morning. It's unimportant to her whether Daylight Savings Time is in force or not because her local constraining events (like when school starts) are all fixed in local time—and only eight in the morning local time works for her. She needs to fix two Tuesday meetings that happen to straddle the "spring forward" moment in Los Angeles—and then to see each listed as at eight o'clock in _her_ online calendar.
 - Vincent, who lives in Amsterdam, needs to see when these meetings will take place in _his_ online calendar.
