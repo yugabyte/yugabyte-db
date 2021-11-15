@@ -387,6 +387,11 @@ a:hover .universe-name-cell {
     }
   }
   .universe-status-filter {
+    // Hidden for now due to a width styling issue with react-select and portal on chrome browser
+    // - Issue is not seen on portal with firefox, nor on localhost (firefox + chrome)
+    // - JIRA: https://yugabyte.atlassian.net/browse/PLAT-2269
+    display: none;
+
     .YBMultiValue {
       animation-duration: 0.3s;
       animation-name: slidein;
