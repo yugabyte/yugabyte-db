@@ -18,7 +18,7 @@ To understand the _timestamptz_ data type, and converting its values to/from pla
 
 The plain _timestamp_ data type and the _timestamptz_ data type are cousins. But there are critical differences:
 
-- Both a plain _timestamp_ datum and a _timestamptz_ datum have the identical internal representation. You can picture it as the real number of seconds (with microsecond precision) from a reference moment (_12:00_ on _1-Jan-1970_). The _extract(epoch from t)_ function, where _t_ is either a plain _timestamp_ value or a _timestamptz_ value, returns this number. Moreover, the result is independent of the session's current _TimeZone_ setting for both of these data types. (See the subsection [Interpretation and statement of the rules](#interpretation-and-statement-of-the-rules) below.)
+- Both a plain _timestamp_ datum and a _timestamptz_ datum have the identical internal representation. You can picture it as the real number of seconds (with microsecond precision) from a reference moment (_12:00_ on _1-Jan-1970_, _UTC_). The _extract(epoch from t)_ function, where _t_ is either a plain _timestamp_ value or a _timestamptz_ value, returns this number. Moreover, the result is independent of the session's current _TimeZone_ setting for both of these data types. (See the subsection [Interpretation and statement of the rules](#interpretation-and-statement-of-the-rules) below.)
 - The difference is in the _metadata_ that describes the datum: each knows which kind it is. And the difference is significant when a datum is recorded or read back.
 
 You need a clear understanding of the differences so that you can make the appropriate choice between these two data types according to the use case.
@@ -336,7 +336,7 @@ You might be tempted to write _PDT_ and _PST_ in the example above in place of _
 Yugabyte recommends that you program defensively to avoid these pitfalls and follow the approach described in the section [Recommended practice for specifying the _UTC offset_](../../timezones/recommendation/).
 {{< /tip >}}
 
-## Demonstrating the rule for displaying a timestamptz value in a timezone-sensitive way
+## Demonstrating the rule for displaying a timestamptz value in a timezone-insensitive way
 
 The code blocks above, and especially those in the section [More Daylight Savings Time examples](#more-daylight-savings-time-examples), are just that: _examples_ that show the functional benefit that the _timestamptz_ data type brings. The outcomes that are shown accord with intuition. But, so that you can write reliable application code, you must also understand the _rules_ that explain, and let you reliably predict, these beneficial outcomes.
 
