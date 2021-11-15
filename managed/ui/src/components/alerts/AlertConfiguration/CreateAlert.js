@@ -13,7 +13,8 @@ import {
   YBMultiSelectWithLabel,
   YBSelectWithLabel,
   YBTextArea,
-  YBTextInputWithLabel
+  YBTextInputWithLabel,
+  YBToggle
 } from '../../common/forms/fields';
 import { connect } from 'react-redux';
 import '../CreateAlerts.scss';
@@ -168,7 +169,7 @@ const CreateAlert = (props) => {
       thresholdUnit: currentMetric.thresholdUnit,
       template: values['ALERT_METRICS_CONDITION'] || 'REPLICATION_LAG',
       durationSec: values['ALERT_METRICS_DURATION'],
-      active: true
+      active: values['ALERT_STATUS']
     };
 
     switch (values['ALERT_DESTINATION_LIST']) {
@@ -279,6 +280,21 @@ const CreateAlert = (props) => {
                 validate={!isAllUniversesDisabled && required}
                 isReadOnly={isReadOnly}
                 className={isAllUniversesDisabled ? 'hide-field' : ''}
+              />
+            </Col>
+          </Row>
+        )}
+        {currentMetric && (
+          <Row>
+            <Col md={6}>
+              <Field
+                name="ALERT_STATUS"
+                component={YBToggle}
+                onChange={(event) =>
+                  props.updateField('alertConfigForm', 'ALERT_STATUS', event?.target?.checked)
+                }
+                defaultChecked={true}
+                label="Active"
               />
             </Col>
           </Row>

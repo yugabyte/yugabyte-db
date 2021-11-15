@@ -31,37 +31,38 @@ const header = (
     <h5 className="table-container-title pull-left">{`${alertsCount} Alert Configurations`}</h5>
     <FlexContainer className="pull-right">
       <FlexShrink>
-        {!isReadOnly && (<DropdownButton
-          className="alert-config-actions btn btn-orange"
-          title="Create Alert Config"
-          id="bg-nested-dropdown"
-          bsStyle="danger"
-          pullRight
-        >
-          <MenuItem
-            className="alert-config-list"
-            onClick={() => {
-              handleMetricsCall('UNIVERSE');
-              onCreateAlert(true);
-              enablePlatformAlert(false);
-              setInitialValues({ ALERT_TARGET_TYPE: 'allUniverses' });
-            }}
+        {!isReadOnly && (
+          <DropdownButton
+            className="alert-config-actions btn btn-orange"
+            title="Create Alert Config"
+            id="bg-nested-dropdown"
+            bsStyle="danger"
+            pullRight
           >
-            <i className="fa fa-globe"></i> Universe Alert
-          </MenuItem>
+            <MenuItem
+              className="alert-config-list"
+              onClick={() => {
+                handleMetricsCall('UNIVERSE');
+                onCreateAlert(true);
+                enablePlatformAlert(false);
+                setInitialValues({ ALERT_TARGET_TYPE: 'allUniverses' });
+              }}
+            >
+              <i className="fa fa-globe"></i> Universe Alert
+            </MenuItem>
 
-          <MenuItem
-            className="alert-config-list"
-            onClick={() => {
-              handleMetricsCall('PLATFORM');
-              onCreateAlert(true);
-              enablePlatformAlert(true);
-              setInitialValues({ ALERT_TARGET_TYPE: 'allUniverses' });
-            }}
-          >
-            <i className="fa fa-clone tab-logo" aria-hidden="true"></i> Platform Alert
-          </MenuItem>
-        </DropdownButton>
+            <MenuItem
+              className="alert-config-list"
+              onClick={() => {
+                handleMetricsCall('PLATFORM');
+                onCreateAlert(true);
+                enablePlatformAlert(true);
+                setInitialValues({ ALERT_TARGET_TYPE: 'allUniverses' });
+              }}
+            >
+              <i className="fa fa-clone tab-logo" aria-hidden="true"></i> Platform Alert
+            </MenuItem>
+          </DropdownButton>
         )}
       </FlexShrink>
     </FlexContainer>
@@ -103,8 +104,7 @@ export const AlertsList = (props) => {
     sortName: 'createTime',
     sortOrder: 'desc'
   });
-  const isReadOnly = isNonAvailable(
-    customer.data.features, 'alert.configuration.actions');
+  const isReadOnly = isNonAvailable(customer.data.features, 'alert.configuration.actions');
 
   const onInit = () => {
     alertConfigs(payload).then((res) => {
@@ -219,7 +219,8 @@ export const AlertsList = (props) => {
       ALERT_METRICS_DURATION: row.durationSec,
       ALERT_METRICS_CONDITION_POLICY: condition,
       ALERT_DESTINATION_LIST: currentDestination,
-      thresholdUnit: row.thresholdUnit
+      thresholdUnit: row.thresholdUnit,
+      ALERT_STATUS: row.active
     };
 
     setInitialValues(initialVal);
@@ -257,7 +258,7 @@ export const AlertsList = (props) => {
   };
 
   // This method will handle all the required actions for the particular row.
-  const editActionLabel = isReadOnly ? "Alert Details" : "Edit Alert";
+  const editActionLabel = isReadOnly ? 'Alert Details' : 'Edit Alert';
   const formatConfigActions = (cell, row) => {
     return (
       <>
@@ -276,9 +277,11 @@ export const AlertsList = (props) => {
             <i className="fa fa-pencil"></i> {editActionLabel}
           </MenuItem>
 
-          {!isReadOnly ? (<MenuItem onClick={() => showDeleteModal(row?.uuid)}>
-            <i className="fa fa-trash"></i> Delete Alert
-          </MenuItem>) : null}
+          {!isReadOnly ? (
+            <MenuItem onClick={() => showDeleteModal(row?.uuid)}>
+              <i className="fa fa-trash"></i> Delete Alert
+            </MenuItem>
+          ) : null}
         </DropdownButton>
         <YBConfirmModal
           name="delete-alert-config"
