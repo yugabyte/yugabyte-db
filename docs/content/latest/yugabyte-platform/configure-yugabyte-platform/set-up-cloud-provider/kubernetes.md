@@ -97,7 +97,7 @@ kubectl apply -f https://raw.githubusercontent.com/yugabyte/charts/master/rbac/y
 
 Expect the following output:
 
-```
+```output
 serviceaccount/yugabyte-platform-universe-management created
 ```
 
@@ -124,6 +124,15 @@ curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-g
 
 This contains ClusterRoles and ClusterRoleBindings for the required set of permissions.
 
+Validate the service account using the following command:
+
+```sh
+kubectl auth can-i \
+    --as yugabyte-platform-universe-management \
+    {get|create|delete|list} \
+    {namespaces|poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
+```
+
 **Namespace Admin** can grant namespace level admin access by using the following command:
 
 ```sh
@@ -134,6 +143,15 @@ curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-n
 
 If you have multiple target namespaces, then you have to apply the YAML in all of them.
 
+Validate the service account using the following command:
+
+```sh
+kubectl auth can-i \
+    --as yugabyte-platform-universe-management \
+    {get|create|delete|list|patch} \
+    {poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
+```
+
 **Namespace Restricted** can grant access to only the specific roles required to create and manage YugabyteDB universes in a particular namespace. Contains Roles and RoleBindings for the required set of permissions.
 
 For example, if your goal is to allow the platform software to manage YugabyteDB universes in the namespaces `yb-db-demo` and `yb-db-us-east4-a` (the target namespaces), then you need to apply in both the target namespaces.
@@ -142,6 +160,16 @@ For example, if your goal is to allow the platform software to manage YugabyteDB
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-namespaced.yaml \
   | sed "s/namespace: <SA_NAMESPACE>/namespace: <namespace>"/g \
   | kubectl apply -n <namespace> -f -
+```
+
+Validate the service account using the following command:
+
+```sh
+kubectl auth can-i \
+    --as yugabyte-platform-universe-management \
+    --namespace {namespace} \
+    {get|delete|list} \
+    {poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
 ```
 
 ### `kubeconfig` file for a Kubernetes cluster
@@ -162,7 +190,7 @@ You can create a `kubeconfig` file for previously created `yugabyte-platform-uni
 
     The following output should appear:
 
-    ```
+    ```output
     Generated the kubeconfig file: /tmp/yugabyte-platform-universe-management.conf
     ```
 
