@@ -18,11 +18,11 @@
 // under the License.
 //
 
+#include <vector>
+
 #include "yb/rocksdb/status.h"
 #include "yb/rocksdb/env.h"
 
-#include <vector>
-#include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/testharness.h"
 
 namespace rocksdb {

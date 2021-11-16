@@ -13,7 +13,6 @@
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/permissions_manager.h"
-#include "yb/master/master_defaults.h"
 #include "yb/master/yql_auth_role_permissions_vtable.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/roles_permissions.h"

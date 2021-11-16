@@ -26,14 +26,11 @@
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/intent.h"
-#include "yb/docdb/kv_debug.h"
 #include "yb/docdb/transaction_dump.h"
 #include "yb/docdb/value.h"
 
 #include "yb/server/hybrid_clock.h"
-#include "yb/util/backoff_waiter.h"
 #include "yb/util/bytes_formatter.h"
-#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 

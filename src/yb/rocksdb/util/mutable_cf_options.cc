@@ -26,7 +26,6 @@
 
 #include <inttypes.h>
 #include <limits>
-#include <cassert>
 #include <string>
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/env.h"

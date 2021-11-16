@@ -13,7 +13,6 @@
 
 #include "yb/master/yql_peers_vtable.h"
 
-#include "yb/common/wire_protocol.h"
 
 #include "yb/master/ts_descriptor.h"
 

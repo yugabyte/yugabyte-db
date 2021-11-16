@@ -18,7 +18,6 @@
 #include "yb/client/client-test-util.h"
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/external_mini_cluster.h"
-#include "yb/integration-tests/test_workload.h"
 #include "yb/util/metrics.h"
 #include "yb/util/test_util.h"
 #include "yb/integration-tests/load_generator.h"

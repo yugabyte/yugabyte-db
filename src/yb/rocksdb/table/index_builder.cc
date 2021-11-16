@@ -15,10 +15,8 @@
 
 #include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/slice_transform.h"
-#include "yb/rocksdb/table/block.h"
 #include "yb/rocksdb/table/block_based_table_factory.h"
 #include "yb/util/logging.h"
-#include "yb/util/memory/memory.h"
 
 namespace rocksdb {
 

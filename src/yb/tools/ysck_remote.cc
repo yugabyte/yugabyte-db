@@ -33,7 +33,6 @@
 #include "yb/tools/ysck_remote.h"
 
 #include "yb/common/schema.h"
-#include "yb/common/wire_protocol.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
 

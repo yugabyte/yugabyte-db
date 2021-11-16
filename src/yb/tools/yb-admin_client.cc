@@ -31,17 +31,13 @@
 //
 #include "yb/tools/yb-admin_client.h"
 
-#include <array>
-#include <iomanip>
 #include <sstream>
 #include <type_traits>
 
 #include <boost/multi_index_container.hpp>
 #include <boost/multi_index/composite_key.hpp>
 #include <boost/multi_index/global_fun.hpp>
-#include <boost/multi_index/mem_fun.hpp>
 #include <boost/multi_index/ordered_index.hpp>
-#include <boost/tti/has_member_function.hpp>
 
 #include <google/protobuf/util/json_util.h>
 #include <gtest/gtest.h>
@@ -53,9 +49,7 @@
 #include "yb/client/table_alterer.h"
 #include "yb/client/table_creator.h"
 #include "yb/master/master.pb.h"
-#include "yb/master/master_error.h"
 #include "yb/master/sys_catalog.h"
-#include "yb/rpc/messenger.h"
 
 #include "yb/util/string_case.h"
 #include "yb/util/net/net_util.h"
@@ -68,7 +62,6 @@
 
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/tserver/tserver_admin.proxy.h"
-#include "yb/tserver/tserver_service.proxy.h"
 
 DEFINE_bool(wait_if_no_leader_master, false,
             "When yb-admin connects to the cluster and no leader master is present, "

@@ -31,7 +31,6 @@
 //
 #include "yb/util/threadlocal.h"
 
-#include <pthread.h>
 
 #include <glog/logging.h>
 

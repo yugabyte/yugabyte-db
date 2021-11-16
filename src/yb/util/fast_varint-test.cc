@@ -11,14 +11,18 @@
 // under the License.
 //
 
-#include <iostream>
+#include <algorithm>
+#include <cstdint>
+#include <random>
+#include <string>
+
+#include <glog/logging.h>
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/cast.h"
 #include "yb/util/fast_varint.h"
 #include "yb/util/random.h"
-#include "yb/util/random_util.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/varint.h"

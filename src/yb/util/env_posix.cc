@@ -18,22 +18,18 @@
 //
 
 #include <dirent.h>
-#include <errno.h>
 #include <fcntl.h>
 #include <fts.h>
-#include <limits.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/uio.h>
 #include <time.h>
-#include <unistd.h>
 
 #include <set>
 #include <vector>
@@ -53,7 +49,6 @@
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/bind.h"
 #include "yb/gutil/callback.h"
-#include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/alignment.h"
 #include "yb/util/debug/trace_event.h"

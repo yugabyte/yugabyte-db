@@ -20,10 +20,8 @@
 #include <fstream>
 #include <regex>
 
-#include <gflags/gflags.h>
 #include <boost/algorithm/string.hpp>
 
-#include "yb/common/common_flags.h"
 #include "yb/util/errno.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"

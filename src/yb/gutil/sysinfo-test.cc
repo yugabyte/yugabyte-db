@@ -4,7 +4,6 @@
 
 #include "yb/gutil/sysinfo.h"
 
-#include <gflags/gflags.h>
 #include <gtest/gtest.h>
 #include "yb/util/status.h"
 #include "yb/util/test_util.h"

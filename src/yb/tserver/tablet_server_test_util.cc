@@ -33,7 +33,6 @@
 #include "yb/tserver/tablet_server_test_util.h"
 
 #include "yb/consensus/consensus.proxy.h"
-#include "yb/rpc/messenger.h"
 #include "yb/server/server_base.proxy.h"
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"

@@ -25,7 +25,6 @@
 
 #include <assert.h>
 #include "yb/rocksdb/db/writebuffer.h"
-#include "yb/rocksdb/util/arena.h"
 
 namespace rocksdb {
 

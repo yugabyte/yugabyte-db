@@ -17,13 +17,9 @@
 
 #include <boost/lockfree/queue.hpp>
 
-#include <boost/thread/tss.hpp>
 
-#include <cds/init.h>
 
 #include <cds/container/basket_queue.h>
-#include <cds/container/fcqueue.h>
-#include <cds/container/msqueue.h>
 #include <cds/container/moir_queue.h>
 #include <cds/container/optimistic_queue.h>
 #include <cds/container/rwqueue.h>
@@ -31,7 +27,6 @@
 #include <cds/container/vyukov_mpmc_cycle_queue.h>
 
 #include <cds/gc/dhp.h>
-#include <cds/gc/hp.h>
 
 #include "yb/util/lockfree.h"
 #include "yb/util/logging.h"

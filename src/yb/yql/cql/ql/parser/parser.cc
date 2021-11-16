@@ -13,7 +13,6 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#include <cstring>
 
 #include "yb/yql/cql/ql/parser/parser.h"
 #include "yb/util/logging.h"

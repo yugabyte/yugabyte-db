@@ -12,7 +12,6 @@
 //
 
 #include <chrono>
-#include <cstdio>
 #include <memory>
 #include <random>
 #include <string>
@@ -25,7 +24,6 @@
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 
-#include "yb/client/meta_cache.h"
 
 #include "yb/integration-tests/redis_table_test_base.h"
 

@@ -20,7 +20,6 @@
 #include "yb/yql/cql/ql/exec/executor.h"
 #include "yb/util/logging.h"
 #include "yb/client/callbacks.h"
-#include "yb/util/date_time.h"
 #include "yb/util/net/inetaddress.h"
 
 namespace yb {

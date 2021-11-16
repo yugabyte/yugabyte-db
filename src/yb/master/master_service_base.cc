@@ -12,7 +12,6 @@
 //
 
 #include "yb/master/master_service_base.h"
-#include "yb/master/master.h"
 #include "yb/master/catalog_manager.h"
 
 namespace yb {

@@ -27,10 +27,11 @@
 
 #include <inttypes.h>
 #include <limits>
-#include "yb/rocksdb/util/testharness.h"
+#include <string>
+#include <gtest/gtest.h>
+#include "yb/rocksdb/env.h"
 #include "yb/rocksdb/util/rate_limiter.h"
 #include "yb/rocksdb/util/random.h"
-#include "yb/rocksdb/env.h"
 
 namespace rocksdb {
 

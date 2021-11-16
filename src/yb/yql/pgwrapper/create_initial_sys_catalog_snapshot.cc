@@ -16,7 +16,6 @@
 #include <gflags/gflags.h>
 
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
-#include "yb/util/env_util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/test_macros.h"
 

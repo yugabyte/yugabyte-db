@@ -34,7 +34,6 @@
 #include <iostream>
 
 #include <boost/optional/optional.hpp>
-#include "yb/tserver/tserver_error.h"
 #include <glog/logging.h>
 
 #ifdef TCMALLOC_ENABLED
@@ -45,7 +44,6 @@
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/redis/redisserver/redis_server.h"
 
-#include "yb/consensus/log_util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/call_home.h"
 #include "yb/rpc/io_thread_pool.h"

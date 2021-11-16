@@ -40,9 +40,7 @@
 #include "yb/rpc/connection_context.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/rpc_metrics.h"
-#include "yb/rpc/serialization.h"
 #include "yb/rpc/service_if.h"
-#include "yb/rpc/service_pool.h"
 
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flag_tags.h"

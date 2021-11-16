@@ -21,12 +21,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+#include <string>
+
+#include <gtest/gtest.h>
+
 #include "yb/rocksdb/db/filename.h"
 
-#include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/port/port.h"
-#include "yb/rocksdb/util/logging.h"
-#include "yb/rocksdb/util/testharness.h"
+#include "yb/rocksdb/env.h"
 
 namespace rocksdb {
 
@@ -116,7 +118,7 @@ TEST_F(FileNameTest, Parse) {
   for (unsigned int i = 0; i < sizeof(errors) / sizeof(errors[0]); i++) {
     std::string f = errors[i];
     ASSERT_TRUE(!ParseFileName(f, &number, &type)) << f;
-  };
+  }
 }
 
 TEST_F(FileNameTest, InfoLogFileName) {

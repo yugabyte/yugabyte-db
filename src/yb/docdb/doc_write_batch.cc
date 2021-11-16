@@ -15,8 +15,6 @@
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/docdb/doc_key.h"
-#include "yb/docdb/doc_reader.h"
-#include "yb/docdb/deadline_info.h"
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/write_batch.h"

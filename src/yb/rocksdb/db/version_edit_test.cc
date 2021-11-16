@@ -23,7 +23,10 @@
 
 #include "yb/rocksdb/db/version_edit.h"
 
-#include "yb/rocksdb/util/testharness.h"
+#include <string>
+#include <gtest/gtest.h>
+#include "yb/rocksdb/env.h"
+#include "yb/util/test_macros.h"
 #include "yb/rocksdb/util/testutil.h"
 
 namespace rocksdb {

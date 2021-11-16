@@ -23,10 +23,6 @@
 #include "yb/docdb/primitive_value.h"
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/db.h"
-#include "yb/rocksdb/db/db_impl.h"
-#include "yb/rocksdb/db/version_set.h"
-#include "yb/rocksdb/db/writebuffer.h"
-#include "yb/rocksdb/util/statistics.h"
 
 #include "yb/common/hybrid_time.h"
 #include "yb/docdb/doc_reader.h"
@@ -40,7 +36,6 @@
 #include "yb/docdb/intent.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/walltime.h"
-#include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/docdb/consensus_frontier.h"

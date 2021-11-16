@@ -32,7 +32,6 @@
 
 #include "yb/integration-tests/external_mini_cluster.h"
 
-#include <sys/stat.h>
 
 #include <atomic>
 #include <memory>
@@ -45,7 +44,6 @@
 #include <rapidjson/document.h>
 
 #include "yb/client/client.h"
-#include "yb/client/table_handle.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/fs/fs_manager.h"
 #include "yb/gutil/mathlimits.h"
@@ -58,9 +56,7 @@
 #include "yb/master/master.proxy.h"
 #include "yb/master/master_rpc.h"
 #include "yb/server/server_base.pb.h"
-#include "yb/rpc/connection_context.h"
 #include "yb/rpc/messenger.h"
-#include "yb/rpc/yb_rpc.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/util/async_util.h"
 #include "yb/util/curl_util.h"
@@ -76,7 +72,6 @@
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
-#include "yb/yql/pgwrapper/pg_wrapper.h"
 
 using namespace std::literals;  // NOLINT
 using namespace yb::size_literals;  // NOLINT

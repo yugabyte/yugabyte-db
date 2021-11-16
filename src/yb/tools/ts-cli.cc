@@ -31,22 +31,18 @@
 //
 // Tool to query tablet server operational data
 
-#include <iostream>
 #include <memory>
 
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
-#include "yb/client/table_handle.h"
 
 #include "yb/common/partition.h"
 #include "yb/common/schema.h"
-#include "yb/common/wire_protocol.h"
 #include "yb/server/server_base.proxy.h"
 #include "yb/server/secure.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_admin.proxy.h"
-#include "yb/tserver/tserver_service.proxy.h"
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/env.h"

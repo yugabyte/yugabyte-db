@@ -34,7 +34,6 @@
 #include "yb/tools/fs_tool.h"
 
 #include <iostream>
-#include <sstream>
 #include <vector>
 
 #include <gflags/gflags.h>

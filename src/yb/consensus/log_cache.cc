@@ -37,9 +37,6 @@
 #include <mutex>
 #include <vector>
 
-#include <gflags/gflags.h>
-#include <google/protobuf/wire_format_lite.h>
-#include <google/protobuf/wire_format_lite_inl.h>
 
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_reader.h"

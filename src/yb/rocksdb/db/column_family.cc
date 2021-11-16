@@ -41,7 +41,6 @@
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/db/write_controller.h"
 #include "yb/rocksdb/db/writebuffer.h"
-#include "yb/rocksdb/memtable/hash_skiplist_rep.h"
 #include "yb/rocksdb/util/autovector.h"
 #include "yb/rocksdb/util/compression.h"
 #include "yb/rocksdb/util/options_helper.h"

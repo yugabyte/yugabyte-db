@@ -32,14 +32,15 @@
 
 #include "yb/util/monotime.h"
 
-#include <limits>
 #include <glog/logging.h>
 
-#include "yb/gutil/mathlimits.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/sysinfo.h"
-#include "yb/gutil/walltime.h"
 #include "yb/util/thread_restrictions.h"
+
+#if defined(__APPLE__)
+#include "yb/gutil/walltime.h"
+#endif
 
 using namespace std::literals;
 

@@ -21,12 +21,10 @@
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/mem_fun.hpp>
 #include <boost/multi_index/ordered_index.hpp>
-#include <boost/multi_index/tag.hpp>
 
 #include <boost/uuid/uuid_io.hpp>
 
 #include "yb/client/client.h"
-#include "yb/client/transaction_cleanup.h"
 #include "yb/client/transaction_rpc.h"
 
 #include "yb/common/common.pb.h"
@@ -47,10 +45,8 @@
 
 #include "yb/server/clock.h"
 
-#include "yb/tablet/tablet.h"
 #include "yb/tablet/operations/update_txn_operation.h"
 
-#include "yb/tserver/service_util.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_service.pb.h"
 

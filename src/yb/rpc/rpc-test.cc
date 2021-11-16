@@ -42,17 +42,14 @@
 #include <boost/ptr_container/ptr_vector.hpp>
 
 #include <gtest/gtest.h>
-#include <gtest/gtest-param-test.h>
 
 #if defined(TCMALLOC_ENABLED)
 #include <gperftools/heap-profiler.h>
 #endif
 
-#include <lz4.h>
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/human_readable.h"
-#include "yb/gutil/strings/join.h"
 
 #include "yb/rpc/compressed_stream.h"
 #include "yb/rpc/secure_stream.h"

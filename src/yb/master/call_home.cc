@@ -16,7 +16,6 @@
 #include <thread>
 
 #include <rapidjson/reader.h>
-#include <rapidjson/stringbuffer.h>
 #include <rapidjson/writer.h>
 
 #include <boost/algorithm/string.hpp>

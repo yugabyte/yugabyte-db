@@ -19,13 +19,10 @@
 
 #include "yb/gutil/cpu.h"
 
-#include <stdlib.h>
 #include <string.h>
 
-#include <algorithm>
 
-#include "yb/gutil/basictypes.h"
-#include "yb/gutil/strings/stringpiece.h"
+#include "yb/gutil/integral_types.h"
 
 #if defined(__x86_64__)
 #if defined(_MSC_VER)
