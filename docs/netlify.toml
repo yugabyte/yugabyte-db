@@ -113,13 +113,6 @@
   to = "/stable/quick-start/explore/ysql/"
   force = true
 
-# Misc old docs with paths that have changed
-
-[[redirects]]
-  from = "/v1.1/explore/cloud-native/binary/observability/"
-  to = "/latest/explore/observability/"
-  force = true
-
 # Docs prior to v1.3 are not online
 
 [[redirects]]
