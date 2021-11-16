@@ -518,11 +518,12 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
 
   Register(
       "alter_universe_replication",
-      " <producer_universe_uuid>"
+      " <producer_universe_id>"
       " {set_master_addresses [comma_separated_list_of_producer_master_addresses] |"
       "  add_table [comma_separated_list_of_table_ids]"
       "            [comma_separated_list_of_producer_bootstrap_ids] |"
-      "  remove_table [comma_separated_list_of_table_ids] }",
+      "  remove_table [comma_separated_list_of_table_ids] |"
+      "  rename_id <new_producer_universe_id>}",
       [client](const CLIArguments& args) -> Status {
         if (args.size() < 3 || args.size() > 4) {
           return ClusterAdminCli::kInvalidArguments;
@@ -536,26 +537,37 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         vector<string> add_tables;
         vector<string> remove_tables;
         vector<string> bootstrap_ids_to_add;
+        string new_producer_universe_id = "";
 
         vector<string> newElem, *lst;
-        if (args[1] == "set_master_addresses") lst = &master_addresses;
-        else if (args[1] == "add_table") lst = &add_tables;
-        else if (args[1] == "remove_table") lst = &remove_tables;
-        else
+        if (args[1] == "set_master_addresses") {
+          lst = &master_addresses;
+        } else if (args[1] == "add_table") {
+          lst = &add_tables;
+        } else if (args[1] == "remove_table") {
+          lst = &remove_tables;
+        } else if (args[1] == "rename_id") {
+          lst = nullptr;
+          new_producer_universe_id = args[2];
+        } else {
           return ClusterAdminCli::kInvalidArguments;
+        }
 
-        boost::split(newElem, args[2], boost::is_any_of(","));
-        lst->insert(lst->end(), newElem.begin(), newElem.end());
+        if (lst) {
+          boost::split(newElem, args[2], boost::is_any_of(","));
+          lst->insert(lst->end(), newElem.begin(), newElem.end());
 
-        if (args[1] == "add_table" && args.size() == 4) {
-          boost::split(bootstrap_ids_to_add, args[3], boost::is_any_of(","));
+          if (args[1] == "add_table" && args.size() == 4) {
+            boost::split(bootstrap_ids_to_add, args[3], boost::is_any_of(","));
+          }
         }
 
         RETURN_NOT_OK_PREPEND(client->AlterUniverseReplication(producer_uuid,
                                                                master_addresses,
                                                                add_tables,
                                                                remove_tables,
-                                                               bootstrap_ids_to_add),
+                                                               bootstrap_ids_to_add,
+                                                               new_producer_universe_id),
             Substitute("Unable to alter replication for universe $0", producer_uuid));
 
         return Status::OK();
