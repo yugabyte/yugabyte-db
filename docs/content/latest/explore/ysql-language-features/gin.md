@@ -38,9 +38,9 @@ GIN indexes can only be created over a few types:
 With extensions, more types can be supported.
 However, extension support is still in progress:
 
-- [ ] `btree_gin`
-- [ ] `hstore`
-- [x] `pg_trgm`
+- `btree_gin`: unsupported
+- `hstore`: unsupported
+- `pg_trgm`: supported
 
 ## Grammar
 
