@@ -1,16 +1,16 @@
-name: Test-with-pg13-build
+name: postgresql-12-build
 on: [push]
 
 jobs:
   build:
-    name: pg13-test
+    name: postgresql-12-build
     runs-on: ubuntu-latest
     steps:
       - name: Clone postgres repository
         uses: actions/checkout@v2
         with:
           repository: 'postgres/postgres'
-          ref: 'REL_13_STABLE'
+          ref: 'REL_12_STABLE'
 
       - name: Install dependencies
         run: |
@@ -33,35 +33,30 @@ jobs:
       - name: Build postgres
         run: |
           export PATH="/opt/pgsql/bin:$PATH"
-          ./configure '--build=x86_64-linux-gnu' '--prefix=/usr' '--includedir=${prefix}/include' \
-            '--mandir=${prefix}/share/man' '--infodir=${prefix}/share/info' \
-            '--sysconfdir=/etc' '--localstatedir=/var' '--disable-silent-rules' \
-            '--libdir=${prefix}/lib/x86_64-linux-gnu' \
-            '--libexecdir=${prefix}/lib/x86_64-linux-gnu' '--disable-maintainer-mode' \
-            '--disable-dependency-tracking' '--with-icu' '--with-tcl' '--with-perl' \
-            '--with-python' '--with-pam' '--with-openssl' '--with-libxml' '--with-libxslt' \
-            'PYTHON=/usr/bin/python3' '--mandir=/usr/share/postgresql/13/man' \
-            '--docdir=/usr/share/doc/postgresql-doc-13' \
-            '--sysconfdir=/etc/postgresql-common' '--datarootdir=/usr/share/' \
-            '--datadir=/usr/share/postgresql/13' '--bindir=/usr/lib/postgresql/13/bin' \
-            '--libdir=/usr/lib/x86_64-linux-gnu/' '--libexecdir=/usr/lib/postgresql/' \
-            '--includedir=/usr/include/postgresql/' '--with-extra-version= (Ubuntu 2:13-x.focal)' \
-            '--enable-nls' '--enable-thread-safety' '--enable-tap-tests' '--enable-debug' \
-            '--enable-dtrace' '--disable-rpath' '--with-uuid=e2fs' '--with-gnu-ld' \
-            '--with-pgport=5432' '--with-system-tzdata=/usr/share/zoneinfo' '--with-llvm' \
-            'LLVM_CONFIG=/usr/bin/llvm-config-11' 'CLANG=/usr/bin/clang-11' \
-            '--with-systemd' '--with-selinux' 'MKDIR_P=/bin/mkdir -p' 'PROVE=/usr/bin/prove' \
-            'TAR=/bin/tar' 'XSLTPROC=xsltproc --nonet' 'CFLAGS=-g -O2 -fstack-protector-strong -Wformat -Werror=format-security -fno-omit-frame-pointer' \
+          ./configure '--build=x86_64-linux-gnu' '--prefix=/usr' '--includedir=/usr/include' '--mandir=/usr/share/man' \
+            '--infodir=/usr/share/info' '--sysconfdir=/etc' '--localstatedir=/var' '--disable-silent-rules' \
+            '--libdir=/usr/lib/x86_64-linux-gnu' 'runstatedir=/run' '--disable-maintainer-mode' \
+            '--disable-dependency-tracking' '--with-icu' '--with-tcl' '--with-perl' '--with-python' \
+            '--with-pam' '--with-openssl' '--with-libxml' '--with-libxslt' 'PYTHON=/usr/bin/python3' \
+            '--mandir=/usr/share/postgresql/12/man' '--docdir=/usr/share/doc/postgresql-doc-12' \
+            '--sysconfdir=/etc/postgresql-common' '--datarootdir=/usr/share/' '--datadir=/usr/share/postgresql/12' \
+            '--bindir=/usr/lib/postgresql/12/bin' '--libdir=/usr/lib/x86_64-linux-gnu/' '--libexecdir=/usr/lib/postgresql/' \
+            '--includedir=/usr/include/postgresql/' '--with-extra-version= (Ubuntu 12.x.pgdg20.04+1)' '--enable-nls' \
+            '--enable-thread-safety' '--enable-tap-tests' '--enable-debug' '--enable-dtrace' '--disable-rpath' \
+            '--with-uuid=e2fs' '--with-gnu-ld' '--with-pgport=5432' '--with-system-tzdata=/usr/share/zoneinfo' '--with-llvm' \
+            'LLVM_CONFIG=/usr/bin/llvm-config-9' 'CLANG=/usr/bin/clang-9' '--with-systemd' '--with-selinux' 'MKDIR_P=/bin/mkdir -p' \
+            'PROVE=/usr/bin/prove' 'TAR=/bin/tar' 'CFLAGS=-g -O2 -fstack-protector-strong -Wformat -Werror=format-security -fno-omit-frame-pointer' \
             'LDFLAGS=-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now' '--with-gssapi' '--with-ldap' \
-            'build_alias=x86_64-linux-gnu' 'CPPFLAGS=-Wdate-time -D_FORTIFY_SOURCE=2' \
-            'CXXFLAGS=-g -O2 -fstack-protector-strong -Wformat -Werror=format-security'
+            '--with-includes=/usr/include/mit-krb5' '--with-libs=/usr/lib/mit-krb5' \
+            '--with-libs=/usr/lib/x86_64-linux-gnu/mit-krb5' 'build_alias=x86_64-linux-gnu' \
+            'CPPFLAGS=-Wdate-time -D_FORTIFY_SOURCE=2' 'CXXFLAGS=-g -O2 -fstack-protector-strong -Wformat -Werror=format-security'
            make world
            sudo make install-world
 
       - name: Start postgresql cluster
         run: |
-           /usr/lib/postgresql/13/bin/initdb -D /opt/pgsql/data
-           /usr/lib/postgresql/13/bin/pg_ctl -D /opt/pgsql/data -l logfile start
+           /usr/lib/postgresql/12/bin/initdb -D /opt/pgsql/data
+           /usr/lib/postgresql/12/bin/pg_ctl -D /opt/pgsql/data -l logfile start
 
       - name: Clone pg_stat_monitor repository
         uses: actions/checkout@v2
@@ -70,17 +65,17 @@ jobs:
 
       - name: Build pg_stat_monitor
         run: |
-          export PATH="/usr/lib/postgresql/13/bin:$PATH"
-          sudo cp /usr/lib/postgresql/13/bin/pg_config /usr/bin
+          export PATH="/usr/lib/postgresql/12/bin:$PATH"
+          sudo cp /usr/lib/postgresql/12/bin/pg_config /usr/bin
           make USE_PGXS=1
           sudo make USE_PGXS=1 install
         working-directory: src/pg_stat_monitor/
 
       - name: Load pg_stat_monitor library and Restart Server
         run: |
-          /usr/lib/postgresql/13/bin/pg_ctl -D /opt/pgsql/data -l logfile stop
+          /usr/lib/postgresql/12/bin/pg_ctl -D /opt/pgsql/data -l logfile stop
           echo "shared_preload_libraries = 'pg_stat_monitor'" >> /opt/pgsql/data/postgresql.conf
-          /usr/lib/postgresql/13/bin/pg_ctl -D /opt/pgsql/data -l logfile start
+          /usr/lib/postgresql/12/bin/pg_ctl -D /opt/pgsql/data -l logfile start
         working-directory: src/pg_stat_monitor/
 
       - name: Start Server installcheck-world tests (without TAP)

@@ -1,21 +1,20 @@
-name: pg12package-test
+name: postgresql-11-pgdg-package
 on: [push]
 
 jobs:
   build:
-    name: pg12package-test
-    runs-on: ubuntu-20.04
+    name: postgresql-11-pgdg-package
+    runs-on: ubuntu-18.04
     steps:
       - name: Clone pg_stat_monitor repository
         uses: actions/checkout@v2
         with:
           path: 'src/pg_stat_monitor'
 
-      - name: Install dependencies
+      - name: Delete old postgresql files
         run: |
           sudo apt-get update
           sudo apt purge postgresql-client-common postgresql-common postgresql postgresql*
-          sudo apt-get install libreadline6-dev systemtap-sdt-dev zlib1g-dev libssl-dev libpam0g-dev python-dev bison flex libipc-run-perl wget -y
           sudo rm -rf /var/lib/postgresql/
           sudo rm -rf /var/log/postgresql/
           sudo rm -rf /etc/postgresql/
@@ -25,26 +24,30 @@ jobs:
           sudo rm -rf /etc/postgresql
           sudo rm -f /usr/bin/pg_config
 
-      - name: Install postgresql 12
+      - name: Install PG Distribution Postgresql 11
         run: |
-          sudo wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
-          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt/ focal-pgdg main" >> /etc/apt/sources.list.d/pgdg.list'
-          sudo apt update
-          sudo apt -y install postgresql-12 postgresql-server-dev-12
+          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+          sudo apt-get update
+          sudo apt-get -y install postgresql-11
+          sudo apt-get update 
+          sudo apt-get -y install postgresql-client-11 
+          sudo apt-get update 
+          sudo apt install postgresql-server-dev-11
+          sudo chown -R postgres:postgres src/
 
       - name: Build pg_stat_monitor
         run: |
+          export PATH="/usr/lib/postgresql/11/bin:$PATH"
+          sudo cp /usr/lib/postgresql/11/bin/pg_config /usr/bin
           sudo make USE_PGXS=1
           sudo make USE_PGXS=1 install
         working-directory: src/pg_stat_monitor/
 
-      - name: Change sources owner to postgres
-        run: sudo chown -R postgres:postgres src/pg_stat_monitor/
-
       - name: Start pg_stat_monitor_tests
         run: |
           sudo service postgresql stop
-          echo "shared_preload_libraries = 'pg_stat_monitor'" | sudo tee -a /etc/postgresql/12/main/postgresql.conf
+          echo "shared_preload_libraries = 'pg_stat_monitor'" | sudo tee -a /etc/postgresql/11/main/postgresql.conf
           sudo service postgresql start
           sudo -u postgres bash -c 'make installcheck USE_PGXS=1'
         working-directory: src/pg_stat_monitor/

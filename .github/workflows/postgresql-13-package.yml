@@ -1,9 +1,9 @@
-name: pg13package-test
+name: postgresql-13-package
 on: [push]
 
 jobs:
   build:
-    name: pg13package-test
+    name: postgresql-13-package
     runs-on: ubuntu-20.04
     steps:
       - name: Clone pg_stat_monitor repository

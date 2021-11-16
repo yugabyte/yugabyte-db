@@ -1,16 +1,16 @@
-name: Test-with-pg14-build
+name: postgresql-13-build
 on: [push]
 
 jobs:
   build:
-    name: pg14-test
+    name: postgresql-13-build
     runs-on: ubuntu-latest
     steps:
       - name: Clone postgres repository
         uses: actions/checkout@v2
         with:
           repository: 'postgres/postgres'
-          ref: 'REL_14_STABLE'
+          ref: 'REL_13_STABLE'
 
       - name: Install dependencies
         run: |
@@ -40,12 +40,12 @@ jobs:
             '--libexecdir=${prefix}/lib/x86_64-linux-gnu' '--disable-maintainer-mode' \
             '--disable-dependency-tracking' '--with-icu' '--with-tcl' '--with-perl' \
             '--with-python' '--with-pam' '--with-openssl' '--with-libxml' '--with-libxslt' \
-            'PYTHON=/usr/bin/python3' '--mandir=/usr/share/postgresql/14/man' \
-            '--docdir=/usr/share/doc/postgresql-doc-14' \
+            'PYTHON=/usr/bin/python3' '--mandir=/usr/share/postgresql/13/man' \
+            '--docdir=/usr/share/doc/postgresql-doc-13' \
             '--sysconfdir=/etc/postgresql-common' '--datarootdir=/usr/share/' \
-            '--datadir=/usr/share/postgresql/14' '--bindir=/usr/lib/postgresql/14/bin' \
+            '--datadir=/usr/share/postgresql/13' '--bindir=/usr/lib/postgresql/13/bin' \
             '--libdir=/usr/lib/x86_64-linux-gnu/' '--libexecdir=/usr/lib/postgresql/' \
-            '--includedir=/usr/include/postgresql/' '--with-extra-version= (Ubuntu 2:14-x.focal)' \
+            '--includedir=/usr/include/postgresql/' '--with-extra-version= (Ubuntu 2:13-x.focal)' \
             '--enable-nls' '--enable-thread-safety' '--enable-tap-tests' '--enable-debug' \
             '--enable-dtrace' '--disable-rpath' '--with-uuid=e2fs' '--with-gnu-ld' \
             '--with-pgport=5432' '--with-system-tzdata=/usr/share/zoneinfo' '--with-llvm' \
@@ -60,8 +60,8 @@ jobs:
 
       - name: Start postgresql cluster
         run: |
-           /usr/lib/postgresql/14/bin/initdb -D /opt/pgsql/data
-           /usr/lib/postgresql/14/bin/pg_ctl -D /opt/pgsql/data -l logfile start
+           /usr/lib/postgresql/13/bin/initdb -D /opt/pgsql/data
+           /usr/lib/postgresql/13/bin/pg_ctl -D /opt/pgsql/data -l logfile start
 
       - name: Clone pg_stat_monitor repository
         uses: actions/checkout@v2
@@ -70,18 +70,32 @@ jobs:
 
       - name: Build pg_stat_monitor
         run: |
-          export PATH="/usr/lib/postgresql/14/bin:$PATH"
-          sudo cp /usr/lib/postgresql/14/bin/pg_config /usr/bin
+          export PATH="/usr/lib/postgresql/13/bin:$PATH"
+          sudo cp /usr/lib/postgresql/13/bin/pg_config /usr/bin
           make USE_PGXS=1
           sudo make USE_PGXS=1 install
         working-directory: src/pg_stat_monitor/
 
       - name: Load pg_stat_monitor library and Restart Server
         run: |
-          /usr/lib/postgresql/14/bin/pg_ctl -D /opt/pgsql/data -l logfile stop
+          /usr/lib/postgresql/13/bin/pg_ctl -D /opt/pgsql/data -l logfile stop
           echo "shared_preload_libraries = 'pg_stat_monitor'" >> /opt/pgsql/data/postgresql.conf
-          /usr/lib/postgresql/14/bin/pg_ctl -D /opt/pgsql/data -l logfile start
+          /usr/lib/postgresql/13/bin/pg_ctl -D /opt/pgsql/data -l logfile start
         working-directory: src/pg_stat_monitor/
+
+      - name: Start Server installcheck-world tests (without TAP)
+        run: |
+          make installcheck-world
+      - name: Report on installcheck-world test suites fail
+        uses: actions/upload-artifact@v2
+        if: ${{ failure() }}
+        with:
+          name: Regressions output files of failed testsuite, and postgresql log
+          path: |
+            **/regression.diffs
+            **/regression.out
+            src/pg_stat_monitor/logfile
+          retention-days: 1
 
       - name: Start pg_stat_monitor_tests
         run: |
