@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-# Generalized inverted indexes
+## Overview
 
 In YugabyteDB, tables and secondary indexes are both key-value stores.
 For tables, the key-value store maps primary keys to values.
