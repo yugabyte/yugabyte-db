@@ -82,7 +82,8 @@ CREATE FUNCTION pg_stat_monitor_internal(IN showtext boolean,
     OUT wal_records 		int8,
     OUT wal_fpi 			int8,
     OUT wal_bytes 			numeric,
-    OUT comments 			TEXT
+    OUT comments 			TEXT,
+    OUT toplevel            BOOLEAN
 )
 RETURNS SETOF record
 AS 'MODULE_PATHNAME', 'pg_stat_monitor'
@@ -147,6 +148,7 @@ CREATE VIEW pg_stat_monitor AS SELECT
     datname,
 	'0.0.0.0'::inet + client_ip AS client_ip,
     queryid,
+    toplevel,
     top_queryid,
     query,
 	comments,

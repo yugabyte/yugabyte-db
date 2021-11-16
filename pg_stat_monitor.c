@@ -1499,6 +1499,7 @@ pgss_store(uint64 queryid,
 	key.ip = pg_get_client_addr();
 	key.planid = planid;
 	key.appid = appid;
+    key.toplevel = (nested_level == 0);
 
 	pgss_hash = pgsm_get_hash();
 
@@ -1664,7 +1665,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
 		elog(ERROR, "pg_stat_monitor: return type must be a row type");
 
-	if (tupdesc->natts != 50)
+	if (tupdesc->natts != 51)
 		elog(ERROR, "pg_stat_monitor: incorrect number of output arguments, required %d", tupdesc->natts);
 
 	tupstore = tuplestore_begin_heap(true, false, work_mem);
@@ -1694,9 +1695,11 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		uint64        planid = entry->key.planid;
 		unsigned char *buf = pgss_qbuf[bucketid];
 #if PG_VERSION_NUM < 140000
+        bool          toplevel = true;
 		bool 		  is_allowed_role = is_member_of_role(GetUserId(), DEFAULT_ROLE_READ_ALL_STATS);
 #else
 		bool 		  is_allowed_role = is_member_of_role(GetUserId(), ROLE_PG_READ_ALL_STATS);
+        bool          toplevel = entry->key.toplevel;
 #endif
 
 		if (read_query(buf, queryid, query_txt, entry->query_pos) == 0)
@@ -1980,6 +1983,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 			else
 				nulls[i++] = true;
 		}
+        values[i++] = BoolGetDatum(toplevel);
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 	}
 	pfree(query_txt);

@@ -79,8 +79,9 @@ CREATE FUNCTION pg_stat_monitor_internal(IN showtext boolean,
     OUT wal_records 		int8,
     OUT wal_fpi 			int8,
     OUT wal_bytes 			numeric,
-    OUT comments 			TEXT
-)
+    OUT comments            TEXT,
+    OUT toplevel            BOOLEAN
+  )
 RETURNS SETOF record
 AS 'MODULE_PATHNAME', 'pg_stat_monitor'
 LANGUAGE C STRICT VOLATILE PARALLEL SAFE;
@@ -164,12 +165,6 @@ CREATE VIEW pg_stat_monitor AS SELECT
 	mean_time,
 	stddev_time,
 	rows_retrieved,
-	plans_calls,
-	plan_total_time,
-	plan_min_time,
-	plan_max_time,
-	plan_mean_time,
- 
 	shared_blks_hit,
     shared_blks_read,
     shared_blks_dirtied,

@@ -203,6 +203,7 @@ typedef struct pgssHashKey
 	uint64		ip;				/* client ip address */
 	uint64		planid;			/* plan identifier */
 	uint64		appid;			/* hash of application name */
+    bool        toplevel;       /* query executed at top level */
 } pgssHashKey;
 
 typedef struct QueryInfo
