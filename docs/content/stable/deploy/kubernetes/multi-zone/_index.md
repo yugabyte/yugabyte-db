@@ -5,8 +5,10 @@ headerTitle: Multi-zone Kubernetes
 description: Deploy YugabyteDB on multi-zone Kubernetes
 headcontent: Deploy YugabyteDB on a multi-zone Kubernetes cluster
 image: /images/section_icons/deploy/kubernetes.png
+aliases:
+  - /latest/deploy/kubernetes/multi-zone
 menu:
-  stable:
+  latest:
     identifier: deploy-kubernetes-mz
     parent: deploy-kubernetes
     weight: 622

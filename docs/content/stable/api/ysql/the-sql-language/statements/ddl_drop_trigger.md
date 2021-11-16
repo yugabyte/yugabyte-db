@@ -4,9 +4,11 @@ headerTitle: DROP TRIGGER
 linkTitle: DROP TRIGGER
 description: Use the DROP TRIGGER statement to remove a trigger from the database.
 menu:
-  stable:
+  latest:
     identifier: ddl_drop_trigger
     parent: statements
+aliases:
+  - /latest/api/ysql/commands/ddl_drop_trigger/
 isTocNested: true
 showAsideToc: true
 ---

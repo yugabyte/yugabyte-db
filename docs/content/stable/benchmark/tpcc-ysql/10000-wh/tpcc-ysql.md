@@ -1,19 +1,17 @@
-### TPC-C Load Phase
+## TPC-C Load Phase
 
-Before starting the workload, you will need to load the data first. Make sure
-to replace the IP addresses with that of the nodes in the cluster.
+Before starting the workload, you need to load the data. In addition, you need to ensure that you exported a list of all IP addresses of all the nodes involved.
 
-For 10k warehouses, we would need 10 clients of type c5.2xlarge to drive the benchmark.
-Since there are multiple clients we perform 3 steps to load the data
+For 10k warehouses, you would need ten clients of type c5.2xlarge to drive the benchmark.
+For multiple clients, you need to perform three steps.
 
-First we create the database and the corresponding tables. The following command is to be executed from only one client.
-Make sure that you export the list of all IP addresses of all the nodes involved before executing.
+First, you create the database and the corresponding tables. Execute the following command from one of the clients:
 
 ```sh
 ./tpccbenchmark  --nodes=$IPS  --create=true
 ```
 
-Once the database and tables are created, we can load the data from all the 10 clients.
+Once the database and tables are created, you can load the data from all ten clients:
 
 
 | Client | Command
@@ -29,9 +27,8 @@ Once the database and tables are created, we can load the data from all the 10 c
 9  |  ./tpccbenchmark --load=true --nodes=$IPS --warehouses=1000 --start-warehouse-id=8001 --total-warehouses=10000 --loaderthreads 48
 10 |  ./tpccbenchmark --load=true --nodes=$IPS --warehouses=1000 --start-warehouse-id=9001 --total-warehouses=10000 --loaderthreads 48
 
-
-Tune the --loaderthreads parameter for higher parallelism during the load, based on the number and type of nodes in the cluster. The value specified here, 48 threads, is optimal for a 3-node cluster of type c5d.4xlarge (16 vCPUs). For larger clusters, or machines with more vCPUs, increase this value accordingly. For clusters with a replication factor of 3, a good approximation is to use the number of cores you have across all the nodes in the cluster.
-Once the loading is done we need to enable the foreign keys that were disabled to aid the loading times:
+Tune the `--loaderthreads` parameter for higher parallelism during the load, based on the number and type of nodes in the cluster. The value specified here, 48 threads, is optimal for a 3-node cluster of type c5d.4xlarge (16 vCPUs). For larger clusters, or computers with more vCPUs, increase this value accordingly. For clusters with a replication factor of 3, a good approximation is to use the number of cores you have across all the nodes in the cluster.
+Once the loading is completed, execute the following command to enable the foreign keys that were disabled to aid the loading times:
 
 ```sh
 ./tpccbenchmark  --nodes=$IPS  --enable-foreign-keys=true
@@ -58,16 +55,16 @@ Once the loading is done we need to enable the foreign keys that were disabled t
   </tbody>
 </table>
 
-### TPC-C Execute Phase
+## TPC-C Execute Phase
 
-Before beginning the execution we will have to move all the tablet leaders out of the node containing the master leader. This can be achieved by:
+Before starting the execution, you have to move all the tablet leaders out of the node containing the master leader by running the following command:
 
 ```sh
 ./yb-admin --master_addresses <master-ip1>:7100,<master-ip2>:7100,<master-ip3>:7100 change_leader_blacklist ADD <master-leader-ip>
 ```
 
-Also make sure that the ips used in the execution phase doesn't include the master-leader-ip.
-You can then run the workload against the database as follows from each of the client as follows:
+Make sure that the IPS used in the execution phase does not include the `master-leader-ip`.
+You can then run the workload against the database from each client:
 
 | Client | Command
 -------------|-----------|
@@ -82,13 +79,13 @@ You can then run the workload against the database as follows from each of the c
 9  | ./tpccbenchmark  --nodes=$IPS --execute=true --warehouses=1000 --num-connections=300 --start-warehouse-id=8001 --total-warehouses=10000 --warmup-time-secs=180 --initial-delay-secs=720
 10 | ./tpccbenchmark  --nodes=$IPS --execute=true --warehouses=1000 --num-connections=300 --start-warehouse-id=9001 --total-warehouses=10000 --warmup-time-secs=0   --initial-delay-secs=900
 
-## 4. TPC-C Benchmark Results
+## TPC-C Benchmark Results
 
-Once the execution is done we will need to copy over the `csv` files from each of the nodes to one of the nodes and run `merge-results` to display the merged results.
-Once we copy over the `csv` files to a directory say `results-dir` we can do the following to merge the results.
+When the execution is completed, you need to copy the `csv` files from each of the nodes to one of the nodes and run `merge-results` to display the merged results.
+Once you copied the `csv` files to a directory such as `results-dir`, you can merge the results as follows:
 
 ```sh
-./tpccbenchmark --merge_results=true --dir=results_dir --warehouses=10000
+./tpccbenchmark --merge-results=true --dir=results-dir --warehouses=10000
 ```
 
 <table>
@@ -123,7 +120,7 @@ Once we copy over the `csv` files to a directory say `results-dir` we can do the
   </tbody>
 </table>
 
-The output looks after the merging:
+The output after merging should look similar to the following:
 
 
 ```

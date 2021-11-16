@@ -4,7 +4,7 @@ headerTitle: Create indexes and check constraints on JSON columns
 linkTitle: Indexes and check constraints
 description: Create indexes and check constraints on "json" and "jsonb" columns.
 menu:
-  stable:
+  latest:
     identifier: create-indexes-check-constraints
     parent: api-ysql-datatypes-json
     weight: 40
@@ -146,18 +146,17 @@ on books((doc->>'ISBN') hash);
 You might want to support range queries that reference the value for the _"year"_ key like this:
 ```plpgsql
 select
-  (doc->>'ISBN')::bigint as isbn,
+  (doc->>'ISBN')::bigint as year,
   doc->>'title'          as title,
   (doc->>'year')::int    as year
 from books
 where (doc->>'year')::int > 1850
-and doc->>'year' IS NOT NULL
 order by 3;
 ```
 
 You'll probably want to support this with an index. And if you realize that the publication year is unknown for a substantial proportion of the books, you will probably want to take advantage of a partial index, thus:
 
 ```plpgsql
-create index books_year on books (((doc->>'year')::int) ASC)
+create index books_year on books ((doc->>'year') asc)
 where doc->>'year' is not null;
 ```

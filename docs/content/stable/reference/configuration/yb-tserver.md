@@ -4,10 +4,12 @@ headerTitle: yb-tserver
 linkTitle: yb-tserver
 description: YugabyteDB Tablet Server (yb-tserver) binary and configuration flags to store and manage data for client applications.
 menu:
-  stable:
+  latest:
     identifier: yb-tserver
     parent: configuration
     weight: 2440
+aliases:
+  - /latest/admin/yb-tserver
 isTocNested: true
 showAsideToc: true
 ---
@@ -621,6 +623,19 @@ Enable Snappy compression at the the cluster level.
 
 Default: `true`
 
+##### --regular_tablets_data_block_key_value_encoding
+
+Key-value encoding to use for regular data blocks in RocksDB. Possible options: `shared_prefix`, `three_shared_parts`.
+
+Default: `shared_prefix`
+
+{{< note title="Note" >}}
+
+Only change this flag to `three_shared_parts` after you migrate the whole cluster to the YugabyteDB version that supports it.
+
+{{< /note >}}
+
+
 ##### --rocksdb_compact_flush_rate_limit_bytes_per_sec
 
 Used to control rate of memstore flush and SSTable file compaction.
@@ -658,6 +673,40 @@ Rate control across all tablets being remote bootstrapped from or to this proces
 Default: `256MB`
 
 ---
+
+### Network compression
+
+Use the following two gflags to configure RPC compression:
+
+##### --enable_stream_compression
+
+Controls whether YugabyteDB uses RPC compression. Valid values are `true` or `false`.
+
+##### --stream_compression_algo
+
+Specifies which compression algorithm to use. Requires `enable_stream_compression` to be set to true. Valid values are:
+
+- 0: No compression (default value)
+- 1: Gzip
+- 2: Snappy
+- 3: LZ4
+
+In most cases, LZ4 (`--stream_compression_algo=3`) offers the best compromise of compression performance versus CPU overhead.
+
+{{< note title="Upgrade notes" >}}
+
+To upgrade from an older version that doesn't support RPC compression (such as 2.4), to a newer version that does (such as 2.6), you need to do the following:
+
+1. Rolling restart to upgrade YugabyteDB to a version that supports compression.
+
+1. Rolling restart to enable compression, on both master and tserver, by setting `enable_stream_compression=true`.
+
+    \
+    **Note** You can omit this step if the version you're upgrading to already has compression enabled by default. For the stable release series, versions from 2.6.3.0 and above (including all 2.8 releases) have `enable_stream_compression` set to true by default. For the latest release series, this is all releases beyond 2.9.0.
+
+1. Rolling restart to set the compression algorithm to use, on both master and tserver, such as by setting `stream_compression_algo=3`.
+
+{{< /note >}}
 
 ### Security flags
 

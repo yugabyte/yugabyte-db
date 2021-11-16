@@ -4,38 +4,33 @@ headerTitle: Install Yugabyte Platform software - Airgapped
 linkTitle: Install software
 description: Install Yugabyte Platform software in your on-premises, airgapped environment.
 menu:
-  stable:
+  latest:
     parent: install-yugabyte-platform
     identifier: install-software-3-airgapped
     weight: 77
 isTocNested: true
 showAsideToc: true
 ---
-
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/default" class="nav-link">
-      <i class="fas fa-cloud"></i>
-      Default
-    </a>
-  </li>
-  <li >
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/openshift" class="nav-link">
-      <i class="fas fa-cubes"></i> OpenShift </a>
+
+  <li>
+    <a href="../default/" class="nav-link">
+      <i class="fas fa-cloud"></i>Default</a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/kubernetes" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
-      Kubernetes
-    </a>
+    <a href="../kubernetes/" class="nav-link">
+      <i class="fas fa-cubes" aria-hidden="true"></i>Kubernetes</a>
   </li>
 
-  <li >
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/airgapped" class="nav-link active">
-      <i class="fas fa-unlink"></i>
-      Airgapped
-    </a>
+  <li>
+    <a href="../airgapped/" class="nav-link active">
+      <i class="fas fa-unlink"></i>Airgapped</a>
+  </li>
+
+  <li>
+    <a href="../openshift/" class="nav-link">
+      <i class="fas fa-cubes"></i>OpenShift</a>
   </li>
 
 </ul>
@@ -71,7 +66,7 @@ $ wget --trust-server-names https://get.replicated.com/airgap
 Download the `yugaware` binary and change the following number, as required:
 
 ```sh
-$ wget https://downloads.yugabyte.com/yugaware-2.7.1.1-b1.airgap
+$ wget https://downloads.yugabyte.com/yugaware-2.9.1.0-b140.airgap
 ```
 
 Switch to the following directory:

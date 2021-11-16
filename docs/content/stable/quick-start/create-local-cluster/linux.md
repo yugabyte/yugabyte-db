@@ -4,7 +4,7 @@ headerTitle: 2. Create a local cluster
 linkTitle: 2. Create a local cluster
 description: Create a local YugabyteDB cluster on Linux in less than five minutes.
 menu:
-  stable:
+  latest:
     parent: quick-start
     name: 2. Create a local cluster
     identifier: create-local-cluster-2-linux
@@ -45,12 +45,6 @@ showAsideToc: true
   </li>
 
 </ul>
-
-{{< note title="Note" >}}
-
-This Linux Quick Start uses the [`yugabyted`](../../../reference/configuration/yugabyted/) server. You can refer to the older [`yb-ctl`](../../../admin/yb-ctl/) based instructions in the [v2.1 docs](/v2.1/quick-start/install/linux/).
-
-{{< /note >}}
 
 ## 1. Create a local cluster
 

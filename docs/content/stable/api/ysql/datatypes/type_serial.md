@@ -4,9 +4,11 @@ headerTitle: Serial data types
 linkTitle: Serial
 description: YSQL serial data types include SMALLSERIAL (SMALLINT), SERIAL (INTEGER), and BIGSERIAL (BIGINT).
 menu:
-  stable:
+  latest:
     identifier: api-ysql-datatypes-serial
     parent: api-ysql-datatypes
+aliases:
+  - /latest/api/ysql/datatypes/type_serial
 isTocNested: true
 showAsideToc: true
 ---

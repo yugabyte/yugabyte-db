@@ -4,9 +4,11 @@ headerTitle: DROP OWNED
 linkTitle: DROP OWNED
 description: Use the DROP OWNED statement to drop all database objects within the current database that are owned by one of the specified roles.
 menu:
-  stable:
+  latest:
     identifier: dcl_drop_owned
     parent: statements
+aliases:
+  - /latest/api/ysql/commands/dcl_drop_owned/
 isTocNested: true
 showAsideToc: true
 ---

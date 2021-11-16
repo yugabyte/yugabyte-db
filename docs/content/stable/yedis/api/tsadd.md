@@ -3,9 +3,12 @@ title: TSADD
 linkTitle: TSADD
 description: TSADD
 menu:
-  stable:
+  latest:
     parent: api-yedis
     weight: 2400
+aliases:
+  - /latest/api/redis/tsadd
+  - /latest/api/yedis/tsadd
 isTocNested: true
 showAsideToc: true
 ---

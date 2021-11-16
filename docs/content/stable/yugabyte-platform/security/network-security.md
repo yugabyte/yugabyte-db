@@ -4,7 +4,7 @@ headerTitle: Network security
 linkTitle: Network security
 description: Network security
 menu:
-  stable:
+  latest:
     parent: security
     identifier: network-security
     weight: 30

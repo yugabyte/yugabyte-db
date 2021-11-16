@@ -4,7 +4,7 @@ headerTitle: 2. Create a local cluster
 linkTitle: 2. Create a local cluster
 description: Create a local YugabyteDB cluster on Kubernetes (Minikube) in less than five minutes.
 menu:
-  stable:
+  latest:
     parent: quick-start
     name: 2. Create a local cluster
     identifier: create-local-cluster-4-kubernetes
@@ -13,6 +13,7 @@ type: page
 isTocNested: true
 showAsideToc: true
 ---
+
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
@@ -111,7 +112,7 @@ To check the cluster status, you need to access the Admin UI on port `7000` expo
 $ kubectl --namespace yb-demo port-forward svc/yb-master-ui 7000:7000
 ```
 
-Now, you can view the [yb-master-0 Admin UI](../../../reference/configuration/yb-master/#admin-ui) at the <http://localhost:7000>.
+Now, you can view the [yb-master-0 Admin UI](../../../reference/configuration/yb-master/#admin-ui) at <http://localhost:7000>.
 
 ### Overview and YB-Master status
 

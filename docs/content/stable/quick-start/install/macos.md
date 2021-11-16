@@ -3,8 +3,11 @@ title: Install YugabyteDB on macOS
 headerTitle: 1. Install YugabyteDB
 linkTitle: 1. Install YugabyteDB
 description: Download and install YugabyteDB on macOS in less than five minutes.
+aliases:
+  - /quick-start/install/
+  - /latest/quick-start/install/
 menu:
-  stable:
+  latest:
     parent: quick-start
     name: 1. Install YugabyteDB
     identifier: install-1-macos
@@ -48,7 +51,7 @@ showAsideToc: true
 
 ## Prerequisites
 
-1. macOS 10.12 or later.
+1. <i class="fab fa-apple" aria-hidden="true"></i> macOS 10.12 or later.
 
 1. Verify that you have Python 2 or 3 installed. 
 
@@ -125,13 +128,13 @@ showAsideToc: true
 1. Download the YugabyteDB `tar.gz` file using the following `wget` command.
 
     ```sh
-    $ wget https://downloads.yugabyte.com/yugabyte-2.6.5.0-darwin.tar.gz
+    $ wget https://downloads.yugabyte.com/yugabyte-2.9.1.0-darwin.tar.gz
     ```
 
 1. Extract the package and then change directories to the YugabyteDB home.
 
     ```sh
-    $ tar xvfz yugabyte-2.6.5.0-darwin.tar.gz && cd yugabyte-2.6.4.0/
+    $ tar xvfz yugabyte-2.9.1.0-darwin.tar.gz && cd yugabyte-2.9.1.0/
     ```
 
 ## Configure

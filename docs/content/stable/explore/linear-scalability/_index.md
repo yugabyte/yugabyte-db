@@ -4,9 +4,23 @@ headerTitle: Horizontal Scalability
 linkTitle: Horizontal scalability
 description: Horizontal Scalability in YugabyteDB.
 headcontent: Horizontal Scalability in YugabyteDB.
+aliases:
+  - /explore/linear-scalability/
+  - /latest/explore/linear-scalability/
+  - /latest/explore/cloud-native/linear-scalability/
+  - /latest/explore/postgresql/linear-scalability/
+  - /latest/explore/linear-scalability-macos/
+  - /latest/explore/linear-scalability/macos/
+  - /latest/explore/linear-scalability/linux/
+  - /latest/explore/linear-scalability/docker/
+  - /latest/explore/linear-scalability/kubernetes/
+  - /latest/explore/auto-sharding/macos/
+  - /latest/explore/auto-sharding/linux/
+  - /latest/explore/auto-sharding/docker/
+  - /latest/explore/auto-sharding/kubernetes/
 image: /images/section_icons/explore/linear_scalability.png
 menu:
-  stable:
+  latest:
     identifier: explore-scalability
     parent: explore
     weight: 220

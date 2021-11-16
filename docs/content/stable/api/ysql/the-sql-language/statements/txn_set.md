@@ -5,9 +5,11 @@ linkTitle: SET TRANSACTION
 description: Use the `SET TRANSACTION` statement to set the current transaction isolation level.
 summary: SET TRANSACTION
 menu:
-  stable:
+  latest:
     identifier: txn_set
     parent: statements
+aliases:
+  - /latest/api/ysql/commands/txn_set/
 isTocNested: true
 showAsideToc: true
 ---

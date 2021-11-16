@@ -3,8 +3,14 @@ title: Deploy on OSS Kubernetes using Helm Chart
 headerTitle: Open source Kubernetes
 linkTitle: Open source Kubernetes
 description: Deploy a YugabyteDB cluster on OSS Kubernetes using Helm Chart.
+aliases:
+  - /latest/deploy/kubernetes/oss/
+  - /latest/deploy/kubernetes/oss/helm-chart/
+  - /latest/deploy/kubernetes/single-zone/oss/
+  - /latest/deploy/kubernetes/helm-chart/
+  - /latest/deploy/kubernetes/helm-configuration/
 menu:
-  stable:
+  latest:
     parent: deploy-kubernetes-sz
     name: Open Source
     identifier: k8s-oss-1
@@ -13,7 +19,6 @@ type: page
 isTocNested: true
 showAsideToc: true
 ---
-
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
@@ -63,7 +68,7 @@ Confirm that `helm` and `kubectl` are configured correctly.
 $ helm version
 ```
 
-```
+```output
 version.BuildInfo{Version:"v3.2.1", GitCommit:"fe51cd1e31e6a202cba7dead9552a6d418ded79a", GitTreeState:"clean", GoVersion:"go1.13.10"}
 ```
 
@@ -97,9 +102,9 @@ $ helm search repo yugabytedb/yugabyte
 
 **Output:**
 
-```sh
-NAME               	CHART VERSION	APP VERSION	DESCRIPTION
-yugabytedb/yugabyte	2.1.4        	2.1.4.0-b5 	YugabyteDB is the high-performance distributed ...
+```output
+NAME                    CHART VERSION   APP VERSION     DESCRIPTION                                       
+yugabytedb/yugabyte     2.9.1           2.9.1.0-b140    YugabyteDB is the high-performance distributed ...
 ```
 
 ### Install YugabyteDB
@@ -139,10 +144,10 @@ enableLoadBalancer=False --namespace yb-demo
 
 {{< note title="Important" >}}
 
-On some environments like macOS, minikube may run inside a virtual machine. Make sure to configure the vm with at least 4 cpus and 5GB memory so 
-the cluster has room to startup. Example command:
-```
-minikube start --cpus 4 --memory 5120
+On some environments like macOS, minikube may run inside a virtual machine. Make sure to configure the VM with at least 4 CPUs and 5GB memory so the cluster has room to start up. Example command:
+
+```sh
+$ minikube start --cpus 4 --memory 5120
 ```
 
 {{< /note >}}
@@ -157,7 +162,7 @@ $ helm status yb-demo -n yb-demo
 
 **Output**:
 
-```sh
+```output
 NAME: yb-demo
 LAST DEPLOYED: Thu Feb 13 13:29:13 2020
 NAMESPACE: yb-demo
@@ -193,7 +198,7 @@ Check the pods.
 $ kubectl get pods --namespace yb-demo
 ```
 
-```
+```output
 NAME           READY     STATUS    RESTARTS   AGE
 yb-master-0    2/2       Running   0          4m
 yb-master-1    2/2       Running   0          4m
@@ -209,7 +214,7 @@ Check the services.
 $ kubectl get services --namespace yb-demo
 ```
 
-```
+```output
 NAME                 TYPE           CLUSTER-IP      EXTERNAL-IP    PORT(S)                                        AGE
 yb-master-ui         LoadBalancer   10.109.39.242   35.225.153.213 7000:31920/TCP                                 10s
 yb-masters           ClusterIP      None            <none>         7100/TCP,7000/TCP                              10s
@@ -225,7 +230,7 @@ $ helm history yb-demo -n yb-demo
 
 **Output:**
 
-```sh
+```output
 REVISION  UPDATED                   STATUS    CHART           APP VERSION   DESCRIPTION
 1         Thu Apr 13 13:29:13 2020  deployed  yugabyte-2.1.4 2.1.4.0-b5  Install complete
 ```
@@ -252,7 +257,7 @@ To connect an external program, get the load balancer `EXTERNAL-IP` IP address o
 $ kubectl get services --namespace yb-demo
 ```
 
-```
+```output
 NAME                 TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)                                        AGE
 ...
 yb-tserver-service   LoadBalancer   10.98.36.163    35.225.153.214     6379:30929/TCP,9042:30975/TCP,5433:30048/TCP   10s

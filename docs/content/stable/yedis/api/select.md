@@ -3,9 +3,12 @@ title: SELECT
 linkTitle: "SELECT "
 description: SELECT
 menu:
-  stable:
+  latest:
     parent: api-yedis
     weight: 2038
+aliases:
+  - /latest/api/redis/select
+  - /latest/api/yedis/select
 isTocNested: true
 showAsideToc: true
 ---

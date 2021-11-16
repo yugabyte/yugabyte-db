@@ -200,6 +200,11 @@ alter_user_rename = 'ALTER' 'USER' role_name 'RENAME' 'TO' new_role_name ;
 
 alter_user_config = 'ALTER' 'USER' ( role_specification | 'ALL' ) [ 'IN' 'DATABASE' database_name ] config_setting ;
 
+(* 'ANALYZE' *)
+analyze = 'ANALYZE' [ 'VERBOSE' ] [ table_and_columns { ',' table_and_columns } ] ;
+
+table_and_columns = table_name [ '(' column_name { ',' column_name } ')' ] ;
+
 (* 'BEGIN' *)
 begin = 'BEGIN' [ 'TRANSACTION' | 'WORK' ] { transaction_mode } ;
 
@@ -1291,3 +1296,10 @@ demo-1-irrelevant-for-ysql-syntax = ( a 'K' b { ',' a 'K' b } ) ;
 
 demo-2-irrelevant-for-ysql-syntax = ( ( a 'K' b ) { ',' ( a 'K' b ) } ) ;
 *)
+
+(* 'SAVEPOINTS'*)
+savepoint_create := ( 'SAVEPOINT' name );
+
+savepoint_release := ( 'RELEASE' [ 'SAVEPOINT' ] name );
+
+savepoint_rollback := ( 'ROLLBACK' ['WORK' | 'TRANSACTION' ] 'TO' [ 'SAVEPOINT' ] name );

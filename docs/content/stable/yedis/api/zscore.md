@@ -3,9 +3,12 @@ title: ZSCORE
 linkTitle: ZSCORE
 description: ZSCORE
 menu:
-  stable:
+  latest:
     parent: api-yedis
     weight: 2545
+aliases:
+  - /latest/api/redis/zscore
+  - /latest/api/yedis/zscore
 isTocNested: true
 showAsideToc: true
 ---

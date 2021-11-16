@@ -4,9 +4,11 @@ headerTitle: CREATE RULE
 linkTitle: CREATE RULE
 description: Use the CREATE RULE statement to create a rule.
 menu:
-  stable:
+  latest:
     identifier: ddl_create_rule
     parent: statements
+aliases:
+  - /latest/api/ysql/commands/ddl_create_rule/
 isTocNested: true
 showAsideToc: true
 ---

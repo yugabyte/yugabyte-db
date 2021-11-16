@@ -4,8 +4,10 @@ headerTitle: Connect to Clusters
 linkTitle: Connect to Clusters
 description: Connect clients to remote YugabyteDB clusters that have client-to-server encryption enabled.
 image: /images/section_icons/secure/tls-encryption/connect-to-cluster.png
+aliases:
+  - /secure/tls-encryption/connect-to-cluster
 menu:
-  stable:
+  latest:
     identifier: connect-to-cluster
     parent: tls-encryption
     weight: 40

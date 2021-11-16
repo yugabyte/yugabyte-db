@@ -4,9 +4,11 @@ headerTitle: SHOW
 linkTitle: SHOW
 description: Use the SHOW statement to display the value of a run-time parameter.
 menu:
-  stable:
+  latest:
     identifier: cmd_show
     parent: statements
+aliases:
+  - /latest/api/ysql/commands/cmd_show/
 isTocNested: true
 showAsideToc: true
 ---

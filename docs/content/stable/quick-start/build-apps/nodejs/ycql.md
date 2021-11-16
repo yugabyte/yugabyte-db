@@ -4,7 +4,7 @@ headerTitle: Build a Node.js application
 linkTitle: Node.js
 description: Build a sample Node.js application with the Yugabyte Node.js driver for YCQL.
 menu:
-  stable:
+  latest:
     parent: build-apps
     name: NodeJS
     identifier: nodejs-3
@@ -18,7 +18,7 @@ showAsideToc: true
   <li >
     <a href="{{< relref "./ysql-pg.md" >}}" class="nav-link ">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - PG driver
+      YSQL - PostgreSQL driver
     </a>
   </li>
   <li >
@@ -51,7 +51,9 @@ This tutorial assumes that you have:
 
 - installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell. If not, follow these steps in [Quick start YCQL guide](../../../explore/ycql/).
 - installed a recent version of [Node.js](https://nodejs.org/en/download/).
-- installed the JavaScript [async](https://github.com/caolan/async) utility to work with asynchronous Javascript. To install `async`, run the following `npm install` command:
+- installed the [async](https://github.com/caolan/async) utility to work with asynchronous Javascript.
+
+To install the async utility, run the following command:
 
 ```sh
 $ npm install --save async

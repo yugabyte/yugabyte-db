@@ -5,7 +5,7 @@ description: Using indexes
 headcontent: Indexes
 image: /images/section_icons/secure/create-roles.png
 menu:
-  stable:
+  latest:
     identifier: indexes-1
     parent: explore-ysql-language-features
     weight: 300

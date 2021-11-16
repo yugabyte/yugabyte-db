@@ -4,7 +4,7 @@ headerTitle: Enable encryption at rest
 linkTitle: Enable encryption at rest
 description: Enable encryption at rest
 menu:
-  stable:
+  latest:
     parent: security
     identifier: enable-encryption-at-rest
     weight: 28
@@ -76,7 +76,7 @@ To enable encryption at rest on an existing universe:
 
 4. Deselect **Enable Encryption-at-Rest for <UNIVERSE_NAME>** and click **Submit**.
 
-   When the enryption is enabled, the **Key Management Service Config** option appears.
+   When the encryption is enabled, the **Key Management Service Config** option appears.
 
 5. Select your KSM configuration from the **Key Management Service Config** list. The list displays only preconfigured KMS configurations. If you need to create one, see [Create a KMS configuration](../create-kms-config).
 

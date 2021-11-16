@@ -3,8 +3,10 @@ title: Install Yugabyte Platform
 headerTitle: Install Yugabyte Platform
 linkTitle: Install software
 description: Install the Yugabyte Platform software.
+aliases:
+  - /latest/yugabyte-platform/install-yugabyte-platform/install-software/
 menu:
-  stable:
+  latest:
     parent: install-yugabyte-platform
     identifier: install-software-1-default
     weight: 77
@@ -14,30 +16,24 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
-  <li >
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/default" class="nav-link active">
-      <i class="fas fa-cloud"></i>
-      Default
-    </a>
+  <li>
+    <a href="../default/" class="nav-link active">
+      <i class="fas fa-cloud"></i>Default</a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/kubernetes" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
-      Kubernetes
-    </a>
+    <a href="../kubernetes/" class="nav-link">
+      <i class="fas fa-cubes" aria-hidden="true"></i>Kubernetes</a>
   </li>
 
-  <li >
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/airgapped" class="nav-link">
-      <i class="fas fa-unlink"></i>
-      Airgapped
-    </a>
+  <li>
+    <a href="../airgapped/" class="nav-link">
+      <i class="fas fa-unlink"></i>Airgapped</a>
   </li>
 
-<li >
-    <a href="/latest/yugabyte-platform/install-yugabyte-platform/install-software/openshift" class="nav-link">
-      <i class="fas fa-cubes"></i> OpenShift </a>
+  <li>
+    <a href="../openshift/" class="nav-link">
+      <i class="fas fa-cubes"></i>OpenShift</a>
   </li>
 
 </ul>
@@ -117,4 +113,3 @@ Specify TLS versions via **Application config**, as shown in the following illus
 ![Application Config](/images/replicated/application-config.png)
 
 The recommended TLS version is 1.2.
-

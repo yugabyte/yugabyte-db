@@ -3,8 +3,10 @@ title: Table creation
 headerTitle: Table creation
 linkTitle: Table creation
 description: Learn how YugabyteDB creates tables and manages schema changes.
+aliases:
+  - /architecture/core-functions/table-creation/
 menu:
-  stable:
+  latest:
     identifier: table-creation
     parent: core-functions
     weight: 1184

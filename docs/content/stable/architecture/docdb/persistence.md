@@ -3,8 +3,12 @@ title: Persistence in YugabyteDB
 headerTitle: Persistence
 linkTitle: Persistence
 description: Learn how DocDB manages persistence using a RocksDB-based storage layer.
+aliases:
+  - /latest/architecture/docdb/persistence/
+  - /latest/architecture/concepts/persistence/
+  - /latest/architecture/concepts/docdb/persistence/
 menu:
-  stable:
+  latest:
     identifier: docdb-persistence
     parent: docdb
     weight: 1146
@@ -88,7 +92,7 @@ For YSQL (and YCQL) tables, every row is a document in DocDB.
 The document key contains the full primary key with column values organized in the following order:
 
 * A 16-bit hash of the hash column values is stored first
-* The partition (hash) column(s) are stored next
+* The hash column(s) are stored next
 * The clustering (range) column(s) are stored next
 
 Each data type supported in YSQL (or YCQL) is represented by a unique byte. The type prefix is also present in the primary key’s hash or range components

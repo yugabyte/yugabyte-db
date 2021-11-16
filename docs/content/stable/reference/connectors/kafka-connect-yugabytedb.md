@@ -5,7 +5,7 @@ linkTitle: Kafka Connect YugabyteDB
 description: Use Kafka Connect YugabyteDB to stream YugabyteDB table updates to Kafka topics.
 section: REFERENCE
 menu:
-  stable:
+  latest:
     identifier: kafka-connect-yugabytedb
     parent: connectors
     weight: 2930
@@ -66,7 +66,7 @@ For building and using this project, the following tools must be installed on yo
 1. Run the following to produce data in that topic:
 
     ```sh
-    $ ~/yb-kafka/kafka_2.12-2.5.0/bin/kafka-console-producer.sh --broker-list localhost:9092--topic test_topic
+    $ ~/yb-kafka/kafka_2.12-2.5.0/bin/kafka-console-producer.sh --broker-list localhost:9092 --topic test
     ```
 
 1. Just cut-and-paste the following lines at the prompt:

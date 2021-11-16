@@ -5,9 +5,11 @@ linkTitle: Binary
 summary: Binary data types
 description: Use the BYTEA data type to represent binary string of bytes (octets).
 menu:
-  stable:
+  latest:
     identifier: api-ysql-datatypes-binary
     parent: api-ysql-datatypes
+aliases:
+  - /latest/api/ysql/datatypes/type_binary
 isTocNested: true
 showAsideToc: true
 ---

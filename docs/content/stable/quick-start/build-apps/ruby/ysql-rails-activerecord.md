@@ -4,7 +4,7 @@ headerTitle: Build a Ruby application
 linkTitle: Ruby
 description: Build a Ruby application that uses Rails ActiveRecord and the YSQL API
 menu:
-  stable:
+  latest:
     parent: build-apps
     name: Ruby
     identifier: ruby-2
@@ -39,7 +39,7 @@ showAsideToc: true
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../../quick-start/install/macos/).
+- installed YugabyteDB and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../../quick-start/explore/ysql/).
 
 ## Clone the orm-examples repository
 

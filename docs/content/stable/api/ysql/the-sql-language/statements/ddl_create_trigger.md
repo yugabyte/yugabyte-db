@@ -4,9 +4,11 @@ headerTitle: CREATE TRIGGER
 linkTitle: CREATE TRIGGER
 description: Use the CREATE TRIGGER statement to create a trigger.
 menu:
-  stable:
+  latest:
     identifier: ddl_create_trigger
     parent: statements
+aliases:
+  - /latest/api/ysql/commands/ddl_create_trigger/
 isTocNested: true
 showAsideToc: true
 ---

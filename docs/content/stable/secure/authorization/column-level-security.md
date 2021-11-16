@@ -4,7 +4,7 @@ headerTitle: Column-Level Security
 linkTitle: Column-Level Security
 description: Column-Level Security in YugabyteDB
 menu:
-  stable:
+  latest:
     name: Column-Level Security
     identifier: ysql-column-level-security
     parent: authorization

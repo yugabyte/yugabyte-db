@@ -3,9 +3,12 @@ title: HGET
 linkTitle: HGET
 description: HGET
 menu:
-  stable:
+  latest:
     parent: api-yedis
     weight: 2120
+aliases:
+  - /latest/api/redis/hget
+  - /latest/api/yedis/hget
 isTocNested: true
 showAsideToc: true
 ---

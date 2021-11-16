@@ -5,7 +5,7 @@ description: Views in YSQL
 headcontent: Views in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
-  stable:
+  latest:
     identifier: explore-ysql-language-features-views
     parent: explore-ysql-language-features
     weight: 325

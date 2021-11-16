@@ -3,9 +3,12 @@ title: PEXPIREAT
 linkTitle: PEXPIREAT
 description: PEXPIREAT
 menu:
-  stable:
+  latest:
     parent: api-yedis
     weight: 2234
+aliases:
+  - /latest/api/redis/pexpireat
+  - /latest/api/yedis/pexpireat
 isTocNested: true
 showAsideToc: true
 ---

@@ -3,11 +3,16 @@ title: Build a Java application that uses YSQL
 headerTitle: Build a Java application
 linkTitle: Java
 description: Build a sample Java application with the PostgreSQL JDBC Driver and use the YSQL API to connect to and interact with YugabyteDB.
+aliases:
+  - /develop/client-drivers/java/
+  - /latest/develop/client-drivers/java/
+  - /latest/develop/build-apps/java/
+  - /latest/quick-start/build-apps/java/
 menu:
-  stable:
+  latest:
     parent: build-apps
     name: Java
-    identifier: java-1
+    identifier: java-6
     weight: 550
 type: page
 isTocNested: true
@@ -15,6 +20,12 @@ showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="../ysql-yb-jdbc/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - YB - JDBC
+    </a>
+  </li>
   <li >
     <a href="../ysql-jdbc/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>

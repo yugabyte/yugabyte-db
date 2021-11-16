@@ -5,7 +5,7 @@ linkTitle: ysql_dump
 description: Back up a specified YSQL database into plain-text, SQL script file.
 headcontent: Extract a YugabyteDB database into a SQL script file.
 menu:
-  stable:
+  latest:
     identifier: ysql-dump
     parent: admin
     weight: 2467
@@ -70,6 +70,9 @@ Create the dump in the specified character set encoding. By default, the dump is
 #### -f *file*, --file=*file*
 
 Send output to the specified file. This parameter can be omitted for file-based output formats, in which case the standard output is used.
+
+#### -m *addresses*, --masters=*addresses*
+Comma-separated list of YB-Master hosts and ports.
 
 #### -n *schema*, --schema=*schema*
 

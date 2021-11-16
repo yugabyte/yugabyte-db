@@ -1,10 +1,10 @@
 ---
 title: Real timezones that observe DST [YSQL]
 headerTitle: Real timezones that observe Daylight Savings Time
-linkTitle: real timezones with DST
+linkTitle: Real timezones with DST
 description: Table. [YSQL]
 menu:
-  stable:
+  latest:
     identifier: canonical-real-country-with-dst
     parent: extended-timezone-names
     weight: 20

@@ -4,9 +4,12 @@ headerTitle: Non-integer
 linkTitle: Non-integer
 description: Use the non-integer (floating-point and fixed-point) data types to specify non-integer numbers. 
 menu:
-  stable:
+  latest:
     parent: api-cassandra
     weight: 1430
+aliases:
+  - /latest/api/cassandra/type_number
+  - /latest/api/ycql/type_number
 isTocNested: true
 showAsideToc: true
 ---

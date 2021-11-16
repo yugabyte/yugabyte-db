@@ -3,9 +3,12 @@ title: SISMEMBER
 linkTitle: SISMEMBER
 description: SISMEMBER
 menu:
-  stable:
+  latest:
     parent: api-yedis
     weight: 2290
+aliases:
+  - /latest/api/redis/sismember
+  - /latest/api/yedis/sismember
 isTocNested: true
 showAsideToc: true
 ---

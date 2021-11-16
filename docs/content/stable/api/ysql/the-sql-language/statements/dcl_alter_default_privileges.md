@@ -4,9 +4,11 @@ headerTitle: ALTER DEFAULT PRIVILEGES
 linkTitle: ALTER DEFAULT PRIVILEGES
 description: Use the ALTER DEFAULT PRIVILEGES statement to define the default access privileges.
 menu:
-  stable:
+  latest:
     identifier: dcl_alter_default_privileges
     parent: statements
+aliases:
+  - /latest/api/ysql/commands/dcl_alter_default_privileges/
 isTocNested: true
 showAsideToc: true
 ---

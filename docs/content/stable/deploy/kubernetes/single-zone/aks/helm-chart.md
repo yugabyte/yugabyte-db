@@ -4,11 +4,15 @@ headerTitle: Azure Kubernetes Service (AKS)
 linkTitle: Azure Kubernetes Service (AKS)
 description: Use Helm Chart to deploy a single-zone YugabyteDB cluster on Azure Kubernetes Service (AKS).
 menu:
-  stable:
+  latest:
     parent: deploy-kubernetes-sz
     name: Azure Kubernetes Service
     identifier: k8s-aks-1
     weight: 624
+aliases:
+  - /latest/deploy/kubernetes/aks/
+  - /latest/deploy/kubernetes/aks/helm-chart/
+  - /latest/deploy/kubernetes/single-zone/aks/
 type: page
 isTocNested: true
 showAsideToc: true
@@ -81,22 +85,24 @@ $ az account list-locations
 
 For the purposes of this demo we are going to choose the “West US” location.
 
-```sh
- {
-    "displayName": "West US",
-    "id": "/subscriptions/53f36dd9-85d8-4690-b45b-92733d97e6c3/locations/westus",
-    "latitude": "37.783",
-    "longitude": "-122.417",
-    "name": "westus",
-    "subscriptionId": null
-  },
+```output.json
+{
+  "displayName": "West US",
+  "id": "/subscriptions/53f36dd9-85d8-4690-b45b-92733d97e6c3/locations/westus",
+  "latitude": "37.783",
+  "longitude": "-122.417",
+  "name": "westus",
+  "subscriptionId": null
+},
 ```
 
 Next, create the resource group by running the following command, specifying the location:
 
 ```sh
 $ az group create --name yugabytedbRG --location westus
+```
 
+```output.json
 {
   "id": "/subscriptions/53f36dd9-85d8-4690-b45b-92733d97e6c3/resourceGroups/yugabytedbRG",
   "location": "westus",
@@ -138,7 +144,7 @@ The `--generate-ssh-keys` argument auto-generates SSH public and private key fil
 
 You should see the following output:
 
-```
+```output
 Finished service principal creation[###################]  100.0000%
  - Running ..
 ```
@@ -155,7 +161,7 @@ $ ssh-keygen -t rsa -b 2048
 
 Follow the prompts to create the` id_rsa `and `id_rsa.pub` files and note the location where they are stored. Now, run the following command:
 
-```
+```sh
 $ az aks create \
 --resource-group yugabytedbRG \
 --name yugabytedbAKSCluster \
@@ -173,7 +179,7 @@ $ az aks get-credentials --resource-group yugabytedbRG --name yugabytedbAKSClust
 
 You should see output similar to the following:
 
-```
+```output
 Merged "yugabytedbAKSCluster" as current context in /Users/yugabyte-user/.kube/config
 ```
 
@@ -203,7 +209,7 @@ $ kubectl create clusterrolebinding yb-kubernetes-dashboard --clusterrole=cluste
 
 And then run the following Azure CLI command:
 
-```
+```sh
 $ az aks browse --resource-group yugabytedbRG --name yugabytedbAKSCluster
 ```
 
@@ -231,7 +237,7 @@ Now, make sure that you get the latest update from the `charts` repository by ru
 $ helm repo update
 ```
 
-```
+```output
 Hang tight while we grab the latest from your chart repositories...
 ...Successfully got an update from the "yugabytedb" chart repository
 ```
@@ -240,9 +246,9 @@ Hang tight while we grab the latest from your chart repositories...
 $ helm search repo yugabytedb/yugabyte
 ```
 
-```
-NAME               	CHART VERSION	APP VERSION	DESCRIPTION
-yugabytedb/yugabyte	2.1.4        	2.1.4.0-b5 	YugabyteDB is the high-performance distributed ...
+```output
+NAME                    CHART VERSION   APP VERSION     DESCRIPTION                                       
+yugabytedb/yugabyte     2.9.1           2.9.1.0-b140    YugabyteDB is the high-performance distributed ...
 ```
 
 #### Create the namespace
@@ -255,7 +261,7 @@ $ kubectl create namespace yb-demo
 
 The following message should appear:
 
-```
+```output
 namespace/yb-demo created
 ```
 
@@ -292,7 +298,7 @@ $ kubectl get pods --namespace yb-demo
 
 To access the YugabyteDB Admin UI, run the following command to locate the **External IP** entry associated with `yb-master-ui` and port `7000`.
 
-```
+```sh
 $ kubectl get services --namespace yb-demo
 ```
 

@@ -2,10 +2,11 @@
 title: Tuning queries in YugabyteDB
 linkTitle: Introduction
 description: Tuning queries in YugabyteDB
+aliases:
 headerTitle: Tuning queries in YugabyteDB
 image: /images/section_icons/index/develop.png
 menu:
-  stable:
+  latest:
     identifier: query-tuning-intro
     parent: query-tuning
     weight: 100

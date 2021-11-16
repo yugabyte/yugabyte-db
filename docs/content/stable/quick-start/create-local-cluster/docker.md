@@ -4,7 +4,7 @@ headerTitle: 2. Create a local cluster
 linkTitle: 2. Create a local cluster
 description: Create a local YugabyteDB cluster on Docker in less than five minutes
 menu:
-  stable:
+  latest:
     parent: quick-start
     name: 2. Create a local cluster
     identifier: create-local-cluster-3-docker
@@ -13,6 +13,7 @@ type: page
 isTocNested: true
 showAsideToc: true
 ---
+
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
@@ -46,12 +47,6 @@ showAsideToc: true
 
 </ul>
 
-{{< note title="Note" >}}
-
-This Docker Quick Start uses the [`yugabyted`](../../../reference/configuration/yugabyted/) server. You can refer to the older [`yb-docker-ctl`](../../../admin/yb-docker-ctl/) based instructions in the [v2.0 docs](/v2.0/quick-start/install/docker/).
-
-{{< /note >}}
-
 ## 1. Create a local cluster
 
 To create a 1-node cluster with a replication factor (RF) of 1, run the command below.
@@ -62,13 +57,21 @@ $ docker run -d --name yugabyte  -p7000:7000 -p9000:9000 -p5433:5433 -p9042:9042
  --daemon=false
 ```
 
-As per the above docker run command, the data stored in YugabyteDB is not persistent across container restarts. If you want to make YugabyteDB persist data across restarts then you have to add the volume mount option to the docker run command as shown below.
+In the preceding `docker run` command, the data stored in YugabyteDB doesn't persist across container restarts. To make YugabyteDB persist data across restarts, add a volume mount option to the docker run command.
+First, create a `~/yb_data` directory:
 
 ```sh
-docker run -d --name yugabyte  -p7000:7000 -p9000:9000 -p5433:5433 -p9042:9042\
- -v ~/yb_data:/home/yugabyte/var\
- yugabytedb/yugabyte:latest bin/yugabyted start\
- --daemon=false 
+$ mkdir ~/yb_data
+```
+
+Next, run docker with the volume mount option:
+
+```sh
+$ docker run -d --name yugabyte \
+         -p7000:7000 -p9000:9000 -p5433:5433 -p9042:9042 \
+         -v ~/yb_data:/home/yugabyte/yb_data \
+         yugabytedb/yugabyte:latest bin/yugabyted start \
+         --base_dir=/home/yugabyte/yb_data --daemon=false
 ```
 
 Clients can now connect to the YSQL and YCQL APIs at `localhost:5433` and `localhost:9042` respectively.

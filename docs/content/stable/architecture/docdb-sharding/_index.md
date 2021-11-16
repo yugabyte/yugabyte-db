@@ -4,9 +4,11 @@ headerTitle: DocDB sharding layer
 linkTitle: DocDB sharding layer
 description: Learn about sharding strategies, hash and range sharding, colocated tables, and table splitting.
 image: /images/section_icons/architecture/concepts.png
+aliases:
+  - /latest/architecture/docdb/sharding
 headcontent: Learn about sharding strategies, hash and range sharding, colocated tables, and table splitting.
 menu:
-  stable:
+  latest:
     identifier: architecture-docdb-sharding
     parent: architecture
     weight: 1130
@@ -23,7 +25,6 @@ This section describes how sharding works in DocDB. A distributed SQL database n
 Data sharding helps in scalability and geo-distribution by horizontally partitioning data. A SQL table is decomposed into multiple sets of rows according to a specific sharding strategy. Each of these sets of rows is called a shard. These shards are distributed across multiple server nodes (containers, VMs, bare-metal) in a shared-nothing architecture. This ensures that the shards do not get bottlenecked by the compute, storage and networking resources available at a single node. High availability is achieved by replicating each shard across multiple nodes. However, the application interacts with a SQL table as one logical unit and remains agnostic to the physical placement of the shards.
 
 DocDB supports range and hash sharding natively.
-
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">

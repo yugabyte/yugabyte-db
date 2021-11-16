@@ -3,8 +3,10 @@ title: Install YugabyteDB on Docker
 headerTitle: 1. Install YugabyteDB
 linkTitle: 1. Install YugabyteDB
 description: Download and install YugabyteDB on Docker in less than five minutes.
+aliases:
+  - /quick-start/install/
 menu:
-  stable:
+  latest:
     parent: quick-start
     name: 1. Install YugabyteDB
     identifier: install-3-docker
@@ -71,7 +73,7 @@ You must have the Docker runtime installed on your localhost. Follow the links b
 Pull the YugabyteDB container.
 
 ```sh
-$ docker pull yugabytedb/yugabyte:2.6.5.0-b4
+$ docker pull yugabytedb/yugabyte
 ```
 
 {{<tip title="Next step" >}}

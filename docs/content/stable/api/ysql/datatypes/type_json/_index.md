@@ -6,9 +6,11 @@ summary: JSON and JSONB data types
 description: Learn about YSQL support for JSON data types (json and jsonb) and their functions and operators.
 image: /images/section_icons/api/ysql.png
 menu:
-  stable:
+  latest:
     identifier: api-ysql-datatypes-json
     parent: api-ysql-datatypes
+aliases:
+  - /latest/api/ysql/datatypes/type_json
 isTocNested: true
 showAsideToc: true
 ---

@@ -4,9 +4,11 @@ headerTitle: ALTER USER
 linkTitle: ALTER USER
 description: Use the ALTER USER statement to alter a role. ALTER USER is an alias for ALTER ROLE and is used to alter a role.
 menu:
-  stable:
+  latest:
     identifier: dcl_alter_user
     parent: statements
+aliases:
+  - /latest/api/ysql/commands/dcl_alter_user/
 isTocNested: true
 showAsideToc: true
 ---

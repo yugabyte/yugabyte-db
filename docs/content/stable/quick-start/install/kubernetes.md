@@ -3,8 +3,10 @@ title: Install YugabyteDB on Kubernetes
 headerTitle: 1. Install YugabyteDB
 linkTitle: 1. Install YugabyteDB
 description: Download and install YugabyteDB on Kubernetes in less than five minutes.
+aliases:
+  - /quick-start/install/
 menu:
-  stable:
+  latest:
     parent: quick-start
     name: 1. Install YugabyteDB
     identifier: install-4-kubernetes
@@ -56,7 +58,7 @@ showAsideToc: true
 
     To install `kubectl`, see [Install kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl/) in the Kubernetes documentation.
 
-- [Helm 3.4 or later](https://helm.sh/) is installed. If you have Helm 2 then make sure you have Tiller installed on the Kubernetes cluster and thereafter change the helm commands accordingly.
+- [Helm 3.4 or later](https://helm.sh/) is installed.
 
     To install `helm`, see [Install helm](https://helm.sh/docs/intro/install/) in the Helm documentation.
 
@@ -126,8 +128,8 @@ $ helm search repo yugabytedb/yugabyte
 ```
 
 ```output
-NAME                 CHART VERSION   APP VERSION   DESCRIPTION
-yugabytedb/yugabyte  2.7.1           2.7.1.1-b1  YugabyteDB is the high-performance distributed ...
+NAME                 CHART VERSION   APP VERSION    DESCRIPTION
+yugabytedb/yugabyte  2.9.1           2.9.1.0-b140     YugabyteDB is the high-performance distributed ...
 ```
 
 Now you are ready to create a local YugabyteDB cluster.

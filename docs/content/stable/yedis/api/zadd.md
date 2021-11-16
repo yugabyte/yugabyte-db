@@ -3,9 +3,12 @@ title: ZADD
 linkTitle: ZADD
 description: ZADD
 menu:
-  stable:
+  latest:
     parent: api-yedis
     weight: 2500
+aliases:
+  - /latest/api/redis/zadd
+  - /latest/api/yedis/zadd
 isTocNested: true
 showAsideToc: true
 ---

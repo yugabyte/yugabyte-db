@@ -3,8 +3,10 @@ title: SQL vs NoSQL in YugabyteDB
 headerTitle: SQL vs NoSQL
 linkTitle: 1. SQL vs NoSQL
 description: Learn how YugabyteDB brings the best of SQL and NoSQL together into one unified platform to simplify development of scalable cloud services.
+aliases:
+  - /develop/learn/sql-nosql/
 menu:
-  stable:
+  latest:
     identifier: sql-nosql
     parent: learn
     weight: 561

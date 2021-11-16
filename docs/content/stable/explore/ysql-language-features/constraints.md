@@ -5,7 +5,7 @@ description: Defining constraints
 headcontent: Constraints
 image: /images/section_icons/secure/create-roles.png
 menu:
-  stable:
+  latest:
     identifier: constraints
     parent: explore-ysql-language-features
     weight: 300

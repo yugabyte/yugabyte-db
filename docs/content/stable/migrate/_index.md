@@ -7,7 +7,7 @@ image: /images/section_icons/explore/high_performance.png
 headcontent: Migrate your PostgreSQL and other existing applications to YugabyteDB.
 section: YUGABYTEDB CORE
 menu:
-  stable:
+  latest:
     identifier: migrate
     weight: 625
 

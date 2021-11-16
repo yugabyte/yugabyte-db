@@ -3,9 +3,12 @@ title: SMEMBERS
 linkTitle: SMEMBERS
 description: SMEMBERS
 menu:
-  stable:
+  latest:
     parent: api-yedis
     weight: 2300
+aliases:
+  - /latest/api/redis/smembers
+  - /latest/api/yedis/smembers
 isTocNested: true
 showAsideToc: true
 ---

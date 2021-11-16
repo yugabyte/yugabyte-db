@@ -4,9 +4,12 @@ headerTitle: JSONB
 linkTitle: JSONB
 description: Use the JSONB data type to efficiently model json data. This data type makes it easy to model JSON data which does not have a set schema and might change often.
 menu:
-  stable:
+  latest:
     parent: api-cassandra
     weight: 1470
+aliases:
+  - /latest/api/cassandra/type_jsonb
+  - /latest/api/ycql/type_jsonb
 isTocNested: true
 showAsideToc: true
 ---

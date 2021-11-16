@@ -4,7 +4,7 @@ headerTitle: Build a Ruby application
 linkTitle: Ruby
 description: Build a sample Ruby application with the Yugabyte Ruby Driver for YCQL.
 menu:
-  stable:
+  latest:
     parent: build-apps
     name: Ruby
     identifier: ruby-3

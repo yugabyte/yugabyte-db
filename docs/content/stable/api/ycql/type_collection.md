@@ -4,9 +4,12 @@ headerTitle: Collection data types (MAP, LIST, and SET)
 linkTitle: Collection
 description: Use collection data types to specify columns for data objects that can contain more than one value.
 menu:
-  stable:
+  latest:
     parent: api-cassandra
     weight: 1390
+aliases:
+  - /latest/api/cassandra/type_collection
+  - /latest/api/ycql/type_collection
 isTocNested: true
 showAsideToc: true
 ---

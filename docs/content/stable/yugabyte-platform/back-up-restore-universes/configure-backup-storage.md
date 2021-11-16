@@ -3,7 +3,7 @@ headerTitle: Configure backup storage
 linkTitle: Configure backup storage
 description: Configure backup storage
 menu:
-  stable:
+  latest:
     parent: back-up-restore-universes
     identifier: configure-backup-storage
     weight: 10

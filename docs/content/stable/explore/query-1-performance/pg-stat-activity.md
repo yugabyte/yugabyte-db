@@ -2,10 +2,11 @@
 title: Viewing live queries with pg_stat_activity
 linkTitle: Viewing live queries with pg_stat_activity
 description: Using pg_stat_activity to troubleshoot issues and help to identify long running transactions.
+aliases:
 headerTitle: Viewing live queries with pg_stat_activity
 image: /images/section_icons/index/develop.png
 menu:
-  stable:
+  latest:
     identifier: pg-stat-activity
     parent: query-tuning
     weight: 300

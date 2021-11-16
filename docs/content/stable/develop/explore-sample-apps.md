@@ -5,8 +5,11 @@ linkTitle: Explore sample apps
 description: Explore sample applications running on YugabyteDB.
 headcontent: 
 image: /images/section_icons/index/develop.png
+aliases:
+  - /latest/quick-start/run-sample-apps/
+  - /quick-start/run-sample-apps/
 menu:
-  stable:
+  latest:
     identifier: explore-sample-apps
     parent: develop
     weight: 581

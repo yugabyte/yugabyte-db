@@ -4,9 +4,12 @@ headerTitle: UPDATE
 linkTitle: UPDATE
 description: Use the UPDATE statement to update one or more column values for a row in table.
 menu:
-  stable:
+  latest:
     parent: api-cassandra
     weight: 1320
+aliases:
+  - /latest/api/cassandra/dml_update
+  - /latest/api/ycql/dml_update
 isTocNested: true
 showAsideToc: true
 ---

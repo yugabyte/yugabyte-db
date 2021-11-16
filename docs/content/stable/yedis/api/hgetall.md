@@ -3,9 +3,12 @@ title: HGETALL
 linkTitle: HGETALL
 description: HGETALL
 menu:
-  stable:
+  latest:
     parent: api-yedis
     weight: 2130
+aliases:
+  - /latest/api/redis/hgetall
+  - /latest/api/yedis/hgetall
 isTocNested: true
 showAsideToc: true
 ---

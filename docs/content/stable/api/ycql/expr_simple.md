@@ -4,9 +4,12 @@ headerTitle: Simple expressions
 linkTitle: Simple expressions
 description: A simple expression can be a column, constant, or NULL.
 menu:
-  stable:
+  latest:
     parent: api-cassandra
     weight: 1331
+aliases:
+  - /latest/api/cassandra/expr_simple
+  - /latest/api/ycql/expr_simple
 isTocNested: true
 showAsideToc: true
 ---

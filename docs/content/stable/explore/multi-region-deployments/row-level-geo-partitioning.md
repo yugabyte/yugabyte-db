@@ -5,10 +5,10 @@ description: Row-Level Geo-Partitioning in YSQL
 headcontent: Row-Level Geo-Partitioning
 image: /images/section_icons/secure/create-roles.png
 menu:
-  stable:
+  latest:
     identifier: explore-multi-region-geo-partitioning
     parent: explore-multi-region-deployments
-    weight: 750
+    weight: 720
 isTocNested: true
 showAsideToc: true
 ---

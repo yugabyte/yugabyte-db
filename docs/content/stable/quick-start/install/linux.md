@@ -3,8 +3,10 @@ title: Install YugabyteDB on Linux
 headerTitle: 1. Install YugabyteDB
 linkTitle: 1. Install YugabyteDB
 description: Download and install YugabyteDB on Linux (CentOS or Ubuntu) in less than five minutes.
+aliases:
+  - /quick-start/install/
 menu:
-  stable:
+  latest:
     parent: quick-start
     name: 1. Install YugabyteDB
     identifier: install-2-linux
@@ -94,13 +96,13 @@ Starting from Ubuntu 20.04, `python` isn't available anymore. An easy fix is to 
 1. Download the YugabyteDB package using the following `wget` command.
 
     ```sh
-    $ wget https://downloads.yugabyte.com/yugabyte-2.6.5.0-linux.tar.gz
+    $ wget https://downloads.yugabyte.com/yugabyte-2.9.1.0-linux.tar.gz
     ```
 
 1. Extract the package and then change directories to the YugabyteDB home.
 
     ```sh
-    $ tar xvfz yugabyte-2.6.5.0-linux.tar.gz && cd yugabyte-2.6.4.0/
+    $ tar xvfz yugabyte-2.9.1.0-linux.tar.gz && cd yugabyte-2.9.1.0/
     ```
 
 ## Configure YugabyteDB

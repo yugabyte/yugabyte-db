@@ -3,8 +3,10 @@ title: Colocated tables
 headerTitle: Colocated tables
 linkTitle: Colocated tables
 description: Learn about how colocated tables aggregate data into a single tablet.
+aliases:
+  - /latest/architecture/docdb/colocated_tables/
 menu:
-  stable:
+  latest:
     identifier: docdb-colocated-tables
     parent: architecture-docdb-sharding
     weight: 1144
@@ -76,10 +78,6 @@ can be supported using colocated tables.
 
 - **Lower scalability - until removal from colocation tablet**.
 The assumptions behind tables that are colocated is that their data need not be automatically sharded and distributed across nodes. If it is known a priori that a table will get large, it can be opted out of the colocation tablet at creation time. If a table already present in the colocation tablet gets too large, it can dynamically be removed from the colocation tablet to enable splitting it into multiple tablets, allowing it to scale across nodes.
-
-## Usage
-
-To learn more about using this feature, see [Explore colocated tables](../../../explore/colocated-tables/macos/).
 
 ## What's next?
 

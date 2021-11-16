@@ -5,7 +5,7 @@ linkTitle: Create deployments
 description: Create YugabyteDB universe deployments.
 image: /images/section_icons/index/deploy.png
 menu:
-  stable:
+  latest:
     identifier: create-deployments
     parent: yugabyte-platform
     weight: 643
@@ -49,6 +49,18 @@ showAsideToc: true
       </div>
       <div class="body">
         Use Yugabyte Platform to deploy a multi-region universe.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="create-universe-multi-cloud/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/planet_scale.png" aria-hidden="true" />
+        <div class="title">Create a multi-cloud universe</div>
+      </div>
+      <div class="body">
+        Use Yugabyte Platform to deploy a multi-cloud universe.
       </div>
     </a>
   </div>

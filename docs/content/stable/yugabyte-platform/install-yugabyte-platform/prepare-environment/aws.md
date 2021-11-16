@@ -3,8 +3,10 @@ title: Prepare the Amazon Web Services (AWS) cloud environment
 headerTitle: Prepare the Amazon Web Services (AWS) cloud environment
 linkTitle: Prepare the environment
 description: Prepare the Amazon Web Services (AWS) environment for the Yugabyte Platform.
+aliases:
+  - /latest/yugabyte-platform/install-yugabyte-platform/prepare-environment/
 menu:
-  stable:
+  latest:
     identifier: prepare-environment-1-aws
     parent: install-yugabyte-platform
     weight: 55
@@ -127,7 +129,10 @@ In order for Yugabyte Platform to manage YugabyteDB nodes, limited access to you
                 "ec2:DescribeVpcs",
                 "ec2:DeleteSecurityGroup",
                 "ec2:DescribeSubnets",
-                "ec2:DeleteKeyPair"
+                "ec2:DeleteKeyPair",
+                "ec2:DescribeVpcPeeringConnections",
+                "ec2:DescribeRouteTables",
+                "ec2:DescribeInternetGateways"
             ],
             "Resource": "*"
         }

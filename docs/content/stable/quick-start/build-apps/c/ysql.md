@@ -3,8 +3,12 @@ title: Build a C application that uses YSQL
 headerTitle: Build a C application
 linkTitle: C
 description: Build a sample C application with libpq.
+aliases:
+  - /develop/client-drivers/c/
+  - /latest/develop/client-drivers/c/
+  - /latest/quick-start/build-apps/c/
 menu:
-  stable:
+  latest:
     identifier: build-apps-c-1-ysql
     parent: build-apps
     weight: 557

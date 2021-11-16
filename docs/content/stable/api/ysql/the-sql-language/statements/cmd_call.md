@@ -4,7 +4,7 @@ headerTitle: CALL
 linkTitle: CALL
 description: Use the CALL statement to execute a stored procedure.
 menu:
-  stable:
+  latest:
     identifier: cmd_call
     parent: statements
 isTocNested: true

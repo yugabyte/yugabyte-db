@@ -4,7 +4,7 @@ headerTitle: yugabyted
 linkTitle: yugabyted
 description: Use yugabyted to run single-node YugabyteDB clusters.
 menu:
-  stable:
+  latest:
     identifier: yugabyted
     parent: configuration
     weight: 2451

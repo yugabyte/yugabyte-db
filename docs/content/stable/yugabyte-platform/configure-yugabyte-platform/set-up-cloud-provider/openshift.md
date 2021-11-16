@@ -3,8 +3,10 @@ title: Configure the OpenShift Cloud Provider
 headerTitle: Configure the OpenShift Cloud Provider
 linkTitle: Configure the cloud provider
 description: Configure the OpenShift cloud provider
+aliases:
+  - /latest/deploy/enterprise-edition/configure-cloud-providers/openshift
 menu:
-  stable:
+  latest:
     identifier: set-up-cloud-provider-5-openshift
     parent: configure-yugabyte-platform
     weight: 20

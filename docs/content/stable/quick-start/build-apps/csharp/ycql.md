@@ -4,7 +4,7 @@ headerTitle: Build a C# application
 linkTitle: C#
 description: Build a C# application that uses YCQL.
 menu:
-  stable:
+  latest:
     identifier: build-apps-csharp-2-ycql
     parent: build-apps
     weight: 554
@@ -47,9 +47,11 @@ The [Yugabyte C# Driver for YCQL](https://github.com/yugabyte/cassandra-csharp-d
 
 To install the [Yugbyte C# Driver for YCQL](https://www.nuget.org/packages/YugaByteCassandraCSharpDriver/) in your Visual Studio project, follow the instructions in the [README](https://github.com/yugabyte/cassandra-csharp-driver).
 
-### Copy the contents below to your `Program.cs` file
+### Create the program
 
-```cs
+Copy the contents below to your `Program.cs` file:
+
+```csharp
 using System;
 using System.Linq;
 using Cassandra;

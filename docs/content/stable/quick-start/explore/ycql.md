@@ -4,8 +4,13 @@ headerTitle: 3. Explore Yugabyte Cloud QL
 linkTitle: 3. Explore distributed SQL APIs
 description: Explore Yugabyte Cloud QL (YCQL), a semi-relational distributed SQL API
 image: /images/section_icons/quick_start/explore_ycql.png
+aliases:
+  - /quick-start/test-cassandra/
+  - /latest/quick-start/test-cassandra/
+  - /latest/quick-start/test-ycql/
+  - /latest/api/ycql/quick-start/
 menu:
-  stable:
+  latest:
     parent: quick-start
     name: 3. Explore distributed SQL
     identifier: explore-dsql-2-ycql
@@ -85,13 +90,13 @@ After [creating a local cluster](../../create-local-cluster/macos/), follow the 
 
 Create a keyspace called 'myapp'.
 
-```cql
+```sql
 ycqlsh> CREATE KEYSPACE myapp;
 ```
 
 Create a table named `stock_market'`, which can store stock prices at various timestamps for different stock ticker symbols.
 
-```cql
+```sql
 ycqlsh> CREATE TABLE myapp.stock_market (
   stock_symbol text,
   ts text,
@@ -104,17 +109,17 @@ ycqlsh> CREATE TABLE myapp.stock_market (
 
 Let us insert some data for a few stock symbols into our newly created 'stock_market' table. You can copy-paste these values directly into your ycqlsh shell.
 
-```cql
+```sql
 ycqlsh> INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('AAPL','2017-10-26 09:00:00',157.41);
 INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('AAPL','2017-10-26 10:00:00',157);
 ```
 
-```cql
+```sql
 ycqlsh> INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('FB','2017-10-26 09:00:00',170.63);
 INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('FB','2017-10-26 10:00:00',170.1);
 ```
 
-```cql
+```sql
 ycqlsh> INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('GOOG','2017-10-26 09:00:00',972.56);
 INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('GOOG','2017-10-26 10:00:00',971.91);
 ```
@@ -123,7 +128,7 @@ INSERT INTO myapp.stock_market (stock_symbol,ts,current_price) VALUES ('GOOG','2
 
 Query all the values you have inserted into the database for the stock symbol 'AAPL' as follows.
 
-```cql
+```sql
 ycqlsh> SELECT * FROM myapp.stock_market WHERE stock_symbol = 'AAPL';
 ```
 
@@ -138,7 +143,7 @@ ycqlsh> SELECT * FROM myapp.stock_market WHERE stock_symbol = 'AAPL';
 
 Query all the values for `FB` and `GOOG` as follows.
 
-```cql
+```sql
 ycqlsh> SELECT * FROM myapp.stock_market WHERE stock_symbol in ('FB', 'GOOG');
 ```
 

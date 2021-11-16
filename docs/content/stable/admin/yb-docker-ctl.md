@@ -4,10 +4,12 @@ headerTitle: yb-docker-ctl
 linkTitle: yb-docker-ctl
 description: Use the yb-docker-ctl command line tool to administer local Docker-based YugabyteDB clusters for development and learning.
 menu:
-  stable:
+  latest:
     identifier: yb-docker-ctl
     parent: admin
     weight: 2420
+aliases:
+  - admin/yb-docker-ctl
 isTocNested: true
 showAsideToc: true
 ---

@@ -4,9 +4,11 @@ headerTitle: COMMENT
 linkTitle: COMMENT
 description: Use the COMMENT statement to set, update, or remove a comment on a database object.
 menu:
-  stable:
+  latest:
     identifier: ddl_comment
     parent: statements
+aliases:
+  - /latest/api/ysql/commands/ddl_comment/
 isTocNested: true
 showAsideToc: true
 ---

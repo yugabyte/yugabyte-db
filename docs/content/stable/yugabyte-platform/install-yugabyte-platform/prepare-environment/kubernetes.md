@@ -3,8 +3,10 @@ title: Prepare the Kubernetes environment
 headerTitle: Prepare the Kubernetes environment
 linkTitle: Prepare the environment
 description: Prepare the Kubernetes environment for Yugabyte Platform.
+aliases:
+  - /latest/deploy/enterprise-edition/prepare-environment/
 menu:
-  stable:
+  latest:
     parent: install-yugabyte-platform
     identifier: prepare-environment-4-kubernetes
     weight: 55
@@ -79,6 +81,6 @@ $ helm version
 
 The output should be similar to the following:
 
-```
+```output
 version.BuildInfo{Version:"v3.2.1", GitCommit:"fe51cd1e31e6a202cba7dead9552a6d418ded79a", GitTreeState:"clean", GoVersion:"go1.13.10"}
 ```

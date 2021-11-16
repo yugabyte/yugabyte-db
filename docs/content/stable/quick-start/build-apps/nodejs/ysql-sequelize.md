@@ -4,7 +4,7 @@ headerTitle: Build a NodeJS application
 linkTitle: NodeJS
 description: Build a NodeJS application that uses Sequelize ORM and YSQL.
 menu:
-  stable:
+  latest:
     parent: build-apps
     name: NodeJS
     identifier: nodejs-2
@@ -14,12 +14,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="{{< relref "./ysql-pg.md" >}}" class="nav-link ">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - PG driver
+      YSQL - PostgreSQL driver
     </a>
   </li>
   <li >
@@ -40,9 +39,9 @@ showAsideToc: true
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../../quick-start/install/macos/).
+- installed YugabyteDB and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../../quick-start/explore/ysql/).
 
-## Clone the orm-examples repo
+## Clone the orm-examples repository
 
 ```sh
 $ git clone https://github.com/yugabyte/orm-examples.git

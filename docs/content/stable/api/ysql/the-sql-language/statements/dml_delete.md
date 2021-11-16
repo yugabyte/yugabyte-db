@@ -4,9 +4,11 @@ headerTitle: DELETE
 linkTitle: DELETE
 description: Use the DELETE statement to remove rows that meet certain conditions, and when conditions are not provided in WHERE clause, all rows are deleted.
 menu:
-  stable:
+  latest:
     identifier: dml_delete
     parent: statements
+aliases:
+  - /latest/api/ysql/commands/dml_delete/
 isTocNested: true
 showAsideToc: true
 ---

@@ -4,9 +4,11 @@ headerTitle: CREATE INDEX
 linkTitle: CREATE INDEX
 description: Use the CREATE INDEX statement to create an index on the specified columns of the specified table.
 menu:
-  stable:
+  latest:
     identifier: ddl_create_index
     parent: statements
+aliases:
+  - /latest/api/ysql/commands/ddl_create_index/
 isTocNested: true
 showAsideToc: true
 ---

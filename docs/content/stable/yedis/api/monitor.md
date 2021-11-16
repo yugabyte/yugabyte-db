@@ -3,9 +3,12 @@ title: MONITOR
 linkTitle: MONITOR
 description: MONITOR
 menu:
-  stable:
+  latest:
     parent: api-yedis
     weight: 2218
+aliases:
+  - /latest/api/redis/monitor
+  - /latest/api/yedis/monitor
 isTocNested: true
 showAsideToc: true
 ---

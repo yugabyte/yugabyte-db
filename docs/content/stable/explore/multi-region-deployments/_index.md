@@ -6,7 +6,7 @@ description: Multi-Region Deployments in YugabyteDB.
 headcontent: Multi-Region Deployments in YugabyteDB.
 image: /images/section_icons/secure/authorization.png
 menu:
-  stable:
+  latest:
     identifier: explore-multi-region-deployments
     parent: explore
     weight: 270
@@ -82,4 +82,5 @@ The deployment types are explained in the following sections:
       </div>
     </a>
   </div>
+
 </div>

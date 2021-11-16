@@ -3,9 +3,12 @@ title: INCR
 linkTitle: INCR
 description: INCR
 menu:
-  stable:
+  latest:
     parent: api-yedis
     weight: 2210
+aliases:
+  - /latest/api/redis/incr
+  - /latest/api/yedis/incr
 isTocNested: true
 showAsideToc: true
 ---

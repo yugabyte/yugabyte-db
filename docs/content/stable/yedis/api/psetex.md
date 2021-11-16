@@ -3,9 +3,12 @@ title: PSETEX
 linkTitle: PSETEX
 description: PSETEX
 menu:
-  stable:
+  latest:
     parent: api-yedis
     weight: 2272
+aliases:
+  - /latest/api/redis/psetex
+  - /latest/api/yedis/psetex
 isTocNested: true
 showAsideToc: true
 ---

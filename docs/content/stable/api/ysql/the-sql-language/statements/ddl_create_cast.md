@@ -4,9 +4,11 @@ headerTitle: CREATE CAST
 linkTitle: CREATE CAST
 description: Use the CREATE CAST statement to create a cast.
 menu:
-  stable:
+  latest:
     identifier: ddl_create_cast
     parent: statements
+aliases:
+  - /latest/api/ysql/commands/ddl_create_cast/
 isTocNested: true
 showAsideToc: true
 ---

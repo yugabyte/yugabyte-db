@@ -3,8 +3,10 @@ title: Back up data for YSQL
 headerTitle: Back up data
 linkTitle: Back up data
 description: Back up data in YugabyteDB for YSQL.
+aliases:
+  - /manage/backup-restore/backing-up-data
 menu:
-  stable:
+  latest:
     identifier: back-up-data
     parent: backup-restore
     weight: 703
