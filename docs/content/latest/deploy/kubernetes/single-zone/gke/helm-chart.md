@@ -220,9 +220,9 @@ $ helm history yb-demo -n yb-demo
 
 **Output:**
 
-```sh
-REVISION  UPDATED                   STATUS    CHART           APP VERSION DESCRIPTION     
-1         Tue Apr 21 17:29:01 2020  deployed  yugabyte-2.1.4  2.1.4.0-b5  Install complete
+```output
+REVISION  UPDATED                   STATUS    CHART           APP VERSION   DESCRIPTION     
+1         Tue Apr 21 17:29:01 2020  deployed  yugabyte-2.9.1  2.9.1.0-b140  Install complete
 ```
 
 ## Connect using YugabyteDB shells
