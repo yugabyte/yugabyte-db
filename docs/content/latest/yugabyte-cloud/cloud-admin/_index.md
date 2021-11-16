@@ -12,11 +12,11 @@ menu:
     weight: 600
 ---
 
-Before you can add paid clusters, you need to create a billing profile and add a payment method. You manage your billing profile and payment methods from the **Admin** page. You can also view your monthly invoices and invite other users to your cloud so that they can create, manage, authorize network access, and connect to clusters.
+Before you can add standard clusters, you need to create a billing profile and add a payment method. You manage your billing profile and payment methods from the **Admin** page. You can also audit cloud activity, view your monthly invoices, and invite team members to your cloud so that they can create, manage, authorize network access, and connect to clusters.
 
 {{< note title="Note" >}}
 
-You must be signed in as the Admin user (the user who created the Yugabyte Cloud account) to perform Admin tasks. Developer (invited) users cannot invite other users or view the billing profile.
+You must be signed in as an Admin user to perform Admin tasks. Developer users cannot invite other users or view the billing profile.
 
 {{< /note >}}
 
@@ -85,7 +85,7 @@ You must be signed in as the Admin user (the user who created the Yugabyte Cloud
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="cloud-activity/">
       <div class="head">
-        <div class="icon"><i class="fas fa-file-invoice-dollar"></i></div>
+        <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
         <div class="title">Monitor cloud activity</div>
       </div>
       <div class="body">
