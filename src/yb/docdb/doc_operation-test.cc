@@ -11,7 +11,6 @@
 // under the License.
 //
 
-#include <locale>
 #include <thread>
 
 #include "yb/common/common.pb.h"

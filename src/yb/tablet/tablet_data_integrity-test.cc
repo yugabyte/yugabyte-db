@@ -13,7 +13,6 @@
 
 #include <gtest/gtest.h>
 
-#include "yb/client/table.h"
 
 #include "yb/common/row.h"
 #include "yb/common/ql_expr.h"

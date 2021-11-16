@@ -20,9 +20,6 @@
 #include "yb/rocksdb/util/options_helper.h"
 
 #include <cassert>
-#include <cctype>
-#include <cstdlib>
-#include <unordered_set>
 #include <vector>
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/compaction_filter.h"

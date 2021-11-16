@@ -21,12 +21,9 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/tcp_stream.h"
 
-#include "yb/server/secure.h"
 
 #include "yb/util/size_literals.h"
-#include "yb/util/env_util.h"
 
-#include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
 using namespace std::literals;

@@ -33,7 +33,6 @@
 #include "yb/client/error_collector.h"
 
 #include "yb/client/error.h"
-#include "yb/client/client.h"
 #include "yb/client/yb_op.h"
 
 namespace yb {

@@ -38,11 +38,16 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
 #include "yb/common/ql_value.h"
-#include "yb/common/wire_protocol-test-util.h"
 
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/external_mini_cluster.h"
-#include "yb/integration-tests/ts_itest-base.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/schema.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/util/metrics.h"
+#include "yb/util/test_util.h"
+#include "yb/client/table_handle.h"
+#include "yb/client/table.h"
 
 DEFINE_int32(num_rows_per_tablet, 100, "The number of rows to be inserted into each tablet");
 

@@ -36,7 +36,6 @@
 #include <vector>
 
 #include "yb/common/entity_ids.h"
-#include "yb/common/row.h"
 #include "yb/gutil/port.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/fastmem.h"
@@ -47,7 +46,6 @@
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
-#include "yb/util/safe_math.h"
 #include "yb/util/slice.h"
 #include "yb/util/enums.h"
 

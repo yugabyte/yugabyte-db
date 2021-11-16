@@ -15,11 +15,7 @@
 // Treenode implementation for TRANSACTION statements.
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/yql/cql/ql/ptree/pt_transaction.h"
-#include "yb/yql/cql/ql/ptree/pt_insert.h"
-#include "yb/yql/cql/ql/ptree/pt_update.h"
-#include "yb/yql/cql/ql/ptree/pt_delete.h"
 
 namespace yb {
 namespace ql {

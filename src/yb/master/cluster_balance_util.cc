@@ -13,7 +13,6 @@
 
 #include "yb/master/cluster_balance_util.h"
 
-#include <boost/none.hpp>
 
 #include "yb/util/flag_tags.h"
 

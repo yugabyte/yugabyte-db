@@ -13,14 +13,11 @@
 
 #include "yb/util/file_system_posix.h"
 
-#include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <sys/ioctl.h>
-#include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <unistd.h>
 
 #ifdef __linux__
 #include <linux/fs.h>

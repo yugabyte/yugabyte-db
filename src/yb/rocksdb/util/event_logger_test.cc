@@ -21,7 +21,8 @@
 #include <string>
 
 #include "yb/rocksdb/util/event_logger.h"
-#include "yb/rocksdb/util/testharness.h"
+#include <gtest/gtest.h>
+#include "yb/rocksdb/env.h"
 
 namespace rocksdb {
 

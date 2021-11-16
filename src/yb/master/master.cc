@@ -37,31 +37,25 @@
 #include <memory>
 #include <vector>
 
-#include <boost/bind.hpp>
 #include <glog/logging.h>
 
 #include "yb/common/wire_protocol.h"
-#include "yb/consensus/raft_consensus.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/flush_manager.h"
-#include "yb/master/master_rpc.h"
 #include "yb/master/master_util.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master.service.h"
 #include "yb/master/master_service.h"
 #include "yb/master/master_tablet_service.h"
 #include "yb/master/master-path-handlers.h"
-#include "yb/master/sys_catalog.h"
-#include "yb/master/ts_manager.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/service_if.h"
 #include "yb/rpc/service_pool.h"
 #include "yb/rpc/yb_rpc.h"
 #include "yb/server/rpc_server.h"
 #include "yb/tablet/maintenance_manager.h"
-#include "yb/server/default-path-handlers.h"
 #include "yb/tserver/pg_client_service.h"
 #include "yb/tserver/tablet_service.h"
 #include "yb/tserver/tserver_shared_mem.h"

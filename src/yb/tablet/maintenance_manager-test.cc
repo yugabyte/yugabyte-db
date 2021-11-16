@@ -33,7 +33,6 @@
 #include <memory>
 #include <mutex>
 #include <vector>
-#include <gflags/gflags.h>
 #include <gtest/gtest.h>
 
 #include "yb/gutil/strings/substitute.h"

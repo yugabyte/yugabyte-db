@@ -11,19 +11,21 @@
 // under the License.
 //
 
+#include <algorithm>
+#include <string>
+
 #include <gtest/gtest.h>
 
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/gutil/strings/join.h"
-#include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/external_mini_cluster.h"
-#include "yb/integration-tests/cluster_verifier.h"
-#include "yb/master/master.h"
-#include "yb/master/master-test-util.h"
-#include "yb/master/sys_catalog.h"
-#include "yb/master/master.proxy.h"
-#include "yb/rpc/messenger.h"
+#include "yb/common/schema.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/master/master.pb.h"
+#include "yb/util/test_util.h"
+#include "yb/client/yb_table_name.h"
 #include "yb/rpc/rpc_controller.h"
 
 using std::shared_ptr;

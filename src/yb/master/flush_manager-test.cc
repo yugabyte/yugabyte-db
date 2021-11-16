@@ -16,11 +16,8 @@
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
-#include "yb/client/table_handle.h"
-#include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/integration-tests/cql_test_base.h"
-#include "yb/tablet/tablet_peer.h"
 #include "yb/util/status.h"
 
 namespace yb {

@@ -20,11 +20,9 @@
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_dml.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
-#include "yb/util/string_util.h"
 #include "yb/util/decimal.h"
 #include "yb/util/flag_tags.h"
 
-#include "postgres/src/include/pg_config_manual.h"
 
 DEFINE_test_flag(bool, do_not_add_enum_sort_order, false,
                  "Do not add enum type sort order when buidling a constant "

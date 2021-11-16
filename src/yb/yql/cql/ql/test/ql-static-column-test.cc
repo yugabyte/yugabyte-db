@@ -19,7 +19,6 @@
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/catalog_manager.h"
-#include "yb/master/master.h"
 
 using std::string;
 using std::unique_ptr;

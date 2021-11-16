@@ -35,12 +35,9 @@
 // protoc --plugin=protoc-gen-yrpc --yrpc_out . --proto_path . <file>.proto
 ////////////////////////////////////////////////////////////////////////////////
 
-#include <ctype.h>
 
-#include <iostream>
 #include <map>
 #include <memory>
-#include <sstream>
 #include <string>
 
 #include <glog/logging.h>
@@ -49,7 +46,6 @@
 #include <google/protobuf/descriptor.h>
 #include <google/protobuf/io/printer.h>
 #include <google/protobuf/io/zero_copy_stream.h>
-#include <google/protobuf/stubs/common.h>
 
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/join.h"

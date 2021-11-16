@@ -24,7 +24,6 @@
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/util/monotime.h"
-#include "yb/util/test_util.h"
 #include "yb/util/tostring.h"
 #include "yb/util/uuid.h"
 

@@ -57,17 +57,21 @@
 #include <stdlib.h>
 
 #include <algorithm>
+#include <atomic>
 #include <bitset>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <set>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
 #include <boost/optional.hpp>
 #include <boost/thread/shared_mutex.hpp>
+
 #include <glog/logging.h>
-#include <google/protobuf/text_format.h>
+
 #include "yb/common/common.pb.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/partial_row.h"
@@ -75,8 +79,18 @@
 #include "yb/common/roles_permissions.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus.h"
-#include "yb/consensus/consensus.proxy.h"
-#include "yb/consensus/consensus_peers.h"
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/consensus/consensus_util.h"
+#include "yb/rpc/response_callback.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/util/atomic.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/locks.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/semaphore.h"
+#include "yb/util/status.h"
 #include "yb/consensus/quorum_util.h"
 #include "yb/gutil/algorithm.h"
 #include "yb/gutil/atomicops.h"
@@ -105,10 +119,7 @@
 #include "yb/master/master_util.h"
 #include "yb/master/permissions_manager.h"
 #include "yb/master/sys_catalog_constants.h"
-#include "yb/master/sys_catalog_initialization.h"
 #include "yb/master/sys_catalog.h"
-#include "yb/master/system_tablet.h"
-#include "yb/master/tasks_tracker.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/yql_aggregates_vtable.h"
@@ -136,9 +147,7 @@
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_retention_policy.h"
 
-#include "yb/tserver/tserver_admin.proxy.h"
 
-#include "yb/util/crypt.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flag_tags.h"
@@ -148,28 +157,20 @@
 #include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
 #include "yb/util/rw_mutex.h"
-#include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
-#include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/thread.h"
-#include "yb/util/thread_restrictions.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
-#include "yb/util/tsan_util.h"
 #include "yb/util/uuid.h"
 
 #include "yb/client/client.h"
 #include "yb/client/client-internal.h"
-#include "yb/client/meta_cache.h"
-#include "yb/client/table_creator.h"
-#include "yb/client/table_handle.h"
 #include "yb/client/universe_key_client.h"
 #include "yb/client/yb_table_name.h"
 
 #include "yb/tserver/remote_bootstrap_client.h"
-#include "yb/tserver/remote_bootstrap_snapshots.h"
 
 #include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"

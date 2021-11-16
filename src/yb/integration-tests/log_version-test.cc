@@ -19,7 +19,6 @@
 
 #include <glog/logging.h>
 
-#include "yb/gutil/strings/util.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"

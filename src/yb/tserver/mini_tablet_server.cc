@@ -32,30 +32,28 @@
 
 #include "yb/tserver/mini_tablet_server.h"
 
-#include <utility>
 #include <functional>
+#include <memory>
+#include <string>
+#include <vector>
+#include <utility>
 
 #include <glog/logging.h>
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/common/schema.h"
-#include "yb/consensus/log.h"
 #include "yb/consensus/log.pb.h"
-#include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 
 #include "yb/rpc/messenger.h"
 
 #include "yb/server/metadata.h"
 #include "yb/server/rpc_server.h"
-#include "yb/server/server_base.h"
-#include "yb/server/webserver.h"
 
-#include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_peer.h"
-#include "yb/tablet/tablet-test-util.h"
+#include "yb/common/common.pb.h"
+#include "yb/tablet/tablet-harness.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 

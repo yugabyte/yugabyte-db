@@ -12,19 +12,24 @@
 //
 
 #include <sys/types.h>
+
+#include <memory>
+
 #include "yb/client/table_alterer.h"
 #include "yb/client/transaction_pool.h"
 
-#include "yb/common/table_properties_constants.h"
 #include "yb/consensus/consensus.h"
-#include "yb/docdb/compaction_file_filter.h"
+#include "yb/common/schema.h"
+#include "yb/docdb/docdb_compaction_filter.h"
+#include "yb/docdb/doc_ttl_util.h"
+#include "yb/rocksdb/compaction_filter.h"
+#include "yb/server/hybrid_clock.h"
+#include "yb/util/compare_util.h"
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/gutil/integral_types.h"
 #include "yb/integration-tests/test_workload.h"
 #include "yb/integration-tests/mini_cluster.h"
 
-#include "yb/master/mini_master.h"
-#include "yb/master/master.h"
 
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/util/sync_point.h"

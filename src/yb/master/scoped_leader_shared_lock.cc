@@ -32,7 +32,6 @@
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/consensus/consensus.h"
-#include "yb/util/tsan_util.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/util/shared_lock.h"

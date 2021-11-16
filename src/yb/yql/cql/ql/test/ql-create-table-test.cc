@@ -16,7 +16,6 @@
 #include <boost/algorithm/string.hpp>
 
 #include "yb/master/catalog_manager.h"
-#include "yb/master/master.h"
 #include "yb/master/master_defaults.h"
 #include "yb/yql/cql/ql/test/ql-test-base.h"
 

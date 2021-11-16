@@ -15,13 +15,12 @@
 
 #include "yb/yql/pggate/pg_ddl.h"
 
-#include "yb/client/table_alterer.h"
-#include "yb/client/table_creator.h"
+#include "yb/client/table.h"
+#include "yb/master/master.pb.h"
 #include "yb/client/namespace_alterer.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/common/common.pb.h"
-#include "yb/common/common_flags.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/docdb/doc_key.h"

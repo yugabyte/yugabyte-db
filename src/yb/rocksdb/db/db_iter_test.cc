@@ -33,10 +33,7 @@
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/table/iterator_wrapper.h"
 #include "yb/rocksdb/table/merger.h"
-#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/sync_point.h"
-#include "yb/rocksdb/util/testharness.h"
-#include "yb/rocksdb/utilities/merge_operators.h"
 
 namespace rocksdb {
 

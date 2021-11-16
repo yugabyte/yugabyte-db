@@ -30,24 +30,20 @@
 // under the License.
 //
 
-#include <sys/uio.h>
 #include <unistd.h>
 
 #include <algorithm>
 #include <vector>
 
-#include <boost/bind.hpp>
 #include <boost/function.hpp>
 #include <glog/stl_logging.h>
 
-#include "yb/consensus/consensus-test-util.h"
 #include "yb/consensus/log-test-base.h"
 #include "yb/consensus/log_index.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/random.h"
-#include "yb/util/scope_exit.h"
 
 DEFINE_int32(num_batches, 10000,
              "Number of batches to write to/read from the Log in TestWriteManyBatches");

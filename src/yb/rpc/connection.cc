@@ -32,12 +32,10 @@
 
 #include "yb/rpc/connection.h"
 
-#include <iostream>
 #include <thread>
 #include <utility>
 
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/enums.h"

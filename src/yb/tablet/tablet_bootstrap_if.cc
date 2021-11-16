@@ -31,10 +31,24 @@
 //
 #include "yb/tablet/tablet_bootstrap_if.h"
 
-#include "yb/consensus/log_anchor_registry.h"
 #include "yb/tablet/tablet_bootstrap.h"
 #include "yb/tablet/tablet_metadata.h"
-#include "yb/tablet/tablet_peer.h"
+#include <atomic>
+#include <future>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <vector>
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/log.h"
+#include "yb/gutil/callback.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/tablet/tablet_options.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/util/metrics.h"
 #include "yb/util/debug/trace_event.h"
 
 namespace yb {

@@ -40,7 +40,6 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/operations/operation_driver.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"

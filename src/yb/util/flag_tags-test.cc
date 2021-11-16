@@ -30,9 +30,9 @@
 // under the License.
 //
 
-#include <gtest/gtest.h>
-#include <gflags/gflags.h>
 #include <unordered_set>
+
+#include <gtest/gtest.h>
 
 #include "yb/gutil/map-util.h"
 #include "yb/util/flag_tags.h"

@@ -21,7 +21,6 @@
 
 #include <regex>
 #include <atomic>
-#include <mutex>
 
 #include <glog/logging.h>
 

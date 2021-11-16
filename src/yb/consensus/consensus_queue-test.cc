@@ -48,7 +48,6 @@
 #include "yb/fs/fs_manager.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/util/metrics.h"
-#include "yb/util/scope_exit.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"
