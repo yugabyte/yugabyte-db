@@ -14,7 +14,6 @@ isTocNested: true
 showAsideToc: true
 ---
 
-
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="/latest/deploy/kubernetes/multi-zone/eks/helm-chart" class="nav-link active">
@@ -41,7 +40,7 @@ The following steps show how to meet these prerequisites.
 
 - Install [`eksctl`](https://eksctl.io/)
 
-`eksctl` is a simple command line utility for creating and managing Amazon EKS clusters. Detailed instructions for installing eksctl based on the OS of your choice are available at [Getting Started with eksctl](https://docs.aws.amazon.com/eks/latest/userguide/getting-started-eksctl.html). Following instructions apply to macOS.
+`eksctl` is a simple command line utility for creating and managing Amazon EKS clusters. Detailed instructions for installing eksctl based on the OS of your choice are available at [Getting Started with eksctl](https://docs.aws.amazon.com/eks/latest/userguide/getting-started-eksctl.html). The following instructions apply to macOS.
 
 ```sh
 $ brew tap weaveworks/tap
@@ -51,7 +50,7 @@ $ brew install weaveworks/tap/eksctl
 Test that your installation was successful.
 
 ```sh
-eksctl version
+$ eksctl version
 ```
 
 - Install and configure `kubectl` for Amazon EKS
@@ -68,7 +67,7 @@ $ helm version
 
 You should see something similar to the following output. Note that the `tiller` server side component has been removed in Helm 3.
 
-```
+```output
 version.BuildInfo{Version:"v3.0.3", GitCommit:"ac925eb7279f4a6955df663a0128044a8a6b7593", GitTreeState:"clean", GoVersion:"go1.13.6"}
 ```
 
@@ -100,7 +99,7 @@ We need to ensure that the storage classes used by the pods in a given zone are 
 
 Copy the contents below to a file named `storage.yaml`.
 
-```sh
+```yaml
 kind: StorageClass
 apiVersion: storage.k8s.io/v1
 metadata:
@@ -133,7 +132,7 @@ parameters:
 Apply the above configuration to your cluster.
 
 ```sh
-kubectl apply -f storage.yaml
+$ kubectl apply -f storage.yaml
 ```
 
 ## 2. Create a YugabyteDB cluster
@@ -152,15 +151,15 @@ Make sure that you have the latest updates to the repository by running the foll
 $ helm repo update
 ```
 
-Validate that you have the updated char version.
+Validate that you have the updated chart version.
 
 ```sh
 $ helm search repo yugabytedb/yugabyte
 ```
 
-```sh
-NAME                 CHART VERSION  APP VERSION  DESCRIPTION
-yugabytedb/yugabyte  2.6.5          2.6.5.0-b4   YugabyteDB is the high-performance distributed ...
+```output
+NAME                    CHART VERSION   APP VERSION     DESCRIPTION                                       
+yugabytedb/yugabyte     2.8.0           2.8.0.0-b37    YugabyteDB is the high-performance distributed ...
 ```
 
 ### Create override files
@@ -337,7 +336,7 @@ Default replica placement policy treats every yb-tserver as equal irrespective o
 To make the replica placement zone-aware, so that one replica is placed in each zone, run the following command:
 
 ```sh
-kubectl exec -it -n yb-demo-us-east-1a yb-master-0 -- bash \
+$ kubectl exec -it -n yb-demo-us-east-1a yb-master-0 -- bash \
 -c "/home/yugabyte/master/bin/yb-admin --master_addresses yb-master-0.yb-masters.yb-demo-us-east-1a.svc.cluster.local:7100,yb-master-0.yb-masters.yb-demo-us-east-1b.svc.cluster.local:7100,yb-master-0.yb-masters.yb-demo-us-east-1c.svc.cluster.local:7100 modify_placement_info aws.us-east-1.us-east-1a,aws.us-east-1.us-east-1b,aws.us-east-1.us-east-1c 3"
 ```
 

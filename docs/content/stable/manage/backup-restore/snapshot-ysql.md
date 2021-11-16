@@ -73,7 +73,7 @@ YugabyteDB supports distributed backup and restore of YSQL databases. Backing up
 1. Create a backup of the YSQL metadata, including the schema, by running the following `ysql_dump --create` command:
 
     ```sh
-    ysql_dump -h <ip> --include-yb-metadata --serializable-deferrable --create --schema-only --dbname <database_name> --file ysql.schema.sql
+    ysql_dump -h <ip> --masters <ip1:7100,ip2:7100,ip3:7100> --include-yb-metadata --serializable-deferrable --create --schema-only --dbname <database_name> --file ysql.schema.sql
     ```
 
 1. Get the current YSQL schema catalog version by running the [`yb-admin ysql_catalog_version`](../../../admin/yb-admin/#ysql-catalog-version) command:

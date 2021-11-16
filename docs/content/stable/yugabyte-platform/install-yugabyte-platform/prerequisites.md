@@ -26,10 +26,10 @@ You can install Yugabyte Platform on the following Linux distributions:
 
 ## Hardware Requirements
 
-The node running Yugabyte Platform should meet the following requirements:
+A node running Yugabyte Platform is expected to meet the following requirements:
 
-- 4 cores or more
-- 8 GB RAM or more
+- 4 cores (minimum) or 8 cores (recommended)
+- 8 GB RAM (minimum) or 10 GB RAM (recommended)
 - 100 GB SSD disk or more
 - 64-bit CPU architecture
 

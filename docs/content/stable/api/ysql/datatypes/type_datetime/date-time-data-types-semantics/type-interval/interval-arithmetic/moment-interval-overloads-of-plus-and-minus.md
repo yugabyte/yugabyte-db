@@ -1,7 +1,7 @@
 ---
 title: The moment-interval overloads of the "+" and "-" operators [YSQL]
 headerTitle: The moment-interval overloads of the "+" and "-" operators for timestamptz, timestamp, and time
-linkTitle: moment-interval overloads of "+" and "-"
+linkTitle: Moment-interval overloads of "+" and "-"
 description: Explains the semantics of the moment-interval overloads of the "+" and "-" operators for the timestamptz, timestamp, and time data types. [YSQL]
 menu:
   stable:
@@ -12,11 +12,13 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This section presents PL/pgSQL implementations that model the semantics of the _interval_-moment-overload of the `+` operator for three distinct kinds of _interval_ value: _pure seconds_, _pure days_, and _pure months_. The semantics of the _interval_-moment-overloads of the `-` operator are implied by those of the overload of the `+` operator.
+{{< tip title="Download and install the date-time utilities code." >}}
+The code on this page depends on the code presented in the section [User-defined _interval_ utility functions](../../interval-utilities/). This is included in the larger [code kit](../../../../download-date-time-utilities/) that includes all of the reusable code that the overall _[date-time](../../../../../type_datetime)_ section describes and uses.
+{{< /tip >}}
+
+This section presents PL/pgSQL implementations that model the semantics of the _interval_-moment-overload of the `+` operator for three distinct kinds of _interval_ value: _pure seconds_, _pure days_, and _pure months_. The semantics of the _interval_-moment-overloads of the `-` operator is implied by the semantics of the overload of the `+` operator.
 
 The code examples that this page shows elaborate on those that are shown on the main parent page [The _interval_ data type and its variants](../../../type-interval/).
-
-If you haven't already done so, then install the code presented in the section [User-defined interval utility functions](../../interval-utilities/).
 
 ## Defining three kinds of interval value: pure seconds, pure days, and pure months.
 
@@ -25,7 +27,7 @@ First, do this:
 ```plpgsql
 select (
     '30 days '::interval = '720 hours'::interval and
-    ' 1 month'::interval = ' 30 days '::interval and
+    ' 1 month'::interval =   '30 days'::interval and
     ' 1 month'::interval = '720 hours'::interval
   )::text;
 ```
@@ -47,9 +49,9 @@ deallocate all;
 
 prepare update_table as
 update t set
-  "t0 + 720 hours" = t0 + '720 hours' ::interval,
-  "t0 + 30 days"   = t0 + '30 days'   ::interval,
-  "t0 + 1 month"   = t0 + '1 month'   ::interval;
+  "t0 + 720 hours" = t0 + '720 hours'::interval,
+  "t0 + 30 days"   = t0 +   '30 days'::interval,
+  "t0 + 1 month"   = t0 +   '1 month'::interval;
   
 prepare inspect_result as
 select
@@ -76,7 +78,7 @@ This is the result:
  2021-02-19 12:00:00-08 | 2021-03-21 13:00:00-07 | 2021-03-21 12:00:00-07 | 2021-03-19 12:00:00-07
 ```
 
-All the three results are displayed with a negative seven hours offset reflecting the fact that they occur during the Daylight Savings Time period in the United States. The time of day for _"t0 + 720 hours"_ differs by one hour from that for _"t0 + 30 days"_, but the date component is the same for each. The time of day for _"t0 + 30 days"_ is the same as that for _"t0 + 1 month"_, but the date component differs by two days. 
+All the three results are displayed with a negative seven hours _UTC offset_ reflecting the fact that they occur during the Daylight Savings Time period in the United States. The time of day for _"t0 + 720 hours"_ differs by one hour from that for _"t0 + 30 days"_, but the date component is the same for each. The time of day for _"t0 + 30 days"_ is the same as that for _"t0 + 1 month"_, but the date component differs by two days. 
 
 You have to think quite hard to understand displayed _timestamptz_ values when you inspect them using a session whose _TimeZone_ setting is _not_ _UTC_ because that setting affects the values that you see. This is very much intended and reflects the _raison d’être_ of the data type. See the section [The plain _timestamp_ and _timestamptz_ data types](../../../type-timestamp/). In particular, this is why the moment before "spring forward" is displayed with an offset of negative _eight_ hours while the moments after "spring forward" are displayed with an offset of negative _seven_ hours.
 
@@ -110,7 +112,6 @@ Now re-execute the prepared statement after setting the session's timezone to on
 ```plpgsql
 set timezone = 'Asia/Shanghai';
 execute update_table;
-execute inspect_result;
 ```
 
 Once again, inspect the outcome using _UTC_:
@@ -152,9 +153,9 @@ select
 This is the result:
 
 ```output
-     '720 hours'      |    '30 days'    |   '1 month'    
-----------------------+-----------------+----------------
- (0,0,2592000.000000) | (0,30,0.000000) | (1,0,0.000000)
+  '720 hours'  | '30 days' | '1 month' 
+---------------+-----------+-----------
+ (0,0,2592000) | (0,30,0)  | (1,0,0)
 ```
 
 Each of the different spellings of the "same" _interval_ value ("same, that is, with respect to the criterion for equality that the native _interval-interval_ overload of `=` implements) is either a _pure interval_ value with respectively:
@@ -170,7 +171,7 @@ This explains why the arithmetic semantics is different for the three kinds of p
 
 ## Hybrid interval arithmetic is dangerous
 
-The term _hybrid interval_ value will be used to denote an _interval_ value where more than one of the fields of  the _[&#91;mm, dd, ss&#93;](../../interval-representation/)_ internal representation is non-zero.
+The term _hybrid interval_ value will be used to denote an _interval_ value where more than one of the fields of  the _[\[mm, dd, ss\]](../../interval-representation/)_ internal representation is non-zero.
 
 Try this. It uses hybrid "days-seconds" _interval values.
 
@@ -198,9 +199,7 @@ begin
 end;
 $body$;
 
-\t on
 select x from hybrid_dd_ss_results();
-\t off
 ```
 
 This is the result:
@@ -239,9 +238,7 @@ begin
 end;
 $body$;
 
-\t on
 select x from hybrid_mm_dd_results();
-\t off
 ```
 
 This is the result:
@@ -256,8 +253,8 @@ Notice that the date for the third result, _9-April_, is different from that for
 
 You might be tempted to speculate about priority rules for how the fields of a hybrid _interval_ value are acted on. Don't do this. The PostgreSQL documentation doesn't state the rules and application code that used hybrid _interval_ values would be hard to understand and likely, therefore, to be unreliable.
 
-{{< tip title="Avoid arithmetic that uses hybrid interval values." >}}
-Yugabyte recommends that you avoid creating and using _hybrid interval_ values; rather, you should adopt the practice that the section [Defining and using custom domain types to specialize the native _interval_ functionality](../../custom-interval-domains/) explains.
+{{< tip title="Avoid arithmetic that uses hybrid 'interval' values." >}}
+Yugabyte recommends that you avoid creating and using _hybrid interval_ values; rather, you should adopt the practice that the section [Custom domain types for specializing the native _interval_ functionality](../../custom-interval-domains/) explains.
 {{< /tip >}}
 
 ## The semantics for the moment-interval overloads of "+" and "-" for pure seconds interval values
@@ -368,7 +365,7 @@ Once again, the function finishes without an _assert_ violation—showing that a
  2021-03-21 12:00:00
 ```
 
-The overload of the function _moment_ss_interval_addition()_ for a plain _time_ moment is derived from the overload for a plain _timestamp_ moment. Create it thus.  (The function [to_time (numeric) returns time](../../interval-utilities/#function-to-time-numeric-returns-time) is defined in the [User-defined _interval_ utility functions](../../interval-utilities/) section.)
+The overload of the function _moment_ss_interval_addition()_ for a plain _time_ moment is derived from the overload for a plain _timestamp_ moment. Create it thus.  (The function _[to_time (double precision) returns time](../../interval-utilities/#function-to-time-double-precision-returns-time)_ is defined in the [User-defined _interval_ utility functions](../../interval-utilities/) section.)
 
 ```plpgsql
 drop function if exists moment_ss_interval_addition(time, interval) cascade;
@@ -387,12 +384,12 @@ begin
     'not a pure seconds interval';
   declare
     -- no. of secs since midnight
-    ss_t     constant numeric not null := extract(epoch from t);
-    ss_i     constant numeric not null := mm_dd_ss.ss;
+    ss_t     constant double precision not null := extract(epoch from t);
+    ss_i     constant double precision not null := mm_dd_ss.ss;
 
-    i_model  constant time       not null := to_time(ss_t + ss_i);
+    i_model  constant time             not null := to_time(ss_t + ss_i);
 
-    i_actual constant time       not null := t + i;
+    i_actual constant time             not null := t + i;
   begin
     assert i_model = i_actual, 'assert model does not hold';
     return i_model;
@@ -415,7 +412,7 @@ Once again, the function finishes without an _assert_ violation—showing that a
 
 ## The semantics for the moment-interval overloads of "+" and "-" for pure days interval values
 
-{{< tip title="See the 'sensitivity of timestamptz-interval arithmetic to the current timezone' section for a complementary definition of the semantics of arithmetic that uses pure days intervals." >}}
+{{< tip title="See the 'sensitivity of timestamptz-interval arithmetic to the current timezone' section for a complementary definition of the semantics of arithmetic that uses pure days 'interval' values." >}}
 The explanations that this page presents for the semantics of moment-_interval_ arithmetic for the three different kinds of _interval_ (pure seconds, pure days, and pure months) are oriented to the use-cases that motivate the distinctions. The explanation of the pure days semantics is inextricably bound up with the timezone notion and how this, in turn, determines the _UTC offset_.
 
 See the section [The sensitivity of _timestamptz-interval_ arithmetic to the current timezone](../../../../timezones/timezone-sensitive-operations/timestamptz-interval-day-arithmetic/) in the "Timezones and _UTC offsets_" section for a code example and discussion that models the rules in a different, but ultimately equivalent, way from this present subsection's approach. For a complex topic like this, it helps to solidify your mental model by examining relevant scenarios from different angles.
@@ -486,7 +483,40 @@ Once again, the function finishes without an _assert_ violation—showing that, 
 
 Notice that when you do the operation and observe the result in a certain timezone (this example happens to implement doing and observing with the same statement—but this does not need generally to be the case), then adding some number of days takes you to the same time of day that many days later. The PL/pgSQL model does exactly this. This rule holds whether or nor the timezone that your session uses respects Daylight Savings Time and the _interval_ spans the "spring forward" moment or the "fall back" moment.
 
-The overload of the function _moment_dd_interval_addition()_ for a plain _timestamp_ moment is direct re-write of the overload for the _timestamptz_ moment. Simply replace the text "timestamptz" with the text "timestamp" in the function's source code. Then test it with trivially modified versions of the tests that were used for the _timestamptz_ overload:
+The overload of the function _moment_dd_interval_addition()_ for a plain _timestamp_ moment is a direct re-write of the overload for the _timestamptz_ moment. Simply replace the text "timestamptz" with the text "timestamp" in the function's source code:
+
+```plpgsql
+drop function if exists moment_dd_interval_addition(timestamp, interval) cascade;
+
+create function moment_dd_interval_addition(t timestamp, i interval)
+  returns timestamp
+  language plpgsql
+as $body$
+declare
+  mm_dd_ss constant interval_mm_dd_ss_t := interval_mm_dd_ss(i);
+  current_tz text not null := '';
+begin
+  assert
+    mm_dd_ss.ss =  0 and
+    mm_dd_ss.dd <> 0 and
+    mm_dd_ss.mm =  0,
+    'not a pure days interval';
+  declare
+    time_part    constant text      not null := to_char(t, 'hh24:mi:ss');
+    date_part_0  constant date      not null := t::date;
+    date_part    constant date      not null := date_part_0 + mm_dd_ss.dd;
+    i_model      constant timestamp not null := (date_part::text||' '||time_part::text)::timestamp;
+
+    i_actual     constant timestamp not null := t + i;
+  begin
+    assert i_model = i_actual, 'assert model does not hold';
+    return i_model;
+  end;
+end;
+$body$;
+```
+
+Then test it with trivially modified versions of the tests that were used for the _timestamptz_ overload:
 
 ```plpgsql
 set timezone = 'Asia/Shanghai';
@@ -504,7 +534,7 @@ You get the same result for each, independently (of course) of what the sessions
 
 ## The semantics for the moment-interval overloads of "+" and "-" for pure months interval values
 
-Notice that, here to, it doesn't make sense to add a duration of one or several months to a _time_ value—even though the attempt doesn't cause an error and does produce a result. This section shows only PL/pgSQL models for the _timestamptz_ and _timestamp_ overloads.
+Notice that, here too, it doesn't make sense to add a duration of one or several months to a _time_ value—even though the attempt doesn't cause an error and does produce a result. This section shows only PL/pgSQL models for the _timestamptz_ and _timestamp_ overloads.
 
 Create this function:
 
@@ -573,9 +603,48 @@ Once again, the function finishes without an _assert_ violation—showing that, 
  2022-07-19 12:00:00+08
 ```
 
-Notice that when you do the operation and observe the result in a certain timezone, then adding some number of months takes you to the same day of the month and the same time of day that many months later. The PL/pgSQL model does exactly this. Of course, this rule holds whether or nor the timezone that your session uses respects Daylight Savings Time" "spring forward" or "fall back" moments are irrelevant, given the semantic definition. The definition, and the implemented model, make it crystal clear that the number of days between the staring and ending moments for a certain pure months _interval_ value will vary according to the number of days in the various months that the _interval_ happens to span. (The effect of leap years is implied by this statement.)
+Notice that when you do the operation and observe the result in a certain timezone, adding some number of months takes you to the same day of the month and the same time of day that many months later. The PL/pgSQL model does exactly this. Of course, this rule holds whether or not the timezone that your session uses respects Daylight Savings Time"; "spring forward" or "fall back" moments are irrelevant, given the semantic definition. The definition, and the implemented model, make it crystal clear that the number of days between the starting and ending moments for a certain pure months _interval_ value will vary according to the number of days in the various months that the _interval_ happens to span. (The effect of leap years is implied by this statement.)
 
-The overload of the function _moment_mm_interval_addition()_ for a plain _timestamp_ moment is direct re-write of the overload for the _timestamptz_ moment. Simply replace the text "timestamptz" with the text "timestamp" in the function's source code. Then test it with trivially modified versions of the tests that were used for the _timestamptz_ overload:
+The overload of the function _moment_mm_interval_addition()_ for a plain _timestamp_ moment is a direct re-write of the overload for the _timestamptz_ moment. Simply replace the text "timestamptz" with the text "timestamp" in the function's source code:
+
+```plpgsql
+drop function if exists moment_mm_interval_addition(timestamp, interval) cascade;
+
+create function moment_mm_interval_addition(t timestamp, i interval)
+  returns timestamp
+  language plpgsql
+as $body$
+declare
+  mm_dd_ss constant interval_mm_dd_ss_t := interval_mm_dd_ss(i);
+  current_tz text not null := '';
+begin
+  assert
+    mm_dd_ss.ss =  0 and
+    mm_dd_ss.dd =  0 and
+    mm_dd_ss.mm <> 0,
+    'not a pure months interval';
+  declare
+    time_part    constant text      not null := to_char(t, 'hh24:mi:ss');
+    date_part_0  constant date      not null := t::date;
+    year_0       constant int       not null := extract(year  from date_part_0);
+    month_0      constant int       not null := extract(month from date_part_0);
+    day_0        constant int       not null := extract(day   from date_part_0);
+    year         constant int       not null := year_0  + trunc(mm_dd_ss.mm/12);
+    month        constant int       not null := month_0 + mod(mm_dd_ss.mm, 12);
+    -- Check that it's a legal date.
+    date_part    constant date      not null := year::text||'-'||month::text||'-'||day_0::text;
+    i_model      constant timestamp not null := (date_part::text||' '||time_part::text)::timestamp;
+
+    i_actual     constant timestamp not null := t + i;
+  begin
+    assert i_model = i_actual, 'assert model does not hold';
+    return i_model;
+  end;
+end;
+$body$;
+```
+
+Then test it with trivially modified versions of the tests that were used for the _timestamptz_ overload:
 
 ```plpgsql
 set timezone = 'America/Los_Angeles';

@@ -4,7 +4,7 @@ headerTitle: Asynchronous Replication
 linkTitle: Asynchronous Replication
 description: Enable deployment using unidirectional (master-follower) or bidirectional (multi-master) replication between universes
 aliases:
-- /latest/deploy/multi-dc/2dc-deployment
+  - /latest/deploy/multi-dc/2dc-deployment
 menu:
   latest:
     parent: multi-dc

@@ -1,7 +1,7 @@
 ---
 title: The time data type [YSQL]
 headerTitle: The time data type
-linkTitle: time data type
+linkTitle: Time data type
 description: The semantics of the time data type. [YSQL]
 menu:
   stable:
