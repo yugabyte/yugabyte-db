@@ -1,4 +1,4 @@
-name: Test-with-pg11-build
+name: postgresql-11-build
 on: [push]
 
 jobs:
