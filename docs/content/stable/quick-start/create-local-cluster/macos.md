@@ -3,7 +3,7 @@ title: Create a local YugabyteDB cluster on macOS
 headerTitle: 2. Create a local cluster
 linkTitle: 2. Create a local cluster
 description: Create a local cluster on macOS in less than five minutes.
-menu:
+menu/:
   stable:
     parent: quick-start
     name: 2. Create a local cluster
@@ -45,12 +45,6 @@ showAsideToc: true
   </li>
 
 </ul>
-
-{{< note title="Note" >}}
-
-This macOS Quick Start uses the [`yugabyted`](../../../reference/configuration/yugabyted/) server. You can refer to the older [`yb-ctl`](../../../admin/yb-ctl/) based instructions in the [v2.1 docs](/v2.1/quick-start/install/linux/).
-
-{{< /note >}}
 
 ## 1. Create a local cluster
 

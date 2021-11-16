@@ -12,7 +12,7 @@ isTocNested: false
 showAsideToc: true
 ---
 
-Distributed ACID transactions are transactions that modify multiple rows in more than one shard. YugabyteDB supports distributed transactions, enabling features such as strongly consistent secondary indexes and multi-table/row ACID operations in both the YCQL context as well as in the YSQL context. This section provides some common concepts and notions used in Yugabyte's approach to implementing distributed transactions.  Once you are familiar with these concepts, see [Transactional IO Path](../transactional-io-path/) for a walk-through of a distributed transaction's life cycle.
+Distributed ACID transactions are transactions that modify multiple rows in more than one shard. YugabyteDB supports distributed transactions, enabling features such as strongly consistent secondary indexes and multi-table/row ACID operations in both YCQL and YSQL contexts. This section provides some common concepts and notions used in Yugabyte's approach to implementing distributed transactions.  Once you are familiar with these concepts, see [Transactional IO Path](../transactional-io-path/) for a walk-through of a distributed transaction's life cycle.
 
 ## Provisional records
 
@@ -26,7 +26,7 @@ responsible for the keys the transaction is trying to modify. We call them "prov
 to "regular" ("permanent") records, because they are invisible to readers until the transaction
 commits.
 
-Provisional records are stored are stored in a separate RocksDB instance in the same tablet peer.
+Provisional records are stored in a separate RocksDB instance in the same tablet peer.
 Compared to other possible design options, such as storing provisional records inline with the
 regular records or putting them in the same RocksDB instance altogether with regular records, the
 approach we have chosen has the following benefits:
@@ -48,7 +48,7 @@ the one-byte prefix that puts these records before all regular records in RocksD
 
 #### 1. Primary provisional records
 
-  ```
+  ```output
   DocumentKey, SubKey1, ..., SubKeyN, LockType, ProvisionalRecordHybridTime -> TxnId, Value
   ```
 
@@ -72,7 +72,7 @@ the one-byte prefix that puts these records before all regular records in RocksD
   `7c98406e-2373-499d-88c2-25d72a4a178c`. In that case we will end up with the following provisional
   record values in RocksDB:
 
-  ```
+  ```output
   row1, WeakSIWrite, 1516847525206000 -> 7c98406e-2373-499d-88c2-25d72a4a178c
   row1, col1, StrongSIWrite, 1516847525206000 -> 7c98406e-2373-499d-88c2-25d72a4a178c, value1
   ```
@@ -87,7 +87,7 @@ the one-byte prefix that puts these records before all regular records in RocksD
 
   - `StatusTabletId` is the ID of the tablet that keeps track of this transaction's status.
     Unlike the case of tables/tablets holding user data, where we are using a [hash-based
-    mapping](../../docdb-sharding/) from keys to tablets, there is no deterministic way
+    mapping](../../concepts/sharding/) from keys to tablets, there is no deterministic way
     to compute the transaction status tablet ID by transaction ID, so this information must be
     explicitly passed to all components handling a particular transaction.
   - `Isolation Level` [Snapshot Isolation](https://en.wikipedia.org/wiki/Snapshot_isolation) or
@@ -97,7 +97,7 @@ the one-byte prefix that puts these records before all regular records in RocksD
 
 #### 3. Provisional record keys indexed by transaction ID ("reverse index")
 
-```
+```output
 TxnId, HybridTime -> primary provisional record key
 ```
 

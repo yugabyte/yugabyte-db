@@ -4,7 +4,7 @@ headerTitle: LDAP Authentication in YSQL
 linkTitle: LDAP Authentication
 description: Configuring YugabyteDB to use an external LDAP authentication service.
 aliases:
-- /latest/secure/authentication/ldap-authentication
+  - /latest/secure/authentication/ldap-authentication
 menu:
   latest:
     identifier: ldap-authentication-1-ysql
