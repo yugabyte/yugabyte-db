@@ -94,6 +94,11 @@
   to = "/latest/integrations/"
   force = true
 
+[[redirects]]
+  from = "/:version/integrations/smart-driver/"
+  to = "/latest/integrations/jdbc-driver/"
+  force = true
+
 # Stable quick-starts need defaults,
 # since archiving from /latest removes aliases
 
