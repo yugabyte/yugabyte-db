@@ -1499,8 +1499,11 @@ pgss_store(uint64 queryid,
 	key.ip = pg_get_client_addr();
 	key.planid = planid;
 	key.appid = appid;
+#if PG_VERSION_NUM < 140000
+    key.toplevel = 1;
+#else
     key.toplevel = (nested_level == 0);
-
+#endif
 	pgss_hash = pgsm_get_hash();
 
 	LWLockAcquire(pgss->lock, LW_SHARED);
@@ -1695,7 +1698,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		uint64        planid = entry->key.planid;
 		unsigned char *buf = pgss_qbuf[bucketid];
 #if PG_VERSION_NUM < 140000
-        bool          toplevel = true;
+        bool          toplevel = 1;
 		bool 		  is_allowed_role = is_member_of_role(GetUserId(), DEFAULT_ROLE_READ_ALL_STATS);
 #else
 		bool 		  is_allowed_role = is_member_of_role(GetUserId(), ROLE_PG_READ_ALL_STATS);
