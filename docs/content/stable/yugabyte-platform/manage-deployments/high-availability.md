@@ -7,7 +7,7 @@ menu:
   stable:
     identifier: platform-high-availability
     parent: manage-deployments
-    weight: 41
+    weight: 40
 isTocNested: true
 showAsideToc: true
 ---

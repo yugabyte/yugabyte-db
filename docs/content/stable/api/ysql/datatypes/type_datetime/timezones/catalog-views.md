@@ -1,7 +1,7 @@
 ---
 title: Catalog views for timezone information [YSQL]
-headerTitle: Catalog views for timezone information—pg_timezone_names and pg_timezone_abbrevs
-linkTitle: catalog views
+headerTitle: The pg_timezone_names and pg_timezone_abbrevs catalog views
+linkTitle: Catalog views
 description: Explains the information content of the pg_timezone_names and pg_timezone_abbrevs catalog views. [YSQL]
 menu:
   stable:
@@ -33,7 +33,7 @@ This is the result:
 
 ## pg_timezone_names
 
-The _\d_ metacommand produces this result:
+The \\_d_ metacommand produces this result:
 
 ```outout
    Column   |   Type
@@ -66,7 +66,7 @@ The block finishes silently without error showing that the assertion holds.
 
 The bare _pg_timezone_names_ view doesn't necessarily tell you explicitly if a particular timezone observes Daylight Savings Time. But for a timezone that does this, the value of _is_dst_ will be _true_ when, but only when, Daylight Savings Time is in force. So you might be lucky, according to when you do your query, and learn something that at a different time of year you would not. This feels to be unsatisfactory. Here's the inspiration for an obvious technique to fix this irritation.
 
-<p id="pg-timezone-names-query">Try this:</p>
+<a name="pg-timezone-names-query"></a>Try this:
 
 ```plpgsql
 set timezone = 'America/Los_Angeles';
@@ -160,7 +160,7 @@ The definition of the _[extended_timezone_names](../extended-timezone-names/)_ v
 
 ## pg_timezone_abbrevs
 
-The _\d_ metacommand produces this result:
+The \\_d_ metacommand produces this result:
 
 ```output
    Column   |   Type
@@ -186,9 +186,7 @@ end;
 $body$;
 ```
 
-The block finishes silently without error showing that the assertion holds.
-
-<p id="pg-timezone-abbrevs-query">Here is a telling example query:</p>
+<a name="pg-timezone-abbrevs-query"></a>The block finishes silently without error showing that the assertion holds. Here is a telling example query:
 
 ```plpgsql
 select abbrev, utc_offset::text, is_dst::text
@@ -220,13 +218,13 @@ The column structure and naming of the _pg_timezone_names_ and _pg_timezone_abbr
 
   > In 2020, the territory of Yukon abandoned seasonal time change to permanently observe year-round Mountain Standard Time (MST).
 
-  The _pg_timezone_names_ view's population is controlled by operating system files. See the PostgreSQL documentation appendix [B.4. Date/Time Configuration Files](https://www.postgresql.org/docs/11/datetime-config-files.html). The PostgreSQL developers aim, with each successive release, to update the content of  _pg_timezone_names_ to keep it current with the _tz&nbsp;database_. (YugabyteDB Version 2.4 has therefore fallen behind currency. [GitHub issue #8550]() tracks this.) The administrator could fix this for a particular database by editing the appropriate files. The server refuses to start if _pg_timezone_names.name_ is not unique.
+  The _pg_timezone_names_ view's population is controlled by operating system files. See the PostgreSQL documentation appendix [B.4. Date/Time Configuration Files](https://www.postgresql.org/docs/11/datetime-config-files.html). The PostgreSQL developers aim, with each successive release, to update the content of  _pg_timezone_names_ to keep it current with the _tz&nbsp;database_. (YugabyteDB Version 2.4 has therefore fallen behind currency. [GitHub issue #8550](https://github.com/yugabyte/yugabyte-db/issues/8550) tracks this.) The administrator could fix this for a particular database by editing the appropriate files. The server refuses to start if _pg_timezone_names.name_ is not unique.
 
 - The contents of the _pg_timezone_abbrevs_ view, too, can be changed, for a particular database, by the administrator. The population is controlled by operating system files. See the PostgreSQL documentation appendix [B.4. Date/Time Configuration Files](https://www.postgresql.org/docs/11/datetime-config-files.html). The PostgreSQL developers provide a default population. Further, which of these files are used can be controlled at the session level by setting the  _timezone_abbreviations_ run-time parameter. See the PostgreSQL documentation section [19.11. Client Connection Defaults](https://www.postgresql.org/docs/current/runtime-config-client.html#GUC-TIMEZONE-ABBREVIATIONS). The server refuses to start if _pg_timezone_abbrevs.abbrev_ is not unique.
 
 - There is no requirement that every _abbrev_ value found in _pg_timezone_names_, establishing this set over the whole year, will be found in _pg_timezone_abbrevs_.
 
-- A particular _abbrev_ that's found in _pg_timezone_names_ can denote different values of _utc_offset_ according to the timezone to which it belongs. For example, _PST_ that maps both to _-08:00_ (for, for example, _America/Los_Angeles_) and to _+08:00_ for _Asia/Manila_). See [List multiply defined &#91;abbrev, utc_offset&#93; tuples](#list-multiply-defined-abbrev-utc-offset-tuples) below.
+- A particular _abbrev_ that's found in _pg_timezone_names_ can denote different values of _utc_offset_ according to the timezone to which it belongs. For example, _PST_ that maps both to _-08:00_ (for, for example, _America/Los_Angeles_) and to _+08:00_ for _Asia/Manila_). See [List multiply defined \[abbrev, utc_offset\]; tuples](#list-multiply-defined-abbrev-utc-offset-tuples) below.
 
 - There is no requirement that every _abbrev_ value from _pg_timezone_names_, establishing this set over the whole year maps to the same _utc_offset_ value as does its match in _pg_timezone_abbrevs_ when such a match is found.
 

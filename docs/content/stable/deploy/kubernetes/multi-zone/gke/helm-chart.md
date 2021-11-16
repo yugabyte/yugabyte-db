@@ -98,7 +98,7 @@ We need to ensure that the storage classes used by the pods in a given zone are 
 
 Copy the contents below to a file named `storage.yaml`.
 
-```sh
+```yaml
 kind: StorageClass
 apiVersion: storage.k8s.io/v1
 metadata:
@@ -134,7 +134,7 @@ parameters:
 Apply the above configuration to your cluster.
 
 ```sh
-kubectl apply -f storage.yaml
+$ kubectl apply -f storage.yaml
 ```
 
 ## 2. Create a YugabyteDB cluster
@@ -160,8 +160,8 @@ $ helm search repo yugabytedb/yugabyte
 ```
 
 ```output
-NAME                 CHART VERSION  APP VERSION  DESCRIPTION
-yugabytedb/yugabyte  2.6.5          2.6.5.0-b4   YugabyteDB is the high-performance distr...
+NAME                    CHART VERSION   APP VERSION     DESCRIPTION                                       
+yugabytedb/yugabyte     2.8.0           2.8.0.0-b37    YugabyteDB is the high-performance distributed ...
 ```
 
 ### Create override files
@@ -348,7 +348,7 @@ Default replica placement policy treats every yb-tserver as equal irrespective o
 To make the replica placement zone-aware, so that one replica is placed in each zone, run the following command:
 
 ```sh
-kubectl exec -it -n yb-demo-us-central1-a yb-master-0 -- bash \
+$ kubectl exec -it -n yb-demo-us-central1-a yb-master-0 -- bash \
 -c "/home/yugabyte/master/bin/yb-admin --master_addresses yb-master-0.yb-masters.yb-demo-us-central1-a.svc.cluster.local:7100,yb-master-0.yb-masters.yb-demo-us-central1-b.svc.cluster.local:7100,yb-master-0.yb-masters.yb-demo-us-central1-c.svc.cluster.local:7100 modify_placement_info gke.us-central1.us-central1-a,gke.us-central1.us-central1-b,gke.us-central1.us-central1-c 3"
 ```
 

@@ -16,14 +16,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/multi-region-deployments/asynchronous-replication-ysql/" class="nav-link active">
+    <a href="../asynchronous-replication-ysql/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/latest/explore/multi-region-deployments/asynchronous-replication-ycql/" class="nav-link">
+    <a href="../asynchronous-replication-ycql/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -63,8 +63,8 @@ Starting yugabyted...
 | JDBC                : jdbc:postgresql://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte  |
 | YSQL                : bin/ysqlsh   -U yugabyte -d yugabyte                                       |
 | YCQL                : bin/ycqlsh   -u cassandra                                                  |
-| Data Dir            : /Users/myuser/yugabyte-2.7.1.1/datacenter-east/data                        |
-| Log Dir             : /Users/myuser/yugabyte-2.7.1.1/datacenter-east/logs                        |
+| Data Dir            : /Users/myuser/yugabyte-2.7.2.0/datacenter-east/data                        |
+| Log Dir             : /Users/myuser/yugabyte-2.7.2.0/datacenter-east/logs                        |
 | Universe UUID       : 4fb04760-4b6d-46a7-83cf-a89b2a056579                                       |
 +--------------------------------------------------------------------------------------------------+
 🚀 yugabyted started successfully! To load a sample dataset, try 'yugabyted demo'.
@@ -94,8 +94,8 @@ Starting yugabyted...
 | JDBC                : jdbc:postgresql://127.0.0.2:5433/yugabyte?user=yugabyte&password=yugabyte  |
 | YSQL                : bin/ysqlsh -h 127.0.0.2  -U yugabyte -d yugabyte                           |
 | YCQL                : bin/ycqlsh 127.0.0.2 9042 -u cassandra                                     |
-| Data Dir            : /Users/myuser/yugabyte-2.7.1.1/datacenter-west/data                        |
-| Log Dir             : /Users/myuser/yugabyte-2.7.1.1/datacenter-west/logs                        |
+| Data Dir            : /Users/myuser/yugabyte-2.7.2.0/datacenter-west/data                        |
+| Log Dir             : /Users/myuser/yugabyte-2.7.2.0/datacenter-west/logs                        |
 | Universe UUID       : ad78f70c-0741-4c7e-b610-315d55d7f248                                       |
 +--------------------------------------------------------------------------------------------------+
 🚀 yugabyted started successfully! To load a sample dataset, try 'yugabyted demo'.

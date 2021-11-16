@@ -39,19 +39,15 @@ After [creating a local cluster](../../create-local-cluster/macos/), you can sta
 
 ## 1. Load sample data
 
-Follow the steps below to create a database and load sample data.
+Your YugabyteDB installation includes [sample datasets](../../../sample-data/) you can use to test out YugabyteDB. These are located in the `share` directory. The datasets are provided in the form of SQL script files. (The datasets are also available in the [sample directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample)). This exercise uses the [Retail Analytics](../../../sample-data/retail-analytics/) dataset.
 
-{{< note title="Note" >}}
+The following files are used:
 
-The five SQL scripts (aka `.sql` files) used to create and load the sample data in the steps below are located in the `share` directory of your YugabyteDB installation. You can verify the files are available by entering the following `ls` command from the YugabyteDB home directory.
-
-```sh
-$ ls share/
-```
-
-The `share` directory includes sample dataset files available for creating databases for learning YugabyteDB. The files that will be used in the steps below are `schema.sql`, `orders.sql`, `products.sql`,`reviews.sql` and `users.sql`.
-
-{{< /note >}}
+- [schema.sql](https://github.com/yugabyte/yugabyte-db/tree/master/sample/schema.sql) — Database schema, creates tables and other database objects
+- [orders.sql](https://github.com/yugabyte/yugabyte-db/tree/master/sample/orders.sql) — Orders table
+- [products.sql](https://github.com/yugabyte/yugabyte-db/tree/master/sample/products.sql) — Products table
+- [reviews.sql](https://github.com/yugabyte/yugabyte-db/tree/master/sample/reviews.sql) — Reviews table
+- [users.sql](https://github.com/yugabyte/yugabyte-db/tree/master/sample/users.sql) — Users table
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
@@ -115,27 +111,18 @@ The `share` directory includes sample dataset files available for creating datab
 
 4. Load the data into the tables by running the following four `\i` commands.
 
-    ```plpgsql
-    yb_demo=# \i share/products.sql
-    ```
-
-    ```plpgsql
-    yb_demo=# \i share/users.sql
-    ```
-
-    ```plpgsql
-    yb_demo=# \i share/orders.sql
-    ```
-
-    ```plpgsql
-    yb_demo=# \i share/reviews.sql
+    ```sql
+    \i share/products.sql;
+    \i share/users.sql;
+    \i share/orders.sql;
+    \i share/reviews.sql;
     ```
 
     You now have sample data and are ready to begin exploring YSQL in YugabyteDB.
 
-## 2. Simple queries
+## 2. Run a simple query
 
-Lets us look at the schema of the `products` table. You can do this as follows:
+To look at the schema of the `products` table, enter the following command:
 
 ```plpgsql
 yb_demo=# \d products
@@ -175,7 +162,7 @@ You should see an output which looks like the following:
 (1 row)
 ```
 
-Now let us run a query to select the `id`, `title`, `category` and `price` columns for the first five products.
+Next, run a query to select the `id`, `title`, `category` and `price` columns for the first five products.
 
 ```plpgsql
 yb_demo=# SELECT id, title, category, price, rating
@@ -183,7 +170,7 @@ yb_demo=# SELECT id, title, category, price, rating
           LIMIT 5;
 ```
 
-You should see an output like the following:
+You should see output like the following:
 
 ```output
  id  |           title            | category |      price       | rating 
@@ -196,7 +183,7 @@ You should see an output like the following:
 (5 rows)
 ```
 
-To view the next 3 products, you simply add an `OFFSET 5` clause to start from the fifth product.
+To view the next 3 products, add an `OFFSET 5` clause to start from the fifth product.
 
 ```plpgsql
 yb_demo=# SELECT id, title, category, price, rating
@@ -247,7 +234,7 @@ You should see something like the following:
 
 ## 4. Distributed transactions
 
-In order to track the quantities accurately, each product being ordered in some quantity by a user has to decrement the corresponding product inventory quantity. These operations should be performed inside a transaction.
+To track the quantities accurately, each product being ordered in some quantity by a user has to decrement the corresponding product inventory quantity. These operations should be performed inside a transaction.
 
 Imagine the user with id `1` wants to order for `10` units of the product with id `2`.
 
@@ -265,7 +252,7 @@ SELECT id, category, price, quantity FROM products WHERE id=2;
 (1 row)
 ```
 
-Now, to place the order, you can run the following transaction:
+To place the order, run the following transaction:
 
 ```plpgsql
 yb_demo=# BEGIN TRANSACTION;
@@ -291,7 +278,7 @@ UPDATE products SET quantity = quantity - 10 WHERE id = 2;
 COMMIT;
 ```
 
-We can verify that the order got inserted by running the following:
+To verify that the order got inserted, run the following:
 
 ```plpgsql
 yb_demo=# select * from orders where id = (select max(id) from orders);

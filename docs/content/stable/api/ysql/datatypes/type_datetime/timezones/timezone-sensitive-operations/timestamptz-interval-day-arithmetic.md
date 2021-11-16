@@ -1,7 +1,7 @@
 ---
 title: Sensitivity of timestamptz-interval arithmetic to current timezone [YSQL]
-headerTitle: The sensitivity of timestamptz-interval arithmetic to the current timezone
-linkTitle: pure 'day' interval arithmetic
+headerTitle: Sensitivity of timestamptz-interval arithmetic to the current timezone
+linkTitle: Pure 'day' interval arithmetic
 description: Explains the sensitivity of timestamptz-interval arithmetic to current timezone for pure days intervals. [YSQL]
 menu:
   stable:
@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The [moment-moment overloads of the "-" operator for _timestamptz_, _timestamp_, and _time_](../../../date-time-data-types-semantics/type-interval/interval-arithmetic/moment-moment-overloads-of-minus/) section recommends that you avoid arithmetic that uses _hybrid interval_ semantics—in other words that you perform _interval_ arithmetic using only values that have just one of the fields of the internal _[&#91;mm. dd, ss&#93;](../../../date-time-data-types-semantics/type-interval/interval-representation/)_ representation tuple non-zero. The section [Defining and using custom domain types to specialize the native interval functionality](../../../date-time-data-types-semantics/type-interval/custom-interval-domains/) explains a coding practice that supports this recommendation.
+The [moment-moment overloads of the "-" operator for _timestamptz_, _timestamp_, and _time_](../../../date-time-data-types-semantics/type-interval/interval-arithmetic/moment-moment-overloads-of-minus/) section recommends that you avoid arithmetic that uses _hybrid interval_ semantics—in other words that you perform _interval_ arithmetic using only values that have just one of the fields of the internal _[\[mm, dd, ss\]](../../../date-time-data-types-semantics/type-interval/interval-representation/)_ representation tuple non-zero. The section [Custom domain types for specializing the native _interval_ functionality](../../../date-time-data-types-semantics/type-interval/custom-interval-domains/) explains a coding practice that supports this recommendation.
 
 Following the recommendation, this demonstration uses only pure days _interval_ values and pure seconds _interval_ values.
 
@@ -92,6 +92,7 @@ This is the result:
 -----------------------+---------------------+------------------+---------------------+----------------
             1615694400 |          1616871600 |       1633168800 |          1633167000 |     1624478400
 ```
+
 These values are used, as manifest constants, in the test table function's source code. And the reports show that they were typed correctly.
 
 ## The demonstration
@@ -128,7 +129,7 @@ create type rt as (
   spring_fwd_amt int);
 ```
 
-<p id="interval-arithmetic-results">&nbsp;</p>
+<a name="interval-arithmetic-results"></a>
 
 Create and execute the test table function thus. You can easily confirm, with _ad hoc_ tests, that it is designed so that its behavior is independent of the session's _TimeZone_ setting. The design establishes the expected resulting _timestamptz_ values, after adding either _'24 hours'::interval_ or _'1 day'::interval_ to the "spring forward" moments, crossing the Daylight Savings Time transition.
 
@@ -327,4 +328,3 @@ The resulting _timestamptz_ values when a pure days _'1 day'::interval_ value is
 - If, in the reigning timezone, the addition does not cross a Daylight Savings Time transition, then the result is given simply by adding _24_ hours, just as it is when a pure seconds _interval_ value is used.
 - If, in the reigning timezone, the addition _does_ cross the "fall back" moment, then the result is given by adding _more than_ _24_ hours. The delta is equal to the size of the "fall back" amount.
 {{< /tip >}}
-

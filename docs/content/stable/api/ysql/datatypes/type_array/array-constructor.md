@@ -42,7 +42,7 @@ This is the result:
 --------------------------------------------
  {"(1,a)","(2,b)","(3,\"dog \\\\ house\")"}
 ```
-Whenever an array value is shown in `ysqlsh`, it is implicitly `::text` typecasted. And this `text` value can be used immediately, by enquoting it and typecasting it to the appropriate array data type, to recreate the starting value. The YSQL documentation refers to this form of the literal as its _canonical form_. It is characterized by its complete lack of whitespace except within `text` scalar values and within date-time scalar values. This term is defined formally in [Defining the canonical form of a literal](../literals/text-typecasting-and-literals/#defining-the-canonical-form-of-a-literal).
+Whenever an array value is shown in `ysqlsh`, it is implicitly `::text` typecast. This `text` value can be used immediately by enquoting it and typecasting it to the appropriate array data type to recreate the starting value. The YSQL documentation refers to this form of the literal as its _canonical form_. It is characterized by its complete lack of whitespace except within `text` scalar values and within date-time scalar values. This term is defined formally in [Defining the canonical form of a literal](../literals/text-typecasting-and-literals/#defining-the-canonical-form-of-a-literal).
 
 To learn why you see four consecutive backslashes, see [Statement of the rules](../literals/array-of-rows/#statement-of-the-rules).
 

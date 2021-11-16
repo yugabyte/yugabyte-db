@@ -1,7 +1,7 @@
 ---
 title: Defining and using custom interval domains [YSQL]
-headerTitle: Defining and using custom domain types to specialize the native interval functionality
-linkTitle: custom interval domains
+headerTitle: Custom domain types for specializing the native interval functionality
+linkTitle: Custom interval domains
 description: Explains how to define and use custom interval domain types to specialize the native interval functionality. [YSQL]
 menu:
   stable:
@@ -13,10 +13,10 @@ showAsideToc: true
 ---
 
 {{< tip title="Download the kit to create the custom interval domains." >}}
-The code that this page presents is included in a larger set of useful re-useable _date-time_ code. In particular, it also installs [User-defined _interval_ utility functions](../interval-utilities/). The custom interval domains code depends on some of these utilities. See [Download the _.zip_ file to create the reusable code that this overall major section describes](../../../intro/#download).
+The code that this page presents is included in a larger set of useful reusable _date-time_ code. In particular, it also installs [User-defined _interval_ utility functions](../interval-utilities/). The custom _interval_ domains code depends on some of these utilities. See [Download the _.zip_ file to create the reusable code that this overall major section describes](../../../download-date-time-utilities/).
 {{< /tip >}}
 
-Each of the sections [The moment-moment overloads of the "-" operator](../interval-arithmetic/moment-moment-overloads-of-minus/) and [The moment-_interval overloads_ of the "+" and "-" operators](../interval-arithmetic/moment-interval-overloads-of-plus-and-minus/) makes the point that hybrid _interval_ arithmetic is dangerous and recommends that you should ensure that you create and use only _"pure months"_,  _"pure seconds"_, or  _"pure days"_ _interval_ values. And they recommend the adoption of the approach that this section describes so that your good practice will be ensured by using it's APIs rather than the native _interval_ functionality.
+Each of the sections [The moment-moment overloads of the "-" operator](../interval-arithmetic/moment-moment-overloads-of-minus/) and [The moment-_interval overloads_ of the "+" and "-" operators](../interval-arithmetic/moment-interval-overloads-of-plus-and-minus/) makes the point that hybrid _interval_ arithmetic is dangerous and recommends that you should ensure that you create and use only _"pure months"_,  _"pure seconds"_, or _"pure days"_ _interval_ values. And they recommend the adoption of the approach that this section describes so that your good practice will be ensured by using its APIs rather than the native _interval_ functionality.
 
 The basic idea is to create a user-defined domain for each of the three kinds of _"pure"_ _interval_, defining each with a constraint function that reinforces the purity—and then to implement appropriate functionality for each domain kind.
 
@@ -38,15 +38,12 @@ create function interval_months_ok(i in interval)
 as $body$
 begin
   if i is null then
-    return false;
+    return true;
   else
     declare
-      mm_dd_ss constant interval_mm_dd_ss_t not null := interval_mm_dd_ss(i);
-      mm       constant int                 not null := mm_dd_ss.mm;
-      dd       constant int                 not null := mm_dd_ss.dd;
-      ss       constant numeric(1000, 6)    not null := mm_dd_ss.ss;
+      mm_dd_ss  constant interval_mm_dd_ss_t not null := interval_mm_dd_ss(i);
     begin
-      return dd = 0 and ss = 0;
+      return mm_dd_ss.dd = 0 and mm_dd_ss.ss = 0;
     end;
   end if;
 end;
@@ -69,15 +66,12 @@ create function interval_days_ok(i in interval)
 as $body$
 begin
   if i is null then
-    return false;
+    return true;
   else
     declare
       mm_dd_ss constant interval_mm_dd_ss_t not null := interval_mm_dd_ss(i);
-      mm       constant int                 not null := mm_dd_ss.mm;
-      dd       constant int                 not null := mm_dd_ss.dd;
-      ss       constant numeric(1000, 6)    not null := mm_dd_ss.ss;
     begin
-      return mm = 0 and ss = 0;
+      return mm_dd_ss.mm = 0 and mm_dd_ss.ss = 0;
     end;
   end if;
 end;
@@ -100,15 +94,12 @@ create function interval_seconds_ok(i in interval)
 as $body$
 begin
   if i is null then
-    return false;
+    return true;
   else
     declare
       mm_dd_ss constant interval_mm_dd_ss_t not null := interval_mm_dd_ss(i);
-      mm       constant int                 not null := mm_dd_ss.mm;
-      dd       constant int                 not null := mm_dd_ss.dd;
-      ss       constant numeric(1000, 6)    not null := mm_dd_ss.ss;
     begin
-      return mm = 0 and dd = 0;
+      return mm_dd_ss.mm = 0 and mm_dd_ss.dd = 0;
     end;
   end if;
 end;
@@ -122,41 +113,41 @@ create domain interval_seconds_t as interval check(interval_seconds_ok(value));
 The design of the code is the same for each of the three domains.
 
 {{< note title="Only 'timestamptz' overloads are presented here." >}}
-If you need to do interval arithmetic with values of the plain _timestamp_ data type, then you'll need to implement overloads for that data type that correspond directly to the overloads for the _timestamptz_ data type that are shown here. You can derive these more-or-less mechanically, with just a little thought.
+If you need to do _interval_ arithmetic with values of the plain _timestamp_ data type, then you'll need to implement overloads for that data type that correspond directly to the overloads for the _timestamptz_ data type that are shown here. You can derive these more-or-less mechanically, with just a little thought.
 
-If you need to do interval arithmetic with values of the _time_ data type, then you'll need only to implement overloads to provide functionality for the _interval_seconds_t_ domain because subtracting one _time_ value from another cannot produce a result as long as _one day_ and because it's meaningless to add _days_, _months_, or _years_ to a pure time of day.
+If you need to do _interval_ arithmetic with values of the _time_ data type, then you'll need only to implement overloads to provide functionality for the _interval_seconds_t_ domain because subtracting one _time_ value from another cannot produce a result as long as _one day_ and because it's meaningless to add _days_, _months_, or _years_ to a pure time of day.
 
 Both of these exercises are left to the reader.
 {{< /note >}}
 
-Each of the three domains, _interval_months_t_, _interval_days_t_, and _interval_seconds_t_, is provided with a matching set of four functions. The first checks that the value of the relevant field of the _[&#91;mm, dd, ss&#93;](../interval-representation/)_ tuple is within the meaningful range for that field. And the remaining three construct a value of the domain: _either_ using an explicit parameterization; _or_ by subtracting one _timestamptz_ value from another; _or_ by multiplying an existing domain value by a number.
+Each of the three domains, _interval_months_t_, _interval_days_t_, and _interval_seconds_t_, is provided with a matching set of four functions. The first checks that the value of the relevant field of the _[\[mm, dd, ss\]](../interval-representation/)_ tuple is within the meaningful range for that field. And the remaining three construct a value of the domain: _either_ using an explicit parameterization; _or_ by subtracting one _timestamptz_ value from another; _or_ by multiplying an existing domain value by a number.
 
 The _interval_months_t_ domain has these procedures and functions:
 
 - [procedure assert_interval_months_in_range (months in bigint)](#procedure-assert-interval-months-in-range-months-in-bigint)
 - [function interval_months (years in int default 0, months in int default 0) returns interval_months-t;](#function-interval-months-years-in-int-default-0-months-in-int-default-0-returns-interval-months-t)
 - [function interval_months (t_finish in timestamptz, t_start in timestamptz) returns interval_months_t;](#function-interval-months-t-finish-in-timestamptz-t-start-in-timestamptz-returns-interval-months-t)
-- [function interval_months (i in interval_months_t, f in numeric)](#function-interval-months-i-in-interval-months-t-f-in-numeric)
+- [function interval_months (i in interval_months_t, f in double precision)](#function-interval-months-i-in-interval-months-t-f-in-double-precision)
 
 The _interval_days_t_ domain has these procedures and functions:
 
 - [procedure assert_interval_days_in_range (days in bigint)](#procedure-assert-interval-days-in-range-days-in-bigint)
 - [function interval_days (days in int default 0) returns interval_days_t](#function-interval-days-days-in-int-default-0-returns-interval-days-t)
 - [function interval_days (t_finish in timestamptz, t_start in timestamptz) returns interval_days_t](#function-interval-days-t-finish-in-timestamptz-t-start-in-timestamptz-returns-interval-days-t)
-- [function interval_days (i in interval_days_t, f in numeric)](#function-interval-days-i-in-interval-days-t-f-in-numeric)
+- [function interval_days (i in interval_days_t, f in double precision)](#function-interval-days-i-in-interval-days-t-f-in-double-precision)
 
 The _interval_seconds_t_ domain has these procedures and functions:
 
 - [procedure assert_interval_seconds_in_range (secs in bigint)](#procedure-assert-interval-seconds-in-range-secs-in-bigint)
 - [function interval_seconds (hours in int default 0, mins in int default 0, secs in double precision default 0.0) returns interval_seconds_t](#function-interval-seconds-hours-in-int-default-0-mins-in-int-default-0-secs-in-double-precision-default-0-0-returns-interval-seconds-t)
 - [function interval_seconds (t_finish in timestamptz, t_start in timestamptz) returns interval_seconds_t](#function-interval-seconds-t-finish-in-timestamptz-t-start-in-timestamptz-returns-interval-seconds-t)
-- [function interval_seconds (i in interval_seconds_t, f in numeric)](#function-interval-seconds-i-in-interval-seconds-t-f-in-numeric)
+- [function interval_seconds (i in interval_seconds_t, f in double precision)](#function-interval-seconds-i-in-interval-seconds-t-f-in-double-precision)
 
 ### The "interval_months_t" domain's functionality
 
 ##### procedure assert_interval_months_in_range (months in bigint)
 
-Because the internal _interval_ representation records the _mm_ component of the _[&#91;mm, dd, ss&#93;](../interval-representation/)_ tuple using a four-byte integer, this allows a value that is hugely greater than the number of months between the earliest and the latest legal _timestamptz_ values. This procedure ensures sanity by constraining the _mm_ value to the biggest meaningful value (the number of months between the earliest and the latest legal _timestamptz_ values) and by implementing a helpful error behavior.
+Because the internal _interval_ representation records the _mm_ component of the _[\[mm, dd, ss\]](../interval-representation/)_ tuple using a four-byte integer, this allows a value that is hugely greater than the number of months between the earliest and the latest legal _timestamptz_ values. This procedure ensures sanity by constraining the _mm_ value to the biggest meaningful value (the number of months between the earliest and the latest legal _timestamptz_ values) and by implementing a helpful error behavior.
 
 ```plpgsql
 drop procedure if exists assert_interval_months_in_range(bigint);
@@ -209,9 +200,9 @@ $body$;
 
 ##### function interval_months (t_finish in timestamptz, t_start in timestamptz) returns interval_months_t
 
-This provides critically useful functionality that is simply missing in the native implementation. There is no way, by subtracting one _timestamptz_ value from another, to produce a _"pure months"_ _interval_ value (or even a hybrid _interval_ value whose internal _mm_ component is non-zero) unless you write your own implementation.
+This function provides critically useful functionality that is simply missing in the native implementation. There is no way, by subtracting one _timestamptz_ value from another, to produce a _"pure months"_ _interval_ value (or even a hybrid _interval_ value whose internal _mm_ component is non-zero) unless you write your own implementation.
 
-When a _months_ _interval_ is added to a starting moment, the finish moment always has the same day-number (in whatever is the finish month) as the start moment has. And it has the same time of day. But when one moment is subtracted from another, the day-number and the time of day of each moment are likely to differ.
+When a _months_ _interval_ is added to a starting moment, the finish moment always has the same day-number (in whatever is the finish month) as the start moment has. (If this is not possible, because the target day-number doesn't exist in the target month, then the target day-number is set to that month's biggest day-number.) And it has the same time of day. But when one moment is subtracted from another, the day-number and the time of day of each moment are likely to differ.
 
 This implies that the _interval_ result from subtracting one moment from another cannot necessarily produce the finish moment when added back to the start moment.
 
@@ -234,8 +225,8 @@ declare
       when finish_AD_BC = 'AD' then false
     end;
 
-  start_year    constant int not null := extract(year  from t_start);
-  start_month   constant int not null := extract(month from t_start);
+  start_year   constant int not null := extract(year  from t_start);
+  start_month  constant int not null := extract(month from t_start);
   start_AD_BC  constant text    not null := to_char(t_start, 'BC');
   start_is_BC  constant boolean not null :=
     case
@@ -265,7 +256,6 @@ $body$;
 Test it like this:
 
 ```plpgsql
-set timezone = 'UTC';
 select interval_months('2020-06-07 13:47:19 UTC'::timestamptz, '2013-10-23 17:42:09 UTC'::timestamptz);
 ```
 
@@ -275,9 +265,9 @@ This is the result:
  6 years 8 mons
 ```
 
-##### function interval_months (i in interval_months_t, f in numeric)
+##### function interval_months (i in interval_months_t, f in double precision)
 
-The logic of this function is trivial. But it's essential in order to maintain the status of the _interval_months_t_ value as _"pure months"_ under multiplication or division. See the section [Multiplying or dividing an interval value by a real or integral number](../interval-arithmetic/interval-number-multiplication/). If you multiply a native _interval_ value by a real number (or divide it), then it's more than likely that fractional months will spill down to days and beyond. Try this:
+The logic of this function is trivial. But it's essential in order to maintain the status of the _interval_months_t_ value as _"pure months"_ under multiplication or division. See the section [Multiplying or dividing an _interval_ value by a number](../interval-arithmetic/interval-number-multiplication/). If you multiply a native _interval_ value by a real number (or divide it), then it's more than likely that fractional months will spill down to days and beyond. Try this:
 
 ```plpgsq
 select make_interval(years=>3, months=>99)*0.5378;
@@ -288,6 +278,7 @@ This is the result:
 ```output
  6 years 18 days 02:09:36
 ```
+
 Try the native `*` operator on the corresponding _interval_months_t_ value instead:
 
 ```plpgsql
@@ -300,17 +291,17 @@ The attempt causes this error:
 23514: value for domain interval_months_t violates check constraint "interval_months_t_check"
 ```
 
-The function _interval&#95;months(interval&#95;months&#95;, numeric)_ fixes this. Create it thus:
+The function _interval\_months(interval\_months\_t, double precision)_ fixes this. Create it thus:
 
 ```plpgsql
-drop function if exists interval_months(interval_months_t, numeric) cascade;
+drop function if exists interval_months(interval_months_t, double precision) cascade;
 
-create function interval_months(i in interval_months_t, f in numeric)
+create function interval_months(i in interval_months_t, f in double precision)
   returns interval_months_t
   language plpgsql
 as $body$
 declare
-  mm      constant numeric           not null := (interval_mm_dd_ss(i)).mm;
+  mm      constant double precision  not null := (interval_mm_dd_ss(i)).mm;
   mm_x_f  constant int               not null := round(mm*f);
   i_x_f   constant interval_months_t not null := interval_months(months=>mm_x_f);
 begin
@@ -333,7 +324,7 @@ This is the result:
 
 Compare this with the result (above) that the native `*` operator produces with a native _interval_ value:
 
-```
+```output
 6 years 18 days 02:09:36
 ```
 
@@ -343,7 +334,7 @@ The "impure" part, _18 days 02:09:36_, is more than half way through the month, 
 
 ##### procedure assert_interval_days_in_range (days in bigint)
 
-Because the [internal _interval_ representation](../interval-representation/) records the _dd_ component of the _[&#91;mm, dd, ss&#93;](../interval-representation/)_ tuple using a four-byte integer, this allows a value that is hugely greater than the number of days between the earliest and the latest legal _timestamptz_ values. This procedure ensures sanity by constraining the _dd_ value to the biggest meaningful value and by implementing a helpful error behavior.
+Because the [internal _interval_ representation](../interval-representation/) records the _dd_ component of the _\[mm, dd, ss\]_ tuple using a four-byte integer, this allows a value that is hugely greater than the number of days between the earliest and the latest legal _timestamptz_ values. This procedure ensures sanity by constraining the _dd_ value to the biggest meaningful value and by implementing a helpful error behavior.
 
 ```plpgsql
 drop procedure if exists assert_interval_days_in_range(bigint);
@@ -396,7 +387,7 @@ $body$;
 
 ##### function interval_days (t_finish in timestamptz, t_start in timestamptz) returns interval_days_t
 
-This provides critically useful functionality that is simply missing in the native implementation. There is no way, by subtracting one _timestamptz_ value from another, to produce a _"pure days"_ _interval_ value unless you write your own implementation.
+This function provides critically useful functionality that is simply missing in the native implementation. There is no way, by subtracting one _timestamptz_ value from another, to guarantee that you produce a _"pure days"_ _interval_ value unless you write your own implementation.
 
 When a _days_ _interval_ is added to a starting moment, the finish moment always has the same time of day. But when one moment is subtracted from another, the time of day of each moment are likely to differ.
 
@@ -412,8 +403,8 @@ create function interval_days(t_finish in timestamptz, t_start in timestamptz)
   language plpgsql
 as $body$
 declare
-  d_finish constant date not null := t_finish;
-  d_start  constant date not null := t_start;
+  d_finish constant date not null := t_finish::date;
+  d_start  constant date not null := t_start::date;
   delta    constant int  not null := d_finish - d_start;
 begin
   call assert_interval_days_in_range(delta);
@@ -425,7 +416,6 @@ $body$;
 Test it like this:
 
 ```plpgsql
-set timezone = 'UTC';
 select interval_days('2020-06-07 13:47:19 UTC'::timestamptz, '2013-10-23 17:42:09 UTC'::timestamptz);
 ```
 
@@ -435,11 +425,11 @@ This is the result:
  2419 days
 ```
 
-Notice that the two _timestamptz_ actual arguments for this test are the same as those that were used for the _interval_months(timestamptz, timestamptz)_ test. That produced the result _6 years 8 mons_. But _(6*12 + 8)&#42;30_ is _2400_. The disagreement between _2419 days_ for the _interval_days()_ test and the effective _2400_ for the _interval_months()_ test reflects the critical difference between _"days interval"_ arithmetic semantics and _"months interval"_ arithmetic semantics.
+Notice that the two _timestamptz_ actual arguments for this test are the same as those that were used for the _interval_months(timestamptz, timestamptz)_ test. That produced the result _6 years 8 mons_. But _(6\*12 + 8)\*30_ is _2400_. The disagreement between _2419 days_ for the _interval_days()_ test and the effective _2400_ for the _interval_months()_ test reflects the critical difference between _"days interval"_ arithmetic semantics and _"months interval"_ arithmetic semantics.
 
-##### function interval_days (i in interval_days_t, f in numeric)
+##### function interval_days (i in interval_days_t, f in double precision)
 
-The logic of this function is trivial. But it's essential in order to maintain the status of the _interval_days_t value as _"pure days"_ under multiplication or division. See the section [Multiplying or dividing an interval value by a real or integral number](../interval-arithmetic/interval-number-multiplication/). If you multiply a native _interval_ value by a real number (or divide it), then it's more than likely that fractional days will spill down to hours and beyond. Try this:
+The logic of this function is trivial. But it's essential in order to maintain the status of the _interval_days_t value_ as _"pure days"_ under multiplication or division. See the section [Multiplying or dividing an _interval_ value by a number](../interval-arithmetic/interval-number-multiplication/). If you multiply a native _interval_ value by a real number (or divide it), then it's more than likely that fractional days will spill down to hours and beyond. Try this:
 
 ```plpgsq
 select make_interval(days=>99)*7.5378;
@@ -463,19 +453,19 @@ The attempt causes this error:
 23514: value for domain interval_days_t violates check constraint "interval_days_t_check"
 ```
 
-The function _interval&#95;days(interval&#95;days&#95;, numeric)_ fixes this. Create it thus:
+The function _interval\_days(interval\_days\_t, double precision)_ fixes this. Create it thus:
 
 ```plpgsql
-drop function if exists interval_days(interval_days_t, numeric) cascade;
+drop function if exists interval_days(interval_days_t, double precision) cascade;
 
-create function interval_days(i in interval_days_t, f in numeric)
+create function interval_days(i in interval_days_t, f in double precision)
   returns interval_days_t
   language plpgsql
 as $body$
 declare
-  dd      constant numeric         not null := (interval_mm_dd_ss(i)).dd;
-  dd_x_f  constant int             not null := round(dd*f);
-  i_x_f   constant interval_days_t not null := interval_days(days=>dd_x_f);
+  dd      constant double precision not null := (interval_mm_dd_ss(i)).dd;
+  dd_x_f  constant int              not null := round(dd*f);
+  i_x_f   constant interval_days_t  not null := interval_days(days=>dd_x_f);
 begin
   return i_x_f;
 end;
@@ -506,7 +496,7 @@ The "impure" part, _05:48:46.08_, isn't half way through the day, so the approxi
 
 ##### procedure assert_interval_seconds_in_range (secs in bigint)
 
-Because the [internal _interval_ representation](../interval-representation/) records the _ss_ component of the _[&#91;mm, dd, ss&#93;](../interval-representation/)_ tuple using an eight-byte integer for microseconds, this allows only a value that is somewhat smaller than the number of seconds between the earliest and the latest legal _timestamptz_ values. This procedure ensures sanity by constraining the _ss_ value to the biggest legal value and by implementing a helpful error behavior.
+Because the [internal _interval_ representation](../interval-representation/) records the _ss_ component of the _\[mm, dd, ss\]_ tuple using an eight-byte integer for microseconds, this allows only a value that is somewhat smaller than the number of seconds between the earliest and the latest legal _timestamptz_ values. This procedure ensures sanity by constraining the _ss_ value to the biggest legal value and by implementing a helpful error behavior.
 
 ```plpgsql
 drop procedure if exists assert_interval_seconds_in_range(bigint);
@@ -569,7 +559,7 @@ $body$;
 
 ##### function interval_seconds (t_finish in timestamptz, t_start in timestamptz) returns interval_seconds_t
 
-This provides critically useful functionality that is simply missing in the native implementation. There is no way to guarantee that you produce a _"pure seconds"_ _interval_ value unless you write your own implementation. (For anything bigger than _24 hours_, using the native functionality, you get a hybrid _"days-seconds"_ _interval_ value.)
+This function provides critically useful functionality that is simply missing in the native implementation. There is no way to guarantee that you produce a _"pure seconds"_ _interval_ value unless you write your own implementation. (For anything bigger than _24 hours_, using the native functionality, you get a hybrid _"days-seconds"_ _interval_ value.)
 
 ```plpgsql
 drop function if exists interval_seconds(timestamptz, timestamptz) cascade;
@@ -579,9 +569,9 @@ create function interval_seconds(t_finish in timestamptz, t_start in timestamptz
   language plpgsql
 as $body$
 declare
-  s_finish constant numeric(1000, 6) not null := extract(epoch from t_finish);
-  s_start  constant numeric(1000, 6) not null := extract(epoch from t_start);
-  delta    constant numeric(1000, 6) not null := s_finish - s_start;
+  s_finish constant double precision not null := extract(epoch from t_finish);
+  s_start  constant double precision not null := extract(epoch from t_start);
+  delta    constant double precision not null := s_finish - s_start;
 begin
   call assert_interval_seconds_in_range(trunc(delta)::bigint);
   return make_interval(secs => delta);
@@ -589,7 +579,7 @@ end;
 $body$;
 ```
 
-So how big is the _max_secs_ constant, _(2^31 - 1)&#42;60*60 + 59&#42;60 + 59_? Try this:
+So how big is the _max_secs_ constant, _(2^31 - 1)\*60*60 + 59\*60 + 59_? Try this:
 
 ```plpgsql
 select (2^31 - 1)*60*60 + 59*60 + 59;
@@ -634,9 +624,9 @@ This is the result:
 240271
 ```
 
-##### function interval_seconds (i in interval_seconds_t, f in numeric)
+##### function interval_seconds (i in interval_seconds_t, f in double precision)
 
-The logic of this function is trivial. Moreover, it isn't essential because the _ss_ field of the internal _[&#91;mm, dd, ss&#93;](../interval-representation/)_ tuple is a real number with microseconds precision and there is no "spill up" possibility from the _ss_ field to the _dd_, or _mm_, fields. Try this:
+The logic of this function is trivial. Moreover, it isn't essential because the _ss_ field of the internal _[\[mm, dd, ss\]](../interval-representation/)_ tuple is a real number with microseconds precision and there is no "spill up" possibility from the _ss_ field to the _dd_, or _mm_, fields. Try this:
 
 ```plpgsq
 select make_interval(hours=>99)*3.6297;
@@ -656,10 +646,10 @@ select (interval_seconds(hours=>99)*3.6297)::interval_seconds_t;
 
 It brings the same result as when you use the native _interval_.
 
-The function _interval&#95;seconds(interval&#95;seconds&#95;, numeric)_ is provided in the interests of symmetry and possible future extensibility. For example, you might, later, decide to implement a specific error message for the case that you try to multiply an _interval&#95;seconds&#95;_ value by a factor that would take the _ss_ value outside of  its limits. Create it thus:
+The function _interval\_seconds(interval\_seconds\_t, double precision)_ is provided in the interests of symmetry and possible future extensibility. For example, you might, later, decide to implement a specific error message for the case that you try to multiply an _interval\_seconds\__ value by a factor that would take the _ss_ value outside of  its limits. Create it thus:
 
 ```plpgsql
-drop function if exists interval_seconds(interval_seconds_t, numeric) cascade;
+drop function if exists interval_seconds(interval_seconds_t, double precision) cascade;
 
 create function interval_seconds(i in interval_seconds_t, f in double precision)
   returns interval_seconds_t
@@ -802,16 +792,15 @@ begin
   -- Months to days ratio.
   declare
     m      constant interval_months_t not null := interval_months(ts_max, ts_min);
-    mm     constant numeric           not null := (interval_mm_dd_ss(m)).mm;
-    ym     constant numeric           not null := mm/12.0;
+    mm     constant double precision  not null := (interval_mm_dd_ss(m)).mm;
+    ym     constant double precision  not null := mm/12.0;
 
     d      constant interval_days_t   not null := interval_days  (ts_max, ts_min);
-    dd     constant numeric           not null := (interval_mm_dd_ss(d)).dd;
+    dd     constant double precision  not null := (interval_mm_dd_ss(d)).dd;
 
-    --     https://www.rapidtables.com/calc/time/seconds-in-year.html
-    yd     constant numeric          not null := dd/365.2425;
+    yd     constant double precision  not null := dd/365.2425;
 
-    ratio  constant numeric          not null := abs(ym -yd)/greatest(ym, yd);
+    ratio  constant double precision  not null := abs(ym -yd)/greatest(ym, yd);
   begin
     assert ratio < 0.000001, 'Test #8 failure';
   end "Test #8";
@@ -834,11 +823,15 @@ The table function _seconds_days_months_comparison()_ creates a report thus:
 - It initializes _i_days_ using _interval_days(t1, t0)_.
 - It initializes _i_months_ using _interval_months(t1, t0)_.
 - It evaluates _interval_mm_dd_ss()_ for each of these _interval_ domain values and records the _ss_ value that _i_secs_ represents, the _dd_ value that _i_days_ represents, and the _mm_ value that _i_months_ represents.
-- It converts each of the values _ss_, _dd_, and _mm_ to a real number of _years_ using these facts: the _fixed_ number of seconds per day is _24&#42;60&#42;60_ and the _fixed_ number of months per year is _12_; and the _average_ number of days per year is _365.2425_ (see the Wikipedia article [Year](https://en.wikipedia.org/wiki/Year)).
+- It converts each of the values _ss_, _dd_, and _mm_ to a real number of _years_ using these facts: the _fixed_ number of seconds per day is _24\*60\*60_ and the _fixed_ number of months per year is _12_; and the _average_ number of days per year is _365.2425_ (see the Wikipedia article [Year](https://en.wikipedia.org/wiki/Year)).
 
 - It outputs the values that it has calculated.
 
-Create the table function this:
+{{< note title="365.2425 or 365.25 for the average number of days per year?" >}}
+The Wikipedia article <a href="https://en.wikipedia.org/wiki/Year" target="_blank">Year <i class="fas fa-external-link-alt"></i></a> gives both _365.2425_ days and _365.25_ days as the average number of days per year. The first figure (used in the code below) is the average according to the Gregorian scheme. And the second figure is the average according to the Julian scheme. The [_extract(epoch from interval_value)_ built-in function](../justfy-and-extract-epoch/#the-extract-epoch-from-interval-value-built-in-function) section presents a PL/pgSQL model for this function. This uses _365.25_ days as the average number of days per year in order to produce the same result as does the native implementation that it models. (The designers of PostgreSQL might well have chosen to use _365.2425_ days—but they happened not to. The choice is arbitrary.) However, the nominal durations of the three kinds of _interval_ in the test below are closer to each other when _365.2425_ days is used. 
+{{< /note >}}
+
+Create the table function thus:
 
 ```plpgsql
 drop function if exists seconds_days_months_comparison(double precision) cascade;
@@ -848,12 +841,12 @@ create function seconds_days_months_comparison(secs in double precision)
   language plpgsql
 as $body$
 declare
-  msg                         text    not null := '';
-  hint                        text    not null := '';
-  seconds_per_day       constant numeric not null := 24*60*60;
-  avg_days_per_year     constant numeric not null := 365.2425;
-  avg_seconds_per_year  constant numeric not null := seconds_per_day*avg_days_per_year;
-  months_per_year       constant numeric not null := 12;
+  msg                            text             not null := '';
+  hint                           text             not null := '';
+  seconds_per_day       constant double precision not null := 24*60*60;
+  avg_days_per_year     constant double precision not null := 365.2425;
+  avg_seconds_per_year  constant double precision not null := seconds_per_day*avg_days_per_year;
+  months_per_year       constant double precision not null := 12;
 begin
   set timezone = 'UTC';
   declare
@@ -865,13 +858,13 @@ begin
       i_days       constant interval_days_t   not null := interval_days  (t1, t0);
       i_months     constant interval_months_t not null := interval_months(t1, t0);
 
-      ss           constant numeric not null := (interval_mm_dd_ss(i_secs  )).ss;
-      dd           constant int     not null := (interval_mm_dd_ss(i_days  )).dd;
-      mm           constant int     not null := (interval_mm_dd_ss(i_months)).mm;
+      ss           constant double precision  not null := (interval_mm_dd_ss(i_secs  )).ss;
+      dd           constant int               not null := (interval_mm_dd_ss(i_days  )).dd;
+      mm           constant int               not null := (interval_mm_dd_ss(i_months)).mm;
 
-      yrs_from_ss  constant numeric not null := round(ss/avg_seconds_per_year, 3);
-      yrs_from_dd  constant numeric not null := round(dd/avg_days_per_year,    3);
-      yrs_from_mm  constant numeric not null := round(mm/months_per_year,      3);
+      yrs_from_ss  constant numeric           not null := round((ss/avg_seconds_per_year)::numeric, 3);
+      yrs_from_dd  constant numeric           not null := round((dd/avg_days_per_year   )::numeric, 3);
+      yrs_from_mm  constant numeric           not null := round((mm/months_per_year     )::numeric, 3);
     begin
       x := 't0:          '||lpad(to_char(t0, 'yyyy-mm-dd hh24:mi:ss BC'), 25);  return next;
       x := 't1:          '||lpad(to_char(t1, 'yyyy-mm-dd hh24:mi:ss BC'), 25);  return next;
@@ -972,6 +965,7 @@ Finally, test the error behavior with an input number of seconds that exceeds th
 ```plpgsql
 select x from seconds_days_months_comparison(7730941132800);
 ```
+
 It causes this error. (The leading _INFO_ text from _raise info_ has been manually removed.)
 
 ```output

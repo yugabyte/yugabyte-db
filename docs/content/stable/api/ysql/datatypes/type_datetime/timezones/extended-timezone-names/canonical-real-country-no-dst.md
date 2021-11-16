@@ -1,7 +1,7 @@
 ---
 title: Real timezones that do not observe DST [YSQL]
-headerTitle: Real timezones that do not observe Daylight Savings Time
-linkTitle: real timezones no DST
+headerTitle: Real timezones that don't observe Daylight Savings Time
+linkTitle: Real timezones no DST
 description: Table. [YSQL]
 menu:
   stable:
@@ -51,7 +51,7 @@ where
   lower(name) not in (select lower(abbrev) from pg_timezone_abbrevs);
 ```
 
-Here is the result.
+Here is the result:
 
 | Name                             | Abbrev     | UTC offset | Country code | Region coverage                                                           |
 | ----                             | -----------| ---------- | ------------ | ---------------                                                           |

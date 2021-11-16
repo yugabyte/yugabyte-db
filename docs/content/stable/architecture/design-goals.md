@@ -18,9 +18,11 @@ This page outlines the design goals with which YugabyteDB has been built.
 
 YugabyteDB offers strong consistency guarantees in the face of a variety of failures. It supports distributed transactions.
 
-### CAP theorem
+### CAP theorem and split-brain
 
 In terms of the [CAP theorem](https://en.wikipedia.org/wiki/CAP_theorem), YugabyteDB is a CP database (consistent and partition tolerant), but achieves very high availability. The architectural design of YugabyteDB is similar to Google Cloud Spanner, which is also a CP system. The description about [Spanner](https://cloudplatform.googleblog.com/2017/02/inside-Cloud-Spanner-and-the-CAP-Theorem.html) is just as valid for YugabyteDB. The key takeaway is that no system provides 100% availability, so the pragmatic question is whether or not the system delivers availability that is so high that most users no longer have to be concerned about outages. For example, given there are many sources of outages for an application, if YugabyteDB is an insignificant contributor to its downtime, then users are correct to not worry about it.
+
+Split-brain is a computing scenario in which data and availability inconsistencies arise when a distributed system incurs a network partition. For YugabyteDB, when a network partition occurs, the remaining (majority for write acknowledgement purposes) RAFT group peers elect a new tablet leader. YugabyteDB implements _leader leases_, which ensures that a single tablet leader exists throughout the entire distributed system including when network partitions occur. Leader leases have a default value of two seconds, and can be configured to use a different value. This architecture ensures that YugabyteDB's distributed database is not susceptible to the split-brain condition.
 
 ### Single-row linearizability
 
@@ -47,7 +49,7 @@ Refer to the [table of isolation levels](/latest/explore/transactions/isolation-
 - Achieving [consistency with Raft consensus](../docdb-replication/replication/).
 - How [fault tolerance and high availability](../core-functions/high-availability/) are achieved.
 - [Single-row linearizable transactions](../transactions/single-row-transactions/) in YugabyteDB.
-- The architecture of [distributed transactions](../transactions/single-row-transactions/).
+- The architecture of [distributed transactions](../transactions/distributed-txns/).
 
 {{< /tip >}}
 

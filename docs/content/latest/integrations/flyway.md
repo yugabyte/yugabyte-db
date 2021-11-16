@@ -22,7 +22,7 @@ Before you can start using Flyway, ensure that you have the following installed 
 
 - YugabyteDB version 2.4 or later (see [YugabyteDB Quick Start Guide](/latest/quick-start/)).
 
-- Yugabyte cluster (see [Create a local cluster](https://docs.yugabyte.com/latest/quick-start/create-local-cluster/macos/)). 
+- Yugabyte cluster (see [Create a local cluster](/latest/quick-start/create-local-cluster/macos/)). 
 
 - Flyway community edition version 7.11.2 or later (see [Download Flyway](https://flywaydb.org/download)).
 

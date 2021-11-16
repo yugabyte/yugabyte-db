@@ -3,7 +3,7 @@ title: Enable Authentication
 headerTitle: Enable Authentication
 linkTitle: Enable Authentication
 description: Enable Authentication.
-headcontent: Enable Authentication.
+headcontent: Enable authentication to have clients provide valid credentials before they can connect to a YugabyteDB cluster.
 image: /images/section_icons/secure/authentication.png
 menu:
   stable:
@@ -25,7 +25,7 @@ showAsideToc: true
         <div class="title">Enable User Authentication</div>
       </div>
       <div class="body">
-          Enable user authentication in YugabyteDB.
+          Enable authentication and configure user authorization in YugabyteDB.
       </div>
     </a>
   </div>
@@ -34,10 +34,10 @@ showAsideToc: true
     <a class="section-link icon-offset" href="ysql_hba_conf-configuration/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/authentication.png" aria-hidden="true" />
-        <div class="title">Configure ysql_hba_conf</div>
+        <div class="title">Configure ysql_hba_conf_csv</div>
       </div>
       <div class="body">
-          Use ysql_hba_conf configuration to setup client authentication.
+          Use the ysql_hba_conf_csv flag to configure client authentication in YSQL.
       </div>
     </a>
   </div>

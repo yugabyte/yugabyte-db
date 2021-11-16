@@ -1,7 +1,7 @@
 ---
 title: Ad hoc examples of defining interval values [YSQL]
 headerTitle: Ad hoc examples of defining interval values
-linkTitle: ad hoc examples
+linkTitle: Ad hoc examples
 description: Provides six ad-hoc-examples of defining interval values. [YSQL]
 menu:
   stable:
@@ -208,9 +208,9 @@ This is the result:
  true
 ```
 
-You might think that, because the two interval values test as equal, the very strange asymmetry that this fifth example shows has no ultimate consequence. However, the section [Interval arithmetic](../../interval-arithmetic/) shows you that the two differently-spelled _interval_ values that test as equal actually have different semantics—so arguably the outcome of the equality test shows a bug in the PostgreSQL code that YSQL inherits.
+You might think that, because the two _interval_ values test as equal, the very strange asymmetry that this fifth example shows has no ultimate consequence. However, the section [Interval arithmetic](../../interval-arithmetic/) shows you that the two differently-spelled _interval_ values that test as equal actually have different semantics—so arguably the outcome of the equality test shows a bug in the PostgreSQL code that YSQL inherits.
 
-The section [Defining and using custom domain types to specialize the native interval functionality](../../custom-interval-domains/) shows you that, by following that approach that it describes, you will side-step the quirks that these _ad hoc_ examples have revealed without, in fact, sacrificing any useful functionality.
+The section [Custom domain types for specializing the native _interval_ functionality](../../custom-interval-domains/) shows you that, by following the approach that it describes, you will side-step the quirks that these _ad hoc_ examples have revealed without, in fact, sacrificing any useful functionality.
 
 ## Sixth example
 

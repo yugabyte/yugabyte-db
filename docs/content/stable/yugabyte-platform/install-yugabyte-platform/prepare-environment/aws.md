@@ -127,7 +127,10 @@ In order for Yugabyte Platform to manage YugabyteDB nodes, limited access to you
                 "ec2:DescribeVpcs",
                 "ec2:DeleteSecurityGroup",
                 "ec2:DescribeSubnets",
-                "ec2:DeleteKeyPair"
+                "ec2:DeleteKeyPair",
+                "ec2:DescribeVpcPeeringConnections",
+                "ec2:DescribeRouteTables",
+                "ec2:DescribeInternetGateways"
             ],
             "Resource": "*"
         }

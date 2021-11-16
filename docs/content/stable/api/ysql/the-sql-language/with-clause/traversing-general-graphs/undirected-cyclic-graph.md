@@ -230,7 +230,7 @@ The remedy is obvious: at each repeat of the _recursive term_, compare the new a
 
 ### Produce the sets of shortest paths starting from every node
 
-Do this to produce, in turn, all of the paths starting from each remaining node (i.e. apart from _"n1"_) and then to accumulate the output of _"restrict_to_shortest_paths"_ into the _"shortest_paths"_ table:
+Do this to produce, in turn, all of the paths starting from each remaining node (i.e. apart from _"n1"_) and then to accumulate the output of _"restrict_to_shortest_paths()"_ into the _"shortest_paths"_ table:
 
 ```plpgsql
 do $body$
@@ -374,7 +374,7 @@ end;
 $body$;
 ```
 
-And now recreate the _"find_paths"_ procedure:
+And now recreate the _"find_paths()"_ procedure:
 
 ##### `cr-find-paths-with-nocycle-check-alt.sql`
 
@@ -471,15 +471,15 @@ begin
 
   -- Emulate the non-recursive term.
   delete from raw_paths;
-  delete from working_paths;
+  delete from previous_paths;
 
-  insert into working_paths(path)
+  insert into previous_paths(path)
   select array[start_node, e.node_2]
   from edges e
   where e.node_1 = start_node;
 
   insert into raw_paths(path)
-  select r.path from working_paths r;
+  select r.path from previous_paths r;
 
   -- Emulate the recursive term.
   loop
@@ -487,7 +487,7 @@ begin
     insert into temp_paths(path)
     select w.path||e.node_2
     from edges e
-    inner join working_paths w on e.node_1 = terminal(w.path)
+    inner join previous_paths w on e.node_1 = terminal(w.path)
     where not e.node_2 = any(w.path); -- <<<<< Prevent cycles.
 
     get diagnostics n = row_count;
@@ -498,8 +498,7 @@ begin
       where
       (
         -- Prune all but one path to each distinct new terminal.
-        path not in (select min(path) from temp_paths group by terminal(path)) and
-        terminal(path) in (select terminal(path) from temp_paths)
+        path not in (select min(path) from temp_paths group by terminal(path))
       )
       or
       (
@@ -513,8 +512,8 @@ begin
       );
     end if;
 
-    delete from working_paths;
-    insert into working_paths(path) select t.path from temp_paths t;
+    delete from previous_paths;
+    insert into previous_paths(path) select t.path from temp_paths t;
     insert into raw_paths (path) select t.path from temp_paths t;
   end loop;
   commit;
@@ -529,8 +528,8 @@ $body$;
 
 Notice how the tables are used:
 
-- The _"raw_paths_ table is used in place of the in-memory representation of the in-progress eventual final result set that the implementation of the recursive CTE uses.
-- The _"temp_paths"_ and _"working_paths"_ tables implement the transient in-memory representations that are shown in the pseudocode that specifies how the recursive CTE works. (See the section [Semantics](../../recursive-cte/#semantics)) subsection of the main account of the [recursive CTE](../../recursive-cte/) ).
+- The _"raw_paths"_ table is used in place of the in-memory representation of the in-progress eventual final result set that the implementation of the recursive CTE uses.
+- The _"temp_paths"_ and _"previous_paths"_ tables implement the transient in-memory representations that are shown in the pseudocode that specifies how the recursive CTE works. (See the section [Semantics](../../recursive-cte/#semantics)) subsection of the main account of the [recursive CTE](../../recursive-cte/) ).
 - The _"raw_paths_trg"_ trigger is not needed to support the implementation. Rather, its purpose is only pedagogic.
 
 Notice that the early pruning logic is guarded by an `IF` test that does, or omits, the pruning according to the value supplied for a boolean input formal parameter.
@@ -611,7 +610,8 @@ Now reinstate the version that implements early pruning by executing the code sh
 ```plpgsql
 call find_paths(start_node => 'n1', prune => true);
 ```
-At this stage, the _"shortest_paths"_ table contains the set of shortest paths from node _"n1"_ produced by _post factum_ filtering of the set of all paths from _"n1"_. And the _"raw_paths"_ table contains the set of shortest paths from node _"n1"_ produced by early pruning. These two sets ought to be identical. Test this assertion with the procedure "[_assert_shortest_paths_same_as_raw_paths()_](../common-code/#cr-assert-shortest-paths-same-as-raw-paths-sql)":
+
+At this stage, the _"shortest_paths"_ table contains the set of shortest paths from node _"n1"_ produced by post factum filtering of the set of all paths from _"n1"_. And the _"raw_paths"_ table contains the set of shortest paths from node _"n1"_ produced by early pruning. These two sets ought to be identical. Test this assertion with the procedure _["assert_shortest_paths_same_as_raw_paths()"](../common-code/#cr-assert-shortest-paths-same-as-raw-paths-sql)_:
 
 ```plpgsql
 call assert_shortest_paths_same_as_raw_paths();

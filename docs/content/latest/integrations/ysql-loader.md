@@ -22,7 +22,7 @@ Before starting the migration, ensure that you have the following:
 
 - Access to the MySQL database that is a subject of migration. 
 
-- [ysqlsh](https://docs.yugabyte.com/latest/admin/ysqlsh/) command-line connectivity to a running YugabyteDB cluster that is a target of migration.
+- [ysqlsh](/latest/admin/ysqlsh/) command-line connectivity to a running YugabyteDB cluster that is a target of migration.
 
 - A target database on the YugabyteDB cluster, with the database name matching the name of the MySQL database. You can create the YugabyteDB database as follows:
 
@@ -197,7 +197,7 @@ You can modify the DDL by performing the following steps:
      max parallel create index=1, dumpddl only;
    ```
    
-1. Modify the the `ddl.sql` DDL file and run it using the [ysqlsh](https://docs.yugabyte.com/latest/admin/ysqlsh/) command-line tool.
+1. Modify the the `ddl.sql` DDL file and run it using the [ysqlsh](/latest/admin/ysqlsh/) command-line tool.
 
 1. Provide the DDL file using a command file similar to the following:
 

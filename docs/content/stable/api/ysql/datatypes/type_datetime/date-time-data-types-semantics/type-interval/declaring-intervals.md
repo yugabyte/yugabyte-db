@@ -1,7 +1,7 @@
 ---
 title: Declaring intervals [YSQL]
 headerTitle: Declaring intervals
-linkTitle: declaring intervals
+linkTitle: Declaring intervals
 description: Explains that the nominally fourteen distinct interval declaration syntaxes have just six distinct semantics. [YSQL]
 menu:
   stable:
@@ -12,13 +12,19 @@ isTocNested: true
 showAsideToc: true
 ---
 
-There are over one hundred different spellings of the declaration of an _interval_. This might seem daunting. However, when you understand the degrees of freedom that the variations exploit, the mental model will seem straightforward. By analogy, when you consider the optional annotations of a bare _numeric_ declaration to specify the _scale_ and _precision_, you realize that multiplying the numbers of possible spellings for these two annotations gives a vast number of distinct possible spellings. But you need only to understand the _concepts_ of _scale_ and _precision_. The syntax variants for _interval_ declarations express analogous concepts. This section explains it all. And it also points out that the variations in the syntax spellings can be grouped to reflect the fact that, within each group, the variants all express the same semantics.
+{{< tip title="Download and [re]install the date-time utilities code." >}}
+The code on this page depends on the code presented in the section [User-defined _interval_ utility functions](../interval-utilities/) and on the [function interval_mm_dd_ss (interval_parameterization_t)](../interval-representation/internal-representation-model/#function-interval-mm-dd-ss-interval-parameterization-t-returns-interval-mm-dd-ss-t), explained in the section [Modeling the internal representation and comparing the model with the actual implementation](../interval-representation/internal-representation-model/). This is all included in the larger [code kit](../../../download-date-time-utilities/) that includes all of the reusable code that the overall _[date-time](../../../../type_datetime)_ section describes and uses.
 
-However, if you follow the approach described in the section [Defining and using custom domain types to specialize the native _interval_ functionality](../custom-interval-domains/), then you will not need to understand what this page explains.
+Even if you have already installed the code kit, install it again now. Do this because a code example in the section [How does YSQL represent an _interval_ value?](../interval-representation/) redefines one of the _interval_ utility functions.
+{{< /tip >}}
+
+There are over one hundred different spellings of the declaration of an _interval_. This might seem daunting. However, when you understand the degrees of freedom that the variations exploit, the mental model will seem straightforward. By analogy, when you consider the optional annotations of a bare _numeric_ declaration to specify the _scale_ and _precision_, you realize that multiplying the numbers of possible spellings for these two annotations gives a vast number of distinct possible spellings. But you need only to understand the _concepts_ of _scale_ and _precision_. The syntax variants for _interval_ declarations express analogous concepts. This page explains it all. And it also points out that the variations in the syntax spellings can be grouped to reflect the fact that, within each group, the variants all express the same semantics.
+
+However, if you follow the approach described in the section [Custom domain types for specializing the native _interval_ functionality](../custom-interval-domains/), then you will not need to understand what this page explains.
 
 ## Summary
 
-The explanations and the supporting code below explain the semantics of the different spellings of _interval_ declarations—in other words, how these different spellings differently constrain the _interval_ values that can be represented. The code and the explanations presented below show that though there are several syntax spellings for each, there are in fact just six kinds of _interval_ declaration. It's convenient to call these kinds _year_, _month_, _day_, _hour_, _minute_, and _second_. The constraints are applied whenever a new _interval_ value is created, just before recording it in the [internal [mm, dd, ss] tuple format](../interval-representation/). The effects of each of the six constraints are conveniently described by this PL/pgSQL code:
+The explanations and the supporting code below address the semantics of the different spellings of _interval_ declarations—in other words, how these different spellings differently constrain the _interval_ values that can be represented. The code and the explanations presented below show that though there are several syntax spellings for each, there are in fact just six kinds of _interval_ declaration. It's convenient to call these kinds _year_, _month_, _day_, _hour_, _minute_, and _second_. The constraints are applied whenever a new _interval_ value is created, just before recording it in the [internal _\[mm, dd, ss\]_ tuple format](../interval-representation/). The effects of each of the six constraints are conveniently described by this PL/pgSQL code:
 
 ```output
 -- Here with [mm, dd, ss] computed with, so far, no constraints.
@@ -46,7 +52,7 @@ end case;
 {{< tip title="Yugabyte recommends using only the bare 'interval' declaration." >}}
 The term of art "bare _interval_" is to be taken literally: no trailing key words, and no _(p)_ precision specifier.
 
-Yugabyte staff members have carefully considered the practical value that these various constraints bring and have concluded that none captures the intent of the SQL Standard or brings useful functionality. The section [Defining and using custom domain types to specialize the native _interval_ functionality](../custom-interval-domains/) shows how you can usefully constrain _interval_ values, declared using the bare syntax, to allow the internal _interval_ representation to record only:
+Yugabyte staff members have carefully considered the practical value that these various constraints bring and have concluded that none captures the intent of the SQL Standard or brings useful functionality. The section [Custom domain types for specializing the native _interval_ functionality](../custom-interval-domains/) shows how you can usefully constrain _interval_ values, declared using the bare syntax, to allow the internal _interval_ representation to record only:
 
 - **either** the _years_ and _months_ fields (corresponding to the _mm_ field in the internal representation).
 - **or** the _days_ field (corresponding to the _dd_ field in the internal representation).
@@ -57,7 +63,7 @@ If you follow this recommendation, then you don't need to study the remainder of
 
 The SQL Standard (cosmetically reworded) says this:
 
-> There are two classes of intervals. One class, called _year-month intervals_, has an express or implied _date-time_ precision that includes no fields other than YEAR and MONTH, though not both are required. The other class, called _day-time intervals_, has an express or implied interval precision that includes no fields other than DAY, HOUR, MINUTE, and SECOND, though not all are required.
+> There are two classes of intervals. One class, called _year-month intervals_, has an express or implied _date-time_ precision that includes no fields other than YEAR and MONTH, though not both are required. The other class, called _day-time intervals_, has an express or implied _interval_ value precision that includes no fields other than DAY, HOUR, MINUTE, and SECOND, though not all are required.
 
 Briefly, _day-time intervals_ implement _clock-time-semantics_ and _year-month intervals_ implement _calendar-time-semantics_. See the section [Two ways of conceiving of time: calendar-time and clock-time](../../../conceptual-background/#two-ways-of-conceiving-of-time-calendar-time-and-clock-time).
 
@@ -99,7 +105,7 @@ minute to   second
 
 This list shows no fewer than _fourteen_ distinct syntax spellings.
 
-The optional _(p)_ element specifies the precision, in microseconds, with which the _seconds_ field of the internal representation records the value. It is legal only after the _second_ keyword or after the bare _interval_ declaration. The allowed values are in _0..6_. Omitting the _(p)_ element has the same effect as specifying _(6)_. So with the fourteen spellings listed above, together with the eight precision designations (_0_, _1_, _2_, _3_, _4_, _5_, _6_, or omitting this element) it multiplies up to _112_ distinct ways to declare an _interval_ as a table column, in PL/pgSQL code, and so on.
+The optional _(p)_ element specifies the precision, in microseconds, with which the _seconds_ field of the internal representation records the value. It is legal only after the _"second"_ keyword or after the bare _interval_ declaration. The allowed values are in _0..6_. Omitting the _(p)_ element has the same effect as specifying _(6)_. So with the fourteen spellings listed above, together with the eight precision designations (_0_, _1_, _2_, _3_, _4_, _5_, _6_, or omitting this element) it multiplies up to _112_ distinct ways to declare an _interval_ as a table column, in PL/pgSQL code, and so on.
 
 **Note:** No pair chosen from the fourteen different _interval_ declarations can be used to distinguish procedure or function overloads. The same applies to the variations in the specification of the _(p)_ element.
 
@@ -175,7 +181,7 @@ The block finishes silently, showing that each assertion holds.
 
 The declarations are grouped according to the six possible choices for the trailing keyword: _year_, _month_, _day_, _hour_, _minute_, or _second_. The assertions show that the syntax variants within each group have the same effect—in other words that the optional leading phrases, _year to_, _day to_, _hour to_, and _minute to_ have no semantic effect. Only the trailing keyword  is semantically significant. Omitting this keyword (i.e. the bare declaration) has the same semantic effect has writing _second_, and so it belongs in that group.
 
-**Each group has different resolution semantics: the choice of trailing keyword determines the least granular unit (years, months, days, hours, minutes, or seconds) that is respected.**
+**Each group has different resolution semantics: the choice of trailing keyword determines the least granular unit (_years_, _months_, _days_, _hours_, _minutes_, or _seconds_) that is respected.**
 
 ## The effect of the optional (p) element
 
@@ -228,15 +234,13 @@ The block finishes silently showing that all the assertions hold. This confirms 
 
 Make sure that you've read the section [How does YSQL represent an _interval_ value?](../interval-representation/) before reading this section.
 
-Make sure, too, that you have (re-)installed the [_interval_ utilities code](../interval-utilities/)—even if you believe that it's already in place. (This is because a code example in the section [How does YSQL represent an _interval_ value?](../interval-representation/) redefines only of these utility functions.) Because the code shown below depends on the [function interval_mm_dd_ss (interval_parameterization_t) returns interval_mm_dd_ss_t](../interval-representation/internal-representation-model/#function-interval-mm-dd-ss-interval-parameterization-t-returns-interval-mm-dd-ss-t), explained in the section [Modeling the internal representation and comparing the model with the actual implementation](../interval-representation/internal-representation-model/), and because (re-)installing the utility code has to use _drop type... cascade_, (re-)install this now too.
-
 The assumption that informs the following test is that any operation that produces an _interval_ value first computes the _[mm, dd, ss]_ internal representation and only then applies the rules that the _ad hoc_ test above illustrates. The rule, expressed in PL/pgSQL code, is shown in the [Summary](#summary) above.
 
 The test provides new overloads for these two functions:
 
-- [function interval_mm_dd_ss (interval_parameterization_t) returns interval_mm_dd_ss_t)](../interval-representation/internal-representation-model/#function-interval-mm-dd-ss-interval-parameterization-t-returns-interval-mm-dd-ss-t)
+- [function interval_mm_dd_ss (interval_parameterization_t)](../interval-representation/internal-representation-model/#function-interval-mm-dd-ss-interval-parameterization-t-returns-interval-mm-dd-ss-t)
 
-- [function interval_value (interval_parameterization_t) returns interval](../interval-utilities/#function-interval-value-interval-parameterization-t-returns-interval)
+- [function interval_value (interval_parameterization_t)](../interval-utilities/#function-interval-value-interval-parameterization-t-returns-interval)
 
 that each adds a _mode text_ formal parameter to express the class name of the _interval_ declaration as one of _'bare'_, _'year'_, _'month'_, _'day'_, _'hour'_, _'minute'_, or _'second'_, thus:
 
@@ -249,11 +253,11 @@ create function interval_mm_dd_ss(p in interval_parameterization_t, mode in text
 as $body$
 declare
   -- Use the single-parameter overload
-  mm_dd_ss constant interval_mm_dd_ss_t := interval_mm_dd_ss(p);
+  mm_dd_ss  constant interval_mm_dd_ss_t not null := interval_mm_dd_ss(p);
 
-  mm int     not null := mm_dd_ss.mm;
-  dd int     not null := mm_dd_ss.dd;
-  ss numeric not null := mm_dd_ss.ss;
+  mm                 int                 not null := mm_dd_ss.mm;
+  dd                 int                 not null := mm_dd_ss.dd;
+  ss                 double precision    not null := mm_dd_ss.ss;
 begin
   case mode
     when 'bare' then
@@ -314,25 +318,28 @@ end;
 $body$;
 ```
 
-Test the modeled implementation of the constraints in the same way that the unconstrained model was tested in the section [Modeling the internal representation and comparing the model with the actual implementation](../interval-representation/internal-representation-model/):
+Test the modeled implementation of the constraints in the same way that the unconstrained model was tested in the section [Modeling the internal representation and comparing the model with the actual implementation](../interval-representation/internal-representation-model/). The procedure _assert_model_ok_worker()_ has the identical implementation to procedure _[assert_model_ok()](../interval-representation/internal-representation-model/#procedure-assert-model-ok-interval-parameterization-t)_ in that section.
 
 ```plpgsql
 drop procedure if exists assert_model_ok_worker(interval_parameterization_t, text) cascade;
 
 create procedure assert_model_ok_worker(p in interval_parameterization_t, mode in text)
+
   language plpgsql
 as $body$
 declare
-  i_modeled constant interval_mm_dd_ss_t not null := interval_mm_dd_ss(p, mode);
-  i_actual  constant interval            not null := interval_value   (p, mode);
+  i_modeled        constant interval_mm_dd_ss_t not null := interval_mm_dd_ss(p);
+  i_from_modeled   constant interval            not null := interval_value(i_modeled);
+  i_actual         constant interval            not null := interval_value(p);
+  mm_dd_ss_actual  constant interval_mm_dd_ss_t not null := interval_mm_dd_ss(i_actual);
 
-  p_modeled constant interval_parameterization_t not null := parameterization(i_modeled);
-  p_actual  constant interval_parameterization_t not null := parameterization(i_actual);
-
-  i_from_modeled constant interval                        := interval_value(i_modeled);
+  p_modeled  constant interval_parameterization_t not null := parameterization(i_modeled);
+  p_actual   constant interval_parameterization_t not null := parameterization(i_actual);
 begin
-  assert p_modeled = p_actual,      'assert #1 failed';
-  assert i_from_modeled = i_actual, 'assert #2 failed';
+  -- Belt-and-braces check for mutual consistency among the "interval" utilities.
+  assert (i_modeled      ~= mm_dd_ss_actual), 'assert #1 failed';
+  assert (p_modeled      ~= p_actual       ), 'assert #2 failed';
+  assert (i_from_modeled == i_actual       ), 'assert #3 failed';
 end;
 $body$;
 
@@ -353,9 +360,15 @@ end;
 $body$;
 ```
 
-Execute the tests using the same _ysqlsh_ ['do-real-tests.sql'](../interval-representation/internal-representation-model/#the-do-real-tests-sql-script) script that was used to test the unconstrained model. Each of these tests finishes silently showing that the rules explained above have so far been shown always to agree with the rules of the actual implementation. You are challenged to disprove the hypothesis by inventing more tests. If any of your tests causes _assert_model_ok()_ to finish with an assert failure, then [raise a GitHub issue](https://github.com/yugabyte/yugabyte-db/issues/new) against this documentation section.
+Execute the tests using the same _[procedure test_internal_interval_representation_model()](../interval-representation/internal-representation-model/#procedure-test-internal-interval-representation-model)_ that was defined and used to test the unconstrained model. (This is also included in the code kit.)
 
-If you do find such a counter-example, you can compare the results from using the actual implementation and the modeled implementation with this re-write of the logic of the _assert_model_ok()_ procedure. Instead of using _assert_, it shows you the outputs for visual comparison:
+```plpgsql
+call test_internal_interval_representation_model();
+```
+
+Each of the tests finishes silently showing that the rules explained above have so far been shown always to agree with the rules of the actual implementation. You are challenged to disprove the hypothesis by inventing more tests. If any of your tests causes _assert_model_ok()_ to finish with an assert failure, then [raise a GitHub issue](https://github.com/yugabyte/yugabyte-db/issues/new) against this documentation section.
+
+If you do find such a counter-example, you can compare the results from using the actual implementation and the modeled implementation with this re-write of the logic of the _assert_model_ok()_ procedure. Instead of using _assert_, it shows you the outputs for visual comparison. It has an almost identical implementation to the function _[model_vs_actual_comparison()](../interval-representation/internal-representation-model/#function-model-vs-actual-comparison-interval-parameterization-t-returns-table-x-text)_ in the section [Modeling the internal representation and comparing the model with the actual implementation](../interval-representation/internal-representation-model/). The difference is that the following implentation adds the formal input parameter _mode_ and carries this through to the new overload of _interval_mm_dd_ss()_.
 
 
 ```plpgsql
@@ -366,27 +379,30 @@ create function model_vs_actual_comparison(p in interval_parameterization_t, mod
   language plpgsql
 as $body$
 declare
-  i_modeled constant interval_mm_dd_ss_t not null := interval_mm_dd_ss(p, mode);
-  i_actual  constant interval            not null := interval_value(p, mode);
+  i_modeled        constant interval_mm_dd_ss_t         not null := interval_mm_dd_ss(p, mode);
+  i_actual         constant interval                    not null := interval_value(p, mode);
 
-  p_modeled constant interval_parameterization_t not null := parameterization(i_modeled);
-  p_actual  constant interval_parameterization_t not null := parameterization(i_actual);
+  p_modeled        constant interval_parameterization_t not null := parameterization(i_modeled);
+  p_actual         constant interval_parameterization_t not null := parameterization(i_actual);
+
+  ss_modeled_text  constant text                        not null := ltrim(to_char(p_modeled.ss, '9999999999990.999999'));
+  ss_actual_text   constant text                        not null := ltrim(to_char(p_actual.ss,  '9999999999990.999999'));
 begin
   x := 'modeled: '||
-    lpad(p_modeled.yy ::text, 4)||' yy, '||
-    lpad(p_modeled.mm ::text, 4)||' mm, '||
-    lpad(p_modeled.dd ::text, 4)||' dd, '||
-    lpad(p_modeled.hh ::text, 4)||' hh, '||
-    lpad(p_modeled.mi ::text, 4)||' mi, '||
-    lpad(p_modeled.ss ::text, 10)||' ss';     return next;
+    lpad(p_modeled.yy ::text,  4)||' yy, '||
+    lpad(p_modeled.mm ::text,  4)||' mm, '||
+    lpad(p_modeled.dd ::text,  4)||' dd, '||
+    lpad(p_modeled.hh ::text,  4)||' hh, '||
+    lpad(p_modeled.mi ::text,  4)||' mi, '||
+    lpad(ss_modeled_text,     10)||' ss';                           return next;
 
   x := 'actual:  '||
-    lpad(p_actual.yy  ::text, 4)||' yy, '||
-    lpad(p_actual.mm  ::text, 4)||' mm, '||
-    lpad(p_actual.dd  ::text, 4)||' dd, '||
-    lpad(p_actual.hh  ::text, 4)||' hh, '||
-    lpad(p_actual.mi  ::text, 4)||' mi, '||
-    lpad(p_actual.ss  ::text, 10)||' ss';     return next;
+    lpad(p_actual.yy  ::text,  4)||' yy, '||
+    lpad(p_actual.mm  ::text,  4)||' mm, '||
+    lpad(p_actual.dd  ::text,  4)||' dd, '||
+    lpad(p_actual.hh  ::text,  4)||' hh, '||
+    lpad(p_actual.mi  ::text,  4)||' mi, '||
+    lpad(ss_actual_text,      10)||' ss';                           return next;
 end;
 $body$;
 ```
@@ -394,7 +410,6 @@ $body$;
 Use it like this:
 
 ```plpgsql
-\t on
 select x from model_vs_actual_comparison(interval_parameterization(
   yy => -9.7,
   mm =>  1.55,
@@ -403,7 +418,6 @@ select x from model_vs_actual_comparison(interval_parameterization(
   mi => -86.7,
   ss =>  75.7),
   'day');
-\t off
 ```
 
 This is the result:

@@ -1,7 +1,7 @@
 ---
 title: The date data type [YSQL]
 headerTitle: The date data type
-linkTitle: date data type
+linkTitle: Date data type
 description: The semantics of the date data type. [YSQL]
 menu:
   stable:
@@ -28,7 +28,7 @@ This is the result:
  integer
 ```
 
-Notice that this example takes advantage of the fact that the value of any data type, _d_,  can be _::text_ typecasted to a canonical representation and that a _text_ value that uses the canonical representation format can be _::d_ typecasted to a _d_ value—and that the round trip is non-lossy.
+Notice that this example takes advantage of the fact that the value of any data type, _d_,  can be _::text_ typecast to a canonical representation and that a _text_ value that uses the canonical representation format can be _::d_ typecast to a _d_ value—and that the round trip is non-lossy.
 
 Now try this:
 

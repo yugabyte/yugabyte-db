@@ -28,19 +28,19 @@ Like PostgreSQL, YugabyteDB provides security in multiple ways:
 
 ## Authentication
  
-Using client authentication, you can define how the database server establishes the identity of the client, and whether the client application (or the user who runs the client application) is allowed to connect with the database user name that was requested. YugabyteDB offers a number of different client authentication methods, all of which can be configured using the YB-TServer `--ysql_hba_conf` flag.
+Using client authentication, you can define how the database server establishes the identity of the client, and whether the client application (or the user who runs the client application) is allowed to connect with the database user name that was requested. YugabyteDB offers a number of different client authentication methods, all of which can be configured using the YB-TServer [`--ysql_hba_conf_csv`](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv) configuration flag.
 
 The methods include the following:
 
 * **Password** - authenticate using MD5 or SCRAM-SHA-256.<br/>
 
-  MD5 is the default password encryption for YugabyteDB clusters. To set SCRAM-SHA-256 authentication, you must set the YB-TServer `--ysql_hba_conf` flag to `scram-sha-256`.
+  MD5 is the default password encryption for YugabyteDB clusters. To set SCRAM-SHA-256 authentication, you must set the YB-TServer `--ysql_hba_conf_csv` flag to `scram-sha-256`.
 
 * **LDAP** - use external LDAP services to perform client authentication.
 
 * **Host-based** - authenticate local and remote clients based on IP address and using TLS certificates.<br/>
 
-  The default YugabyteDB `listen_addresses` setting accepts connections only from localhost. To allow remote connections, you must add client authentication records to the YB-TServer `--ysql_hba_conf` flag.
+  The default YugabyteDB `listen_addresses` setting accepts connections only from localhost. To allow remote connections, you must add client authentication records to the YB-TServer `--ysql_hba_conf_csv` flag.
 
 * **Trust** - authorize specific local connections. `trust` authentication is used by default.
 
@@ -80,7 +80,7 @@ yugabyte=# GRANT engineering TO john;
 
 ### Privileges
 
-You grant privileges explicitly to roles to access objects in the database using the `GRANT` command. You can, for example, assign read access to one role, data modify access to another role, and alter table access to a third.
+You grant privileges explicitly to roles to access objects in the database using the `GRANT` statement. You can, for example, assign read access to one role, data modify access to another role, and alter table access to a third.
 
 By default, only the owner has privileges on new objects; you must grant privileges to other roles explicitly.
 
@@ -106,7 +106,7 @@ The output should look similar to below, where you see that the `engineering` ro
         |                   |       | engineering=r/yugabyte   +|                   |
 ```
 
-The access privileges "arwdDxt" include all privileges for the user `yugabyte` (superuser), while the role `engineering` has only "r" (read) privileges. For details on the `GRANT` statement, see [GRANT](../../../api/ysql/the-sql-language/statements/dcl_grant).
+The access privileges "arwdDxt" include all privileges for the user `yugabyte` (superuser), while the role `engineering` has only "r" (read) privileges. For details on the `GRANT` statement, refer to [GRANT](../../../api/ysql/the-sql-language/statements/dcl_grant).
 
 ### Row-level access
 

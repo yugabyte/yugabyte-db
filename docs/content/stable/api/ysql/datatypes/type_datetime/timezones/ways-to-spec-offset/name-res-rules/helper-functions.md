@@ -1,7 +1,7 @@
 ---
 title: Helper functions for rules 2, 3, and 4 for specifying the UTC offset [YSQL]
 headerTitle: Helper functions for rules 2, 3, and 4 for specifying the UTC offset
-linkTitle: helper functions
+linkTitle: Helper functions
 description: Code to create helper functions for substantiating rules 2, 3, and 4 for specifying the UTC offset. [YSQL]
 menu:
   stable:
@@ -92,7 +92,7 @@ declare
 
   ts_plain                 constant timestamp     not null := '2021-06-07 12:00:00';
   ts_text                  constant text          not null := ts_plain::text;
-  ts_tz                             timestamptz   not null := now();
+  ts_tz                             timestamptz   not null := 'infinity'; -- any not null value will do
 
   set_timezone             constant text          not null := format(set_timezone_, string);
   timezone_invocation      constant text          not null := format(timezone_invocation_, string, ts_plain);
@@ -137,7 +137,6 @@ $body$;
 ```
 
 Test it for a selection of strings:
-
 
 ```plpgsql
 select x from legal_scopes_for_syntax_context('WEST');

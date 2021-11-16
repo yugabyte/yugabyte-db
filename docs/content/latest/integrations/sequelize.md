@@ -20,7 +20,7 @@ Before you can start using Sequelize, ensure that you have the following availab
 
 - YugabyteDB version 2.4 or later (see [YugabyteDB Quick Start Guide](/latest/quick-start/)).
 
-- Yugabyte cluster (see [Create a local cluster](https://docs.yugabyte.com/latest/quick-start/create-local-cluster/macos/)). 
+- Yugabyte cluster (see [Create a local cluster](/latest/quick-start/create-local-cluster/macos/)). 
 
 - Node.js (see [Downloading and installing Node.js](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm#using-a-node-installer-to-install-node-js-and-npm)).
 

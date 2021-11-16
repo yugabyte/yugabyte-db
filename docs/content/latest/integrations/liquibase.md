@@ -22,7 +22,7 @@ Before you can start using Liquibase, ensure that you have the following install
 
 - YugabyteDB version 2.6 (see [YugabyteDB Quick Start Guide](/latest/quick-start/)).
 
-- Yugabyte cluster (see [Create a local cluster](https://docs.yugabyte.com/latest/quick-start/create-local-cluster/macos/)). To check status, execute the following command:
+- Yugabyte cluster (see [Create a local cluster](/latest/quick-start/create-local-cluster/macos/)). To check status, execute the following command:
 
   ```sh
   ./bin/yugabyted status

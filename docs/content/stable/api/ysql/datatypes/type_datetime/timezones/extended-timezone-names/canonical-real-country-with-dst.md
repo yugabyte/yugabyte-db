@@ -1,7 +1,7 @@
 ---
 title: Real timezones that observe DST [YSQL]
 headerTitle: Real timezones that observe Daylight Savings Time
-linkTitle: real timezones with DST
+linkTitle: Real timezones with DST
 description: Table. [YSQL]
 menu:
   stable:

@@ -26,96 +26,85 @@ showAsideToc: true
 
 </ul>
 
-This section explains how explicit locking works in YugabyteDB.
+This section describes how explicit locking works in YugabyteDB.
 
-Explicit row-locks use transaction priorities to ensure that two transactions can never hold conflicting locks on the same row. This is done by the query layer assigning a very high value for the priority of the transaction that is being run to acquire the row lock, causing all other transactions that conflict with the current transaction to fail (because they have a lower value for the transaction priority). YugabyteDB supports most row-level locks, similar to PostgreSQL.
+YugabyteDB supports most row-level locks, similar to PostgreSQL. Explicit row-locks use transaction priorities to ensure that two transactions can never hold conflicting locks on the same row. To do this, the query layer acquires the row lock by assigning a very high value for the priority of the transaction that is being run. This causes all other transactions that conflict with the current transaction to fail, because they have a lower transaction priority.
 
 {{< note title="Note" >}}
 Explicit locking is an area of active development in YugabyteDB. A number of enhancements are planned in this area. Unlike PostgreSQL, YugabyteDB uses optimistic concurrency control and does not block / wait for currently held locks, instead opting to abort the conflicting transaction with a lower priority. Pessimistic concurrency control is currently under development.
 {{</note >}}
 
-The types of row locks currently supported are: 
+The types of row locks currently supported are:
+
 * `FOR UPDATE`
 * `FOR NO KEY UPDATE`
 * `FOR SHARE`
 * `FOR KEY SHARE`
 
-Let us look at en example with the `FOR UPDATE` row lock, where we first `SELECT` a row for update to lock it and subsequently update it. A concurrent transaction should not be able to abort this transaction by updating the value of that row after the row is locked. To try out this scenario, first create an example table with sample data as shown below.
+The following example uses the `FOR UPDATE` row lock. First, a row is selected for update, thereby locking it, and subsequently updated. A concurrent transaction should not be able to abort this transaction by updating the value of that row after the row is locked. 
+
+To try out this scenario, first create an example table with sample data, as follows:
 
 ```sql
 yugabyte=# CREATE TABLE t (k VARCHAR, v VARCHAR);
 yugabyte=# INSERT INTO t VALUES ('k1', 'v1');
 ```
 
-Next, connect to the cluster using two independent `ysqlsh` instances called *session #1* and *session #2* below. 
+Next, connect to the cluster using two independent `ysqlsh` instances. You can connect both session `ysqlsh` instances to the same server, or to different servers.
 
-{{< note title="Note" >}}
-You can connect the session #1 and session #2 `ysqlsh` instances to the same server, or to different servers.
-{{< /note >}}
+Begin a transaction in the first session, and perform a `SELECT FOR UPDATE` on the row in the table `t`. This locks the row for an update as a part of a transaction that has a very high priority.
 
-<table style="margin:0 5px;">
-  <tr>
-   <td style="text-align:center;"><span style="font-size: 22px;">session #1</span></td>
-   <td style="text-align:center; border-left:1px solid rgba(158,159,165,0.5);"><span style="font-size: 22px;">session #2</span></td>
-  </tr>
+```sql
+yugabyte=# BEGIN;
+```
 
-  <tr>
-    <td style="width:50%;">
-    Begin a transaction in session #1. Perform a `SELECT FOR UPDATE` on the row in the table `t`, which will end up locking the row. This will cause the row to get locked for an update as a part of a transaction which has a very high priority.
-    <pre><code style="padding: 0 10px;">
-# Begin a new transaction in session #1
-BEGIN;
-# Lock key k1 for updates.
-SELECT * from t WHERE k='k1' FOR UPDATE;
+```output
+BEGIN
+```
+
+```sql
+yugabyte=# SELECT * from t WHERE k='k1' FOR UPDATE;
+```
+
+```output
  k  | v
 ----+----
  k1 | v1
 (1 row)
-    </code></pre>
-    </td>
-    <td style="width:50%; border-left:1px solid rgba(158,159,165,0.5);">
-    </td>
-  </tr>
+```
 
-  <tr>
-    <td style="width:50%;">
-    </td>
-    <td style="width:50%; border-left:1px solid rgba(158,159,165,0.5);">
-    Before completing the transaction, try to update the same key in `session #2` using a simple update statement. This would use optimistic concurrency control, and therefore would fail right away. If `session #1` had used optimistic concurrency control instead of an explicit row-lock, then this update would succeed in some of the attempts and the transaction in `session #1` would fail in those cases.
-    <pre><code style="padding: 0 10px;">
-# Since row is locked by session #1,
-# this update should fail.
-UPDATE t SET v='v1.1' WHERE k='k1';
-ERROR:  Operation failed. Try again. 
-        xxx Conflicts with higher priority 
-        transaction: yyy
-    </code></pre>
+Before completing the transaction, try to update the same key in your other session using a simple update statement. 
+
+```sql
+yugabyte=# UPDATE t SET v='v1.1' WHERE k='k1';
+```
+
+```output
+ERROR:  Operation failed. Try again. xxx Conflicts with higher priority transaction: yyy
+```
+
+This uses optimistic concurrency control, and fails. 
+
+If you used optimistic concurrency control instead of an explicit row-lock to do the first transaction, then this update would succeed in some of the attempts and the first transaction would fail in those cases.
+
 {{< note title="Note" >}}
 Blocking this transaction and retrying it after the other transaction completes is work in progress.
 {{</note >}}
-    </td>
-  </tr>
 
-  <tr>
-    <td style="width:50%;">
-    Update the row and commit the transaction in `session #1`. This should succeed.
-    <pre><code style="padding: 0 10px;">
-# Update should succeed since row
-# was explicitly locked.
-UPDATE t SET v='v1.2' WHERE k='k1';
-# Commit fails.
-COMMIT;
-    </code></pre>
-    </td>
-    <td style="width:50%; border-left:1px solid rgba(158,159,165,0.5);">
-    </td>
-  </tr>
+Finally, in the first session, update the row and commit the transaction. This should succeed.
 
-</table>
+```sql
+yugabyte=# UPDATE t SET v='v1.2' WHERE k='k1';
+```
 
+```output
+UPDATE 1
+```
 
+```sql
+yugabyte=# COMMIT;
+```
 
-
-
-
-
+```output
+COMMIT
+```

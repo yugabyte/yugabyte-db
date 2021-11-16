@@ -16,7 +16,7 @@ ycqlsh>
 
 * Run a YCQL command to verify it is working.
 
-```sql
+```cql
 ycqlsh> describe keyspaces;
 ```
 

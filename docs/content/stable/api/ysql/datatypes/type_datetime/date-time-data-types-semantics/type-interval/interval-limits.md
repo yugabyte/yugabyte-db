@@ -1,8 +1,8 @@
 ---
-title: Upper and lower limits for interval values [YSQL]
-headerTitle: Understanding and discovering the upper and lower limits for interval values
-linkTitle: interval value limits
-description: Explains how the Upper and lower limits for interval values must be understood and specified in terms of the three fields of the internal representation. [YSQL]
+title: Interval value limits [YSQL]
+headerTitle: Interval value limits
+linkTitle: Interval value limits
+description: Explains how the upper and lower limits for interval values must be understood and specified in terms of the three fields of the internal representation. [YSQL]
 menu:
   stable:
     identifier: interval-limits
@@ -11,6 +11,10 @@ menu:
 isTocNested: true
 showAsideToc: true
 ---
+
+{{< tip title="Download and install the date-time utilities code." >}}
+The code on this page depends on the code presented in the section [User-defined _interval_ utility functions](../interval-utilities/). This is included in the larger [code kit](../../../download-date-time-utilities/) that includes all of the reusable code that the overall _[date-time](../../../../type_datetime)_ section describes and uses.
+{{< /tip >}}
 
 The design of the code that this section presents, and the interpretation of the results that it produces, depend on the explanations given in the section [How does YSQL represent an _interval_ value?](../interval-representation/). This is the essential point:
 
@@ -43,7 +47,7 @@ This is the result:
 -104300858 days -08:01:49.551616
 ```
 
-The fact that the result is negative is clearly wrong. And a silent wrong results error is the most dangerous kind. The section [_Interval_ arithmetic](../interval-arithmetic//) explains how the rules that govern adding or subtracting an _interval_ value to or from a _timestamp_ or _timestamptz_ value are different for the _mm_, _dd_, and _ss_ fields. When you understand the rules, you'll see that striving for _seconds_ arithmetic semantics when the duration that the _interval_ value represents is as much, even, as _100 years_ is arguably meaningless. This means that the actual limitation that the legal _ss_ range imposes has no consequence when you design application code sensibly. However, you must always design your code so that you maximally reduce the chance that a local careless programming error brings a silent wrong results bug. The section [Defining and using custom domain types to specialize the native _interval_ functionality](../custom-interval-domains/) recommends a regime that enforces proper practice to this end.
+The fact that the result is negative is clearly wrong. And a silent wrong results error is the most dangerous kind. The section [_Interval_ arithmetic](../interval-arithmetic/) explains how the rules that govern adding or subtracting an _interval_ value to or from a _timestamp_ or _timestamptz_ value are different for the _mm_, _dd_, and _ss_ fields. When you understand the rules, you'll see that striving for _seconds_ arithmetic semantics when the duration that the _interval_ value represents is as much, even, as _100 years_ is arguably meaningless. This means that the actual limitation that the legal _ss_ range imposes has no consequence when you design application code sensibly. However, you must always design your code so that you maximally reduce the chance that a local careless programming error brings a silent wrong results bug. The section [Custom domain types for specializing the native _interval_ functionality](../custom-interval-domains/) recommends a regime that enforces proper practice to this end.
 
 ## Limits for the mm and dd fields of the internal implementation
 
@@ -123,8 +127,6 @@ You could reimplement the procedure _p()_ using the _make_interval()_ approach r
 
 ## Limit for the ss field of the internal implementation
 
-If you haven't already done so, then install the code presented in the section [User-defined interval utility functions](../interval-utilities/).
-
 The representation implies that the legal values for _ss_ (in microseconds) are certainly constrained by this inclusive range:
 
 ```output
@@ -145,33 +147,33 @@ This limiting range is brought by the decision made by the PostgreSQL designers 
 
 ```plpgsql
 select
-  interval_mm_dd_ss(make_interval(secs => -7730941136399)) as "lower limit",
-  interval_mm_dd_ss(make_interval(secs =>  7730941132799)) as "upper limit";
+  interval_mm_dd_ss(make_interval(secs => -7730941136399))::text as "lower limit",
+  interval_mm_dd_ss(make_interval(secs =>  7730941132799))::text as "upper limit";
 ```
 
 This is the result:
 
 ```output
-         lower limit         |        upper limit         
------------------------------+----------------------------
- (0,0,-7730941136399.000000) | (0,0,7730941132799.000000)
+     lower limit      |     upper limit     
+----------------------+---------------------
+ (0,0,-7730941136399) | (0,0,7730941132799)
 ```
 
 Go below the lower limit:
 
 ```plpgsql
-select interval_mm_dd_ss(make_interval(secs => -7730941136400));
+select make_interval(secs => -7730941136400)::text;
 ```
 
 This causes the _"22008: interval out of range"_ error. Now go above the upper limit:
 
 ```plpgsql
-select interval_mm_dd_ss(make_interval(secs => 7730941132800));
+select make_interval(secs => 7730941132800)::text;
 ```
 
 This causes the same _"22008"_ error.
 
-{{< note title="There appears to be a bug in the ::text typecast when 'secs => -7730941136400' is used." >}}
+{{< note title="There appears to be a bug in the '::text' typecast when 'secs => -7730941136400' is used." >}}
 Try this
 
 ```plpgsql
@@ -244,8 +246,8 @@ select '2147483647 years' ::interval;
 Yugabyte recommends that you avoid using the _::interval_ typecast approach to construct an _interval_ value in application code. (By all means, use it in _ad hoc_ statements at the _ysqlsh_ prompt.) Use only _make_interval()_ in application code to construct an _interval_ value.
 {{< /tip >}}
 
-It might seem that you lose functionality by following this recommendation because the _::interval_ typecast approach allows you to specify real number values for _years_, _months_, _days_, _hours_, and _minutes_ while the _make_interval()_ approach allows only integral values for these parameters. However, the ability to specify real number values for parameters other than _seconds_ brings only confusion.
+It might seem that you lose functionality by following this recommendation because the _::interval_ typecast approach allows you to specify real number values for _years_, _months_, _days_, _hours_, and _minutes_ while the _make_interval()_ approach allows only integral values for these parameters. However, the ability to specify non-integral values for parameters other than _seconds_ brings only confusion.
 
-- The section [Modeling the internal representation and comparing the model with the actual implementation](../interval-representation/internal-representation-model/) shows that the algorithm for computing the _[mm, dd, ss]_ internal representation from the _[yy, mm, dd, hh, mi, ss]_ parameterization is so complex (and arbitrary) when real number values are provided for the first five of the six parameterization values that you are very unlikely to be able usefully to predict what final _interval_ value you'll get.
+- The section [Modeling the internal representation and comparing the model with the actual implementation](../interval-representation/internal-representation-model/) shows that the algorithm for computing the _[mm, dd, ss]_ internal representation from the _[yy, mm, dd, hh, mi, ss]_ parameterization is so complex (and arbitrary) when non-integral values are provided for the first five of the six parameterization values that you are very unlikely to be able usefully to predict what final _interval_ value you'll get.
 
-- The section [_Interval_ arithmetic](../interval-arithmetic/) shows that the semantics of how each of the fields of the _mm, dd, ss]_ representation is used are so significantly different that it's best to arrange that the _interval_ values that you create and use have only one of the three internal field values non-zero. You can't ensure this if you allow real number values for any of the first five parameters. The section [Defining and using custom domain types to specialize the native _interval_ functionality](../custom-interval-domains/) shows how to enforce the recommended approach.
+- The section [_Interval_ arithmetic](../interval-arithmetic/) shows that significantly different semantics governs how each of the fields of the _[mm, dd, ss]_ internal representation is used. Ensure, therefore, that the _interval_ values you create and use have a non-zero value for only one of the three _[mm, dd, ss]_ fields. You can't ensure this if you allow non-integral values for any of the _years_, _months_, _days_, _hours_, and _minutes_ fields in an _interval_ literal. The section [Custom domain types for specializing the native _interval_ functionality](../custom-interval-domains/) shows how to enforce the recommended approach.

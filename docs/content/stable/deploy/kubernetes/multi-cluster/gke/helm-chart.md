@@ -23,7 +23,7 @@ showAsideToc: true
   </li>
 </ul>
 
-Following instructions highlight how to deploy a single multi-region YugabyteDB cluster that spans three [GKE](https://cloud.google.com/kubernetes-engine/docs/) clusters, each running in a different region. Each region also has an internal DNS load balancer set to [global access](https://cloud.google.com/kubernetes-engine/docs/how-to/internal-load-balancing#global_access). This configuration allows pods in one GKE cluster to discover pods in another GKE cluster without exposing any of the DNS information to the world outside your GKE project.
+The instructions on this page highlight how to deploy a single multi-region YugabyteDB cluster that spans three [GKE](https://cloud.google.com/kubernetes-engine/docs/) clusters, each running in a different region. Each region also has an internal DNS load balancer set to [global access](https://cloud.google.com/kubernetes-engine/docs/how-to/internal-load-balancing#global_access). This configuration allows pods in one GKE cluster to discover pods in another GKE cluster without exposing any of the DNS information to the world outside your GKE project.
 
 We will use the standard single-zone YugabyteDB Helm Chart to deploy one third of the nodes in the database cluster in each of the 3 GKE clusters. 
 
@@ -33,7 +33,7 @@ You must have 3 GKE clusters with Helm configured. If you have not installed the
 
 The YugabyteDB Helm chart has been tested with the following software versions:
 
-- GKE running Kubernetes 1.18 or later with nodes such that a total of 12 CPU cores and 45 GB RAM can be allocated to YugabyteDB. This can be three nodes with 4 CPU core and 15 GB RAM allocated to YugabyteDB. `n1-standard-8` is the minimum instance type that meets these criteria.
+- GKE running Kubernetes 1.18 (or later) with nodes such that a total of 12 CPU cores and 45 GB RAM can be allocated to YugabyteDB. This can be three nodes with 4 CPU core and 15 GB RAM allocated to YugabyteDB. `n1-standard-8` is the minimum instance type that meets these criteria.
 - Helm 3.4 or later
 - YugabyteDB Docker image (yugabytedb/yugabyte) 2.1.0 or later
 - For optimal performance, ensure you've set the appropriate [system limits using `ulimit`](../../../../manual-deployment/system-config/#ulimits) on each node in your Kubernetes cluster.
@@ -284,8 +284,8 @@ $ helm search repo yugabytedb/yugabyte
 ```
 
 ```output
-NAME                 CHART VERSION  APP VERSION  DESCRIPTION
-yugabytedb/yugabyte  2.6.5          2.6.5.0-b4   YugabyteDB is the high-performance distr...
+NAME                    CHART VERSION   APP VERSION     DESCRIPTION                                       
+yugabytedb/yugabyte     2.8.0           2.8.0.0-b37    YugabyteDB is the high-performance distributed ...
 ```
 
 ### Create override files
@@ -512,7 +512,7 @@ yb-tserver-service   LoadBalancer   10.31.247.185   34.83.192.162   6379:31858/T
 
 ## 8. Test DB cluster resilience in face of region failures
 
-It’s time to test the resilience of the DB cluster when subjected to the complete failure of one region. We will simulate such a failure by setting the replica count of the YugabyteDB StatefulSets to 0 for the `us-central1` region.
+It’s time to test the resilience of the DB cluster when subjected to the complete failure of one region. You can simulate such a failure by setting the replica count of the YugabyteDB StatefulSets to 0 for the `us-central1` region.
 
 ```sh
 $ kubectl scale statefulset yb-tserver --replicas=0 -n yb-demo-us-central1-b \
@@ -522,4 +522,4 @@ $ kubectl scale statefulset yb-master --replicas=0 -n yb-demo-us-central1-b \
  --context gke_yugabyte_us-central1-b_yugabytedb2
 ```
 
-If you re-run the queries from Step 6 after re-connecting to the nodes in the `us-west1` region, you will see that there is absolutely no impact to the availability of the cluster and the data stored therein. However, there is higher latency for some of the transactions since the farthest `us-east1` region now has to be involved in the write path. In other words, the database cluster is fully protected against region failures but may temporarily experience higher latency. This is a much better place to be than a complete outage of the business-critical database service. The post [Understanding How YugabyteDB Runs on Kubernetes](https://blog.yugabyte.com/understanding-how-yugabyte-db-runs-on-kubernetes/) details how YugabyteDB self-heals the replicas when subjected to the failure of a fault domain (the cloud region in this case) by auto-electing a new leader for each of the impacted shards in the remaining fault domains. The cluster goes back to its original configuration as soon as the nodes in the lost region become available again.
+If you re-run the queries from Step 6 after reconnecting to the nodes in the `us-west1` region, you will see that there is absolutely no impact to the availability of the cluster and the data stored therein. However, there is higher latency for some of the transactions since the farthest `us-east1` region now has to be involved in the write path. In other words, the database cluster is fully protected against region failures but may temporarily experience higher latency. This is a much better place to be than a complete outage of the business-critical database service. The post [Understanding How YugabyteDB Runs on Kubernetes](https://blog.yugabyte.com/understanding-how-yugabyte-db-runs-on-kubernetes/) details how YugabyteDB self-heals the replicas when subjected to the failure of a fault domain (the cloud region in this case) by auto-electing a new leader for each of the impacted shards in the remaining fault domains. The cluster goes back to its original configuration as soon as the nodes in the lost region become available again.

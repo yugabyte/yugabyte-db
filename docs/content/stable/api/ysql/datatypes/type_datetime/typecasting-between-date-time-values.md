@@ -1,18 +1,20 @@
 ---
 title: Typecasting between values of different date-time datatypes [YSQL]
 headerTitle: Typecasting between values of different date-time datatypes
-linkTitle: typecasting between date-time datatypes
+linkTitle: Typecasting between date-time datatypes
 description: Describes how to typecast date-time values of different date-time datatypes. [YSQL]
 menu:
   stable:
     identifier: typecasting-between-date-time-values
     parent: api-ysql-datatypes-datetime
-    weight: 50
+    weight: 70
 isTocNested: true
 showAsideToc: true
 ---
 
-Each of the two axes of the [Summary table](#summary-table) below lists the five _date-time_ data types shown in [the table](../../type_datetime#table-of-five) at the end of the overall "Date and time data types" section along with the _text_ data type—so there are _thirty-six_ cells. The cells on the diagonal represent the typecast from _some_type_ to the same type—and so they are tautologically uninteresting. This leaves _thirty_ cells and therefore _thirty_ rules to understand. See the section [Code to fill out the thirty interesting table cells](#code-to-fill-out-the-thirty-interesting-table-cells). This shows that _ten_ of the remaining typecasts are simply unsupported. The attempts cause the _42846_ error. This maps in PL/pgSQL code to the _cannot_coerce_ exception. You get one of these messages:
+See the [table](../../type_datetime/#synopsis) at the start of the overall "Date and time data types" section. It lists six data types, but quotes the [PostgreSQL documentation](https://www.postgresql.org/docs/11/datatype-datetime.html#DATATYPE-DATETIME-TABLE) that recommends that you avoid using the _timetz_ datatype. This leaves five _date-time_ data types that are recommended for use. Each of the two axes of the [Summary table](#summary-table) below lists these five data types  along with the _text_ data type—so there are _thirty-six_ cells.
+
+The cells on the diagonal represent the typecast from _some_type_ to the same type—and so they are tautologically uninteresting. This leaves _thirty_ cells and therefore _thirty_ rules to understand. See the section [Code to fill out the thirty interesting table cells](#code-to-fill-out-the-thirty-interesting-table-cells). This shows that _ten_ of the remaining typecasts are simply unsupported. The attempts cause the _42846_ error. This maps in PL/pgSQL code to the _cannot_coerce_ exception. You get one of these messages:
 
 ```output
 cannot cast type date to time without time zone
@@ -61,22 +63,22 @@ You can see the correctness of these critical facts from the summary table. The 
 The account on this page demonstrates that the decomposition rules for _data_type_x_ to _timestamptz_ and _timestamptz_ to _data_type_x_ hold; it demonstrates the outcomes for the typecasts between plain _timestamp_ values and _timestamptz_ values; and it shows that they are the same as when you use the _at time zone_ operator.
 
 {{< tip title="The semantics for the mutual conversions between 'plain timestamp' and 'timestamptz' is defined elsewhere." >}}
-The outcomes depend mandatorily on specifying the value of the _UTC offset_. There's more than one way to specify this. See the section [Four ways to specify the _UTC offset_](../timezones/ways-to-spec-offset/). The actual conversion semantics is explained in the section [Sensitivity of the conversion between timestamptz and plain timestamp to the _UTC offset_](../timezones/timezone-sensitive-operations/timestamptz-plain-timestamp-conversion/).
+The outcomes depend mandatorily on specifying the value of the _UTC offset_. There's more than one way to specify this. See the section [Four ways to specify the _UTC offset_](../timezones/ways-to-spec-offset/). The actual conversion semantics is explained in the section [Sensitivity of converting between _timestamptz_ and plain _timestamp_ to the _UTC offset_](../timezones/timezone-sensitive-operations/timestamptz-plain-timestamp-conversion/).
 {{< /tip >}}
 
 The outcomes of the typecasts between _date-time_ values and _text_ values, corresponding to all the cells in the bottom row and the right-most column, depend on the current setting of the _DateStyle_ or _IntervalStyle_ session parameters. This is explained in the section [Typecasting between date-time values and text values](../typecasting-between-date-time-and-text/).
 
 ## Summary table
 
-| &nbsp;              | &nbsp;                                                  | &nbsp;                                                  | &nbsp;                                                       | &nbsp;                                                       | &nbsp;                                    | &nbsp;                                                  |
-| ------------------- | ------------------------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ | ----------------------------------------- | ------------------------------------------------------- |
-| _from\to_           | **DATE**                                                | **TIME**                                                | **PLAIN TIMESTAMP**                                          | **TIMESTAMPTZ**                                              | **INTERVAL**                              | **TEXT**                                                |
-| **DATE**            |                                                         |                                                         | [_date_ to plain _timestamp_](#date-to-plain-timestamp)      | [_date_ to _timestamptz_](#date-to-timestamptz)              |                                           | [_date_ to _text_](#date-to-text)                       |
-| **TIME**            |                                                         |                                                         |                                                              |                                                              | [_time_ to _interval_](#time-to-interval) | [_time_ to _text_](#time-to-text)                       |
-| **PLAIN TIMESTAMP** | [plain _timestamp_ to _date_](#plain-timestamp-to-date) | [plain _timestamp_ to _time_](#plain-timestamp-to-time) |                                                              | [plain _timestamp_ to _timestamptz_](#plain-timestamp-to-timestamptz) |                                           | [plain _timestamp_ to _text_](#plain-timestamp-to-text) |
-| **TIMESTAMPTZ**     | [_timestamptz_ to _date_](#timestamptz-to-date)         | [_timestamptz_ to _time_](#timestamptz-to-time)         | [_timestamptz_ to plain _timestamp_](#timestamptz-to-plain-timestamp) |                                                              |                                           | [_timestamptz_ to _text_](#timestamptz-to-text)         |
-| **INTERVAL**        |                                                         | [_interval_ to _time_](#interval-to-time)               |                                                              |                                                              |                                           | [_interval_ to _text_](#interval-to-text)               |
-| **TEXT**            | [_text_ to _date_](#from-text)                          | [_text_ to _time_](#from-text)                          | [_text_ to plain _timestamp_](#from-text)                    | [_text_ to _timestamptz_](#from-text)                        | [_text_ to _interval_](#from-text)        |                                                         |
+|                     |                                                         |                                                         |                                                                       |                                                                       |                                           |                                                         |
+| ------------------- | ------------------------------------------------------- | ------------------------------------------------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------- | ----------------------------------------- | ------------------------------------------------------- |
+| _from\to_           | **DATE**                                                | **TIME**                                                | **PLAIN TIMESTAMP**                                                   | **TIMESTAMPTZ**                                                       | **INTERVAL**                              | **TEXT**                                                |
+| **DATE**            |                                                         |                                                         | [_date_ to plain _timestamp_](#date-to-plain-timestamp)               | [_date_ to _timestamptz_](#date-to-timestamptz)                       |                                           | [_date_ to _text_](#date-to-text)                       |
+| **TIME**            |                                                         |                                                         |                                                                       |                                                                       | [_time_ to _interval_](#time-to-interval) | [_time_ to _text_](#time-to-text)                       |
+| **PLAIN TIMESTAMP** | [plain _timestamp_ to _date_](#plain-timestamp-to-date) | [plain _timestamp_ to _time_](#plain-timestamp-to-time) |                                                                       | [plain _timestamp_ to _timestamptz_](#plain-timestamp-to-timestamptz) |                                           | [plain _timestamp_ to _text_](#plain-timestamp-to-text) |
+| **TIMESTAMPTZ**     | [_timestamptz_ to _date_](#timestamptz-to-date)         | [_timestamptz_ to _time_](#timestamptz-to-time)         | [_timestamptz_ to plain _timestamp_](#timestamptz-to-plain-timestamp) |                                                                       |                                           | [_timestamptz_ to _text_](#timestamptz-to-text)         |
+| **INTERVAL**        |                                                         | [_interval_ to _time_](#interval-to-time)               |                                                                       |                                                                       |                                           | [_interval_ to _text_](#interval-to-text)               |
+| **TEXT**            | [_text_ to _date_](#from-text)                          | [_text_ to _time_](#from-text)                          | [_text_ to plain _timestamp_](#from-text)                             | [_text_ to _timestamptz_](#from-text)                                 | [_text_ to _interval_](#from-text)        |                                                         |
 
 ## The twenty supported typecasts
 
@@ -110,7 +112,7 @@ This is the result:
 
 Notice that what you see is actually the result of a [plain _timestamp_ to _text_](#plain-timestamp-to-text) typecast.
 
-The typecasted _date_ value becomes the date component of the _timestamptz_ value; and the time-of-day component of the _timestamptz_ value is set to _00:00:00_.
+The typecast _date_ value becomes the date component of the _timestamptz_ value; and the time-of-day component of the _timestamptz_ value is set to _00:00:00_.
 
 #### _date_ to _timestamptz_
 
@@ -171,6 +173,7 @@ as $body$
   select make_time(12, 13, 42.123456);
 $body$;
 ```
+
 #### _time_ to _interval_
 
 Try this:
@@ -187,7 +190,7 @@ This is the result:
 
 You're actually seeing the _::text_ typecast of the resulting _interval_ value.
 
-The rule here is trivial. The to-be-typecasted _time_ value is taken as a real number of seconds—counting, of course, from midnight. Suppose that the answer is _n_. The resulting _interval_ value is given by _make_interval(n)_. test the rule like this:
+The rule here is trivial. The to-be-typecast _time_ value is taken as a real number of seconds—counting, of course, from midnight. Suppose that the answer is _n_. The resulting _interval_ value is given by _make_interval(n)_. test the rule like this:
 
 ```plpgsql
 select (
@@ -252,7 +255,7 @@ This is the result:
 
 You're actually seeing the _::text_ typecast of the resulting _date_ value.
 
-The typecast simply ignores the time-of-day component of the to-be-typecasted _timestamp_ value and uses its date component to set the resulting _date_ value.
+The typecast simply ignores the time-of-day component of the to-be-typecast _timestamp_ value and uses its date component to set the resulting _date_ value.
 
 You might prefer to understand it like this:
 
@@ -287,7 +290,7 @@ This is the result:
 
 You're actually seeing the _::text_ typecast of the resulting _time_ value.
 
-The typecast simply ignores the date component of the to-be-typecasted _timestamp_ value and uses its time-of-day component to set the resulting _time_ value.
+The typecast simply ignores the date component of the to-be-typecast _timestamp_ value and uses its time-of-day component to set the resulting _time_ value.
 
 You might prefer to understand it like this:
 
@@ -333,7 +336,7 @@ select (
   )::text;
 ```
 
-The result is _true_. See the section [Sensitivity of the conversion between timestamptz and plain timestamp to the _UTC offset_](../timezones/timezone-sensitive-operations/timestamptz-plain-timestamp-conversion/) for the full explanation of the semantics.
+The result is _true_. See the section [Sensitivity of converting between _timestamptz_ and plain _timestamp_ to the _UTC offset_](../timezones/timezone-sensitive-operations/timestamptz-plain-timestamp-conversion/) for the full explanation of the semantics.
 
 #### plain _timestamp_ to _text_
 
@@ -373,11 +376,13 @@ Try this:
 set timezone = 'UTC';
 select timestamptz_value()::date;
 ```
+
 This is the result:
 
 ```output
  2021-06-02
 ```
+
 You're actually seeing the _::text_ typecast of the resulting _date_ value.
 
 Notice that the date displayed here, _2-June_, is later that the date that defines the _timestamptz_ value. The test was contrived to produce this result. You need to have a solid mental model of the joint semantics of the plain _timestamp_ and the _timestamptz_ data types in order confidently to predict this outcome.
@@ -455,7 +460,7 @@ select
 
 The result is _true_.
 
-Notice that the date displayed here, 2-June, is later that the date that defines the _timestamptz_ value. This is the effect that was referred to in the section [_timestamptz_ to _date_](#timestamptz-to-date). See the section [Sensitivity of the conversion between timestamptz and plain timestamp to the _UTC offset_](../timezones/timezone-sensitive-operations/timestamptz-plain-timestamp-conversion/) for the full explanation of the semantics.
+Notice that the date displayed here, 2-June, is later that the date that defines the _timestamptz_ value. This is the effect that was referred to in the section [_timestamptz_ to _date_](#timestamptz-to-date). See the section [Sensitivity of converting between _timestamptz_ and plain _timestamp_ to the _UTC offset_](../timezones/timezone-sensitive-operations/timestamptz-plain-timestamp-conversion/) for the full explanation of the semantics.
 
 #### _timestamptz_ to _text_
 
@@ -471,12 +476,13 @@ This is the result:
 ```output
  2021-06-02 03:13:19.123456+00
 ```
-<p id="tz-function">&nbsp;</p>
+
+<a name="tz-function"></a>
 {{< tip title="Create the 'tz(timestamp)' function" >}}
 The code that follows
 
- - "This best defines the semantics of the _::text_ typecast of a _timestamptz_ value" below [here](#uses-tz-1), and
- - "Think of it like this" below [here](#text-to-timestamptz)
+ - "This best defines the semantics of the _::text_ typecast of a _timestamptz_ value" below, [here](#uses-tz-1), and
+ - "Think of it like this" below, [here](#text-to-timestamptz)
 
 depends on the user-defined function _tz(timestamp)_. It shows the session's current _UTC offset_ as a text string. It turns out that the _::text_ typecast that the present subsection addresses uses rather whimsical rules to format the _UTC offset_. Briefly, the sign is always shown, even when it is positive; and when the minutes component of the offset is zero, this is elided. (A _UTC offset_ never has a non-zero seconds component.)
 
@@ -544,10 +550,9 @@ These are the results—just as is required:
  +11
  +10:30
 ```
-
 {{< /tip >}}
 
-<p id="uses-tz-1">&nbsp;</p>This best defines the semantics of the <i>::text</i> typecast of a <i>timestamptz</i> value:
+<a name="uses-tz-1"></a>This best defines the semantics of the _::text_ typecast of a _timestamptz_ value:
 
 ```plpgsql
 set timezone = 'Asia/Tehran';
@@ -594,7 +599,7 @@ This is the result:
 
 You're actually seeing the _::text_ typecast of the resulting _time_ value.
 
-The rule here is trivial. But to see it as such you have to understand what the section [How does YSQL represent an interval value?](../date-time-data-types-semantics/type-interval/interval-representation/) explains. The reason is that the values of the _mm_ and _dd_ fields of the internal _[mm, dd, ss]_ tuple are simply ignored by the _interval_ to _time_ typecast. You can confirm that like this:
+The rule here is trivial. But to see it as such you have to understand what the section [How does YSQL represent an _interval_ value?](../date-time-data-types-semantics/type-interval/interval-representation/) explains. The reason is that the values of the _mm_ and _dd_ fields of the internal _[mm, dd, ss]_ tuple are simply ignored by the _interval_ to _time_ typecast. You can confirm that like this:
 
 ```plpgsql
 select ('7 years 5 months 13 days 10:17:00'::interval)::time;
@@ -644,7 +649,6 @@ See the section [Typecasting between date-time values and text values](../typeca
 All of the _text_ to _date_, _text_ to _time_, _text_ to plain _timestamp_, _text_ to _timestamptz_, and _text_ to _interval_ typecasts can be demonstrated with a single query:
 
 ```plpgsql
-\t on
 \x on
 select
   '2021-06-01'                    ::date        as "date value",
@@ -653,7 +657,6 @@ select
   '2021-06-02 03:13:19.123456+03' ::timestamptz as "timestamptz value value",
   '10 hours 17 minutes'           ::interval    as "interval value value";
 \x off
-\t off
 ```
 
 This is the result:
@@ -703,7 +706,7 @@ The result is _true_.
 
 #### _text_ to _timestamptz_
 
-As you'd expect, the _text_ to _timestamptz_ typecast needs some special discussion. A _UTC offset_ value is logically required. But you can elide this within the text literal and leave it to be defined using the rule that maps the current timezone to a _UTC offset_ value. The rules that determine the outcomes of the examples below are underpinned by the semantics of the [sensitivity of the conversion between _timestamptz_ and plain _timestamp_ values to the _UTC offset_](../timezones/timezone-sensitive-operations/timestamptz-plain-timestamp-conversion/).
+As you'd expect, the _text_ to _timestamptz_ typecast needs some special discussion. A _UTC offset_ value is logically required. But you can elide this within the text literal and leave it to be defined using the rule that maps the current timezone to a _UTC offset_ value. The rules that determine the outcomes of the examples below are underpinned by the semantics of the [sensitivity of converting between _timestamptz_ and plain _timestamp_ to the _UTC offset_](../timezones/timezone-sensitive-operations/timestamptz-plain-timestamp-conversion/).
 
 
 Think of it like this:

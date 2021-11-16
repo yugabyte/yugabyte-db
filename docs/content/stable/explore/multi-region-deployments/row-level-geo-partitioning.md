@@ -8,7 +8,7 @@ menu:
   stable:
     identifier: explore-multi-region-geo-partitioning
     parent: explore-multi-region-deployments
-    weight: 750
+    weight: 720
 isTocNested: true
 showAsideToc: true
 ---

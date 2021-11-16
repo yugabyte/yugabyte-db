@@ -1,7 +1,7 @@
 ---
 title: The interval data type [YSQL]
-headerTitle: The interval data type and its variants
-linkTitle: interval data type
+headerTitle: The interval data type
+linkTitle: Interval data type
 description: The semantics of the interval and data type and its variants. [YSQL]
 image: /images/section_icons/api/subsection.png
 menu:
@@ -12,10 +12,6 @@ menu:
 isTocNested: true
 showAsideToc: true
 ---
-
-{{< tip title="Install the user-defined interval utility functions now." >}}
-The code is included in a larger set of useful re-useable _date-time_ code. See [Download the _.zip_ file to create the reusable code that this overall major section describes](../../intro/#download).
-{{< /tip >}}
 
 ## Why does the interval data type exist?
 
@@ -106,7 +102,7 @@ Here is a sufficient example to illustrate the conceptual difficulty. First, try
 select ('1 day'::interval = '24 hours'::interval)::text;
 ```
 
-The result is _true_. (The implementation of the _interval-interval_ overload of the `=` operator is explained and discussed in the section [Comparing two interval values for equality](./interval-arithmetic/interval-interval-equality/).
+The result is _true_. (The implementation of the _interval-interval_ overload of the `=` operator is explained and discussed in the section [Comparing two _interval_ values](./interval-arithmetic/interval-interval-comparison/).)
 
 Now try this:
 
@@ -135,9 +131,7 @@ begin
 end;
 $body$;
 
-\t on
 select x from dd_versus_ss();
-\t off
 ```
 
 This is the result:
@@ -147,9 +141,9 @@ This is the result:
  t0 + '24 hours': 2021-03-14 21:00:00-07
 ```
 
-How can it be that, while _'1 day'_ is equal to _'24 hours'_, _t0 + '1 day'_ is _not_ equal to _t0 + '24 hours'_? The short answer, of course, is that  _'1 day'_ is _not_ equal to _'24 hours'_ when _interval_ equality is defined strictly. The native _interval-interval_ overload of the `=` operator implements only a loose notion of _interval_ equality. You also need a _strict_ _interval_ equality notion. The section [The "strict equals" operator](./interval-arithmetic/interval-interval-equality/#the-strict-equals-interval-interval-operator) shows you how to do this.
+How can it be that, while _'1 day'_ is equal to _'24 hours'_, _t0 + '1 day'_ is _not_ equal to _t0 + '24 hours'_? The short answer, of course, is that  _'1 day'_ is _not_ equal to _'24 hours'_ when _interval_ equality is defined strictly. The native _interval-interval_ overload of the `=` operator implements only a loose notion of _interval_ equality. You also need a _strict_ _interval_ equality notion. The section [The "strict equals" operator](./interval-arithmetic/interval-interval-comparison/#the-strict-equals-interval-interval-operator) shows you how to do this.
 
-In the present contrived but crucial example, _t0_ is just before the "spring forward" moment in the _America/Los_Angeles_ timezone. And the loosely, but not strictly, equal durations of _'1 day'_ and _'24 hours'_ are both long enough to take you from _Pacific Standard Time_ to _Pacific Daylight Savings Time_. Bearing in mind the _[&#91;mm, dd, ss&#93;](./interval-representation/)_ internal representation, you can immediately see this:
+In the present contrived but crucial example, _t0_ is just before the "spring forward" moment in the _America/Los_Angeles_ timezone. And the loosely, but not strictly, equal durations of _'1 day'_ and _'24 hours'_ are both long enough to take you from _Pacific Standard Time_ to _Pacific Daylight Savings Time_. Bearing in mind the _[\[mm, dd, ss\]](./interval-representation/)_ internal representation, you can immediately see this:
 
 - The semantics of _interval_ arithmetic is different for the _dd_ field of the internal representation than for the _ss_ field.
 
@@ -192,9 +186,7 @@ begin
 end;
 $body$;
 
-\t on
 select x from mm_versus_dd();
-\t off
 ```
 
 This is the result:
@@ -213,10 +205,10 @@ Everything that explains these differing semantics, and the philosophy of why th
 The notions that the account of the _interval_ data type explains are interdependent. The ordering of the following subsections aims to introduce the notions with the minimum dependency on notions yet to be introduced. The account is split into the following main subsections:
 
 - [How does YSQL represent an _interval_ value?](./interval-representation/)
-- [Understanding and discovering the upper and lower limits for _interval_ values](interval-limits)
+- [_Interval_ value limits](interval-limits)
 - [Declaring _intervals_](declaring-intervals)
 - [_Interval_ arithmetic](interval-arithmetic)
 - [Defining and using custom domain types to specialize the native _interval_ functionality](custom-interval-domains)
 - [User-defined _interval_ utility functions](interval-utilities)
 
-See the generic section [Typecasting between date-time values and text values](../../typecasting-between-date-time-and-text/) for the account of the ways to construct and to read values for all of the _date-time_ data types.
+See the generic section [Typecasting between date-time values and text values](../../typecasting-between-date-time-and-text/) for the account of the ways to construct and to read values for all of the _date-time_ data types—including, therefore, the _interval_ data type.

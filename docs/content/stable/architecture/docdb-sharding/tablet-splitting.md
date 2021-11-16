@@ -137,7 +137,7 @@ Imagine there is a table with pre-existing data spread across a certain number o
 1. Create a three-node local cluster.
 
     ```sh
-    bin/yb-ctl --rf=3 create --num_shards_per_tserver=1
+    bin/yb-ctl --rf=3 create --ysql_num_shards_per_tserver=1
     ```
 
 1. Create a sample table and insert some data.
@@ -156,7 +156,9 @@ Imagine there is a table with pre-existing data spread across a certain number o
 
     ```plpgsql
     SELECT count(*) FROM t;
-
+    ```
+    
+    ```output
     count
     --------
     100000
@@ -173,7 +175,7 @@ bin/yb-admin --master_addresses 127.0.0.1:7100 list_tablets ysql.yugabyte t
 
 This produces the following output. Note the tablet UUID for later use, to split this tablet.
 
-```plpgsql
+```output
 Tablet UUID                       Range                         Leader
 9991368c4b85456988303cd65a3c6503  key_start: "" key_end: ""     127.0.0.1:9100
 ```
@@ -194,7 +196,7 @@ After the split, you see two tablets for the table `t`.
 bin/yb-admin --master_addresses 127.0.0.1:7100 list_tablets ysql.yugabyte t
 ```
 
-```plpgsql
+```output
 Tablet UUID                       Range                                 Leader
 20998f68c3fa4d299e8af7c04410e230  key_start: "" key_end: "\177\377"     127.0.0.1:9100
 a89ecb84ad1b488b893b6e7762a6ca2a  key_start: "\177\377" key_end: ""     127.0.0.3:9100
@@ -205,7 +207,7 @@ a89ecb84ad1b488b893b6e7762a6ca2a  key_start: "\177\377" key_end: ""     127.0.0.
 * The original tablet `9991368c4b85456988303cd65a3c6503` no longer exists and has been replaced with two new tablets.
 * The tablet leaders are now spread across two nodes in order to evenly balance the tablets for the table across the nodes of the cluster.
 
-{{</note >}}
+{{< /note >}}
 
 ## Automatic tablet splitting
 
@@ -215,18 +217,26 @@ For details on the architecture design, see [Automatic Re-sharding of Data with 
 
 ### Enable automatic tablet splitting
 
-To enable automatic tablet splitting, use the `yb-master` [`--tablet_split_size_threshold_bytes`](../../../reference/configuration/yb-master/#tablet-split-size-threshold-bytes) flag to specify the size when tablets should split.
+To enable automatic tablet splitting, use the `yb-master` [`--enable_automatic_tablet_splitting`](../../../reference/configuration/yb-master/#enable_automatic_tablet_splitting) command, and specify the associated flags to configure when tablets should split.
 
-The lower the value for the threshold size, the more tablets will exist with the same amount of data.
+Tablet splitting happens in three phases, determined by the shard count per node. As the shard count increases, the threshold size for splitting a tablet also increases:
 
-### Example using a YCSB workload with automatic tablet splitting
+* In the **low phase**, each node has fewer than [`tablet_split_low_phase_shard_count_per_node`](../../../reference/configuration/yb-master/#tablet-split-low-phase-shard-count-per-node) shards. In this phase, YugabyteDB splits tablets larger than [`tablet_split_low_phase_size_threshold_bytes`](../../../reference/configuration/yb-master/#tablet-split-low-phase-size-threshold-bytes).
+
+* In the **high phase**, each node has fewer than [`tablet_split_high_phase_shard_count_per_node`](../../../reference/configuration/yb-master/#tablet-split-high-phase-shard-count-per-node) shards. In this phase, YugabyteDB splits tablets larger than [`tablet_split_high_phase_size_threshold_bytes`](../../../reference/configuration/yb-master/#tablet-split-high-phase-size-threshold-bytes).
+
+* Once the shard count exceeds the high phase count, YugabyteDB splits tablets larger than [`tablet_force_split_threshold_bytes`].
+
+When automatic tablet splitting is enabled, newly-created tables have one shard per tserver by default.
+
+### Example: YCSB workload with automatic tablet splitting
 
 In the following example, a three-node cluster is created and uses a YCSB workload to demonstrate the use of automatic tablet splitting in a YSQL database. For details on using YCSB with YugabyteDB, see the [YCSB](../../../benchmark/ycsb-jdbc/) section in the Benchmark guide.
 
 1. Create a three-node cluster.
 
     ```sh
-    ./bin/yb-ctl --rf=3 create --num_shards_per_tserver=1 --ysql_num_shards_per_tserver=1 --master_flags '"tablet_split_size_threshold=30000000"' --tserver_flags '"memstore_size_mb=10"'
+    ./bin/yb-ctl --rf=3 create --master_flags "enable_automatic_tablet_splitting=true,tablet_split_low_phase_size_threshold_bytes=30000000" --tserver_flags "memstore_size_mb=10"
     ```
 
 1. Create a table for workload.
@@ -243,7 +253,7 @@ In the following example, a three-node cluster is created and uses a YCSB worklo
 
 1. Create the properties file for YCSB at `~/code/YCSB/db-local.properties` and add the following content.
 
-    ```sh
+    ```conf
     db.driver=org.postgresql.Driver
     db.url=jdbc:postgresql://127.0.0.1:5433/ycsb;jdbc:postgresql://127.0.0.2:5433/ycsb;jdbc:postgresql://127.0.0.3:5433/ycsb
     db.user=yugabyte
@@ -257,7 +267,7 @@ In the following example, a three-node cluster is created and uses a YCSB worklo
     ~/code/YCSB/bin/ycsb load jdbc -s -P ~/code/YCSB/db-local.properties -P ~/code/YCSB/workloads/workloada -p recordcount=500000 -p operationcount=1000000 -p threadcount=4
     ```
 
-1. Monitor the tablets splitting by going to the YugabyteDB Web UI at `http://localhost:7000/tablet-servers` and `http://127.0.0.1:9000/tablets`.
+1. Monitor the tablet splitting using the YugabyteDB web interfaces at `http://localhost:7000/tablet-servers` and `http://127.0.0.1:9000/tablets`.
 
 1. Run the workload.
 
@@ -275,11 +285,10 @@ In the following example, a three-node cluster is created and uses a YCSB worklo
 
 ## Current limitations
 
-{{< note title="Note" >}}
+{{< note title="Limitations" >}}
 
 The following known limitations are planned to be resolved in upcoming releases:
 
-* During tablet splitting, client applications may get an error from the driver and need to retry the request. [#5854](https://github.com/yugabyte/yugabyte-db/issues/5854)
 * Colocated tables cannot be split. [#4463](https://github.com/yugabyte/yugabyte-db/issues/4463)
 * Tablet splitting should be disabled during an index backfill. [#6704](https://github.com/yugabyte/yugabyte-db/issues/6704)
 * Cross cluster replication currently does not work with tablet splitting. [#5373](https://github.com/yugabyte/yugabyte-db/issues/5373)

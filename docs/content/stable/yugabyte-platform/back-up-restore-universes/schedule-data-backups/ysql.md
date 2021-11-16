@@ -30,7 +30,9 @@ showAsideToc: true
 
 </ul>
 
-Use Yugabyte Platform to perform regularly scheduled backups of YugabyteDB universe data for all YSQL tables in a namespace. To back up your universe YCQL data immediately, see [Back up universe YSQL data](../../back-up-universe-data/ysql).
+Use Yugabyte Platform to perform regularly scheduled backups of YugabyteDB universe data for all YSQL tables in a namespace. 
+
+To back up your universe YSQL data immediately, see [Back up universe YSQL data](../../back-up-universe-data/ysql).
 
 ## Schedule a backup
 
@@ -50,7 +52,7 @@ To schedule a backup of your universe YSQL data:
 
     - **Storage**: Select the storage type: `GCS Storage`, `S3 Storage`, or `NFS Storage`.
     - **Namespace**: Select the namespace from the drop-down list of available namespaces.
-    - **Parallel Threads**: Enter or select the number of threads. The default value of `8` appears.
+    - **Parallel Threads**: Enter or select the number of threads. The default is `8`.
     - **Number of Days to Retain Backup**: Default is unspecified which means to retain indefinitely.
 
 7. Click **OK**. The initial backup will begin immediately.
@@ -71,4 +73,3 @@ To permanently remove a scheduled backup:
 1. Go to the **Backups** tab for the universe. 
 2. Find the scheduled backup and click **Options**.
 3. Click **Delete schedule**. The scheduled backup is deleted.
-

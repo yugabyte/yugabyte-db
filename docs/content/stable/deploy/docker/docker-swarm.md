@@ -37,18 +37,18 @@ This tutorial uses [Docker Machine](https://docs.docker.com/machine/) to create 
 
 ### Linux
 
-- Docker Engine 1.12 or later installed using [Docker for Linux](https://docs.docker.com/engine/swarm/swarm-tutorial/#install-docker-engine-on-linux-machines).
+- Docker Engine 1.12 or later installed using [Docker for Linux](https://docs.docker.com/engine/install/).
 - [Docker Machine](https://docs.docker.com/machine/install-machine/).
 
 ### macOS
 
-- Docker Engine 1.12 or later installed using [Docker for Mac](https://docs.docker.com/docker-for-mac/). Docker Machine is already included with Docker for Mac.
+- Docker Engine 1.12 or later installed using [Docker for Mac](https://docs.docker.com/docker-for-mac/install/). Docker Machine is already included with Docker for Mac.
 
 - VirtualBox 5.2 or later for creating the swarm nodes.
 
 ### Windows
 
-- Docker Engine 1.12 or later installed using [Docker for Windows](https://docs.docker.com/docker-for-mac/). Docker Machine is already included with Docker for Windows.
+- Docker Engine 1.12 or later installed using [Docker for Windows](https://docs.docker.com/docker-for-windows/install/). Docker Machine is already included with Docker for Windows.
 
 - [Microsoft Hyper-V driver](https://docs.docker.com/machine/drivers/hyper-v/) for creating the swarm nodes.
 
