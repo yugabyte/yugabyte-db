@@ -3793,7 +3793,8 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
   // Currently, config options are mutually exclusive to simplify transactionality.
   int config_count = (req->producer_master_addresses_size() > 0 ? 1 : 0) +
                      (req->producer_table_ids_to_remove_size() > 0 ? 1 : 0) +
-                     (req->producer_table_ids_to_add_size() > 0 ? 1 : 0);
+                     (req->producer_table_ids_to_add_size() > 0 ? 1 : 0) +
+                     (req->has_new_producer_universe_id() ? 1 : 0);
   if (config_count != 1) {
     return STATUS(InvalidArgument, "Only 1 Alter operation per request currently supported",
                   req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
@@ -4027,6 +4028,57 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
       return SetupError(resp->mutable_error(), s);
     }
     // NOTE: ALTER merges back into original after completion.
+  } else if (req->has_new_producer_universe_id()) {
+    Status s = RenameUniverseReplication(original_ri, req, resp, rpc);
+    if (!s.ok()) {
+      return SetupError(resp->mutable_error(), s);
+    }
+  }
+
+  return Status::OK();
+}
+
+Status CatalogManager::RenameUniverseReplication(
+    scoped_refptr<UniverseReplicationInfo> universe,
+    const AlterUniverseReplicationRequestPB* req,
+    AlterUniverseReplicationResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  const string old_universe_replication_id = universe->id();
+  const string new_producer_universe_id = req->new_producer_universe_id();
+  if (old_universe_replication_id == new_producer_universe_id) {
+    return STATUS(InvalidArgument, "Old and new replication ids must be different",
+                  req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
+  }
+
+  {
+    LockGuard lock(mutex_);
+    auto l = universe->LockForWrite();
+
+    // Assert that new_replication_name isn't already in use.
+    if (FindPtrOrNull(universe_replication_map_, new_producer_universe_id) != nullptr) {
+      return STATUS(InvalidArgument, "New replication id is already in use",
+                    req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
+    }
+
+    // Update the name.
+    *l.mutable_data()->pb.mutable_producer_id() = new_producer_universe_id;
+
+    // Also need to update internal maps.
+    universe_replication_map_[new_producer_universe_id] =
+        std::move(universe_replication_map_[old_universe_replication_id]);
+    universe_replication_map_.erase(old_universe_replication_id);
+
+    auto cl = cluster_config_->LockForWrite();
+    auto producer_map = cl.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
+    (*producer_map)[new_producer_universe_id] =
+        std::move((*producer_map)[old_universe_replication_id]);
+    producer_map->erase(old_universe_replication_id);
+
+    RETURN_NOT_OK(CheckStatus(
+        sys_catalog_->Upsert(leader_ready_term(), universe, cluster_config_),
+        "Updating universe replication info and cluster config in sys-catalog"));
+    cl.Commit();
+    l.Commit();
   }
 
   return Status::OK();
