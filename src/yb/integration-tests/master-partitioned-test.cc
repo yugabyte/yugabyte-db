@@ -13,9 +13,6 @@
 
 #include <memory>
 #include <thread>
-#include <boost/bind.hpp>
-#include <boost/thread/thread.hpp>
-#include <glog/stl_logging.h>
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
@@ -26,15 +23,11 @@
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-#include "yb/master/master-test-util.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/rpc/messenger.h"
-#include "yb/tserver/mini_tablet_server.h"
-#include "yb/tserver/tablet_server.h"
 #include "yb/util/atomic.h"
-#include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
 #include "yb/util/shared_lock.h"
 

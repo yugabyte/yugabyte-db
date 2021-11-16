@@ -33,13 +33,10 @@
 #include "yb/util/trace.h"
 
 #include <iomanip>
-#include <ios>
 #include <iostream>
-#include <strstream>
 #include <string>
 #include <vector>
 
-#include <boost/range/iterator_range.hpp>
 #include <boost/range/adaptor/indirected.hpp>
 
 #include "yb/gutil/strings/substitute.h"

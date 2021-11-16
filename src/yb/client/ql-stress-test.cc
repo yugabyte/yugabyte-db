@@ -23,7 +23,6 @@
 
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/raft_consensus.h"
-#include "yb/consensus/replica_state.h"
 #include "yb/consensus/retryable_requests.h"
 
 #include "yb/docdb/consensus_frontier.h"
@@ -37,7 +36,6 @@
 #include "yb/server/hybrid_clock.h"
 
 #include "yb/tablet/tablet_options.h"
-#include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
@@ -45,7 +43,6 @@
 
 #include "yb/util/bfql/gen_opcodes.h"
 #include "yb/util/random_util.h"
-#include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 
 #include "yb/util/tsan_util.h"

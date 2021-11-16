@@ -24,7 +24,6 @@
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_test_util.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/rocksutil/yb_rocksdb.h"
 
 using std::endl;
 using std::string;

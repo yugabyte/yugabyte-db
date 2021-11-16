@@ -17,11 +17,8 @@
 
 #include "yb/util/zlib.h"
 
-#include <zconf.h>
 #include <zlib.h>
 
-#include <cstdint>
-#include <cstring>
 #include <memory>
 #include <string>
 

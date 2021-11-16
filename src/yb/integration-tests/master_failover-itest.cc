@@ -32,7 +32,6 @@
 
 #include <functional>
 #include <string>
-#include <system_error>
 #include <vector>
 #include <glog/logging.h>
 #include <gtest/gtest.h>
@@ -50,14 +49,11 @@
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/gutil/strings/util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/master/master.pb.h"
-#include "yb/master/master.proxy.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
 #include "yb/tools/yb-admin_client.h"
 

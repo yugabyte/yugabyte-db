@@ -32,7 +32,6 @@
 #include "yb/util/hdr_histogram.h"
 
 #include <algorithm>
-#include <cmath>
 #include <limits>
 
 #include "yb/gutil/atomicops.h"

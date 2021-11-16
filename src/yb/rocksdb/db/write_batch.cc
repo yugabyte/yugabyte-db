@@ -46,7 +46,6 @@
 #include <stack>
 #include <stdexcept>
 #include <vector>
-#include <iostream>
 
 #include "yb/rocksdb/db/column_family.h"
 #include "yb/rocksdb/db/db_impl.h"

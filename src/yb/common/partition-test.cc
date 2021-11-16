@@ -32,8 +32,12 @@
 
 #include <stdint.h>
 
+#include <atomic>
 #include <iterator>
+#include <string>
 #include <vector>
+
+#include <gtest/gtest.h>
 
 #include "yb/common/common.pb.h"
 #include "yb/common/crc16.h"
@@ -42,8 +46,11 @@
 #include "yb/common/row.h"
 #include "yb/common/schema.h"
 #include "yb/yql/redis/redisserver/redis_constants.h"
-#include "yb/util/hash_util.h"
-#include "yb/util/test_util.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/thread.h"
+#include "yb/util/tsan_util.h"
 
 using std::vector;
 using std::string;

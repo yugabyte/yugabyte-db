@@ -33,7 +33,6 @@
 // First column is in ascending order, the rest are random data.
 // Helps make things like availability demos a little easier.
 
-#include <iostream>
 #include <memory>
 #include <vector>
 #include <gflags/gflags.h>

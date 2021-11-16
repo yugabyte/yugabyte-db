@@ -19,7 +19,6 @@
 
 #include "yb/util/condition_variable.h"
 
-#include <errno.h>
 #include <sys/time.h>
 
 #include <glog/logging.h>

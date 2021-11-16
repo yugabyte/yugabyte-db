@@ -28,12 +28,7 @@
 #endif
 
 #include <inttypes.h>
-#include <errno.h>
-#include <stdarg.h>
 #include <stdio.h>
-#include <stdlib.h>
-#include <cmath>
-#include "yb/rocksdb/env.h"
 #include "yb/util/slice.h"
 
 namespace rocksdb {

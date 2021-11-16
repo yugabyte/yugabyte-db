@@ -33,13 +33,11 @@
 #include "yb/common/partial_row.h"
 
 #include <algorithm>
-#include <cstring>
 #include <string>
 
 #include "yb/common/common.pb.h"
 #include "yb/common/row.h"
 #include "yb/common/schema.h"
-#include "yb/common/wire_protocol.pb.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/bitmap.h"
 #include "yb/util/status.h"

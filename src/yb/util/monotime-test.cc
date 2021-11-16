@@ -32,8 +32,6 @@
 
 #include "yb/util/monotime.h"
 
-#include <sys/time.h>
-#include <unistd.h>
 
 #include <condition_variable>
 #include <thread>

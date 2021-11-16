@@ -18,7 +18,6 @@
 // under the License.
 //
 
-#include "yb/rocksdb/experimental.h"
 
 #include "yb/rocksdb/db/db_impl.h"
 

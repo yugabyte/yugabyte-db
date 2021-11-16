@@ -24,7 +24,6 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/thread_restrictions.h"
 
-#include "yb/yql/cql/ql/statement.h"
 
 DECLARE_bool(use_cassandra_authentication);
 DECLARE_bool(ycql_require_drop_privs_for_truncate);

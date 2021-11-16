@@ -26,9 +26,6 @@
 
 #include "yb/rocksdb/db/db_test_util.h"
 #include "yb/rocksdb/port/stack_trace.h"
-#include "yb/rocksdb/db.h"
-#include "yb/rocksdb/util/testharness.h"
-#include "yb/rocksdb/util/testutil.h"
 
 #ifndef ROCKSDB_LITE
 

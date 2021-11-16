@@ -26,11 +26,12 @@
 #define __STDC_FORMAT_MACROS
 #endif
 
-#include <cctype>
-#include <cstring>
+#include <string>
 #include <unordered_map>
 
 #include <boost/preprocessor/stringize.hpp>
+
+#include <gtest/gtest.h>
 
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/convenience.h"
@@ -40,7 +41,8 @@
 #include "yb/rocksdb/util/options_parser.h"
 #include "yb/rocksdb/util/options_sanity_check.h"
 #include "yb/rocksdb/util/random.h"
-#include "yb/rocksdb/util/testharness.h"
+#include "yb/rocksdb/env.h"
+#include "yb/util/test_macros.h"
 #include "yb/rocksdb/util/testutil.h"
 #include "yb/util/format.h"
 

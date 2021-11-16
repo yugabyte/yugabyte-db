@@ -11,12 +11,10 @@
 // under the License.
 //
 
-#include "yb/rocksdb/filter_policy.h"
 #include "yb/rocksdb/db/db_test_util.h"
 #include "yb/rocksdb/port/stack_trace.h"
 #include "yb/rocksdb/perf_context.h"
 
-#include "yb/util/format.h"
 
 namespace rocksdb {
 

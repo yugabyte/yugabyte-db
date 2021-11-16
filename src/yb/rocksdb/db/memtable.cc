@@ -26,18 +26,15 @@
 #include <memory>
 #include <algorithm>
 #include <limits>
-#include <sstream>
 
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/merge_context.h"
-#include "yb/rocksdb/db/writebuffer.h"
 #include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/merge_operator.h"
 #include "yb/rocksdb/slice_transform.h"
 #include "yb/rocksdb/table/internal_iterator.h"
-#include "yb/rocksdb/table/merger.h"
 #include "yb/rocksdb/util/arena.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/murmurhash.h"

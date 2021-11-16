@@ -12,7 +12,6 @@
 //
 
 #include <sys/types.h>
-#include <openssl/rand.h>
 
 #include <string>
 
@@ -23,7 +22,6 @@
 #include "yb/util/status.h"
 #include "yb/util/test_util.h"
 #include "yb/util/universe_key_manager.h"
-#include "yb/util/random_util.h"
 
 #include "yb/gutil/endian.h"
 

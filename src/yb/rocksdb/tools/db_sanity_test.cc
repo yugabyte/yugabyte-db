@@ -18,8 +18,6 @@
 // under the License.
 //
 
-#include <cstdio>
-#include <cstdlib>
 #include <vector>
 #include <memory>
 
@@ -32,7 +30,6 @@
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/slice_transform.h"
 #include "yb/rocksdb/filter_policy.h"
-#include "yb/rocksdb/port/port.h"
 #include "yb/util/string_util.h"
 
 namespace rocksdb {

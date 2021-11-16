@@ -10,13 +10,10 @@
 
 #include "yb/docdb/consensus_frontier.h"
 
-#include "yb/rpc/rpc_context.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/tablet/snapshot_coordinator.h"
 #include "yb/tablet/tablet_snapshots.h"
 #include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_peer.h"
-#include "yb/tablet/tablet_metrics.h"
 #include "yb/tserver/backup.pb.h"
 #include "yb/tserver/tserver_error.h"
 #include "yb/util/trace.h"

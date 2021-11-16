@@ -55,7 +55,6 @@
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/utilities/checkpoint.h"
 #include "yb/rocksdb/write_batch.h"
-#include "yb/rocksdb/util/file_util.h"
 #include "yb/rocksutil/write_batch_formatter.h"
 
 #include "yb/client/error.h"
@@ -73,7 +72,6 @@
 #include "yb/common/schema.h"
 #include "yb/common/transaction_error.h"
 
-#include "yb/consensus/consensus_error.h"
 #include "yb/consensus/consensus_round.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/log_anchor_registry.h"
@@ -106,11 +104,9 @@
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rocksutil/yb_rocksdb.h"
-#include "yb/rocksutil/yb_rocksdb_logger.h"
 #include "yb/server/hybrid_clock.h"
 
 #include "yb/tablet/tablet_fwd.h"
-#include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/snapshot_coordinator.h"
 #include "yb/tablet/tablet_snapshots.h"
 #include "yb/tablet/tablet_metrics.h"
@@ -124,7 +120,6 @@
 #include "yb/tablet/operations/split_operation.h"
 #include "yb/tablet/tablet_options.h"
 
-#include "yb/util/bloom_filter.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/enums.h"
 #include "yb/util/env.h"
@@ -140,7 +135,6 @@
 #include "yb/util/slice.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/trace.h"
-#include "yb/util/url-coding.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 

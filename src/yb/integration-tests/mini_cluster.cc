@@ -41,11 +41,8 @@
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/catalog_manager.h"
-#include "yb/master/master.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog.h"
-#include "yb/master/ts_descriptor.h"
-#include "yb/master/ts_manager.h"
 
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/rate_limiter.h"

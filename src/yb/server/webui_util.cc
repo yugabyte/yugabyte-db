@@ -36,7 +36,6 @@
 
 #include "yb/common/schema.h"
 #include "yb/gutil/strings/join.h"
-#include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/server/monitored_task.h"

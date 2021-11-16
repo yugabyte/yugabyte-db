@@ -24,9 +24,7 @@
 #include "yb/util/status.h"
 #include "yb/util/test_util.h"
 #include "yb/util/header_manager.h"
-#include "yb/util/encryption_test_util.h"
 
-#include "yb/util/random_util.h"
 #include "yb/util/path_util.h"
 
 #include "yb/rocksdb/table/block_based_table_factory.h"
@@ -35,7 +33,6 @@
 #include "yb/rocksdb/table/internal_iterator.h"
 
 #include "yb/util/universe_key_manager.h"
-#include "yb/util/scope_exit.h"
 
 #include "yb/tserver/universe_key_test_util.h"
 

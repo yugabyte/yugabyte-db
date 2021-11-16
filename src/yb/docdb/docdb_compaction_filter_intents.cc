@@ -15,7 +15,6 @@
 
 #include <memory>
 
-#include <gflags/gflags.h>
 #include <glog/logging.h>
 
 #include "yb/rocksdb/compaction_filter.h"
@@ -26,11 +25,7 @@
 #include "yb/docdb/intent.h"
 #include "yb/docdb/value.h"
 #include "yb/docdb/doc_kv_util.h"
-#include "yb/rocksutil/yb_rocksdb.h"
-#include "yb/rpc/rpc.h"
-#include "yb/rpc/thread_pool.h"
 #include "yb/tablet/transaction_participant.h"
-#include "yb/util/flag_tags.h"
 
 DEFINE_uint64(aborted_intent_cleanup_ms, 60000, // 1 minute by default, 1 sec for testing
              "Duration in ms after which to check if a transaction is aborted.");

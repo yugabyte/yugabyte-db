@@ -35,13 +35,11 @@
 #include "yb/yql/pggate/pg_txn_manager.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
-#include "yb/util/flag_tags.h"
 #include "yb/util/range.h"
 
 #include "yb/client/client.h"
 #include "yb/client/client_fwd.h"
 #include "yb/client/client_utils.h"
-#include "yb/client/table.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/secure_stream.h"
 #include "yb/server/secure.h"

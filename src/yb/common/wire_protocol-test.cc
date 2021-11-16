@@ -31,12 +31,10 @@
 //
 
 #include <gtest/gtest.h>
-#include "yb/common/row.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/util/errno.h"
 #include "yb/util/status.h"
-#include "yb/util/stopwatch.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 

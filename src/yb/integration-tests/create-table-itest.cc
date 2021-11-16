@@ -49,9 +49,7 @@
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_util.h"
-#include "yb/master/sys_catalog_initialization.h"
 #include "yb/util/metrics.h"
-#include "yb/util/path_util.h"
 
 using std::multimap;
 using std::set;

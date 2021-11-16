@@ -24,7 +24,6 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/transaction_pool.h"
 
-#include "yb/yql/cql/ql/ptree/pt_grant_revoke.h"
 #include "yb/yql/cql/ql/util/ql_env.h"
 
 DEFINE_bool(use_cassandra_authentication, false, "If to require authentication on startup.");

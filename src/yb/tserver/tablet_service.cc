@@ -45,7 +45,6 @@
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/consensus/leader_lease.h"
 #include "yb/consensus/raft_consensus.h"
 
 #include "yb/docdb/cql_operation.h"
@@ -57,7 +56,6 @@
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/escaping.h"
-#include "yb/master/sys_catalog_constants.h"
 #include "yb/server/hybrid_clock.h"
 
 #include "yb/tablet/tablet_bootstrap_if.h"
@@ -72,7 +70,6 @@
 #include "yb/tablet/operations/update_txn_operation.h"
 #include "yb/tablet/operations/write_operation.h"
 
-#include "yb/tserver/remote_bootstrap_service.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_error.h"
@@ -96,7 +93,6 @@
 #include "yb/consensus/consensus.pb.h"
 #include "yb/tserver/service_util.h"
 
-#include "yb/yql/pggate/util/pg_doc_data.h"
 #include "yb/yql/pgwrapper/ysql_upgrade.h"
 
 using namespace std::literals;  // NOLINT

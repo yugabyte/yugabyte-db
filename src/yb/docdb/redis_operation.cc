@@ -17,7 +17,6 @@
 #include "yb/docdb/doc_ttl_util.h"
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/doc_write_batch_cache.h"
-#include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/subdocument.h"
 

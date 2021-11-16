@@ -27,8 +27,8 @@
 #include "yb/rocksdb/db/version_edit.h"
 #include "yb/rocksdb/port/stack_trace.h"
 #include "yb/rocksdb/comparator.h"
-#include "yb/rocksdb/util/testharness.h"
-#include "yb/rocksdb/util/testutil.h"
+#include <gtest/gtest.h>
+#include "yb/rocksdb/env.h"
 
 namespace rocksdb {
 

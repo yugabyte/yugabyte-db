@@ -21,7 +21,6 @@
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/load_generator.h"
-#include "yb/integration-tests/test_workload.h"
 #include "yb/integration-tests/yb_table_test_base.h"
 #include "yb/util/metrics.h"
 #include "yb/util/test_util.h"
