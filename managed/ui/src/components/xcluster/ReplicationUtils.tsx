@@ -1,7 +1,11 @@
 import React from 'react';
 import { useQuery } from 'react-query';
 import { getAlertConfigurations } from '../../actions/universe';
-import { getUniverseInfo, queryLagMetricsForTable, queryLagMetricsForUniverse } from '../../actions/xClusterReplication';
+import {
+  getUniverseInfo,
+  queryLagMetricsForTable,
+  queryLagMetricsForUniverse
+} from '../../actions/xClusterReplication';
 import { IReplicationStatus } from './IClusterReplication';
 
 import './ReplicationUtils.scss';
@@ -19,7 +23,7 @@ export const getReplicationStatus = (status = IReplicationStatus.INIT) => {
     case IReplicationStatus.PAUSED:
       return (
         <span className="replication-status-text paused">
-          <i className="fa fa-pause-circle-o"/>
+          <i className="fa fa-pause-circle-o" />
           Paused
         </span>
       );
@@ -47,37 +51,47 @@ export const getReplicationStatus = (status = IReplicationStatus.INIT) => {
   }
 };
 
-
 const ALERT_NAME = 'Replication Lag';
-export const GetConfiguredThreshold = ({currentUniverseUUID}: {currentUniverseUUID: string}) => {
+export const GetConfiguredThreshold = ({
+  currentUniverseUUID
+}: {
+  currentUniverseUUID: string;
+}) => {
   const configurationFilter = {
     name: ALERT_NAME,
     targetUuid: currentUniverseUUID
   };
 
-  const { data: metricsData,  isFetching } = useQuery(
+  const { data: metricsData, isFetching } = useQuery(
     ['getConfiguredThreshold', configurationFilter],
     () => getAlertConfigurations(configurationFilter)
   );
-  if(isFetching){
-    return (<i className="fa fa-spinner fa-spin yb-spinner"></i>);
+  if (isFetching) {
+    return <i className="fa fa-spinner fa-spin yb-spinner"></i>;
   }
-  
-  if(!metricsData){
+
+  if (!metricsData) {
     return <span>0</span>;
   }
-  return (<span>{metricsData?.[0]?.thresholds?.SEVERE.threshold}</span>);
-
+  return <span>{metricsData?.[0]?.thresholds?.SEVERE.threshold}</span>;
 };
 
-export const GetCurrentLag = ({replicationUUID, sourceUniverseUUID}:{replicationUUID: string, sourceUniverseUUID: string}) => {
-
-  const { data: universeInfo, isLoading: currentUniverseLoading } = useQuery(['universe', sourceUniverseUUID], () => getUniverseInfo(sourceUniverseUUID));
+export const GetCurrentLag = ({
+  replicationUUID,
+  sourceUniverseUUID
+}: {
+  replicationUUID: string;
+  sourceUniverseUUID: string;
+}) => {
+  const { data: universeInfo, isLoading: currentUniverseLoading } = useQuery(
+    ['universe', sourceUniverseUUID],
+    () => getUniverseInfo(sourceUniverseUUID)
+  );
 
   const nodePrefix = universeInfo?.data?.universeDetails.nodePrefix;
 
-  const { data: metricsData,  isFetching } = useQuery(
-    [replicationUUID, nodePrefix,  'metric'],
+  const { data: metricsData, isFetching } = useQuery(
+    [replicationUUID, nodePrefix, 'metric'],
     () => queryLagMetricsForUniverse(nodePrefix),
     {
       enabled: !currentUniverseLoading,
@@ -85,21 +99,34 @@ export const GetCurrentLag = ({replicationUUID, sourceUniverseUUID}:{replication
     }
   );
 
-  if(isFetching || currentUniverseLoading){
-    return (<i className="fa fa-spinner fa-spin yb-spinner"></i>);
+  if (isFetching || currentUniverseLoading) {
+    return <i className="fa fa-spinner fa-spin yb-spinner"></i>;
   }
 
-  if(!metricsData?.data.tserver_async_replication_lag_micros || !Array.isArray(metricsData.data.tserver_async_replication_lag_micros.data)){
+  if (
+    !metricsData?.data.tserver_async_replication_lag_micros ||
+    !Array.isArray(metricsData.data.tserver_async_replication_lag_micros.data)
+  ) {
     return <span>-</span>;
   }
 
   const latestLag = metricsData.data.tserver_async_replication_lag_micros.data[1]?.y[0];
-  return <span>{latestLag}</span>;
+  return <span>{latestLag || '-'}</span>;
 };
 
-export const GetCurrentLagForTable = ({replicationUUID, tableName, enabled, nodePrefix}: {replicationUUID: string, tableName:string, enabled?: boolean, nodePrefix: string| undefined}) => {
-  const { data: metricsData,  isFetching } = useQuery(
-    [replicationUUID,nodePrefix, tableName, 'metric'],
+export const GetCurrentLagForTable = ({
+  replicationUUID,
+  tableName,
+  enabled,
+  nodePrefix
+}: {
+  replicationUUID: string;
+  tableName: string;
+  enabled?: boolean;
+  nodePrefix: string | undefined;
+}) => {
+  const { data: metricsData, isFetching } = useQuery(
+    [replicationUUID, nodePrefix, tableName, 'metric'],
     () => queryLagMetricsForTable(tableName, nodePrefix),
     {
       enabled,
@@ -107,14 +134,25 @@ export const GetCurrentLagForTable = ({replicationUUID, tableName, enabled, node
     }
   );
 
-  if(isFetching){
-    return (<i className="fa fa-spinner fa-spin yb-spinner"></i>);
+  if (isFetching) {
+    return <i className="fa fa-spinner fa-spin yb-spinner"></i>;
   }
 
-  if(!metricsData?.data.tserver_async_replication_lag_micros || !Array.isArray(metricsData.data.tserver_async_replication_lag_micros.data)){
+  if (
+    !metricsData?.data.tserver_async_replication_lag_micros ||
+    !Array.isArray(metricsData.data.tserver_async_replication_lag_micros.data)
+  ) {
     return <span>-</span>;
   }
 
   const latestLag = metricsData.data.tserver_async_replication_lag_micros.data[1]?.y[0];
-  return <span>{latestLag}</span>;
+  return <span>{latestLag || '-'}</span>;
+};
+
+export const getMasterNodeAddress = (nodeDetailsSet: Array<any>) => {
+  const master = nodeDetailsSet.find((node: Record<string, any>) => node.isMaster);
+  if (master) {
+    return master.cloudInfo.private_ip + ':' + master.masterRpcPort;
+  }
+  return '';
 };

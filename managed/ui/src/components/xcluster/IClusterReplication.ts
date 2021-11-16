@@ -6,17 +6,17 @@ export interface IReplicationTable {
   sizeBytes: string;
 }
 
-export enum IReplicationStatus  {
+export enum IReplicationStatus {
   INIT = 'Init',
-  SUCCESS= 'Success',
-  FAILED= 'Failed',
-  PAUSED= 'Paused',
+  SUCCESS = 'Success',
+  FAILED = 'Failed',
+  PAUSED = 'Paused',
   RUNNING = 'Running'
 }
 
 export interface IReplication {
   name: string;
-  uuid:string;
+  uuid: string;
   sourceUniverseUUID: string;
   targetUniverseUUID: string;
   masterAddress?: string;

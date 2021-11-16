@@ -2,12 +2,21 @@ import React from 'react';
 import { Col, ListGroup, ListGroupItem, Row } from 'react-bootstrap';
 import { useQueries, useQuery } from 'react-query';
 import { Link } from 'react-router';
-import { fetchUniversesList, getUniverseInfo, getXclusterConfig } from '../../actions/xClusterReplication';
+import {
+  fetchUniversesList,
+  getUniverseInfo,
+  getXclusterConfig
+} from '../../actions/xClusterReplication';
 import { YBLoading } from '../common/indicators';
 import { IReplication } from './IClusterReplication';
 
 import './ReplicationList.scss';
-import { GetConfiguredThreshold, GetCurrentLag, getReplicationStatus } from './ReplicationUtils';
+import {
+  GetConfiguredThreshold,
+  GetCurrentLag,
+  getMasterNodeAddress,
+  getReplicationStatus
+} from './ReplicationUtils';
 
 function ReplicationEmptyItem() {
   return <div className="replication-item replication-item-empty">No replications to show</div>;
@@ -16,13 +25,14 @@ function ReplicationEmptyItem() {
 function ReplicationItem({
   replication,
   currentUniverseUUID,
-  universeName
+  universeName,
+  masterNodeAddress
 }: {
   replication: IReplication;
   currentUniverseUUID: string;
-  universeName:string;
+  universeName: string;
+  masterNodeAddress: string;
 }) {
-  
   return (
     <div className="replication-item" key={replication.uuid}>
       <ListGroupItem>
@@ -30,13 +40,11 @@ function ReplicationItem({
           <Row>
             <Col lg={5} className="replication-name">
               {replication.name}
-              {
-              currentUniverseUUID !== replication.sourceUniverseUUID && <span className="replication-target-universe">
-                Target Universe
-              </span>
-            }
+              {currentUniverseUUID !== replication.sourceUniverseUUID && (
+                <span className="replication-target-universe">Target Universe</span>
+              )}
             </Col>
-            
+
             <Col lg={2} className="replication-date">
               <div className="replication-label">Started</div>
               <div className="replication-label-value">{replication.createTime}</div>
@@ -63,8 +71,8 @@ function ReplicationItem({
           <div className="replication-divider" />
           <Row>
             <Col lg={12} className="noPadding">
-              <span className="replication-label">Master Node Address</span>
-              <span className="replication-label-value">{replication.masterAddress}</span>
+              <span className="replication-label">Master Node Address </span>
+              <span className="replication-label-value">{masterNodeAddress}</span>
             </Col>
           </Row>
         </Col>
@@ -72,13 +80,18 @@ function ReplicationItem({
         <Col lg={6} className="replication-lag-details">
           <Row>
             <Col lg={12}>
-              <Row style={{display: 'flex', alignItems: 'center'}}>
+              <Row style={{ display: 'flex', alignItems: 'center' }}>
                 <Col lg={10} className="noPadding">
                   <span className="lag-text">Current lag</span>
                 </Col>
                 <Col lg={2} className="noPadding text-align-left">
                   <span className="lag">
-                    <span className="lag-time"><GetCurrentLag replicationUUID={replication.uuid} sourceUniverseUUID={replication.sourceUniverseUUID}/></span>
+                    <span className="lag-time">
+                      <GetCurrentLag
+                        replicationUUID={replication.uuid}
+                        sourceUniverseUUID={replication.sourceUniverseUUID}
+                      />
+                    </span>
                     <span className="replication-label"> ms</span>
                   </span>
                 </Col>
@@ -92,7 +105,9 @@ function ReplicationItem({
                 </Col>
                 <Col lg={2} className="noPadding text-align-left">
                   <span className="lag">
-                    <span className="lag-value"><GetConfiguredThreshold currentUniverseUUID={currentUniverseUUID} /></span>
+                    <span className="lag-value">
+                      <GetConfiguredThreshold currentUniverseUUID={currentUniverseUUID} />
+                    </span>
                     <span className="replication-label"> ms</span>
                   </span>
                 </Col>
@@ -110,33 +125,44 @@ interface Props {
 }
 
 export function ReplicationList({ currentUniverseUUID }: Props) {
-
-  const {data: universeInfo, isLoading: currentUniverseLoading} = useQuery(['universe', currentUniverseUUID], ()=> getUniverseInfo(currentUniverseUUID));
+  const { data: universeInfo, isLoading: currentUniverseLoading } = useQuery(
+    ['universe', currentUniverseUUID],
+    () => getUniverseInfo(currentUniverseUUID)
+  );
 
   const { sourceXClusterConfigs, targetXClusterConfigs } = universeInfo?.data?.universeDetails || {
     sourceXClusterConfigs: [],
     targetXClusterConfigs: []
   };
 
-  const XclusterConfigList = Array.from(new Set([...sourceXClusterConfigs, ...targetXClusterConfigs]));
-
-
+  const XclusterConfigList = Array.from(
+    new Set([...sourceXClusterConfigs, ...targetXClusterConfigs])
+  );
 
   const replicationData = useQueries(
     XclusterConfigList.map((uuid: string) => {
       return {
         queryKey: ['Xcluster', uuid],
-        queryFn: ()=> getXclusterConfig(uuid),
+        queryFn: () => getXclusterConfig(uuid),
         enabled: universeInfo?.data !== undefined
       };
     })
   );
 
+  let masterNodeAddress = '';
+
+  if (universeInfo?.data) {
+    const {
+      universeDetails: { nodeDetailsSet }
+    } = universeInfo.data;
+    masterNodeAddress = getMasterNodeAddress(nodeDetailsSet);
+  }
+
   const { data: universeList, isLoading: isUniverseListLoading } = useQuery(['universeList'], () =>
     fetchUniversesList().then((res) => res.data)
   );
 
-  if(currentUniverseLoading || isUniverseListLoading){
+  if (currentUniverseLoading || isUniverseListLoading) {
     return <YBLoading />;
   }
 
@@ -144,21 +170,24 @@ export function ReplicationList({ currentUniverseUUID }: Props) {
     return <ReplicationEmptyItem />;
   }
 
-  const findTargetUniverseName = (universeUUID:string)=> universeList.find((universe:any) => universe.universeUUID===universeUUID)?.name;
+  const findTargetUniverseName = (universeUUID: string) =>
+    universeList.find((universe: any) => universe.universeUUID === universeUUID)?.name;
 
   return (
     <ListGroup>
-      {replicationData.map((replication: any) => (
-          
-        !replication.data ? (<YBLoading/>) : (
+      {replicationData.map((replication: any) =>
+        !replication.data ? (
+          <YBLoading />
+        ) : (
           <ReplicationItem
             key={replication.data.uuid}
             replication={replication.data}
             currentUniverseUUID={currentUniverseUUID}
             universeName={findTargetUniverseName(replication.data.targetUniverseUUID)}
+            masterNodeAddress={masterNodeAddress}
           />
         )
-      ))}
+      )}
     </ListGroup>
   );
 }

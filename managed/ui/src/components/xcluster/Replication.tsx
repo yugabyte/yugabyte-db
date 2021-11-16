@@ -27,7 +27,8 @@ export default function Replication({ currentUniverseUUID }: { currentUniverseUU
           <Row className="cluster_action">
             <Col lg={9} className="cluster_support_text">
               <i className="fa fa-exclamation-circle"></i> For replicating a source universe with
-              existing data, please <a href="https://support.yugabyte.com/hc/en-us">contact support</a>
+              existing data, please{' '}
+              <a href="https://support.yugabyte.com/hc/en-us">contact support</a>
             </Col>
             <Col lg={3}>
               <YBButton
