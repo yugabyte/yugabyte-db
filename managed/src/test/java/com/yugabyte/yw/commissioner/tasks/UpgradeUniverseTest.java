@@ -7,17 +7,19 @@ import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.Serv
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.TSERVER;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
+import static com.yugabyte.yw.models.TaskInfo.State.Failure;
+import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
-import static org.mockito.Matchers.any;
-import static org.mockito.Mockito.anyBoolean;
-import static org.mockito.Mockito.anyLong;
-import static org.mockito.Mockito.anyString;
-import static org.mockito.Mockito.argThat;
-import static org.mockito.Mockito.eq;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -113,16 +115,15 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
   @InjectMocks UpgradeUniverse upgradeUniverse;
 
-  YBClient mockClient;
-  Universe defaultUniverse;
-  ShellResponse dummyShellResponse;
+  private YBClient mockClient;
+  private Universe defaultUniverse;
 
-  Region region;
-  AvailabilityZone az1;
-  AvailabilityZone az2;
-  AvailabilityZone az3;
+  private Region region;
+  private AvailabilityZone az1;
+  private AvailabilityZone az2;
+  private AvailabilityZone az3;
 
-  String cert1Contents =
+  private static final String CERT_1_CONTENTS =
       "-----BEGIN CERTIFICATE-----\n"
           + "MIIDEjCCAfqgAwIBAgIUEdzNoxkMLrZCku6H1jQ4pUgPtpQwDQYJKoZIhvcNAQEL\n"
           + "BQAwLzERMA8GA1UECgwIWXVnYWJ5dGUxGjAYBgNVBAMMEUNBIGZvciBZdWdhYnl0\n"
@@ -143,7 +144,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           + "YvtLjmJF//b3rsty6NFIonSVgq6Nqw==\n"
           + "-----END CERTIFICATE-----\n";
 
-  String cert2Contents =
+  private static final String CERT_2_CONTENTS =
       "-----BEGIN CERTIFICATE-----\n"
           + "MIIDAjCCAeqgAwIBAgIGAXVCiJ4gMA0GCSqGSIb3DQEBCwUAMC4xFjAUBgNVBAMM\n"
           + "DXliLWFkbWluLXRlc3QxFDASBgNVBAoMC2V4YW1wbGUuY29tMB4XDTIwMTAxOTIw\n"
@@ -164,6 +165,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           + "E1pTE1HS\n"
           + "-----END CERTIFICATE-----\n";
 
+  @Override
   @Before
   public void setUp() {
     super.setUp();
@@ -181,7 +183,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     customCertInfo.nodeCertPath = "nodeCertPath";
     customCertInfo.nodeKeyPath = "nodeKeyPath";
     new File(TestHelper.TMP_PATH).mkdirs();
-    createTempFile("ca.crt", cert1Contents);
+    createTempFile("ca.crt", CERT_1_CONTENTS);
     try {
       CertificateInfo.create(
           certUUID,
@@ -235,7 +237,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           .thenReturn(true);
     } catch (Exception ignored) {
     }
-    dummyShellResponse = new ShellResponse();
+    ShellResponse dummyShellResponse = new ShellResponse();
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
   }
 
@@ -261,9 +263,9 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     return null;
   }
 
-  List<String> PROPERTY_KEYS = ImmutableList.of("processType", "taskSubType");
+  private static final List<String> PROPERTY_KEYS = ImmutableList.of("processType", "taskSubType");
 
-  List<TaskType> NON_NODE_TASKS =
+  private static final List<TaskType> NON_NODE_TASKS =
       ImmutableList.of(
           TaskType.LoadBalancerStateChange,
           TaskType.UpdateAndPersistGFlags,
@@ -272,7 +274,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           TaskType.UniverseSetTlsParams,
           TaskType.UniverseUpdateSucceeded);
 
-  List<TaskType> GFLAGS_UPGRADE_TASK_SEQUENCE =
+  private static final List<TaskType> GFLAGS_UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.AnsibleConfigureServers,
           TaskType.SetNodeState,
@@ -281,7 +283,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           TaskType.SetNodeState,
           TaskType.WaitForServer);
 
-  List<TaskType> GFLAGS_ROLLING_UPGRADE_TASK_SEQUENCE =
+  private static final List<TaskType> GFLAGS_ROLLING_UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.AnsibleConfigureServers,
@@ -292,7 +294,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           TaskType.WaitForEncryptionKeyInMemory,
           TaskType.SetNodeState);
 
-  List<TaskType> CERTS_ROLLING_UPGRADE_TASK_SEQUENCE =
+  private static final List<TaskType> CERTS_ROLLING_UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.AnsibleClusterServerCtl,
@@ -302,7 +304,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           TaskType.WaitForEncryptionKeyInMemory,
           TaskType.SetNodeState);
 
-  List<TaskType> CERTS_NON_ROLLING_TASK_SEQUENCE =
+  private static final List<TaskType> CERTS_NON_ROLLING_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.AnsibleClusterServerCtl,
@@ -310,14 +312,14 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           TaskType.SetNodeState,
           TaskType.WaitForServer);
 
-  List<TaskType> GFLAGS_NON_ROLLING_UPGRADE_TASK_SEQUENCE =
+  private static final List<TaskType> GFLAGS_NON_ROLLING_UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.AnsibleConfigureServers,
           TaskType.SetNodeState,
           TaskType.SetFlagInMemory,
           TaskType.SetNodeState);
 
-  List<TaskType> SOFTWARE_FULL_UPGRADE_TASK_SEQUENCE =
+  private static final List<TaskType> SOFTWARE_FULL_UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.AnsibleClusterServerCtl,
@@ -326,7 +328,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           TaskType.SetNodeState,
           TaskType.WaitForServer);
 
-  List<TaskType> SOFTWARE_ROLLING_UPGRADE_TASK_SEQUENCE =
+  private static final List<TaskType> SOFTWARE_ROLLING_UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.AnsibleClusterServerCtl,
@@ -337,7 +339,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           TaskType.WaitForEncryptionKeyInMemory,
           TaskType.SetNodeState);
 
-  List<TaskType> ROLLING_RESTART_TASK_SEQUENCE =
+  private static final List<TaskType> ROLLING_RESTART_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.AnsibleClusterServerCtl,
@@ -347,7 +349,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           TaskType.WaitForEncryptionKeyInMemory,
           TaskType.SetNodeState);
 
-  List<TaskType> VM_IMAGE_UPGRADE_TASK_SEQUENCE =
+  private static final List<TaskType> VM_IMAGE_UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.AnsibleClusterServerCtl,
           TaskType.AnsibleClusterServerCtl,
@@ -363,7 +365,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           TaskType.WaitForEncryptionKeyInMemory,
           TaskType.UpdateNodeDetails);
 
-  List<TaskType> TOGGLE_TLS_ROLLING_UPGRADE_TASK_SEQUENCE =
+  private static final List<TaskType> TOGGLE_TLS_ROLLING_UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.AnsibleConfigureServers,
@@ -374,7 +376,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           TaskType.WaitForEncryptionKeyInMemory,
           TaskType.SetNodeState);
 
-  List<TaskType> TOGGLE_TLS_NON_ROLLING_UPGRADE_TASK_SEQUENCE =
+  private static final List<TaskType> TOGGLE_TLS_NON_ROLLING_UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.AnsibleConfigureServers,
           TaskType.SetNodeState,
@@ -383,14 +385,14 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           TaskType.SetNodeState,
           TaskType.WaitForServer);
 
-  List<TaskType> TOGGLE_TLS_NON_RESTART_UPGRADE_TASK_SEQUENCE =
+  private static final List<TaskType> TOGGLE_TLS_NON_RESTART_UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.AnsibleConfigureServers,
           TaskType.SetNodeState,
           TaskType.SetFlagInMemory,
           TaskType.SetNodeState);
 
-  List<TaskType> RESIZE_NODE_UPGRADE_TASK_SEQUENCE_NO_MASTER =
+  private static final List<TaskType> RESIZE_NODE_UPGRADE_TASK_SEQUENCE_NO_MASTER =
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.AnsibleClusterServerCtl,
@@ -400,7 +402,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           TaskType.WaitForServer,
           TaskType.SetNodeState);
 
-  List<TaskType> RESIZE_NODE_UPGRADE_TASK_SEQUENCE_IS_MASTER =
+  private static final List<TaskType> RESIZE_NODE_UPGRADE_TASK_SEQUENCE_IS_MASTER =
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.AnsibleClusterServerCtl,
@@ -883,7 +885,9 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     if (nodeCount == 1) {
       assertEquals(assertValues.get("nodeName"), nodeNames.get(0));
     } else {
-      assertTrue(nodeNames.containsAll((List) assertValues.get("nodeNames")));
+      List assertNodeNames = (List) assertValues.get("nodeNames");
+      assertTrue(nodeNames.containsAll(assertNodeNames));
+      assertEquals(assertNodeNames.size(), nodeNames.size());
     }
 
     List<JsonNode> subTaskDetails =
@@ -903,7 +907,10 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
                           return data.isObject() ? data : data.textValue();
                         })
                     .collect(Collectors.toList());
-            values.forEach((actualValue) -> assertEquals(actualValue, expectedValue));
+            values.forEach(
+                actualValue ->
+                    assertEquals(
+                        "Unexpected value for key " + expectedKey, actualValue, expectedValue));
           }
         });
   }
@@ -938,7 +945,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
         .thenReturn(ImmutableList.of("m3.", "c5.", "c5d.", "c4.", "c3.", "i3."));
 
     Region secondRegion = Region.create(defaultProvider, "region-2", "Region 2", "yb-image-1");
-    AvailabilityZone az4 = AvailabilityZone.createOrThrow(secondRegion, "az-4", "AZ 4", "subnet-4");
+    AvailabilityZone.createOrThrow(secondRegion, "az-4", "AZ 4", "subnet-4");
 
     Universe.UniverseUpdater updater =
         universe -> {
@@ -1105,7 +1112,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     assertTaskType(persistChangeInstanceType, TaskType.PersistResizeNode);
 
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
-    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    assertEquals(Success, taskInfo.getTaskState());
   }
 
   @Test
@@ -1252,7 +1259,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
         .forEach(
             e -> assertEquals(e.getValue().size(), (int) replaceRootVolumeParams.get(e.getKey())));
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
-    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    assertEquals(Success, taskInfo.getTaskState());
   }
 
   @Test
@@ -1262,7 +1269,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
     TaskInfo taskInfo = submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.Software);
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
-    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertEquals(Failure, taskInfo.getTaskState());
     defaultUniverse.refresh();
     assertEquals(2, defaultUniverse.version);
     // In case of an exception, no task should be queued.
@@ -1274,7 +1281,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     UpgradeUniverse.Params taskParams = new UpgradeUniverse.Params();
     TaskInfo taskInfo = submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.Software);
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
-    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertEquals(Failure, taskInfo.getTaskState());
     defaultUniverse.refresh();
     assertEquals(2, defaultUniverse.version);
     // In case of an exception, no task should be queued.
@@ -1304,7 +1311,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     assertSoftwareCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true);
     assertEquals(50, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
-    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    assertEquals(Success, taskInfo.getTaskState());
   }
 
   @Test
@@ -1349,7 +1356,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     assertSoftwareCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true);
     assertEquals(74, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
-    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    assertEquals(Success, taskInfo.getTaskState());
   }
 
   @Test
@@ -1374,7 +1381,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     assertSoftwareCommonTasks(subTasksByPosition, position, UpgradeType.FULL_UPGRADE, true);
     assertEquals(13, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
-    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    assertEquals(Success, taskInfo.getTaskState());
   }
 
   @Test
@@ -1385,6 +1392,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     taskParams.upgradeOption = UpgradeParams.UpgradeOption.NON_ROLLING_UPGRADE;
 
     TaskInfo taskInfo = submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.GFlags);
+    assertEquals(Success, taskInfo.getTaskState());
     verify(mockNodeManager, times(18)).nodeCommand(any(), any());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
@@ -1410,6 +1418,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     taskParams.upgradeOption = UpgradeParams.UpgradeOption.NON_ROLLING_UPGRADE;
 
     TaskInfo taskInfo = submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.GFlags);
+    assertEquals(Success, taskInfo.getTaskState());
     verify(mockNodeManager, times(9)).nodeCommand(any(), any());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
@@ -1433,6 +1442,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     taskParams.upgradeOption = UpgradeParams.UpgradeOption.NON_ROLLING_UPGRADE;
 
     TaskInfo taskInfo = submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.GFlags);
+    assertEquals(Success, taskInfo.getTaskState());
     verify(mockNodeManager, times(9)).nodeCommand(any(), any());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
@@ -1455,6 +1465,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     UpgradeUniverse.Params taskParams = new UpgradeUniverse.Params();
     taskParams.masterGFlags = ImmutableMap.of("master-flag", "m1");
     TaskInfo taskInfo = submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.GFlags);
+    assertEquals(Success, taskInfo.getTaskState());
     verify(mockNodeManager, times(9)).nodeCommand(any(), any());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
@@ -1476,6 +1487,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     UpgradeUniverse.Params taskParams = new UpgradeUniverse.Params();
     taskParams.tserverGFlags = ImmutableMap.of("tserver-flag", "t1");
     TaskInfo taskInfo = submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.GFlags);
+    assertEquals(Success, taskInfo.getTaskState());
     ArgumentCaptor<NodeTaskParams> commandParams = ArgumentCaptor.forClass(NodeTaskParams.class);
     verify(mockNodeManager, times(9)).nodeCommand(any(), commandParams.capture());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
@@ -1499,6 +1511,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     taskParams.masterGFlags = ImmutableMap.of("master-flag", "m1");
     taskParams.tserverGFlags = ImmutableMap.of("tserver-flag", "t1");
     TaskInfo taskInfo = submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.GFlags);
+    assertEquals(Success, taskInfo.getTaskState());
     verify(mockNodeManager, times(18)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -1523,7 +1536,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     UpgradeUniverse.Params taskParams = new UpgradeUniverse.Params();
     TaskInfo taskInfo = submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.GFlags);
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
-    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertEquals(Failure, taskInfo.getTaskState());
     defaultUniverse.refresh();
     assertEquals(2, defaultUniverse.version);
     // In case of an exception, no task should be queued.
@@ -1559,11 +1572,11 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     taskParams.tserverGFlags = ImmutableMap.of("tserver-flag", "t2");
 
     TaskInfo taskInfo = submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.GFlags, 3);
+    assertEquals(Success, taskInfo.getTaskState());
     verify(mockNodeManager, times(9)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    List<TaskInfo> tasks = subTasksByPosition.get(0);
     int position = 0;
     assertTaskType(subTasksByPosition.get(position++), TaskType.LoadBalancerStateChange);
     position =
@@ -1608,6 +1621,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     taskParams.tserverGFlags = tserverFlags;
 
     TaskInfo taskInfo = submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.GFlags, 3);
+    assertEquals(Success, taskInfo.getTaskState());
     verify(mockNodeManager, times(9)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -1676,6 +1690,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
       int expectedVersion = serverType == MASTER ? 3 : 4;
       TaskInfo taskInfo =
           submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.GFlags, expectedVersion);
+      assertEquals(Success, taskInfo.getTaskState());
 
       int numInvocations = serverType == MASTER ? 9 : 18;
       verify(mockNodeManager, times(numInvocations)).nodeCommand(any(), any());
@@ -1730,6 +1745,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     taskParams.upgradeOption = UpgradeParams.UpgradeOption.NON_RESTART_UPGRADE;
 
     TaskInfo taskInfo = submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.GFlags, 3);
+    assertEquals(Success, taskInfo.getTaskState());
     verify(mockNodeManager, times(3)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -1761,7 +1777,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     assertRollingRestartCommonTasks(subTasksByPosition, position);
     assertEquals(43, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
-    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    assertEquals(Success, taskInfo.getTaskState());
   }
 
   @Test
@@ -1774,7 +1790,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     customCertInfo.nodeCertPath = "nodeCertPath1";
     customCertInfo.nodeKeyPath = "nodeKeyPath1";
     new File(TestHelper.TMP_PATH).mkdirs();
-    createTempFile("ca2.crt", cert1Contents);
+    createTempFile("ca2.crt", CERT_1_CONTENTS);
     try {
       CertificateInfo.create(
           certUUID,
@@ -1805,7 +1821,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     assertCertsRotateCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true);
     assertEquals(44, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
-    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    assertEquals(Success, taskInfo.getTaskState());
   }
 
   @Test
@@ -1818,7 +1834,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     customCertInfo.nodeCertPath = "nodeCertPath1";
     customCertInfo.nodeKeyPath = "nodeKeyPath1";
     new File(TestHelper.TMP_PATH).mkdirs();
-    createTempFile("ca2.crt", cert1Contents);
+    createTempFile("ca2.crt", CERT_1_CONTENTS);
     try {
       CertificateInfo.create(
           certUUID,
@@ -1849,7 +1865,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     assertCertsRotateCommonTasks(subTasksByPosition, position, UpgradeType.FULL_UPGRADE, true);
     assertEquals(11, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
-    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    assertEquals(Success, taskInfo.getTaskState());
   }
 
   @Test
@@ -1862,7 +1878,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     customCertInfo.nodeCertPath = "nodeCertPath1";
     customCertInfo.nodeKeyPath = "nodeKeyPath1";
     new File(TestHelper.TMP_PATH).mkdirs();
-    createTempFile("ca2.crt", cert2Contents);
+    createTempFile("ca2.crt", CERT_2_CONTENTS);
     try {
       CertificateInfo.create(
           certUUID,
@@ -1878,7 +1894,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     taskParams.certUUID = certUUID;
     TaskInfo taskInfo = submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.Certs);
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
-    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertEquals(Failure, taskInfo.getTaskState());
     defaultUniverse.refresh();
     assertEquals(2, defaultUniverse.version);
     // In case of an exception, no task should be queued.
@@ -2032,7 +2048,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
     defaultUniverse.refresh();
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
-    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertEquals(Failure, taskInfo.getTaskState());
     assertEquals(0, taskInfo.getSubTasks().size());
   }
 
@@ -2046,7 +2062,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
     defaultUniverse.refresh();
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
-    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertEquals(Failure, taskInfo.getTaskState());
     assertEquals(0, taskInfo.getSubTasks().size());
   }
 
@@ -2061,7 +2077,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
     defaultUniverse.refresh();
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
-    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertEquals(Failure, taskInfo.getTaskState());
     assertEquals(0, taskInfo.getSubTasks().size());
   }
 
@@ -2174,7 +2190,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
     assertEquals((int) expectedValues.first, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
-    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    assertEquals(Success, taskInfo.getTaskState());
     Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     if (nodeToNode || (rootAndClientRootCASame && clientToNode))
       assertEquals(rootCA, universe.getUniverseDetails().rootCA);
@@ -2304,7 +2320,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
     assertEquals((int) expectedValues.first, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
-    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    assertEquals(Success, taskInfo.getTaskState());
     Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     if (nodeToNode || (rootAndClientRootCASame && clientToNode))
       assertEquals(rootCA, universe.getUniverseDetails().rootCA);

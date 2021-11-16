@@ -25,6 +25,8 @@ class MetricEntity;
 
 namespace client {
 
+YB_STRONGLY_TYPED_BOOL(ForceGlobalTransaction);
+
 // Pool that maintains set of preallocated ready transactions.
 // The size of the pool is auto adjusted, i.e. the more transactions we request - the more
 // transactions will be allocated.
@@ -37,10 +39,12 @@ class TransactionPool {
 
   // Tries to take a new ready transaction from the pool.
   // If pool is empty a newly created transaction is returned.
+  // If force_global_transaction is true, the transaction will always use a global transaction
+  // status tablet.
   //
   // Ready means that transaction is registered at status tablet and intents could be written
   // immediately.
-  YBTransactionPtr Take();
+  YBTransactionPtr Take(ForceGlobalTransaction force_global_transaction);
 
   // Takes and initializes a transaction from the pool. See Take for details.
   Result<YBTransactionPtr> TakeAndInit(

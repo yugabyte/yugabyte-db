@@ -138,7 +138,7 @@ enableLoadBalancer=False --namespace yb-demo
 
 {{< note title="Important" >}}
 
-On some environments like macOS, minikube may run inside a virtual machine. Make sure to configure the VM with at least 4 CPUs and 5GB memory so the cluster has room to start up. Example command:
+On some environments like macOS, minikube may run inside a virtual machine. Make sure to configure the VM with at least 4 CPUs and 5 GB memory so the cluster has room to start up. Example command:
 
 ```sh
 $ minikube start --cpus 4 --memory 5120
@@ -225,8 +225,8 @@ $ helm history yb-demo -n yb-demo
 **Output:**
 
 ```output
-REVISION  UPDATED                   STATUS    CHART           APP VERSION   DESCRIPTION
-1         Thu Apr 13 13:29:13 2020  deployed  yugabyte-2.1.4 2.1.4.0-b5  Install complete
+REVISION  UPDATED                   STATUS    CHART           APP VERSION  DESCRIPTION
+1         Thu Apr 13 13:29:13 2020  deployed  yugabyte-2.6.5  2.6.5.0-b4   Install complete
 ```
 
 ## Connect using YugabyteDB Shells

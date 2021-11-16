@@ -86,6 +86,7 @@ import java.util.UUID;
 import java.util.function.Predicate;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
+import junitparams.converters.Nullable;
 import junitparams.naming.TestCaseName;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
@@ -96,6 +97,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import play.libs.Json;
@@ -382,8 +384,16 @@ public class NodeManagerTest extends FakeDBApplication {
         expectedCommand.add(certsLocation);
       }
     }
-    if (NodeManager.isSkipCertHostValidation(userIntent, configureParams)) {
-      expectedCommand.add("--skip_cert_hostname_validation");
+    NodeManager.SkipCertValidationType skipType =
+        NodeManager.getSkipCertValidationType(
+            runtimeConfigFactory.forUniverse(
+                Universe.getOrBadRequest(configureParams.universeUUID)),
+            userIntent,
+            configureParams);
+
+    if (skipType != NodeManager.SkipCertValidationType.NONE) {
+      expectedCommand.add("--skip_cert_validation");
+      expectedCommand.add(skipType.name());
     }
 
     return expectedCommand;
@@ -2874,36 +2884,43 @@ public class NodeManagerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testSkipHostnameValidation() {
+  @Parameters({
+    ", false, null, null, NONE",
+    ", false, null, true, NONE",
+    ", false, null, false, HOSTNAME",
+    ", false, false, null, HOSTNAME",
+    ", false, false, true, HOSTNAME",
+    ", true, false, null, NONE",
+    ", false, null, false, HOSTNAME",
+    ", true, false, null, NONE",
+    "ALL, true, false, null, ALL",
+    "ALL, false, null, null, ALL",
+    "HOSTNAME, true, false, null, HOSTNAME",
+    "HOSTNAME, false, null, null, HOSTNAME"
+  })
+  public void testGetSkipCertValidation(
+      String configValue,
+      boolean inRemove,
+      @Nullable Boolean inAddition,
+      @Nullable Boolean inGflags,
+      String expected) {
+    Config config = Mockito.mock(Config.class);
+    Mockito.when(config.getString(any())).thenReturn(configValue);
+    final String flagName = NodeManager.VERIFY_SERVER_ENDPOINT_GFLAG;
     AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+    if (inRemove) {
+      params.gflagsToRemove.add(flagName);
+    }
+    if (inAddition != null) {
+      params.gflags.put(flagName, String.valueOf(inAddition));
+    }
     UserIntent userIntent = new UserIntent();
-    userIntent.tserverGFlags.put(NodeManager.VERIFY_SERVER_ENDPOINT_GFLAG, "false");
-    assertEquals(true, NodeManager.isSkipCertHostValidation(userIntent, params));
-  }
+    if (inGflags != null) {
+      userIntent.tserverGFlags.put(flagName, String.valueOf(inGflags));
+    }
 
-  @Test
-  public void testNotSkipHostnameValidation() {
-    AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
-    UserIntent userIntent = new UserIntent();
-    userIntent.tserverGFlags.put(NodeManager.VERIFY_SERVER_ENDPOINT_GFLAG, "true");
-    assertEquals(false, NodeManager.isSkipCertHostValidation(userIntent, params));
-  }
-
-  @Test
-  public void testNotSkipHostnameValidationForErasingGFlag() {
-    AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
-    params.gflagsToRemove.add(NodeManager.VERIFY_SERVER_ENDPOINT_GFLAG);
-    UserIntent userIntent = new UserIntent();
-    userIntent.tserverGFlags.put(NodeManager.VERIFY_SERVER_ENDPOINT_GFLAG, "false");
-    assertEquals(false, NodeManager.isSkipCertHostValidation(userIntent, params));
-  }
-
-  @Test
-  public void testSkipHostnameValidationForAddingGFlag() {
-    AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
-    params.gflags.put(NodeManager.VERIFY_SERVER_ENDPOINT_GFLAG, "false");
-    UserIntent userIntent = new UserIntent();
-    userIntent.tserverGFlags.put(NodeManager.VERIFY_SERVER_ENDPOINT_GFLAG, "true");
-    assertEquals(true, NodeManager.isSkipCertHostValidation(userIntent, params));
+    assertEquals(
+        NodeManager.SkipCertValidationType.valueOf(expected),
+        NodeManager.getSkipCertValidationType(config, userIntent, params));
   }
 }

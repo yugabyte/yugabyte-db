@@ -21,8 +21,9 @@ import time
 
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.utils import get_ssh_host_port, wait_for_ssh, get_path_from_yb, \
-    generate_random_password, validated_key_file, format_rsa_key, validate_cron_status, \
-    YB_HOME_DIR, YB_SUDO_PASS
+  generate_random_password, validated_key_file, format_rsa_key, validate_cron_status, \
+  YB_SUDO_PASS, DEFAULT_MASTER_HTTP_PORT, DEFAULT_MASTER_RPC_PORT, DEFAULT_TSERVER_HTTP_PORT, \
+  DEFAULT_TSERVER_RPC_PORT, DEFAULT_CQL_PROXY_RPC_PORT, DEFAULT_REDIS_PROXY_RPC_PORT
 from ansible_vault import Vault
 from ybops.utils import generate_rsa_keypair, scp_to_tmp
 
@@ -615,6 +616,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
     VALID_PROCESS_TYPES = ['master', 'tserver']
     CERT_ROTATE_ACTIONS = ['APPEND_NEW_ROOT_CERT', 'ROTATE_CERTS',
                            'REMOVE_OLD_ROOT_CERT', 'UPDATE_CERT_DIRS']
+    SKIP_CERT_VALIDATION_OPTIONS = ['ALL', 'HOSTNAME']
 
     def __init__(self, base_command):
         super(ConfigureInstancesMethod, self).__init__(base_command, "configure")
@@ -648,20 +650,20 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument('--client_key_path')
         self.parser.add_argument('--cert_rotate_action', default=None,
                                  choices=self.CERT_ROTATE_ACTIONS)
-        self.parser.add_argument('--skip_cert_hostname_validation',
-                                 default=False, action="store_true")
+        self.parser.add_argument('--skip_cert_validation',
+                                 default=None, choices=self.SKIP_CERT_VALIDATION_OPTIONS)
         self.parser.add_argument('--cert_valid_duration', default=365)
         self.parser.add_argument('--org_name', default="example.com")
         self.parser.add_argument('--encryption_key_source_file')
         self.parser.add_argument('--encryption_key_target_dir',
                                  default="yugabyte-encryption-files")
 
-        self.parser.add_argument('--master_http_port', default=7000)
-        self.parser.add_argument('--master_rpc_port', default=7100)
-        self.parser.add_argument('--tserver_http_port', default=9000)
-        self.parser.add_argument('--tserver_rpc_port', default=9100)
-        self.parser.add_argument('--cql_proxy_rpc_port', default=9042)
-        self.parser.add_argument('--redis_proxy_rpc_port', default=6379)
+        self.parser.add_argument('--master_http_port', default=DEFAULT_MASTER_HTTP_PORT)
+        self.parser.add_argument('--master_rpc_port', default=DEFAULT_MASTER_RPC_PORT)
+        self.parser.add_argument('--tserver_http_port', default=DEFAULT_TSERVER_HTTP_PORT)
+        self.parser.add_argument('--tserver_rpc_port', default=DEFAULT_TSERVER_RPC_PORT)
+        self.parser.add_argument('--cql_proxy_rpc_port', default=DEFAULT_CQL_PROXY_RPC_PORT)
+        self.parser.add_argument('--redis_proxy_rpc_port', default=DEFAULT_REDIS_PROXY_RPC_PORT)
 
         # Parameters for downloading YB package directly on DB nodes.
         self.parser.add_argument('--s3_remote_download', action="store_true")
@@ -886,7 +888,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                 args.certs_location,
                 args.certs_node_dir,
                 rotate_certs,
-                args.skip_cert_hostname_validation)
+                args.skip_cert_validation)
 
         if args.root_cert_path_client_to_server is not None:
             logging.info("Server clientRootCA Certificate Exists: {}.".format(
@@ -899,7 +901,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                 args.certs_location_client_to_server,
                 args.certs_client_dir,
                 rotate_certs,
-                args.skip_cert_hostname_validation)
+                args.skip_cert_validation)
 
         # Copying client certs
         if args.client_cert_path is not None:

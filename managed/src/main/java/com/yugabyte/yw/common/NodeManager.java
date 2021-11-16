@@ -39,6 +39,7 @@ import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.CertificateInfo;
@@ -56,17 +57,20 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
 
 @Singleton
+@Slf4j
 public class NodeManager extends DevopsBase {
   static final String BOOT_SCRIPT_PATH = "yb.universe_boot_script";
   private static final String YB_CLOUD_COMMAND_TYPE = "instance";
@@ -75,6 +79,7 @@ public class NodeManager extends DevopsBase {
   private static final List<String> VALID_CONFIGURE_PROCESS_TYPES =
       ImmutableList.of(ServerType.MASTER.name(), ServerType.TSERVER.name());
   static final String VERIFY_SERVER_ENDPOINT_GFLAG = "verify_server_endpoint";
+  static final String SKIP_CERT_VALIDATION = "yb.tls.skip_cert_validation";
 
   @Inject ReleaseManager releaseManager;
 
@@ -120,6 +125,10 @@ public class NodeManager extends DevopsBase {
 
   private UserIntent getUserIntentFromParams(NodeTaskParams nodeTaskParam) {
     Universe universe = Universe.getOrBadRequest(nodeTaskParam.universeUUID);
+    return getUserIntentFromParams(universe, nodeTaskParam);
+  }
+
+  private UserIntent getUserIntentFromParams(Universe universe, NodeTaskParams nodeTaskParam) {
     NodeDetails nodeDetails = universe.getNode(nodeTaskParam.nodeName);
     if (nodeDetails == null) {
       nodeDetails = universe.getUniverseDetails().nodeDetailsSet.iterator().next();
@@ -301,11 +310,13 @@ public class NodeManager extends DevopsBase {
   }
 
   private List<String> getCertificatePaths(
+      Config config,
       UserIntent userIntent,
       AnsibleConfigureServers.Params taskParam,
       String nodeIP,
       String ybHomeDir) {
     return getCertificatePaths(
+        config,
         userIntent,
         taskParam,
         CertificateHelper.isRootCARequired(taskParam),
@@ -316,6 +327,7 @@ public class NodeManager extends DevopsBase {
 
   // Return the List of Strings which gives the certificate paths for the specific taskParams
   private List<String> getCertificatePaths(
+      Config config,
       UserIntent userIntent,
       AnsibleConfigureServers.Params taskParam,
       boolean isRootCARequired,
@@ -495,8 +507,10 @@ public class NodeManager extends DevopsBase {
       subcommandStrings.add(certsLocation);
     }
 
-    if (isSkipCertHostValidation(userIntent, taskParam)) {
-      subcommandStrings.add("--skip_cert_hostname_validation");
+    SkipCertValidationType skipType = getSkipCertValidationType(config, userIntent, taskParam);
+    if (skipType != SkipCertValidationType.NONE) {
+      subcommandStrings.add("--skip_cert_validation");
+      subcommandStrings.add(skipType.name());
     }
 
     return subcommandStrings;
@@ -593,9 +607,10 @@ public class NodeManager extends DevopsBase {
   }
 
   private List<String> getConfigureSubCommand(AnsibleConfigureServers.Params taskParam) {
-    UserIntent userIntent = getUserIntentFromParams(taskParam);
-    List<String> subcommand = new ArrayList<>();
     Universe universe = Universe.getOrBadRequest(taskParam.universeUUID);
+    Config config = runtimeConfigFactory.forUniverse(universe);
+    UserIntent userIntent = getUserIntentFromParams(universe, taskParam);
+    List<String> subcommand = new ArrayList<>();
     String masterAddresses = universe.getMasterAddresses(false);
     subcommand.add("--master_addresses_for_tserver");
     subcommand.add(masterAddresses);
@@ -677,6 +692,7 @@ public class NodeManager extends DevopsBase {
         if ((taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt)) {
           subcommand.addAll(
               getCertificatePaths(
+                  config,
                   userIntent,
                   taskParam,
                   node.cloudInfo.private_ip,
@@ -751,6 +767,7 @@ public class NodeManager extends DevopsBase {
             if ((taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt)) {
               subcommand.addAll(
                   getCertificatePaths(
+                      runtimeConfigFactory.forUniverse(universe),
                       userIntent,
                       taskParam,
                       node.cloudInfo.private_ip,
@@ -882,6 +899,7 @@ public class NodeManager extends DevopsBase {
               {
                 subcommand.addAll(
                     getCertificatePaths(
+                        config,
                         userIntent,
                         taskParam,
                         taskParam.rootCARotationType != CertRotationType.None,
@@ -937,7 +955,8 @@ public class NodeManager extends DevopsBase {
               subcommand.add(CertRotateAction.ROTATE_CERTS.toString());
             }
             subcommand.addAll(
-                getCertificatePaths(userIntent, taskParam, node.cloudInfo.private_ip, ybHomeDir));
+                getCertificatePaths(
+                    config, userIntent, taskParam, node.cloudInfo.private_ip, ybHomeDir));
 
           } else if (UpgradeTaskParams.UpgradeTaskSubType.Round1GFlagsUpdate.name()
               .equals(subType)) {
@@ -1000,23 +1019,40 @@ public class NodeManager extends DevopsBase {
     return subcommand;
   }
 
+  enum SkipCertValidationType {
+    ALL,
+    HOSTNAME,
+    NONE
+  }
+
   @VisibleForTesting
-  static boolean isSkipCertHostValidation(
-      UserIntent userIntent, AnsibleConfigureServers.Params taskParam) {
+  static SkipCertValidationType getSkipCertValidationType(
+      Config config, UserIntent userIntent, AnsibleConfigureServers.Params taskParam) {
+    String configValue = config.getString(SKIP_CERT_VALIDATION);
+    if (!configValue.isEmpty()) {
+      try {
+        return SkipCertValidationType.valueOf(configValue);
+      } catch (Exception e) {
+        log.error("Incorrect config value {} for {} ", configValue, SKIP_CERT_VALIDATION);
+      }
+    }
     if (taskParam.gflagsToRemove.contains(VERIFY_SERVER_ENDPOINT_GFLAG)) {
-      return false;
+      return SkipCertValidationType.NONE;
     }
+
+    boolean skipHostValidation;
     if (taskParam.gflags.containsKey(VERIFY_SERVER_ENDPOINT_GFLAG)) {
-      return taskParam.gflags.get(VERIFY_SERVER_ENDPOINT_GFLAG).equalsIgnoreCase("false");
+      skipHostValidation = shouldSkipServerEndpointVerification(taskParam.gflags);
+    } else {
+      skipHostValidation =
+          shouldSkipServerEndpointVerification(userIntent.masterGFlags)
+              || shouldSkipServerEndpointVerification(userIntent.tserverGFlags);
     }
-    return userIntent
-            .masterGFlags
-            .getOrDefault(VERIFY_SERVER_ENDPOINT_GFLAG, "true")
-            .equalsIgnoreCase("false")
-        || userIntent
-            .tserverGFlags
-            .getOrDefault(VERIFY_SERVER_ENDPOINT_GFLAG, "true")
-            .equalsIgnoreCase("false");
+    return skipHostValidation ? SkipCertValidationType.HOSTNAME : SkipCertValidationType.NONE;
+  }
+
+  private static boolean shouldSkipServerEndpointVerification(Map<String, String> gflags) {
+    return gflags.getOrDefault(VERIFY_SERVER_ENDPOINT_GFLAG, "true").equalsIgnoreCase("false");
   }
 
   private Map<String, String> getAnsibleEnvVars(UUID universeUUID) {
@@ -1057,6 +1093,9 @@ public class NodeManager extends DevopsBase {
     commandArgs.addAll(
         getAccessKeySpecificCommand(
             nodeTaskParam, type, keyInfo, Common.CloudType.onprem, accessKey.getKeyCode()));
+    commandArgs.addAll(
+        getCommunicationPortsParams(
+            new UserIntent(), accessKey, new UniverseTaskParams.CommunicationPorts()));
 
     InstanceType instanceType = InstanceType.get(provider.uuid, nodeTaskParam.getInstanceType());
     commandArgs.add("--mount_points");
@@ -1464,6 +1503,10 @@ public class NodeManager extends DevopsBase {
           if (nodeTaskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(nodeTaskParam));
           }
+          AccessKey accessKey =
+              AccessKey.getOrBadRequest(nodeTaskParam.getProvider().uuid, userIntent.accessKeyCode);
+          commandArgs.addAll(
+              getCommunicationPortsParams(userIntent, accessKey, nodeTaskParam.communicationPorts));
           break;
         }
     }
@@ -1486,6 +1529,42 @@ public class NodeManager extends DevopsBase {
         }
       }
     }
+  }
+
+  private Collection<String> getCommunicationPortsParams(
+      UserIntent userIntent, AccessKey accessKey, UniverseTaskParams.CommunicationPorts ports) {
+    List<String> result = new ArrayList<>();
+    result.add("--master_http_port");
+    result.add(Integer.toString(ports.masterHttpPort));
+    result.add("--master_rpc_port");
+    result.add(Integer.toString(ports.masterRpcPort));
+    result.add("--tserver_http_port");
+    result.add(Integer.toString(ports.tserverHttpPort));
+    result.add("--tserver_rpc_port");
+    result.add(Integer.toString(ports.tserverRpcPort));
+    if (userIntent.enableYCQL) {
+      result.add("--cql_proxy_http_port");
+      result.add(Integer.toString(ports.yqlServerHttpPort));
+      result.add("--cql_proxy_rpc_port");
+      result.add(Integer.toString(ports.yqlServerRpcPort));
+    }
+    if (userIntent.enableYCQL) {
+      result.add("--ysql_proxy_http_port");
+      result.add(Integer.toString(ports.ysqlServerHttpPort));
+      result.add("--ysql_proxy_rpc_port");
+      result.add(Integer.toString(ports.ysqlServerRpcPort));
+    }
+    if (userIntent.enableYEDIS) {
+      result.add("--redis_proxy_http_port");
+      result.add(Integer.toString(ports.redisServerHttpPort));
+      result.add("--redis_proxy_rpc_port");
+      result.add(Integer.toString(ports.redisServerRpcPort));
+    }
+    if (accessKey.getKeyInfo().installNodeExporter) {
+      result.add("--node_exporter_http_port");
+      result.add(Integer.toString(ports.nodeExporterPort));
+    }
+    return result;
   }
 
   private List<String> addArguments(List<String> commandArgs, String nodeIP, String instanceType) {

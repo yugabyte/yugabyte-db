@@ -2929,7 +2929,8 @@ void TabletServiceImpl::IsTabletServerReady(const IsTabletServerReadyRequestPB* 
 void TabletServiceImpl::TakeTransaction(const TakeTransactionRequestPB* req,
                                         TakeTransactionResponsePB* resp,
                                         rpc::RpcContext context) {
-  auto transaction = server_->TransactionPool()->Take();
+  auto transaction = server_->TransactionPool()->Take(
+      client::ForceGlobalTransaction(req->has_is_global() && req->is_global()));
   auto metadata = transaction->Release();
   if (!metadata.ok()) {
     LOG(INFO) << "Take failed: " << metadata.status();

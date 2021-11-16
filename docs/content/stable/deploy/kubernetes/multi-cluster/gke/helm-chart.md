@@ -165,20 +165,15 @@ parameters:
   type: pd-standard
   replication-type: none
   zone: us-east1-b
-
 ```
 
 Apply the above configuration to your clusters.
 
 ```sh
 $ kubectl apply -f gke-us-west1-b.yaml --context gke_yugabyte_us-west1-b_yugabytedb1
-```
 
-```sh
 $ kubectl apply -f gke-us-central1-b.yaml --context gke_yugabyte_us-central1-b_yugabytedb2
-```
 
-```sh
 $ kubectl apply -f gke-us-east1-b.yaml --context gke_yugabyte_us-east1-b_yugabytedb3
 ```
 
@@ -213,7 +208,7 @@ spec:
     k8s-app: kube-dns
   sessionAffinity: None
   type: LoadBalancer
- ```
+```
 
 ### Apply the configuration to every cluster
 
@@ -400,23 +395,23 @@ Now create the overall YugabyteDB cluster in such a way that one third of the no
 
 ```sh
 $ helm install yb-demo-us-west1-b yugabytedb/yugabyte \
- --namespace yb-demo-us-west1-b \
- -f overrides-us-west1-b.yaml \
- --kube-context gke_yugabyte_us-west1-b_yugabytedb1 --wait
+  --namespace yb-demo-us-west1-b \
+  -f overrides-us-west1-b.yaml \
+  --kube-context gke_yugabyte_us-west1-b_yugabytedb1 --wait
 ```
 
 ```sh
 $ helm install yb-demo-us-central1-b yugabytedb/yugabyte \
- --namespace yb-demo-us-central1-b \
- -f overrides-us-central1-b.yaml \
- --kube-context gke_yugabyte_us-central1-b_yugabytedb2 --wait
+  --namespace yb-demo-us-central1-b \
+  -f overrides-us-central1-b.yaml \
+  --kube-context gke_yugabyte_us-central1-b_yugabytedb2 --wait
 ```
 
 ```sh
 $ helm install yb-demo-us-east1-b yugabytedb/yugabyte \
- --namespace yb-demo-us-east1-b \
- -f overrides-us-east1-b.yaml \
- --kube-context gke_yugabyte_us-east1-b_yugabytedb3 --wait
+  --namespace yb-demo-us-east1-b \
+  -f overrides-us-east1-b.yaml \
+  --kube-context gke_yugabyte_us-east1-b_yugabytedb3 --wait
 ```
 
 ## 4. Check the cluster status

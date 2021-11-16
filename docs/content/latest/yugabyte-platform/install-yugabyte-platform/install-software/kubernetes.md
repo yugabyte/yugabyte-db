@@ -79,8 +79,8 @@ You install Yugabyte Platform on a Kubernetes cluster as follows:
     The latest Helm Chart version and App version will be displayed:
 
     ```output
-    NAME                CHART VERSION APP VERSION DESCRIPTION
-    yugabytedb/yugabyte 2.9.1         2.9.1.0     YugabyteDB is the high-performance distributed ...
+    NAME                 CHART VERSION  APP VERSION  DESCRIPTION
+    yugabytedb/yugabyte  2.9.1          2.9.1.0      YugabyteDB is the high-performance distributed ...
     ```
 
 1. Run the following `helm install` command to install the Yugabyte Platform (`yugaware`) Helm chart:
