@@ -1287,7 +1287,8 @@ Status ClusterAdminClient::AlterUniverseReplication(const std::string& producer_
     const std::vector<std::string>& producer_addresses,
     const std::vector<TableId>& add_tables,
     const std::vector<TableId>& remove_tables,
-    const std::vector<std::string>& producer_bootstrap_ids_to_add) {
+    const std::vector<std::string>& producer_bootstrap_ids_to_add,
+    const std::string& new_producer_universe_id) {
   master::AlterUniverseReplicationRequestPB req;
   master::AlterUniverseReplicationResponsePB resp;
   req.set_producer_id(producer_uuid);
@@ -1327,6 +1328,10 @@ Status ClusterAdminClient::AlterUniverseReplication(const std::string& producer_
     for (const auto& table : remove_tables) {
       req.add_producer_table_ids_to_remove(table);
     }
+  }
+
+  if (!new_producer_universe_id.empty()) {
+    req.set_new_producer_universe_id(new_producer_universe_id);
   }
 
   RpcController rpc;
