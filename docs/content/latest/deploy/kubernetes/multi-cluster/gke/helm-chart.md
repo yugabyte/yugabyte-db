@@ -168,7 +168,6 @@ parameters:
   type: pd-standard
   replication-type: none
   zone: us-east1-b
-
 ```
 
 Apply the above configuration to your clusters.
