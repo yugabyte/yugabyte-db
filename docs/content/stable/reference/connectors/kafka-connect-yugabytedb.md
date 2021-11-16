@@ -66,7 +66,7 @@ For building and using this project, the following tools must be installed on yo
 1. Run the following to produce data in that topic:
 
     ```sh
-    $ ~/yb-kafka/kafka_2.12-2.5.0/bin/kafka-console-producer.sh --broker-list localhost:9092--topic test_topic
+    $ ~/yb-kafka/kafka_2.12-2.5.0/bin/kafka-console-producer.sh --broker-list localhost:9092 --topic test
     ```
 
 1. Just cut-and-paste the following lines at the prompt:

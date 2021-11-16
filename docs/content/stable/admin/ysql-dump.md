@@ -71,6 +71,9 @@ Create the dump in the specified character set encoding. By default, the dump is
 
 Send output to the specified file. This parameter can be omitted for file-based output formats, in which case the standard output is used.
 
+#### -m *addresses*, --masters=*addresses*
+Comma-separated list of YB-Master hosts and ports.
+
 #### -n *schema*, --schema=*schema*
 
 Dump only schemas matching *schema*; this selects both the schema itself, and all its contained objects. When this option is not specified, all non-system schemas in the target database will be dumped. Multiple schemas can be selected by writing multiple `-n|--schema` options. Also, the *schema* parameter is interpreted as a pattern according to the same rules used by the `ysqlsh \d` commands, so multiple schemas can also be selected by writing wildcard characters in the pattern. When using wildcards, be careful to quote the pattern if needed to prevent the shell from expanding the wildcards.

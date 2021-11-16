@@ -14,6 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
+
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
@@ -111,7 +112,7 @@ To check the cluster status, you need to access the Admin UI on port `7000` expo
 $ kubectl --namespace yb-demo port-forward svc/yb-master-ui 7000:7000
 ```
 
-Now, you can view the [yb-master-0 Admin UI](../../../reference/configuration/yb-master/#admin-ui) at the <http://localhost:7000>.
+Now, you can view the [yb-master-0 Admin UI](../../../reference/configuration/yb-master/#admin-ui) at <http://localhost:7000>.
 
 ### Overview and YB-Master status
 

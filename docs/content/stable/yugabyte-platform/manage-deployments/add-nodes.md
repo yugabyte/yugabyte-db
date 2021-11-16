@@ -7,7 +7,7 @@ menu:
   stable:
     identifier: add-nodes
     parent: manage-deployments
-    weight: 40
+    weight: 20
 isTocNested: true
 showAsideToc: true
 ---

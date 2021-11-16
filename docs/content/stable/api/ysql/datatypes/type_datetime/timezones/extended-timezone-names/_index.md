@@ -1,7 +1,7 @@
 ---
 title: The extended_timezone_names view [YSQL]
 headerTitle: The extended_timezone_names view
-linkTitle: extended_timezone_names
+linkTitle: Extended_timezone_names
 description: The extended_timezone_names extends the pg_timezone_names view with extra columns from the tz database. [YSQL]
 image: /images/section_icons/api/subsection.png
 menu:
@@ -13,11 +13,21 @@ isTocNested: true
 showAsideToc: true
 ---
 
+{{< tip title="Download and install the date-time utilities code." >}}
+The code on this page and its child pages doesn't depend on the _date-time utilities_ code. However, the code that the section [Recommended practice for specifying the _UTC offset_](../recommendation/) describes does depend on the _extended_timezone_names_ view. You might also find the views that this page and its child-pages describe to be ordinarily useful by letting you use the power of SQL to get the same information that would be rather tedious to get simply by reading the source data that the <a href="https://en.wikipedia.org/wiki/List_of_tz_database_time_zones" target="_blank">List of tz&nbsp;database time zones <i class="fas fa-external-link-alt"></i></a> presents.
+
+The code-kit creates a table in a PostgreSQL or YugabyteDB database with the data that the _"List of tz&nbsp;database time zones"_ shows. The simplest way to get the data is just to copy-and-paste the table from the browser display into a plain text file. This naïve approach ends up with a file that has the _\<tab\>_ character as the field separator—but these separator characters are missing on each line where, in the browser display, the first and maybe next few table cells are empty. There aren't many such rows, and it's easy to fix the missing _\<tab\>_ characters by hand. This cleaned up file is included in the code kit to save you that effort. (There are other ways to get the same data from the Internet, and you may prefer to use one of these.)
+
+Once you have the data in a plain text file, it's easy to use the \\_copy_ metacommand at the _psql_ or _ysqlsh_ prompt. (It uses _\<tab\>_ as the default column separator.) This stages the copied-and-pasted browser data into a table. It turns out that the resulting table content has the character `−` (i.e. _chr(8722)_) in place of the regular `-` character (i.e. _chr(45)_). This affects the columns that record the winter and summer offsets from _UTC_ and  the latitude and longitude. The built-in function _replace()_ is used to correct this anomaly.
+
+The kit also includes the code to create the  user-defined function _[jan_and_jul_tz_abbrevs_and_offsets()](../catalog-views/#the-jan-and-jul-tz-abbrevs-and-offsets-table-function)_ that creating the _extended_timezone_names_ view depends upon. It also creates the views that are used to produce the lists that this page's child pages show.
+{{< /tip >}}
+
 **This page has these child pages:**
 
 - [extended_timezone_names — unrestricted, full projection](./unrestricted-full-projection/)
 - [Real timezones that observe Daylight Savings Time](./canonical-real-country-with-dst/)
-- [Real timezones that do not observe Daylight Savings Time](./canonical-real-country-no-dst/)
+- [Real timezones that don't observe Daylight Savings Time](./canonical-real-country-no-dst/)
 - [Synthetic timezones (do not observe Daylight Savings Time)](./canonical-no-country-no-dst/)
 
 The _pg_timezone_names_ view is populated from the _[tz&nbsp;database](https://en.wikipedia.org/wiki/Tz_database)_:
@@ -32,16 +42,6 @@ It's useful, therefore, to join these two projections as the _extended_timezone_
 
 ## Create the 'extended_timezone_names' view
 
-{{< tip title="Download the data and code to create the extended_timezone_names view." >}}
-See [Download the _.zip_ file to create the reusable code that the overall _date-time_ major section describes](../../intro/#download). This includes the code and data that creates the _extended_timezone_names_ view. For example, it creates the  user-defined function _[jan_and_jul_tz_abbrevs_and_offsets()](../catalog-views/#the-jan-and-jul-tz-abbrevs-and-offsets-table-function)_ that creating the _extended_timezone_names_ view depends upon. It also creates the views that are used to produce the lists that this page's child pages show.
-{{< /tip >}}
-
-{{< note title="Note." >}}
-The code-kit creates a table in a PostgreSQL or YugabyteDB database with the data that the [List of tz database time zones](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) shows. The simplest way to get the data is just to copy-and-paste the table from the browser display into a plain text file and to use the _\copy_ metacommand at the _psql_ or _ysqlsh_ prompt. The copy-and-paste result uses _&#60;tab&#62;_ as the column separator; and _\copy_ uses this as its default. This naïve approach ends up with the leading _&#60;tab&#62;_ characters missing on each line where, in the browser display, the first and maybe next few table cells are empty. There aren't many such rows, and it's easy to fix the missing _&#60;tab&#62;_ characters by hand. This cleaned up file is included in the code kit.
-
-The _\copy_ metacommand stages the copied-and-pasted data from the browser view into a table. It turns out that the table has the character `−` (i.e. _chr(8722)_) in place of the regular `-` character (i.e. _chr(45)_). This affects the columns that record the winter and summer offsets from _UTC_ and  the latitude and longitude. The built-in function _replace()_ is used to correct this anomaly.
-{{< /note >}}
-
 The _extended_timezone_names_ view is created as the inner join of  _pg_timezone_names_ and the _tz_database_time_zones_extended_ table, created by the code kit. The user-defined table function _[ jan_and_jul_tz_abbrevs_and_offsets()](../catalog-views/#the-jan-and-jul-tz-abbrevs-and-offsets-table-function)_ is used to populate this table from the staging table for the data from the [List of tz database time zones](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) page by adding the columns _std_abbrev_ (the Standard Time timezone abbreviation) and _dst_abbrev_ (the Summer Time timezone abbreviation).
 
 Various quality checks are made during the whole process. These discover a few more anomalies. These, too, are tracked by [GitHub issue #8550](https://github.com/yugabyte/yugabyte-db/issues/8550). You can see all this in the downloaded code kit. Look for the spool file _YB-QA-reports.txt_. You can also install the kit using PostgreSQL. This will spool a corresponding _PG-QA-reports.txt_ file.
@@ -49,7 +49,6 @@ Various quality checks are made during the whole process. These discover a few m
 Here's an example query that selects all of the columns from the _extended_timezone_names_ view for three example timezones.:
 
 ```plpgsql
-\t on
 \x on
 select
   name,
@@ -68,7 +67,6 @@ from extended_timezone_names
 where name in ('America/Los_Angeles', 'Asia/Manila', 'Europe/London')
 order by name;
 \x off
-\t off
 ```
 
 This is the result:
