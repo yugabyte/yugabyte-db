@@ -5,12 +5,10 @@ linkTitle: SQL statements
 description: List of PostgreSQL-compatible SQL statements supported by Yugabyte SQL (YSQL) 
 image: /images/section_icons/api/ysql.png
 menu:
-  latest:
+  stable:
     identifier: statements
     parent: the-sql-language
     weight: 100
-aliases:
-  - /latest/api/ysql/commands/
 isTocNested: true
 showAsideToc: true
 ---

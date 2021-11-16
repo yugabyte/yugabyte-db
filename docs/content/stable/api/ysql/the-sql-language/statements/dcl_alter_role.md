@@ -4,11 +4,9 @@ headerTitle: ALTER ROLE
 linkTitle: ALTER ROLE
 description: Use the ALTER ROLE statement to change the attributes of a role (user or group).
 menu:
-  latest:
+  stable:
     identifier: dcl_alter_role
     parent: statements
-aliases:
-  - /latest/api/ysql/commands/dcl_alter_role/
 isTocNested: true
 showAsideToc: true
 ---

@@ -5,12 +5,9 @@ linkTitle: Deploy
 description: Deploy to any public cloud or private data center of your choice.
 headcontent: Deploy to any public cloud or private data center of your choice.
 image: /images/section_icons/index/deploy.png
-aliases:
-  - /deploy/
-  - /latest/deploy/
 section: YUGABYTEDB CORE
 menu:
-  latest:
+  stable:
     identifier: deploy
     weight: 634
 ---

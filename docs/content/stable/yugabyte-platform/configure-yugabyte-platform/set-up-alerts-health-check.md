@@ -4,7 +4,7 @@ headerTitle: Configure alerts
 linkTitle: Configure alerts
 description: Configure alerts and health check
 menu:
-  latest:
+  stable:
     identifier: set-up-alerts-health-checking
     parent: configure-yugabyte-platform
     weight: 40

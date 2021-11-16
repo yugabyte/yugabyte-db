@@ -5,7 +5,7 @@ description: Savepoints in YSQL
 headcontent: Savepoints in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
-  latest:
+  stable:
     identifier: explore-ysql-language-features-savepoints
     parent: explore-ysql-language-features
     weight: 400

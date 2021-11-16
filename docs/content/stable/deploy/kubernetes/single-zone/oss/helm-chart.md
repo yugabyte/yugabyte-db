@@ -3,14 +3,8 @@ title: Deploy on OSS Kubernetes using Helm Chart
 headerTitle: Open source Kubernetes
 linkTitle: Open source Kubernetes
 description: Deploy a YugabyteDB cluster on OSS Kubernetes using Helm Chart.
-aliases:
-  - /latest/deploy/kubernetes/oss/
-  - /latest/deploy/kubernetes/oss/helm-chart/
-  - /latest/deploy/kubernetes/single-zone/oss/
-  - /latest/deploy/kubernetes/helm-chart/
-  - /latest/deploy/kubernetes/helm-configuration/
 menu:
-  latest:
+  stable:
     parent: deploy-kubernetes-sz
     name: Open Source
     identifier: k8s-oss-1

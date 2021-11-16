@@ -3,10 +3,8 @@ title: Read replicas
 headerTitle: Read replicas
 linkTitle: Read replicas
 description: Read replicas
-aliases:
-  - /latest/explore/multi-region-deployments/read-replicas
 menu:
-  latest:
+  stable:
     name: Read replicas
     identifier: explore-multi-region-deployments-read-replicas-ycql
     parent: explore-multi-region-deployments

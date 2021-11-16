@@ -7,7 +7,7 @@ headcontent: Configuration of the core database services.
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 section: REFERENCE
 menu:
-  latest:
+  stable:
     identifier: configuration
     weight: 2600
 ---

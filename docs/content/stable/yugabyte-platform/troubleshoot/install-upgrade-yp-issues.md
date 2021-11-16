@@ -4,7 +4,7 @@ headerTitle:
 linkTitle: Install and upgrade issues
 description: Troubleshoot issues encountered when installing or upgrading Yugabyte Platform.
 menu:
-  latest:
+  stable:
     identifier: install-upgrade-yp-issues
     parent: troubleshoot-yp
     weight: 10

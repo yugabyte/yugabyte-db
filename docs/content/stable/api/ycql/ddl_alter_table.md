@@ -4,12 +4,9 @@ headerTitle: ALTER TABLE
 linkTitle: ALTER TABLE
 description: Use the ALTER TABLE statement to change the schema or definition of an existing table.
 menu:
-  latest:
+  stable:
     parent: api-cassandra
     weight: 1220
-aliases:
-  - /latest/api/cassandra/ddl_alter_table
-  - /latest/api/ycql/ddl_alter_table
 isTocNested: true
 showAsideToc: true
 ---

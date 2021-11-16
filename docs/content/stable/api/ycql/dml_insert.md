@@ -4,12 +4,9 @@ headerTitle: INSERT
 linkTitle: INSERT
 description: Use the INSERT statement to add a row to a specified table.
 menu:
-  latest:
+  stable:
     parent: api-cassandra
     weight: 1300
-aliases:
-  - /latest/api/cassandra/dml_insert
-  - /latest/api/ycql/dml_insert
 isTocNested: true
 showAsideToc: true
 ---

@@ -3,9 +3,8 @@ title: Enable High Availability features
 headerTitle: Enable high availability
 linkTitle: Enable high availability
 description: Enable Yugabyte Platform's high-availability features
-aliases:
 menu:
-  latest:
+  stable:
     identifier: platform-high-availability
     parent: manage-deployments
     weight: 40

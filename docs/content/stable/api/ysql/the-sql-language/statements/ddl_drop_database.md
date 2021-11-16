@@ -4,11 +4,9 @@ headerTitle: DROP DATABASE
 linkTitle: DROP DATABASE
 description: Use the DROP DATABASE statement to remove a database and all of its associated objects from the system. 
 menu:
-  latest:
+  stable:
     identifier: ddl_drop_database
     parent: statements
-aliases:
-  - /latest/api/ysql/commands/ddl_drop_database/
 isTocNested: true
 showAsideToc: true
 ---

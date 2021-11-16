@@ -3,11 +3,8 @@ title: Create a local YugabyteDB cluster on macOS
 headerTitle: 2. Create a local cluster
 linkTitle: 2. Create a local cluster
 description: Create a local cluster on macOS in less than five minutes.
-aliases:
-  - /quick-start/create-local-cluster/
-  - /latest/quick-start/create-local-cluster/
 menu/:
-  latest:
+  stable:
     parent: quick-start
     name: 2. Create a local cluster
     identifier: create-local-cluster-1-macos

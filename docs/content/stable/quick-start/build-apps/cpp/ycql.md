@@ -4,7 +4,7 @@ headerTitle: Build a C++ application
 linkTitle: C++
 description: Build a sample C++ application that uses the YCQL API.
 menu:
-  latest:
+  stable:
     identifier: build-apps-cpp-2-ycql
     parent: build-apps
     weight: 556

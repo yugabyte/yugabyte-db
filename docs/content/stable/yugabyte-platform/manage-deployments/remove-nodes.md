@@ -3,10 +3,8 @@ title: Use Yugabyte Platform to remove a node
 headerTitle: Remove a node
 linkTitle: Remove a node
 description: Use Yugabyte Platform to remove an unresponsive node.
-aliases:
-  - /latest/manage/enterprise-edition/create-universe-multi-region
 menu:
-  latest:
+  stable:
     identifier: remove-nodes
     parent: manage-deployments
     weight: 30

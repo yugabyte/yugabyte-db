@@ -4,11 +4,9 @@ headerTitle: CREATE TABLE AS
 linkTitle: CREATE TABLE AS
 description: Use the CREATE TABLE AS statement to create a table using the output of a subquery.
 menu:
-  latest:
+  stable:
     identifier: ddl_create_table_as
     parent: statements
-aliases:
-  - /latest/api/ysql/commands/ddl_create_table_as/
 isTocNested: true
 showAsideToc: true
 ---

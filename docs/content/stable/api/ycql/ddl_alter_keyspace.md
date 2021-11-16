@@ -4,12 +4,9 @@ headerTitle: ALTER KEYSPACE
 linkTitle: ALTER KEYSPACE
 description: Use the ALTER KEYSPACE statement to change the properties of an existing keyspace.
 menu:
-  latest:
+  stable:
     parent: api-cassandra
     weight: 1200
-aliases:
-  - /latest/api/cassandra/ddl_alter_keyspace
-  - /latest/api/ycql/ddl_alter_keyspace
 isTocNested: true
 showAsideToc: true
 ---

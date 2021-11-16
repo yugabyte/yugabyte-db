@@ -5,7 +5,7 @@ description: Sample datasets
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 section: REFERENCE
 menu:
-  latest:
+  stable:
    identifier: sample-data
    weight: 2950
 ---

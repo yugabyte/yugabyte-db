@@ -7,11 +7,9 @@ image: /images/section_icons/explore/high_performance.png
 headcontent:
 section: YUGABYTEDB CORE
 menu:
-  latest:
+  stable:
     identifier: benchmark
     weight: 685
-aliases:
-  - /latest/benchmark/performance/
 
 ---
 

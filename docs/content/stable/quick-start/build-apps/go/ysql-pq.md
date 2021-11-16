@@ -3,13 +3,8 @@ title: Build a Go application that uses YSQL
 headerTitle: Build a Go application
 linkTitle: Go
 description: Build a sample Go application with the Go PostgreSQL driver and perform basic database operations.
-aliases:
-  - /develop/client-drivers/go/
-  - /latest/develop/client-drivers/go/
-  - /latest/develop/build-apps/go/
-  - /latest/quick-start/build-apps/go/
 menu:
-  latest:
+  stable:
     parent: build-apps
     name: Go
     identifier: go-1

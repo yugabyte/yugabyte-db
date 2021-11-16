@@ -4,11 +4,9 @@ headerTitle: ROLLBACK TO
 linkTitle: ROLLBACK TO SAVEPOINT
 description: Use the `ROLLBACK TO` statement to start a subtransaction within the current transaction.
 menu:
-  latest:
+  stable:
     identifier: savepoint_rollback
     parent: statements
-aliases:
-  - /latest/api/ysql/commands/savepoint_rollback/
 isTocNested: true
 showAsideToc: true
 ---

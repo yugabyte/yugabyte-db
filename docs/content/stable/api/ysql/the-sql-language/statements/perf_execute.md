@@ -4,11 +4,9 @@ headerTitle: EXECUTE
 linkTitle: EXECUTE
 description: Use the EXECUTE statement to execute a previously prepared statement. 
 menu:
-  latest:
+  stable:
     identifier: perf_execute
     parent: statements
-aliases:
-  - /latest/api/ysql/commands/perf_execute/
 isTocNested: true
 showAsideToc: true
 ---

@@ -3,7 +3,7 @@ headerTitle: Slow Queries dashboard
 linkTitle: Slow Queries dashboard
 description: Slow Queries dashboard
 menu:
-  latest:
+  stable:
     parent: alerts-monitoring
     identifier: slow-queries-dashboard
     weight: 10

@@ -5,10 +5,8 @@ linkTitle: Role-Based Access Control
 description: Enable authorization using role-based access control in YugabyteDB.
 headcontent: Enable authorization using role-based access control in YugabyteDB.
 image: /images/section_icons/secure/authorization.png
-aliases:
-  - /secure/authorization/
 menu:
-  latest:
+  stable:
     identifier: authorization
     parent: secure
     weight: 722

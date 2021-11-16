@@ -5,9 +5,8 @@ linkTitle: Distributed SQL features
 description: PostgreSQL features in YSQL
 headcontent: PostgreSQL features in YSQL
 image: /images/section_icons/api/ysql.png
-aliases:
 menu:
-  latest:
+  stable:
     identifier: explore-ysql-language-features
     parent: explore
     weight: 200

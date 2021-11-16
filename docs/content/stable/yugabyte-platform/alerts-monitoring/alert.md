@@ -3,7 +3,7 @@ headerTitle: Alerts
 linkTitle: Alerts
 description: Use alerts
 menu:
-  latest:
+  stable:
     identifier: alert
     parent: alerts-monitoring
     weight: 10

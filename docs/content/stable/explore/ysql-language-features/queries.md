@@ -5,7 +5,7 @@ description: Queries and Joins in YSQL
 headcontent: Queries and Joins in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
-  latest:
+  stable:
     identifier: explore-ysql-language-features-queries-joins
     parent: explore-ysql-language-features
     weight: 210

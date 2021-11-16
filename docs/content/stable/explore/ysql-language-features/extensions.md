@@ -4,11 +4,9 @@ headerTitle: Pre-bundled extensions
 linkTitle: Extensions
 description: Pre-bundled extensions for YugabyteDB
 headcontent: Pre-bundled extensions for YugabyteDB
-aliases:
-  - /latest/explore/extensions
 image: /images/section_icons/explore/monitoring.png
 menu:
-  latest:
+  stable:
     identifier: explore-ysql-language-features-extensions
     parent: explore-ysql-language-features
     weight: 620

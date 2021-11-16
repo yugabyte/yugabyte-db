@@ -5,10 +5,8 @@ linkTitle: Security
 description: Overview of security in YugabyteDB.
 headcontent: Security in YugabyteDB.
 image: /images/section_icons/index/secure.png
-aliases:
-  - /latest/explore/security/
 menu:
-  latest:
+  stable:
     identifier: explore-security
     parent: explore
     weight: 300
