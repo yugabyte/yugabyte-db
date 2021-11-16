@@ -1,6 +1,6 @@
 ---
 title: Manage your billing profile and payment method
-linkTitle: Billing
+linkTitle: Manage billing
 description: Manage your Yugabyte Cloud billing profile and payment methods and view invoices.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png

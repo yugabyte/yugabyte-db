@@ -1,6 +1,6 @@
 ---
 title: Manage cloud access
-linkTitle: Users
+linkTitle: Manage cloud users
 description: Manage access to Yugabyte Cloud and your clusters.
 headcontent:
 image: /images/section_icons/secure/create-roles.png
@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Invite other users to your cloud so that they can create, manage, and connect to clusters.
+Invite team members to your cloud so that they can create, manage, and connect to clusters.
 
 You must be signed in as an Admin user to invite other users.
 
@@ -47,6 +47,7 @@ To invite a user:
 
 1. On the **Admin** page, select the **Users** tab, then click **Invite User** to display the **Invite User** dialog.
 1. Enter one or more email addresses of people you're inviting.
+1. Choose a role for the new users.
 1. Click **Invite**.
 
 Users will receive a verification email with a link to create their account and set up a password. Invitations expire after 24 hours.

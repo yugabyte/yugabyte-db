@@ -74,10 +74,22 @@ You must be signed in as the Admin user (the user who created the Yugabyte Cloud
     <a class="section-link icon-offset" href="cloud-billing-profile/">
       <div class="head">
         <div class="icon"><i class="fas fa-file-invoice-dollar"></i></div>
-        <div class="title">Billing</div>
+        <div class="title">Manage billing</div>
       </div>
       <div class="body">
         Manage your billing profile and payment methods.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="cloud-activity/">
+      <div class="head">
+        <div class="icon"><i class="fas fa-file-invoice-dollar"></i></div>
+        <div class="title">Monitor cloud activity</div>
+      </div>
+      <div class="body">
+        Audit cloud activity, including changes to clusters, billing, allow lists, and more.
       </div>
     </a>
   </div>
