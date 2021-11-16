@@ -227,6 +227,7 @@ copy q from stdin;
 copy q from stdin;
 3	0
 \.
+select * from q ORDER BY a,b;
 
 -- Test before and after row insert trigger on multiple partition tables
 create table s (a int not null, b int) partition by list (a);
@@ -252,6 +253,8 @@ copy s from stdin;
 6	10
 \.
 
+select * from s ORDER BY a,b;
+
 -- Test before and after row insert trigger on nested partition with depth 2 and constraint
 create table r (a int check (a > 0), b int) partition by range(a);
 create table r1 partition of r for values from (1) to (5) partition by list (b);
@@ -269,6 +272,8 @@ copy r from stdin;
 copy r from stdin;
 5	3
 \.
+
+select * from r ORDER BY a,b;
 
 -- Test before and after row insert trigger on nested partition with depth 3 and constraint
 create table w (a int check (a > 0), b int) partition by list (a);
@@ -298,6 +303,8 @@ copy w from stdin;
 2	6
 \.
 
+select * from w ORDER BY a,b;
+
 -- Test before row insert trigger with check constraint on partition table
 create table p (a int check (a > 0), b int) partition by list (a);
 create table p1 partition of p for values in (1);
@@ -311,6 +318,8 @@ copy p from stdin;
 copy p from stdin;
 0	1
 \.
+
+select * from p ORDER BY a,b;
 
 -- Test index and auto generated column on partition table
 create table u (a serial, b int) partition by list (a);
@@ -330,6 +339,8 @@ copy u (b) from stdin;
 copy u from stdin;
 1	9
 \.
+
+select * from u ORDER BY a,b;
 
 -- Test after row insert trigger with check constraint, index, and auto generated column on partition table
 create table v (a int default 1 check (a > 0), b serial) partition by list (a);
@@ -352,6 +363,8 @@ copy v (b) from stdin;
 copy v (b) from stdin;
 5
 \.
+
+select * from v ORDER BY a,b;
 
 -- clean up
 DROP TABLE forcetest;
