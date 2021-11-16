@@ -223,28 +223,31 @@ end loop;
 END
 $$ language plpgsql;
 
-CREATE FUNCTION pg_stat_monitor_hook_stats(
-    OUT hook text,
-    OUT min_time float8,
-    OUT max_time float8,
-    OUT total_time float8,
-    OUT ncalls int8
-)
-RETURNS SETOF record
-AS 'MODULE_PATHNAME', 'pg_stat_monitor_hook_stats'
-LANGUAGE C STRICT VOLATILE PARALLEL SAFE;
+-- CREATE FUNCTION pg_stat_monitor_hook_stats(
+--    OUT hook text,
+--    OUT min_time float8,
+--    OUT max_time float8,
+--    OUT total_time float8,
+--    OUT ncalls int8
+--)
+--RETURNS SETOF record
+--AS 'MODULE_PATHNAME', 'pg_stat_monitor_hook_stats'
+--LANGUAGE C STRICT VOLATILE PARALLEL SAFE;
 
-CREATE VIEW pg_stat_monitor_hook_stats AS SELECT
-    hook,
-    min_time,
-    max_time,
-    total_time,
-    total_time / greatest(ncalls, 1) as avg_time,
-    ncalls,
-    ROUND(CAST(total_time / greatest(sum(total_time) OVER(), 0.00000001) * 100 as numeric), 2)::text || '%' as load_comparison
-FROM pg_stat_monitor_hook_stats();
+--CREATE VIEW pg_stat_monitor_hook_stats AS SELECT
+--    hook,
+--    min_time,
+--    max_time,
+--    total_time,
+--    total_time / greatest(ncalls, 1) as avg_time,
+--    ncalls,
+--    ROUND(CAST(total_time / greatest(sum(total_time) OVER(), 0.00000001) * 100 as numeric), 2)::text || '%' as load_comparison
+-- FROM pg_stat_monitor_hook_stats();
 
 GRANT SELECT ON pg_stat_monitor TO PUBLIC;
 GRANT SELECT ON pg_stat_monitor_settings TO PUBLIC;
+
 -- Don't want this to be available to non-superusers.
 REVOKE ALL ON FUNCTION pg_stat_monitor_reset() FROM PUBLIC;
+
+
