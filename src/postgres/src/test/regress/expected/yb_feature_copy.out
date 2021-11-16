@@ -306,6 +306,14 @@ copy q from stdin;
 ERROR:  no partition of relation "q" found for row
 DETAIL:  Partition key of the failing row contains (a) = (3).
 CONTEXT:  COPY q, line 1: "3	0"
+select * from q ORDER BY a,b;
+ a | b
+---+---
+ 1 | 5
+ 1 | 7
+ 2 | 6
+(3 rows)
+
 -- Test before and after row insert trigger on multiple partition tables
 create table s (a int not null, b int) partition by list (a);
 create table s1 (b int, a int not null);
@@ -328,6 +336,16 @@ copy s from stdin;
 ERROR:  no partition of relation "s" found for row
 DETAIL:  Partition key of the failing row contains (a) = (6).
 CONTEXT:  COPY s, line 1: "6	10"
+select * from s ORDER BY a,b;
+ a | b
+---+---
+ 1 | 5
+ 2 | 6
+ 2 | 9
+ 3 | 7
+ 4 | 8
+(5 rows)
+
 -- Test before and after row insert trigger on nested partition with depth 2 and constraint
 create table r (a int check (a > 0), b int) partition by range(a);
 create table r1 partition of r for values from (1) to (5) partition by list (b);
@@ -344,6 +362,14 @@ copy r from stdin;
 ERROR:  no partition of relation "r" found for row
 DETAIL:  Partition key of the failing row contains (a) = (5).
 CONTEXT:  COPY r, line 1: "5	3"
+select * from r ORDER BY a,b;
+ a | b
+---+---
+ 1 | 3
+ 2 | 4
+ 4 | 3
+(3 rows)
+
 -- Test before and after row insert trigger on nested partition with depth 3 and constraint
 create table w (a int check (a > 0), b int) partition by list (a);
 create table w1 partition of w for values in (1, 2, 3, 4, 5, 6, 7, 8) partition by list (b);
@@ -370,6 +396,15 @@ copy w from stdin;
 ERROR:  no partition of relation "w4" found for row
 DETAIL:  Partition key of the failing row contains (a) = (2).
 CONTEXT:  COPY w, line 1: "2	6"
+select * from w ORDER BY a,b;
+ a | b
+---+---
+ 3 | 7
+ 8 | 2
+ 8 | 6
+ 9 | 1
+(4 rows)
+
 -- Test before row insert trigger with check constraint on partition table
 create table p (a int check (a > 0), b int) partition by list (a);
 create table p1 partition of p for values in (1);
@@ -382,6 +417,13 @@ copy p from stdin;
 ERROR:  no partition of relation "p" found for row
 DETAIL:  Partition key of the failing row contains (a) = (0).
 CONTEXT:  COPY p, line 1: "0	1"
+select * from p ORDER BY a,b;
+ a | b
+---+---
+ 1 | 5
+ 1 | 6
+(2 rows)
+
 -- Test index and auto generated column on partition table
 create table u (a serial, b int) partition by list (a);
 create table u1 partition of u for values in (1, 2, 3, 4, 5);
@@ -391,6 +433,15 @@ copy u (b) from stdin;
 -- should fail, a duplicates
 copy u from stdin;
 ERROR:  duplicate key value violates unique constraint "u1_a_idx"
+select * from u ORDER BY a,b;
+ a | b
+---+---
+ 1 | 7
+ 2 | 8
+ 3 | 5
+ 4 | 6
+(4 rows)
+
 -- Test after row insert trigger with check constraint, index, and auto generated column on partition table
 create table v (a int default 1 check (a > 0), b serial) partition by list (a);
 create table v1 partition of v for values in (1, 2);
@@ -408,6 +459,17 @@ NOTICE:  a: 10
 copy v (b) from stdin;
 NOTICE:  a: 5
 ERROR:  duplicate key value violates unique constraint "v1_a_b_idx"
+select * from v ORDER BY a,b;
+ a | b
+---+----
+ 1 |  5
+ 1 |  6
+ 1 |  7
+ 1 |  8
+ 1 |  9
+ 1 | 10
+(6 rows)
+
 -- clean up
 DROP TABLE forcetest;
 DROP TABLE x;
