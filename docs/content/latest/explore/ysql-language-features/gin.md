@@ -1,3 +1,17 @@
+---
+title: Generalized inverted indexes
+linkTitle: Generalized inverted indexes
+description: Generalized inverted indexes in YSQL
+image: /images/section_icons/secure/create-roles.png
+menu:
+  latest:
+    identifier: explore-ysql-language-features-gin
+    parent: explore-ysql-language-features
+    weight: 400
+isTocNested: true
+showAsideToc: true
+---
+
 # Generalized inverted indexes
 
 In YugabyteDB, tables and secondary indexes are both key-value stores.
