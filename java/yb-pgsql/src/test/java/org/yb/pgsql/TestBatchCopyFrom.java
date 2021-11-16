@@ -509,4 +509,44 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
       assertOneRow(statement, "SELECT COUNT(*) FROM " + tableName, expectedCopiedLines);
     }
   }
+
+  @Test
+  public void testBatchedCopyForPartitionedTables() throws Exception {
+    String absFilePath = getAbsFilePath("batch-copyfrom-parts.txt");
+    String tableName = "parts";
+    int totalLines = 100000;
+    int batchSize = 100;
+
+    createFileInTmpDir(absFilePath, totalLines);
+
+    final String createStmt = "CREATE TABLE %s (a int, b int, c text, d int) PARTITION BY %s(a)";
+    final String createDefaultStmt = "CREATE TABLE %s PARTITION OF %s DEFAULT";
+    final String copyStmt =
+        "COPY %s FROM \'%s\' WITH (FORMAT CSV, HEADER, ROWS_PER_TRANSACTION %s)";
+
+    try (Statement statement = connection.createStatement()) {
+      String[] partTypes = {"HASH", "RANGE", "LIST"};
+      for (final String partType : partTypes) {
+        final String parentName = tableName + partType;
+        // Create partitioned table.
+        statement.execute(String.format(createStmt, parentName, partType));
+
+        // Create partitions for hash partitioned table, and a default partition for range/list.
+        if (partType.equals("HASH")) {
+          statement.execute(String.format("CREATE TABLE %s PARTITION OF %s FOR VALUES WITH " +
+              "(modulus 2, remainder 0)", parentName + "_part1", parentName));
+          statement.execute(String.format("CREATE TABLE %s PARTITION OF %s FOR VALUES WITH " +
+              "(modulus 2, remainder 1)", parentName + "_part2", parentName));
+        } else {
+          statement.execute(String.format(createDefaultStmt, parentName + "_default", parentName));
+        }
+
+        // Copy rows over to the partitioned table
+        statement.execute(String.format(copyStmt, parentName, absFilePath, batchSize));
+
+        // Verify the copy went through.
+        assertOneRow(statement, "SELECT COUNT(*) FROM " + parentName, totalLines);
+      }
+    }
+  }
 }
