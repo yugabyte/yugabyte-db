@@ -323,7 +323,14 @@ YBTransformPartitionSplitPoints(YBCPgStatement yb_stmt,
 				{
 					/* Given value is not null. Convert it to YugaByte format. */
 					Const *value = castNode(Const, datums[idx]->value);
-					exprs[idx] = YBCNewConstant(yb_stmt, value->consttype, value->constcollid,
+					/*
+					 * Use attr->attcollation because the split value will be compared against
+					 * collation-encoded strings that are encoded using the column collation.
+					 * We assume collation-encoding will likely to retain the similar key
+					 * distribution as the original text values.
+					 */
+					Form_pg_attribute attr = attrs[idx];
+					exprs[idx] = YBCNewConstant(yb_stmt, value->consttype, attr->attcollation,
 												value->constvalue, false /* is_null */);
 					break;
 				}
