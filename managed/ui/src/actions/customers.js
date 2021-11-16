@@ -499,16 +499,19 @@ export function createAlertChannelResponse(response) {
   };
 }
 
-export function updateAlertChannel(channelUUID, payload){
+export function updateAlertChannel(channelUUID, payload) {
   const cUUID = localStorage.getItem('customerId');
-  const request = axios.put(`${ROOT_URL}/customers/${cUUID}/alert_channels/${channelUUID}`, payload);
+  const request = axios.put(
+    `${ROOT_URL}/customers/${cUUID}/alert_channels/${channelUUID}`,
+    payload
+  );
   return {
     type: UPDATE_ALERT_CHANNEL,
     payload: request
   };
 }
 
-export function deleteAlertChannel(channelUUID){
+export function deleteAlertChannel(channelUUID) {
   const cUUID = localStorage.getItem('customerId');
   const request = axios.delete(`${ROOT_URL}/customers/${cUUID}/alert_channels/${channelUUID}`);
   return {
@@ -544,10 +547,7 @@ export function createAlertConfig(payload) {
 
 export function updateAlertConfig(payload, uuid) {
   const cUUID = localStorage.getItem('customerId');
-  const request = axios.put(
-    `${ROOT_URL}/customers/${cUUID}/alert_configurations/${uuid}`,
-    payload
-  );
+  const request = axios.put(`${ROOT_URL}/customers/${cUUID}/alert_configurations/${uuid}`, payload);
   return {
     type: UPDATE_ALERT_CONFIG,
     payload: request
@@ -604,7 +604,7 @@ export function deleteAlertConfig(uuid) {
 
 export function getAlertConfigByName(name) {
   const cUUID = localStorage.getItem('customerId');
-  return axios.post(`${ROOT_URL}/customers/${cUUID}/alert_configurations/list`, {name});
+  return axios.post(`${ROOT_URL}/customers/${cUUID}/alert_configurations/list`, { name });
 }
 
 export function getAlertChannels() {
@@ -652,10 +652,7 @@ export function getTargetMetrics(payload) {
 
 export function alertConfigs(payload) {
   const cUUID = localStorage.getItem('customerId');
-  const request = axios.post(
-    `${ROOT_URL}/customers/${cUUID}/alert_configurations/list`,
-    payload
-  );
+  const request = axios.post(`${ROOT_URL}/customers/${cUUID}/alert_configurations/list`, payload);
   return {
     type: GET_ALERT_CONFIGS,
     payload: request
@@ -818,10 +815,10 @@ export function deleteScheduleResponse(response) {
   };
 }
 
-export function setLogsLoading(){
+export function setLogsLoading() {
   return {
-    type: LOGS_FETCHING,
-  }
+    type: LOGS_FETCHING
+  };
 }
 
 export function getLogs(maxLines, regex, universe) {
@@ -900,6 +897,15 @@ export function importYugaByteReleaseResponse(response) {
   };
 }
 
+export function deleteYugaByteRelease(version) {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.delete(`${ROOT_URL}/customers/${cUUID}/releases/${version}`);
+  return {
+    type: UPDATE_RELEASE,
+    payload: request
+  };
+}
+
 export function updateYugaByteRelease(version, payload) {
   const cUUID = localStorage.getItem('customerId');
   const request = axios.put(`${ROOT_URL}/customers/${cUUID}/releases/${version}`, payload);
@@ -967,17 +973,17 @@ export function deleteUserResponse(response) {
 export function updateTLS(universeUuid, formValues) {
   const cUUID = localStorage.getItem('customerId');
   const values = {
-    "enableNodeToNodeEncrypt": formValues.enableNodeToNodeEncrypt,
-    "enableClientToNodeEncrypt": formValues.enableClientToNodeEncrypt,
-    "rootCA": formValues.rootCA,
-    "createNewRootCA": formValues.createNewRootCA,
-    "clientRootCA": formValues.clientRootCA,
-    "createNewClientRootCA": formValues.createNewClientRootCA,
-    "rootAndClientRootCASame": formValues.rootAndClientRootCASame,
-    "upgradeOption": formValues.rollingUpgrade ? "Rolling" : "Non-Rolling",
-    "sleepAfterMasterRestartMillis": formValues.timeDelay * 1000,
-    "sleepAfterTServerRestartMillis": formValues.timeDelay * 1000
-  }
+    enableNodeToNodeEncrypt: formValues.enableNodeToNodeEncrypt,
+    enableClientToNodeEncrypt: formValues.enableClientToNodeEncrypt,
+    rootCA: formValues.rootCA,
+    createNewRootCA: formValues.createNewRootCA,
+    clientRootCA: formValues.clientRootCA,
+    createNewClientRootCA: formValues.createNewClientRootCA,
+    rootAndClientRootCASame: formValues.rootAndClientRootCASame,
+    upgradeOption: formValues.rollingUpgrade ? 'Rolling' : 'Non-Rolling',
+    sleepAfterMasterRestartMillis: formValues.timeDelay * 1000,
+    sleepAfterTServerRestartMillis: formValues.timeDelay * 1000
+  };
   const request = axios.post(
     `${ROOT_URL}/customers/${cUUID}/universes/${universeUuid}/update_tls`,
     values
