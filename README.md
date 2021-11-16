@@ -1,4 +1,4 @@
-![PostgreSQL-11](https://github.com/percona/pg_stat_monitor/workflows/pg11-test/badge.svg)
+![PostgreSQL-11](https://github.com/percona/pg_stat_monitor/workflows/postgresql-11-build/badge.svg)
 ![PostgreSQL-12](https://github.com/percona/pg_stat_monitor/workflows/pg12-test/badge.svg)
 ![PostgreSQL-13](https://github.com/percona/pg_stat_monitor/workflows/pg13-test/badge.svg)
 ![PostgreSQL-14](https://github.com/percona/pg_stat_monitor/workflows/pg14-test/badge.svg)
