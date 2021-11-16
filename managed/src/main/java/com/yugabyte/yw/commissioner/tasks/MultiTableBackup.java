@@ -266,7 +266,8 @@ public class MultiTableBackup extends UniverseTaskBase {
           for (BackupTableParams tableParams : backupParamsList) {
             Backup backup = Backup.create(params().customerUUID, tableParams);
             backup.setTaskUUID(userTaskUUID);
-            tableBackupParams.backupUuid = backup.backupUUID;
+            tableParams.backupUuid = backup.backupUUID;
+            tableParams.customerUuid = backup.customerUUID;
             log.info("Task id {} for the backup {}", backup.taskUUID, backup.backupUUID);
 
             createEncryptedUniverseKeyBackupTask(tableParams)
