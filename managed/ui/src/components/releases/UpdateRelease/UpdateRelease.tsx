@@ -10,27 +10,40 @@ export enum ReleaseStateEnum {
   ACTIVE = 'ACTIVE',
   DISABLED = 'DISABLED',
   DELETED = 'DELETED'
-};
+}
 
 interface UpdateReleaseProps {
-  visible: boolean,
+  visible: boolean;
   releaseInfo: {
-    version: string,
-  },  
-  actionType: ReleaseStateEnum,
-  onHide(): void,
-  updateYugaByteRelease(value: string, state: object): void,
-  onModalSubmit(): void
+    version: string;
+  };
+  actionType: ReleaseStateEnum;
+  onHide(): void;
+  deleteYugaByteRelease(value: string): void;
+  updateYugaByteRelease(value: string, state: object): void;
+  onModalSubmit(): void;
 }
 
 export default class UpdateRelease extends Component<UpdateReleaseProps> {
   updateRelease = () => {
-    const { releaseInfo, updateYugaByteRelease, onModalSubmit, onHide, actionType } = this.props;
-    updateYugaByteRelease(releaseInfo.version, {
-      state: actionType
-    });
-    onHide();
-    onModalSubmit();
+    const {
+      releaseInfo,
+      deleteYugaByteRelease,
+      updateYugaByteRelease,
+      onModalSubmit,
+      onHide,
+      actionType
+    } = this.props;
+    if (actionType === 'DELETED') {
+      deleteYugaByteRelease(releaseInfo.version);
+      onHide();
+    } else {
+      updateYugaByteRelease(releaseInfo.version, {
+        state: actionType
+      });
+      onModalSubmit();
+      onHide();
+    }
   };
 
   render() {
@@ -38,16 +51,28 @@ export default class UpdateRelease extends Component<UpdateReleaseProps> {
     if (!isNonEmptyObject(releaseInfo)) {
       return <div />;
     }
-    let modalTitle: (string | ReactNode) = '';
+    let modalTitle: string | ReactNode = '';
     switch (actionType) {
       case ReleaseStateEnum.DISABLED:
-        modalTitle = <div>Disable Release <code>{releaseInfo.version}</code></div>;
+        modalTitle = (
+          <div>
+            Disable Release <code>{releaseInfo.version}</code>
+          </div>
+        );
         break;
       case ReleaseStateEnum.DELETED:
-        modalTitle = <div>Delete Release <code>{releaseInfo.version}</code></div>;
+        modalTitle = (
+          <div>
+            Delete Release <code>{releaseInfo.version}</code>
+          </div>
+        );
         break;
       case ReleaseStateEnum.ACTIVE:
-        modalTitle = <div>Activate Release <code>{releaseInfo.version}</code></div>;
+        modalTitle = (
+          <div>
+            Activate Release <code>{releaseInfo.version}</code>
+          </div>
+        );
         break;
       default:
         modalTitle = 'Update Release ' + releaseInfo.version;

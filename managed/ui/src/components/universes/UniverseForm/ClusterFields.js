@@ -321,13 +321,13 @@ export default class ClusterFields extends Component {
         clusterType === 'async'
           ? readOnlyCluster
             ? readOnlyCluster && {
-              ...readOnlyCluster.userIntent,
-              universeName: primaryCluster.userIntent.universeName
-            }
+                ...readOnlyCluster.userIntent,
+                universeName: primaryCluster.userIntent.universeName
+              }
             : primaryCluster && {
-              ...primaryCluster.userIntent,
-              universeName: primaryCluster.userIntent.universeName
-            }
+                ...primaryCluster.userIntent,
+                universeName: primaryCluster.userIntent.universeName
+              }
           : primaryCluster && primaryCluster.userIntent;
       const providerUUID = userIntent && userIntent.provider;
       const encryptionAtRestEnabled =
@@ -618,12 +618,15 @@ export default class ClusterFields extends Component {
     if (!formValues[clusterType] && isNonEmptyArray(cloud.providers?.data)) {
       // AC: Editing Read-Replica is type 'Async'. We should change this at some point
       if (type === 'Edit' || type === 'Async') {
-        const currentCluster = type === 'Edit' ? getPrimaryCluster(currentUniverse.data.universeDetails.clusters) : getReadOnlyCluster(currentUniverse.data.universeDetails.clusters);
+        const currentCluster =
+          type === 'Edit'
+            ? getPrimaryCluster(currentUniverse.data.universeDetails.clusters)
+            : getReadOnlyCluster(currentUniverse.data.universeDetails.clusters);
         const currentProviderUuid = currentCluster.userIntent.provider;
         updateFormField(`${clusterType}.provider`, currentProviderUuid);
       } else {
         const firstProviderUuid = cloud.providers.data[0]?.uuid;
-        updateFormField(`${clusterType}.provider`, firstProviderUuid)
+        updateFormField(`${clusterType}.provider`, firstProviderUuid);
         this.providerChanged(firstProviderUuid);
       }
     }
@@ -1294,7 +1297,7 @@ export default class ClusterFields extends Component {
 
   setDefaultProviderStorage = (providerData) => {
     this.storageTypeChanged(DEFAULT_STORAGE_TYPES[providerData.code.toUpperCase()]);
-  }
+  };
 
   providerChanged = (value) => {
     const {
@@ -2161,8 +2164,8 @@ export default class ClusterFields extends Component {
       clusterType === 'primary'
         ? getPrimaryCluster(_.get(self.props, 'universe.universeConfigTemplate.data.clusters', []))
         : getReadOnlyCluster(
-          _.get(self.props, 'universe.universeConfigTemplate.data.clusters', [])
-        );
+            _.get(self.props, 'universe.universeConfigTemplate.data.clusters', [])
+          );
     const placementCloud = getPlacementCloud(cluster);
     const regionAndProviderDefined =
       isNonEmptyArray(formValues[clusterType]?.regionList) &&
@@ -2196,8 +2199,8 @@ export default class ClusterFields extends Component {
       configTemplate && clusterType === 'primary'
         ? !!getPrimaryCluster(clusters)
         : clusterType === 'async'
-          ? !!getReadOnlyCluster(clusters)
-          : false;
+        ? !!getReadOnlyCluster(clusters)
+        : false;
     const enableGeoPartitioning =
       featureFlags.test['enableGeoPartitioning'] || featureFlags.released['enableGeoPartitioning'];
     const azSelectorTable = (
@@ -2321,35 +2324,35 @@ export default class ClusterFields extends Component {
                 />
                 {clusterType === 'async'
                   ? [
-                    <Field
-                      key="numNodes"
-                      name={`${clusterType}.numNodes`}
-                      type="text"
-                      component={YBControlledNumericInputWithLabel}
-                      className={
-                        getPromiseState(this.props.universe.universeConfigTemplate).isLoading()
-                          ? 'readonly'
-                          : ''
-                      }
-                      data-yb-field="nodes"
-                      label={this.state.isKubernetesUniverse ? 'Pods' : 'Nodes'}
-                      onInputChanged={this.numNodesChanged}
-                      onLabelClick={this.numNodesClicked}
-                      val={this.state.numNodes}
-                      minVal={Number(this.state.replicationFactor)}
-                    />,
-                    <Field
-                      key="replicationFactor"
-                      name={`${clusterType}.replicationFactor`}
-                      type="text"
-                      component={YBRadioButtonBarWithLabel}
-                      options={[1, 2, 3, 4, 5, 6, 7]}
-                      label="Replication Factor"
-                      initialValue={this.state.replicationFactor}
-                      onSelect={this.replicationFactorChanged}
-                      isReadOnly={isReadOnlyOnEdit}
-                    />
-                  ]
+                      <Field
+                        key="numNodes"
+                        name={`${clusterType}.numNodes`}
+                        type="text"
+                        component={YBControlledNumericInputWithLabel}
+                        className={
+                          getPromiseState(this.props.universe.universeConfigTemplate).isLoading()
+                            ? 'readonly'
+                            : ''
+                        }
+                        data-yb-field="nodes"
+                        label={this.state.isKubernetesUniverse ? 'Pods' : 'Nodes'}
+                        onInputChanged={this.numNodesChanged}
+                        onLabelClick={this.numNodesClicked}
+                        val={this.state.numNodes}
+                        minVal={Number(this.state.replicationFactor)}
+                      />,
+                      <Field
+                        key="replicationFactor"
+                        name={`${clusterType}.replicationFactor`}
+                        type="text"
+                        component={YBRadioButtonBarWithLabel}
+                        options={[1, 2, 3, 4, 5, 6, 7]}
+                        label="Replication Factor"
+                        initialValue={this.state.replicationFactor}
+                        onSelect={this.replicationFactorChanged}
+                        isReadOnly={isReadOnlyOnEdit}
+                      />
+                    ]
                   : null}
               </div>
 
