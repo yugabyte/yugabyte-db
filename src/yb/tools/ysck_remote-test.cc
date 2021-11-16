@@ -38,7 +38,6 @@
 #include "yb/client/yb_op.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/integration-tests/mini_cluster.h"
-#include "yb/master/mini_master.h"
 #include "yb/rpc/messenger.h"
 #include "yb/tools/data_gen_util.h"
 #include "yb/tools/ysck_remote.h"

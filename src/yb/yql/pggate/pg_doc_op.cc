@@ -15,25 +15,17 @@
 #include "yb/yql/pggate/pg_doc_op.h"
 
 #include <algorithm>
-#include <list>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include <boost/algorithm/string.hpp>
 
-#include "yb/client/table.h"
-#include "yb/common/pgsql_error.h"
 #include "yb/common/row_mark.h"
-#include "yb/common/transaction_error.h"
 #include "yb/docdb/doc_key.h"
-#include "yb/util/yb_pg_errcodes.h"
 #include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_tools.h"
-#include "yb/yql/pggate/pg_txn_manager.h"
 #include "yb/yql/pggate/pggate_flags.h"
-#include "yb/yql/pggate/ybc_pggate.h"
 
 using std::lower_bound;
 using std::list;

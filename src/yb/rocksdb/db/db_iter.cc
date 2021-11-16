@@ -28,7 +28,6 @@
 #include <limits>
 
 #include "yb/rocksdb/db/dbformat.h"
-#include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/iterator.h"

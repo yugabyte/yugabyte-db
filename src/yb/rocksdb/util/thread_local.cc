@@ -23,7 +23,6 @@
 
 #include "yb/rocksdb/util/thread_local.h"
 
-#include <stdlib.h>
 
 #include <vector>
 #include <algorithm>

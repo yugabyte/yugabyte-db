@@ -15,8 +15,6 @@
 
 #include <memory>
 
-#include "yb/client/ql-dml-test-base.h"
-#include "yb/client/txn-test-base.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"

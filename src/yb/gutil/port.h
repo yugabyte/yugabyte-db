@@ -35,6 +35,7 @@
 #ifndef YB_GUTIL_PORT_H
 #define YB_GUTIL_PORT_H
 
+#include <errno.h>
 #include <limits.h>         // So we can set the bounds of our types
 #include <stdlib.h>         // for free()
 #include <string.h>         // for memcpy()

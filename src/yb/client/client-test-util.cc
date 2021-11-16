@@ -32,9 +32,27 @@
 
 #include "yb/client/client-test-util.h"
 
+#include <stdint.h>
+
+#include <memory>
+#include <mutex>
+#include <string>
+#include <utility>
 #include <vector>
 
-#include "yb/client/client.h"
+#include <boost/function.hpp>
+
+#include "yb/client/client_fwd.h"
+#include "yb/client/schema.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/transaction.h"
+#include "yb/common/partition.h"
+#include "yb/util/enums.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_callback.h"
+#include "yb/util/strongly_typed_bool.h"
 #include "yb/client/error.h"
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
@@ -43,7 +61,6 @@
 #include "yb/common/ql_value.h"
 
 #include "yb/gutil/stl_util.h"
-#include "yb/util/test_util.h"
 
 namespace yb {
 namespace client {

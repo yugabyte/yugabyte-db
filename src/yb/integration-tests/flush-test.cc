@@ -15,7 +15,12 @@
 #include <regex>
 
 #include "yb/integration-tests/test_workload.h"
-#include "yb/integration-tests/ts_itest-base.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/schema.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/util/metrics.h"
+#include "yb/util/test_util.h"
+#include "yb/client/table.h"
 #include "yb/integration-tests/mini_cluster.h"
 
 #include "yb/rocksdb/db/db_impl.h"

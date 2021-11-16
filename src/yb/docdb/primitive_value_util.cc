@@ -11,7 +11,6 @@
 // under the License.
 //
 
-#include <iostream>
 
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_value.h"

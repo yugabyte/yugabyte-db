@@ -15,7 +15,6 @@
 #include "yb/yql/redis/redisserver/redis_rpc.h"
 
 #include "yb/client/client_fwd.h"
-#include "yb/client/meta_cache.h"
 
 #include "yb/common/redis_protocol.pb.h"
 

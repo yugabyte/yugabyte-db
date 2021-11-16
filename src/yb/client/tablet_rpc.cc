@@ -25,7 +25,6 @@
 #include "yb/tserver/tserver_forward_service.proxy.h"
 #include "yb/tserver/tserver_error.h"
 #include "yb/util/flag_tags.h"
-#include "yb/util/scope_exit.h"
 
 DEFINE_test_flag(bool, assert_local_op, false,
                  "When set, we crash if we received an operation that cannot be served locally.");

@@ -27,8 +27,6 @@
 #include <algorithm>
 #include <memory>
 #include "yb/util/slice.h"
-#include "yb/rocksdb/port/port.h"
-#include "yb/rocksdb/util/logging.h"
 
 namespace rocksdb {
 

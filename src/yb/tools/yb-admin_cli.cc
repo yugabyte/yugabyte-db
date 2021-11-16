@@ -31,15 +31,12 @@
 //
 #include "yb/tools/yb-admin_cli.h"
 
-#include <iostream>
 #include <memory>
 #include <utility>
 
 #include <boost/lexical_cast.hpp>
-#include <boost/range.hpp>
 
 #include "yb/common/json_util.h"
-#include "yb/rpc/messenger.h"
 #include "yb/tools/yb-admin_client.h"
 #include "yb/util/flags.h"
 #include "yb/util/stol_utils.h"

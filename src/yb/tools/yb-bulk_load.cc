@@ -11,8 +11,6 @@
 // under the License.
 //
 
-#include <sched.h>
-#include <iostream>
 #include <thread>
 #include <boost/algorithm/string.hpp>
 
@@ -43,12 +41,10 @@
 #include "yb/util/env.h"
 #include "yb/util/status.h"
 #include "yb/util/stol_utils.h"
-#include "yb/util/stopwatch.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
-#include "yb/util/path_util.h"
 #include "yb/util/subprocess.h"
 
 using std::pair;

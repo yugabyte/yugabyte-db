@@ -35,7 +35,6 @@
 #include "yb/consensus/consensus_round.h"
 
 #include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/tserver_error.h"
 

@@ -38,7 +38,6 @@
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/rpc/acceptor.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/service_if.h"
 #include "yb/rpc/service_pool.h"

@@ -18,7 +18,6 @@
 // See strtoint.h for details on how to use this component.
 //
 
-#include <errno.h>
 #include "yb/gutil/port.h"
 #include "yb/gutil/strtoint.h"
 
@@ -28,7 +27,7 @@
 int32 strto32_adapter(const char *nptr, char **endptr, int base) {
   const int saved_errno = errno;
   errno = 0;
-  const long result = strtol(nptr, endptr, base);
+  const auto result = strtol(nptr, endptr, base);
   if (errno == ERANGE && result == LONG_MIN) {
     return kint32min;
   } else if (errno == ERANGE && result == LONG_MAX) {
@@ -48,7 +47,7 @@ int32 strto32_adapter(const char *nptr, char **endptr, int base) {
 uint32 strtou32_adapter(const char *nptr, char **endptr, int base) {
   const int saved_errno = errno;
   errno = 0;
-  const unsigned long result = strtoul(nptr, endptr, base);
+  const auto result = strtoul(nptr, endptr, base);
   if (errno == ERANGE && result == ULONG_MAX) {
     return kuint32max;
   } else if (errno == 0 && result > kuint32max) {

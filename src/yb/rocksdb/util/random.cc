@@ -26,7 +26,7 @@
 #include <utility>
 
 #include "yb/rocksdb/port/likely.h"
-#include "yb/rocksdb/util/thread_local.h"
+#include "yb/rocksdb/util/thread_local.h" // For ROCKSDB_SUPPORT_THREAD_LOCAL
 
 #if ROCKSDB_SUPPORT_THREAD_LOCAL
 #define STORAGE_DECL static __thread

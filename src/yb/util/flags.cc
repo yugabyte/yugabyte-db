@@ -32,7 +32,6 @@
 
 #include "yb/util/flags.h"
 
-#include <iostream>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -46,7 +45,6 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/path_util.h"
-#include "yb/util/tsan_util.h"
 #include "yb/util/url-coding.h"
 #include "yb/util/version_info.h"
 

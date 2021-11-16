@@ -31,7 +31,6 @@
 
 #include "yb/util/operation_counter.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/trace.h"
 
 using namespace std::literals;
 

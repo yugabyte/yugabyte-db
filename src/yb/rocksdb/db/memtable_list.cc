@@ -26,7 +26,6 @@
 #include <inttypes.h>
 
 #include <string>
-#include <sstream>
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/db/memtable.h"

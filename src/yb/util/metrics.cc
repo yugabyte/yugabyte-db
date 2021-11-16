@@ -31,18 +31,15 @@
 //
 #include "yb/util/metrics.h"
 
-#include <iostream>
 #include <map>
 #include <regex>
 #include <set>
 
-#include <gflags/gflags.h>
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/singleton.h"
-#include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/hdr_histogram.h"

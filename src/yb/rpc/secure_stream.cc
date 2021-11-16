@@ -13,25 +13,19 @@
 
 #include "yb/rpc/secure_stream.h"
 
-#include <openssl/evp.h>
 #include <openssl/err.h>
 #include <openssl/ssl.h>
-#include <openssl/x509.h>
 #include <openssl/x509v3.h>
 
 #include <boost/tokenizer.hpp>
 
-#include "yb/rpc/outbound_call.h"
 #include "yb/rpc/outbound_data.h"
 #include "yb/rpc/refined_stream.h"
-#include "yb/rpc/rpc_util.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/errno.h"
-#include "yb/util/memory/memory.h"
 #include "yb/util/logging.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/size_literals.h"
 #include "yb/util/encryption_util.h"
 
 using namespace std::literals;

@@ -12,7 +12,6 @@
 //
 
 #include <chrono>
-#include <rapidjson/rapidjson.h>
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/common/schema.h"

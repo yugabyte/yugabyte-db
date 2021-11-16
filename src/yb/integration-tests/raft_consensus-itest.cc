@@ -41,7 +41,6 @@
 #include <glog/stl_logging.h>
 #include <gtest/gtest.h>
 
-#include "yb/client/client-test-util.h"
 #include "yb/client/client.h"
 #include "yb/client/error.h"
 #include "yb/client/session.h"

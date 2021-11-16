@@ -35,7 +35,6 @@
 #include <sys/statvfs.h>
 #include <rapidjson/document.h>
 
-#include <gflags/gflags.h>
 #include <glog/logging.h>
 
 #include "yb/common/jsonb.h"
@@ -47,31 +46,22 @@
 #include "yb/util/enums.h"
 
 #include "yb/client/client.h"
-#include "yb/client/client-test-util.h"
 #include "yb/client/error.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
-#include "yb/client/table.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/escaping.h"
-#include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/tablet_server.h"
-#include "yb/tserver/tablet_server_options.h"
-#include "yb/tserver/ts_tablet_manager.h"
-#include "yb/util/capabilities.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/status.h"
 #include "yb/util/thread.h"
-#include "yb/util/mem_tracker.h"
 
 #include "yb/client/client_fwd.h"
 #include "yb/gutil/macros.h"

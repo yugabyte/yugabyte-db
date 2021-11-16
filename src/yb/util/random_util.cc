@@ -34,12 +34,9 @@
 
 #include <cmath>
 #include <cstdlib>
-#include <cstring>
 #include <random>
 
-#include "yb/util/env.h"
 #include "yb/util/random.h"
-#include <boost/thread/tss.hpp>
 
 namespace yb {
 

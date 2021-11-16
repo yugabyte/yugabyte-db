@@ -27,8 +27,6 @@
 #include "yb/client/error.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
-#include "yb/client/table_alterer.h"
-#include "yb/client/table_creator.h"
 #include "yb/client/tablet_server.h"
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
@@ -38,7 +36,6 @@
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/row_mark.h"
-#include "yb/common/ybc-internal.h"
 #include "yb/common/transaction_error.h"
 
 #include "yb/docdb/doc_key.h"
@@ -48,10 +45,8 @@
 
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
-#include "yb/util/scope_exit.h"
 #include "yb/util/string_util.h"
 
-#include "yb/master/master.proxy.h"
 
 using namespace std::literals;
 

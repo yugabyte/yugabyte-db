@@ -37,7 +37,6 @@
 #include <algorithm>
 #include <cstdlib>
 
-#include <gflags/gflags.h>
 
 #include "yb/util/alignment.h"
 #include "yb/util/flag_tags.h"

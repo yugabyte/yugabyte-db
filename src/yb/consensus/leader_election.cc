@@ -35,7 +35,6 @@
 #include <mutex>
 #include <functional>
 
-#include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"

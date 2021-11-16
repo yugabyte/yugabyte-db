@@ -15,7 +15,6 @@
 
 #include <gtest/gtest.h>
 
-#include "yb/consensus/log.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"

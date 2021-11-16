@@ -42,7 +42,6 @@
 #include "yb/gutil/strings/strcat.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-#include "yb/master/mini_master.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/curl_util.h"

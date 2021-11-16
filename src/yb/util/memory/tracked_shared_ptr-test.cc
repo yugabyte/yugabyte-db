@@ -17,7 +17,7 @@
 #include "yb/util/random_util.h"
 
 #include "yb/util/memory/tracked_shared_ptr.h"
-#include "yb/util/memory/tracked_shared_ptr_impl.h"
+#include "yb/util/memory/tracked_shared_ptr_impl.h" // Wrong template impl location.
 
 using std::numeric_limits;
 

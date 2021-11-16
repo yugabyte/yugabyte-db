@@ -22,7 +22,6 @@
 #include <map>
 #include <string>
 
-#include "yb/rocksdb/memtable/stl_wrappers.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/util/hash.h"
@@ -30,7 +29,6 @@
 #include "yb/util/string_util.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
-#include "yb/rocksdb/utilities/merge_operators.h"
 
 using std::unique_ptr;
 

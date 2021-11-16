@@ -32,20 +32,15 @@
 
 #include "yb/util/net/net_util.h"
 
-#include <arpa/inet.h>
 #include <ifaddrs.h>
-#include <netdb.h>
 #include <sys/types.h>
-#include <sys/socket.h>
 
 #include <algorithm>
-#include <iostream>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include <boost/algorithm/string.hpp>
-#include <boost/optional/optional.hpp>
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/join.h"
@@ -53,7 +48,6 @@
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/strip.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/gutil/strings/util.h"
 
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/errno.h"
@@ -61,7 +55,6 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
-#include "yb/util/memory/memory.h"
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/socket.h"

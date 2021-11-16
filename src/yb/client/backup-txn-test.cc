@@ -18,7 +18,6 @@
 #include "yb/common/transaction_error.h"
 
 #include "yb/master/catalog_manager.h"
-#include "yb/master/master.h"
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"

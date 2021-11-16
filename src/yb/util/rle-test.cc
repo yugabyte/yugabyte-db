@@ -47,7 +47,6 @@
 #include <string>
 #include <vector>
 
-#include <boost/utility.hpp>
 
 // Must come before gtest.h.
 #include "yb/gutil/mathlimits.h"

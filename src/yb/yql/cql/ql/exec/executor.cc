@@ -36,8 +36,6 @@
 #include "yb/util/decimal.h"
 #include "yb/util/logging.h"
 #include "yb/util/random_util.h"
-#include "yb/util/scope_exit.h"
-#include "yb/util/thread_restrictions.h"
 #include "yb/util/trace.h"
 
 using namespace std::literals;

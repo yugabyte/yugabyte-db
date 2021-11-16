@@ -47,7 +47,6 @@
  * This file is a Linux-specific part of spinlock_internal.cc
  */
 
-#include <errno.h>
 #include <sched.h>
 #include <time.h>
 #include <limits.h>

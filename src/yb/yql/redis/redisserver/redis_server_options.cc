@@ -14,7 +14,6 @@
 #include "yb/yql/redis/redisserver/redis_server_options.h"
 
 #include "yb/util/flag_tags.h"
-#include "yb/yql/redis/redisserver/redis_rpc.h"
 #include "yb/yql/redis/redisserver/redis_server.h"
 
 DEFINE_int32(redis_rpc_keepalive_time_ms, 0,

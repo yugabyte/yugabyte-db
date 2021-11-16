@@ -14,11 +14,9 @@
 #include "yb/integration-tests/load_generator.h"
 
 #include <memory>
-#include <queue>
 #include <random>
 #include <thread>
 
-#include <gflags/gflags_declare.h>
 
 #include "yb/client/client.h"
 #include "yb/client/error.h"
@@ -39,10 +37,8 @@
 #include "yb/util/atomic.h"
 #include "yb/util/debug/leakcheck_disabler.h"
 #include "yb/util/env.h"
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/sockaddr.h"
-#include "yb/util/stopwatch.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/threadlocal.h"
 

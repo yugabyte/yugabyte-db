@@ -25,7 +25,6 @@
 #include <stdio.h>
 
 #include <algorithm>
-#include <iostream>
 #include <map>
 #include <memory>
 #include <string>
@@ -37,7 +36,6 @@
 #include "yb/rocksdb/db/memtable.h"
 #include "yb/rocksdb/db/write_batch_internal.h"
 #include "yb/rocksdb/db/writebuffer.h"
-#include "yb/rocksdb/memtable/stl_wrappers.h"
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/env.h"

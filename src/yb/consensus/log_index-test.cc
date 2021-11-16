@@ -33,7 +33,6 @@
 #include "yb/consensus/log_index.h"
 
 #include "yb/consensus/opid_util.h"
-#include "yb/fs/fs_manager.h"
 #include "yb/util/test_util.h"
 
 namespace yb {

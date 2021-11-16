@@ -31,16 +31,13 @@
 
 #include <memory>
 
-#include "yb/master/master_service_base.h"
 #include "yb/util/logging.h"
 #include "yb/util/mutex.h"
 
 #include "yb/master/catalog_manager_bg_tasks.h"
 #include "yb/master/catalog_manager.h"
-#include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/cluster_balance.h"
-#include "yb/master/encryption_manager.h"
 #include "yb/util/flag_tags.h"
 
 using std::shared_ptr;

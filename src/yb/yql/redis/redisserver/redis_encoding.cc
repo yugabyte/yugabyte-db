@@ -20,7 +20,6 @@
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/numbers.h"
 
-#include "yb/util/logging.h"
 #include "yb/util/ref_cnt_buffer.h"
 
 using namespace std::literals; // NOLINT

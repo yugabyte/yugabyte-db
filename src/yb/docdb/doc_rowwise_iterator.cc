@@ -13,8 +13,14 @@
 
 #include "yb/docdb/doc_rowwise_iterator.h"
 
+#include <cstdint>
+#include <ostream>
+#include <string>
+#include <vector>
+
+#include <boost/function.hpp>
+
 #include "yb/common/common.pb.h"
-#include "yb/common/partition.h"
 #include "yb/common/transaction.h"
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_scanspec.h"
@@ -24,16 +30,27 @@
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/doc_reader.h"
 #include "yb/docdb/doc_scanspec_util.h"
-#include "yb/docdb/doc_ttl_util.h"
-#include "yb/docdb/docdb-internal.h"
+#include "yb/docdb/docdb_types.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/rocksdb/db.h"
+#include "yb/common/doc_hybrid_time.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/docdb/doc_kv_util.h"
+#include "yb/docdb/doc_path.h"
+#include "yb/docdb/expiration.h"
+#include "yb/docdb/intent.h"
+#include "yb/docdb/primitive_value.h"
+#include "yb/docdb/value.h"
+#include "yb/docdb/subdocument.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/docdb/value_type.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/util/slice.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent_aware_iterator.h"
-#include "yb/docdb/subdocument.h"
-#include "yb/gutil/strings/substitute.h"
-#include "yb/rocksdb/db/compaction.h"
-#include "yb/rocksutil/yb_rocksdb.h"
 
-#include "yb/yql/pggate/util/pg_doc_data.h"
 
 using std::string;
 

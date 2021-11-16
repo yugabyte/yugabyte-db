@@ -41,29 +41,24 @@
 
 #include "yb/rpc/poller.h"
 #include "yb/rpc/rpc.h"
-#include "yb/rpc/rpc_context.h"
 #include "yb/rpc/thread_pool.h"
 
 #include "yb/tablet/cleanup_aborts_task.h"
 #include "yb/tablet/cleanup_intents_task.h"
 #include "yb/tablet/operations/update_txn_operation.h"
 #include "yb/tablet/running_transaction.h"
-#include "yb/tablet/tablet.h"
 #include "yb/tablet/transaction_loader.h"
 #include "yb/tablet/transaction_status_resolver.h"
 
 #include "yb/tserver/tserver_service.pb.h"
-#include "yb/tserver/service_util.h"
 
 #include "yb/util/delayer.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/locks.h"
 #include "yb/util/lru_cache.h"
 #include "yb/util/monotime.h"
-#include "yb/util/pb_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/thread_restrictions.h"
 #include "yb/util/tsan_util.h"
 
 using namespace std::literals;

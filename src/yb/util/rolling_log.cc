@@ -32,12 +32,9 @@
 
 #include "yb/util/rolling_log.h"
 
-#include <unistd.h>
-#include <sys/types.h>
 #include <zlib.h>
 
 #include <iomanip>
-#include <ostream>
 #include <string>
 
 #include "yb/gutil/strings/numbers.h"
@@ -46,7 +43,6 @@
 #include "yb/util/env.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/path_util.h"
-#include "yb/util/thread_restrictions.h"
 #include "yb/util/user.h"
 
 using std::ostringstream;

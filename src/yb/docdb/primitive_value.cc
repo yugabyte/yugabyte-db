@@ -17,17 +17,14 @@
 
 #include <glog/logging.h>
 
-#include "yb/common/jsonb.h"
 #include "yb/common/schema.h"
 #include "yb/common/ql_value.h"
 
 #include "yb/docdb/doc_kv_util.h"
-#include "yb/docdb/subdocument.h"
 #include "yb/docdb/intent.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/compare_util.h"
 #include "yb/util/decimal.h"

@@ -33,7 +33,6 @@
 #include <functional>
 #include <vector>
 
-#include <gflags/gflags.h>
 #include <gtest/gtest.h>
 
 #include "yb/gutil/atomicops.h"

@@ -22,12 +22,9 @@
 
 #include "yb/common/ql_value.h"
 
-#include "yb/master/catalog_manager.h"
-#include "yb/master/master.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/mini_master.h"
 
-#include "yb/rpc/messenger.h"
 
 #include "yb/yql/cql/ql/test/ql-test-base.h"
 #include "yb/gutil/strings/substitute.h"

@@ -45,7 +45,6 @@
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/ql_value.h"
-#include "yb/common/ql_protocol_util.h"
 
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/consensus.h"
@@ -61,10 +60,8 @@
 #include "yb/fs/fs_manager.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/master/catalog_manager.h"
-#include "yb/master/master.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/sys_catalog_writer.h"
-#include "yb/rpc/rpc_context.h"
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"

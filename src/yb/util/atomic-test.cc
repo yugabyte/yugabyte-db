@@ -30,8 +30,6 @@
 // under the License.
 //
 
-#include <limits>
-#include <vector>
 #include <thread>
 
 #include <gtest/gtest.h>

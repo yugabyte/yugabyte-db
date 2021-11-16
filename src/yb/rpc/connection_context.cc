@@ -15,7 +15,6 @@
 
 #include "yb/rpc/connection.h"
 
-#include "yb/rpc/growable_buffer.h"
 
 #include "yb/util/env.h"
 #include "yb/util/mem_tracker.h"

@@ -32,9 +32,7 @@
 
 #include "yb/integration-tests/external_mini_cluster_fs_inspector.h"
 
-#include <sys/stat.h>
 #include <sys/types.h>
-#include <unistd.h>
 
 #include <algorithm>
 #include <set>

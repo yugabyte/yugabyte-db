@@ -12,7 +12,6 @@
 //
 
 #include "yb/util/universe_key_manager.h"
-#include "yb/util/pb_util.h"
 
 namespace yb {
 

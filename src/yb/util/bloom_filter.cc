@@ -30,7 +30,6 @@
 // under the License.
 //
 
-#include <math.h>
 
 #include "yb/util/bloom_filter.h"
 #include "yb/util/bitmap.h"

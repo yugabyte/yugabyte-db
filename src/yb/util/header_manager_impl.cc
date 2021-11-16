@@ -15,7 +15,6 @@
 
 #include "yb/util/env.h"
 #include "yb/util/encryption_util.h"
-#include "yb/util/memory/memory.h"
 #include "yb/util/encryption.pb.h"
 #include "yb/util/header_manager.h"
 #include "yb/util/pb_util.h"

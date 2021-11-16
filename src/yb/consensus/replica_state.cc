@@ -35,7 +35,6 @@
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_context.h"
-#include "yb/consensus/consensus_error.h"
 #include "yb/consensus/consensus_round.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/quorum_util.h"

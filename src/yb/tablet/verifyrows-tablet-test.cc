@@ -32,14 +32,11 @@
 
 #include <memory>
 
-#include <boost/ptr_container/ptr_vector.hpp>
-#include <gflags/gflags.h>
 #include <gtest/gtest.h>
 
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_protocol_util.h"
 
-#include "yb/docdb/doc_rowwise_iterator.h"
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/strings/substitute.h"

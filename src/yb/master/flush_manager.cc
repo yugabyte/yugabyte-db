@@ -15,7 +15,6 @@
 #include <map>
 
 #include "yb/master/async_flush_tablets_task.h"
-#include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager-internal.h"
 

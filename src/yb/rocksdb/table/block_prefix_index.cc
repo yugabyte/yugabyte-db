@@ -22,7 +22,6 @@
 
 #include <vector>
 
-#include "yb/rocksdb/comparator.h"
 #include "yb/util/slice.h"
 #include "yb/rocksdb/slice_transform.h"
 #include "yb/rocksdb/util/arena.h"

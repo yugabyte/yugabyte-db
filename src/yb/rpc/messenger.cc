@@ -32,10 +32,7 @@
 
 #include "yb/rpc/messenger.h"
 
-#include <arpa/inet.h>
-#include <sys/socket.h>
 #include <sys/types.h>
-#include <unistd.h>
 
 #include <list>
 #include <mutex>
@@ -51,7 +48,6 @@
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/rpc/acceptor.h"
-#include "yb/rpc/connection.h"
 #include "yb/rpc/constants.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_header.pb.h"
@@ -68,10 +64,8 @@
 #include "yb/util/monotime.h"
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/net/socket.h"
-#include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
-#include "yb/util/threadpool.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/trace.h"
 

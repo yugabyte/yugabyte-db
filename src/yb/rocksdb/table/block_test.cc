@@ -22,8 +22,6 @@
 #include <vector>
 
 #include "yb/rocksdb/db/dbformat.h"
-#include "yb/rocksdb/db/memtable.h"
-#include "yb/rocksdb/db/write_batch_internal.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/iterator.h"
@@ -36,7 +34,8 @@
 #include "yb/rocksdb/table/format.h"
 #include "yb/rocksdb/table/block_hash_index.h"
 #include "yb/rocksdb/util/random.h"
-#include "yb/rocksdb/util/testharness.h"
+#include <gtest/gtest.h>
+#include "yb/util/test_macros.h"
 #include "yb/rocksdb/util/testutil.h"
 
 #include "yb/util/random_util.h"

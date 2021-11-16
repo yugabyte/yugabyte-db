@@ -16,14 +16,11 @@
 #include <lz4.h>
 #include <snappy.h>
 
-#include <regex>
 
-#include "yb/client/client.h"
 
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_value.h"
 
-#include "yb/yql/cql/cqlserver/cql_processor.h"
 
 #include "yb/gutil/endian.h"
 #include "yb/gutil/strings/substitute.h"

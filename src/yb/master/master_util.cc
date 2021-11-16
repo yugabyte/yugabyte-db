@@ -20,8 +20,6 @@
 #include "yb/consensus/metadata.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master.proxy.h"
-#include "yb/master/master.service.h"
-#include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 
 namespace yb {

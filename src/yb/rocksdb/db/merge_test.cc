@@ -19,7 +19,6 @@
 //
 #include <assert.h>
 #include <memory>
-#include <iostream>
 
 #include "yb/rocksdb/port/stack_trace.h"
 #include "yb/rocksdb/cache.h"
@@ -29,8 +28,6 @@
 #include "yb/rocksdb/merge_operator.h"
 #include "yb/rocksdb/utilities/db_ttl.h"
 #include "yb/rocksdb/db/dbformat.h"
-#include "yb/rocksdb/db/db_impl.h"
-#include "yb/rocksdb/db/write_batch_internal.h"
 #include "yb/rocksdb/utilities/merge_operators.h"
 #include "yb/rocksdb/util/testharness.h"
 

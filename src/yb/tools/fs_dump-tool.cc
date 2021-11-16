@@ -35,7 +35,6 @@
 
 #include <iostream>
 #include <memory>
-#include <sstream>
 #include <vector>
 
 #include <gflags/gflags.h>

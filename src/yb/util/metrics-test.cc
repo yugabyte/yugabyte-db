@@ -34,7 +34,6 @@
 #include <unordered_set>
 #include <vector>
 
-#include <boost/assign/list_of.hpp>
 #include <gtest/gtest.h>
 #include <rapidjson/document.h>
 

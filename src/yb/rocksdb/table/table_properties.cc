@@ -18,10 +18,8 @@
 // under the License.
 //
 
-#include "yb/rocksdb/table/table_properties_internal.h"
 #include "yb/rocksdb/table_properties.h"
 #include "yb/rocksdb/iterator.h"
-#include "yb/rocksdb/env.h"
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/util/string_util.h"

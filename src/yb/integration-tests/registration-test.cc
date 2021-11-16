@@ -36,7 +36,6 @@
 #include <gtest/gtest.h>
 
 #include "yb/common/schema.h"
-#include "yb/common/wire_protocol-test-util.h"
 #include "yb/fs/fs_manager.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
@@ -45,7 +44,6 @@
 #include "yb/master/master.pb.h"
 #include "yb/master/master-test-util.h"
 #include "yb/master/sys_catalog.h"
-#include "yb/master/ts_descriptor.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/curl_util.h"

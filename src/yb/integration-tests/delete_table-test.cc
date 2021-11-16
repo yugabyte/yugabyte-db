@@ -36,7 +36,6 @@
 #include <thread>
 
 #include <boost/optional.hpp>
-#include <glog/stl_logging.h>
 #include <gtest/gtest.h>
 
 #include "yb/client/client-test-util.h"

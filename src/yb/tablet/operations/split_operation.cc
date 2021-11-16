@@ -17,10 +17,8 @@
 
 #include "yb/consensus/consensus_error.h"
 #include "yb/consensus/consensus_round.h"
-#include "yb/consensus/raft_consensus.h"
 
 #include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_splitter.h"
 
 using namespace std::literals;

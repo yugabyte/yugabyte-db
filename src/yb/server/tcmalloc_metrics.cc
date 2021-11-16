@@ -31,7 +31,6 @@
 //
 #include "yb/server/tcmalloc_metrics.h"
 
-#include <boost/bind.hpp>
 #include <glog/logging.h>
 #ifdef TCMALLOC_ENABLED
 #include <gperftools/malloc_extension.h>

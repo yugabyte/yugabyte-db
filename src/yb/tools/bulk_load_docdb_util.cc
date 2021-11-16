@@ -18,7 +18,6 @@
 
 #include "yb/rocksdb/memtablerep.h"
 
-#include "yb/rocksutil/yb_rocksdb.h"
 
 #include "yb/tools/bulk_load_docdb_util.h"
 #include "yb/util/env.h"

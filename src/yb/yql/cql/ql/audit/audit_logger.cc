@@ -25,7 +25,6 @@
 #include "yb/yql/cql/ql/ptree/pt_alter_table.h"
 #include "yb/yql/cql/ql/ptree/pt_create_index.h"
 #include "yb/yql/cql/ql/ptree/pt_create_keyspace.h"
-#include "yb/yql/cql/ql/ptree/pt_create_role.h"
 #include "yb/yql/cql/ql/ptree/pt_create_table.h"
 #include "yb/yql/cql/ql/ptree/pt_create_type.h"
 #include "yb/yql/cql/ql/ptree/pt_delete.h"

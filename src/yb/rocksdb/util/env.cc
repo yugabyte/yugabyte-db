@@ -23,12 +23,8 @@
 #include "yb/rocksdb/env.h"
 
 #include <thread>
-#include "yb/rocksdb/port/port.h"
-#include "yb/rocksdb/port/sys_time.h"
 
 #include "yb/rocksdb/options.h"
-#include "yb/rocksdb/util/arena.h"
-#include "yb/rocksdb/util/autovector.h"
 
 namespace rocksdb {
 

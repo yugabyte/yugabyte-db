@@ -30,13 +30,12 @@
 // under the License.
 //
 
-#include "yb/tserver/ts_tablet_manager.h"
-
+#include <memory>
 #include <string>
 #include <set>
+#include <vector>
 
 #include <gtest/gtest.h>
-#include <gflags/gflags.h>
 
 #include "yb/common/partition.h"
 #include "yb/common/schema.h"
@@ -46,12 +45,13 @@
 #include "yb/consensus/raft_consensus.h"
 #include "yb/fs/fs_manager.h"
 #include "yb/master/master.pb.h"
-#include "yb/tablet/tablet_peer.h"
-#include "yb/tablet/tablet-test-util.h"
+#include "yb/common/common.pb.h"
+#include "yb/tablet/tablet-harness.h"
+#include "yb/util/test_util.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tablet_memory_manager.h"
-#include "yb/util/test_util.h"
+#include "yb/tserver/ts_tablet_manager.h"
 #include "yb/util/format.h"
 
 #define ASSERT_REPORT_HAS_UPDATED_TABLET(report, tablet_id) \

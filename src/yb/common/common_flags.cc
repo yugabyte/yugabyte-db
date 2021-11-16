@@ -17,7 +17,6 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/flag_tags.h"
-#include "yb/util/logging.h"
 #include "yb/util/tsan_util.h"
 #include "yb/gutil/sysinfo.h"
 

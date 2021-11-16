@@ -24,7 +24,6 @@
 #include "yb/rocksdb/table/block_based_filter_block.h"
 #include <algorithm>
 
-#include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/filter_policy.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/perf_context_imp.h"

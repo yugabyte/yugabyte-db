@@ -2,18 +2,19 @@
 // Copyright (c) YugaByte, Inc.
 //--------------------------------------------------------------------------------------------------
 
+#include <iostream>
+#include <string>
+
 #include "yb/docdb/doc_expr.h"
 
 #include "yb/common/jsonb.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/pg_system_attr.h"
 
-#include "yb/client/schema.h"
-
-#include "yb/docdb/subdocument.h"
-
 #include "yb/util/decimal.h"
-#include "yb/util/bfql/bfunc.h"
+#include "yb/util/status.h"
+#include "yb/util/logging.h"
+#include "yb/util/bfql/bfunc_standard.h"
 
 #include "yb/docdb/docdb_pgapi.h"
 

@@ -15,11 +15,7 @@
 
 #include "yb/yql/pggate/pggate_thread_local_vars.h"
 
-#include <setjmp.h>
-#include <unordered_map>
 
-#include "yb/gutil/singleton.h"
-#include "yb/util/status.h"
 
 namespace yb {
 namespace pggate {

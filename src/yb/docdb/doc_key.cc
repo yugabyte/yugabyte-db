@@ -16,16 +16,13 @@
 #include <memory>
 #include <sstream>
 
-#include <boost/algorithm/string.hpp>
 
 #include "yb/util/string_util.h"
 
-#include "yb/common/partition.h"
 #include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/doc_path.h"
 #include "yb/docdb/value_type.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/util/enums.h"
 #include "yb/util/compare_util.h"
 

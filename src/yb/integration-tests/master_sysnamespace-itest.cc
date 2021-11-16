@@ -13,7 +13,6 @@
 
 #include <yb/master/master_defaults.h>
 #include "yb/integration-tests/mini_cluster.h"
-#include "yb/master/master.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/rpc/messenger.h"

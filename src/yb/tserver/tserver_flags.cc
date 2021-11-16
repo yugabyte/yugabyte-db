@@ -14,7 +14,6 @@
 #include "yb/tserver/tserver_flags.h"
 
 #include "yb/util/flag_tags.h"
-#include "yb/util/tsan_util.h"
 
 DEFINE_string(tserver_master_addrs, "127.0.0.1:7100",
               "Comma separated addresses of the masters which the "

@@ -33,7 +33,6 @@
 #include "yb/rpc/serialization.h"
 
 #include <google/protobuf/message.h>
-#include <google/protobuf/message_lite.h>
 #include <google/protobuf/io/coded_stream.h>
 #include <glog/logging.h>
 
@@ -41,7 +40,6 @@
 #include "yb/gutil/stringprintf.h"
 
 #include "yb/rpc/constants.h"
-#include "yb/rpc/remote_method.h"
 #include "yb/rpc/rpc_header.pb.h"
 
 #include "yb/util/faststring.h"

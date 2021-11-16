@@ -31,7 +31,6 @@
 //
 #include "yb/util/test_util.h"
 
-#include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <gtest/gtest-spi.h>
 
@@ -41,7 +40,6 @@
 #include "yb/gutil/walltime.h"
 #include "yb/util/env.h"
 #include "yb/util/path_util.h"
-#include "yb/util/random.h"
 #include "yb/util/spinlock_profiling.h"
 #include "yb/util/thread.h"
 #include "yb/util/logging.h"

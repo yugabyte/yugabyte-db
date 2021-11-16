@@ -35,7 +35,6 @@
 #include <regex>
 
 #include "yb/client/client.h"
-#include "yb/client/client-test-util.h"
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
@@ -57,7 +56,6 @@
 #include "yb/util/pstack_watcher.h"
 #include "yb/util/random.h"
 #include "yb/util/size_literals.h"
-#include "yb/util/stol_utils.h"
 #include "yb/util/test_util.h"
 
 DECLARE_int32(memory_limit_soft_percentage);

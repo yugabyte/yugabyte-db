@@ -25,7 +25,6 @@
 #include "yb/master/master_util.h"
 
 #include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
@@ -33,8 +32,6 @@
 
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/curl_util.h"
-#include "yb/util/jsonreader.h"
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
 #include "yb/util/tostring.h"

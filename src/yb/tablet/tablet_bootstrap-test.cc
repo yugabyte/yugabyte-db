@@ -50,7 +50,6 @@
 #include "yb/util/tostring.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/util/env_util.h"
-#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 DECLARE_bool(skip_flushed_entries);
 DECLARE_int32(retryable_request_timeout_secs);

@@ -13,12 +13,8 @@
 
 #include "yb/util/string_trim.h"
 
-#include <algorithm>
-#include <cctype>
-#include <locale>
-#include <sstream>
+#include <sstream> // for istringstream
 #include <string>
-#include <vector>
 #include <regex>
 
 using std::string;

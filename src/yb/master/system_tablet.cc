@@ -12,7 +12,6 @@
 //
 
 #include "yb/master/system_tablet.h"
-#include "yb/server/hybrid_clock.h"
 
 namespace yb {
 namespace master {

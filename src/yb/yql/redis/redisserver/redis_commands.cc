@@ -28,7 +28,6 @@
 #include "yb/master/master.pb.h"
 #include "yb/master/master_util.h"
 
-#include "yb/rpc/connection.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/scheduler.h"
 

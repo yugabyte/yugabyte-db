@@ -13,7 +13,6 @@
 
 #include "yb/docdb/consensus_frontier.h"
 
-#include "yb/common/common_fwd.h"
 #include "yb/util/test_util.h"
 #include "yb/rocksdb/metadata.h"
 

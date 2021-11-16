@@ -23,8 +23,13 @@
 
 #include "yb/rocksdb/db/builder.h"
 
+#include <stdint.h>
+
 #include <algorithm>
 #include <deque>
+#include <limits>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "yb/rocksdb/db/compaction_iterator.h"
@@ -39,12 +44,12 @@
 #include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/table.h"
-#include "yb/rocksdb/table/block_based_table_builder.h"
+#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/table/table_builder.h"
 #include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/stop_watch.h"
 
-#include "yb/util/stats/iostats_context_imp.h"
 
 namespace rocksdb {
 

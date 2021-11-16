@@ -56,7 +56,6 @@
 
 #include "yb/util/crc.h"
 #include "yb/util/curl_util.h"
-#include "yb/util/url-coding.h"
 
 using yb::consensus::RaftConfigPB;
 using yb::consensus::RaftPeerPB;

@@ -32,16 +32,11 @@
 
 #include "yb/util/net/socket.h"
 
-#include <errno.h>
 #include <fcntl.h>
 #include <netinet/in.h>
-#include <netinet/tcp.h>
-#include <sys/socket.h>
 #include <sys/types.h>
-#include <unistd.h>
 
 #include <limits>
-#include <numeric>
 #include <string>
 
 #include <glog/logging.h>
@@ -57,7 +52,6 @@
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
-#include "yb/util/subprocess.h"
 
 DEFINE_string(local_ip_for_outbound_sockets, "",
               "IP to bind to when making outgoing socket connections. "

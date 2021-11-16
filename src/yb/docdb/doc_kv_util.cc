@@ -14,10 +14,8 @@
 #include "yb/docdb/doc_kv_util.h"
 
 #include "yb/docdb/doc_key.h"
-#include "yb/docdb/doc_ttl_util.h"
 #include "yb/docdb/value.h"
 #include "yb/docdb/docdb-internal.h"
-#include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/util/bytes_formatter.h"
 

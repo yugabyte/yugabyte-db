@@ -39,9 +39,7 @@
 
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
-#include <glog/stl_logging.h>
 
-#include "yb/client/callbacks.h"
 #include "yb/client/async_initializer.h"
 #include "yb/client/client.h"
 #include "yb/client/client-internal.h"
@@ -69,19 +67,13 @@
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/master/catalog_manager.h"
-#include "yb/master/master-test-util.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/ts_descriptor.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_test_util.h"
-#include "yb/server/metadata.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
-#include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_peer.h"
-#include "yb/tablet/operations/write_operation.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"

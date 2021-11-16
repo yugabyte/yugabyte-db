@@ -13,20 +13,16 @@
 
 #include <memory>
 #include <sstream>
+#include <string>
+
+#include <gtest/gtest.h>
 
 #include "yb/rocksdb/db.h"
 
-#include "yb/rocksdb/db/memtable.h"
-#include "yb/rocksdb/db/column_family.h"
 #include "yb/rocksdb/db/write_batch_internal.h"
-#include "yb/rocksdb/db/writebuffer.h"
 #include "yb/rocksdb/env.h"
-#include "yb/rocksdb/memtablerep.h"
-#include "yb/rocksdb/utilities/write_batch_with_index.h"
-#include "yb/rocksdb/table/scoped_arena_iterator.h"
 #include "yb/rocksdb/util/logging.h"
-#include "yb/util/string_util.h"
-#include "yb/rocksdb/util/testharness.h"
+#include "yb/util/test_macros.h"
 #include "yb/rocksdb/util/testutil.h"
 
 using std::string;

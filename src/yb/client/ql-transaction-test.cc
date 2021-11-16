@@ -28,8 +28,6 @@
 
 #include "yb/rpc/rpc.h"
 
-#include "yb/tablet/tablet_peer.h"
-#include "yb/tablet/transaction_coordinator.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"

@@ -18,7 +18,6 @@
 // under the License.
 //
 
-#include <math.h>
 #include <algorithm>
 #include "yb/rocksdb/options.h"
 

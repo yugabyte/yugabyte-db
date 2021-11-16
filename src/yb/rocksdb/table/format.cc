@@ -28,7 +28,6 @@
 #include <string>
 
 #include "yb/rocksdb/env.h"
-#include "yb/rocksdb/table/block.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/compression.h"
 #include "yb/rocksdb/util/crc32c.h"
@@ -36,8 +35,6 @@
 #include "yb/rocksdb/util/perf_context_imp.h"
 #include "yb/rocksdb/util/xxhash.h"
 
-#include "yb/util/encryption_util.h"
-#include "yb/util/encrypted_file.h"
 #include "yb/util/format.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/std_util.h"

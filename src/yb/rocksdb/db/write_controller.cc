@@ -21,7 +21,6 @@
 #include "yb/rocksdb/db/write_controller.h"
 
 #include <atomic>
-#include <cassert>
 
 #include "yb/rocksdb/env.h"
 

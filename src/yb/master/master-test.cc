@@ -36,7 +36,6 @@
 #include <tuple>
 #include <vector>
 
-#include <gmock/internal/gmock-internal-utils.h>
 #include <gtest/gtest.h>
 
 #include "yb/common/partial_row.h"

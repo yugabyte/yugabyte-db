@@ -13,12 +13,10 @@
 
 #include "yb/util/encrypted_file.h"
 
-#include <stdexcept>
 
 #include "yb/util/cipher_stream_fwd.h"
 #include "yb/util/env.h"
 #include "yb/util/cipher_stream.h"
-#include "yb/util/memory/memory.h"
 #include "yb/util/header_manager.h"
 #include "yb/util/encryption_util.h"
 #include "yb/util/cast.h"

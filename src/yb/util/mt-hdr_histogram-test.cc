@@ -29,9 +29,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#include <gtest/gtest.h>
-#include <gflags/gflags.h>
 #include <vector>
+
+#include <gtest/gtest.h>
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/stl_util.h"

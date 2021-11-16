@@ -21,6 +21,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+#include <string>
+#include <gtest/gtest.h>
+
 #include "yb/rocksdb/db/log_reader.h"
 #include "yb/rocksdb/db/log_writer.h"
 #include "yb/rocksdb/env.h"
@@ -28,7 +31,7 @@
 #include "yb/rocksdb/util/crc32c.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/random.h"
-#include "yb/rocksdb/util/testharness.h"
+#include "yb/util/test_macros.h"
 #include "yb/rocksdb/util/testutil.h"
 
 namespace rocksdb {

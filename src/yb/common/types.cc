@@ -33,7 +33,6 @@
 #include "yb/common/types.h"
 
 #include <memory>
-#include <unordered_map>
 
 #include "yb/gutil/singleton.h"
 

@@ -23,9 +23,6 @@
 
 #include "yb/rocksdb/util/testutil.h"
 
-#include <cctype>
-#include <sstream>
-
 #include <boost/functional/hash.hpp>
 
 #include <gtest/gtest.h>

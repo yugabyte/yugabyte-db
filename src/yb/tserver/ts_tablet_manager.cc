@@ -57,14 +57,11 @@
 #include "yb/consensus/retryable_requests.h"
 #include "yb/consensus/raft_consensus.h"
 
-#include "yb/docdb/consensus_frontier.h"
 
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/fs/fs_manager.h"
 
-#include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/gutil/strings/util.h"
 #include "yb/gutil/sysinfo.h"
 
 #include "yb/master/master.pb.h"
@@ -89,7 +86,6 @@
 #include "yb/tserver/tablet_memory_manager.h"
 #include "yb/tserver/remote_bootstrap_client.h"
 #include "yb/tserver/remote_bootstrap_session.h"
-#include "yb/tserver/remote_bootstrap_snapshots.h"
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/debug/long_operation_tracker.h"
@@ -97,7 +93,6 @@
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
 #include "yb/util/fault_injection.h"
-#include "yb/util/file_util.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
@@ -107,7 +102,6 @@
 #include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/trace.h"
-#include "yb/util/tsan_util.h"
 #include "yb/util/shared_lock.h"
 
 using namespace std::literals;

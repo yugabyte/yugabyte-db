@@ -32,7 +32,6 @@
 
 #include "yb/server/rpcz-path-handler.h"
 
-#include <fstream>
 #include <functional>
 #include <memory>
 #include <string>

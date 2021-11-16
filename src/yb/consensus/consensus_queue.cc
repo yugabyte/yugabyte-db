@@ -34,20 +34,16 @@
 
 #include <shared_mutex>
 #include <algorithm>
-#include <iostream>
 #include <mutex>
 #include <string>
 #include <utility>
 
 #include <boost/container/small_vector.hpp>
 
-#include <gflags/gflags.h>
 
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus_context.h"
-#include "yb/consensus/log.h"
-#include "yb/consensus/log_reader.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
@@ -60,7 +56,6 @@
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/strcat.h"
-#include "yb/gutil/strings/human_readable.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/locks.h"

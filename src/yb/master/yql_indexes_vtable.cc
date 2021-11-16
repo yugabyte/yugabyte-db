@@ -13,7 +13,6 @@
 
 #include "yb/common/ql_value.h"
 #include "yb/common/ql_name.h"
-#include "yb/master/master_defaults.h"
 #include "yb/master/yql_indexes_vtable.h"
 #include "yb/master/catalog_manager.h"
 

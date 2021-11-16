@@ -11,7 +11,6 @@
 // under the License.
 //
 
-#include <fstream>
 #include <sstream>
 #include <string>
 #include <gtest/gtest.h>
@@ -22,17 +21,12 @@
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
-#include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
-#include "yb/common/ql_value.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/master/master.proxy.h"
-#include "yb/master/master_defaults.h"
-#include "yb/master/mini_master.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tools/data_gen_util.h"
-#include "yb/util/date_time.h"
 #include "yb/util/file_system.h"
 #include "yb/util/path_util.h"
 #include "yb/util/random.h"

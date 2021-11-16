@@ -25,12 +25,10 @@
 #include <stdint.h>
 
 #include <regex>
-#include <unordered_map>
 
 #include <boost/optional.hpp>
 
 #include "yb/gutil/strings/fastmem.h"
-#include "yb/util/locks.h"
 #include "yb/util/malloc.h"
 #include "yb/util/debug-util.h"
 

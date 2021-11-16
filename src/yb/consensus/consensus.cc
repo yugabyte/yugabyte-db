@@ -34,9 +34,7 @@
 
 #include <set>
 
-#include "yb/consensus/log_util.h"
 #include "yb/consensus/opid_util.h"
-#include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
 
 namespace yb {

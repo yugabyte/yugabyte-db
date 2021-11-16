@@ -43,10 +43,6 @@
 
 #include "yb/util/url-coding.h"
 
-#include <algorithm>
-#include <exception>
-#include <functional>
-#include <sstream>
 
 #include <boost/algorithm/string.hpp>
 #include <boost/archive/iterators/base64_from_binary.hpp>

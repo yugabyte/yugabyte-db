@@ -36,8 +36,6 @@
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/call_home.h"
-#include "yb/master/master.h"
-#include "yb/consensus/log_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/init.h"
 #include "yb/util/logging.h"

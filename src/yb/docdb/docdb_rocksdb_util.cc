@@ -18,7 +18,6 @@
 
 #include "yb/common/transaction.h"
 
-#include "yb/gutil/strings/human_readable.h"
 
 #include "yb/rocksdb/memtablerep.h"
 #include "yb/rocksdb/options.h"
@@ -34,12 +33,8 @@
 
 #include "yb/docdb/bounded_rocksdb_iterator.h"
 #include "yb/docdb/consensus_frontier.h"
-#include "yb/docdb/doc_ttl_util.h"
 #include "yb/docdb/intent_aware_iterator.h"
-#include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/rocksutil/yb_rocksdb_logger.h"
-#include "yb/server/hybrid_clock.h"
-#include "yb/util/flag_tags.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/priority_thread_pool.h"
 #include "yb/util/size_literals.h"

@@ -42,7 +42,6 @@
 #include <glog/logging.h>
 
 #include "yb/client/transaction_manager.h"
-#include "yb/client/transaction_pool.h"
 #include "yb/client/universe_key_client.h"
 
 #include "yb/fs/fs_manager.h"
@@ -57,7 +56,6 @@
 #include "yb/tserver/heartbeater_factory.h"
 #include "yb/tserver/metrics_snapshotter.h"
 #include "yb/tserver/pg_client_service.h"
-#include "yb/tserver/tablet_service.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver-path-handlers.h"
 #include "yb/tserver/remote_bootstrap_service.h"
@@ -69,7 +67,6 @@
 #include "yb/util/status.h"
 #include "yb/util/env.h"
 #include "yb/util/universe_key_manager.h"
-#include "yb/gutil/strings/split.h"
 #include "yb/gutil/sysinfo.h"
 #include "yb/rocksdb/env.h"
 

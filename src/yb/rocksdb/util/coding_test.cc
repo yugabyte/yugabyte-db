@@ -23,7 +23,8 @@
 
 #include "yb/rocksdb/util/coding.h"
 
-#include "yb/rocksdb/util/testharness.h"
+#include <string>
+#include <gtest/gtest.h>
 
 namespace rocksdb {
 

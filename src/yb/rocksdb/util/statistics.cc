@@ -25,12 +25,10 @@
 
 #include <inttypes.h>
 #include <algorithm>
-#include <cstdio>
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/port/likely.h"
 #include "yb/util/hdr_histogram.h"
 #include "yb/util/metrics.h"
-#include "yb/util/string_util.h"
 
 namespace rocksdb {
 

@@ -37,7 +37,6 @@
 #include <glog/logging.h>
 
 #include "yb/client/schema-internal.h"
-#include "yb/client/value-internal.h"
 #include "yb/common/partial_row.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/gutil/map-util.h"

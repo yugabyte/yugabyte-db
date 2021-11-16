@@ -33,10 +33,8 @@
 #include "yb/master/master_options.h"
 
 #include <glog/logging.h>
-#include <gflags/gflags.h>
 
 #include "yb/master/master.h"
-#include "yb/master/master_defaults.h"
 #include "yb/server/server_base_options.h"
 #include "yb/util/flag_tags.h"
 

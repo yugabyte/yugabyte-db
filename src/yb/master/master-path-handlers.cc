@@ -33,10 +33,8 @@
 #include "yb/master/master-path-handlers.h"
 
 #include <algorithm>
-#include <array>
 #include <functional>
 #include <map>
-#include <iomanip>
 #include <sstream>
 #include <unordered_set>
 
@@ -50,14 +48,10 @@
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/cluster_balance.h"
-#include "yb/master/master.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_util.h"
 #include "yb/master/sys_catalog.h"
-#include "yb/master/ts_descriptor.h"
-#include "yb/master/ts_manager.h"
 #include "yb/server/webserver.h"
 #include "yb/server/webui_util.h"
 #include "yb/util/curl_util.h"

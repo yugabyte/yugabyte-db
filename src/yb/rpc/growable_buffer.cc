@@ -15,13 +15,19 @@
 
 #include "yb/rpc/growable_buffer.h"
 
-#include <iostream>
-#include <unordered_set>
+#include <stdint.h>
+
+#include <thread>
+#include <functional>
+
+#include <boost/lockfree/stack.hpp>
+
+#include <glog/logging.h>
 
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/mem_tracker.h"
-#include "yb/util/object_pool.h"
+#include "yb/gutil/sysinfo.h"
 
 using namespace std::placeholders;
 

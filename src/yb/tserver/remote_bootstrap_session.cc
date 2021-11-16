@@ -36,11 +36,9 @@
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/log.h"
-#include "yb/consensus/log_reader.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/type_traits.h"
-#include "yb/server/metadata.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_snapshots.h"

@@ -17,11 +17,9 @@
 #include "yb/client/transaction_rpc.h"
 #include "yb/common/ql_expr.h"
 #include "yb/master/catalog_manager.h"
-#include "yb/master/master.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tserver/tserver.pb.h"
-#include "yb/tserver/tserver_service.pb.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 

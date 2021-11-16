@@ -45,7 +45,6 @@
 #include <glog/logging.h>
 
 #include "yb/client/async_rpc.h"
-#include "yb/client/callbacks.h"
 #include "yb/client/client.h"
 #include "yb/client/client-internal.h"
 #include "yb/client/client_error.h"
@@ -60,7 +59,6 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/common/wire_protocol.h"
-#include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/join.h"
 
 #include "yb/util/debug-util.h"

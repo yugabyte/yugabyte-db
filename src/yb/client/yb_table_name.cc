@@ -13,11 +13,10 @@
 
 #include "yb/client/yb_table_name.h"
 
-#include <boost/functional/hash/hash.hpp>
+#include <boost/functional/hash.hpp>
 
 #include "yb/common/redis_constants_common.h"
 
-#include "yb/master/master_defaults.h"
 #include "yb/master/master_util.h"
 
 namespace yb {

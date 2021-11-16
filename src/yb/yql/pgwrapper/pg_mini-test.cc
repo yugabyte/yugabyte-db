@@ -32,7 +32,6 @@
 #include "yb/yql/pggate/pggate_flags.h"
 
 #include "yb/common/pgsql_error.h"
-#include "yb/common/row_mark.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 

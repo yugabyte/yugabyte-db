@@ -14,8 +14,6 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/cql/ql/exec/executor.h"
-#include "yb/util/bfql/bfql.h"
-#include "yb/common/ql_bfunc.h"
 
 namespace yb {
 namespace ql {

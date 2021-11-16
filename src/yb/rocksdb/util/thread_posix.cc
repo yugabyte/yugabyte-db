@@ -22,7 +22,6 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "yb/rocksdb/util/thread_posix.h"
-#include <unistd.h>
 #include <atomic>
 #ifdef __linux__
 #include <sys/syscall.h>

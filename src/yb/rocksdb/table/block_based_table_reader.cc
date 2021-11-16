@@ -25,7 +25,6 @@
 
 #include <string>
 #include <utility>
-#include <cinttypes>
 
 #include "yb/rocksdb/db/dbformat.h"
 
@@ -46,7 +45,6 @@
 #include "yb/rocksdb/table/block_prefix_index.h"
 #include "yb/rocksdb/table/filter_block.h"
 #include "yb/rocksdb/table/format.h"
-#include "yb/rocksdb/table/forwarding_iterator.h"
 #include "yb/rocksdb/table/fixed_size_filter_block.h"
 #include "yb/rocksdb/table/full_filter_block.h"
 #include "yb/rocksdb/table/get_context.h"

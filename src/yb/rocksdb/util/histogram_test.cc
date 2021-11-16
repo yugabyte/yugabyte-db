@@ -19,7 +19,8 @@
 //
 #include "yb/rocksdb/util/histogram.h"
 
-#include "yb/rocksdb/util/testharness.h"
+#include <string>
+#include <gtest/gtest.h>
 
 namespace rocksdb {
 

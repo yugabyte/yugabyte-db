@@ -14,9 +14,7 @@
 #include <openssl/evp.h>
 
 #include "yb/util/cipher_stream.h"
-#include "yb/util/memory/memory.h"
 #include "yb/util/encryption_util.h"
-#include "yb/util/flag_tags.h"
 #include "yb/gutil/endian.h"
 
 namespace yb {

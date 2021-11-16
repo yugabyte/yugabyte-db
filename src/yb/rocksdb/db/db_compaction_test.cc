@@ -27,9 +27,7 @@
 #include "yb/rocksdb/port/stack_trace.h"
 #include "yb/rocksdb/rate_limiter.h"
 #include "yb/rocksdb/experimental.h"
-#include "yb/rocksdb/utilities/convenience.h"
 #include "yb/rocksdb/util/sync_point.h"
-#include "yb/rocksdb/util/testutil.h"
 
 #include "yb/rocksutil/yb_rocksdb_logger.h"
 

@@ -33,8 +33,6 @@
 #include "yb/common/hybrid_time.h"
 
 #include <boost/date_time/c_local_time_adjustor.hpp>
-#include <boost/date_time/posix_time/ptime.hpp>
-#include <boost/date_time/posix_time/posix_time_duration.hpp>
 #include <boost/date_time/posix_time/time_formatters.hpp>
 
 #include "yb/util/memcmpable_varint.h"

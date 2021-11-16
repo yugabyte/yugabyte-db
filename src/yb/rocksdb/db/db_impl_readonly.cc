@@ -22,7 +22,6 @@
 #include "yb/rocksdb/db/db_impl_readonly.h"
 
 #include "yb/rocksdb/db/compacted_db_impl.h"
-#include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/merge_context.h"
 #include "yb/rocksdb/db/db_iter.h"
 #include "yb/rocksdb/util/perf_context_imp.h"

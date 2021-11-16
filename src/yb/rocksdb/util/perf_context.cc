@@ -18,8 +18,8 @@
 // under the License.
 //
 
-#include <sstream>
-#include "yb/rocksdb/util/perf_context_imp.h"
+#include "yb/rocksdb/perf_context.h"
+#include "yb/rocksdb/util/stop_watch.h"
 
 namespace rocksdb {
 
@@ -127,4 +127,4 @@ std::string PerfContext::ToString(bool exclude_zero_counters) const {
 #endif
 }
 
-}
+} // namespace rocksdb

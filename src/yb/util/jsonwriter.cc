@@ -32,13 +32,10 @@
 #include "yb/util/jsonwriter.h"
 
 #include <string>
-#include <vector>
 
 #include <glog/logging.h>
-#include <google/protobuf/descriptor.h>
 #include <google/protobuf/message.h>
 #include <rapidjson/prettywriter.h>
-#include <rapidjson/rapidjson.h>
 
 using google::protobuf::FieldDescriptor;
 using google::protobuf::Message;

@@ -39,7 +39,6 @@
 #include "yb/gutil/bind.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
-#include "yb/util/debug/trace_event.h"
 #include "yb/util/errno.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/locks.h"

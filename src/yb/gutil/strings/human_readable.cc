@@ -18,11 +18,9 @@
 #include "yb/gutil/strings/human_readable.h"
 
 #include <stddef.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include <glog/logging.h>
-#include "yb/gutil/logging-inl.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/strip.h"
 

@@ -12,8 +12,6 @@
 //
 
 #include <rapidjson/prettywriter.h>
-#include <rapidjson/stringbuffer.h>
-#include <rapidjson/writer.h>
 
 #include "yb/common/json_util.h"
 #include "yb/common/jsonb.h"

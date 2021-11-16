@@ -21,8 +21,6 @@
 #include "yb/common/ql_value.h"
 
 #include "yb/util/monotime.h"
-#include "yb/yql/redis/redisserver/redis_parser.h"
-#include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/util/curl_util.h"
 
 DECLARE_bool(enable_ysql);

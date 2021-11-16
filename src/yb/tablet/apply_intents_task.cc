@@ -17,7 +17,6 @@
 
 #include "yb/tablet/running_transaction.h"
 
-#include "yb/util/flag_tags.h"
 
 using namespace std::literals;
 

@@ -39,11 +39,8 @@
 
 #include <boost/optional.hpp>
 
-#include <gflags/gflags.h>
 #include <glog/logging.h>
 
-#include "yb/util/concurrent_value.h"
-#include "yb/util/flag_tags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"

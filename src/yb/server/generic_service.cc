@@ -40,7 +40,6 @@
 #include "yb/gutil/map-util.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/server/clock.h"
-#include "yb/server/hybrid_clock.h"
 #include "yb/server/server_base.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/flags.h"

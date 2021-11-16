@@ -33,8 +33,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#include <errno.h>
 
+#include <atomic>
+#include <string>
 #include <vector>
 
 #include <glog/logging.h>
@@ -43,7 +44,11 @@
 #include "yb/util/errno.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status.h"
-#include "yb/util/test_util.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/thread.h"
+#include "yb/util/tsan_util.h"
 
 using std::string;
 using namespace std::literals;

@@ -18,12 +18,10 @@
 
 #include "yb/yql/cql/ql/util/errcodes.h"
 
-#include <unordered_map>
 
 #include "yb/common/ql_protocol.pb.h"
 
 #include "yb/util/enums.h"
-#include "yb/util/logging.h"
 
 namespace yb {
 namespace ql {

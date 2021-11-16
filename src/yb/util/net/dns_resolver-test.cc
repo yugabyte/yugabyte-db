@@ -38,7 +38,6 @@
 
 #include "yb/gutil/strings/util.h"
 #include "yb/util/countdown_latch.h"
-#include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/test_util.h"
 

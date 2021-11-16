@@ -13,7 +13,6 @@
 #include "yb/util/signal_util.h"
 
 #include <signal.h>
-#include <errno.h>
 #include "yb/util/errno.h"
 
 namespace yb {

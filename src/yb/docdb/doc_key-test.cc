@@ -16,11 +16,9 @@
 #include <memory>
 
 #include "yb/rocksdb/table.h"
-#include "yb/rocksdb/table/full_filter_block.h"
 
 #include "yb/docdb/docdb_test_util.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/test_macros.h"

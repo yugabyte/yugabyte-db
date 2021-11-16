@@ -47,7 +47,6 @@
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/rpc/inbound_call.h"
-#include "yb/rpc/messenger.h"
 #include "yb/rpc/scheduler.h"
 #include "yb/rpc/service_if.h"
 

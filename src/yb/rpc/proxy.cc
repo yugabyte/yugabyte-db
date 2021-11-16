@@ -32,10 +32,8 @@
 
 #include "yb/rpc/proxy.h"
 
-#include <cinttypes>
 #include <cstdint>
 #include <functional>
-#include <iostream>
 #include <memory>
 #include <sstream>
 #include <vector>
@@ -44,7 +42,6 @@
 
 #include "yb/rpc/local_call.h"
 #include "yb/rpc/outbound_call.h"
-#include "yb/rpc/messenger.h"
 #include "yb/rpc/remote_method.h"
 #include "yb/rpc/response_callback.h"
 #include "yb/rpc/rpc_header.pb.h"
@@ -55,7 +52,6 @@
 #include "yb/util/net/socket.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/status.h"
-#include "yb/util/user.h"
 
 DEFINE_int32(num_connections_to_server, 8,
              "Number of underlying connections to each server");

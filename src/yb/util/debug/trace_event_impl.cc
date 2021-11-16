@@ -24,7 +24,6 @@
 #include <list>
 #include <vector>
 
-#include <gflags/gflags.h>
 
 #include "yb/gutil/bind.h"
 #include "yb/util/atomic.h"
@@ -37,7 +36,6 @@
 #include "yb/gutil/singleton.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/stringprintf.h"
-#include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/dynamic_annotations.h"
 

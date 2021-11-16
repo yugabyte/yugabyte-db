@@ -21,9 +21,9 @@
 #include <string>
 #include <vector>
 #include "yb/rocksdb/util/mock_env.h"
-#include "yb/rocksdb/db.h"
 #include "yb/rocksdb/env.h"
-#include "yb/rocksdb/util/testharness.h"
+#include <gtest/gtest.h>
+#include "yb/util/test_macros.h"
 
 namespace rocksdb {
 

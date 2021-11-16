@@ -23,7 +23,8 @@
 #include "yb/common/redis_protocol.pb.h"
 #include "yb/integration-tests/yb_table_test_base.h"
 
-#include "yb/yql/redis/redisserver/redis_constants.h"
+#include "yb/common/redis_constants_common.h"
+#include "yb/util/monotime.h"
 #include "yb/yql/redis/redisserver/redis_parser.h"
 
 using std::string;

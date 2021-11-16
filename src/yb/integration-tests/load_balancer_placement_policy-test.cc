@@ -23,7 +23,6 @@
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/test_workload.h"
-#include "yb/master/master.h"
 #include "yb/master/master.proxy.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/tools/yb-admin_client.h"

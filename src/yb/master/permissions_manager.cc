@@ -19,7 +19,6 @@
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager-internal.h"
-#include "yb/master/master_util.h"
 #include "yb/master/permissions_manager.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"

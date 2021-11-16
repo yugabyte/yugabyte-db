@@ -22,10 +22,8 @@
 
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_ttl_util.h"
-#include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/value.h"
 #include "yb/docdb/consensus_frontier.h"
-#include "yb/rocksutil/yb_rocksdb.h"
 
 using std::shared_ptr;
 using std::unique_ptr;

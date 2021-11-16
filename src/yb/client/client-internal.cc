@@ -34,7 +34,6 @@
 
 #include <algorithm>
 #include <functional>
-#include <iostream>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -53,30 +52,23 @@
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/gutil/strings/split.h"
-#include "yb/gutil/strings/util.h"
 #include "yb/gutil/sysinfo.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_rpc.h"
 #include "yb/master/master_util.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
-#include "yb/yql/redis/redisserver/redis_constants.h"
+#include "yb/common/redis_constants_common.h"
+#include "yb/util/monotime.h"
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/messenger.h"
-#include "yb/tserver/tserver_flags.h"
-#include "yb/util/net/dns_resolver.h"
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/curl_util.h"
 #include "yb/util/flag_tags.h"
-#include "yb/util/flags.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/thread_restrictions.h"
 
 using namespace std::literals;
 

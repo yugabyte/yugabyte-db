@@ -36,9 +36,7 @@
 
 #include <algorithm>
 #include <string>
-#include <sstream>
 
-#include <gflags/gflags.h>
 
 #include "yb/util/env.h"
 #include "yb/util/size_literals.h"

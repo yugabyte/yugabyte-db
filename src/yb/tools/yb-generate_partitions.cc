@@ -12,7 +12,6 @@
 //
 
 #include <map>
-#include <boost/algorithm/string.hpp>
 
 #include "yb/client/client.h"
 #include "yb/client/table.h"

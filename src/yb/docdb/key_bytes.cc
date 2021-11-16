@@ -14,9 +14,7 @@
 #include "yb/docdb/key_bytes.h"
 
 #include "yb/common/doc_hybrid_time.h"
-#include "yb/docdb/docdb-internal.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/util/fast_varint.h"
 
 namespace yb {

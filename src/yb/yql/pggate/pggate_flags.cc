@@ -17,7 +17,6 @@
 
 #include <gflags/gflags.h>
 
-#include "yb/util/flags.h"
 #include "yb/util/flag_tags.h"
 #include "yb/yql/pggate/pggate_flags.h"
 

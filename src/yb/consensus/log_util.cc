@@ -33,18 +33,15 @@
 #include "yb/consensus/log_util.h"
 
 #include <algorithm>
-#include <iostream>
 #include <limits>
 #include <utility>
 
-#include <gflags/gflags.h>
 #include <glog/logging.h>
 
 #include "yb/common/hybrid_time.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/fs/fs_manager.h"
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"

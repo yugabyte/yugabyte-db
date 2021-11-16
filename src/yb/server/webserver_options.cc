@@ -32,12 +32,10 @@
 
 #include "yb/server/webserver_options.h"
 
-#include <limits.h>
 #include <string.h>
 #include <stdlib.h>
 #include <string>
 
-#include <gflags/gflags.h>
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"

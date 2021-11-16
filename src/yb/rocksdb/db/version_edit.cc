@@ -27,11 +27,8 @@
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/metadata.h"
 #include "yb/rocksdb/util/coding.h"
-#include "yb/rocksdb/util/event_logger.h"
-#include "yb/rocksdb/util/sync_point.h"
 #include "yb/util/logging.h"
 #include "yb/util/slice.h"
-#include "yb/util/debug-util.h"
 #include "yb/util/flag_tags.h"
 
 DEFINE_bool(use_per_file_metadata_for_flushed_frontier, false,

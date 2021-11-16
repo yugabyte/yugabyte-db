@@ -11,9 +11,7 @@
 // under the License.
 //
 
-#include <openssl/rand.h>
 
-#include <boost/pointer_cast.hpp>
 
 #include "yb/util/header_manager_mock_impl.h"
 #include "yb/util/encryption_util.h"

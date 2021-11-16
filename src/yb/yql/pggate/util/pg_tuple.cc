@@ -17,7 +17,6 @@
 #include "yb/common/ybc-internal.h"
 #include "yb/client/client.h"
 
-#include "postgres/src/include/pg_config_manual.h"
 
 namespace yb {
 namespace pggate {

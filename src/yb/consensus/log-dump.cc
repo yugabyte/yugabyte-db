@@ -30,7 +30,6 @@
 // under the License.
 //
 
-#include <iostream>
 #include <vector>
 
 #include <gflags/gflags.h>

@@ -10,7 +10,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include <array>
 #include <cmath>
 #include <map>
 #include <string>
@@ -21,7 +20,6 @@
 #include "yb/integration-tests/backfill-test-util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
-#include "yb/util/stol_utils.h"
 #include "yb/util/test_util.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"

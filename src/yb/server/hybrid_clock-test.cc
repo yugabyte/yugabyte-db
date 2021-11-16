@@ -35,7 +35,6 @@
 #include <gtest/gtest.h>
 
 #include "yb/server/hybrid_clock.h"
-#include "yb/server/mock_hybrid_clock.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"

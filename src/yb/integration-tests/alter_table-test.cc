@@ -33,7 +33,6 @@
 #include <map>
 #include <string>
 #include <utility>
-#include <boost/assign.hpp>
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
 
@@ -56,9 +55,7 @@
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/master.h"
 #include "yb/master/master.pb.h"
-#include "yb/master/master-test-util.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/tablet/tablet.h"
@@ -71,7 +68,6 @@
 #include "yb/util/metrics.h"
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
-#include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
 
 using namespace std::literals;

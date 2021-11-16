@@ -20,9 +20,6 @@
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/rpc/messenger.h"
 #include "yb/server/hybrid_clock.h"
-#include "yb/server/mock_hybrid_clock.h"
-#include "yb/tserver/mini_tablet_server.h"
-#include "yb/tserver/tablet_server.h"
 #include "yb/util/random.h"
 
 DECLARE_uint64(max_clock_sync_error_usec);

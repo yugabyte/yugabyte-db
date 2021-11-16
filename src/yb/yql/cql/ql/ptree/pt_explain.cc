@@ -19,7 +19,6 @@
 #include "yb/yql/cql/ql/ptree/pt_explain.h"
 
 #include "yb/client/client.h"
-#include "yb/client/schema-internal.h"
 
 namespace yb {
 namespace ql {

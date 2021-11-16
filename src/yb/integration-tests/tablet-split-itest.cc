@@ -35,7 +35,6 @@
 #include "yb/consensus/consensus_util.h"
 
 #include "yb/docdb/doc_key.h"
-#include "yb/docdb/docdb_rocksdb_util.h"
 
 #include "yb/fs/fs_manager.h"
 
@@ -48,7 +47,6 @@
 #include "yb/integration-tests/redis_table_test_base.h"
 #include "yb/integration-tests/test_workload.h"
 
-#include "yb/integration-tests/twodc_test_base.h"
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.pb.h"
@@ -63,7 +61,6 @@
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
-#include "yb/rocksdb/rate_limiter.h"
 
 #include "yb/rpc/messenger.h"
 

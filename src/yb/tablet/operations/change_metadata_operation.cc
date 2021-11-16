@@ -36,16 +36,13 @@
 
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus_round.h"
-#include "yb/rpc/rpc_context.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
-#include "yb/tablet/tablet_metrics.h"
 
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_error.h"
 
-#include "yb/util/scope_exit.h"
 #include "yb/util/trace.h"
 
 namespace yb {

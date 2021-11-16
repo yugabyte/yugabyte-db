@@ -17,9 +17,7 @@
 #include "yb/client/client-internal.h"
 
 #include "yb/common/wire_protocol.h"
-#include "yb/common/common_flags.h"
 
-#include "yb/util/flag_tags.h"
 
 #include "yb/yql/redis/redisserver/redis_constants.h"
 

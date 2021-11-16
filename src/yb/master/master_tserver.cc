@@ -16,7 +16,6 @@
 #include "yb/client/async_initializer.h"
 
 #include "yb/master/catalog_manager.h"
-#include "yb/master/master.h"
 #include "yb/master/sys_catalog.h"
 
 namespace yb {

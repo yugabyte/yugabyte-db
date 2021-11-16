@@ -35,9 +35,7 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <signal.h>
-#include <sys/types.h>
 #include <sys/wait.h>
-#include <unistd.h>
 #include <spawn.h>
 
 #include <vector>
@@ -54,8 +52,6 @@
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/util/atomic.h"
-#include "yb/util/debug-util.h"
 #include "yb/util/errno.h"
 #include "yb/util/status.h"
 #include "yb/util/scope_exit.h"

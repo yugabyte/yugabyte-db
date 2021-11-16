@@ -56,8 +56,6 @@
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
-#include "yb/yql/cql/ql/util/errcodes.h"
-#include "yb/yql/redis/redisserver/redis_constants.h"
 
 #include "yb/util/flag_tags.h"
 

@@ -12,7 +12,6 @@
 //
 
 #include "yb/common/consistent_read_point.h"
-#include "yb/client/transaction.h"
 
 #include "yb/util/debug-util.h"
 

@@ -12,11 +12,13 @@
 //
 
 #include <map>
+#include <string>
 #include <unordered_map>
+
+#include <gtest/gtest.h>
 
 #include "yb/util/byte_buffer.h"
 #include "yb/util/random_util.h"
-#include "yb/util/test_util.h"
 
 using namespace std::literals;
 

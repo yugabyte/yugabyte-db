@@ -23,11 +23,8 @@
 
 #include "yb/rocksdb/util/histogram.h"
 
-#include <assert.h>
 #include <math.h>
-#include <stdio.h>
 
-#include "yb/rocksdb/port/port.h"
 #include "yb/gutil/port.h"
 
 namespace rocksdb {

@@ -34,7 +34,6 @@
 
 #include "yb/util/path_util.h"
 #include "yb/util/test_macros.h"
-#include "yb/util/init.h"
 
 namespace yb {
 

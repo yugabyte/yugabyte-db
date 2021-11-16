@@ -18,7 +18,6 @@
 #include <boost/preprocessor/cat.hpp>
 
 #include "yb/client/client.h"
-#include "yb/client/meta_cache.h"
 #include "yb/client/tablet_rpc.h"
 
 #include "yb/rpc/rpc.h"

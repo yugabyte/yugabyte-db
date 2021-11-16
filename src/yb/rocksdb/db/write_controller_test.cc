@@ -17,10 +17,13 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include <string>
+
+#include <gtest/gtest.h>
+
 #include "yb/rocksdb/db/write_controller.h"
 
 #include "yb/rocksdb/env.h"
-#include "yb/rocksdb/util/testharness.h"
 
 namespace rocksdb {
 
@@ -28,7 +31,7 @@ class WriteControllerTest : public testing::Test {};
 
 class TimeSetEnv : public EnvWrapper {
  public:
-  explicit TimeSetEnv() : EnvWrapper(nullptr) {}
+  TimeSetEnv() : EnvWrapper(nullptr) {}
   uint64_t now_micros_ = 6666;
   uint64_t NowMicros() override { return now_micros_; }
 };

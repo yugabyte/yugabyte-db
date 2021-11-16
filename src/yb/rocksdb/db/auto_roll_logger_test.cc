@@ -17,16 +17,11 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#include <sys/stat.h>
-#include <errno.h>
 
 #include <string>
 #include <thread>
 #include <vector>
-#include <cmath>
-#include <iostream>
 #include <fstream>
-#include <iterator>
 #include <algorithm>
 
 #include "yb/rocksdb/db/auto_roll_logger.h"

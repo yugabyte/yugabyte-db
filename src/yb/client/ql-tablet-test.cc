@@ -17,7 +17,6 @@
 #include <thread>
 
 #include <boost/optional/optional.hpp>
-#include <boost/optional/optional_io.hpp>
 
 #include "yb/client/client-test-util.h"
 #include "yb/client/ql-dml-test-base.h"
@@ -35,7 +34,6 @@
 #include "yb/integration-tests/test_workload.h"
 
 #include "yb/master/catalog_manager.h"
-#include "yb/master/master.h"
 
 #include "yb/rocksdb/types.h"
 

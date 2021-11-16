@@ -35,7 +35,6 @@
 #include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/transaction_log_impl.h"
 #include "yb/rocksdb/db/log_reader.h"
-#include "yb/rocksdb/db/log_writer.h"
 #include "yb/rocksdb/db/write_batch_internal.h"
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/env.h"

@@ -43,7 +43,6 @@
 
 #include "yb/server/webserver.h"
 
-#include <signal.h>
 #include <stdio.h>
 
 #include <algorithm>
@@ -55,9 +54,7 @@
 
 #include <boost/algorithm/string.hpp>
 #include <boost/lexical_cast.hpp>
-#include <boost/mem_fn.hpp>
 
-#include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <squeasel.h>
 
@@ -76,9 +73,7 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
-#include "yb/util/thread.h"
 #include "yb/util/url-coding.h"
-#include "yb/util/version_info.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/zlib.h"
 

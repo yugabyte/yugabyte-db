@@ -13,15 +13,23 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include <string>
+
 #include "yb/common/jsonb.h"
 #include "yb/common/ql_value.h"
 
 #include "yb/util/bytes_formatter.h"
 #include "yb/yql/cql/ql/exec/executor.h"
 #include "yb/util/logging.h"
-#include "yb/util/bfql/bfunc.h"
-#include "yb/util/net/inetaddress.h"
+#include "yb/util/status.h"
+#include "yb/common/ql_datatype.h"
+#include "yb/common/ql_type.h"
+#include "yb/gutil/endian.h"
+#include "yb/util/date_time.h"
 #include "yb/util/decimal.h"
+#include "yb/util/enums.h"
+#include "yb/util/net/inetaddress.h"
+#include "yb/util/uuid.h"
 
 namespace yb {
 namespace ql {

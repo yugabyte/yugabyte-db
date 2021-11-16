@@ -26,8 +26,6 @@
 #endif
 #include <sys/types.h>
 
-#include <iostream>
-#include <unordered_set>
 #include <atomic>
 #include <list>
 

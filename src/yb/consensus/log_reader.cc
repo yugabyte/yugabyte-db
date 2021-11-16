@@ -32,7 +32,6 @@
 
 #include "yb/consensus/log_reader.h"
 
-#include <sys/statvfs.h>
 
 #include <algorithm>
 #include <mutex>
@@ -43,19 +42,14 @@
 
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/util.h"
 #include "yb/gutil/strings/substitute.h"
 
-#include "yb/util/coding.h"
 #include "yb/util/env_util.h"
 #include "yb/util/flag_tags.h"
-#include "yb/util/hexdump.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/path_util.h"
-#include "yb/util/pb_util.h"
 
 DEFINE_bool(enable_log_retention_by_op_idx, true,
             "If true, logs will be retained based on an op id passed by the cdc service");

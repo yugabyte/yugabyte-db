@@ -33,7 +33,6 @@
 #include <gtest/gtest.h>
 
 #include "yb/common/partial_row.h"
-#include "yb/common/row.h"
 #include "yb/common/schema.h"
 #include "yb/util/test_util.h"
 

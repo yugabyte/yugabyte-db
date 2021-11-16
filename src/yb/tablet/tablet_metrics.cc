@@ -33,7 +33,6 @@
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/metrics.h"
-#include "yb/util/trace.h"
 
 // Tablet-specific metrics.
 METRIC_DEFINE_counter(tablet, rows_inserted, "Rows Inserted",

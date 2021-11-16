@@ -12,9 +12,12 @@
 //
 #include "yb/master/master_tablet_service.h"
 
-#include "yb/master/catalog_manager-internal.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/gutil/basictypes.h"
+#include "yb/master/catalog_manager.h"
+#include "yb/rpc/rpc_context.h"
+#include "yb/master/scoped_leader_shared_lock-internal.h" // SCOPED_LEADER_SHARED_LOCK
 
-#include "yb/master/master_service_base.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/random_util.h"
 

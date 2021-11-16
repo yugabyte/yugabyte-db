@@ -39,7 +39,6 @@
 #include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/consensus-test-util.h"
 #include "yb/consensus/log.h"
-#include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/fs/fs_manager.h"

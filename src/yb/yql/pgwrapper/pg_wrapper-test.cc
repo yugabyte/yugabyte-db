@@ -10,7 +10,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include "yb/yql/pgwrapper/pg_wrapper.h"
 
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
@@ -24,7 +23,6 @@
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
 #include "yb/client/client.h"
-#include "yb/client/table_handle.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/integration-tests/external_mini_cluster.h"

@@ -25,7 +25,6 @@
 
 #include <algorithm>
 #include "yb/util/slice.h"
-#include "yb/rocksdb/slice_transform.h"
 
 namespace rocksdb {
 

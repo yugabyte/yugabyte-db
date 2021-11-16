@@ -33,7 +33,6 @@
 #include "yb/util/mem_tracker.h"
 
 #include <algorithm>
-#include <deque>
 #include <limits>
 #include <list>
 #include <memory>
@@ -45,7 +44,6 @@
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/once.h"
-#include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/debug-util.h"

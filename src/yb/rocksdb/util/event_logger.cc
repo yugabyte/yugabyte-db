@@ -29,7 +29,6 @@
 #include <sstream>
 #include <string>
 
-#include "yb/util/string_util.h"
 
 namespace rocksdb {
 

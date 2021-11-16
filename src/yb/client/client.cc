@@ -33,11 +33,15 @@
 #include "yb/client/client.h"
 
 #include <algorithm>
-#include <mutex>
-#include <unordered_map>
-#include <vector>
-#include <iostream>
 #include <limits>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+
+#include <boost/container/small_vector.hpp>
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
@@ -59,23 +63,27 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/master/master.proxy.h"
-#include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_util.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/util/monotime.h"
-#include "yb/yql/redis/redisserver/redis_constants.h"
-#include "yb/yql/redis/redisserver/redis_parser.h"
+#include "yb/client/client-internal.h"
+#include "yb/client/client_fwd.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/rpc/rpc.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/trace.h"
+#include "yb/util/net/net_util.h"
+#include "yb/client/callbacks.h"
+#include "yb/client/client_builder-internal.h"
+#include "yb/util/slice.h"
+#include "yb/util/size_literals.h"
 #include "yb/rpc/messenger.h"
-#include "yb/rpc/yb_rpc.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/init.h"
 #include "yb/util/logging.h"
-#include "yb/util/net/dns_resolver.h"
-#include "yb/util/oid_generator.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/tsan_util.h"
-#include "yb/util/crypt.h"
 
 using yb::master::AlterTableRequestPB;
 using yb::master::CreateTablegroupRequestPB;

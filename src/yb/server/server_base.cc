@@ -55,7 +55,6 @@
 #include "yb/server/server_base.pb.h"
 #include "yb/server/server_base_options.h"
 #include "yb/server/tcmalloc_metrics.h"
-#include "yb/server/skewed_clock.h"
 #include "yb/server/tracing-path-handlers.h"
 #include "yb/server/webserver.h"
 #include "yb/util/atomic.h"

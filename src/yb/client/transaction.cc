@@ -17,11 +17,9 @@
 
 #include <unordered_set>
 
-#include "yb/client/async_rpc.h"
 #include "yb/client/client.h"
 #include "yb/client/in_flight_op.h"
 #include "yb/client/meta_cache.h"
-#include "yb/client/tablet_rpc.h"
 #include "yb/client/transaction_cleanup.h"
 #include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_rpc.h"

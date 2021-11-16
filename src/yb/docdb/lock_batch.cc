@@ -13,7 +13,6 @@
 
 #include "yb/docdb/lock_batch.h"
 #include "yb/docdb/shared_lock_manager.h"
-#include "yb/util/trace.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/tostring.h"
 #include "yb/util/shared_lock.h"

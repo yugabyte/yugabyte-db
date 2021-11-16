@@ -13,7 +13,6 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/client/table.h"
 #include "yb/client/yb_op.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/docdb/doc_key.h"
