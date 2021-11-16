@@ -159,15 +159,15 @@ $ helm search repo yugabytedb/yugabyte
 ```
 
 ```sh
-NAME                CHART VERSION APP VERSION DESCRIPTION                                       
-yugabytedb/yugabyte 2.1.0         2.1.0.0-b18 YugabyteDB is the high-performance distributed ...
+NAME                 CHART VERSION  APP VERSION  DESCRIPTION
+yugabytedb/yugabyte  2.6.5          2.6.5.0-b4   YugabyteDB is the high-performance distributed ...
 ```
 
 ### Create override files
 
 Copy the contents below to a file named `overrides-us-east-1a.yaml`.
 
-```sh
+```yaml
 isMultiAz: True
 
 AZ: us-east-1a
@@ -198,7 +198,7 @@ gflags:
 
 Copy the contents below to a file named `overrides-us-east-1b.yaml`.
 
-```sh
+```yaml
 isMultiAz: True
 
 AZ: us-east-1b
@@ -229,7 +229,7 @@ gflags:
 
 Copy the contents below to a file named `overrides-us-east-1c.yaml`.
 
-```sh
+```yaml
 isMultiAz: True
 
 AZ: us-east-1c
@@ -306,7 +306,7 @@ Check the services.
 $ kubectl get services --all-namespaces
 ```
 
-```
+```output
 NAMESPACE            NAME                 TYPE           CLUSTER-IP       EXTERNAL-IP                                                               PORT(S)                                        AGE
 default              kubernetes           ClusterIP      10.100.0.1       <none>                                                                    443/TCP                                        20m
 kube-system          kube-dns             ClusterIP      10.100.0.10      <none>                                                                    53/UDP,53/TCP                                  20m
@@ -322,7 +322,6 @@ yb-demo-us-east-1c   yb-master-ui         LoadBalancer   10.100.0.232     a6cd55
 yb-demo-us-east-1c   yb-masters           ClusterIP      None             <none>                                                                    7100/TCP,7000/TCP                              55s
 yb-demo-us-east-1c   yb-tserver-service   LoadBalancer   10.100.119.40    a6cd628b667df11ea9fec12feeb58bc1-403831649.us-east-1.elb.amazonaws.com    6379:31544/TCP,9042:31541/TCP,5433:32374/TCP   55s
 yb-demo-us-east-1c   yb-tservers          ClusterIP      None             <none>                                                                    7100/TCP,9000/TCP,6379/TCP,9042/TCP,5433/TCP   55s
-
 ```
 
 Access the yb-master Admin UI for the cluster at `http://<external-ip>:7000` where `external-ip` refers to one of the `yb-master-ui` services. Note that you can use any of the above three services for this purpose since all of them will show the same cluster metadata.
@@ -376,7 +375,7 @@ To connect an external program, get the load balancer `EXTERNAL-IP` address of o
 $ kubectl get services --namespace yb-demo
 ```
 
-```
+```output
 NAME                 TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)                                        AGE
 ...
 yb-demo-us-east-1a   yb-tserver-service   LoadBalancer   10.100.97.195    ad37e06fb67de11ea87920e8fdeea06a-238172614.us-east-1.elb.amazonaws.com    6379:30334/TCP,9042:31406/TCP,5433:30024/TCP   5m12s

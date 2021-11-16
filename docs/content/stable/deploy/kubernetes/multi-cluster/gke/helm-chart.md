@@ -70,7 +70,7 @@ $ helm version
 
 You should see something similar to the following output. Note that the `tiller` server side component has been removed in Helm 3.
 
-```
+```output
 version.BuildInfo{Version:"v3.0.3", GitCommit:"ac925eb7279f4a6955df663a0128044a8a6b7593", GitTreeState:"clean", GoVersion:"go1.13.6"}
 ```
 
@@ -114,7 +114,7 @@ Confirm that you now have 3 Kubernetes contexts as shown below.
 kubectl config get-contexts
 ```
 
-```
+```output
 CURRENT   NAME                                          CLUSTER                                 ...                                  
           gke_yugabyte_us-central1-b_yugabytedb2        gke_yugabyte_us-central1-b_yugabytedb2                
 *         gke_yugabyte_us-east1-b_yugabytedb3           gke_yugabyte_us-east1-b_yugabytedb3                            
@@ -127,7 +127,7 @@ We need to ensure that the storage classes used by the pods in a given zone are 
 
 Copy the contents below to a file named `gke-us-west1-b.yaml`.
 
-```sh
+```yaml
 kind: StorageClass
 apiVersion: storage.k8s.io/v1
 metadata:
@@ -141,7 +141,7 @@ parameters:
 
 Copy the contents below to a file named `gke-us-central1-b.yaml`.
 
-```sh
+```yaml
 kind: StorageClass
 apiVersion: storage.k8s.io/v1
 metadata:
@@ -155,7 +155,7 @@ parameters:
 
 Copy the contents below to a file named `gke-us-east1-b.yaml`.
 
-```sh
+```yaml
 kind: StorageClass
 apiVersion: storage.k8s.io/v1
 metadata:
@@ -165,21 +165,16 @@ parameters:
   type: pd-standard
   replication-type: none
   zone: us-east1-b
-
 ```
 
 Apply the above configuration to your clusters.
 
 ```sh
-kubectl apply -f gke-us-west1-b.yaml --context gke_yugabyte_us-west1-b_yugabytedb1
-```
+$ kubectl apply -f gke-us-west1-b.yaml --context gke_yugabyte_us-west1-b_yugabytedb1
 
-```sh
-kubectl apply -f gke-us-central1-b.yaml --context gke_yugabyte_us-central1-b_yugabytedb2
-```
+$ kubectl apply -f gke-us-central1-b.yaml --context gke_yugabyte_us-central1-b_yugabytedb2
 
-```sh
-kubectl apply -f gke-us-east1-b.yaml --context gke_yugabyte_us-east1-b_yugabytedb3
+$ kubectl apply -f gke-us-east1-b.yaml --context gke_yugabyte_us-east1-b_yugabytedb3
 ```
 
 ## 2. Setup global DNS
@@ -192,7 +187,7 @@ The YAML file shown below adds an internal load balancer (which is not exposed o
 
 Copy the contents to a file named `yb-dns-lb.yaml`.
 
-```sh
+```yaml
 apiVersion: v1
 kind: Service
 metadata:
@@ -213,21 +208,21 @@ spec:
     k8s-app: kube-dns
   sessionAffinity: None
   type: LoadBalancer
- ```
+```
 
 ### Apply the configuration to every cluster
 
 Download the `yb-multiregion-k8s-setup.py` script that will help you automate the setup of the load balancers.
 
 ```sh
-wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/cloud/kubernetes/yb-multiregion-k8s-setup.py
+$ wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/cloud/kubernetes/yb-multiregion-k8s-setup.py
 ```
 
 The script starts out by creating a new namespace in each of the 3 clusters. Thereafter, it creates 3 internal load balancers for `kube-dns` in the 3 clusters. After the load balancers are created, it configures them using Kubernetes ConfigMap in such a way that they forward DNS requests for zone-scoped namespaces to the relevant Kubernetes cluster's DNS server. Finally it deletes the `kube-dns` pods so that Kubernetes can bring them back up automatically with the new configuration.
 
 Open the script and edit the `contexts` and `regions` sections to reflect your own configuration.
 
-```
+```python
 # Replace the following with your own k8s cluster contexts
 contexts = {
     'us-west1-b': 'gke_yugabyte_us-west1-b_yugabytedb1',
@@ -246,10 +241,10 @@ regions = {
 Now run the script as shown below.
 
 ```sh
-python yb-multiregion-k8s-setup.py
+$ python yb-multiregion-k8s-setup.py
 ```
 
-```
+```output
 namespace/yb-demo-us-east1-b created
 service/kube-dns-lb created
 namespace/yb-demo-us-central1-b created
@@ -288,16 +283,16 @@ Validate that you have the updated chart version.
 $ helm search repo yugabytedb/yugabyte
 ```
 
-```sh
-NAME                CHART VERSION APP VERSION   DESCRIPTION                                       
-yugabytedb/yugabyte 2.1.0        2.1.0.0-b18    YugabyteDB is the high-performance distr...
+```output
+NAME                 CHART VERSION  APP VERSION  DESCRIPTION
+yugabytedb/yugabyte  2.6.5          2.6.5.0-b4   YugabyteDB is the high-performance distr...
 ```
 
 ### Create override files
 
 Copy the contents below to a file named `overrides-us-west1-b.yaml`.
 
-```sh
+```yaml
 isMultiAz: True
 
 AZ: us-west1-b
@@ -330,7 +325,7 @@ gflags:
 
 Copy the contents below to a file named `overrides-us-central1-b.yaml`.
 
-```sh
+```yaml
 isMultiAz: True
 
 AZ: us-central1-b
@@ -363,7 +358,7 @@ gflags:
 
 Copy the contents below to a file named `overrides-us-east1-b.yaml`.
 
-```sh
+```yaml
 isMultiAz: True
 
 AZ: us-east1-b
@@ -400,23 +395,23 @@ Now create the overall YugabyteDB cluster in such a way that one third of the no
 
 ```sh
 $ helm install yb-demo-us-west1-b yugabytedb/yugabyte \
- --namespace yb-demo-us-west1-b \
- -f overrides-us-west1-b.yaml \
- --kube-context gke_yugabyte_us-west1-b_yugabytedb1 --wait
+  --namespace yb-demo-us-west1-b \
+  -f overrides-us-west1-b.yaml \
+  --kube-context gke_yugabyte_us-west1-b_yugabytedb1 --wait
 ```
 
 ```sh
 $ helm install yb-demo-us-central1-b yugabytedb/yugabyte \
- --namespace yb-demo-us-central1-b \
- -f overrides-us-central1-b.yaml \
- --kube-context gke_yugabyte_us-central1-b_yugabytedb2 --wait
+  --namespace yb-demo-us-central1-b \
+  -f overrides-us-central1-b.yaml \
+  --kube-context gke_yugabyte_us-central1-b_yugabytedb2 --wait
 ```
 
 ```sh
 $ helm install yb-demo-us-east1-b yugabytedb/yugabyte \
- --namespace yb-demo-us-east1-b \
- -f overrides-us-east1-b.yaml \
- --kube-context gke_yugabyte_us-east1-b_yugabytedb3 --wait
+  --namespace yb-demo-us-east1-b \
+  -f overrides-us-east1-b.yaml \
+  --kube-context gke_yugabyte_us-east1-b_yugabytedb3 --wait
 ```
 
 ## 4. Check the cluster status
@@ -430,11 +425,11 @@ $ kubectl get pods -n yb-demo-us-west1-b --context gke_yugabyte_us-west1-b_yugab
 ```
 
 ```sh
-kubectl get pods -n yb-demo-us-central1-b --context gke_yugabyte_us-central1-b_yugabytedb2
+$ kubectl get pods -n yb-demo-us-central1-b --context gke_yugabyte_us-central1-b_yugabytedb2
 ```
 
 ```sh
-kubectl get pods -n yb-demo-us-east1-b --context gke_yugabyte_us-east1-b_yugabytedb3
+$ kubectl get pods -n yb-demo-us-east1-b --context gke_yugabyte_us-east1-b_yugabytedb3
 ```
 
 Check the services.
@@ -443,7 +438,7 @@ Check the services.
 $ kubectl get services -n yb-demo-us-west1-b --context gke_yugabyte_us-west1-b_yugabytedb1
 ```
 
-```
+```output
 NAME                 TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)                                        AGE
 yb-master-ui         LoadBalancer   10.31.250.228   35.185.207.11   7000:31185/TCP                                 91m
 yb-masters           ClusterIP      None            <none>          7100/TCP,7000/TCP                              91m
@@ -452,11 +447,11 @@ yb-tservers          ClusterIP      None            <none>          7100/TCP,900
 ```
 
 ```sh
-kubectl get services -n yb-demo-us-central1-b --context gke_yugabyte_us-central1-b_yugabytedb2
+$ kubectl get services -n yb-demo-us-central1-b --context gke_yugabyte_us-central1-b_yugabytedb2
 ```
 
 ```sh
-kubectl get services -n yb-demo-us-east1-b --context gke_yugabyte_us-east1-b_yugabytedb3
+$ kubectl get services -n yb-demo-us-east1-b --context gke_yugabyte_us-east1-b_yugabytedb3
 ```
 
 Access the yb-master Admin UI for the cluster at `http://<external-ip>:7000` where `external-ip` refers to one of the `yb-master-ui` services. Note that you can use any of the above 3 services for this purpose since all of them will show the same cluster metadata.
@@ -472,7 +467,7 @@ Default replica placement policy treats every yb-tserver as equal irrespective o
 Run the following command to make the replica placement region/cluster-aware so that one replica is placed on each region/cluster.
 
 ```sh
-kubectl exec -it -n yb-demo-us-west1-b --context gke_yugabyte_us-west1-b_yugabytedb1 yb-master-0 -- bash \
+$ kubectl exec -it -n yb-demo-us-west1-b --context gke_yugabyte_us-west1-b_yugabytedb1 yb-master-0 -- bash \
 -c "/home/yugabyte/master/bin/yb-admin --master_addresses yb-master-0.yb-masters.yb-demo-us-west1-b.svc.cluster.local:7100,yb-master-0.yb-masters.yb-demo-us-central1-b.svc.cluster.local:7100,yb-master-0.yb-masters.yb-demo-us-east1-b.svc.cluster.local:7100 modify_placement_info gke.us-west1.us-west1-b,gke.us-central1.us-central1-b,gke.us-east1.us-east1-b 3"
 ```
 
@@ -508,7 +503,7 @@ To connect an external program, get the load balancer `EXTERNAL-IP` address of o
 $ kubectl get services -n yb-demo-us-west1-b --context gke_yugabyte_us-west1-b_yugabytedb1
 ```
 
-```
+```output
 NAME                 TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)                                        AGE
 ...
 yb-tserver-service   LoadBalancer   10.31.247.185   34.83.192.162   6379:31858/TCP,9042:30444/TCP,5433:30854/TCP   91m
@@ -520,10 +515,10 @@ yb-tserver-service   LoadBalancer   10.31.247.185   34.83.192.162   6379:31858/T
 It’s time to test the resilience of the DB cluster when subjected to the complete failure of one region. We will simulate such a failure by setting the replica count of the YugabyteDB StatefulSets to 0 for the `us-central1` region.
 
 ```sh
-kubectl scale statefulset yb-tserver --replicas=0 -n yb-demo-us-central1-b \
+$ kubectl scale statefulset yb-tserver --replicas=0 -n yb-demo-us-central1-b \
  --context gke_yugabyte_us-central1-b_yugabytedb2
 
-kubectl scale statefulset yb-master --replicas=0 -n yb-demo-us-central1-b \
+$ kubectl scale statefulset yb-master --replicas=0 -n yb-demo-us-central1-b \
  --context gke_yugabyte_us-central1-b_yugabytedb2
 ```
 
