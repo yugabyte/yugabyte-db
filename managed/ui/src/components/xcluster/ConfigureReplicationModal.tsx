@@ -1,11 +1,7 @@
 import { Field } from 'formik';
 import React, { useState } from 'react';
 import { Col, Row } from 'react-bootstrap';
-import {
-  YBFormInput,
-  YBFormSelect,
-  YBInputField
-} from '../common/forms/fields';
+import { YBFormInput, YBFormSelect, YBInputField } from '../common/forms/fields';
 
 import './ConfigureReplicationModal.scss';
 import { YBModalForm } from '../common/forms';
@@ -15,7 +11,7 @@ import { YBLoading } from '../common/indicators';
 import {
   createXClusterReplication,
   fetchTablesInUniverse,
-  fetchUniversesList,
+  fetchUniversesList
 } from '../../actions/xClusterReplication';
 
 import { useMutation, useQuery, useQueryClient } from 'react-query';
@@ -50,15 +46,20 @@ export function ConfigureReplicationModal({ onHide, visible, currentUniverseUUID
   const [currentStep, setCurrentStep] = useState(0);
   const queryClient = useQueryClient();
   const addReplication = useMutation(
-    (values:any) => {
-      return createXClusterReplication(values['targetUniverseUUID'].value, currentUniverseUUID, values['name'], values['tables'].map((t:IReplicationTable)=>t.tableUUID.replaceAll('-', '')));
+    (values: any) => {
+      return createXClusterReplication(
+        values['targetUniverseUUID'].value,
+        currentUniverseUUID,
+        values['name'],
+        values['tables'].map((t: IReplicationTable) => t.tableUUID.replaceAll('-', ''))
+      );
     },
     {
       onSuccess: () => {
         onHide();
         queryClient.invalidateQueries('universe');
       },
-      onError: (err:any) => {
+      onError: (err: any) => {
         toast.error(err.response.data.error);
       }
     }
@@ -72,11 +73,11 @@ export function ConfigureReplicationModal({ onHide, visible, currentUniverseUUID
     [currentUniverseUUID, 'tables'],
     () => fetchTablesInUniverse(currentUniverseUUID).then((res) => res.data)
   );
-  
+
   if (isUniverseListLoading || isTablesLoading) {
     return <YBLoading />;
   }
-  
+
   const initialValues = {
     name: '',
     targetUniverseUUID: undefined,
@@ -91,20 +92,18 @@ export function ConfigureReplicationModal({ onHide, visible, currentUniverseUUID
       validationSchema={validationSchema}
       onFormSubmit={(values: any, { setSubmitting }: { setSubmitting: any }) => {
         setSubmitting(false);
-        
+
         if (currentStep !== STEPS.length - 1) {
           setCurrentStep(currentStep + 1);
         } else {
-          addReplication.mutateAsync(values).then(()=>{
+          addReplication.mutateAsync(values).then(() => {
             setCurrentStep(0);
           });
         }
       }}
       initialValues={initialValues}
-      submitLabel={
-        STEPS[currentStep].submitLabel
-      }
-      onHide={()=> {
+      submitLabel={STEPS[currentStep].submitLabel}
+      onHide={() => {
         setCurrentStep(0);
         onHide();
       }}
@@ -117,8 +116,7 @@ export function ConfigureReplicationModal({ onHide, visible, currentUniverseUUID
           currentUniverseUUID
         })
       }
-    >
-    </YBModalForm>
+    ></YBModalForm>
   );
 }
 
@@ -137,11 +135,7 @@ export function TargetUniverseForm({
     <>
       <Row>
         <Col lg={12}>
-          <Field 
-            name="name"
-            placeholder="Replication name"
-            component={YBFormInput}
-          />
+          <Field name="name" placeholder="Replication name" component={YBFormInput} />
         </Col>
       </Row>
       <Row>
@@ -150,7 +144,7 @@ export function TargetUniverseForm({
             name="targetUniverseUUID"
             component={YBFormSelect}
             options={universeList
-              .filter(((universe) => universe.universeUUID !== currentUniverseUUID))
+              .filter((universe) => universe.universeUUID !== currentUniverseUUID)
               .map((universe) => {
                 return {
                   label: universe.name,
@@ -159,7 +153,7 @@ export function TargetUniverseForm({
               })}
             field={{
               name: 'targetUniverseUUID',
-              value:initialValues['targetUniverseUUID']
+              value: initialValues['targetUniverseUUID']
             }}
             defaultValue={initialValues['targetUniverseUUID']}
             isDisabled={isEdit}
@@ -180,7 +174,6 @@ function SelectTablesForm({
   setFieldValue: any;
   tables: IReplicationTable[];
 }) {
-
   const handleTableSelect = (row: IReplicationTable, isSelected: boolean) => {
     if (isSelected) {
       setFieldValue('tables', [...values['tables'], row]);
@@ -198,14 +191,16 @@ function SelectTablesForm({
     }
     return true;
   };
-  
 
   return (
     <div className="select-tables-form">
       <Row className="info-search">
         <Col lg={8}>List of common tables across source and target universe</Col>
         <Col lg={4}>
-          <YBInputField placeHolder="Search.." onValueChanged={(text:string) => setFieldValue('search', text)}/>
+          <YBInputField
+            placeHolder="Search.."
+            onValueChanged={(text: string) => setFieldValue('search', text)}
+          />
         </Col>
       </Row>
       <Row>
@@ -216,12 +211,12 @@ function SelectTablesForm({
       <Row className="tables-list">
         <Col lg={12}>
           <BootstrapTable
-            data={
-              tables.filter((table:IReplicationTable)=>{
-                if(!values['search']){ return true;}
-                return table.tableName.toLowerCase().indexOf(values['search'].toLowerCase()) !== -1;
-              })
-            }
+            data={tables.filter((table: IReplicationTable) => {
+              if (!values['search']) {
+                return true;
+              }
+              return table.tableName.toLowerCase().indexOf(values['search'].toLowerCase()) !== -1;
+            })}
             height={'300'}
             tableContainerClass="add-to-table-container"
             selectRow={{
