@@ -3,6 +3,7 @@ title: Yugabyte JDBC Driver
 linkTitle: Yugabyte JDBC Driver
 description: Yugabyte JDBC Driver for YSQL
 aliases:
+  - /latest/integrations/smart-driver/
 menu:
   latest:
     identifier: jdbc-driver
