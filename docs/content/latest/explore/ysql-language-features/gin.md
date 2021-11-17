@@ -172,7 +172,7 @@ First, enable timing for future queries.
 
 First, test GIN index on tsvector:
 
-```
+```sql
 SET enable_indexscan = off;
 SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'the');
 -- Run it several times to reduce cache bias.
@@ -464,7 +464,7 @@ bin/yb-admin \
   list_tablets ysql.yugabyte jsonbs_split_idx1
 ```
 
-```
+```output
 Tablet-UUID                      	Range                                                    	Leader-IP       	Leader-UUID
 43b2a0f0dac44018b60eebeee489e391 	partition_key_start: "" partition_key_end: "S\001some\000\000!" 	127.0.0.201:9100 	2702ace451fe46bd81dd2a19ea539163
 c32e1066cefb449cb191ff23d626125f 	partition_key_start: "S\001some\000\000!" partition_key_end: "S\005jsonb\000\000!" 	127.0.0.203:9100 	3a80acb8df5d45e38b388ffdc17a59e0
@@ -493,7 +493,7 @@ done <<(!! \
         | awk '{print$1}')
 ```
 
-```
+```output
 from [] to []
 Process /tmp/gindemo/node-1/disk-1/yb-data/tserver/data/rocksdb/table-000033c000003000800000000000401d/tablet-43b2a0f0dac44018b60eebeee489e391/000010.sst
 Sst file format: block-based
