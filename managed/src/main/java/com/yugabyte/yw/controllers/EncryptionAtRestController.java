@@ -71,7 +71,17 @@ public class EncryptionAtRestController extends AuthenticatedController {
 
   @Inject CloudAPI.Factory cloudAPIFactory;
 
-  private void validateKMSProviderConfigFormData(ObjectNode formData, String keyProvider) {
+  private void validateKMSProviderConfigFormData(
+      ObjectNode formData, String keyProvider, UUID customerUUID) {
+    // Check if kmsConfig is already present with requested name
+    String kmsConfigName = formData.get("name").asText();
+    if (KmsConfig.listKMSConfigs(customerUUID)
+        .stream()
+        .anyMatch(config -> config.name.equals(kmsConfigName))) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, String.format("Kms config with %s name already exists", kmsConfigName));
+    }
+
     if (keyProvider.toUpperCase().equals(KeyProvider.AWS.toString())
         && (formData.get(AWS_ACCESS_KEY_ID_FIELDNAME) != null
             || formData.get(AWS_SECRET_ACCESS_KEY_FIELDNAME) != null)) {
@@ -123,7 +133,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
       TaskType taskType = TaskType.CreateKMSConfig;
       ObjectNode formData = (ObjectNode) request().body().asJson();
       // Validating the KMS Provider config details.
-      validateKMSProviderConfigFormData(formData, keyProvider);
+      validateKMSProviderConfigFormData(formData, keyProvider, customerUUID);
       KMSConfigTaskParams taskParams = new KMSConfigTaskParams();
       taskParams.kmsProvider = Enum.valueOf(KeyProvider.class, keyProvider);
       taskParams.providerConfig = formData;
