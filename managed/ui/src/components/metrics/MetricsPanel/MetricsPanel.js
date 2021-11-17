@@ -16,6 +16,8 @@ import _ from 'lodash';
 import moment from "moment";
 import {OverlayTrigger, Tooltip} from "react-bootstrap";
 
+import prometheusIcon from '../images/prometheus-icon.svg';
+
 const Plotly = require('plotly.js/lib/core');
 
 const WIDTH_OFFSET = 23;
@@ -58,7 +60,6 @@ export default class MetricsPanel extends Component {
           metric.layout.yaxis.ticksuffix = '&nbsp;ms';
         }
       }
-
 
       metric.layout.xaxis.hoverformat = '%H:%M:%S, %b %d, %Y ' + moment().format('[UTC]ZZ');
 
@@ -104,7 +105,7 @@ export default class MetricsPanel extends Component {
       // Give the legend box extra vertical space if there are more than 4 traces
       let legendExtraMargin = 0;
       if (metric.data.length > 4) {
-         legendExtraMargin = 0.2;
+        legendExtraMargin = 0.2;
       }
 
       metric.layout.legend = {
@@ -153,11 +154,7 @@ export default class MetricsPanel extends Component {
       // to avoid re-plotting graph if equal
       const prevData = prevProps.metric.data;
       const currData = this.props.metric.data;
-      if (
-        prevData &&
-        currData &&
-        !_.isEqual(prevData, currData)
-      ) {
+      if (prevData && currData && !_.isEqual(prevData, currData)) {
         // Re-plot graph
         this.plotGraph();
       }
@@ -179,16 +176,23 @@ export default class MetricsPanel extends Component {
     );
     return (
       <div id={this.props.metricKey} className="metrics-panel">
-        {prometheusQueryEnabled ?
-          (
-            <OverlayTrigger placement="top" overlay={tooltip}>
-              <a target="_blank" rel="noopener noreferrer" className="prometheus-link" href={this.props.metric.directURL}>
-                <span className="prometheus-link-icon fa fa-external-link"></span>
-              </a>
-            </OverlayTrigger>
-          )
-          : null
-        }
+        {prometheusQueryEnabled ? (
+          <OverlayTrigger placement="top" overlay={tooltip}>
+            <a
+              target="_blank"
+              rel="noopener noreferrer"
+              className="prometheus-link"
+              href={this.props.metric.directURL}
+            >
+              <img
+                className="prometheus-link-icon"
+                alt="Prometheus"
+                src={prometheusIcon}
+                width="25"
+              />
+            </a>
+          </OverlayTrigger>
+        ) : null}
         <div />
       </div>
     );

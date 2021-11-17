@@ -15,18 +15,8 @@
 
   .prometheus-link {
     position: absolute;
-    top: 10px;
-    right: 10px;
-    height: 40px;
-    width: 40px;
-    display: table;
-    text-align: center;
-    color: $YB_NAVY_BLUE;
-    .prometheus-link-icon {
-      display: table-cell;
-      vertical-align: middle;
-      font-size: 22px;
-    }
+    top: 15px;
+    right: 15px;
   }
 }
 
