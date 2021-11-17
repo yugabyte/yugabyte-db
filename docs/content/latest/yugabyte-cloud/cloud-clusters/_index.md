@@ -16,11 +16,11 @@ To ensure the cluster configuration matches its performance requirements, you ca
 
 The **Clusters** page lists your currently provisioned clusters and their status, along with a summary of nodes, cores, and errors. From here you can also [add](../cloud-basics/create-clusters/) and delete clusters.
 
-To add a cluster, click **Add Cluster**. Refer to [Create a cluster](../cloud-basics/create-clusters/).
+To _add_ a cluster, click **Add Cluster**. Refer to [Create a cluster](../cloud-basics/create-clusters/).
 
-To delete a cluster, click the three dots icon for the cluster you want to delete and choose **Terminate Cluster**. Then enter the name of the cluster and click **Delete**. This deletes the cluster and all of its data, including backups.
+To _delete_ a cluster, click the three dots icon for the cluster you want to delete and choose **Terminate Cluster**. Then enter the name of the cluster and click **Delete**. This deletes the cluster and all of its data, including backups.
 
-To manage a cluster, select the cluster in the list to display the cluster [Overview](../cloud-monitor/overview). Once you've selected a cluster, you can access [backups](backup-clusters/), and [scale the cluster](configure-clusters/).
+To _manage_ a cluster, select the cluster in the list to display the cluster [Overview](../cloud-monitor/overview). Once you've selected a cluster, you can access [backups](backup-clusters/), and [scale the cluster](configure-clusters/).
 
 <div class="row">
 

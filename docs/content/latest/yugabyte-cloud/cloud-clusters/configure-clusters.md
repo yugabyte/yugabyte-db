@@ -17,7 +17,7 @@ Yugabyte Cloud suppports both horizontal and vertical scaling of clusters. If yo
 
 The **Infrastructure** section on the cluster **Settings** tab summarizes the cluster setup, including the region, number of nodes and vCPUs, the disk size, and fault tolerance. 
 
-You scale clusters using the **Edit Infrastructure** option on the **Settings** tab.
+You scale clusters using the **Edit Infrastructure** option, which is located on the **Settings** tab and in the **Quick Links** menu.
 
 You can modify the number of nodes and vCPUs per node, and increase the disk size of clusters. The scaling operation is performed without any downtime, with a rolling restart of the underlying nodes.
 
@@ -35,8 +35,8 @@ Clusters include a minimum of 50GB of storage per vCPU. Disk size per node is ad
 
 To scale the cluster:
 
-1. On the **Clusters** page, select your cluster, then select the **Settings** tab.
-1. Click **Edit Infrastructure** to display the **Edit Infrastructure** dialog.
+1. On the **Clusters** page, select your cluster.
+1. On the **Settings** tab or under **Quick Links**, choose **Edit Infrastructure** to display the **Edit Infrastructure** dialog.
 
     ![Cluster Edit Infrastructure](/images/yb-cloud/cloud-clusters-settings-edit.png)
 
