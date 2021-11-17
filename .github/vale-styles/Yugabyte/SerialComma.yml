@@ -1,0 +1,12 @@
+---
+# Warning: Yugabyte.SerialComma
+#
+# Checks for the lack of a serial (Oxford) comma. In some cases, will catch overly complex sentence structures with lots of commas.
+#
+# For a list of all options, see https://errata-ai.gitbook.io/vale/getting-started/styles
+extends: existence
+message: 'Use a comma before the last "and" or "or" in a list of four or more items.'
+#link: https://docs.gitlab.com/ee/development/documentation/styleguide/index.html#punctuation
+level: warning
+raw:
+  - '(?:[\w-_` ]+,){2,}(?:[\w-_` ]+) (and |or )'
