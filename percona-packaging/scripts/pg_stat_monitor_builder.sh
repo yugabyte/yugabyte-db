@@ -333,10 +333,10 @@ build_rpm(){
         echo "It is not possible to build rpm here"
         exit 1
     fi
-    SRC_RPM=$(basename $(find $WORKDIR/srpm -name 'percona-pg-stat-monitor*.src.rpm' | sort | tail -n1))
+    SRC_RPM=$(basename $(find $WORKDIR/srpm -name 'percona-pg_stat_monitor*.src.rpm' | sort | tail -n1))
     if [ -z $SRC_RPM ]
     then
-        SRC_RPM=$(basename $(find $CURDIR/srpm -name 'percona-pg-stat-monitor*.src.rpm' | sort | tail -n1))
+        SRC_RPM=$(basename $(find $CURDIR/srpm -name 'percona-pg_stat_monitor*.src.rpm' | sort | tail -n1))
         if [ -z $SRC_RPM ]
         then
             echo "There is no src rpm for build"

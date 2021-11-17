@@ -1,4 +1,4 @@
-%global sname percona-pg-stat-monitor
+%global sname percona-pg_stat_monitor
 %global pgrel @@PG_REL@@
 %global rpm_release @@RPM_RELEASE@@
 %global pginstdir /usr/pgsql-@@PG_REL@@/
@@ -8,12 +8,14 @@ Name:           %{sname}%{pgrel}
 Version:        @@VERSION@@
 Release:        %{rpm_release}%{?dist}
 License:        PostgreSQL
-Source0:        %{sname}%{pgrel}-%{version}.tar.gz
+Source0:        percona-pg-stat-monitor%{pgrel}-%{version}.tar.gz
 URL:            https://github.com/Percona-Lab/pg_stat_monitor
 BuildRequires:  percona-postgresql%{pgrel}-devel
 Requires:       postgresql-server
+Provides:	percona-pg-stat-monitor%{pgrel}
 Epoch:          1
-
+Packager:       Percona Development Team <https://jira.percona.com>
+Vendor:         Percona, Inc
 
 %description
 The pg_stat_monitor is statistics collector tool
@@ -25,7 +27,7 @@ It provides all the features of pg_stat_statment plus its own feature set.
 
 
 %prep
-%setup -q -n %{sname}%{pgrel}-%{version}
+%setup -q -n percona-pg-stat-monitor%{pgrel}-%{version}
 
 
 %build
@@ -61,5 +63,5 @@ sed -i 's:PG_CONFIG = pg_config:PG_CONFIG = /usr/pgsql-%{pgrel}/bin/pg_config:' 
 
 
 %changelog
-* Thu Dec 19 2019 Oleksandr Miroshnychenko <alex.miroshnychenko@percona.com> - 1.0.0-1
+* Wed Nov 17 2021 Evgeniy Patlan <evgeniy.patlan@percona.com> - 1.0.0-1
 - Initial build
