@@ -248,7 +248,7 @@ find_event(text *event_name, bool create, int *event_id)
 
 		ereport(ERROR,
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-				 errmsg("event registeration error"),
+				 errmsg("event registration error"),
 				 errdetail("Too many registered events."),
 				 errhint("There are too many collaborating sessions. Increase MAX_EVENTS in 'pipe.h'.")));
 	}
