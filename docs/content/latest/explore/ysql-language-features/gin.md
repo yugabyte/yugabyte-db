@@ -97,6 +97,12 @@ For those familiar with upstream PostgreSQL GIN indexes, Yugabyte GIN indexes ar
 - Fast update is not supported: this isn't practical for a distributed, log-structured database.
 - Fuzzy search limit is not supported: it can be in the future.
 
+## Roadmap
+
+GIN indexes are still in progress: see the GIN roadmap tracking [GitHub issue][github-roadmap] for more details.
+
+[github-roadmap]: https://github.com/yugabyte/yugabyte-db/issues/7850
+
 ## Examples
 
 ### Setup
