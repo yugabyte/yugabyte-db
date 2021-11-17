@@ -229,7 +229,8 @@ A post on our blog titled [Practical Tradeoffs in Google Cloud Spanner, Azure Co
 
 YugabyteDB has had the following major releases:
 
-- [v2.6](https://blog.yugabyte.com/) in July 2021.
+- [v2.8](https://blog.yugabyte.com/) in November 2021.
+- [v2.6](https://blog.yugabyte.com/announcing-yugabytedb-2-6/) in July 2021.
 - [v2.4](https://blog.yugabyte.com/announcing-yugabytedb-2-4/) in January 2021.
 - [v2.2](https://blog.yugabyte.com/announcing-yugabytedb-2-2-distributed-sql-made-easy/) in July 2020.
 - [v2.1](https://blog.yugabyte.com/yugabytedb-2-1-is-ga-scaling-new-heights-with-distributed-sql/) in February 2020.

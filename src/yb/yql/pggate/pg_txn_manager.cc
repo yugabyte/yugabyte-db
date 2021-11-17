@@ -313,6 +313,7 @@ Status PgTxnManager::BeginWriteTransactionIfNecessary(bool read_only_op,
       }
       tserver::TakeTransactionRequestPB req;
       tserver::TakeTransactionResponsePB resp;
+      req.set_is_global(yb_force_global_transaction);
       rpc::RpcController controller;
       // TODO(dtxn) propagate timeout from higher level
       controller.set_timeout(10s);
@@ -376,6 +377,21 @@ Status PgTxnManager::RestartTransaction() {
 
   DCHECK(can_restart_.load(std::memory_order_acquire));
 
+  return Status::OK();
+}
+
+/* This is called at the start of each statement in READ COMMITTED isolation level */
+Status PgTxnManager::MaybeResetTransactionReadPoint() {
+  CHECK_NOTNULL(session_);
+  // If a txn_ has been created, session_->read_point() returns the read point stored in txn_.
+  ConsistentReadPoint* rp = session_->read_point();
+  if (rp->RecentlyRestartedReadPoint()) {
+    rp->UnSetRecentlyRestartedReadPoint();
+    return Status::OK();
+  }
+  rp->SetCurrentReadTime();
+
+  VLOG(1) << "Setting current ht as read point " << rp->GetReadTime();
   return Status::OK();
 }
 

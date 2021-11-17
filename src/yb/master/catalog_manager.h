@@ -470,6 +470,10 @@ class CatalogManager :
 
   CHECKED_STATUS GetYsqlCatalogVersion(uint64_t* catalog_version, uint64_t* last_breaking_version);
 
+  void RecomputeTxnTableVersionsHash() EXCLUDES(mutex_);
+
+  uint64_t GetTxnTableVersionsHash();
+
   virtual CHECKED_STATUS FillHeartbeatResponse(const TSHeartbeatRequestPB* req,
                                                TSHeartbeatResponsePB* resp);
 
@@ -981,6 +985,8 @@ class CatalogManager :
   // This method is thread-safe.
   CHECKED_STATUS InitSysCatalogAsync();
 
+  Result<ReplicationInfoPB> GetTableReplicationInfo(const TabletInfo& tablet_info) const;
+
   // Helper for creating the initial TableInfo state
   // Leaves the table "write locked" with the new info in the
   // "dirty" state field.
@@ -1235,7 +1241,7 @@ class CatalogManager :
 
   void StartTablespaceBgTaskIfStopped();
 
-  std::shared_ptr<YsqlTablespaceManager> GetTablespaceManager();
+  std::shared_ptr<YsqlTablespaceManager> GetTablespaceManager() const;
 
   Result<boost::optional<ReplicationInfoPB>> GetTablespaceReplicationInfoWithRetry(
       const TablespaceId& tablespace_id);
@@ -1524,7 +1530,7 @@ class CatalogManager :
   // satisfied, and not the individual min_num_replicas in each placement block.
   Result<TSDescriptorVector> FindTServersForPlacementInfo(
       const PlacementInfoPB& placement_info,
-      const TSDescriptorVector& ts_descs);
+      const TSDescriptorVector& ts_descs) const;
 
   // Using the TServer info in 'ts_descs', return the TServers that match 'pplacement_block'.
   // Returns error if there aren't enough TServers to fulfill the min_num_replicas requirement
@@ -1586,6 +1592,9 @@ class CatalogManager :
 
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};
+
+  // Hash of transaction status table ids and versions.
+  std::atomic<uint64_t> txn_table_versions_hash_{0};
 
   rpc::ScheduledTaskTracker refresh_yql_partitions_task_;
 

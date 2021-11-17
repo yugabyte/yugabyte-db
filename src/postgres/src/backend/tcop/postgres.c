@@ -3993,7 +3993,12 @@ yb_is_restart_possible(const ErrorData* edata,
 		return false;
 	}
 
-	if (is_read_restart_error && attempt >= YBCGetMaxReadRestartAttempts())
+	/*
+	 * Retries for kReadRestart are performed indefinitely in case the true READ COMMITTED isolation
+	 * level implementation is used.
+	 */
+	if (!IsYBReadCommitted() &&
+			(is_read_restart_error && attempt >= YBCGetMaxReadRestartAttempts()))
 	{
 		if (yb_debug_log_internal_restarts)
 			elog(LOG, "Restart isn't possible, we're out of read restart attempts (%d)",

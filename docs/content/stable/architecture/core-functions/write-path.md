@@ -20,12 +20,12 @@ and heavily relies on the single-tablet write path described here.
 ## Step 1. YQL layer processes the write operation
 
 The user-issued write request first hits the YQL query layer on a port with the appropriate API, which is either YSQL or YCQL. This user request is translated by the YQL layer into an internal key.
-Recall from the [sharding](../../docdb-sharding/) section that each key is owned
+Recall from the [sharding](../../concepts/sharding/) section that each key is owned
 by exactly one tablet. This tablet as well as the YB-TServers hosting it can easily be determined by
 making an RPC call to the YB-Master. The YQL layer makes this RPC call to determine the
 tablet/YB-TServer owning the key and caches the result for future use.
 
-YugabyteDB has a [smart client](../../../reference/drivers/ysql-client-drivers/#java) that can cache the location of the
+YugabyteDB has a [smart client](../../../develop/client-drivers/java/) that can cache the location of the
 tablet directly and can therefore save the extra network hop. This allows it to send the request
 directly to the YQL layer of the appropriate YB-TServer which hosts the tablet leader. If the YQL
 layer finds that the tablet leader is hosted on the local node, the RPC call becomes a local

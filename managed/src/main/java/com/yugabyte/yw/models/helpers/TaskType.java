@@ -147,6 +147,8 @@ public enum TaskType {
 
   DeleteBackup("subtasks.DeleteBackup"),
 
+  DeleteCustomerConfig("DeleteCustomerConfig"),
+
   UpdateNodeProcess("subtasks.nodes.UpdateNodeProcess"),
 
   DeleteTableFromUniverse("subtasks.DeleteTableFromUniverse"),
@@ -174,6 +176,8 @@ public enum TaskType {
   UpdateSoftwareVersion("subtasks.UpdateSoftwareVersion"),
 
   WaitForDataMove("subtasks.WaitForDataMove"),
+
+  WaitForLeaderBlacklistCompletion("subtasks.WaitForLeaderBlacklistCompletion"),
 
   WaitForLoadBalance("subtasks.WaitForLoadBalance"),
 

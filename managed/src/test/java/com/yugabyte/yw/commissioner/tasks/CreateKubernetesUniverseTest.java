@@ -15,10 +15,10 @@ import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.anyLong;
-import static org.mockito.Matchers.anyMap;
-import static org.mockito.Matchers.eq;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -57,19 +57,17 @@ import play.libs.Json;
 @RunWith(MockitoJUnitRunner.class)
 public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
 
-  Universe defaultUniverse;
+  private Universe defaultUniverse;
 
-  YBClient mockClient;
+  private static final String NODE_PREFIX = "demo-universe";
+  private static final String YB_SOFTWARE_VERSION = "1.0.0";
+  private String nodePrefix1, nodePrefix2, nodePrefix3;
+  private String ns, ns1, ns2, ns3;
 
-  String nodePrefix = "demo-universe";
-  String ybSoftwareVersion = "1.0.0";
-  String nodePrefix1, nodePrefix2, nodePrefix3;
-  String ns, ns1, ns2, ns3;
-
-  Map<String, String> config = new HashMap<>();
-  Map<String, String> config1 = new HashMap<>();
-  Map<String, String> config2 = new HashMap<>();
-  Map<String, String> config3 = new HashMap<>();
+  private Map<String, String> config = new HashMap<>();
+  private Map<String, String> config1 = new HashMap<>();
+  private Map<String, String> config2 = new HashMap<>();
+  private Map<String, String> config3 = new HashMap<>();
 
   private void setupUniverseMultiAZ(
       boolean setMasters, boolean enabledYEDIS, boolean setNamespace) {
@@ -86,18 +84,18 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     userIntent.masterGFlags = new HashMap<>();
     userIntent.tserverGFlags = new HashMap<>();
     userIntent.universeName = "demo-universe";
-    userIntent.ybSoftwareVersion = ybSoftwareVersion;
+    userIntent.ybSoftwareVersion = YB_SOFTWARE_VERSION;
     userIntent.enableYEDIS = enabledYEDIS;
     defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
     Universe.saveDetails(
         defaultUniverse.universeUUID,
-        ApiUtils.mockUniverseUpdater(userIntent, nodePrefix, setMasters /* setMasters */));
+        ApiUtils.mockUniverseUpdater(userIntent, NODE_PREFIX, setMasters /* setMasters */));
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.universeUUID);
     defaultUniverse.updateConfig(
         ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
-    nodePrefix1 = String.format("%s-%s", nodePrefix, az1.code);
-    nodePrefix2 = String.format("%s-%s", nodePrefix, az2.code);
-    nodePrefix3 = String.format("%s-%s", nodePrefix, az3.code);
+    nodePrefix1 = String.format("%s-%s", NODE_PREFIX, az1.code);
+    nodePrefix2 = String.format("%s-%s", NODE_PREFIX, az2.code);
+    nodePrefix3 = String.format("%s-%s", NODE_PREFIX, az3.code);
     ns1 = nodePrefix1;
     ns2 = nodePrefix2;
     ns3 = nodePrefix3;
@@ -157,17 +155,17 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     userIntent.masterGFlags = new HashMap<>();
     userIntent.tserverGFlags = new HashMap<>();
     userIntent.universeName = "demo-universe";
-    userIntent.ybSoftwareVersion = ybSoftwareVersion;
+    userIntent.ybSoftwareVersion = YB_SOFTWARE_VERSION;
     userIntent.enableYEDIS = enabledYEDIS;
     defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
     Universe.saveDetails(
         defaultUniverse.universeUUID,
-        ApiUtils.mockUniverseUpdater(userIntent, nodePrefix, setMasters /* setMasters */));
+        ApiUtils.mockUniverseUpdater(userIntent, NODE_PREFIX, setMasters /* setMasters */));
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.universeUUID);
     defaultUniverse.updateConfig(
         ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
 
-    ns = nodePrefix;
+    ns = NODE_PREFIX;
     if (setNamespace) {
       ns = "demo-ns";
       config.put("KUBECONFIG", "test-kc");
@@ -220,7 +218,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     when(mockKubernetesManager.helmInstall(any(), anyMap(), any(), any(), any(), any()))
         .thenReturn(response);
     // Table RPCs.
-    mockClient = mock(YBClient.class);
+    YBClient mockClient = mock(YBClient.class);
     // WaitForTServerHeartBeats mock.
     ListTabletServersResponse mockResponse = mock(ListTabletServersResponse.class);
     when(mockResponse.getTabletServersCount()).thenReturn(3);
@@ -240,7 +238,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     mockWaits(mockClient);
   }
 
-  List<TaskType> KUBERNETES_CREATE_UNIVERSE_TASKS =
+  private static final List<TaskType> KUBERNETES_CREATE_UNIVERSE_TASKS =
       ImmutableList.of(
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesCommandExecutor,
@@ -259,7 +257,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
       ImmutableMap.of("tableType", "REDIS_TABLE_TYPE", "tableName", "redis");
 
   // Cannot use defaultUniverse.universeUUID in a class field.
-  List<JsonNode> getExpectedCreateUniverseTaskResults() {
+  private List<JsonNode> getExpectedCreateUniverseTaskResults() {
     return ImmutableList.of(
         Json.toJson(ImmutableMap.of("commandType", CREATE_NAMESPACE.name())),
         Json.toJson(ImmutableMap.of("commandType", APPLY_SECRET.name())),
@@ -275,13 +273,13 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
         Json.toJson(ImmutableMap.of()));
   }
 
-  List<Integer> getTaskPositionsToSkip(boolean skipNamespace) {
+  private List<Integer> getTaskPositionsToSkip(boolean skipNamespace) {
     // 3 is WAIT_FOR_PODS of type KubernetesCheckNumPod task.
     // 0 is CREATE_NAMESPACE of type KubernetesCommandExecutor
     return skipNamespace ? ImmutableList.of(0, 3) : ImmutableList.of(3);
   }
 
-  List<Integer> getTaskCountPerPosition(int namespaceTasks, int parallelTasks) {
+  private List<Integer> getTaskCountPerPosition(int namespaceTasks, int parallelTasks) {
     return ImmutableList.of(
         namespaceTasks, parallelTasks, parallelTasks, 0, 1, 3, 1, 1, 1, 1, 1, 1);
   }
@@ -357,7 +355,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
 
     verify(mockKubernetesManager, times(1))
         .helmInstall(
-            eq(ybSoftwareVersion),
+            eq(YB_SOFTWARE_VERSION),
             eq(config1),
             eq(defaultProvider.uuid),
             eq(nodePrefix1),
@@ -365,7 +363,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
             expectedOverrideFile.capture());
     verify(mockKubernetesManager, times(1))
         .helmInstall(
-            eq(ybSoftwareVersion),
+            eq(YB_SOFTWARE_VERSION),
             eq(config2),
             eq(defaultProvider.uuid),
             eq(nodePrefix2),
@@ -373,7 +371,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
             expectedOverrideFile.capture());
     verify(mockKubernetesManager, times(1))
         .helmInstall(
-            eq(ybSoftwareVersion),
+            eq(YB_SOFTWARE_VERSION),
             eq(config3),
             eq(defaultProvider.uuid),
             eq(nodePrefix3),
@@ -426,17 +424,17 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
 
     verify(mockKubernetesManager, times(1))
         .helmInstall(
-            eq(ybSoftwareVersion),
+            eq(YB_SOFTWARE_VERSION),
             eq(config),
             eq(defaultProvider.uuid),
-            eq(nodePrefix),
+            eq(NODE_PREFIX),
             eq(ns),
             expectedOverrideFile.capture());
 
     String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
     assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
 
-    verify(mockKubernetesManager, times(1)).getPodInfos(config, nodePrefix, ns);
+    verify(mockKubernetesManager, times(1)).getPodInfos(config, NODE_PREFIX, ns);
     verify(mockSwamperHelper, times(1)).writeUniverseTargetJson(defaultUniverse.universeUUID);
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();

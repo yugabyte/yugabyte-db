@@ -128,7 +128,6 @@ provisioner: kubernetes.io/aws-ebs
 parameters:
   type: gp2
   zone: us-east-1c
-
 ```
 
 Apply the above configuration to your cluster.

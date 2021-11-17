@@ -5,17 +5,17 @@
 # https://docs.netlify.com/configure-builds/file-based-configuration/#deploy-contexts
 
 [context.deploy-preview.environment]
-  HUGO_VERSION = "0.89.1"
+  HUGO_VERSION = "0.89.2"
   NODE_VERSION = "16"
   CXXFLAGS = "-std=c++17"
 
 [context.branch-deploy.environment]
-  HUGO_VERSION = "0.89.1"
+  HUGO_VERSION = "0.89.2"
   NODE_VERSION = "16"
   CXXFLAGS = "-std=c++17"
 
 [context.production.environment]
-  HUGO_VERSION = "0.89.1"
+  HUGO_VERSION = "0.89.2"
   NODE_VERSION = "16"
   CXXFLAGS = "-std=c++17"
 
@@ -35,13 +35,14 @@
   to = "/images/:splat"
   status = 200
 
-# Legal, FAQ, and release notes should always point to the latest,
-# even if we have content in the older version's folder.
+# Bypass the landing page
 
 [[redirects]]
   from = "/"
   to = "/latest/"
   force = true
+
+# Redirect older versions of specific sections
 
 [[redirects]]
   from = "/:version/comparisons/*"
@@ -59,6 +60,17 @@
   force = true
 
 [[redirects]]
+  from = "/:version/integrations/*"
+  to = "/latest/integrations/"
+  force = true
+
+# (this is the old version of integrations)
+[[redirects]]
+  from = "/:version/develop/ecosystem-integrations/*"
+  to = "/latest/integrations/"
+  force = true
+
+[[redirects]]
   from = "/:version/legal/*"
   to = "/latest/legal/:splat"
   force = true
@@ -68,30 +80,19 @@
   to = "/latest/releases/:splat"
   force = true
 
-# Troubleshooting should point to latest
-
 [[redirects]]
   from = "/:version/troubleshoot/*"
   to = "/latest/troubleshoot/:splat"
   force = true
 
-# Cloud should point to latest
+[[redirects]]
+  from = "/:version/yedis/*"
+  to = "/latest/yedis/"
+  force = true
 
 [[redirects]]
   from = "/:version/yugabyte-cloud/*"
   to = "/latest/yugabyte-cloud/"
-  force = true
-
-# Integrations should point to latest
-
-[[redirects]]
-  from = "/:version/integrations/*"
-  to = "/latest/integrations/"
-  force = true
-
-[[redirects]]
-  from = "/:version/develop/ecosystem-integrations/*"
-  to = "/latest/integrations/"
   force = true
 
 # Stable quick-starts need defaults,
@@ -110,13 +111,6 @@
 [[redirects]]
   from = "/stable/quick-start/explore/"
   to = "/stable/quick-start/explore/ysql/"
-  force = true
-
-# Misc old docs with paths that have changed
-
-[[redirects]]
-  from = "/v1.1/explore/cloud-native/binary/observability/"
-  to = "/latest/explore/observability/"
   force = true
 
 # Docs prior to v1.3 are not online

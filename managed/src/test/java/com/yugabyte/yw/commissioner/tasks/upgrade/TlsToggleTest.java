@@ -4,6 +4,8 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.MASTER;
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.TSERVER;
+import static com.yugabyte.yw.models.TaskInfo.State.Failure;
+import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.fail;
@@ -56,9 +58,9 @@ public class TlsToggleTest extends UpgradeTaskTest {
 
   @Rule public MockitoRule rule = MockitoJUnit.rule();
 
-  @InjectMocks TlsToggle tlsToggle;
+  @InjectMocks private TlsToggle tlsToggle;
 
-  List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE =
+  private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.AnsibleConfigureServers,
@@ -69,7 +71,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
           TaskType.WaitForEncryptionKeyInMemory,
           TaskType.SetNodeState);
 
-  List<TaskType> NON_ROLLING_UPGRADE_TASK_SEQUENCE =
+  private static final List<TaskType> NON_ROLLING_UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.AnsibleConfigureServers,
@@ -78,13 +80,14 @@ public class TlsToggleTest extends UpgradeTaskTest {
           TaskType.SetNodeState,
           TaskType.WaitForServer);
 
-  List<TaskType> NON_RESTART_UPGRADE_TASK_SEQUENCE =
+  private static final List<TaskType> NON_RESTART_UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.AnsibleConfigureServers,
           TaskType.SetFlagInMemory,
           TaskType.SetNodeState);
 
+  @Override
   @Before
   public void setUp() {
     super.setUp();
@@ -350,7 +353,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
 
     defaultUniverse.refresh();
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
-    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertEquals(Failure, taskInfo.getTaskState());
     assertEquals(0, taskInfo.getSubTasks().size());
   }
 
@@ -364,7 +367,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
 
     defaultUniverse.refresh();
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
-    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertEquals(Failure, taskInfo.getTaskState());
     assertEquals(0, taskInfo.getSubTasks().size());
   }
 
@@ -379,7 +382,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
 
     defaultUniverse.refresh();
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
-    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertEquals(Failure, taskInfo.getTaskState());
     assertEquals(0, taskInfo.getSubTasks().size());
   }
 
@@ -491,7 +494,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
 
     assertEquals((int) expectedValues.first, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
-    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    assertEquals(Success, taskInfo.getTaskState());
     verify(mockNodeManager, times(expectedValues.second)).nodeCommand(any(), any());
 
     Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
@@ -626,7 +629,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
 
     assertEquals((int) expectedValues.first, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
-    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    assertEquals(Success, taskInfo.getTaskState());
     verify(mockNodeManager, times(expectedValues.second)).nodeCommand(any(), any());
 
     Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());

@@ -12,9 +12,9 @@ isTocNested: true
 showAsideToc: true
 ---
 
-  <ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb">
 
-<li>
+  <li>
     <a href="/latest/yugabyte-platform/create-deployments/create-universe-multi-zone" class="nav-link active">
       <i class="fas fa-building" aria-hidden="true"></i>
 Generic</a>
@@ -29,7 +29,7 @@ Generic</a>
 
 </ul>
 
-This section describes how to create a YugabyteDB universe using any cloud provider, except Kubernetes, in one geographic region across multiple availability zones.
+This document describes how to create a YugabyteDB universe using any cloud provider, except Kubernetes, in one geographic region across multiple availability zones.
 
 ## Prerequisites
 
@@ -48,75 +48,71 @@ The **Provider**, **Regions**, and **Instance Type** fields are initialized base
 To create a multi-zone universe using [Google Cloud provider (GCP)](../../configure-yugabyte-platform/set-up-cloud-provider/gcp), perform the following:
 
 - Enter a universe name (**helloworld1**).
+
 - Enter the region (**Oregon**).
+
 - Change the instance type (**n1-standard-8**).
-- Accept default values for all of the remaining fields (replication factor = 3, number of nodes = 3).
-- Click **Create**, as shown in the following illustration.
 
-![Create Universe on GCP](/images/ee/create-univ-multi-zone.png)
+- Accept default values for all of the remaining fields (replication factor = 3, number of nodes = 3), as per the following illustration:<br><br>
 
-The following illustration shows a newly-created niverse in Pending state:
+  ![Create Universe on GCP](/images/yp/create-uni-multi-zone-1.png)
 
-![Dashboard with Pending Universe](/images/ee/pending-univ-dashboard.png)
+- Click **Create**.
 
 ## Examine the universe
 
-The universe view consists of several tabs that provide different information about this universe.
+The **Universes** view allows you to examine various aspects of the universe:
 
-### The Overview tab
-
-The following illustration shows the **Overview** tab:
-
-![Detail for a Pending Universe](/images/ee/pending-univ-detail.png)
-
-### The Tasks tab 
-
-The following illustration shows the **Tasks** tab that provides information about the state of tasks currently running on the universe, as well as the tasks that have run in the past against this universe:
-
-![Tasks for a Pending Universe](/images/ee/pending-univ-tasks.png)
-
-### The Nodes tab
-
-The following illustration shows the **Nodes** tab that allows you to see a list of the underlying nodes for the universe:
-
-![Nodes for a Pending Universe](/images/ee/pending-univ-nodes.png)
-
-Note that in the preceding illustration, the cloud provider instances are still being created.
-
-You can use this tab to open the cloud provider's instances page. For example, in case of GCP, if you navigate to **Compute Engine > VM Instances** and search for instances that contain **helloworld1** in their name, you should see a list of instances similar to the following illustration:
-
-![Instances for a Pending Universe](/images/ee/multi-zone-universe-gcp-instances.png)
+- **Overview** provides the information on the current Yugabyte Platform version, the number of nodes included in the primary cluster, the cost associated with running the universe, the CPU and disk usage, the geographical location of the nodes, the operations per second and average latency, the number of different types of tables, as well as the health monitor.
+- **Tables** provides details about YSQL, YCQL, and YEDIS tables included in the universe.
+- **Nodes** provide details on nodes included in the universe and allows you to perform actions on a specific node (connect, stop, remove, display live and slow queries, download logs). You can also use **Nodes** to open the cloud provider's instances page. For example, in case of GCP, if you navigate to **Compute Engine > VM Instances** and search for instances that contain the name of your universe in the instances name, you should see a list of instances.
+- **Metrics** displays graphs representing information on operations, latency, and other parameters for each type of node and server.
+- **Queries** displays details about live and slow queries that you can filter by column and text.
+- **Replication** provides information about replication in the universe.
+- **Tasks** provides details about the state of tasks running on the universe, as well as the tasks that have run in the past against this universe.
+- **Backups** displays information about scheduled backups, if any, and allows you to create, restore, and delete backups.
+- **Health** displays the detailed performance status of the nodes and components involved in their operation. **Health** also allows you to pause health check alerts.
 
 ## Connect to a database node
 
-Once the universe is ready, the **Overview** tab should appear similar to the following illustration:
+Once the universe is ready, its **Overview** tab should appear similar to the following illustration:
 
-![Multi-zone universe ready](/images/ee/multi-zone-universe-ready.png)
+![Multi-zone universe ready](/images/yp/multi-zone-universe-ready-1.png)
 
 You connect to a database node as follows: 
 
-- Open the **Nodes** tab to find a list of the IP addresses of the available nodes that have been created and configured.
+- Open the **Nodes** tab to find a list of the IP addresses of the available nodes that have been created and configured, as shown in the following illustration:<br>
 
-- Click **Connect**, as shown in the following illustration:
+  ![Multi-zone universe nodes](/images/yp/multi-zone-universe-nodes-1.png)
 
-  ![Multi-zone universe nodes](/images/ee/multi-zone-universe-nodes.png)
 
-- Use the **Access Your Cluster** dialog to connect to the nodes, as shown in the following illustration:
 
-  ![Multi-zone universe nodes](/images/ee/multi-zone-universe-nodes-connect.png)
+- Determine the node to which you wish to connect and click the corresponding **Action > Connect**.
 
-For example, to connect to the first node called **yb-dev-helloworld1-n1**, copy the first command displayed in the **Access Your Cluster** dialog, and then run it from the Yugabyte Platform server, as follows:
+- Copy the SSH command displayed in the **Access your node** dialog shown in the following illustration:
 
-```
-centos@yugaware-1:~$ sudo ssh -i /opt/yugabyte/yugaware/data/keys/b933ff7a-be8a-429a-acc1-145882d90dc0/yb-dev-google-compute-key.pem centos@10.138.0.4
+  ![Multi-zone universe connect](/images/yp/multi-zone-universe-connect-2.png)
 
-Are you sure you want to continue connecting (yes/no)? yes
-[centos@yb-dev-helloworld1-n1 ~]$
-```
+- Run the preceding command from the Yugabyte Platform server, as follows:
+
+  ```sh
+  centos@yugaware-1:~$ sudo ssh -i /opt/yugabyte/yugaware/data/keys/109e95b5-bf08-4a8f-a7fb-2d2866865e15/yb-gcp-config-key.pem -ostricthostkeychecking=no -p 54422 yugabyte@10.150.1.56
+  
+  Are you sure you want to continue connecting (yes/no)? yes
+  [centos@yb-dev-helloworld1-n1 ~]$
+  ```
 
 ## Run workloads
 
-Yugabyte Platform includes a number of sample applications. You can run one of the key-value workloads against the YCQL API and the YEDIS API as follows:
+Yugabyte Platform includes a number of sample applications enclosed in Docker containers. 
+
+To access instructions on how to run sample applications, select your universe's **Overview** and then click **Actions > Run Sample Apps** to open the **Run Sample Apps** dialog shown in the following illustration:
+
+![Multi-zone universe sample apps](/images/yp/multi-zone-universe-sample-apps-1.png)
+
+<!-- 
+
+You can run one of the key-value workloads against the YCQL API and the YEDIS API as follows:
 
 - Install Java by executing the following command:
 
@@ -167,7 +163,7 @@ $ java -jar /home/yugabyte/tserver/java/yb-sample-apps.jar \
 
 The sample application produces output similar to the following and reports some statistics in the steady state:
 
-```
+```output
 Created table: [CREATE TABLE IF NOT EXISTS CassandraKeyValue (k varchar, v blob, primary key (k));]
 ...
 Read: 47388.10 ops/sec (0.67 ms/op), 816030 total ops  | Write: 1307.80 ops/sec (1.53 ms/op), 22900 total ops
@@ -175,17 +171,71 @@ Read: 47419.99 ops/sec (0.67 ms/op), 1053156 total ops | Write: 1303.85 ops/sec 
 Read: 47220.98 ops/sec (0.68 ms/op), 1289285 total ops | Write: 1311.67 ops/sec (1.52 ms/op), 35979 total ops
 ```
 
-If you open the **Metrics** tab of the universe, you should see the metrics graphs, as shown in the following illustration:
+-->
+
+The **Metrics** tab of the universe allows you to see the metrics graphs, where server-side metrics tally with the client-side metrics reported by the load tester.
+
+<!--
 
 ![YCQL Load Metrics](/images/ee/multi-zone-universe-ycql-load-metrics.png)
 
-Note that these server-side metrics tally with the client-side metrics reported by the load tester.
+-->
 
-You can also view metrics at a per-node level, as shown in the following illustration:
+You can also view metrics at a per-node level.
+
+<!--
 
 ![YCQL Load Metrics Per Node](/images/ee/multi-zone-universe-ycql-load-metrics-per-node.png)
 
-You should stop the load tester.
+-->
+
+You can stop the load tester as follows:
+
+- Find the container by executing the following command:
+
+  ```shell
+  user@yugaware-1:~$ sudo docker container ls | grep "yugabytedb/yb-sample-apps"
+  ```
+
+  <br>Expect an output similar to the following:
+
+  ```output
+  <container_id> yugabytedb/yb-sample-apps "/usr/bin/java -jar …" 17 seconds ago Up 16 seconds                                                                                                            jovial_morse
+  ```
+
+  <br>For example, if the container ID is ac144a49d57d, you would see the following output:
+
+  ```output
+  ac144a49d57d yugabytedb/yb-sample-apps "/usr/bin/java -jar …" 17 seconds ago Up 16 seconds                                                                                                            jovial_morse
+  ```
+
+- Stop the container by executing the following command:
+
+  ```shell
+  user@yugaware-1:~$ sudo docker container stop <container_id>
+  ```
+
+  <br>Expect the following output:
+
+  ```output
+  <container_id>
+  ```
+  
+  <br>For example, for a container with ID ac144a49d57d, you would need to execute the following command:
+  
+  ```shell
+  user@yugaware-1:~$ sudo docker container stop ac144a49d57d
+  ```
+  
+  <br>You would see the following output:
+  
+  ```output
+  ac144a49d57d
+  ```
+
+
+
+<!--
 
 ### RedisKeyValue workload
 
@@ -204,7 +254,7 @@ $ java -jar /home/yugabyte/tserver/java/yb-sample-apps.jar \
 
 The sample application produces output similar to the following and reports some statistics in the steady state:
 
-```
+```output
 Read: 50069.15 ops/sec (0.64 ms/op), 657550 total ops  | Write: 1470.87 ops/sec (1.36 ms/op), 18849 total ops
 Read: 50209.09 ops/sec (0.64 ms/op), 908653 total ops  | Write: 1454.87 ops/sec (1.37 ms/op), 26125 total ops
 Read: 50016.18 ops/sec (0.64 ms/op), 1158794 total ops | Write: 1463.26 ops/sec (1.37 ms/op), 33443 total ops
@@ -216,13 +266,15 @@ If you open the **Metrics** tab of the universe, you should see the metrics grap
 
 Note that these server-side metrics tally with the client-side metrics reported by the load tester.
 
-You shoudl stop the sample application.
+You should stop the sample application.
+
+-->
 
 ## Examine data
 
 You can connect to the YCQL service by executing the following command:
 
-```
+```sh
 /home/yugabyte/tserver/bin/ycqlsh <ip_address_of_the_node>
 ```
 
@@ -241,7 +293,7 @@ CREATE TABLE ybdemo_keyspace.cassandrakeyvalue (
 ycqlsh> SELECT * FROM ybdemo_keyspace.cassandrakeyvalue LIMIT 5;
 ```
 
-```
+```output
  k          | v
 ------------+-----------------------------------------
  key:101323 | 0x4276616c3a3130313332336be1dd6597e2...
@@ -255,13 +307,13 @@ ycqlsh> SELECT * FROM ybdemo_keyspace.cassandrakeyvalue LIMIT 5;
 
 You can connect to the YEDIS service by executing the following command:
 
-```
+```sh
 /home/yugabyte/tserver/bin/redis-cli -h <ip_address_of_the_node>
 ```
 
 You can view the data by running the following commands:
 
-```
+```sh
 10.138.0.4:6379> GET key:0
 "Bval:0\x1b\x942\xea\xf0Q\xd1O\xdb\xf8...=V"
 10.138.0.4:6379> GET key:1

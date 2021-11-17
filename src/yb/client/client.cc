@@ -62,6 +62,7 @@
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_util.h"
+#include "yb/master/catalog_manager.h"
 #include "yb/util/monotime.h"
 #include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/yql/redis/redisserver/redis_parser.h"
@@ -147,6 +148,10 @@ using yb::master::GetCDCStreamRequestPB;
 using yb::master::GetCDCStreamResponsePB;
 using yb::master::UpdateCDCStreamRequestPB;
 using yb::master::UpdateCDCStreamResponsePB;
+using yb::master::GetMasterClusterConfigRequestPB;
+using yb::master::GetMasterClusterConfigResponsePB;
+using yb::master::CreateTransactionStatusTableRequestPB;
+using yb::master::CreateTransactionStatusTableResponsePB;
 using yb::rpc::Messenger;
 using std::string;
 using std::vector;
@@ -382,6 +387,26 @@ Status YBClientBuilder::DoBuild(rpc::Messenger* messenger, std::unique_ptr<YBCli
   c->data_->default_rpc_timeout_ = data_->default_rpc_timeout_;
   c->data_->wait_for_leader_election_on_init_ = data_->wait_for_leader_election_on_init_;
 
+  int callback_threadpool_size = data_->threadpool_size_;
+  if (callback_threadpool_size == YBClientBuilder::Data::kUseNumReactorsAsNumThreads) {
+    callback_threadpool_size = c->data_->messenger_->num_reactors();
+  }
+  c->data_->use_threadpool_for_callbacks_ = callback_threadpool_size != 0;
+  if (callback_threadpool_size == 0) {
+    callback_threadpool_size = 1;
+  }
+
+  // Not using an underscore because we sometimes get shortened thread names like "master_c" and it
+  // is clearer to see "mastercb" instead.
+  ThreadPoolBuilder tpb(data_->client_name_ + "cb");
+  tpb.set_max_threads(callback_threadpool_size);
+  std::unique_ptr<ThreadPool> tp;
+  RETURN_NOT_OK_PREPEND(
+      tpb.Build(&tp),
+      Format("Could not create callback threadpool with $0 max threads",
+             callback_threadpool_size));
+  c->data_->threadpool_ = std::move(tp);
+
   // Let's allow for plenty of time for discovering the master the first
   // time around.
   auto deadline = CoarseMonoClock::Now() + c->default_admin_operation_timeout();
@@ -404,13 +429,6 @@ Status YBClientBuilder::DoBuild(rpc::Messenger* messenger, std::unique_ptr<YBCli
                         "Could not determine local host names");
   c->data_->cloud_info_pb_ = data_->cloud_info_pb_;
   c->data_->uuid_ = data_->uuid_;
-  if (data_->threadpool_size_ > 0) {
-    ThreadPoolBuilder tpb(data_->client_name_ + "_cb");
-    tpb.set_max_threads(data_->threadpool_size_);
-    std::unique_ptr<ThreadPool> tp;
-    RETURN_NOT_OK_PREPEND(tpb.Build(&tp), "Could not create callback threadpool");
-    c->data_->cb_threadpool_ = std::move(tp);
-  }
 
   client->swap(c);
   return Status::OK();
@@ -453,8 +471,8 @@ void YBClient::Shutdown() {
   if (data_->meta_cache_) {
     data_->meta_cache_->Shutdown();
   }
-  if (data_->cb_threadpool_) {
-    data_->cb_threadpool_->Shutdown();
+  if (data_->threadpool_) {
+    data_->threadpool_->Shutdown();
   }
   data_->CompleteShutdown();
 }
@@ -1579,6 +1597,48 @@ Result<bool> YBClient::IsLoadBalancerIdle() {
   }
 }
 
+Status YBClient::ModifyTablePlacementInfo(const YBTableName& table_name,
+                                          master::PlacementInfoPB* replicas) {
+  master::ReplicationInfoPB replication_info;
+  // Merge the obtained info with the existing table replication info.
+  std::shared_ptr<client::YBTable> table;
+  RETURN_NOT_OK_PREPEND(OpenTable(table_name, &table), "Fetching table schema failed!");
+
+  // If it does not exist, fetch the cluster replication info.
+  if (!table->replication_info()) {
+    GetMasterClusterConfigRequestPB req;
+    GetMasterClusterConfigResponsePB resp;
+    CALL_SYNC_LEADER_MASTER_RPC(req, resp, GetMasterClusterConfig);
+    master::SysClusterConfigEntryPB* sys_cluster_config_entry = resp.mutable_cluster_config();
+    replication_info.CopyFrom(sys_cluster_config_entry->replication_info());
+    // TODO(bogdan): Figure out how to handle read replias and leader affinity.
+    replication_info.clear_read_replicas();
+    replication_info.clear_affinitized_leaders();
+  } else {
+    // Table replication info exists, copy it over.
+    replication_info.CopyFrom(table->replication_info().get());
+  }
+
+  // Put in the new live placement info.
+  replication_info.set_allocated_live_replicas(replicas);
+
+  std::unique_ptr<yb::client::YBTableAlterer> table_alterer(NewTableAlterer(table_name));
+  return table_alterer->replication_info(replication_info)->Alter();
+}
+
+Status YBClient::CreateTransactionsStatusTable(const string& table_name) {
+  if (table_name.rfind(yb::master::kTransactionTablePrefix, 0) != 0) {
+    return STATUS_FORMAT(
+        InvalidArgument, "Name '$0' for transaction table does not start with '$1'", table_name,
+        yb::master::kTransactionTablePrefix);
+  }
+  master::CreateTransactionStatusTableRequestPB req;
+  master::CreateTransactionStatusTableResponsePB resp;
+  req.set_table_name(table_name);
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, CreateTransactionStatusTable);
+  return Status::OK();
+}
+
 Status YBClient::GetTabletsFromTableId(const string& table_id,
                                        const int32_t max_tablets,
                                        RepeatedPtrField<TabletLocationsPB>* tablets) {
@@ -1709,7 +1769,7 @@ rpc::ProxyCache& YBClient::proxy_cache() const {
 }
 
 ThreadPool *YBClient::callback_threadpool() {
-  return data_->cb_threadpool_.get();
+  return data_->use_threadpool_for_callbacks_ ? data_->threadpool_.get() : nullptr;
 }
 
 const std::string& YBClient::proxy_uuid() const {
@@ -1824,6 +1884,12 @@ Result<HostPort> YBClient::RefreshMasterLeaderAddress() {
   RETURN_NOT_OK(data_->SetMasterServerProxy(deadline));
 
   return GetMasterLeaderAddress();
+}
+
+void YBClient::RefreshMasterLeaderAddressAsync() {
+  data_->SetMasterServerProxyAsync(
+      CoarseMonoClock::Now() + default_admin_operation_timeout(),
+      false /* skip_resolution */, true /* wait_for_leader_election */, /* callback */ [](auto){});
 }
 
 Status YBClient::RemoveMasterFromClient(const HostPort& remove) {

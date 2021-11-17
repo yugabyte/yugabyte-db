@@ -21,15 +21,20 @@ public class PlacementInfo {
     // The cloud provider code.
     @ApiModelProperty public String code;
     // The list of region in this cloud we want to place data in.
-    @ApiModelProperty public List<PlacementRegion> regionList = new ArrayList<PlacementRegion>();
+    @ApiModelProperty public List<PlacementRegion> regionList = new ArrayList<>();
+    // UUID of default region. For universes with more AZs than RF, the default
+    // placement for user tables will be RF AZs in the default region. This is
+    // commonly encountered in geo-partitioning use cases.
+    @ApiModelProperty public UUID defaultRegion;
 
     @Override
     public String toString() {
-      String ret = "Cloud=" + code + " ";
+      StringBuilder ret = new StringBuilder("Cloud=").append(code).append(" ");
       for (PlacementRegion region : regionList) {
-        ret += region;
+        ret.append(region);
       }
-      return ret;
+      ret.append("; Default region=").append(defaultRegion);
+      return ret.toString();
     }
   }
 

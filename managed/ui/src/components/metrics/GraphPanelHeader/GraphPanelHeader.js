@@ -34,7 +34,14 @@ const filterTypes = [
   { label: 'Custom', type: 'custom' }
 ];
 
+const intervalTypes = [
+  { label: 'Off', selectedLabel: 'Off', value: 'off' },
+  { label: 'Every 1 minute', selectedLabel: '1 minute', value: 60000 },
+  { label: 'Every 2 minutes', selectedLabel: '2 minute', value: 120000 }
+];
+
 const DEFAULT_FILTER_KEY = 0;
+const DEFAULT_INTERVAL_KEY = 0;
 export const DEFAULT_GRAPH_FILTER = {
   startMoment: moment().subtract(
     filterTypes[DEFAULT_FILTER_KEY].value,
@@ -74,7 +81,9 @@ class GraphPanelHeader extends Component {
       endMoment: moment(),
       startMoment: moment().subtract('1', 'hours'),
       nodePrefix: currentUniversePrefix,
-      nodeName: 'all'
+      nodeName: 'all',
+      refreshInterval: intervalTypes[DEFAULT_INTERVAL_KEY].value,
+      refreshIntervalLabel: intervalTypes[DEFAULT_INTERVAL_KEY].selectedLabel
     };
     if (isValidObject(currentQuery) && Object.keys(currentQuery).length > 1) {
       const filterParams = {
@@ -161,7 +170,15 @@ class GraphPanelHeader extends Component {
   }
 
   shouldComponentUpdate(nextProps, nextState) {
-    return !_.isEqual(nextState, this.state) || !_.isEqual(nextProps.universe, this.props.universe);
+    return (
+      !_.isEqual(nextState, this.state) ||
+      !_.isEqual(nextProps.universe, this.props.universe) ||
+      this.props.prometheusQueryEnabled !== nextProps.prometheusQueryEnabled
+    );
+  }
+
+  componentWillUnmount() {
+    clearInterval(this.refreshInterval);
   }
 
   submitGraphFilters = (type, val) => {
@@ -185,7 +202,17 @@ class GraphPanelHeader extends Component {
     newParams.filterLabel = filterInfo.label;
     newParams.filterType = filterInfo.type;
     newParams.filterValue = filterInfo.value;
+    let refreshIntervalParams = {};
+
+    if (filterInfo.type === 'custom') {
+      clearInterval(this.refreshInterval);
+      refreshIntervalParams = {
+        refreshInterval: intervalTypes[DEFAULT_INTERVAL_KEY].value,
+        refreshIntervalLabel: intervalTypes[DEFAULT_INTERVAL_KEY].selectedLabel
+      };
+    }
     this.setState({
+      ...refreshIntervalParams,
       filterLabel: filterInfo.label,
       filterType: filterInfo.type,
       filterValue: filterInfo.value
@@ -199,6 +226,19 @@ class GraphPanelHeader extends Component {
       this.setState({ startMoment: startMoment, endMoment: endMoment });
       this.updateUrlQueryParams(newParams);
     }
+  };
+
+  // Turns off auto-refresh if the interval type is 'off', otherwise resets the interval
+  handleIntervalChange = (eventKey) => {
+    const intervalInfo = intervalTypes[eventKey] || intervalTypes[DEFAULT_FILTER_KEY];
+    clearInterval(this.refreshInterval);
+    if (intervalInfo.value !== 'off') {
+      this.refreshInterval = setInterval(() => this.refreshGraphQuery(), intervalInfo.value);
+    }
+    this.setState({
+      refreshInterval: intervalInfo.value,
+      refreshIntervalLabel: intervalInfo.selectedLabel
+    });
   };
 
   universeItemChanged = (event) => {
@@ -227,7 +267,7 @@ class GraphPanelHeader extends Component {
   nodeItemChanged = (event) => {
     const newParams = this.state;
     newParams.nodeName = event.target.value;
-    this.setState({ nodeName: event.target.value, currentSelectedNode:event.target.value });
+    this.setState({ nodeName: event.target.value, currentSelectedNode: event.target.value });
     this.updateUrlQueryParams(newParams);
   };
 
@@ -272,22 +312,24 @@ class GraphPanelHeader extends Component {
   render() {
     const {
       origin,
-      universe: { currentUniverse }
+      universe: { currentUniverse },
+      prometheusQueryEnabled
     } = this.props;
+    const { filterType, refreshIntervalLabel } = this.state;
     const universePaused = currentUniverse?.data?.universeDetails?.universePaused;
     let datePicker = null;
     if (this.state.filterLabel === 'Custom') {
       datePicker = (
         <span className="graph-filter-custom">
           <DateTimePicker
-            placeholder = 'MMM dd, yyyy, hh:mm a'
+            placeholder="MMM dd, yyyy, hh:mm a"
             defaultValue={this.state.startMoment.toDate()}
             onChange={this.handleStartDateChange}
             max={new Date()}
           />
           &ndash;
           <DateTimePicker
-            placeholder = 'MMM dd, yyyy, hh:mm a'
+            placeholder="MMM dd, yyyy, hh:mm a"
             defaultValue={this.state.endMoment.toDate()}
             onChange={this.handleEndDateChange}
             max={new Date()}
@@ -303,7 +345,7 @@ class GraphPanelHeader extends Component {
     }
 
     const self = this;
-    const menuItems = filterTypes.map(function (filter, idx) {
+    const menuItems = filterTypes.map((filter, idx) => {
       const key = 'graph-filter-' + idx;
       if (filter.type === 'divider') {
         return <MenuItem divider key={key} />;
@@ -322,6 +364,20 @@ class GraphPanelHeader extends Component {
       );
     });
 
+    const intervalMenuItems = intervalTypes.map((interval, idx) => {
+      const key = 'graph-interval-' + idx;
+      return (
+        <MenuItem
+          onSelect={self.handleIntervalChange}
+          key={key}
+          eventKey={idx}
+          active={interval.value === self.state.refreshInterval}
+        >
+          {interval.label}
+        </MenuItem>
+      );
+    });
+
     let universePicker = <span />;
     if (origin === 'customer') {
       universePicker = (
@@ -333,8 +389,11 @@ class GraphPanelHeader extends Component {
       );
     }
     // TODO: Need to fix handling of query params on Metrics tab
-    const liveQueriesLink = this.state.currentSelectedUniverse && this.state.nodeName !== 'all' &&
+    const liveQueriesLink =
+      this.state.currentSelectedUniverse &&
+      this.state.nodeName !== 'all' &&
       `/universes/${this.state.currentSelectedUniverse.universeUUID}/queries?nodeName=${this.state.nodeName}`;
+
     return (
       <YBPanelItem
         className="graph-panel"
@@ -355,33 +414,67 @@ class GraphPanelHeader extends Component {
                     selectedUniverse={this.state.currentSelectedUniverse}
                     selectedNode={this.state.currentSelectedNode}
                   />
-                  <YBButtonLink
-                    btnIcon="fa fa-refresh"
-                    btnClass="btn btn-default refresh-btn"
-                    onClick={this.refreshGraphQuery}
-                  />
-                  {liveQueriesLink && !universePaused &&
-                    <Link to={liveQueriesLink} style={{marginLeft: '15px'}}>
+                  {liveQueriesLink && !universePaused && (
+                    <Link to={liveQueriesLink} style={{ marginLeft: '15px' }}>
                       <i className="fa fa-search" /> See Queries
                     </Link>
-                  }
+                  )}
                 </div>
               </FlexGrow>
               <FlexGrow>
                 <form name="GraphPanelFilterForm">
                   <div id="reportrange" className="pull-right">
-                    <div className="timezone">
-                      Timezone: {moment().format('[UTC]ZZ')}
+                    <div className="timezone">Timezone: {moment().format('[UTC]ZZ')}</div>
+                    <div className="graph-interval-container">
+                      <Dropdown
+                        id="graph-interval-dropdown"
+                        disabled={filterType === 'custom'}
+                        pullRight
+                      >
+                        <Dropdown.Toggle className="dropdown-toggle-button">
+                          Auto Refresh:&nbsp;
+                          <span className="chip" key={`interval-token`}>
+                            <span className="value"> {refreshIntervalLabel}</span>
+                          </span>
+                        </Dropdown.Toggle>
+                        <Dropdown.Menu>{intervalMenuItems}</Dropdown.Menu>
+                      </Dropdown>
+                      <YBButtonLink
+                        btnIcon={'fa fa-refresh'}
+                        btnClass="btn btn-default refresh-btn"
+                        disabled={filterType === 'custom'}
+                        onClick={this.refreshGraphQuery}
+                      />
                     </div>
                     {datePicker}
-                    <Dropdown id="graph-filter-dropdown" pullRight={true}>
-                      {!universePaused &&
+                    <Dropdown id="graphFilterDropdown" className="graph-filter-dropdown" pullRight>
+                      {!universePaused && (
                         <Dropdown.Toggle>
                           <i className="fa fa-clock-o"></i>&nbsp;
                           {this.state.filterLabel}
                         </Dropdown.Toggle>
-                      }
+                      )}
                       <Dropdown.Menu>{menuItems}</Dropdown.Menu>
+                    </Dropdown>
+                    <Dropdown
+                      id="graphSettingDropdown"
+                      className="graph-setting-dropdown"
+                      pullRight
+                    >
+                      <Dropdown.Toggle noCaret>
+                        <i className="graph-settings-icon fa fa-cog"></i>
+                      </Dropdown.Toggle>
+                      <Dropdown.Menu>
+                        <MenuItem className="dropdown-header" header>
+                          VIEW OPTIONS
+                        </MenuItem>
+                        <MenuItem divider />
+                        <MenuItem onSelect={self.props.togglePrometheusQuery}>
+                          {prometheusQueryEnabled
+                            ? 'Disable Prometheus query'
+                            : 'Enable Prometheus query'}
+                        </MenuItem>
+                      </Dropdown.Menu>
                     </Dropdown>
                   </div>
                 </form>

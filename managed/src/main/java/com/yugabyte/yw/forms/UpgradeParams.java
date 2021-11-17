@@ -39,7 +39,7 @@ public class UpgradeParams extends UniverseDefinitionTaskParams {
   // This is deprecated use cluster.userIntent.tserverGFlags
   public Map<String, String> tserverGFlags = new HashMap<String, String>();
 
-  public static final int DEFAULT_SLEEP_AFTER_RESTART_MS = 240000;
+  public static final int DEFAULT_SLEEP_AFTER_RESTART_MS = 180000;
 
   // Time to sleep after a server restart, if there is no way to check/rpc if it is ready to server
   // requests.

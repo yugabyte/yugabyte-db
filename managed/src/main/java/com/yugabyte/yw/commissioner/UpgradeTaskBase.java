@@ -2,10 +2,12 @@
 
 package com.yugabyte.yw.commissioner;
 
+import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
@@ -18,6 +20,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
@@ -32,6 +35,12 @@ import org.apache.commons.lang3.tuple.Pair;
 public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
   // Variable to mark if the loadbalancer state was changed.
   protected boolean isLoadBalancerOn = true;
+  protected boolean isBlacklistLeaders;
+  protected int leaderBacklistWaitTimeMs;
+
+  private static final String BLACKLIST_LEADERS = "yb.upgrade.blacklist_leaders";
+  private static final String BLACKLIST_LEADER_WAIT_TIME_MS =
+      "yb.upgrade.blacklist_leader_wait_time_ms";
 
   protected UpgradeTaskBase(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
@@ -51,6 +60,10 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
   // flexibility to manipulate subTaskGroupQueue through the lambda passed in parameter
   public void runUpgrade(IUpgradeTaskWrapper upgradeLambda) {
     try {
+      isBlacklistLeaders =
+          runtimeConfigFactory.forUniverse(getUniverse()).getBoolean(BLACKLIST_LEADERS);
+      leaderBacklistWaitTimeMs =
+          runtimeConfigFactory.forUniverse(getUniverse()).getInt(BLACKLIST_LEADER_WAIT_TIME_MS);
       checkUniverseVersion();
       // Create the task list sequence.
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
@@ -82,9 +95,15 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
 
       throw t;
     } finally {
+      if (isBlacklistLeaders) {
+        subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
+        List<NodeDetails> tServerNodes = fetchTServerNodes(taskParams().upgradeOption);
+        createModifyBlackListTask(tServerNodes, false /* isAdd */, true /* isLeaderBlacklist */)
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+        subTaskGroupQueue.run();
+      }
       unlockUniverseForUpdate();
     }
-
     log.info("Finished {} task.", getName());
   }
 
@@ -159,24 +178,41 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     SubTaskGroupType subGroupType = getTaskSubGroupType();
     NodeState nodeState = getNodeState();
     int sleepTime = getSleepTimeForProcess(processType);
-
-    // For a rolling upgrade, we need the data to not move,
-    // so we disable the data load balancing.
-    if (processType == ServerType.TSERVER) {
+    // Need load balancer on to perform leader blacklist
+    if (processType == ServerType.TSERVER && !isBlacklistLeaders) {
       createLoadBalancerStateChangeTask(false).setSubTaskGroupType(subGroupType);
       isLoadBalancerOn = false;
+    }
+
+    if (processType == ServerType.TSERVER && isBlacklistLeaders) {
+      createModifyBlackListTask(nodes, false /* isAdd */, true /* isLeaderBlacklist */)
+          .setSubTaskGroupType(subGroupType);
     }
 
     for (NodeDetails node : nodes) {
       List<NodeDetails> singletonNodeList = Collections.singletonList(node);
       createSetNodeStateTask(node, nodeState).setSubTaskGroupType(subGroupType);
       if (runBeforeStopping) rollingUpgradeLambda.run(singletonNodeList, processType);
+      // set leader blacklist and poll
+      if (processType == ServerType.TSERVER && isBlacklistLeaders) {
+        createModifyBlackListTask(
+                Arrays.asList(node), true /* isAdd */, true /* isLeaderBlacklist */)
+            .setSubTaskGroupType(subGroupType);
+        createWaitForLeaderBlacklistCompletionTask(leaderBacklistWaitTimeMs)
+            .setSubTaskGroupType(subGroupType);
+      }
       createServerControlTask(node, processType, "stop").setSubTaskGroupType(subGroupType);
       if (!runBeforeStopping) rollingUpgradeLambda.run(singletonNodeList, processType);
       createServerControlTask(node, processType, "start").setSubTaskGroupType(subGroupType);
       createWaitForServersTasks(singletonNodeList, processType).setSubTaskGroupType(subGroupType);
       createWaitForServerReady(node, processType, sleepTime).setSubTaskGroupType(subGroupType);
       createWaitForKeyInMemoryTask(node).setSubTaskGroupType(subGroupType);
+      // remove leader blacklist
+      if (processType == ServerType.TSERVER && isBlacklistLeaders) {
+        createModifyBlackListTask(
+                Arrays.asList(node), false /* isAdd */, true /* isLeaderBlacklist */)
+            .setSubTaskGroupType(subGroupType);
+      }
       createSetNodeStateTask(node, NodeState.Live).setSubTaskGroupType(subGroupType);
     }
 

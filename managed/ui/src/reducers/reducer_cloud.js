@@ -106,7 +106,12 @@ export default function (state = INITIAL_STATE, action) {
   let error;
   switch (action.type) {
     case GET_PROVIDER_LIST:
-      return { ...setLoadingState(state, 'providers', []), fetchMetadata: false };
+      // AC: Keep provider data while loading to prevent
+      // dependent components from blanking out when fetching
+      return {
+        ...setLoadingState(state, 'providers', state.providers.data),
+        fetchMetadata: false
+      };
     case GET_PROVIDER_LIST_RESPONSE:
       if (action.payload.status !== 200) {
         if (isDefinedNotNull(action.payload.data)) {

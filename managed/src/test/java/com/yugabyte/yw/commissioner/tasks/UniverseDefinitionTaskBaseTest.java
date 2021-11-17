@@ -40,7 +40,7 @@ public class UniverseDefinitionTaskBaseTest {
   private NodeDetails myNode;
   private UserIntent userIntent;
 
-  @Mock BaseTaskDependencies baseTaskDependencies;
+  @Mock private BaseTaskDependencies baseTaskDependencies;
 
   @Before
   public void setUp() {

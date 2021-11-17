@@ -70,6 +70,12 @@ public class Util {
   public static final String YUGABYTE_DB = "yugabyte";
   public static final int MIN_NUM_BACKUPS_TO_RETAIN = 3;
   public static final String REDACT = "REDACTED";
+  public static final String KEY_LOCATION_SUFFIX = "/backup_keys.json";
+
+  public static final String AZ = "AZ";
+  public static final String GCS = "GCS";
+  public static final String S3 = "S3";
+  public static final String NFS = "NFS";
 
   /**
    * Returns a list of Inet address objects in the proxy tier. This is needed by Cassandra clients.

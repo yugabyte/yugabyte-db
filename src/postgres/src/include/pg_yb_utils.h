@@ -197,6 +197,13 @@ extern bool YBRelHasSecondaryIndices(Relation relation);
 extern bool YBTransactionsEnabled();
 
 /*
+ * Whether the current txn is of READ COMMITTED (or READ UNCOMMITTED) isolation level and it it uses
+ * the new READ COMMITTED implementation instead of mapping to REPEATABLE READ level. The latter
+ * condition is dictated by the value of gflag yb_enable_read_committed_isolation.
+ */
+extern bool IsYBReadCommitted();
+
+/*
  * Whether to allow users to use SAVEPOINT commands at the query layer.
  */
 extern bool YBSavepointsEnabled();

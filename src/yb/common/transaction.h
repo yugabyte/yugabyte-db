@@ -293,6 +293,9 @@ struct TransactionMetadata {
   // start_time is used only for backward compability during rolling update.
   HybridTime start_time;
 
+  // Indicates whether this transaction is a local transaction or global transaction.
+  TransactionLocality locality = TransactionLocality::GLOBAL;
+
   static Result<TransactionMetadata> FromPB(const TransactionMetadataPB& source);
 
   void ToPB(TransactionMetadataPB* dest) const;

@@ -339,11 +339,13 @@ Default: `64`
 
 ### Load balancing flags
 
-For information on YB-Master load balancing, see [Data placement and load balancing](../../../architecture/concepts/yb-master/#data-placement-and-load-balancing)
+For information on YB-Master load balancing, see [Data placement and load balancing](../../../architecture/concepts/yb-master/#data-placement-and-load-balancing).
 
 For load balancing commands in `yb-admin`, see [Rebalancing commands (yb-admin)](../../../admin/yb-admin/#rebalancing-commands).
 
-##### --enable_load_balancing
+For information on internal load balancing to power geo-distributed applications, see [Yugabyte JDBC Driver](../../../integrations/jdbc-driver).
+
+#### --enable_load_balancing
 
 Enables or disables the load balancing algorithm, to move tablets around.
 
@@ -461,14 +463,34 @@ On a per-table basis, the [`CREATE TABLE ...SPLIT INTO`](../../../api/ysql/the-s
 
 {{< /note >}}
 
-#### --tablet_split_size_threshold_bytes
+#### --enable_automatic_tablet_splitting
 
-Enables tablets to automatically split tablets while online, based on the specified tablet threshold size.
+Enables YugabyteDB to [automatically split tablets](../../../architecture/docdb-sharding/tablet-splitting/#automatic-tablet-splitting) while online, based on the specified tablet threshold sizes configured below.
+
+##### --tablet_split_low_phase_shard_count_per_node
+
+The threshold number of shards (per cluster node) in a table below which automatic tablet splitting will use [`--tablet_split_low_phase_size_threshold_bytes`](./#tablet-split-low-phase-size-threshold-bytes) to determine which tablets to split.
+
+##### --tablet_split_low_phase_size_threshold_bytes
+
+The size threshold used to determine if a tablet should be split when the tablet's table is in the "low" phase of automatic tablet splitting. See [`--tablet_split_low_phase_shard_count_per_node`](./#tablet-split-low-phase-shard-count-per-node).
+
+##### --tablet_split_high_phase_shard_count_per_node
+
+The threshold number of shards (per cluster node) in a table below which automatic tablet splitting will use [`--tablet_split_high_phase_size_threshold_bytes`](./#tablet-split-low-phase-size-threshold-bytes) to determine which tablets to split.
+
+##### --tablet_split_high_phase_size_threshold_bytes
+
+The size threshold used to determine if a tablet should be split when the tablet's table is in the "high" phase of automatic tablet splitting. See [`--tablet_split_high_phase_shard_count_per_node`](./#tablet-split-low-phase-shard-count-per-node).
+
+##### --tablet_force_split_threshold_bytes
+
+The size threshold used to determine if a tablet should be split even if the table's number of shards puts it past the "high phase".
 
 **Syntax**
 
 ```sh
-yb-admin --master_addresses <master-addresses> --tablet_split_size_threshold_bytes <bytes>
+yb-admin --master_addresses <master-addresses> --tablet_force_split_size_threshold_bytes <bytes>
 ```
 
 - *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.

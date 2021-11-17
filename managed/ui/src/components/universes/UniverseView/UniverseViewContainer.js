@@ -9,6 +9,7 @@ import {
   fetchCustomerTasksSuccess,
   fetchCustomerTasksFailure
 } from '../../../actions/tasks';
+import { openDialog, closeDialog } from '../../../actions/modal';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -28,6 +29,18 @@ const mapDispatchToProps = (dispatch) => {
 
     resetUniverseTasks: () => {
       dispatch(resetUniverseTasks());
+    },
+
+    showToggleUniverseStateModal: () => {
+      dispatch(openDialog('toggleUniverseStateForm'));
+    },
+
+    showDeleteUniverseModal: () => {
+      dispatch(openDialog('deleteUniverseModal'));
+    },
+
+    closeModal: () => {
+      dispatch(closeDialog());
     }
   };
 };
@@ -38,7 +51,9 @@ function mapStateToProps(state) {
     customer: state.customer,
     graph: state.graph,
     tasks: state.tasks,
-    providers: state.cloud.providers
+    providers: state.cloud.providers,
+    featureFlags: state.featureFlags,
+    modal: state.modal
   };
 }
 

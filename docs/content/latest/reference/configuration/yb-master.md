@@ -341,11 +341,13 @@ Default: `64`
 
 ### Load balancing flags
 
-For information on YB-Master load balancing, see [Data placement and load balancing](../../../architecture/concepts/yb-master/#data-placement-and-load-balancing)
+For information on YB-Master load balancing, see [Data placement and load balancing](../../../architecture/concepts/yb-master/#data-placement-and-load-balancing).
 
 For load balancing commands in `yb-admin`, see [Rebalancing commands (yb-admin)](../../../admin/yb-admin/#rebalancing-commands).
 
-##### --enable_load_balancing
+For information on internal load balancing to power geo-distributed applications, see [Yugabyte JDBC Driver](../../../integrations/jdbc-driver).
+
+#### --enable_load_balancing
 
 Enables or disables the load balancing algorithm, to move tablets around.
 

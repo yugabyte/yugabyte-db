@@ -55,10 +55,8 @@ To create a KMS configuration that uses AWS Key Management Service (KMS):
     - **Configuration Name** Enter a meaningful name for your configuration.
     - **KMS Provider** Select `AWS KMS`.
     - **Use IAM Profile** — Select to use an IAM profile attached to an EC2 instance running YugabyteDB. For more information, see [Using instance profiles](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_use_switch-role-ec2_instance-profiles.html).
-    - **API Url** – Enter the URL for the API. The default is `api.amer.smartkey.io`.
-    - **Secret API Key** Enter the secret API key.
     - **Access Key Id** — Enter the identifier for the access key.
-    - **Access Key Id** — Enter the identifier for the secret key.
+    - **Secret Key Id** — Enter the identifier for the secret key.
     - **Region** — Select the AWS region where the CMK used to generate universe keys will be located. **Note:** This does not need to match the region where the encrypted universe resides on Amazon Web Services (AWS).
     - **Customer Master Key ID** — Enter the identifier for the customer master key. If an identifier is not entered, a CMK ID will be auto-generated.
 

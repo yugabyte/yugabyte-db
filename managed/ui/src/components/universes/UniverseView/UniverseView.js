@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { usePrevious } from 'react-use';
 import { Link } from 'react-router';
-import { ListGroup, ToggleButtonGroup, ToggleButton } from 'react-bootstrap';
+import { Dropdown, Tooltip, OverlayTrigger } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import moment from 'moment';
 import _ from 'lodash';
@@ -12,26 +12,46 @@ import {
   getUniversePendingTask,
   getUniverseStatus,
   getUniverseStatusIcon,
-  hasPendingTasksForUniverse
+  hasPendingTasksForUniverse,
+  status
 } from '../helpers/universeHelpers';
-
-import { YBResourceCount } from '../../common/descriptors';
-import { getUniverseNodes } from '../../../utils/UniverseUtils';
-import { YBFormattedNumber } from '../../common/descriptors';
+import {
+  YBCost,
+  YBResourceCount,
+  YBFormattedNumber,
+  YBLabelWithIcon
+} from '../../common/descriptors';
+import {
+  getClusterProviderUUIDs,
+  getProviderMetadata,
+  getUniverseNodes,
+  isPausableUniverse
+} from '../../../utils/UniverseUtils';
+import {
+  YBUniverseItem,
+  ToggleUniverseStateContainer,
+  DeleteUniverseContainer
+} from '../../universes';
+import {
+  getFeatureState,
+  isNotHidden,
+  isDisabled,
+  showOrRedirect
+} from '../../../utils/LayoutUtils';
 import { isNonEmptyArray, isNonEmptyObject, isDefinedNotNull } from '../../../utils/ObjectUtils';
-import { getClusterProviderUUIDs, getProviderMetadata } from '../../../utils/UniverseUtils';
-import { isNotHidden, isDisabled, showOrRedirect } from '../../../utils/LayoutUtils';
+import { getPromiseState } from '../../../utils/PromiseUtils';
 import { QuerySearchInput } from '../../queries/QuerySearchInput';
 import { filterBySearchTokens } from '../../queries/helpers/queriesHelper';
-import { YBControlledSelect } from '../../common/forms/fields';
-import { YBButton } from '../../common/forms/fields';
-import { YBUniverseItem } from '../../universes';
-import { YBCost } from '../../common/descriptors';
+import { YBControlledSelect, YBButton, YBMultiSelectRedesiged } from '../../common/forms/fields';
 import { timeFormatter } from '../../../utils/TableFormatters';
 import YBPagination from '../../tables/YBPagination/YBPagination';
+import { isEphemeralAwsStorageInstance } from '../UniverseDetail/UniverseDetail';
+import { YBMenuItem } from '../UniverseDetail/compounds/YBMenuItem';
+import ellipsisIcon from '../../common/media/more.svg';
 
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import './UniverseView.scss';
+import { YBLoadingCircleIcon } from '../../common/indicators';
 
 /**
  * The tableData key allows us to use a different field from the universe
@@ -91,6 +111,13 @@ const tableDataValueToKey = {
   status: 'Status'
 };
 
+const toggleTooltip = (view) => <Tooltip id="tooltip">Switch to {view} view.</Tooltip>;
+
+const { UNKNOWN, WARNING, ...filterStatuses } = status;
+const filterStatusesArr = Object.values(filterStatuses).map((status) => ({
+  value: status.statusText,
+  label: status.statusText
+}));
 const tableMinPageSize = 10;
 const listMinPageSize = 4;
 
@@ -102,11 +129,18 @@ export const UniverseView = (props) => {
   const [pageSize, setPageSize] = useState(4);
   const [activePage, setActivePage] = useState(1);
   const [curView, setCurView] = useState(view.LIST);
+  const [curStatusFilter, setCurStatusFilter] = useState([]);
+  const [focusedUniverse, setFocusedUniverse] = useState();
 
   const {
     universe: { universeList },
     customer: { currentCustomer },
-    tasks: { customerTaskList }
+    tasks: { customerTaskList },
+    modal: { showModal, visibleModal },
+    closeModal,
+    showToggleUniverseStateModal,
+    showDeleteUniverseModal,
+    featureFlags
   } = props;
 
   const universeUUIDs =
@@ -155,6 +189,7 @@ export const UniverseView = (props) => {
 
   const handleSearchTokenChange = (newTokens) => {
     setSearchTokens(newTokens);
+    setActivePage(1);
   };
 
   const handleSortFieldChange = (newField) => {
@@ -171,6 +206,11 @@ export const UniverseView = (props) => {
 
   const handlePageSizeChange = (newSize) => {
     setPageSize(newSize);
+  };
+
+  const handleStatusFilterChange = (value) => {
+    setCurStatusFilter(value ? value : []);
+    setActivePage(1);
   };
 
   const formatUniverseState = (status) => {
@@ -194,6 +234,56 @@ export const UniverseView = (props) => {
     return <Link to={`/universes/${row.universeUUID}`}>{universeName}</Link>;
   };
 
+  const formatUniverseActions = (_, row) => {
+    const isEphemeralAwsStorage =
+      row.universeDetails.nodeDetailsSet.find?.((node) => {
+        return isEphemeralAwsStorageInstance(node.cloudInfo?.instance_type);
+      }) !== undefined;
+    const universePaused = row.universeDetails.universePaused;
+    return (
+      <Dropdown id="table-actions-dropdown" pullRight>
+        <Dropdown.Toggle noCaret>
+          <img src={ellipsisIcon} alt="more" className="ellipsis-icon" />
+        </Dropdown.Toggle>
+        <Dropdown.Menu>
+          {isPausableUniverse(row) &&
+            !isEphemeralAwsStorage &&
+            (featureFlags.test['pausedUniverse'] || featureFlags.released['pausedUniverse']) && (
+              <YBMenuItem
+                onClick={() => {
+                  setFocusedUniverse(row);
+                  showToggleUniverseStateModal();
+                }}
+                availability={getFeatureState(
+                  currentCustomer.data.features,
+                  'universes.details.overview.pausedUniverse'
+                )}
+              >
+                <YBLabelWithIcon
+                  icon={universePaused ? 'fa fa-play-circle-o' : 'fa fa-pause-circle-o'}
+                >
+                  {universePaused ? 'Resume Universe' : 'Pause Universe'}
+                </YBLabelWithIcon>
+              </YBMenuItem>
+            )}
+
+          <YBMenuItem
+            onClick={() => {
+              setFocusedUniverse(row);
+              showDeleteUniverseModal();
+            }}
+            availability={getFeatureState(
+              currentCustomer.data.features,
+              'universes.details.overview.deleteUniverse'
+            )}
+          >
+            <YBLabelWithIcon icon="fa fa-trash-o fa-fw">Delete Universe</YBLabelWithIcon>
+          </YBMenuItem>
+        </Dropdown.Menu>
+      </Dropdown>
+    );
+  };
+
   const universeSortFunction = (a, b) => {
     let ord = 0;
     if (sortField === 'Creation Date') {
@@ -215,7 +305,11 @@ export const UniverseView = (props) => {
       .sort(universeSortFunction)
       .slice((activePage - 1) * pageSize, activePage * pageSize)
       .map((item, idx) => {
-        return <YBUniverseItem {...props} key={item.universeUUID} idx={idx} universe={item} />;
+        return (
+          <li className="universe-list-item">
+            <YBUniverseItem {...props} key={item.universeUUID} idx={idx} universe={item} />
+          </li>
+        );
       });
   };
 
@@ -231,7 +325,13 @@ export const UniverseView = (props) => {
     };
 
     if (curView === view.LIST) {
-      if (!(_.isObject(universeList) && isNonEmptyArray(universeList.data))) {
+      if (!universeList || !_.isObject(universeList)) {
+        return null;
+      }
+      if (getPromiseState(universeList).isInit() || getPromiseState(universeList).isLoading()) {
+        return <YBLoadingCircleIcon />;
+      }
+      if (!isNonEmptyArray(universeList.data)) {
         return (
           <h5>
             <span>No universes defined.</span>
@@ -248,7 +348,9 @@ export const UniverseView = (props) => {
 
       return (
         <React.Fragment>
-          <ListGroup>{getUniverseListItems(universes)}</ListGroup>
+          <ul className="list-group" aria-label="Universe List">
+            {getUniverseListItems(universes)}
+          </ul>
           {universes.length > listMinPageSize && (
             <div className="list-pagination-control">
               <YBControlledSelect
@@ -287,14 +389,15 @@ export const UniverseView = (props) => {
             dataField="universeUUID"
             isKey={true}
             hidden={true}
-            columnClassName="no-border name-column"
+            columnClassName="no-border"
           >
             Universe UUID
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="name"
             dataSort
-            columnClassName="no-border name-column"
+            sortFunc={(a, b, _) => universeSortFunction(a, b)}
+            columnClassName="no-border"
             dataFormat={formatUniverseName}
           >
             Universe Name
@@ -302,14 +405,14 @@ export const UniverseView = (props) => {
           <TableHeaderColumn
             dataField="providerTypes"
             tdStyle={{ whiteSpace: 'normal' }}
-            columnClassName="no-border name-column"
+            columnClassName="no-border"
           >
             Provider Types
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="providerNames"
             tdStyle={{ whiteSpace: 'normal' }}
-            columnClassName="no-border name-column"
+            columnClassName="no-border"
           >
             Provider Names
           </TableHeaderColumn>
@@ -317,8 +420,9 @@ export const UniverseView = (props) => {
             dataField="creationDate"
             dataFormat={timeFormatter}
             dataSort
+            sortFunc={(a, b, _) => universeSortFunction(a, b)}
             tdStyle={{ whiteSpace: 'normal' }}
-            columnClassName="no-border name-column"
+            columnClassName="no-border"
           >
             Creation Date
           </TableHeaderColumn>
@@ -326,26 +430,29 @@ export const UniverseView = (props) => {
             dataField="pricePerMonth"
             dataFormat={formatCost}
             dataSort
+            sortFunc={(a, b, _) => universeSortFunction(a, b)}
             headerAlign="right"
-            width="180"
-            tdStyle={{ whiteSpace: 'normal' }}
-            columnClassName="no-border name-column"
+            tdStyle={{ whiteSpace: 'normal', paddingRight: '100px' }}
+            thStyle={{ paddingRight: '100px' }}
+            columnClassName="no-border"
           >
-            Price Per Month
+            Price / Month
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="status"
             dataFormat={formatUniverseState}
-            sortFunc={(a, b, sortOrder) => {
-              const order = a.statusText < b.statusText ? -1 : 1;
-              return sortOrder === 'asc' ? order : order * -1;
-            }}
             dataSort
+            sortFunc={(a, b, _) => universeSortFunction(a, b)}
             tdStyle={{ whiteSpace: 'normal' }}
-            columnClassName="no-border name-column"
+            columnClassName="no-border"
           >
             Status
           </TableHeaderColumn>
+          <TableHeaderColumn
+            dataFormat={formatUniverseActions}
+            columnClassName="universe-action-column no-border"
+            width="50px"
+          ></TableHeaderColumn>
         </BootstrapTable>
       );
     }
@@ -378,7 +485,13 @@ export const UniverseView = (props) => {
         })
       : [];
 
-  universes = filterBySearchTokens(universes, searchTokens, dropdownFieldKeys);
+  const statusFilterTokens = curStatusFilter.map((status) => ({
+    key: 'statusText',
+    label: 'Status',
+    value: status.value
+  }));
+  universes = filterBySearchTokens(universes, searchTokens, dropdownFieldKeys, statusFilterTokens);
+
   let numNodes = 0;
   let totalCost = 0;
   if (universes) {
@@ -393,6 +506,23 @@ export const UniverseView = (props) => {
   }
   return (
     <React.Fragment>
+      <DeleteUniverseContainer
+        visible={showModal && visibleModal === 'deleteUniverseModal'}
+        onHide={closeModal}
+        title="Delete Universe: "
+        body="Are you sure you want to delete the universe? You will lose all your data!"
+        type="primary"
+        focusedUniverse={focusedUniverse}
+      />
+
+      <ToggleUniverseStateContainer
+        visible={showModal && visibleModal === 'toggleUniverseStateForm'}
+        onHide={closeModal}
+        title={`${focusedUniverse?.universeDetails.universePaused ? 'Resume' : 'Pause'} Universe: `}
+        type="primary"
+        universePaused={focusedUniverse?.universeDetails.universePaused}
+        focusedUniverse={focusedUniverse}
+      />
       <div className="universe-action-bar">
         <QuerySearchInput
           id="universe-list-search-bar"
@@ -448,22 +578,35 @@ export const UniverseView = (props) => {
         {/* <YBResourceCount kind="Alert" pluralizeKind separatorLine icon="fa-bell-o" size={0} /> */}
       </div>
       <div className="universe-view-toolbar-container">
-        <ToggleButtonGroup
-          type="radio"
-          name="options"
-          className="view-toggle-button-group"
-          defaultValue={curView}
-          onChange={handleViewChange}
+        <YBMultiSelectRedesiged
+          className="universe-status-filter"
+          name="statuses"
+          placeholder=""
+          options={filterStatusesArr}
+          value={curStatusFilter}
+          onChange={handleStatusFilterChange}
+        />
+        <OverlayTrigger
+          placement="left"
+          delayShow={1000}
+          delayHide={500}
+          overlay={toggleTooltip(curView === view.LIST ? view.TABLE : view.LIST)}
         >
-          <ToggleButton id="tbg-btn-list" value={view.LIST} aria-label="List View">
-            <i className="fa fa-list" aria-hidden="true" />
-          </ToggleButton>
-          <ToggleButton id="tbg-btn-table" value={view.TABLE} aria-label="Table View">
-            <i className="fa fa-table" aria-hidden="true" />
-          </ToggleButton>
-        </ToggleButtonGroup>
+          <YBButton
+            className="view-toggle"
+            btnIcon={curView === view.LIST ? 'fa fa-table' : 'fa fa-list-ul'}
+            aria-label={`${curView === view.LIST ? 'Table' : 'List'} View`}
+            defaultValue={curView}
+            onClick={(e) => {
+              handleViewChange(curView === view.LIST ? view.TABLE : view.LIST);
+              e.currentTarget.blur();
+            }}
+          />
+        </OverlayTrigger>
       </div>
-      <div className="universe-view-data-container">{renderView(universes)}</div>
+      <div className="universe-view-data-container" aria-label="Universe Data">
+        {renderView(universes)}
+      </div>
     </React.Fragment>
   );
 };

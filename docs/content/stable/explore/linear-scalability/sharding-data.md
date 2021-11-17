@@ -51,7 +51,7 @@ YugabyteDB currently supports two ways of sharding data: [hash](#hash-sharding) 
 
 ### Hash sharding
 
-With (consistent) hash sharding, a sharding algorithm distributes data evenly and randomly across shards. The algorithm places each row of the table into a shard determined by computing a consistent hash on the shard column values of that row.
+With (consistent) hash sharding, a sharding algorithm distributes data evenly and randomly across shards. The algorithm places each row of the table into a shard determined by computing a consistent hash on the hash column values of that row.
 
 The hash space for hash-sharded YugabyteDB tables is the 2-byte range from `0x0000` to `0xFFFF`. A table may therefore have at most 65,536 tablets. This is expected to be sufficient in practice even for very large data sets or cluster sizes.
 
@@ -250,9 +250,9 @@ Let's get started:
 
 1. Download the YugabyteDB workload generator JAR file (`yb-sample-apps.jar`):
 
-```sh
-$ wget https://github.com/yugabyte/yb-sample-apps/releases/download/1.3.9/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar
-```
+    ```sh
+    $ wget https://github.com/yugabyte/yb-sample-apps/releases/download/1.3.9/yb-sample-apps.jar
+    ```
 
 1. Run the `CassandraKeyValue` workload application.
 

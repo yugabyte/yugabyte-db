@@ -483,6 +483,28 @@ Status Master::InformRemovedMaster(const HostPortPB& hp_pb) {
   return Status::OK();
 }
 
+scoped_refptr<Histogram> Master::GetMetric(
+    const std::string& metric_identifier, MasterMetricType type, const std::string& description) {
+  std::string temp_metric_identifier = Format("$0_$1", metric_identifier,
+      (type == TaskMetric ? "Task" : "Attempt"));
+  EscapeMetricNameForPrometheus(&temp_metric_identifier);
+  {
+    std::lock_guard<std::mutex> lock(master_metrics_mutex_);
+    std::map<std::string, scoped_refptr<Histogram>>* master_metrics_ptr = master_metrics();
+    auto it = master_metrics_ptr->find(temp_metric_identifier);
+    if (it == master_metrics_ptr->end()) {
+      std::unique_ptr<HistogramPrototype> histogram = std::make_unique<OwningHistogramPrototype>(
+          "server", temp_metric_identifier, description, yb::MetricUnit::kMicroseconds,
+          description, yb::MetricLevel::kInfo, 0, 10000000, 2);
+      scoped_refptr<Histogram> temp =
+          metric_entity()->FindOrCreateHistogram(std::move(histogram));
+      (*master_metrics_ptr)[temp_metric_identifier] = temp;
+      return temp;
+    }
+    return it->second;
+  }
+}
+
 Status Master::GoIntoShellMode() {
   maintenance_manager_->Shutdown();
   RETURN_NOT_OK(catalog_manager()->GoIntoShellMode());

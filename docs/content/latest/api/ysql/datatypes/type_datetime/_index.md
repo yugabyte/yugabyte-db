@@ -1,8 +1,8 @@
 ---
-title: Date and time data types [YSQL]
-headerTitle: Date and time data types
+title: Date and time data types and functionality [YSQL]
+headerTitle: Date and time data types and functionality
 linkTitle: Date and time
-description: YSQL supports the date, time, timestamp, and interval data types together with interval arithmetic.
+description: Learn about YSQL support for the date, time, timestamp, and interval data types and their functions and operators.
 image: /images/section_icons/api/ysql.png
 menu:
   latest:
@@ -15,14 +15,14 @@ showAsideToc: true
 
 YSQL supports the following data types for values that represent a date, a time of day, a date-and-time-of-day pair, or a duration. These data types will be referred to jointly as the _date-time_ data types.
 
-| Data type                                                                  | Purpose                           | Internal format         | Min      | Max        | Resolution    |
-| -------------------------------------------------------------------------- | --------------------------------- | ----------------------- | -------- | ---------- | ------------- |
-| [date](./date-time-data-types-semantics/type-date/)                        | date moment (wall-clock)          | 4-bytes                 | 4713 BC  | 5874897 AD | 1 day         |
-| [time](./date-time-data-types-semantics/type-time/) [(p)]                  | time moment (wall-clock)          | 8-bytes                 | 00:00:00 | 24:00:00   | 1 microsecond |
-| [timetz](#avoid-timetz) [(p)]                                              | _[avoid this](#avoid-timetz)_     |                         |          |            |               |
-| [timestamp](./date-time-data-types-semantics/type-timestamp/) [(p)]        | date-and-time moment (wall-clock) | 12-bytes                | 4713 BC  | 294276 AD  | 1 microsecond |
-| [timestamptz](./date-time-data-types-semantics/type-timestamp/) [(p)]      | date-and-time moment (absolute)   | 12-bytes                | 4713 BC  | 294276 AD  | 1 microsecond |
-| [interval](./date-time-data-types-semantics/type-interval/) [fields] [(p)] | duration between two moments      | 16-bytes 3-field struct |          |            | 1 microsecond |
+| Data type                                                                                          | Purpose                           | Internal format         | Min      | Max        | Resolution    |
+| -------------------------------------------------------------------------------------------------- | --------------------------------- | ----------------------- | -------- | ---------- | ------------- |
+| [date](./date-time-data-types-semantics/type-date/)                                                | date moment (wall-clock)          | 4-bytes                 | 4713 BC  | 5874897 AD | 1 day         |
+| [time](./date-time-data-types-semantics/type-time/) [(p)]                                          | time moment (wall-clock)          | 8-bytes                 | 00:00:00 | 24:00:00   | 1 microsecond |
+| [timetz](#avoid-timetz) [(p)]                                                                      | _[avoid this](#avoid-timetz)_     |                         |          |            |               |
+| [timestamp](./date-time-data-types-semantics/type-timestamp/#the-plain-timestamp-data-type) [(p)]  | date-and-time moment (wall-clock) | 12-bytes                | 4713 BC  | 294276 AD  | 1 microsecond |
+| [timestamptz](./date-time-data-types-semantics/type-timestamp/#the-timestamptz-data-type) [(p)]    | date-and-time moment (absolute)   | 12-bytes                | 4713 BC  | 294276 AD  | 1 microsecond |
+| [interval](./date-time-data-types-semantics/type-interval/) [fields] [(p)]                         | duration between two moments      | 16-bytes 3-field struct |          |            | 1 microsecond |
 
 The optional _(p)_ qualifier, where _p_ is a literal integer value in _0..6_, specifies the precision, in microseconds, with which values will be recorded. (It has no effect on the size of the internal representation.) The optional _fields_ qualifier, valid only in an _interval_ declaration, is explained in the [_interval_ data type](./date-time-data-types-semantics/type-interval/) section.
 
@@ -67,7 +67,7 @@ PostgreSQL, and therefore YSQL, support the use of several special manifest _tex
 
 Their meanings are given in section [8.5.1.4. Special Values](https://www.postgresql.org/docs/11/datatype-datetime.html#DATATYPE-DATETIME-SPECIAL-VALUES) in the PostgreSQL documentation.
 
-{{< tip title="Avoid using all of these special constants except for _'infinity'_ and _'-infinity'_." >}}
+{{< tip title="Avoid using all of these special constants except for 'infinity' and '-infinity'." >}}
 
 The implementation of the function [random_test_report_for_modeled_age()](./functions/miscellaneous/age/#function-random-test-report-for-modeled-age) shows a common locution where _'infinity'_ and _'-infinity'_ are used to initialize maximum and minimum values for _timestamp_ values that are updated as new _timestamp_ values arise during a loop's execution.
 

@@ -2,6 +2,9 @@
 
 package com.yugabyte.yw.models;
 
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
@@ -29,8 +32,6 @@ import javax.persistence.Id;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
-import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
-import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Entity
 @ApiModel(
@@ -56,6 +57,9 @@ public class CustomerTask extends Model {
 
     @EnumValue("Backup")
     Backup(false),
+
+    @EnumValue("Customer Configuration")
+    CustomerConfiguration(false),
 
     @EnumValue("KMS Configuration")
     KMSConfiguration(false),
@@ -201,12 +205,24 @@ public class CustomerTask extends Model {
 
     public String toString(boolean completed) {
       switch (this) {
+        case Add:
+          return completed ? "Added " : "Adding ";
         case Create:
           return completed ? "Created " : "Creating ";
         case Pause:
           return completed ? "Paused " : "Pausing ";
+        case Release:
+          return completed ? "Released " : "Releasing ";
+        case Remove:
+          return completed ? "Removed " : "Removing ";
+        case ResizeNode:
+          return completed ? "Resized Node " : "Resizing Node ";
         case Resume:
           return completed ? "Resumed " : "Resuming ";
+        case Start:
+          return completed ? "Started " : "Starting ";
+        case Stop:
+          return completed ? "Stopped " : "Stopping ";
         case Update:
           return completed ? "Updated " : "Updating ";
         case Delete:
@@ -224,9 +240,12 @@ public class CustomerTask extends Model {
         case TlsToggle:
           return completed ? "Toggled TLS " : "Toggling TLS ";
         case VMImageUpgrade:
+        case UpgradeVMImage:
           return completed ? "Upgraded VM Image " : "Upgrading VM Image ";
         case UpgradeSoftware:
           return completed ? "Upgraded Software " : "Upgrading Software ";
+        case UpdateDiskSize:
+          return completed ? "Updated Disk Size " : "Updating Disk Size ";
         case UpdateCert:
           return completed ? "Updated Cert " : "Updating Cert ";
         case ToggleTls:

@@ -142,6 +142,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/hash_util.h"
 #include "yb/util/logging.h"
 #include "yb/util/math_util.h"
 #include "yb/util/monotime.h"
@@ -795,6 +796,8 @@ Status CatalogManager::Init() {
     CHECK_EQ(kStarting, state_);
     state_ = kRunning;
   }
+
+  RecomputeTxnTableVersionsHash();
 
   Started();
 
@@ -1787,7 +1790,7 @@ Result<ReplicationInfoPB> CatalogManager::GetTableReplicationInfo(
   return l->pb.replication_info();
 }
 
-std::shared_ptr<YsqlTablespaceManager> CatalogManager::GetTablespaceManager() {
+std::shared_ptr<YsqlTablespaceManager> CatalogManager::GetTablespaceManager() const {
   SharedLock lock(tablespace_mutex_);
   return tablespace_manager_;
 }
@@ -2262,7 +2265,7 @@ Status CatalogManager::ValidateSplitCandidate(const TabletInfo& tablet_info) {
         " a CDC stream, tablet_id: $0",
         tablet_info.tablet_id());
   }
-  if (tablet_info.table()->GetTableType() == TRANSACTION_STATUS_TABLE_TYPE) {
+  if (tablet_info.table()->GetTableType() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
     return STATUS_FORMAT(
         NotSupported,
         "Tablet splitting is not supported for transaction status tables, tablet_id: $0",
@@ -2303,6 +2306,25 @@ Status CatalogManager::ValidateSplitCandidate(const TabletInfo& tablet_info) {
   return Status::OK();
 }
 
+Result<ReplicationInfoPB> CatalogManager::GetTableReplicationInfo(
+    const TabletInfo& tablet_info) const {
+  auto table = tablet_info.table();
+  {
+    auto table_lock = table->LockForRead();
+    if (table_lock->pb.has_replication_info()) {
+      return table_lock->pb.replication_info();
+    }
+  }
+
+  auto replication_info_opt = VERIFY_RESULT(
+      GetTablespaceManager()->GetTableReplicationInfo(table));
+  if (replication_info_opt) {
+    return replication_info_opt.value();
+  }
+
+  return cluster_config_->LockForRead()->pb.replication_info();
+}
+
 bool CatalogManager::ShouldSplitValidCandidate(
     const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const {
   if (PREDICT_FALSE(FLAGS_TEST_select_all_tablets_for_split)) {
@@ -2321,7 +2343,27 @@ bool CatalogManager::ShouldSplitValidCandidate(
     BlacklistSet blacklist = BlacklistSetFromPB();
     master_->ts_manager()->GetAllLiveDescriptors(&ts_descs, blacklist);
   }
-  auto num_servers = ts_descs.size();
+
+  size_t num_servers = 0;
+  auto table_replication_info_or_status = GetTableReplicationInfo(tablet_info);
+
+  // If there is custom placement information present then
+  // only count the tservers which the table has access to
+  // according to the placement policy
+  if (table_replication_info_or_status.ok()
+      && table_replication_info_or_status->has_live_replicas()) {
+    auto pb = table_replication_info_or_status->live_replicas();
+    auto valid_tservers_res = FindTServersForPlacementInfo(
+      table_replication_info_or_status->live_replicas(), ts_descs);
+    if (!valid_tservers_res.ok()) {
+      num_servers = ts_descs.size();
+    } else {
+      num_servers = valid_tservers_res.get().size();
+    }
+  } else {
+    num_servers = ts_descs.size();
+  }
+
   int64 num_tablets_per_server = tablet_info.table()->NumPartitions() / num_servers;
 
   if (num_tablets_per_server < FLAGS_tablet_split_low_phase_shard_count_per_node) {
@@ -3293,6 +3335,13 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     if (!s.ok()) {
       return s.CloneAndPrepend("Error while creating metrics snapshots table");
     }
+  }
+
+  // Update transaction status hash if needed.
+  const auto is_transaction_status_table =
+      (orig_req->table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE);
+  if (is_transaction_status_table) {
+    RecomputeTxnTableVersionsHash();
   }
 
   DVLOG(3) << __PRETTY_FUNCTION__ << " Done.";
@@ -5069,6 +5118,11 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   l.Commit();
 
   RETURN_NOT_OK(SendAlterTableRequest(table, req));
+
+  // Update transaction status hash if necessary.
+  if (table->GetTableType() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+    RecomputeTxnTableVersionsHash();
+  }
 
   LOG(INFO) << "Successfully initiated ALTER TABLE (pending tablet schema updates) for "
             << table->ToString() << " per request from " << RequestorString(rpc);
@@ -7639,6 +7693,26 @@ Status CatalogManager::GetYsqlCatalogVersion(uint64_t* catalog_version,
   return Status::OK();
 }
 
+void CatalogManager::RecomputeTxnTableVersionsHash() {
+  SharedLock lock(mutex_);
+
+  std::stringstream ss;
+  for (const auto& entry : *table_ids_map_) {
+    auto& table_info = *entry.second;
+    if (StringStartsWithOrEquals(table_info.name(), kTransactionTablePrefix)) {
+      auto l = table_info.LockForRead();
+      ss << table_info.id() << "," << l->pb.version() << ",";
+    }
+  }
+  std::string tables = ss.str();
+  uint64_t hash = HashUtil::MurmurHash2_64(tables.c_str(), tables.size(), 0 /* seed */);
+  txn_table_versions_hash_.store(hash, std::memory_order_release);
+}
+
+uint64_t CatalogManager::GetTxnTableVersionsHash() {
+  return txn_table_versions_hash_.load(std::memory_order_acquire);
+}
+
 Status CatalogManager::RegisterTsFromRaftConfig(const consensus::RaftPeerPB& peer) {
   NodeInstancePB instance_pb;
   instance_pb.set_permanent_uuid(peer.permanent_uuid());
@@ -8699,7 +8773,7 @@ Status CatalogManager::HandlePlacementUsingPlacementInfo(const PlacementInfoPB& 
 
 Result<vector<shared_ptr<TSDescriptor>>> CatalogManager::FindTServersForPlacementInfo(
     const PlacementInfoPB& placement_info,
-    const TSDescriptorVector& ts_descs) {
+    const TSDescriptorVector& ts_descs) const {
 
   vector<shared_ptr<TSDescriptor>> all_allowed_ts;
   for (const auto& ts : ts_descs) {

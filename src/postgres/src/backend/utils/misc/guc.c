@@ -2008,6 +2008,16 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"force_global_transaction", PGC_USERSET, UNGROUPED,
+			gettext_noop("Forces use of global transaction table."),
+			NULL
+		},
+		&yb_force_global_transaction,
+		false,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL

@@ -1,7 +1,7 @@
 ---
 title: Scenarios that are sensitive to the timezone/UTC offset [YSQL]
-headerTitle: Scenarios that are sensitive to the UTC offset and possibly, additionally, to the timezone
-linkTitle: offset/timezone-sensitive operations
+headerTitle: Scenarios that are sensitive to the UTC offset or explicitly to the timezone
+linkTitle: Offset/timezone-sensitive operations
 description: Explains the scenarios that are sensitive to the UTC offset and possibly, additionally, to the timezone. [YSQL]
 image: /images/section_icons/api/subsection.png
 menu:
@@ -23,7 +23,7 @@ However, only _three_ operations are sensitive to the setting:
 
 ## Converting between plain timestamp values and timestamptz values
 
-The detail is explained in the section [The sensitivity of the conversion between _timestamptz_ and plain _timestamp_ to the _UTC offset_](./timestamptz-plain-timestamp-conversion/). That section defines the semantics of the conversions.
+The detail is explained in the section [Sensitivity of converting between _timestamptz_ and plain _timestamp_ to the _UTC offset_](./timestamptz-plain-timestamp-conversion/). That section defines the semantics of the conversions.
 
 - Other conversions where the source or target data type is _timestamptz_ exhibit sensitivity to the _UTC offset_; but this can always be understood as a transitive sensitivity to the fundamental _timestamptz_ to/from plain _timestamp_ conversions. The section [Typecasting between values of different date-time datatypes](../../typecasting-between-date-time-values/) calls out all of these cases. Here is an example:
 
@@ -42,7 +42,7 @@ The section [The sensitivity of _timestamptz-interval_ arithmetic to the current
 
 - The sensitivity is specific to adding or subtracting an _interval_ value to or from exactly and only a _timestamptz_ value.
 
-- The sensitivity is specific to only the _dd_ value of the _[&#91;mm, dd, ss&#93;](../../date-time-data-types-semantics/type-interval/interval-representation/)_ internal representation of an _interval_ value.
+- The sensitivity is specific to only the _dd_ value of the _[\[mm, dd, ss\]](../../date-time-data-types-semantics/type-interval/interval-representation/)_ internal representation of an _interval_ value.
 
 - Only the session's _TimeZone_ setting matters. There is no explicit syntax, analogous to the _at time zone_ operator or its equivalent _timezone()_ function overloads to let you override the session's setting.
 

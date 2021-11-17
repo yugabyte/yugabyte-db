@@ -2,9 +2,11 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.models.TaskInfo.State.Success;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.anyString;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -28,7 +30,7 @@ public class ManipulateDnsRecordTaskTest extends CommissionerBaseTest {
 
   private TaskInfo submitTask() {
     Universe u = ModelFactory.createUniverse("test_universe", defaultCustomer.getCustomerId());
-    ManipulateDnsRecordTask task = AbstractTaskBase.createTask(ManipulateDnsRecordTask.class);
+    AbstractTaskBase.createTask(ManipulateDnsRecordTask.class);
     ManipulateDnsRecordTask.Params params = new ManipulateDnsRecordTask.Params();
     params.universeUUID = u.universeUUID;
     params.type = DnsManager.DnsCommandType.Create;
@@ -44,7 +46,7 @@ public class ManipulateDnsRecordTaskTest extends CommissionerBaseTest {
           CustomerTask.TargetType.Universe,
           CustomerTask.TaskType.Create,
           "Create Universe");
-      waitForTask(taskUUID);
+      return waitForTask(taskUUID);
     } catch (InterruptedException e) {
       assertNull(e.getMessage());
     }
@@ -59,7 +61,8 @@ public class ManipulateDnsRecordTaskTest extends CommissionerBaseTest {
     when(mockDnsManager.manipulateDnsRecord(any(), any(), anyString(), anyString(), anyString()))
         .thenReturn(response);
 
-    submitTask();
+    TaskInfo taskInfo = submitTask();
+    assertEquals(Success, taskInfo.getTaskState());
 
     verify(mockDnsManager, times(1))
         .manipulateDnsRecord(any(), any(), anyString(), anyString(), anyString());

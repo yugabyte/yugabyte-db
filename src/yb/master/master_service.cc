@@ -76,6 +76,9 @@ DEFINE_int32(tablet_report_limit, 1000,
              "If this is set to INT32_MAX, then heartbeat will report all dirty tablets.");
 TAG_FLAG(tablet_report_limit, advanced);
 
+DEFINE_test_flag(bool, timeout_non_leader_master_rpcs, false,
+                 "Timeout all master requests to non leader.");
+
 DECLARE_CAPABILITY(TabletReportLimit);
 DECLARE_int32(heartbeat_rpc_timeout_ms);
 
@@ -243,6 +246,9 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
     LOG(WARNING) << "Could not get YSQL catalog version for heartbeat response: "
                  << s.ToUserMessage();
   }
+
+  uint64_t txn_table_versions_hash = server_->catalog_manager()->GetTxnTableVersionsHash();
+  resp->set_txn_table_versions_hash(txn_table_versions_hash);
 
   rpc.RespondSuccess();
 }

@@ -86,7 +86,8 @@ import {
   UPDATE_ALERT_CONFIG,
   UPDATE_ALERT_CONFIG_RESPONSE,
   DELETE_ALERT_DESTINATION,
-  DELETE_ALERT_CONFIG
+  DELETE_ALERT_CONFIG,
+  LOGS_FETCHING
 } from '../actions/customers';
 
 import { sortVersionStrings, isDefinedNotNull } from '../utils/ObjectUtils';
@@ -348,6 +349,7 @@ export default function (state = INITIAL_STATE, action) {
     case DELETE_CUSTOMER_CONFIG_RESPONSE:
       return setPromiseResponse(state, 'deleteConfig', action);
 
+    case LOGS_FETCHING:
     case GET_LOGS:
       return {
         ...state,
@@ -356,7 +358,7 @@ export default function (state = INITIAL_STATE, action) {
     case GET_LOGS_SUCCESS:
       return {
         ...state,
-        yugaware_logs: action.payload.data.lines.reverse(),
+        yugaware_logs: action.payload.data,
         yugawareLogError: false
       };
     case GET_LOGS_FAILURE:

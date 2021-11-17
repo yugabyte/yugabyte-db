@@ -14,23 +14,31 @@ import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
+import static java.util.stream.Collectors.toList;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.Mockito.when;
 import static play.test.Helpers.contentAsString;
 
+import ch.qos.logback.classic.spi.ILoggingEvent;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
 import com.yugabyte.yw.models.Users;
+import java.time.Duration;
+import java.util.List;
 import java.util.UUID;
+import java.util.function.Predicate;
 import org.junit.Before;
 import org.junit.Test;
 import play.libs.Json;
@@ -266,5 +274,44 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
         assertPlatformException(
             () -> FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri, authToken, body));
     assertBadRequest(promoteResult, "Could not find leader instance");
+  }
+
+  @Test
+  public void testPromoteLocalInstance() throws InterruptedException {
+
+    List<ILoggingEvent> logsEvents =
+        TestHelper.captureLogEventsFor(PlatformReplicationManager.class);
+
+    when(mockShellProcessHandler.run(anyList(), anyMap(), anyBoolean()))
+        .thenReturn(new ShellResponse());
+
+    PlatformReplicationManager platformReplicationManager =
+        app.injector().instanceOf(PlatformReplicationManager.class);
+
+    JsonNode haConfigJson = createHAConfig();
+    HighAvailabilityConfig config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
+    UUID configUUID = config.getUUID();
+    Result createResult = createPlatformInstance(configUUID, "http://abc.com", true, true);
+    assertOk(createResult);
+    createResult = createPlatformInstance(configUUID, "http://def.com", false, false);
+    assertOk(createResult);
+    JsonNode instanceJson = Json.parse(contentAsString(createResult));
+    PlatformInstance instance = Json.fromJson(instanceJson, PlatformInstance.class);
+
+    platformReplicationManager.promoteLocalInstance(instance);
+
+    platformReplicationManager.setFrequencyStartAndEnable(Duration.ofSeconds(1));
+
+    Thread.sleep(1200);
+    assertNotLogging(logsEvents, PlatformReplicationManager.NO_LOCAL_INSTANCE_MSG);
+  }
+
+  public static void assertNotLogging(List<ILoggingEvent> loggingEvents, String message) {
+    final Predicate<ILoggingEvent> iLoggingEventPredicate =
+        iLoggingEvent -> iLoggingEvent.getFormattedMessage().contains(message);
+    assertFalse(
+        "Found logs: "
+            + loggingEvents.stream().filter(iLoggingEventPredicate).collect(toList()).toString(),
+        loggingEvents.stream().anyMatch(iLoggingEventPredicate));
   }
 }

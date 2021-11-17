@@ -30,6 +30,10 @@ const mapDispatchToProps = (dispatch) => {
 
 function mapStateToProps(state, ownProps) {
   const tableTypes = {};
+  const {
+    customer: { configs }
+  } = state;
+  const storageConfigs = configs.data.filter((config) => config.type === 'STORAGE');
   state.tables.universeTablesList.forEach((t) => {
     if (t.tableType === 'YQL_TABLE_TYPE') {
       tableTypes[t.tableUUID] = 'YCQL';
@@ -42,7 +46,8 @@ function mapStateToProps(state, ownProps) {
   return {
     universeBackupList: state.universe.universeBackupList,
     universeTableTypes: tableTypes,
-    currentCustomer: state.customer.currentCustomer
+    currentCustomer: state.customer.currentCustomer,
+    storageConfigs
   };
 }
 

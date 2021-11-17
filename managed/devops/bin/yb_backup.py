@@ -621,7 +621,7 @@ class YBBackup:
                 return subprocess_result
             except subprocess.CalledProcessError as e:
                 logging.error("Failed to run command [[ {} ]]: code={} output={}".format(
-                    cmd_as_str, e.returncode, str(e.output.decode('utf-8'))))
+                    cmd_as_str, e.returncode, str(e.output.decode('utf-8', errors='replace'))))
                 self.sleep_or_raise(num_retry, timeout, e)
             except Exception as ex:
                 logging.error("Failed to run command [[ {} ]]: {}".format(cmd_as_str, ex))
@@ -762,6 +762,12 @@ class YBBackup:
         parser.add_argument(
             '--restore_time', required=False,
             help='The Unix microsecond timestamp to which to restore the snapshot.')
+        parser.add_argument('--upload', dest='upload', action='store_true')
+        # Please note that we have to use this weird naming (i.e. underscore in the argument name)
+        # style to keep it in sync with other arguments in this script.
+        parser.add_argument('--no_upload', dest='upload', action='store_false',
+                            help="Skip uploading snapshot")
+        parser.set_defaults(upload=True)
         logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
         self.args = parser.parse_args()
 
@@ -1746,7 +1752,7 @@ class YBBackup:
 
     def delete_bucket_obj(self):
         del_cmd = self.storage.delete_obj_cmd(self.args.backup_location)
-        if self.is_nfs:
+        if self.is_nfs():
             self.run_ssh_cmd(del_cmd, self.get_leader_master_ip())
         else:
             self.run_program(del_cmd)
@@ -1966,15 +1972,18 @@ class YBBackup:
         self.timer.log_new_phase("Create and upload snapshot metadata")
         snapshot_id = self.create_and_upload_metadata_files(snapshot_filepath)
         self.timer.log_new_phase("Find tablet leaders")
-        tablet_leaders = self.find_tablet_leaders()
-        self.timer.log_new_phase("Upload snapshot directories")
-        self.upload_snapshot_directories(tablet_leaders, snapshot_id, snapshot_filepath)
-        logging.info(
-            '[app] Backed up tables %s to %s successfully!' %
-            (self.table_names_str(), snapshot_filepath))
-        if self.args.backup_keys_source:
-            self.upload_encryption_key_file()
-        print(json.dumps({"snapshot_url": snapshot_filepath}))
+        if self.args.upload:
+            tablet_leaders = self.find_tablet_leaders()
+            self.timer.log_new_phase("Upload snapshot directories")
+            self.upload_snapshot_directories(tablet_leaders, snapshot_id, snapshot_filepath)
+            logging.info(
+                '[app] Backed up tables %s to %s successfully!' %
+                (self.table_names_str(), snapshot_filepath))
+            if self.args.backup_keys_source:
+                self.upload_encryption_key_file()
+            print(json.dumps({"snapshot_url": snapshot_filepath}))
+        else:
+            print(json.dumps({"snapshot_url": "UPLOAD_SKIPPED"}))
 
     def download_file(self, src_path, target_path):
         """
