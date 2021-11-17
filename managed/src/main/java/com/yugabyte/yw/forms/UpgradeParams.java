@@ -1,12 +1,10 @@
 package com.yugabyte.yw.forms;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
-
-import com.fasterxml.jackson.annotation.JsonProperty;
-
-import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import play.data.validation.Constraints;
 
 public class UpgradeParams extends UniverseDefinitionTaskParams {
@@ -20,6 +18,8 @@ public class UpgradeParams extends UniverseDefinitionTaskParams {
   public UUID certUUID = null;
   // If the root certificate needs to be rotated.
   public boolean rotateRoot = false;
+  // creates a new self signed certificate and rotates
+  public boolean createNewSelfSignedRootCA = false;
 
   @Deprecated
   // This is deprecated use cluster.userIntent.masterGFlags

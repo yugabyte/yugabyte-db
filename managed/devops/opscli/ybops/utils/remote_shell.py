@@ -30,8 +30,11 @@ class RemoteShell(object):
             connect_kwargs={'key_filename': [options.get("private_key_file")]}
         )
 
+    def run_command_raw(self, command):
+        return self.ssh_conn.run(command, hide=True, warn=True)
+
     def run_command(self, command):
-        result = self.ssh_conn.run(command, hide=True, warn=True)
+        result = self.run_command_raw(command)
 
         if result.exited:
             raise YBOpsRuntimeError(
@@ -40,6 +43,7 @@ class RemoteShell(object):
                                                          result.stderr.encode('utf-8'),
                                                          result.exited)
             )
+
         return result
 
     def put_file(self, local_path, remote_path):

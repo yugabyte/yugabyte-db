@@ -10,39 +10,41 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
+import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskSubType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.CertificateParams;
-
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.CertificateInfo.Type;
 import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.libs.Json;
-
 import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
-import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.*;
+import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.libs.Json;
 
 @Singleton
 public class NodeManager extends DevopsBase {
@@ -69,6 +71,12 @@ public class NodeManager extends DevopsBase {
     Tags,
     InitYSQL,
     Disk_Update
+  }
+
+  public enum CertRotateAction {
+    APPEND_NEW_ROOT_CERT,
+    REMOVE_OLD_ROOT_CERT,
+    ROTATE_CERTS,
   }
 
   public static final Logger LOG = LoggerFactory.getLogger(NodeManager.class);
@@ -462,9 +470,6 @@ public class NodeManager extends DevopsBase {
           if (cert == null) {
             throw new RuntimeException("Certificate is null: " + taskParam.rootCA);
           }
-          if (cert.certType == CertificateInfo.Type.SelfSigned) {
-            throw new RuntimeException("Self signed certs cannot be rotated.");
-          }
           String processType = taskParam.getProperty("processType");
           if (processType == null || !VALID_CONFIGURE_PROCESS_TYPES.contains(processType)) {
             throw new RuntimeException("Invalid processType: " + processType);
@@ -472,20 +477,59 @@ public class NodeManager extends DevopsBase {
             subcommand.add("--yb_process_type");
             subcommand.add(processType.toLowerCase());
           }
-          CertificateParams.CustomCertInfo customCertInfo = cert.getCustomCertInfo();
-          subcommand.add("--use_custom_certs");
-          subcommand.add("--rotating_certs");
-          subcommand.add("--root_cert_path");
-          subcommand.add(customCertInfo.rootCertPath);
-          subcommand.add("--node_cert_path");
-          subcommand.add(customCertInfo.nodeCertPath);
-          subcommand.add("--node_key_path");
-          subcommand.add(customCertInfo.nodeKeyPath);
-          if (customCertInfo.clientCertPath != null) {
-            subcommand.add("--client_cert_path");
-            subcommand.add(customCertInfo.clientCertPath);
-            subcommand.add("--client_key_path");
-            subcommand.add(customCertInfo.clientKeyPath);
+          String taskSubType = taskParam.getProperty("taskSubType");
+          if (taskSubType == null) {
+            throw new RuntimeException("taskSubType is null");
+          }
+
+          subcommand.add("--cert_rotate_action");
+          if (taskSubType.equals(UpgradeTaskSubType.AppendNewRootCert.toString())) {
+            subcommand.add(CertRotateAction.APPEND_NEW_ROOT_CERT.toString());
+          } else if (taskSubType.equals(UpgradeTaskSubType.RotateCerts.toString())) {
+            subcommand.add(CertRotateAction.ROTATE_CERTS.toString());
+          } else if (taskSubType.equals(UpgradeTaskSubType.RemoveOldRootCert.toString())) {
+            subcommand.add(CertRotateAction.REMOVE_OLD_ROOT_CERT.toString());
+          } else {
+            throw new RuntimeException("Invalid taskSubType property: " + taskSubType);
+          }
+
+          String yb_home_dir =
+              Provider.get(
+                      UUID.fromString(
+                          universe.getUniverseDetails().getPrimaryCluster().userIntent.provider))
+                  .getYbHome();
+          subcommand.add("--certs_node_dir");
+          subcommand.add(yb_home_dir + "/yugabyte-tls-config");
+
+          if (cert.certType == Type.SelfSigned) {
+            subcommand.add("--rootCA_cert");
+            subcommand.add(cert.certificate);
+            subcommand.add("--rootCA_key");
+            subcommand.add(cert.privateKey);
+            if (taskParam.enableClientToNodeEncrypt) {
+              subcommand.add("--client_cert");
+              subcommand.add(CertificateHelper.getClientCertFile(taskParam.rootCA));
+              subcommand.add("--client_key");
+              subcommand.add(CertificateHelper.getClientKeyFile(taskParam.rootCA));
+            }
+          } else {
+            CertificateParams.CustomCertInfo customCertInfo = cert.getCustomCertInfo();
+            subcommand.add("--use_custom_certs");
+            subcommand.add("--root_cert_path");
+            subcommand.add(customCertInfo.rootCertPath);
+            subcommand.add("--node_cert_path");
+            subcommand.add(customCertInfo.nodeCertPath);
+            subcommand.add("--node_key_path");
+            subcommand.add(customCertInfo.nodeKeyPath);
+            if (customCertInfo.clientCertPath != null
+                && !customCertInfo.clientCertPath.isEmpty()
+                && customCertInfo.clientKeyPath != null
+                && !customCertInfo.clientKeyPath.isEmpty()) {
+              subcommand.add("--client_cert_path");
+              subcommand.add(customCertInfo.clientCertPath);
+              subcommand.add("--client_key_path");
+              subcommand.add(customCertInfo.clientKeyPath);
+            }
           }
         }
         break;

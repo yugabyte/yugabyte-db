@@ -178,6 +178,8 @@ public enum TaskType {
 
   UnivSetCertificate("subtasks.UnivSetCertificate"),
 
+  UniverseUpdateRootCert("subtasks.UniverseUpdateRootCert"),
+
   CreateAlertDefinitions("subtasks.CreateAlertDefinitions");
 
   private String relativeClassPath;

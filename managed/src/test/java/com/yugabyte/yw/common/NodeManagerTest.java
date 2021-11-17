@@ -1,49 +1,66 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.MASTER;
+import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.TSERVER;
+import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskSubType.Download;
+import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskSubType.Install;
+import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.Certs;
+import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.Everything;
+import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.GFlags;
+import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.Software;
+import static com.yugabyte.yw.common.TestHelper.createTempFile;
+import static org.hamcrest.CoreMatchers.allOf;
+import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.hamcrest.core.StringContains.containsString;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Matchers.any;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
-import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
+import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskSubType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
-import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.NodeManager.CertRotateAction;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.CertificateInfo.Type;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-
-import junitparams.JUnitParamsRunner;
-import junitparams.Parameters;
-import junitparams.naming.TestCaseName;
-
-import org.apache.commons.lang3.StringUtils;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
-import org.mockito.runners.MockitoJUnitRunner;
-
-import play.libs.Json;
-
 import java.io.File;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
@@ -51,35 +68,26 @@ import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Predicate;
-import java.util.Set;
-import java.util.HashSet;
-
-import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.MASTER;
-import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.TSERVER;
-import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskSubType.Download;
-import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskSubType.Install;
-import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.Everything;
-import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.GFlags;
-import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.Software;
-import static com.yugabyte.yw.common.TestHelper.createTempFile;
-import static org.hamcrest.CoreMatchers.*;
-import static org.hamcrest.core.StringContains.containsString;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotEquals;
-import static org.junit.Assert.fail;
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
+import junitparams.naming.TestCaseName;
+import org.apache.commons.lang3.StringUtils;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-import static org.mockito.Matchers.any;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
+import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
 public class NodeManagerTest extends FakeDBApplication {
@@ -476,6 +484,53 @@ public class NodeManagerTest extends FakeDBApplication {
           if (configureParams.gflagsToRemove != null && !configureParams.gflagsToRemove.isEmpty()) {
             expectedCommand.add("--gflags_to_remove");
             expectedCommand.add(Json.stringify(Json.toJson(configureParams.gflagsToRemove)));
+          }
+        } else if (configureParams.type == Certs) {
+          String taskSubType = configureParams.getProperty("taskSubType");
+          expectedCommand.add("--cert_rotate_action");
+          if (taskSubType.equals(UpgradeTaskSubType.AppendNewRootCert.toString())) {
+            expectedCommand.add(CertRotateAction.APPEND_NEW_ROOT_CERT.toString());
+          } else if (taskSubType.equals(UpgradeTaskSubType.RotateCerts.toString())) {
+            expectedCommand.add(CertRotateAction.ROTATE_CERTS.toString());
+          } else if (taskSubType.equals(UpgradeTaskSubType.RemoveOldRootCert.toString())) {
+            expectedCommand.add(CertRotateAction.REMOVE_OLD_ROOT_CERT.toString());
+          }
+
+          CertificateInfo cert = CertificateInfo.get(configureParams.rootCA);
+
+          String yb_home_dir = Provider.get(UUID.fromString(userIntent.provider)).getYbHome();
+          expectedCommand.add("--certs_node_dir");
+          expectedCommand.add(yb_home_dir + "/yugabyte-tls-config");
+
+          if (cert.certType == Type.SelfSigned) {
+            expectedCommand.add("--rootCA_cert");
+            expectedCommand.add(cert.certificate);
+            expectedCommand.add("--rootCA_key");
+            expectedCommand.add(cert.privateKey);
+            if (configureParams.enableClientToNodeEncrypt) {
+              expectedCommand.add("--client_cert");
+              expectedCommand.add(CertificateHelper.getClientCertFile(configureParams.rootCA));
+              expectedCommand.add("--client_key");
+              expectedCommand.add(CertificateHelper.getClientKeyFile(configureParams.rootCA));
+            }
+          } else {
+            CertificateParams.CustomCertInfo customCertInfo = cert.getCustomCertInfo();
+            expectedCommand.add("--use_custom_certs");
+            expectedCommand.add("--root_cert_path");
+            expectedCommand.add(customCertInfo.rootCertPath);
+            expectedCommand.add("--node_cert_path");
+            expectedCommand.add(customCertInfo.nodeCertPath);
+            expectedCommand.add("--node_key_path");
+            expectedCommand.add(customCertInfo.nodeKeyPath);
+            if (customCertInfo.clientCertPath != null
+                && !customCertInfo.clientCertPath.isEmpty()
+                && customCertInfo.clientKeyPath != null
+                && !customCertInfo.clientKeyPath.isEmpty()) {
+              expectedCommand.add("--client_cert_path");
+              expectedCommand.add(customCertInfo.clientCertPath);
+              expectedCommand.add("--client_key_path");
+              expectedCommand.add(customCertInfo.clientKeyPath);
+            }
           }
         } else {
           expectedCommand.add("--extra_gflags");
@@ -1586,5 +1641,108 @@ public class NodeManagerTest extends FakeDBApplication {
         isMasterInShellMode,
         StringUtils.isEmpty(
             obj.get(isMaster ? "master_addresses" : "tserver_master_addrs").asText()));
+  }
+
+  private UUID createCertificate(Type certType, UUID customerUUID, String label)
+      throws IOException, NoSuchAlgorithmException {
+    UUID certUUID = UUID.randomUUID();
+    Calendar cal = Calendar.getInstance();
+    Date today = cal.getTime();
+    cal.add(Calendar.YEAR, 1);
+    Date nextYear = cal.getTime();
+    if (certType == Type.SelfSigned) {
+      certUUID = CertificateHelper.createRootCA("foobar", customerUUID, TestHelper.TMP_PATH);
+    } else if (certType == Type.CustomCertHostPath) {
+      CertificateParams.CustomCertInfo customCertInfo = new CertificateParams.CustomCertInfo();
+      customCertInfo.rootCertPath = "/path/to/cert.crt";
+      customCertInfo.nodeCertPath = "/path/to/rootcert.crt";
+      customCertInfo.nodeKeyPath = "/path/to/nodecert.crt";
+      CertificateInfo.create(
+          certUUID,
+          customerUUID,
+          label,
+          today,
+          nextYear,
+          TestHelper.TMP_PATH + "/ca.crt",
+          customCertInfo);
+    }
+
+    return certUUID;
+  }
+
+  @Test
+  public void testCertRotateWithInvalidRootCA() {
+    for (TestData data : testData) {
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      buildValidParams(
+          data,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(data.cloudType)));
+      params.type = Certs;
+      params.rootCA = UUID.randomUUID();
+      params.setProperty("taskSubType", "RotateCerts");
+      params.setProperty("processType", MASTER.toString());
+
+      try {
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+        fail();
+      } catch (RuntimeException re) {
+        assertThat(re.getMessage(), containsString("Certificate is null"));
+      }
+    }
+  }
+
+  @Test
+  public void testCertRotateWithoutTaskSubType() throws IOException, NoSuchAlgorithmException {
+    for (TestData data : testData) {
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      buildValidParams(
+          data,
+          params,
+          Universe.saveDetails(
+              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(data.cloudType)));
+      params.type = Certs;
+      params.rootCA =
+          createCertificate(Type.CustomCertHostPath, data.provider.customerUUID, params.nodePrefix);
+      params.setProperty("processType", MASTER.toString());
+
+      try {
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+        fail();
+      } catch (RuntimeException re) {
+        assertThat(re.getMessage(), containsString("taskSubType is null"));
+      }
+    }
+  }
+
+  @Test
+  @Parameters({"AppendNewRootCert", "RemoveOldRootCert", "RotateCerts"})
+  public void testCertRotateWithValidParams(String taskSubType)
+      throws IOException, NoSuchAlgorithmException {
+    for (TestData data : testData) {
+      UUID universeUuid = createUniverse().universeUUID;
+      UserIntent userIntent =
+          Universe.get(universeUuid).getUniverseDetails().getPrimaryCluster().userIntent;
+
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      buildValidParams(
+          data,
+          params,
+          Universe.saveDetails(universeUuid, ApiUtils.mockUniverseUpdater(data.cloudType)));
+
+      params.type = Certs;
+      params.rootCA =
+          createCertificate(Type.CustomCertHostPath, data.provider.customerUUID, params.nodePrefix);
+      params.setProperty("taskSubType", taskSubType);
+      params.setProperty("processType", MASTER.toString());
+
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+      List<String> expectedCommand = data.baseCommand;
+      expectedCommand.addAll(
+          nodeCommand(NodeManager.NodeCommandType.Configure, params, data, userIntent));
+      verify(shellProcessHandler, times(1))
+          .run(eq(expectedCommand), eq(data.region.provider.getConfig()));
+    }
   }
 }

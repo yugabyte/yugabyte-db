@@ -73,11 +73,31 @@ class FlagItems extends Component {
 export default class RollingUpgradeForm extends Component {
   constructor(props) {
     super(props);
-    this.state = { formConfirmed: false };
+    this.state = { formConfirmed: false, rotateRoot: false };
   }
 
   toggleConfirmValidation = () => {
     this.setState({ formConfirmed: !this.state.formConfirmed });
+  };
+
+  changeRotateRoot = (value) => {
+    const {
+      certificates,
+      universe: {
+        currentUniverse: {
+          data: {
+            universeDetails: { rootCA }
+          }
+        }
+      }
+    } = this.props;
+    if (value !== "Create New Certificate") {
+      const currentCertificate = certificates.filter((cert) => cert.uuid === rootCA)[0];
+      const selectedCertificate = certificates.filter((cert) => cert.uuid === value)[0];
+      this.setState({ rotateRoot: currentCertificate.checksum !== selectedCertificate.checksum });
+    } else {
+      this.setState({ rotateRoot: true });
+    }
   };
 
   componentWillUnmount() {
@@ -127,7 +147,9 @@ export default class RollingUpgradeForm extends Component {
       case 'tlsConfigurationModal': {
         payload.taskType = 'Certs';
         payload.upgradeOption = values.rollingUpgrade ? 'Rolling' : 'Non-Rolling';
-        payload.certUUID = values.tlsCertificate;
+        payload.certUUID = values.tlsCertificate === "Create New Certificate" ? null : values.tlsCertificate;
+        payload.rotateRoot = this.state.rotateRoot;
+        payload.createNewSelfSignedRootCA = values.tlsCertificate === "Create New Certificate";
         break;
       }
       case 'rollingRestart': {
@@ -334,14 +356,22 @@ export default class RollingUpgradeForm extends Component {
             onFormSubmit={submitAction}
             error={error}
             footerAccessory={
-              formValues.tlsCertificate !== universe.currentUniverse?.data?.universeDetails?.rootCA
-                ? (
-                  <YBCheckBox
-                    label="Confirm TLS Changes"
-                    input={{ checked: this.state.formConfirmed, onChange: this.toggleConfirmValidation }}
-                  />
-                )
-                : <span>Select new CA signed cert from the list</span>
+              formValues.tlsCertificate !==
+              universe.currentUniverse?.data?.universeDetails?.rootCA ? (
+                <YBCheckBox
+                  label={
+                    this.state.rotateRoot
+                      ? 'Confirm Root Cert Rotation'
+                      : 'Confirm Node Certs Rotation'
+                  }
+                  input={{
+                    checked: this.state.formConfirmed,
+                    onChange: this.toggleConfirmValidation
+                  }}
+                />
+              ) : (
+                <span>Select new CA signed cert from the list</span>
+              )
             }
             asyncValidating={
               !this.state.formConfirmed ||
@@ -354,6 +384,7 @@ export default class RollingUpgradeForm extends Component {
                 type="select"
                 component={YBSelectWithLabel}
                 options={tlsCertificateOptions}
+                onChange={this.changeRotateRoot}
                 label="New TLS Certificate"
               />
               <Field

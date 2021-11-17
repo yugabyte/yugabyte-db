@@ -474,6 +474,7 @@ class CronCheckMethod(AbstractInstancesMethod):
 
 class ConfigureInstancesMethod(AbstractInstancesMethod):
     VALID_PROCESS_TYPES = ['master', 'tserver']
+    CERT_ROTATE_ACTIONS = ['APPEND_NEW_ROOT_CERT', 'ROTATE_CERTS', 'REMOVE_OLD_ROOT_CERT']
 
     def __init__(self, base_command):
         super(ConfigureInstancesMethod, self).__init__(base_command, "configure")
@@ -497,12 +498,13 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument('--client_key')
         self.parser.add_argument('--client_cert')
         self.parser.add_argument('--use_custom_certs', action="store_true")
-        self.parser.add_argument('--rotating_certs', action="store_true")
         self.parser.add_argument('--root_cert_path')
         self.parser.add_argument('--node_cert_path')
         self.parser.add_argument('--node_key_path')
         self.parser.add_argument('--client_cert_path')
         self.parser.add_argument('--client_key_path')
+        self.parser.add_argument('--cert_rotate_action', default=None,
+                                 choices=self.CERT_ROTATE_ACTIONS)
         self.parser.add_argument('--cert_valid_duration', default=365)
         self.parser.add_argument('--org_name', default="example.com")
         self.parser.add_argument('--certs_node_dir',
@@ -604,6 +606,12 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         if args.client_key_path is not None:
             self.extra_vars["client_key_path"] = args.client_key_path.strip()
 
+        if args.cert_rotate_action is not None:
+            if args.cert_rotate_action not in self.CERT_ROTATE_ACTIONS:
+                raise YBOpsRuntimeError(
+                    "Supported actions for this command are only: {}".format(
+                        self.CERT_ROTATE_ACTIONS))
+
         host_info = None
         if args.search_pattern != 'localhost':
             host_info = self.cloud.get_host_info(args)
@@ -649,17 +657,28 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         }
         ssh_options.update(get_ssh_host_port(host_info, args.custom_ssh_port))
 
+        rotate_certs = False
+        if args.cert_rotate_action is not None:
+            if args.cert_rotate_action == "APPEND_NEW_ROOT_CERT":
+                self.cloud.append_new_root_cert(
+                    self.extra_vars, ssh_options, args.use_custom_certs)
+                return
+            if args.cert_rotate_action == "REMOVE_OLD_ROOT_CERT":
+                self.cloud.remove_old_root_cert(
+                    self.extra_vars, ssh_options)
+                return
+            if args.cert_rotate_action == "ROTATE_CERTS":
+                rotate_certs = True
+
         if args.use_custom_certs:
-            if args.rotating_certs:
-                logging.info("Verifying root certs are the same.")
-                self.cloud.compare_root_certs(self.extra_vars, ssh_options)
             logging.info("Copying custom certificates to {}.".format(args.search_pattern))
-            self.cloud.copy_certs(self.extra_vars, ssh_options)
+            self.cloud.copy_certs(self.extra_vars, ssh_options, rotate_certs)
         else:
             if args.rootCA_cert and args.rootCA_key is not None:
                 logging.info("Creating and copying over client TLS certificate to {}".format(
                     args.search_pattern))
-                self.cloud.generate_client_cert(self.extra_vars, ssh_options)
+                self.cloud.generate_client_cert(self.extra_vars, ssh_options, rotate_certs)
+
         if args.encryption_key_source_file is not None:
             self.extra_vars["encryption_key_file"] = args.encryption_key_source_file
             logging.info("Copying over encryption-at-rest certificate from {} to {}".format(
@@ -667,7 +686,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
             self.cloud.create_encryption_at_rest_file(self.extra_vars, ssh_options)
 
         # If we are just rotating certs, we don't need to do any configuration changes.
-        if not args.rotating_certs:
+        if args.cert_rotate_action is None:
             self.cloud.setup_ansible(args).run(
                 "configure-{}.yml".format(args.type), self.extra_vars, host_info)
 

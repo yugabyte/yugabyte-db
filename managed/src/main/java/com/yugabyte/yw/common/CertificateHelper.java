@@ -33,6 +33,7 @@ import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.Base64;
 import java.util.Calendar;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
@@ -77,8 +78,24 @@ public class CertificateHelper {
 
   public static UUID createRootCA(String nodePrefix, UUID customerUUID, String storagePath) {
     try {
-      KeyPair keyPair = getKeyPairObject();
+      // Default the cert label with node prefix.
+      // If cert with the label already exists append number
+      String certLabel = nodePrefix;
+      CertificateInfo.Type certType = CertificateInfo.Type.SelfSigned;
+      List<CertificateInfo> certificateInfoList =
+          CertificateInfo.getWhereLabelStartsWith(nodePrefix, certType);
+      if (!certificateInfoList.isEmpty()) {
+        certificateInfoList.sort(Comparator.comparing(a -> a.label, Comparator.reverseOrder()));
+        String[] labelArray = certificateInfoList.get(0).label.split("~");
+        int lastCount = 0;
+        try {
+          lastCount = Integer.parseInt(labelArray[labelArray.length - 1]);
+        } catch (NumberFormatException ignored) {
+        }
+        certLabel = nodePrefix + "~" + (++lastCount);
+      }
 
+      KeyPair keyPair = getKeyPairObject();
       UUID rootCA_UUID = UUID.randomUUID();
       Calendar cal = Calendar.getInstance();
       Date certStart = cal.getTime();
@@ -86,7 +103,7 @@ public class CertificateHelper {
       Date certExpiry = cal.getTime();
       X500Name subject =
           new X500NameBuilder(BCStyle.INSTANCE)
-              .addRDN(BCStyle.CN, nodePrefix)
+              .addRDN(BCStyle.CN, certLabel)
               .addRDN(BCStyle.O, "example.com")
               .build();
       BigInteger serial = BigInteger.valueOf(System.currentTimeMillis());
@@ -110,23 +127,15 @@ public class CertificateHelper {
       X509Certificate x509 = converter.getCertificate(holder);
       String certPath =
           String.format(
-              CERT_PATH + "/ca.%s",
-              storagePath,
-              customerUUID.toString(),
-              rootCA_UUID.toString(),
-              ROOT_CERT);
+              CERT_PATH + "/ca.%s", storagePath, customerUUID.toString(), rootCA_UUID, ROOT_CERT);
       writeCertFileContentToCertPath(Collections.singletonList(x509), certPath);
       String keyPath =
-          String.format(
-              CERT_PATH + "/ca.key.pem",
-              storagePath,
-              customerUUID.toString(),
-              rootCA_UUID.toString());
+          String.format(CERT_PATH + "/ca.key.pem", storagePath, customerUUID, rootCA_UUID);
       writeKeyFileContentToKeyPath(keyPair.getPrivate(), keyPath);
-      CertificateInfo.Type certType = CertificateInfo.Type.SelfSigned;
+
       LOG.info(
           "Generated self signed cert label {} uuid {} of type {} for customer {} at paths {}, {}",
-          nodePrefix,
+          certLabel,
           rootCA_UUID,
           certType,
           customerUUID,
@@ -137,14 +146,14 @@ public class CertificateHelper {
           CertificateInfo.create(
               rootCA_UUID,
               customerUUID,
-              nodePrefix,
+              certLabel,
               certStart,
               certExpiry,
               keyPath,
               certPath,
               certType);
 
-      LOG.info("Created Root CA for {}.", nodePrefix);
+      LOG.info("Created Root CA for {}.", certLabel);
       return cert.uuid;
     } catch (NoSuchAlgorithmException
         | IOException

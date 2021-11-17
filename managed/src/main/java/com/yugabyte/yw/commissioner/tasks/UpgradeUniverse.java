@@ -10,39 +10,35 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Stopping;
+import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.UpdateCert;
+import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.UpdateGFlags;
+import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.UpgradeSoftware;
+
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
-import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert.UpdateRootCertAction;
 import com.yugabyte.yw.common.CertificateHelper;
-import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UpgradeParams;
+import com.yugabyte.yw.forms.UpgradeParams.UpgradeOption;
 import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.CertificateInfo.Type;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-
-import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.UpgradeSoftware;
-import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.UpdateGFlags;
-import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Stopping;
-import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.UpdateCert;
-
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
-import java.util.UUID;
-import java.util.stream.Collector;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-
 import org.apache.commons.lang3.tuple.ImmutablePair;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -63,7 +59,10 @@ public class UpgradeUniverse extends UniverseTaskBase {
   public enum UpgradeTaskSubType {
     None,
     Download,
-    Install
+    Install,
+    AppendNewRootCert,
+    RotateCerts,
+    RemoveOldRootCert
   }
 
   public static class Params extends UpgradeParams {}
@@ -104,13 +103,15 @@ public class UpgradeUniverse extends UniverseTaskBase {
         }
         break;
       case Certs:
-        System.out.println("CERT1 " + universe.getUniverseDetails().nodePrefix);
+        if (taskParams().upgradeOption == UpgradeParams.UpgradeOption.NON_RESTART_UPGRADE) {
+          throw new IllegalArgumentException("Cert update cannot be non restart.");
+        }
         if (taskParams().certUUID == null) {
-          throw new IllegalArgumentException("CertUUID cannot be null");
+          throw new IllegalArgumentException("CertUUID cannot be null.");
         }
         CertificateInfo cert = CertificateInfo.get(taskParams().certUUID);
         if (cert == null) {
-          throw new IllegalArgumentException("Certifcate not present: " + taskParams().certUUID);
+          throw new IllegalArgumentException("Certificate not present: " + taskParams().certUUID);
         }
         if (universe.getUniverseDetails().rootCA.equals(taskParams().certUUID)) {
           throw new IllegalArgumentException("Cluster already has the same cert.");
@@ -118,14 +119,18 @@ public class UpgradeUniverse extends UniverseTaskBase {
         if (!taskParams().rotateRoot
             && CertificateHelper.areCertsDiff(
                 universe.getUniverseDetails().rootCA, taskParams().certUUID)) {
-          throw new IllegalArgumentException("CA certificates cannot be different.");
+          throw new IllegalArgumentException(
+              "CA certificates cannot be different when rotateRoot set to false.");
         }
-        if (CertificateHelper.arePathsSame(
-            universe.getUniverseDetails().rootCA, taskParams().certUUID)) {
+        if (taskParams().rotateRoot
+            && !CertificateHelper.areCertsDiff(
+                universe.getUniverseDetails().rootCA, taskParams().certUUID)) {
+          throw new IllegalArgumentException("CA certificates are same. No cert rotation needed.");
+        }
+        if (cert.certType == Type.CustomCertHostPath
+            && CertificateHelper.arePathsSame(
+                universe.getUniverseDetails().rootCA, taskParams().certUUID)) {
           throw new IllegalArgumentException("The node cert/key paths cannot be same.");
-        }
-        if (taskParams().upgradeOption == UpgradeParams.UpgradeOption.NON_RESTART_UPGRADE) {
-          throw new IllegalArgumentException("Cert update cannot be non restart.");
         }
     }
   }
@@ -225,34 +230,68 @@ public class UpgradeUniverse extends UniverseTaskBase {
 
   private void createServerUpgradeTasks(
       List<NodeDetails> masterNodes, List<NodeDetails> tServerNodes) {
-    // Setup subtasks for the taskTypes.
-    if (taskParams().taskType == UpgradeTaskType.Software) {
-      // TODO: This is assuming that master nodes is a subset of tserver node,
-      // instead we should do a union.
-      createDownloadTasks(tServerNodes);
-    } else if (taskParams().taskType == UpgradeTaskType.Certs) {
-      createCertUpdateTasks(tServerNodes);
-    }
+    if (taskParams().taskType != UpgradeTaskType.Certs) {
+      // Setup subtasks for the taskTypes.
+      if (taskParams().taskType == UpgradeTaskType.Software) {
+        // TODO: This is assuming that master nodes is a subset of tserver node,
+        // instead we should do a union.
+        createDownloadTasks(tServerNodes);
+      }
 
-    // Common subtasks.
-    if (masterNodes != null && !masterNodes.isEmpty()) {
-      createAllUpgradeTasks(masterNodes, ServerType.MASTER);
-    }
-    if (tServerNodes != null && !tServerNodes.isEmpty()) {
-      createAllUpgradeTasks(tServerNodes, ServerType.TSERVER);
-    }
+      // Common subtasks.
+      if (masterNodes != null && !masterNodes.isEmpty()) {
+        createAllUpgradeTasks(masterNodes, ServerType.MASTER);
+      }
+      if (tServerNodes != null && !tServerNodes.isEmpty()) {
+        createAllUpgradeTasks(tServerNodes, ServerType.TSERVER);
+      }
 
-    // Metadata updation subtasks.
-    if (taskParams().taskType == UpgradeTaskType.Software) {
-      // Update the software version on success.
-      createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)
-          .setSubTaskGroupType(getTaskSubGroupType());
-    } else if (taskParams().taskType == UpgradeTaskType.GFlags) {
-      // Update the list of parameter key/values in the universe with the new ones.
-      updateGFlagsPersistTasks(taskParams().masterGFlags, taskParams().tserverGFlags)
-          .setSubTaskGroupType(getTaskSubGroupType());
-    } else if (taskParams().taskType == UpgradeTaskType.Certs) {
-      createUnivSetCertTask(taskParams().certUUID).setSubTaskGroupType(getTaskSubGroupType());
+      // Metadata updation subtasks.
+      if (taskParams().taskType == UpgradeTaskType.Software) {
+        // Update the software version on success.
+        createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)
+            .setSubTaskGroupType(getTaskSubGroupType());
+      } else if (taskParams().taskType == UpgradeTaskType.GFlags) {
+        // Update the list of parameter key/values in the universe with the new ones.
+        updateGFlagsPersistTasks(taskParams().masterGFlags, taskParams().tserverGFlags)
+            .setSubTaskGroupType(getTaskSubGroupType());
+      }
+    } else {
+      if (taskParams().rotateRoot && taskParams().upgradeOption == UpgradeOption.ROLLING_UPGRADE) {
+        // Update the rootCA in platform to have both old cert and new cert
+        createUniverseUpdateRootCertTask(UpdateRootCertAction.MultiCert);
+        // Append new root cert to the existing ca.crt
+        createCertUpdateTasks(tServerNodes, UpgradeTaskSubType.AppendNewRootCert);
+        // Do a rolling restart
+        createRestartTasksForCertUpdate(masterNodes, tServerNodes);
+        // Copy new server certs to all nodes
+        createCertUpdateTasks(tServerNodes, UpgradeTaskSubType.RotateCerts);
+        // Do a rolling restart
+        createRestartTasksForCertUpdate(masterNodes, tServerNodes);
+        // Remove old root cert from the ca.crt
+        createCertUpdateTasks(tServerNodes, UpgradeTaskSubType.RemoveOldRootCert);
+        // Reset the old rootCA content in platform
+        createUniverseUpdateRootCertTask(UpdateRootCertAction.Reset);
+        // Update universe details with new cert values
+        createUnivSetCertTask(taskParams().certUUID).setSubTaskGroupType(getTaskSubGroupType());
+        // Do a rolling restart
+        createRestartTasksForCertUpdate(masterNodes, tServerNodes);
+      } else {
+        // Update the rootCA in platform to have both old cert and new cert
+        if (taskParams().rotateRoot) {
+          createUniverseUpdateRootCertTask(UpdateRootCertAction.MultiCert);
+        }
+        // Update server certs
+        createCertUpdateTasks(tServerNodes, UpgradeTaskSubType.RotateCerts);
+        // Restart master and tservers
+        createRestartTasksForCertUpdate(masterNodes, tServerNodes);
+        // Reset the old rootCA content in platform
+        if (taskParams().rotateRoot) {
+          createUniverseUpdateRootCertTask(UpdateRootCertAction.Reset);
+        }
+        // Update rootCA param in universe details
+        createUnivSetCertTask(taskParams().certUUID).setSubTaskGroupType(getTaskSubGroupType());
+      }
     }
   }
 
@@ -272,6 +311,7 @@ public class UpgradeUniverse extends UniverseTaskBase {
         if (loadbalancerOff) {
           createLoadBalancerStateChangeTask(true /*enable*/)
               .setSubTaskGroupType(getTaskSubGroupType());
+          loadbalancerOff = false;
         }
         break;
       case NON_ROLLING_UPGRADE:
@@ -296,6 +336,7 @@ public class UpgradeUniverse extends UniverseTaskBase {
         break;
       case Restart:
         nodeState = Stopping;
+        break;
       case Certs:
         nodeState = UpdateCert;
         break;
@@ -369,6 +410,20 @@ public class UpgradeUniverse extends UniverseTaskBase {
     createSetNodeStateTasks(nodes, NodeDetails.NodeState.Live).setSubTaskGroupType(subGroupType);
   }
 
+  private void createRestartTasksForCertUpdate(
+      List<NodeDetails> masterNodes, List<NodeDetails> tServerNodes) {
+    if (taskParams().taskType == UpgradeTaskType.Certs) {
+      if (masterNodes != null && !masterNodes.isEmpty()) {
+        createAllUpgradeTasks(masterNodes, ServerType.MASTER);
+      }
+      if (tServerNodes != null && !tServerNodes.isEmpty()) {
+        createAllUpgradeTasks(tServerNodes, ServerType.TSERVER);
+      }
+    } else {
+      LOG.error("Restart cannot be performed as TaskType is not Certs: " + taskParams().taskType);
+    }
+  }
+
   private SubTaskGroupType getTaskSubGroupType() {
     switch (taskParams().taskType) {
       case Software:
@@ -397,7 +452,7 @@ public class UpgradeUniverse extends UniverseTaskBase {
     subTaskGroupQueue.add(downloadTaskGroup);
   }
 
-  private void createCertUpdateTasks(List<NodeDetails> nodes) {
+  private void createCertUpdateTasks(List<NodeDetails> nodes, UpgradeTaskSubType subType) {
     String subGroupDescription =
         String.format(
             "AnsibleConfigureServers (%s) for: %s",
@@ -405,11 +460,23 @@ public class UpgradeUniverse extends UniverseTaskBase {
     SubTaskGroup rotateCertGroup = new SubTaskGroup(subGroupDescription, executor);
     for (NodeDetails node : nodes) {
       rotateCertGroup.addTask(
-          getConfigureTask(
-              node, ServerType.TSERVER, UpgradeTaskType.Certs, UpgradeTaskSubType.None));
+          getConfigureTask(node, ServerType.TSERVER, UpgradeTaskType.Certs, subType));
     }
     rotateCertGroup.setSubTaskGroupType(SubTaskGroupType.RotatingCert);
     subTaskGroupQueue.add(rotateCertGroup);
+  }
+
+  private void createUniverseUpdateRootCertTask(UpdateRootCertAction updateAction) {
+    SubTaskGroup taskGroup = new SubTaskGroup("UniverseUpdateRootCert", executor);
+    UniverseUpdateRootCert.Params params = new UniverseUpdateRootCert.Params();
+    params.universeUUID = taskParams().universeUUID;
+    params.rootCA = taskParams().certUUID;
+    params.action = updateAction;
+    UniverseUpdateRootCert task = new UniverseUpdateRootCert();
+    task.initialize(params);
+    taskGroup.addTask(task);
+    taskGroup.setSubTaskGroupType(getTaskSubGroupType());
+    subTaskGroupQueue.add(taskGroup);
   }
 
   private void createServerConfFileUpdateTasks(List<NodeDetails> nodes, ServerType processType) {
