@@ -31,13 +31,13 @@ Admin users have full access to all cloud console features. There must always be
 
 ### Developer
 
-Anyone who has been invited to the cloud by an Admin user is assigned the Developer role by default. Developer users have access to cluster management, but cannot perform any administrative tasks, including the following:
+Developer users have access to all cloud features, with the exception of administrative tasks, including the following:
 
 - invite users to the cloud.
-- delete other users.
+- delete or change the role of other users.
 - create a billing profile. 
 
-To access a cluster database, you need to ask the Admin for the username and password of a database user created on your behalf.
+To access a cluster database, you need to ask an Admin for the username and password of a database user created on your behalf.
 
 ## Invite users
 
