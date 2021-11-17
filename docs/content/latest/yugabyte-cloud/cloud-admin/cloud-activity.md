@@ -29,5 +29,5 @@ The following table lists the cloud activity that is logged.
 | Allow list | Create allow list<br>Delete allow list |
 | Backup | Create backup<br>Delete backup<br>Restore backup |
 | Billing | Add billing profile<br>Update billing profile<br>Add credit card<br>Set default credit card |
-| Users | Remove user<br>Update role<br>Add user<br>Activate user |
+| Users | Remove user<br>Update role<br>Add user<!-- <br>Activate user -->|
 | Backup schedule | Add backup schedule<br>Update backup schedule<br>Delete backup schedule |
