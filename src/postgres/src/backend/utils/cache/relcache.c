@@ -4191,6 +4191,16 @@ RelationCacheInitializePhase2(void)
 		return;
 
 	/*
+	 * In YugaByte mode initialize the catalog cache version to the latest
+	 * version from the master.
+	 */
+	if (IsYugaByteEnabled())
+	{
+		YBCPgResetCatalogReadTime();
+		yb_catalog_cache_version = YbGetMasterCatalogVersion();
+	}
+
+	/*
 	 * switch to cache memory context
 	 */
 	oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
@@ -4281,16 +4291,6 @@ RelationCacheInitializePhase3(void)
 	/* In bootstrap mode, the faked-up formrdesc info is all we'll have */
 	if (IsBootstrapProcessingMode())
 		return;
-
-	/*
-	 * In YugaByte mode initialize the catalog cache version to the latest
-	 * version from the master (except during initdb).
-	 */
-	if (IsYugaByteEnabled())
-	{
-		YBCPgResetCatalogReadTime();
-		YbGetMasterCatalogVersion(&yb_catalog_cache_version, false /* can_use_cache */);
-	}
 
 	/*
 	 * In YB mode initialize the relache at the beginning so that we need
@@ -6190,21 +6190,9 @@ load_relcache_init_file(bool shared)
 
 		/*
 		 * If we already have a newer cache version (e.g. from reading the
-		 * shared init file) then this file is too old.
+		 * shared init file) or master has newer catalog version then this file is too old.
 		 */
 		if (yb_catalog_cache_version > ybc_stored_cache_version)
-		{
-			unlink_initfile(initfilename, ERROR);
-			goto read_failed;
-		}
-
-		/* Else, still need to check with the master version to be sure. */
-		YBCPgResetCatalogReadTime();
-		uint64_t catalog_master_version = 0;
-		YbGetMasterCatalogVersion(&catalog_master_version, false /* can_use_cache */);
-
-		/* File version does not match actual master version (i.e. too old) */
-		if (ybc_stored_cache_version != catalog_master_version)
 		{
 			unlink_initfile(initfilename, ERROR);
 			goto read_failed;
