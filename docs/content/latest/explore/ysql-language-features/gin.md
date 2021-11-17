@@ -14,7 +14,7 @@ showAsideToc: true
 
 ## Overview
 
-In YugabyteDB, tables and secondary indexes are both internally key-value stores.
+In YugabyteDB, tables and secondary indexes are both [internally key-value stores][arch-persistence].
 For tables, the key-value store maps primary keys to the remaining columns.
 For secondary indexes, the key-value store maps index keys to primary keys.
 
@@ -26,6 +26,8 @@ However, queries like `WHERE myintarray @> '{3}'` (meaning "is `3` and element?"
 **Generalized inverted indexes (GIN indexes) index elements inside container columns.**
 This makes queries with conditions on elements inside the columns more efficient.
 The above example would benefit from a GIN index since we can look up the key `3` in the gin index.
+
+[arch-persistence]: ../../../architecture/docdb/persistence/
 
 ## Compatible types
 
