@@ -962,6 +962,7 @@ stmt :
 			| ViewStmt
 
 			/* BETA features */
+			/* TODO(#10263): Fix individual beta flag feature bools */
 			| AlterExtensionContentsStmt { parser_ybc_beta_feature(@1, "extension", true); }
 			| AlterExtensionStmt { parser_ybc_beta_feature(@1, "extension", true); }
 			| AlterFdwStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
@@ -2603,7 +2604,7 @@ alter_table_cmd:
 			/* ALTER TABLE <name> SET TABLESPACE <tablespacename> */
 			| SET TABLESPACE name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE SET TABLESPACE", 1124);
+					parser_ybc_beta_feature(@1, "tablespace_alteration", true);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_SetTableSpace;
 					n->name = $3;

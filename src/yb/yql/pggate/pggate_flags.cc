@@ -99,6 +99,11 @@ DEFINE_bool(ysql_beta_feature_tablegroup, true,
 
 TAG_FLAG(ysql_beta_feature_tablegroup, hidden);
 
+DEFINE_bool(ysql_beta_feature_tablespace_alteration, false,
+            "Whether to enable the incomplete 'tablespace_alteration' beta feature");
+
+TAG_FLAG(ysql_beta_feature_tablespace_alteration, hidden);
+
 DEFINE_bool(ysql_serializable_isolation_for_ddl_txn, false,
             "Whether to use serializable isolation for separate DDL-only transactions. "
             "By default, repeatable read isolation is used. "

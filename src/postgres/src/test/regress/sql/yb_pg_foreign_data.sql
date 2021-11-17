@@ -369,7 +369,7 @@ ALTER FOREIGN TABLE ft1 DROP COLUMN no_column;                  -- ERROR
 ALTER FOREIGN TABLE ft1 DROP COLUMN IF EXISTS no_column;
 ALTER FOREIGN TABLE ft1 DROP COLUMN c9;
 ALTER FOREIGN TABLE ft1 SET SCHEMA foreign_schema;
-ALTER FOREIGN TABLE ft1 SET TABLESPACE ts;                      -- ERROR, originally ERROR:  relation "ft1" does not exist
+ALTER FOREIGN TABLE ft1 SET TABLESPACE ts;                      -- ERROR
 ALTER FOREIGN TABLE foreign_schema.ft1 RENAME c1 TO foreign_column_1;
 ALTER FOREIGN TABLE foreign_schema.ft1 RENAME TO foreign_table_1;
 \d foreign_schema.foreign_table_1
@@ -601,19 +601,19 @@ CREATE FOREIGN TABLE ft2 () INHERITS (fd_pt1)
 \d+ fd_pt1
 -- ^^^ originally returns:
 -- Child tables: ft2
--- 
+--
 \d+ ft2
 -- ^^^ originally returns:
 --                                        Foreign table "public.ft2"
---  Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description 
+--  Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description
 -- --------+---------+-----------+----------+---------+-------------+----------+--------------+-------------
---  c1     | integer |           | not null |         |             | plain    |              | 
---  c2     | text    |           |          |         |             | extended |              | 
---  c3     | date    |           |          |         |             | plain    |              | 
+--  c1     | integer |           | not null |         |             | plain    |              |
+--  c2     | text    |           |          |         |             | extended |              |
+--  c3     | date    |           |          |         |             | plain    |              |
 -- Server: s0
 -- FDW options: (delimiter ',', quote '"', "be quoted" 'value')
 -- Inherits: fd_pt1
--- 
+--
 DROP FOREIGN TABLE ft2;
 -- ^^^ originally: should succeed:
 \d+ fd_pt1
@@ -627,11 +627,11 @@ ALTER FOREIGN TABLE ft2 INHERIT fd_pt1;
 \d+ fd_pt1
 -- ^^^ originally returns:
 -- Child tables: ft2
--- 
+--
 \d+ ft2
 -- ^^^ originally extra:
 -- Inherits: fd_pt1
--- 
+--
 CREATE TABLE ct3() INHERITS(ft2);
 CREATE FOREIGN TABLE ft3 (
 	c1 integer NOT NULL,
@@ -652,24 +652,24 @@ CREATE FOREIGN TABLE ft3 (
 \d+ ct3
 -- ^^^ originally returns:
 --                                     Table "public.ct3"
---  Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
+--  Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
 -- --------+---------+-----------+----------+---------+----------+--------------+-------------
---  c1     | integer |           | not null |         | plain    |              | 
---  c2     | text    |           |          |         | extended |              | 
---  c3     | date    |           |          |         | plain    |              | 
+--  c1     | integer |           | not null |         | plain    |              |
+--  c2     | text    |           |          |         | extended |              |
+--  c3     | date    |           |          |         | plain    |              |
 -- Inherits: ft2
--- 
+--
 \d+ ft3
 -- ^^^ originally returns:
 --                                        Foreign table "public.ft3"
---  Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description 
+--  Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description
 -- --------+---------+-----------+----------+---------+-------------+----------+--------------+-------------
---  c1     | integer |           | not null |         |             | plain    |              | 
---  c2     | text    |           |          |         |             | extended |              | 
---  c3     | date    |           |          |         |             | plain    |              | 
+--  c1     | integer |           | not null |         |             | plain    |              |
+--  c2     | text    |           |          |         |             | extended |              |
+--  c3     | date    |           |          |         |             | plain    |              |
 -- Server: s0
 -- Inherits: ft2
--- 
+--
 -- add attributes recursively
 ALTER TABLE fd_pt1 ADD COLUMN c4 integer;
 ALTER TABLE fd_pt1 ADD COLUMN c5 integer DEFAULT 0;
@@ -679,48 +679,48 @@ ALTER TABLE fd_pt1 ADD COLUMN c8 integer;
 \d+ fd_pt1
 -- ^^^ originally extra:
 -- Child tables: ft2
--- 
+--
 \d+ ft2
 -- ^^^ originally extra columns:
---  c4     | integer |           |          |         |             | plain    |              | 
---  c5     | integer |           |          | 0       |             | plain    |              | 
---  c6     | integer |           |          |         |             | plain    |              | 
---  c7     | integer |           | not null |         |             | plain    |              | 
---  c8     | integer |           |          |         |             | plain    |              | 
+--  c4     | integer |           |          |         |             | plain    |              |
+--  c5     | integer |           |          | 0       |             | plain    |              |
+--  c6     | integer |           |          |         |             | plain    |              |
+--  c7     | integer |           | not null |         |             | plain    |              |
+--  c8     | integer |           |          |         |             | plain    |              |
 -- ^^^ and extra after FDW options:
 -- Inherits: fd_pt1
 -- Child tables: ct3,
 --               ft3
--- 
+--
 \d+ ct3
 --                                     Table "public.ct3"
---  Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
+--  Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
 -- --------+---------+-----------+----------+---------+----------+--------------+-------------
---  c1     | integer |           | not null |         | plain    |              | 
---  c2     | text    |           |          |         | extended |              | 
---  c3     | date    |           |          |         | plain    |              | 
---  c4     | integer |           |          |         | plain    |              | 
---  c5     | integer |           |          | 0       | plain    |              | 
---  c6     | integer |           |          |         | plain    |              | 
---  c7     | integer |           | not null |         | plain    |              | 
---  c8     | integer |           |          |         | plain    |              | 
+--  c1     | integer |           | not null |         | plain    |              |
+--  c2     | text    |           |          |         | extended |              |
+--  c3     | date    |           |          |         | plain    |              |
+--  c4     | integer |           |          |         | plain    |              |
+--  c5     | integer |           |          | 0       | plain    |              |
+--  c6     | integer |           |          |         | plain    |              |
+--  c7     | integer |           | not null |         | plain    |              |
+--  c8     | integer |           |          |         | plain    |              |
 -- Inherits: ft2
--- 
+--
 \d+ ft3
 --                                        Foreign table "public.ft3"
---  Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description 
+--  Column |  Type   | Collation | Nullable | Default | FDW options | Storage  | Stats target | Description
 -- --------+---------+-----------+----------+---------+-------------+----------+--------------+-------------
---  c1     | integer |           | not null |         |             | plain    |              | 
---  c2     | text    |           |          |         |             | extended |              | 
---  c3     | date    |           |          |         |             | plain    |              | 
---  c4     | integer |           |          |         |             | plain    |              | 
---  c5     | integer |           |          | 0       |             | plain    |              | 
---  c6     | integer |           |          |         |             | plain    |              | 
---  c7     | integer |           | not null |         |             | plain    |              | 
---  c8     | integer |           |          |         |             | plain    |              | 
+--  c1     | integer |           | not null |         |             | plain    |              |
+--  c2     | text    |           |          |         |             | extended |              |
+--  c3     | date    |           |          |         |             | plain    |              |
+--  c4     | integer |           |          |         |             | plain    |              |
+--  c5     | integer |           |          | 0       |             | plain    |              |
+--  c6     | integer |           |          |         |             | plain    |              |
+--  c7     | integer |           | not null |         |             | plain    |              |
+--  c8     | integer |           |          |         |             | plain    |              |
 -- Server: s0
 -- Inherits: ft2
--- 
+--
 -- alter attributes recursively
 ALTER TABLE fd_pt1 ALTER COLUMN c4 SET DEFAULT 0;
 ALTER TABLE fd_pt1 ALTER COLUMN c5 DROP DEFAULT;
@@ -736,19 +736,19 @@ ALTER TABLE fd_pt1 ALTER COLUMN c8 SET STORAGE EXTERNAL;
 \d+ fd_pt1
 -- ^^^ originally extra:
 -- Child tables: ft2
--- 
+--
 \d+ ft2
 -- ^^^ originally extra columns:
---  c4     | integer |           |          | 0       |             | plain    |              | 
---  c5     | integer |           |          |         |             | plain    |              | 
---  c6     | integer |           | not null |         |             | plain    |              | 
---  c7     | integer |           |          |         |             | plain    |              | 
---  c8     | text    |           |          |         |             | external |              | 
+--  c4     | integer |           |          | 0       |             | plain    |              |
+--  c5     | integer |           |          |         |             | plain    |              |
+--  c6     | integer |           | not null |         |             | plain    |              |
+--  c7     | integer |           |          |         |             | plain    |              |
+--  c8     | text    |           |          |         |             | external |              |
 -- ^^^ and extra after FDW options:
 -- Inherits: fd_pt1
 -- Child tables: ct3,
 --               ft3
--- 
+--
 
 -- drop attributes recursively
 ALTER TABLE fd_pt1 DROP COLUMN c4;
@@ -759,13 +759,13 @@ ALTER TABLE fd_pt1 DROP COLUMN c8;
 \d+ fd_pt1
 -- ^^^ originally extra:
 -- Child tables: ft2
--- 
+--
 \d+ ft2
 -- ^^^ originally extra after FDW options:
 -- Inherits: fd_pt1
 -- Child tables: ct3,
 --               ft3
--- 
+--
 
 -- add constraints recursively
 ALTER TABLE fd_pt1 ADD CONSTRAINT fd_pt1chk1 CHECK (c1 > 0) NO INHERIT;
@@ -779,7 +779,7 @@ SELECT relname, conname, contype, conislocal, coninhcount, connoinherit
 \d+ fd_pt1
 -- ^^^ originally extra:
 -- Child tables: ft2
--- 
+--
 \d+ ft2
 -- ^^^ originally extra before Server:
 -- Check constraints:
@@ -788,7 +788,7 @@ SELECT relname, conname, contype, conislocal, coninhcount, connoinherit
 -- Inherits: fd_pt1
 -- Child tables: ct3,
 --               ft3
--- 
+--
 \set VERBOSITY terse
 DROP FOREIGN TABLE ft2; -- ERROR
 -- ^^^ originally: ERROR:  cannot drop foreign table ft2 because other objects depend on it
@@ -810,11 +810,11 @@ ALTER FOREIGN TABLE ft2 INHERIT fd_pt1;
 \d+ fd_pt1
 -- ^^^ originally extra:
 -- Child tables: ft2
--- 
+--
 \d+ ft2
 -- ^^^ originally extra:
 -- Inherits: fd_pt1
--- 
+--
 
 -- drop constraints recursively
 ALTER TABLE fd_pt1 DROP CONSTRAINT fd_pt1chk1 CASCADE;
@@ -826,25 +826,25 @@ ALTER TABLE fd_pt1 ADD CONSTRAINT fd_pt1chk3 CHECK (c2 <> '') NOT VALID;
 \d+ fd_pt1
 -- ^^^ originally extra:
 -- Child tables: ft2
--- 
+--
 \d+ ft2
 -- ^^^ originally extra check constraint:
 --    "fd_pt1chk3" CHECK (c2 <> ''::text) NOT VALID
 -- ^^^ and extra after FDW:
 -- Inherits: fd_pt1
--- 
+--
 -- VALIDATE CONSTRAINT need do nothing on foreign tables
 ALTER TABLE fd_pt1 VALIDATE CONSTRAINT fd_pt1chk3;
 \d+ fd_pt1
 -- ^^^ originally extra:
 -- Child tables: ft2
--- 
+--
 \d+ ft2
 -- originally extra check contraint:
 --    "fd_pt1chk3" CHECK (c2 <> ''::text)
 -- ^^^ and extra after FDW:
 -- Inherits: fd_pt1
--- 
+--
 
 -- OID system column
 ALTER TABLE fd_pt1 SET WITH OIDS;
@@ -852,27 +852,27 @@ ALTER TABLE fd_pt1 SET WITH OIDS;
 -- ^^^ originally extra:
 -- Child tables: ft2
 -- Has OIDs: yes
--- 
+--
 \d+ ft2
 -- ^^^ originall extra check constraint:
 --    "fd_pt1chk3" CHECK (c2 <> ''::text)
 -- ^^ and extra after FDW:
 -- Inherits: fd_pt1
 -- Has OIDs: yes
--- 
+--
 ALTER TABLE ft2 SET WITHOUT OIDS;  -- ERROR
 -- ^^^ originally: ERROR:  cannot drop inherited column "oid"
 ALTER TABLE fd_pt1 SET WITHOUT OIDS;
 \d+ fd_pt1
 -- ^^^ originally extra:
 -- Child tables: ft2
--- 
+--
 \d+ ft2
 -- originally extra check contraint:
 --    "fd_pt1chk3" CHECK (c2 <> ''::text)
 -- ^^^ and extra after FDW:
 -- Inherits: fd_pt1
--- 
+--
 
 -- changes name of an attribute recursively
 ALTER TABLE fd_pt1 RENAME COLUMN c1 TO f1;
@@ -883,13 +883,13 @@ ALTER TABLE fd_pt1 RENAME CONSTRAINT fd_pt1chk3 TO f2_check;
 \d+ fd_pt1
 -- ^^^ originally extra:
 -- Child tables: ft2
--- 
+--
 \d+ ft2
 -- originally extra check contraint:
 --    "fd_pt1chk2" CHECK (f2 <> ''::text)
 -- ^^^ and extra after FDW:
 -- Inherits: fd_pt1
--- 
+--
 
 -- TRUNCATE doesn't work on foreign tables, either directly or recursively
 TRUNCATE ft2;  -- ERROR
