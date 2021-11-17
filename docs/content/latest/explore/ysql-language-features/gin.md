@@ -35,9 +35,9 @@ The above example would benefit from a GIN index since we can look up the key `3
 
 GIN indexes can only be created over a few types:
 
-- a GIN index on a tsvector column indexes text elements
-- a GIN index on a array column indexes array elements
-- a GIN index on a jsonb column indexes keys/values
+- a GIN index on a _tsvector_ column indexes _text elements_
+- a GIN index on a _array_ column indexes _array elements_
+- a GIN index on a _jsonb_ column indexes _keys/values_
 
 With extensions, more types can be supported.
 However, extension support is still in progress:
