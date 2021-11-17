@@ -19,7 +19,7 @@ Evaluate the performance of running queries on your cluster using the **Live Que
 - Evaluate query execution times.
 - Discover potential queries for for [tuning](../../../explore/query-1-performance/).
 
-There is no significant performance overhead on databases because the queries are fetched on-demand and are not tracked in the background.
+Live queries only shows queries "in-flight" (that is, currently in progress); queries that execute quickly might not show up by the time the display loads. There is no significant performance overhead on databases because the queries are fetched on-demand and are not tracked in the background.
 
 ![Cloud Cluster Performance Live Queries](/images/yb-cloud/cloud-clusters-live.png)
 
