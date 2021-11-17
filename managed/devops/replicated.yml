@@ -326,8 +326,6 @@ components:
               play.crypto.secret="{{repl ConfigOption "app_secret"}}"
               play.i18n.langs = [ "en" ]
               pidfile.path = "/dev/null"
-              play.evolutions.enabled = false
-              play.modules.enabled += "org.flywaydb.play.PlayModule"
 
               db {
                 default.host="{{repl HostPrivateIpAddress "db" "postgres" }}"
@@ -340,8 +338,6 @@ components:
               ebean {
                 default = ["com.yugabyte.yw.models.*"]
               }
-
-              play.modules.enabled += "org.flywaydb.play.PlayModule"
 
               play.filters {
                 # CSRF config

@@ -44,6 +44,7 @@ import com.yugabyte.yw.controllers.PlatformHttpActionAdapter;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.queries.QueryHelper;
 import com.yugabyte.yw.scheduler.Scheduler;
+import lombok.extern.slf4j.Slf4j;
 import org.pac4j.core.client.Clients;
 import org.pac4j.core.config.Config;
 import org.pac4j.oidc.client.OidcClient;
@@ -60,6 +61,7 @@ import play.Environment;
  *
  * <p>Play will automatically use any class called 'Module' in the root package
  */
+@Slf4j
 public class Module extends AbstractModule {
 
   private final Environment environment;
@@ -72,7 +74,13 @@ public class Module extends AbstractModule {
 
   @Override
   public void configure() {
-    bind(YBFlywayInit.class).asEagerSingleton();
+    if (!config.getBoolean("play.evolutions.enabled")) {
+      // We want to init flyway only when evolutions are not enabled
+      bind(YBFlywayInit.class).asEagerSingleton();
+    } else {
+      log.info("Using Evolutions. Not using flyway migrations.");
+    }
+
     bind(RuntimeConfigFactory.class).to(SettableRuntimeConfigFactory.class).asEagerSingleton();
     // TODO: other clouds
     install(new AWSCloudModule());
