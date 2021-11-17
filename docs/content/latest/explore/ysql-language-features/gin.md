@@ -14,7 +14,7 @@ showAsideToc: true
 
 ## Overview
 
-In YugabyteDB, tables and secondary indexes are both [internally key-value stores][arch-persistence].
+In YugabyteDB, tables and secondary indexes are both [key-value stores internally][arch-persistence].
 Loosely speaking,
 
 - a table's internal key-value store maps primary keys to the remaining columns.
