@@ -3,7 +3,6 @@ title: What's new in the v2.8 stable release series
 headerTitle: What's new in the v2.8 stable release series
 linkTitle: v2.8 (stable)
 description: Enhancements, changes, and resolved issues in the current stable release series recommended for production deployments.
-headcontent: Features, enhancements, and resolved issues in the current stable release series recommended for production deployments.
 aliases:
   - /latest/releases/whats-new/stable-releases/
 menu:
@@ -19,7 +18,7 @@ Included here are the release notes for all releases in the v2.8 stable release 
 
 For an RSS feed of the release notes for the latest and stable releases, point your feed reader to [https://docs.yugabyte.com/latest/releases/whats-new/index.xml](../index.xml).
 
-## v2.8.0.0 - November 8, 2021
+## v2.8.0.0 - November 16, 2021
 
 **Build:** `2.8.0.0-b37`
 
