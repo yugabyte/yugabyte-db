@@ -17,6 +17,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.util.BuildTypeUtil;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 import org.yb.util.RegexMatcher;
 
@@ -495,6 +496,40 @@ public class TestPgSelect extends BasePgSQLTest {
       statement.execute("START TRANSACTION ISOLATION LEVEL SERIALIZABLE");
       statement.execute("SET yb_read_from_followers = true");
       statement.execute("ABORT");
+    }
+  }
+
+  @Test
+  public void testConsistentPrefixForIndexes() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE consistentprefix(k int primary key, v int)");
+      statement.execute("CREATE INDEX idx on consistentprefix(v)");
+      LOG.info("Start writing");
+      statement.execute(String.format("INSERT INTO consistentprefix(k, v) VALUES(%d, %d)", 1, 1));
+      LOG.info("Done writing");
+
+      final long kFollowerReadStalenessMs = BuildTypeUtil.adjustTimeout(1200);
+      statement.execute("SET yb_read_from_followers = true;");
+      statement.execute("SET yb_follower_read_staleness_ms = " + kFollowerReadStalenessMs);
+      LOG.info("Using staleness of " + kFollowerReadStalenessMs + " ms.");
+      // Sleep for the updates to be visible during follower reads.
+      Thread.sleep(kFollowerReadStalenessMs);
+
+      assertOneRow(statement,
+                   "/*+ Set(transaction_read_only on) */ "
+                       + "SELECT * FROM consistentprefix where v = 1",
+                   1, 1);
+      // The read will first read the ybctid from the index table, then use it to do a lookup
+      // on the indexed table.
+      long count_reqs = getCountForTable("consistent_prefix_read_requests", "consistentprefix");
+      assertEquals(count_reqs, 1);
+      count_reqs = getCountForTable("consistent_prefix_read_requests", "idx");
+      assertEquals(count_reqs, 1);
+
+      long count_rows = getCountForTable("pgsql_consistent_prefix_read_rows", "consistentprefix");
+      assertEquals(count_rows, 1);
+      count_rows = getCountForTable("pgsql_consistent_prefix_read_rows", "idx");
+      assertEquals(count_rows, 1);
     }
   }
 
