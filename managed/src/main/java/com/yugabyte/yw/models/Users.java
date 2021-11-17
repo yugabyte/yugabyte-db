@@ -126,6 +126,10 @@ public class Users extends Model {
   @ApiModelProperty(value = "User API token", accessMode = READ_ONLY)
   private String apiToken;
 
+  @Column(nullable = true)
+  @ApiModelProperty(value = "User timezone")
+  private String timezone;
+
   // The role of the user.
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
@@ -154,6 +158,14 @@ public class Users extends Model {
 
   public Date getAuthTokenIssueDate() {
     return this.authTokenIssueDate;
+  }
+
+  public String getTimezone() {
+    return this.timezone;
+  }
+
+  public void setTimezone(String timezone) {
+    this.timezone = timezone;
   }
 
   public static final Finder<UUID, Users> find = new Finder<UUID, Users>(Users.class) {};
