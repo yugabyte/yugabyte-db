@@ -22,7 +22,7 @@ Loosely speaking,
 
 **Regular indexes index columns.**
 This makes queries with conditions on the columns more efficient.
-For example, if one had a regular index on a single int array column (currently not possible in Yugabyte), queries like `WHERE myintarray = '{1,3,6}'` would be more efficient when using the index.
+For example, if one had a regular index on a single int array column (currently not possible in YSQL), queries like `WHERE myintarray = '{1,3,6}'` would be more efficient when using the index.
 However, queries like `WHERE myintarray @> '{3}'` (meaning "is `3` and element?") would not benefit from the regular index.
 
 **Generalized inverted indexes (GIN indexes) index elements inside container columns.**
