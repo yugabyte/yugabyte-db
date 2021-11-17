@@ -29,7 +29,7 @@ CREATE INDEX index_name ON table_name(column_list);
 
 You can also create a functional index, in which case you would replace any element of *column_list* with an expression. For more information, see [Use indexes on expressions](#use-indexes-on-expressions).
 
-YSQL currently supports index access methods `lsm` (log-structured merge-tree) and `ybgin`. These indexes are based on YugabyteDB's DocDB storage and are similar in functionality to PostgreSQL's `btree` and `gin` indexes, respectively. The index access method can be specified with `USING <access_method>` after *table_name*. By default, `lsm` is chosen.
+YSQL currently supports index access methods `lsm` (log-structured merge-tree) and `ybgin`. These indexes are based on YugabyteDB's DocDB storage and are similar in functionality to PostgreSQL's `btree` and `gin` indexes, respectively. The index access method can be specified with `USING <access_method>` after *table_name*. By default, `lsm` is chosen. (See [Generalized inverted index][explore-gin] for more detail on `ybgin`.)
 
 You can apply sort order on the indexed columns as `ASC` (default), `DESC`, as well as `HASH`. For examples, see [HASH and ASC examples](../../../api/ysql/the-sql-language/statements/ddl_create_index/#unique-index-with-hash-column-ordering)
 
@@ -169,3 +169,5 @@ DROP INDEX index_employees_department;
 ```
 
 If you execute the same `SELECT` query with the `EXPLAIN` statement as in [Create indexes](#create-indexes), the query plan will not include any information about the index. 
+
+[explore-gin]: ../gin/
