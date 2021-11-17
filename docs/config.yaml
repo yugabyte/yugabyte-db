@@ -10,6 +10,11 @@ pygmentsStyle: "pygments"
 enableGitInfo: true
 resourceDir: docs/resources
 
+frontmatter:
+  date:
+    - :git
+    - :default
+
 params:
   author: Team Yugabyte
   description: 'YugabyteDB, the transactional, high-performance database for building internet-scale, globally-distributed apps.'
