@@ -38,7 +38,6 @@
 #include <sstream>
 
 #include <glog/logging.h>
-#include <glog/stl_logging.h>
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/countdown_latch.h"

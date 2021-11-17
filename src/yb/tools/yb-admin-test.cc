@@ -34,7 +34,6 @@
 #include <regex>
 
 #include <boost/algorithm/string.hpp>
-#include <boost/date_time/posix_time/time_parsers.hpp>
 
 #include <gtest/gtest.h>
 
@@ -53,16 +52,13 @@
 #include "yb/integration-tests/test_workload.h"
 
 #include "yb/master/master_defaults.h"
-#include "yb/master/master_backup.pb.h"
 
 #include "yb/tools/admin-test-base.h"
 
-#include "yb/util/date_time.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/port_picker.h"
 #include "yb/util/random_util.h"
-#include "yb/util/stol_utils.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/string_util.h"
 #include "yb/util/subprocess.h"

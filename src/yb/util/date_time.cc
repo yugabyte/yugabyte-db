@@ -18,14 +18,10 @@
 #include <unicode/gregocal.h>
 
 #include <regex>
-#include <ctime>
 
 #include <boost/smart_ptr/make_shared.hpp>
 
-#include <gflags/gflags.h>
 #include "yb/util/date_time.h"
-#include "yb/util/logging.h"
-#include "yb/util/string_case.h"
 #include "boost/date_time/gregorian/gregorian.hpp"
 #include "boost/date_time/c_local_time_adjustor.hpp"
 #include "boost/date_time/local_time/local_time.hpp"

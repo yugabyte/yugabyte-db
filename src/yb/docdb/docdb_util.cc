@@ -11,9 +11,7 @@
 // under the License.
 //
 
-#include <iostream>
 
-#include "yb/rocksdb/util/statistics.h"
 
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/docdb_debug.h"
@@ -24,7 +22,6 @@
 #include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/util/env.h"
-#include "yb/util/path_util.h"
 #include "yb/util/string_trim.h"
 
 using std::string;

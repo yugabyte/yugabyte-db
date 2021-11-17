@@ -30,11 +30,8 @@
 // under the License.
 //
 
-#include <fstream>
 #include <memory>
 #include <thread>
-#include <boost/bind.hpp>
-#include <boost/thread/thread.hpp>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <glog/stl_logging.h>

@@ -32,10 +32,8 @@
 
 #include "yb/tablet/mvcc.h"
 
-#include <sstream>
 
 #include <boost/circular_buffer.hpp>
-#include <boost/circular_buffer/space_optimized.hpp>
 #include <boost/variant.hpp>
 
 #include "yb/gutil/macros.h"
@@ -43,9 +41,7 @@
 #include "yb/util/atomic.h"
 #include "yb/util/enums.h"
 #include "yb/util/flag_tags.h"
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
-#include "yb/util/scope_exit.h"
 
 using namespace std::literals;
 

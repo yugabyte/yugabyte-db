@@ -39,7 +39,6 @@
 #include <rapidjson/document.h>
 #include <rapidjson/error/en.h>
 #include <rapidjson/istreamwrapper.h>
-#include <rapidjson/stringbuffer.h>
 #include <rapidjson/writer.h>
 
 #include "yb/gutil/strings/substitute.h"

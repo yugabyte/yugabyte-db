@@ -1,0 +1,4 @@
+#### savepoint_release
+
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="308" height="50" viewbox="0 0 308 50"><path class="connector" d="M0 22h15m75 0h30m89 0h20m-124 0q5 0 5 5v8q0 5 5 5h99q5 0 5-5v-8q0-5 5-5m5 0h10m54 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="5" width="75" height="25" rx="7"/><text class="text" x="25" y="22">RELEASE</text><rect class="literal" x="120" y="5" width="89" height="25" rx="7"/><text class="text" x="130" y="22">SAVEPOINT</text><a xlink:href="../../../syntax_resources/grammar_diagrams#name"><rect class="rule" x="239" y="5" width="54" height="25"/><text class="text" x="249" y="22">name</text></a><polygon points="304,29 308,29 308,15 304,15" style="fill:black;stroke-width:0"/></svg>
+

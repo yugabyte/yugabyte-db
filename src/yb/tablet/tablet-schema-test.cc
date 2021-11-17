@@ -31,20 +31,31 @@
 //
 
 #include <algorithm>
+#include <limits>
+#include <string>
+#include <unordered_set>
 #include <vector>
 
 #include <boost/lexical_cast.hpp>
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
-#include "yb/common/ql_expr.h"
+#include "yb/common/common_fwd.h"
 #include "yb/common/schema.h"
+#include "yb/util/bfql/tserver_opcodes.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet-test-base.h"
+#include "yb/common/partial_row.h"
+#include "yb/common/ql_protocol_util.h"
+#include "yb/common/row.h"
+#include "yb/gutil/walltime.h"
+#include "yb/util/env.h"
+#include "yb/util/memory/arena.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "yb/tablet/local_tablet_writer.h"
+#include "yb/tablet/tablet-test-util.h"
+#include "yb/gutil/strings/numbers.h"
 
 using strings::Substitute;
 

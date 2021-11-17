@@ -15,7 +15,6 @@
 
 #include "yb/util/opid.h"
 
-#include <iostream>
 
 #include <boost/functional/hash.hpp>
 

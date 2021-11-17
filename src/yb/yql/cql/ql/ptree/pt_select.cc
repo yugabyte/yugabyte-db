@@ -25,7 +25,6 @@
 #include "yb/common/common.pb.h"
 #include "yb/common/index.h"
 #include "yb/util/status.h"
-#include "yb/yql/cql/ql/exec/executor.h"
 #include "yb/yql/cql/ql/ptree/column_arg.h"
 #include "yb/yql/cql/ql/ptree/ycql_predtest.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"

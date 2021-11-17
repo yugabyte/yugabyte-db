@@ -18,7 +18,6 @@
 #include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/util/pg_doc_data.h"
 #include "yb/client/yb_op.h"
-#include "yb/client/table.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/row_mark.h"
 #include "yb/docdb/primitive_value.h"

@@ -46,12 +46,6 @@ showAsideToc: true
 
 </ul>
 
-{{< note title="Note" >}}
-
-This Linux Quick Start uses the [`yugabyted`](../../../reference/configuration/yugabyted/) server. You can refer to the older [`yb-ctl`](../../../admin/yb-ctl/) based instructions in the [v2.1 docs](/v2.1/quick-start/install/linux/).
-
-{{< /note >}}
-
 ## 1. Create a local cluster
 
 To create a single-node local cluster with a replication factor (RF) of 1, run the following command.

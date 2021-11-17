@@ -24,7 +24,6 @@
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <gflags/gflags.h>
 
 #include "yb/util/metrics.h"
 #include "yb/rocksdb/cache.h"
@@ -421,7 +420,7 @@ class LRUCache {
                               bool thread_safe);
 
   std::pair<size_t, size_t> TEST_GetIndividualUsages() {
-    return make_pair<size_t, size_t>(
+    return std::pair<size_t, size_t>(
         single_touch_sub_cache_.Usage(), multi_touch_sub_cache_.Usage());
   }
 
@@ -1004,7 +1003,7 @@ class ShardedLRUCache : public Cache {
     }
   }
 
-  virtual std::vector<std::pair<size_t,size_t>> TEST_GetIndividualUsages() override {
+  virtual std::vector<std::pair<size_t, size_t>> TEST_GetIndividualUsages() override {
     std::vector<std::pair<size_t, size_t>> cache_sizes;
     cache_sizes.reserve(1 << num_shard_bits_);
 

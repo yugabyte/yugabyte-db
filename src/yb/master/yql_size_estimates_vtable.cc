@@ -14,9 +14,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/yql_size_estimates_vtable.h"
 
-#include "yb/rpc/messenger.h"
 
-#include "yb/util/net/dns_resolver.h"
 #include "yb/util/yb_partition.h"
 
 namespace yb {

@@ -16,7 +16,6 @@
 #include "yb/docdb/conflict_resolution.h"
 
 #include "yb/common/hybrid_time.h"
-#include "yb/common/pgsql_error.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/transaction.h"
 #include "yb/common/transaction_error.h"
@@ -32,7 +31,6 @@
 #include "yb/util/metrics.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/trace.h"
-#include "yb/util/yb_pg_errcodes.h"
 
 using namespace std::literals;
 using namespace std::placeholders;

@@ -22,7 +22,6 @@
 #include <map>
 #include <string>
 
-#include <boost/functional/hash.hpp>
 
 #include "yb/rocksdb/db/file_numbers.h"
 #include "yb/rocksdb/db/flush_job.h"

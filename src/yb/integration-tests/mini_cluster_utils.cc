@@ -15,7 +15,6 @@
 
 #include "yb/integration-tests/mini_cluster.h"
 
-#include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"

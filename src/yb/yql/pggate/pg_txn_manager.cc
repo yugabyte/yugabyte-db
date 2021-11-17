@@ -11,7 +11,6 @@
 // under the License.
 //
 
-#include "yb/yql/pggate/pggate.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/pg_txn_manager.h"
 

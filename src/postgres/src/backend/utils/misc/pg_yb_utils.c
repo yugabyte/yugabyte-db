@@ -1598,9 +1598,7 @@ yb_hash_code(PG_FUNCTION_ARGS)
 Datum
 yb_catalog_version(PG_FUNCTION_ARGS)
 {
-	uint64_t version;
-	YbGetMasterCatalogVersion(&version, true /* can_use_cache */);
-	PG_RETURN_UINT64(version);
+	PG_RETURN_UINT64(YbGetMasterCatalogVersion());
 }
 
 Datum

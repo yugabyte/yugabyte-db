@@ -34,7 +34,6 @@
 #include <iosfwd>
 #include <string>
 
-#include <gflags/gflags.h>
 #include <gtest/gtest.h>
 
 #include "yb/gutil/strings/substitute.h"

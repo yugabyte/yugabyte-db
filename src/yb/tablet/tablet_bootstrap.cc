@@ -31,6 +31,14 @@
 //
 #include "yb/tablet/tablet_bootstrap.h"
 
+#include <atomic>
+#include <future>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <vector>
+
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_util.h"
@@ -45,7 +53,21 @@
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/tablet_snapshots.h"
 #include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_peer.h"
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/consensus_meta.h"
+#include "yb/consensus/consensus_types.h"
+#include "yb/gutil/callback.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/tablet/mvcc.h"
+#include "yb/tablet/transaction_coordinator.h"
+#include "yb/tablet/transaction_participant.h"
+#include "yb/tablet/operations/write_operation.h"
+#include "yb/tablet/tablet_options.h"
+#include "yb/util/metrics.h"
+#include "yb/util/semaphore.h"
 #include "yb/tablet/tablet_splitter.h"
 #include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/operations/history_cutoff_operation.h"
@@ -53,7 +75,6 @@
 #include "yb/tablet/operations/split_operation.h"
 #include "yb/tablet/operations/truncate_operation.h"
 #include "yb/tablet/operations/update_txn_operation.h"
-#include "yb/tablet/operations/write_operation.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/opid.h"

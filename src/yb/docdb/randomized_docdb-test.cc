@@ -15,9 +15,7 @@
 #include <utility>
 #include <vector>
 
-#include <gflags/gflags.h>
 
-#include "yb/docdb/doc_reader.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_test_base.h"
 #include "yb/docdb/docdb_test_util.h"

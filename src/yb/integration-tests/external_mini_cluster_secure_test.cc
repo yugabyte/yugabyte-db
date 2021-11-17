@@ -17,14 +17,11 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/secure_stream.h"
 
-#include "yb/server/secure.h"
 
 #include "yb/util/size_literals.h"
 #include "yb/util/env_util.h"
 #include "yb/util/subprocess.h"
 
-#include "yb/yql/cql/ql/util/errcodes.h"
-#include "yb/yql/cql/ql/util/statement_result.h"
 
 #include "yb/integration-tests/cql_test_util.h"
 #include "yb/integration-tests/external_mini_cluster_ent.h"

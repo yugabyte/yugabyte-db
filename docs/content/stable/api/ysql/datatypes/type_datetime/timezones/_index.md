@@ -1,14 +1,14 @@
 ---
 title: Timezones and UTC offsets [YSQL]
 headerTitle: Timezones and UTC offsets
-linkTitle: timezones and UTC offsets
+linkTitle: Timezones and UTC offsets
 description: Explains everything about timezones and UTC offsets. [YSQL]
 image: /images/section_icons/api/subsection.png
 menu:
   stable:
     identifier: timezones
     parent: api-ysql-datatypes-datetime
-    weight: 20
+    weight: 40
 isTocNested: true
 showAsideToc: true
 ---
@@ -18,7 +18,7 @@ To understand when, and why, you should specify the timezone (or, more carefully
 {{< /tip >}}
 
 {{< note title="The single word spelling, 'timezone' is used throughout the prose of the YSQL documentation." >}}
-The two spellings _"timezone"_, as one word, and _"time zone"_, as two words, both occur in SQL syntax. For example both _set timezone = &#60;arg&#62;_  and _set time zone &#60;arg&#62;_ are legal. On the other hand, you can decorate a plain _timestamp_ or a _timestamptz_ value with the _at time zone_ operator—but here spelling it as the single word _"timezone"_ causes an error. In contrast, the name of the session variable, as is used in the invocation of the built-in function, must be spelled as a single word: _current_setting('timezone')_.
+The two spellings _"timezone"_, as one word, and _"time zone"_, as two words, both occur in SQL syntax. For example both _set timezone = \<arg\>_  and _set time zone \<arg\>_ are legal. On the other hand, you can decorate a plain _timestamp_ or a _timestamptz_ value with the _at time zone_ operator—but here spelling it as the single word _"timezone"_ causes an error. In contrast, the name of the session variable, as is used in the invocation of the built-in function, must be spelled as a single word: _current_setting('timezone')_.
 
 Usually, the spelling of both the single word and the two separate words is case insensitive. Exceptionally, the column in the catalog view _pg_settings.name_ includes the value _'TimeZone'_. Of course, SQL queries against this view must respect this mixed case spelling.
 
@@ -41,11 +41,11 @@ The _extended_timezone_names_ view joins the _tz&nbsp;database_ data to the _pg_
 
 **This page has these child pages:**
 
-- [Catalog views for timezone information—_pg_timezone_names_ and _pg_timezone_abbrevs_](./catalog-views/)
+- [The _pg_timezone_names_ and _pg_timezone_abbrevs_ catalog views](./catalog-views/)
 
 - [The _extended_timezone_names_ view](./extended-timezone-names/)
 
-- [Scenarios that are sensitive to the _UTC offset_ and possibly, additionally, to the timezone](./timezone-sensitive-operations/)
+- [Scenarios that are sensitive to the _UTC offset_ or explicitly to the timezone](./timezone-sensitive-operations/)
 
 - [Four ways to specify the _UTC offset_](./ways-to-spec-offset/)
 

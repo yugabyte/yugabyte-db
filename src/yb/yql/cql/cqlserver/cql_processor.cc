@@ -25,7 +25,6 @@
 
 #include "yb/rpc/connection.h"
 #include "yb/rpc/messenger.h"
-#include "yb/rpc/rpc_context.h"
 #include "yb/util/flag_tags.h"
 
 #include "yb/yql/cql/cqlserver/cql_service.h"

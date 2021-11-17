@@ -31,18 +31,39 @@
 //
 #include "yb/integration-tests/cluster_itest_util.h"
 
+#include <stdint.h>
+
 #include <algorithm>
 #include <limits>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <utility>
+#include <vector>
 
+#include <boost/function.hpp>
 #include <boost/optional.hpp>
 
 #include <glog/stl_logging.h>
 
 #include <gtest/gtest.h>
 
-#include "yb/client/client.h"
-
+#include "yb/client/client_fwd.h"
+#include "yb/client/schema.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/master/master.pb.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/util/enums.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_callback.h"
+#include "yb/util/strongly_typed_bool.h"
+
 #include "yb/common/wire_protocol.pb.h"
 #include "yb/common/wire_protocol-test-util.h"
 

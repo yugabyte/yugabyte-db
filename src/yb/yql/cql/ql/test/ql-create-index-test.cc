@@ -13,8 +13,6 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/master/catalog_manager.h"
-#include "yb/master/master.h"
 #include "yb/yql/cql/ql/test/ql-test-base.h"
 
 

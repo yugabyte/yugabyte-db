@@ -34,14 +34,9 @@
 #include <string>
 #include <utility>
 
-#include <gflags/gflags.h>
 
 #include "yb/rocksdb/compaction_filter.h"
-#include "yb/rocksdb/db/column_family.h"
-#include "yb/rocksdb/db/filename.h"
-#include "yb/rocksdb/util/log_buffer.h"
 #include "yb/rocksdb/util/random.h"
-#include "yb/rocksdb/util/statistics.h"
 #include "yb/util/string_util.h"
 #include "yb/rocksdb/util/sync_point.h"
 

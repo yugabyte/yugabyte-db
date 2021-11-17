@@ -36,7 +36,6 @@
 #include <sys/syscall.h>
 #include <sys/time.h>
 #include <sys/types.h>
-#include <unistd.h>
 
 #if defined(__linux__)
 #include <sys/prctl.h>
@@ -54,7 +53,6 @@
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/dynamic_annotations.h"
-#include "yb/gutil/mathlimits.h"
 #include "yb/gutil/once.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/debug-util.h"

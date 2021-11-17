@@ -18,7 +18,6 @@
 #include <sstream>
 
 #include "yb/rocksdb/table.h"
-#include "yb/rocksdb/util/statistics.h"
 
 #include "yb/common/hybrid_time.h"
 #include "yb/docdb/doc_key.h"
@@ -26,11 +25,9 @@
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_compaction_filter.h"
-#include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/in_mem_docdb.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rocksutil/write_batch_formatter.h"
-#include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/path_util.h"
 #include "yb/util/scope_exit.h"
@@ -41,7 +38,6 @@
 #include "yb/util/tostring.h"
 #include "yb/util/algorithm_util.h"
 #include "yb/util/string_util.h"
-#include "yb/tablet/tablet_options.h"
 #include "yb/rocksdb/db/filename.h"
 
 using std::endl;

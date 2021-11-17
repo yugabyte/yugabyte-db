@@ -33,11 +33,18 @@
 #include "yb/consensus/log.h"
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
+#include <memory>
 #include <mutex>
 #include <thread>
+#include <vector>
 
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/thread/shared_mutex.hpp>
+
+#include <gflags/gflags.h>
 
 #include "yb/common/wire_protocol.h"
 
@@ -54,7 +61,6 @@
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
-#include "yb/util/coding.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/env_util.h"
@@ -73,9 +79,10 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/blocking_queue.h"
 #include "yb/util/taskstream.h"
-#include "yb/util/thread.h"
 #include "yb/util/threadpool.h"
+#include "yb/util/thread.h"
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/unique_lock.h"

@@ -31,14 +31,12 @@
 //
 
 #include <sys/types.h>
-#include <unistd.h>
 
 #include <memory>
 #include <string>
 #include <vector>
 #include <sstream>
 
-#include <boost/assign.hpp>
 #include <google/protobuf/descriptor.pb.h>
 #include <gtest/gtest.h>
 

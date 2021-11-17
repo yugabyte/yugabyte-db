@@ -15,7 +15,6 @@
 
 #include <mutex>
 #include <queue>
-#include <thread>
 
 #include "yb/util/debug-util.h"
 #include "yb/util/thread.h"
