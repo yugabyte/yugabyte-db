@@ -18,7 +18,7 @@ Yugabyte Cloud provides the following tools to monitor your clusters:
 
 - Performance metrics charted over time.
 - A list of live queries.
-- A list of slow running queries that have been run on the cluster.
+- A list of slow running YSQL queries that have been run on the cluster.
 - A list of the tables, databases, and namespaces on the cluster.
 - Status of the nodes in the cluster.
 - Activity log of changes made to the cluster.

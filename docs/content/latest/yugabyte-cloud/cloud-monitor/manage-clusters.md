@@ -17,4 +17,4 @@ Review the status of the nodes in your cluster using the **Nodes** tab. The **No
 
 ![Cloud Cluster Nodes tab](/images/yb-cloud/cloud-clusters-nodes.png)
 
-Yugabyte Cloud suppports horizontal scaling of clusters. If your workloads have increased, you can dynamically add nodes to a running cluster to improve latency, throughput, and memory. Likewise, if your cluster is over-scaled, you can reduce nodes to reduce costs. For information on scaling clusters, refer to [Configure clusters](../configure-clusters#infrastructure).
+Yugabyte Cloud suppports horizontal scaling of clusters. If your workloads have increased, you can dynamically add nodes to a running cluster to improve latency, throughput, and memory. Likewise, if your cluster is over-scaled, you can reduce nodes to reduce costs. For information on scaling clusters, refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).

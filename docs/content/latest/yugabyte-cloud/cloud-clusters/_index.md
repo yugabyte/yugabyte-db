@@ -14,7 +14,7 @@ menu:
 
 To ensure the cluster configuration matches its performance requirements, you can [monitor key database performance metrics](../cloud-monitor/) and scale the cluster vertically or horizontally as your requirements change. You can also change the default backup policy for clusters and perform on-demand backups. You access your clusters from the **Clusters** page.
 
-The **Clusters** page lists your currently provisioned clusters and their status, along with a summary of nodes, cores, and errors. From here you can also [add](../cloud-basics/create-clusters/) and delete clusters.
+The **Clusters** page lists your currently provisioned clusters and their status, along with a summary of the total number of clusters, nodes, and vCPUs in your cloud. From here you can also [add](../cloud-basics/create-clusters/) and delete clusters.
 
 To _add_ a cluster, click **Add Cluster**. Refer to [Create a cluster](../cloud-basics/create-clusters/).
 
