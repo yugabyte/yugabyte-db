@@ -522,7 +522,7 @@ plvdate_set_nonbizday_dow (PG_FUNCTION_ARGS)
 	if (check == 0x7f)
 		ereport(ERROR,
 			    (errcode(ERRCODE_DATA_EXCEPTION),
-			     errmsg("nonbizday registeration error"),
+			     errmsg("nonbizday registration error"),
 			     errdetail("Constraint violation."),
 			     errhint("One day in week have to be bizday.")));
 
@@ -581,7 +581,7 @@ plvdate_set_nonbizday_day (PG_FUNCTION_ARGS)
 		if (holidays_c == MAX_holidays)
 			ereport(ERROR,
 				    (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-				     errmsg("nonbizday registeration error"),
+				     errmsg("nonbizday registration error"),
 				     errdetail("Too much registered nonbizdays."),
 				     errhint("Increase MAX_holidays in 'plvdate.c'.")));
 
@@ -591,7 +591,7 @@ plvdate_set_nonbizday_day (PG_FUNCTION_ARGS)
 		if (NULL != bsearch(&hd, holidays, holidays_c, sizeof(holiday_desc), holiday_desc_comp))
 			ereport(ERROR,
 				    (errcode(ERRCODE_DUPLICATE_OBJECT),
-				     errmsg("nonbizday registeration error"),
+				     errmsg("nonbizday registration error"),
 				     errdetail("Date is registered.")));
 
 		holidays[holidays_c].month = m;
@@ -605,14 +605,14 @@ plvdate_set_nonbizday_day (PG_FUNCTION_ARGS)
 		if (exceptions_c == MAX_EXCEPTIONS)
 			ereport(ERROR,
 				    (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-				     errmsg("nonbizday registeration error"),
+				     errmsg("nonbizday registration error"),
 				     errdetail("Too much registered nonrepeated nonbizdays."),
 				     errhint("Increase MAX_EXCEPTIONS in 'plvdate.c'.")));
 
 		if (NULL != bsearch(&arg1, exceptions, exceptions_c, sizeof(DateADT), dateadt_comp))
 			ereport(ERROR,
 				    (errcode(ERRCODE_DUPLICATE_OBJECT),
-				     errmsg("nonbizday registeration error"),
+				     errmsg("nonbizday registration error"),
 				     errdetail("Date is registered.")));
 
 		exceptions[exceptions_c++] = arg1;
@@ -673,7 +673,7 @@ plvdate_unset_nonbizday_day (PG_FUNCTION_ARGS)
 	if (!found)
 		ereport(ERROR,
 			    (errcode(ERRCODE_UNDEFINED_OBJECT),
-			     errmsg("nonbizday unregisteration error"),
+			     errmsg("nonbizday unregistration error"),
 			     errdetail("Nonbizday not found.")));
 
 	PG_RETURN_VOID();
