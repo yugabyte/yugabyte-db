@@ -57,7 +57,7 @@ Create the index using `USING ybgin` to specify the index access method.
 The `gin` access method is reserved for temporary relations while `ybgin` is for Yugabyte-backed relations.
 You may still specify `USING gin`, and, if `mytable` is not a temporary table, it will be automatically substituted for `ybgin`.
 
-GIN indexes cannot be unique.
+Since GIN indexes cannot be unique, `CREATE UNIQUE INDEX` is not allowed.
 
 There are currently some limitations:
 
