@@ -62,7 +62,7 @@ Since GIN indexes cannot be unique, `CREATE UNIQUE INDEX` is not allowed.
 There are currently some limitations:
 
 - Multicolumn GIN indexes are not supported: this can be done in the future.
-- ASC/DESC/HASH cannot be specified: it defaults to ASC for prefix match purposes, so this can be relaxed in the future.
+- `ASC`/`DESC`/`HASH` cannot be specified: it defaults to `ASC` for prefix match purposes, so this can be relaxed in the future.
 
 ### DELETE, INSERT, UPDATE
 
