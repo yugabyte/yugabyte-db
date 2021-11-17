@@ -57,10 +57,11 @@ Create the index using `USING ybgin` to specify the index access method.
 The `gin` access method is reserved for temporary relations while `ybgin` is for Yugabyte-backed relations.
 You may still specify `USING gin`, and, if `mytable` is not a temporary table, it will be automatically substituted for `ybgin`.
 
+GIN indexes cannot be unique.
+
 There are currently some limitations:
 
 - Multicolumn GIN indexes are not supported: this can be done in the future.
-- Unique indexes are not supported: this doesn't make sense.
 - ASC/DESC/HASH cannot be specified: it defaults to ASC for prefix match purposes, so this can be relaxed in the future.
 
 ### DELETE, INSERT, UPDATE
