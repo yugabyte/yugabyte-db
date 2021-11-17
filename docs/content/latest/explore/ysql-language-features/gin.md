@@ -101,7 +101,8 @@ For those familiar with upstream PostgreSQL GIN indexes, Yugabyte GIN indexes ar
 
 ### Setup
 
-To begin, I set up a cluster using `yb-ctl`.
+To begin, set up a YugabyteDB cluster.
+For instance, using `yb-ctl`,
 
 ```sh
 ./bin/yb-ctl --data_dir /tmp/gindemo --rf 3 create --ip_start 201
@@ -269,7 +270,7 @@ Time: 2.115 ms
 ### Unsupported queries
 
 Sometimes, an unsupported query may be encountered by getting an ERROR.
-Here, I show workarounds to some of these cases.
+Below are some workarounds for some of these cases.
 
 #### more than one required scan entry
 
