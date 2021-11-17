@@ -4586,6 +4586,34 @@
       },
       "type" : "object"
     },
+    "UserProfileData" : {
+      "description" : "User profile data. The API and UI use this to validate form data.",
+      "properties" : {
+        "confirmPassword" : {
+          "description" : "Password confirmation",
+          "example" : "Test@1234",
+          "type" : "string"
+        },
+        "password" : {
+          "description" : "Password",
+          "example" : "Test@1234",
+          "type" : "string"
+        },
+        "role" : {
+          "description" : "User role",
+          "enum" : [ "Admin", "ReadOnly", "SuperAdmin", "BackupAdmin" ],
+          "example" : "Admin",
+          "type" : "string"
+        },
+        "timezone" : {
+          "description" : "User timezone",
+          "example" : "America/Toronto",
+          "type" : "string"
+        }
+      },
+      "required" : [ "role" ],
+      "type" : "object"
+    },
     "UserRegistrationData" : {
       "description" : "User registration data. The API and UI use this to validate form data.",
       "properties" : {
@@ -4615,6 +4643,11 @@
           "description" : "User role",
           "enum" : [ "Admin", "ReadOnly", "SuperAdmin", "BackupAdmin" ],
           "example" : "Admin",
+          "type" : "string"
+        },
+        "timezone" : {
+          "description" : "User timezone",
+          "example" : "America/Toronto",
           "type" : "string"
         }
       },
@@ -4656,6 +4689,10 @@
         "role" : {
           "description" : "User role",
           "enum" : [ "Admin", "ReadOnly", "SuperAdmin", "BackupAdmin" ],
+          "type" : "string"
+        },
+        "timezone" : {
+          "description" : "User timezone",
           "type" : "string"
         },
         "uuid" : {
@@ -4703,6 +4740,10 @@
         "role" : {
           "description" : "User role",
           "enum" : [ "Admin", "ReadOnly", "SuperAdmin", "BackupAdmin" ],
+          "type" : "string"
+        },
+        "timezone" : {
+          "description" : "User timezone",
           "type" : "string"
         },
         "uuid" : {
@@ -9987,6 +10028,46 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "Change a user's password",
+        "tags" : [ "User management" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/users/{uUUID}/update_profile" : {
+      "put" : {
+        "description" : "",
+        "operationId" : "UpdateUserProfile",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "uUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "description" : "User data in profile to be updated",
+          "in" : "body",
+          "name" : "Users",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/UserProfileData"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Users"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Update a user's profile",
         "tags" : [ "User management" ]
       }
     },

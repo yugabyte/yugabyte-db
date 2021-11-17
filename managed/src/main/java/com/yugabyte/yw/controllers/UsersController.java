@@ -9,6 +9,7 @@ import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.common.user.UserService;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.forms.UserProfileFormData;
 import com.yugabyte.yw.forms.UserRegisterFormData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
@@ -18,8 +19,8 @@ import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-import java.util.List;
-import java.util.UUID;
+
+import java.util.*;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import org.slf4j.Logger;
@@ -119,15 +120,8 @@ public class UsersController extends AuthenticatedController {
       notes = "Deletes the specified user. Note that you can't delete a customer's primary user.",
       response = YBPSuccess.class)
   public Result delete(UUID customerUUID, UUID userUUID) {
-    Customer.getOrBadRequest(customerUUID);
     Users user = Users.getOrBadRequest(userUUID);
-    if (!user.customerUUID.equals(customerUUID)) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          String.format(
-              "User UUID %s does not belong to customer %s",
-              userUUID.toString(), customerUUID.toString()));
-    }
+    checkUserOwnership(customerUUID, userUUID, user);
     if (user.getIsPrimary()) {
       throw new PlatformServiceException(
           BAD_REQUEST,
@@ -143,6 +137,17 @@ public class UsersController extends AuthenticatedController {
     }
   }
 
+  private void checkUserOwnership(UUID customerUUID, UUID userUUID, Users user) {
+    Customer.getOrBadRequest(customerUUID);
+    if (!user.customerUUID.equals(customerUUID)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "User UUID %s does not belong to customer %s",
+              userUUID.toString(), customerUUID.toString()));
+    }
+  }
+
   /**
    * PUT endpoint for changing the role of an existing user.
    *
@@ -153,15 +158,8 @@ public class UsersController extends AuthenticatedController {
       nickname = "updateUserRole",
       response = YBPSuccess.class)
   public Result changeRole(UUID customerUUID, UUID userUUID, String role) {
-    Customer.getOrBadRequest(customerUUID);
     Users user = Users.getOrBadRequest(userUUID);
-    if (!user.customerUUID.equals(customerUUID)) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          String.format(
-              "User UUID %s does not belong to customer %s",
-              userUUID.toString(), customerUUID.toString()));
-    }
+    checkUserOwnership(customerUUID, userUUID, user);
     if (Role.SuperAdmin == user.getRole()) {
       throw new PlatformServiceException(BAD_REQUEST, "Can't change super admin role.");
     }
@@ -189,16 +187,8 @@ public class UsersController extends AuthenticatedController {
         paramType = "body")
   })
   public Result changePassword(UUID customerUUID, UUID userUUID) {
-    Customer.getOrBadRequest(customerUUID);
     Users user = Users.getOrBadRequest(userUUID);
-    if (!user.customerUUID.equals(customerUUID)) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          String.format(
-              "User UUID %s does not belong to customer %s",
-              userUUID.toString(), customerUUID.toString()));
-    }
-
+    checkUserOwnership(customerUUID, userUUID, user);
     Form<UserRegisterFormData> form =
         formFactory.getFormDataOrBadRequest(UserRegisterFormData.class);
 
@@ -212,5 +202,51 @@ public class UsersController extends AuthenticatedController {
       }
     }
     throw new PlatformServiceException(BAD_REQUEST, "Invalid user credentials.");
+  }
+
+  /**
+   * PUT endpoint for updating the user profile.
+   *
+   * @return JSON response of the updated User.
+   */
+  @ApiOperation(
+      value = "Update a user's profile",
+      nickname = "UpdateUserProfile",
+      response = Users.class)
+  @ApiImplicitParams({
+    @ApiImplicitParam(
+        name = "Users",
+        value = "User data in profile to be updated",
+        required = true,
+        dataType = "com.yugabyte.yw.forms.UserProfileFormData",
+        paramType = "body")
+  })
+  public Result updateProfile(UUID customerUUID, UUID userUUID) {
+    Users user = Users.getOrBadRequest(userUUID);
+    checkUserOwnership(customerUUID, userUUID, user);
+    Form<UserProfileFormData> form = formFactory.getFormDataOrBadRequest(UserProfileFormData.class);
+
+    UserProfileFormData formData = form.get();
+
+    if (formData.getPassword() != null) {
+      passwordPolicyService.checkPasswordPolicy(customerUUID, formData.getPassword());
+      if (!formData.getPassword().equals(formData.getConfirmPassword())) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Password and confirm password do not match.");
+      }
+      user.setPassword(formData.getPassword());
+    }
+    if (formData.getTimezone() != user.getTimezone()) {
+      user.setTimezone(formData.getTimezone());
+    }
+    if (formData.getRole() != user.getRole()) {
+      if (Role.SuperAdmin == user.getRole()) {
+        throw new PlatformServiceException(BAD_REQUEST, "Can't change super admin role.");
+      }
+      user.setRole(formData.getRole());
+      auditService().createAuditEntry(ctx(), request());
+    }
+    user.save();
+    return ok(Json.toJson(user));
   }
 }
