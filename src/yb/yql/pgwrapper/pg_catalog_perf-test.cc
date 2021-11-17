@@ -76,9 +76,9 @@ TEST_F(PgCatalogPerfTest, YB_DISABLE_TEST_IN_TSAN(StartupRPCCount)) {
   };
 
   const auto first_connect_rpc_count = ASSERT_RESULT(ReadRPCCountDelta(connector));
-  ASSERT_EQ(first_connect_rpc_count, 60);
+  ASSERT_EQ(first_connect_rpc_count, 59);
   const auto subsequent_connect_rpc_count = ASSERT_RESULT(ReadRPCCountDelta(connector));
-  ASSERT_EQ(subsequent_connect_rpc_count, 13);
+  ASSERT_EQ(subsequent_connect_rpc_count, 10);
 }
 
 // Test checks number of RPC in case of cache refresh without partitioned tables.
