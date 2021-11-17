@@ -7,42 +7,42 @@ menu:
   stable:
     identifier: api-ysql-exprs-yb_hash_code
     parent: api-ysql-exprs
-aliases:
-  - /stable/api/ysql/exprs/func_yb_hash_code
 isTocNested: true
 showAsideToc: true
 ---
 
 ## Synopsis
+
 `yb_hash_code` is a function that returns the hash of a set of given input values using the hash function DocDB uses to shard its data. In effect, it provides direct access to the hash value of any given row of a YSQL table, allowing one to infer a row’s physical location. This enables an application to specify queries based on the physical location of a row or set of rows. A user’s newfound access to the physical location of a row should open up possibilities for more efficient queries.
 
 ## Instructions
+
 `yb_hash_code` can be used anywhere a normal function can be used in a YSQL expression. There is no limitation to where it can be used. It takes in a variable number of parameters whose types must be allowed in YB primary keys. More formally,
 
-```
-yb_hash_code(a1:t1, a2:t2, a3:t3, a4:t4…..) → int4 (32 bit integer)
+```sql
+yb_hash_code(a1:t1, a2:t2, a3:t3, a4:t4...) → int4 (32 bit integer)
 ```
 
-Where `a1, a2, a3…` are expressions of type `t1, t2, t3…`, respectively. `t1, t2, t3…` must be types that are currently allowed in a primary key. 
+Where `a1, a2, a3...` are expressions of type `t1, t2, t3...`, respectively. `t1, t2, t3...` must be types that are currently allowed in a primary key. 
 
 ## Function Pushdown
 
-
 This function can be either evaluated at the Postgres layer after resolving each of its argument expressions, or certain invocations of it may be pushed down to be evaluated at the DocDB layer. We discuss the situations where they are pushed down. `yb_hash_code` invocations are pushed down when the Postgres optimizer determines that the return values of the function will directly match the values of the hash value column in a requested base table or index table. For example, if we create a table as follows
 
-```
+```sql
 CREATE TABLE sample_table (x INTEGER, y INTEGER, z INTEGER, PRIMARY KEY((x,y) HASH), z ASC);
 ```
 
 Then the following query will evaluate the `yb_hash_code` calls at the DocDB layer:
 
-```
+```sql
 SELECT * FROM sample_table WHERE yb_hash_code(x,y) <= 128 AND yb_hash_code(x,y) >= 0;
 ```
 
 You can expect to verify this with the `EXPLAIN ANALYZE` result of this statement
-```
-                                                            QUERY PLAN                                                             
+
+```sql
+                                                            QUERY PLAN
 -----------------------------------------------------------------------------------------------------------------------------------
  Index Scan using sample_table_pkey on sample_table  (cost=0.00..5.88 rows=16 width=12) (actual time=2.867..2.919 rows=18 loops=1)
    Index Cond: ((yb_hash_code(x, y) <= 128) AND (yb_hash_code(x, y) >= 0))
@@ -51,26 +51,26 @@ You can expect to verify this with the `EXPLAIN ANALYZE` result of this statemen
 (4 rows)
 ```
 
-Here, we see that the primary key index was used and no row was rechecked at the postgres layer.
+Here, we see that the primary key index was used and no row was rechecked at the PostgreSQLes layer.
 
 As the `yb_hash_code` calls in this statement request the hash code of `x` and `y`, or in other words the full hash key of `sample_table`, we push down these calls. This pushdown is done by specifying a requested hash value range in the DocDB RPC request. As an added side effect, the RPC request will only be sent out to tablet servers that definitely contain values in the requested hash range. 
 
 This pushdown functionality works for secondary indexes too. This is a feature that is currently unavailable with the YCQL counterpart of this function, partition_hash(). For example, if we create an index on `sample_table` as follows:
 
-```
+```sql
 CREATE INDEX sample_idx ON sample_table ((x, z) HASH);
 ```
 
 We can consider a modified version of the above `SELECT` query as follows:
 
-```
+```sql
 SELECT * FROM sample_table WHERE yb_hash_code(x,z) <= 128 AND yb_hash_code(x,z) >= 0;
 ```
 
 Here, the `yb_hash_code` calls are on `x` and `z`. `x` and `z` do not form the full hash key of the base sample_table table but they do form the full hash key of the index table, `sample_idx`. Hence, the optimizer will consider pushing down the calls to the DocDB layer if an index scan using `sample_idx` is chosen. Note that the optimizer may choose not to go with a secondary scan if it deems the requested hash range to be large enough to warrant doing a simple full table scan instead. The `EXPLAIN ANALYZE` result for this could be as follows
 
-```
-                                                         QUERY PLAN                                                         
+```sql
+                                                         QUERY PLAN
 ----------------------------------------------------------------------------------------------------------------------------
  Index Scan using sample_idx on sample_table  (cost=0.00..5.96 rows=16 width=12) (actual time=8.923..8.975 rows=18 loops=1)
    Index Cond: (yb_hash_code(x, z) <= 128)
@@ -82,17 +82,20 @@ Here, the `yb_hash_code` calls are on `x` and `z`. `x` and `z` do not form the f
 Note that we can also use [pg_hint_plan](../../../../explore/query-1-performance/pg-hint-plan/) to manipulate the index that is used.
 We create a duplicate index of `sample_idx`:
 
-```
+```sql
 CREATE INDEX sample_idx_dup ON sample_table ((x,z) HASH);
 ```
 
 And then we execute the same query with a pg_hint_plan directive:
 
-```
+```sql
 SET pg_hint_plan.enable_hint=ON;
 /*+IndexScan(sample_table sample_idx_dup) */
 EXPLAIN ANALYZE SELECT * FROM sample_table WHERE yb_hash_code(x,z) <= 128 AND yb_hash_code(x,z) >= 0;
-                                                          QUERY PLAN                                                          
+```
+
+```sql
+                                                          QUERY PLAN
 ------------------------------------------------------------------------------------------------------------------------------
  Index Scan using sample_idx_dup on sample_table  (cost=0.00..6.04 rows=16 width=12) (actual time=15.551..15.608 rows=18 loops=1)
    Index Cond: ((yb_hash_code(x, z) <= 128) AND (yb_hash_code(x, z) >= 0))
@@ -103,10 +106,13 @@ EXPLAIN ANALYZE SELECT * FROM sample_table WHERE yb_hash_code(x,z) <= 128 AND yb
 
 We can also mix calls that can be pushed down and calls that cannot in a single statement as such 
 
-```
+```sql
 EXPLAIN ANALYZE SELECT * FROM sample_table WHERE yb_hash_code(x,z) <= 128 and yb_hash_code(x,y) >= 5 AND yb_hash_code(x,y,z) <= 256;
+```
 
-                                                        QUERY PLAN                                                         
+```sql
+
+                                                        QUERY PLAN
 ---------------------------------------------------------------------------------------------------------------------------
  Index Scan using sample_idx on sample_table  (cost=0.00..6.27 rows=16 width=12) (actual time=9.518..9.531 rows=1 loops=1)
    Index Cond: (yb_hash_code(x, z) <= 128)
@@ -120,38 +126,46 @@ EXPLAIN ANALYZE SELECT * FROM sample_table WHERE yb_hash_code(x,z) <= 128 and yb
 In this example, only the first clause is pushed down to an index, `sample_idx`. The rest are filters executed at the Postgres level. The reason why the optimizer chose this particular filter to push down is that it has the lowest selectivity as determined by the low number of hash values it filters for compared to the `yb_hash_code(x,y) >= 5` filter.
 
 ## Use Case Examples
+
 Here are some expected use case examples of the `yb_hash_code` function in YSQL. We use `sample_table` and `sample_idx` from the previous section for our examples here too:
 
-### Finding the hash code of a particular set of expressions
+### Finding the hash code of a particular set of values
+
 Given a set of expressions, we can compute the hash code of them directly as such
 
-```
+```sql
 SELECT yb_hash_code(1::int, 2::int, ‘sample string’::text);
+```
 
+```sql
    yb_hash_code
 ---------------------
       5067
 ```
 
 ### Querying rows based on physically hash sharded location
+
 We can request a batch of rows from a tablet of our choice without unnecessarily touching other tablets.
 
-```
+```sql
 SELECT * FROM sample_table WHERE yb_hash_code(x,y) >= 0 and yb_hash_code(x,y) <= 128;
 ```
 
 Assuming each tablet holds at least 128 hash values, this statement will request rows from the first tablet of `sample_table`. Similarly, we can request a batch of physically colocated rows based on index table location too.
 
-```
+```sql
 SELECT * FROM sample_table WHERE yb_hash_code(x,z) >= 0 and yb_hash_code(x,z) <= 128;
 ```
 
 ### Querying a random batch of rows
+
 We can extend the above use case to sample a random batch of rows by selecting over a random fixed size interval over the hash partition space. For example, we select over a random space of 512 hash values. Note that this is 1/128 of the total hash partition space as there are 2^16 = 65536 hash values in total. We first select a random lower bound for this interval.
 
-```
+```sql
 SELECT floor(random()*65536);
+```
 
+```sql
  floor
 -------
  4600
@@ -159,9 +173,11 @@ SELECT floor(random()*65536);
 
 Now, we can search over all rows whose hash values range in [4600, 5112). In this example, we take a count of all such rows.
 
-```
+```sql
 SELECT COUNT(*) FROM sample_table WHERE yb_hash_code(x,y) >= 4600 and yb_hash_code(x,y) < 5112;
+```
 
+```sql
  count 
 -------
     74
@@ -171,9 +187,10 @@ SELECT COUNT(*) FROM sample_table WHERE yb_hash_code(x,y) >= 4600 and yb_hash_co
 Since, we use what we assume to be a uniformly distributed hash function to partition our rows, we can assume that this is a count of approximately 1/128 of all the rows. Therefore, multiplying this count, 78 by 128 gives us a good estimate of the total number of rows (9984 in this case) in the table without querying and iterating over all tablets.
 
 ### Distributed Parallel Queries
+
 Seeing how we can constrain our queries to a physically collocated group of rows of the user’s choosing now we can shard individual aggregate queries across multiple partition groups. These sharded queries can execute in parallel. For example, we can execute a batch of `COUNT(*)` queries as follows on separate threads:
 
-```
+```sql
 SELECT COUNT(*) FROM sample_table WHERE yb_hash_code(x,y) >= 0 and yb_hash_code(x,y) < 8192;
 
 
