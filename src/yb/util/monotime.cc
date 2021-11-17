@@ -349,7 +349,8 @@ void SleepFor(const MonoDelta& delta) {
 
 CoarseMonoClock::time_point CoarseMonoClock::now() {
 #if defined(__APPLE__)
-  int64_t nanos = walltime_internal::GetMonoTimeNanos();
+  int64_t nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(
+      std::chrono::steady_clock::now().time_since_epoch()).count();
 # else
   struct timespec ts;
   PCHECK(clock_gettime(CLOCK_MONOTONIC_COARSE, &ts) == 0);
