@@ -931,6 +931,13 @@ char *yytext;
 /* Not needed now that this file is compiled as part of gram.y */
 /* #include "parser/parse.h" */
 #include "parser/scansup.h"
+
+#if PG_VERSION_NUM >= 130000
+
+#include "port/pg_bitutils.h"
+
+#endif
+
 #include "mb/pg_wchar.h"
 
 #include "parse_keyword.h"
@@ -1004,7 +1011,7 @@ static unsigned char unescape_single_char(unsigned char c);
 #define _pg_mbstrlen_with_len(buf,loc) 	pg_mbstrlen_with_len(buf,loc)
 #endif
 
-#line 1007 "sqlscan.c"
+#line 1014 "sqlscan.c"
 #define YY_NO_INPUT 1
 /*
  * OK, here is a short description of lex/flex rules behavior.
@@ -1132,7 +1139,7 @@ static unsigned char unescape_single_char(unsigned char c);
  * Note that xcstart must appear before operator, as explained above!
  *  Also whitespace (comment) must appear before operator.
  */
-#line 1135 "sqlscan.c"
+#line 1142 "sqlscan.c"
 
 #define INITIAL 0
 #define xb 1
@@ -1354,10 +1361,10 @@ YY_DECL
 		}
 
 	{
-#line 308 "sqlscan.l"
+#line 315 "sqlscan.l"
 
 
-#line 1360 "sqlscan.c"
+#line 1367 "sqlscan.c"
 
 	while ( /*CONSTCOND*/1 )		/* loops until end-of-file is reached */
 		{
@@ -1413,7 +1420,7 @@ do_action:	/* This label is used only to access EOF actions. */
 case 1:
 /* rule 1 can match eol */
 YY_RULE_SETUP
-#line 310 "sqlscan.l"
+#line 317 "sqlscan.l"
 {
 					SET_YYLLOC();
 					yylval.val.str = yytext;
@@ -1425,7 +1432,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 2:
 YY_RULE_SETUP
-#line 319 "sqlscan.l"
+#line 326 "sqlscan.l"
 {
 					SET_YYLLOC();
 					yylval.val.str = yytext;
@@ -1437,7 +1444,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 3:
 YY_RULE_SETUP
-#line 329 "sqlscan.l"
+#line 336 "sqlscan.l"
 {
 					/* Set location in case of syntax error in comment */
 					SET_YYLLOC();
@@ -1453,7 +1460,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 4:
 YY_RULE_SETUP
-#line 342 "sqlscan.l"
+#line 349 "sqlscan.l"
 {
 					xcdepth++;
 					/* Put back any characters past slash-star; see above */
@@ -1465,7 +1472,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 5:
 YY_RULE_SETUP
-#line 351 "sqlscan.l"
+#line 358 "sqlscan.l"
 {
 					if (xcdepth <= 0)
 					{
@@ -1491,27 +1498,27 @@ YY_RULE_SETUP
 case 6:
 /* rule 6 can match eol */
 YY_RULE_SETUP
-#line 373 "sqlscan.l"
+#line 380 "sqlscan.l"
 {
 					addlit(yytext, yyleng);
 				}
 	YY_BREAK
 case 7:
 YY_RULE_SETUP
-#line 377 "sqlscan.l"
+#line 384 "sqlscan.l"
 {
 					addlit(yytext, yyleng);
 				}
 	YY_BREAK
 case 8:
 YY_RULE_SETUP
-#line 381 "sqlscan.l"
+#line 388 "sqlscan.l"
 {
 					addlit(yytext, yyleng);
 				}
 	YY_BREAK
 case YY_STATE_EOF(xc):
-#line 385 "sqlscan.l"
+#line 392 "sqlscan.l"
 { 
 					yylval.val.str = litbufdup();
 					yylval.val.modificator = "ecu";
@@ -1523,7 +1530,7 @@ case YY_STATE_EOF(xc):
 	YY_BREAK
 case 9:
 YY_RULE_SETUP
-#line 394 "sqlscan.l"
+#line 401 "sqlscan.l"
 {
 					/* Binary bit type.
 					 * At some point we should simply pass the string
@@ -1539,11 +1546,11 @@ YY_RULE_SETUP
 	YY_BREAK
 case 10:
 /* rule 10 can match eol */
-#line 407 "sqlscan.l"
+#line 414 "sqlscan.l"
 case 11:
 /* rule 11 can match eol */
 YY_RULE_SETUP
-#line 407 "sqlscan.l"
+#line 414 "sqlscan.l"
 {
 					yyless(1);
 					BEGIN(INITIAL);
@@ -1556,28 +1563,28 @@ YY_RULE_SETUP
 	YY_BREAK
 case 12:
 /* rule 12 can match eol */
-#line 417 "sqlscan.l"
+#line 424 "sqlscan.l"
 case 13:
 /* rule 13 can match eol */
 YY_RULE_SETUP
-#line 417 "sqlscan.l"
+#line 424 "sqlscan.l"
 {
 					addlit(yytext, yyleng);
 				}
 	YY_BREAK
 case 14:
 /* rule 14 can match eol */
-#line 421 "sqlscan.l"
+#line 428 "sqlscan.l"
 case 15:
 /* rule 15 can match eol */
 YY_RULE_SETUP
-#line 421 "sqlscan.l"
+#line 428 "sqlscan.l"
 {
 					/* ignore */
 				}
 	YY_BREAK
 case YY_STATE_EOF(xb):
-#line 424 "sqlscan.l"
+#line 431 "sqlscan.l"
 { 
 					yylval.val.str = litbufdup();
 					yylval.val.modificator = "bu";
@@ -1588,7 +1595,7 @@ case YY_STATE_EOF(xb):
 	YY_BREAK
 case 16:
 YY_RULE_SETUP
-#line 432 "sqlscan.l"
+#line 439 "sqlscan.l"
 {
 					/* Hexadecimal bit type.
 					 * At some point we should simply pass the string
@@ -1604,11 +1611,11 @@ YY_RULE_SETUP
 	YY_BREAK
 case 17:
 /* rule 17 can match eol */
-#line 445 "sqlscan.l"
+#line 452 "sqlscan.l"
 case 18:
 /* rule 18 can match eol */
 YY_RULE_SETUP
-#line 445 "sqlscan.l"
+#line 452 "sqlscan.l"
 {
 					yyless(1);
 					BEGIN(INITIAL);
@@ -1620,7 +1627,7 @@ YY_RULE_SETUP
 				}
 	YY_BREAK
 case YY_STATE_EOF(xh):
-#line 454 "sqlscan.l"
+#line 461 "sqlscan.l"
 { 
 					yylval.val.str = litbufdup();
 					yylval.val.modificator = "xu";
@@ -1631,7 +1638,7 @@ case YY_STATE_EOF(xh):
 	YY_BREAK
 case 19:
 YY_RULE_SETUP
-#line 462 "sqlscan.l"
+#line 469 "sqlscan.l"
 {
 					/* National character.
 					 * We will pass this along as a normal character string,
@@ -1654,7 +1661,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 20:
 YY_RULE_SETUP
-#line 482 "sqlscan.l"
+#line 489 "sqlscan.l"
 {
 					SET_YYLLOC();
 					BEGIN(xq);
@@ -1664,7 +1671,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 21:
 YY_RULE_SETUP
-#line 488 "sqlscan.l"
+#line 495 "sqlscan.l"
 {
 					SET_YYLLOC();
 					BEGIN(xe);
@@ -1674,11 +1681,11 @@ YY_RULE_SETUP
 	YY_BREAK
 case 22:
 /* rule 22 can match eol */
-#line 495 "sqlscan.l"
+#line 502 "sqlscan.l"
 case 23:
 /* rule 23 can match eol */
 YY_RULE_SETUP
-#line 495 "sqlscan.l"
+#line 502 "sqlscan.l"
 {
 					yyless(1);
 					BEGIN(INITIAL);
@@ -1691,7 +1698,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 24:
 YY_RULE_SETUP
-#line 504 "sqlscan.l"
+#line 511 "sqlscan.l"
 {
 					addlitchar('\'');
 				}
@@ -1699,7 +1706,7 @@ YY_RULE_SETUP
 case 25:
 /* rule 25 can match eol */
 YY_RULE_SETUP
-#line 507 "sqlscan.l"
+#line 514 "sqlscan.l"
 {
 					addlit(yytext, yyleng);
 				}
@@ -1707,7 +1714,7 @@ YY_RULE_SETUP
 case 26:
 /* rule 26 can match eol */
 YY_RULE_SETUP
-#line 510 "sqlscan.l"
+#line 517 "sqlscan.l"
 {
 					addlit(yytext, yyleng);
 				}
@@ -1715,14 +1722,14 @@ YY_RULE_SETUP
 case 27:
 /* rule 27 can match eol */
 YY_RULE_SETUP
-#line 513 "sqlscan.l"
+#line 520 "sqlscan.l"
 {
 					addlitchar(unescape_single_char(yytext[1]));
 				}
 	YY_BREAK
 case 28:
 YY_RULE_SETUP
-#line 516 "sqlscan.l"
+#line 523 "sqlscan.l"
 {
 					unsigned char c = strtoul(yytext+1, NULL, 8);
 
@@ -1731,7 +1738,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 29:
 YY_RULE_SETUP
-#line 521 "sqlscan.l"
+#line 528 "sqlscan.l"
 {
 					unsigned char c = strtoul(yytext+2, NULL, 16);
 
@@ -1741,14 +1748,14 @@ YY_RULE_SETUP
 case 30:
 /* rule 30 can match eol */
 YY_RULE_SETUP
-#line 526 "sqlscan.l"
+#line 533 "sqlscan.l"
 {
 					/* ignore */
 				}
 	YY_BREAK
 case 31:
 YY_RULE_SETUP
-#line 529 "sqlscan.l"
+#line 536 "sqlscan.l"
 {
 					/* This is only needed for \ just before EOF */
 					addlitchar(yytext[0]);
@@ -1756,7 +1763,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case YY_STATE_EOF(xq):
 case YY_STATE_EOF(xe):
-#line 533 "sqlscan.l"
+#line 540 "sqlscan.l"
 { 
 					yylval.val.str = litbufdup();
 					yylval.val.modificator = extended_string ? "esu" : "qsu";
@@ -1767,7 +1774,7 @@ case YY_STATE_EOF(xe):
 	YY_BREAK
 case 32:
 YY_RULE_SETUP
-#line 541 "sqlscan.l"
+#line 548 "sqlscan.l"
 {
 					SET_YYLLOC();
 					dolqstart = pstrdup(yytext);
@@ -1777,7 +1784,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 33:
 YY_RULE_SETUP
-#line 547 "sqlscan.l"
+#line 554 "sqlscan.l"
 {
 					/* throw back all but the initial "$" */
 					yyless(1);
@@ -1791,7 +1798,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 34:
 YY_RULE_SETUP
-#line 557 "sqlscan.l"
+#line 564 "sqlscan.l"
 {
 					if (strcmp(yytext, dolqstart) == 0)
 					{
@@ -1817,28 +1824,28 @@ YY_RULE_SETUP
 case 35:
 /* rule 35 can match eol */
 YY_RULE_SETUP
-#line 578 "sqlscan.l"
+#line 585 "sqlscan.l"
 {
 					addlit(yytext, yyleng);
 				}
 	YY_BREAK
 case 36:
 YY_RULE_SETUP
-#line 581 "sqlscan.l"
+#line 588 "sqlscan.l"
 {
 					addlit(yytext, yyleng);
 				}
 	YY_BREAK
 case 37:
 YY_RULE_SETUP
-#line 584 "sqlscan.l"
+#line 591 "sqlscan.l"
 {
 					/* This is only needed for inside the quoted text */
 					addlitchar(yytext[0]);
 				}
 	YY_BREAK
 case YY_STATE_EOF(xdolq):
-#line 588 "sqlscan.l"
+#line 595 "sqlscan.l"
 { 
 					yylval.val.sep = dolqstart;
 					yylval.val.modificator = "dolqu";
@@ -1850,7 +1857,7 @@ case YY_STATE_EOF(xdolq):
 	YY_BREAK
 case 38:
 YY_RULE_SETUP
-#line 597 "sqlscan.l"
+#line 604 "sqlscan.l"
 {
 					SET_YYLLOC();
 					BEGIN(xd);
@@ -1859,7 +1866,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 39:
 YY_RULE_SETUP
-#line 602 "sqlscan.l"
+#line 609 "sqlscan.l"
 {
 					char		   *ident;
 
@@ -1878,7 +1885,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 40:
 YY_RULE_SETUP
-#line 617 "sqlscan.l"
+#line 624 "sqlscan.l"
 {
 					addlitchar('"');
 				}
@@ -1886,13 +1893,13 @@ YY_RULE_SETUP
 case 41:
 /* rule 41 can match eol */
 YY_RULE_SETUP
-#line 620 "sqlscan.l"
+#line 627 "sqlscan.l"
 {
 					addlit(yytext, yyleng);
 				}
 	YY_BREAK
 case YY_STATE_EOF(xd):
-#line 623 "sqlscan.l"
+#line 630 "sqlscan.l"
 { 
 					yylval.val.modificator = "dqu";
 					yylval.val.str = litbufdup();
@@ -1903,7 +1910,7 @@ case YY_STATE_EOF(xd):
 	YY_BREAK
 case 42:
 YY_RULE_SETUP
-#line 630 "sqlscan.l"
+#line 637 "sqlscan.l"
 {
 					SET_YYLLOC();
 					yylval.val.modificator = "typecast";
@@ -1914,7 +1921,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 43:
 YY_RULE_SETUP
-#line 638 "sqlscan.l"
+#line 645 "sqlscan.l"
 {
 					SET_YYLLOC();
 					yylval.val.str = yytext;
@@ -1926,7 +1933,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 44:
 YY_RULE_SETUP
-#line 647 "sqlscan.l"
+#line 654 "sqlscan.l"
 {
 					/*
 					 * Check for embedded slash-star or dash-dash; those
@@ -2018,7 +2025,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 45:
 YY_RULE_SETUP
-#line 736 "sqlscan.l"
+#line 743 "sqlscan.l"
 {
 					SET_YYLLOC();
 					yylval.val.modificator = NULL;
@@ -2030,7 +2037,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 46:
 YY_RULE_SETUP
-#line 745 "sqlscan.l"
+#line 752 "sqlscan.l"
 {
 					long val;
 					char* endptr;
@@ -2061,7 +2068,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 47:
 YY_RULE_SETUP
-#line 772 "sqlscan.l"
+#line 779 "sqlscan.l"
 {
 					SET_YYLLOC();
 					yylval.val.str = pstrdup(yytext);
@@ -2073,7 +2080,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 48:
 YY_RULE_SETUP
-#line 780 "sqlscan.l"
+#line 787 "sqlscan.l"
 {
 					SET_YYLLOC();
 					yylval.val.str = pstrdup(yytext);
@@ -2085,7 +2092,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 49:
 YY_RULE_SETUP
-#line 788 "sqlscan.l"
+#line 795 "sqlscan.l"
 {
 					/*
 					 * throw back the [Ee], and treat as {decimal}.  Note
@@ -2104,7 +2111,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 50:
 YY_RULE_SETUP
-#line 803 "sqlscan.l"
+#line 810 "sqlscan.l"
 {
 					/* throw back the [Ee][+-], and proceed as above */
 					yyless(yyleng-2);
@@ -2118,7 +2125,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 51:
 YY_RULE_SETUP
-#line 815 "sqlscan.l"
+#line 822 "sqlscan.l"
 {
 					char		   *ident;
 					const char *keyword;
@@ -2154,7 +2161,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 52:
 YY_RULE_SETUP
-#line 848 "sqlscan.l"
+#line 855 "sqlscan.l"
 {
 					SET_YYLLOC();
 					yylval.val.str = yytext;
@@ -2165,7 +2172,7 @@ YY_RULE_SETUP
 				}
 	YY_BREAK
 case YY_STATE_EOF(INITIAL):
-#line 857 "sqlscan.l"
+#line 864 "sqlscan.l"
 {
 					SET_YYLLOC();
 					yyterminate();
@@ -2173,10 +2180,10 @@ case YY_STATE_EOF(INITIAL):
 	YY_BREAK
 case 53:
 YY_RULE_SETUP
-#line 862 "sqlscan.l"
+#line 869 "sqlscan.l"
 YY_FATAL_ERROR( "flex scanner jammed" );
 	YY_BREAK
-#line 2179 "sqlscan.c"
+#line 2186 "sqlscan.c"
 
 	case YY_END_OF_BUFFER:
 		{
@@ -3143,7 +3150,7 @@ void yyfree (void * ptr )
 
 #define YYTABLES_NAME "yytables"
 
-#line 862 "sqlscan.l"
+#line 869 "sqlscan.l"
 
 
 /*
@@ -3259,9 +3266,19 @@ addlit(char *ytext, int yleng)
 	/* enlarge buffer if needed */
 	if ((literallen+yleng) >= literalalloc)
 	{
+
+#if PG_VERSION_NUM >= 130000
+
+		literalalloc = pg_nextpower2_32(literallen + yleng + 1);
+
+#else
+
 		do {
 			literalalloc *= 2;
 		} while ((literallen+yleng) >= literalalloc);
+
+#endif
+
 		literalbuf = (char *) repalloc(literalbuf, literalalloc);
 	}
 	/* append new data, add trailing null */
