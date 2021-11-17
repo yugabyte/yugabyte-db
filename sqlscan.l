@@ -9,6 +9,7 @@
 /* Not needed now that this file is compiled as part of gram.y */
 /* #include "parser/parse.h" */
 #include "parser/scansup.h"
+#include "port/pg_bitutils.h"
 #include "mb/pg_wchar.h"
 
 #include "parse_keyword.h"
@@ -974,9 +975,7 @@ addlit(char *ytext, int yleng)
 	/* enlarge buffer if needed */
 	if ((literallen+yleng) >= literalalloc)
 	{
-		do {
-			literalalloc *= 2;
-		} while ((literallen+yleng) >= literalalloc);
+		literalalloc = pg_nextpower2_32(literallen + yleng + 1);
 		literalbuf = (char *) repalloc(literalbuf, literalalloc);
 	}
 	/* append new data, add trailing null */
