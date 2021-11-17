@@ -21,6 +21,7 @@ Note that the column names differ depending on the PostgreSQL version you are ru
 bucket_start_time    | bucket_start_time |  :heavy_check_mark: | :x:
 userid             | userid        | :heavy_check_mark: | :heavy_check_mark:
 datname            | datname           |  :heavy_check_mark: | :heavy_check_mark:
+toplevel[^1]       |                   | :heavy_check_mark: | :heavy_check_mark:
 client_ip          | client_ip         | :heavy_check_mark:| :x:
 queryid            | queryid            | :heavy_check_mark: | :heavy_check_mark:
 planid             | planid             | :heavy_check_mark:| :x:
@@ -35,16 +36,17 @@ elevel             | elevel           | :heavy_check_mark: | :x:
 sqlcode            | sqlcode | :heavy_check_mark: | :x:
 message            | message | :heavy_check_mark: | :x:
 plans_calls        | plans_calls  | :heavy_check_mark: | :heavy_check_mark:
-plan_total_time    | plan_total_time | :heavy_check_mark: | :heavy_check_mark:
-plan_min_time      | plan_min_time | :heavy_check_mark: | :heavy_check_mark:
-plan_max_time      | plan_max_time | :heavy_check_mark: | :heavy_check_mark:
-plan_mean_time     | plan_mean_time | :heavy_check_mark:  | :heavy_check_mark:
+total_plan_time    |               | :heavy_check_mark: | :heavy_check_mark:
+min_plan_time      |               | :heavy_check_mark: | :heavy_check_mark:
+max_plan_time      |               | :heavy_check_mark: | :heavy_check_mark:
+mean_plan_time     |               | :heavy_check_mark:  | :heavy_check_mark:
+stddev_plan_time   |               | :heavy_check_mark:  | :heavy_check_mark:
 calls              | calls          | :heavy_check_mark: | :heavy_check_mark:
-total_time         | total_time     | :heavy_check_mark: | :heavy_check_mark:
-min_time           | min_time       | :heavy_check_mark: | :heavy_check_mark:
-max_time           | max_time       | :heavy_check_mark: | :heavy_check_mark:
-mean_time          | mean_time      | :heavy_check_mark: | :heavy_check_mark:
-stddev_time        | stddev_time | :heavy_check_mark: | :heavy_check_mark:
+total_exec_time    | total_time     | :heavy_check_mark: | :heavy_check_mark:
+min_exec_time      | min_time       | :heavy_check_mark: | :heavy_check_mark:
+max_exec_time      | max_time       | :heavy_check_mark: | :heavy_check_mark:
+mean_exec_time     | mean_time      | :heavy_check_mark: | :heavy_check_mark:
+stddev_exec_time   | stddev_time | :heavy_check_mark: | :heavy_check_mark:
 rows_retrieved     | rows_retrieved | :heavy_check_mark: | :heavy_check_mark:
 shared_blks_hit    | shared_blks_hit | :heavy_check_mark: | :heavy_check_mark:
 shared_blks_read   | shared_blks_read | :heavy_check_mark: | :heavy_check_mark:
@@ -71,3 +73,8 @@ To learn more about the features in `pg_stat_monitor`, please see the [User guid
 
 
 Additional reading: [pg_stat_statements](https://www.postgresql.org/docs/current/pgstatstatements.html)
+
+
+
+
+[^1]: Available starting from PostgreSQL 14 and above
