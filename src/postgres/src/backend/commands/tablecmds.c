@@ -4540,11 +4540,12 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation *mutable_rel,
 			break;
 		case AT_SetTableSpace:	/* SET TABLESPACE */
 			/*
-			 * Only do this for partitioned tables and indexes, for which this
-			 * is just a catalog change.  Other relation types which have
-			 * storage are handled by Phase 3.
+			 * Only do this for partitioned tables and indexes or when Yugabyte is
+			 * enabled, for which this is just a catalog change.  Other relation types
+			 * which have storage are handled by Phase 3.
 			 */
-			if (rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE ||
+			if (IsYBRelation(rel) ||
+				rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE ||
 				rel->rd_rel->relkind == RELKIND_PARTITIONED_INDEX)
 				ATExecSetTableSpaceNoStorage(rel, tab->newTableSpace);
 
@@ -4681,9 +4682,7 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode)
 		 * Foreign tables have no storage, nor do partitioned tables and
 		 * indexes.
 		 */
-		if (tab->relkind == RELKIND_FOREIGN_TABLE ||
-			tab->relkind == RELKIND_PARTITIONED_TABLE ||
-			tab->relkind == RELKIND_PARTITIONED_INDEX)
+		if (!RELKIND_CAN_HAVE_STORAGE(tab->relkind))
 			continue;
 
 		/*
@@ -4844,7 +4843,7 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode)
 			 * If we had SET TABLESPACE but no reason to reconstruct tuples,
 			 * just do a block-by-block copy.
 			 */
-			if (tab->newTableSpace)
+			if (tab->newTableSpace && !IsYBRelationById(tab->relid))
 				ATExecSetTableSpace(tab->relid, tab->newTableSpace, lockmode);
 		}
 	}
@@ -12588,6 +12587,18 @@ ATPrepSetTableSpace(AlteredTableInfo *tab, Relation rel, const char *tablespacen
 {
 	Oid			tablespaceId;
 
+	if (IsYugaByteEnabled() && tablespacename &&
+		rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP)
+	{
+		/*
+		 * Disable setting tablespaces for temporary tables in Yugabyte
+		 * clusters.
+		 */
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("cannot set tablespaces for temporary tables")));
+	}
+
 	/* Check that the tablespace exists */
 	tablespaceId = get_tablespace_oid(tablespacename, false);
 
@@ -12835,6 +12846,12 @@ ATExecSetTableSpace(Oid tableOid, Oid newTableSpace, LOCKMODE lockmode)
 	rel = relation_open(tableOid, lockmode);
 
 	/*
+	 * Should only be called on relations having storage, namely non-Yugabyte and
+	 * non-parititoned relations.
+	 */
+	Assert(!IsYBRelation(rel) && RELKIND_CAN_HAVE_STORAGE(rel->rd_rel->relkind));
+
+	/*
 	 * No work if no change in tablespace.
 	 */
 	oldTableSpace = rel->rd_rel->reltablespace;
@@ -12995,9 +13012,10 @@ ATExecSetTableSpaceNoStorage(Relation rel, Oid newTableSpace)
 
 	/*
 	 * Shouldn't be called on relations having storage; these are processed
-	 * in phase 3.
+	 * in phase 3.  Yugabyte tables do not use the Postgres store so it appears to
+	 * Postgres as if there is no associated storage.
 	 */
-	Assert(!RELKIND_CAN_HAVE_STORAGE(rel->rd_rel->relkind));
+	Assert(IsYBRelation(rel) || !RELKIND_CAN_HAVE_STORAGE(rel->rd_rel->relkind));
 
 	/* Can't allow a non-shared relation in pg_global */
 	if (newTableSpace == GLOBALTABLESPACE_OID)
