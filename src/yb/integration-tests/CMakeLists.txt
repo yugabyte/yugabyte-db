@@ -46,7 +46,6 @@ set(INTEGRATION_TESTS_SRCS
   ts_itest-base.cc
   yb_mini_cluster_test_base.cc
   yb_table_test_base.cc
-  yb-ts-cli-itest.cc
   ${INTEGRATION_TESTS_SRCS_EXTENSIONS}
 )
 
