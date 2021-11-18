@@ -483,19 +483,19 @@ public class TlsToggleTest extends UpgradeTaskTest {
       assertEquals(3, certUpdateTasks.size());
     }
     // First round gflag update tasks
-    position = assertSequence(subTasksByPosition, MASTER, position, upgrade.first);
-    position = assertSequence(subTasksByPosition, TSERVER, position, upgrade.first);
-    position = assertCommonTasks(subTasksByPosition, position, upgrade.first, true);
+    position = assertSequence(subTasksByPosition, MASTER, position, upgrade.getFirst());
+    position = assertSequence(subTasksByPosition, TSERVER, position, upgrade.getFirst());
+    position = assertCommonTasks(subTasksByPosition, position, upgrade.getFirst(), true);
     if (nodeToNodeChange != 0) {
       // Second round gflag update tasks
-      position = assertSequence(subTasksByPosition, MASTER, position, upgrade.second);
-      position = assertSequence(subTasksByPosition, TSERVER, position, upgrade.second);
+      position = assertSequence(subTasksByPosition, MASTER, position, upgrade.getSecond());
+      position = assertSequence(subTasksByPosition, TSERVER, position, upgrade.getSecond());
     }
 
-    assertEquals((int) expectedValues.first, position);
+    assertEquals((int) expectedValues.getFirst(), position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
-    verify(mockNodeManager, times(expectedValues.second)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(expectedValues.getSecond())).nodeCommand(any(), any());
 
     Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     if (CertificateHelper.isRootCARequired(nodeToNode, clientToNode, rootAndClientRootCASame)) {
@@ -615,22 +615,22 @@ public class TlsToggleTest extends UpgradeTaskTest {
       assertEquals(3, certUpdateTasks.size());
     }
     // First round gflag update tasks
-    position = assertSequence(subTasksByPosition, MASTER, position, upgrade.first);
-    position = assertCommonTasks(subTasksByPosition, position, upgrade.first, false);
-    position = assertSequence(subTasksByPosition, TSERVER, position, upgrade.first);
-    position = assertCommonTasks(subTasksByPosition, position, upgrade.first, true);
+    position = assertSequence(subTasksByPosition, MASTER, position, upgrade.getFirst());
+    position = assertCommonTasks(subTasksByPosition, position, upgrade.getFirst(), false);
+    position = assertSequence(subTasksByPosition, TSERVER, position, upgrade.getFirst());
+    position = assertCommonTasks(subTasksByPosition, position, upgrade.getFirst(), true);
     if (nodeToNodeChange != 0) {
       // Second round gflag update tasks
-      position = assertSequence(subTasksByPosition, MASTER, position, upgrade.second);
-      position = assertCommonTasks(subTasksByPosition, position, upgrade.second, false);
-      position = assertSequence(subTasksByPosition, TSERVER, position, upgrade.second);
-      position = assertCommonTasks(subTasksByPosition, position, upgrade.second, false);
+      position = assertSequence(subTasksByPosition, MASTER, position, upgrade.getSecond());
+      position = assertCommonTasks(subTasksByPosition, position, upgrade.getSecond(), false);
+      position = assertSequence(subTasksByPosition, TSERVER, position, upgrade.getSecond());
+      position = assertCommonTasks(subTasksByPosition, position, upgrade.getSecond(), false);
     }
 
-    assertEquals((int) expectedValues.first, position);
+    assertEquals((int) expectedValues.getFirst(), position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
-    verify(mockNodeManager, times(expectedValues.second)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(expectedValues.getSecond())).nodeCommand(any(), any());
 
     Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     if (CertificateHelper.isRootCARequired(nodeToNode, clientToNode, rootAndClientRootCASame)) {

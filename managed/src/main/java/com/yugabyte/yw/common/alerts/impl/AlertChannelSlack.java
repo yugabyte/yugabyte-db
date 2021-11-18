@@ -4,9 +4,7 @@ package com.yugabyte.yw.common.alerts.impl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.common.alerts.AlertChannelInterface;
 import com.yugabyte.yw.common.alerts.AlertChannelSlackParams;
-import com.yugabyte.yw.common.alerts.AlertUtils;
 import com.yugabyte.yw.common.alerts.PlatformNotificationException;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertChannel;
@@ -22,22 +20,22 @@ import org.apache.http.impl.client.HttpClients;
 
 @Slf4j
 @Singleton
-public class AlertChannelSlack implements AlertChannelInterface {
+public class AlertChannelSlack extends AlertChannelBase {
 
   @Override
   public void sendNotification(Customer customer, Alert alert, AlertChannel channel)
       throws PlatformNotificationException {
     log.trace("sendNotification {}", alert);
     AlertChannelSlackParams params = (AlertChannelSlackParams) channel.getParams();
-    String title = AlertUtils.getNotificationTitle(alert, channel);
-    String text = AlertUtils.getNotificationText(alert, channel);
+    String title = getNotificationTitle(alert, channel);
+    String text = getNotificationText(alert, channel);
 
     SlackMessage message = new SlackMessage();
-    message.username = params.username;
-    message.icon_url = params.iconUrl;
+    message.username = params.getUsername();
+    message.icon_url = params.getIconUrl();
     message.text = String.format("*%s*\n%s", title, text);
 
-    HttpPost httpPost = new HttpPost(params.webhookUrl);
+    HttpPost httpPost = new HttpPost(params.getWebhookUrl());
     try (CloseableHttpClient client = HttpClients.createDefault()) {
       ObjectMapper objectMapper = new ObjectMapper();
       String json = objectMapper.writeValueAsString(message);

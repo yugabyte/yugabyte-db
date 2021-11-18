@@ -32,20 +32,23 @@ public class AlertChannelTest extends FakeDBApplication {
   public void testGetSetParams() {
     AlertChannel channel = ModelFactory.createSlackChannel(defaultCustomerUuid, CHANNEL_NAME);
 
-    assertNull(AlertChannel.get(defaultCustomerUuid, channel.getUuid()).getParams().titleTemplate);
-    assertNull(AlertChannel.get(defaultCustomerUuid, channel.getUuid()).getParams().textTemplate);
+    assertNull(
+        AlertChannel.get(defaultCustomerUuid, channel.getUuid()).getParams().getTitleTemplate());
+    assertNull(
+        AlertChannel.get(defaultCustomerUuid, channel.getUuid()).getParams().getTextTemplate());
 
     AlertChannelParams params = new AlertChannelEmailParams();
-    params.titleTemplate = "title";
-    params.textTemplate = "body";
+    params.setTitleTemplate("title");
+    params.setTextTemplate("body");
     channel.setParams(params);
     channel.save();
 
     assertEquals(
         "title",
-        AlertChannel.get(defaultCustomerUuid, channel.getUuid()).getParams().titleTemplate);
+        AlertChannel.get(defaultCustomerUuid, channel.getUuid()).getParams().getTitleTemplate());
     assertEquals(
-        "body", AlertChannel.get(defaultCustomerUuid, channel.getUuid()).getParams().textTemplate);
+        "body",
+        AlertChannel.get(defaultCustomerUuid, channel.getUuid()).getParams().getTextTemplate());
   }
 
   @Test

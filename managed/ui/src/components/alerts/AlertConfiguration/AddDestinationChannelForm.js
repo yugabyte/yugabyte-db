@@ -18,13 +18,18 @@ export const AddDestinationChannelForm = (props) => {
   const isReadOnly = isNonAvailable(
     customer.data.features, 'alert.channels.actions');
 
-  // TODO: Add option for pagerDuty once API is avaialable
   const channelTypeList = [
     <option key={1} value="email">
       Email
     </option>,
     <option key={2} value="slack">
       Slack
+    </option>,
+    <option key={3} value="pagerDuty">
+      PagerDuty
+    </option>,
+    <option key={4} value="webHook">
+      WebHook
     </option>
   ];
   /**
@@ -51,7 +56,7 @@ export const AddDestinationChannelForm = (props) => {
       case 'slack':
         payload['name'] = values['slack_name'];
         payload['params']['channelType'] = 'Slack';
-        payload['params']['webhookUrl'] = values.webhookURL;
+        payload['params']['webhookUrl'] = values.webhookURLSlack;
         payload['params']['username'] = values['slack_name'];
         break;
       case 'email':
@@ -69,6 +74,17 @@ export const AddDestinationChannelForm = (props) => {
         } else {
           payload['params']['defaultSmtpSettings'] = true;
         }
+        break;
+      case 'pagerDuty':
+        payload['name'] = values['pagerDuty_name'];
+        payload['params']['channelType'] = 'PagerDuty';
+        payload['params']['apiKey'] = values.apiKey;
+        payload['params']['routingKey'] = values.routingKey;
+        break;
+      case 'webHook':
+        payload['name'] = values['webHook_name'];
+        payload['params']['channelType'] = 'WebHook';
+        payload['params']['webhookUrl'] = values.webhookURL;
         break;
       default:
         break;
@@ -125,6 +141,17 @@ export const AddDestinationChannelForm = (props) => {
 
   const validationSchemaSlack = Yup.object().shape({
     slack_name: Yup.string().required('Slack name is Required'),
+    webhookURLSlack: Yup.string().required('Web hook Url is Required')
+  });
+
+  const validationSchemaPagerDuty = Yup.object().shape({
+    pagerDuty_name: Yup.string().required('Name is Required'),
+    apiKey: Yup.string().required('API Key is Required'),
+    routingKey: Yup.string().required('Integration Key is Required')
+  });
+
+  const validationSchemaWebHook = Yup.object().shape({
+    webHook_name: Yup.string().required('Name is Required'),
     webhookURL: Yup.string().required('Web hook Url is Required')
   });
 
@@ -148,10 +175,51 @@ export const AddDestinationChannelForm = (props) => {
             <Row>
               <Col lg={12}>
                 <Field
-                  name="serviceKey"
+                  name="apiKey"
+                  type="text"
+                  label="PagerDuty API Key"
+                  placeholder="Enter API key"
+                  component={YBFormInput}
+                  disabled={isReadOnly}
+                />
+              </Col>
+            </Row>
+            <Row>
+              <Col lg={12}>
+                <Field
+                  name="routingKey"
                   type="text"
                   label="PagerDuty Service Integration Key"
                   placeholder="Enter service integration key"
+                  component={YBFormInput}
+                  disabled={isReadOnly}
+                />
+              </Col>
+            </Row>
+          </>
+        );
+      case 'webHook':
+        return (
+          <>
+            <Row>
+              <Col lg={12}>
+                <Field
+                  name="webHook_name"
+                  type="text"
+                  placeholder="Enter channel name"
+                  label="Name"
+                  component={YBFormInput}
+                  disabled={isReadOnly}
+                />
+              </Col>
+            </Row>
+            <Row>
+              <Col lg={12}>
+                <Field
+                  name="webhookURL"
+                  type="text"
+                  label="Webhook URL"
+                  placeholder="Enter webhook url"
                   component={YBFormInput}
                   disabled={isReadOnly}
                 />
@@ -177,7 +245,7 @@ export const AddDestinationChannelForm = (props) => {
             <Row>
               <Col lg={12}>
                 <Field
-                  name="webhookURL"
+                  name="webhookURLSlack"
                   type="text"
                   label="Slack Webhook URL"
                   placeholder="Enter webhook url"
@@ -363,6 +431,12 @@ export const AddDestinationChannelForm = (props) => {
 
   const title = isReadOnly ? 'Alert channel details' :
     props.type === 'edit' ? 'Edit alert channel' : 'Create new alert channel';
+  const validationSchema =
+    channelType === 'email' ? validationSchemaEmail :
+    channelType === 'slack' ? validationSchemaSlack :
+    channelType === 'pagerDuty' ? validationSchemaPagerDuty :
+    channelType === 'webHook' ? validationSchemaWebHook :
+    null;
   return (
     <YBModalForm
       formName="alertDestinationForm"
@@ -372,7 +446,7 @@ export const AddDestinationChannelForm = (props) => {
       onHide={onModalHide}
       initialValues={props.editValues || {}}
       submitLabel={props.type === 'edit' ? 'Edit' : 'Create'}
-      validationSchema={channelType === 'email' ? validationSchemaEmail : validationSchemaSlack}
+      validationSchema={validationSchema}
       onFormSubmit={!isReadOnly ? (values, { setSubmitting }) => {
         const payload = {
           ...values,

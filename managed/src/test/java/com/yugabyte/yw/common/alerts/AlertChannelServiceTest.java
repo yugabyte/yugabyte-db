@@ -53,8 +53,8 @@ public class AlertChannelServiceTest extends FakeDBApplication {
   @Test
   public void testCreateAndGet() {
     AlertChannelSlackParams slackParams = new AlertChannelSlackParams();
-    slackParams.username = "username";
-    slackParams.webhookUrl = "http://google.com";
+    slackParams.setUsername("username");
+    slackParams.setWebhookUrl("http://google.com");
 
     AlertChannel channel =
         new AlertChannel()
@@ -177,8 +177,8 @@ public class AlertChannelServiceTest extends FakeDBApplication {
     updatedChannel.setName(CHANNEL_NAME);
 
     AlertChannelEmailParams params = new AlertChannelEmailParams();
-    params.recipients = Collections.singletonList("test@test.com");
-    params.smtpData = EmailFixtures.createSmtpData();
+    params.setRecipients(Collections.singletonList("test@test.com"));
+    params.setSmtpData(EmailFixtures.createSmtpData());
     updatedChannel.setParams(params);
 
     alertChannelService.save(updatedChannel);
@@ -253,9 +253,72 @@ public class AlertChannelServiceTest extends FakeDBApplication {
       @Nullable String iconUrl,
       @Nullable String expectedError) {
     AlertChannelSlackParams params = new AlertChannelSlackParams();
-    params.username = username;
-    params.webhookUrl = webHookUrl;
-    params.iconUrl = iconUrl;
+    params.setUsername(username);
+    params.setWebhookUrl(webHookUrl);
+    params.setIconUrl(iconUrl);
+
+    AlertChannel channel =
+        new AlertChannel()
+            .setCustomerUUID(defaultCustomerUuid)
+            .setName(CHANNEL_NAME)
+            .setParams(params);
+
+    if (expectedError != null) {
+      PlatformServiceException exception =
+          assertThrows(
+              PlatformServiceException.class,
+              () -> {
+                alertChannelService.validate(channel);
+              });
+      assertThat(exception.getMessage(), equalTo(expectedError));
+    } else {
+      alertChannelService.validate(channel);
+    }
+  }
+
+  @Test
+  @Parameters({
+    "null, key, errorJson: {\"params.apiKey\":[\"may not be null\"]}",
+    "key, null, errorJson: {\"params.routingKey\":[\"may not be null\"]}",
+    "key1, key2, null",
+  })
+  // @formatter:on
+  public void testPagerDutyParamsValidate(
+      @Nullable String apiKey, @Nullable String routingKey, @Nullable String expectedError) {
+    AlertChannelPagerDutyParams params = new AlertChannelPagerDutyParams();
+    params.setApiKey(apiKey);
+    params.setRoutingKey(routingKey);
+
+    AlertChannel channel =
+        new AlertChannel()
+            .setCustomerUUID(defaultCustomerUuid)
+            .setName(CHANNEL_NAME)
+            .setParams(params);
+
+    if (expectedError != null) {
+      PlatformServiceException exception =
+          assertThrows(
+              PlatformServiceException.class,
+              () -> {
+                alertChannelService.validate(channel);
+              });
+      assertThat(exception.getMessage(), equalTo(expectedError));
+    } else {
+      alertChannelService.validate(channel);
+    }
+  }
+
+  @Test
+  @Parameters({
+    "null, errorJson: {\"params.webhookUrl\":[\"may not be null\"]}",
+    "string, errorJson: {\"params.webhookUrl\":[\"must be a valid URL\"]}",
+    "http://www.google.com, null",
+  })
+  // @formatter:on
+  public void testWebHookParamsValidate(
+      @Nullable String webhookUrl, @Nullable String expectedError) {
+    AlertChannelWebHookParams params = new AlertChannelWebHookParams();
+    params.setWebhookUrl(webhookUrl);
 
     AlertChannel channel =
         new AlertChannel()
@@ -297,13 +360,13 @@ public class AlertChannelServiceTest extends FakeDBApplication {
       boolean useDefaultSmtp,
       @Nullable String expectedError) {
     AlertChannelEmailParams params = new AlertChannelEmailParams();
-    params.recipients =
+    params.setRecipients(
         destinations != null
             ? new ArrayList<>(
                 EmailHelper.splitEmails(destinations, EmailHelper.DEFAULT_EMAIL_SEPARATORS))
-            : Collections.emptyList();
-    params.smtpData = setSmtpData ? new SmtpData() : null;
-    params.defaultSmtpSettings = useDefaultSmtp;
+            : Collections.emptyList());
+    params.setSmtpData(setSmtpData ? new SmtpData() : null);
+    params.setDefaultSmtpSettings(useDefaultSmtp);
 
     AlertChannel channel =
         new AlertChannel()

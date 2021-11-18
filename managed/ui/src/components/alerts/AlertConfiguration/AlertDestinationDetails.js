@@ -37,6 +37,30 @@ export const AlertDestinationDetails = ({ details, visible, onHide }) => {
           {hr}
         </>
       );
+      const webHookDetails = (
+        <>
+          {commonDetails}
+          <li>
+            <label>WebHookURL:</label>
+            <div>{detail.webHookURL}</div>
+          </li>
+          {hr}
+        </>
+      );
+      const pagerDutyDetails = (
+        <>
+          {commonDetails}
+          <li>
+            <label>PagerDuty API Key:</label>
+            <div>{detail.apiKey}</div>
+          </li>
+          <li>
+            <label>PagerDuty Service Integration Key:</label>
+            <div>{detail.routingKey}</div>
+          </li>
+          {hr}
+        </>
+      );
       const emailDetails = (
         <>
           {commonDetails}
@@ -91,9 +115,15 @@ export const AlertDestinationDetails = ({ details, visible, onHide }) => {
         </>
       );
 
+      const details =
+        detail.channelType === 'Email' ? emailDetails :
+        detail.channelType === 'Slack' ? slackDetails :
+        detail.channelType === 'PagerDuty' ? pagerDutyDetails :
+        detail.channelType === 'WebHook' ? webHookDetails :
+        null;
       showList.push(
         <ul key={i} className="cert-details-modal__list alertDestinationDetail">
-          {detail.channelType === 'Slack' ? slackDetails : emailDetails}
+          {details}
         </ul>
       );
     });

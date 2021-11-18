@@ -433,15 +433,15 @@ public class ModelFactory {
 
   public static AlertChannelEmailParams createEmailChannelParams() {
     AlertChannelEmailParams params = new AlertChannelEmailParams();
-    params.recipients = Collections.singletonList("test@test.com");
-    params.smtpData = EmailFixtures.createSmtpData();
+    params.setRecipients(Collections.singletonList("test@test.com"));
+    params.setSmtpData(EmailFixtures.createSmtpData());
     return params;
   }
 
   public static AlertChannelSlackParams createSlackChannelParams() {
     AlertChannelSlackParams params = new AlertChannelSlackParams();
-    params.username = "channel";
-    params.webhookUrl = "http://www.google.com";
+    params.setUsername("channel");
+    params.setWebhookUrl("http://www.google.com");
     return params;
   }
 

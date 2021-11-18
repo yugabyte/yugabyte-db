@@ -2179,16 +2179,17 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
       assertEquals(3, certUpdateTasks.size());
     }
     // First round gflag update tasks
-    position = assertToggleTlsSequence(subTasksByPosition, MASTER, position, upgrade.first);
-    position = assertToggleTlsSequence(subTasksByPosition, TSERVER, position, upgrade.first);
-    position = assertToggleTlsCommonTasks(subTasksByPosition, position, upgrade.first, true);
+    position = assertToggleTlsSequence(subTasksByPosition, MASTER, position, upgrade.getFirst());
+    position = assertToggleTlsSequence(subTasksByPosition, TSERVER, position, upgrade.getFirst());
+    position = assertToggleTlsCommonTasks(subTasksByPosition, position, upgrade.getFirst(), true);
     if (nodeToNodeChange != 0) {
       // Second round gflag update tasks
-      position = assertToggleTlsSequence(subTasksByPosition, MASTER, position, upgrade.second);
-      position = assertToggleTlsSequence(subTasksByPosition, TSERVER, position, upgrade.second);
+      position = assertToggleTlsSequence(subTasksByPosition, MASTER, position, upgrade.getSecond());
+      position =
+          assertToggleTlsSequence(subTasksByPosition, TSERVER, position, upgrade.getSecond());
     }
 
-    assertEquals((int) expectedValues.first, position);
+    assertEquals((int) expectedValues.getFirst(), position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
     Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
@@ -2205,7 +2206,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
         clientToNode,
         universe.getUniverseDetails().getPrimaryCluster().userIntent.enableClientToNodeEncrypt);
     assertEquals(rootAndClientRootCASame, universe.getUniverseDetails().rootAndClientRootCASame);
-    verify(mockNodeManager, times(expectedValues.second)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(expectedValues.getSecond())).nodeCommand(any(), any());
   }
 
   @Test
@@ -2306,19 +2307,22 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
       assertEquals(3, certUpdateTasks.size());
     }
     // First round gflag update tasks
-    position = assertToggleTlsSequence(subTasksByPosition, MASTER, position, upgrade.first);
-    position = assertToggleTlsCommonTasks(subTasksByPosition, position, upgrade.first, false);
-    position = assertToggleTlsSequence(subTasksByPosition, TSERVER, position, upgrade.first);
-    position = assertToggleTlsCommonTasks(subTasksByPosition, position, upgrade.first, true);
+    position = assertToggleTlsSequence(subTasksByPosition, MASTER, position, upgrade.getFirst());
+    position = assertToggleTlsCommonTasks(subTasksByPosition, position, upgrade.getFirst(), false);
+    position = assertToggleTlsSequence(subTasksByPosition, TSERVER, position, upgrade.getFirst());
+    position = assertToggleTlsCommonTasks(subTasksByPosition, position, upgrade.getFirst(), true);
     if (nodeToNodeChange != 0) {
       // Second round gflag update tasks
-      position = assertToggleTlsSequence(subTasksByPosition, MASTER, position, upgrade.second);
-      position = assertToggleTlsCommonTasks(subTasksByPosition, position, upgrade.second, false);
-      position = assertToggleTlsSequence(subTasksByPosition, TSERVER, position, upgrade.second);
-      position = assertToggleTlsCommonTasks(subTasksByPosition, position, upgrade.second, false);
+      position = assertToggleTlsSequence(subTasksByPosition, MASTER, position, upgrade.getSecond());
+      position =
+          assertToggleTlsCommonTasks(subTasksByPosition, position, upgrade.getSecond(), false);
+      position =
+          assertToggleTlsSequence(subTasksByPosition, TSERVER, position, upgrade.getSecond());
+      position =
+          assertToggleTlsCommonTasks(subTasksByPosition, position, upgrade.getSecond(), false);
     }
 
-    assertEquals((int) expectedValues.first, position);
+    assertEquals((int) expectedValues.getFirst(), position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
     Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
@@ -2335,7 +2339,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
         clientToNode,
         universe.getUniverseDetails().getPrimaryCluster().userIntent.enableClientToNodeEncrypt);
     assertEquals(rootAndClientRootCASame, universe.getUniverseDetails().rootAndClientRootCASame);
-    verify(mockNodeManager, times(expectedValues.second)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(expectedValues.getSecond())).nodeCommand(any(), any());
   }
 
   private List<Integer> getRollingUpgradeNodeOrder(ServerType serverType) {
@@ -2344,11 +2348,11 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
         // We need to check that the master leader is upgraded last.
         Arrays.asList(1, 3, 2)
         :
-        // We need to check that isAffinitized zone node is upgraded first.
+        // We need to check that isAffinitized zone node is upgraded getFirst().
         defaultUniverse.getUniverseDetails().getReadOnlyClusters().isEmpty()
             ? Arrays.asList(2, 1, 3)
             :
-            // Primary cluster first, then read replica.
+            // Primary cluster getFirst(), then read replica.
             Arrays.asList(2, 1, 3, 6, 4, 5);
   }
 }

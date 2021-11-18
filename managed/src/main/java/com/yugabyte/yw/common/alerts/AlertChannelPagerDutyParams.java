@@ -7,18 +7,16 @@ import javax.validation.constraints.NotNull;
 import javax.validation.constraints.Size;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
-import org.hibernate.validator.constraints.URL;
 
 @Data
 @EqualsAndHashCode(callSuper = false)
-@JsonTypeName("Slack")
-public class AlertChannelSlackParams extends AlertChannelParams {
+@JsonTypeName("PagerDuty")
+public class AlertChannelPagerDutyParams extends AlertChannelParams {
+  @NotNull
+  @Size(min = 1)
+  private String apiKey;
 
   @NotNull
   @Size(min = 1)
-  private String username;
-
-  @NotNull @URL private String webhookUrl;
-
-  @URL private String iconUrl;
+  private String routingKey;
 }

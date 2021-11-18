@@ -109,12 +109,12 @@ public class CommonUtilsTest {
   @Test
   public void testMaskComplexObject() {
     AlertChannelEmailParams params = new AlertChannelEmailParams();
-    params.recipients = Collections.singletonList("test@test.com");
-    params.smtpData = EmailFixtures.createSmtpData();
+    params.setRecipients(Collections.singletonList("test@test.com"));
+    params.setSmtpData(EmailFixtures.createSmtpData());
 
     AlertChannelEmailParams maskedParams = CommonUtils.maskObject(params);
     assertThat(maskedParams, not(params));
-    assertThat(maskedParams.smtpData.smtpPassword, not(params.smtpData.smtpPassword));
+    assertThat(maskedParams.getSmtpData().smtpPassword, not(params.getSmtpData().smtpPassword));
 
     AlertChannelEmailParams unmaskedParams = CommonUtils.unmaskObject(params, maskedParams);
     assertThat(unmaskedParams, not(maskedParams));
