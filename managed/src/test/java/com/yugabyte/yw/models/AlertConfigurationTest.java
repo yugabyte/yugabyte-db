@@ -18,6 +18,7 @@ import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.models.AlertConfiguration.Severity;
 import com.yugabyte.yw.models.AlertConfiguration.TargetType;
 import com.yugabyte.yw.models.common.Condition;
@@ -26,7 +27,6 @@ import com.yugabyte.yw.models.filters.AlertConfigurationFilter;
 import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -40,7 +40,6 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
-import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
 import org.junit.Rule;
@@ -75,10 +74,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
   @Test
   public void testSerialization() throws IOException {
-    String initial =
-        IOUtils.toString(
-            getClass().getClassLoader().getResourceAsStream("alert/alert_configuration.json"),
-            StandardCharsets.UTF_8);
+    String initial = TestUtils.readResource("alert/alert_configuration.json");
 
     JsonNode initialJson = Json.parse(initial);
 

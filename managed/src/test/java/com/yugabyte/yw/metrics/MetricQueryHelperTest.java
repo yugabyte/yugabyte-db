@@ -21,11 +21,11 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.metrics.data.AlertData;
 import com.yugabyte.yw.metrics.data.AlertState;
 import com.yugabyte.yw.models.MetricConfig;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
@@ -33,7 +33,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.apache.commons.io.IOUtils;
 import org.hamcrest.CoreMatchers;
 import org.hamcrest.Matchers;
 import org.hamcrest.core.IsInstanceOf;
@@ -254,11 +253,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
 
   @Test
   public void testQueryAlerts() throws IOException {
-    JsonNode responseJson =
-        Json.parse(
-            IOUtils.toString(
-                getClass().getClassLoader().getResourceAsStream("alert/alerts_query.json"),
-                StandardCharsets.UTF_8));
+    JsonNode responseJson = Json.parse(TestUtils.readResource("alert/alerts_query.json"));
 
     ArgumentCaptor<String> queryUrl = ArgumentCaptor.forClass(String.class);
 
@@ -287,11 +282,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
 
   @Test
   public void testQueryAlertsError() throws IOException {
-    JsonNode responseJson =
-        Json.parse(
-            IOUtils.toString(
-                getClass().getClassLoader().getResourceAsStream("alert/alerts_query_error.json"),
-                StandardCharsets.UTF_8));
+    JsonNode responseJson = Json.parse(TestUtils.readResource("alert/alerts_query_error.json"));
 
     ArgumentCaptor<String> queryUrl = ArgumentCaptor.forClass(String.class);
 

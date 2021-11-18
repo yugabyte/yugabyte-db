@@ -259,6 +259,26 @@
       "required" : [ "alertChannelUUID", "name", "params" ],
       "type" : "object"
     },
+    "AlertChannelPagerDutyParams" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/AlertChannelParams"
+      }, {
+        "properties" : {
+          "apiKey" : {
+            "maxLength" : 2147483647,
+            "minLength" : 1,
+            "type" : "string"
+          },
+          "routingKey" : {
+            "maxLength" : 2147483647,
+            "minLength" : 1,
+            "type" : "string"
+          }
+        },
+        "required" : [ "apiKey", "routingKey" ],
+        "type" : "object"
+      } ]
+    },
     "AlertChannelParams" : {
       "discriminator" : "channelType",
       "properties" : {
@@ -290,6 +310,19 @@
           }
         },
         "required" : [ "iconUrl", "username", "webhookUrl" ],
+        "type" : "object"
+      } ]
+    },
+    "AlertChannelWebHookParams" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/AlertChannelParams"
+      }, {
+        "properties" : {
+          "webhookUrl" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "webhookUrl" ],
         "type" : "object"
       } ]
     },
