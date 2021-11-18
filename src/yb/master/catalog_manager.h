@@ -832,6 +832,8 @@ class CatalogManager :
 
   BlacklistSet BlacklistSetFromPB() const;
 
+  std::vector<std::string> GetMasterAddresses();
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;
@@ -1499,6 +1501,9 @@ class CatalogManager :
   YsqlTransactionDdl ysql_transaction_;
 
   MonoTime time_elected_leader_;
+
+  std::unique_ptr<client::YBClient> cdc_state_client_;
+
 
   void StartElectionIfReady(
       const consensus::ConsensusStatePB& cstate, TabletInfo* tablet);

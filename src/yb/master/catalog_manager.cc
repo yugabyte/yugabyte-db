@@ -1162,6 +1162,28 @@ Status CatalogManager::PrepareDefaultClusterConfig(int64_t term) {
   return Status::OK();
 }
 
+std::vector<std::string> CatalogManager::GetMasterAddresses() {
+  std::vector<std::string> result;
+  consensus::ConsensusStatePB state;
+  auto status = GetCurrentConfig(&state);
+  if (!status.ok()) {
+    LOG(WARNING) << "Failed to get current config: " << status;
+    return result;
+  }
+  for (const auto& peer : state.config().peers()) {
+    std::vector<std::string> peer_addresses;
+    for (const auto& list : {peer.last_known_private_addr(), peer.last_known_broadcast_addr()}) {
+      for (const auto& entry : list) {
+        peer_addresses.push_back(HostPort::FromPB(entry).ToString());
+      }
+    }
+    if (!peer_addresses.empty()) {
+      result.push_back(JoinStrings(peer_addresses, ","));
+    }
+  }
+  return result;
+}
+
 Status CatalogManager::PrepareDefaultSysConfig(int64_t term) {
   {
     LockGuard lock(permissions_manager()->mutex());

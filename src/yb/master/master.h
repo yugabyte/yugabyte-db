@@ -150,6 +150,10 @@ class Master : public tserver::DbServerBase {
     return *async_client_init_;
   }
 
+  yb::client::AsyncClientInitialiser& cdc_state_client_initializer() {
+    return *cdc_state_client_init_;
+  }
+
  protected:
   virtual CHECKED_STATUS RegisterServices();
 
@@ -205,6 +209,8 @@ class Master : public tserver::DbServerBase {
   std::unique_ptr<MasterTabletServer> master_tablet_server_;
 
   std::unique_ptr<yb::client::AsyncClientInitialiser> async_client_init_;
+
+  std::unique_ptr<yb::client::AsyncClientInitialiser> cdc_state_client_init_;
 
   DISALLOW_COPY_AND_ASSIGN(Master);
 };

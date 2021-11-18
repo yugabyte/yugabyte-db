@@ -127,6 +127,7 @@ DEFINE_test_flag(string, master_extra_list_host_port, "",
 
 DECLARE_int64(inbound_rpc_memory_limit);
 
+DECLARE_int32(master_ts_rpc_timeout_ms);
 namespace yb {
 namespace master {
 
@@ -190,27 +191,26 @@ Status Master::Init() {
       .set_master_address_flag_name("master_addresses")
       .default_admin_operation_timeout(MonoDelta::FromMilliseconds(FLAGS_master_rpc_timeout_ms))
       .AddMasterAddressSource([this] {
-    std::vector<std::string> result;
-    consensus::ConsensusStatePB state;
-    auto status = catalog_manager_->GetCurrentConfig(&state);
-    if (!status.ok()) {
-      LOG(WARNING) << "Failed to get current config: " << status;
-      return result;
-    }
-    for (const auto& peer : state.config().peers()) {
-      std::vector<std::string> peer_addresses;
-      for (const auto& list : {peer.last_known_private_addr(), peer.last_known_broadcast_addr()}) {
-        for (const auto& entry : list) {
-          peer_addresses.push_back(HostPort::FromPB(entry).ToString());
-        }
-      }
-      if (!peer_addresses.empty()) {
-        result.push_back(JoinStrings(peer_addresses, ","));
-      }
-    }
-    return result;
+    return catalog_manager_->GetMasterAddresses();
   });
   async_client_init_->Start();
+
+  cdc_state_client_init_ = std::make_unique<client::AsyncClientInitialiser>(
+      "cdc_state_client", 0 /* num_reactors */,
+      // TODO: use the correct flag
+      60, // FLAGS_tserver_yb_client_default_timeout_ms / 1000,
+      "" /* tserver_uuid */,
+      &options(),
+      metric_entity(),
+      mem_tracker(),
+      messenger());
+  cdc_state_client_init_->builder()
+      .set_master_address_flag_name("master_addresses")
+      .default_admin_operation_timeout(MonoDelta::FromMilliseconds(FLAGS_master_ts_rpc_timeout_ms))
+      .AddMasterAddressSource([this] {
+    return catalog_manager_->GetMasterAddresses();
+  });
+  cdc_state_client_init_->Start();
 
   state_ = kInitialized;
   return Status::OK();
@@ -336,6 +336,7 @@ void Master::Shutdown() {
     auto started = catalog_manager_->StartShutdown();
     LOG_IF(DFATAL, !started) << name << " catalog manager shutdown already in progress";
     async_client_init_->Shutdown();
+    cdc_state_client_init_->Shutdown();
     RpcAndWebServerBase::Shutdown();
     catalog_manager_->CompleteShutdown();
     LOG(INFO) << name << " shutdown complete.";
