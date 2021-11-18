@@ -272,7 +272,7 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
                 "https://kms.ap-south-1.amazonaws.com")
             .put("name", "test");
     Result createKMSResult =
-        assertPlatformException(
+        assertYWSE(
             () -> doRequestWithAuthTokenAndBody("POST", kmsConfigUrl, authToken, kmsConfigReq));
     assertBadRequest(createKMSResult, "Kms config with test name already exists");
   }
