@@ -45,7 +45,7 @@ extern LWLockId shmem_lockid;
 #define TDAYS (1000*24*3600)
 
 static void unregister_event(int event_id, int sid);
-static char*find_and_remove_message_item(int message_id, int sid,
+static char* find_and_remove_message_item(int message_id, int sid,
 							 bool all, bool remove_all,
 							 bool filter_message,
 							 int *sleep, char **event_name);
