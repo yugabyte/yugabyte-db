@@ -78,10 +78,10 @@ public class Region extends Model {
   public Set<AvailabilityZone> zones;
 
   @Column(nullable = false, columnDefinition = "boolean default true")
-  public Boolean active = true;
+  private Boolean active = true;
 
-  public Boolean isActive() {
-    return active;
+  public boolean isActive() {
+    return active == null || active;
   }
 
   public void setActiveFlag(Boolean active) {
