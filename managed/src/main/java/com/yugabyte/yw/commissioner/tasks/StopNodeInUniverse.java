@@ -22,11 +22,19 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.List;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class StopNodeInUniverse extends UniverseTaskBase {
+
+  protected boolean isBlacklistLeaders;
+  protected int leaderBacklistWaitTimeMs;
+
+  private static final String BLACKLIST_LEADERS = "yb.upgrade.blacklist_leaders";
+  private static final String BLACKLIST_LEADER_WAIT_TIME_MS =
+      "yb.upgrade.blacklist_leader_wait_time_ms";
 
   @Inject
   protected StopNodeInUniverse(BaseTaskDependencies baseTaskDependencies) {
@@ -42,6 +50,11 @@ public class StopNodeInUniverse extends UniverseTaskBase {
   public void run() {
     NodeDetails currentNode = null;
     boolean hitException = false;
+    isBlacklistLeaders =
+        runtimeConfigFactory.forUniverse(getUniverse()).getBoolean(BLACKLIST_LEADERS);
+    leaderBacklistWaitTimeMs =
+        runtimeConfigFactory.forUniverse(getUniverse()).getInt(BLACKLIST_LEADER_WAIT_TIME_MS);
+
     try {
       checkUniverseVersion();
       // Create the task list sequence.
@@ -64,6 +77,12 @@ public class StopNodeInUniverse extends UniverseTaskBase {
 
       preTaskActions();
 
+      if (isBlacklistLeaders) {
+        List<NodeDetails> tServerNodes = universe.getTServers();
+        createModifyBlackListTask(tServerNodes, false /* isAdd */, true /* isLeaderBlacklist */)
+            .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+      }
+
       // Update Node State to Stopping
       createSetNodeStateTask(currentNode, NodeState.Stopping)
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
@@ -71,9 +90,26 @@ public class StopNodeInUniverse extends UniverseTaskBase {
       taskParams().azUuid = currentNode.azUuid;
       taskParams().placementUuid = currentNode.placementUuid;
       if (instanceExists(taskParams())) {
+
+        // set leader blacklist and poll
+        if (isBlacklistLeaders) {
+          createModifyBlackListTask(
+                  Arrays.asList(currentNode), true /* isAdd */, true /* isLeaderBlacklist */)
+              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+          createWaitForLeaderBlacklistCompletionTask(leaderBacklistWaitTimeMs)
+              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+        }
+
         // Stop the tserver.
         createTServerTaskForNode(currentNode, "stop")
             .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+
+        // remove leader blacklist
+        if (isBlacklistLeaders) {
+          createModifyBlackListTask(
+                  Arrays.asList(currentNode), false /* isAdd */, true /* isLeaderBlacklist */)
+              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+        }
 
         // Stop the master process on this node.
         if (currentNode.isMaster) {
@@ -121,6 +157,14 @@ public class StopNodeInUniverse extends UniverseTaskBase {
         setNodeState(taskParams().nodeName, currentNode.state);
       }
 
+      // remove leader blacklist for current node if task failed and leader blacklist is not removed
+      if (isBlacklistLeaders) {
+        subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
+        createModifyBlackListTask(
+                Arrays.asList(currentNode), false /* isAdd */, true /* isLeaderBlacklist */)
+            .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+        subTaskGroupQueue.run();
+      }
       unlockUniverseForUpdate();
     }
 
