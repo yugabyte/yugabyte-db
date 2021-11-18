@@ -29,10 +29,11 @@ Where `a1, a2, a3...` are expressions of type `t1, t2, t3...`, respectively. `t1
 
 ## Function Pushdown
 
-This function can be either evaluated at the YSQL layer after resolving each of its argument expressions, or certain invocations of it may be pushed down to be evaluated at the DocDB layer. When pushdown happens, the restrictions implied by the yb_hash_code conditions are used to ensure we only send requests to the tablets that definitely contain values in the requested ranges, as well as only scan the relevant ranges within each tablet. This section discusses the situations where they are pushed down. `yb_hash_code` invocations are pushed down when the YSQL optimizer determines that the return values of the function will directly match the values of the hash value column in a requested base table or index table. For example, if you create a table as follows
+This function can be either evaluated at the YSQL layer after resolving each of its argument expressions, or certain invocations of it may be pushed down to be evaluated at the DocDB layer. When pushdown happens, the restrictions implied by the yb_hash_code conditions are used to ensure we only send requests to the tablets that definitely contain values in the requested ranges, as well as only scan the relevant ranges within each tablet. This section discusses the situations where they are pushed down. `yb_hash_code` invocations are pushed down when the YSQL optimizer determines that the return values of the function will directly match the values of the hash value column in a requested base table or index table. For example, if you create a table and insert 10000 rows as follows
 
 ```sql
 CREATE TABLE sample_table (x INTEGER, y INTEGER, z INTEGER, PRIMARY KEY((x,y) HASH, z ASC));
+INSERT INTO sample_table SELECT i,i,i FROM generate_series(1,10000) i;
 ```
 
 Then the following query will evaluate the `yb_hash_code` calls at the DocDB layer:
@@ -41,7 +42,10 @@ Then the following query will evaluate the `yb_hash_code` calls at the DocDB lay
 SELECT * FROM sample_table WHERE yb_hash_code(x,y) <= 128 AND yb_hash_code(x,y) >= 0;
 ```
 
-You can expect to verify this with the `EXPLAIN ANALYZE` result of this statement
+You can verify this with the `EXPLAIN ANALYZE` result of this statement
+```sql
+EXPLAIN ANALYZE SELECT * FROM sample_table WHERE yb_hash_code(x,y) <= 128 AND yb_hash_code(x,y) >= 0;
+```
 
 ```output
                                                             QUERY PLAN
@@ -70,6 +74,10 @@ SELECT * FROM sample_table WHERE yb_hash_code(x,z) <= 128 AND yb_hash_code(x,z) 
 ```
 
 Here, the `yb_hash_code` calls are on `x` and `z`. `x` and `z` do not form the full hash key of the base sample_table table but they do form the full hash key of the index table, `sample_idx`. Hence, the optimizer will consider pushing down the calls to the DocDB layer if an index scan using `sample_idx` is chosen. Note that the optimizer may choose not to go with a secondary scan if it deems the requested hash range to be large enough to warrant doing a simple full table scan instead. The `EXPLAIN ANALYZE` result for this could be as follows
+
+```sql
+EXPLAIN ANALYZE SELECT * FROM sample_table WHERE yb_hash_code(x,z) <= 128 AND yb_hash_code(x,z) >= 0;
+```
 
 ```output
                                                          QUERY PLAN
@@ -140,9 +148,9 @@ SELECT yb_hash_code(1::int, 2::int, 'sample string'::text);
 ```
 
 ```output
-   yb_hash_code
----------------------
-      5067
+ yb_hash_code 
+--------------
+        23017
 ```
 
 ### Querying rows from a specific tablet
