@@ -568,6 +568,11 @@ export function createAlertConfigResponse(response) {
   };
 }
 
+export function sendTestAlert(uuid) {
+  const cUUID = localStorage.getItem('customerId');
+  return axios.post(`${ROOT_URL}/customers/${cUUID}/alert_configurations/${uuid}/test_alert`);
+}
+
 export function updateAlertDestination(payload, uuid) {
   const cUUID = localStorage.getItem('customerId');
   const request = axios.put(`${ROOT_URL}/customers/${cUUID}/alert_destinations/${uuid}`, payload);

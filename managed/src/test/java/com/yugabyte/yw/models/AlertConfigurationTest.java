@@ -38,16 +38,22 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.junit.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
 import play.libs.Json;
 
-@RunWith(MockitoJUnitRunner.class)
+@RunWith(JUnitParamsRunner.class)
 public class AlertConfigurationTest extends FakeDBApplication {
+
+  @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
 
   private Customer customer;
   private Universe universe;
@@ -399,6 +405,100 @@ public class AlertConfigurationTest extends FakeDBApplication {
     assertThat(
         () -> alertConfigurationService.save(configuration),
         thrown(PlatformServiceException.class, expectedMessage));
+  }
+
+  @Test
+  // @formatter:off
+  @Parameters({
+    "REPLICATION_LAG|Average replication lag for universe 'Test Universe'"
+        + " is above 180000 ms. Current value is 180001 ms",
+    "CLOCK_SKEW|Max clock skew for universe 'Test Universe'"
+        + " is above 500 ms. Current value is 501 ms",
+    "MEMORY_CONSUMPTION|Average memory usage for universe 'Test Universe'"
+        + " is above 90%. Current value is 91%",
+    "HEALTH_CHECK_ERROR|Failed to perform health check for universe 'Test Universe': "
+        + "Some error occurred",
+    "HEALTH_CHECK_NOTIFICATION_ERROR|Failed to perform health check notification for universe "
+        + "'Test Universe': Some error occurred",
+    "BACKUP_FAILURE|Last backup task for universe 'Test Universe' failed: " + "Some error occurred",
+    "BACKUP_SCHEDULE_FAILURE|Last attempt to run scheduled backup for universe 'Test Universe'"
+        + " failed due to other backup or universe operation is in progress.",
+    "INACTIVE_CRON_NODES|1 node(s) has inactive cronjob for universe 'Test Universe'.",
+    "ALERT_QUERY_FAILED|Last alert query for customer 'Customer' failed: " + "Some error occurred",
+    "ALERT_CONFIG_WRITING_FAILED|Last alert rules sync for customer 'Customer' failed: "
+        + "Some error occurred",
+    "ALERT_NOTIFICATION_ERROR|Last attempt to send alert notifications for customer 'Customer'"
+        + " failed: Some error occurred",
+    "ALERT_NOTIFICATION_CHANNEL_ERROR|Last attempt to send alert notifications to channel "
+        + "'Some Channel' failed: Some error occurred",
+    "NODE_DOWN|1 DB node(s) are down for more than 15 minutes for universe 'Test Universe'.",
+    "NODE_RESTART|Universe 'Test Universe' DB node is restarted 3 times during last 30 minutes",
+    "NODE_CPU_USAGE|Average node CPU usage for universe 'Test Universe' is above 95%"
+        + " on 1 node(s).",
+    "NODE_DISK_USAGE|Node disk usage for universe 'Test Universe' is above 70% on 1 node(s).",
+    "NODE_FILE_DESCRIPTORS_USAGE|Node file descriptors usage for universe 'Test Universe'"
+        + " is above 70% on 1 node(s).",
+    "NODE_OOM_KILLS|More than 3 OOM kills detected for universe 'Test Universe'" + " on 1 node(s).",
+    "DB_VERSION_MISMATCH|Version mismatch detected for universe 'Test Universe'"
+        + " for 1 Master/TServer instance(s).",
+    "DB_INSTANCE_DOWN|1 DB Master/TServer instance(s) are down for more than 15 minutes "
+        + "for universe 'Test Universe'.",
+    "DB_INSTANCE_RESTART|Universe 'Test Universe' Master or TServer is restarted 3 times"
+        + " during last 30 minutes",
+    "DB_FATAL_LOGS|Fatal logs detected for universe 'Test Universe' on "
+        + "1 Master/TServer instance(s).",
+    "DB_ERROR_LOGS|Error logs detected for universe 'Test Universe' on "
+        + "1 Master/TServer instance(s).",
+    "DB_CORE_FILES|Core files detected for universe 'Test Universe' on " + "1 TServer instance(s).",
+    "DB_YSQL_CONNECTION|YSQLSH connection failure detected for universe 'Test Universe'"
+        + " on 1 TServer instance(s).",
+    "DB_YCQL_CONNECTION|CQLSH connection failure detected for universe 'Test Universe'"
+        + " on 1 TServer instance(s).",
+    "DB_REDIS_CONNECTION|Redis connection failure detected for universe 'Test Universe'"
+        + " on 1 TServer instance(s).",
+    "DB_MEMORY_OVERLOAD|DB memory rejections detected for universe 'Test Universe'.",
+    "DB_COMPACTION_OVERLOAD|DB compaction rejections detected for universe 'Test Universe'.",
+    "DB_QUEUES_OVERFLOW|DB queues overflow detected for universe 'Test Universe'.",
+    "NODE_TO_NODE_CA_CERT_EXPIRY|Node to node CA certificate for universe 'Test Universe'"
+        + " will expire in 29 days.",
+    "NODE_TO_NODE_CERT_EXPIRY|Node to node certificate for universe 'Test Universe'"
+        + " will expire in 29 days.",
+    "CLIENT_TO_NODE_CA_CERT_EXPIRY|Client to node CA certificate for universe 'Test Universe'"
+        + " will expire in 29 days.",
+    "CLIENT_TO_NODE_CERT_EXPIRY|Client to node certificate for universe 'Test Universe'"
+        + " will expire in 29 days.",
+    "YSQL_OP_AVG_LATENCY|Average YSQL operations latency for universe 'Test Universe'"
+        + " is above 10000 ms. Current value is 10001 ms",
+    "YCQL_OP_AVG_LATENCY|Average YCQL operations latency for universe 'Test Universe'"
+        + " is above 10000 ms. Current value is 10001 ms",
+    "YSQL_OP_P99_LATENCY|YSQL P99 latency for universe 'Test Universe'"
+        + " is above 60000 ms. Current value is 60001 ms",
+    "YCQL_OP_P99_LATENCY|YCQL P99 latency for universe 'Test Universe'"
+        + " is above 60000 ms. Current value is 60001 ms",
+    "HIGH_NUM_YCQL_CONNECTIONS|Number of YCQL connections for universe 'Test Universe'"
+        + " is above 1000. Current value is 1001",
+    "HIGH_NUM_YEDIS_CONNECTIONS|Number of YEDIS connections for universe 'Test Universe'"
+        + " is above 1000. Current value is 1001",
+    "YSQL_THROUGHPUT|Maximum throughput for YSQL operations for universe 'Test Universe'"
+        + " is above 100000. Current value is 100001",
+    "YCQL_THROUGHPUT|Maximum throughput for YCQL operations for universe 'Test Universe'"
+        + " is above 100000. Current value is 100001"
+  })
+  // @formatter:on
+  public void testTestAlertMessage(AlertTemplate template, String message) {
+    AlertConfiguration configuration =
+        alertConfigurationService
+            .createConfigurationTemplate(customer, template)
+            .getDefaultConfiguration();
+    if (configuration.getTargetType() == TargetType.UNIVERSE) {
+      configuration.setTarget(
+          new AlertConfigurationTarget()
+              .setAll(false)
+              .setUuids(ImmutableSet.of(universe.getUniverseUUID())));
+    }
+    alertConfigurationService.save(configuration);
+    Alert testAlert = alertConfigurationService.createTestAlert(configuration);
+    assertThat(testAlert.getMessage(), equalTo("[TEST ALERT!!!] " + message));
   }
 
   private AlertConfiguration createTestConfiguration() {

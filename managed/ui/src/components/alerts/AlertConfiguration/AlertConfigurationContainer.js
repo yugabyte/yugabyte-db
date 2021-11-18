@@ -22,6 +22,7 @@ import {
   setInitialValues,
   updateAlertConfig,
   updateAlertConfigResponse,
+  sendTestAlert,
   updateAlertDestination,
   updateAlertDestinationResponse,
   updateProfile,
@@ -133,6 +134,13 @@ const mapDispatchToProps = (dispatch) => {
           toast.success('Successfully updated the alert configuration');
         }
         return dispatch(updateAlertConfigResponse(response.payload));
+      });
+    },
+    sendTestAlert: (uuid) => {
+      sendTestAlert(uuid).then((response) => {
+        toast.success(response.data.message);
+      }).catch((error) => {
+        toast.error(createErrorMessage(error));
       });
     },
     updateAlertDestination: (payload, uuid) => {
