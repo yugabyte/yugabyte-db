@@ -13,8 +13,14 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Review activity on your cluster using the **Activity** tab. The tab lists cluster activity, including the activity type, status, and start and end time. <!-- You can view activity details and associated messages.-->
+Review activity on your cluster using the **Activity** tab. The tab lists cluster activity, including the activity type, status, and start and end time.
 
 ![Cloud Cluster Activity tab](/images/yb-cloud/cloud-clusters-activity.png)
 
-<!-- To view activity details, click the activity in the list to display the **Activity Details** sheet. -->
+The following table lists the cluster activity that is logged.
+
+| Source | Activity |
+| --- | --- |
+| Cluster | Create cluster<br>Edit cluster |
+| Allow list | Edit allow list |
+| Backup | Create backup<br>Delete backup<br>Restore backup |
