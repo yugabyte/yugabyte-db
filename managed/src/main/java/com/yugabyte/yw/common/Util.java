@@ -48,6 +48,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.TimeZone;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -582,6 +583,12 @@ public class Util {
 
   public static String unixTimeToDateString(long unixTimestampMs, String dateFormat) {
     SimpleDateFormat formatter = new SimpleDateFormat(dateFormat);
+    return formatter.format(new Date(unixTimestampMs));
+  }
+
+  public static String unixTimeToDateString(long unixTimestampMs, String dateFormat, TimeZone tz) {
+    SimpleDateFormat formatter = new SimpleDateFormat(dateFormat);
+    formatter.setTimeZone(tz);
     return formatter.format(new Date(unixTimestampMs));
   }
 
