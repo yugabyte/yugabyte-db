@@ -511,22 +511,37 @@ TEST_P(CDCServiceTest, TestDeleteCDCStream) {
   std::vector<std::string> ranges;
   ASSERT_OK(client_->GetTablets(table_.table()->name(), 0 /* max_tablets */, &tablet_ids, &ranges));
 
-  bool get_changes_error = false;
-  // Send GetChanges requests so an entry for each tablet can be added to the cdc_state table.
-  // Term and index don't matter.
   for (const auto& tablet_id : tablet_ids) {
-    GetChanges(tablet_id, stream_id, 1, 1, &get_changes_error);
-    ASSERT_FALSE(get_changes_error);
-    VerifyCdcStateMatches(client_.get(), stream_id, tablet_id, 1, 1);
+    VerifyCdcStateMatches(client_.get(), stream_id, tablet_id, 0, 0);
+  }
+
+  {
+    const auto& tserver = cluster_->mini_tablet_server(0)->server();
+    std::string tablet_id;
+    GetTablet(&tablet_id, table_.name());
+    ASSERT_NO_FATALS(WriteTestRow(0, 10, "key0", tablet_id, tserver->proxy()));
   }
 
   ASSERT_OK(client_->DeleteCDCStream(stream_id));
 
-  // Check that the stream no longer exists.
+  // Check that the stream still no longer exists.
   table_id.clear();
   options.clear();
   Status s = client_->GetCDCStream(stream_id, &table_id, &options);
   ASSERT_TRUE(s.IsNotFound());
+
+  for (const auto& tablet_id : tablet_ids) {
+    VerifyStreamDeletedFromCdcState(client_.get(), stream_id, tablet_id);
+  }
+
+  // Once the CatalogManager has cleaned up cdc_state, make sure a subsequent call to GetChanges
+  // doesn't re-populate cdc_state with cleaned up entries. UpdateCheckpoint will be called since
+  // this is the first time we're calling GetChanges.
+  bool get_changes_error = false;
+  for (const auto& tablet_id : tablet_ids) {
+    GetChanges(tablet_id, stream_id, 0, 0, &get_changes_error);
+    ASSERT_FALSE(get_changes_error);
+  }
 
   for (const auto& tablet_id : tablet_ids) {
     VerifyStreamDeletedFromCdcState(client_.get(), stream_id, tablet_id);
