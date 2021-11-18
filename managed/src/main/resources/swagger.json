@@ -3391,6 +3391,10 @@
     "Region" : {
       "description" : "Region within a given provider. Typically, this maps to a single cloud provider region.",
       "properties" : {
+        "active" : {
+          "readOnly" : true,
+          "type" : "boolean"
+        },
         "code" : {
           "description" : "Cloud provider region code",
           "example" : "us-west-2",
