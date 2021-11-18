@@ -28,7 +28,7 @@ const mapDispatchToProps = (dispatch) => {
 };
 const mapStateToProps = (state) => {
   return {
-    currentCustomer: state.customer.currentCustomer,
+    customer: state.customer,
     graph: state.graph
   };
 };

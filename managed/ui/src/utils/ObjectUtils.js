@@ -2,6 +2,7 @@
 
 import { getClusterByType } from './UniverseUtils';
 import _ from 'lodash';
+import { timeFormatterISO8601 } from './TableFormatters';
 
 export function get(obj, path, defaultValue) {
   return _.get(obj, path, defaultValue);
@@ -59,6 +60,7 @@ export function sortByLengthOfArrayProperty(array, propertyName) {
   function arrayLengthComparator(item) {
     return item[propertyName] ? item[propertyName].length : 0;
   }
+
   return _.sortBy(array, arrayLengthComparator);
 }
 
@@ -324,6 +326,23 @@ export function divideYAxisByThousand(dataArray) {
     if (isNonEmptyArray(dataArray[counter].y)) {
       for (let idx = 0; idx < dataArray[counter].y.length; idx++) {
         dataArray[counter].y[idx] = Number(dataArray[counter].y[idx]) / 1000;
+      }
+    }
+  }
+  return dataArray;
+}
+
+// Function to convert the time values in x-axis of metrics panels to a specific timezone
+//  as a workaround. Plotly does not support specifying timezones in layout.
+export function timeFormatXAxis(dataArray, timezone = null) {
+  for (let counter = 0; counter < dataArray.length; counter++) {
+    if (isNonEmptyArray(dataArray[counter].x)) {
+      for (let idx = 0; idx < dataArray[counter].x.length; idx++) {
+        dataArray[counter].x[idx] = timeFormatterISO8601(
+          dataArray[counter].x[idx],
+          undefined,
+          timezone
+        );
       }
     }
   }

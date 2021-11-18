@@ -43,6 +43,7 @@ class OverviewMetrics extends Component {
   static defaultProps = {
     nodePrefixes: []
   };
+
   constructor(props) {
     super(props);
     const refreshMetrics =
@@ -54,15 +55,17 @@ class OverviewMetrics extends Component {
   }
 
   componentDidMount() {
-    const { currentCustomer } = this.props;
+    const {
+      customer: { currentCustomer }
+    } = this.props;
     const { autoRefresh } = this.state;
     const self = this;
     const pollingInterval = getPromiseState(currentCustomer).isSuccess()
       ? getFeatureState(
-        currentCustomer.data.features,
-        'universes.details.overview.metricsInterval',
-        OVERVIEW_METRICS_INTERVAL_MS
-      )
+          currentCustomer.data.features,
+          'universes.details.overview.metricsInterval',
+          OVERVIEW_METRICS_INTERVAL_MS
+        )
       : OVERVIEW_METRICS_INTERVAL_MS;
 
     // set the polling for metrics but update start and end time interval boundaries
@@ -87,10 +90,10 @@ class OverviewMetrics extends Component {
     const { autoRefresh } = this.state;
     const pollingInterval = getPromiseState(currentCustomer).isSuccess()
       ? getFeatureState(
-        currentCustomer.data.features,
-        'universes.details.overview.metricsInterval',
-        OVERVIEW_METRICS_INTERVAL_MS
-      )
+          currentCustomer.data.features,
+          'universes.details.overview.metricsInterval',
+          OVERVIEW_METRICS_INTERVAL_MS
+        )
       : OVERVIEW_METRICS_INTERVAL_MS;
 
     // eslint-disable-next-line eqeqeq
@@ -155,7 +158,8 @@ class OverviewMetrics extends Component {
   render() {
     const {
       type,
-      graph: { metrics }
+      graph: { metrics },
+      customer
     } = this.props;
     const { autoRefresh } = this.state;
     const metricKeys = panelTypes[type].metrics;
@@ -215,6 +219,7 @@ class OverviewMetrics extends Component {
                   }
                   body={
                     <MetricsPanelOverview
+                      customer={customer}
                       metricKey={metricKey}
                       metric={metrics[type][metricKey]}
                       className={'metrics-panel-container'}
@@ -233,6 +238,7 @@ class OverviewMetrics extends Component {
                 }
                 body={
                   <MetricsPanelOverview
+                    customer={customer}
                     metricKey={metricKey}
                     metric={{
                       data: [],

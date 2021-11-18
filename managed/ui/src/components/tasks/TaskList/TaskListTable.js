@@ -18,6 +18,7 @@ export default class TaskListTable extends Component {
     overrideContent: PropTypes.object,
     isCommunityEdition: PropTypes.bool
   };
+
   render() {
     const { taskList, title, overrideContent, isCommunityEdition } = this.props;
 
@@ -36,8 +37,14 @@ export default class TaskListTable extends Component {
     const taskDetailLinkFormatter = function (cell, row) {
       if (row.status === 'Failure') {
         return <Link to={`/tasks/${row.id}`}>See Details</Link>;
-      } else if (row.type === 'UpgradeSoftware' && row.details != null){
-        return <span><code>{row.details.ybPrevSoftwareVersion}</code>{' => '}<code>{row.details.ybSoftwareVersion}</code></span>;
+      } else if (row.type === 'UpgradeSoftware' && row.details != null) {
+        return (
+          <span>
+            <code>{row.details.ybPrevSoftwareVersion}</code>
+            {' => '}
+            <code>{row.details.ybSoftwareVersion}</code>
+          </span>
+        );
       } else {
         return <span />;
       }

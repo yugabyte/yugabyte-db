@@ -43,11 +43,10 @@ const mapDispatchToProps = (dispatch) => {
 function mapStateToProps(state) {
   const { universe } = state;
   return {
-    currentCustomer: state.customer.currentCustomer,
+    customer: state.customer,
     graph: state.graph,
     universe
   };
 }
-
 
 export default connect(mapStateToProps, mapDispatchToProps)(Replication);

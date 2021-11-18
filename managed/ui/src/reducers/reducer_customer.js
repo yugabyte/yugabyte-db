@@ -87,7 +87,13 @@ import {
   UPDATE_ALERT_CONFIG_RESPONSE,
   DELETE_ALERT_DESTINATION,
   DELETE_ALERT_CONFIG,
-  LOGS_FETCHING
+  LOGS_FETCHING,
+  FETCH_USER,
+  FETCH_USER_SUCCESS,
+  FETCH_USER_FAILURE,
+  UPDATE_USER_PROFILE,
+  UPDATE_USER_PROFILE_SUCCESS,
+  UPDATE_USER_PROFILE_FAILURE
 } from '../actions/customers';
 
 import { sortVersionStrings, isDefinedNotNull } from '../utils/ObjectUtils';
@@ -101,6 +107,7 @@ import {
 
 const INITIAL_STATE = {
   currentCustomer: getInitialState({}),
+  currentUser: getInitialState({}),
   authToken: getInitialState({}),
   apiToken: getInitialState(null),
   tasks: [],
@@ -165,6 +172,13 @@ export default function (state = INITIAL_STATE, action) {
     case LOGIN_RESPONSE:
       return setPromiseResponse(state, 'authToken', action);
 
+    case FETCH_USER:
+      return setLoadingState(state, 'currentUser', {});
+    case FETCH_USER_SUCCESS:
+      return setPromiseResponse(state, 'currentUser', action.payload);
+    case FETCH_USER_FAILURE:
+      return setFailureState(state, 'currentUser', action.payload);
+
     case API_TOKEN_LOADING:
       return setLoadingState(state, 'apiToken', null);
     case API_TOKEN:
@@ -227,9 +241,29 @@ export default function (state = INITIAL_STATE, action) {
     case UPDATE_PROFILE:
       return setLoadingState(state, 'profile');
     case UPDATE_PROFILE_SUCCESS:
-      return setSuccessState(state, 'profile', 'updated-success');
+      return {
+        ...setSuccessState(state, 'profile', 'updated-success'),
+        currentCustomer: {
+          ...state.currentCustomer,
+          data: {
+            ...state.currentCustomer.data,
+            ...action.payload.data
+          }
+        }
+      };
     case UPDATE_PROFILE_FAILURE:
       return setFailureState(state, 'profile', action.payload.response.data.error);
+
+    case UPDATE_USER_PROFILE:
+      return setLoadingState(state, 'profile');
+    case UPDATE_USER_PROFILE_SUCCESS:
+      return {
+        ...setSuccessState(state, 'profile', 'updated-success'),
+        currentUser: { ...action.payload }
+      };
+    case UPDATE_USER_PROFILE_FAILURE:
+      return setFailureState(state, 'profile', action.payload.response.data.error);
+
     case FETCH_CUSTOMER_COUNT:
       return setLoadingState(state, 'customerCount');
     case GET_ALERTS:

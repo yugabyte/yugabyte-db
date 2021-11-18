@@ -2,13 +2,12 @@
 
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
-import { Link, withRouter, browserHistory } from 'react-router';
-import { isNonEmptyString, isNonEmptyArray, isNonEmptyObject } from '../../../utils/ObjectUtils';
+import { browserHistory, Link, withRouter } from 'react-router';
+import { isNonEmptyArray, isNonEmptyObject, isNonEmptyString } from '../../../utils/ObjectUtils';
 import './TaskDetail.scss';
 import { StepProgressBar } from '../../common/indicators';
 import { YBResourceCount } from '../../common/descriptors';
-import { Row, Col } from 'react-bootstrap';
-import './TaskDetail.scss';
+import { Col, Row } from 'react-bootstrap';
 import { YBPanelItem } from '../../panels';
 import _ from 'lodash';
 import { Highlighter } from '../../../helpers/Highlighter';
@@ -16,7 +15,7 @@ import { getPrimaryCluster } from '../../../utils/UniverseUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import 'highlight.js/styles/github.css';
 import { toast } from 'react-toastify';
-import {timeFormatter} from "../../../utils/TableFormatters";
+import { timeFormatter } from '../../../utils/TableFormatters';
 
 class TaskDetail extends Component {
   constructor(props) {
@@ -37,8 +36,7 @@ class TaskDetail extends Component {
       const taskResponse = response?.payload?.response;
       if (taskResponse && (taskResponse.status === 200 || taskResponse.status === 201)) {
         browserHistory.push('/tasks');
-      }
-      else {
+      } else {
         const toastMessage = taskResponse?.data?.error
           ? taskResponse?.data?.error
           : taskResponse?.statusText;
@@ -56,6 +54,7 @@ class TaskDetail extends Component {
     }
     fetchUniverseList();
   }
+
   render() {
     const {
       tasks: { failedTasks, taskProgressData },

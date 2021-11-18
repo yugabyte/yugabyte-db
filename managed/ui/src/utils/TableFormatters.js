@@ -4,12 +4,24 @@ import moment from 'moment';
 import { isValidObject } from './ObjectUtils';
 import { YBFormattedNumber } from '../components/common/descriptors';
 import { YBLoadingCircleIcon } from '../components/common/indicators';
+import { TimestampWithTimezone } from '../components/common/timestampWithTimezone/TimestampWithTimezone';
 
 export function timeFormatter(cell) {
   if (!isValidObject(cell)) {
+    return <span>-</span>;
+  } else {
+    return <TimestampWithTimezone timeFormat={'YYYY/MM/DD H:mm [UTC]ZZ'} timestamp={cell} />;
+  }
+}
+
+export function timeFormatterISO8601(cell, _, timezone) {
+  if (!isValidObject(cell)) {
     return '<span>-</span>';
   } else {
-    return moment(cell).format('YYYY/MM/DD H:mm [UTC]ZZ');
+    if (timezone) {
+      return moment(cell).tz(timezone).format('YYYY-MM-DD[T]H:mm:ssZZ');
+    }
+    return moment(cell).format('YYYY-MM-DD[T]H:mm:ssZZ');
   }
 }
 

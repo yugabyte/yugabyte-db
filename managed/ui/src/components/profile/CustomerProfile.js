@@ -65,7 +65,7 @@ export default class CustomerProfile extends Component {
     const activeTab = isDefinedNotNull(params) ? params.tab : defaultTab;
     return (
       <div className="bottom-bar-padding">
-        <h2 className="content-title">Update Customer Profile {profileUpdateStatus}</h2>
+        <h2 className="content-title">User Profile {profileUpdateStatus}</h2>
         <YBTabsWithLinksPanel
           defaultTab={defaultTab}
           activeTab={activeTab}

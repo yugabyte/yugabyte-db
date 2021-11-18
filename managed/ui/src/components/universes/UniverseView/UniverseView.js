@@ -18,9 +18,9 @@ import {
 } from '../helpers/universeHelpers';
 import {
   YBCost,
-  YBResourceCount,
   YBFormattedNumber,
-  YBLabelWithIcon
+  YBLabelWithIcon,
+  YBResourceCount
 } from '../../common/descriptors';
 import {
   getClusterProviderUUIDs,
@@ -29,9 +29,9 @@ import {
   isPausableUniverse
 } from '../../../utils/UniverseUtils';
 import {
-  YBUniverseItem,
+  DeleteUniverseContainer,
   ToggleUniverseStateContainer,
-  DeleteUniverseContainer
+  YBUniverseItem
 } from '../../universes';
 import {
   getFeatureState,

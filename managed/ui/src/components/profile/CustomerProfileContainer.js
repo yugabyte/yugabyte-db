@@ -14,11 +14,11 @@ import {
   getCustomerUsers,
   getCustomerUsersSuccess,
   getCustomerUsersFailure,
-  updatePassword,
-  updatePasswordSuccess,
-  updatePasswordFailure,
   fetchPasswordPolicy,
-  fetchPasswordPolicyResponse
+  fetchPasswordPolicyResponse,
+  updateUserProfile,
+  updateUserProfileFailure,
+  updateUserProfileSuccess
 } from '../../actions/customers';
 
 const mapDispatchToProps = (dispatch) => {
@@ -45,12 +45,12 @@ const mapDispatchToProps = (dispatch) => {
         }
       });
     },
-    changeUserPassword: (userUUID, values) => {
-      dispatch(updatePassword(userUUID, values)).then((response) => {
+    updateUserProfile: (userUUID, values) => {
+      dispatch(updateUserProfile(userUUID, values)).then((response) => {
         if (response.payload.status !== 200) {
-          dispatch(updatePasswordFailure(response.payload));
+          dispatch(updateUserProfileFailure(response.payload));
         } else {
-          dispatch(updatePasswordSuccess(response.payload));
+          dispatch(updateUserProfileSuccess(response.payload));
         }
       });
     },
@@ -83,6 +83,7 @@ const mapDispatchToProps = (dispatch) => {
 function mapStateToProps(state) {
   return {
     customer: state.customer.currentCustomer,
+    currentUser: state.customer.currentUser,
     users: state.customer.users.data,
     apiToken: state.customer.apiToken,
     customerProfile: state.customer ? state.customer.profile : null,
