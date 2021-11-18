@@ -575,6 +575,8 @@ public class UpgradeUniverse extends UniverseTaskBase {
       }
     } else if (type == UpgradeTaskType.Certs) {
       params.rootCA = taskParams().certUUID;
+      params.enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
+      params.enableClientToNodeEncrypt = userIntent.enableClientToNodeEncrypt;
     }
 
     if (userIntent.providerType.equals(Common.CloudType.onprem)) {
