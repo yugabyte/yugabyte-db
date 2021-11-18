@@ -207,6 +207,8 @@ SELECT COUNT(*) FROM sample_table WHERE yb_hash_code(x,y) >= 57344 and yb_hash_c
 
 Summing up all the results of these queries gives us the equivalent of a `COUNT(*)` over all of `sample_table`.
 
+An example of a script that performs the above on a YSQL instance can be found [here](https://github.com/yugabyte/yb-tools/blob/main/ysql_table_row_count.py).
+
 ## See also
 
 - [`partition_hash`](../../ycql/expr_fcall/#partition-hash-function)
