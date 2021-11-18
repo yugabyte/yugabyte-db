@@ -2374,7 +2374,14 @@ Result<pgwrapper::PGConnPtr> ConnectToPostgres(
       PgDeriveSocketDir(pgsql_proxy_bind_address.host()),
       pgsql_proxy_bind_address.port(),
       pgwrapper::PqEscapeLiteral(database_name));
-  VLOG(1) << __func__ << ": libpq connection string: " << conn_str;
+  std::string conn_str_for_log = Format(
+      "user=$0 password=$1 host=$2 port=$3 dbname=$4",
+      "postgres",
+      "<REDACTED>",
+      PgDeriveSocketDir(pgsql_proxy_bind_address.host()),
+      pgsql_proxy_bind_address.port(),
+      pgwrapper::PqEscapeLiteral(database_name));
+  VLOG(1) << __func__ << ": libpq connection string: " << conn_str_for_log;
 
   // Connect.
   pgwrapper::PGConnPtr conn(PQconnectdb(conn_str.c_str()));
@@ -2388,7 +2395,7 @@ Result<pgwrapper::PGConnPtr> ConnectToPostgres(
     if (msg.back() == '\n') {
       msg.resize(msg.size() - 1);
     }
-    LOG(WARNING) << "libpq connection \"" << conn_str << "\" failed: " << msg;
+    LOG(WARNING) << "libpq connection \"" << conn_str_for_log << "\" failed: " << msg;
     return STATUS_FORMAT(IllegalState, "backfill connection to DB failed: $0", msg);
   }
   return conn;
