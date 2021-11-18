@@ -78,7 +78,7 @@ You can enable encryption at rest on an existing universe as follows:
 
    When the encryption is enabled, the **Key Management Service Config** option appears.
 
-5. Select your KSM configuration from the **Key Management Service Config** list. The list displays only preconfigured KMS configurations. If you need to create one, see [Create a KMS configuration using AWS KMS](../create-kms-config.md/aws-kms/) and [Create a KMS configuration using AWS KMS](../create-kms-config.md/equinix-smartkey/).
+5. Select your KSM configuration from the **Key Management Service Config** list. The list displays only preconfigured KMS configurations. If you need to create one, see [Create a KMS configuration using AWS KMS](../create-kms-config.md/aws-kms/) and [Create a KMS configuration using Equinix SmartKey](../create-kms-config.md/equinix-smartkey/).
 
 6. Click **Submit**.
 
