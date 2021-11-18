@@ -14,6 +14,12 @@ showAsideToc: true
 
 Yugabyte Platform can check universes for issues that may affect deployment. Should problems arise, Yugabyte Platform can automatically issue alert notifications.
 
+For additional information, see the following: 
+
+- [Alerts](../../alerts-monitoring/alert/)
+- [Metrics](../../troubleshoot/universe-issues/#use-metrics/)
+- [Alerts and Notifications in Yugabyte Platform](https://blog.yugabyte.com/yugabytedb-2-8-alerts-and-notifications/)
+
 You can access Yugabyte Platform health monitor and configure alerts by navigating to **Admin > Alert Configurations**, as per the following illustration:
 
 ![Configure alerts](/images/yp/config-alerts1.png)
