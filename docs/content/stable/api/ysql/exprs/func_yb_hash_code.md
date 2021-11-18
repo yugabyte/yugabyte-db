@@ -30,7 +30,7 @@ Where `a1, a2, a3...` are expressions of type `t1, t2, t3...`, respectively. `t1
 This function can be either evaluated at the YSQL layer after resolving each of its argument expressions, or certain invocations of it may be pushed down to be evaluated at the DocDB layer. When pushdown happens, the restrictions implied by the yb_hash_code conditions are used to ensure we only send requests to the tablets that definitely contain values in the requested ranges, as well as only scan the relevant ranges within each tablet. This section discusses the situations where they are pushed down. `yb_hash_code` invocations are pushed down when the YSQL optimizer determines that the return values of the function will directly match the values of the hash value column in a requested base table or index table. For example, if you create a table as follows
 
 ```sql
-CREATE TABLE sample_table (x INTEGER, y INTEGER, z INTEGER, PRIMARY KEY((x,y) HASH), z ASC);
+CREATE TABLE sample_table (x INTEGER, y INTEGER, z INTEGER, PRIMARY KEY((x,y) HASH, z ASC));
 ```
 
 Then the following query will evaluate the `yb_hash_code` calls at the DocDB layer:
@@ -134,7 +134,7 @@ Here are some expected use case examples of the `yb_hash_code` function in YSQL.
 Given a set of expressions, you can compute the hash code of them directly as such
 
 ```sql
-SELECT yb_hash_code(1::int, 2::int, ‘sample string’::text);
+SELECT yb_hash_code(1::int, 2::int, 'sample string'::text);
 ```
 
 ```output
@@ -193,14 +193,13 @@ Seeing how you can constrain our queries to any physically collocated group of r
 ```sql
 SELECT COUNT(*) FROM sample_table WHERE yb_hash_code(x,y) >= 0 and yb_hash_code(x,y) < 8192;
 
-
 SELECT COUNT(*) FROM sample_table WHERE yb_hash_code(x,y) >= 8192 and yb_hash_code(x,y) < 16384;
 
 SELECT COUNT(*) FROM sample_table WHERE yb_hash_code(x,y) >= 16384 and yb_hash_code(x,y) < 24576;
-.
-.
-.
-.
+-- .
+-- .
+-- .
+-- .
 
 SELECT COUNT(*) FROM sample_table WHERE yb_hash_code(x,y) >= 57344 and yb_hash_code(x,y) < 65536;
 ```
