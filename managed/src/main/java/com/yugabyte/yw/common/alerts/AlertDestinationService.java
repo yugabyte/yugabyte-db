@@ -161,8 +161,8 @@ public class AlertDestinationService {
    */
   public AlertDestination createDefaultDestination(UUID customerUUID) {
     AlertChannelEmailParams defaultParams = new AlertChannelEmailParams();
-    defaultParams.defaultSmtpSettings = true;
-    defaultParams.defaultRecipients = true;
+    defaultParams.setDefaultSmtpSettings(true);
+    defaultParams.setDefaultRecipients(true);
     AlertChannel defaultChannel =
         new AlertChannel()
             .setCustomerUUID(customerUUID)

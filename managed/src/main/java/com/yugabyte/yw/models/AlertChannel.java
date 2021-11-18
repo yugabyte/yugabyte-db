@@ -8,8 +8,10 @@ import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.annotation.JsonTypeInfo.As;
 import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
+import com.yugabyte.yw.common.alerts.AlertChannelPagerDutyParams;
 import com.yugabyte.yw.common.alerts.AlertChannelParams;
 import com.yugabyte.yw.common.alerts.AlertChannelSlackParams;
+import com.yugabyte.yw.common.alerts.AlertChannelWebHookParams;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -46,11 +48,11 @@ public class AlertChannel extends Model {
     @EnumValue("Slack")
     Slack,
 
-    @EnumValue("Sms")
-    Sms,
-
     @EnumValue("PagerDuty")
     PagerDuty,
+
+    @EnumValue("WebHook")
+    WebHook,
   }
 
   @Id
@@ -74,7 +76,9 @@ public class AlertChannel extends Model {
   @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = As.PROPERTY, property = "channelType")
   @JsonSubTypes({
     @JsonSubTypes.Type(value = AlertChannelEmailParams.class, name = "Email"),
-    @JsonSubTypes.Type(value = AlertChannelSlackParams.class, name = "Slack")
+    @JsonSubTypes.Type(value = AlertChannelSlackParams.class, name = "Slack"),
+    @JsonSubTypes.Type(value = AlertChannelPagerDutyParams.class, name = "PagerDuty"),
+    @JsonSubTypes.Type(value = AlertChannelWebHookParams.class, name = "WebHook")
   })
   private AlertChannelParams params;
 

@@ -139,8 +139,8 @@ public class AlertControllerTest extends FakeDBApplication {
 
   private AlertChannelParams getAlertChannelParamsForTests() {
     AlertChannelEmailParams arParams = new AlertChannelEmailParams();
-    arParams.recipients = Collections.singletonList("test@test.com");
-    arParams.smtpData = defaultSmtp;
+    arParams.setRecipients(Collections.singletonList("test@test.com"));
+    arParams.setSmtpData(defaultSmtp);
     return arParams;
   }
 
@@ -251,8 +251,8 @@ public class AlertControllerTest extends FakeDBApplication {
     assertThat(createdChannel.getUuid(), notNullValue());
 
     AlertChannelEmailParams params = (AlertChannelEmailParams) createdChannel.getParams();
-    params.recipients = Collections.singletonList("new@test.com");
-    params.smtpData.smtpPort = 1111;
+    params.setRecipients(Collections.singletonList("new@test.com"));
+    params.getSmtpData().smtpPort = 1111;
     createdChannel.setParams(params);
 
     ObjectNode data = Json.newObject();
@@ -1104,8 +1104,8 @@ public class AlertControllerTest extends FakeDBApplication {
       channel.setName("Some channel");
       channel.setCustomerUUID(customer.getUuid());
       AlertChannelSlackParams params = new AlertChannelSlackParams();
-      params.username = "Slack Bot";
-      params.webhookUrl = baseUrl.toString();
+      params.setUsername("Slack Bot");
+      params.setWebhookUrl(baseUrl.toString());
       channel.setParams(params);
 
       alertChannelService.save(channel);
