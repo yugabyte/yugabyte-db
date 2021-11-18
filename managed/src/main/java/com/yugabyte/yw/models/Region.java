@@ -100,12 +100,12 @@ public class Region extends Model {
   @JsonManagedReference("region-zones")
   public List<AvailabilityZone> zones;
 
+  @ApiModelProperty(accessMode = READ_ONLY)
   @Column(nullable = false, columnDefinition = "boolean default true")
-  public Boolean active = true;
+  private Boolean active = true;
 
-  @JsonIgnore
-  public Boolean isActive() {
-    return active;
+  public boolean isActive() {
+    return active == null || active;
   }
 
   @JsonIgnore
