@@ -313,7 +313,8 @@ class GraphPanelHeader extends Component {
     const {
       origin,
       universe: { currentUniverse },
-      prometheusQueryEnabled
+      prometheusQueryEnabled,
+      customer: { currentUser }
     } = this.props;
     const { filterType, refreshIntervalLabel } = this.state;
     const universePaused = currentUniverse?.data?.universeDetails?.universePaused;
@@ -424,7 +425,12 @@ class GraphPanelHeader extends Component {
               <FlexGrow>
                 <form name="GraphPanelFilterForm">
                   <div id="reportrange" className="pull-right">
-                    <div className="timezone">Timezone: {moment().format('[UTC]ZZ')}</div>
+                    <div className="timezone">
+                      Timezone:{' '}
+                      {currentUser.data.timezone
+                        ? moment.tz(currentUser.data.timezone).format('[UTC]ZZ')
+                        : moment().format('[UTC]ZZ')}
+                    </div>
                     <div className="graph-interval-container">
                       <Dropdown
                         id="graph-interval-dropdown"
