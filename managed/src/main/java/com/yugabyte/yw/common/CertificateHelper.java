@@ -92,8 +92,24 @@ public class CertificateHelper {
 
   public static UUID createRootCA(String nodePrefix, UUID customerUUID, String storagePath) {
     try {
-      KeyPair keyPair = getKeyPairObject();
+      // Default the cert label with node prefix.
+      // If cert with the label already exists append number
+      String certLabel = nodePrefix;
+      CertificateInfo.Type certType = CertificateInfo.Type.SelfSigned;
+      List<CertificateInfo> certificateInfoList =
+          CertificateInfo.getWhereLabelStartsWith(nodePrefix, certType);
+      if (!certificateInfoList.isEmpty()) {
+        certificateInfoList.sort(Comparator.comparing(a -> a.label, Comparator.reverseOrder()));
+        String[] labelArray = certificateInfoList.get(0).label.split("~");
+        int lastCount = 0;
+        try {
+          lastCount = Integer.parseInt(labelArray[labelArray.length - 1]);
+        } catch (NumberFormatException ignored) {
+        }
+        certLabel = nodePrefix + "~" + (++lastCount);
+      }
 
+      KeyPair keyPair = getKeyPairObject();
       UUID rootCA_UUID = UUID.randomUUID();
       Calendar cal = Calendar.getInstance();
       Date certStart = cal.getTime();
@@ -101,7 +117,7 @@ public class CertificateHelper {
       Date certExpiry = cal.getTime();
       X500Name subject =
           new X500NameBuilder(BCStyle.INSTANCE)
-              .addRDN(BCStyle.CN, nodePrefix)
+              .addRDN(BCStyle.CN, certLabel)
               .addRDN(BCStyle.O, "example.com")
               .build();
       BigInteger serial = BigInteger.valueOf(System.currentTimeMillis());
@@ -130,23 +146,6 @@ public class CertificateHelper {
       String keyPath =
           String.format(CERT_PATH + "/ca.key.pem", storagePath, customerUUID, rootCA_UUID);
       writeKeyFileContentToKeyPath(keyPair.getPrivate(), keyPath);
-      CertificateInfo.Type certType = CertificateInfo.Type.SelfSigned;
-
-      // Default the cert label with node prefix.
-      // If cert with the label already exists append number
-      String certLabel = nodePrefix;
-      List<CertificateInfo> certificateInfoList =
-          CertificateInfo.getWhereLabelStartsWith(nodePrefix, certType);
-      if (!certificateInfoList.isEmpty()) {
-        certificateInfoList.sort(Comparator.comparing(a -> a.label, Comparator.reverseOrder()));
-        String[] labelArray = certificateInfoList.get(0).label.split("~");
-        int lastCount = 0;
-        try {
-          lastCount = Integer.parseInt(labelArray[labelArray.length - 1]);
-        } catch (NumberFormatException ignored) {
-        }
-        certLabel = nodePrefix + "~" + (++lastCount);
-      }
 
       LOG.info(
           "Generated self signed cert label {} uuid {} of type {} for customer {} at paths {}, {}",
