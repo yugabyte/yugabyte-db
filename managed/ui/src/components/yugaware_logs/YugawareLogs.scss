@@ -1,0 +1,18 @@
+.yugaware-logs {
+  select.form-control {
+    margin: 0 !important;
+  }
+  .vertical-align {
+    display: flex;
+    align-items: center;
+    .search-button {
+      float: right;
+      width: 100%;
+      margin-top: 15px;
+    }
+  }
+}
+
+.noPadding {
+  padding: 0;
+}
