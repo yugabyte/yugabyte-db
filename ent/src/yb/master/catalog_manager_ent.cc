@@ -121,6 +121,8 @@ TAG_FLAG(enable_transaction_snapshots, runtime);
 DEFINE_bool(allow_consecutive_restore, true,
             "Is it allowed to restore to a time before the last restoration was done.");
 TAG_FLAG(allow_consecutive_restore, runtime);
+DEFINE_test_flag(bool, disable_cdc_state_insert_on_setup, false,
+                 "Disable inserting new entries into cdc state as part of the setup flow.");
 
 namespace yb {
 
@@ -2553,6 +2555,34 @@ Status CatalogManager::CreateCDCStream(const CreateCDCStreamRequestPB* req,
   LOG(INFO) << "Created CDC stream " << stream->ToString();
 
   RETURN_NOT_OK(CreateCdcStateTableIfNeeded(rpc));
+  if (!PREDICT_FALSE(FLAGS_TEST_disable_cdc_state_insert_on_setup) &&
+     (!req->has_initial_state() || (req->initial_state() == master::SysCDCStreamEntryPB::ACTIVE))) {
+    // Create the cdc state entries for the tablets in this table from scratch since we have no
+    // data to bootstrap. If we data to bootstrap, let the BootstrapProducer logic take care of
+    // populating entries in cdc_state.
+    auto ybclient = master_->cdc_state_client_initializer().client();
+    if (!ybclient) {
+      return STATUS(IllegalState, "Client not initialized or shutting down");
+    }
+    client::TableHandle cdc_table;
+    const client::YBTableName cdc_state_table_name(
+        YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
+    RETURN_NOT_OK(ybclient->WaitForCreateTableToFinish(cdc_state_table_name));
+    RETURN_NOT_OK(cdc_table.Open(cdc_state_table_name, ybclient));
+    std::shared_ptr<client::YBSession> session = ybclient->NewSession();
+    auto tablets = table->GetTablets();
+    for (const auto& tablet : tablets) {
+      const auto op = cdc_table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+      auto* const req = op->mutable_request();
+      QLAddStringHashValue(req, tablet->id());
+      QLAddStringRangeValue(req, stream->id());
+      cdc_table.AddStringColumnValue(req, master::kCdcCheckpoint, OpId().ToString());
+      cdc_table.AddTimestampColumnValue(
+          req, master::kCdcLastReplicationTime, GetCurrentTimeMicros());
+      session->Apply(op);
+    }
+    RETURN_NOT_OK(session->Flush());
+  }
   return Status::OK();
 }
 
@@ -2666,7 +2696,7 @@ Status CatalogManager::FindCDCStreamsMarkedAsDeleting(
 
 Status CatalogManager::CleanUpDeletedCDCStreams(
     const std::vector<scoped_refptr<CDCStreamInfo>>& streams) {
-  auto ybclient = master_->async_client_initializer().client();
+  auto ybclient = master_->cdc_state_client_initializer().client();
   if (!ybclient) {
     return STATUS(IllegalState, "Client not initialized or shutting down");
   }

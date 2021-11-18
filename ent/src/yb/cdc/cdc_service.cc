@@ -1352,20 +1352,25 @@ Status CDCServiceImpl::UpdateCheckpoint(const ProducerTabletInfo& producer_table
   }
 
   if (update_cdc_state) {
-    auto res = GetCdcStateTable();
-    RETURN_NOT_OK(res);
-    const auto op = (*res)->NewUpdateOp();
+    auto cdc_state = VERIFY_RESULT(GetCdcStateTable());
+    const auto op = cdc_state->NewUpdateOp();
     auto* const req = op->mutable_request();
     DCHECK(!producer_tablet.stream_id.empty() && !producer_tablet.tablet_id.empty());
     QLAddStringHashValue(req, producer_tablet.tablet_id);
     QLAddStringRangeValue(req, producer_tablet.stream_id);
-    (*res)->AddStringColumnValue(req, master::kCdcCheckpoint, commit_op_id.ToString());
+
+    cdc_state->AddStringColumnValue(req, master::kCdcCheckpoint, commit_op_id.ToString());
     // If we have a last record hybrid time, use that for physical time. If not, it means we're
     // caught up, so the current time.
     uint64_t last_replication_time_micros = last_record_hybrid_time != 0 ?
         HybridTime(last_record_hybrid_time).GetPhysicalValueMicros() : GetCurrentTimeMicros();
-    (*res)->AddTimestampColumnValue(req, master::kCdcLastReplicationTime,
-                                                last_replication_time_micros);
+    cdc_state->AddTimestampColumnValue(req, master::kCdcLastReplicationTime,
+                                       last_replication_time_micros);
+    // Only perform the update if we have a row in cdc_state to prevent a race condition where
+    // a stream is deleted and then this logic inserts entries in cdc_state from that deleted
+    // stream.
+    auto* condition = req->mutable_if_expr()->mutable_condition();
+    condition->set_op(QL_OP_EXISTS);
     RETURN_NOT_OK(RefreshCacheOnFail(session->ApplyAndFlush(op)));
   }
 
