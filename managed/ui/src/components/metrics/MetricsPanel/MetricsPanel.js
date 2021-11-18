@@ -8,12 +8,13 @@ import {
   isNonEmptyArray,
   isNonEmptyString,
   isYAxisGreaterThanThousand,
-  divideYAxisByThousand
+  divideYAxisByThousand,
+  timeFormatXAxis
 } from '../../../utils/ObjectUtils';
 import './MetricsPanel.scss';
 import { METRIC_FONT } from '../MetricsConfig';
 import _ from 'lodash';
-import moment from "moment";
+import moment from 'moment';
 
 const Plotly = require('plotly.js/lib/core');
 
@@ -30,13 +31,13 @@ export default class MetricsPanel extends Component {
   };
 
   plotGraph = () => {
-    const { metricKey, metric } = this.props;
+    const { metricKey, metric, currentUser } = this.props;
     if (isNonEmptyObject(metric)) {
       metric.data.forEach((dataItem, i) => {
         dataItem['fullname'] = dataItem['name'];
         // Truncate trace names if they are longer than 15 characters, and append ellipsis
         if (dataItem['name'].length > MAX_NAME_LENGTH) {
-          dataItem['name'] =  dataItem['name'].substring(0, MAX_NAME_LENGTH) + '...';
+          dataItem['name'] = dataItem['name'].substring(0, MAX_NAME_LENGTH) + '...';
         }
         // Only show upto first 8 traces in the legend
         if (i >= 8) {
@@ -57,9 +58,11 @@ export default class MetricsPanel extends Component {
           metric.layout.yaxis.ticksuffix = '&nbsp;ms';
         }
       }
+      metric.data = timeFormatXAxis(metric.data, currentUser.data.timezone);
 
-
-      metric.layout.xaxis.hoverformat = '%H:%M:%S, %b %d, %Y ' + moment().format('[UTC]ZZ');
+      metric.layout.xaxis.hoverformat = currentUser.data.timezone
+        ? '%H:%M:%S, %b %d, %Y ' + moment.tz(currentUser.data.timezone).format('[UTC]ZZ')
+        : '%H:%M:%S, %b %d, %Y ' + moment().format('[UTC]ZZ');
 
       // TODO: send this data from backend.
       let max = 0;
@@ -111,7 +114,7 @@ export default class MetricsPanel extends Component {
         xanchor: 'center',
         yanchor: 'bottom',
         x: 0.5,
-        y: -0.5 - legendExtraMargin,
+        y: -0.5 - legendExtraMargin
       };
 
       // Handle the case when the metric data is empty, we would show

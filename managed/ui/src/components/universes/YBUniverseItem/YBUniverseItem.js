@@ -10,7 +10,7 @@ import { YBCost } from '../../common/descriptors';
 import { UniverseStatusContainer } from '..';
 import { CellLocationPanel } from './CellLocationPanel';
 import { CellResourcesPanel } from './CellResourcePanel';
-import {timeFormatter} from "../../../utils/TableFormatters";
+import { timeFormatter } from '../../../utils/TableFormatters';
 
 export const YBUniverseItem = (props) => {
   const {

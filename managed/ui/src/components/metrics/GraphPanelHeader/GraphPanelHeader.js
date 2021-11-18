@@ -272,7 +272,8 @@ class GraphPanelHeader extends Component {
   render() {
     const {
       origin,
-      universe: { currentUniverse }
+      universe: { currentUniverse },
+      customer: { currentUser }
     } = this.props;
     const universePaused = currentUniverse?.data?.universeDetails?.universePaused;
     let datePicker = null;
@@ -371,7 +372,10 @@ class GraphPanelHeader extends Component {
                 <form name="GraphPanelFilterForm">
                   <div id="reportrange" className="pull-right">
                     <div className="timezone">
-                      Timezone: {moment().format('[UTC]ZZ')}
+                      Timezone:{' '}
+                      {currentUser.data.timezone
+                        ? moment.tz(currentUser.data.timezone).format('[UTC]ZZ')
+                        : moment().format('[UTC]ZZ')}
                     </div>
                     {datePicker}
                     <Dropdown id="graph-filter-dropdown" pullRight={true}>

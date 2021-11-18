@@ -25,7 +25,8 @@ const mapDispatchToProps = (dispatch) => {
 function mapStateToProps(state, ownProps) {
   return {
     graph: state.graph,
-    universe: state.universe
+    universe: state.universe,
+    customer: state.customer
   };
 }
 

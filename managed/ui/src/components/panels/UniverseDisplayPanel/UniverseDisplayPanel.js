@@ -18,7 +18,7 @@ import {
   getProviderMetadata
 } from '../../../utils/UniverseUtils';
 import { isNotHidden, isDisabled } from '../../../utils/LayoutUtils';
-import moment from 'moment';
+import { TimestampWithTimezone } from '../../common/timestampWithTimezone/TimestampWithTimezone';
 
 class CTAButton extends Component {
   render() {
@@ -64,9 +64,11 @@ class UniverseDisplayItem extends Component {
     if (isFinite(universe.pricePerHour)) {
       costPerMonth = <YBCost value={universe.pricePerHour} multiplier={'month'} />;
     }
-    const universeCreationDate = universe.creationDate
-      ? moment(universe.creationDate).format('MM/DD/YYYY')
-      : '';
+    const universeCreationDate = universe.creationDate ? (
+      <TimestampWithTimezone timeFormat="MM/DD/YYYY" timestamp={universe.creationDate} />
+    ) : (
+      ''
+    );
     return (
       <Col sm={4} md={3} lg={2}>
         <Link to={'/universes/' + universe.universeUUID}>

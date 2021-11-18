@@ -39,6 +39,16 @@ export const UPDATE_PROFILE = 'UPDATE_PROFILE';
 export const UPDATE_PROFILE_SUCCESS = 'UPDATE_PROFILE_SUCCESS';
 export const UPDATE_PROFILE_FAILURE = 'UPDATE_PROFILE_FAILURE';
 
+// Update User Profile
+export const UPDATE_USER_PROFILE = 'UPDATE_USER_PROFILE';
+export const UPDATE_USER_PROFILE_SUCCESS = 'UPDATE_USER_PROFILE_SUCCESS';
+export const UPDATE_USER_PROFILE_FAILURE = 'UPDATE_USER_PROFILE_FAILURE';
+
+// Fetch User
+export const FETCH_USER = 'FETCH_USER';
+export const FETCH_USER_SUCCESS = 'FETCH_USER_SUCCESS';
+export const FETCH_USER_FAILURE = 'FETCH_USER_FAILURE';
+
 // Fetch Software Versions for Customer
 export const FETCH_SOFTWARE_VERSIONS = 'FETCH_SOFTWARE_VERSIONS';
 export const FETCH_SOFTWARE_VERSIONS_SUCCESS = 'FETCH_SOFTWARE_VERSIONS_SUCCESS';
@@ -364,6 +374,37 @@ export function updatePasswordFailure(error) {
   };
 }
 
+export function updateUserProfile(user, values) {
+  const cUUID = localStorage.getItem('customerId');
+  const userUUID = user.uuid;
+  const data = {
+    ...values,
+    role: user.role
+  };
+  const request = axios.put(
+    `${ROOT_URL}/customers/${cUUID}/users/${userUUID}/update_profile`,
+    data
+  );
+  return {
+    type: UPDATE_USER_PROFILE,
+    payload: request
+  };
+}
+
+export function updateUserProfileSuccess(response) {
+  return {
+    type: UPDATE_USER_PROFILE_SUCCESS,
+    payload: response
+  };
+}
+
+export function updateUserProfileFailure(error) {
+  return {
+    type: UPDATE_USER_PROFILE_FAILURE,
+    payload: error
+  };
+}
+
 export function fetchSoftwareVersions() {
   const cUUID = localStorage.getItem('customerId');
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/releases`);
@@ -482,6 +523,7 @@ export function getAlerts() {
     payload: request
   };
 }
+
 export function createAlertChannel(payload) {
   const cUUID = localStorage.getItem('customerId');
   const request = axios.post(`${ROOT_URL}/customers/${cUUID}/alert_channels`, payload);
@@ -933,6 +975,29 @@ export function changeUserRole(userUUID, newRole) {
   return {
     type: CHANGE_USER_ROLE,
     payload: request
+  };
+}
+
+export function fetchUser(userUUID) {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/users/${userUUID}`);
+  return {
+    type: FETCH_USER,
+    payload: request
+  };
+}
+
+export function fetchUserSuccess(response) {
+  return {
+    type: FETCH_USER_SUCCESS,
+    payload: response
+  };
+}
+
+export function fetchUserFailure(error) {
+  return {
+    type: FETCH_USER_FAILURE,
+    payload: error
   };
 }
 
