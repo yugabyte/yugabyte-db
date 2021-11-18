@@ -15,6 +15,17 @@ showAsideToc: true
 
 ## Releases
 
+### November 18, 2021
+
+#### New features
+
+- Monitor additional performance metrics for your cluster to ensure the cluster configuration matches its performance requirements using the cluster **Performance Metrics** tab. New metrics include YSQL and YCQL operations per second, YSQL and YCQL latency, network bytes per second, and more.
+- Review running queries on your cluster using the **Live Queries** on the cluster **Performance** tab. Use this information to visually identify relevant database operations and evaluate query execution times.
+- Review slow YSQL queries on your cluster using the **YSQL Slow Queries** on the cluster **Performance** tab. You can use this information to identify slower running database operations, look at query execution times over time, and discover potential queries for tuning.
+- Audit what's being done on your cloud using the **Activity** tab on the **Admin** page. The tab provides a running audit of activity on your cloud, including backups, cluster creation and modification, changes to cloud users and their roles, changes to the billing profile, and allow lists.
+- You can now have multiple Admin users on your cloud account, and Admin users can change the role of existing users. You can also invite multiple users to your cloud at once, and assign them a role (Developer or Admin) when you invite them. You manage cloud users using the **Users** tab on the **Admin** page.
+- The **Invoices** on the **Billing** tab include additional charts that break costs down by cluster and infrastructure (instance costs, storage, and data transfer) so that you can quickly evaluate your cloud costs.
+
 ### October 5, 2021
 
 #### New features
