@@ -32,7 +32,7 @@ showAsideToc: true
 
 </ul>
 
-Encryption at rest uses universe keys to encrypt and decrypt universe data keys. You can use the Yugabyte Platform console to create key management service (KMS) configurations for generating the required universe keys for one or more YugabyteDB universes. Encryption at rest in Yugabyte Platform supports the use of [AWS Key Management Service (KMS)](https://aws.amazon.com/kms/), from Amazon Web Services (AWS).
+Encryption at rest uses universe keys to encrypt and decrypt universe data keys. You can use the Yugabyte Platform console to create key management service (KMS) configurations for generating the required universe keys for one or more YugabyteDB universes. Encryption at rest in Yugabyte Platform supports the use of [Amazon Web Services (AWS) KMS](https://aws.amazon.com/kms/).
 
 {{< note title="Note" >}}
 
@@ -62,35 +62,35 @@ You can create a KMS configuration that uses AWS KMS as follows:
     - **Customer Master Key ID** — Enter the identifier for the CMK. If an identifier is not entered, a CMK ID will be auto-generated.
     - **AWS KMS Endpoint** — Specify the KMS endpoint to ensure that the encryption traffic is routed across your internal links without crossing into an external network.
 
-5. Optionally, click **Upload CMK Policy** to select a custom policy file. The following is the default policy:
+4. Optionally, click **Upload CMK Policy** to select a custom policy file. The following is the default policy:
 
-```json
-    {
-        "Version": "2012-10-17",
-        "Id": "key-default-1",
-        "Statement": [
-            {
-                "Sid": "Enable IAM User Permissions",
-                "Effect": "Allow",
-                "Principal": {
-                    "AWS": "arn:aws:iam::<AWS_ACCOUNT_ID>:root"
+    ```json
+        {
+            "Version": "2012-10-17",
+            "Id": "key-default-1",
+            "Statement": [
+                {
+                    "Sid": "Enable IAM User Permissions",
+                    "Effect": "Allow",
+                    "Principal": {
+                        "AWS": "arn:aws:iam::<AWS_ACCOUNT_ID>:root"
+                    },
+                    "Action": "kms:*",
+                    "Resource": "*"
                 },
-                "Action": "kms:*",
-                "Resource": "*"
-            },
-            {
-                "Sid": "Allow access for Key Administrators",
-                "Effect": "Allow",
-                "Principal": {
-                    "AWS": "arn:aws:iam::<AWS_ACCOUNT_ID>:[user|role]{1}/[<USER_NAME>|<ROLE_NAME>]{1}"
-                },
-                "Action": "kms:*",
-                "Resource": "*"
-            }
-        ]
-    }
-```
+                {
+                    "Sid": "Allow access for Key Administrators",
+                    "Effect": "Allow",
+                    "Principal": {
+                        "AWS": "arn:aws:iam::<AWS_ACCOUNT_ID>:[user|role]{1}/[<USER_NAME>|<ROLE_NAME>]{1}"
+                    },
+                    "Action": "kms:*",
+                    "Resource": "*"
+                }
+            ]
+        }
+    ```
 
-6. Click **Save**. Your new configuration should appear in the list of configurations. A saved KMS configuration can only be deleted if it is not in use by any existing universes.
+5. Click **Save**. Your new configuration should appear in the list of configurations. A saved KMS configuration can only be deleted if it is not in use by any existing universes.
 
-7. Optionally, to confirm that the information is correct, click **Show details**. Note that sensitive configuration values are displayed partially masked.
+6. Optionally, to confirm that the information is correct, click **Show details**. Note that sensitive configuration values are displayed partially masked.

@@ -39,7 +39,7 @@ You can enable encryption at rest during the universe creation as follows:
 2. Click **Create Universe**. The **Universe Configuration** page appears.
 3. After you select a provider, the **Instance Configuration** section expands to show more options.
 4. Select the **Enable Encryption at Rest** option. The **Key Management Service Config** option appears.
-5. Select your KMS configuration from the **Key Management Service Config** list. The list displays only preconfigured KMS configurations. If you need to create one, see [Create a KMS configuration using AWS KMS](../create-kms-config.md/aws-kms/) and [Create a KMS configuration using AWS KMS](../create-kms-config.md/equinix-smartkey/).
+5. Select your KMS configuration from the **Key Management Service Config** list. The list displays only preconfigured KMS configurations. If you need to create one, see [Create a KMS configuration using AWS KMS](../create-kms-config.md/aws-kms/) and [Create a KMS configuration using Equinix SmartKey](../create-kms-config.md/equinix-smartkey/).
 6. Continue with your universe creation, then click **Create**.
 
 You can verify that encryption at rest has been successfully configured as follows:
