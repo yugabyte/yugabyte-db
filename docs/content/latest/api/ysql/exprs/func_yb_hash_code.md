@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`yb_hash_code` is a function that returns the hash of a set of given input values using the hash function DocDB uses to shard its data. In effect, it provides direct access to the hash value of any given row of a YSQL table, allowing one to infer a row’s physical location. This enables an application to specify queries based on the physical location of a row or set of rows. A user’s newfound access to the physical location of a row should open up possibilities for more efficient queries.
+`yb_hash_code` is a function that returns the hash of a set of given input values using the hash function DocDB uses to shard its data. In effect, it provides direct access to the hash value of any given row of a YSQL table, allowing one to infer a row’s physical location. This enables an application to specify queries based on the physical location of a row or set of rows.
 
 ## Instructions
 
@@ -29,7 +29,7 @@ Where `a1, a2, a3...` are expressions of type `t1, t2, t3...`, respectively. `t1
 
 ## Function Pushdown
 
-This function can be either evaluated at the Postgres layer after resolving each of its argument expressions, or certain invocations of it may be pushed down to be evaluated at the DocDB layer. This section discusses the situations where they are pushed down. `yb_hash_code` invocations are pushed down when the Postgres optimizer determines that the return values of the function will directly match the values of the hash value column in a requested base table or index table. For example, if you create a table as follows
+This function can be either evaluated at the YSQL layer after resolving each of its argument expressions, or certain invocations of it may be pushed down to be evaluated at the DocDB layer. When pushdown happens, the restrictions implied by the yb_hash_code conditions are used to ensure we only send requests to the tablets that definitely contain values in the requested ranges, as well as only scan the relevant ranges within each tablet. This section discusses the situations where they are pushed down. `yb_hash_code` invocations are pushed down when the YSQL optimizer determines that the return values of the function will directly match the values of the hash value column in a requested base table or index table. For example, if you create a table as follows
 
 ```sql
 CREATE TABLE sample_table (x INTEGER, y INTEGER, z INTEGER, PRIMARY KEY((x,y) HASH), z ASC);
@@ -53,9 +53,9 @@ You can expect to verify this with the `EXPLAIN ANALYZE` result of this statemen
 (4 rows)
 ```
 
-Here, you can see that the primary key index was used and no row was rechecked at the PostgreSQL layer.
+Here, you can see that the primary key index was used and no row was rechecked at the YSQL layer.
 
-As the `yb_hash_code` calls in this statement request the hash code of `x` and `y`, (i.e. the full hash key of `sample_table`), YSQL pushes down these calls. This pushdown is done by specifying a requested hash value range in the DocDB RPC request. As an added side effect, the RPC request will only be sent out to tablet servers that definitely contain values in the requested hash range. 
+As the `yb_hash_code` calls in this statement request the hash code of `x` and `y`, (i.e. the full hash key of `sample_table`), YSQL pushes down these calls. As an added side effect, the RPC request will only be sent out to tablet servers that definitely contain values in the requested hash range. 
 
 This pushdown functionality works for secondary indexes too. This is a feature that is currently unavailable with the YCQL counterpart of this function, partition_hash(). For example, if you create an index on `sample_table` as follows:
 
@@ -125,7 +125,7 @@ EXPLAIN ANALYZE SELECT * FROM sample_table WHERE yb_hash_code(x,z) <= 128 and yb
 (6 rows)
 ```
 
-In this example, only the first clause is pushed down to an index, `sample_idx`. The rest are filters executed at the Postgres level. The reason why the optimizer chose this particular filter to push down is that it has the lowest selectivity as determined by the low number of hash values it filters for compared to the `yb_hash_code(x,y) >= 5` filter.
+In this example, only the first clause is pushed down to an index, `sample_idx`. The rest are filters executed at the YSQL level. The reason why the optimizer chose this particular filter to push down is that it has the lowest selectivity as determined by the low number of hash values it filters for compared to the `yb_hash_code(x,y) >= 5` filter.
 
 ## Use Case Examples
 
@@ -145,7 +145,7 @@ SELECT yb_hash_code(1::int, 2::int, ‘sample string’::text);
       5067
 ```
 
-### Querying rows based on physically hash sharded location
+### Querying rows from a specific tablet
 
 You can request a batch of rows from a tablet of our choice without unnecessarily touching other tablets.
 
@@ -159,9 +159,9 @@ Assuming each tablet holds at least 128 hash values, this statement will request
 SELECT * FROM sample_table WHERE yb_hash_code(x,z) >= 0 and yb_hash_code(x,z) <= 128;
 ```
 
-### Querying a random batch of rows
+### Querying a table fragment
 
-We can extend the above use case to sample a random batch of rows by selecting over a random fixed size interval over the hash partition space. For example, you can select over a random space of 512 hash values. Note that this is 1/128 of the total hash partition space as there are 2^16 = 65536 hash values in total. In order to do this, first select a random lower bound for this interval.
+We can extend the above use case to sample a batch of rows by selecting over a random fixed size interval over the hash partition space. For example, you can select over a random space of 512 hash values. Note that this is 1/128 of the total hash partition space as there are 2^16 = 65536 hash values in total. In order to do this, first select a random lower bound for this interval.
 
 ```sql
 SELECT floor(random()*65536);
