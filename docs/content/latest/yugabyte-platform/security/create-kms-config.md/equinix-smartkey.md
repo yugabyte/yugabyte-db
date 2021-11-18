@@ -30,7 +30,7 @@ showAsideToc: true
 
 </ul>
 
-Encryption at rest uses universe keys to encrypt and decrypt universe data keys. You can use the Yugabyte Platform console to create key management service (KMS) configurations for generating the required universe keys for one or more YugabyteDB universes. Encryption at rest in Yugabyte Platform supports the use of [Equinix SmartKey](https://www.equinix.com/services/edge-services/smartkey/) as a key management service (KMS).
+Encryption at rest uses universe keys to encrypt and decrypt universe data keys. You can use the Yugabyte Platform console to create key management service (KMS) configurations for generating the required universe keys for one or more YugabyteDB universes. Encryption at rest in Yugabyte Platform supports the use of [Equinix SmartKey](https://www.equinix.com/services/edge-services/smartkey/) as a KMS.
 
 You can create a KMS configuration with Equinix SmartKey as follows:
 
