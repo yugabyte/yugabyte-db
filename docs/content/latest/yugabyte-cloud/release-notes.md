@@ -19,26 +19,26 @@ showAsideToc: true
 
 #### New features
 
-- Monitor additional performance metrics for your cluster to ensure the cluster configuration matches its performance requirements using the cluster **Performance Metrics** tab. New metrics include YSQL and YCQL operations per second, YSQL and YCQL latency, network bytes per second, and more.
-- Review running queries on your cluster using the **Live Queries** on the cluster **Performance** tab. Use this information to visually identify relevant database operations and evaluate query execution times.
-- Review slow YSQL queries on your cluster using the **YSQL Slow Queries** on the cluster **Performance** tab. You can use this information to identify slower running database operations, look at query execution times over time, and discover potential queries for tuning.
-- Audit what's being done on your cloud using the **Activity** tab on the **Admin** page. The tab provides a running audit of activity on your cloud, including backups, cluster creation and modification, changes to cloud users and their roles, changes to the billing profile, and allow lists.
-- You can now have multiple Admin users on your cloud account, and Admin users can change the role of existing users. You can also invite multiple users to your cloud at once, and assign them a role (Developer or Admin) when you invite them. You manage cloud users using the **Users** tab on the **Admin** page.
-- The **Invoices** on the **Billing** tab include additional charts that break costs down by cluster and infrastructure (instance costs, storage, and data transfer) so that you can quickly evaluate your cloud costs.
+- Additional performance metrics. The new cluster **Performance Metrics** tab features new metrics including YSQL and YCQL operations per second, YSQL and YCQL latency, network bytes per second, and more. Use these metrics to ensure the cluster configuration matches its performance requirements. 
+- Ability to review running queries using the **Live Queries** on the cluster **Performance** tab. Use this information to visually identify relevant database operations and evaluate query execution times.
+- Ability to review slow YSQL queries using the **YSQL Slow Queries** on the cluster **Performance** tab. You can use this information to identify slower running database operations, look at query execution times over time, and discover potential queries for tuning.
+- Support for auditing cloud activity using the new **Activity** tab on the **Admin** page. The tab provides a running audit of activity on your cloud, including backups, cluster creation and modification, changes to cloud users and their roles, billing changes, and allow list changes.
+- Support for multiple Admin users on your cloud account, and Admin users can now change the role of existing users. You can also invite multiple users to your cloud at once, and assign them a role (Developer or Admin) when you invite them. You manage cloud users using the **Users** tab on the **Admin** page.
+- Additional charts on the **Invoices** on the **Billing** tab, which break costs down by cluster and infrastructure (instance costs, storage, and data transfer) so that you can quickly evaluate your cloud costs.
 
 ### October 5, 2021
 
 #### New features
 
 - The [Yugabyte Cloud Status](https://status.yugabyte.cloud/) page shows the current uptime status of Yugabyte Cloud and the [Yugabyte Support Portal](https://support.yugabyte.com/), along with maintenance notices and incident reports.
-- Review cluster activity on the [Activity](../cloud-clusters/monitor-activity) tab.
+- Ability to review cluster activity using the new cluster **Activity** tab.
 
 ### September 15, 2021
 
 #### New features
 
-- You can now [create Paid clusters](../cloud-basics/create-clusters). Paid clusters are suitable for production workloads, and support horizontal and vertical scaling, VPC peering, and scheduled and manual backups.
-- Set up a billing profile and payment methods and review invoices on the [Billing](../cloud-admin/cloud-billing-profile) tab.
+- Ability to create [production-ready clusters](../cloud-basics/create-clusters), which are suitable for production workloads, and support horizontal and vertical scaling, VPC peering, and scheduled and manual backups.
+- Billing support. Set up a billing profile, manage payment methods, and review invoices on the [Billing](../cloud-admin/cloud-billing-profile) tab. (You must create a billing profile before you can create a production cluster.)
 
 ### September 8, 2021
 
