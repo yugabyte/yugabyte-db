@@ -21,7 +21,7 @@ showAsideToc: true
 
 `yb_hash_code` can be used anywhere a normal function can be used in a YSQL expression. There is no limitation to where it can be used. It takes in a variable number of parameters whose types must be allowed in YB primary keys. More formally,
 
-```sql
+```output
 yb_hash_code(a1:t1, a2:t2, a3:t3, a4:t4...) → int4 (32 bit integer)
 ```
 
@@ -43,7 +43,7 @@ SELECT * FROM sample_table WHERE yb_hash_code(x,y) <= 128 AND yb_hash_code(x,y) 
 
 You can expect to verify this with the `EXPLAIN ANALYZE` result of this statement
 
-```sql
+```output
                                                             QUERY PLAN
 -----------------------------------------------------------------------------------------------------------------------------------
  Index Scan using sample_table_pkey on sample_table  (cost=0.00..5.88 rows=16 width=12) (actual time=2.867..2.919 rows=18 loops=1)
@@ -71,7 +71,7 @@ SELECT * FROM sample_table WHERE yb_hash_code(x,z) <= 128 AND yb_hash_code(x,z) 
 
 Here, the `yb_hash_code` calls are on `x` and `z`. `x` and `z` do not form the full hash key of the base sample_table table but they do form the full hash key of the index table, `sample_idx`. Hence, the optimizer will consider pushing down the calls to the DocDB layer if an index scan using `sample_idx` is chosen. Note that the optimizer may choose not to go with a secondary scan if it deems the requested hash range to be large enough to warrant doing a simple full table scan instead. The `EXPLAIN ANALYZE` result for this could be as follows
 
-```sql
+```output
                                                          QUERY PLAN
 ----------------------------------------------------------------------------------------------------------------------------
  Index Scan using sample_idx on sample_table  (cost=0.00..5.96 rows=16 width=12) (actual time=8.923..8.975 rows=18 loops=1)
@@ -96,7 +96,7 @@ SET pg_hint_plan.enable_hint=ON;
 EXPLAIN ANALYZE SELECT * FROM sample_table WHERE yb_hash_code(x,z) <= 128 AND yb_hash_code(x,z) >= 0;
 ```
 
-```sql
+```output
                                                           QUERY PLAN
 ------------------------------------------------------------------------------------------------------------------------------
  Index Scan using sample_idx_dup on sample_table  (cost=0.00..6.04 rows=16 width=12) (actual time=15.551..15.608 rows=18 loops=1)
@@ -112,7 +112,7 @@ You can also mix calls that can be pushed down and calls that cannot in a single
 EXPLAIN ANALYZE SELECT * FROM sample_table WHERE yb_hash_code(x,z) <= 128 and yb_hash_code(x,y) >= 5 AND yb_hash_code(x,y,z) <= 256;
 ```
 
-```sql
+```output
 
                                                         QUERY PLAN
 ---------------------------------------------------------------------------------------------------------------------------
@@ -139,7 +139,7 @@ Given a set of expressions, you can compute the hash code of them directly as su
 SELECT yb_hash_code(1::int, 2::int, ‘sample string’::text);
 ```
 
-```sql
+```output
    yb_hash_code
 ---------------------
       5067
@@ -167,7 +167,7 @@ We can extend the above use case to sample a batch of rows by selecting over a r
 SELECT floor(random()*65536);
 ```
 
-```sql
+```output
  floor
 -------
  4600
@@ -179,7 +179,7 @@ Now, you can search over all rows whose hash values range in [4600, 5112). In th
 SELECT COUNT(*) FROM sample_table WHERE yb_hash_code(x,y) >= 4600 and yb_hash_code(x,y) < 5112;
 ```
 
-```sql
+```output
  count 
 -------
     74
