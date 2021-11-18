@@ -33,7 +33,8 @@ function mapStateToProps(state, ownProps) {
   return {
     graph: state.graph,
     universe: state.universe,
-    prometheusQueryEnabled: state.graph.prometheusQueryEnabled
+    prometheusQueryEnabled: state.graph.prometheusQueryEnabled,
+    customer: state.customer
   };
 }
 
