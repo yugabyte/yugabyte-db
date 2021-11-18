@@ -2593,11 +2593,11 @@ public class PlacementInfoUtil {
     }
 
     public String getRegion() {
-      return first;
+      return getFirst();
     }
 
     public String getZone() {
-      return second;
+      return getSecond();
     }
   }
 

@@ -21,13 +21,13 @@ import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
 import java.io.File;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -36,7 +36,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.UUID;
 import org.apache.commons.io.FileUtils;
-import org.apache.commons.io.IOUtils;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -162,10 +161,7 @@ public class CertificateControllerTest extends FakeDBApplication {
 
   @Test
   public void testUploadCertificate() throws IOException {
-    String cert_content =
-        IOUtils.toString(
-            getClass().getClassLoader().getResourceAsStream("platform.dev.crt"),
-            StandardCharsets.UTF_8);
+    String cert_content = TestUtils.readResource("platform.dev.crt");
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("label", "test");
     bodyJson.put("certContent", cert_content);
@@ -196,10 +192,7 @@ public class CertificateControllerTest extends FakeDBApplication {
 
   @Test
   public void testUploadCustomCertificate() throws IOException {
-    String cert_content =
-        IOUtils.toString(
-            getClass().getClassLoader().getResourceAsStream("platform.dev.crt"),
-            StandardCharsets.UTF_8);
+    String cert_content = TestUtils.readResource("platform.dev.crt");
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("label", "test");
     bodyJson.put("certContent", cert_content);
@@ -226,18 +219,9 @@ public class CertificateControllerTest extends FakeDBApplication {
 
   @Test
   public void testUploadCustomServerCertificate() throws IOException {
-    String cert_content =
-        IOUtils.toString(
-            getClass().getClassLoader().getResourceAsStream("platform.dev.crt"),
-            StandardCharsets.UTF_8);
-    String server_cert_content =
-        IOUtils.toString(
-            getClass().getClassLoader().getResourceAsStream("server.dev.crt"),
-            StandardCharsets.UTF_8);
-    String server_key_content =
-        IOUtils.toString(
-            getClass().getClassLoader().getResourceAsStream("server.dev.key"),
-            StandardCharsets.UTF_8);
+    String cert_content = TestUtils.readResource("platform.dev.crt");
+    String server_cert_content = TestUtils.readResource("server.dev.crt");
+    String server_key_content = TestUtils.readResource("server.dev.key");
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("label", "test");
     bodyJson.put("certContent", cert_content);
@@ -337,10 +321,7 @@ public class CertificateControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateClientCertificate() throws IOException {
-    String cert_content =
-        IOUtils.toString(
-            getClass().getClassLoader().getResourceAsStream("platform.dev.crt"),
-            StandardCharsets.UTF_8);
+    String cert_content = TestUtils.readResource("platform.dev.crt");
     ObjectNode bodyJson = Json.newObject();
     Date date = new Date();
     bodyJson.put("username", "test");

@@ -258,7 +258,7 @@ public class AlertManager {
 
     if ((channels.size() == 1)
         && ("Email".equals(AlertUtils.getJsonTypeName(channels.get(0).getParams())))
-        && ((AlertChannelEmailParams) channels.get(0).getParams()).defaultRecipients
+        && ((AlertChannelEmailParams) channels.get(0).getParams()).isDefaultRecipients()
         && CollectionUtils.isEmpty(emailHelper.getDestinations(customer.getUuid()))) {
 
       metricService.setStatusMetric(

@@ -244,8 +244,8 @@ public class AlertManagerTest extends FakeDBApplication {
 
     assertThat(AlertUtils.getJsonTypeName(channelCaptor.getValue().getParams()), is("Email"));
     AlertChannelEmailParams params = (AlertChannelEmailParams) channelCaptor.getValue().getParams();
-    assertThat(params.recipients, nullValue());
-    assertThat(params.defaultRecipients, is(true));
+    assertThat(params.getRecipients(), nullValue());
+    assertThat(params.isDefaultRecipients(), is(true));
   }
 
   @Test
