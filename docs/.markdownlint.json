@@ -1,11 +1,13 @@
 {
   "default": true,
   "MD007": {"indent": 2},
-  "MD009": false,
+  "MD009": {"list_item_empty_lines": false, "strict": true},
   "MD013": false,
   "MD014": false,
   "MD024": {"siblings_only": true},
   "MD033": false,
   "MD036": false,
-  "MD041": {"front_matter_title": "^\\s*title\\s*[:=]"}
+  "MD041": {"front_matter_title": "^\\s*title\\s*[:=]"},
+  "MD046": {"style": "fenced"},
+  "MD048": {"style": "backtick"}
 }
