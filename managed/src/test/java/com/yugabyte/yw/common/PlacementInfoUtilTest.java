@@ -1644,6 +1644,9 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     "Case 19, 5, r1d-az1-3-0-2;r1d-az2-3-0-2;r1d-az3-3-0-1;r2-az1-5-0-0, 0",
     // The same as previous + check that larger zones get more masters.
     "Case 20, 5, r1d-az1-2-0-1;r1d-az2-2-0-1;r1d-az3-4-0-3;r2-az1-5-0-0, 0",
+
+    // Some additional tests for raised problems.
+    "Case 21, 1, r1-az1-1-1-0;r1-az2-3-0-1, 1",
   })
   // @formatter:on
   public void testSelectMasters_Extended(String name, int rf, String zones, int removedCount) {
@@ -1689,7 +1692,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
 
     SelectMastersResult selection =
         PlacementInfoUtil.selectMasters(
-            null, nodes, rf, defaultRegion == null ? null : defaultRegion.code);
+            null, nodes, rf, defaultRegion == null ? null : defaultRegion.code, true);
     PlacementInfoUtil.verifyMastersSelection(nodes, rf);
 
     List<NodeDetails> masters =
@@ -1783,7 +1786,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         assertThrows(
                 RuntimeException.class,
                 () -> {
-                  PlacementInfoUtil.selectMasters(null, nodes, rf, defaultRegionCode);
+                  PlacementInfoUtil.selectMasters(null, nodes, rf, defaultRegionCode, true);
                 })
             .getMessage();
     String expectedMessage = SELECT_MASTERS_ERRORS[expectedMessageIndex];
@@ -1947,5 +1950,78 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
                 .filter(p -> !defaultAZs.contains(p.uuid) && p.replicationFactor > 0)
                 .count()
             > 0);
+  }
+
+  @Test
+  public void testSelectMasters_MasterLeaderChanged() {
+    List<NodeDetails> nodes = new ArrayList<>();
+
+    nodes.add(
+        ApiUtils.getDummyNodeDetails(
+            1, NodeDetails.NodeState.Live, true, true, "onprem", "reg-1", "az1", null));
+    nodes.add(
+        ApiUtils.getDummyNodeDetails(
+            2, NodeDetails.NodeState.ToBeRemoved, false, true, "onprem", "reg-1", "az1", null));
+    nodes.add(
+        ApiUtils.getDummyNodeDetails(
+            3, NodeDetails.NodeState.ToBeRemoved, false, true, "onprem", "reg-1", "az1", null));
+
+    nodes.add(
+        ApiUtils.getDummyNodeDetails(
+            4, NodeDetails.NodeState.Live, false, true, "onprem", "reg-1", "az2", null));
+    nodes.add(
+        ApiUtils.getDummyNodeDetails(
+            5, NodeDetails.NodeState.ToBeAdded, false, true, "onprem", "reg-1", "az2", null));
+    nodes.add(
+        ApiUtils.getDummyNodeDetails(
+            6, NodeDetails.NodeState.ToBeAdded, false, true, "onprem", "reg-1", "az2", null));
+
+    PlacementInfoUtil.selectMasters("host-n1", nodes, 1);
+    PlacementInfoUtil.verifyMastersSelection(nodes, 1);
+  }
+
+  @Test
+  public void testSelectMasters_MasterLeaderChanged_2() {
+    List<NodeDetails> nodes = new ArrayList<>();
+
+    // @formatter:off
+    // Was: RF = 3
+    //   az1 - 3 nodes - 2 masters, second master - leader
+    //   az2 - 1 node - 1 master.
+    // Required:
+    //   az1 - 2 nodes - 1 master, leader;
+    //   az2 - 4 nodes - 2 masters
+    // @formatter:on
+    nodes.add(
+        ApiUtils.getDummyNodeDetails(
+            1, NodeDetails.NodeState.Live, true, true, "onprem", "reg-1", "az1", null));
+    nodes.add(
+        ApiUtils.getDummyNodeDetails(
+            2, NodeDetails.NodeState.Live, true, true, "onprem", "reg-1", "az1", null));
+    nodes.add(
+        ApiUtils.getDummyNodeDetails(
+            3, NodeDetails.NodeState.ToBeRemoved, false, true, "onprem", "reg-1", "az1", null));
+
+    nodes.add(
+        ApiUtils.getDummyNodeDetails(
+            4, NodeDetails.NodeState.Live, true, true, "onprem", "reg-1", "az2", null));
+    nodes.add(
+        ApiUtils.getDummyNodeDetails(
+            5, NodeDetails.NodeState.ToBeAdded, false, true, "onprem", "reg-1", "az2", null));
+    nodes.add(
+        ApiUtils.getDummyNodeDetails(
+            6, NodeDetails.NodeState.ToBeAdded, false, true, "onprem", "reg-1", "az2", null));
+    nodes.add(
+        ApiUtils.getDummyNodeDetails(
+            7, NodeDetails.NodeState.ToBeAdded, false, true, "onprem", "reg-1", "az2", null));
+
+    PlacementInfoUtil.selectMasters("host-n1", nodes, 3);
+    PlacementInfoUtil.verifyMastersSelection(nodes, 3);
+
+    // Master-leader (host-n1) should be left as the leader, the second master
+    // should become non master.
+    assertTrue(nodes.get(0).isMaster);
+    assertFalse(nodes.get(1).isMaster);
+    assertTrue(nodes.get(3).isMaster);
   }
 }

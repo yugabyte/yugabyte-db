@@ -1738,7 +1738,7 @@ public class PlacementInfoUtil {
   @VisibleForTesting
   static SelectMastersResult selectMasters(
       String masterLeader, Collection<NodeDetails> nodes, int replicationFactor) {
-    return selectMasters(masterLeader, nodes, replicationFactor, null);
+    return selectMasters(masterLeader, nodes, replicationFactor, null, true);
   }
 
   /**
@@ -1753,6 +1753,7 @@ public class PlacementInfoUtil {
    * @param nodes List of nodes of a universe.
    * @param replicationFactor Number of masters to place.
    * @param defaultRegionCode Code of default region (for Geo-partitioned case).
+   * @param applySelection If we need to apply the changes to the masters flags immediately.
    * @return Instance of type SelectMastersResult with two lists of nodes - where we need to start
    *     and where we need to stop Masters. List of masters to be stopped doesn't include nodes
    *     which are going to be removed completely.
@@ -1761,7 +1762,8 @@ public class PlacementInfoUtil {
       String masterLeader,
       Collection<NodeDetails> nodes,
       int replicationFactor,
-      String defaultRegionCode) {
+      String defaultRegionCode,
+      boolean applySelection) {
     LOG.info(
         "selectMasters for nodes {}, rf={}, drc={}", nodes, replicationFactor, defaultRegionCode);
 
@@ -1830,15 +1832,22 @@ public class PlacementInfoUtil {
             numCandidates.get());
 
     SelectMastersResult result = new SelectMastersResult();
-    // Applying allocations.
+    // Processing allocations - filling the result structure with candidates to add
+    // or remove masters.
     for (RegionWithAz zone : zones) {
-      applyMastersSelection(
+      processMastersSelection(
           masterLeader,
           zoneToNodes.get(zone),
           allocatedMastersRgAz.getOrDefault(zone, Integer.valueOf(0)),
           result.addedMasters,
           result.removedMasters);
     }
+
+    if (applySelection) {
+      result.addedMasters.forEach(node -> node.isMaster = true);
+      result.removedMasters.forEach(node -> node.isMaster = false);
+    }
+
     LOG.info("selectMasters result: master-leader={}, nodes={}", masterLeader, nodes);
     return result;
   }
@@ -1927,7 +1936,7 @@ public class PlacementInfoUtil {
    * @param mastersToAdd
    * @param mastersToRemove
    */
-  private static void applyMastersSelection(
+  private static void processMastersSelection(
       String masterLeader,
       List<NodeDetails> nodes,
       int mastersCount,
@@ -1939,29 +1948,40 @@ public class PlacementInfoUtil {
         break;
       }
       if (existingMastersCount < mastersCount && !node.isMaster) {
-        node.isMaster = true;
         existingMastersCount++;
         mastersToAdd.add(node);
-      } else if (existingMastersCount > mastersCount
+      } else
+      // If the node is a master-leader and we don't need to remove all the masters
+      // from the zone, we are going to save it. If (mastersCount == 0) - removing all
+      // the masters in this zone.
+      if (existingMastersCount > mastersCount
           && node.isMaster
-          && !Objects.equals(masterLeader, node.cloudInfo.private_ip)) {
-        node.isMaster = false;
+          && (!Objects.equals(masterLeader, node.cloudInfo.private_ip) || (mastersCount == 0))) {
         existingMastersCount--;
         mastersToRemove.add(node);
       }
     }
   }
 
-  public static void verifyMastersSelection(Collection<NodeDetails> nodes, int replicationFactor) {
+  @VisibleForTesting
+  static void verifyMastersSelection(Collection<NodeDetails> nodes, int replicationFactor) {
+    verifyMastersSelection(nodes, replicationFactor, SelectMastersResult.NONE);
+  }
+
+  public static void verifyMastersSelection(
+      Collection<NodeDetails> nodes, int replicationFactor, SelectMastersResult selection) {
     int allocatedMasters =
         (int)
             nodes
                 .stream()
                 .filter(
                     n ->
-                        (n.state == NodeState.Live || n.state == NodeState.ToBeAdded) && n.isMaster)
+                        (n.state == NodeState.Live || n.state == NodeState.ToBeAdded)
+                            && n.isMaster
+                            && !selection.removedMasters.contains(n)
+                            && !selection.addedMasters.contains(n))
                 .count();
-    if (allocatedMasters != replicationFactor) {
+    if (allocatedMasters + selection.addedMasters.size() != replicationFactor) {
       throw new RuntimeException(
           String.format(
               "Wrong masters allocation detected. Expected masters %d, found %d. Nodes are %s",
