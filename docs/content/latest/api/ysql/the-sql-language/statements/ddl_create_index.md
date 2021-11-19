@@ -70,6 +70,10 @@ For details on how online index backfill works, refer to [Online Index Backfill]
 
 Enforce that duplicate values in a table are not allowed.
 
+### NONCONCURRENTLY
+
+Disable online schema migration (see [Semantics](#semantics) for details).
+
 ### INCLUDE clause
 
 Specify a list of columns which will be included in the index as non-key columns.
