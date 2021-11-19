@@ -293,7 +293,7 @@ public class BackupsController extends AuthenticatedController {
       LOG.info("Error while waiting for the backup task to get finished.");
     }
     backup.transitionState(BackupState.Stopped);
-    auditService().createAuditEntry(ctx(), request(), backup.taskUUID);
+    auditService().createAuditEntry(ctx(), request());
     return YBPSuccess.withMessage("Successfully stopped the backup process.");
   }
 
