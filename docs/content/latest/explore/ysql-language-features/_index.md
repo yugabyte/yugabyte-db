@@ -49,6 +49,7 @@ The following table lists the most important YSQL features which you would find 
 | <span style="font-size:16px">[Savepoints](savepoints/)</span> | Savepoints in YSQL |
 | <span style="font-size:16px">[Extensions](extensions/)</span> | Pre-bundled extensions for YugabyteDB |
 | <span style="font-size:16px">[Indexes](indexes-1/)</span> | Indexes to enhance database performance |
+| <span style="font-size:16px">[GIN indexes](gin/)</span> | Generalized inverted indexes in YSQL |
 | <span style="font-size:16px">[Constraints](constraints/)</span> | Define constraints in YSQL |  
 
 <!--
