@@ -17,7 +17,6 @@
 
 #include <gflags/gflags.h>
 
-#include "yb/util/flags.h"
 #include "yb/util/flag_tags.h"
 #include "yb/yql/pggate/pggate_flags.h"
 
@@ -99,6 +98,11 @@ DEFINE_bool(ysql_beta_feature_tablegroup, true,
             "Whether to enable the incomplete 'tablegroup' ysql beta feature");
 
 TAG_FLAG(ysql_beta_feature_tablegroup, hidden);
+
+DEFINE_bool(ysql_beta_feature_tablespace_alteration, false,
+            "Whether to enable the incomplete 'tablespace_alteration' beta feature");
+
+TAG_FLAG(ysql_beta_feature_tablespace_alteration, hidden);
 
 DEFINE_bool(ysql_serializable_isolation_for_ddl_txn, false,
             "Whether to use serializable isolation for separate DDL-only transactions. "

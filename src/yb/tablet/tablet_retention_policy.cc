@@ -13,6 +13,13 @@
 
 #include "yb/tablet/tablet_retention_policy.h"
 
+#include <iosfwd>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <vector>
+
 #include "yb/common/schema.h"
 #include "yb/common/transaction_error.h"
 
@@ -20,7 +27,23 @@
 
 #include "yb/server/hybrid_clock.h"
 
-#include "yb/tablet/tablet.h"
+#include "yb/common/transaction.h"
+#include "yb/docdb/docdb_compaction_filter.h"
+#include "yb/gutil/atomicops.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/statistics.h"
+#include "yb/rocksdb/write_batch.h"
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/enums.h"
+#include "yb/util/locks.h"
+#include "yb/util/metrics.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
 using namespace std::literals;
 

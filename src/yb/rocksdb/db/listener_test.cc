@@ -18,36 +18,8 @@
 // under the License.
 //
 
-#include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/db_test_util.h"
-#include "yb/rocksdb/db/dbformat.h"
-#include "yb/rocksdb/db/filename.h"
-#include "yb/rocksdb/db/version_set.h"
-#include "yb/rocksdb/db/write_batch_internal.h"
-#include "yb/rocksdb/memtable/hash_linklist_rep.h"
-#include "yb/rocksdb/cache.h"
-#include "yb/rocksdb/compaction_filter.h"
-#include "yb/rocksdb/db.h"
-#include "yb/rocksdb/env.h"
-#include "yb/rocksdb/filter_policy.h"
-#include "yb/rocksdb/options.h"
-#include "yb/rocksdb/perf_context.h"
-#include "yb/util/slice.h"
-#include "yb/rocksdb/slice_transform.h"
-#include "yb/rocksdb/table.h"
-#include "yb/rocksdb/table_properties.h"
-#include "yb/rocksdb/table/block_based_table_factory.h"
-#include "yb/rocksdb/table/plain_table_factory.h"
-#include "yb/rocksdb/util/hash.h"
-#include "yb/rocksdb/util/logging.h"
-#include "yb/rocksdb/util/mutexlock.h"
-#include "yb/rocksdb/util/rate_limiter.h"
-#include "yb/rocksdb/util/statistics.h"
-#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/sync_point.h"
-#include "yb/rocksdb/util/testharness.h"
-#include "yb/rocksdb/util/testutil.h"
-#include "yb/rocksdb/utilities/merge_operators.h"
 
 #ifndef ROCKSDB_LITE
 

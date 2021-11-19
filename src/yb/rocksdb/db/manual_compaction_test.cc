@@ -18,9 +18,7 @@
 // under the License.
 //
 // Test for issue 178: a manual compaction causes deleted data to reappear.
-#include <iostream>
 #include <sstream>
-#include <cstdlib>
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/compaction_filter.h"

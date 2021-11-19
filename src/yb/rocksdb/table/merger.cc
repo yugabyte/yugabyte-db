@@ -27,7 +27,6 @@
 
 #include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/iterator.h"
-#include "yb/rocksdb/options.h"
 #include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/rocksdb/table/iter_heap.h"
 #include "yb/rocksdb/table/iterator_wrapper.h"

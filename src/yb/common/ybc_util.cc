@@ -28,7 +28,6 @@
 #include "yb/util/logging.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
-#include "yb/util/version_info.h"
 #include "yb/util/thread.h"
 
 #include "yb/util/net/net_util.h"

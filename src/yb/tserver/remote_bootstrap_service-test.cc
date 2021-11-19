@@ -46,8 +46,6 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/remote_bootstrap.pb.h"
 #include "yb/tserver/remote_bootstrap.proxy.h"
-#include "yb/tserver/tserver_service.pb.h"
-#include "yb/tserver/tserver_service.proxy.h"
 #include "yb/util/crc.h"
 #include "yb/util/env_util.h"
 #include "yb/util/monotime.h"

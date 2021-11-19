@@ -66,10 +66,10 @@ public class AlertChannelEmailTest extends FakeDBApplication {
 
     AlertChannel channel = new AlertChannel();
     AlertChannelEmailParams params = new AlertChannelEmailParams();
-    params.defaultRecipients = defaultRecipients;
-    params.recipients = defaultRecipients ? null : DEFAULT_EMAILS;
-    params.defaultSmtpSettings = defaultSmtpSettings;
-    params.smtpData = defaultSmtpSettings ? null : new SmtpData();
+    params.setDefaultRecipients(defaultRecipients);
+    params.setRecipients(defaultRecipients ? null : DEFAULT_EMAILS);
+    params.setDefaultSmtpSettings(defaultSmtpSettings);
+    params.setSmtpData(defaultSmtpSettings ? null : new SmtpData());
     channel.setParams(params);
     return channel;
   }

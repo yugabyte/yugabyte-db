@@ -40,8 +40,6 @@
 
 #include "yb/gutil/walltime.h"
 
-#include <stdio.h>
-#include <string.h>
 
 #if defined(__APPLE__)
 #include <mach/clock.h>

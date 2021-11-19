@@ -96,7 +96,8 @@ export const AlertsList = (props) => {
     showDeleteModal,
     setInitialValues,
     universes,
-    updateAlertConfig
+    updateAlertConfig,
+    sendTestAlert
   } = props;
   const [options, setOptions] = useState({
     noDataText: 'Loading...',
@@ -238,12 +239,16 @@ export const AlertsList = (props) => {
   };
 
   const onToggleActive = (row) => {
-     const updatedAlertConfig = { ...row, active: !row.active }
-     updateAlertConfig(updatedAlertConfig, row.uuid).then(() => {
-       alertConfigs(payload).then((res) => {
-         setAlertList(res);
-       });
-     });
+    const updatedAlertConfig = { ...row, active: !row.active }
+    updateAlertConfig(updatedAlertConfig, row.uuid).then(() => {
+      alertConfigs(payload).then((res) => {
+        setAlertList(res);
+      });
+    });
+  };
+
+  const onSendTestAlert = (row) => {
+    sendTestAlert(row.uuid);
   };
   /**
    * This method will help us to delete the respective row record.
@@ -380,6 +385,10 @@ export const AlertsList = (props) => {
           {!isReadOnly ? (<MenuItem onClick={() => showDeleteModal(row?.uuid)}>
             <i className="fa fa-trash"></i> Delete Alert
           </MenuItem>) : null}
+
+          {!isReadOnly ? (<MenuItem onClick={() => onSendTestAlert(row)}>
+            <i className="fa fa-paper-plane"></i> Send Test Alert
+          </MenuItem>) : null}
         </DropdownButton>
         <YBConfirmModal
           name="delete-alert-config"
@@ -395,7 +404,7 @@ export const AlertsList = (props) => {
     );
   };
 
-  if (!getPromiseState(universes).isSuccess()) {
+  if (!getPromiseState(universes).isSuccess() && !getPromiseState(universes).isEmpty()) {
     return <YBLoading />;
   }
 

@@ -11,10 +11,7 @@
 // under the License.
 //
 
-#include "yb/common/redis_constants_common.h"
-#include "yb/common/ql_value.h"
 #include "yb/master/catalog_manager.h"
-#include "yb/master/master_defaults.h"
 #include "yb/master/yql_keyspaces_vtable.h"
 
 namespace yb {

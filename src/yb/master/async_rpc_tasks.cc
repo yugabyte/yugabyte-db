@@ -14,11 +14,8 @@
 
 #include "yb/common/wire_protocol.h"
 
-#include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus.proxy.h"
 
-#include "yb/master/master.h"
-#include "yb/master/ts_descriptor.h"
 #include "yb/master/catalog_manager.h"
 
 #include "yb/rpc/messenger.h"

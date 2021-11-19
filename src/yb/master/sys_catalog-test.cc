@@ -37,7 +37,6 @@
 #include <vector>
 
 #include "yb/gutil/stl_util.h"
-#include "yb/master/async_rpc_tasks.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
 

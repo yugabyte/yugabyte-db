@@ -11,7 +11,6 @@
 // under the License.
 //
 
-#include "yb/master/master_defaults.h"
 #include "yb/master/yql_types_vtable.h"
 #include "yb/master/catalog_manager.h"
 

@@ -47,6 +47,7 @@ class AbstractCloud(AbstractCommandParser):
     CERT_LOCATION_PLATFORM = "platform"
     SSH_RETRY_COUNT = 30
     SSH_WAIT_SECONDS = 30
+    SSH_TIMEOUT_SECONDS = 10
 
     def __init__(self, name):
         super(AbstractCloud, self).__init__(name)
@@ -558,3 +559,34 @@ class AbstractCloud(AbstractCommandParser):
         finally:
             if sock:
                 sock.close()
+
+    def wait_for_ssh_ports(self, private_ip, instance_name, ssh_ports):
+        sock = None
+        retry_count = 0
+
+        while retry_count < self.SSH_RETRY_COUNT:
+            logging.info("[app] Waiting for ssh: {}:{}".format(private_ip, str(ssh_ports)))
+            time.sleep(self.SSH_WAIT_SECONDS)
+            # Try connecting with the given ssh ports in succession.
+            for ssh_port in ssh_ports:
+                ssh_port = int(ssh_port)
+                logging.info("[app] Attempting ssh: {}:{}".format(private_ip, str(ssh_port)))
+                try:
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.settimeout(self.SSH_TIMEOUT_SECONDS)
+                    result = sock.connect_ex((private_ip, ssh_port))
+
+                    if result == 0:
+                        logging.info("[app] Connected to {}:{}".format(private_ip, str(ssh_port)))
+                        return ssh_port
+                finally:
+                    if sock:
+                        sock.close()
+            # Increment retry only after attempts on all ports fail.
+            retry_count += 1
+        else:
+            logging.error("[app] Start instance {} exceeded maxRetries!".format(instance_name))
+            raise YBOpsRuntimeError(
+                "Cannot reach the instance {} after its start at ports {}".format(
+                    instance_name, str(ssh_ports))
+                )

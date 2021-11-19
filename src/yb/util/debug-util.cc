@@ -34,7 +34,7 @@
 
 #include <execinfo.h>
 #include <dirent.h>
-#include <signal.h>
+#include <signal.h> // For sigaction
 #include <sys/syscall.h>
 
 #ifdef __linux__
@@ -49,30 +49,20 @@
 #include <string>
 #include <iostream>
 #include <regex>
-#include <unordered_map>
-#include <unordered_set>
-#include <fstream>
-#include <queue>
-#include <sstream>
 
 #include <glog/logging.h>
 
 #include "yb/gutil/linux_syscall_support.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/singleton.h"
-#include "yb/gutil/spinlock.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/numbers.h"
-#include "yb/gutil/strtoint.h"
 
 #include "yb/util/enums.h"
-#include "yb/util/env.h"
 #include "yb/util/errno.h"
 #include "yb/util/lockfree.h"
-#include "yb/util/memory/memory.h"
 #include "yb/util/monotime.h"
 #include "yb/util/thread.h"
-#include "yb/util/string_trim.h"
 
 using namespace std::literals;
 

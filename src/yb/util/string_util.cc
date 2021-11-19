@@ -23,7 +23,6 @@
 #include <regex>
 #include <boost/algorithm/string/predicate.hpp>
 
-#include "yb/util/logging.h"
 
 using std::vector;
 using std::regex;

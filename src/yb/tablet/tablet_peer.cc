@@ -46,7 +46,6 @@
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/opid_util.h"
-#include "yb/consensus/quorum_util.h"
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/retryable_requests.h"
 

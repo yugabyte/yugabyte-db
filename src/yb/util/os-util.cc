@@ -39,10 +39,8 @@
 #include "yb/util/os-util.h"
 
 #include <fstream>
-#include <sstream>
 #include <string>
 #include <vector>
-#include <unistd.h>
 
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/split.h"

@@ -36,8 +36,6 @@
 
 #include "yb/gutil/strings/substitute.h"
 
-#include "yb/rpc/connection.h"
-#include "yb/rpc/inbound_call.h"
 #include "yb/rpc/rpc_header.pb.h"
 
 using std::string;

@@ -20,7 +20,6 @@
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 
 #include "yb/client/table.h"
-#include "yb/client/schema-internal.h"
 
 namespace yb {
 namespace ql {

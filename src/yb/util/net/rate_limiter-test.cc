@@ -12,7 +12,6 @@
 //
 
 #include <chrono>
-#include <cmath>
 #include <random>
 
 #include "yb/util/net/rate_limiter.h"

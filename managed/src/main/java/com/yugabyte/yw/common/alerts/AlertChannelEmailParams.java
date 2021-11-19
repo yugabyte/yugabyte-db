@@ -6,23 +6,23 @@ import com.fasterxml.jackson.annotation.JsonTypeName;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.EmailHelper;
 import java.util.List;
+import lombok.Data;
 import lombok.EqualsAndHashCode;
-import lombok.ToString;
 import org.apache.commons.validator.routines.EmailValidator;
 
+@Data
 @EqualsAndHashCode(callSuper = false)
-@ToString
 // TODO: To mask/unmask sensitive fields while serializing to/deserializing from Json.
 @JsonTypeName("Email")
 public class AlertChannelEmailParams extends AlertChannelParams {
 
-  public boolean defaultRecipients = false;
+  private boolean defaultRecipients = false;
 
-  public List<String> recipients;
+  private List<String> recipients;
 
-  public boolean defaultSmtpSettings = false;
+  private boolean defaultSmtpSettings = false;
 
-  public SmtpData smtpData;
+  private SmtpData smtpData;
 
   @Override
   public void validate(BeanValidator validator) {

@@ -15,26 +15,15 @@
 
 #include <tuple>
 
-#include "yb/common/ql_value.h"
 
-#include "yb/client/client-internal.h"
-#include "yb/client/client-test-util.h"
 #include "yb/client/client.h"
-#include "yb/client/session.h"
-#include "yb/client/table_alterer.h"
-#include "yb/client/table_creator.h"
-#include "yb/client/table_handle.h"
-#include "yb/client/transaction.h"
-#include "yb/client/transaction_manager.h"
-#include "yb/client/yb_op.h"
+#include "yb/client/table.h"
+#include "yb/master/master.pb.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/strip.h"
 #include "yb/gutil/strings/substitute.h"
 
-#include "yb/master/master.pb.h"
 
-#include "yb/server/hybrid_clock.h"
-#include "yb/server/clock.h"
 
 #include "yb/integration-tests/backfill-test-util.h"
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"

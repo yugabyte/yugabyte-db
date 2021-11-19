@@ -156,6 +156,12 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                           AlterUniverseReplicationResponsePB* resp,
                                           rpc::RpcContext* rpc);
 
+  // Rename an existing Universe Replication.
+  CHECKED_STATUS RenameUniverseReplication(scoped_refptr<UniverseReplicationInfo> universe,
+                                           const AlterUniverseReplicationRequestPB* req,
+                                           AlterUniverseReplicationResponsePB* resp,
+                                           rpc::RpcContext* rpc);
+
   // Enable/Disable an Existing Universe Replication.
   CHECKED_STATUS SetUniverseReplicationEnabled(const SetUniverseReplicationEnabledRequestPB* req,
                                                SetUniverseReplicationEnabledResponsePB* resp,

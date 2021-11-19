@@ -149,6 +149,7 @@ POST    /customers/:cUUID/alert_configurations/list                            c
 POST    /customers/:cUUID/alert_configurations                                 com.yugabyte.yw.controllers.AlertController.createAlertConfiguration(cUUID: java.util.UUID)
 PUT     /customers/:cUUID/alert_configurations/:configurationUUID              com.yugabyte.yw.controllers.AlertController.updateAlertConfiguration(cUUID: java.util.UUID, configurationUUID: java.util.UUID)
 DELETE  /customers/:cUUID/alert_configurations/:configurationUUID              com.yugabyte.yw.controllers.AlertController.deleteAlertConfiguration(cUUID: java.util.UUID, configurationUUID: java.util.UUID)
+POST    /customers/:cUUID/alert_configurations/:configurationUUID/test_alert   com.yugabyte.yw.controllers.AlertController.sendTestAlert(cUUID: java.util.UUID, configurationUUID: java.util.UUID)
 
 POST    /customers/:cUUID/alert_channels                                       com.yugabyte.yw.controllers.AlertController.createAlertChannel(cUUID: java.util.UUID)
 GET     /customers/:cUUID/alert_channels                                       com.yugabyte.yw.controllers.AlertController.listAlertChannels(cUUID: java.util.UUID)
@@ -354,5 +355,5 @@ PUT    /customers/:cUUID/universes/:uniUUID/stop_scheduled_script              c
 PUT    /customers/:cUUID/universes/:uniUUID/update_scheduled_script            com.yugabyte.yw.controllers.ScheduleScriptController.updateScheduledScript(cUUID: java.util.UUID, uniUUID : java.util.UUID)
 
 # Support Bundle API
-POST   /customers/:cUUID/universes/:uniUUID/support_bundle                     com.yugabyte.yw.controllers.SupportBundleController.createSupportBundle(cUUID: java.util.UUID, uniUUID: java.util.UUID)
-GET    /customers/:cUUID/universes/:uniUUID/support_bundle/:sbUUID             com.yugabyte.yw.controllers.SupportBundleController.getSupportBundle(cUUID: java.util.UUID, uniUUID: java.util.UUID, sbUUID: java.util.UUID)
+POST   /customers/:cUUID/universes/:uniUUID/support_bundle                     com.yugabyte.yw.controllers.SupportBundleController.create(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+GET    /customers/:cUUID/universes/:uniUUID/support_bundle/:sbUUID             com.yugabyte.yw.controllers.SupportBundleController.get(cUUID: java.util.UUID, uniUUID: java.util.UUID, sbUUID: java.util.UUID)

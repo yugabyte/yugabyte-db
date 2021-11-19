@@ -16,7 +16,6 @@
 #include <hiredis/hiredis.h>
 
 #include "yb/util/scope_exit.h"
-#include "yb/util/stol_utils.h"
 
 namespace yb {
 namespace redisserver {

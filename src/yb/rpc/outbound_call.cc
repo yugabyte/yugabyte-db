@@ -39,7 +39,6 @@
 
 #include <gflags/gflags.h>
 
-#include <google/protobuf/io/zero_copy_stream_impl_lite.h>
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
@@ -52,11 +51,9 @@
 #include "yb/rpc/rpc_metrics.h"
 #include "yb/rpc/serialization.h"
 
-#include "yb/util/concurrent_value.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/pb_util.h"
-#include "yb/util/scope_exit.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"

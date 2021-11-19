@@ -30,7 +30,7 @@
 // under the License.
 //
 
-#include <signal.h>
+#include <signal.h> // For sigaction
 #include <sys/time.h>
 
 #include <gflags/gflags.h>

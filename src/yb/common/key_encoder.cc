@@ -32,10 +32,8 @@
 
 #include <functional>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
-#include <boost/noncopyable.hpp>
 
 #include "yb/common/common.pb.h"
 #include "yb/common/key_encoder.h"

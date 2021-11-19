@@ -52,8 +52,8 @@ public class AlertChannelSlackTest extends FakeDBApplication {
 
       AlertChannel channel = new AlertChannel();
       AlertChannelSlackParams params = new AlertChannelSlackParams();
-      params.username = "Slack Bot";
-      params.webhookUrl = baseUrl.toString();
+      params.setUsername("Slack Bot");
+      params.setWebhookUrl(baseUrl.toString());
       channel.setParams(params);
 
       Alert alert = ModelFactory.createAlert(defaultCustomer);
@@ -80,8 +80,8 @@ public class AlertChannelSlackTest extends FakeDBApplication {
 
       AlertChannel channel = new AlertChannel();
       AlertChannelSlackParams params = new AlertChannelSlackParams();
-      params.username = "Slack Bot";
-      params.webhookUrl = baseUrl.toString();
+      params.setUsername("Slack Bot");
+      params.setWebhookUrl(baseUrl.toString());
       channel.setParams(params);
 
       Alert alert = ModelFactory.createAlert(defaultCustomer);

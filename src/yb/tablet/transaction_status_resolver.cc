@@ -13,7 +13,6 @@
 
 #include "yb/tablet/transaction_status_resolver.h"
 
-#include <gflags/gflags.h>
 
 #include "yb/client/transaction_rpc.h"
 

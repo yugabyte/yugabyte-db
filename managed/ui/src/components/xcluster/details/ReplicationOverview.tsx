@@ -2,6 +2,7 @@ import React from 'react';
 import { Col, Row } from 'react-bootstrap';
 import { Link } from 'react-router';
 import { IReplication } from '../IClusterReplication';
+import { getMasterNodeAddress } from '../ReplicationUtils';
 
 export function ReplicationOverview({
   replication,
@@ -64,7 +65,7 @@ export function ReplicationOverview({
             <Col lg={3} className="replication-label">
               Master node address
             </Col>
-            <Col lg={3}>{replication.masterAddress}</Col>
+            <Col lg={3}>{getMasterNodeAddress(nodeDetailsSet)}</Col>
           </Row>
           <div className="replication-divider" />
           <Row>

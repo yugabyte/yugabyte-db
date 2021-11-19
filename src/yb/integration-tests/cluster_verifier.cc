@@ -32,10 +32,11 @@
 
 #include "yb/integration-tests/cluster_verifier.h"
 
-#include <string>
+#include <atomic>
 #include <memory>
+#include <string>
+#include <thread>
 #include <vector>
-#include <gtest/gtest.h>
 
 #include "yb/client/client.h"
 #include "yb/client/table_handle.h"
@@ -45,7 +46,11 @@
 #include "yb/rpc/messenger.h"
 #include "yb/tools/ysck_remote.h"
 #include "yb/util/monotime.h"
-#include "yb/util/test_util.h"
+#include "yb/util/env.h"
+#include "yb/util/result.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/thread.h"
+#include "yb/util/tsan_util.h"
 
 using std::string;
 using std::vector;

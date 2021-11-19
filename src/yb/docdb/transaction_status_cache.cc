@@ -13,7 +13,6 @@
 
 #include "yb/docdb/transaction_status_cache.h"
 
-#include <boost/optional/optional.hpp>
 
 #include "yb/common/hybrid_time.h"
 #include "yb/docdb/transaction_dump.h"

@@ -62,7 +62,8 @@ public class CustomerTaskController extends AuthenticatedController {
             .eq("task_state", TaskInfo.State.Failure.name())
             .orderBy("position desc");
     List<TaskInfo> result = new ArrayList<>(subTaskQuery.findList());
-    if (parentTask.getTaskState() == TaskInfo.State.Failure) {
+
+    if ((parentTask.getTaskState() == TaskInfo.State.Failure) && result.isEmpty()) {
       JsonNode taskError = parentTask.getTaskDetails().get("errorString");
       if ((taskError != null) && !StringUtils.isEmpty(taskError.asText())) {
         // Parent task hasn't `sub_task_group_type` set but can have some error details

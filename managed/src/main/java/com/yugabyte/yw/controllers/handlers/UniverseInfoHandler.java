@@ -204,7 +204,7 @@ public class UniverseInfoHandler {
     return targetFile;
   }
 
-  Path downloadUniverseLogs(Customer customer, Universe universe, Path basePath) {
+  public Path downloadUniverseLogs(Customer customer, Universe universe, Path basePath) {
     List<NodeDetails> nodes = universe.getNodes().stream().collect(Collectors.toList());
 
     for (NodeDetails node : nodes) {

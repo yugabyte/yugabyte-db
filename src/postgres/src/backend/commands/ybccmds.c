@@ -1012,6 +1012,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, YBCPgStatement handle,
 		case AT_NoForceRowSecurity:
 		case AT_AttachPartition:
 		case AT_DetachPartition:
+		case AT_SetTableSpace:
 			/* For these cases a YugaByte alter isn't required, so we do nothing. */
 			break;
 

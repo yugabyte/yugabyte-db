@@ -33,7 +33,6 @@
 
 #include "yb/common/entity_ids_types.h"
 #include "yb/consensus/consensus_util.h"
-#include "yb/consensus/log_util.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"

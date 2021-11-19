@@ -15,13 +15,15 @@
 package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.AlertManager;
+import com.yugabyte.yw.common.AlertManager.SendNotificationResult;
+import com.yugabyte.yw.common.AlertManager.SendNotificationStatus;
 import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.alerts.AlertChannelService;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.alerts.AlertService;
-import com.yugabyte.yw.models.extended.AlertConfigurationTemplate;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.forms.AlertChannelFormData;
 import com.yugabyte.yw.forms.AlertDestinationFormData;
@@ -38,6 +40,7 @@ import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.AlertDestination;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.extended.AlertConfigurationTemplate;
 import com.yugabyte.yw.models.filters.AlertConfigurationFilter;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.filters.AlertTemplateFilter;
@@ -69,6 +72,8 @@ public class AlertController extends AuthenticatedController {
   @Inject private AlertChannelService alertChannelService;
 
   @Inject private AlertDestinationService alertDestinationService;
+
+  @Inject private AlertManager alertManager;
 
   @ApiOperation(value = "Get details of an alert", response = Alert.class)
   public Result get(UUID customerUUID, UUID alertUUID) {
@@ -296,6 +301,19 @@ public class AlertController extends AuthenticatedController {
 
     auditService().createAuditEntry(ctx(), request());
     return YBPSuccess.empty();
+  }
+
+  @ApiOperation(value = "Send test alert for alert configuration", response = YBPSuccess.class)
+  public Result sendTestAlert(UUID customerUUID, UUID configurationUUID) {
+    Customer.getOrBadRequest(customerUUID);
+
+    AlertConfiguration configuration = alertConfigurationService.getOrBadRequest(configurationUUID);
+    Alert alert = alertConfigurationService.createTestAlert(configuration);
+    SendNotificationResult result = alertManager.sendNotification(alert);
+    if (result.getStatus() != SendNotificationStatus.SUCCEEDED) {
+      throw new PlatformServiceException(BAD_REQUEST, result.getMessage());
+    }
+    return YBPSuccess.withMessage(result.getMessage());
   }
 
   @ApiOperation(value = "Create an alert channel", response = AlertChannel.class)

@@ -62,7 +62,6 @@
 #include "yb/rocksdb/util/xxhash.h"
 
 #include "yb/util/mem_tracker.h"
-#include "yb/util/string_util.h"
 
 #include "yb/gutil/macros.h"
 

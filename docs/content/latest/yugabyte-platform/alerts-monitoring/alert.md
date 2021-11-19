@@ -21,5 +21,5 @@ You can access detailed information about a specific alert by clicking on its na
 
 The alert status can be active, acknowledged, or resolved. You can change the status by taking an appropriate action, such as, for example, **Acknowledge** for an active alert. Note that if you are using a read-only account for Yugabyte Platform, you cannot perform actions.
 
-
+For additional information, see [Alerts and Notifications in Yugabyte Platform](https://blog.yugabyte.com/yugabytedb-2-8-alerts-and-notifications/).
 

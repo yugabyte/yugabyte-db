@@ -13,11 +13,13 @@
 
 #include "yb/util/net/inetaddress.h"
 
-#include <boost/asio/io_service.hpp>
-#include <boost/asio/ip/tcp.hpp>
+#include <memory>
+#include <string>
+#include <vector>
 
 #include "yb/gutil/strings/split.h"
-#include "yb/util/net/net_util.h"
+#include "yb/util/status.h"
+#include "yb/util/net/net_fwd.h"
 
 using boost::asio::ip::address;
 using boost::asio::ip::address_v4;

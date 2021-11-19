@@ -55,9 +55,7 @@
 
 #include "yb/tserver/local_tablet_server.h"
 #include "yb/tserver/tserver_service.proxy.h"
-#include "yb/tserver/tserver_forward_service.proxy.h"
 
-#include "yb/util/algorithm_util.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/net/net_util.h"

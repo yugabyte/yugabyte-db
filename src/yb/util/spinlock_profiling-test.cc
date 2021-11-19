@@ -32,7 +32,6 @@
 
 #include <gtest/gtest.h>
 #include <glog/logging.h>
-#include <strstream>
 
 #include "yb/gutil/spinlock.h"
 #include "yb/util/spinlock_profiling.h"

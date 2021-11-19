@@ -41,7 +41,6 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
 #include "yb/util/env.h"
-#include "yb/util/memenv/memenv.h"
 #include "yb/util/path_util.h"
 #include "yb/util/test_util.h"
 
