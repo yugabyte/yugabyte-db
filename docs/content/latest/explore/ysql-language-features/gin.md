@@ -73,7 +73,7 @@ Only [certain SELECTs][operators] use the GIN index.
 YugabyteDB GIN indexes are somewhat different from PostgreSQL GIN indexes:
 
 - PostgreSQL uses bitmap index scan, while YugabyteDB uses index scan.
-- In YugabyteDB, deletes to the index are written explicitly. This is due to storage-layer architecture differences, and is also true for regular indexes.
+- In YugabyteDB, deletes to the index are written explicitly. This is due to storage-layer architecture differences and is also true for regular indexes.
 - YugabyteDB doesn't support fast update, as it isn't practical for a distributed, log-structured database.
 - YugabyteDB doesn't yet support fuzzy search limit.
 
