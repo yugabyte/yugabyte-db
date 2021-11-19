@@ -24,12 +24,12 @@ character strings and therefore are considered _not collatable_. For example:
 
 
 ```sql
-create table coll_tab1(id int collate "en_US.utf8");
+create table coll_tab1(id int collate "en_US");
 ```
 
 ```output
 ERROR:  collations are not supported by type integer
-LINE 1: create table coll_tab1(id int collate "en_US.utf8");
+LINE 1: create table coll_tab1(id int collate "en_US");
 ```
 
 
@@ -51,7 +51,7 @@ select 'a' < 'A' as r;
 ```
 
 ```sql
-select 'a' < 'A' collate "en_US.utf8" as r;
+select 'a' < 'A' collate "en_US" as r;
 ```
 
 ```output
@@ -62,7 +62,7 @@ select 'a' < 'A' collate "en_US.utf8" as r;
 ```
 
 
-We can see that the use of `collate "en_US.utf8"` changed the ordering between `'a'` and `'A'`.
+We can see that the use of `collate "en_US"` changed the ordering between `'a'` and `'A'`.
 
 When no explicit collation is specified, all character string data types have a default collation.
 
@@ -81,13 +81,13 @@ there are two collation support libraries: libc (the standard C library) and lib
 Components for Unicode library). In general libc has more collation variations across different
 platforms. For example, on the Linux platform where glibc is used, collation names are internally
 normalized by converting a collation name to lowercase and removing special characters. So
-`"en_US.UTF-8"` is converted to `"en_US.utf8"`. The Mac OS X libc is part of `libSystem.dylib` and
-it does not do the collation name normalization. Therefore libc collation `"en_US.utf8"` is only
+`"en_US.UTF-8"` is converted to `"en_US"`. The Mac OS X libc is part of `libSystem.dylib` and
+it does not do the collation name normalization. Therefore libc collation `"en_US"` is only
 valid on Linux platforms while collation `"en_US.UTF-8"` is only valid on Mac platforms. The ICU
 library libicu is more platform independent and is generally also considered more robust. For
 example, ICU collation `"en-US-x-icu"` is a valid name on both Linux and Mac platforms. Currently
 YSQL supports all the OS supplied ICU collations and only a few libc collations such as the "C"
-collation and the `"en_US.utf8`? collation. The system catalog table `pg_collation` contains all the
+collation and the `"en_US`? collation. The system catalog table `pg_collation` contains all the
 collations that can be used in YSQL, including those predefined collations that are imported from
 libc and libicu at initdb time, and any user defined collations created after that.
 
@@ -154,7 +154,7 @@ enforce a dictionary sort order:
 
 
 ```sql
-create table coll_tab3(name text collate "en_US.utf8");
+create table coll_tab3(name text collate "en_US");
 insert into coll_tab3 values ('a'), ('Z');
 select * from coll_tab3 order by name;
 ```
@@ -253,7 +253,7 @@ discarded. Consider this example:
 
 
 ```sql
-create table coll_tab7(x text collate "C", y text collate "en_US.utf8");
+create table coll_tab7(x text collate "C", y text collate "en_US");
 insert into coll_tab7 values ('x', 'y');
 select x || y as z from coll_tab7;
 ```
@@ -270,7 +270,7 @@ select x || y as z from coll_tab7 order by 1;
 ```
 
 ```output
-ERROR:  collation mismatch between implicit collations "C" and "en_US.utf8"
+ERROR:  collation mismatch between implicit collations "C" and "en_US"
 LINE 1: select x || y as z from coll_tab7 order by 1;
                     ^
 HINT:  You can choose the collation by applying the COLLATE clause to one or both expressions.
@@ -279,7 +279,7 @@ yugabyte=#
 
 
 The first query does not involve comparison, therefore both column x's collation `"C"` and column
-y's collation `"en_US.utf8"` are ignored. The operator `'||' `is not collation sensitive. In the
+y's collation `"en_US"` are ignored. The operator `'||' `is not collation sensitive. In the
 second query, the result of `x || y` needs to be sorted and thus is used in a comparison context. In
 this case YSQL cannot decide the collation to use because both column x and column y have collations
 specified and thus have equal strength. It is up to the user to add explicit collation in the query
@@ -287,7 +287,7 @@ to resolve the collation mismatch such as
 
 
 ```sql
-select (x || y) collate "en_US.utf8" as z from coll_tab7 order by 1;
+select (x || y) collate "en_US" as z from coll_tab7 order by 1;
 ```
 
 ```output
@@ -307,13 +307,13 @@ collation objects to be incompatible even when they have identical properties. F
 
 
 ```sql
-create collation nd from "en_US.utf8";
-select 'a' collate nd < 'Z' collate "en_US.utf8";
+create collation nd from "en_US";
+select 'a' collate nd < 'Z' collate "en_US";
 ```
 
 ```output
-ERROR:  collation mismatch between explicit collations "nd" and "en_US.utf8"
-LINE 1: select 'a' collate nd < 'Z' collate "en_US.utf8";
+ERROR:  collation mismatch between explicit collations "nd" and "en_US"
+LINE 1: select 'a' collate nd < 'Z' collate "en_US";
 ```
 
 
@@ -327,12 +327,12 @@ There are a number of YSQL restrictions on collation due to internal implementat
 * Databases can only be created with "C" collation.
 
     ```sql
-    create database db LC_COLLATE = "en_US.utf8" TEMPLATE template0;
+    create database db LC_COLLATE = "en_US" TEMPLATE template0;
     ```
 
     ```output
     ERROR:  Value other than 'C' for lc_collate option is not yet supported
-    LINE 1: create database db LC_COLLATE = "en_US.utf8" TEMPLATE templa...
+    LINE 1: create database db LC_COLLATE = "en_US" TEMPLATE templa...
                                ^
     HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
     yugabyte=#
@@ -351,7 +351,7 @@ There are a number of YSQL restrictions on collation due to internal implementat
      C
      POSIX
      ucs_basic
-     en_US.utf8
+     en_US
      en_US
     (5 rows)
     ```
@@ -361,7 +361,7 @@ There are a number of YSQL restrictions on collation due to internal implementat
 
     ```sql
     create table coll_tab8(id text);
-    alter table coll_tab8 alter column id set data type text collate "en_US.utf8";
+    alter table coll_tab8 alter column id set data type text collate "en_US";
     ```
 
     ```output
@@ -373,11 +373,11 @@ There are a number of YSQL restrictions on collation due to internal implementat
 index creation
 
     ```sql
-    create table coll_tab9(id char(10) collate "en_US.utf8");
+    create table coll_tab9(id char(10) collate "en_US");
     create index coll_tab9_id_idx on coll_tab9(id bpchar_pattern_ops asc);
     ```
 
     ```output
-    ERROR:  could not use operator class "bpchar_pattern_ops" with column collation "en_US.utf8"
+    ERROR:  could not use operator class "bpchar_pattern_ops" with column collation "en_US"
     HINT:  Use the COLLATE clause to set "C" collation explicitly.
     ```
