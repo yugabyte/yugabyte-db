@@ -3308,9 +3308,17 @@
         "level" : {
           "enum" : [ "ERROR", "WARN", "INFO", "DEBUG", "TRACE" ],
           "type" : "string"
+        },
+        "maxHistory" : {
+          "format" : "int32",
+          "minimum" : 0,
+          "type" : "integer"
+        },
+        "rolloverPattern" : {
+          "type" : "string"
         }
       },
-      "required" : [ "level" ],
+      "required" : [ "level", "maxHistory", "rolloverPattern" ],
       "type" : "object"
     },
     "Provider" : {
@@ -10200,7 +10208,7 @@
     "/api/v1/logging_config" : {
       "post" : {
         "description" : "",
-        "operationId" : "setLoggingLevel",
+        "operationId" : "setLoggingSettings",
         "parameters" : [ {
           "description" : "Logging config to be updated",
           "in" : "body",
