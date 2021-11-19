@@ -360,8 +360,8 @@ GIN indexes are still in progress: see the GIN roadmap tracking [GitHub issue][g
 
 GIN indexes are in active development, and currently have the following limitations:
 
-- Multi-column GIN indexes are not currently supported. ([#12345](github-link-here))
-- You can't yet specify `ASC`, `DESC`, or `HASH` sort methods. The default is `ASC` for prefix match purposes, so this can be relaxed in the future. ([#12345](github-link-here))
+- Multi-column GIN indexes are not currently supported. ([#10652](https://github.com/yugabyte/yugabyte-db/issues/10652))
+- You can't yet specify `ASC`, `DESC`, or `HASH` sort methods. The default is `ASC` for prefix match purposes, so this can be relaxed in the future. ([#10653](https://github.com/yugabyte/yugabyte-db/issues/10653))
 - UPDATEs may be expensive, since they're currently implemented as DELETE + INSERT.
 - SELECT operations have the following limitations:
   - Scans with non-default search mode aren't currently supported.
