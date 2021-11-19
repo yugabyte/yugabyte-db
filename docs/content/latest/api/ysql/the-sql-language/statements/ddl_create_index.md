@@ -74,6 +74,12 @@ Enforce that duplicate values in a table are not allowed.
 
 Disable online schema migration (see [Semantics](#semantics) for details).
 
+### *access_method_name*
+
+The name of the index access method.
+By default, `lsm` is used for YugabyteDB tables and `btree` is used otherwise (for example, temporary tables).
+[GIN indexes](../../../../../explore/ysql-language-features/gin) can be created in YugabyteDB by using the `ybgin` access method.
+
 ### INCLUDE clause
 
 Specify a list of columns which will be included in the index as non-key columns.
