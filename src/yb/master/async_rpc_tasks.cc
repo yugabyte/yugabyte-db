@@ -1338,8 +1338,9 @@ AsyncSplitTablet::AsyncSplitTablet(
     Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
     const std::array<TabletId, kNumSplitParts>& new_tablet_ids,
     const std::string& split_encoded_key, const std::string& split_partition_key,
-    std::function<void(const Status&)> result_cb)
-    : AsyncTabletLeaderTask(master, callback_pool, tablet), result_cb_(result_cb) {
+    TabletSplitCompleteHandlerIf* tablet_split_complete_handler)
+    : AsyncTabletLeaderTask(master, callback_pool, tablet),
+      tablet_split_complete_handler_(tablet_split_complete_handler) {
   req_.set_tablet_id(tablet_id());
   req_.set_new_tablet1_id(new_tablet_ids[0]);
   req_.set_new_tablet2_id(new_tablet_ids[1]);
@@ -1379,8 +1380,13 @@ bool AsyncSplitTablet::SendRequest(int attempt) {
 }
 
 void AsyncSplitTablet::Finished(const Status& status) {
-  if (result_cb_) {
-    result_cb_(status);
+  if (tablet_split_complete_handler_) {
+    SplitTabletIds split_tablet_ids {
+      .source = req_.tablet_id(),
+      .children = {req_.new_tablet1_id(), req_.new_tablet2_id()}
+    };
+    tablet_split_complete_handler_->ProcessSplitTabletResult(
+        status, table_->id(), split_tablet_ids);
   }
 }
 

@@ -715,7 +715,7 @@ CatalogManager::CatalogManager(Master* master)
       ysql_transaction_(this, master_),
       tablespace_manager_(std::make_shared<YsqlTablespaceManager>(nullptr, nullptr)),
       tablespace_bg_task_running_(false),
-      tablet_split_manager_(this, this) {
+      tablet_split_manager_(this, this, this) {
   InitMasterFlags();
   CHECK_OK(ThreadPoolBuilder("leader-initialization")
            .set_max_threads(1)
@@ -8125,12 +8125,7 @@ Status CatalogManager::SendSplitTabletRequest(
           << tablet->tablet_id() << ", after-split tablet IDs: " << AsString(new_tablet_ids);
   auto call = std::make_shared<AsyncSplitTablet>(
       master_, AsyncTaskPool(), tablet, new_tablet_ids, split_encoded_key, split_partition_key,
-      [this, tablet](const Status& status) {
-        if (!status.ok()) {
-          LOG(WARNING) << "AsyncSplitTablet task failed with status: " << status;
-          tablet_split_manager_.RemoveFailedProcessingTabletSplit(tablet->tablet_id());
-        }
-      });
+      &tablet_split_manager_);
   tablet->table()->AddTask(call);
   return ScheduleTask(call);
 }

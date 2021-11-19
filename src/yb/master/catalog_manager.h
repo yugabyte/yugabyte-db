@@ -58,6 +58,7 @@
 #include "yb/gutil/thread_annotations.h"
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/cdc_consumer_split_driver.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/sys_catalog_initialization.h"
 #include "yb/master/scoped_leader_shared_lock.h"
@@ -163,7 +164,8 @@ typedef unordered_map<TableId, vector<scoped_refptr<TabletInfo>>> TableToTabletI
 class CatalogManager :
     public tserver::TabletPeerLookupIf,
     public TabletSplitCandidateFilterIf,
-    public TabletSplitDriverIf {
+    public TabletSplitDriverIf,
+    public CDCConsumerSplitDriverIf {
   typedef std::unordered_map<NamespaceName, scoped_refptr<NamespaceInfo> > NamespaceInfoMap;
 
   class NamespaceNameMapper {
@@ -458,6 +460,12 @@ class CatalogManager :
 
   virtual CHECKED_STATUS ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
                                               ChangeEncryptionInfoResponsePB* resp);
+
+  CHECKED_STATUS UpdateCDCConsumerOnTabletSplit(const TableId& consumer_table_id,
+                                                const SplitTabletIds& split_tablet_ids) override {
+    // Default value.
+    return Status::OK();
+  }
 
   Result<uint64_t> IncrementYsqlCatalogVersion();
 

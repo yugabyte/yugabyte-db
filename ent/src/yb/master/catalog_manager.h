@@ -78,6 +78,9 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   CHECKED_STATUS ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
                                       ChangeEncryptionInfoResponsePB* resp) override;
 
+  CHECKED_STATUS UpdateCDCConsumerOnTabletSplit(const TableId& consumer_table_id,
+                                                const SplitTabletIds& split_tablet_ids) override;
+
   CHECKED_STATUS InitCDCConsumer(const std::vector<CDCConsumerStreamInfo>& consumer_info,
                                  const std::string& master_addrs,
                                  const std::string& producer_universe_uuid);
@@ -393,6 +396,13 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   // Checks if the table is a consumer in an xCluster replication universe.
   bool IsTableCdcConsumer(const TableInfo& table_info) const REQUIRES_SHARED(mutex_);
 
+  // Maps producer universe id to the corresponding cdc stream for that table.
+  typedef std::unordered_map<std::string, CDCStreamId> XClusterConsumerTableStreamInfoMap;
+
+  // Gets the set of CDC stream info for an xCluster consumer table.
+  XClusterConsumerTableStreamInfoMap GetXClusterStreamInfoForConsumerTable(const TableId& table_id)
+      const;
+
   CHECKED_STATUS CreateTransactionAwareSnapshot(
       const CreateSnapshotRequestPB& req, CreateSnapshotResponsePB* resp, rpc::RpcContext* rpc);
 
@@ -425,8 +435,9 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   // Map of tables -> number of cdc streams they are producers for.
   std::unordered_map<TableId, int> cdc_stream_tables_count_map_ GUARDED_BY(mutex_);
 
-  // Set of all consumer tables that are part of xcluster replication.
-  std::unordered_set<TableId> xcluster_consumer_tables_set_ GUARDED_BY(mutex_);
+  // Map of all consumer tables that are part of xcluster replication, to a map of the stream infos.
+  std::unordered_map<TableId, XClusterConsumerTableStreamInfoMap>
+      xcluster_consumer_tables_to_stream_map_ GUARDED_BY(mutex_);
 
   typedef std::unordered_map<std::string, scoped_refptr<UniverseReplicationInfo>>
       UniverseReplicationInfoMap;
