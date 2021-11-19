@@ -3,6 +3,8 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.base.Strings;
+import com.google.common.collect.Streams;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
@@ -87,10 +89,13 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+
+import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.MDC;
 import org.yb.Common;
@@ -1434,30 +1439,41 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   // Check if the node present in taskParams has a backing instance alive on the IaaS.
   public boolean instanceExists(NodeTaskParams taskParams) {
-    // Create the process to fetch information about the node from the cloud provider.
+    Optional<Boolean> optional = instanceExists(taskParams, null);
+    return optional.isPresent();
+  }
+
+  // It returns 3 states - empty for not found, false for not matching and true for matching.
+  public Optional<Boolean> instanceExists(
+      NodeTaskParams taskParams, Map<String, String> expectedTags) {
     NodeManager nodeManager = Play.current().injector().instanceOf(NodeManager.class);
     ShellResponse response = nodeManager.nodeCommand(NodeManager.NodeCommandType.List, taskParams);
     processShellResponse(response);
-    boolean exists = true;
-    if (response != null && response.message != null && !StringUtils.isEmpty(response.message)) {
-      JsonNode jsonNodeTmp = Json.parse(response.message);
-      if (jsonNodeTmp.isArray()) {
-        jsonNodeTmp = jsonNodeTmp.get(0);
-      }
-      final JsonNode jsonNode = jsonNodeTmp;
-      Iterator<Entry<String, JsonNode>> iter = jsonNode.fields();
-      while (iter.hasNext()) {
-        Entry<String, JsonNode> entry = iter.next();
-        log.info("key {} to value {}.", entry.getKey(), entry.getValue());
-        if (entry.getKey().equals("host_found") && entry.getValue().asText().equals("false")) {
-          exists = false;
-          break;
-        }
-      }
-    } else {
-      exists = false;
+    if (response == null || Strings.isNullOrEmpty(response.message)) {
+      // Instance does not exist.
+      return Optional.empty();
     }
-    return exists;
+    if (MapUtils.isEmpty(expectedTags)) {
+      return Optional.of(true);
+    }
+    JsonNode jsonNode = Json.parse(response.message);
+    if (jsonNode.isArray()) {
+      jsonNode = jsonNode.get(0);
+    }
+    long matchCount =
+        Streams.stream(jsonNode.fields())
+            .filter(
+                e -> {
+                  log.info(
+                      "Node: {}, Key: {}, Value: {}",
+                      taskParams.nodeName,
+                      e.getKey(),
+                      e.getValue());
+                  String expectedTagValue = expectedTags.get(e.getKey());
+                  return expectedTagValue != null && expectedTagValue.equals(e.getValue().asText());
+                })
+            .count();
+    return Optional.of(matchCount == expectedTags.size());
   }
 
   // Perform preflight checks on the given node.
