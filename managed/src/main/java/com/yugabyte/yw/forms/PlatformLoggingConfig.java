@@ -2,16 +2,24 @@
 
 package com.yugabyte.yw.forms;
 
+import javax.annotation.Nullable;
 import javax.persistence.Enumerated;
 import javax.persistence.EnumType;
-import lombok.Getter;
-import play.data.validation.Constraints;
+import javax.validation.constraints.Min;
+import javax.validation.constraints.NotNull;
+import lombok.Data;
 import org.slf4j.event.Level;
 
+@Data
 public class PlatformLoggingConfig {
 
-  @Constraints.Required()
+  @NotNull
   @Enumerated(EnumType.STRING)
-  @Getter
-  public Level level;
+  private Level level;
+
+  @Nullable private String rolloverPattern;
+
+  @Nullable
+  @Min(value = 0)
+  private Integer maxHistory;
 }
