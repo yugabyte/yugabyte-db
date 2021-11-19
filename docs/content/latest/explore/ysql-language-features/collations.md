@@ -30,7 +30,6 @@ create table coll_tab1(id int collate "en_US.utf8");
 ```output
 ERROR:  collations are not supported by type integer
 LINE 1: create table coll_tab1(id int collate "en_US.utf8");
-                                ^
 ```
 
 
@@ -49,6 +48,7 @@ select 'a' < 'A' as r;
 ---
  f
 (1 row)
+```
 
 ```sql
 select 'a' < 'A' collate "en_US.utf8" as r;
@@ -91,7 +91,7 @@ collation and the `"en_US.utf8`? collation. The system catalog table `pg_collati
 collations that can be used in YSQL, including those predefined collations that are imported from
 libc and libicu at initdb time, and any user defined collations created after that.
 
-YSQL imports all the 783 ICU collations provided by the operating system.
+YSQL imports all the ICU collations provided by the operating system.
 
 
 ```sql
@@ -118,11 +118,9 @@ select * from pg_collation where collname = 'nd';
 ```
 
 ```output
- collname | collnamespace | collowner | collprovider | collencoding | collcollate | collctype |
-collversion 
+ collname | collnamespace | collowner | collprovider | collencoding | collcollate | collctype | collversion 
 ----------+---------------+-----------+--------------+--------------+-------------+-----------+-------------
- nd       |          2200 |     13247 | i            |           -1 |             |           |
-153.14
+ nd       |          2200 |     13247 | i            |           -1 |             |           | 153.14
 (1 row)
 ```
 
