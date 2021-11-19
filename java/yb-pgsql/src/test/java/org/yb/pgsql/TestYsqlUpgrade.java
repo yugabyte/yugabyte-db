@@ -679,10 +679,12 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     try (Connection conn = getConnectionBuilder().withDatabase(customDbName).connect();
          Statement stmt = conn.createStatement()) {
       SysCatalogSnapshot preSnapshot = takeSysCatalogSnapshot(stmt);
-      final int latestVersion = preSnapshot.catalog.get(MIGRATIONS_TABLE).get(0).getInt(0);
+      final int latestMajorVersion = preSnapshot.catalog.get(MIGRATIONS_TABLE).get(0).getInt(0);
+      final int latestMinorVersion = preSnapshot.catalog.get(MIGRATIONS_TABLE).get(0).getInt(1);
+      final int totalMigrations = latestMajorVersion + latestMinorVersion;
       // Make sure the latest version is at least as big as the last hardcoded one (it will be
       // greater if more migrations were introduced after YSQL upgrade is released).
-      assertTrue(latestVersion >= lastHardcodedMigrationVersion);
+      assertTrue(latestMajorVersion >= lastHardcodedMigrationVersion);
       preSnapshot.catalog.remove(MIGRATIONS_TABLE);
       preSnapshot.catalog.remove(CATALOG_VERSION_TABLE);
 
@@ -691,20 +693,23 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       runMigrations();
 
       SysCatalogSnapshot postSnapshot = takeSysCatalogSnapshot(stmt);
+      List<Row> appliedMigrations = postSnapshot.catalog.get(MIGRATIONS_TABLE);
       assertEquals("Expected an entry for the last hardcoded migration"
           + " and each migration past that!",
-          latestVersion - lastHardcodedMigrationVersion + 1,
-          postSnapshot.catalog.get(MIGRATIONS_TABLE).size());
+          totalMigrations - lastHardcodedMigrationVersion + 1,
+          appliedMigrations.size());
       assertEquals(
           lastHardcodedMigrationVersion,
-          postSnapshot.catalog.get(MIGRATIONS_TABLE)
+          appliedMigrations
               .get(0).getInt(0).intValue());
       assertEquals(
-          latestVersion,
-          postSnapshot.catalog.get(MIGRATIONS_TABLE)
+          latestMajorVersion,
+          appliedMigrations
               .get(postSnapshot.catalog.get(MIGRATIONS_TABLE).size() - 1).getInt(0).intValue());
-      List<Row> appliedMigrations = postSnapshot.catalog.get(MIGRATIONS_TABLE);
-      assertTrue(appliedMigrations.get(0).getInt(0) == lastHardcodedMigrationVersion);
+      assertEquals(
+          latestMinorVersion,
+          appliedMigrations
+              .get(postSnapshot.catalog.get(MIGRATIONS_TABLE).size() - 1).getInt(1).intValue());
       postSnapshot.catalog.remove(MIGRATIONS_TABLE);
       postSnapshot.catalog.remove(CATALOG_VERSION_TABLE);
 
