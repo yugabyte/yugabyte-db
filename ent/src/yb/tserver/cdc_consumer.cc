@@ -202,6 +202,7 @@ void CDCConsumer::UpdateInMemoryState(const cdc::ConsumerRegistryPB* consumer_re
 
   LOG_WITH_PREFIX(INFO) << "Updating CDC consumer registry: " << consumer_registry->DebugString();
 
+  streams_with_same_num_producer_consumer_tablets_.clear();
   for (const auto& producer_map : DCHECK_NOTNULL(consumer_registry)->producer_map()) {
     const auto& producer_entry_pb = producer_map.second;
     if (producer_entry_pb.disable_stream()) {

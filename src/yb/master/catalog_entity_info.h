@@ -930,6 +930,15 @@ auto AddInfoEntry(Info* info, google::protobuf::RepeatedPtrField<SysRowEntry>* o
   return lock;
 }
 
+struct SplitTabletIds {
+  const TabletId& source;
+  const std::pair<const TabletId&, const TabletId&> children;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(source, children);
+  }
+};
+
 }  // namespace master
 }  // namespace yb
 
