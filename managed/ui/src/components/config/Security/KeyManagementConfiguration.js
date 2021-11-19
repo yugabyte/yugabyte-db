@@ -138,6 +138,7 @@ class KeyManagementConfiguration extends Component {
             <Field
               name={'enableIAMProfile'}
               component={YBCheckBox}
+              checkState={this.state.enabledIAMProfile ? true : false}
               input={{
                 onChange: () => this.setState({ enabledIAMProfile: !this.state.enabledIAMProfile })
               }}
