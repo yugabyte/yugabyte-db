@@ -72,9 +72,16 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
       // Run preflight checks on onprem nodes to be added.
       if (performUniversePreflightChecks(taskParams().clusters)) {
-        // Select master nodes, if needed.
+        // Select master nodes, if needed. Changes in masters are not automatically
+        // applied.
         SelectMastersResult selection = selectMasters(universe.getMasterLeaderHostText());
-        verifyMastersSelection();
+        verifyMastersSelection(selection);
+
+        // Applying changes to master flags for added masters only.
+        // We are not clearing this flag according to selection.removedMasters in case
+        // the master leader is to be changed and until the master leader is switched to
+        // the new one.
+        selection.addedMasters.forEach(n -> n.isMaster = true);
 
         // Update the user intent.
         writeUserIntentToUniverse(false);
@@ -358,7 +365,11 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       allMasters.addAll(
           liveNodes
               .stream()
-              .filter(n -> n.isMaster && !takenMasters.contains(n.nodeName))
+              .filter(
+                  n ->
+                      n.isMaster
+                          && !takenMasters.contains(n.nodeName)
+                          && !mastersToStop.contains(n))
               .collect(Collectors.toSet()));
 
       // Change the master addresses in the conf file for the new masters.

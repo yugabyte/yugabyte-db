@@ -420,11 +420,15 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     return nodeMap;
   }
 
-  public SelectMastersResult selectMasters() {
-    return selectMasters(null);
+  public SelectMastersResult selectAndApplyMasters() {
+    return selectMasters(null, true);
   }
 
   public SelectMastersResult selectMasters(String masterLeader) {
+    return selectMasters(masterLeader, false);
+  }
+
+  private SelectMastersResult selectMasters(String masterLeader, boolean applySelection) {
     UniverseDefinitionTaskParams.Cluster primaryCluster = taskParams().getPrimaryCluster();
     if (primaryCluster != null) {
       Set<NodeDetails> primaryNodes = taskParams().getNodesInCluster(primaryCluster.uuid);
@@ -433,7 +437,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               masterLeader,
               primaryNodes,
               primaryCluster.userIntent.replicationFactor,
-              PlacementInfoUtil.getDefaultRegionCode(taskParams()));
+              PlacementInfoUtil.getDefaultRegionCode(taskParams()),
+              applySelection);
       log.info(
           "Active masters count after balancing = "
               + PlacementInfoUtil.getNumActiveMasters(primaryNodes));
@@ -448,13 +453,13 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     return SelectMastersResult.NONE;
   }
 
-  public void verifyMastersSelection() {
+  public void verifyMastersSelection(SelectMastersResult selection) {
     UniverseDefinitionTaskParams.Cluster primaryCluster = taskParams().getPrimaryCluster();
     if (primaryCluster != null) {
       log.trace("Masters verification for PRIMARY cluster");
       Set<NodeDetails> primaryNodes = taskParams().getNodesInCluster(primaryCluster.uuid);
       PlacementInfoUtil.verifyMastersSelection(
-          primaryNodes, primaryCluster.userIntent.replicationFactor);
+          primaryNodes, primaryCluster.userIntent.replicationFactor, selection);
     } else {
       log.trace("Masters verification skipped - no PRIMARY cluster found");
     }

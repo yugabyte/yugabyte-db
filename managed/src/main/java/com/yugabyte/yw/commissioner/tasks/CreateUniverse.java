@@ -61,8 +61,8 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       // Set all the in-memory node names.
       setNodeNames(universe);
 
-      // Select master nodes.
-      selectMasters();
+      // Select master nodes and apply isMaster flags immediately.
+      selectAndApplyMasters();
 
       if (taskParams().getPrimaryCluster().userIntent.enableYCQL
           && taskParams().getPrimaryCluster().userIntent.enableYCQLAuth) {
