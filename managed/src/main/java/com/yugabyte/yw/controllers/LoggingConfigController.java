@@ -4,10 +4,9 @@ package com.yugabyte.yw.controllers;
 
 import ch.qos.logback.core.joran.spi.JoranException;
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.logging.LogUtil;
-import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.forms.PlatformLoggingConfig;
 import com.yugabyte.yw.forms.PlatformResults;
@@ -16,7 +15,7 @@ import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-import java.lang.System;
+import java.text.SimpleDateFormat;
 import org.slf4j.LoggerFactory;
 import play.mvc.Controller;
 import play.mvc.Result;
@@ -35,7 +34,7 @@ public class LoggingConfigController extends Controller {
   @ApiOperation(
       value = "Set Logging Level",
       response = PlatformLoggingConfig.class,
-      nickname = "setLoggingLevel")
+      nickname = "setLoggingSettings")
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Logging Config",
@@ -44,12 +43,21 @@ public class LoggingConfigController extends Controller {
         dataType = "com.yugabyte.yw.forms.PlatformLoggingConfig",
         paramType = "body")
   })
-  public Result setLoggingLevel() throws JoranException {
+  public Result setLoggingSettings() throws JoranException {
     PlatformLoggingConfig data =
         formFactory.getFormDataOrBadRequest(PlatformLoggingConfig.class).get();
     String newLevel = data.getLevel().toString();
-    LogUtil.setLoggingLevel(newLevel);
-    LogUtil.setLoggingConfig(sConfigFactory, newLevel);
+    String newRolloverPattern = data.getRolloverPattern();
+    if (newRolloverPattern != null) {
+      try {
+        new SimpleDateFormat(newRolloverPattern);
+      } catch (Exception e) {
+        throw new PlatformServiceException(BAD_REQUEST, "Incorrect pattern " + newRolloverPattern);
+      }
+    }
+    Integer newMaxHistory = data.getMaxHistory();
+    LogUtil.updateLoggingContext(newLevel, newRolloverPattern, newMaxHistory);
+    LogUtil.updateLoggingConfig(sConfigFactory, newLevel, newRolloverPattern, newMaxHistory);
     return PlatformResults.withData(data);
   }
 }

@@ -9,10 +9,10 @@
     <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
         <!-- Daily rollover with compression -->
         <fileNamePattern>
-          ${log.override.path:-${application.home:-.}/logs}/application-log-%d{yyyy-MM-dd}.gz
+          ${log.override.path:-${application.home:-.}/logs}/application-log-%d{${logRolloverPattern:-yyyy-MM-dd}}.gz
         </fileNamePattern>
         <!-- keep 30 days worth of history -->
-        <maxHistory>30</maxHistory>
+        <maxHistory>${logMaxHistory:-30}</maxHistory>
     </rollingPolicy>
     <encoder>
       <pattern>%date [%level] from %logger{0} in %thread - %message%n%xException</pattern>

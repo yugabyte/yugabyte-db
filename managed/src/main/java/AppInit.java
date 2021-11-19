@@ -83,12 +83,7 @@ public class AppInit {
           throw new RuntimeException(("yb.storage.path is not set in application.conf"));
         }
 
-        String logLevel = LogUtil.getLoggingConfig(sConfigFactory);
-        try {
-          LogUtil.setLoggingLevel(logLevel);
-        } catch (JoranException ex) {
-          Logger.warn("Could not re-initialize logback");
-        }
+        LogUtil.updateLoggingFromConfig(sConfigFactory);
       }
 
       // Initialize AWS if any of its instance types have an empty volumeDetailsList
