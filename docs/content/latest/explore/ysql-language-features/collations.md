@@ -23,10 +23,13 @@ PostgreSQL with a few restrictions. As in PostgreSQL, most YSQL data types are n
 character strings and therefore are considered _not collatable_. For example:
 
 
+```sql
+create table coll_tab1(id int collate "en_US.utf8");
 ```
-yugabyte=# create table foo(id int collate "en_US.utf8");
+
+```output
 ERROR:  collations are not supported by type integer
-LINE 1: create table foo(id int collate "en_US.utf8");
+LINE 1: create table coll_tab1(id int collate "en_US.utf8");
                                 ^
 ```
 
@@ -37,14 +40,21 @@ simple case-insensitive names or by double quoted case sensitive names. The foll
 how the use of collation can change the comparison results:
 
 
+```sql
+select 'a' < 'A' as r;
 ```
-yugabyte=# select 'a' < 'A' as r;
+
+```output
  r
 ---
  f
 (1 row)
 
-yugabyte=# select 'a' < 'A' collate "en_US.utf8" as r;
+```sql
+select 'a' < 'A' collate "en_US.utf8" as r;
+```
+
+```output
  r
 ---
  t
@@ -84,9 +94,11 @@ libc and libicu at initdb time, and any user defined collations created after th
 YSQL imports all the 783 ICU collations provided by the operating system.
 
 
-```
-yugabyte=# select count(collname) from pg_collation where collprovider = 'i';
+```sql
 select count(collname) from pg_collation where collprovider = 'i';
+```
+
+```output
  count 
 -------
    783
@@ -100,19 +112,18 @@ select count(collname) from pg_collation where collprovider = 'i';
 In addition to predefined collations, we can define new collations. For example,
 
 
+```sql
+create collation nd (provider = 'icu', locale='');
+select * from pg_collation where collname = 'nd';
 ```
-yugabyte=# create collation nd (provider = 'icu', locale='');
-CREATE COLLATION
-yugabyte=# select * from pg_collation where collname = 'nd';
--[ RECORD 1 ]-+-------
-collname      | nd
-collnamespace | 2200
-collowner     | 13247
-collprovider  | i
-collencoding  | -1
-collcollate   | 
-collctype     | 
-collversion   | 153.14
+
+```output
+ collname | collnamespace | collowner | collprovider | collencoding | collcollate | collctype |
+collversion 
+----------+---------------+-----------+--------------+--------------+-------------+-----------+-------------
+ nd       |          2200 |     13247 | i            |           -1 |             |           |
+153.14
+(1 row)
 ```
 
 
@@ -120,14 +131,10 @@ We can see that the newly created collation appears in the `pg_collation` table.
 newly defined collation in table column definition.
 
 
-```
-yugabyte=# create table foo(id text collate "nd", primary key(id));
-CREATE TABLE
-
-yugabyte=# insert into foo values (E'El Nin\u0303o');
-INSERT 0 1
-yugabyte=# insert into foo values (E'El Ni\u00F1o');
-INSERT 0 1
+```sql
+create table coll_tab2(id text collate "nd", primary key(id));
+insert into coll_tab2 values (E'El Nin\u0303o');
+insert into coll_tab2 values (E'El Ni\u00F1o');
 ```
 
 
@@ -148,12 +155,13 @@ default "C" collation in order to have a different sort order on the column valu
 enforce a dictionary sort order:
 
 
+```sql
+create table coll_tab3(name text collate "en_US.utf8");
+insert into coll_tab3 values ('a'), ('Z');
+select * from coll_tab3 order by name;
 ```
-yugabyte=# create table foo(name text collate "en_US.utf8");
-CREATE TABLE
-yugabyte=# insert into foo values ('a'), ('Z');
-INSERT 0 2
-yugabyte=# select * from foo order by name;
+
+```output
  name
 ------
  a
@@ -165,12 +173,13 @@ yugabyte=# select * from foo order by name;
 If no column collation is used, we'll see the default sort order that uses the ASCII encoding order.
 
 
+```sql
+create table coll_tab4(name text);
+insert into coll_tab4 values ('a'), ('Z');
+select * from coll_tab4 order by name;
 ```
-yugabyte=# create table foo(name text);
-CREATE TABLE
-yugabyte=# insert into foo values ('a'), ('Z');
-INSERT 0 2
-yugabyte=# select * from foo order by name;
+
+```output
  name
 ------
  Z
@@ -187,11 +196,9 @@ to the column collation. YSQL also allows the index to have its own explicit col
 different from that of the table column. For example,
 
 
-```
-yugabyte=# create table foo(name text collate "en-US-x-icu");
-CREATE TABLE
-yugabyte=# create index name_idx on foo(name collate "C" asc);
-CREATE INDEX
+```sql
+create table coll_tab5(name text collate "en-US-x-icu");
+create index name_idx on coll_tab5(name collate "C" asc);
 ```
 
 
@@ -207,18 +214,24 @@ strings. An explicitly specified collation has more _strength_ then a referenced
 more strength than a text expression without an explicit collation. For example,
 
 
+```sql
+create table coll_tab6(name text collate "en-US-x-icu");
+insert into coll_tab6 values ('a'), ('Z');
+select * from coll_tab6 where name < 'z';
 ```
-yugabyte=# create table foo(name text collate "en-US-x-icu");
-CREATE TABLE
-yugabyte=# insert into foo values ('a'), ('Z');
-INSERT 0 2
-yugabyte=# select * from foo where name < 'z';
+
+```output
  name
 ------
  a
 (1 row)
+```
 
-yugabyte=# select * from foo where name < 'z' collate "C";
+```sql
+select * from coll_tab6 where name < 'z' collate "C";
+```
+
+```output
  name
 ------
  Z
@@ -241,21 +254,26 @@ Collation will not have any effect when used in a non-comparison context and wil
 discarded. Consider this example:
 
 
+```sql
+create table coll_tab7(x text collate "C", y text collate "en_US.utf8");
+insert into coll_tab7 values ('x', 'y');
+select x || y as z from coll_tab7;
 ```
-yugabyte=# create table foo(x text collate "C", y text collate "en_US.utf8");
-CREATE TABLE
-yugabyte=# insert into foo values ('x', 'y');
-INSERT 0 1
-yugabyte=# select x || y as z from foo;
-select x || y as z from foo;
+
+```output
  z
 ----
  xy
 (1 row)
-yugabyte=# select x || y as z from foo order by 1;
-select x || y as z from foo order by 1;
+```
+
+```sql
+select x || y as z from coll_tab7 order by 1;
+```
+
+```output
 ERROR:  collation mismatch between implicit collations "C" and "en_US.utf8"
-LINE 1: select x || y as z from foo order by 1;
+LINE 1: select x || y as z from coll_tab7 order by 1;
                     ^
 HINT:  You can choose the collation by applying the COLLATE clause to one or both expressions.
 yugabyte=#
@@ -270,8 +288,11 @@ specified and thus have equal strength. It is up to the user to add explicit col
 to resolve the collation mismatch such as
 
 
+```sql
+select (x || y) collate "en_US.utf8" as z from coll_tab7 order by 1;
 ```
-yugabyte=# select (x || y) collate "en_US.utf8" as z from foo order by 1;
+
+```output
  z
 ----
  xy
@@ -287,10 +308,12 @@ expression is derived from the collations of its inputs. YSQL and PosgreSQL cons
 collation objects to be incompatible even when they have identical properties. For example,
 
 
+```sql
+create collation nd from "en_US.utf8";
+select 'a' collate nd < 'Z' collate "en_US.utf8";
 ```
-yugabyte=# create collation nd from "en_US.utf8";
-CREATE COLLATION
-yugabyte=# select 'a' collate nd < 'Z' collate "en_US.utf8";
+
+```output
 ERROR:  collation mismatch between explicit collations "nd" and "en_US.utf8"
 LINE 1: select 'a' collate nd < 'Z' collate "en_US.utf8";
 ```
@@ -305,9 +328,11 @@ There are a number of YSQL restrictions on collation due to internal implementat
 
 * Databases can only be created with "C" collation.
 
-    ```
-    yugabyte=# create database db LC_COLLATE = "en_US.utf8" TEMPLATE template0;
+    ```sql
     create database db LC_COLLATE = "en_US.utf8" TEMPLATE template0;
+    ```
+
+    ```output
     ERROR:  Value other than 'C' for lc_collate option is not yet supported
     LINE 1: create database db LC_COLLATE = "en_US.utf8" TEMPLATE templa...
                                ^
@@ -318,8 +343,11 @@ There are a number of YSQL restrictions on collation due to internal implementat
 
 * Libc collations are very limited
 
+    ```sql
+    select collname from pg_collation where collprovider = 'c';
     ```
-    yugabyte=# select collname from pg_collation where collprovider = 'c';
+
+    ```output
       collname  
     ------------
      C
@@ -333,11 +361,12 @@ There are a number of YSQL restrictions on collation due to internal implementat
 
 * Column collation cannot be altered
 
+    ```sql
+    create table coll_tab8(id text);
+    alter table coll_tab8 alter column id set data type text collate "en_US.utf8";
     ```
-    yugabyte=# create table foo(id text);
-    CREATE TABLE
-    yugabyte=# alter table foo alter column id set data type text collate "en_US.utf8";
-    alter table foo alter column id set data type text collate "en_US.utf8";
+
+    ```output
     ERROR:  This ALTER TABLE command is not yet supported.
     ```
 
@@ -345,10 +374,12 @@ There are a number of YSQL restrictions on collation due to internal implementat
 * Pattern matching ops text_pattern_ops, bpchar_pattern_ops, varchar_pattern_ops cannot be used in
 index creation
 
+    ```sql
+    create table coll_tab9(id char(10) collate "en_US.utf8");
+    create index coll_tab9_id_idx on coll_tab9(id bpchar_pattern_ops asc);
     ```
-    yugabyte=# create table foo(id char(10) collate "en_US.utf8");
-    CREATE TABLE
-    yugabyte=# create index foo_id_idx on foo(id bpchar_pattern_ops asc);
+
+    ```output
     ERROR:  could not use operator class "bpchar_pattern_ops" with column collation "en_US.utf8"
     HINT:  Use the COLLATE clause to set "C" collation explicitly.
     ```
