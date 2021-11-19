@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: cloud-billing-costs
     parent: cloud-admin
-    weight: 300
+    weight: 400
 isTocNested: true
 showAsideToc: true
 ---
