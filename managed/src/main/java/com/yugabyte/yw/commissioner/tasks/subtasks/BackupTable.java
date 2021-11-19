@@ -64,10 +64,15 @@ public class BackupTable extends AbstractTaskBase {
         if (taskParams().backupList != null) {
           for (BackupTableParams backupParams : taskParams().backupList) {
             ShellResponse response = tableManager.createBackup(backupParams);
-            JsonNode jsonNode = Json.parse(response.message);
+            JsonNode jsonNode = null;
+            try {
+              jsonNode = Json.parse(response.message);
+            } catch (Exception e) {
+              log.error("Response code={}, output={}.", response.code, response.message);
+              throw e;
+            }
             if (response.code != 0 || jsonNode.has("error")) {
               log.error("Response code={}, hasError={}.", response.code, jsonNode.has("error"));
-
               throw new RuntimeException(response.message);
             } else {
               log.info("[" + getName() + "] STDOUT: " + response.message);
@@ -77,10 +82,15 @@ public class BackupTable extends AbstractTaskBase {
           backup.transitionState(Backup.BackupState.Completed);
         } else {
           ShellResponse response = tableManager.createBackup(taskParams());
-          JsonNode jsonNode = Json.parse(response.message);
+          JsonNode jsonNode = null;
+          try {
+            jsonNode = Json.parse(response.message);
+          } catch (Exception e) {
+            log.error("Response code={}, output={}.", response.code, response.message);
+            throw e;
+          }
           if (response.code != 0 || jsonNode.has("error")) {
             log.error("Response code={}, hasError={}.", response.code, jsonNode.has("error"));
-            backup.transitionState(Backup.BackupState.Failed);
             throw new RuntimeException(response.message);
           } else {
             log.info("[" + getName() + "] STDOUT: " + response.message);
