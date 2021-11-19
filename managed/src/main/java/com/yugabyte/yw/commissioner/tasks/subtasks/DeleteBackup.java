@@ -89,7 +89,17 @@ public class DeleteBackup extends AbstractTaskBase {
   private boolean deleteBackup(BackupTableParams backupTableParams) {
     backupTableParams.actionType = BackupTableParams.ActionType.DELETE;
     ShellResponse response = tableManager.deleteBackup(backupTableParams);
-    JsonNode jsonNode = Json.parse(response.message);
+    JsonNode jsonNode = null;
+    try {
+      jsonNode = Json.parse(response.message);
+    } catch (Exception e) {
+      log.error(
+          "Delete Backup failed for {}. Response code={}, Output={}.",
+          backupTableParams.storageLocation,
+          response.code,
+          response.message);
+      return false;
+    }
     if (response.code != 0 || jsonNode.has("error")) {
       log.error(
           "Delete Backup failed for {}. Response code={}, hasError={}.",
