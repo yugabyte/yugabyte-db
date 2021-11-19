@@ -61,6 +61,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public TableManager mockTableManager = mock(TableManager.class);
   public TaskInfoManager mockTaskManager = mock(TaskInfoManager.class);
   public GFlagsValidation mockGFlagsValidation = mock(GFlagsValidation.class);
+  public NodeManager mockNodeManager = mock(NodeManager.class);
 
   public MetricService metricService;
   public AlertService alertService;
@@ -107,7 +108,8 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
                 .overrides(bind(ShellProcessHandler.class).toInstance(mockShellProcessHandler))
                 .overrides(bind(TableManager.class).toInstance(mockTableManager))
                 .overrides(bind(TaskInfoManager.class).toInstance(mockTaskManager))
-                .overrides(bind(GFlagsValidation.class).toInstance(mockGFlagsValidation)))
+                .overrides(bind(GFlagsValidation.class).toInstance(mockGFlagsValidation))
+                .overrides(bind(NodeManager.class).toInstance(mockNodeManager)))
         .build();
   }
 
