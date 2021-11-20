@@ -48,8 +48,9 @@ For details, see the [Yugabyte Support Policy](https://www.yugabyte.com/support-
 
 | Release series | Released | End of maintenance support | End of Life (EOL) |
 | :------------- | :------- | :------------------------- | :---------------- |
-| [v2.9](../whats-new/latest-release) ![LATEST](/images/releases/latest.png) | August 31, 2021 | n/a | n/a |
+| [v2.11](../whats-new/latest-release) ![LATEST](/images/releases/latest.png) | November 19, 2021 | n/a | n/a |
 | [v2.8](../whats-new/stable-release) ![CURRENT STABLE](/images/releases/current-stable.png) | November 15, 2021 | November 15, 2022 | June 15, 2023 |
+| [v2.9](../earlier-releases/v2.9) | Aug 31, 2021 | n/a | n/a |
 | [v2.7](../earlier-releases/v2.7) | May 5, 2021 | n/a | n/a |
 | [v2.6](../earlier-releases/v2.6) | July 5, 2021 | July 5, 2022 | Jan 5, 2023 |
 | [v2.5](../earlier-releases/v2.5) | Nov 12, 2020 | n/a | n/a |
@@ -70,8 +71,8 @@ For information on key features planned for the upcoming releases, visit [Curren
 
 | Release series | Planned release |
 | :------------- | :-------------- |
-| v2.10 (stable) | Early 2021 |
-| v2.11 | End of November, 2021 |
+| v2.10 (stable) | Early 2022 |
+| v2.13 | Early 2022 |
 
 ## Recommended release series for projects
 
@@ -80,6 +81,6 @@ To ensure that your production go-live uses the most up-to-date stable release, 
 | Production go-live | Recommended release series |
 | :----------------- | :------------------------- |
 | < 3 months         | v2.8 (current stable)      |
-| > 3 months         | v2.9 (latest)              |
+| > 3 months         | v2.11 (latest)             |
 
 If your production go-live is more than three months from now, start your development and testing with the latest release series. By the time your production is ready to go live, the current stable release series, based on the latest release series you used for development and testing, will be available. By following this guideline, you ensure that your application is developed with the latest available features, enhancements, and fixes.
