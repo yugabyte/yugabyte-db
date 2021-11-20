@@ -45,7 +45,7 @@ Use the `CREATE INDEX` statement to create an index on the specified columns of 
 
 ## Semantics
 
-`CONCURRENTLY`, `USING method`, `COLLATE`, and `TABLESPACE` options are not yet supported.
+`CONCURRENTLY`, `COLLATE`, and `TABLESPACE` options are not yet supported.
 
 When an index is created on a populated table, YugabyteDB automatically backfills the existing data into the index.
 In most cases, this uses an online schema migration.
