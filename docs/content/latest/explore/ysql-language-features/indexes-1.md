@@ -27,9 +27,9 @@ CREATE INDEX index_name ON table_name(column_list);
 
 *column_list* represents a column or a comma-separated list of several columns to be stored in the index. An index created for more than one column is called a composite index.
 
-You can also create a functional-based index, in which case you would replace any element of *column_list* with an expression. For more information, see [Use indexes on expressions](#use-indexes-on-expressions).
+You can also create a functional index, in which case you would replace any element of *column_list* with an expression. For more information, see [Use indexes on expressions](#use-indexes-on-expressions).
 
-The only type of index that is currently supported by YSQL is called LSM (log-structured merge-tree). This index is based on YugabyteDB's DocDB storage and is similar in functionality to PostgreSQL's B-tree. When you create an index, you do not need to specify the type because YSQL always maps it to LSM; if you do specify the type, such as `btree`, in your `CREATE INDEX` statement, you will receive a notification about replacement of the `btree` method with `lsm`. 
+YSQL currently supports index access methods `lsm` (log-structured merge-tree) and `ybgin`. These indexes are based on YugabyteDB's DocDB storage and are similar in functionality to PostgreSQL's `btree` and `gin` indexes, respectively. The index access method can be specified with `USING <access_method_name>` after *table_name*. By default, `lsm` is chosen. For more information on `ybgin`, see [Generalized inverted index][explore-gin].
 
 You can apply sort order on the indexed columns as `ASC` (default), `DESC`, as well as `HASH`. For examples, see [HASH and ASC examples](../../../api/ysql/the-sql-language/statements/ddl_create_index/#unique-index-with-hash-column-ordering)
 
@@ -169,3 +169,5 @@ DROP INDEX index_employees_department;
 ```
 
 If you execute the same `SELECT` query with the `EXPLAIN` statement as in [Create indexes](#create-indexes), the query plan will not include any information about the index. 
+
+[explore-gin]: ../gin/
