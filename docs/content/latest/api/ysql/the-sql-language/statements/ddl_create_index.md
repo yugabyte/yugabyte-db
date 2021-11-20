@@ -74,6 +74,8 @@ Enforce that duplicate values in a table are not allowed.
 
 Disable online schema migration (see [Semantics](#semantics) for details).
 
+Concurrent is the default, but the grammar does not yet support `CONCURRENTLY`.
+
 ### *access_method_name*
 
 The name of the index access method.
