@@ -15,7 +15,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-## v2.11.0.0 - Nov 19, 2021
+## v2.11.0.0 - November 22, 2021
 
 **Build:** `2.11.0.0-b7`
 
