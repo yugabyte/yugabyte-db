@@ -1,6 +1,6 @@
 ```
 comment_on ::= COMMENT ON 
-               { ACCESS METHOD object_name
+               { ACCESS METHOD access_method_name
                  | AGGREGATE aggregate_name ( aggregate_signature )
                  | CAST ( source_type AS target_type )
                  | COLLATION object_name
