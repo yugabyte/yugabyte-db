@@ -304,33 +304,29 @@ class KeyManagementConfiguration extends Component {
     }
 
     const validationSchema = Yup.object().shape({
+      name: Yup.string().required('Name is Required'),
+      kmsProvider: Yup.object().required('Provider name is Required'),
       apiUrl: Yup.string(),
 
       apiKey: Yup.mixed().when('kmsProvider', {
-        is: (provider) => provider.value === 'SMARTKEY',
+        is: (provider) => provider?.value === 'SMARTKEY',
         then: Yup.mixed().required('API key is Required')
       }),
 
       accessKeyId: Yup.string().when('kmsProvider', {
-        is: (provider) => provider.value === 'AWS' && !enabledIAMProfile,
+        is: (provider) => provider?.value === 'AWS' && !enabledIAMProfile,
         then: Yup.string().required('Access Key ID is Required')
       }),
 
       secretKeyId: Yup.string().when('kmsProvider', {
-        is: (provider) => provider.value === 'AWS' && !enabledIAMProfile,
+        is: (provider) => provider?.value === 'AWS' && !enabledIAMProfile,
         then: Yup.string().required('Secret Key ID is Required')
       }),
       region: Yup.mixed().when('kmsProvider', {
-        is: (provider) => provider.value === 'AWS',
+        is: (provider) => provider?.value === 'AWS',
         then: Yup.mixed().required('AWS Region is Required')
       }),
       cmkPolicyContent: Yup.string(),
-
-      name: Yup.string().when('kmsProvider', {
-        is: (provider) => provider.value !== null,
-        then: Yup.string().required('Name is Required')
-      }),
-
       cmkId: Yup.string()
     });
 
