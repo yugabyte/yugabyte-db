@@ -71,7 +71,7 @@ showAsideToc: true
 By default, CentOS 8 doesn't have an unversioned system-wide `python` command to avoid locking users to a specific version of Python.
 One way to fix this is to set `python3` the alternative for `python` by running: `sudo alternatives --set python /usr/bin/python3`.
 
-Starting from Ubuntu 20.04, `python` isn't available anymore. An easy fix is to install `sudo apt install python-is-python3`. 
+Starting from Ubuntu 20.04, `python` isn't available anymore. An easy fix is to install `sudo apt install python-is-python3`.
 
     {{< /note >}}
 
@@ -96,13 +96,27 @@ Starting from Ubuntu 20.04, `python` isn't available anymore. An easy fix is to 
 1. Download the YugabyteDB package using the following `wget` command.
 
     ```sh
-    $ wget https://downloads.yugabyte.com/yugabyte-2.9.1.0-linux.tar.gz
+    $ wget https://downloads.yugabyte.com/releases/2.11.0.0/yugabyte-2.11.0.0-b7-linux-x86_64.tar.gz
+    ```
+
+    \
+    OR:
+
+    ```sh
+    $ wget https://downloads.yugabyte.com/releases/2.11.0.0/yugabyte-2.11.0.0-b7-el8-aarch64.tar.gz
     ```
 
 1. Extract the package and then change directories to the YugabyteDB home.
 
     ```sh
-    $ tar xvfz yugabyte-2.9.1.0-linux.tar.gz && cd yugabyte-2.9.1.0/
+    $ tar xvfz yugabyte-2.11.0.0-b7-linux-x86_64.tar.gz && cd yugabyte-2.11.0.0/
+    ```
+
+    \
+    OR:
+
+    ```sh
+    $ tar xvfz yugabyte-2.11.0.0-b7-el8-aarch64.tar.gz && cd yugabyte-2.11.0.0/
     ```
 
 ## Configure YugabyteDB

@@ -66,7 +66,7 @@ $ wget --trust-server-names https://get.replicated.com/airgap
 Download the `yugaware` binary and change the following number, as required:
 
 ```sh
-$ wget https://downloads.yugabyte.com/yugaware-2.9.1.0-b140.airgap
+$ wget https://downloads.yugabyte.com/yugaware-2.11.0.0-b7.airgap
 ```
 
 Switch to the following directory:
@@ -81,7 +81,7 @@ Extract the `replicated` binary, as follows:
 $ tar xzvf replicated.tar.gz
 ```
 
-Install Replicated. If multiple options appear, select the `eth0` network interface, as follows. 
+Install Replicated. If multiple options appear, select the `eth0` network interface, as follows.
 
 ```sh
 $ cat ./install.sh | sudo bash -s airgap
@@ -145,9 +145,9 @@ Click **Continue** to configure Yugabyte Platform.
 
 If the preflight check fails, review the [Troubleshoot Yugabyte Platform](../../../troubleshoot/) to resolve the issue.
 
-## Set the TLS Version for Nginx Frontend 
+## Set the TLS Version for Nginx Frontend
 
-Specify TLS versions via **Application config**, as shown in the following illustration: 
+Specify TLS versions via **Application config**, as shown in the following illustration:
 
 ![Application Config](/images/replicated/application-config.png)
 
