@@ -644,8 +644,10 @@ export default class ClusterFields extends Component {
     }
     if (volumeDetail) {
       let storageType = DEFAULT_STORAGE_TYPES[instanceTypeSelectedData.providerCode.toUpperCase()];
-      if (instanceTypeSelectedData.providerCode === 'aws' &&
-        isEphemeralAwsStorageInstance(instanceTypeCode)) {
+      if (
+        instanceTypeSelectedData.providerCode === 'aws' &&
+        isEphemeralAwsStorageInstance(instanceTypeCode)
+      ) {
         storageType = null;
       }
 
@@ -713,11 +715,14 @@ export default class ClusterFields extends Component {
   setThroughputByIops(currentIops, currentThroughput) {
     const { updateFormField, clusterType } = this.props;
     if (this.state.deviceInfo.storageType === 'GP3') {
-      if ((currentIops > GP3_DEFAULT_DISK_IOPS ||
-          currentThroughput > GP3_DEFAULT_DISK_THROUGHPUT) &&
-          currentIops / currentThroughput < GP3_IOPS_TO_MAX_DISK_THROUGHPUT) {
-        const newThroughput = Math.min(GP3_MAX_THROUGHPUT,
-          Math.max(currentIops / GP3_IOPS_TO_MAX_DISK_THROUGHPUT, GP3_DEFAULT_DISK_THROUGHPUT));
+      if (
+        (currentIops > GP3_DEFAULT_DISK_IOPS || currentThroughput > GP3_DEFAULT_DISK_THROUGHPUT) &&
+        currentIops / currentThroughput < GP3_IOPS_TO_MAX_DISK_THROUGHPUT
+      ) {
+        const newThroughput = Math.min(
+          GP3_MAX_THROUGHPUT,
+          Math.max(currentIops / GP3_IOPS_TO_MAX_DISK_THROUGHPUT, GP3_DEFAULT_DISK_THROUGHPUT)
+        );
         updateFormField(`${clusterType}.throughput`, newThroughput);
         this.setState({ deviceInfo: { ...this.state.deviceInfo, throughput: newThroughput } });
       }
@@ -726,11 +731,14 @@ export default class ClusterFields extends Component {
 
   diskIopsChanged(val) {
     const { updateFormField, clusterType } = this.props;
-    const maxDiskIops = this.state.deviceInfo.storageType === 'IO1' ?
-      IO1_MAX_DISK_IOPS : GP3_MAX_IOPS;
+    const maxDiskIops =
+      this.state.deviceInfo.storageType === 'IO1' ? IO1_MAX_DISK_IOPS : GP3_MAX_IOPS;
     const actualVal = Math.max(0, Math.min(maxDiskIops, val));
     updateFormField(`${clusterType}.diskIops`, actualVal);
-    if (this.state.deviceInfo.storageType === 'IO1' || this.state.deviceInfo.storageType === 'GP3') {
+    if (
+      this.state.deviceInfo.storageType === 'IO1' ||
+      this.state.deviceInfo.storageType === 'GP3'
+    ) {
       this.setState({ deviceInfo: { ...this.state.deviceInfo, diskIops: actualVal } });
       this.setThroughputByIops(actualVal, this.state.deviceInfo.throughput);
     }
@@ -1018,8 +1026,7 @@ export default class ClusterFields extends Component {
     if (
       isNonEmptyObject(formValues[clusterType].instanceTags) &&
       currentProviderUUID &&
-      (this.getCurrentProvider(currentProviderUUID).code === 'aws' ||
-        this.getCurrentProvider(currentProviderUUID).code === 'azu')
+      ['aws', 'azu', 'gcp'].includes(this.getCurrentProvider(currentProviderUUID).code)
     ) {
       userIntent['instanceTags'] = formValues[clusterType].instanceTags;
     }
@@ -1049,7 +1056,7 @@ export default class ClusterFields extends Component {
 
   setDefaultProviderStorage = (providerData) => {
     this.storageTypeChanged(DEFAULT_STORAGE_TYPES[providerData.code.toUpperCase()]);
-  }
+  };
 
   providerChanged = (value) => {
     const {
@@ -1817,7 +1824,7 @@ export default class ClusterFields extends Component {
           </Col>
         </Row>
       );
-      if (currentProviderCode === 'azu' || currentProviderCode === 'aws') {
+      if (['azu', 'aws', 'gcp'].includes(currentProviderCode)) {
         tagsArray = (
           <Row>
             <Col md={12}>
