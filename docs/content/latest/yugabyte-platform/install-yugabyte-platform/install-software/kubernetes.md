@@ -80,19 +80,19 @@ You install Yugabyte Platform on a Kubernetes cluster as follows:
 
     ```output
     NAME                 CHART VERSION  APP VERSION  DESCRIPTION
-    yugabytedb/yugabyte  2.9.1          2.9.1.0      YugabyteDB is the high-performance distributed ...
+    yugabytedb/yugabyte  2.11.0          2.11.0.0      YugabyteDB is the high-performance distributed ...
     ```
 
 1. Run the following `helm install` command to install the Yugabyte Platform (`yugaware`) Helm chart:
 
     ```sh
-    helm install yw-test yugabytedb/yugaware --version 2.9.1 -n yb-platform --wait
+    helm install yw-test yugabytedb/yugaware --version 2.11.0 -n yb-platform --wait
     ```
 
 1. Optionally, set the TLS version for Nginx frontend by using `ssl_protocols` operational directive in the Helm installation, as follows:
 
     ```sh
-    helm install yw-test yugabytedb/yugaware --version 2.9.1 -n yb-platform --wait --set tls.sslProtocols="TLSv1.2"
+    helm install yw-test yugabytedb/yugaware --version 2.11.0 -n yb-platform --wait --set tls.sslProtocols="TLSv1.2"
     ```
 
 1. Use the following command to check the service:
@@ -128,10 +128,10 @@ You can customize Yugabyte Platform on a Kubernetes cluster in a number of ways,
   - For Google Cloud, see [GKE](https://cloud.google.com/kubernetes-engine/docs/how-to/internal-load-balancing).
   - For Azure, see [AKS](https://docs.microsoft.com/en-us/azure/aks/internal-lb).
   - For AWS, see [EKS](https://docs.aws.amazon.com/eks/latest/userguide/load-balancing.html).
-  
-  
+
+
    For example, for a GKE version earlier than 1.17, you would execute a command similar to the following:
-  
+
     ```sh
   helm install yw-test yugabytedb/yugaware -n yb-platform \
     --set yugaware.service.annotations."cloud\.google\.com\/load-balancer-type"="Internal"
