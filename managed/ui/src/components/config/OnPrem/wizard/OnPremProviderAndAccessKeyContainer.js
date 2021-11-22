@@ -84,14 +84,13 @@ const mapStateToProps = (state, ownProps) => {
             ? item.volumeDetailsList[0].volumeSizeGB
             : 0,
           mountPath: isNonEmptyArray(item.volumeDetailsList)
-            ? item.volumeDetailsList
-              .map(volItem => volItem.mountPath)
-              .join(', ')
+            ? item.volumeDetailsList.map((volItem) => volItem.mountPath).join(', ')
             : '/'
         };
       }),
       regionsZonesList: onPremJsonFormData.regions.map(function (regionZoneItem) {
         return {
+          uuid: regionZoneItem.uuid,
           code: regionZoneItem.code,
           location: Number(regionZoneItem.latitude) + ', ' + Number(regionZoneItem.longitude),
           zones: regionZoneItem.zones

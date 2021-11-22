@@ -111,16 +111,25 @@ class OnPremSuccess extends Component {
       }
 
       const jsonData = {
-        provider: { name: currentProvider.name, config: currentProvider.config },
+        provider: {
+          name: currentProvider.name,
+          config: currentProvider.config,
+          uuid: currentProvider.uuid
+        },
         key: keyJson,
-        regions: onPremRegions.map((regionItem) => {
-          return {
-            code: regionItem.code,
-            longitude: regionItem.longitude,
-            latitude: regionItem.latitude,
-            zones: regionItem.zones.map((zoneItem) => zoneItem.code)
-          };
-        }),
+        regions: onPremRegions
+          .filter((region) => region.active === true)
+          .map((regionItem) => {
+            return {
+              code: regionItem.code,
+              longitude: regionItem.longitude,
+              latitude: regionItem.latitude,
+              uuid: regionItem.uuid,
+              zones: regionItem.zones
+                .filter((zoneItem) => zoneItem.active === true)
+                .map((zoneItem) => zoneItem.code)
+            };
+          }),
         instanceTypes: instanceTypes.data.map((instanceTypeItem) => ({
           instanceTypeCode: instanceTypeItem.instanceTypeCode,
           numCores: instanceTypeItem.numCores,
@@ -196,7 +205,8 @@ class OnPremSuccess extends Component {
     }
 
     const universeExistsForProvider = (universeList.data || []).some(
-      (universe) => universe?.universeDetails?.clusters[0]?.userIntent.provider === currentProvider.uuid
+      (universe) =>
+        universe?.universeDetails?.clusters[0]?.userIntent.provider === currentProvider.uuid
     );
     const buttons = (
       <span className="buttons pull-right">
