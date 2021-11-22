@@ -24,9 +24,7 @@ class OnPremListRegionsAndZones extends Component {
   };
 
   removeRegionZoneTypeRow(idx) {
-    if (!this.isFieldReadOnly(idx)) {
-      this.props.fields.remove(idx);
-    }
+    this.props.fields.remove(idx);
   }
 
   isFieldReadOnly = (fieldIdx) => {
@@ -115,7 +113,7 @@ class OnPremListRegionsAndZones extends Component {
               <Col lg={1}>
                 {fields.length > 1 ? (
                   <i
-                    className="fa fa-minus-circle on-prem-row-delete-btn"
+                    className="fa fa-minus-circle on-prem-row-delete-btn yb-orange"
                     onClick={self.removeRegionZoneTypeRow.bind(self, fieldIdx)}
                   />
                 ) : null}
