@@ -88,12 +88,8 @@ InboundCall::InboundCall(ConnectionPtr conn, RpcMetrics* rpc_metrics,
 
 InboundCall::~InboundCall() {
   TRACE_TO(trace_, "Destroying InboundCall");
-  if (trace_->must_print()) {
-    LOG(INFO) << "Tracing op: \n " << trace_->DumpToString(true);
-  } else {
-    YB_LOG_IF_EVERY_N(INFO, FLAGS_print_trace_every > 0, FLAGS_print_trace_every)
-        << "Tracing op: \n " << trace_->DumpToString(true);
-  }
+  YB_LOG_IF_EVERY_N(INFO, FLAGS_print_trace_every > 0, FLAGS_print_trace_every)
+      << "Tracing op: \n " << trace_->DumpToString(true);
   DecrementGauge(rpc_metrics_->inbound_calls_alive);
 }
 
