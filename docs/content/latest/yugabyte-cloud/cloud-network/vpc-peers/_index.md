@@ -12,53 +12,91 @@ menu:
     weight: 400
 ---
 
-Virtual Private Cloud (VPC) peering allows applications running on instances on the same cloud provider as your Yugabyte Cloud cluster to communicate with your YugabyteDB clusters without traversing the public internet - traffic stays within the cloud provider's network.
+Virtual Private Cloud (VPC) peering allows applications running on instances on the same cloud provider as your Yugabyte Cloud clusters to communicate with those clusters without traversing the public internet; all traffic stays within the cloud provider's network. Yugabyte Cloud supports AWC and GCP for peering. For Azure, contact Yugabyte Cloud support.
+
+To set up peering in Yugabyte Cloud, you first create a VPC to host your clusters, then peer it with the VPC that hosts client applications. Once the peering connection is active, you can deploy a cluster in the VPC you created. Any cluster deployed using that VPC will then be able to connect with any application in the client VPC.
 
 {{< note title="Note" >}}
 
-To use VPC peering in a cluster, your cluster must be deployed in a dedicated VPC that is peered with your application VPC. You must set up dedicated VPCs and peering before deploying your cluster. VPC peering is not supported in Free clusters.
+To use VPC peering in a cluster, your cluster must be deployed in a dedicated VPC that is peered with your application VPC. You must set up a dedicated VPC and peering before deploying your cluster. VPC peering is not supported in free clusters.
 
 {{< /note >}}
 
-Setting up a VPC peering connection between your cluster and a client application VPC is a two-part process:
+## Prerequisites
 
-- Add the VPC. This involves setting a CIDR IP range for the peering.
-- Configure a peering connection between your VPC and the application VPC.
+To set up a VPC peer, you need the details of the VPC you want to peer with. This includes:
+
+- The cloud provider
+- Region
+- Details of the VPC that you want to with peer with, including
+  - AWS account or GCP project
+  - VPC ID/network name
+  - CIDR blocks of the VPC network
+
+## Creating VPCs
+
+To set up a VPC peer in Yugabyte Cloud, you need to specify the following:
+
+- Cloud provider of choice
+- Region
+- Preferred CIDR to use for your database VPC.
+
+Refer to [Manage VPCs](cloud-add-vpc/).
+
+## Creating the peering connection
+
+Once you have created at least one VPC in Yugabyte Cloud for the provider of the application VPC you want to peer with, you can configure a peering connection. You need to specify the following:
+
+- The Yugabyte Cloud VPC to peer.
+- VPC peering details, including:
+  - GCP - the project ID and the network name that you need to peer to.
+  - AWS - the AWS account ID, and the VPC ID, region, and CIDR block.
+
+Refer to [Manage peering connections](cloud-add-peering/).
+
+### GCP
+
+In the Google Cloud Console, create a peering connection using the project ID and VPC network name.
+
+### AWS
+
+Use the VPC Dashboard to do the following:
+
+- Enable DNS hostnames and DNS resolution. This ensures that the cluster's hostnames in standard connection strings automatically resolve to private instead of public IP addresses when the Yugabyte Cloud cluster is accessed from the VPC.
+- Approve the peering connection request that you received from Yugabyte.
+- Add a route table entry to the VPC peer and add the Yugabyte Cloud cluster CIDR block to the Destination column, and the Peering Connection ID to the Target column.
+
+## Deploy a cluster in Yugabyte Cloud
+
+Once the peering connection is active, you can deploy clusters in the VPC. Refer to [Create clusters](../../cloud-basics/create-clusters/).
+
+Before your VPC peer can connect to your cluster, you must:
+
+1. Locate the VPC CIDR block addresses (or subset) associated with the VPC for your cloud provider.
+1. Add at least one of these CIDR blocks to the [IP allow list](../../cloud-basics/add-connections) for your Yugabyte Cloud cluster.
 
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="cloud-vpcs">
+    <a class="section-link icon-offset" href="./cloud-add-vpc/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Introduction</div>
+        <div class="title">Manage VPCs</div>
       </div>
       <div class="body">
-        Configure VPC peering to allow applications running on other cloud instances to communicate with your YugabyteDB clusters.
+        Create VPCs for your cloud.
       </div>
     </a>
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="./add-vpcs/aws">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Add VPC peers</div>
-      </div>
-      <div class="body">
-        Create VPC peers for your cloud.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="./add-peering/aws/">
+    <a class="section-link icon-offset" href="./cloud-add-peering/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/create_cluster.png" aria-hidden="true" />
-        <div class="title">Set up peering connections</div>
+        <div class="title">Manage peering connections</div>
       </div>
       <div class="body">
-        Create a peering connection between your cloud VPC and your application VPC.
+        Peer your cloud VPCs with an application VPCs.
       </div>
     </a>
   </div>

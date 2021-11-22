@@ -22,9 +22,9 @@ To create a cluster, on the **Clusters** page, click **Add Cluster** to start th
 
 {{< note title="Note" >}}
 
-Before creating a paid cluster, create a billing profile and add a payment method. Refer to [Manage your billing profile and payment method](../../cloud-admin/cloud-billing-profile/).
+Before creating a cluster, create a billing profile and add a payment method. Refer to [Manage your billing profile and payment method](../../cloud-admin/cloud-billing-profile/). You do not need a billing profile to create your free cluster.
 
-If you want to use dedicated VPCs for network isolation and security, contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) to set up VPC Peering with your client VPC. This has to be done before you create your cluster.
+If you want to use dedicated VPCs for network isolation and security, you must set up VPC Peering for the cloud provider before you create your cluster. Yugabyte Cloud supports AWC and GCP for peering. For Azure, contact Yugabyte Cloud support. Refer to [VPC peering](../../cloud-network/vpc-peers/).
 
 {{< /note >}}
 
@@ -76,7 +76,7 @@ If you are creating a **Paid** cluster, set the following additional options:
   - **Node Level** - a minimum of 3 nodes deployed in a single availability zone with a [replication factor](../../../architecture/docdb-replication/replication/) (RF) of 3. YugabyteDB can continue to do reads and writes even in case of a node failure, but this configuration is not resilient to cloud availability zone outages. For horizontal scaling, you can scale nodes in increments of 1.
   - **Availability Zone Level** - a minimum of 3 nodes spread across multiple availability zones with a RF of 3. YugabyteDB can continue to do reads and writes even in case of a cloud availability zone failure. This configuration provides the maximum protection for a data center failure. Recommended for production deployments. For horizontal scaling, nodes are scaled in increments of 3.
 
-- **Network Access**: If you want to use dedicated VPCs for network isolation and security, contact Yugabyte Support to set up [VPC Peering](../../cloud-network/vpc-peers) with your client VPC. Note this has to be done before you create your cluster.
+- **Network Access**: If you want to use a VPC for network isolation and security, select **Deploy this cluster in a dedicated VPC**, then select the VPC. The VPC must be for the selected cloud provider. Refer to [VPC peering](../../cloud-network/vpc-peers/).
 
 - **Cluster Configuration**:
 
