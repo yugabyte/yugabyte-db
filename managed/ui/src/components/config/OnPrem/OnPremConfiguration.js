@@ -260,7 +260,8 @@ export default class OnPremConfiguration extends Component {
 
   submitEditProvider = (payloadData) => {
     const {
-      cloud: { providers }
+      cloud: { providers },
+      onPremJsonFormData: { regions }
     } = this.props;
     const self = this;
     const currentProvider = providers.data.find((provider) => provider.code === 'onprem');
@@ -304,6 +305,11 @@ export default class OnPremConfiguration extends Component {
         }
       );
     }
+
+    //Delete removed regions
+    const regionIds = payloadData.regions.map((region) => region.uuid);
+    const deletedRegions = regions.filter((region) => !regionIds.includes(region.uuid));
+    this.props.deleteOnPremRegions(currentProvider.uuid, deletedRegions);
   };
 
   submitWizardJson = (payloadData) => {

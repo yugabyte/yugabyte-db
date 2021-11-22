@@ -2,12 +2,16 @@
 
 import { connect } from 'react-redux';
 import { isObject } from 'lodash';
+import { destroy } from 'redux-form';
+import { toast } from 'react-toastify';
 import { OnPremConfiguration } from '../../config';
 import {
   createInstanceType,
   createInstanceTypeResponse,
   createRegion,
   createRegionResponse,
+  deleteRegion,
+  deleteRegionResponse,
   createZones,
   createZonesResponse,
   createNodeInstances,
@@ -25,8 +29,7 @@ import {
   createOnPremProviderResponse
 } from '../../../actions/cloud';
 import { isNonEmptyArray } from '../../../utils/ObjectUtils';
-import { destroy } from 'redux-form';
-import { toast } from 'react-toastify';
+import { createErrorMessage } from '../../alerts/AlertConfiguration/AlertUtils';
 
 const mapStateToProps = (state) => {
   return {
@@ -93,12 +96,25 @@ const mapDispatchToProps = (dispatch) => {
           if ((isEdit && region.isBeingEdited) || !isEdit) {
             dispatch(createRegion(providerUUID, formValues)).then((response) => {
               if (response.error) {
-                const errorMessage = response.payload?.response?.data?.error || response.payload.message;
+                const errorMessage =
+                  response.payload?.response?.data?.error || response.payload.message;
                 toast.error(errorMessage);
               }
               dispatch(createRegionResponse(response.payload));
             });
           }
+        });
+      }
+    },
+
+    deleteOnPremRegions: (providerUUID, regions) => {
+      if (isNonEmptyArray(regions)) {
+        regions.forEach((region) => {
+          dispatch(deleteRegion(providerUUID, region.uuid)).then((response) => {
+            if (response.error) toast.error(createErrorMessage(response.payload));
+
+            dispatch(deleteRegionResponse(response.payload));
+          });
         });
       }
     },
