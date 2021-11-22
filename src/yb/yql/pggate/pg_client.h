@@ -30,7 +30,7 @@ namespace yb {
 namespace pggate {
 
 #define YB_PG_CLIENT_SIMPLE_METHODS \
-    (AlterDatabase)(AlterTable)(BackfillIndex)(CreateDatabase)(CreateTable)(CreateTablegroup) \
+    (AlterDatabase)(AlterTable)(CreateDatabase)(CreateTable)(CreateTablegroup) \
     (DropDatabase)(DropTablegroup)(TruncateTable)
 
 class PgClient {
@@ -57,6 +57,8 @@ class PgClient {
 
   Result<client::YBTableName> DropTable(
       tserver::PgDropTableRequestPB* req, CoarseTimePoint deadline);
+
+  CHECKED_STATUS BackfillIndex(tserver::PgBackfillIndexRequestPB* req, CoarseTimePoint deadline);
 
   Result<int32> TabletServerCount(bool primary_only);
 
