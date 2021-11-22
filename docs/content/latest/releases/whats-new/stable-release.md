@@ -45,9 +45,13 @@ docker pull yugabytedb/yugabyte:2.8.0.0-b37
 
 ### New features
 
+For an overview of the 2.8.0.0 release's notable new features, check out the [release announcement blog post](https://blog.yugabyte.com/announcing-yugabytedb-2-8/).
+
 #### Yugabyte Platform
 
-The Yugabyte Platform [REST API documentation](https://api-docs.yugabyte.com/) is now available
+* We've made some significant updates to alerts and notifications. You can read about them in [this blog post](https://blog.yugabyte.com/yugabytedb-2-8-alerts-and-notifications/).
+
+* The [Yugabyte Platform REST API](https://api-docs.yugabyte.com/) is now available. Be sure to read the [blog post](https://blog.yugabyte.com/yugabytedb-2-8-api-automated-operations/) about it, as well!
 
 #### Database
 
