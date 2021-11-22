@@ -81,6 +81,8 @@
 
 template<class T> class scoped_refptr;
 
+DECLARE_int32(backfill_index_client_rpc_timeout_ms);
+
 YB_DEFINE_ENUM(GrantRevokeStatementType, (GRANT)(REVOKE));
 
 namespace yb {
