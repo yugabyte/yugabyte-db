@@ -253,17 +253,17 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
                                                             print_output=False)
         results["Try Ansible Command"] = ansible_status == 0
 
-        ports_to_check = ",".join([p for p in [args.master_http_port,
-                                               args.master_rpc_port,
-                                               args.tserver_http_port,
-                                               args.tserver_rpc_port,
-                                               args.cql_proxy_http_port,
-                                               args.cql_proxy_rpc_port,
-                                               args.ysql_proxy_http_port,
-                                               args.ysql_proxy_rpc_port,
-                                               args.redis_proxy_http_port,
-                                               args.redis_proxy_rpc_port,
-                                               args.node_exporter_http_port] if p is not None])
+        ports_to_check = ",".join([str(p) for p in [args.master_http_port,
+                                                    args.master_rpc_port,
+                                                    args.tserver_http_port,
+                                                    args.tserver_rpc_port,
+                                                    args.cql_proxy_http_port,
+                                                    args.cql_proxy_rpc_port,
+                                                    args.ysql_proxy_http_port,
+                                                    args.ysql_proxy_rpc_port,
+                                                    args.redis_proxy_http_port,
+                                                    args.redis_proxy_rpc_port,
+                                                    args.node_exporter_http_port] if p is not None])
 
         cmd = "/tmp/preflight_checks.sh --type {} --yb_home_dir {} --mount_points {} " \
               "--ports_to_check {} --sudo_pass_file {} --cleanup".format(
