@@ -62,6 +62,7 @@ class PgIndexBackfillTest : public LibPqTestBase {
   }
 
  protected:
+  bool HasClientTimedOut(const Status& s);
   void TestSimpleBackfill(const std::string& table_create_suffix = "");
   void TestLargeBackfill(const int num_rows);
   void TestRetainDeleteMarkers(const std::string& db_name);
@@ -107,6 +108,22 @@ Result<double> AvgBackfillRpcLatencyInMicros(ExternalMiniCluster* cluster) {
 }
 
 } // namespace
+
+bool PgIndexBackfillTest::HasClientTimedOut(const Status& s) {
+  if (!s.IsNetworkError()) {
+    return false;
+  }
+
+  // The client timeout is set using the same backfill_index_client_rpc_timeout_ms for
+  // postgres-tserver RPC and tserver-master RPC.  Since they are the same value, it _may_ be
+  // possible for either timeout message to show up, so accept either, even though the
+  // postgres-tserver timeout is far more likely to show up.
+  //
+  // The first is postgres-tserver; the second is tserver-master.
+  const std::string msg = s.message().ToBuffer();
+  return msg.find("Timed out: BackfillIndex RPC") != std::string::npos ||
+         msg.find("Timed out waiting for Backfill Index") != std::string::npos;
+}
 
 void PgIndexBackfillTest::TestSimpleBackfill(const std::string& table_create_suffix) {
   ASSERT_OK(conn_->ExecuteFormat(
@@ -1551,10 +1568,7 @@ TEST_F_EX(PgIndexBackfillTest,
           PgIndexBackfillSlowClientDeadline) {
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
   Status status = conn_->ExecuteFormat("CREATE INDEX ON $0 (i)", kTableName);
-  ASSERT_TRUE(status.IsNetworkError()) << "Got " << status;
-  const std::string msg = status.message().ToBuffer();
-  ASSERT_TRUE(msg.find("Timed out waiting for Backfill Index") != std::string::npos)
-      << status;
+  ASSERT_TRUE(HasClientTimedOut(status)) << status;
 
   // Make sure that the index is not public.
   ASSERT_FALSE(ASSERT_RESULT(conn_->HasIndexScan(Format(
@@ -1571,10 +1585,7 @@ TEST_F_EX(PgIndexBackfillTest,
 
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
   Status status = conn_->ExecuteFormat("CREATE INDEX $0 ON $1 (i)", kIndexName, kTableName);
-  ASSERT_TRUE(status.IsNetworkError()) << "Got " << status;
-  const std::string msg = status.message().ToBuffer();
-  ASSERT_TRUE(msg.find("Timed out waiting for Backfill Index") != std::string::npos)
-      << status;
+  ASSERT_TRUE(HasClientTimedOut(status)) << status;
 
   // Make sure that the index exists in DocDB metadata.
   auto tables = ASSERT_RESULT(client->ListTables());
@@ -1634,10 +1645,7 @@ TEST_F_EX(PgIndexBackfillTest,
     // DROP INDEX is currently not online and removes the index info from the indexed table
     // ==> the WaitUntilIndexPermissionsAtLeast will keep failing and retrying GetTableSchema on the
     // index.
-    ASSERT_TRUE(status.IsNetworkError()) << "Got " << status;
-    const std::string msg = status.message().ToBuffer();
-    ASSERT_TRUE(msg.find("Timed out waiting for Backfill Index") != std::string::npos)
-        << status;
+    ASSERT_TRUE(HasClientTimedOut(status)) << status;
   });
   thread_holder_.AddThreadFunctor([this] {
     LOG(INFO) << "Begin drop thread";
@@ -1647,6 +1655,36 @@ TEST_F_EX(PgIndexBackfillTest,
     ASSERT_OK(conn_->ExecuteFormat("DROP INDEX $0", kIndexName));
   });
   thread_holder_.JoinAll();
+}
+
+// Override the index backfill test class to have a default client admin timeout one second smaller
+// than backfill delay.  Also, ensure client backfill timeout is high, and set num_tablets to 1 to
+// make the test finish more quickly.
+class PgIndexBackfillFastDefaultClientTimeout : public PgIndexBackfillTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back(Format(
+        "--TEST_slowdown_backfill_by_ms=$0",
+        kBackfillDelay.ToMilliseconds()));
+    options->extra_tserver_flags.push_back(Format(
+        "--yb_client_admin_operation_timeout_sec=$0", (kBackfillDelay - 1s).ToSeconds()));
+    options->extra_tserver_flags.push_back("--backfill_index_client_rpc_timeout_ms=60000"); // 1m
+    options->extra_tserver_flags.push_back("--ysql_num_tablets=1");
+  }
+ protected:
+  const MonoDelta kBackfillDelay = RegularBuildVsSanitizers(7s, 14s);
+};
+
+// Simply create table and index.  The CREATE INDEX should not timeout during backfill because the
+// BackfillIndex request from postgres should use the backfill_index_client_rpc_timeout_ms timeout
+// (default 60m) rather than the small yb_client_admin_operation_timeout_sec.
+TEST_F_EX(PgIndexBackfillTest,
+          YB_DISABLE_TEST_IN_TSAN(LowerDefaultClientTimeout),
+          PgIndexBackfillFastDefaultClientTimeout) {
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
+  // This should not time out.
+  ASSERT_OK(conn_->ExecuteFormat("CREATE INDEX ON $0 (i)", kTableName));
 }
 
 // Override the index backfill fast client timeout test class to have more than one master.
@@ -1680,10 +1718,7 @@ TEST_F_EX(PgIndexBackfillTest,
     // will be inactive at the WRITE_AND_DELETE docdb permission, it will wait until the deadline,
     // which is set to 30s.
     Status status = create_conn.ExecuteFormat("CREATE INDEX $0 ON $1 (i)", kIndexName, kTableName);
-    ASSERT_TRUE(status.IsNetworkError()) << "Got " << status;
-    const std::string msg = status.message().ToBuffer();
-    ASSERT_TRUE(msg.find("Timed out waiting for Backfill Index") != std::string::npos)
-        << status;
+    ASSERT_TRUE(HasClientTimedOut(status)) << status;
   });
   thread_holder_.AddThreadFunctor([this] {
     LOG(INFO) << "Begin master leader stepdown thread";
