@@ -12,7 +12,7 @@ isTocNested: false
 showAsideToc: true
 ---
 
-The **Peering Connections** tab displays a list of peering connections configured for your cloud that includes the peering connection name, cloud provider, the name or ID of the peered VPC, the name of the Yugabyte VPC, and status of the connection.
+The **Peering Connections** tab displays a list of peering connections configured for your cloud that includes the peering connection name, cloud provider, the network name (GCP) or VPC ID (AWS) of the peered VPC, the name of the Yugabyte VPC, and status of the connection.
 
 ![Create VPC peer](/images/yb-cloud/cloud-networking-vpc.png)
 
@@ -49,6 +49,30 @@ Once the peering request is made, in AWS, use the VPC Dashboard to do the follow
 1. Approve the peering connection request that you received from Yugabyte.
 1. Add a route table entry to the VPC peer and add the Yugabyte Cloud cluster CIDR block to the Destination column, and the Peering Connection ID to the Target column.
 
-### Accept the peering request in GCP
+### Create a peering connection in GCP
 
-Once the peering request is made, in the Google Cloud Console, create a peering connection using the project ID and VPC network name.
+To make a GCP peering connection active, you must create a peering connection in GCP. You will need the the **Project ID** and **VPC network name** of the Yugabyte Cloud VPC you are peering with. You can view and copy these details by accessing the **VPC Details** on the **VPCs** tab in Yugabyte Cloud.
+
+In the Google Cloud Console, do the following:
+
+1. Navigate to **VPC Network > VPC network peering**.
+1. Click **Create Peering Connection**, then click **Continue**.
+1. Enter a name for the GCP peering connection.
+1. Select your VPC network name.
+1. Select **In another project** and enter the **Project ID** and **VPC network name** of the Yugabyte Cloud VPC you are peering with.
+1. Click **Create**.
+
+For information on VPC network peering in GCP, refer to [VPC Network Peering overview](https://cloud.google.com/vpc/docs/vpc-peering.) in the Google VPC documentation.
+
+## View peering connection details
+
+To view peering connection details:
+
+1. On the **Network Access** page, select **VPC Network**, then **Peering Connections**.
+1. Select a peering connection in the list to display the **Peering Details** sheet.
+
+To terminate the VPC, click **Terminate VPC**.
+
+## Terminate a peering connection
+
+To terminate a peering connection, click the Delete icon for the peering connection in the list you want to terminate, then click **Terminate**.
