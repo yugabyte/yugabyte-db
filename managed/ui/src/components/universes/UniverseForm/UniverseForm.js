@@ -401,7 +401,7 @@ class UniverseForm extends Component {
             return { name: tserverFlag.name, value: tserverFlag.value.trim() };
           });
 
-        if (currentProvider === 'aws') {
+        if (['aws', 'gcp'].includes(currentProvider)) {
           clusterIntent.instanceTags = formValues.primary.instanceTags
             .filter((userTag) => {
               return isNonEmptyString(userTag.name) && isNonEmptyString(userTag.value);
@@ -496,16 +496,16 @@ class UniverseForm extends Component {
       ];
     }
 
-    submitPayload.nodeDetailsSet = submitPayload.nodeDetailsSet.map(nodeDetail => {
+    submitPayload.nodeDetailsSet = submitPayload.nodeDetailsSet.map((nodeDetail) => {
       return {
         ...nodeDetail,
         cloudInfo: {
           ...nodeDetail.cloudInfo,
-          assignPublicIP: formValues["primary"].assignPublicIP
+          assignPublicIP: formValues['primary'].assignPublicIP
         }
-      }
-    })
-    
+      };
+    });
+
     submitPayload.clusters = submitPayload.clusters.filter((c) => c.userIntent !== null);
     // filter clusters array if configuring(adding only) Read Replica due to server side validation
     if (type === 'Async') {
@@ -716,12 +716,12 @@ class UniverseForm extends Component {
     // check nodes if all live nodes is going to be removed (full move)
     const existingPrimaryNodes = getPromiseState(universeConfigTemplate).isSuccess()
       ? universeConfigTemplate.data.nodeDetailsSet.filter(
-        (node) =>
-          node.nodeName &&
+          (node) =>
+            node.nodeName &&
             (type === 'Async'
               ? node.nodeName.includes('readonly')
               : !node.nodeName.includes('readonly'))
-      )
+        )
       : [];
     const formChangedOrInvalid = hasFieldChanged || disableSubmit;
     let submitControl = (
