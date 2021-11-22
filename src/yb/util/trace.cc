@@ -52,6 +52,12 @@ DEFINE_bool(enable_tracing, false, "Flag to enable/disable tracing across the co
 TAG_FLAG(enable_tracing, advanced);
 TAG_FLAG(enable_tracing, runtime);
 
+DEFINE_bool(use_monotime_for_traces, false, "Flag to enable use of MonoTime::Now() instead of "
+    "CoarseMonoClock::Now(). CoarseMonoClock is much cheaper so it is better to use it. However "
+    "if we need more accurate sub-millisecond level breakdown, we could use MonoTime.");
+TAG_FLAG(use_monotime_for_traces, advanced);
+TAG_FLAG(use_monotime_for_traces, runtime);
+
 DEFINE_int32(tracing_level, 0, "verbosity levels (like --v) up to which tracing is enabled.");
 TAG_FLAG(tracing_level, advanced);
 TAG_FLAG(tracing_level, runtime);
