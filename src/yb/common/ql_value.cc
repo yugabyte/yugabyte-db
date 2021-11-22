@@ -123,6 +123,10 @@ int QLValue::CompareTo(const QLValue& other) const {
       } else {
         return other.IsMin() ? 0 : -1;
       }
+
+    case InternalType::kGinNullValue: {
+      return GenericCompare(gin_null_value(), other.gin_null_value());
+    }
   }
 
   LOG(FATAL) << "Internal error: unsupported type " << type();
@@ -236,6 +240,11 @@ void AppendToKey(const QLValuePB &value_pb, string *bytes) {
                  << ") is not supported in hash key";
     case InternalType::kVirtualValue:
       LOG(FATAL) << "Runtime error: virtual value should not be used to construct hash key";
+    case InternalType::kGinNullValue: {
+      LOG(ERROR) << "Runtime error: gin null value should not be used to construct hash key";
+      YBPartition::AppendIntToKey<uint8, uint8>(value_pb.gin_null_value(), bytes);
+      break;
+    }
   }
 }
 
@@ -812,6 +821,20 @@ string QLValue::ToValueString(const QuotesType quotes_type) const {
         return "<MAX_LIMIT>";
       }
       return "<MIN_LIMIT>";
+    case InternalType::kGinNullValue: {
+      switch (gin_null_value()) {
+        // case 0, gin:norm-key, should not exist since the actual data would be used instead.
+        case 1:
+          return "gin:null-key";
+        case 2:
+          return "gin:empty-item";
+        case 3:
+          return "gin:null-item";
+        // case -1, gin:empty-query, should not exist since that's internal to postgres.
+        default:
+          LOG(FATAL) << "Unexpected gin null category: " << gin_null_value();
+      }
+    }
 
     case InternalType::VALUE_NOT_SET:
       LOG(FATAL) << "Internal error: value should not be null";
@@ -978,6 +1001,8 @@ int Compare(const QLValuePB& lhs, const QLValuePB& rhs) {
                 rhs.virtual_value() == QLVirtualValuePB::LIMIT_MIN) ? 0 : -1;
       }
       break;
+    case QLValuePB::kGinNullValue:
+      return GenericCompare(lhs.gin_null_value(), rhs.gin_null_value());
 
     // default: fall through
   }
@@ -1052,6 +1077,8 @@ int Compare(const QLValuePB& lhs, const QLValue& rhs) {
         return rhs.IsMin() ? 0 : -1;
       }
       break;
+    case QLValuePB::kGinNullValue:
+      return GenericCompare(static_cast<uint8_t>(lhs.gin_null_value()), rhs.gin_null_value());
 
     // default: fall through
   }

@@ -8,17 +8,19 @@
     margin-top: 0;
   }
   .tab-content {
-    padding: 20px 30px;
+    padding: 30px 30px;
   }
 
   .percent-text {
     padding: 5px 10px;
-    font-size: 20px;
+    font-size: 13px;
     margin: 0;
   }
   .flex-container {
     display: flex;
     justify-content: flex-start;
+    align-items: center;
+    height: 40px;
   }
   .actionBtnsMargin {
     margin-bottom: 71px;
@@ -48,13 +50,17 @@
     position: relative;
     top: 10px;
   }
-
+  .alert-dest-count {
+    margin-top: 50px;
+    margin-bottom: 20px;
+  }
   .alert-config-list {
     width: 220px;
   }
 
   .on-prem-row-delete-btn {
     float: left;
+    font-size: 18px;
   }
 
   h5 {
@@ -111,6 +117,13 @@
       display: flex;
     }
   }
+
+  .marginBottom {
+    margin-bottom: 8px !important;
+  }
+  .marginRight {
+    margin-right: 5px;
+  }
 }
 .row {
   margin-left: 0;
@@ -122,7 +135,7 @@
 
 .alertDestinationDetail {
   padding: 20px 10px 0px 10px;
-  h5{
+  h5 {
     margin-top: 30px;
   }
   label {

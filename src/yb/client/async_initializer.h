@@ -41,7 +41,6 @@ class AsyncClientInitialiser {
 
   YBClient* client() const;
 
-
   YBClientBuilder& builder() {
     return client_builder_;
   }

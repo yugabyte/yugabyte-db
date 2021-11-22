@@ -9,14 +9,10 @@
  */
 package com.yugabyte.yw.common.metrics;
 
-import com.yugabyte.yw.models.Metric;
-import com.yugabyte.yw.models.filters.MetricFilter;
 import java.util.List;
 
 public interface MetricsProvider {
-  List<Metric> getMetrics() throws Exception;
-
-  List<MetricFilter> getMetricsToRemove() throws Exception;
+  List<MetricSaveGroup> getMetricGroups() throws Exception;
 
   String getName();
 

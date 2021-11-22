@@ -49,7 +49,6 @@
 
 #include <gflags/gflags.h>
 #include <glog/logging.h>
-#include <glog/stl_logging.h>
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
@@ -59,10 +58,8 @@
 #include "yb/client/tablet_server.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/common/ql_expr.h"
 #include "yb/common/ql_value.h"
 
-#include "yb/docdb/doc_rowwise_iterator.h"
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
@@ -75,7 +72,6 @@
 
 #include "yb/server/hybrid_clock.h"
 
-#include "yb/tablet/tablet.h"
 
 #include "yb/util/blocking_queue.h"
 #include "yb/util/curl_util.h"
@@ -335,9 +331,7 @@ class LinkedListChainGenerator {
     QLAddInt64HashValue(req, this_key);
     table.AddInt64ColumnValue(req, kInsertTsColumnName, ts);
     table.AddInt64ColumnValue(req, kLinkColumnName, prev_key_);
-    RETURN_NOT_OK_PREPEND(
-        session->Apply(insert),
-        strings::Substitute("Unable to apply insert with key $0 at ts $1", this_key, ts));
+    session->Apply(insert);
     prev_key_ = this_key;
     return Status::OK();
   }
@@ -392,7 +386,7 @@ class ScopedRowUpdater {
       QLAddInt64HashValue(req, next_key);
       table_.AddBoolColumnValue(req, kUpdatedColumnName, true);
       ops.push_back(update);
-      CHECK_OK(session->Apply(update));
+      session->Apply(update);
       if (ops.size() >= 50) {
         FlushSessionOrDie(session, ops);
         ops.clear();
@@ -713,9 +707,8 @@ Status LinkedListTester::VerifyLinkedListRemote(
   verifier.StartScanTimer();
 
   if (snapshot_hybrid_time.is_valid()) {
-    std::vector<std::unique_ptr<client::YBTabletServer>> servers;
-    RETURN_NOT_OK(client_->ListTabletServers(&servers));
-    const std::string down_ts = servers.front()->uuid();
+    const auto servers = VERIFY_RESULT(client_->ListTabletServers());
+    const auto& down_ts = servers.front().uuid;
     LOG(INFO) << "Calling callback on tserver " << down_ts;
     RETURN_NOT_OK(cb(down_ts));
   }

@@ -40,7 +40,6 @@
 #include "yb/gutil/map-util.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/server/clock.h"
-#include "yb/server/hybrid_clock.h"
 #include "yb/server/server_base.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/flags.h"
@@ -109,9 +108,10 @@ void GenericServiceImpl::SetFlag(const SetFlagRequestPB* req,
     resp->set_result(SetFlagResponsePB::BAD_VALUE);
     resp->set_msg("Unable to set flag: bad value");
   } else {
+    bool is_sensitive = ContainsKey(tags, "sensitive_info");
     LOG(INFO) << rpc.requestor_string() << " changed flags via RPC: "
-              << req->flag() << " from '" << old_val << "' to '"
-              << req->value() << "'";
+              << req->flag() << " from '" << (is_sensitive ? "***" : old_val)
+              << "' to '" << (is_sensitive ? "***" : req->value()) << "'";
     resp->set_result(SetFlagResponsePB::SUCCESS);
     resp->set_msg(ret);
   }

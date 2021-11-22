@@ -34,7 +34,7 @@ showAsideToc: true
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start YCQL](../../../../api/ycql/quick-start/).
+- installed YugabyteDB, created a universe and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start YCQL](../../../explore/ycql/).
 - installed Visual Studio.
 
 ## Write the HelloWorld C# app
@@ -47,9 +47,11 @@ The [Yugabyte C# Driver for YCQL](https://github.com/yugabyte/cassandra-csharp-d
 
 To install the [Yugbyte C# Driver for YCQL](https://www.nuget.org/packages/YugaByteCassandraCSharpDriver/) in your Visual Studio project, follow the instructions in the [README](https://github.com/yugabyte/cassandra-csharp-driver).
 
-### Copy the contents below to your `Program.cs` file
+### Create the program
 
-```cs
+Copy the contents below to your `Program.cs` file:
+
+```csharp
 using System;
 using System.Linq;
 using Cassandra;
@@ -113,11 +115,11 @@ To run the C# app from the Visual Studio menu, select `Run > Start Without Debug
 
 You should see the following as the output.
 
-```
+```output
 Created keyspace ybdemo
 Created keyspace employee
 Inserted data: INSERT INTO ybdemo.employee(id, name, age, language) VALUES (1, 'John', 35, 'C#')
 Select query returned 1 rows
-Name	Age	Language
-John	35	C#
+Name  Age  Language
+John  35   C#
 ```

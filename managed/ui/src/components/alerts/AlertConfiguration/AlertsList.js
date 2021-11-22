@@ -9,14 +9,18 @@ import React, { useEffect, useState } from 'react';
 import { DropdownButton, MenuItem } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { isNonEmptyArray } from '../../../utils/ObjectUtils';
+import { getPromiseState } from '../../../utils/PromiseUtils';
 import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
+import { YBLoading } from '../../common/indicators';
 import { YBConfirmModal } from '../../modals';
 import { YBPanelItem } from '../../panels';
+import { isNonAvailable } from '../../../utils/LayoutUtils';
 
 /**
  * This is the header for YB Panel Item.
  */
 const header = (
+  isReadOnly,
   alertsCount,
   onCreateAlert,
   enablePlatformAlert,
@@ -27,10 +31,11 @@ const header = (
     <h5 className="table-container-title pull-left">{`${alertsCount} Alert Configurations`}</h5>
     <FlexContainer className="pull-right">
       <FlexShrink>
-        <DropdownButton
-          className="alert-config-actions btn btn-default"
+        {!isReadOnly && (<DropdownButton
+          className="alert-config-actions btn btn-orange"
           title="Create Alert Config"
           id="bg-nested-dropdown"
+          bsStyle="danger"
           pullRight
         >
           <MenuItem
@@ -57,6 +62,7 @@ const header = (
             <i className="fa fa-clone tab-logo" aria-hidden="true"></i> Platform Alert
           </MenuItem>
         </DropdownButton>
+        )}
       </FlexShrink>
     </FlexContainer>
   </>
@@ -68,7 +74,6 @@ const header = (
 const payload = {
   uuids: [],
   name: null,
-  active: true,
   targetUuid: null,
   routeUuid: null
 };
@@ -78,6 +83,7 @@ export const AlertsList = (props) => {
   const [alertDestinationList, setAlertDestinationList] = useState([]);
   const [defaultDestination, setDefaultDestination] = useState([]);
   const {
+    customer,
     alertConfigs,
     alertUniverseList,
     alertDestinations,
@@ -88,27 +94,41 @@ export const AlertsList = (props) => {
     modal: { visibleModal },
     onCreateAlert,
     showDeleteModal,
-    setInitialValues
+    setInitialValues,
+    universes,
+    updateAlertConfig,
+    sendTestAlert
   } = props;
   const [options, setOptions] = useState({
     noDataText: 'Loading...',
-    sortName: 'createTime',
-    sortOrder: 'desc'
+    defaultSortName: 'name',
+    defaultSortOrder: 'asc'
   });
+  const isReadOnly = isNonAvailable(
+    customer.data.features, 'alert.configuration.actions');
 
   const onInit = () => {
     alertConfigs(payload).then((res) => {
       setAlertList(res);
-      setOptions({ noDataText: 'There is no data to display ' });
+      setOptions({ ...options, noDataText: 'There is no data to display ' });
     });
 
     alertDestinations().then((res) => {
-      setDefaultDestination(res.find(destination => destination.defaultDestination));
+      setDefaultDestination(res.find((destination) => destination.defaultDestination));
       setAlertDestinationList(res);
     });
   };
 
   useEffect(onInit, []);
+
+    const formatName = (cell, row) => {
+      if (!row.active) {
+        return (
+          <span className="text-red text-regular">{row.name} (Inactive)</span>
+        );
+      }
+      return row.name
+    };
 
   /**
    * This method is used to congifure the destinationUUID with its repsective
@@ -119,7 +139,9 @@ export const AlertsList = (props) => {
    */
   const formatRoutes = (cell, row) => {
     if (row.defaultDestination) {
-      return <span className="text-red text-regular"> Use Default ({defaultDestination.name})</span>;
+      return (
+        <span className="text-red text-regular"> Use Default ({defaultDestination.name})</span>
+      );
     }
     const route = alertDestinationList
       .map((destination) => {
@@ -141,7 +163,8 @@ export const AlertsList = (props) => {
    */
   const formatThresholds = (cell, row) => {
     return Object.keys(row.thresholds)
-      .map((threshold) => threshold)
+      .map((severity) => severity)
+      .sort()
       .join(', ');
   };
 
@@ -151,7 +174,7 @@ export const AlertsList = (props) => {
    * @param {string} cell Not in-use.
    * @param {object} row Respective row.
    */
-  const formatcreatedTime = (cell, row) => {
+  const formatCreatedTime = (cell, row) => {
     return moment(row.createTime).format('MM/DD/yyyy');
   };
 
@@ -168,9 +191,9 @@ export const AlertsList = (props) => {
       .map((destination) => {
         return destination.uuid === row.destinationUUID
           ? {
-            value: destination.uuid,
-            label: destination.name
-          }
+              value: destination.uuid,
+              label: destination.name
+            }
           : null;
       })
       .filter((res) => res !== null);
@@ -185,6 +208,11 @@ export const AlertsList = (props) => {
     });
 
     // setting up ALERT_TARGET_TYPE & ALERT_UNIVERSE_LIST.
+    const currentDestination = destination[0]?.value
+      ? destination[0]?.value
+      : row.defaultDestination
+      ? '<default>'
+      : '<empty>';
     const targetType = row.target.all ? 'allUniverses' : 'selectedUniverses';
     const univerList =
       isNonEmptyArray(row.target.uuids) &&
@@ -201,14 +229,27 @@ export const AlertsList = (props) => {
       ALERT_METRICS_CONDITION: row.template,
       ALERT_METRICS_DURATION: row.durationSec,
       ALERT_METRICS_CONDITION_POLICY: condition,
-      ALERT_DESTINATION_LIST: destination[0]?.value,
-      thresholdUnit: row.thresholdUnit
+      ALERT_DESTINATION_LIST: currentDestination,
+      thresholdUnit: row.thresholdUnit,
+      ALERT_STATUS : row.active
     };
 
     setInitialValues(initialVal);
     onCreateAlert(true);
   };
 
+  const onToggleActive = (row) => {
+    const updatedAlertConfig = { ...row, active: !row.active }
+    updateAlertConfig(updatedAlertConfig, row.uuid).then(() => {
+      alertConfigs(payload).then((res) => {
+        setAlertList(res);
+      });
+    });
+  };
+
+  const onSendTestAlert = (row) => {
+    sendTestAlert(row.uuid);
+  };
   /**
    * This method will help us to delete the respective row record.
    *
@@ -222,7 +263,91 @@ export const AlertsList = (props) => {
     });
   };
 
+  const formatAlertTargets = (cell) => {
+    if (cell.all) return 'ALL';
+    const targetUniverse = cell.uuids
+      .map((uuid) => {
+        return universes.data.find((destination) => destination.universeUUID === uuid);
+      })
+      .filter(Boolean) //filtering undefined, if the universe is already deleted
+      .sort();
+
+    return (
+      <span>
+        {targetUniverse.map((u) => (
+          <div key={u.universeUUID}>{u.name}</div>
+        ))}
+      </span>
+    );
+  };
+
+  const targetSortFunc = (a, b, order) => {
+    const targetA = getTargetString(a.target)
+    const targetB = getTargetString(b.target)
+    if (order === 'desc') {
+      return targetB.localeCompare(targetA);
+    } else {
+      return targetA.localeCompare(targetB);
+    }
+  }
+
+  const getTargetString = (target) => {
+    if (target.all) return 'ALL';
+    return target.uuids
+      .map((uuid) => {
+        return universes.data.find((destination) => destination.universeUUID === uuid);
+      })
+      .filter(Boolean) //filtering undefined, if the universe is already deleted
+      .sort()
+      .join();
+  }
+
+  const thresholdSortFunc = (a, b, order) => {
+    const severitiesA = getSeveritiesString(a.thresholds)
+    const severitiesB = getSeveritiesString(b.thresholds)
+    if (order === 'desc') {
+      return severitiesB.localeCompare(severitiesA);
+    } else {
+      return severitiesA.localeCompare(severitiesB);
+    }
+  }
+
+  const getSeveritiesString = (thresholds) => {
+    return Object.keys(thresholds)
+      .map((severity) => severity)
+      .sort()
+      .join();
+  }
+
+  const destinationsSortFunc = (a, b, order) => {
+    const destinationA = getDestinationsString(a)
+    const destinationB = getDestinationsString(b)
+    if (order === 'desc') {
+      return destinationB.localeCompare(destinationA);
+    } else {
+      return destinationA.localeCompare(destinationB);
+    }
+  }
+
+  const getDestinationsString = (config) => {
+    if (config.defaultDestination) {
+      return "Use Default"
+    }
+    const destination = alertDestinationList
+      .map((destination) => {
+        return destination.uuid === config.destinationUUID ? destination.name : null;
+      })
+      .filter((res) => res !== null)
+      .join();
+
+    if (destination) {
+      return destination;
+    }
+    return "No destination"
+  }
+
   // This method will handle all the required actions for the particular row.
+  const editActionLabel = isReadOnly ? "Alert Details" : "Edit Alert";
   const formatConfigActions = (cell, row) => {
     return (
       <>
@@ -238,12 +363,32 @@ export const AlertsList = (props) => {
               onEditAlertConfig(row);
             }}
           >
-            <i className="fa fa-pencil"></i> Edit Alert
+            <i className="fa fa-pencil"></i> {editActionLabel}
           </MenuItem>
 
-          <MenuItem onClick={() => showDeleteModal(row?.uuid)}>
+          {!row.active && !isReadOnly ? (<MenuItem
+            onClick={() => {
+              onToggleActive(row);
+            }}
+          >
+            <i className="fa fa-toggle-on"></i> Activate
+          </MenuItem>) : null}
+
+          {row.active && !isReadOnly ? (<MenuItem
+            onClick={() => {
+              onToggleActive(row);
+            }}
+          >
+            <i className="fa fa-toggle-off"></i> Deactivate
+          </MenuItem>) : null}
+
+          {!isReadOnly ? (<MenuItem onClick={() => showDeleteModal(row?.uuid)}>
             <i className="fa fa-trash"></i> Delete Alert
-          </MenuItem>
+          </MenuItem>) : null}
+
+          {!isReadOnly ? (<MenuItem onClick={() => onSendTestAlert(row)}>
+            <i className="fa fa-paper-plane"></i> Send Test Alert
+          </MenuItem>) : null}
         </DropdownButton>
         <YBConfirmModal
           name="delete-alert-config"
@@ -259,9 +404,14 @@ export const AlertsList = (props) => {
     );
   };
 
+  if (!getPromiseState(universes).isSuccess() && !getPromiseState(universes).isEmpty()) {
+    return <YBLoading />;
+  }
+
   return (
     <YBPanelItem
       header={header(
+        isReadOnly,
         alertList.length,
         onCreateAlert,
         enablePlatformAlert,
@@ -279,7 +429,9 @@ export const AlertsList = (props) => {
             <TableHeaderColumn dataField="uuid" isKey={true} hidden={true} />
             <TableHeaderColumn
               dataField="name"
+              dataSort
               columnClassName="no-border name-column"
+              dataFormat={formatName}
               className="no-border"
             >
               Name
@@ -293,7 +445,19 @@ export const AlertsList = (props) => {
               Type
             </TableHeaderColumn>
             <TableHeaderColumn
+              dataField="target"
+              dataSort
+              sortFunc={targetSortFunc}
+              columnClassName="no-border name-column"
+              className="no-border"
+              dataFormat={formatAlertTargets}
+            >
+              Target Universes
+            </TableHeaderColumn>
+            <TableHeaderColumn
               dataField="thresholds"
+              dataSort
+              sortFunc={thresholdSortFunc}
               dataFormat={formatThresholds}
               columnClassName="no-border name-column"
               className="no-border"
@@ -302,6 +466,8 @@ export const AlertsList = (props) => {
             </TableHeaderColumn>
             <TableHeaderColumn
               dataField="destinationUUID"
+              dataSort
+              sortFunc={destinationsSortFunc}
               dataFormat={formatRoutes}
               columnClassName="no-border name-column"
               className="no-border"
@@ -310,8 +476,8 @@ export const AlertsList = (props) => {
             </TableHeaderColumn>
             <TableHeaderColumn
               dataField="createTime"
-              dataFormat={formatcreatedTime}
               dataSort
+              dataFormat={formatCreatedTime}
               width="120px"
               columnClassName="no-border name-column"
               className="no-border"
@@ -320,6 +486,7 @@ export const AlertsList = (props) => {
             </TableHeaderColumn>
             <TableHeaderColumn
               dataField="template"
+              dataSort
               columnClassName="no-border name-column"
               className="no-border"
             >

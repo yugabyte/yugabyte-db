@@ -54,10 +54,16 @@ public class CustomerConfigTest extends FakeDBApplication {
                 + "\"data\": {\"KEY\": \"ABCDEFGHIJ\", \"SECRET\": \"123456789\", \"DATA\": \"HELLO\"}}");
     CustomerConfig customerConfig =
         CustomerConfig.createWithFormData(defaultCustomer.uuid, formData);
+
     JsonNode data = customerConfig.getData();
-    assertValue(data, "KEY", "AB******IJ");
-    assertValue(data, "SECRET", "12*****89");
+    assertValue(data, "KEY", "ABCDEFGHIJ");
+    assertValue(data, "SECRET", "123456789");
     assertValue(data, "DATA", "HELLO");
+
+    JsonNode maskedData = customerConfig.getMaskedData();
+    assertValue(maskedData, "KEY", "AB******IJ");
+    assertValue(maskedData, "SECRET", "12*****89");
+    assertValue(maskedData, "DATA", "HELLO");
   }
 
   @Test
@@ -81,5 +87,15 @@ public class CustomerConfigTest extends FakeDBApplication {
     Map<String, String> data = cc.dataAsMap();
     assertEquals(1, data.size());
     assertEquals(ImmutableMap.of("foo", "bar"), data);
+  }
+
+  @Test
+  public void testDeleteStorageConfigWithoutBackupAndSchedule() {
+    CustomerConfig cc = createData(defaultCustomer);
+    CustomerConfig fc = CustomerConfig.get(defaultCustomer.uuid, cc.configUUID);
+    assertNotNull(fc);
+    fc.delete();
+    fc = CustomerConfig.get(defaultCustomer.uuid, cc.configUUID);
+    assertNull(fc);
   }
 }

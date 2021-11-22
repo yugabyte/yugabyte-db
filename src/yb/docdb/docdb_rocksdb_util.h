@@ -26,6 +26,7 @@
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/options.h"
+#include "yb/rocksdb/table.h"
 
 #include "yb/tablet/tablet_options.h"
 
@@ -108,13 +109,19 @@ CHECKED_STATUS ForceRocksDBCompact(rocksdb::DB* db);
 
 rocksdb::Options TEST_AutoInitFromRocksDBFlags();
 
+rocksdb::BlockBasedTableOptions TEST_AutoInitFromRocksDbTableFlags();
+
+Result<rocksdb::KeyValueEncodingFormat> GetConfiguredKeyValueEncodingFormat(
+    const std::string& flag_value);
+
 // Initialize the RocksDB 'options'.
 // The 'statistics' object provided by the caller will be used by RocksDB to maintain the stats for
 // the tablet.
 void InitRocksDBOptions(
     rocksdb::Options* options, const std::string& log_prefix,
     const std::shared_ptr<rocksdb::Statistics>& statistics,
-    const tablet::TabletOptions& tablet_options);
+    const tablet::TabletOptions& tablet_options,
+    rocksdb::BlockBasedTableOptions table_options = rocksdb::BlockBasedTableOptions());
 
 // Sets logs prefix for RocksDB options. This will also reinitialize options->info_log.
 void SetLogPrefix(rocksdb::Options* options, const std::string& log_prefix);

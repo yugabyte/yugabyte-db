@@ -6,13 +6,14 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CustomerTaskFormData;
+import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.SubTaskFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseResp;
-import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
@@ -29,6 +30,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -49,6 +53,7 @@ public class CustomerTaskController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(CustomerTaskController.class);
 
   private List<SubTaskFormData> fetchFailedSubTasks(UUID parentUUID) {
+    TaskInfo parentTask = TaskInfo.getOrBadRequest(parentUUID);
     Query<TaskInfo> subTaskQuery =
         TaskInfo.find
             .query()
@@ -56,7 +61,22 @@ public class CustomerTaskController extends AuthenticatedController {
             .eq("parent_uuid", parentUUID)
             .eq("task_state", TaskInfo.State.Failure.name())
             .orderBy("position desc");
-    Set<TaskInfo> result = subTaskQuery.findSet();
+    List<TaskInfo> result = new ArrayList<>(subTaskQuery.findList());
+
+    if ((parentTask.getTaskState() == TaskInfo.State.Failure) && result.isEmpty()) {
+      JsonNode taskError = parentTask.getTaskDetails().get("errorString");
+      if ((taskError != null) && !StringUtils.isEmpty(taskError.asText())) {
+        // Parent task hasn't `sub_task_group_type` set but can have some error details
+        // which are not present in subtasks. Usually these errors encountered on a
+        // stage of the action preparation (some initial checks plus preparation of
+        // subtasks for execution).
+        if (parentTask.getSubTaskGroupType() == null) {
+          parentTask.setSubTaskGroupType(SubTaskGroupType.Preparation);
+        }
+        result.add(0, parentTask);
+      }
+    }
+
     List<SubTaskFormData> subTasks = new ArrayList<>();
     for (TaskInfo taskInfo : result) {
       SubTaskFormData subTaskData = new SubTaskFormData();
@@ -73,7 +93,7 @@ public class CustomerTaskController extends AuthenticatedController {
   }
 
   private CustomerTaskFormData buildCustomerTaskFromData(
-      CustomerTask task, ObjectNode taskProgress) {
+      CustomerTask task, ObjectNode taskProgress, TaskInfo taskInfo) {
     try {
       CustomerTaskFormData taskData = new CustomerTaskFormData();
       taskData.percentComplete = taskProgress.get("percent").asInt();
@@ -83,9 +103,12 @@ public class CustomerTaskController extends AuthenticatedController {
       taskData.createTime = task.getCreateTime();
       taskData.completionTime = task.getCompletionTime();
       taskData.target = task.getTarget().name();
-      taskData.type = task.getType().getFriendlyName();
+      taskData.type = task.getType().name();
+      taskData.typeName =
+          task.getCustomTypeName() != null
+              ? task.getCustomTypeName()
+              : task.getType().getFriendlyName();
       taskData.targetUUID = task.getTargetUUID();
-      TaskInfo taskInfo = TaskInfo.getOrBadRequest(task.getTaskUUID());
       ObjectNode versionNumbers = Json.newObject();
       JsonNode taskDetails = taskInfo.getTaskDetails();
       if (taskData.type == "UpgradeSoftware" && taskDetails.has(YB_PREV_SOFTWARE_VERSION)) {
@@ -128,6 +151,12 @@ public class CustomerTaskController extends AuthenticatedController {
 
     Map<UUID, List<CustomerTaskFormData>> taskListMap = new HashMap<>();
 
+    Set<UUID> taskUuids =
+        customerTaskList.stream().map(CustomerTask::getTaskUUID).collect(Collectors.toSet());
+    Map<UUID, TaskInfo> taskInfoMap =
+        TaskInfo.find(taskUuids)
+            .stream()
+            .collect(Collectors.toMap(TaskInfo::getTaskUUID, Function.identity()));
     for (CustomerTask task : customerTaskList) {
       Optional<ObjectNode> optTaskProgress = commissioner.mayGetStatus(task.getTaskUUID());
       // If the task progress API returns error, we will log it and not add that task
@@ -141,7 +170,8 @@ public class CustomerTaskController extends AuthenticatedController {
                   + ", Error: "
                   + taskProgress.get("error"));
         } else {
-          CustomerTaskFormData taskData = buildCustomerTaskFromData(task, taskProgress);
+          CustomerTaskFormData taskData =
+              buildCustomerTaskFromData(task, taskProgress, taskInfoMap.get(task.getTaskUUID()));
           if (taskData != null) {
             List<CustomerTaskFormData> taskList =
                 taskListMap.getOrDefault(task.getTargetUUID(), new ArrayList<>());

@@ -15,10 +15,22 @@
 
 #include "yb/yql/pggate/test/pggate_test.h"
 
+#include <memory>
+#include <string>
+#include <unordered_set>
+
+#include <boost/optional.hpp>
+
 #include <gflags/gflags.h>
 
-#include "yb/yql/pggate/pg_session.h"
-#include "yb/yql/pggate/pg_memctx.h"
+#include "yb/client/client_fwd.h"
+#include "yb/common/transaction.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/tserver/tserver_util_fwd.h"
+#include "yb/util/result.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/pg_types.h"
+#include "yb/client/client.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
@@ -190,7 +202,7 @@ void PggateTest::BeginDDLTransaction() {
 }
 
 void PggateTest::CommitDDLTransaction() {
-  CHECK_YBC_STATUS(YBCPgExitSeparateDdlTxnMode(true /* success */));
+  CHECK_YBC_STATUS(YBCPgExitSeparateDdlTxnMode());
 }
 
 void PggateTest::BeginTransaction() {

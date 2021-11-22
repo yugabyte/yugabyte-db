@@ -272,6 +272,7 @@ class PrimitiveValue {
   static PrimitiveValue TableId(Uuid table_id);
   static PrimitiveValue PgTableOid(const PgTableOid pgtable_id);
   static PrimitiveValue Jsonb(const std::string& json);
+  static PrimitiveValue GinNull(uint8_t v);
 
   KeyBytes ToKeyBytes() const;
 
@@ -397,6 +398,11 @@ class PrimitiveValue {
     return column_id_val_;
   }
 
+  uint8_t GetGinNull() const {
+    DCHECK(ValueType::kGinNull == type_);
+    return gin_null_val_;
+  }
+
   bool operator <(const PrimitiveValue& other) const {
     return CompareTo(other) < 0;
   }
@@ -484,6 +490,7 @@ class PrimitiveValue {
     std::string decimal_val_;
     std::string varint_val_;
     std::string json_val_;
+    uint8_t gin_null_val_;
   };
 
  private:

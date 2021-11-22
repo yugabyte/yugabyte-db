@@ -8,10 +8,14 @@ import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.models.helpers.ProviderAndRegion;
+import java.util.List;
 import java.util.Map;
+import org.hamcrest.Matchers;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -99,5 +103,21 @@ public class PriceComponentTest extends FakeDBApplication {
     PriceComponent.PriceDetails priceDetails = new PriceComponent.PriceDetails();
     priceDetails.setUnitFromString("Wrong");
     assertThat(priceDetails.unit, nullValue());
+  }
+
+  @Test
+  public void testFindByProviderAndRegion() {
+    PriceComponent.PriceDetails details = getValidPriceDetails();
+    PriceComponent pc1 = PriceComponent.upsert(testProvider.uuid, testRegion.code, "foo", details);
+    PriceComponent pc2 = PriceComponent.upsert(testProvider.uuid, "code2", "bar", details);
+    PriceComponent pc3 = PriceComponent.upsert(testProvider.uuid, "other", "foo", details);
+
+    List<PriceComponent> components =
+        PriceComponent.findByProvidersAndRegions(
+            ImmutableList.of(
+                new ProviderAndRegion(testProvider.uuid, testRegion.code),
+                new ProviderAndRegion(testProvider.uuid, "code2")));
+
+    assertThat(components, Matchers.containsInAnyOrder(pc1, pc2));
   }
 }

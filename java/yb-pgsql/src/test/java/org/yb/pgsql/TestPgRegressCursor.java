@@ -13,8 +13,8 @@
 package org.yb.pgsql;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static org.yb.AssertionWrappers.*;
-import static org.yb.util.SanitizerUtil.isASAN;
-import static org.yb.util.SanitizerUtil.isTSAN;
+import static org.yb.util.BuildTypeUtil.isASAN;
+import static org.yb.util.BuildTypeUtil.isTSAN;
 
 import java.sql.*;
 

@@ -24,7 +24,6 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/transaction_pool.h"
 
-#include "yb/yql/cql/ql/ptree/pt_grant_revoke.h"
 #include "yb/yql/cql/ql/util/ql_env.h"
 
 DEFINE_bool(use_cassandra_authentication, false, "If to require authentication on startup.");
@@ -99,7 +98,7 @@ Result<YBTransactionPtr> QLEnv::NewTransaction(const YBTransactionPtr& transacti
       return STATUS(InternalError, "No transaction pool provider");
     }
   }
-  auto result = transaction_pool_->Take();
+  auto result = transaction_pool_->Take(client::ForceGlobalTransaction::kTrue);
   RETURN_NOT_OK(result->Init(isolation_level));
   return result;
 }

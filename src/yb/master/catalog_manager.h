@@ -51,6 +51,7 @@
 #include "yb/common/partition.h"
 #include "yb/common/transaction.h"
 #include "yb/consensus/consensus.pb.h"
+#include "yb/client/client_fwd.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
@@ -132,6 +133,7 @@ static const char* const kColocatedParentTableIdSuffix = ".colocated.parent.uuid
 static const char* const kColocatedParentTableNameSuffix = ".colocated.parent.tablename";
 static const char* const kTablegroupParentTableIdSuffix = ".tablegroup.parent.uuid";
 static const char* const kTablegroupParentTableNameSuffix = ".tablegroup.parent.tablename";
+static const char* const kTransactionTablePrefix = "transactions_";
 static const int32 kDelayAfterFailoverSecs = 120;
 
 using PlacementId = std::string;
@@ -210,10 +212,19 @@ class CatalogManager :
                              CreateTableResponsePB* resp,
                              rpc::RpcContext* rpc);
 
-  // Create the transaction status table if needed (i.e. if it does not exist already).
+  // Create a new transaction status table.
+  CHECKED_STATUS CreateTransactionStatusTable(const CreateTransactionStatusTableRequestPB* req,
+                                              CreateTransactionStatusTableResponsePB* resp,
+                                              rpc::RpcContext *rpc);
+
+  // Create a transaction status table with the given name.
+  CHECKED_STATUS CreateTransactionStatusTableInternal(rpc::RpcContext *rpc,
+                                                      const string& table_name);
+
+  // Create the global transaction status table if needed (i.e. if it does not exist already).
   //
   // This is called at the end of CreateTable if the table has transactions enabled.
-  CHECKED_STATUS CreateTransactionsStatusTableIfNeeded(rpc::RpcContext *rpc);
+  CHECKED_STATUS CreateGlobalTransactionStatusTableIfNeeded(rpc::RpcContext *rpc);
 
   // Create the metrics snapshots table if needed (i.e. if it does not exist already).
   //
@@ -441,8 +452,9 @@ class CatalogManager :
                                rpc::RpcContext* rpc);
 
   // Delete CDC streams for a table.
-  virtual CHECKED_STATUS DeleteCDCStreamsForTable(const TableId& table_id);
-  virtual CHECKED_STATUS DeleteCDCStreamsForTables(const vector<TableId>& table_ids);
+  virtual CHECKED_STATUS DeleteCDCStreamsForTable(const TableId& table_id) EXCLUDES(mutex_);
+  virtual CHECKED_STATUS DeleteCDCStreamsForTables(const vector<TableId>& table_ids)
+      EXCLUDES(mutex_);
 
   virtual CHECKED_STATUS ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
                                               ChangeEncryptionInfoResponsePB* resp);
@@ -457,6 +469,10 @@ class CatalogManager :
   CHECKED_STATUS IsInitDbDone(const IsInitDbDoneRequestPB* req, IsInitDbDoneResponsePB* resp);
 
   CHECKED_STATUS GetYsqlCatalogVersion(uint64_t* catalog_version, uint64_t* last_breaking_version);
+
+  void RecomputeTxnTableVersionsHash() EXCLUDES(mutex_);
+
+  uint64_t GetTxnTableVersionsHash();
 
   virtual CHECKED_STATUS FillHeartbeatResponse(const TSHeartbeatRequestPB* req,
                                                TSHeartbeatResponsePB* resp);
@@ -754,6 +770,10 @@ class CatalogManager :
     return *encryption_manager_;
   }
 
+  client::UniverseKeyClient& universe_key_client() {
+    return *universe_key_client_;
+  }
+
   CHECKED_STATUS SplitTablet(const TabletId& tablet_id) override;
 
   // Splits tablet specified in the request using middle of the partition as a split point.
@@ -933,17 +953,16 @@ class CatalogManager :
   CHECKED_STATUS CreateTableInMemory(const CreateTableRequestPB& req,
                                      const Schema& schema,
                                      const PartitionSchema& partition_schema,
-                                     const bool create_tablets,
                                      const NamespaceId& namespace_id,
                                      const NamespaceName& namespace_name,
                                      const vector<Partition>& partitions,
                                      IndexInfoPB* index_info,
-                                     vector<TabletInfo*>* tablets,
+                                     TabletInfos* tablets,
                                      CreateTableResponsePB* resp,
                                      scoped_refptr<TableInfo>* table) REQUIRES(mutex_);
-  CHECKED_STATUS CreateTabletsFromTable(const vector<Partition>& partitions,
-                                        const scoped_refptr<TableInfo>& table,
-                                        std::vector<TabletInfo*>* tablets) REQUIRES(mutex_);
+
+  Result<TabletInfos> CreateTabletsFromTable(const vector<Partition>& partitions,
+                                             const TableInfoPtr& table) REQUIRES(mutex_);
 
   // Helper for creating copartitioned table.
   CHECKED_STATUS CreateCopartitionedTable(const CreateTableRequestPB& req,
@@ -966,6 +985,8 @@ class CatalogManager :
   // This method is thread-safe.
   CHECKED_STATUS InitSysCatalogAsync();
 
+  Result<ReplicationInfoPB> GetTableReplicationInfo(const TabletInfo& tablet_info) const;
+
   // Helper for creating the initial TableInfo state
   // Leaves the table "write locked" with the new info in the
   // "dirty" state field.
@@ -979,8 +1000,8 @@ class CatalogManager :
   // Helper for creating the initial TabletInfo state.
   // Leaves the tablet "write locked" with the new info in the
   // "dirty" state field.
-  TabletInfo *CreateTabletInfo(TableInfo* table,
-                               const PartitionPB& partition) REQUIRES(mutex_);
+  TabletInfoPtr CreateTabletInfo(TableInfo* table,
+                                 const PartitionPB& partition) REQUIRES(mutex_);
 
   // Remove the specified entries from the protobuf field table_ids of a TabletInfo.
   Status RemoveTableIdsFromTabletInfo(
@@ -1137,6 +1158,7 @@ class CatalogManager :
     TableInfoPtr info;
     TableInfo::WriteLock write_lock;
     RepeatedBytes retained_by_snapshot_schedules;
+    bool remove_from_name_map;
   };
 
   // Delete the specified table in memory. The TableInfo, DeletedTableInfo and lock of the deleted
@@ -1152,7 +1174,7 @@ class CatalogManager :
       rpc::RpcContext* rpc);
 
   // Request tablet servers to delete all replicas of the tablet.
-  void DeleteTabletReplicas(TabletInfo* tablet, const std::string& msg, bool hide_only);
+  void DeleteTabletReplicas(TabletInfo* tablet, const std::string& msg, HideOnly hide_only);
 
   // Returns error if and only if it is forbidden to both:
   // 1) Delete single tablet from table.
@@ -1213,13 +1235,13 @@ class CatalogManager :
   // the table we failed to create from the in-memory maps
   // ('table_names_map_', 'table_ids_map_', 'tablet_map_' below).
   CHECKED_STATUS AbortTableCreation(TableInfo* table,
-                                    const std::vector<TabletInfo*>& tablets,
+                                    const TabletInfos& tablets,
                                     const Status& s,
                                     CreateTableResponsePB* resp);
 
   void StartTablespaceBgTaskIfStopped();
 
-  std::shared_ptr<YsqlTablespaceManager> GetTablespaceManager();
+  std::shared_ptr<YsqlTablespaceManager> GetTablespaceManager() const;
 
   Result<boost::optional<ReplicationInfoPB>> GetTablespaceReplicationInfoWithRetry(
       const TablespaceId& tablespace_id);
@@ -1249,15 +1271,15 @@ class CatalogManager :
   // Registers new split tablet with `partition` for the same table as `source_tablet_info` tablet.
   // Does not change any other tablets and their partitions.
   // Returns TabletInfo for registered tablet.
-  Result<TabletInfo*> RegisterNewTabletForSplit(
+  Result<TabletInfoPtr> RegisterNewTabletForSplit(
       TabletInfo* source_tablet_info, const PartitionPB& partition,
-      TableInfo::WriteLock* table_write_lock);
+      TableInfo::WriteLock* table_write_lock, TabletInfo::WriteLock* tablet_write_lock);
 
   Result<scoped_refptr<TabletInfo>> GetTabletInfo(const TabletId& tablet_id);
 
   CHECKED_STATUS DoSplitTablet(
-      const scoped_refptr<TabletInfo>& source_tablet_info, const std::string& split_encoded_key,
-      const std::string& split_partition_key);
+      const scoped_refptr<TabletInfo>& source_tablet_info, std::string split_encoded_key,
+      std::string split_partition_key);
 
   // Splits tablet using specified split_hash_code as a split point.
   CHECKED_STATUS DoSplitTablet(
@@ -1475,6 +1497,8 @@ class CatalogManager :
 
   std::unique_ptr<EncryptionManager> encryption_manager_;
 
+  std::unique_ptr<client::UniverseKeyClient> universe_key_client_;
+
   // A pointer to the system.partitions tablet for the RebuildYQLSystemPartitions bg task.
   std::shared_ptr<SystemTablet> system_partitions_tablet_ = nullptr;
 
@@ -1506,7 +1530,7 @@ class CatalogManager :
   // satisfied, and not the individual min_num_replicas in each placement block.
   Result<TSDescriptorVector> FindTServersForPlacementInfo(
       const PlacementInfoPB& placement_info,
-      const TSDescriptorVector& ts_descs);
+      const TSDescriptorVector& ts_descs) const;
 
   // Using the TServer info in 'ts_descs', return the TServers that match 'pplacement_block'.
   // Returns error if there aren't enough TServers to fulfill the min_num_replicas requirement
@@ -1543,7 +1567,7 @@ class CatalogManager :
       TSDescriptor* ts_desc,
       bool is_incremental,
       const ReportedTabletPB& report,
-      const TableInfo::ReadLock& table_lock,
+      const TableInfo::WriteLock& table_lock,
       const TabletInfoPtr& tablet,
       const TabletInfo::WriteLock& tablet_lock,
       std::vector<RetryingTSRpcTaskPtr>* rpcs);
@@ -1564,8 +1588,13 @@ class CatalogManager :
       TabletReportUpdatesPB* full_report_update,
       std::vector<RetryingTSRpcTaskPtr>* rpcs);
 
+  size_t GetNumLiveTServersForPlacement(const PlacementId& placement_id);
+
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};
+
+  // Hash of transaction status table ids and versions.
+  std::atomic<uint64_t> txn_table_versions_hash_{0};
 
   rpc::ScheduledTaskTracker refresh_yql_partitions_task_;
 

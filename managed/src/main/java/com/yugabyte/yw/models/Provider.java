@@ -63,7 +63,7 @@ public class Provider extends Model {
   @ApiModelProperty(value = "Provider active status", accessMode = READ_ONLY)
   public Boolean active = true;
 
-  @Column(nullable = false)
+  @Column(name = "customer_uuid", nullable = false)
   @ApiModelProperty(value = "Customer uuid", accessMode = READ_ONLY)
   public UUID customerUUID;
 
@@ -149,18 +149,18 @@ public class Provider extends Model {
 
   @JsonProperty("config")
   public void setConfig(Map<String, String> configMap) {
-    Map<String, String> newConfigMap = this.getConfig();
+    Map<String, String> newConfigMap = this.getUnmaskedConfig();
     newConfigMap.putAll(configMap);
     this.config = newConfigMap;
   }
 
   @JsonProperty("config")
   public Map<String, String> getMaskedConfig() {
-    return maskConfigNew(this.getConfig());
+    return maskConfigNew(this.getUnmaskedConfig());
   }
 
   @JsonIgnore
-  public Map<String, String> getConfig() {
+  public Map<String, String> getUnmaskedConfig() {
     if (this.config == null) {
       return new HashMap<>();
     } else {
@@ -170,7 +170,7 @@ public class Provider extends Model {
 
   @JsonIgnore
   public String getYbHome() {
-    String ybHomeDir = this.getConfig().getOrDefault("YB_HOME_DIR", "");
+    String ybHomeDir = this.getUnmaskedConfig().getOrDefault("YB_HOME_DIR", "");
     if (ybHomeDir.isEmpty()) {
       ybHomeDir = DEFAULT_YB_HOME_DIR;
     }
@@ -294,18 +294,20 @@ public class Provider extends Model {
   public static Provider getOrBadRequest(UUID providerUuid) {
     Provider provider = find.byId(providerUuid);
     if (provider == null)
-      throw new PlatformServiceException(BAD_REQUEST, "Cannot find universe " + providerUuid);
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot find provider " + providerUuid);
     return provider;
   }
 
   @ApiModelProperty(required = false)
   public String getHostedZoneId() {
-    return getConfig().getOrDefault("HOSTED_ZONE_ID", getConfig().get("AWS_HOSTED_ZONE_ID"));
+    return getUnmaskedConfig()
+        .getOrDefault("HOSTED_ZONE_ID", getUnmaskedConfig().get("AWS_HOSTED_ZONE_ID"));
   }
 
   @ApiModelProperty(required = false)
   public String getHostedZoneName() {
-    return getConfig().getOrDefault("HOSTED_ZONE_NAME", getConfig().get("AWS_HOSTED_ZONE_NAME"));
+    return getUnmaskedConfig()
+        .getOrDefault("HOSTED_ZONE_NAME", getUnmaskedConfig().get("AWS_HOSTED_ZONE_NAME"));
   }
 
   /**
@@ -320,7 +322,7 @@ public class Provider extends Model {
 
   // Update host zone.
   public void updateHostedZone(String hostedZoneId, String hostedZoneName) {
-    Map<String, String> currentProviderConfig = getConfig();
+    Map<String, String> currentProviderConfig = getUnmaskedConfig();
     currentProviderConfig.put("HOSTED_ZONE_ID", hostedZoneId);
     currentProviderConfig.put("HOSTED_ZONE_NAME", hostedZoneName);
     this.setConfig(currentProviderConfig);

@@ -13,23 +13,30 @@ import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.fail;
 
 import com.yugabyte.yw.common.EmailFixtures;
+import com.yugabyte.yw.common.EmailHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.AlertChannel;
-import com.yugabyte.yw.models.AlertChannel.ChannelType;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
+import junitparams.converters.Nullable;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.junit.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
 
-@RunWith(MockitoJUnitRunner.class)
+@RunWith(JUnitParamsRunner.class)
 public class AlertChannelServiceTest extends FakeDBApplication {
+
+  @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
 
   private static final String CHANNEL_NAME = "Test Channel";
 
@@ -40,15 +47,14 @@ public class AlertChannelServiceTest extends FakeDBApplication {
   @Before
   public void setUp() {
     defaultCustomerUuid = ModelFactory.testCustomer().getUuid();
-    alertChannelService = new AlertChannelService();
+    alertChannelService = app.injector().instanceOf(AlertChannelService.class);
   }
 
   @Test
   public void testCreateAndGet() {
-    AlertChannelSlackParams slackParams =
-        (AlertChannelSlackParams) AlertUtils.createParamsInstance(ChannelType.Slack);
-    slackParams.username = "username";
-    slackParams.webhookUrl = "http://google.com";
+    AlertChannelSlackParams slackParams = new AlertChannelSlackParams();
+    slackParams.setUsername("username");
+    slackParams.setWebhookUrl("http://google.com");
 
     AlertChannel channel =
         new AlertChannel()
@@ -68,9 +74,7 @@ public class AlertChannelServiceTest extends FakeDBApplication {
   @Test
   public void testGetOrBadRequest() {
     // Happy path.
-    AlertChannel channel =
-        ModelFactory.createAlertChannel(
-            defaultCustomerUuid, CHANNEL_NAME, AlertUtils.createParamsInstance(ChannelType.Slack));
+    AlertChannel channel = ModelFactory.createSlackChannel(defaultCustomerUuid, CHANNEL_NAME);
 
     AlertChannel fromDb =
         alertChannelService.getOrBadRequest(defaultCustomerUuid, channel.getUuid());
@@ -92,15 +96,9 @@ public class AlertChannelServiceTest extends FakeDBApplication {
   public void testGetOrBadRequest_List() {
     // Happy path.
     AlertChannel channel1 =
-        ModelFactory.createAlertChannel(
-            defaultCustomerUuid,
-            CHANNEL_NAME + " 1",
-            AlertUtils.createParamsInstance(ChannelType.Slack));
+        ModelFactory.createSlackChannel(defaultCustomerUuid, CHANNEL_NAME + " 1");
     AlertChannel channel2 =
-        ModelFactory.createAlertChannel(
-            defaultCustomerUuid,
-            CHANNEL_NAME + " 2",
-            AlertUtils.createParamsInstance(ChannelType.Slack));
+        ModelFactory.createSlackChannel(defaultCustomerUuid, CHANNEL_NAME + " 2");
 
     List<AlertChannel> fromDb =
         alertChannelService.getOrBadRequest(
@@ -133,20 +131,13 @@ public class AlertChannelServiceTest extends FakeDBApplication {
   public void testList() {
     // First customer with two channels.
     AlertChannel channel1 =
-        ModelFactory.createAlertChannel(
-            defaultCustomerUuid,
-            CHANNEL_NAME + " 1",
-            AlertUtils.createParamsInstance(ChannelType.Email));
+        ModelFactory.createEmailChannel(defaultCustomerUuid, CHANNEL_NAME + " 1");
     AlertChannel channel2 =
-        ModelFactory.createAlertChannel(
-            defaultCustomerUuid,
-            CHANNEL_NAME + " 2",
-            AlertUtils.createParamsInstance(ChannelType.Slack));
+        ModelFactory.createSlackChannel(defaultCustomerUuid, CHANNEL_NAME + " 2");
 
     // Second customer with one channel.
     UUID newCustomerUUID = ModelFactory.testCustomer().uuid;
-    ModelFactory.createAlertChannel(
-        newCustomerUUID, CHANNEL_NAME, AlertUtils.createParamsInstance(ChannelType.Slack));
+    ModelFactory.createSlackChannel(newCustomerUUID, CHANNEL_NAME);
 
     List<AlertChannel> channels = alertChannelService.list(defaultCustomerUuid);
     assertThat(channels, containsInAnyOrder(channel1, channel2));
@@ -160,18 +151,19 @@ public class AlertChannelServiceTest extends FakeDBApplication {
 
   @Test
   public void testValidateChannel_EmptyParams() {
-    AlertChannel channel = new AlertChannel().setName(CHANNEL_NAME);
+    AlertChannel channel =
+        new AlertChannel().setCustomerUUID(defaultCustomerUuid).setName(CHANNEL_NAME);
 
     try {
       alertChannelService.validate(channel);
       fail("YWValidateException is expected.");
-    } catch (PlatformValidationException e) {
-      assertThat(e.getMessage(), is("Incorrect parameters in AlertChannel."));
+    } catch (PlatformServiceException e) {
+      assertThat(e.getMessage(), is("errorJson: {\"params\":[\"may not be null\"]}"));
     }
   }
 
   @Test
-  public void testValidateChannel_HappyPath() throws PlatformValidationException {
+  public void testValidateChannel_HappyPath() {
     alertChannelService.validate(
         ModelFactory.createEmailChannel(defaultCustomerUuid, CHANNEL_NAME));
   }
@@ -179,17 +171,14 @@ public class AlertChannelServiceTest extends FakeDBApplication {
   @Test
   public void testUpdate() {
     AlertChannel channel =
-        ModelFactory.createAlertChannel(
-            defaultCustomerUuid,
-            CHANNEL_NAME + " 1",
-            AlertUtils.createParamsInstance(ChannelType.Slack));
+        ModelFactory.createSlackChannel(defaultCustomerUuid, CHANNEL_NAME + " 1");
 
     AlertChannel updatedChannel = alertChannelService.get(defaultCustomerUuid, channel.getUuid());
     updatedChannel.setName(CHANNEL_NAME);
 
     AlertChannelEmailParams params = new AlertChannelEmailParams();
-    params.recipients = Collections.singletonList("test@test.com");
-    params.smtpData = EmailFixtures.createSmtpData();
+    params.setRecipients(Collections.singletonList("test@test.com"));
+    params.setSmtpData(EmailFixtures.createSmtpData());
     updatedChannel.setParams(params);
 
     alertChannelService.save(updatedChannel);
@@ -201,15 +190,9 @@ public class AlertChannelServiceTest extends FakeDBApplication {
   @Test
   public void testSave_DuplicateName_Fail() {
     AlertChannel channel =
-        ModelFactory.createAlertChannel(
-            defaultCustomerUuid,
-            CHANNEL_NAME + " 1",
-            AlertUtils.createParamsInstance(ChannelType.Slack));
+        ModelFactory.createSlackChannel(defaultCustomerUuid, CHANNEL_NAME + " 1");
 
-    ModelFactory.createAlertChannel(
-        defaultCustomerUuid,
-        CHANNEL_NAME + " 2",
-        AlertUtils.createParamsInstance(ChannelType.Slack));
+    ModelFactory.createSlackChannel(defaultCustomerUuid, CHANNEL_NAME + " 2");
 
     AlertChannel updatedChannel = alertChannelService.get(defaultCustomerUuid, channel.getUuid());
     // Setting duplicate name.
@@ -223,15 +206,13 @@ public class AlertChannelServiceTest extends FakeDBApplication {
             });
     assertThat(
         exception.getMessage(),
-        equalTo(
-            "Unable to create/update alert channel:"
-                + " Alert channel with such name already exists."));
+        equalTo("errorJson: {\"name\":[\"alert channel with such name already exists.\"]}"));
   }
 
   @Test
   public void testSave_LongName_Fail() {
     StringBuilder longName = new StringBuilder();
-    while (longName.length() < AlertChannel.MAX_NAME_LENGTH / 4) {
+    while (longName.length() <= 63) {
       longName.append(CHANNEL_NAME);
     }
 
@@ -239,7 +220,7 @@ public class AlertChannelServiceTest extends FakeDBApplication {
         new AlertChannel()
             .setCustomerUUID(defaultCustomerUuid)
             .setName(longName.toString())
-            .setParams(AlertUtils.createParamsInstance(ChannelType.Slack));
+            .setParams(ModelFactory.createSlackChannelParams());
 
     PlatformServiceException exception =
         assertThrows(
@@ -249,6 +230,160 @@ public class AlertChannelServiceTest extends FakeDBApplication {
             });
     assertThat(
         exception.getMessage(),
-        equalTo("Unable to create/update alert channel: Name length (63) is exceeded."));
+        equalTo("errorJson: {\"name\":[\"size must be between 1 and 63\"]}"));
+  }
+
+  @Test
+  // @formatter:off
+  @Parameters({
+    "null, http://www.google.com, null, errorJson: "
+        + "{\"params.username\":[\"may not be null\"]}",
+    "channel, null, null, errorJson: " + "{\"params.webhookUrl\":[\"may not be null\"]}",
+    "channel, incorrect url, null, errorJson: "
+        + "{\"params.webhookUrl\":[\"must be a valid URL\"]}",
+    "channel, http://www.google.com, null, null",
+    "channel, http://www.google.com, incorrect url, errorJson: "
+        + "{\"params.iconUrl\":[\"must be a valid URL\"]}",
+    "channel, http://www.google.com, http://www.google.com, null",
+  })
+  // @formatter:on
+  public void testSlackParamsValidate(
+      @Nullable String username,
+      @Nullable String webHookUrl,
+      @Nullable String iconUrl,
+      @Nullable String expectedError) {
+    AlertChannelSlackParams params = new AlertChannelSlackParams();
+    params.setUsername(username);
+    params.setWebhookUrl(webHookUrl);
+    params.setIconUrl(iconUrl);
+
+    AlertChannel channel =
+        new AlertChannel()
+            .setCustomerUUID(defaultCustomerUuid)
+            .setName(CHANNEL_NAME)
+            .setParams(params);
+
+    if (expectedError != null) {
+      PlatformServiceException exception =
+          assertThrows(
+              PlatformServiceException.class,
+              () -> {
+                alertChannelService.validate(channel);
+              });
+      assertThat(exception.getMessage(), equalTo(expectedError));
+    } else {
+      alertChannelService.validate(channel);
+    }
+  }
+
+  @Test
+  @Parameters({
+    "null, key, errorJson: {\"params.apiKey\":[\"may not be null\"]}",
+    "key, null, errorJson: {\"params.routingKey\":[\"may not be null\"]}",
+    "key1, key2, null",
+  })
+  // @formatter:on
+  public void testPagerDutyParamsValidate(
+      @Nullable String apiKey, @Nullable String routingKey, @Nullable String expectedError) {
+    AlertChannelPagerDutyParams params = new AlertChannelPagerDutyParams();
+    params.setApiKey(apiKey);
+    params.setRoutingKey(routingKey);
+
+    AlertChannel channel =
+        new AlertChannel()
+            .setCustomerUUID(defaultCustomerUuid)
+            .setName(CHANNEL_NAME)
+            .setParams(params);
+
+    if (expectedError != null) {
+      PlatformServiceException exception =
+          assertThrows(
+              PlatformServiceException.class,
+              () -> {
+                alertChannelService.validate(channel);
+              });
+      assertThat(exception.getMessage(), equalTo(expectedError));
+    } else {
+      alertChannelService.validate(channel);
+    }
+  }
+
+  @Test
+  @Parameters({
+    "null, errorJson: {\"params.webhookUrl\":[\"may not be null\"]}",
+    "string, errorJson: {\"params.webhookUrl\":[\"must be a valid URL\"]}",
+    "http://www.google.com, null",
+  })
+  // @formatter:on
+  public void testWebHookParamsValidate(
+      @Nullable String webhookUrl, @Nullable String expectedError) {
+    AlertChannelWebHookParams params = new AlertChannelWebHookParams();
+    params.setWebhookUrl(webhookUrl);
+
+    AlertChannel channel =
+        new AlertChannel()
+            .setCustomerUUID(defaultCustomerUuid)
+            .setName(CHANNEL_NAME)
+            .setParams(params);
+
+    if (expectedError != null) {
+      PlatformServiceException exception =
+          assertThrows(
+              PlatformServiceException.class,
+              () -> {
+                alertChannelService.validate(channel);
+              });
+      assertThat(exception.getMessage(), equalTo(expectedError));
+    } else {
+      alertChannelService.validate(channel);
+    }
+  }
+
+  @Test
+  // @formatter:off
+  @Parameters({
+    "null, false, true, errorJson: "
+        + "{\"params\":[\"only one of defaultRecipients and recipients[] should be set.\"]}",
+    "test@test, false, true, errorJson: "
+        + "{\"params.recipients\":[\"invalid email address test@test\"]}",
+    "test@test.com; test2@test2.com, false, true, null",
+    "test1@test1.com; test2@test2.com; test@test, false, true, errorJson: "
+        + "{\"params.recipients\":[\"invalid email address test@test\"]}",
+    "test@test.com, true, true, errorJson: "
+        + "{\"params\":[\"only one of defaultSmtpSettings and smtpData should be set.\"]}",
+    "test@test.com, true, false, null",
+  })
+  // @formatter:on
+  public void testEmailParamsValidate(
+      @Nullable String destinations,
+      boolean setSmtpData,
+      boolean useDefaultSmtp,
+      @Nullable String expectedError) {
+    AlertChannelEmailParams params = new AlertChannelEmailParams();
+    params.setRecipients(
+        destinations != null
+            ? new ArrayList<>(
+                EmailHelper.splitEmails(destinations, EmailHelper.DEFAULT_EMAIL_SEPARATORS))
+            : Collections.emptyList());
+    params.setSmtpData(setSmtpData ? new SmtpData() : null);
+    params.setDefaultSmtpSettings(useDefaultSmtp);
+
+    AlertChannel channel =
+        new AlertChannel()
+            .setCustomerUUID(defaultCustomerUuid)
+            .setName(CHANNEL_NAME)
+            .setParams(params);
+
+    if (expectedError != null) {
+      PlatformServiceException exception =
+          assertThrows(
+              PlatformServiceException.class,
+              () -> {
+                alertChannelService.validate(channel);
+              });
+      assertThat(exception.getMessage(), equalTo(expectedError));
+    } else {
+      alertChannelService.validate(channel);
+    }
   }
 }

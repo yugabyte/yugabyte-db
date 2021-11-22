@@ -19,13 +19,11 @@
 #include <boost/multi_index/mem_fun.hpp>
 
 #include "yb/common/snapshot.h"
-#include "yb/common/transaction_error.h"
 
 #include "yb/docdb/doc_key.h"
 
 #include "yb/master/async_snapshot_tasks.h"
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/master_error.h"
 #include "yb/master/master_util.h"
 #include "yb/master/restoration_state.h"
 #include "yb/master/snapshot_coordinator_context.h"
@@ -40,7 +38,6 @@
 #include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tablet/operations/write_operation.h"
 
-#include "yb/tserver/tserver_error.h"
 
 #include "yb/util/flag_tags.h"
 #include "yb/util/pb_util.h"
@@ -386,7 +383,19 @@ class MasterSnapshotCoordinator::Impl {
           FindSnapshotSchedule(snapshot.schedule_id()));
       LOG(INFO) << "Restore sys catalog from snapshot: " << snapshot.ToString() << ", schedule: "
                 << schedule_state.ToString() << " at " << restoration->restore_at;
-      restoration->filter = schedule_state.options().filter();
+      size_t this_idx = std::numeric_limits<size_t>::max();
+      for (const auto& snapshot_schedule : schedules_) {
+        if (snapshot_schedule->id() == snapshot.schedule_id()) {
+          this_idx = restoration->schedules.size();
+        }
+        restoration->schedules.emplace_back(
+            snapshot_schedule->id(), snapshot_schedule->options().filter());
+      }
+      if (this_idx == std::numeric_limits<size_t>::max()) {
+        return STATUS_FORMAT(IllegalState, "Cannot find schedule for restoration: $0",
+                             snapshot.schedule_id());
+      }
+      std::swap(restoration->schedules[0], restoration->schedules[this_idx]);
       if (leader_term >= 0) {
         postponed_restores_.push_back(restoration);
       }
@@ -719,6 +728,10 @@ class MasterSnapshotCoordinator::Impl {
       std::lock_guard<std::mutex> lock(mutex_);
       for (const auto& p : snapshots_) {
         if (p->NeedCleanup()) {
+          LOG(INFO) << "Cleanup of snapshot " << p->id() << " started.";
+          if (!p->CleanupTracker().Start().ok()) {
+            LOG(DFATAL) << "Cleanup of snapshot " << p->id() << " was already started.";
+          }
           cleanup_snapshots.push_back(p->id());
         } else {
           p->PrepareOperations(&operations);
@@ -727,7 +740,7 @@ class MasterSnapshotCoordinator::Impl {
       PollSchedulesPrepare(&schedules_data);
     }
     for (const auto& id : cleanup_snapshots) {
-      DeleteSnapshot(leader_term, id);
+      CleanupObject(leader_term, id, snapshots_, EncodedSnapshotKey(id, &context_));
     }
     ExecuteOperations(operations, leader_term);
     PollSchedulesComplete(schedules_data, leader_term);
@@ -736,12 +749,12 @@ class MasterSnapshotCoordinator::Impl {
   void TryDeleteSnapshot(SnapshotState* snapshot, PollSchedulesData* data) {
     auto delete_status = snapshot->TryStartDelete();
     if (!delete_status.ok()) {
-      VLOG(1) << "Unable to delete snapshot " << snapshot->id() << ": "
-              << delete_status << ", state: " << snapshot->ToString();
+      VLOG(1) << "Unable to delete snapshot " << snapshot->id() << "/" << snapshot->schedule_id()
+              << ": " << delete_status << ", state: " << snapshot->ToString();
       return;
     }
 
-    VLOG(1) << "Cleanup snapshot: " << snapshot->id();
+    VLOG(1) << "Cleanup snapshot: " << snapshot->id() << "/" << snapshot->schedule_id();
     data->delete_snapshots.push_back(snapshot->id());
   }
 
@@ -759,12 +772,18 @@ class MasterSnapshotCoordinator::Impl {
         auto range = index.equal_range(p->id());
         if (range.first != range.second) {
           --range.second;
+          for (; range.first != range.second; ++range.first) {
+            if ((**range.first).initial_state() != SysSnapshotEntryPB::DELETING) {
+              break;
+            }
+          }
           auto& first_snapshot = **range.first;
           data->schedule_min_restore_time[p->id()] =
               first_snapshot.previous_snapshot_hybrid_time()
                   ? first_snapshot.previous_snapshot_hybrid_time()
                   : first_snapshot.snapshot_hybrid_time();
           auto gc_limit = now.AddSeconds(-p->options().retention_duration_sec());
+          VLOG_WITH_FUNC(4) << "Gc limit: " << gc_limit;
           for (; range.first != range.second; ++range.first) {
             if ((**range.first).snapshot_hybrid_time() >= gc_limit) {
               break;
@@ -789,8 +808,9 @@ class MasterSnapshotCoordinator::Impl {
                       Format("Failed to execute operation on $0", operation.schedule_id));
           break;
         case SnapshotScheduleOperationType::kCleanup:
-          DeleteEntry(
-              leader_term, SnapshotScheduleState::EncodedKey(operation.schedule_id, &context_));
+          CleanupObject(
+              leader_term, operation.schedule_id, schedules_,
+              SnapshotScheduleState::EncodedKey(operation.schedule_id, &context_));
           break;
         default:
           LOG(DFATAL) << "Unexpected operation type: " << operation.type;
@@ -824,31 +844,51 @@ class MasterSnapshotCoordinator::Impl {
     return snapshot ? snapshot->snapshot_hybrid_time() : HybridTime::kInvalid;
   }
 
-  void DeleteSnapshot(int64_t leader_term, const TxnSnapshotId& snapshot_id) {
-    VLOG_WITH_FUNC(4) << leader_term << ", " << snapshot_id;
-
-    DeleteEntry(leader_term, EncodedSnapshotKey(snapshot_id, &context_));
+  template <typename Id, typename Map>
+  void CleanupObjectAborted(Id id, const Map& map) {
+    LOG(INFO) << "Aborting cleanup of object " << id;
+    std::lock_guard<std::mutex> l(mutex_);
+    auto it = map.find(id);
+    if (it == map.end()) {
+      return;
+    }
+    (**it).CleanupTracker().Abort();
   }
 
-  void DeleteEntry(int64_t leader_term, const Result<docdb::KeyBytes>& encoded_key) {
+  template <typename Map, typename Id>
+  void CleanupObject(int64_t leader_term, Id id, const Map& map,
+                     const Result<docdb::KeyBytes>& encoded_key) {
     if (!encoded_key.ok()) {
       LOG(DFATAL) << "Failed to encode id for deletion: " << encoded_key.status();
       return;
     }
 
-    docdb::KeyValueWriteBatchPB write_batch;
-    auto pair = write_batch.add_write_pairs();
-    pair->set_key(encoded_key->AsSlice().cdata(), encoded_key->size());
+    auto operation = std::make_unique<tablet::WriteOperation>(
+        leader_term, CoarseMonoClock::Now() + FLAGS_sys_catalog_write_timeout_ms * 1ms,
+        nullptr /* context */, nullptr /* tablet */);
+
+    auto* write_batch = operation->AllocateRequest()->mutable_write_batch();
+    auto pair = write_batch->add_write_pairs();
+    pair->set_key((*encoded_key).AsSlice().cdata(), (*encoded_key).size());
     char value = { docdb::ValueTypeAsChar::kTombstone };
     pair->set_value(&value, 1);
 
-    SubmitWrite(std::move(write_batch), leader_term, &context_);
+    operation->set_completion_callback([this, id, &map](const Status& s) {
+      if (s.ok()) {
+        LOG(INFO) << "Finished cleanup of object " << id;
+        return;
+      }
+      CleanupObjectAborted(id, map);
+    });
+
+    context_.Submit(std::move(operation), leader_term);
   }
 
   CHECKED_STATUS ExecuteScheduleOperation(
       const SnapshotScheduleOperation& operation, int64_t leader_term,
       const std::weak_ptr<Synchronizer>& synchronizer = std::weak_ptr<Synchronizer>()) {
     auto entries = VERIFY_RESULT(CollectEntries(operation.filter));
+    VLOG(2) << __func__ << "(" << AsString(operation) << ", " << leader_term << ")";
     RETURN_NOT_OK(SubmitCreate(
         entries, false, operation.schedule_id, operation.previous_snapshot_hybrid_time,
         operation.snapshot_id, leader_term,

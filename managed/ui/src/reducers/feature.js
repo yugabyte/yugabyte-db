@@ -6,14 +6,18 @@ const initialStateFeatureInTest = {
   adminAlertsConfig:true,
   enableNewEncryptionInTransitModal: true,
   addRestoreTimeStamp: false,
+  enableXCluster: false,
+  enableGeoPartitioning: false,
 };
 
 const initialStateFeatureReleased = {
   pausedUniverse: true,
   addListMultiProvider: true,
   adminAlertsConfig:true,
-  enableNewEncryptionInTransitModal: false,
+  enableNewEncryptionInTransitModal: true,
   addRestoreTimeStamp: false,
+  enableXCluster: false,
+  enableGeoPartitioning: false,
 };
 
 export const FeatureFlag = (

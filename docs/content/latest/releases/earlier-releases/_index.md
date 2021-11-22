@@ -17,6 +17,8 @@ Note that, starting with 2.3, download links for all releases in a given release
 
 | Release | Date | Binary | Docker Image Tag |
 | :------ | :--- | :----- | :--------------- |
+| [v2.7](./v2.7/) | May 5, 2021 and later | in release notes | in release notes |
+| [v2.6](./v2.6/) | July 7, 2021 and later | in release notes | in release notes |
 | [v2.5](./v2.5/) | Nov 12, 2020 and later | in release notes | in release notes |
 | [v2.4](./v2.4/) | Jan 22, 2021 and later | in release notes | in release notes |
 | [v2.2.7](./v2.2.0#v2-2-7-feb-19-2021) | Feb 19, 20201 | <a href="https://downloads.yugabyte.com/yugabyte-2.2.7.0-darwin.tar.gz"><i class="fab fa-apple"></i><span class="release-os">macOS</span></a>, <a href="https://downloads.yugabyte.com/yugabyte-2.2.7.0-linux.tar.gz"><i class="fab fa-linux"></i><span class="release-os">Linux</span></a> | 2.2.7.0-b5 |

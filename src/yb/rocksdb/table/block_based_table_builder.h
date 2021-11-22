@@ -102,6 +102,8 @@ class BlockBasedTableBuilder : public TableBuilder {
   // Get table properties
   TableProperties GetTableProperties() const override;
 
+  void TEST_skip_writing_key_value_encoding_format();
+
  private:
   struct FileWriterWithOffsetAndCachePrefix;
 
@@ -109,7 +111,7 @@ class BlockBasedTableBuilder : public TableBuilder {
   // Call block's Finish() method and then write the finalize block contents to
   // file. Returns number of bytes written to file.
   size_t WriteBlock(BlockBuilder* block, BlockHandle* handle,
-      FileWriterWithOffsetAndCachePrefix* writer_info);
+                    FileWriterWithOffsetAndCachePrefix* writer_info);
   // Directly write block content to the file. Returns number of bytes written to file.
   size_t WriteBlock(const Slice& block_contents, BlockHandle* handle,
       FileWriterWithOffsetAndCachePrefix* writer_info);
@@ -117,8 +119,8 @@ class BlockBasedTableBuilder : public TableBuilder {
       FileWriterWithOffsetAndCachePrefix* writer_info);
   Status InsertBlockInCache(const Slice& block_contents,
                             const CompressionType type,
-                            const BlockHandle* handle,
-                            FileWriterWithOffsetAndCachePrefix* writer_info);
+      const BlockHandle* handle,
+      FileWriterWithOffsetAndCachePrefix* writer_info);
 
   struct Rep;
   class BlockBasedTablePropertiesCollectorFactory;

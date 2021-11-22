@@ -10,8 +10,6 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
 import com.yugabyte.yw.common.alerts.AlertChannelParams;
-import com.yugabyte.yw.common.alerts.AlertUtils;
-import com.yugabyte.yw.models.AlertChannel.ChannelType;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
@@ -32,36 +30,34 @@ public class AlertChannelTest extends FakeDBApplication {
 
   @Test
   public void testGetSetParams() {
-    AlertChannel channel =
-        ModelFactory.createAlertChannel(
-            defaultCustomerUuid, CHANNEL_NAME, AlertUtils.createParamsInstance(ChannelType.Slack));
+    AlertChannel channel = ModelFactory.createSlackChannel(defaultCustomerUuid, CHANNEL_NAME);
 
-    assertNull(AlertChannel.get(defaultCustomerUuid, channel.getUuid()).getParams().titleTemplate);
-    assertNull(AlertChannel.get(defaultCustomerUuid, channel.getUuid()).getParams().textTemplate);
+    assertNull(
+        AlertChannel.get(defaultCustomerUuid, channel.getUuid()).getParams().getTitleTemplate());
+    assertNull(
+        AlertChannel.get(defaultCustomerUuid, channel.getUuid()).getParams().getTextTemplate());
 
     AlertChannelParams params = new AlertChannelEmailParams();
-    params.titleTemplate = "title";
-    params.textTemplate = "body";
+    params.setTitleTemplate("title");
+    params.setTextTemplate("body");
     channel.setParams(params);
     channel.save();
 
     assertEquals(
         "title",
-        AlertChannel.get(defaultCustomerUuid, channel.getUuid()).getParams().titleTemplate);
+        AlertChannel.get(defaultCustomerUuid, channel.getUuid()).getParams().getTitleTemplate());
     assertEquals(
-        "body", AlertChannel.get(defaultCustomerUuid, channel.getUuid()).getParams().textTemplate);
+        "body",
+        AlertChannel.get(defaultCustomerUuid, channel.getUuid()).getParams().getTextTemplate());
   }
 
   @Test
   public void testNameUniquenessCheck() {
     Customer secondCustomer = ModelFactory.testCustomer();
-    ModelFactory.createAlertChannel(
-        defaultCustomerUuid, CHANNEL_NAME, AlertUtils.createParamsInstance(ChannelType.Slack));
-    ModelFactory.createAlertChannel(
-        secondCustomer.uuid, CHANNEL_NAME, AlertUtils.createParamsInstance(ChannelType.Slack));
+    ModelFactory.createSlackChannel(defaultCustomerUuid, CHANNEL_NAME);
+    ModelFactory.createSlackChannel(secondCustomer.uuid, CHANNEL_NAME);
     try {
-      ModelFactory.createAlertChannel(
-          defaultCustomerUuid, CHANNEL_NAME, AlertUtils.createParamsInstance(ChannelType.Slack));
+      ModelFactory.createSlackChannel(defaultCustomerUuid, CHANNEL_NAME);
       fail("Missed expected exception.");
     } catch (Exception e) {
     }

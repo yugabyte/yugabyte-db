@@ -58,6 +58,7 @@
 #include "yb/util/locks.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
+#include "yb/util/operation_counter.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
 
@@ -201,11 +202,7 @@ class Messenger : public ProxyContext {
   CHECKED_STATUS StartAcceptor();
 
   // Register a new RpcService to handle inbound requests.
-  CHECKED_STATUS RegisterService(const std::string& service_name,
-                         const scoped_refptr<RpcService>& service);
-
-  // Unregister currently-registered RpcService.
-  CHECKED_STATUS UnregisterService(const std::string& service_name);
+  CHECKED_STATUS RegisterService(const std::string& service_name, const RpcServicePtr& service);
 
   void UnregisterAllServices();
 
@@ -215,11 +212,8 @@ class Messenger : public ProxyContext {
   // that reactor to assign and send the call.
   void QueueOutboundCall(OutboundCallPtr call) override;
 
-  // Enqueue a call for processing on the server.
-  void QueueInboundCall(InboundCallPtr call) override;
-
   // Invoke the RpcService to handle a call directly.
-  void Handle(InboundCallPtr call) override;
+  void Handle(InboundCallPtr call, Queue queue) override;
 
   const Protocol* DefaultProtocol() override { return listen_protocol_; }
 
@@ -255,7 +249,7 @@ class Messenger : public ProxyContext {
 
   scoped_refptr<MetricEntity> metric_entity() const override { return metric_entity_; }
 
-  scoped_refptr<RpcService> rpc_service(const std::string& service_name) const;
+  RpcServicePtr TEST_rpc_service(const std::string& service_name) const;
 
   size_t max_concurrent_requests() const;
 
@@ -293,6 +287,10 @@ class Messenger : public ProxyContext {
     return num_connections_to_server_;
   }
 
+  size_t num_reactors() const {
+    return reactors_.size();
+  }
+
   // Use specified IP address as base address for outbound connections from messenger.
   void TEST_SetOutboundIpBase(const IpAddress& value) {
     test_outbound_ip_base_ = value;
@@ -310,7 +308,6 @@ class Messenger : public ProxyContext {
 
   Reactor* RemoteToReactor(const Endpoint& remote, uint32_t idx = 0);
   CHECKED_STATUS Init();
-  void UpdateServicesCache(std::lock_guard<percpu_rwlock>* guard);
 
   void BreakConnectivity(const IpAddress& address, bool incoming, bool outgoing);
   void RestoreConnectivity(const IpAddress& address, bool incoming, bool outgoing);
@@ -329,14 +326,15 @@ class Messenger : public ProxyContext {
 
   const Protocol* const listen_protocol_;
 
-  // Protects closing_, acceptor_pools_, rpc_services_.
+  // Protects closing_, acceptor_pools_.
   mutable percpu_rwlock lock_;
 
   bool closing_ = false;
 
   // RPC services that handle inbound requests.
-  RpcServicesMap rpc_services_;
-  mutable ConcurrentValue<RpcServicesMap> rpc_services_cache_;
+  mutable RWOperationCounter rpc_services_counter_;
+  std::unordered_map<std::string, RpcServicePtr> rpc_services_;
+  RpcEndpointMap rpc_endpoints_;
 
   std::vector<std::unique_ptr<Reactor>> reactors_;
 

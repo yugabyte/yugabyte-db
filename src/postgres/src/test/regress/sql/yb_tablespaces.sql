@@ -114,6 +114,33 @@ CREATE INDEX foo_idx on testschema.foo(i) TABLESPACE regress_tblspace;
 SELECT relname, spcname FROM pg_catalog.pg_tablespace t, pg_catalog.pg_class c
     where c.reltablespace = t.oid AND c.relname = 'foo_idx';
 
+-- partitioned table
+CREATE TABLE testschema.part (a int) PARTITION BY LIST (a);
+CREATE TABLE testschema.part12 PARTITION OF testschema.part FOR VALUES IN(1,2) PARTITION BY LIST (a) TABLESPACE regress_tblspace;
+CREATE TABLE testschema.part12_1 PARTITION OF testschema.part12 FOR VALUES IN (1);
+ALTER TABLE testschema.part12 SET TABLESPACE pg_default;
+CREATE TABLE testschema.part12_2 PARTITION OF testschema.part12 FOR VALUES IN (2);
+-- Ensure part12_1 defaulted to regress_tblspace and part12_2 defaulted to pg_default.
+SELECT relname, spcname FROM pg_catalog.pg_class c
+    LEFT JOIN pg_catalog.pg_tablespace t ON c.reltablespace = t.oid
+    where c.relname LIKE 'part%' order by relname;
+DROP TABLE testschema.part;
+
+-- temporary table
+-- Fail, cannot set tablespaces for temp tables
+CREATE TEMPORARY TABLE temptest (a INT) TABLESPACE regress_tblspace;
+CREATE TEMPORARY TABLE temptest (a INT);
+-- Fail, cannot set tablespaces for temp tables
+ALTER TABLE temptest SET TABLESPACE regress_tblspace;
+DROP TABLE temptest;
+
+-- Fail, cannot set tablespaces for temp tables
+CREATE TEMPORARY TABLE tempparttest (a int) PARTITION BY LIST (a) TABLESPACE regress_tblspace;
+CREATE TEMPORARY TABLE tempparttest (a int) PARTITION BY LIST (a);
+-- Fail, cannot set tablespaces for temp tables
+ALTER TABLE tempparttest SET TABLESPACE regress_tblspace;
+DROP TABLE tempparttest;
+
 -- partitioned index
 CREATE TABLE testschema.part (a int) PARTITION BY LIST (a);
 CREATE TABLE testschema.part1 PARTITION OF testschema.part FOR VALUES IN (1);
@@ -222,6 +249,25 @@ DROP TABLESPACE regress_tblspace;
 DROP ROLE regress_tablespace_user1;
 DROP ROLE regress_tablespace_user2;
 
+-- Colocated Tests
+CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1}]}');
+CREATE DATABASE colocation_test colocated = true;
+\c colocation_test
+-- Should fail to set tablespace on a table in a colocated database
+CREATE TABLE tab_nonkey (a INT) TABLESPACE x;
+-- Should succeed in setting tablespace on a table in a colocated database when opted out
+CREATE TABLE tab_nonkey (a INT) WITH (COLOCATED = false) TABLESPACE x;
+-- cleanup
+DROP TABLE tab_nonkey;
+\c yugabyte
+DROP DATABASE colocation_test;
+
+-- Verify that tablespaces cannot be set on partitioned tables.
+CREATE TABLE list_partitioned (partkey char) PARTITION BY LIST(partkey) TABLESPACE x;
+-- Cleanup.
+DROP TABLE list_partitioned;
+DROP TABLESPACE x;
+
 /*
 Testing to make sure that an index on a "near" tablespace whose placements are
 all on the current cloud/region/zone is preferred over "far" indexes.
@@ -256,3 +302,5 @@ EXPLAIN (COSTS OFF) SELECT * FROM foo WHERE id = 5;
 DROP TABLE foo;
 DROP TABLESPACE far;
 DROP TABLESPACE near;
+DROP TABLESPACE regionlocal;
+DROP TABLESPACE cloudlocal;

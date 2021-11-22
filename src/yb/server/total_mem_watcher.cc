@@ -22,7 +22,6 @@
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/memory/memory.h"
-#include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 
 #ifdef TCMALLOC_ENABLED

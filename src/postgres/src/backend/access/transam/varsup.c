@@ -48,6 +48,9 @@
 /* pointer to "variable cache" in shared memory (set up by shmem.c) */
 VariableCache ShmemVariableCache = NULL;
 
+/* next OID to assign during YSQL upgrade */
+Oid ysql_upgrade_next_oid = InvalidOid;
+
 
 /*
  * Allocate the next XID for a new transaction or subtransaction.
@@ -503,7 +506,6 @@ YbGetMaxAllocatedSystemOid()
 				BTEqualStrategyNumber, F_BOOLEQ,
 				BoolGetDatum(true));
 
-	pg_class = heap_open(RelationRelationId, AccessShareLock);
 	scan = heap_beginscan_catalog(pg_class, 2, key);
 
 	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
@@ -571,11 +573,11 @@ GetNewObjectId(void)
 	 */
 	if (IsYsqlUpgrade)
 	{
-		if (!OidIsValid(ShmemVariableCache->ysqlUpgradeNextOid))
-			ShmemVariableCache->ysqlUpgradeNextOid = YbGetMaxAllocatedSystemOid() + 1;
+		if (!OidIsValid(ysql_upgrade_next_oid))
+			ysql_upgrade_next_oid = YbGetMaxAllocatedSystemOid() + 1;
 
-		result = ShmemVariableCache->ysqlUpgradeNextOid;
-		ShmemVariableCache->ysqlUpgradeNextOid++;
+		result = ysql_upgrade_next_oid;
+		ysql_upgrade_next_oid++;
 
 		LWLockRelease(OidGenLock);
 		return result;

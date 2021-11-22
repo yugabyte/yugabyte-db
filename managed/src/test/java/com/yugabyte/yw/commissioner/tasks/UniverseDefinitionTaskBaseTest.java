@@ -9,7 +9,6 @@ import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.core.StringContains.containsString;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
@@ -41,7 +40,7 @@ public class UniverseDefinitionTaskBaseTest {
   private NodeDetails myNode;
   private UserIntent userIntent;
 
-  @Mock BaseTaskDependencies baseTaskDependencies;
+  @Mock private BaseTaskDependencies baseTaskDependencies;
 
   @Before
   public void setUp() {

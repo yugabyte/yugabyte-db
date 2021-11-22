@@ -24,14 +24,12 @@ explain (costs off) select * from lp where a not in ('a', 'd');
 -- collation matches the partitioning collation, pruning works
 create table coll_pruning (a text collate "C") partition by list (a);
 -- Support following cases after collation is supported.
-/*
 create table coll_pruning_a partition of coll_pruning for values in ('a');
 create table coll_pruning_b partition of coll_pruning for values in ('b');
 create table coll_pruning_def partition of coll_pruning default;
 explain (costs off) select * from coll_pruning where a collate "C" = 'a' collate "C";
 -- collation doesn't match the partitioning collation, no pruning occurs
 explain (costs off) select * from coll_pruning where a collate "POSIX" = 'a' collate "POSIX";
-*/
 
 create table rlp (a int, b varchar) partition by range (a);
 create table rlp_default partition of rlp default partition by list (a);
@@ -231,7 +229,6 @@ explain (costs off) select * from rlp where a = 15 and b <> 'ab' and b <> 'cd' a
 -- different collations for different keys with same expression
 --
 create table coll_pruning_multi (a text) partition by range (substr(a, 1) collate "POSIX", substr(a, 1) collate "C");
-/*
 create table coll_pruning_multi1 partition of coll_pruning_multi for values from ('a', 'a') to ('a', 'e');
 create table coll_pruning_multi2 partition of coll_pruning_multi for values from ('a', 'e') to ('a', 'z');
 create table coll_pruning_multi3 partition of coll_pruning_multi for values from ('b', 'a') to ('b', 'e');
@@ -244,7 +241,6 @@ explain (costs off) select * from coll_pruning_multi where substr(a, 1) = 'a' co
 
 -- pruning, with values provided for both keys
 explain (costs off) select * from coll_pruning_multi where substr(a, 1) = 'e' collate "C" and substr(a, 1) = 'a' collate "POSIX";
-*/
 --
 -- LIKE operators don't prune
 --
@@ -586,7 +582,6 @@ deallocate ab_q5;
 -- UPDATE on a partition subtree has been seen to have problems.
 insert into ab values (1,2);
 explain (analyze, costs off, summary off, timing off)
--- TODO(jason): fix output when closing issue #5310
 update ab_a1 set b = 3 from ab where ab.a = 1 and ab.a = ab_a1.a;
 table ab;
 

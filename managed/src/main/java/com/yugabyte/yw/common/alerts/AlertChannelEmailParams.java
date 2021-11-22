@@ -3,39 +3,44 @@
 package com.yugabyte.yw.common.alerts;
 
 import com.fasterxml.jackson.annotation.JsonTypeName;
+import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.EmailHelper;
 import java.util.List;
+import lombok.Data;
 import lombok.EqualsAndHashCode;
-import lombok.ToString;
 import org.apache.commons.validator.routines.EmailValidator;
 
+@Data
 @EqualsAndHashCode(callSuper = false)
-@ToString
 // TODO: To mask/unmask sensitive fields while serializing to/deserializing from Json.
 @JsonTypeName("Email")
 public class AlertChannelEmailParams extends AlertChannelParams {
 
-  public boolean defaultRecipients = false;
+  private boolean defaultRecipients = false;
 
-  public List<String> recipients;
+  private List<String> recipients;
 
-  public boolean defaultSmtpSettings = false;
+  private boolean defaultSmtpSettings = false;
 
-  public SmtpData smtpData;
+  private SmtpData smtpData;
 
   @Override
-  public void validate() throws PlatformValidationException {
-    super.validate();
+  public void validate(BeanValidator validator) {
+    super.validate(validator);
 
     boolean emptyRecipients = (recipients == null) || recipients.isEmpty();
     if (defaultRecipients == !emptyRecipients) {
-      throw new PlatformValidationException(
-          "Email parameters: only one of defaultRecipients and recipients[] should be set.");
+      validator
+          .error()
+          .forField("params", "only one of defaultRecipients and recipients[] should be set.")
+          .throwError();
     }
 
     if (defaultSmtpSettings == (smtpData != null)) {
-      throw new PlatformValidationException(
-          "Email parameters: only one of defaultSmtpSettings and smtpData should be set.");
+      validator
+          .error()
+          .forField("params", "only one of defaultSmtpSettings and smtpData should be set.")
+          .throwError();
     }
 
     if (!emptyRecipients) {
@@ -44,8 +49,10 @@ public class AlertChannelEmailParams extends AlertChannelParams {
       for (String email : recipients) {
         String emailOnly = EmailHelper.extractEmailAddress(email);
         if ((emailOnly == null) || !emailValidator.isValid(emailOnly)) {
-          throw new PlatformValidationException(
-              "Email parameters: destinations contain invalid email address " + email);
+          validator
+              .error()
+              .forField("params.recipients", "invalid email address " + email)
+              .throwError();
         }
       }
     }

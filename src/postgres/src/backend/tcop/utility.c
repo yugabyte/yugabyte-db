@@ -417,21 +417,6 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 	pstate = make_parsestate(NULL);
 	pstate->p_sourcetext = queryString;
 
-	/*
-	 * tserver auth method is only allowed to run backfill statements.
-	 */
-	if (IsYugaByteEnabled() &&
-		!IsBootstrapProcessingMode() &&
-		!YBIsPreparingTemplates() &&
-		MyProcPort->yb_is_tserver_auth_method &&
-		!IsA(parsetree, BackfillIndexStmt))
-	{
-		ereport(ERROR,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			errmsg("yb-tserver cannot run this query: %s",
-				CreateCommandTag(parsetree))));
-	}
-
 	switch (nodeTag(parsetree))
 	{
 			/*

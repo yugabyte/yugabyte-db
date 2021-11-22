@@ -30,7 +30,6 @@
 // under the License.
 //
 
-#include <stdint.h>
 
 // Must come before gtest.h.
 #include "yb/gutil/mathlimits.h"

@@ -22,10 +22,8 @@
 
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_ttl_util.h"
-#include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/value.h"
 #include "yb/docdb/consensus_frontier.h"
-#include "yb/rocksutil/yb_rocksdb.h"
 
 using std::shared_ptr;
 using std::unique_ptr;
@@ -202,7 +200,7 @@ Result<FilterDecision> DocDBCompactionFilter::DoFilter(
     // Column ID is the first subkey in every CQL row.
     if (key[sub_key_ends_[0]]  == ValueTypeAsChar::kColumnId) {
       Slice column_id_slice(key.data() + sub_key_ends_[0] + 1, key.data() + sub_key_ends_[1]);
-      auto column_id_as_int64 = VERIFY_RESULT(util::FastDecodeSignedVarInt(&column_id_slice));
+      auto column_id_as_int64 = VERIFY_RESULT(util::FastDecodeSignedVarIntUnsafe(&column_id_slice));
       ColumnId column_id;
       RETURN_NOT_OK(ColumnId::FromInt64(column_id_as_int64, &column_id));
       if (retention_.deleted_cols->count(column_id) != 0) {

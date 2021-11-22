@@ -34,7 +34,6 @@
 #include <regex>
 
 #include <boost/algorithm/string.hpp>
-#include <boost/date_time/posix_time/time_parsers.hpp>
 
 #include <gtest/gtest.h>
 
@@ -53,16 +52,13 @@
 #include "yb/integration-tests/test_workload.h"
 
 #include "yb/master/master_defaults.h"
-#include "yb/master/master_backup.pb.h"
 
 #include "yb/tools/admin-test-base.h"
 
-#include "yb/util/date_time.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/port_picker.h"
 #include "yb/util/random_util.h"
-#include "yb/util/stol_utils.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/string_util.h"
 #include "yb/util/subprocess.h"
@@ -438,6 +434,19 @@ TEST_F(AdminCliTest, TestSnapshotCreation) {
   output = ASSERT_RESULT(CallAdmin("list_snapshots", "SHOW_DETAILS"));
   ASSERT_NE(output.find(extra_table.table_name()), string::npos);
   ASSERT_NE(output.find(kTableName.table_name()), string::npos);
+
+  // Snapshot creation should be blocked for CQL system tables (which are virtual) but not for
+  // redis system tables (which are not).
+  const auto result = CallAdmin("create_snapshot", "system", "peers");
+  ASSERT_FALSE(result.ok());
+  ASSERT_TRUE(result.status().IsRuntimeError());
+  ASSERT_NE(result.status().ToUserMessage().find(
+      "Error running create_snapshot: Invalid argument"), std::string::npos);
+  ASSERT_NE(result.status().ToUserMessage().find(
+      "Cannot create snapshot of YCQL system table: peers"), std::string::npos);
+
+  ASSERT_OK(CallAdmin("setup_redis_table"));
+  ASSERT_OK(CallAdmin("create_snapshot", "system_redis", "redis"));
 }
 
 TEST_F(AdminCliTest, GetIsLoadBalancerIdle) {
@@ -625,6 +634,89 @@ TEST_F(AdminCliTest, TestModifyTablePlacementPolicy) {
   ASSERT_EQ(pb.placement_cloud(), "c");
   ASSERT_EQ(pb.placement_region(), "r");
   ASSERT_EQ(pb.placement_zone(), "z1");
+
+  // Stop the workload.
+  workload.StopAndJoin();
+  int rows_inserted = workload.rows_inserted();
+  LOG(INFO) << "Number of rows inserted: " << rows_inserted;
+
+  sleep(5);
+
+  // Verify that there was no data loss.
+  ClusterVerifier cluster_verifier(cluster_.get());
+  ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
+  ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(
+    extra_table, ClusterVerifier::EXACTLY, rows_inserted));
+}
+
+
+TEST_F(AdminCliTest, TestCreateTransactionStatusTablesWithPlacements) {
+  // Start a cluster with 3 tservers, each corresponding to a different zone.
+  FLAGS_num_tablet_servers = 3;
+  FLAGS_num_replicas = 3;
+  std::vector<std::string> master_flags;
+  master_flags.push_back("--enable_load_balancing=true");
+  master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
+  std::vector<std::string> ts_flags;
+  ts_flags.push_back("--placement_cloud=c");
+  ts_flags.push_back("--placement_region=r");
+  ts_flags.push_back("--placement_zone=z${index}");
+  BuildAndStart(ts_flags, master_flags);
+
+  // Create a new table.
+  const auto extra_table = YBTableName(YQLDatabase::YQL_DATABASE_CQL,
+                                       kTableName.namespace_name(),
+                                       "extra-table");
+  // Start a workload.
+  TestWorkload workload(cluster_.get());
+  workload.set_table_name(extra_table);
+  workload.set_timeout_allowed(true);
+  workload.Setup();
+  workload.Start();
+
+  const std::string& master_address = ToString(cluster_->master()->bound_rpc_addr());
+  auto client = ASSERT_RESULT(YBClientBuilder()
+      .add_master_server_addr(master_address)
+      .Build());
+
+  // Create transaction tables for each zone.
+  for (int i = 0; i < 3; ++i) {
+    string table_name = Substitute("transactions_z$0", i);
+    string placement = Substitute("c.r.z$0", i);
+    ASSERT_OK(CallAdmin("create_transaction_table", table_name));
+    ASSERT_OK(CallAdmin("modify_table_placement_info", "system", table_name, placement, 1));
+  }
+
+  // Verify that the tables are all in transaction status tables in the right zone.
+  std::shared_ptr<client::YBTable> table;
+  for (int i = 0; i < 3; ++i) {
+    const auto table_name = YBTableName(YQLDatabase::YQL_DATABASE_CQL,
+                                        "system",
+                                        Substitute("transactions_z$0", i));
+    ASSERT_OK(client->OpenTable(table_name, &table));
+    ASSERT_EQ(table->table_type(), TRANSACTION_STATUS_TABLE_TYPE);
+    ASSERT_EQ(table->replication_info().get().live_replicas().placement_blocks_size(), 1);
+    auto pb = table->replication_info().get().live_replicas().placement_blocks(0).cloud_info();
+    ASSERT_EQ(pb.placement_zone(), Substitute("z$0", i));
+  }
+
+  // Add two new tservers, to zone3 and an unused zone.
+  std::vector<std::string> existing_zone_ts_flags;
+  existing_zone_ts_flags.push_back("--placement_cloud=c");
+  existing_zone_ts_flags.push_back("--placement_region=r");
+  existing_zone_ts_flags.push_back("--placement_zone=z3");
+  ASSERT_OK(cluster_->AddTabletServer(true, existing_zone_ts_flags));
+
+  std::vector<std::string> new_zone_ts_flags;
+  new_zone_ts_flags.push_back("--placement_cloud=c");
+  new_zone_ts_flags.push_back("--placement_region=r");
+  new_zone_ts_flags.push_back("--placement_zone=z4");
+  ASSERT_OK(cluster_->AddTabletServer(true, new_zone_ts_flags));
+
+  ASSERT_OK(cluster_->WaitForTabletServerCount(5, 5s));
+
+  // Blacklist the original zone3 tserver.
+  ASSERT_OK(cluster_->AddTServerToBlacklist(cluster_->master(), cluster_->tablet_server(2)));
 
   // Stop the workload.
   workload.StopAndJoin();

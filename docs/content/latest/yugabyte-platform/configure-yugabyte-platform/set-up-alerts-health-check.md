@@ -1,8 +1,8 @@
 ---
-title: Configure alerts and health checking
-headerTitle: Configure the alerts and health checking
-linkTitle: Configure alerts and health checking
-description: Configure the initial alerts and health checking.
+title: Configure alerts
+headerTitle: Configure alerts
+linkTitle: Configure alerts
+description: Configure alerts and health check
 menu:
   latest:
     identifier: set-up-alerts-health-checking
@@ -12,26 +12,64 @@ isTocNested: true
 showAsideToc: true
 ---
 
-To help you stay aware of potential deployment issues, the Yugabyte Platform has the capability to check on each individual universe for several types of issues and proactively send out email alerts when problems arise.
+Yugabyte Platform can check universes for issues that may affect deployment. Should problems arise, Yugabyte Platform can automatically issue alert notifications.
 
-## Configure alerts and health checking
+For additional information, see the following: 
 
-To configure health checking, go to your profile page in the Yugabyte Platform console by clicking the top-right drop-down list featuring your account email and then select the **Profile** option.
+- [Alerts](../../alerts-monitoring/alert/)
+- [Metrics](../../troubleshoot/universe-issues/#use-metrics/)
+- [Alerts and Notifications in Yugabyte Platform](https://blog.yugabyte.com/yugabytedb-2-8-alerts-and-notifications/)
 
-![Profile Dropdown](/images/ee/health/profile-button.png)
+You can access Yugabyte Platform health monitor and configure alerts by navigating to **Admin > Alert Configurations**, as per the following illustration:
 
-You should see something like the following:
+![Configure alerts](/images/yp/config-alerts1.png)
 
-![Alerting Controls](/images/ee/health/alerting-controls.png)
+The **Alert Creation** view allows you to perform the following for specific universes or for your instance of Yugabyte Platform: 
 
-Under the **Alerting controls**, you can::
+- Create new alerts.
+- Configure, delete, activate or deactivate existing alerts via **Actions**.
 
-- Add email addresses to send alerts to. Use comma-separated values.
-- Enable or disable sending the same alerts back to the Yugabyte support team.
+Regardless of the alert level, you create and configure an alert as follows: 
 
-Setting at least one email address or enabling sending to Yugabyte will enable the feature and subsequently begin to track the health of your universes. There are two modes of operation:
+- Click either **Create Alert Config > Universe Alert** or **Create Alert Config > Platform Alert**.  
 
-- Every 5 minutes, the background checker goes to every universe and performs a set of checks on each node. If any checks fail, the **Health** tab of the universe highlights the errors and sends an alert message by email to all of the email addresses.
-- Every 12 hours, whether or not there are errors, a status email message is sent out to ensure that health checking is occurring.
+- Select a template to use, and then configure settings by completing the fields whose default values depend on the template, as per the following illustration: <br><br>
 
-Both timing options are hard-coded, but will become user-configurable knobs.
+  ![Create alert](/images/yp/config-alerts2.png)
+
+  <br><br>
+
+  Templates are available for alerts related to Yugabyte Platform operations, YugabyteDB operations, as well as YSQL and YCQL performance.<br>
+
+  The **Active** field allows you to define the alert as initially active or inactive.<br>
+
+  The **Threshold** field allows you to define the value (for example, number of milliseconds, resets, errors, nodes) that must be reached in order to trigger the alert.<br>
+
+  The **Destination** field allows you to select one of the previously defined recipients of the alert. 
+
+- Click **Save**.
+
+- Click **Alert Destinations** to define a new destination, view details of an existing destination, edit or delete a destination, as per the following illustration: <br><br>
+
+  ![Destinations](/images/yp/config-alerts3.png)
+  - To add a new alert destination, click **Add Destination** and then complete the form shown in the following illustration:<br><br>
+
+    ![Add destination](/images/yp/config-alerts4.png)
+
+    <br>The preceding form allows you to either select an existing notification channel or create a new one by clicking **Add Channel** and completing the **Create new alert channel** dialog. In Yugabyte Platform, a channel defines how an alert is sent (an email or Slack message) and who should receive it.
+
+  - Click **Save**.
+
+  - To view, modify, or delete an existing destination, click **Actions** corresponding to this destination and then select either **Details**, **Edit Destination**, or **Delete Destination**.
+
+- Click **Notification Channels** if you need to create a new channel, as well as modify or delete an existing one.
+
+- Click **Health** to define and fine tune the health check that Yugabyte Platform performs on the universes, as per the following illustration:<br><br>
+
+  ![Health](/images/yp/config-alerts5.png)
+  - Use the **Alert emails** field to define a comma-separated list of email addresses to which alerts are to be sent.
+  - Use the **Send alert email to Yugabyte team** field to enable sending the same alerts to Yugabyte Support.
+  - Complete the remaining fields or accept the default settings.
+  - If you enable **Custom SMTP Configuration**, you need to provide the address for the Simple Mail Transfer Protocol server, the port number, the email and user credentials, and the desired security settings.
+  - Click **Save**.
+

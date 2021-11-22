@@ -3,6 +3,7 @@
 package com.yugabyte.yw.models;
 
 import static com.yugabyte.yw.commissioner.UserTaskDetails.createSubTask;
+import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
@@ -13,6 +14,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.helpers.TaskType;
+import io.ebean.ExpressionList;
 import io.ebean.FetchGroup;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -23,16 +25,21 @@ import io.ebean.annotation.EnumValue;
 import io.ebean.annotation.UpdatedTimestamp;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.EnumType;
 import javax.persistence.Enumerated;
 import javax.persistence.Id;
+import org.apache.commons.collections.CollectionUtils;
 import play.data.validation.Constraints;
 
 @Entity
@@ -225,6 +232,17 @@ public class TaskInfo extends Model {
     return taskInfo;
   }
 
+  public static List<TaskInfo> find(Collection<UUID> taskUUIDs) {
+    // Return the instance details object.
+    if (CollectionUtils.isEmpty(taskUUIDs)) {
+      return Collections.emptyList();
+    }
+    Set<UUID> uniqueTaskUUIDs = new HashSet<>(taskUUIDs);
+    ExpressionList<TaskInfo> query = find.query().where();
+    appendInClause(query, "uuid", uniqueTaskUUIDs);
+    return query.findList();
+  }
+
   // Returns  partial object
   public List<TaskInfo> getSubTasks() {
     Query<TaskInfo> subTaskQuery =
@@ -319,5 +337,16 @@ public class TaskInfo extends Model {
             .eq("task_state", TaskInfo.State.Success)
             .findCount();
     return numSubtasksCompleted * 100.0 / numSubtasks;
+  }
+
+  public static List<TaskInfo> findDuplicateDeleteBackupTasks(UUID customerUUID, UUID backupUUID) {
+    return TaskInfo.find
+        .query()
+        .where()
+        .eq("task_type", TaskType.DeleteBackup)
+        .ne("task_state", State.Failure)
+        .eq("details->>'customerUUID'", customerUUID.toString())
+        .eq("details->>'backupUUID'", backupUUID.toString())
+        .findList();
   }
 }

@@ -15,13 +15,20 @@
 
 #include "yb/consensus/raft_consensus.h"
 
+#include "yb/master/mini_master.h"
+
 #include "yb/util/random_util.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
 using namespace std::literals;
 
+DECLARE_bool(TEST_timeout_non_leader_master_rpcs);
 DECLARE_int64(cql_processors_limit);
+DECLARE_int32(client_read_write_timeout_ms);
+
+DECLARE_string(TEST_fail_to_fast_resolve_address);
+DECLARE_int32(partitions_vtable_cache_refresh_secs);
 DECLARE_int32(client_read_write_timeout_ms);
 
 namespace yb {
@@ -215,6 +222,85 @@ TEST_F(CqlTest, RecreateTableWithInserts) {
     ASSERT_OK(session.Execute(stmt));
     ASSERT_OK(session.ExecuteQuery("DROP TABLE t"));
   }
+}
+
+class CqlThreeMastersTest : public CqlTest {
+ public:
+  void SetUp() override {
+    FLAGS_partitions_vtable_cache_refresh_secs = 0;
+    CqlTest::SetUp();
+  }
+
+  int num_masters() override {
+    return 3;
+  }
+};
+
+Status CheckNumAddressesInYqlPartitionsTable(CassandraSession* session, int expected_num_addrs) {
+  const int kReplicaAddressesIndex = 5;
+  auto result = VERIFY_RESULT(session->ExecuteWithResult("SELECT * FROM system.partitions"));
+  auto iterator = result.CreateIterator();
+  while (iterator.Next()) {
+    auto replica_addresses = iterator.Row().Value(kReplicaAddressesIndex).ToString();
+    int num_addrs = 0;
+    if (replica_addresses.size() > std::strlen("{}")) {
+      num_addrs = std::count(replica_addresses.begin(), replica_addresses.end(), ',') + 1;
+    }
+
+    EXPECT_EQ(expected_num_addrs, num_addrs);
+  }
+  return Status::OK();
+}
+
+TEST_F_EX(CqlTest, HostnameResolutionFailureInYqlPartitionsTable, CqlThreeMastersTest) {
+  google::FlagSaver flag_saver;
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  ASSERT_OK(CheckNumAddressesInYqlPartitionsTable(&session, 3));
+
+  // TEST_RpcAddress is 1-indexed.
+  string hostname = server::TEST_RpcAddress(cluster_->LeaderMasterIdx() + 1,
+                                            server::Private::kFalse);
+
+  // Shutdown the master leader, and wait for new leader to get elected.
+  ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->Shutdown();
+  ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+
+  // Fail resolution of the old leader master's hostname.
+  FLAGS_TEST_fail_to_fast_resolve_address = hostname;
+  LOG(INFO) << "Setting FLAGS_TEST_fail_to_fast_resolve_address to: "
+            << FLAGS_TEST_fail_to_fast_resolve_address;
+
+  // Assert that a new call will succeed, but will be missing the shutdown master address.
+  ASSERT_OK(CheckNumAddressesInYqlPartitionsTable(&session, 2));
+}
+
+TEST_F_EX(CqlTest, NonRespondingMaster, CqlThreeMastersTest) {
+  FLAGS_TEST_timeout_non_leader_master_rpcs = true;
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  ASSERT_OK(session.ExecuteQuery("CREATE TABLE t1 (i INT PRIMARY KEY, j INT)"));
+  ASSERT_OK(session.ExecuteQuery("INSERT INTO t1 (i, j) VALUES (1, 1)"));
+  ASSERT_OK(session.ExecuteQuery("CREATE TABLE t2 (i INT PRIMARY KEY, j INT)"));
+
+  LOG(INFO) << "Prepare";
+  auto prepared = ASSERT_RESULT(session.Prepare("INSERT INTO t2 (i, j) VALUES (?, ?)"));
+  LOG(INFO) << "Step down";
+  auto peer = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->tablet_peer();
+  ASSERT_OK(StepDown(peer, std::string(), ForceStepDown::kTrue));
+  LOG(INFO) << "Insert";
+  FLAGS_client_read_write_timeout_ms = 5000;
+  bool has_ok = false;
+  for (int i = 0; i != 3; ++i) {
+    auto stmt = prepared.Bind();
+    stmt.Bind(0, i);
+    stmt.Bind(1, 1);
+    auto status = session.Execute(stmt);
+    if (status.ok()) {
+      has_ok = true;
+      break;
+    }
+    ASSERT_NE(status.message().ToBuffer().find("timed out"), std::string::npos) << status;
+  }
+  ASSERT_TRUE(has_ok);
 }
 
 } // namespace yb

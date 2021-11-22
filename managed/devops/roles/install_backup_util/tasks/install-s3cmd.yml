@@ -10,6 +10,17 @@
     - set_fact:
         setuptools_package_path: "/usr/local/setuptools-44.1.1"
 
+    - set_fact:
+        prefix: "--prefix /usr"
+      when: ansible_os_family != "Debian"
+
+    - set_fact:
+        prefix: ""
+      when: ansible_os_family == "Debian"
+
+    - set_fact:
+        python_interpreter: "python2"
+
     - name: s3cmd | Copy and unarchive setuptools from {{ package_path }}
       unarchive:
         src: "{{ package_path }}/setuptools-44.1.1.tar.gz"
@@ -57,23 +68,56 @@
         creates: "{{ setuptools_scm_package_path }}"
         remote_src: "{{ is_remote }}"
 
+    - name: Extract the installed python version on the host machine
+      raw: 'which python2 2> /dev/null || which python3 2> /dev/null'
+      register: py_interpreter
+      changed_when: py_interpreter.stdout != ""
+
+    - name: set python interpreter as python 3 if python2 is not present.
+      set_fact:
+        python_interpreter: "python3"
+      when: py_interpreter.stdout.find("python3") != -1
+
+    - name: Extract the current python version on db host.
+      raw: '{{ python_interpreter }} --version'
+      register: py_version
+      changed_when: py_version.stdout != ""
+
+    - name: Download python3-distutils required for setup.py on python3 installed OS
+      ansible.builtin.package:
+        name: python3-distutils
+        state: present
+      when: py_version.stdout is match("Python 3.")
+
     - name: s3cmd | Install setuptools
-      command: "chdir={{ setuptools_package_path }} python setup.py install"
+      command: "chdir={{ setuptools_package_path }}
+                      {{ python_interpreter }} setup.py install {{ prefix }}"
 
     - name: s3cmd | Install python magic
-      command: "chdir={{ python_magic_package_path }} python setup.py install"
+      command: "chdir={{ python_magic_package_path }}
+                      {{ python_interpreter }} setup.py install {{ prefix }}"
 
     - name: s3cmd | Install setuptools_scm
-      command: "chdir={{ setuptools_scm_package_path }} python setup.py install"
+      command: "chdir={{ setuptools_scm_package_path }}
+                      {{ python_interpreter }} setup.py install {{ prefix }}"
 
     - name: s3cmd | Build dateutil
-      command: "chdir={{ python_dateutil_package_path }} python setup.py build"
+      command: "chdir={{ python_dateutil_package_path }}
+                      {{ python_interpreter }} setup.py build"
 
     - name: s3cmd | Install dateutil
-      command: "chdir={{ python_dateutil_package_path }} python setup.py install"
+      command: "chdir={{ python_dateutil_package_path }}
+                      {{ python_interpreter }} setup.py install {{ prefix }}"
+      environment:
+        PYTHONPATH: "{{ setuptools_package_path }}:{{ python_magic_package_path }}:\
+                      {{ setuptools_scm_package_path }}"
 
     - name: s3cmd | Install s3cmd
-      command: "chdir={{ s3cmd_package_path }} python setup.py install"
+      command: "chdir={{ s3cmd_package_path }}
+                      {{ python_interpreter }} setup.py install {{ prefix }}"
+      environment:
+        PYTHONPATH: "{{ setuptools_package_path }}:{{ python_magic_package_path }}:\
+                     {{ setuptools_scm_package_path }}:{{ python_dateutil_package_path }}"
 
     - name: s3cmd | Create symlinks to {{ bin_path }}
       file:
@@ -81,3 +125,5 @@
         path: "{{ bin_path }}/s3cmd"
         state: link
         force: yes
+      # We don't want to symlink on db hosts on which python3 is used rather than python2.
+      when: py_version.stdout is match("Python 2.")

@@ -41,9 +41,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <iostream>
 #include <gtest/gtest.h>
 #include "yb/util/url-coding.h"
 

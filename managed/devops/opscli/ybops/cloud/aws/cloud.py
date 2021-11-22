@@ -249,7 +249,7 @@ class AwsCloud(AbstractCloud):
         elif metadata_type in ["role"]:
             # Arg timeout is in MS.
             fetcher = InstanceMetadataFetcher(
-                timeout=1000 * self.METADATA_API_TIMEOUT_SECONDS, num_attempts=2)
+                timeout=self.METADATA_API_TIMEOUT_SECONDS, num_attempts=2)
             c = fetcher.retrieve_iam_role_credentials()
             # This will return None in case of no assigned role on the instance.
             return c.get("role_name")
@@ -327,6 +327,9 @@ class AwsCloud(AbstractCloud):
                 server_tags = [t["Value"] for t in data["Tags"] if t["Key"] == "yb-server-type"]
                 name_tags = [t["Value"] for t in data["Tags"] if t["Key"] == "Name"]
                 launched_by_tags = [t["Value"] for t in data["Tags"] if t["Key"] == "launched-by"]
+                node_uuid_tags = [t["Value"] for t in data["Tags"] if t["Key"] == "node-uuid"]
+                universe_uuid_tags = [t["Value"] for t in data["Tags"]
+                                      if t["Key"] == "universe-uuid"]
 
             disks = data.get("BlockDeviceMappings")
             root_vol = next(disk for disk in disks if disk.get("DeviceName") == ROOT_VOLUME_LABEL)
@@ -360,6 +363,8 @@ class AwsCloud(AbstractCloud):
                 instance_type=data["InstanceType"],
                 server_type=server_tags[0] if server_tags else None,
                 launched_by=launched_by_tags[0] if launched_by_tags else None,
+                node_uuid=node_uuid_tags[0] if node_uuid_tags else None,
+                universe_uuid=universe_uuid_tags[0] if universe_uuid_tags else None,
                 vpc=data["VpcId"],
                 root_volume=root_vol["Ebs"]["VolumeId"]
             )
@@ -483,7 +488,7 @@ class AwsCloud(AbstractCloud):
             instance.wait_until_running()
             # The OS boot up may take some time,
             # so retry until the instance allows SSH connection.
-            self._wait_for_ssh_port(args["private_ip"], args["id"], ssh_port)
+            self.wait_for_ssh_port(args["private_ip"], args["id"], ssh_port)
         except ClientError as e:
             logging.error(e)
         finally:

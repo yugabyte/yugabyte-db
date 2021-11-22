@@ -443,7 +443,7 @@ If you want to support range queries that reference the value for the *year* att
 
 ```plpgsql
 CREATE INDEX books_year 
-    ON books ((doc->>'year') ASC)
+    ON books (((doc->>'year')::int) ASC)
     WHERE doc->>'year' is not null;
 ```
 
@@ -451,11 +451,12 @@ This will make the following query efficient:
 
 ```plpgsql
 select
-  (doc->>'ISBN')::bigint as year,
+  (doc->>'ISBN')::bigint as isbn,
   doc->>'title'          as title,
   (doc->>'year')::int    as year
 from books
 where (doc->>'year')::int > 1850
+and doc->>'year' IS NOT NULL
 order by 3;
 ```
 

@@ -121,8 +121,60 @@ ERROR:  index method "gist" not supported yet
 HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1337. Click '+' on the description to raise its priority
 CREATE INDEX wowidx ON test_tsvector USING gin (a);
 NOTICE:  replacing access method "gin" with "ybgin"
-ERROR:  index method "ybgin" not supported yet
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1337. Click '+' on the description to raise its priority
+SET enable_seqscan=OFF;
+-- GIN only supports bitmapscan, so no need to test plain indexscan
+-- YB note: ybgin is the opposite: it supports indexscan, not bitmapscan
+explain (costs off) SELECT count(*) FROM test_tsvector WHERE a @@ 'wr|qh';
+                      QUERY PLAN
+-------------------------------------------------------
+ Aggregate
+   ->  Index Scan using wowidx on test_tsvector
+         Index Cond: (a @@ '''wr'' | ''qh'''::tsquery)
+(3 rows)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ 'wr|qh';
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method cannot use more than one required scan entry: got 2.
+SELECT count(*) FROM test_tsvector WHERE a @@ 'wr&qh';
+ count
+-------
+    17
+(1 row)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ 'eq&yt';
+ count
+-------
+     6
+(1 row)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ 'eq|yt';
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method cannot use more than one required scan entry: got 2.
+SELECT count(*) FROM test_tsvector WHERE a @@ '(eq&yt)|(wr&qh)';
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method cannot use more than one required scan entry: got 3.
+SELECT count(*) FROM test_tsvector WHERE a @@ '(eq|yt)&(wr|qh)';
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method cannot use more than one required scan entry: got 2.
+SELECT count(*) FROM test_tsvector WHERE a @@ 'w:*|q:*';
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method cannot use more than one required scan entry: got 2.
+SELECT count(*) FROM test_tsvector WHERE a @@ any ('{wr,qh}');
+ count
+-------
+   158
+(1 row)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ 'no_such_lexeme';
+ count
+-------
+     0
+(1 row)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ '!no_such_lexeme';
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method does not support non-default search mode: all.
+RESET enable_seqscan;
 INSERT INTO test_tsvector VALUES ('???', 'DFG:1A,2B,6C,10 FGH');
 SELECT * FROM ts_stat('SELECT a FROM test_tsvector') ORDER BY ndoc DESC, nentry DESC, word LIMIT 10;
  word | ndoc | nentry

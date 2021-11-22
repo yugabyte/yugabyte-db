@@ -51,9 +51,6 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/rocksutil/yb_rocksdb.h"
-#include "yb/rocksutil/yb_rocksdb_logger.h"
-#include "yb/server/metadata.h"
 #include "yb/tablet/metadata.pb.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/util/debug/trace_event.h"
@@ -616,7 +613,7 @@ Status RaftGroupMetadata::ReadSuperBlockFromDisk(RaftGroupReplicaSuperBlockPB* s
   // Migration for backward compatibility with versions which don't have separate
   // TableType::TRANSACTION_STATUS_TABLE_TYPE.
   if (superblock->obsolete_table_type() == TableType::REDIS_TABLE_TYPE &&
-      superblock->obsolete_table_name() == kTransactionsTableName) {
+      superblock->obsolete_table_name() == kGlobalTransactionsTableName) {
     superblock->set_obsolete_table_type(TableType::TRANSACTION_STATUS_TABLE_TYPE);
   }
   return Status::OK();

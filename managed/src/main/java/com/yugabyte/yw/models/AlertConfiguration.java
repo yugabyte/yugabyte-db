@@ -11,7 +11,6 @@
 package com.yugabyte.yw.models;
 
 import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
-import static com.yugabyte.yw.models.helpers.CommonUtils.nowWithoutMillis;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 
@@ -25,6 +24,7 @@ import com.yugabyte.yw.models.paging.PagedQuery.SortByIF;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
+import io.ebean.PersistenceContextScope;
 import io.ebean.annotation.DbJson;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -37,10 +37,13 @@ import javax.persistence.Entity;
 import javax.persistence.EnumType;
 import javax.persistence.Enumerated;
 import javax.persistence.Id;
+import javax.validation.Valid;
+import javax.validation.constraints.Min;
+import javax.validation.constraints.NotNull;
+import javax.validation.constraints.Size;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.experimental.Accessors;
-import play.data.validation.Constraints;
 
 @Entity
 @Data
@@ -98,69 +101,76 @@ public class AlertConfiguration extends Model {
   @ApiModelProperty(value = "Configuration UUID", accessMode = READ_ONLY)
   private UUID uuid;
 
-  @Constraints.Required
+  @NotNull
   @Column(nullable = false)
   @ApiModelProperty(value = "Customer UUID", accessMode = READ_ONLY)
   private UUID customerUUID;
 
-  @Constraints.Required
+  @NotNull
+  @Size(min = 1, max = 1000)
   @Column(columnDefinition = "Text", nullable = false)
   @ApiModelProperty(value = "Name", accessMode = READ_WRITE)
   private String name;
 
-  @Constraints.Required
+  @NotNull
   @Column(columnDefinition = "Text")
   @ApiModelProperty(value = "Description", accessMode = READ_WRITE)
   private String description;
 
-  @Constraints.Required
+  @NotNull
   @Column(nullable = false)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
   @ApiModelProperty(value = "Creation time", accessMode = READ_ONLY)
-  private Date createTime = nowWithoutMillis();
+  private Date createTime;
 
-  @Constraints.Required
+  @NotNull
   @Enumerated(EnumType.STRING)
   @Column(nullable = false)
   @ApiModelProperty(value = "Target type", accessMode = READ_ONLY)
   private TargetType targetType;
 
-  @Constraints.Required
+  @NotNull
   @DbJson
   @Column(columnDefinition = "Text", nullable = false)
   @ApiModelProperty(value = "Target", accessMode = READ_WRITE)
   private AlertConfigurationTarget target;
 
-  @Constraints.Required
+  @NotNull
+  @Valid
+  @Size(min = 1)
   @DbJson
   @Column(columnDefinition = "Text", nullable = false)
   @ApiModelProperty(value = "Thresholds", accessMode = READ_WRITE)
   private Map<Severity, AlertConfigurationThreshold> thresholds;
 
-  @Constraints.Required
+  @NotNull
   @Enumerated(EnumType.STRING)
   @Column(nullable = false)
   @ApiModelProperty(value = "Threshold unit", accessMode = READ_ONLY)
   private Unit thresholdUnit;
 
-  @Constraints.Required
+  @NotNull
   @Column(columnDefinition = "Text", nullable = false)
   @Enumerated(EnumType.STRING)
   @ApiModelProperty(value = "Template name", accessMode = READ_ONLY)
   private AlertTemplate template;
 
+  @NotNull
+  @Min(0)
   @Column(nullable = false)
   @ApiModelProperty(
       value = "Duration in seconds, while condition is met to raise an alert",
       accessMode = READ_WRITE)
   private Integer durationSec = 15;
 
+  @NotNull
   @ApiModelProperty(value = "Is configured alerts raised or not", accessMode = READ_WRITE)
   private boolean active = true;
 
   @ApiModelProperty(value = "Alert destination UUID", accessMode = READ_WRITE)
   private UUID destinationUUID;
 
+  @NotNull
   @ApiModelProperty(value = "Is default destination used for this config", accessMode = READ_WRITE)
   private boolean defaultDestination;
 
@@ -169,7 +179,8 @@ public class AlertConfiguration extends Model {
 
   public static ExpressionList<AlertConfiguration> createQueryByFilter(
       AlertConfigurationFilter filter) {
-    ExpressionList<AlertConfiguration> query = find.query().where();
+    ExpressionList<AlertConfiguration> query =
+        find.query().setPersistenceContextScope(PersistenceContextScope.QUERY).where();
     appendInClause(query, "uuid", filter.getUuids());
     if (filter.getCustomerUuid() != null) {
       query.eq("customerUUID", filter.getCustomerUuid());

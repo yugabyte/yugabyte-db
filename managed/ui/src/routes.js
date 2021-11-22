@@ -24,7 +24,7 @@ import UniverseDetail from './pages/UniverseDetail';
 import Universes from './pages/Universes';
 import { Tasks, TasksList, TaskDetail } from './pages/tasks';
 import Alerts from './pages/Alerts';
-import ListUniverse from './pages/ListUniverse';
+import UniverseConsole from './pages/UniverseConsole';
 import Metrics from './pages/Metrics';
 import DataCenterConfiguration from './pages/DataCenterConfiguration';
 import TableDetail from './pages/TableDetail';
@@ -38,6 +38,8 @@ import { CreateUniverse } from './redesign/universe/CreateUniverse';
 import { EditUniverse } from './redesign/universe/EditUniverse';
 import { Administration } from './pages/Administration';
 import ToggleFeaturesInTest from './pages/ToggleFeaturesInTest';
+import { ReplicationDetails } from './components/xcluster';
+
 
 /**
  * Redirects to base url if no queryParmas is set else redirects to path set in queryParam
@@ -81,11 +83,11 @@ const autoLogin = (params) => {
   localStorage.setItem('authToken', authToken);
   localStorage.setItem('customerId', customerUUID);
   localStorage.setItem('userId', userUUID);
-  Cookies.set('authToken',authToken);
-  Cookies.set('customerId',customerUUID);
-  Cookies.set('userId',userUUID);
+  Cookies.set('authToken', authToken);
+  Cookies.set('customerId', customerUUID);
+  Cookies.set('userId', userUUID);
   browserHistory.replace({
-    search: '',
+    search: ''
   });
   browserHistory.push('/');
 };
@@ -194,13 +196,10 @@ function validateSession(store, replacePath, callback) {
 export default (store) => {
   const authenticatedSession = (nextState, replace, callback) => {
     const params = nextState?.location?.query;
-    if(!isNullOrEmpty(params) && checkAuthParamsInUrl(params)) {
+    if (!isNullOrEmpty(params) && checkAuthParamsInUrl(params)) {
       autoLogin(params);
-      validateSession(store, replace, callback);
     }
-    else {
-      validateSession(store, replace, callback);
-    }
+    validateSession(store, replace, callback);
   };
 
   const checkIfAuthenticated = (prevState, nextState, replace, callback) => {
@@ -220,7 +219,7 @@ export default (store) => {
       >
         <IndexRoute component={Dashboard} />
         <Route path="/universes" component={Universes}>
-          <IndexRoute component={ListUniverse} />
+          <IndexRoute component={UniverseConsole} />
           <Route path="/universes/import" component={Importer} />
           <Route path="/universes/create" component={UniverseDetail} />
           <Route path="/universes/:uuid" component={UniverseDetail} />
@@ -229,6 +228,7 @@ export default (store) => {
           </Route>
           <Route path="/universes/:uuid/:tab" component={UniverseDetail} />
           <Route path="/universes/:uuid/tables/:tableUUID" component={TableDetail} />
+          <Route path="/universes/:uuid/replication/:replicationUUID" component={ReplicationDetails} />
         </Route>
 
         {/* ------------------------------------------------------------------------*/}

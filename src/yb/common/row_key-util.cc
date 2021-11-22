@@ -32,7 +32,6 @@
 
 #include "yb/common/row_key-util.h"
 
-#include <boost/type_traits/is_unsigned.hpp>
 
 #include "yb/common/row.h"
 

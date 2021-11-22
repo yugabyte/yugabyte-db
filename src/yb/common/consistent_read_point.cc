@@ -12,7 +12,6 @@
 //
 
 #include "yb/common/consistent_read_point.h"
-#include "yb/client/transaction.h"
 
 #include "yb/util/debug-util.h"
 
@@ -97,6 +96,7 @@ void ConsistentReadPoint::Restart() {
   std::lock_guard<simple_spinlock> lock(mutex_);
   local_limits_ = std::move(restarts_);
   read_time_.read = restart_read_ht_;
+  recently_restarted_read_point_ = true;
 }
 
 void ConsistentReadPoint::Defer() {

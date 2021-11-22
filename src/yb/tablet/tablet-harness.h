@@ -136,7 +136,6 @@ class TabletHarness {
 
   Result<TabletPtr> OpenTablet(const TabletId& tablet_id) {
     auto metadata = VERIFY_RESULT(RaftGroupMetadata::Load(fs_manager_.get(), tablet_id));
-    TabletOptions tablet_options;
     auto tablet = std::make_shared<Tablet>(MakeTabletInitData(metadata));
     RETURN_NOT_OK(tablet->Open());
     tablet->MarkFinishedBootstrapping();

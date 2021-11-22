@@ -38,7 +38,6 @@
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/rpc/acceptor.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/service_if.h"
 #include "yb/rpc/service_pool.h"
@@ -178,8 +177,8 @@ void RpcServer::Shutdown() {
   }
 }
 
-const rpc::ServicePool* RpcServer::service_pool(const string& service_name) const {
-  return down_cast<rpc::ServicePool*>(messenger_->rpc_service(service_name).get());
+const rpc::ServicePool* RpcServer::TEST_service_pool(const string& service_name) const {
+  return down_cast<rpc::ServicePool*>(messenger_->TEST_rpc_service(service_name).get());
 }
 
 } // namespace server

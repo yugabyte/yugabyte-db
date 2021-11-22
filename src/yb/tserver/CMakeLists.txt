@@ -200,6 +200,8 @@ set(TSERVER_SRCS
   metrics_snapshotter.cc
   mini_tablet_server.cc
   pg_client_service.cc
+  pg_client_session.cc
+  pg_create_table.cc
   remote_bootstrap_client.cc
   remote_bootstrap_file_downloader.cc
   remote_bootstrap_service.cc
@@ -235,6 +237,7 @@ set(TSERVER_DEPS
   tablet
   yb_client
   yb_pggate_flags
+  ysql_upgrade
   ${TSERVER_LIB_EXTENSIONS})
 
 ADD_YB_LIBRARY(tserver

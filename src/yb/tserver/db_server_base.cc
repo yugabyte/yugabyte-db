@@ -32,6 +32,10 @@ DbServerBase::DbServerBase(
 DbServerBase::~DbServerBase() {
 }
 
+client::TransactionManager* DbServerBase::TransactionManager() {
+  return transaction_manager_holder_.get();
+}
+
 client::TransactionPool* DbServerBase::TransactionPool() {
   auto result = transaction_pool_.load(std::memory_order_acquire);
   if (result) {

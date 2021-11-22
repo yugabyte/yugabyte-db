@@ -501,18 +501,18 @@ TEST_F(TestCQLServiceWithCassAuth, TestReadSystemTableAuthenticated) {
                     "\x00\x00\x00\x17"     // body size
                     "\x00\x00\x00\x13" "\x00" "acssandra" "\x00" "password"),
       BINARY_STRING("\x84\x00\x00\x00\x00" // 0x00 = ERROR
-                    "\x00\x00\x00\x3f"     // body size
+                    "\x00\x00\x00\x41"     // body size
                     "\x00\x00\x01\x00"     // error code
-                    "\x00\x39" "Provided username acssandra and/or password are incorrect"));
+                    "\x00\x3b" "Provided username 'acssandra' and/or password are incorrect"));
   // Invalid authorization: send wrong password.
   SendRequestAndExpectResponse(
       BINARY_STRING("\x04\x00\x00\x00\x0f" // 0x0F = AUTH_RESPONSE
                     "\x00\x00\x00\x17"     // body size
                     "\x00\x00\x00\x13" "\x00" "cassandra" "\x00" "password"),
       BINARY_STRING("\x84\x00\x00\x00\x00" // 0x00 = ERROR
-                    "\x00\x00\x00\x3f"     // body size
+                    "\x00\x00\x00\x41"     // body size
                     "\x00\x00\x01\x00"     // error code
-                    "\x00\x39" "Provided username cassandra and/or password are incorrect"));
+                    "\x00\x3b" "Provided username 'cassandra' and/or password are incorrect"));
   // Invalid authorization: send null token.
   SendRequestAndExpectResponse(
       BINARY_STRING("\x04\x00\x00\x00\x0f" // 0x0F = AUTH_RESPONSE

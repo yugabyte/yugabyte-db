@@ -206,6 +206,23 @@ SELECT * FROM t1 WHERE h = 1 ORDER BY r;
  1 | 3 | 11 | 13
 (3 rows)
 
+EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) ORDER BY r;
+                  QUERY PLAN
+----------------------------------------------
+ Sort
+   Sort Key: r
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (yb_hash_code(h) = 4624)
+(4 rows)
+
+SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) ORDER BY r;
+ h | r | v1 | v2 
+---+---+----+----
+ 1 | 1 | 11 | 11
+ 1 | 2 | 11 | 12
+ 1 | 3 | 11 | 13
+(3 rows)
+
 EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE h > 1 ORDER BY h, r;
        QUERY PLAN        
 -------------------------
@@ -230,6 +247,19 @@ EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE h = 1 AND r = 1;
 (2 rows)
 
 SELECT * FROM t1 WHERE h = 1 AND r = 1;
+ h | r | v1 | v2 
+---+---+----+----
+ 1 | 1 | 11 | 11
+(1 row)
+
+EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) AND r = 1;
+                      QUERY PLAN
+------------------------------------------------------
+ Index Scan using t1_pkey on t1
+   Index Cond: ((yb_hash_code(h) = 4624) AND (r = 1))
+(2 rows)
+
+SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) AND r = 1;
  h | r | v1 | v2 
 ---+---+----+----
  1 | 1 | 11 | 11

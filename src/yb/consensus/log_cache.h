@@ -46,6 +46,7 @@
 #include "yb/util/async_util.h"
 #include "yb/util/locks.h"
 #include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
 #include "yb/util/opid.h"
 #include "yb/util/restart_safe_clock.h"
 #include "yb/util/result.h"
@@ -112,7 +113,8 @@ class LogCache {
   // If 'to_op_index' is 0, then all operations after 'after_op_index' will be included.
   Result<ReadOpsResult> ReadOps(int64_t after_op_index,
                                 int64_t to_op_index,
-                                int max_size_bytes);
+                                int max_size_bytes,
+                                CoarseTimePoint deadline = CoarseTimePoint::max());
 
   // Append the operations into the log and the cache.  When the messages have completed writing
   // into the on-disk log, fires 'callback'.
@@ -171,7 +173,8 @@ class LogCache {
 
  private:
   FRIEND_TEST(LogCacheTest, TestAppendAndGetMessages);
-  FRIEND_TEST(LogCacheTest, TestGlobalMemoryLimit);
+  FRIEND_TEST(LogCacheTest, TestGlobalMemoryLimitMB);
+  FRIEND_TEST(LogCacheTest, TestGlobalMemoryLimitPercentage);
   FRIEND_TEST(LogCacheTest, TestReplaceMessages);
   friend class LogCacheTest;
 

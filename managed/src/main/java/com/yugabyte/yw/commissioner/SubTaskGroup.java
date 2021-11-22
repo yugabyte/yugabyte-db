@@ -130,7 +130,7 @@ public class SubTaskGroup implements Runnable {
     // Set up corresponding TaskInfo.
     TaskType taskType = TaskType.valueOf(task.getClass().getSimpleName());
     TaskInfo taskInfo = new TaskInfo(taskType);
-    taskInfo.setTaskDetails(task.getTaskDetails());
+    taskInfo.setTaskDetails(RedactingService.filterSecretFields(task.getTaskDetails()));
     // Set the owner info in the TaskInfo.
     String hostname = "";
     try {
@@ -231,7 +231,7 @@ public class SubTaskGroup implements Runnable {
         errorString =
             "Failed to execute task "
                 + StringUtils.abbreviate(taskInfo.getTaskDetails().toString(), 500)
-                + ", hit error "
+                + ", hit error:\n\n"
                 + StringUtils.abbreviateMiddle(e.getMessage(), "...", 3000)
                 + ".";
         log.error(
@@ -299,6 +299,13 @@ public class SubTaskGroup implements Runnable {
                   taskInfoWithStats.getExecutionStartedTime(), executionFinishedTime));
     } else {
       log.trace("Started time does not exist for task {}", taskInfoWithStats);
+    }
+  }
+
+  public void cleanup() {
+    for (AbstractTaskBase task : taskMap.keySet()) {
+      // Subtasks are also tasks which may have their own executor service
+      task.terminate();
     }
   }
 

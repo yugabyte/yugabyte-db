@@ -119,7 +119,7 @@ $ curl \
 $ ./bin/ysqlsh
 ```
 
-```
+```output
 ysqlsh (11.2)
 Type "help" for help.
 
@@ -130,7 +130,7 @@ yugabyte=#
 yugabyte=# SELECT count(*) FROM users;
 ```
 
-```
+```output
  count
 -------
      2
@@ -141,7 +141,7 @@ yugabyte=# SELECT count(*) FROM users;
 yugabyte=# SELECT count(*) FROM products;
 ```
 
-```
+```output
  count
 -------
      2
@@ -152,7 +152,7 @@ yugabyte=# SELECT count(*) FROM products;
 yugabyte=# SELECT count(*) FROM orders;
 ```
 
-```
+```output
  count
 -------
      2
@@ -165,7 +165,7 @@ yugabyte=# SELECT count(*) FROM orders;
 $ curl http://localhost:8080/users
 ```
 
-```
+```output.json
 {
   "content": [
     {
@@ -189,7 +189,7 @@ $ curl http://localhost:8080/users
 $ curl http://localhost:8080/products
 ```
 
-```
+```output.json
 {
   "content": [
     {
@@ -213,7 +213,7 @@ $ curl http://localhost:8080/products
 $ curl http://localhost:8080/orders
 ```
 
-```
+```output.json
 {
   "content": [
     {

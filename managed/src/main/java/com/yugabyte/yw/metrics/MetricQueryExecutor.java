@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TimeZone;
 import java.util.concurrent.Callable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -101,7 +102,11 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
     long endUnixTime = Long.parseLong(queryParam.getOrDefault("end", "0"));
     long startUnixTime = Long.parseLong(queryParam.getOrDefault("start", "0"));
     if (endUnixTime != 0 && startUnixTime != 0 && endUnixTime > startUnixTime) {
-      endString = Util.unixTimeToDateString(endUnixTime * 1000, DATE_FORMAT_STRING);
+      // The timezone is set to UTC because If there is a discrepancy between platform and
+      // prometheus timezones, the resulting directURL will show incorrect timeframe.
+      endString =
+          Util.unixTimeToDateString(
+              endUnixTime * 1000, DATE_FORMAT_STRING, TimeZone.getTimeZone("UTC"));
       durationSecs = String.format("%ds", (endUnixTime - startUnixTime));
     }
 

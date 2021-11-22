@@ -14,7 +14,7 @@ package org.yb.pgsql;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.util.SanitizerUtil;
+import org.yb.util.BuildTypeUtil;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
 // Runs the pg_regress test suite on YB code.
@@ -22,7 +22,7 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
 public class TestPgRegressGin extends BasePgSQLTest {
   @Override
   public int getTestMethodTimeoutSec() {
-    return SanitizerUtil.nonSanitizerVsSanitizer(360, 450);
+    return BuildTypeUtil.nonSanitizerVsSanitizer(2100, 2700);
   }
 
   @Test

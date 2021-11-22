@@ -14,9 +14,16 @@ import {
   createNodeInstancesResponse,
   getNodeInstancesForProvider,
   getNodesInstancesForProviderResponse,
+  precheckInstance,
+  precheckInstanceResponse,
   deleteInstance,
   deleteInstanceResponse
 } from '../../../actions/cloud';
+import {
+  fetchCustomerTasks,
+  fetchCustomerTasksSuccess,
+  fetchCustomerTasksFailure
+} from '../../../actions/tasks';
 import { fetchUniverseList, fetchUniverseListResponse } from '../../../actions/universe';
 import { reduxForm } from 'redux-form';
 import { closeUniverseDialog } from '../../../actions/universe';
@@ -25,6 +32,7 @@ import { openDialog, closeDialog } from '../../../actions/modal';
 const mapStateToProps = (state) => {
   return {
     cloud: state.cloud,
+    tasks: state.tasks,
     universeList: state.universe.universeList,
     visibleModal: state.modal.visibleModal
   };
@@ -90,6 +98,22 @@ const mapDispatchToProps = (dispatch, ownProps) => {
       });
     },
 
+    fetchCustomerTasks: () => {
+      dispatch(fetchCustomerTasks()).then((response) => {
+        if (!response.error) {
+          dispatch(fetchCustomerTasksSuccess(response.payload));
+        } else {
+          dispatch(fetchCustomerTasksFailure(response.payload));
+        }
+      });
+    },
+
+    precheckInstance: (providerUUID, instanceIP) => {
+      dispatch(precheckInstance(providerUUID, instanceIP)).then((response) => {
+        dispatch(precheckInstanceResponse(response.payload));
+      });
+    },
+
     deleteInstance: (providerUUID, instanceIP) => {
       dispatch(deleteInstance(providerUUID, instanceIP)).then((response) => {
         dispatch(deleteInstanceResponse(response.payload));
@@ -103,6 +127,10 @@ const mapDispatchToProps = (dispatch, ownProps) => {
 
     showConfirmDeleteModal: () => {
       dispatch(openDialog('confirmDeleteNodeInstance'));
+    },
+
+    showConfirmPrecheckModal: () => {
+      dispatch(openDialog('confirmPrecheckNodeInstance'));
     },
 
     hideDialog: () => {

@@ -21,11 +21,15 @@ import play.libs.Json;
 
 @Singleton
 public class ValidatingFormFactory {
+
   private final FormFactory formFactory;
 
+  private final BeanValidator validator;
+
   @Inject
-  public ValidatingFormFactory(FormFactory formFactory) {
+  public ValidatingFormFactory(FormFactory formFactory, BeanValidator validator) {
     this.formFactory = formFactory;
+    this.validator = validator;
   }
 
   public <T> Form<T> getFormDataOrBadRequest(Class<T> clazz) {
@@ -37,11 +41,19 @@ public class ValidatingFormFactory {
   }
 
   public <T> T getFormDataOrBadRequest(JsonNode jsonNode, Class<T> clazz) {
-    // Do this so that constraint get validated
-    Form<T> formData = formFactory.form(clazz).bind(jsonNode);
-    if (formData.hasErrors()) {
-      throw new PlatformServiceException(BAD_REQUEST, formData.errorsAsJson());
+    // TODO: Ability to ignore fail on unknown fields
+    //      DataBinder dataBinder = new DataBinder(bean);
+    //      dataBinder.setIgnoreUnknownFields(false);
+    //      dataBinder.bind(new MutablePropertyValues(requestData));
+    T bean;
+    try {
+      bean = Json.fromJson(jsonNode, clazz);
+    } catch (Exception e) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Failed to parse " + clazz.getSimpleName() + " object: " + e.getMessage());
     }
-    return Json.fromJson(jsonNode, clazz);
+    // Do this so that constraint get validated
+    validator.validate(bean);
+    return bean;
   }
 }

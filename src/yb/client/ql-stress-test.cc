@@ -23,7 +23,6 @@
 
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/raft_consensus.h"
-#include "yb/consensus/replica_state.h"
 #include "yb/consensus/retryable_requests.h"
 
 #include "yb/docdb/consensus_frontier.h"
@@ -37,7 +36,6 @@
 #include "yb/server/hybrid_clock.h"
 
 #include "yb/tablet/tablet_options.h"
-#include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
@@ -45,7 +43,6 @@
 
 #include "yb/util/bfql/gen_opcodes.h"
 #include "yb/util/random_util.h"
-#include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 
 #include "yb/util/tsan_util.h"
@@ -142,7 +139,7 @@ class QLStressTest : public QLDmlTestBase<MiniCluster> {
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, key);
     table.AddStringColumnValue(req, kValueColumn, value);
-    EXPECT_OK(session->Apply(op));
+    session->Apply(op);
     return op;
   }
 
@@ -165,7 +162,7 @@ class QLStressTest : public QLDmlTestBase<MiniCluster> {
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, key);
     table.AddColumns({kValueColumn}, req);
-    EXPECT_OK(session->Apply(op));
+    session->Apply(op);
     return op;
   }
 
@@ -499,7 +496,7 @@ TEST_F_EX(QLStressTest, Increment, QLStressTestIntValue) {
   }
 
   for (const auto& op : write_ops) {
-    ASSERT_OK(session->Apply(op));
+    session->Apply(op);
     futures.push_back(session->FlushFuture());
   }
 
@@ -1054,7 +1051,7 @@ TEST_F_EX(QLStressTest, DynamicCompactionPriority, QLStressDynamicCompactionPrio
       auto* const req = op->mutable_request();
       QLAddInt32HashValue(req, key);
       table_.AddStringColumnValue(req, kValueColumn, value);
-      ASSERT_OK(session->Apply(op));
+      session->Apply(op);
       ASSERT_OK(session->Flush());
       ASSERT_OK(CheckOp(op.get()));
       std::this_thread::sleep_for(100ms);

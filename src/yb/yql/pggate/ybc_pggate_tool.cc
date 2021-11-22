@@ -20,7 +20,6 @@
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
-#include "yb/util/memory/mc_types.h"
 #include "yb/yql/pggate/pg_env.h"
 #include "yb/yql/pggate/pggate.h"
 #include "yb/yql/pggate/pggate_flags.h"
@@ -59,12 +58,12 @@ CHECKED_STATUS PrepareInitPgGateBackend() {
   RETURN_NOT_OK(server::DetermineMasterAddresses(
       "pggate_master_addresses", FLAGS_pggate_master_addresses, 0, &master_addresses,
       &resolved_str));
-
-  auto endpoints = VERIFY_RESULT(server::ResolveMasterAddresses(master_addresses));
+  LOG(INFO) << "Master addresses: " << AsString(master_addresses);
 
   PgApiContext context;
   struct Data {
     boost::optional<tserver::TServerSharedObject> tserver_shared_object;
+    HostPort reached_host_port;
     std::atomic<bool> flag{false};
     CountDownLatch latch{1};
     std::atomic<size_t> running{0};
@@ -72,36 +71,50 @@ CHECKED_STATUS PrepareInitPgGateBackend() {
   };
   static std::shared_ptr<Data> data = std::make_shared<Data>();
   data->tserver_shared_object.emplace(VERIFY_RESULT(tserver::TServerSharedObject::Create()));
-  data->running = endpoints.size();
-  for (const auto& endpoint : endpoints) {
-    tserver::TabletServerServiceProxy proxy(context.proxy_cache.get(), HostPort(endpoint));
-    struct ReqData {
-      tserver::GetSharedDataRequestPB req;
-      tserver::GetSharedDataResponsePB resp;
-      rpc::RpcController controller;
-    };
-    auto req_data = std::make_shared<ReqData>();
-    req_data->controller.set_timeout(std::chrono::seconds(60));
-    proxy.GetSharedDataAsync(
-        req_data->req, &req_data->resp, &req_data->controller, [req_data] {
-      if (req_data->controller.status().ok()) {
-        bool expected = false;
-        if (data->flag.compare_exchange_strong(expected, true)) {
-          memcpy(pointer_cast<char*>(&**data->tserver_shared_object),
-                 req_data->resp.data().c_str(), req_data->resp.data().size());
+  data->running = 0;
+  for (const auto& list : master_addresses) {
+    data->running += list.size();
+  }
+  for (const auto& list : master_addresses) {
+    for (const auto& host_port : list) {
+      tserver::TabletServerServiceProxy proxy(context.proxy_cache.get(), host_port);
+      struct ReqData {
+        tserver::GetSharedDataRequestPB req;
+        tserver::GetSharedDataResponsePB resp;
+        rpc::RpcController controller;
+      };
+      auto req_data = std::make_shared<ReqData>();
+      req_data->controller.set_timeout(std::chrono::seconds(60));
+      proxy.GetSharedDataAsync(
+          req_data->req, &req_data->resp, &req_data->controller,
+          [req_data, host_port = host_port] {
+        if (req_data->controller.status().ok()) {
+          bool expected = false;
+          if (data->flag.compare_exchange_strong(expected, true)) {
+            memcpy(pointer_cast<char*>(&**data->tserver_shared_object),
+                   req_data->resp.data().c_str(), req_data->resp.data().size());
+            data->reached_host_port = host_port;
+            data->latch.CountDown();
+          }
+        } else if (--data->running == 0) {
+          data->failure = req_data->controller.status();
           data->latch.CountDown();
         }
-      } else if (--data->running == 0) {
-        data->failure = req_data->controller.status();
-        data->latch.CountDown();
-      }
-    });
+      });
+    }
   }
 
   data->latch.Wait();
   RETURN_NOT_OK(data->failure);
 
   FLAGS_pggate_tserver_shm_fd = data->tserver_shared_object->GetFd();
+
+  auto& shared_data = **data->tserver_shared_object;
+  shared_data.SetHostEndpoint(shared_data.endpoint(), data->reached_host_port.host());
+  LOG(INFO) << "Shared data fetched, endpoint: " << shared_data.endpoint()
+            << ", host: " << shared_data.host().ToBuffer()
+            << ", catalog version: " << shared_data.ysql_catalog_version()
+            << ", postgres_auth_key: " << shared_data.postgres_auth_key();
 
   YBCPgCallbacks callbacks;
   callbacks.FetchUniqueConstraintName = &FetchUniqueConstraintName;

@@ -685,4 +685,11 @@ inline std::ostream& operator<<(std::ostream& out, const Status& status) {
 #define CHECKED_STATUS ::yb::Status
 #endif
 
+#define SCHECK_NOTNULL(expr) do { \
+      if ((expr) == nullptr) { \
+        return STATUS(IllegalState, BOOST_PP_STRINGIZE(expr) " must not be null"); \
+      } \
+    } while (0)
+
+
 #endif  // YB_UTIL_STATUS_H_

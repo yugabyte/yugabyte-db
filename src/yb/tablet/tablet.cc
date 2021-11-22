@@ -55,7 +55,6 @@
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/utilities/checkpoint.h"
 #include "yb/rocksdb/write_batch.h"
-#include "yb/rocksdb/util/file_util.h"
 #include "yb/rocksutil/write_batch_formatter.h"
 
 #include "yb/client/error.h"
@@ -73,7 +72,6 @@
 #include "yb/common/schema.h"
 #include "yb/common/transaction_error.h"
 
-#include "yb/consensus/consensus_error.h"
 #include "yb/consensus/consensus_round.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/log_anchor_registry.h"
@@ -106,11 +104,9 @@
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rocksutil/yb_rocksdb.h"
-#include "yb/rocksutil/yb_rocksdb_logger.h"
 #include "yb/server/hybrid_clock.h"
 
 #include "yb/tablet/tablet_fwd.h"
-#include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/snapshot_coordinator.h"
 #include "yb/tablet/tablet_snapshots.h"
 #include "yb/tablet/tablet_metrics.h"
@@ -124,7 +120,6 @@
 #include "yb/tablet/operations/split_operation.h"
 #include "yb/tablet/tablet_options.h"
 
-#include "yb/util/bloom_filter.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/enums.h"
 #include "yb/util/env.h"
@@ -140,7 +135,6 @@
 #include "yb/util/slice.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/trace.h"
-#include "yb/util/url-coding.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
@@ -282,8 +276,9 @@ DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_bool(consistent_restore);
 DECLARE_int32(rocksdb_level0_slowdown_writes_trigger);
 DECLARE_int32(rocksdb_level0_stop_writes_trigger);
+DECLARE_uint64(rocksdb_max_file_size_for_compaction);
 DECLARE_int64(apply_intents_task_injected_delay_ms);
-DECLARE_bool(enable_pg_savepoints);
+DECLARE_string(regular_tablets_data_block_key_value_encoding);
 
 using namespace std::placeholders;
 
@@ -407,8 +402,8 @@ Tablet::Tablet(const TabletInitData& data)
       mvcc_(
           MakeTabletLogPrefix(data.metadata->raft_group_id(), data.log_prefix_suffix), data.clock),
       tablet_options_(data.tablet_options),
-      pending_non_abortable_op_counter_("RocksDB abortable read/write operations"),
-      pending_abortable_op_counter_("RocksDB non-abortable read/write operations"),
+      pending_non_abortable_op_counter_("RocksDB non-abortable read/write operations"),
+      pending_abortable_op_counter_("RocksDB abortable read/write operations"),
       write_ops_being_submitted_counter_("Tablet schema"),
       client_future_(data.client_future),
       local_tablet_filter_(data.local_tablet_filter),
@@ -576,6 +571,15 @@ auto MakeMemTableFlushFilterFactory(const F& f) {
   return std::make_shared<MemTableFlushFilterFactoryType>(f);
 }
 
+template <class F>
+auto MakeMaxFileSizeWithTableTTLFunction(const F& f) {
+  // Trick to get type of max_file_size_for_compaction field.
+  typedef typename decltype(
+      static_cast<rocksdb::Options*>(nullptr)->max_file_size_for_compaction)::element_type
+      MaxFileSizeWithTableTTLFunction;
+  return std::make_shared<MaxFileSizeWithTableTTLFunction>(f);
+}
+
 Result<bool> Tablet::IntentsDbFlushFilter(const rocksdb::MemTable& memtable) {
   VLOG_WITH_PREFIX(4) << __func__;
 
@@ -655,8 +659,18 @@ Status Tablet::OpenKeyValueTablet() {
   static const std::string kRegularDB = "RegularDB"s;
   static const std::string kIntentsDB = "IntentsDB"s;
 
+  rocksdb::BlockBasedTableOptions table_options;
+  if (!metadata()->primary_table_info()->index_info || metadata()->colocated()) {
+    // This tablet is not dedicated to the index table, so it should be effective to use
+    // advanced key-value encoding algorithm optimized for docdb keys structure.
+    table_options.use_delta_encoding = true;
+    table_options.data_block_key_value_encoding_format =
+        VERIFY_RESULT(docdb::GetConfiguredKeyValueEncodingFormat(
+            FLAGS_regular_tablets_data_block_key_value_encoding));
+  }
   rocksdb::Options rocksdb_options;
-  InitRocksDBOptions(&rocksdb_options, LogPrefix(docdb::StorageDbType::kRegular));
+  InitRocksDBOptions(
+      &rocksdb_options, LogPrefix(docdb::StorageDbType::kRegular), std::move(table_options));
   rocksdb_options.mem_tracker = MemTracker::FindOrCreateTracker(kRegularDB, mem_tracker_);
   rocksdb_options.block_based_table_mem_tracker =
       MemTracker::FindOrCreateTracker(
@@ -683,8 +697,18 @@ Status Tablet::OpenKeyValueTablet() {
   });
   if (FLAGS_tablet_enable_ttl_file_filter) {
     rocksdb_options.compaction_file_filter_factory =
-        std::make_shared<docdb::DocDBCompactionFileFilterFactory>(schema(), clock());
+        std::make_shared<docdb::DocDBCompactionFileFilterFactory>(retention_policy_, clock());
   }
+
+  // Use a function that checks the table TTL before returning a value for max file size
+  // for compactions.
+  rocksdb_options.max_file_size_for_compaction = MakeMaxFileSizeWithTableTTLFunction([this] {
+    if (FLAGS_rocksdb_max_file_size_for_compaction > 0 &&
+        retention_policy_->GetRetentionDirective().table_ttl != docdb::Value::kMaxTtl) {
+      return FLAGS_rocksdb_max_file_size_for_compaction;
+    }
+    return std::numeric_limits<uint64_t>::max();
+  });
 
   rocksdb_options.disable_auto_compactions = true;
   rocksdb_options.level0_slowdown_writes_trigger = std::numeric_limits<int>::max();
@@ -1122,6 +1146,8 @@ Status Tablet::ApplyRowOperations(
           : *operation->request();
   const KeyValueWriteBatchPB& put_batch = write_request.write_batch();
   if (metrics_) {
+    VLOG(3) << "Applying write batch (write_pairs=" << put_batch.write_pairs().size() << "): "
+            << put_batch.ShortDebugString();
     metrics_->rows_inserted->IncrementBy(put_batch.write_pairs().size());
   }
 
@@ -1141,7 +1167,9 @@ Status Tablet::ApplyOperation(
   auto frontiers_ptr =
       InitFrontiers(operation.op_id(), operation.hybrid_time(), &frontiers);
   if (frontiers_ptr) {
-    auto ttl = operation.has_ttl() ? operation.ttl() : docdb::Value::kMaxTtl;
+    auto ttl = write_batch.has_ttl()
+        ? MonoDelta::FromNanoseconds(write_batch.ttl())
+        : docdb::Value::kMaxTtl;
     frontiers_ptr->Largest().set_max_value_level_ttl_expiration_time(
         docdb::FileExpirationFromValueTTL(operation.hybrid_time(), ttl));
   }
@@ -1295,14 +1323,9 @@ void SetupKeyValueBatch(WriteRequestPB* write_request, WriteRequestPB* batch_req
     write_request->mutable_write_batch()->mutable_transaction()->Swap(
         batch_request->mutable_write_batch()->mutable_transaction());
   }
-  if (FLAGS_enable_pg_savepoints) {
-    if (batch_request->write_batch().has_subtransaction()) {
-      write_request->mutable_write_batch()->mutable_subtransaction()->Swap(
-          batch_request->mutable_write_batch()->mutable_subtransaction());
-    }
-  } else {
-    DCHECK(!batch_request->write_batch().has_subtransaction())
-        << "Unexpected subtransaction metadata in write request without --enable_pg_savepoints";
+  if (batch_request->write_batch().has_subtransaction()) {
+    write_request->mutable_write_batch()->mutable_subtransaction()->Swap(
+        batch_request->mutable_write_batch()->mutable_subtransaction());
   }
   write_request->mutable_write_batch()->set_deprecated_may_have_metadata(true);
   if (batch_request->has_request_id()) {
@@ -1549,8 +1572,6 @@ void Tablet::CompleteQLWriteBatch(std::unique_ptr<WriteOperation> operation, con
 
   for (size_t i = 0; i < doc_ops.size(); i++) {
     QLWriteOperation* ql_write_op = down_cast<QLWriteOperation*>(doc_ops[i].get());
-    const MonoDelta ttl = ql_write_op->request_ttl();
-    operation->UpdateIfMaxTtl(ttl);
     if (metadata_->is_unique_index() &&
         ql_write_op->request().type() == QLWriteRequestPB::QL_STMT_INSERT &&
         ql_write_op->response()->has_applied() && !ql_write_op->response()->applied()) {
@@ -1636,11 +1657,7 @@ void Tablet::UpdateQLIndexes(std::unique_ptr<WriteOperation> operation) {
       shared_ptr<client::YBqlWriteOp> index_op(index_table->NewQLWrite());
       index_op->mutable_request()->Swap(&pair.second);
       index_op->mutable_request()->MergeFrom(pair.second);
-      status = session->Apply(index_op);
-      if (!status.ok()) {
-        WriteOperation::StartSynchronization(std::move(operation), status);
-        return;
-      }
+      session->Apply(index_op);
       index_ops.emplace_back(std::move(index_op), write_op);
     }
   }
@@ -2433,24 +2450,28 @@ Result<PgsqlBackfillSpecPB> QueryPostgresToDoBackfill(
 }
 
 struct BackfillParams {
-  explicit BackfillParams(const CoarseTimePoint& deadline) {
-    batch_size = GetAtomicFlag(&FLAGS_backfill_index_write_batch_size);
-    rate_per_sec = GetAtomicFlag(&FLAGS_backfill_index_rate_rows_per_sec);
+  explicit BackfillParams(const CoarseTimePoint deadline)
+      : start_time(CoarseMonoClock::Now()),
+        deadline(deadline),
+        rate_per_sec(GetAtomicFlag(&FLAGS_backfill_index_rate_rows_per_sec)),
+        batch_size(GetAtomicFlag(&FLAGS_backfill_index_write_batch_size)) {
     auto grace_margin_ms = GetAtomicFlag(&FLAGS_backfill_index_timeout_grace_margin_ms);
     if (grace_margin_ms < 0) {
       // We need: grace_margin_ms >= 1000 * batch_size / rate_per_sec;
       // By default, we will set it to twice the minimum value + 1s.
       grace_margin_ms = (rate_per_sec > 0 ? 1000 * (1 + 2.0 * batch_size / rate_per_sec) : 1000);
-      YB_LOG_EVERY_N(INFO, 100000) << "Using grace margin of " << grace_margin_ms << "ms";
+      YB_LOG_EVERY_N_SECS(INFO, 10)
+          << "Using grace margin of " << grace_margin_ms << "ms, original deadline: "
+          << MonoDelta(deadline - start_time);
     }
     modified_deadline = deadline - grace_margin_ms * 1ms;
-    start_time = CoarseMonoClock::Now();
   }
 
   CoarseTimePoint start_time;
-  CoarseTimePoint modified_deadline;
+  CoarseTimePoint deadline;
   size_t rate_per_sec;
   size_t batch_size;
+  CoarseTimePoint modified_deadline;
 };
 
 // Slow down before the next batch to throttle the rate of processing.
@@ -2668,6 +2689,7 @@ Status Tablet::BackfillIndexes(
     size_t* number_of_rows_processed,
     std::string* backfilled_until,
     std::unordered_set<TableId>* failed_indexes) {
+  TRACE(__func__);
   if (PREDICT_FALSE(FLAGS_TEST_slowdown_backfill_by_ms > 0)) {
     TRACE("Sleeping for $0 ms", FLAGS_TEST_slowdown_backfill_by_ms);
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_slowdown_backfill_by_ms));
@@ -2678,8 +2700,8 @@ Status Tablet::BackfillIndexes(
   std::vector<yb::ColumnSchema> columns = GetColumnSchemasForIndex(indexes);
 
   Schema projection(columns, {}, schema()->num_key_columns());
-  auto iter =
-      VERIFY_RESULT(NewRowIterator(projection, ReadHybridTime::SingleTime(read_time)));
+  auto iter = VERIFY_RESULT(NewRowIterator(
+      projection, ReadHybridTime::SingleTime(read_time), "" /* table_id */, deadline));
   QLTableRow row;
   std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>> index_requests;
 
@@ -2700,6 +2722,7 @@ Status Tablet::BackfillIndexes(
   while (VERIFY_RESULT(iter->HasNext())) {
     if (index_requests.empty()) {
       *backfilled_until = VERIFY_RESULT(iter->GetTupleId()).ToBuffer();
+      MaybeSleepToThrottleBackfill(backfill_params.start_time, *number_of_rows_processed);
     }
 
     if (!CanProceedToBackfillMoreRows(backfill_params, *number_of_rows_processed)) {
@@ -2725,11 +2748,12 @@ Status Tablet::BackfillIndexes(
     }
 
     DVLOG(2) << "Building index for fetched row: " << row.ToString();
-    RETURN_NOT_OK(UpdateIndexInBatches(row, indexes, read_time, &index_requests, failed_indexes));
+    RETURN_NOT_OK(UpdateIndexInBatches(
+        row, indexes, read_time, backfill_params.deadline, &index_requests,
+        failed_indexes));
 
     if (++(*number_of_rows_processed) % kProgressInterval == 0) {
       VLOG(1) << "Processed " << *number_of_rows_processed << " rows";
-      MaybeSleepToThrottleBackfill(backfill_params.start_time, *number_of_rows_processed);
     }
   }
 
@@ -2744,7 +2768,8 @@ Status Tablet::BackfillIndexes(
   }
 
   VLOG(1) << "Processed " << *number_of_rows_processed << " rows";
-  RETURN_NOT_OK(FlushWriteIndexBatch(read_time, &index_requests, failed_indexes));
+  RETURN_NOT_OK(FlushWriteIndexBatch(
+      read_time, backfill_params.deadline, &index_requests, failed_indexes));
   MaybeSleepToThrottleBackfill(backfill_params.start_time, *number_of_rows_processed);
   *backfilled_until = resume_backfill_from;
   LOG(INFO) << "Done BackfillIndexes at " << read_time << " for " << AsString(index_ids)
@@ -2757,6 +2782,7 @@ Status Tablet::UpdateIndexInBatches(
     const QLTableRow& row,
     const std::vector<IndexInfo>& indexes,
     const HybridTime write_time,
+    const CoarseTimePoint deadline,
     std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
     std::unordered_set<TableId>* failed_indexes) {
   const QLTableRow& kEmptyRow = QLTableRow::empty_row();
@@ -2772,33 +2798,35 @@ Status Tablet::UpdateIndexInBatches(
   }
 
   // Update the index write op.
-  return FlushWriteIndexBatchIfRequired(
-      write_time, index_requests, failed_indexes);
+  return FlushWriteIndexBatchIfRequired(write_time, deadline, index_requests, failed_indexes);
 }
 
-Result<std::shared_ptr<YBSession>> Tablet::GetSessionForVerifyOrBackfill() {
+Result<std::shared_ptr<YBSession>> Tablet::GetSessionForVerifyOrBackfill(
+    const CoarseTimePoint deadline) {
   if (!client_future_.valid()) {
     return STATUS_FORMAT(IllegalState, "Client future is not set up for $0", tablet_id());
   }
 
   auto client = client_future_.get();
   auto session = std::make_shared<YBSession>(client);
-  session->SetTimeout(MonoDelta::FromMilliseconds(FLAGS_client_read_write_timeout_ms));
+  session->SetDeadline(deadline);
   return session;
 }
 
 Status Tablet::FlushWriteIndexBatchIfRequired(
     const HybridTime write_time,
+    const CoarseTimePoint deadline,
     std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
     std::unordered_set<TableId>* failed_indexes) {
   if (index_requests->size() < FLAGS_backfill_index_write_batch_size) {
     return Status::OK();
   }
-  return FlushWriteIndexBatch(write_time, index_requests, failed_indexes);
+  return FlushWriteIndexBatch(write_time, deadline, index_requests, failed_indexes);
 }
 
 Status Tablet::FlushWriteIndexBatch(
     const HybridTime write_time,
+    const CoarseTimePoint deadline,
     std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
     std::unordered_set<TableId>* failed_indexes) {
   if (!client_future_.valid()) {
@@ -2806,8 +2834,7 @@ Status Tablet::FlushWriteIndexBatch(
   } else if (!YBMetaDataCache()) {
     return STATUS(IllegalState, "Table metadata cache is not present for index update");
   }
-  std::shared_ptr<YBSession> session = VERIFY_RESULT(GetSessionForVerifyOrBackfill());
-  session->SetHybridTimeForWrite(write_time);
+  std::shared_ptr<YBSession> session = VERIFY_RESULT(GetSessionForVerifyOrBackfill(deadline));
 
   std::unordered_set<
       client::YBqlWriteOpPtr, client::YBqlWriteOp::PrimaryKeyComparator,
@@ -2823,6 +2850,7 @@ Status Tablet::FlushWriteIndexBatch(
         VERIFY_RESULT(GetTable(pair.first->table_id(), metadata_cache));
 
     shared_ptr<client::YBqlWriteOp> index_op(index_table->NewQLWrite());
+    index_op->set_write_time_for_backfill(write_time);
     index_op->mutable_request()->Swap(&pair.second);
     if (index_table->IsUniqueIndex()) {
       if (ops_by_primary_key.count(index_op) > 0) {
@@ -2835,7 +2863,7 @@ Status Tablet::FlushWriteIndexBatch(
       }
       ops_by_primary_key.insert(index_op);
     }
-    RETURN_NOT_OK_PREPEND(session->Apply(index_op), "Could not Apply.");
+    session->Apply(index_op);
     write_ops.push_back(index_op);
   }
 
@@ -2878,7 +2906,7 @@ Status Tablet::FlushWithRetries(
       }
 
       failed_ops.push_back(index_op);
-      RETURN_NOT_OK_PREPEND(session->Apply(index_op), "Could not Apply.");
+      session->Apply(index_op);
     }
 
     if (!failed_ops.empty()) {
@@ -2948,7 +2976,8 @@ Status Tablet::VerifyTableConsistencyForCQL(
     std::unordered_map<TableId, uint64>* consistency_stats,
     std::string* verified_until) {
   Schema projection(columns, {}, schema()->num_key_columns());
-  auto iter = VERIFY_RESULT(NewRowIterator(projection, ReadHybridTime::SingleTime(read_time)));
+  auto iter = VERIFY_RESULT(NewRowIterator(
+      projection, ReadHybridTime::SingleTime(read_time), "" /* table_id */, deadline));
 
   if (!start_key.empty()) {
     VLOG(2) << "Starting verify index from " << b2a_hex(start_key);
@@ -2964,21 +2993,22 @@ Status Tablet::VerifyTableConsistencyForCQL(
   std::string resume_verified_from;
 
   int rows_verified = 0;
-  while (VERIFY_RESULT(iter->HasNext()) && rows_verified < num_rows) {
+  while (VERIFY_RESULT(iter->HasNext()) && rows_verified < num_rows &&
+         CoarseMonoClock::Now() < deadline) {
     resume_verified_from = VERIFY_RESULT(iter->GetTupleId()).ToBuffer();
     RETURN_NOT_OK(iter->NextRow(&row));
     VLOG(1) << "Verifying index for main table row: " << row.ToString();
 
     RETURN_NOT_OK(VerifyTableInBatches(
-        row, table_ids, read_time, is_main_table, &requests, &last_flushed_at, &failed_indexes,
-        consistency_stats));
+        row, table_ids, read_time, deadline, is_main_table, &requests, &last_flushed_at,
+        &failed_indexes, consistency_stats));
     if (++rows_verified % kProgressInterval == 0) {
       VLOG(1) << "Verified " << rows_verified << " rows";
     }
     *verified_until = resume_verified_from;
   }
-  return FlushVerifyBatchIfRequired(
-      true, read_time, &requests, &last_flushed_at, &failed_indexes, consistency_stats);
+  return FlushVerifyBatch(
+      read_time, deadline, &requests, &last_flushed_at, &failed_indexes, consistency_stats);
 }
 
 namespace {
@@ -3072,6 +3102,7 @@ Status Tablet::VerifyTableInBatches(
     const QLTableRow& row,
     const std::vector<TableId>& table_ids,
     const HybridTime read_time,
+    const CoarseTimePoint deadline,
     const bool is_main_table,
     std::vector<std::pair<const TableId, QLReadRequestPB>>* requests,
     CoarseTimePoint* last_flushed_at,
@@ -3095,22 +3126,32 @@ Status Tablet::VerifyTableInBatches(
   }
 
   return FlushVerifyBatchIfRequired(
-      false, read_time, requests, last_flushed_at, failed_indexes, consistency_stats);
+      read_time, deadline, requests, last_flushed_at, failed_indexes, consistency_stats);
 }
 
 Status Tablet::FlushVerifyBatchIfRequired(
-    bool force_flush,
     const HybridTime read_time,
+    const CoarseTimePoint deadline,
     std::vector<std::pair<const TableId, QLReadRequestPB>>* requests,
     CoarseTimePoint* last_flushed_at,
     std::unordered_set<TableId>* failed_indexes,
     std::unordered_map<TableId, uint64>* consistency_stats) {
-  if (!force_flush && requests->size() < FLAGS_verify_index_read_batch_size) {
+  if (requests->size() < FLAGS_verify_index_read_batch_size) {
     return Status::OK();
   }
+  return FlushVerifyBatch(
+      read_time, deadline, requests, last_flushed_at, failed_indexes, consistency_stats);
+}
 
+Status Tablet::FlushVerifyBatch(
+    const HybridTime read_time,
+    const CoarseTimePoint deadline,
+    std::vector<std::pair<const TableId, QLReadRequestPB>>* requests,
+    CoarseTimePoint* last_flushed_at,
+    std::unordered_set<TableId>* failed_indexes,
+    std::unordered_map<TableId, uint64>* consistency_stats) {
   std::vector<client::YBqlReadOpPtr> read_ops;
-  std::shared_ptr<YBSession> session = VERIFY_RESULT(GetSessionForVerifyOrBackfill());
+  std::shared_ptr<YBSession> session = VERIFY_RESULT(GetSessionForVerifyOrBackfill(deadline));
 
   auto client = client_future_.get();
   for (auto& pair : *requests) {
@@ -3121,7 +3162,7 @@ Status Tablet::FlushVerifyBatchIfRequired(
     read_op->mutable_request()->Swap(&pair.second);
     read_op->SetReadTime(ReadHybridTime::SingleTime(read_time));
 
-    RETURN_NOT_OK_PREPEND(session->Apply(read_op), "Could not Apply.");
+    session->Apply(read_op);
 
     // Note: always emplace at tail because row keys must
     // correspond sequentially with the read_ops in the vector
@@ -3146,6 +3187,7 @@ Status Tablet::FlushVerifyBatchIfRequired(
 
 ScopedRWOperationPause Tablet::PauseReadWriteOperations(
     const Abortable abortable, const Stop stop) {
+  VTRACE(1, LogPrefix());
   LOG_SLOW_EXECUTION(WARNING, 1000,
                      Substitute("$0Waiting for pending ops to complete", LogPrefix())) {
     return ScopedRWOperationPause(
@@ -3157,12 +3199,12 @@ ScopedRWOperationPause Tablet::PauseReadWriteOperations(
   FATAL_ERROR("Unreachable code -- the previous block must always return");
 }
 
-ScopedRWOperation Tablet::CreateAbortableScopedRWOperation(const CoarseTimePoint& deadline) const {
+ScopedRWOperation Tablet::CreateAbortableScopedRWOperation(const CoarseTimePoint deadline) const {
   return ScopedRWOperation(&pending_abortable_op_counter_, deadline);
 }
 
 ScopedRWOperation Tablet::CreateNonAbortableScopedRWOperation(
-    const CoarseTimePoint& deadline) const {
+    const CoarseTimePoint deadline) const {
   return ScopedRWOperation(&pending_non_abortable_op_counter_, deadline);
 }
 
@@ -4046,8 +4088,11 @@ void Tablet::ListenNumSSTFilesChanged(std::function<void()> listener) {
   num_sst_files_changed_listener_ = std::move(listener);
 }
 
-void Tablet::InitRocksDBOptions(rocksdb::Options* options, const std::string& log_prefix) {
-  docdb::InitRocksDBOptions(options, log_prefix, regulardb_statistics_, tablet_options_);
+void Tablet::InitRocksDBOptions(
+    rocksdb::Options* options, const std::string& log_prefix,
+    rocksdb::BlockBasedTableOptions table_options) {
+  docdb::InitRocksDBOptions(
+      options, log_prefix, regulardb_statistics_, tablet_options_, std::move(table_options));
 }
 
 rocksdb::Env& Tablet::rocksdb_env() const {

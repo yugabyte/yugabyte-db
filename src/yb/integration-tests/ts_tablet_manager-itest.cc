@@ -49,7 +49,6 @@
 #include "yb/master/mini_master.h"
 #include "yb/rpc/messenger.h"
 #include "yb/server/server_base.proxy.h"
-#include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver_admin.proxy.h"

@@ -27,8 +27,6 @@
 #include "yb/client/error.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
-#include "yb/client/table_alterer.h"
-#include "yb/client/table_creator.h"
 #include "yb/client/tablet_server.h"
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
@@ -38,7 +36,6 @@
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/row_mark.h"
-#include "yb/common/ybc-internal.h"
 #include "yb/common/transaction_error.h"
 
 #include "yb/docdb/doc_key.h"
@@ -48,10 +45,10 @@
 
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
-#include "yb/util/scope_exit.h"
 #include "yb/util/string_util.h"
 
-#include "yb/master/master.proxy.h"
+
+using namespace std::literals;
 
 DEFINE_int32(ysql_wait_until_index_permissions_timeout_ms, 60 * 60 * 1000, // 60 min.
              "DEPRECATED: use backfill_index_client_rpc_timeout_ms instead.");
@@ -85,21 +82,8 @@ using yb::master::MasterServiceProxy;
 using yb::tserver::TServerSharedObject;
 
 namespace {
-//--------------------------------------------------------------------------------------------------
-// Constants used for the sequences data table.
-//--------------------------------------------------------------------------------------------------
-static constexpr const char* const kPgSequencesNamespaceName = "system_postgres";
-static constexpr const char* const kPgSequencesDataTableName = "sequences_data";
 
-// Columns names and ids.
-static constexpr const char* const kPgSequenceDbOidColName = "db_oid";
-
-static constexpr const char* const kPgSequenceSeqOidColName = "seq_oid";
-
-static constexpr const char* const kPgSequenceLastValueColName = "last_value";
 static constexpr const size_t kPgSequenceLastValueColIdx = 2;
-
-static constexpr const char* const kPgSequenceIsCalledColName = "is_called";
 static constexpr const size_t kPgSequenceIsCalledColIdx = 3;
 
 string GetStatusStringSet(const client::CollectedErrors& errors) {
@@ -443,7 +427,8 @@ Status PgSession::RunHelper::Apply(std::shared_ptr<client::YBPgsqlOp> op,
   if (PREDICT_FALSE(yb_debug_log_docdb_requests)) {
     LOG(INFO) << "Applying operation: " << op->ToString();
   }
-  return yb_session_->Apply(std::move(op));
+  yb_session_->Apply(std::move(op));
+  return Status::OK();
 }
 
 Result<PgSessionAsyncRunResult> PgSession::RunHelper::Flush() {
@@ -570,89 +555,39 @@ Status PgSession::CreateDatabase(const string& database_name,
                                  const PgOid next_oid,
                                  const boost::optional<TransactionMetadata> transaction,
                                  const bool colocated) {
-  auto operation_timeout = client_->default_admin_operation_timeout();
-  if (PREDICT_FALSE(FLAGS_TEST_user_ddl_operation_timeout_sec > 0)) {
-    client_->TEST_set_admin_operation_timeout(
-        MonoDelta::FromSeconds(FLAGS_TEST_user_ddl_operation_timeout_sec));
+  tserver::PgCreateDatabaseRequestPB req;
+  req.set_database_name(database_name);
+  req.set_database_oid(database_oid);
+  req.set_source_database_oid(source_database_oid);
+  req.set_next_oid(next_oid);
+  if (transaction) {
+    transaction->ToPB(req.mutable_use_transaction());
   }
-  auto scope_exit = ScopeExit([this, operation_timeout] {
-    // Restore original setting, if altered for tests.
-    if (PREDICT_FALSE(FLAGS_TEST_user_ddl_operation_timeout_sec > 0)) {
-      client_->TEST_set_admin_operation_timeout(operation_timeout);
-    }
-  });
-  auto ret = client_->CreateNamespace(database_name,
-                                      YQL_DATABASE_PGSQL,
-                                      "" /* creator_role_name */,
-                                      GetPgsqlNamespaceId(database_oid),
-                                      source_database_oid != kPgInvalidOid
-                                        ? GetPgsqlNamespaceId(source_database_oid) : "",
-                                      next_oid,
-                                      transaction,
-                                      colocated);
-  return ret;
+  req.set_colocated(colocated);
+  CoarseTimePoint deadline;
+  if (PREDICT_FALSE(FLAGS_TEST_user_ddl_operation_timeout_sec > 0)) {
+    deadline = CoarseMonoClock::now() + FLAGS_TEST_user_ddl_operation_timeout_sec * 1s;
+  }
+  return pg_client_.CreateDatabase(&req, deadline);
 }
 
 Status PgSession::DropDatabase(const string& database_name, PgOid database_oid) {
-  RETURN_NOT_OK(client_->DeleteNamespace(database_name,
-                                         YQL_DATABASE_PGSQL,
-                                         GetPgsqlNamespaceId(database_oid)));
+  tserver::PgDropDatabaseRequestPB req;
+  req.set_database_name(database_name);
+  req.set_database_oid(database_oid);
+
+  RETURN_NOT_OK(pg_client_.DropDatabase(&req, CoarseTimePoint()));
   RETURN_NOT_OK(DeleteDBSequences(database_oid));
   return Status::OK();
 }
 
-client::YBNamespaceAlterer* PgSession::NewNamespaceAlterer(
-    const std::string& namespace_name, PgOid database_oid) {
-  return client_->NewNamespaceAlterer(namespace_name, GetPgsqlNamespaceId(database_oid));
-}
-
 Status PgSession::GetCatalogMasterVersion(uint64_t *version) {
-  return client_->GetYsqlCatalogMasterVersion(version);
+  *version = VERIFY_RESULT(pg_client_.GetCatalogMasterVersion());
+  return Status::OK();
 }
 
 Status PgSession::CreateSequencesDataTable() {
-  const YBTableName table_name(YQL_DATABASE_PGSQL,
-                               kPgSequencesDataNamespaceId,
-                               kPgSequencesNamespaceName,
-                               kPgSequencesDataTableName);
-  RETURN_NOT_OK(client_->CreateNamespaceIfNotExists(kPgSequencesNamespaceName,
-                                                    YQLDatabase::YQL_DATABASE_PGSQL,
-                                                    "" /* creator_role_name */,
-                                                    kPgSequencesDataNamespaceId));
-
-  // Set up the schema.
-  client::YBSchemaBuilder schemaBuilder;
-  schemaBuilder.AddColumn(kPgSequenceDbOidColName)->HashPrimaryKey()->Type(yb::INT64)->NotNull();
-  schemaBuilder.AddColumn(kPgSequenceSeqOidColName)->HashPrimaryKey()->Type(yb::INT64)->NotNull();
-  schemaBuilder.AddColumn(kPgSequenceLastValueColName)->Type(yb::INT64)->NotNull();
-  schemaBuilder.AddColumn(kPgSequenceIsCalledColName)->Type(yb::BOOL)->NotNull();
-  client::YBSchema schema;
-  CHECK_OK(schemaBuilder.Build(&schema));
-
-  // Generate the table id.
-  PgObjectId oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
-
-  // Try to create the table.
-  std::unique_ptr<yb::client::YBTableCreator> table_creator(client_->NewTableCreator());
-
-  Status s = table_creator->table_name(table_name)
-      .schema(&schema)
-      .table_type(yb::client::YBTableType::PGSQL_TABLE_TYPE)
-      .table_id(oid.GetYBTableId())
-      .hash_schema(YBHashSchema::kPgsqlHash)
-      .Create();
-  // If we could create it, then all good!
-  if (s.ok()) {
-    LOG(INFO) << "Table '" << table_name.ToString() << "' created.";
-    // If the table was already there, also not an error...
-  } else if (s.IsAlreadyPresent()) {
-    LOG(INFO) << "Table '" << table_name.ToString() << "' already exists";
-  } else {
-    // If any other error, report that!
-    LOG(ERROR) << "Error creating table '" << table_name.ToString() << "': " << s;
-    RETURN_NOT_OK(s);
-  }
-  return Status::OK();
+  return pg_client_.CreateSequencesDataTable();
 }
 
 Status PgSession::InsertSequenceTuple(int64_t db_oid,
@@ -831,54 +766,31 @@ Status PgSession::DeleteDBSequences(int64_t db_oid) {
 
 //--------------------------------------------------------------------------------------------------
 
-unique_ptr<client::YBTableCreator> PgSession::NewTableCreator() {
-  return client_->NewTableCreator();
-}
-
-unique_ptr<client::YBTableAlterer> PgSession::NewTableAlterer(const YBTableName& table_name) {
-  return client_->NewTableAlterer(table_name);
-}
-
-unique_ptr<client::YBTableAlterer> PgSession::NewTableAlterer(const string table_id) {
-  return client_->NewTableAlterer(table_id);
-}
-
 Status PgSession::DropTable(const PgObjectId& table_id) {
-  return client_->DeleteTable(table_id.GetYBTableId());
+  tserver::PgDropTableRequestPB req;
+  table_id.ToPB(req.mutable_table_id());
+  return ResultToStatus(pg_client_.DropTable(&req, CoarseTimePoint()));
 }
 
 Status PgSession::DropIndex(
     const PgObjectId& index_id,
-    client::YBTableName* indexed_table_name,
-    bool wait) {
-  return client_->DeleteIndexTable(
-      index_id.GetYBTableId(),
-      indexed_table_name,
-      wait);
-}
-
-Status PgSession::TruncateTable(const PgObjectId& table_id) {
-  return client_->TruncateTable(table_id.GetYBTableId());
-}
-
-Status PgSession::BackfillIndex(const PgObjectId& table_id) {
-  return client_->BackfillIndex(table_id.GetYBTableId());
-}
-
-//--------------------------------------------------------------------------------------------------
-
-Status PgSession::CreateTablegroup(const string& database_name,
-                                   const PgOid database_oid,
-                                   PgOid tablegroup_oid) {
-  return client_->CreateTablegroup(database_name,
-                                   GetPgsqlNamespaceId(database_oid),
-                                   GetPgsqlTablegroupId(database_oid, tablegroup_oid));
+    client::YBTableName* indexed_table_name) {
+  tserver::PgDropTableRequestPB req;
+  index_id.ToPB(req.mutable_table_id());
+  req.set_index(true);
+  auto result = VERIFY_RESULT(pg_client_.DropTable(&req, CoarseTimePoint()));
+  if (indexed_table_name) {
+    *indexed_table_name = std::move(result);
+  }
+  return Status::OK();
 }
 
 Status PgSession::DropTablegroup(const PgOid database_oid,
                                  PgOid tablegroup_oid) {
-  Status s = client_->DeleteTablegroup(GetPgsqlNamespaceId(database_oid),
-                                       GetPgsqlTablegroupId(database_oid, tablegroup_oid));
+  tserver::PgDropTablegroupRequestPB req;
+  PgObjectId tablegroup_id(database_oid, tablegroup_oid);
+  tablegroup_id.ToPB(req.mutable_tablegroup_id());
+  Status s = pg_client_.DropTablegroup(&req, CoarseTimePoint());
   table_cache_.erase(PgObjectId(database_oid, tablegroup_oid));
   return s;
 }
@@ -965,12 +877,7 @@ Result<bool> PgSession::ShouldHandleTransactionally(const client::YBPgsqlOp& op)
     SCHECK(has_non_ddl_txn, IllegalState, "Transactional operation requires transaction");
     return true;
   }
-  // Previously, yb_non_ddl_txn_for_sys_tables_allowed flag caused CREATE VIEW to fail with
-  // read restart error because subsequent cache refresh used an outdated txn to read from the
-  // system catalog,
-  // As a quick fix, we prevent yb_non_ddl_txn_for_sys_tables_allowed from affecting reads.
-  if (pg_txn_manager_->IsDdlMode() || (yb_non_ddl_txn_for_sys_tables_allowed && has_non_ddl_txn
-                                       && op.type() == YBOperation::Type::PGSQL_WRITE)) {
+  if (pg_txn_manager_->IsDdlMode() || (yb_non_ddl_txn_for_sys_tables_allowed && has_non_ddl_txn)) {
     return true;
   }
   if (op.type() == YBOperation::Type::PGSQL_WRITE) {
@@ -1018,7 +925,8 @@ Status PgSession::ApplyOperation(client::YBSession *session,
                    op->table()->name(),
                    op->table()->schema().table_properties().is_transactional(),
                    YBCIsInitDbModeEnvVarSet()));
-  return session->Apply(op);
+  session->Apply(op);
+  return Status::OK();
 }
 
 Status PgSession::FlushOperations(PgsqlOpBuffer ops, IsTransactionalSession transactional) {
@@ -1181,22 +1089,16 @@ Status PgSession::HandleResponse(const client::YBPgsqlOp& op, const PgObjectId& 
   return s.CloneAndAddErrorCode(TransactionError(txn_error_code));
 }
 
-Status PgSession::TabletServerCount(int *tserver_count, bool primary_only, bool use_cache) {
-  return client_->TabletServerCount(tserver_count, primary_only, use_cache);
+Result<int> PgSession::TabletServerCount(bool primary_only) {
+  return pg_client_.TabletServerCount(primary_only);
 }
 
-Result<client::YBClient::TabletServersInfo> PgSession::ListTabletServers() {
-  std::vector<std::unique_ptr<yb::client::YBTabletServerPlacementInfo>> tablet_servers;
-  RETURN_NOT_OK(client_->ListLiveTabletServers(&tablet_servers, false));
-  return tablet_servers;
+Result<client::TabletServersInfo> PgSession::ListTabletServers() {
+  return pg_client_.ListLiveTabletServers(false);
 }
 
 void PgSession::SetTimeout(const int timeout_ms) {
   session_->SetTimeout(MonoDelta::FromMilliseconds(timeout_ms));
-}
-
-Status PgSession::AsyncUpdateIndexPermissions(const PgObjectId& indexed_table_id) {
-  return client_->AsyncUpdateIndexPermissions(indexed_table_id.GetYBTableId());
 }
 
 void PgSession::ResetCatalogReadPoint() {

@@ -15,7 +15,6 @@ import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AsyncReplicationPlatformSync;
 import com.yugabyte.yw.commissioner.tasks.subtasks.BackupTable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.BackupUniverseKeys;
 import com.yugabyte.yw.commissioner.tasks.subtasks.BulkImport;
@@ -48,6 +47,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateSoftwareVersion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForDataMove;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForEncryptionKeyInMemory;
+import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLeaderBlacklistCompletion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLeadersOnPreferredOnly;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLoadBalance;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
@@ -92,6 +92,7 @@ import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.slf4j.MDC;
 import org.yb.Common;
 import org.yb.client.ModifyClusterConfigIncrementVersion;
 import org.yb.client.YBClient;
@@ -325,6 +326,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   @Override
   public void initialize(ITaskParams params) {
     super.initialize(params);
+    if (taskParams().universeUUID != null) {
+      MDC.put("universe-id", taskParams().universeUUID.toString());
+    }
     // Create the threadpool for the subtasks to use.
     createThreadpool();
   }
@@ -1295,6 +1299,22 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  public SubTaskGroup createWaitForLeaderBlacklistCompletionTask(int waitTimeMs) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("WaitForLeaderBlacklistCompletion", executor);
+    WaitForLeaderBlacklistCompletion.Params params = new WaitForLeaderBlacklistCompletion.Params();
+    params.universeUUID = taskParams().universeUUID;
+    params.waitTimeMs = waitTimeMs;
+    // Create the task.
+    WaitForLeaderBlacklistCompletion leaderBlacklistCompletion =
+        createTask(WaitForLeaderBlacklistCompletion.class);
+    leaderBlacklistCompletion.initialize(params);
+    // Add it to the task list.
+    subTaskGroup.addTask(leaderBlacklistCompletion);
+    // Add the task list to the task queue.
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
   /** Creates a task to wait for leaders to be on preferred regions only. */
   public void createWaitForLeadersOnPreferredOnlyTask() {
     SubTaskGroup subTaskGroup = new SubTaskGroup("WaitForLeadersOnPreferredOnly", executor);
@@ -1336,14 +1356,35 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *
    * @param nodes The nodes that have to be removed from the blacklist.
    * @param isAdd true if the node are added to server blacklist, else removed.
+   * @param isLeaderBlacklist true if we are leader blacklisting the node
    * @return the created task group.
    */
-  public SubTaskGroup createModifyBlackListTask(List<NodeDetails> nodes, boolean isAdd) {
+  public SubTaskGroup createModifyBlackListTask(
+      List<NodeDetails> nodes, boolean isAdd, boolean isLeaderBlacklist) {
+    if (isAdd) {
+      return createModifyBlackListTask(nodes, null, isLeaderBlacklist);
+    }
+    return createModifyBlackListTask(null, nodes, isLeaderBlacklist);
+  }
+
+  /**
+   * Creates a task to add/remove nodes from blacklist on server.
+   *
+   * @param addNodes The nodes that have to be added to the blacklist.
+   * @param removeNodes The nodes that have to be removed from the blacklist.
+   * @param isLeaderBlacklist true if we are leader blacklisting the node
+   * @return
+   */
+  public SubTaskGroup createModifyBlackListTask(
+      Collection<NodeDetails> addNodes,
+      Collection<NodeDetails> removeNodes,
+      boolean isLeaderBlacklist) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("ModifyBlackList", executor);
     ModifyBlackList.Params params = new ModifyBlackList.Params();
     params.universeUUID = taskParams().universeUUID;
-    params.isAdd = isAdd;
-    params.nodes = new HashSet<NodeDetails>(nodes);
+    params.addNodes = addNodes;
+    params.removeNodes = removeNodes;
+    params.isLeaderBlacklist = isLeaderBlacklist;
     // Create the task.
     ModifyBlackList modifyBlackList = createTask(ModifyBlackList.class);
     modifyBlackList.initialize(params);
@@ -1418,18 +1459,34 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   // Perform preflight checks on the given node.
-  public String performPreflightCheck(NodeDetails node, NodeTaskParams taskParams) {
+  public String performPreflightCheck(Cluster cluster, NodeDetails currentNode) {
+    if (cluster.userIntent.providerType != com.yugabyte.yw.commissioner.Common.CloudType.onprem) {
+      return null;
+    }
+    NodeTaskParams preflightTaskParams = new NodeTaskParams();
+    UserIntent userIntent = cluster.userIntent;
+    preflightTaskParams.nodeName = currentNode.nodeName;
+    preflightTaskParams.deviceInfo = userIntent.deviceInfo;
+    preflightTaskParams.azUuid = currentNode.azUuid;
+    preflightTaskParams.universeUUID = taskParams().universeUUID;
+    UniverseTaskParams.CommunicationPorts.exportToCommunicationPorts(
+        preflightTaskParams.communicationPorts, currentNode);
+    preflightTaskParams.extraDependencies.installNodeExporter =
+        taskParams().extraDependencies.installNodeExporter;
     // Create the process to fetch information about the node from the cloud provider.
     NodeManager nodeManager = Play.current().injector().instanceOf(NodeManager.class);
-    log.info("Running preflight checks for node {}.", taskParams.nodeName);
+    log.info("Running preflight checks for node {}.", preflightTaskParams.nodeName);
     ShellResponse response =
-        nodeManager.nodeCommand(NodeManager.NodeCommandType.Precheck, taskParams);
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.Precheck, preflightTaskParams);
     if (response.code == 0) {
       JsonNode responseJson = Json.parse(response.message);
       for (JsonNode nodeContent : responseJson) {
         if (!nodeContent.isBoolean() || !nodeContent.asBoolean()) {
           String errString =
-              "Failed preflight checks for node " + taskParams.nodeName + ":\n" + response.message;
+              "Failed preflight checks for node "
+                  + preflightTaskParams.nodeName
+                  + ":\n"
+                  + response.message;
           log.error(errString);
           return response.message;
         }
@@ -1492,15 +1549,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     task.initialize(params);
 
     SubTaskGroup subTaskGroup = new SubTaskGroup("LoadBalancerStateChange", executor);
-    subTaskGroup.addTask(task);
-    subTaskGroupQueue.add(subTaskGroup);
-    return subTaskGroup;
-  }
-
-  public SubTaskGroup createAsyncReplicationPlatformSyncTask() {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("AsyncReplicationPlatformSync", executor);
-    AsyncReplicationPlatformSync task = createTask(AsyncReplicationPlatformSync.class);
-    task.initialize(taskParams());
     subTaskGroup.addTask(task);
     subTaskGroupQueue.add(subTaskGroup);
     return subTaskGroup;

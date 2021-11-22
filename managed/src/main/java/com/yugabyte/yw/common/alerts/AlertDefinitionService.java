@@ -14,6 +14,7 @@ import static com.yugabyte.yw.models.helpers.EntityOperation.CREATE;
 import static com.yugabyte.yw.models.helpers.EntityOperation.UPDATE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
@@ -32,16 +33,17 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.lang3.StringUtils;
 
 @Singleton
 @Slf4j
 public class AlertDefinitionService {
 
+  private final BeanValidator beanValidator;
   private final AlertService alertService;
 
   @Inject
-  public AlertDefinitionService(AlertService alertService) {
+  public AlertDefinitionService(BeanValidator beanValidator, AlertService alertService) {
+    this.beanValidator = beanValidator;
     this.alertService = alertService;
   }
 
@@ -146,23 +148,19 @@ public class AlertDefinitionService {
   }
 
   private void validate(AlertDefinition definition, AlertDefinition before) {
-    if (definition.getCustomerUUID() == null) {
-      throw new PlatformServiceException(BAD_REQUEST, "Customer UUID field is mandatory");
-    }
-    if (definition.getConfigurationUUID() == null) {
-      throw new PlatformServiceException(BAD_REQUEST, "Group UUID field is mandatory");
-    }
-    if (StringUtils.isEmpty(definition.getQuery())) {
-      throw new PlatformServiceException(BAD_REQUEST, "Query field is mandatory");
-    }
+    beanValidator.validate(definition);
     if (before != null) {
       if (!definition.getCustomerUUID().equals(before.getCustomerUUID())) {
-        throw new PlatformServiceException(
-            BAD_REQUEST, "Can't change customer UUID for definition " + definition.getUuid());
+        beanValidator
+            .error()
+            .forField("customerUUID", "can't change for definition '" + definition.getUuid() + "'")
+            .throwError();
       }
     } else if (!definition.isNew()) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Can't update missing definition " + definition.getUuid());
+      beanValidator
+          .error()
+          .forField("", "can't update missing definition '" + definition.getUuid() + "'")
+          .throwError();
     }
   }
 }

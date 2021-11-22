@@ -17,6 +17,7 @@ import com.yugabyte.yw.models.NodeInstance;
 import java.util.Map;
 import javax.inject.Inject;
 
+/** Actually now this is fake task, that just must fail */
 public class PrecheckNode extends UniverseTaskBase {
   @Inject
   protected PrecheckNode(BaseTaskDependencies baseTaskDependencies) {
@@ -25,8 +26,8 @@ public class PrecheckNode extends UniverseTaskBase {
 
   // Parameters for failed precheck task.
   public static class Params extends UniverseTaskParams {
-    // Map of nodes to error messages.
-    public Map<NodeInstance, String> failedNodes;
+    // Map of node names to error messages.
+    public Map<String, String> failedNodeNamesToError;
     // Whether nodes should remain reserved or not.
     public boolean reserveNodes = false;
   }
@@ -39,8 +40,8 @@ public class PrecheckNode extends UniverseTaskBase {
   @Override
   public void run() {
     String errMsg = "";
-    for (Map.Entry<NodeInstance, String> entry : taskParams().failedNodes.entrySet()) {
-      NodeInstance node = entry.getKey();
+    for (Map.Entry<String, String> entry : taskParams().failedNodeNamesToError.entrySet()) {
+      NodeInstance node = NodeInstance.getByName(entry.getKey());
       if (!taskParams().reserveNodes) {
         try {
           node.clearNodeDetails();
@@ -52,7 +53,7 @@ public class PrecheckNode extends UniverseTaskBase {
       errMsg +=
           String.format(
               "\n-----\nNode %s (%s) failed preflight checks:\n%s",
-              node.instanceName, node.getDetails().ip, entry.getValue());
+              node.getInstanceName(), node.getDetails().ip, entry.getValue());
     }
 
     throw new RuntimeException(errMsg);

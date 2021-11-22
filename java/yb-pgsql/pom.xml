@@ -8,7 +8,7 @@
   <parent>
     <groupId>org.yb</groupId>
     <artifactId>yb-parent</artifactId>
-    <version>0.8.6-SNAPSHOT</version>
+    <version>0.8.10-SNAPSHOT</version>
   </parent>
   <artifactId>yb-pgsql</artifactId>
   <name>YB PostgreSQL Support</name>
@@ -17,29 +17,26 @@
     <dependency>
       <groupId>org.yb</groupId>
       <artifactId>yb-client</artifactId>
-      <version>0.8.6-SNAPSHOT</version>
+      <version>0.8.10-SNAPSHOT</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.yb</groupId>
       <artifactId>yb-client</artifactId>
-      <version>0.8.6-SNAPSHOT</version>
+      <version>0.8.10-SNAPSHOT</version>
       <type>test-jar</type>
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>org.postgresql</groupId>
-      <artifactId>postgresql</artifactId>
+      <groupId>com.yugabyte</groupId>
+      <artifactId>jdbc-yugabytedb</artifactId>
+      <version>42.3.0</version>
     </dependency>
     <dependency>
       <groupId>org.json</groupId>
       <artifactId>json</artifactId>
       <version>20180130</version>
       <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>com.yugabyte</groupId>
-      <artifactId>cassandra-driver-core</artifactId>
     </dependency>
     <dependency>
       <groupId>log4j</groupId>

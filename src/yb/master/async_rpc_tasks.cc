@@ -14,11 +14,8 @@
 
 #include "yb/common/wire_protocol.h"
 
-#include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus.proxy.h"
 
-#include "yb/master/master.h"
-#include "yb/master/ts_descriptor.h"
 #include "yb/master/catalog_manager.h"
 
 #include "yb/rpc/messenger.h"
@@ -68,6 +65,12 @@ using std::shared_ptr;
 using strings::Substitute;
 using consensus::RaftPeerPB;
 using tserver::TabletServerErrorPB;
+
+void RetryingTSRpcTask::UpdateMetrics(scoped_refptr<Histogram> metric, MonoTime start_time,
+                                      const std::string& metric_name,
+                                      const std::string& metric_type) {
+  metric->Increment(MonoTime::Now().GetDeltaSince(start_time).ToMicroseconds());
+}
 
 // ============================================================================
 //  Class PickSpecificUUID.
@@ -128,6 +131,8 @@ RetryingTSRpcTask::~RetryingTSRpcTask() {
 
 // Send the subclass RPC request.
 Status RetryingTSRpcTask::Run() {
+  VLOG_WITH_PREFIX(1) << "Start Running";
+  attempt_start_ts_ = MonoTime::Now();
   ++attempt_;
   VLOG_WITH_PREFIX(1) << "Start Running, attempt: " << attempt_;
   for (;;) {
@@ -263,6 +268,8 @@ void RetryingTSRpcTask::DoRpcCallback() {
   } else if (state() != MonitoredTaskState::kAborted) {
     HandleResponse(attempt_);  // Modifies state_.
   }
+  UpdateMetrics(master_->GetMetric(type_name(), Master::AttemptMetric, description()),
+                attempt_start_ts_, type_name(), "attempt metric");
 
   // Schedule a retry if the RPC call was not successful.
   if (RescheduleWithBackoffDelay()) {
@@ -386,6 +393,9 @@ void RetryingTSRpcTask::UnregisterAsyncTask() {
   // Retain a reference to the object, in case RemoveTask would have removed the last one.
   auto self = shared_from_this();
   std::unique_lock<decltype(unregister_mutex_)> lock(unregister_mutex_);
+  UpdateMetrics(master_->GetMetric(type_name(), Master::TaskMetric, description()), start_ts_,
+                type_name(), "task metric");
+
   auto s = state();
   if (!IsStateTerminal(s)) {
     LOG_WITH_PREFIX(FATAL) << "Invalid task state " << s;
@@ -555,6 +565,7 @@ void AsyncCreateReplica::HandleResponse(int attempt) {
   }
 
   TransitionToCompleteState();
+  VLOG_WITH_PREFIX(1) << "TS " << permanent_uuid_ << ": complete on tablet " << tablet_id_;
 }
 
 bool AsyncCreateReplica::SendRequest(int attempt) {

@@ -66,7 +66,7 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
   auto& pb = l.mutable_data()->pb;
   pb.CopyFrom(metadata);
 
-  if (pb.table_type() == TableType::REDIS_TABLE_TYPE && pb.name() == kTransactionsTableName) {
+  if (pb.table_type() == TableType::REDIS_TABLE_TYPE && pb.name() == kGlobalTransactionsTableName) {
     pb.set_table_type(TableType::TRANSACTION_STATUS_TABLE_TYPE);
   }
 
@@ -74,7 +74,7 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
   // add Postgres tables to the name map as the table name is not unique in a namespace.
   auto table_ids_map_checkout = catalog_manager_->table_ids_map_.CheckOut();
   (*table_ids_map_checkout)[table->id()] = table;
-  if (l->table_type() != PGSQL_TABLE_TYPE && !l->started_deleting()) {
+  if (l->table_type() != PGSQL_TABLE_TYPE && !l->started_deleting() && !l->started_hiding()) {
     catalog_manager_->table_names_map_[{l->namespace_id(), l->name()}] = table;
   }
 

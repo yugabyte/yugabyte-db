@@ -15,6 +15,9 @@
 
 #include "yb/client/client-internal.h"
 #include "yb/client/table.h"
+#include "yb/client/tablet_server.h"
+
+#include "yb/rpc/poller.h"
 
 #include "yb/tserver/pg_client.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
@@ -24,6 +27,8 @@
 DECLARE_bool(use_node_hostname_for_local_tserver);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
 
+DEFINE_uint64(pg_client_heartbeat_interval_ms, 10000, "Pg client heartbeat interval in ms.");
+
 using namespace std::literals;
 
 namespace yb {
@@ -31,12 +36,17 @@ namespace pggate {
 
 class PgClient::Impl {
  public:
+  Impl() : heartbeat_poller_(std::bind(&Impl::Heartbeat, this, false)) {
+    tablet_server_count_cache_.fill(0);
+  }
+
   ~Impl() {
     CHECK(!proxy_);
   }
 
-  void Start(rpc::ProxyCache* proxy_cache,
-             const tserver::TServerSharedObject& tserver_shared_object) {
+  CHECKED_STATUS Start(rpc::ProxyCache* proxy_cache,
+                       rpc::Scheduler* scheduler,
+                       const tserver::TServerSharedObject& tserver_shared_object) {
     CHECK_NOTNULL(&tserver_shared_object);
     MonoDelta resolve_cache_timeout;
     const auto& tserver_shared_data_ = *tserver_shared_object;
@@ -49,10 +59,47 @@ class PgClient::Impl {
     LOG(INFO) << "Using TServer host_port: " << host_port;
     proxy_ = std::make_unique<tserver::PgClientServiceProxy>(
         proxy_cache, host_port, nullptr /* protocol */, resolve_cache_timeout);
+
+    auto future = create_session_promise_.get_future();
+    Heartbeat(true);
+    session_id_ = VERIFY_RESULT(future.get());
+    heartbeat_poller_.Start(scheduler, FLAGS_pg_client_heartbeat_interval_ms * 1ms - 1s);
+    return Status::OK();
   }
 
   void Shutdown() {
+    heartbeat_poller_.Shutdown();
     proxy_ = nullptr;
+  }
+
+  void Heartbeat(bool create) {
+    {
+      bool expected = false;
+      if (!heartbeat_running_.compare_exchange_strong(expected, true)) {
+        LOG(DFATAL) << "Heartbeat did not complete yet";
+        return;
+      }
+    }
+    tserver::PgHeartbeatRequestPB req;
+    if (!create) {
+      req.set_session_id(session_id_);
+    }
+    proxy_->HeartbeatAsync(
+        req, &heartbeat_resp_, PrepareHeartbeatController(),
+        [this, create] {
+      auto status = ResponseStatus(heartbeat_resp_);
+      if (create) {
+        if (!status.ok()) {
+          create_session_promise_.set_value(status);
+        } else {
+          create_session_promise_.set_value(heartbeat_resp_.session_id());
+        }
+      }
+      heartbeat_running_ = false;
+      if (!status.ok()) {
+        LOG(WARNING) << "Heartbeat failed: " << status;
+      }
+    });
   }
 
   Result<PgTableDescPtr> OpenTable(const PgObjectId& table_id) {
@@ -107,6 +154,78 @@ class PgClient::Impl {
     return resp.done();
   }
 
+  Result<uint64_t> GetCatalogMasterVersion() {
+    tserver::PgGetCatalogMasterVersionRequestPB req;
+    tserver::PgGetCatalogMasterVersionResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->GetCatalogMasterVersion(req, &resp, PrepareAdminController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp.version();
+  }
+
+  CHECKED_STATUS CreateSequencesDataTable() {
+    tserver::PgCreateSequencesDataTableRequestPB req;
+    tserver::PgCreateSequencesDataTableResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->CreateSequencesDataTable(req, &resp, PrepareAdminController()));
+    return ResponseStatus(resp);
+  }
+
+  Result<client::YBTableName> DropTable(
+      tserver::PgDropTableRequestPB* req, CoarseTimePoint deadline) {
+    req->set_session_id(session_id_);
+    tserver::PgDropTableResponsePB resp;
+    RETURN_NOT_OK(proxy_->DropTable(*req, &resp, PrepareAdminController(deadline)));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    client::YBTableName result;
+    if (resp.has_indexed_table()) {
+      result.GetFromTableIdentifierPB(resp.indexed_table());
+    }
+    return result;
+  }
+
+  Result<int32> TabletServerCount(bool primary_only) {
+    if (tablet_server_count_cache_[primary_only] > 0) {
+      return tablet_server_count_cache_[primary_only];
+    }
+    tserver::PgTabletServerCountRequestPB req;
+    tserver::PgTabletServerCountResponsePB resp;
+    req.set_primary_only(primary_only);
+
+    RETURN_NOT_OK(proxy_->TabletServerCount(req, &resp, PrepareAdminController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    tablet_server_count_cache_[primary_only] = resp.count();
+    return resp.count();
+  }
+
+  Result<client::TabletServersInfo> ListLiveTabletServers(bool primary_only) {
+    tserver::PgListLiveTabletServersRequestPB req;
+    tserver::PgListLiveTabletServersResponsePB resp;
+    req.set_primary_only(primary_only);
+
+    RETURN_NOT_OK(proxy_->ListLiveTabletServers(req, &resp, PrepareAdminController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    client::TabletServersInfo result;
+    result.reserve(resp.servers().size());
+    for (const auto& server : resp.servers()) {
+      result.push_back(client::YBTabletServerPlacementInfo::FromPB(server));
+    }
+    return result;
+  }
+
+  #define YB_PG_CLIENT_SIMPLE_METHOD_IMPL(r, data, method) \
+  CHECKED_STATUS method( \
+      tserver::BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)* req, \
+      CoarseTimePoint deadline) { \
+    tserver::BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB) resp; \
+    req->set_session_id(session_id_); \
+    \
+    RETURN_NOT_OK(proxy_->method(*req, &resp, PrepareAdminController(deadline))); \
+    return ResponseStatus(resp); \
+  }
+
+  BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_SIMPLE_METHOD_IMPL, ~, YB_PG_CLIENT_SIMPLE_METHODS);
+
  private:
   static rpc::RpcController* SetupAdminController(
       rpc::RpcController* controller, CoarseTimePoint deadline = CoarseTimePoint()) {
@@ -120,11 +239,26 @@ class PgClient::Impl {
 
   rpc::RpcController* PrepareAdminController(CoarseTimePoint deadline = CoarseTimePoint()) {
     controller_.Reset();
-    return SetupAdminController(&controller_);
+    return SetupAdminController(&controller_, deadline);
+  }
+
+  rpc::RpcController* PrepareHeartbeatController() {
+    heartbeat_controller_.Reset();
+    return SetupAdminController(
+        &heartbeat_controller_,
+        CoarseMonoClock::now() + FLAGS_pg_client_heartbeat_interval_ms * 1ms);
   }
 
   std::unique_ptr<tserver::PgClientServiceProxy> proxy_;
   rpc::RpcController controller_;
+  uint64_t session_id_ = 0;
+
+  rpc::Poller heartbeat_poller_;
+  std::atomic<bool> heartbeat_running_{false};
+  rpc::RpcController heartbeat_controller_;
+  tserver::PgHeartbeatResponsePB heartbeat_resp_;
+  std::promise<Result<uint64_t>> create_session_promise_;
+  std::array<int, 2> tablet_server_count_cache_;
 };
 
 PgClient::PgClient() : impl_(new Impl) {
@@ -133,9 +267,10 @@ PgClient::PgClient() : impl_(new Impl) {
 PgClient::~PgClient() {
 }
 
-void PgClient::Start(
-    rpc::ProxyCache* proxy_cache, const tserver::TServerSharedObject& tserver_shared_object) {
-  impl_->Start(proxy_cache, tserver_shared_object);
+Status PgClient::Start(
+    rpc::ProxyCache* proxy_cache, rpc::Scheduler* scheduler,
+    const tserver::TServerSharedObject& tserver_shared_object) {
+  return impl_->Start(proxy_cache, scheduler, tserver_shared_object);
 }
 
 void PgClient::Shutdown() {
@@ -158,6 +293,36 @@ Result<std::pair<PgOid, PgOid>> PgClient::ReserveOids(
 Result<bool> PgClient::IsInitDbDone() {
   return impl_->IsInitDbDone();
 }
+
+Result<uint64_t> PgClient::GetCatalogMasterVersion() {
+  return impl_->GetCatalogMasterVersion();
+}
+
+Status PgClient::CreateSequencesDataTable() {
+  return impl_->CreateSequencesDataTable();
+}
+
+Result<client::YBTableName> PgClient::DropTable(
+    tserver::PgDropTableRequestPB* req, CoarseTimePoint deadline) {
+  return impl_->DropTable(req, deadline);
+}
+
+Result<int32> PgClient::TabletServerCount(bool primary_only) {
+  return impl_->TabletServerCount(primary_only);
+}
+
+Result<client::TabletServersInfo> PgClient::ListLiveTabletServers(bool primary_only) {
+  return impl_->ListLiveTabletServers(primary_only);
+}
+
+#define YB_PG_CLIENT_SIMPLE_METHOD_DEFINE(r, data, method) \
+Status PgClient::method( \
+    tserver::BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)* req, \
+    CoarseTimePoint deadline) { \
+  return impl_->method(req, deadline); \
+}
+
+BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_SIMPLE_METHOD_DEFINE, ~, YB_PG_CLIENT_SIMPLE_METHODS);
 
 }  // namespace pggate
 }  // namespace yb

@@ -13,6 +13,7 @@ import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
+import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.AlertChannel;
 import com.yugabyte.yw.models.AlertDestination;
@@ -23,14 +24,21 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 import play.data.validation.Constraints.Required;
 
 @Singleton
 @Slf4j
 public class AlertChannelService {
+
+  private final BeanValidator beanValidator;
+
+  @Inject
+  public AlertChannelService(BeanValidator beanValidator) {
+    this.beanValidator = beanValidator;
+  }
 
   public AlertChannel get(UUID customerUUID, UUID channelUUID) {
     return AlertChannel.get(customerUUID, channelUUID);
@@ -83,12 +91,7 @@ public class AlertChannelService {
       channel.generateUUID();
     }
 
-    try {
-      validate(channel);
-    } catch (PlatformValidationException e) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Unable to create/update alert channel: " + e.getMessage());
-    }
+    validate(channel);
 
     channel.save();
     return channel;
@@ -123,24 +126,17 @@ public class AlertChannelService {
     log.info("Deleted alert channel {} for customer {}", channelUUID, customerUUID);
   }
 
-  public void validate(AlertChannel channel) throws PlatformValidationException {
-    if (StringUtils.isEmpty(channel.getName())) {
-      throw new PlatformValidationException("Name is mandatory.");
-    }
-
-    if (channel.getName().length() > AlertChannel.MAX_NAME_LENGTH / 4) {
-      throw new PlatformValidationException(
-          String.format("Name length (%d) is exceeded.", AlertChannel.MAX_NAME_LENGTH / 4));
-    }
+  public void validate(AlertChannel channel) {
+    beanValidator.validate(channel);
 
     AlertChannel valueWithSameName = get(channel.getCustomerUUID(), channel.getName());
     if ((valueWithSameName != null) && !channel.getUuid().equals(valueWithSameName.getUuid())) {
-      throw new PlatformValidationException("Alert channel with such name already exists.");
+      beanValidator
+          .error()
+          .forField("name", "alert channel with such name already exists.")
+          .throwError();
     }
 
-    if (channel.getParams() == null) {
-      throw new PlatformValidationException("Incorrect parameters in AlertChannel.");
-    }
-    channel.getParams().validate();
+    channel.getParams().validate(beanValidator);
   }
 }

@@ -22,7 +22,6 @@ import io.ebean.SqlUpdate;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -81,7 +80,7 @@ public class BackupTest extends FakeDBApplication {
 
   @Test
   public void testCreateWithNonS3StorageUUID() {
-    JsonNode formData = Json.parse("{\"name\": \"FILE\", \"type\": \"STORAGE\", \"data\": \"{}\"}");
+    JsonNode formData = Json.parse("{\"name\": \"FILE\", \"type\": \"STORAGE\", \"data\": {}}");
     CustomerConfig customerConfig =
         CustomerConfig.createWithFormData(defaultCustomer.uuid, formData);
     UUID universeUUID = UUID.randomUUID();
@@ -252,16 +251,6 @@ public class BackupTest extends FakeDBApplication {
     b.setTaskUUID(taskUUID);
     b.refresh();
     assertNotEquals(taskUUID, b.taskUUID);
-  }
-
-  @Test
-  public void testAssociatedUniverses() {
-    Universe u = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
-    Backup b =
-        ModelFactory.createBackup(defaultCustomer.uuid, u.universeUUID, s3StorageConfig.configUUID);
-    b.setTaskUUID(UUID.randomUUID());
-    Set<Universe> universes = Backup.getAssociatedUniverses(s3StorageConfig.configUUID);
-    assertEquals(1, universes.size());
   }
 
   public void testGetAllCompletedBackupsWithExpiryForDelete() {

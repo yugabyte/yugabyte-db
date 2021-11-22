@@ -260,6 +260,8 @@ class ClusterAdminClient {
 
   CHECKED_STATUS SplitTablet(const std::string& tablet_id);
 
+  CHECKED_STATUS CreateTransactionsStatusTable(const std::string& table_name);
+
   Result<TableNameResolver> BuildTableNameResolver();
 
   Result<std::string> GetMasterLeaderUuid();
@@ -267,6 +269,11 @@ class ClusterAdminClient {
   CHECKED_STATUS GetYsqlCatalogVersion();
 
   Result<rapidjson::Document> DdlLog();
+
+  // Upgrade YSQL cluster (all databases) to the latest version, applying necessary migrations.
+  // Note: Works with a tserver but is placed here (and not in yb-ts-cli) because it doesn't
+  //       look like this workflow is a good fit there.
+  CHECKED_STATUS UpgradeYsql();
 
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.

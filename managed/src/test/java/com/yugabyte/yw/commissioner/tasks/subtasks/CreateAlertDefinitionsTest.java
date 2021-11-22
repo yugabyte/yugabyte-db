@@ -7,20 +7,15 @@ import static org.junit.Assert.assertFalse;
 import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.PlatformExecutorFactory;
+import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.alerts.AlertConfigurationService;
-import com.yugabyte.yw.common.alerts.AlertDefinitionService;
-import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.forms.AlertingFormData.AlertingData;
 import com.yugabyte.yw.forms.UniverseTaskParams;
-import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.AlertConfigurationTarget;
+import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
 import java.util.List;
@@ -29,19 +24,12 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
-import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class CreateAlertDefinitionsTest extends FakeDBApplication {
 
   @Mock private BaseTaskDependencies baseTaskDependencies;
   @Mock private RuntimeConfigFactory runtimeConfigFactory;
-
-  private final AlertService alertService = new AlertService();
-  private final AlertDefinitionService alertDefinitionService =
-      new AlertDefinitionService(alertService);
-  private final AlertConfigurationService alertConfigurationService =
-      new AlertConfigurationService(alertDefinitionService, runtimeConfigFactory);
 
   private Customer customer;
 
@@ -70,15 +58,6 @@ public class CreateAlertDefinitionsTest extends FakeDBApplication {
         plannedDefinitions++;
       }
     }
-  }
-
-  private void createAlertData() {
-    AlertingData data = new AlertingData();
-    data.sendAlertsToYb = false;
-    data.alertingEmail = "";
-    data.reportOnlyErrors = true;
-    // Setup alerting data.
-    CustomerConfig.createAlertConfig(customer.uuid, Json.toJson(data));
   }
 
   @Test

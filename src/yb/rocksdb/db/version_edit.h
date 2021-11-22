@@ -120,6 +120,9 @@ struct FileMetaData {
   bool marked_for_compaction;  // True if client asked us nicely to compact this
                                // file.
 
+  bool delete_after_compaction = false;  // True if file has been marked for
+                                         // direct deletion.
+
   FileMetaData();
 
   // REQUIRED: Keys must be given to the function in sorted order (it expects
@@ -132,6 +135,9 @@ struct FileMetaData {
   bool Unref(TableCache* table_cache);
 
   Slice UserFilter() const; // Extracts user filter from largest boundary value if present.
+
+  // Outputs smallest and largest user frontiers to string, if they exist.
+  std::string FrontiersToString() const;
 
   std::string ToString() const;
 };

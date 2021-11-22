@@ -10,17 +10,17 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PrecheckNode;
-import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeState;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForTServerHeartBeats;
 import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -111,22 +111,22 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     return (UniverseDefinitionTaskParams) taskParams;
   }
 
-  /** Writes the user intent to the universe. */
+  /**
+   * Writes all the user intent to the universe.
+   *
+   * @return
+   */
   public Universe writeUserIntentToUniverse() {
     return writeUserIntentToUniverse(false);
   }
 
-  /** Writes the user intent to the universe. */
-  public Universe writeUserIntentToUniverse(boolean isReadOnlyCreate) {
-    return writeUserIntentToUniverse(isReadOnlyCreate, true);
-  }
-
   /**
-   * Writes the user intent to the universe.
+   * Writes the user intent to the universe. In case of readonly cluster creation we only append
+   * taskParams().nodeDetailsSet to existing universe details.
    *
-   * @param isReadOnlyCreate only readonly cluster being created info needs peristence.
+   * @param isReadOnlyCreate only readonly cluster being created info needs persistence.
    */
-  public Universe writeUserIntentToUniverse(boolean isReadOnlyCreate, boolean updateOnpremNodes) {
+  public Universe writeUserIntentToUniverse(boolean isReadOnlyCreate) {
     // Create the update lambda.
     UniverseUpdater updater =
         universe -> {
@@ -164,7 +164,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           taskParams()
               .getReadOnlyClusters()
               .forEach(
-                  (async) -> {
+                  async -> {
                     // Update read replica cluster TLS params to be same as primary cluster
                     async.userIntent.enableNodeToNodeEncrypt =
                         universeDetails.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt;
@@ -179,10 +179,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // catch as we want to fail.
     Universe universe = saveUniverseDetails(updater);
     log.trace("Wrote user intent for universe {}.", taskParams().universeUUID);
-
-    if (updateOnpremNodes) {
-      updateOnPremNodeUuids(universe);
-    }
 
     // Return the universe object that we have already updated.
     return universe;
@@ -205,22 +201,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         };
     saveUniverseDetails(updater);
     log.info("Universe {} : Delete cluster {} done.", taskParams().universeUUID, clusterUUID);
-  }
-
-  // Helper data structure to save the new name and index of nodes for quick lookup using the
-  // old name of nodes.
-  private class NameAndIndex {
-    String name;
-    int index;
-
-    public NameAndIndex(String name, int index) {
-      this.name = name;
-      this.index = index;
-    }
-
-    public String toString() {
-      return "{name: " + name + ", index: " + index + "}";
-    }
   }
 
   // Check allowed patterns for tagValue.
@@ -334,7 +314,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
   // Set the universes' node prefix for universe creation op. And node names/indices of all the
   // being added nodes.
-  public void setNodeNames(UniverseOpType opType, Universe universe) {
+  public void setNodeNames(Universe universe) {
     if (universe == null) {
       throw new IllegalArgumentException("Invalid universe to update node names.");
     }
@@ -390,6 +370,15 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     PlacementInfoUtil.ensureUniqueNodeNames(taskParams().nodeDetailsSet);
   }
 
+  public void updateOnPremNodeUuidsOnTaskParams() {
+    for (Cluster cluster : taskParams().clusters) {
+      if (cluster.userIntent.providerType == CloudType.onprem) {
+        setOnpremData(
+            taskParams().getNodesInCluster(cluster.uuid), cluster.userIntent.instanceType);
+      }
+    }
+  }
+
   public void updateOnPremNodeUuids(Universe universe) {
     log.info(
         "Selecting onprem nodes for universe {} ({}).", universe.name, taskParams().universeUUID);
@@ -410,10 +399,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   public Map<String, NodeInstance> setOnpremData(Set<NodeDetails> nodes, String instanceType) {
-    Map<UUID, List<String>> onpremAzToNodes = new HashMap<UUID, List<String>>();
+    Map<UUID, List<String>> onpremAzToNodes = new HashMap<>();
     for (NodeDetails node : nodes) {
       if (node.state == NodeDetails.NodeState.ToBeAdded) {
-        List<String> nodeNames = onpremAzToNodes.getOrDefault(node.azUuid, new ArrayList<String>());
+        List<String> nodeNames = onpremAzToNodes.getOrDefault(node.azUuid, new ArrayList<>());
         nodeNames.add(node.nodeName);
         onpremAzToNodes.put(node.azUuid, nodeNames);
       }
@@ -425,22 +414,49 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // to more easily trickle down this uuid into all locations.
       NodeInstance n = nodeMap.get(node.nodeName);
       if (n != null) {
-        node.nodeUuid = n.nodeUuid;
+        node.nodeUuid = n.getNodeUuid();
       }
     }
     return nodeMap;
   }
 
-  public void selectMasters() {
+  public SelectMastersResult selectMasters() {
+    return selectMasters(null);
+  }
+
+  public SelectMastersResult selectMasters(String masterLeader) {
     UniverseDefinitionTaskParams.Cluster primaryCluster = taskParams().getPrimaryCluster();
     if (primaryCluster != null) {
       Set<NodeDetails> primaryNodes = taskParams().getNodesInCluster(primaryCluster.uuid);
-      long numActiveMasters = PlacementInfoUtil.getNumActiveMasters(primaryNodes);
-      log.info("Current active master count = " + numActiveMasters);
-      long numMastersToChoose = primaryCluster.userIntent.replicationFactor - numActiveMasters;
-      if (numMastersToChoose > 0) {
-        PlacementInfoUtil.selectMasters(primaryNodes, numMastersToChoose);
+      SelectMastersResult result =
+          PlacementInfoUtil.selectMasters(
+              masterLeader,
+              primaryNodes,
+              primaryCluster.userIntent.replicationFactor,
+              PlacementInfoUtil.getDefaultRegionCode(taskParams()));
+      log.info(
+          "Active masters count after balancing = "
+              + PlacementInfoUtil.getNumActiveMasters(primaryNodes));
+      if (!result.addedMasters.isEmpty()) {
+        log.info("Masters to be added/started: " + result.addedMasters);
       }
+      if (!result.removedMasters.isEmpty()) {
+        log.info("Masters to be removed/stopped: " + result.removedMasters);
+      }
+      return result;
+    }
+    return SelectMastersResult.NONE;
+  }
+
+  public void verifyMastersSelection() {
+    UniverseDefinitionTaskParams.Cluster primaryCluster = taskParams().getPrimaryCluster();
+    if (primaryCluster != null) {
+      log.trace("Masters verification for PRIMARY cluster");
+      Set<NodeDetails> primaryNodes = taskParams().getNodesInCluster(primaryCluster.uuid);
+      PlacementInfoUtil.verifyMastersSelection(
+          primaryNodes, primaryCluster.userIntent.replicationFactor);
+    } else {
+      log.trace("Masters verification skipped - no PRIMARY cluster found");
     }
   }
 
@@ -608,6 +624,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     return subTaskGroup;
   }
 
+  @Override
   public SubTaskGroup createWaitForMasterLeaderTask() {
     SubTaskGroup subTaskGroup = new SubTaskGroup("WaitForMasterLeader", executor);
     WaitForMasterLeader task = createTask(WaitForMasterLeader.class);
@@ -638,7 +655,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    *
    * @param failedNodes : map of nodeName to associated error message
    */
-  public SubTaskGroup createFailedPrecheckTask(Map<NodeInstance, String> failedNodes) {
+  public SubTaskGroup createFailedPrecheckTask(Map<String, String> failedNodes) {
     return createFailedPrecheckTask(failedNodes, false);
   }
 
@@ -649,10 +666,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param reserveNodes : whether to reserve nodes for this universe for future use
    */
   public SubTaskGroup createFailedPrecheckTask(
-      Map<NodeInstance, String> failedNodes, boolean reserveNodes) {
+      Map<String, String> failedNodes, boolean reserveNodes) {
     SubTaskGroup subTaskGroup = new SubTaskGroup("PrecheckNode", executor);
     PrecheckNode.Params params = new PrecheckNode.Params();
-    params.failedNodes = failedNodes;
+    params.failedNodeNamesToError = failedNodes;
     params.reserveNodes = reserveNodes;
     PrecheckNode failedCheck = createTask(PrecheckNode.class);
     failedCheck.initialize(params);
@@ -915,11 +932,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       throw new IllegalStateException("Should not have any masters before create task is run.");
     }
 
+    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     for (Cluster cluster : taskParams().clusters) {
       if (opType == UniverseOpType.EDIT
           && cluster.userIntent.instanceTags.containsKey(NODE_NAME_KEY)) {
-        Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
-        Cluster univCluster = universe.getUniverseDetails().getClusterByUuid(cluster.uuid);
+        Cluster univCluster = universeDetails.getClusterByUuid(cluster.uuid);
         if (univCluster == null) {
           throw new IllegalStateException(
               "No cluster " + cluster.uuid + " found in " + taskParams().universeUUID);
@@ -961,16 +979,18 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
   }
 
-  // Setup a configure task to update the new master list in the conf files of all servers.
+  /*
+   * Setup a configure task to update the masters list in the conf files of all
+   * servers.
+   */
   protected void createMasterInfoUpdateTask(Universe universe, NodeDetails addedNode) {
     Set<NodeDetails> tserverNodes = new HashSet<NodeDetails>(universe.getTServers());
     Set<NodeDetails> masterNodes = new HashSet<NodeDetails>(universe.getMasters());
     // We need to add the node explicitly since the node wasn't marked as a master
-    // or tserver
-    // before the task is completed.
+    // or tserver before the task is completed.
     tserverNodes.add(addedNode);
     masterNodes.add(addedNode);
-    // Configure all tservers to pick the new master node ip as well.
+    // Configure all tservers to update the masters list as well.
     createConfigureServerTasks(tserverNodes, false /* isShell */, true /* updateMasterAddr */)
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     // Update the master addresses in memory.
@@ -995,37 +1015,38 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
   }
 
-  /** Reserves onprem nodes for an existing universe and performs preflight checks on them. */
-  public boolean reserveAndCheckOnpremNodesToBeAdded() {
-    Map<NodeInstance, String> failedNodes = new HashMap<>();
-    for (Cluster cluster : taskParams().clusters) {
-      Set<NodeDetails> nodes = taskParams().getNodesInCluster(cluster.uuid);
-      Collection<NodeDetails> nodesToProvision = PlacementInfoUtil.getNodesToProvision(nodes);
-
-      // Reserves onprem nodes.
-      Map<String, NodeInstance> onpremInstances = new HashMap<>();
-      if (cluster.userIntent.providerType == CloudType.onprem) {
-        onpremInstances = setOnpremData(nodes, cluster.userIntent.instanceType);
+  /**
+   * Performs preflight checks for nodes in cluster. No fail tasks are created.
+   *
+   * @return map of failed nodes
+   */
+  private Map<String, String> performClusterPreflightChecks(Cluster cluster) {
+    Map<String, String> failedNodes = new HashMap<>();
+    // This check is only applied to onperm nodes
+    if (cluster.userIntent.providerType != CloudType.onprem) {
+      return failedNodes;
+    }
+    Set<NodeDetails> nodes = taskParams().getNodesInCluster(cluster.uuid);
+    Collection<NodeDetails> nodesToProvision = PlacementInfoUtil.getNodesToProvision(nodes);
+    for (NodeDetails currentNode : nodesToProvision) {
+      String preflightStatus = performPreflightCheck(cluster, currentNode);
+      if (preflightStatus != null) {
+        failedNodes.put(currentNode.nodeName, preflightStatus);
       }
+    }
 
-      if (!nodesToProvision.isEmpty()) {
-        for (NodeDetails currentNode : nodesToProvision) {
-          NodeTaskParams nodeParams = new NodeTaskParams();
-          UserIntent userIntent =
-              taskParams().getClusterByUuid(currentNode.placementUuid).userIntent;
-          nodeParams.nodeName = currentNode.nodeName;
-          nodeParams.deviceInfo = userIntent.deviceInfo;
-          nodeParams.azUuid = currentNode.azUuid;
-          nodeParams.universeUUID = taskParams().universeUUID;
-          nodeParams.extraDependencies.installNodeExporter =
-              taskParams().extraDependencies.installNodeExporter;
+    return failedNodes;
+  }
 
-          String preflightStatus = performPreflightCheck(currentNode, nodeParams);
-          if (preflightStatus != null) {
-            failedNodes.put(onpremInstances.get(currentNode.nodeName), preflightStatus);
-          }
-        }
-      }
+  /**
+   * Performs preflight checks and creates failed preflight tasks.
+   *
+   * @return true if everything is OK
+   */
+  public boolean performUniversePreflightChecks(Collection<Cluster> clusters) {
+    Map<String, String> failedNodes = new HashMap<>();
+    for (Cluster cluster : clusters) {
+      failedNodes.putAll(performClusterPreflightChecks(cluster));
     }
     if (!failedNodes.isEmpty()) {
       createFailedPrecheckTask(failedNodes).setSubTaskGroupType(SubTaskGroupType.PreflightChecks);

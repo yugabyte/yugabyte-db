@@ -37,8 +37,6 @@
 
 #include "yb/common/crc16.h"
 #include "yb/common/partial_row.h"
-#include "yb/common/row_key-util.h"
-#include "yb/common/wire_protocol.pb.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/hash/hash.h"
@@ -451,6 +449,18 @@ uint16_t PartitionSchema::DecodeMultiColumnHashValue(const string& partition_key
   return (bytes[0] << 8) | bytes[1];
 }
 
+string PartitionSchema::GetEncodedKeyPrefix(
+    const string& partition_key, const PartitionSchemaPB& partition_schema) {
+  if (partition_schema.has_hash_schema()) {
+    const auto doc_key_hash = PartitionSchema::DecodeMultiColumnHashValue(partition_key);
+    docdb::KeyBytes split_encoded_key_bytes;
+    docdb::DocKeyEncoderAfterTableIdStep(&split_encoded_key_bytes)
+      .Hash(doc_key_hash, std::vector<docdb::PrimitiveValue>());
+    return split_encoded_key_bytes.ToStringBuffer();
+  }
+  return partition_key;
+}
+
 Status PartitionSchema::IsValidHashPartitionRange(const string& partition_key_start,
                                                   const string& partition_key_end) {
   if (!IsValidHashPartitionKeyBound(partition_key_start) ||
@@ -817,7 +827,7 @@ string PartitionSchema::RangePartitionDebugString(const Partition& partition,
                                                   const Schema& schema) const {
   CHECK(!schema.num_hash_key_columns());
   std::string s;
-  s.append("range: [(");
+  s.append("range: [");
   if (partition.partition_key_start().empty()) {
     s.append("<start>");
   } else {
@@ -829,7 +839,7 @@ string PartitionSchema::RangePartitionDebugString(const Partition& partition,
   } else {
     s.append(docdb::DocKey::DebugSliceToString(partition.partition_key_end()));
   }
-  s.append("))");
+  s.append(")");
   return s;
 }
 
@@ -877,7 +887,7 @@ string PartitionSchema::PartitionDebugString(const Partition& partition,
     YBPartialRow start_row(&schema);
     YBPartialRow end_row(&schema);
 
-    s.append("range: [(");
+    s.append("range: [");
 
     vector<string> start_components;
     Slice encoded_range_key_start = partition.range_key_start();
@@ -889,7 +899,7 @@ string PartitionSchema::PartitionDebugString(const Partition& partition,
     } else {
       s.append(Substitute("<decode-error: $0>", status.ToString()));
     }
-    s.append("), (");
+    s.append(", ");
 
     vector<string> end_components;
     Slice encoded_range_key_end = partition.range_key_end();
@@ -900,7 +910,7 @@ string PartitionSchema::PartitionDebugString(const Partition& partition,
     } else {
       s.append(Substitute("<decode-error: $0>", status.ToString()));
     }
-    s.append("))");
+    s.append(")");
   }
 
   return s;

@@ -100,6 +100,7 @@ export default class UserProfileForm extends Component {
       name: customer.data.name || '',
       email: (getCurrentUser.length && getCurrentUser[0].email) || '',
       code: customer.data.code || '',
+      customerId: customer.data.uuid,
       password: '',
       confirmPassword: ''
     };
@@ -222,6 +223,14 @@ export default class UserProfileForm extends Component {
                       />
                     </FlexShrink>
                   </FlexContainer>
+                  <Field
+                    name="customerId"
+                    readOnly={true}
+                    type="text"
+                    label="Customer ID"
+                    component={YBFormInput}
+                    placeholder="Customer ID"
+                  />
                 </Col>
               </Row>
               <div className="form-action-button-container">

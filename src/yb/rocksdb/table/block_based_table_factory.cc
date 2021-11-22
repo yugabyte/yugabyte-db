@@ -214,6 +214,8 @@ const char BlockBasedTablePropertyNames::kWholeKeyFiltering[] =
     "rocksdb.block.based.table.whole.key.filtering";
 const char BlockBasedTablePropertyNames::kPrefixFiltering[] =
     "rocksdb.block.based.table.prefix.filtering";
+const char BlockBasedTablePropertyNames::kDataBlockKeyValueEncodingFormat[] =
+    "rocksdb.block.based.table.data.block.key.value.encoding.format";
 const char kHashIndexPrefixesBlock[] = "rocksdb.hashindex.prefixes";
 const char kHashIndexPrefixesMetadataBlock[] =
     "rocksdb.hashindex.metadata";

@@ -14,6 +14,7 @@
 #ifndef YB_CLIENT_ASYNC_RPC_H_
 #define YB_CLIENT_ASYNC_RPC_H_
 
+#include "yb/client/in_flight_op.h"
 #include "yb/client/tablet_rpc.h"
 
 #include "yb/common/read_hybrid_time.h"
@@ -49,11 +50,10 @@ struct AsyncRpcMetrics {
 };
 
 struct AsyncRpcData {
-  scoped_refptr<Batcher> batcher;
+  BatcherPtr batcher;
   RemoteTablet* tablet = nullptr;
   bool allow_local_calls_in_curr_thread = false;
   bool need_consistent_read = false;
-  HybridTime write_time_for_backfill_ = HybridTime::kInvalid;
   InFlightOps ops;
   bool need_metadata = false;
 };
@@ -76,7 +76,7 @@ struct FlushExtraResult {
 // This class deletes itself after Rpc returns and is processed.
 class AsyncRpc : public rpc::Rpc, public TabletRpc {
  public:
-  explicit AsyncRpc(AsyncRpcData* data, YBConsistencyLevel consistency_level);
+  AsyncRpc(const AsyncRpcData& data, YBConsistencyLevel consistency_level);
 
   virtual ~AsyncRpc();
 
@@ -86,7 +86,6 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
   std::shared_ptr<const YBTable> table() const;
   const RemoteTablet& tablet() const { return *tablet_invoker_.tablet(); }
   const InFlightOps& ops() const { return ops_; }
-  Trace *trace() { return trace_.get(); }
 
  protected:
   void Finished(const Status& status) override;
@@ -102,6 +101,8 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
   // See FlushExtraResult for details.
   virtual FlushExtraResult MakeFlushExtraResult() = 0;
 
+  virtual void SwapResponses() = 0;
+
   void Failed(const Status& status) override;
 
   // Is this a local call?
@@ -113,10 +114,7 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
 
   // Pointer back to the batcher. Processes the write response when it
   // completes, regardless of success or failure.
-  scoped_refptr<Batcher> batcher_;
-
-  // The trace buffer.
-  scoped_refptr<Trace> trace_;
+  BatcherPtr batcher_;
 
   // Operations which were batched into this RPC.
   // These operations are in kRequestSent state.
@@ -132,7 +130,8 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
 template <class Req, class Resp>
 class AsyncRpcBase : public AsyncRpc {
  public:
-  explicit AsyncRpcBase(AsyncRpcData* data, YBConsistencyLevel consistency_level);
+  AsyncRpcBase(const AsyncRpcData& data, YBConsistencyLevel consistency_level);
+  ~AsyncRpcBase();
 
   const Resp& resp() const { return resp_; }
   Resp& resp() { return resp_; }
@@ -142,16 +141,16 @@ class AsyncRpcBase : public AsyncRpc {
   bool CommonResponseCheck(const Status& status);
   void SendRpcToTserver(int attempt_num) override;
 
+  virtual void NotifyBatcher(const Status& status) = 0;
+
+  void ProcessResponseFromTserver(const Status& status) override;
+
  protected: // TODO replace with private
   const tserver::TabletServerErrorPB* response_error() const override {
     return resp_.has_error() ? &resp_.error() : nullptr;
   }
 
-  FlushExtraResult MakeFlushExtraResult() override {
-    return {GetPropagatedHybridTime(resp_),
-            resp_.has_used_read_time() ? ReadHybridTime::FromPB(resp_.used_read_time())
-                                       : ReadHybridTime()};
-  }
+  FlushExtraResult MakeFlushExtraResult() override;
 
   Req req_;
   Resp resp_;
@@ -159,28 +158,29 @@ class AsyncRpcBase : public AsyncRpc {
 
 class WriteRpc : public AsyncRpcBase<tserver::WriteRequestPB, tserver::WriteResponsePB> {
  public:
-  explicit WriteRpc(AsyncRpcData* data);
+  // Relies on ops requests to be not on arena.
+  explicit WriteRpc(const AsyncRpcData& data);
 
   virtual ~WriteRpc();
 
  private:
-  void SwapRequestsAndResponses(bool skip_responses);
+  void SwapResponses() override;
   void CallRemoteMethod() override;
-  void ProcessResponseFromTserver(const Status& status) override;
+  void NotifyBatcher(const Status& status) override;
   bool ShouldRetryExpiredRequest() override;
 };
 
 class ReadRpc : public AsyncRpcBase<tserver::ReadRequestPB, tserver::ReadResponsePB> {
  public:
-  explicit ReadRpc(
-      AsyncRpcData* data, YBConsistencyLevel yb_consistency_level = YBConsistencyLevel::STRONG);
+  // Relies on ops requests to be not on arena.
+  explicit ReadRpc(const AsyncRpcData& data, YBConsistencyLevel yb_consistency_level);
 
   virtual ~ReadRpc();
 
  private:
-  void SwapRequestsAndResponses(bool skip_responses);
+  void SwapResponses() override;
   void CallRemoteMethod() override;
-  void ProcessResponseFromTserver(const Status& status) override;
+  void NotifyBatcher(const Status& status) override;
 };
 
 }  // namespace internal

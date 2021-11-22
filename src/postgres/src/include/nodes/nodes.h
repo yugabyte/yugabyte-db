@@ -517,7 +517,8 @@ typedef enum NodeTag
 	 * TAGS FOR YUGABYTE NODES.
 	 */
 	T_YbPgExecOutParam,
-	T_YbBackfillInfo
+	T_YbBackfillInfo,
+	T_PartitionPruneStepFuncOp
 
 } NodeTag;
 

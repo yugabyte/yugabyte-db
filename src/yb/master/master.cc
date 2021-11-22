@@ -37,31 +37,25 @@
 #include <memory>
 #include <vector>
 
-#include <boost/bind.hpp>
 #include <glog/logging.h>
 
 #include "yb/common/wire_protocol.h"
-#include "yb/consensus/raft_consensus.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/flush_manager.h"
-#include "yb/master/master_rpc.h"
 #include "yb/master/master_util.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master.service.h"
 #include "yb/master/master_service.h"
 #include "yb/master/master_tablet_service.h"
 #include "yb/master/master-path-handlers.h"
-#include "yb/master/sys_catalog.h"
-#include "yb/master/ts_manager.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/service_if.h"
 #include "yb/rpc/service_pool.h"
 #include "yb/rpc/yb_rpc.h"
 #include "yb/server/rpc_server.h"
 #include "yb/tablet/maintenance_manager.h"
-#include "yb/server/default-path-handlers.h"
 #include "yb/tserver/pg_client_service.h"
 #include "yb/tserver/tablet_service.h"
 #include "yb/tserver/tserver_shared_mem.h"
@@ -174,7 +168,7 @@ Status Master::Init() {
 
   auto bound_addresses = rpc_server()->GetBoundAddresses();
   if (!bound_addresses.empty()) {
-    shared_object().SetHostEndpoint(bound_addresses.front(), "");
+    shared_object().SetHostEndpoint(bound_addresses.front(), get_hostname());
   }
 
   async_client_init_ = std::make_unique<client::AsyncClientInitialiser>(
@@ -249,7 +243,8 @@ Status Master::RegisterServices() {
       FLAGS_master_svc_queue_length,
       std::make_unique<tserver::PgClientServiceImpl>(
           client_future(), std::bind(&Master::TransactionPool, this),
-          metric_entity())));
+          metric_entity(),
+          &messenger()->scheduler())));
 
   return Status::OK();
 }
@@ -480,6 +475,28 @@ Status Master::InformRemovedMaster(const HostPortPB& hp_pb) {
   }
 
   return Status::OK();
+}
+
+scoped_refptr<Histogram> Master::GetMetric(
+    const std::string& metric_identifier, MasterMetricType type, const std::string& description) {
+  std::string temp_metric_identifier = Format("$0_$1", metric_identifier,
+      (type == TaskMetric ? "Task" : "Attempt"));
+  EscapeMetricNameForPrometheus(&temp_metric_identifier);
+  {
+    std::lock_guard<std::mutex> lock(master_metrics_mutex_);
+    std::map<std::string, scoped_refptr<Histogram>>* master_metrics_ptr = master_metrics();
+    auto it = master_metrics_ptr->find(temp_metric_identifier);
+    if (it == master_metrics_ptr->end()) {
+      std::unique_ptr<HistogramPrototype> histogram = std::make_unique<OwningHistogramPrototype>(
+          "server", temp_metric_identifier, description, yb::MetricUnit::kMicroseconds,
+          description, yb::MetricLevel::kInfo, 0, 10000000, 2);
+      scoped_refptr<Histogram> temp =
+          metric_entity()->FindOrCreateHistogram(std::move(histogram));
+      (*master_metrics_ptr)[temp_metric_identifier] = temp;
+      return temp;
+    }
+    return it->second;
+  }
 }
 
 Status Master::GoIntoShellMode() {

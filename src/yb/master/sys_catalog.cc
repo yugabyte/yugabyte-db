@@ -45,7 +45,6 @@
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/ql_value.h"
-#include "yb/common/ql_protocol_util.h"
 
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/consensus.h"
@@ -53,6 +52,7 @@
 #include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
+#include "yb/consensus/raft_consensus.h"
 
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb_pgapi.h"
@@ -60,10 +60,8 @@
 #include "yb/fs/fs_manager.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/master/catalog_manager.h"
-#include "yb/master/master.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/sys_catalog_writer.h"
-#include "yb/rpc/rpc_context.h"
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
@@ -394,6 +392,16 @@ void SysCatalogTable::SysCatalogStateChanged(
        (cstate.config().peers_size() == 1 &&
         context->reason == StateChangeReason::TABLET_PEER_STARTED))) {
     CHECK_OK(leader_cb_.Run());
+  }
+
+  if (context->reason == StateChangeReason::NEW_LEADER_ELECTED) {
+    auto client_future = master_->async_client_initializer().get_client_future();
+
+    // Check if client was already initialized, otherwise we don't have to refresh master leader,
+    // since it will be fetched as part of initialization.
+    if (client_future.wait_for(0ms) == std::future_status::ready) {
+      client_future.get()->RefreshMasterLeaderAddressAsync();
+    }
   }
 
   // Perform any further changes for context based reasons.

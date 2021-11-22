@@ -46,7 +46,6 @@
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/opid_util.h"
-#include "yb/consensus/quorum_util.h"
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/retryable_requests.h"
 
@@ -704,6 +703,8 @@ void TabletPeer::GetTabletStatusPB(TabletStatusPB* status_pb_out) {
     status_pb_out->set_table_type(tablet->table_type());
   }
   disk_size_info.ToPB(status_pb_out);
+  // Set hide status of the tablet.
+  status_pb_out->set_is_hidden(meta_->hidden());
 }
 
 Status TabletPeer::RunLogGC() {

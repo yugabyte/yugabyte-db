@@ -23,8 +23,9 @@ import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
-import org.postgresql.util.PSQLException;
+import com.yugabyte.util.PSQLException;
 import static org.yb.AssertionWrappers.*;
 
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
@@ -46,11 +47,12 @@ public class TestPgTimeout extends BasePgSQLTest {
     List<Row> allRows = setupSimpleTable("timeouttest");
     String query = "SELECT count(*) FROM timeouttest";
 
+    // The default case there is no statement timeout.
     boolean timeoutEncountered = false;
     try (ResultSet rs = statement.executeQuery(query)) {
     } catch (PSQLException ex) {
-      if (ex.getMessage().contains("canceling statement due to statement timeout")) {
-        LOG.info("Timeout ERROR");
+      if (Pattern.matches(".*RPC .* timed out after.*", ex.getMessage())) {
+        LOG.info("Timeout ERROR: " + ex.getMessage());
         timeoutEncountered = true;
       }
     }
@@ -59,11 +61,24 @@ public class TestPgTimeout extends BasePgSQLTest {
     query = "SET STATEMENT_TIMEOUT=1000";
     statement.execute(query);
 
+    // We also adjust RPC timeout to the statement timeout when statement timeout is shorter than
+    // default RPC timeout. We will see RPC timed out in the error message.
     query = "SELECT count(*) FROM timeouttest";
     try (ResultSet rs = statement.executeQuery(query)) {
     } catch (PSQLException ex) {
+      if (Pattern.matches(".*RPC .* timed out after.*", ex.getMessage())) {
+        LOG.info("Timeout ERROR: " + ex.getMessage());
+        timeoutEncountered = true;
+      }
+    }
+    assertEquals(timeoutEncountered, true);
+
+    timeoutEncountered = false;
+    query = "SELECT pg_sleep(5) FROM timeouttest";
+    try (ResultSet rs = statement.executeQuery(query)) {
+    } catch (PSQLException ex) {
       if (ex.getMessage().contains("canceling statement due to statement timeout")) {
-        LOG.info("Timeout ERROR");
+        LOG.info("Timeout ERROR: " + ex.getMessage());
         timeoutEncountered = true;
       }
     }

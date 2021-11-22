@@ -23,7 +23,6 @@ import javax.persistence.OptimisticLockException;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnitRunner;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -43,13 +42,15 @@ public class AlertDefinitionTest extends FakeDBApplication {
 
   private AlertConfiguration configuration;
 
-  @InjectMocks private AlertDefinitionService alertDefinitionService;
+  private AlertDefinitionService alertDefinitionService;
 
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer("Customer");
     universe = ModelFactory.createUniverse();
     configuration = ModelFactory.createAlertConfiguration(customer, universe);
+
+    alertDefinitionService = app.injector().instanceOf(AlertDefinitionService.class);
   }
 
   @Test

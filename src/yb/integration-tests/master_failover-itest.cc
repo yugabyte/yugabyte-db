@@ -32,7 +32,6 @@
 
 #include <functional>
 #include <string>
-#include <system_error>
 #include <vector>
 #include <glog/logging.h>
 #include <gtest/gtest.h>
@@ -50,14 +49,11 @@
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/gutil/strings/util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/master/master.pb.h"
-#include "yb/master/master.proxy.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
 #include "yb/tools/yb-admin_client.h"
 
@@ -588,12 +584,12 @@ class MasterFailoverTestWithPlacement : public MasterFailoverTest {
 
   void AssertTserverHasPlacementUuid(
       const string& ts_uuid, const string& placement_uuid,
-      const std::vector<std::unique_ptr<YBTabletServer>>& tablet_servers) {
+      const std::vector<YBTabletServer>& tablet_servers) {
     auto it = std::find_if(tablet_servers.begin(), tablet_servers.end(), [&](const auto& ts) {
-        return ts->uuid() == ts_uuid;
+        return ts.uuid == ts_uuid;
     });
     ASSERT_TRUE(it != tablet_servers.end());
-    ASSERT_EQ((*it)->placement_uuid(), placement_uuid);
+    ASSERT_EQ(it->placement_uuid, placement_uuid);
   }
 
  protected:
@@ -636,8 +632,7 @@ TEST_F_EX(MasterFailoverTest, TestFailoverWithReadReplicas, MasterFailoverTestWi
     return tserver_count == 4;
   }, MonoDelta::FromSeconds(30), "Wait for tablet server count"));
 
-  std::vector<std::unique_ptr<YBTabletServer>> tablet_servers;
-  ASSERT_OK(client_->ListTabletServers(&tablet_servers));
+  const auto tablet_servers = ASSERT_RESULT(client_->ListTabletServers());
 
   ASSERT_NO_FATALS(AssertTserverHasPlacementUuid(live_ts_uuid, kLivePlacementUuid, tablet_servers));
   ASSERT_NO_FATALS(AssertTserverHasPlacementUuid(

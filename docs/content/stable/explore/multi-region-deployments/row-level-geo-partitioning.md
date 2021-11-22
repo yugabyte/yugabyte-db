@@ -8,7 +8,7 @@ menu:
   stable:
     identifier: explore-multi-region-geo-partitioning
     parent: explore-multi-region-deployments
-    weight: 750
+    weight: 720
 isTocNested: true
 showAsideToc: true
 ---
@@ -109,7 +109,7 @@ First, we create the parent table that contains a `geo_partition` column which i
           (user_id, account_id, geo_partition, account_type,
           amount, txn_type, created_at,
           PRIMARY KEY (user_id HASH, account_id, geo_partition))
-        FOR VALUES IN ('EU') TABLESPACE eu_central_1_tablespace;;
+        FOR VALUES IN ('EU') TABLESPACE eu_central_1_tablespace;
 
     CREATE TABLE transactions_india
         PARTITION OF transactions

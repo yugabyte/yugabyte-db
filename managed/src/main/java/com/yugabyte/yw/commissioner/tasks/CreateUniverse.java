@@ -20,12 +20,8 @@ import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Set;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -63,7 +59,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
       // Set all the in-memory node names.
-      setNodeNames(UniverseOpType.CREATE, universe);
+      setNodeNames(universe);
 
       // Select master nodes.
       selectMasters();
@@ -71,31 +67,18 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       if (taskParams().getPrimaryCluster().userIntent.enableYCQL
           && taskParams().getPrimaryCluster().userIntent.enableYCQLAuth) {
         ycqlPassword = taskParams().getPrimaryCluster().userIntent.ycqlPassword;
-        String ycqlPassLength = ((Integer) ycqlPassword.length()).toString();
-        String ycqlRegex = "(.)" + "{" + ycqlPassLength + "}";
-        taskParams().getPrimaryCluster().userIntent.ycqlPassword =
-            taskParams()
-                .getPrimaryCluster()
-                .userIntent
-                .ycqlPassword
-                .replaceAll(ycqlRegex, "REDACTED");
+        taskParams().getPrimaryCluster().userIntent.ycqlPassword = Util.redactString(ycqlPassword);
       }
       if (taskParams().getPrimaryCluster().userIntent.enableYSQL
           && taskParams().getPrimaryCluster().userIntent.enableYSQLAuth) {
         ysqlPassword = taskParams().getPrimaryCluster().userIntent.ysqlPassword;
-        String ysqlPassLength = ((Integer) ysqlPassword.length()).toString();
-        String ysqlRegex = "(.)" + "{" + ysqlPassLength + "}";
-        taskParams().getPrimaryCluster().userIntent.ysqlPassword =
-            taskParams()
-                .getPrimaryCluster()
-                .userIntent
-                .ysqlPassword
-                .replaceAll(ysqlRegex, "REDACTED");
+        taskParams().getPrimaryCluster().userIntent.ysqlPassword = Util.redactString(ysqlPassword);
       }
 
       if (taskParams().firstTry) {
         // Update the user intent.
-        writeUserIntentToUniverse();
+        universe = writeUserIntentToUniverse();
+        updateOnPremNodeUuids(universe);
       }
 
       // Update the universe to the latest state and
@@ -104,37 +87,8 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       universe = Universe.getOrBadRequest(universe.universeUUID);
       checkIfNodesExist(universe);
       Cluster primaryCluster = taskParams().getPrimaryCluster();
-      log.info(primaryCluster.userIntent.ysqlPassword);
 
-      // Check if nodes are able to be provisioned/configured properly.
-      Map<NodeInstance, String> failedNodes = new HashMap<>();
-      for (NodeDetails node : taskParams().nodeDetailsSet) {
-        if (!universe
-            .getCluster(node.placementUuid)
-            .userIntent
-            .providerType
-            .equals(CloudType.onprem)) {
-          continue;
-        }
-
-        NodeTaskParams nodeParams = new NodeTaskParams();
-        UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
-        nodeParams.nodeName = node.nodeName;
-        nodeParams.deviceInfo = userIntent.deviceInfo;
-        nodeParams.azUuid = node.azUuid;
-        nodeParams.universeUUID = taskParams().universeUUID;
-        nodeParams.extraDependencies.installNodeExporter =
-            taskParams().extraDependencies.installNodeExporter;
-
-        String preflightStatus = performPreflightCheck(node, nodeParams);
-        if (preflightStatus != null) {
-          failedNodes.put(NodeInstance.getByName(node.nodeName), preflightStatus);
-        }
-      }
-      if (!failedNodes.isEmpty()) {
-        createFailedPrecheckTask(failedNodes, true)
-            .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
-      }
+      performUniversePreflightChecks(universe.getUniverseDetails().clusters);
 
       // Create the required number of nodes in the appropriate locations.
       createCreateServerTasks(taskParams().nodeDetailsSet)

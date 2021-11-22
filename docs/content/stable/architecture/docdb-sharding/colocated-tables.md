@@ -16,6 +16,13 @@ In workloads that need lower throughput and have a small data set, the bottlenec
 
 To help accommodate such relational tables and workloads, YugabyteDB supports colocating SQL tables. Colocating tables puts all of their data into a single tablet, called the colocation tablet. This can dramatically increase the number of relations (tables, indexes, etc) that can be supported per node while keeping the number of tablets per node low. Note that all the data in the colocation tablet is still replicated across three nodes (or whatever the replication factor is). Large tablets can be dynamically split at a future date if there is need to serve more throughput over a larger data set.
 
+{{< note title="Note" >}}
+
+Colocated tables are not currently recommended for production, as backup-restore is not yet fully supported for colocated tables.
+
+Backup-restore support for colocated tables is in active development. Refer to issues [7378](https://github.com/yugabyte/yugabyte-db/issues/7378) and [10100](https://github.com/yugabyte/yugabyte-db/issues/10100) for details.
+{{< /note>}}
+
 ## Motivation
 
 This feature is desirable in a number of scenarios, some of which are described below.
@@ -69,10 +76,6 @@ can be supported using colocated tables.
 
 - **Lower scalability - until removal from colocation tablet**.
 The assumptions behind tables that are colocated is that their data need not be automatically sharded and distributed across nodes. If it is known a priori that a table will get large, it can be opted out of the colocation tablet at creation time. If a table already present in the colocation tablet gets too large, it can dynamically be removed from the colocation tablet to enable splitting it into multiple tablets, allowing it to scale across nodes.
-
-## Usage
-
-To learn more about using this feature, see [Explore colocated tables](../../../explore/colocated-tables/macos/).
 
 ## What's next?
 

@@ -9,9 +9,14 @@ import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import moment from 'moment';
 import { YBPanelItem } from '../../panels';
 import { YBCopyButton } from '../../common/descriptors';
+import { get } from '../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { isAvailable, isNotHidden } from '../../../utils/LayoutUtils';
-import { timeFormatter, successStringFormatter } from '../../../utils/TableFormatters';
+import {
+  timeFormatter,
+  successStringFormatter,
+  backupConfigFormatter
+} from '../../../utils/TableFormatters';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import { TableAction } from '../../tables';
 import ListTablesModal from './ListTablesModal';
@@ -361,7 +366,7 @@ export default class ListBackups extends Component {
     ) {
       return <YBLoadingCircleIcon size="medium" />;
     }
-    const universePaused = currentUniverse?.universeDetails?.universePaused;
+    const universePaused = get(currentUniverse, 'universeDetails.universePaused');
     const backupInfos = universeBackupList.data
       .map((b) => {
         const backupInfo = b.backupInfo;
@@ -408,7 +413,7 @@ export default class ListBackups extends Component {
           >
             <TableAction
               currentRow={row}
-              disabled={currentUniverse.universeDetails.backupInProgress}
+              disabled={get(currentUniverse, 'universeDetails.backupInProgress')}
               actionType="restore-backup"
               onSubmit={(data) => this.handleModalSubmit('Restore', data)}
               onError={() => this.handleModalSubmit('Restore')}
@@ -476,7 +481,7 @@ export default class ListBackups extends Component {
     };
     return (
       <div id="list-backups-content">
-        {currentUniverse.universeDetails.backupInProgress && (
+        {get(currentUniverse, 'universeDetails.backupInProgress') && (
           <Alert bsStyle="info">Backup is in progress at the moment</Alert>
         )}
         {showAlert && (
@@ -507,8 +512,8 @@ export default class ListBackups extends Component {
                       <>
                         <TableAction
                           disabled={
-                            currentUniverse.universeDetails.backupInProgress ||
-                            currentUniverse.universeConfig.takeBackups === 'false'
+                            get(currentUniverse, 'universeDetails.backupInProgress') ||
+                            get(currentUniverse, 'universeConfig.takeBackups') === 'false'
                           }
                           className="table-action"
                           btnClass="btn-orange"
@@ -518,7 +523,7 @@ export default class ListBackups extends Component {
                           onError={() => this.handleModalSubmit('Backup')}
                         />
                         <TableAction
-                          disabled={currentUniverse.universeDetails.backupInProgress}
+                          disabled={get(currentUniverse, 'universeDetails.backupInProgress')}
                           className="table-action"
                           btnClass="btn-default"
                           actionType="restore-backup"
@@ -528,7 +533,7 @@ export default class ListBackups extends Component {
                         />
                         <TableAction
                           disabled={
-                            currentUniverse.universeDetails.backupInProgress ||
+                            get(currentUniverse, 'universeDetails.backupInProgress') ||
                             this.state.selected.length < 1
                           }
                           currentRow={{
@@ -605,6 +610,15 @@ export default class ListBackups extends Component {
                 dataAlign="left"
               >
                 Expiry Time
+              </TableHeaderColumn>
+              <TableHeaderColumn
+                dataFormat={(_cell, row) => backupConfigFormatter(row, this.props.storageConfigs)}
+                columnClassName="no-border "
+                className="no-border"
+                expandable={false}
+                dataAlign="left"
+              >
+                Backup Config
               </TableHeaderColumn>
               <TableHeaderColumn
                 dataFormat={getBackupDuration}

@@ -430,7 +430,7 @@ ADD_CXX_FLAGS(-DYB_HEADERS_NO_STUBS=1)
 #   3. Build again with CMAKE_BUILD_TYPE_PROFILE_BUILD
 #     -fprofile-use: Compiler will use the profile outputs for optimizations
 set(CXX_FLAGS_DEBUG "-ggdb")
-set(CXX_FLAGS_FASTDEBUG "-ggdb -O1 -fno-omit-frame-pointer")
+set(CXX_FLAGS_FASTDEBUG "-ggdb -O1 -fno-omit-frame-pointer -DFASTDEBUG")
 set(CXX_FLAGS_RELEASE "-O3 -g -DNDEBUG -fno-omit-frame-pointer")
 
 # Nullify CMake's predefined flags since we are handling different build types on our own.
@@ -718,11 +718,13 @@ endif()
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if (USING_LINUXBREW)
-  # Add the Linuxbrew library directory last.
-  ADD_LINKER_FLAGS("-L${LINUXBREW_LIB_DIR}")
-  ADD_GLOBAL_RPATH_ENTRY("${LINUXBREW_LIB_DIR}")
-  ADD_LINKER_FLAGS("-L/usr/lib64")
-  ADD_GLOBAL_RPATH_ENTRY("/usr/lib64")
+  # We need to add the postgres library directory prior to /usr/lib64 specifically in order to avoid
+  # using the system libpq.
+  ADD_GLOBAL_RPATH_ENTRY_AND_LIB_DIR("${YB_BUILD_ROOT}/postgres/lib")
+
+  # Add the Linuxbrew library directory and the system library directory last.
+  ADD_GLOBAL_RPATH_ENTRY_AND_LIB_DIR("${LINUXBREW_LIB_DIR}")
+  ADD_GLOBAL_RPATH_ENTRY_AND_LIB_DIR("/usr/lib64")
 endif()
 
 message("Linker flags for executables: ${CMAKE_EXE_LINKER_FLAGS}")

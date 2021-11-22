@@ -260,6 +260,12 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
       SplitTabletResponsePB* resp,
       rpc::RpcContext context) override;
 
+  // Upgrade YSQL cluster (all databases) to the latest version, applying necessary migrations.
+  void UpgradeYsql(
+      const UpgradeYsqlRequestPB* req,
+      UpgradeYsqlResponsePB* resp,
+      rpc::RpcContext context) override;
+
  private:
   TabletServer* server_;
 

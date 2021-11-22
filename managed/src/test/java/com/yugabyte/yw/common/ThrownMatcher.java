@@ -54,19 +54,18 @@ public class ThrownMatcher extends TypeSafeMatcher<Runnable> {
   @Override
   public void describeTo(Description description) {
     if (!actual.equals(expected)) {
-      description.appendText("Should have thrown " + expected + " but threw " + actual);
+      description.appendText("throw " + expected);
+    } else if (expectedMessage != null) {
+      description.appendText("message '" + expectedMessage + "'");
     }
-    if (expectedMessage != null) {
-      description.appendText(
-          "Should have thrown "
-              + expected
-              + " with message '"
-              + expectedMessage
-              + "' but threw "
-              + actual
-              + " with message '"
-              + actualMessage
-              + "'");
+  }
+
+  @Override
+  protected void describeMismatchSafely(Runnable item, Description mismatchDescription) {
+    if (!actual.equals(expected)) {
+      mismatchDescription.appendText("threw " + actual);
+    } else if (expectedMessage != null) {
+      mismatchDescription.appendText("message '" + actualMessage + "'");
     }
   }
 }

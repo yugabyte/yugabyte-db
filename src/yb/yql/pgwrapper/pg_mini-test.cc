@@ -26,11 +26,12 @@
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog_constants.h"
 
+#include "yb/tools/tools_test_utils.h"
+
 #include "yb/util/logging.h"
 #include "yb/yql/pggate/pggate_flags.h"
 
 #include "yb/common/pgsql_error.h"
-#include "yb/common/row_mark.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 
@@ -38,6 +39,7 @@ using namespace std::literals;
 
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(TEST_force_master_leader_resolution);
+DECLARE_bool(TEST_timeout_non_leader_master_rpcs);
 DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_double(TEST_transaction_ignore_applying_probability_in_tests);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
@@ -65,8 +67,6 @@ DECLARE_int64(db_filter_block_size_bytes);
 DECLARE_int64(db_index_block_size_bytes);
 DECLARE_int64(tablet_force_split_threshold_bytes);
 DECLARE_int64(TEST_inject_random_delay_on_txn_status_response_ms);
-
-DECLARE_bool(enable_pg_savepoints);
 
 namespace yb {
 namespace pgwrapper {
@@ -162,6 +162,8 @@ class PgMiniTest : public PgMiniTestBase {
     const double compaction_elapsed_time_sec = (compaction_finish - compaction_start).ToSeconds();
     LOG(INFO) << "Compaction duration: " << compaction_elapsed_time_sec << " s";
   }
+
+  void RunManyConcurrentReadersTest();
 };
 
 class PgMiniSingleTServerTest : public PgMiniTest {
@@ -177,6 +179,182 @@ class PgMiniMasterFailoverTest : public PgMiniTest {
     return 3;
   }
 };
+
+// Try to change this to test follower reads.
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(FollowerReads)) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (key int PRIMARY KEY, word TEXT, phrase TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t2 (key, word, phrase) VALUES (1, 'old', 'old is gold')"));
+  ASSERT_OK(conn.Execute("INSERT INTO t2 (key, word, phrase) VALUES (2, 'NEW', 'NEW is fine')"));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t (key, value) VALUES (1, 'old')"));
+
+  ASSERT_OK(conn.Execute("SET yb_debug_log_docdb_requests = true"));
+  ASSERT_OK(conn.Execute("SET yb_read_from_followers = true"));
+
+  // Try to set a value < 2 * max_clock_skew (500ms) should fail.
+  ASSERT_NOK(conn.Execute(Format("SET yb_follower_read_staleness_ms = $0", 400)));
+  ASSERT_NOK(conn.Execute(Format("SET yb_follower_read_staleness_ms = $0", 999)));
+  // Setting a value > 2 * max_clock_skew should work.
+  ASSERT_OK(conn.Execute(Format("SET yb_follower_read_staleness_ms = $0", 1001)));
+
+  // Setting staleness to what we require for the test.
+  // Sleep and then perform an update, such that follower reads should see the old value.
+  // But current reads will see the new/updated value.
+  constexpr int32_t kStalenessMs = 4000;
+  SleepFor(MonoDelta::FromMilliseconds(kStalenessMs));
+  ASSERT_OK(conn.Execute("UPDATE t SET value = 'NEW' WHERE key = 1"));
+  auto kUpdateTime = MonoTime::Now();
+  ASSERT_OK(conn.Execute(Format("SET yb_follower_read_staleness_ms = $0", kStalenessMs)));
+
+  // Follower reads will not be enabled unless a transaction block is marked read-only.
+  {
+    ASSERT_OK(conn.Execute("BEGIN TRANSACTION"));
+    auto value = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM t WHERE key = 1"));
+    ASSERT_EQ(value, "NEW");
+    ASSERT_OK(conn.Execute("COMMIT"));
+  }
+
+  // Follower reads will be enabled for transaction block(s) marked read-only.
+  {
+    ASSERT_OK(conn.Execute("BEGIN TRANSACTION READ ONLY"));
+    auto value = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM t WHERE key = 1"));
+    ASSERT_EQ(value, "old");
+    ASSERT_OK(conn.Execute("COMMIT"));
+  }
+
+  // Follower reads will not be enabled unless the session or statement is marked read-only.
+  auto value = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM t WHERE key = 1"));
+  ASSERT_EQ(value, "NEW");
+
+  value = ASSERT_RESULT(
+      conn.FetchValue<std::string>("SELECT phrase FROM t, t2 WHERE t.value = t2.word"));
+  ASSERT_EQ(value, "NEW is fine");
+
+  // Follower reads can be enabled for a single statement with a pg hint.
+  value =
+      ASSERT_RESULT(conn.FetchValue<std::string>("/*+ Set(transaction_read_only on) */ "
+                                                 "SELECT value FROM t WHERE key = 1"));
+  ASSERT_EQ(value, "old");
+  value = ASSERT_RESULT(
+      conn.FetchValue<std::string>("/*+ Set(transaction_read_only on) */ "
+                                   "SELECT phrase FROM t, t2 WHERE t.value = t2.word"));
+  ASSERT_EQ(value, "old is gold");
+
+  // pg_hint only applies for the specific statement used.
+  // Statements following it should not enable follower reads if it is not marked read-only.
+  value = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM t WHERE key = 1"));
+  ASSERT_EQ(value, "NEW");
+
+  // pg_hint should also apply for prepared statements, if the hint is provided
+  // at PREPARE stage.
+  {
+    ASSERT_OK(
+        conn.Execute("PREPARE hinted_select_stmt (int) AS "
+                     "/*+ Set(transaction_read_only on) */ "
+                     "SELECT value FROM t WHERE key = $1"));
+    value = ASSERT_RESULT(conn.FetchValue<std::string>("EXECUTE hinted_select_stmt (1)"));
+    ASSERT_EQ(value, "old");
+    value =
+        ASSERT_RESULT(conn.FetchValue<std::string>("/*+ Set(transaction_read_only on) */ "
+                                                   "EXECUTE hinted_select_stmt (1)"));
+    ASSERT_EQ(value, "old");
+    value =
+        ASSERT_RESULT(conn.FetchValue<std::string>("/*+ Set(transaction_read_only off) */ "
+                                                   "EXECUTE hinted_select_stmt (1)"));
+    ASSERT_EQ(value, "old");
+  }
+  // Adding a pg_hint at the EXECUTE stage has no effect.
+  {
+    ASSERT_OK(
+        conn.Execute("PREPARE select_stmt (int) AS "
+                     "SELECT value FROM t WHERE key = $1"));
+    value = ASSERT_RESULT(conn.FetchValue<std::string>("EXECUTE select_stmt (1)"));
+    ASSERT_EQ(value, "NEW");
+    value =
+        ASSERT_RESULT(conn.FetchValue<std::string>("/*+ Set(transaction_read_only on) */ "
+                                                   "EXECUTE select_stmt (1)"));
+    ASSERT_EQ(value, "NEW");
+  }
+
+  // pg_hint with func()
+  // The hint may be provided when the function is defined, or when the function is
+  // called.
+  {
+    ASSERT_OK(
+        conn.Execute("CREATE FUNCTION func() RETURNS text AS"
+                     " $$ SELECT value FROM t WHERE key = 1 $$ LANGUAGE SQL"));
+    value = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT func()"));
+    ASSERT_EQ(value, "NEW");
+    value =
+        ASSERT_RESULT(conn.FetchValue<std::string>("/*+ Set(transaction_read_only off) */ "
+                                                   "SELECT func()"));
+    ASSERT_EQ(value, "NEW");
+    value =
+        ASSERT_RESULT(conn.FetchValue<std::string>("/*+ Set(transaction_read_only on) */ "
+                                                   "SELECT func()"));
+    ASSERT_EQ(value, "old");
+    ASSERT_OK(conn.Execute("DROP FUNCTION func()"));
+  }
+  {
+    ASSERT_OK(
+        conn.Execute("CREATE FUNCTION hinted_func() RETURNS text AS"
+                     " $$ "
+                     "/*+ Set(transaction_read_only on) */ "
+                     "SELECT value FROM t WHERE key = 1"
+                     " $$ LANGUAGE SQL"));
+    value = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT hinted_func()"));
+    ASSERT_EQ(value, "old");
+    value =
+        ASSERT_RESULT(conn.FetchValue<std::string>("/*+ Set(transaction_read_only off) */ "
+                                                   "SELECT hinted_func()"));
+    ASSERT_EQ(value, "old");
+    value =
+        ASSERT_RESULT(conn.FetchValue<std::string>("/*+ Set(transaction_read_only on) */ "
+                                                   "SELECT hinted_func()"));
+    ASSERT_EQ(value, "old");
+    ASSERT_OK(conn.Execute("DROP FUNCTION hinted_func()"));
+  }
+
+  ASSERT_OK(conn.Execute("SET default_transaction_read_only = true"));
+  // Follower reads will be enabled since the session is marked read-only.
+  value = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM t WHERE key = 1"));
+  ASSERT_EQ(value, "old");
+
+  // pg_hint can only mark a session from read-write to read-only.
+  // Marking a statement in a read-only session as read-write is not allowed.
+  // Writes operations fail.
+  // Read operations will be performed as if they are read-write, so will not use follower
+  // reads.
+  {
+    auto status = conn.Execute(
+        "/*+ Set(transaction_read_only off) */ "
+        "UPDATE t SET value = 'NEWER' WHERE key = 1");
+    ASSERT_EQ(PgsqlError(status), YBPgErrorCode::YB_PG_READ_ONLY_SQL_TRANSACTION) << status;
+    ASSERT_STR_CONTAINS(status.ToString(), "cannot execute UPDATE in a read-only transaction");
+
+    auto value =
+        ASSERT_RESULT(conn.FetchValue<std::string>("/*+ Set(transaction_read_only off) */ "
+                                                   "SELECT value FROM t WHERE key = 1"));
+    ASSERT_EQ(value, "old");
+  }
+
+  // After sufficient time has passed, even "follower reads" should see the newer value.
+  SleepFor(kUpdateTime + MonoDelta::FromMilliseconds(kStalenessMs) - MonoTime::Now());
+
+  ASSERT_OK(conn.Execute("SET default_transaction_read_only = false"));
+  value = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM t WHERE key = 1"));
+  ASSERT_EQ(value, "NEW");
+
+  ASSERT_OK(conn.Execute("SET default_transaction_read_only = true"));
+  value = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM t WHERE key = 1"));
+  ASSERT_EQ(value, "NEW");
+  value = ASSERT_RESULT(
+      conn.FetchValue<std::string>("/*+ Set(transaction_read_only on) */ "
+                                   "SELECT phrase FROM t, t2 WHERE t.value = t2.word"));
+  ASSERT_EQ(value, "NEW is fine");
+}
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(Simple)) {
   auto conn = ASSERT_RESULT(Connect());
@@ -1939,117 +2117,107 @@ TEST_F_EX(
   DestroyTable(table_name);
 }
 
-class PgMiniTestWithSavepoints : public PgMiniTest {
- protected:
-  void SetUp() override {
-    FLAGS_enable_pg_savepoints = true;
-    PgMiniTest::SetUp();
+void PgMiniTest::RunManyConcurrentReadersTest() {
+  constexpr int kNumConcurrentRead = 8;
+  constexpr int kMinNumNonEmptyReads = 10;
+  const std::string kTableName = "savepoints";
+  TestThreadHolder thread_holder;
+
+  std::atomic<int32_t> next_write_start{0};
+  std::atomic<int32_t> num_non_empty_reads{0};
+  CountDownLatch reader_latch(0);
+  CountDownLatch writer_latch(1);
+  std::atomic<bool> writer_thread_is_stopped{false};
+  CountDownLatch reader_threads_are_stopped(kNumConcurrentRead);
+
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (a int)", kTableName));
   }
 
-  void RunManyConcurrentReadersTest() {
-    constexpr int kNumConcurrentRead = 8;
-    constexpr int kMinNumNonEmptyReads = 10;
-    const std::string kTableName = "savepoints";
-    TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([
+      &stop = thread_holder.stop_flag(), &next_write_start, &reader_latch, &writer_latch,
+      &writer_thread_is_stopped, kTableName, this] {
+    auto conn = ASSERT_RESULT(Connect());
+    while (!stop.load(std::memory_order_acquire)) {
+      auto write_start = (next_write_start += 5);
+      ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ($1)", kTableName, write_start));
+      ASSERT_OK(conn.Execute("SAVEPOINT one"));
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ($1)", kTableName, write_start + 1));
+      ASSERT_OK(conn.Execute("SAVEPOINT two"));
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ($1)", kTableName, write_start + 2));
+      ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT one"));
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ($1)", kTableName, write_start + 3));
+      ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT one"));
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ($1)", kTableName, write_start + 4));
 
-    std::atomic<int32_t> next_write_start{0};
-    std::atomic<int32_t> num_non_empty_reads{0};
-    CountDownLatch reader_latch(0);
-    CountDownLatch writer_latch(1);
-    std::atomic<bool> writer_thread_is_stopped{false};
-    CountDownLatch reader_threads_are_stopped(kNumConcurrentRead);
+      // Start concurrent reader threads
+      reader_latch.Reset(kNumConcurrentRead * 5);
+      writer_latch.CountDown();
 
-    {
-      auto conn = ASSERT_RESULT(Connect());
-      ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (a int)", kTableName));
+      // Commit while reader threads are running
+      ASSERT_OK(conn.CommitTransaction());
+
+      // Allow reader threads to complete and halt.
+      ASSERT_TRUE(reader_latch.WaitFor(5s * kTimeMultiplier));
+      writer_latch.Reset(1);
     }
+    writer_thread_is_stopped = true;
+  });
 
+  for (int reader_idx = 0; reader_idx < kNumConcurrentRead; ++reader_idx) {
     thread_holder.AddThreadFunctor([
-        &stop = thread_holder.stop_flag(), &next_write_start, &reader_latch, &writer_latch,
-        &writer_thread_is_stopped, kTableName, this] {
+        &stop = thread_holder.stop_flag(), &next_write_start, &num_non_empty_reads,
+        &reader_latch, &writer_latch, &reader_threads_are_stopped, kTableName, this] {
       auto conn = ASSERT_RESULT(Connect());
       while (!stop.load(std::memory_order_acquire)) {
-        auto write_start = (next_write_start += 5);
-        ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-        ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ($1)", kTableName, write_start));
-        ASSERT_OK(conn.Execute("SAVEPOINT one"));
-        ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ($1)", kTableName, write_start + 1));
-        ASSERT_OK(conn.Execute("SAVEPOINT two"));
-        ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ($1)", kTableName, write_start + 2));
-        ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT one"));
-        ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ($1)", kTableName, write_start + 3));
-        ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT one"));
-        ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ($1)", kTableName, write_start + 4));
+        ASSERT_TRUE(writer_latch.WaitFor(10s * kTimeMultiplier));
 
-        // Start concurrent reader threads
-        reader_latch.Reset(kNumConcurrentRead * 5);
-        writer_latch.CountDown();
+        auto read_start = next_write_start.load();
+        auto read_end = read_start + 4;
+        auto fetch_query = strings::Substitute(
+            "SELECT * FROM $0 WHERE a BETWEEN $1 AND $2 ORDER BY a ASC",
+            kTableName, read_start, read_end);
 
-        // Commit while reader threads are running
-        ASSERT_OK(conn.CommitTransaction());
-
-        // Allow reader threads to complete and halt.
-        ASSERT_TRUE(reader_latch.WaitFor(5s * kTimeMultiplier));
-        writer_latch.Reset(1);
-      }
-      writer_thread_is_stopped = true;
-    });
-
-    for (int reader_idx = 0; reader_idx < kNumConcurrentRead; ++reader_idx) {
-      thread_holder.AddThreadFunctor([
-          &stop = thread_holder.stop_flag(), &next_write_start, &num_non_empty_reads,
-          &reader_latch, &writer_latch, &reader_threads_are_stopped, kTableName, this] {
-        auto conn = ASSERT_RESULT(Connect());
-        while (!stop.load(std::memory_order_acquire)) {
-          ASSERT_TRUE(writer_latch.WaitFor(10s * kTimeMultiplier));
-
-          auto read_start = next_write_start.load();
-          auto read_end = read_start + 4;
-          auto fetch_query = strings::Substitute(
-              "SELECT * FROM $0 WHERE a BETWEEN $1 AND $2 ORDER BY a ASC",
-              kTableName, read_start, read_end);
-
-          auto res = ASSERT_RESULT(conn.Fetch(fetch_query));
-          auto fetched_rows = PQntuples(res.get());
-          if (fetched_rows != 0) {
-            num_non_empty_reads++;
-            if (fetched_rows != 2) {
-              LOG(INFO)
-                  << "Expected to fetch (" << read_start << ") and (" << read_end << "). "
-                  << "Instead, got the following results:";
-              for (int i = 0; i < fetched_rows; ++i) {
-                auto fetched_val = CHECK_RESULT(GetInt32(res.get(), i, 0));
-                LOG(INFO) << "Result " << i << " - " << fetched_val;
-              }
+        auto res = ASSERT_RESULT(conn.Fetch(fetch_query));
+        auto fetched_rows = PQntuples(res.get());
+        if (fetched_rows != 0) {
+          num_non_empty_reads++;
+          if (fetched_rows != 2) {
+            LOG(INFO)
+                << "Expected to fetch (" << read_start << ") and (" << read_end << "). "
+                << "Instead, got the following results:";
+            for (int i = 0; i < fetched_rows; ++i) {
+              auto fetched_val = CHECK_RESULT(GetInt32(res.get(), i, 0));
+              LOG(INFO) << "Result " << i << " - " << fetched_val;
             }
-            EXPECT_EQ(fetched_rows, 2);
-            auto first_fetched_val = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
-            EXPECT_EQ(read_start, first_fetched_val);
-            auto second_fetched_val = ASSERT_RESULT(GetInt32(res.get(), 1, 0));
-            EXPECT_EQ(read_start + 4, second_fetched_val);
           }
-          reader_latch.CountDown(1);
+          EXPECT_EQ(fetched_rows, 2);
+          auto first_fetched_val = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
+          EXPECT_EQ(read_start, first_fetched_val);
+          auto second_fetched_val = ASSERT_RESULT(GetInt32(res.get(), 1, 0));
+          EXPECT_EQ(read_start + 4, second_fetched_val);
         }
-        reader_threads_are_stopped.CountDown(1);
-      });
-    }
-
-    std::this_thread::sleep_for(60s);
-    thread_holder.stop_flag().store(true, std::memory_order_release);
-    while (!writer_thread_is_stopped.load(std::memory_order_acquire) ||
-           reader_threads_are_stopped.count() != 0) {
-      reader_latch.Reset(0);
-      writer_latch.Reset(0);
-      std::this_thread::sleep_for(10ms * kTimeMultiplier);
-    }
-    thread_holder.Stop();
-    EXPECT_GE(num_non_empty_reads, kMinNumNonEmptyReads);
+        reader_latch.CountDown(1);
+      }
+      reader_threads_are_stopped.CountDown(1);
+    });
   }
-};
 
-TEST_F_EX(
-    PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigInsertWithAbortedIntentsAndRestart),
-    PgMiniTestWithSavepoints) {
+  std::this_thread::sleep_for(60s);
+  thread_holder.stop_flag().store(true, std::memory_order_release);
+  while (!writer_thread_is_stopped.load(std::memory_order_acquire) ||
+          reader_threads_are_stopped.count() != 0) {
+    reader_latch.Reset(0);
+    writer_latch.Reset(0);
+    std::this_thread::sleep_for(10ms * kTimeMultiplier);
+  }
+  thread_holder.Stop();
+  EXPECT_GE(num_non_empty_reads, kMinNumNonEmptyReads);
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(BigInsertWithAbortedIntentsAndRestart)) {
   FLAGS_apply_intents_task_injected_delay_ms = 200;
 
   constexpr int64_t kRowNumModToAbort = 7;
@@ -2097,34 +2265,87 @@ TEST_F_EX(
   }
 }
 
-TEST_F_EX(
+TEST_F(
     PgMiniTest,
-    YB_DISABLE_TEST_IN_SANITIZERS(TestConcurrentReadersMaskAbortedIntentsWithApplyDelay),
-    PgMiniTestWithSavepoints) {
+    YB_DISABLE_TEST_IN_SANITIZERS(TestConcurrentReadersMaskAbortedIntentsWithApplyDelay)) {
   ASSERT_OK(cluster_->WaitForAllTabletServers());
   std::this_thread::sleep_for(10s);
   FLAGS_apply_intents_task_injected_delay_ms = 10000;
   RunManyConcurrentReadersTest();
 }
 
-TEST_F_EX(
+TEST_F(
     PgMiniTest,
-    YB_DISABLE_TEST_IN_SANITIZERS(TestConcurrentReadersMaskAbortedIntentsWithResponseDelay),
-    PgMiniTestWithSavepoints) {
+    YB_DISABLE_TEST_IN_SANITIZERS(TestConcurrentReadersMaskAbortedIntentsWithResponseDelay)) {
   ASSERT_OK(cluster_->WaitForAllTabletServers());
   std::this_thread::sleep_for(10s);
   FLAGS_TEST_inject_random_delay_on_txn_status_response_ms = 30;
   RunManyConcurrentReadersTest();
 }
 
-TEST_F_EX(
+TEST_F(
     PgMiniTest,
-    YB_DISABLE_TEST_IN_SANITIZERS(TestConcurrentReadersMaskAbortedIntentsWithUpdateDelay),
-    PgMiniTestWithSavepoints) {
+    YB_DISABLE_TEST_IN_SANITIZERS(TestConcurrentReadersMaskAbortedIntentsWithUpdateDelay)) {
   ASSERT_OK(cluster_->WaitForAllTabletServers());
   std::this_thread::sleep_for(10s);
   FLAGS_TEST_txn_participant_inject_latency_on_apply_update_txn_ms = 30;
   RunManyConcurrentReadersTest();
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(TestSerializableStrongReadLockNotAborted)) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (a int PRIMARY KEY, b int) SPLIT INTO 1 TABLETS"));
+  for (int i = 0; i < 100; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO t VALUES ($0, $0)", i));
+  }
+
+  auto conn1 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+  ASSERT_OK(conn1.Execute("SAVEPOINT A"));
+  auto res1 = ASSERT_RESULT(conn1.FetchFormat("SELECT b FROM t WHERE a = $0", 90));
+  ASSERT_OK(conn1.Execute("ROLLBACK TO A"));
+
+  auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+  auto update_status = conn2.ExecuteFormat("UPDATE t SET b = $0 WHERE a = $1", 1000, 90);
+
+  auto commit_status = conn1.CommitTransaction();
+
+  EXPECT_TRUE(commit_status.ok() ^ update_status.ok())
+      << "Expected exactly one of commit of first transaction or update of second transaction to "
+      << "fail.\n"
+      << "Commit status: " << commit_status << ".\n"
+      << "Update status: " << update_status << ".\n";
+}
+
+// Use special mode when non leader master times out all rpcs.
+// Then step down master leader and perform backup.
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(NonRespondingMaster),
+          PgMiniMasterFailoverTest) {
+  FLAGS_TEST_timeout_non_leader_master_rpcs = true;
+  tools::TmpDirProvider tmp_dir;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE DATABASE test"));
+  conn = ASSERT_RESULT(ConnectToDB("test"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t (i INT)"));
+
+  auto peer = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->tablet_peer();
+  LOG(INFO) << "Old leader: " << peer->permanent_uuid();
+  ASSERT_OK(StepDown(peer, /* new_leader_uuid */ std::string(), ForceStepDown::kTrue));
+  ASSERT_OK(WaitFor([this, peer]() -> Result<bool> {
+    auto leader = VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->tablet_peer();
+    if (leader->permanent_uuid() != peer->permanent_uuid()) {
+      LOG(INFO) << "New leader: " << leader->permanent_uuid();
+      return true;
+    }
+    return false;
+  }, 10s, "Wait leader change"));
+
+  ASSERT_OK(tools::RunBackupCommand(
+      pg_host_port(), cluster_->GetMasterAddresses(), *tmp_dir,
+      {"--backup_location", tmp_dir / "backup", "--no_upload", "--keyspace", "ysql.test",
+       "create"}));
 }
 
 } // namespace pgwrapper

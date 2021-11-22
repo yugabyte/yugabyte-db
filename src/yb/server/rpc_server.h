@@ -81,7 +81,7 @@ class RpcServer {
 
   std::string ToString() const;
 
-  const rpc::ServicePool* service_pool(const std::string& service_name) const;
+  const rpc::ServicePool* TEST_service_pool(const std::string& service_name) const;
 
  private:
   enum ServerState {

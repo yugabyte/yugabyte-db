@@ -2,27 +2,30 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.models.helpers.CommonUtils.nowWithoutMillis;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
 import com.yugabyte.yw.common.alerts.AlertChannelParams;
+import com.yugabyte.yw.common.alerts.AlertChannelSlackParams;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
+import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Alert;
+import com.yugabyte.yw.models.AlertChannel;
 import com.yugabyte.yw.models.AlertConfiguration;
+import com.yugabyte.yw.models.AlertConfigurationTarget;
 import com.yugabyte.yw.models.AlertConfigurationThreshold;
 import com.yugabyte.yw.models.AlertDefinition;
-import com.yugabyte.yw.models.AlertConfigurationTarget;
-import com.yugabyte.yw.models.AlertLabel;
-import com.yugabyte.yw.models.AlertChannel;
 import com.yugabyte.yw.models.AlertDestination;
+import com.yugabyte.yw.models.AlertLabel;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
@@ -37,7 +40,6 @@ import com.yugabyte.yw.models.common.Condition;
 import com.yugabyte.yw.models.common.Unit;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
-
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
 import java.util.Collections;
@@ -155,7 +157,7 @@ public class ModelFactory {
 
   public static Universe createUniverse(
       String universeName, long customerId, Common.CloudType cloudType) {
-    return createUniverse(universeName, UUID.randomUUID(), 1L, cloudType);
+    return createUniverse(universeName, UUID.randomUUID(), customerId, cloudType);
   }
 
   public static Universe createUniverse(
@@ -243,6 +245,19 @@ public class ModelFactory {
     return Backup.create(customerUUID, params);
   }
 
+  public static Backup createExpiredBackupWithScheduleUUID(
+      UUID customerUUID, UUID universeUUID, UUID configUUID, UUID scheduleUUID) {
+    BackupTableParams params = new BackupTableParams();
+    params.storageConfigUUID = configUUID;
+    params.universeUUID = universeUUID;
+    params.setKeyspace("foo");
+    params.setTableName("bar");
+    params.tableUUID = UUID.randomUUID();
+    params.scheduleUUID = scheduleUUID;
+    params.timeBeforeDelete = -100L;
+    return Backup.create(customerUUID, params);
+  }
+
   public static Backup createBackupWithExpiry(
       UUID customerUUID, UUID universeUUID, UUID configUUID) {
     BackupTableParams params = new BackupTableParams();
@@ -288,6 +303,7 @@ public class ModelFactory {
             .setDescription("alertConfiguration description")
             .setCustomerUUID(customer.getUuid())
             .setTargetType(AlertConfiguration.TargetType.UNIVERSE)
+            .setCreateTime(nowWithoutMillis())
             .setThresholds(
                 ImmutableMap.of(
                     AlertConfiguration.Severity.SEVERE,
@@ -408,10 +424,25 @@ public class ModelFactory {
   }
 
   public static AlertChannel createEmailChannel(UUID customerUUID, String name) {
+    return createAlertChannel(customerUUID, name, createEmailChannelParams());
+  }
+
+  public static AlertChannel createSlackChannel(UUID customerUUID, String name) {
+    return createAlertChannel(customerUUID, name, createSlackChannelParams());
+  }
+
+  public static AlertChannelEmailParams createEmailChannelParams() {
     AlertChannelEmailParams params = new AlertChannelEmailParams();
-    params.recipients = Collections.singletonList("test@test.com");
-    params.smtpData = EmailFixtures.createSmtpData();
-    return createAlertChannel(customerUUID, name, params);
+    params.setRecipients(Collections.singletonList("test@test.com"));
+    params.setSmtpData(EmailFixtures.createSmtpData());
+    return params;
+  }
+
+  public static AlertChannelSlackParams createSlackChannelParams() {
+    AlertChannelSlackParams params = new AlertChannelSlackParams();
+    params.setUsername("channel");
+    params.setWebhookUrl("http://www.google.com");
+    return params;
   }
 
   public static AlertDestination createAlertDestination(

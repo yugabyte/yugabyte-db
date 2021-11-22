@@ -285,10 +285,8 @@ class PgApiImpl {
   CHECKED_STATUS GetTableDesc(const PgObjectId& table_id,
                               PgTableDesc **handle);
 
-  CHECKED_STATUS GetColumnInfo(YBCPgTableDesc table_desc,
-                               int16_t attr_number,
-                               bool *is_primary,
-                               bool *is_hash);
+  Result<YBCPgColumnInfo> GetColumnInfo(YBCPgTableDesc table_desc,
+                                        int16_t attr_number);
 
   CHECKED_STATUS DmlModifiesRow(PgStatement *handle, bool *modifies_row);
 
@@ -326,8 +324,6 @@ class PgApiImpl {
                               bool if_exist,
                               PgStatement **handle);
 
-  CHECKED_STATUS AsyncUpdateIndexPermissions(const PgObjectId& indexed_table_id);
-
   CHECKED_STATUS ExecPostponedDdlStmt(PgStatement *handle);
 
   CHECKED_STATUS BackfillIndex(const PgObjectId& table_id);
@@ -358,6 +354,11 @@ class PgApiImpl {
       YBCPgExpr attr_value_end);
   CHECKED_STATUS DmlBindColumnCondIn(YBCPgStatement handle, int attr_num, int n_attr_values,
       YBCPgExpr *attr_value);
+
+  CHECKED_STATUS DmlBindHashCode(PgStatement *handle, bool start_valid,
+                                bool start_inclusive, uint64_t start_hash_val,
+                                bool end_valid, bool end_inclusive,
+                                uint64_t end_hash_val);
 
   // Binding Tables: Bind the whole table in a statement.  Do not use with BindColumn.
   CHECKED_STATUS DmlBindTable(YBCPgStatement handle);
@@ -398,6 +399,7 @@ class PgApiImpl {
   CHECKED_STATUS StartOperationsBuffering();
   CHECKED_STATUS StopOperationsBuffering();
   void ResetOperationsBuffering();
+  CHECKED_STATUS FlushBufferedOperations();
 
   //------------------------------------------------------------------------------------------------
   // Insert.
@@ -471,13 +473,16 @@ class PgApiImpl {
   CHECKED_STATUS BeginTransaction();
   CHECKED_STATUS RecreateTransaction();
   CHECKED_STATUS RestartTransaction();
+  CHECKED_STATUS MaybeResetTransactionReadPoint();
   CHECKED_STATUS CommitTransaction();
-  CHECKED_STATUS AbortTransaction();
+  void AbortTransaction();
   CHECKED_STATUS SetTransactionIsolationLevel(int isolation);
   CHECKED_STATUS SetTransactionReadOnly(bool read_only);
   CHECKED_STATUS SetTransactionDeferrable(bool deferrable);
+  CHECKED_STATUS EnableFollowerReads(bool enable_follower_reads, int32_t staleness_ms);
   CHECKED_STATUS EnterSeparateDdlTxnMode();
-  CHECKED_STATUS ExitSeparateDdlTxnMode(bool success);
+  CHECKED_STATUS ExitSeparateDdlTxnMode();
+  void ClearSeparateDdlTxnMode();
   CHECKED_STATUS SetActiveSubTransaction(SubTransactionId id);
   CHECKED_STATUS RollbackSubTransaction(SubTransactionId id);
 
@@ -530,7 +535,7 @@ class PgApiImpl {
   // Sets the specified timeout in the rpc service.
   void SetTimeout(int timeout_ms);
 
-  Result<client::YBClient::TabletServersInfo> ListTabletServers();
+  Result<client::TabletServersInfo> ListTabletServers();
 
  private:
   // Control variables.

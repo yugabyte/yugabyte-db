@@ -31,8 +31,8 @@ You must have a [multi-zonal](https://cloud.google.com/kubernetes-engine/docs/co
 
 The YugabyteDB Helm Chart has been tested with the following software versions:
 
-- GKE running Kubernetes 1.14 (or later) with nodes such that a total of 12 CPU cores and 45 GB RAM can be allocated to YugabyteDB. This can be three nodes with 4 CPU core and 15 GB RAM allocated to YugabyteDB. `n1-standard-8` is the minimum instance type that meets these criteria.
-- Helm 3.0 or later
+- GKE running Kubernetes 1.18 (or later) with nodes such that a total of 12 CPU cores and 45 GB RAM can be allocated to YugabyteDB. This can be three nodes with 4 CPU core and 15 GB RAM allocated to YugabyteDB. `n1-standard-8` is the minimum instance type that meets these criteria.
+- Helm 3.4 or later
 - YugabyteDB docker image (`yugabytedb/yugabyte`) 2.1.0 or later
 - For optimal performance, ensure you've set the appropriate [system limits using `ulimit`](../../../../manual-deployment/system-config/#ulimits) on each node in your Kubernetes cluster.
 
@@ -66,7 +66,7 @@ First, check to see if Helm is installed by using the Helm version command.
 $ helm version
 ```
 
-For Helm 3, you should see something similar to the following output. Note that the `tiller` server side component has been removed in Helm 3.
+You should see something similar to the following output. Note that the `tiller` server side component has been removed in Helm 3.
 
 ```output
 version.BuildInfo{Version:"v3.0.3", GitCommit:"ac925eb7279f4a6955df663a0128044a8a6b7593", GitTreeState:"clean", GoVersion:"go1.13.6"}
@@ -163,7 +163,7 @@ $ helm search repo yugabytedb/yugabyte
 
 ```output
 NAME                    CHART VERSION   APP VERSION     DESCRIPTION                                       
-yugabytedb/yugabyte     2.9.0           2.9.0.0-b4      YugabyteDB is the high-performance distributed ...
+yugabytedb/yugabyte     2.9.1           2.9.1.0-b140    YugabyteDB is the high-performance distributed ...
 ```
 
 ### Create override files
@@ -265,7 +265,7 @@ gflags:
 
 Install YugabyteDB in the Kubernetes cluster using the commands below.
 
-For Helm 3, you have to first create the 3 namespaces.
+For Helm, you have to first create the 3 namespaces.
 
 ```sh
 $ kubectl create namespace yb-demo-us-central1-a

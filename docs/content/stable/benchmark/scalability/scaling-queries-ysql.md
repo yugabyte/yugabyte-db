@@ -63,7 +63,7 @@ $ sudo apt install default-jre
 The [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) was downloaded on to these machines as shown below.
 
 ```sh
-$ wget -P target https://github.com/YugaByte/yb-sample-apps/releases/download/1.3.1/yb-sample-apps.jar
+$ wget -P target https://github.com/yugabyte/yb-sample-apps/releases/download/1.3.9/yb-sample-apps.jar
 ```
 
 This benchmark program can take a list of servers in the database cluster, and then perform random operations across these servers. In order to do this, we set up an environment variable with the list of comma-separated `host:port` entries of the 100 database servers as shown below.
@@ -177,5 +177,5 @@ To those new to the Raft consensus protocol, the simplest explanation is that it
 
 ## Next steps
 
-You can visit the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) GitHub repository to try out more experiments on your own local setups. After you set up a cluster and test your favorite application, share your feedback and suggestions with other users on the [YugabyteDB Community Slack](http://www.yugabyte.com/slack).
+You can visit the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) GitHub repository to try out more experiments on your own local setups. After you set up a cluster and test your favorite application, share your feedback and suggestions with other users on the [YugabyteDB Community Slack](https://www.yugabyte.com/slack).
 

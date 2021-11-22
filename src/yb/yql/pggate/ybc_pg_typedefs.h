@@ -93,7 +93,8 @@ typedef enum PgDataType {
   YB_YQL_DATA_TYPE_UINT8 = 100,
   YB_YQL_DATA_TYPE_UINT16 = 101,
   YB_YQL_DATA_TYPE_UINT32 = 102,
-  YB_YQL_DATA_TYPE_UINT64 = 103
+  YB_YQL_DATA_TYPE_UINT64 = 103,
+  YB_YQL_DATA_TYPE_GIN_NULL = 104,
 } YBCPgDataType;
 
 // Datatypes that are internally designated to be unsupported.
@@ -287,20 +288,22 @@ typedef struct PgExecParameters {
   bool limit_use_default = true;
   int rowmark = -1;
   char *bfinstr = NULL;
-  uint64_t read_time = 0;
+  uint64_t* statement_read_time = NULL;
   char *partition_key = NULL;
   bool read_from_followers = false;
   PgExecOutParam *out_param = NULL;
+  bool is_index_backfill = false;
 #else
   uint64_t limit_count;
   uint64_t limit_offset;
   bool limit_use_default;
   int rowmark;
   char *bfinstr;
-  uint64_t read_time;
+  uint64_t* statement_read_time;
   char *partition_key;
   bool read_from_followers;
   PgExecOutParam *out_param;
+  bool is_index_backfill;
 #endif
 } YBCPgExecParameters;
 
@@ -343,9 +346,9 @@ typedef struct PgServerDescriptor {
   const char *cloud;
   const char *region;
   const char *zone;
-  const char *publicIp;
-  bool isPrimary;
-  uint16_t pgPort;
+  const char *public_ip;
+  bool is_primary;
+  uint16_t pg_port;
 } YBCServerDescriptor;
 
 typedef struct PgColumnInfo {

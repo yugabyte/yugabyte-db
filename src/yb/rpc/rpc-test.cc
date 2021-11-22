@@ -42,17 +42,14 @@
 #include <boost/ptr_container/ptr_vector.hpp>
 
 #include <gtest/gtest.h>
-#include <gtest/gtest-param-test.h>
 
 #if defined(TCMALLOC_ENABLED)
 #include <gperftools/heap-profiler.h>
 #endif
 
-#include <lz4.h>
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/human_readable.h"
-#include "yb/gutil/strings/join.h"
 
 #include "yb/rpc/compressed_stream.h"
 #include "yb/rpc/secure_stream.h"
@@ -281,7 +278,7 @@ TEST_F(TestRpc, TestInvalidMethodCall) {
       rpc_test::CalculatorServiceIf::static_service_name(), "ThisMethodDoesNotExist");
   Status s = DoTestSyncCall(&p, &method);
   ASSERT_TRUE(s.IsRemoteError()) << "unexpected status: " << s.ToString();
-  ASSERT_STR_CONTAINS(s.ToString(), "bad method");
+  ASSERT_STR_CONTAINS(s.ToString(), "invalid method name");
 }
 
 // Test that the error message returned when connecting to the wrong service

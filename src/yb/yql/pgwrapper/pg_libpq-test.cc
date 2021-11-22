@@ -2153,7 +2153,7 @@ TEST_F_EX(PgLibPqTest,
   // server.
   for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
     ExternalTabletServer* ts = cluster_->tablet_server(i);
-    const string pg_pid_file = JoinPathSegments(ts->GetDataDir(), "pg_data",
+    const string pg_pid_file = JoinPathSegments(ts->GetRootDir(), "pg_data",
                                                 "postmaster.pid");
 
     LOG(INFO) << "pg_pid_file: " << pg_pid_file;
@@ -2316,6 +2316,37 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(PagingReadRestart)) {
   std::this_thread::sleep_for(10s);
   runner.Stop();
   ASSERT_FALSE(runner.HasError());
+}
+
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(CollationRangePresplit)) {
+  const string kDatabaseName ="yugabyte";
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+  ASSERT_OK(conn.Execute("CREATE TABLE collrange(a text COLLATE \"en-US-x-icu\", "
+                         "PRIMARY KEY(a ASC)) SPLIT AT VALUES (('100'), ('200'))"));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseName, "collrange"));
+
+  // Validate that number of tablets created is 3.
+  ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
+  ASSERT_EQ(tablets.size(), 3);
+  // Partition key length of plain encoded '100' or '200'.
+  const size_t partition_key_length = 7;
+  // When a text value is collation encoded, we need at least 3 extra bytes.
+  const size_t min_collation_extra_bytes = 3;
+  for (const auto& tablet : tablets) {
+    ASSERT_TRUE(tablet.has_partition());
+    auto partition_start = tablet.partition().partition_key_start();
+    auto partition_end = tablet.partition().partition_key_end();
+    LOG(INFO) << "partition_start: " << b2a_hex(partition_start)
+              << ", partition_end: " << b2a_hex(partition_end);
+    ASSERT_TRUE(partition_start.empty() ||
+                partition_start.size() >= partition_key_length + min_collation_extra_bytes);
+    ASSERT_TRUE(partition_end.empty() ||
+                partition_end.size() >= partition_key_length + min_collation_extra_bytes);
+  }
 }
 
 } // namespace pgwrapper

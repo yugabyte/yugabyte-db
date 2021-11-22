@@ -28,7 +28,6 @@
 #include "yb/util/logging.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
-#include "yb/util/version_info.h"
 #include "yb/util/thread.h"
 
 #include "yb/util/net/net_util.h"
@@ -44,6 +43,8 @@ bool yb_debug_log_docdb_requests = false;
 bool yb_non_ddl_txn_for_sys_tables_allowed = false;
 
 bool yb_format_funcs_include_yb_metadata = false;
+
+bool yb_force_global_transaction = false;
 
 namespace yb {
 
@@ -299,6 +300,33 @@ void YBCResolveHostname() {
     LOG(WARNING) << "Failed to get fully qualified domain name of the local hostname: "
                  << status;
   }
+}
+
+inline double YBCGetNumHashBuckets() {
+  return 64.0;
+}
+
+/* Gets the number of hash buckets for a DocDB table */
+inline double YBCGetHashBucketFromValue(uint32_t hash_val) {
+  /*
+  * Since hash values are 16 bit for now and there are (1 << 6)
+  * buckets, we must right shift a hash value by 16 - 6 = 10 to
+  * obtain its bucket number
+  */
+  return hash_val >> 10;
+}
+
+double YBCEvalHashValueSelectivity(int32_t hash_low, int32_t hash_high) {
+      hash_high = hash_high <= USHRT_MAX ? hash_high : USHRT_MAX;
+      hash_high = hash_high >= 0 ? hash_high : 0;
+      hash_low = hash_low >= 0 ? hash_low : 0;
+      hash_low = hash_low <= USHRT_MAX ? hash_low : USHRT_MAX;
+
+      uint32_t greatest_bucket = YBCGetHashBucketFromValue(hash_high);
+      uint32_t lowest_bucket = YBCGetHashBucketFromValue(hash_low);
+      return hash_high >= hash_low ?
+          ((greatest_bucket - lowest_bucket + 1.0) / YBCGetNumHashBuckets())
+          : 0.0;
 }
 
 void YBCInitThreading() {

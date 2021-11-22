@@ -19,6 +19,7 @@ import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import java.util.UUID;
 import org.junit.Before;
@@ -102,6 +103,37 @@ public class SchedulerTest extends FakeDBApplication {
     assertEquals(CustomerTask.TaskType.Delete, task.getType());
     verify(mockCommissioner, times(1)).submit(any(), any());
     assertEquals(1, Backup.getExpiredBackups().get(defaultCustomer).size());
+  }
+
+  @Test
+  public void schedulerDeletesExpiredBackupsCreatedFromSchedule() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(Matchers.any(), Matchers.any())).thenReturn(fakeTaskUUID);
+    Universe universe = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    Schedule s =
+        ModelFactory.createScheduleBackup(
+            defaultCustomer.uuid, universe.universeUUID, s3StorageConfig.configUUID);
+    UUID fakeScheduleUUID = s.getScheduleUUID();
+    for (int i = 0; i < 5; i++) {
+      Backup backup =
+          ModelFactory.createExpiredBackupWithScheduleUUID(
+              defaultCustomer.uuid,
+              universe.universeUUID,
+              s3StorageConfig.configUUID,
+              fakeScheduleUUID);
+      backup.transitionState(Backup.BackupState.Completed);
+    }
+    for (int i = 0; i < 2; i++) {
+      Backup backup =
+          ModelFactory.createBackupWithExpiry(
+              defaultCustomer.uuid, universe.universeUUID, s3StorageConfig.configUUID);
+      backup.transitionState(Backup.BackupState.Completed);
+    }
+    scheduler.scheduleRunner();
+    assertEquals(7, Backup.getExpiredBackups().get(defaultCustomer).size());
+
+    // 4 times for deleting expired backups and 1 time for creating backup, total 5 calls.
+    verify(mockCommissioner, times(5)).submit(any(), any());
   }
 
   public static void setUniversePaused(boolean value, Universe universe) {

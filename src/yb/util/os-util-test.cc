@@ -35,7 +35,6 @@
 #include <gtest/gtest.h>
 
 #include "yb/gutil/strings/substitute.h"
-#include "yb/util/errno.h"
 #include "yb/util/test_macros.h"
 
 using std::string;

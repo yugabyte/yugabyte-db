@@ -11,7 +11,6 @@ import com.yugabyte.yw.cloud.GCPInitializer;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.PlatformExecutorFactory;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.CloudQueryHelper;
@@ -21,14 +20,15 @@ import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.PlatformExecutorFactory;
+import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.TableManager;
-import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.metrics.MetricService;
-import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
@@ -42,7 +42,6 @@ import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
 import org.yb.client.GetMasterClusterConfigResponse;
-import org.yb.client.IsServerReadyResponse;
 import org.yb.client.YBClient;
 import org.yb.master.Master;
 import play.Application;
@@ -52,7 +51,7 @@ import play.modules.swagger.SwaggerModule;
 import play.test.Helpers;
 
 public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseTest {
-  private int maxRetryCount = 200;
+  private static final int MAX_RETRY_COUNT = 2000;
   protected AccessManager mockAccessManager;
   protected NetworkManager mockNetworkManager;
   protected ConfigHelper mockConfigHelper;
@@ -79,6 +78,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected Customer defaultCustomer;
   protected Provider defaultProvider;
   protected Provider gcpProvider;
+  protected Provider onPremProvider;
 
   protected Commissioner commissioner;
 
@@ -88,12 +88,12 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     defaultCustomer = ModelFactory.testCustomer();
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
     gcpProvider = ModelFactory.gcpProvider(defaultCustomer);
-    metricService = new MetricService();
-    alertService = new AlertService();
-    alertDefinitionService = new AlertDefinitionService(alertService);
-    SettableRuntimeConfigFactory configFactory = new SettableRuntimeConfigFactory(app.config());
-    alertConfigurationService =
-        new AlertConfigurationService(alertDefinitionService, configFactory);
+    onPremProvider = ModelFactory.onpremProvider(defaultCustomer);
+    metricService = app.injector().instanceOf(MetricService.class);
+    alertService = app.injector().instanceOf(AlertService.class);
+    alertDefinitionService = app.injector().instanceOf(AlertDefinitionService.class);
+    RuntimeConfigFactory configFactory = app.injector().instanceOf(RuntimeConfigFactory.class);
+    alertConfigurationService = app.injector().instanceOf(AlertConfigurationService.class);
 
     when(mockBaseTaskDependencies.getApplication()).thenReturn(app);
     when(mockBaseTaskDependencies.getConfig()).thenReturn(app.config());
@@ -159,7 +159,6 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   }
 
   public void mockWaits(YBClient mockClient, int version) {
-    IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
     try {
       // PlacementUtil mock.
       Master.SysClusterConfigEntryPB.Builder configBuilder =
@@ -174,13 +173,13 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
 
   protected TaskInfo waitForTask(UUID taskUUID) throws InterruptedException {
     int numRetries = 0;
-    while (numRetries < maxRetryCount) {
+    while (numRetries < MAX_RETRY_COUNT) {
       TaskInfo taskInfo = TaskInfo.get(taskUUID);
       if (taskInfo.getTaskState() == TaskInfo.State.Success
           || taskInfo.getTaskState() == TaskInfo.State.Failure) {
         return taskInfo;
       }
-      Thread.sleep(1000);
+      Thread.sleep(100);
       numRetries++;
     }
     throw new RuntimeException(

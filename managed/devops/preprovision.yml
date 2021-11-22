@@ -89,3 +89,15 @@
       when: >
         'policycoreutils-python' not in ansible_facts.packages and
         ansible_distribution == 'CentOS' and ansible_distribution_major_version == '7'
+    - name: Accept target in firewalld on Oracle Linux
+      raw: sudo firewall-cmd --set-target=ACCEPT --permanent && sudo systemctl restart firewalld
+      when: ansible_distribution == 'OracleLinux'
+    # Registering custom SSH port with SELinux sometimes fails without this
+    - name: clean dnf
+      shell:
+        cmd: sudo dnf clean all
+      when: ansible_distribution == 'OracleLinux' and ansible_distribution_major_version == '8'
+    - name: install latest version of selinux-policy
+      shell:
+        cmd: sudo dnf reinstall --refresh -y selinux-policy
+      when: ansible_distribution == 'OracleLinux' and ansible_distribution_major_version == '8'

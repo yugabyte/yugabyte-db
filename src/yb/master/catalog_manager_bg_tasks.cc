@@ -31,16 +31,13 @@
 
 #include <memory>
 
-#include "yb/master/master_service_base.h"
 #include "yb/util/logging.h"
 #include "yb/util/mutex.h"
 
 #include "yb/master/catalog_manager_bg_tasks.h"
 #include "yb/master/catalog_manager.h"
-#include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/cluster_balance.h"
-#include "yb/master/encryption_manager.h"
 #include "yb/util/flag_tags.h"
 
 using std::shared_ptr;
@@ -57,6 +54,8 @@ DEFINE_int32(load_balancer_initial_delay_secs, yb::master::kDelayAfterFailoverSe
 DEFINE_bool(sys_catalog_respect_affinity_task, true,
             "Whether the master sys catalog tablet respects cluster config preferred zones "
             "and sends step down requests to a preferred leader.");
+
+DECLARE_bool(enable_ysql);
 
 namespace yb {
 namespace master {
@@ -174,15 +173,14 @@ void CatalogManagerBgTasks::Run() {
         }
       }
 
-      // Start the tablespace background task.
-      catalog_manager_->StartTablespaceBgTaskIfStopped();
+      if (FLAGS_enable_ysql) {
+        // Start the tablespace background task.
+        catalog_manager_->StartTablespaceBgTaskIfStopped();
+      }
     } else {
       // Reset Metrics when leader_status is not ok.
       catalog_manager_->ResetMetrics();
     }
-    WARN_NOT_OK(catalog_manager_->encryption_manager_->
-                GetUniverseKeyRegistry(&catalog_manager_->master_->proxy_cache()),
-                "Could not schedule GetUniverseKeyRegistry task.");
     // Wait for a notification or a timeout expiration.
     //  - CreateTable will call Wake() to notify about the tablets to add
     //  - HandleReportedTablet/ProcessPendingAssignments will call WakeIfHasPendingUpdates()

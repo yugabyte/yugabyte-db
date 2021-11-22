@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: cloud-billing-costs
     parent: cloud-admin
-    weight: 300
+    weight: 400
 isTocNested: true
 showAsideToc: true
 ---
@@ -35,7 +35,7 @@ Instance vCPU capacity makes up the majority of your bill, and is the easiest to
 | Data transfer – Cross Region (Other regions) | 10 GB |
 | Data transfer – Internet | 10 GB |
 
-You can see the approximate cost for your vCPUs when creating and editing clusters, as shown in the following illustration. Refer to [Creating a cluster](../../cloud-basics/create-clusters) and [Scale and configure clusters](../../cloud-clusters/configure-clusters).
+You can see the approximate cost for your vCPUs when [creating](../../cloud-basics/create-clusters) and [scaling](../../cloud-clusters/configure-clusters) clusters, as shown in the following illustration. **+ Usage** in this context refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. 
 
 ![Cloud Cluster Settings Edit Infrastructure](/images/yb-cloud/cloud-clusters-settings-edit.png)
 

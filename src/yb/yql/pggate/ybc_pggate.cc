@@ -431,9 +431,8 @@ YBCStatus YBCPgGetTableDesc(const YBCPgOid database_oid,
 
 YBCStatus YBCPgGetColumnInfo(YBCPgTableDesc table_desc,
                              int16_t attr_number,
-                             bool *is_primary,
-                             bool *is_hash) {
-  return ToYBCStatus(pgapi->GetColumnInfo(table_desc, attr_number, is_primary, is_hash));
+                             YBCPgColumnInfo *column_info) {
+  return ExtractValueFromResult(pgapi->GetColumnInfo(table_desc, attr_number), column_info);
 }
 
 YBCStatus YBCPgSetCatalogCacheVersion(YBCPgStatement handle,
@@ -547,13 +546,6 @@ YBCStatus YBCPgNewDropIndex(const YBCPgOid database_oid,
   return ToYBCStatus(pgapi->NewDropIndex(index_id, if_exist, handle));
 }
 
-YBCStatus YBCPgAsyncUpdateIndexPermissions(
-    const YBCPgOid database_oid,
-    const YBCPgOid indexed_table_oid) {
-  const PgObjectId indexed_table_id(database_oid, indexed_table_oid);
-  return ToYBCStatus(pgapi->AsyncUpdateIndexPermissions(indexed_table_id));
-}
-
 YBCStatus YBCPgExecPostponedDdlStmt(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecPostponedDdlStmt(handle));
 }
@@ -587,6 +579,15 @@ YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle, int attr_num, int n_at
   return ToYBCStatus(pgapi->DmlBindColumnCondIn(handle, attr_num, n_attr_values, attr_values));
 }
 
+YBCStatus YBCPgDmlBindHashCodes(YBCPgStatement handle, bool start_valid,
+                                 bool start_inclusive, uint64_t start_hash_val,
+                                 bool end_valid, bool end_inclusive,
+                                 uint64_t end_hash_val) {
+  return ToYBCStatus(pgapi->DmlBindHashCode(handle, start_valid,
+                      start_inclusive, start_hash_val, end_valid,
+                      end_inclusive, end_hash_val));
+}
+
 YBCStatus YBCPgDmlBindTable(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->DmlBindTable(handle));
 }
@@ -616,6 +617,10 @@ YBCStatus YBCPgStopOperationsBuffering() {
 
 void YBCPgResetOperationsBuffering() {
   pgapi->ResetOperationsBuffering();
+}
+
+YBCStatus YBCPgFlushBufferedOperations() {
+  return ToYBCStatus(pgapi->FlushBufferedOperations());
 }
 
 YBCStatus YBCPgDmlExecWriteOp(YBCPgStatement handle, int32_t *rows_affected_count) {
@@ -888,12 +893,16 @@ YBCStatus YBCPgRestartTransaction() {
   return ToYBCStatus(pgapi->RestartTransaction());
 }
 
+YBCStatus YBCPgMaybeResetTransactionReadPoint() {
+  return ToYBCStatus(pgapi->MaybeResetTransactionReadPoint());
+}
+
 YBCStatus YBCPgCommitTransaction() {
   return ToYBCStatus(pgapi->CommitTransaction());
 }
 
-YBCStatus YBCPgAbortTransaction() {
-  return ToYBCStatus(pgapi->AbortTransaction());
+void YBCPgAbortTransaction() {
+  pgapi->AbortTransaction();
 }
 
 YBCStatus YBCPgSetTransactionIsolationLevel(int isolation) {
@@ -904,6 +913,10 @@ YBCStatus YBCPgSetTransactionReadOnly(bool read_only) {
   return ToYBCStatus(pgapi->SetTransactionReadOnly(read_only));
 }
 
+YBCStatus YBCPgEnableFollowerReads(bool enable_follower_reads, int32_t staleness_ms) {
+  return ToYBCStatus(pgapi->EnableFollowerReads(enable_follower_reads, staleness_ms));
+}
+
 YBCStatus YBCPgSetTransactionDeferrable(bool deferrable) {
   return ToYBCStatus(pgapi->SetTransactionDeferrable(deferrable));
 }
@@ -912,8 +925,12 @@ YBCStatus YBCPgEnterSeparateDdlTxnMode() {
   return ToYBCStatus(pgapi->EnterSeparateDdlTxnMode());
 }
 
-YBCStatus YBCPgExitSeparateDdlTxnMode(bool success) {
-  return ToYBCStatus(pgapi->ExitSeparateDdlTxnMode(success));
+YBCStatus YBCPgExitSeparateDdlTxnMode() {
+  return ToYBCStatus(pgapi->ExitSeparateDdlTxnMode());
+}
+
+void YBCPgClearSeparateDdlTxnMode() {
+  pgapi->ClearSeparateDdlTxnMode();
 }
 
 YBCStatus YBCPgSetActiveSubTransaction(uint32_t id) {
@@ -1026,6 +1043,9 @@ bool YBCPgIsYugaByteEnabled() {
 }
 
 void YBCSetTimeout(int timeout_ms, void* extra) {
+  if (!pgapi) {
+    return;
+  }
   const auto default_client_timeout_ms =
       (FLAGS_ysql_client_read_write_timeout_ms < 0
            ? std::max(FLAGS_client_read_write_timeout_ms, 600000)
@@ -1056,14 +1076,15 @@ YBCStatus YBCGetTabletServerHosts(YBCServerDescriptor **servers, int *count) {
         YBCPAlloc(sizeof(YBCServerDescriptor) * servers_info.size()));
     YBCServerDescriptor *dest = *servers;
     for (const auto &info : servers_info) {
-      new (dest) YBCServerDescriptor{
-          .host = YBCPAllocStdString(info->hostname()),
-          .cloud = YBCPAllocStdString(info->cloud()),
-          .region = YBCPAllocStdString(info->region()),
-          .zone = YBCPAllocStdString(info->zone()),
-          .publicIp = YBCPAllocStdString(info->publicIp()),
-          .isPrimary = info->isPrimary(),
-          .pgPort = info->pg_port()};
+      new (dest) YBCServerDescriptor {
+        .host = YBCPAllocStdString(info.server.hostname),
+        .cloud = YBCPAllocStdString(info.cloud),
+        .region = YBCPAllocStdString(info.region),
+        .zone = YBCPAllocStdString(info.zone),
+        .public_ip = YBCPAllocStdString(info.public_ip),
+        .is_primary = info.is_primary,
+        .pg_port = info.pg_port
+      };
       ++dest;
     }
   }

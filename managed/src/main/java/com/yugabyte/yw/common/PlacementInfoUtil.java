@@ -2,6 +2,12 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.common.Util.toBeAddedAzUuidToNumNodes;
+import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType.ASYNC;
+import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType.PRIMARY;
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
@@ -31,6 +37,7 @@ import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -41,9 +48,11 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.Queue;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -51,12 +60,6 @@ import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
-import static com.yugabyte.yw.common.Util.toBeAddedAzUuidToNumNodes;
-import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType.ASYNC;
-import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType.PRIMARY;
-import static java.util.stream.Collectors.groupingBy;
-import static java.util.stream.Collectors.toCollection;
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 public class PlacementInfoUtil {
   public static final Logger LOG = LoggerFactory.getLogger(PlacementInfoUtil.class);
@@ -370,11 +373,16 @@ public class PlacementInfoUtil {
    *
    * @param taskParams : Universe task params.
    * @param customerId : Current customer's id.
-   * @param placementUuid : uuid of the cluster user is working on.
+   * @param placementUuid : UUID of the cluster user is working on.
    */
   public static void updateUniverseDefinition(
       UniverseConfigureTaskParams taskParams, Long customerId, UUID placementUuid) {
-    updateUniverseDefinition(taskParams, customerId, placementUuid, taskParams.clusterOperation);
+    updateUniverseDefinition(
+        taskParams,
+        customerId,
+        placementUuid,
+        taskParams.clusterOperation,
+        taskParams.allowGeoPartitioning);
   }
 
   @VisibleForTesting
@@ -383,6 +391,15 @@ public class PlacementInfoUtil {
       Long customerId,
       UUID placementUuid,
       ClusterOperationType clusterOpType) {
+    updateUniverseDefinition(taskParams, customerId, placementUuid, clusterOpType, false);
+  }
+
+  private static void updateUniverseDefinition(
+      UniverseDefinitionTaskParams taskParams,
+      Long customerId,
+      UUID placementUuid,
+      ClusterOperationType clusterOpType,
+      boolean allowGeoPartitioning) {
     Cluster cluster = taskParams.getClusterByUuid(placementUuid);
 
     // Create node details set if needed.
@@ -409,6 +426,7 @@ public class PlacementInfoUtil {
         universe == null
             ? taskParams.getPrimaryCluster().userIntent.universeName
             : universe.getUniverseDetails().getPrimaryCluster().userIntent.universeName;
+    UUID defaultRegionUUID = getDefaultRegion(taskParams);
 
     // Reset the config and AZ configuration
     if (taskParams.resetAZConfig) {
@@ -428,7 +446,10 @@ public class PlacementInfoUtil {
         cluster.placementInfo =
             cluster.placementInfo == null
                 ? getPlacementInfo(
-                    cluster.clusterType, cluster.userIntent, cluster.userIntent.replicationFactor)
+                    cluster.clusterType,
+                    cluster.userIntent,
+                    cluster.userIntent.replicationFactor,
+                    defaultRegionUUID)
                 : cluster.placementInfo;
         LOG.info("Placement created={}.", cluster.placementInfo);
         configureNodeStates(taskParams, null, ConfigureNodesMode.NEW_CONFIG, cluster);
@@ -448,7 +469,10 @@ public class PlacementInfoUtil {
       taskParams.nodeDetailsSet.removeIf(n -> n.isInPlacement(placementUuid));
       cluster.placementInfo =
           getPlacementInfo(
-              cluster.clusterType, cluster.userIntent, cluster.userIntent.replicationFactor);
+              cluster.clusterType,
+              cluster.userIntent,
+              cluster.userIntent.replicationFactor,
+              defaultRegionUUID);
       LOG.info("Placement created={}.", cluster.placementInfo);
       configureNodeStates(taskParams, null, ConfigureNodesMode.NEW_CONFIG, cluster);
 
@@ -554,12 +578,21 @@ public class PlacementInfoUtil {
               .mapToInt(region -> region.azList.size())
               .sum();
       if (rf < num_zones_intended) {
-        cluster.placementInfo =
-            getPlacementInfo(cluster.clusterType, cluster.userIntent, num_zones_intended);
-        LOG.info("New placement has {} zones.", getNumZones(cluster.placementInfo));
-        taskParams.nodeDetailsSet.removeIf(n -> n.isInPlacement(placementUuid));
-        mode = ConfigureNodesMode.NEW_CONFIG;
-        mode_changed = true;
+        if (allowGeoPartitioning) {
+          LOG.info(
+              "Extended placement mode for universe '{}' - number of zones={} exceeds RF={}.",
+              universeName,
+              num_zones_intended,
+              rf);
+        } else {
+          cluster.placementInfo =
+              getPlacementInfo(
+                  cluster.clusterType, cluster.userIntent, num_zones_intended, defaultRegionUUID);
+          LOG.info("New placement has {} zones.", getNumZones(cluster.placementInfo));
+          taskParams.nodeDetailsSet.removeIf(n -> n.isInPlacement(placementUuid));
+          mode = ConfigureNodesMode.NEW_CONFIG;
+          mode_changed = true;
+        }
       }
     }
 
@@ -582,7 +615,8 @@ public class PlacementInfoUtil {
                 .mapToInt(region -> region.azList.size())
                 .sum();
         cluster.placementInfo =
-            getPlacementInfo(cluster.clusterType, cluster.userIntent, num_zones_intended);
+            getPlacementInfo(
+                cluster.clusterType, cluster.userIntent, num_zones_intended, defaultRegionUUID);
         changeNodeStates = true;
       } else {
         String newInstType = cluster.userIntent.instanceType;
@@ -979,6 +1013,7 @@ public class PlacementInfoUtil {
       action = isAdd ? Action.ADD : Action.REMOVE;
     }
 
+    @Override
     public String toString() {
       return "[" + cloudIdx + ":" + regionIdx + ":" + azIdx + ":" + action + "]";
     }
@@ -1295,7 +1330,10 @@ public class PlacementInfoUtil {
 
       currentCluster.placementInfo =
           getPlacementInfo(
-              currentCluster.clusterType, currentCluster.userIntent, num_zones_intended);
+              currentCluster.clusterType,
+              currentCluster.userIntent,
+              num_zones_intended,
+              getDefaultRegion(taskParams));
       configureDefaultNodeStates(currentCluster, taskParams.nodeDetailsSet, universe);
     } else {
       // In other operations we need to distinguish between expand and full-move.
@@ -1686,83 +1724,248 @@ public class PlacementInfoUtil {
     nodeDetailsSet.addAll(deltaNodesSet);
   }
 
+  public static class SelectMastersResult {
+    public static final SelectMastersResult NONE = new SelectMastersResult();
+    public Set<NodeDetails> addedMasters;
+    public Set<NodeDetails> removedMasters;
+
+    public SelectMastersResult() {
+      addedMasters = new HashSet<>();
+      removedMasters = new HashSet<>();
+    }
+  }
+
+  @VisibleForTesting
+  static SelectMastersResult selectMasters(
+      String masterLeader, Collection<NodeDetails> nodes, int replicationFactor) {
+    return selectMasters(masterLeader, nodes, replicationFactor, null);
+  }
+
   /**
-   * Select masters according to region and zone. We create an ordered list of nodes: The nodes are
-   * selected per zone, with each zone itself being selected per region.
+   * Select masters according to given replication factor, regions and zones.<br>
+   * Step 1. Each region should have at least one master (replicationFactor >= number of regions).
+   * Placing one master into the biggest zone of each region.<br>
+   * Step 2. Trying to place one master into each zone which doesn't have masters yet.<br>
+   * Step 3. If some unallocated masters are left, placing them across all the zones proportionally
+   * to the number of free nodes in the zone. Step 4. Master-leader is always preserved.
+   *
+   * @param masterLeader IP-address of the master-leader.
+   * @param nodes List of nodes of a universe.
+   * @param replicationFactor Number of masters to place.
+   * @param defaultRegionCode Code of default region (for Geo-partitioned case).
+   * @return Instance of type SelectMastersResult with two lists of nodes - where we need to start
+   *     and where we need to stop Masters. List of masters to be stopped doesn't include nodes
+   *     which are going to be removed completely.
    */
-  public static void selectMasters(Collection<NodeDetails> nodes, long numMastersToChoose) {
-    // Map to region to zone to nodes. Using a multi-level map ensures that even if zones names
-    // are similar across regions, there will be no conflict.
-    List<NodeDetails> validNodes =
-        nodes
-            .stream()
-            .filter(node -> node.state == NodeState.Live || node.state == NodeState.ToBeAdded)
-            .collect(Collectors.toList());
+  public static SelectMastersResult selectMasters(
+      String masterLeader,
+      Collection<NodeDetails> nodes,
+      int replicationFactor,
+      String defaultRegionCode) {
+    LOG.info(
+        "selectMasters for nodes {}, rf={}, drc={}", nodes, replicationFactor, defaultRegionCode);
 
-    Map<String, Map<String, LinkedList<NodeDetails>>> regionToZoneToNode =
-        validNodes
-            .stream()
-            .collect(
-                groupingBy(
-                    NodeDetails::getRegion,
-                    groupingBy(NodeDetails::getZone, toCollection(LinkedList::new))));
+    // Mapping nodes to pairs <region, zone>.
+    Map<RegionWithAz, List<NodeDetails>> zoneToNodes = new HashMap<>();
+    AtomicInteger numCandidates = new AtomicInteger(0);
+    nodes
+        .stream()
+        .filter(NodeDetails::isActive)
+        .forEach(
+            node -> {
+              RegionWithAz zone = new RegionWithAz(node.cloudInfo.region, node.cloudInfo.az);
+              zoneToNodes.computeIfAbsent(zone, z -> new ArrayList<>()).add(node);
+              if ((defaultRegionCode == null) || node.cloudInfo.region.equals(defaultRegionCode)) {
+                numCandidates.incrementAndGet();
+              }
+            });
 
-    // Map to region to zone. This is used to populate the ordering of the region/zone pairs from
-    // which to select nodes.
-    Map<String, LinkedList<String>> regionToZone =
-        validNodes
-            .stream()
-            .collect(
-                groupingBy(
-                    node -> node.getRegion(),
-                    Collectors.mapping(
-                        node -> node.getZone(),
-                        Collectors.collectingAndThen(
-                            toCollection(HashSet::new), values -> new LinkedList(values)))));
-
-    int numCandidates = validNodes.size();
-
-    if (numMastersToChoose > numCandidates) {
-      throw new IllegalStateException(
-          "Could not pick "
-              + numMastersToChoose
-              + " masters, only "
-              + numCandidates
-              + " nodes available. Nodes info. "
-              + nodes);
+    if (replicationFactor > numCandidates.get()) {
+      if (defaultRegionCode == null) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "Could not pick %d masters, only %d nodes available. Nodes info: %s",
+                replicationFactor, numCandidates.get(), nodes));
+      } else {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "Could not pick %d masters, only %d nodes available in default region %s."
+                    + " Nodes info: %s",
+                replicationFactor, numCandidates.get(), defaultRegionCode, nodes));
+      }
     }
 
-    // Create a queue to order the region/zone pairs, so that we place one node in each region,
-    // and then when all regions have a node placed, the next time they'll use a different region/
-    // zone pairing.
-    Queue<Pair<String, String>> queue = new LinkedList<>();
-    while (!regionToZone.isEmpty()) {
-      Iterator<Entry<String, LinkedList<String>>> it = regionToZone.entrySet().iterator();
-      while (it.hasNext()) {
-        Entry<String, LinkedList<String>> entry = it.next();
-        String region = entry.getKey();
-        String zone = entry.getValue().pop();
-        queue.add(new Pair<>(region, zone));
-        if (entry.getValue().isEmpty()) {
-          it.remove();
+    // All pairs region-az.
+    List<RegionWithAz> zones = new ArrayList<>(zoneToNodes.keySet());
+    // Sorting zones - larger zones are going at first. If two zones have the
+    // same size, the priority has a zone which already has a master. This
+    // guarantees that initial seeding of masters (one per region) will use a zone
+    // which already has the master. If masters counts are the same, then simply
+    // sorting zones by name.
+    zones.sort(
+        Comparator.comparing((RegionWithAz z) -> zoneToNodes.get(z).size())
+            .thenComparing(
+                (RegionWithAz z) -> zoneToNodes.get(z).stream().filter(n -> n.isMaster).count())
+            .reversed()
+            .thenComparing(RegionWithAz::getZone));
+
+    Map<RegionWithAz, Integer> allocatedMastersRgAz =
+        getIdealMasterAlloc(
+            replicationFactor,
+            zones
+                .stream()
+                .filter(
+                    rz -> (defaultRegionCode == null) || rz.getRegion().equals(defaultRegionCode))
+                .collect(Collectors.toList()),
+            zoneToNodes
+                .entrySet()
+                .stream()
+                .filter(
+                    entry ->
+                        (defaultRegionCode == null)
+                            || entry.getKey().getRegion().equals(defaultRegionCode))
+                .collect(Collectors.toMap(Entry::getKey, Entry::getValue)),
+            numCandidates.get());
+
+    SelectMastersResult result = new SelectMastersResult();
+    // Applying allocations.
+    for (RegionWithAz zone : zones) {
+      applyMastersSelection(
+          masterLeader,
+          zoneToNodes.get(zone),
+          allocatedMastersRgAz.getOrDefault(zone, Integer.valueOf(0)),
+          result.addedMasters,
+          result.removedMasters);
+    }
+    LOG.info("selectMasters result: master-leader={}, nodes={}", masterLeader, nodes);
+    return result;
+  }
+
+  /**
+   * Makes actual allocation of masters.
+   *
+   * @param mastersToAllocate How many masters to allocate;
+   * @param zones List of <region, zones> pairs sorted by nodes count;
+   * @param zoneToNodes Map of <region, zones> pairs to a list of nodes in the zone;
+   * @param numCandidates Overall count of nodes across all the zones.
+   * @return Map of AZs and how many masters to allocate per each zone.
+   */
+  private static Map<RegionWithAz, Integer> getIdealMasterAlloc(
+      int mastersToAllocate,
+      List<RegionWithAz> zones,
+      Map<RegionWithAz, List<NodeDetails>> zoneToNodes,
+      int numCandidates) {
+
+    // Map with allocations per region+az.
+    Map<RegionWithAz, Integer> allocatedMastersRgAz = new HashMap<>();
+    if (mastersToAllocate == 0) {
+      return allocatedMastersRgAz;
+    }
+
+    // Map with allocations per region.
+    Set<String> regionsWithMaster = new HashSet<>();
+
+    // 1. Each region should have at least one master.
+    int mastersLeft = mastersToAllocate;
+    for (RegionWithAz zone : zones) {
+      if (!regionsWithMaster.contains(zone.getRegion())) {
+        regionsWithMaster.add(zone.getRegion());
+        allocatedMastersRgAz.put(zone, 1);
+        if (--mastersLeft == 0) break;
+      } else {
+        allocatedMastersRgAz.put(zone, 0);
+      }
+    }
+
+    // 2. Each zone should have master if it doesn't.
+    for (RegionWithAz zone : zones) {
+      if (mastersLeft == 0) break;
+      if (allocatedMastersRgAz.get(zone) == 0) {
+        allocatedMastersRgAz.put(zone, 1);
+        mastersLeft--;
+      }
+    }
+
+    // 3. Other masters are seeded proportionally.
+    if (mastersLeft > 0) {
+      // mastersPerNode = mastersLeft / freeNodesLeft
+      int mastersAssigned = mastersToAllocate - mastersLeft;
+      double mastersPerNode = (double) mastersLeft / (numCandidates - mastersAssigned);
+      for (RegionWithAz zone : zones) {
+        if (mastersLeft == 0) break;
+        int freeNodesInAZ = zoneToNodes.get(zone).size() - allocatedMastersRgAz.get(zone);
+        if (freeNodesInAZ > 0) {
+          int toAllocate = (int) Math.round(freeNodesInAZ * mastersPerNode);
+          mastersLeft -= toAllocate;
+          allocatedMastersRgAz.put(zone, allocatedMastersRgAz.get(zone) + toAllocate);
+        }
+      }
+
+      // One master could left because of the rounding error.
+      if (mastersLeft != 0) {
+        for (RegionWithAz zone : zones) {
+          if (zoneToNodes.get(zone).size() > allocatedMastersRgAz.get(zone)) {
+            allocatedMastersRgAz.put(zone, allocatedMastersRgAz.get(zone) + 1);
+            break;
+          }
         }
       }
     }
+    return allocatedMastersRgAz;
+  }
 
-    // Now that we have the ordering of the region/zones, we place masters.
-    int mastersSelected = 0;
-    while (mastersSelected < numMastersToChoose) {
-      Pair<String, String> regionZone = queue.remove();
-      Map<String, LinkedList<NodeDetails>> zoneToNode = regionToZoneToNode.get(regionZone.first);
-      LinkedList<NodeDetails> nodeList = zoneToNode.get(regionZone.second);
-      NodeDetails node = nodeList.pop();
-      node.isMaster = true;
-      mastersSelected++;
-      // If the region/zone pair doesn't have a node remaining, we don't need
-      // to consider it again.
-      if (!nodeList.isEmpty()) {
-        queue.add(regionZone);
+  /**
+   * Checks that we have exactly mastersCount masters in the group. If needed, excessive masters are
+   * removed or additional masters are added. States of the nodes are not checked - assumed that all
+   * the nodes are active.
+   *
+   * @param masterLeader
+   * @param nodes
+   * @param mastersCount
+   * @param mastersToAdd
+   * @param mastersToRemove
+   */
+  private static void applyMastersSelection(
+      String masterLeader,
+      List<NodeDetails> nodes,
+      int mastersCount,
+      Set<NodeDetails> mastersToAdd,
+      Set<NodeDetails> mastersToRemove) {
+    long existingMastersCount = nodes.stream().filter(node -> node.isMaster).count();
+    for (NodeDetails node : nodes) {
+      if (mastersCount == existingMastersCount) {
+        break;
       }
+      if (existingMastersCount < mastersCount && !node.isMaster) {
+        node.isMaster = true;
+        existingMastersCount++;
+        mastersToAdd.add(node);
+      } else if (existingMastersCount > mastersCount
+          && node.isMaster
+          && !Objects.equals(masterLeader, node.cloudInfo.private_ip)) {
+        node.isMaster = false;
+        existingMastersCount--;
+        mastersToRemove.add(node);
+      }
+    }
+  }
+
+  public static void verifyMastersSelection(Collection<NodeDetails> nodes, int replicationFactor) {
+    int allocatedMasters =
+        (int)
+            nodes
+                .stream()
+                .filter(
+                    n ->
+                        (n.state == NodeState.Live || n.state == NodeState.ToBeAdded) && n.isMaster)
+                .count();
+    if (allocatedMasters != replicationFactor) {
+      throw new RuntimeException(
+          String.format(
+              "Wrong masters allocation detected. Expected masters %d, found %d. Nodes are %s",
+              replicationFactor, allocatedMasters, nodes));
     }
   }
 
@@ -1870,11 +2073,11 @@ public class PlacementInfoUtil {
   public static Map<UUID, Map<String, String>> getConfigPerAZ(PlacementInfo pi) {
     Map<UUID, Map<String, String>> azToConfig = new HashMap<>();
     for (PlacementCloud pc : pi.cloudList) {
-      Map<String, String> cloudConfig = Provider.get(pc.uuid).getConfig();
+      Map<String, String> cloudConfig = Provider.get(pc.uuid).getUnmaskedConfig();
       for (PlacementRegion pr : pc.regionList) {
-        Map<String, String> regionConfig = Region.get(pr.uuid).getConfig();
+        Map<String, String> regionConfig = Region.get(pr.uuid).getUnmaskedConfig();
         for (PlacementAZ pa : pr.azList) {
-          Map<String, String> zoneConfig = AvailabilityZone.get(pa.uuid).getConfig();
+          Map<String, String> zoneConfig = AvailabilityZone.get(pa.uuid).getUnmaskedConfig();
           if (cloudConfig.containsKey("KUBECONFIG")) {
             azToConfig.put(pa.uuid, cloudConfig);
           } else if (regionConfig.containsKey("KUBECONFIG")) {
@@ -1955,7 +2158,8 @@ public class PlacementInfoUtil {
 
     for (Entry<UUID, Integer> entry : azToNumMasters.entrySet()) {
       AvailabilityZone az = AvailabilityZone.get(entry.getKey());
-      String namespace = getKubernetesNamespace(isMultiAZ, nodePrefix, az.code, az.getConfig());
+      String namespace =
+          getKubernetesNamespace(isMultiAZ, nodePrefix, az.code, az.getUnmaskedConfig());
       String domain = azToDomain.get(entry.getKey());
       for (int idx = 0; idx < entry.getValue(); idx++) {
         // TODO(bhavin192): might need to change when we have multiple
@@ -1975,7 +2179,7 @@ public class PlacementInfoUtil {
     for (PlacementCloud pc : pi.cloudList) {
       for (PlacementRegion pr : pc.regionList) {
         for (PlacementAZ pa : pr.azList) {
-          Map<String, String> config = AvailabilityZone.get(pa.uuid).getConfig();
+          Map<String, String> config = AvailabilityZone.get(pa.uuid).getUnmaskedConfig();
           if (config.containsKey("KUBE_DOMAIN")) {
             azToDomain.put(pa.uuid, String.format("%s.%s", "svc", config.get("KUBE_DOMAIN")));
           } else {
@@ -2019,7 +2223,7 @@ public class PlacementInfoUtil {
   // Returns the AZ placement info for the node in the user intent. It chooses a maximum of
   // RF zones for the placement.
   public static PlacementInfo getPlacementInfo(
-      ClusterType clusterType, UserIntent userIntent, int intentZones) {
+      ClusterType clusterType, UserIntent userIntent, int intentZones, UUID defaultRegionUUID) {
     if (userIntent == null) {
       LOG.info("No placement due to null userIntent.");
 
@@ -2031,13 +2235,12 @@ public class PlacementInfoUtil {
     }
 
     verifyNodesAndRF(clusterType, userIntent.numNodes, userIntent.replicationFactor);
-    int num_zones = Math.min(intentZones, userIntent.replicationFactor);
 
     // Make sure the preferred region is in the list of user specified regions.
     if (userIntent.preferredRegion != null
         && !userIntent.regionList.contains(userIntent.preferredRegion)) {
       throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR,
+          BAD_REQUEST,
           "Preferred region " + userIntent.preferredRegion + " not in user region list.");
     }
 
@@ -2048,23 +2251,21 @@ public class PlacementInfoUtil {
     // this map for subsequent calls, instead of recomputing the list every time.
     Map<UUID, List<AvailabilityZone>> azByRegionMap = new HashMap<>();
 
-    for (int idx = 0; idx < userIntent.regionList.size(); idx++) {
-      List<AvailabilityZone> zones =
-          AvailabilityZone.getAZsForRegion(userIntent.regionList.get(idx));
+    for (UUID element : userIntent.regionList) {
+      List<AvailabilityZone> zones = AvailabilityZone.getAZsForRegion(element);
 
       // Filter out zones which doesn't have enough nodes.
       if (userIntent.providerType.equals(CloudType.onprem)) {
         zones =
             zones
                 .stream()
-                .filter(
-                    (az) -> NodeInstance.listByZone(az.uuid, userIntent.instanceType).size() > 0)
+                .filter(az -> NodeInstance.listByZone(az.uuid, userIntent.instanceType).size() > 0)
                 .collect(Collectors.toList());
       }
 
       if (!zones.isEmpty()) {
         // TODO: sort zones by instance type
-        azByRegionMap.put(userIntent.regionList.get(idx), zones);
+        azByRegionMap.put(element, zones);
       }
     }
 
@@ -2073,8 +2274,17 @@ public class PlacementInfoUtil {
         azByRegionMap.values().stream().map(List::size).reduce(0, Integer::sum);
 
     List<AvailabilityZone> allAzsInRegions = new ArrayList<>();
+    if (defaultRegionUUID != null) {
+      allAzsInRegions.addAll(
+          azByRegionMap.getOrDefault(defaultRegionUUID, Collections.emptyList()));
+      azsAdded = allAzsInRegions.size();
+    }
+
     while (azsAdded < totalNumAzsInRegions) {
       for (UUID regionUUID : azByRegionMap.keySet()) {
+        if (regionUUID.equals(defaultRegionUUID)) {
+          continue;
+        }
         List<AvailabilityZone> regionAzs = azByRegionMap.get(regionUUID);
         if (regionAzs.size() > 0) {
           allAzsInRegions.add(regionAzs.get(0));
@@ -2089,6 +2299,7 @@ public class PlacementInfoUtil {
           INTERNAL_SERVER_ERROR, "No AZ found across regions: " + userIntent.regionList);
     }
 
+    int num_zones = Math.min(intentZones, userIntent.replicationFactor);
     LOG.info(
         "numRegions={}, numAzsInRegions={}, zonesIntended={}",
         userIntent.regionList.size(),
@@ -2102,8 +2313,8 @@ public class PlacementInfoUtil {
           placementInfo,
           userIntent.replicationFactor,
           userIntent.numNodes);
+    } else {
       // Case (2) Set min_num_replicas ~= RF/num_zones
-    } else if (num_zones <= userIntent.replicationFactor) {
       for (int i = 0; i < num_zones; i++) {
         if (allAzsInRegions.size() < num_zones) {
           addPlacementZone(allAzsInRegions.get(i % allAzsInRegions.size()).uuid, placementInfo);
@@ -2111,12 +2322,6 @@ public class PlacementInfoUtil {
           addPlacementZone(allAzsInRegions.get(i).uuid, placementInfo);
         }
       }
-    } else {
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR,
-          String.format(
-              "Number of zones=%d greater than RF=%d is not allowed",
-              num_zones, userIntent.replicationFactor));
     }
 
     return placementInfo;
@@ -2380,5 +2585,46 @@ public class PlacementInfoUtil {
                     && node.cloudInfo.region.equals(region)
                     && node.cloudInfo.az.equals(zone))
         .count();
+  }
+
+  private static class RegionWithAz extends Pair<String, String> {
+    public RegionWithAz(String first, String second) {
+      super(first, second);
+    }
+
+    public String getRegion() {
+      return getFirst();
+    }
+
+    public String getZone() {
+      return getSecond();
+    }
+  }
+
+  /**
+   * Get default region (Geo-partitioning) from placementInfo of PRIMARY cluster. Assumed that each
+   * placementInfo has only one cloud in the list.
+   *
+   * @return UUID of the default region or null
+   */
+  public static UUID getDefaultRegion(UniverseDefinitionTaskParams taskParams) {
+    for (Cluster cluster : taskParams.clusters) {
+      if ((cluster.clusterType == ClusterType.PRIMARY) && (cluster.placementInfo != null)) {
+        return cluster.placementInfo.cloudList.get(0).defaultRegion;
+      }
+    }
+    return null;
+  }
+
+  public static String getDefaultRegionCode(UniverseDefinitionTaskParams taskParams) {
+    UUID regionUUID = getDefaultRegion(taskParams);
+    if (regionUUID == null) {
+      return null;
+    }
+    Region region = Region.get(regionUUID);
+    if (region == null) {
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid default region UUID");
+    }
+    return region.code;
   }
 }

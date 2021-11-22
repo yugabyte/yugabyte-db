@@ -13,20 +13,22 @@
 //
 //
 
-#include <deque>
-#include <list>
+#include <atomic>
 #include <map>
-#include <vector>
-#include <unordered_map>
 #include <sstream>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
-#include <boost/multi_index_container.hpp>
-#include <boost/multi_index/ordered_index.hpp>
-#include <boost/multi_index/member.hpp>
+#include <gtest/gtest.h>
 
 #include "yb/gutil/strings/substitute.h"
 
-#include "yb/util/test_util.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/thread.h"
+#include "yb/util/tsan_util.h"
 #include "yb/util/format.h"
 
 using namespace std::literals;
@@ -196,7 +198,5 @@ TEST(FormatTest, Time) {
   out << 15s;
   ASSERT_EQ("15.000s", out.str());
 }
-
-YB_DEFINE_ENUM(XXX, (xxx));
 
 } // namespace yb

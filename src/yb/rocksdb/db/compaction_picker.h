@@ -186,6 +186,9 @@ class CompactionPicker {
                        const CompactionInputFiles& output_level_inputs,
                        std::vector<FileMetaData*>* grandparents);
 
+  static void MarkL0FilesForDeletion(const VersionStorageInfo* vstorage,
+                                     const ImmutableCFOptions* ioptions);
+
   const ImmutableCFOptions& ioptions_;
 
   // A helper function to SanitizeCompactionInputFiles() that

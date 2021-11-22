@@ -18,6 +18,7 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.filters.MetricFilter;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import java.util.ArrayList;
 import java.util.List;
@@ -53,10 +54,10 @@ public class PlatformMetricsProcessor {
     this.executionContext = executionContext;
     this.metricService = metricService;
     this.metricsProviderList.add(universeMetricProvider);
-    this.initialize();
   }
 
-  private void initialize() {
+  public void start() {
+    metricService.initialize();
     this.actorSystem
         .scheduler()
         .schedule(
@@ -68,30 +69,31 @@ public class PlatformMetricsProcessor {
 
   @VisibleForTesting
   void scheduleRunner() {
+    if (!running.compareAndSet(false, true)) {
+      log.info("Previous run of metrics processor is still underway");
+      return;
+    }
     String errorMessage = null;
-    if (running.compareAndSet(false, true)) {
-      try {
-        errorMessage = updateMetrics();
-        cleanExpiredMetrics();
-      } catch (Exception e) {
-        errorMessage = "Error processing metrics: " + e.getMessage();
-        log.error("Error processing metrics", e);
-      } finally {
-        metricService.setStatusMetric(
-            buildMetricTemplate(PlatformMetrics.METRIC_PROCESSOR_STATUS), errorMessage);
-        running.set(false);
-      }
+    try {
+      errorMessage = updateMetrics();
+      cleanExpiredMetrics();
+      metricService.flushMetricsToDb();
+    } catch (Exception e) {
+      errorMessage = "Error processing metrics: " + e.getMessage();
+      log.error("Error processing metrics", e);
+    } finally {
+      metricService.setStatusMetric(
+          buildMetricTemplate(PlatformMetrics.METRIC_PROCESSOR_STATUS), errorMessage);
+      running.set(false);
     }
   }
 
   private String updateMetrics() {
-    List<Metric> metrics = new ArrayList<>();
-    List<MetricFilter> toRemove = new ArrayList<>();
+    List<MetricSaveGroup> metricSaveGroups = new ArrayList<>();
     String errorMessage = null;
     for (MetricsProvider provider : metricsProviderList) {
       try {
-        metrics.addAll(provider.getMetrics());
-        toRemove.addAll(provider.getMetricsToRemove());
+        metricSaveGroups.addAll(provider.getMetricGroups());
       } catch (Exception e) {
         log.error("Failed to get platform metrics from provider " + provider.getName(), e);
         if (errorMessage == null) {
@@ -103,7 +105,23 @@ public class PlatformMetricsProcessor {
         }
       }
     }
-    metricService.cleanAndSave(metrics, toRemove);
+    int metricsToSave = 0;
+    List<Metric> metrics = new ArrayList<>();
+    List<MetricFilter> toRemove = new ArrayList<>();
+    for (MetricSaveGroup metricSaveGroup : metricSaveGroups) {
+      metricsToSave += metricSaveGroup.getMetrics().size();
+      if (metricsToSave > CommonUtils.DB_OR_CHAIN_TO_WARN) {
+        metricService.cleanAndSave(metrics, toRemove);
+        metricsToSave = metricSaveGroup.getMetrics().size();
+        metrics.clear();
+        toRemove.clear();
+      }
+      metrics.addAll(metricSaveGroup.getMetrics());
+      toRemove.addAll(metricSaveGroup.getCleanMetricFilters());
+    }
+    if (!metrics.isEmpty()) {
+      metricService.cleanAndSave(metrics, toRemove);
+    }
     return errorMessage;
   }
 

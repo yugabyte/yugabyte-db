@@ -58,7 +58,6 @@ YSQL_CATALOG_VERSION_RE = re.compile(r'[\S\s]*Version: (?P<version>.*)')
 ROCKSDB_PATH_PREFIX = '/yb-data/tserver/data/rocksdb'
 
 SNAPSHOT_DIR_GLOB = '*' + ROCKSDB_PATH_PREFIX + '/table-*/tablet-*.snapshots/*'
-SNAPSHOT_DIR_DEPTH = 7
 SNAPSHOT_DIR_SUFFIX_RE = re.compile(
     '^.*/tablet-({})[.]snapshots/({})$'.format(UUID_RE_STR, UUID_RE_STR))
 
@@ -66,7 +65,6 @@ TABLE_PATH_PREFIX_TEMPLATE = ROCKSDB_PATH_PREFIX + '/table-{}'
 
 TABLET_MASK = 'tablet-????????????????????????????????'
 TABLET_DIR_GLOB = '*' + TABLE_PATH_PREFIX_TEMPLATE + '/' + TABLET_MASK
-TABLET_DIR_DEPTH = 6
 
 METADATA_FILE_NAME = 'SnapshotInfoPB'
 SQL_DUMP_FILE_NAME = 'YSQLDump'
@@ -399,16 +397,13 @@ class AzBackupStorage(AbstractBackupStorage):
         return "azcopy"
 
     def upload_file_cmd(self, src, dest):
-        # azcopy requires quotes around the src and dest. This format is necessary to do so.
-        src = "'{}'".format(src)
-        dest = "'{}'".format(dest + os.getenv('AZURE_STORAGE_SAS_TOKEN'))
-        return ["{} {} {} {}".format(self._command_list_prefix(), "cp", src, dest)]
+        dest = dest + os.getenv('AZURE_STORAGE_SAS_TOKEN')
+        return [self._command_list_prefix(), "cp", src, dest]
 
     def download_file_cmd(self, src, dest):
-        src = "'{}'".format(src + os.getenv('AZURE_STORAGE_SAS_TOKEN'))
-        dest = "'{}'".format(dest)
-        return ["{} {} {} {} {}".format(self._command_list_prefix(), "cp", src,
-                dest, "--recursive")]
+        src = src + os.getenv('AZURE_STORAGE_SAS_TOKEN')
+        return [self._command_list_prefix(), "cp", src,
+                dest, "--recursive"]
 
     def upload_dir_cmd(self, src, dest):
         # azcopy will download the top-level directory as well as the contents without "/*".
@@ -626,7 +621,7 @@ class YBBackup:
                 return subprocess_result
             except subprocess.CalledProcessError as e:
                 logging.error("Failed to run command [[ {} ]]: code={} output={}".format(
-                    cmd_as_str, e.returncode, str(e.output.decode('utf-8'))))
+                    cmd_as_str, e.returncode, str(e.output.decode('utf-8', errors='replace'))))
                 self.sleep_or_raise(num_retry, timeout, e)
             except Exception as ex:
                 logging.error("Failed to run command [[ {} ]]: {}".format(cmd_as_str, ex))
@@ -767,6 +762,12 @@ class YBBackup:
         parser.add_argument(
             '--restore_time', required=False,
             help='The Unix microsecond timestamp to which to restore the snapshot.')
+        parser.add_argument('--upload', dest='upload', action='store_true')
+        # Please note that we have to use this weird naming (i.e. underscore in the argument name)
+        # style to keep it in sync with other arguments in this script.
+        parser.add_argument('--no_upload', dest='upload', action='store_false',
+                            help="Skip uploading snapshot")
+        parser.set_defaults(upload=True)
         logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
         self.args = parser.parse_args()
 
@@ -1013,7 +1014,8 @@ class YBBackup:
         if self.args.certs_dir:
             certs_env = {
                             'FLAGS_certs_dir': self.args.certs_dir,
-                            'FLAGS_use_node_to_node_encryption': 'true'
+                            'FLAGS_use_node_to_node_encryption': 'true',
+                            'FLAGS_use_node_hostname_for_local_tserver': 'true',
                         }
 
         run_at_ip = None
@@ -1380,11 +1382,11 @@ class YBBackup:
                     # Find all tablets for this table on this TS in this data_dir:
                     output = self.run_ssh_cmd(
                       ['find', data_dir,
-                       '-mindepth', TABLET_DIR_DEPTH,
-                       '-maxdepth', TABLET_DIR_DEPTH,
+                       '!', '-readable', '-prune', '-o',
                        '-name', TABLET_MASK,
                        '-and',
-                       '-wholename', TABLET_DIR_GLOB.format(table_id)],
+                       '-wholename', TABLET_DIR_GLOB.format(table_id),
+                       '-print'],
                       tserver_ip)
                     tablet_dirs += [line.strip() for line in output.split("\n") if line.strip()]
 
@@ -1445,10 +1447,10 @@ class YBBackup:
         """
         output = self.run_ssh_cmd(
             ['find', data_dir,
-             '-mindepth', SNAPSHOT_DIR_DEPTH,
-             '-maxdepth', SNAPSHOT_DIR_DEPTH,
+             '!', '-readable', '-prune', '-o',
              '-name', snapshot_id, '-and',
-             '-wholename', SNAPSHOT_DIR_GLOB],
+             '-wholename', SNAPSHOT_DIR_GLOB,
+             '-print'],
             tserver_ip)
         return [line.strip() for line in output.split("\n") if line.strip()]
 
@@ -1750,7 +1752,7 @@ class YBBackup:
 
     def delete_bucket_obj(self):
         del_cmd = self.storage.delete_obj_cmd(self.args.backup_location)
-        if self.is_nfs:
+        if self.is_nfs():
             self.run_ssh_cmd(del_cmd, self.get_leader_master_ip())
         else:
             self.run_program(del_cmd)
@@ -1970,15 +1972,18 @@ class YBBackup:
         self.timer.log_new_phase("Create and upload snapshot metadata")
         snapshot_id = self.create_and_upload_metadata_files(snapshot_filepath)
         self.timer.log_new_phase("Find tablet leaders")
-        tablet_leaders = self.find_tablet_leaders()
-        self.timer.log_new_phase("Upload snapshot directories")
-        self.upload_snapshot_directories(tablet_leaders, snapshot_id, snapshot_filepath)
-        logging.info(
-            '[app] Backed up tables %s to %s successfully!' %
-            (self.table_names_str(), snapshot_filepath))
-        if self.args.backup_keys_source:
-            self.upload_encryption_key_file()
-        print(json.dumps({"snapshot_url": snapshot_filepath}))
+        if self.args.upload:
+            tablet_leaders = self.find_tablet_leaders()
+            self.timer.log_new_phase("Upload snapshot directories")
+            self.upload_snapshot_directories(tablet_leaders, snapshot_id, snapshot_filepath)
+            logging.info(
+                '[app] Backed up tables %s to %s successfully!' %
+                (self.table_names_str(), snapshot_filepath))
+            if self.args.backup_keys_source:
+                self.upload_encryption_key_file()
+            print(json.dumps({"snapshot_url": snapshot_filepath}))
+        else:
+            print(json.dumps({"snapshot_url": "UPLOAD_SKIPPED"}))
 
     def download_file(self, src_path, target_path):
         """

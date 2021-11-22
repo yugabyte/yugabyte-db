@@ -42,7 +42,6 @@
 #include "yb/gutil/strings/strcat.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-#include "yb/master/mini_master.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/curl_util.h"
@@ -189,7 +188,7 @@ void UpdateScanDeltaCompactionTest::InsertBaseData() {
     for (int64_t key = 0; key < FLAGS_row_count; key++) {
       auto insert = table_.NewInsertOp();
       MakeRow(key, 0, insert->mutable_request());
-      ASSERT_OK(session->Apply(insert));
+      session->Apply(insert);
       ASSERT_OK(WaitForLastBatchAndFlush(key, &flush_future, session));
     }
     ASSERT_OK(WaitForLastBatchAndFlush(kSessionBatchSize, &flush_future, session));
@@ -250,7 +249,7 @@ void UpdateScanDeltaCompactionTest::UpdateRows(CountDownLatch* stop_latch) {
       for (int64_t key = 0; key < FLAGS_row_count && stop_latch->count() > 0; key++) {
         auto update = table_.NewUpdateOp();
         MakeRow(key, iteration, update->mutable_request());
-        CHECK_OK(session->Apply(update));
+        session->Apply(update);
         CHECK_OK(WaitForLastBatchAndFlush(key, &flush_future, session));
       }
       CHECK_OK(WaitForLastBatchAndFlush(kSessionBatchSize, &flush_future, session));

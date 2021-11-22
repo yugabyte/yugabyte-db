@@ -43,10 +43,8 @@
 
 #include "yb/gutil/casts.h"
 
-#include "yb/util/flags.h"
 #include "yb/util/format.h"
 
-#include "yb/rocksdb/compaction_filter.h"
 #include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/file_numbers.h"
 #include "yb/rocksdb/db/internal_stats.h"
@@ -65,13 +63,11 @@
 #include "yb/rocksdb/table/merger.h"
 #include "yb/rocksdb/table/two_level_iterator.h"
 #include "yb/rocksdb/table/format.h"
-#include "yb/rocksdb/table/plain_table_factory.h"
 #include "yb/rocksdb/table/meta_blocks.h"
 #include "yb/rocksdb/table/get_context.h"
 
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
-#include "yb/rocksdb/util/file_util.h"
 #include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/stop_watch.h"
 #include "yb/rocksdb/util/sync_point.h"
@@ -1884,11 +1880,11 @@ void VersionStorageInfo::CalculateBaseBytes(const ImmutableCFOptions& ioptions,
   // Special logic to set number of sorted runs.
   // It is to match the previous behavior when all files are in L0.
   int num_l0_count = 0;
-  if (options.max_file_size_for_compaction == std::numeric_limits<uint64_t>::max()) {
+  if (options.MaxFileSizeForCompaction() == std::numeric_limits<uint64_t>::max()) {
     num_l0_count = static_cast<int>(files_[0].size());
   } else {
     for (const auto& file : files_[0]) {
-      if (file->fd.GetTotalFileSize() <= options.max_file_size_for_compaction) {
+      if (file->fd.GetTotalFileSize() <= options.MaxFileSizeForCompaction()) {
         ++num_l0_count;
       }
     }
@@ -3556,15 +3552,6 @@ InternalIterator* VersionSet::MakeInputIterator(Compaction* c) {
   if (c->ShouldFormSubcompactions()) {
     read_options.total_order_seek = true;
   }
-  std::unique_ptr<CompactionFileFilter> file_filter;
-  auto file_filter_factory = cfd->ioptions()->compaction_file_filter_factory;
-  // File filters currently only considered for exclusively level 0 compactions.
-  if (file_filter_factory && c->num_input_levels() == 1 && c->level(0) == 0) {
-    // TODO jmeehan - This should probably be moved earlier in the compaction process,
-    // so that all subcompactions share the same filter.  Maybe attached to the
-    // compaction itself?  Added to the mutable_cf_options?
-    file_filter = file_filter_factory->CreateCompactionFileFilter(*(c->inputs(0)));
-  }
 
   // Level-0 files have to be merged together.  For other levels,
   // we will make a concatenating iterator per level.
@@ -3580,7 +3567,12 @@ InternalIterator* VersionSet::MakeInputIterator(Compaction* c) {
         const LevelFilesBrief* flevel = c->input_levels(which);
         for (size_t i = 0; i < flevel->num_files; i++) {
           FileMetaData* fmd = c->input(which, i);
-          if (file_filter && file_filter->Filter(fmd) == FilterDecision::kDiscard) {
+          if (c->input(which, i)->delete_after_compaction) {
+            RLOG(
+                InfoLogLevel::INFO_LEVEL, db_options_->info_log,
+                yb::Format(
+                    "[$0] File marked for deletion, will be removed after compaction. file: $1",
+                    c->column_family_data()->GetName(), fmd->ToString()).c_str());
             RecordTick(cfd->ioptions()->statistics, COMPACTION_FILES_FILTERED);
             continue;
           }

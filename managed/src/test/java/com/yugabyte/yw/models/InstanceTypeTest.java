@@ -24,6 +24,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import org.hamcrest.Matchers;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -183,6 +184,24 @@ public class InstanceTypeTest extends FakeDBApplication {
     assertThat(
         instanceTypeList.get(0).instanceTypeDetails.volumeDetailsList.size(),
         allOf(notNullValue(), equalTo(1)));
+  }
+
+  @Test
+  public void testFindByKeys() {
+    InstanceType medium = InstanceType.upsert(defaultProvider.uuid, "c5.medium", 3, 10.0, null);
+    InstanceType large = InstanceType.upsert(defaultProvider.uuid, "c5.large", 3, 10.0, null);
+    InstanceType xlarge = InstanceType.upsert(defaultProvider.uuid, "c5.xlarge", 3, 10.0, null);
+    List<InstanceType> instanceTypeList =
+        InstanceType.findByKeys(
+            ImmutableList.of(
+                new InstanceTypeKey()
+                    .setProviderUuid(defaultProvider.uuid)
+                    .setInstanceTypeCode("c5.medium"),
+                new InstanceTypeKey()
+                    .setProviderUuid(defaultProvider.uuid)
+                    .setInstanceTypeCode("c5.large")));
+    assertNotNull(instanceTypeList);
+    assertThat(instanceTypeList, Matchers.containsInAnyOrder(medium, large));
   }
 
   @Test

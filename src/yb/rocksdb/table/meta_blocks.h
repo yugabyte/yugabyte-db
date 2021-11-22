@@ -47,6 +47,12 @@ class Logger;
 struct TableProperties;
 class InternalIterator;
 
+// We use kKeyDeltaEncodingSharedPrefix format for meta index blocks, but since
+// kMetaIndexBlockRestartInterval == 1 every key in these blocks will still have zero shared prefix
+// length and will be stored fully.
+constexpr auto kMetaIndexBlockKeyValueEncodingFormat =
+    KeyValueEncodingFormat::kKeyDeltaEncodingSharedPrefix;
+
 class MetaIndexBuilder {
  public:
   MetaIndexBuilder(const MetaIndexBuilder&) = delete;

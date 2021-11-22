@@ -152,6 +152,7 @@ public class TestSpark3Jsonb extends BaseMiniClusterTest {
       SparkConf conf = new SparkConf().setAppName("yb.spark-jsonb")
         .setMaster("local[1]")
         .set("confirm.truncate", "true")
+        .set("spark.cassandra.output.ignoreNulls", "true")
         .set("spark.cassandra.connection.localDC", "datacenter1")
         .set("spark.cassandra.connection.host", addresses.get(0).getHostName())
         .set("spark.sql.catalog.mycatalog",
@@ -185,12 +186,15 @@ public class TestSpark3Jsonb extends BaseMiniClusterTest {
       spark.sqlContext().sql("select * from temp").show(false);
       logger.info("Data READ SuccessFully");
 
+      query = "SELECT usage, nm from mycatalog.test.cdr where imsi=116 order by gdate";
       rows = spark.sql(query);
       iterator = rows.toLocalIterator();
       while (iterator.hasNext()) {
           Row row = iterator.next();
           String jsonb = row.getString(0);
-          assertEquals(jsonb, "{\"dl\":1122,\"rsrp\":-80,\"rsrq\":null,\"sinr\":100,\"ul\":72}");
+          assertEquals(jsonb,
+            "{\"dl\":1122,\"rsrp\":\"s80\",\"rsrq\":10000,\"sinr\":\"100.1\",\"ul\":72}");
+          assertEquals(true, row.isNullAt(1));
       }
       spark.close();
   }
@@ -201,10 +205,11 @@ public class TestSpark3Jsonb extends BaseMiniClusterTest {
     rows.show();
     rows.createOrReplaceTempView("temp");
     Dataset<Row> updatedRows = spark
-        .sql("select date as gdate,imsi,rsrp,sinr,rsrq from temp ");
+        .sql("select date as gdate,imsi,nm,rsrp,sinr,rsrq from temp ");
     updatedRows.show();
     updatedRows.write().format("org.apache.spark.sql.cassandra").option("keyspace", KEYSPACE)
         .option("table", CDR_TABLE)
+        .option("spark.cassandra.json.quoteValueString", "true")
         .option("spark.cassandra.mergeable.json.column.mapping", "dl,rsrp,sinr,ul,rsrq:usage")
         .mode(SaveMode.Append).save();
   }
@@ -241,7 +246,7 @@ public class TestSpark3Jsonb extends BaseMiniClusterTest {
       String tableWithKeysapce = KEYSPACE + "." + CDR_TABLE;
 
       String createTable = "CREATE TABLE IF NOT EXISTS " + tableWithKeysapce +
-          "(gdate date, imsi text," + "usage jsonb, PRIMARY KEY(gdate,imsi) )";
+          "(gdate date, imsi text, nm int," + "usage jsonb, PRIMARY KEY(gdate,imsi) )";
 
       session.execute(createTable);
       logger.info("Created table tablename: {}", INPUT_TABLE);

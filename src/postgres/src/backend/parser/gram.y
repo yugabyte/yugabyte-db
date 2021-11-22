@@ -962,6 +962,7 @@ stmt :
 			| ViewStmt
 
 			/* BETA features */
+			/* TODO(#10263): Fix individual beta flag feature bools */
 			| AlterExtensionContentsStmt { parser_ybc_beta_feature(@1, "extension", true); }
 			| AlterExtensionStmt { parser_ybc_beta_feature(@1, "extension", true); }
 			| AlterFdwStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", true); }
@@ -2603,7 +2604,7 @@ alter_table_cmd:
 			/* ALTER TABLE <name> SET TABLESPACE <tablespacename> */
 			| SET TABLESPACE name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE SET TABLESPACE", 1124);
+					parser_ybc_beta_feature(@1, "tablespace_alteration", true);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_SetTableSpace;
 					n->name = $3;
@@ -8229,6 +8230,11 @@ BackfillIndexStmt:
 									(errcode(ERRCODE_SYNTAX_ERROR),
 									 errmsg("read time must be uint64"),
 									 parser_errposition(@6)));
+						if (!n->bfinfo->read_time)
+							ereport(ERROR,
+									(errcode(ERRCODE_SYNTAX_ERROR),
+									 errmsg("read time must be larger than 0"),
+									 parser_errposition(@6)));
 					}
 					n->bfinfo->row_bounds = $8;
 					$$ = (Node *)n;
@@ -11101,6 +11107,8 @@ AlterDatabaseStmt:
 			| ALTER DATABASE database_name SET TABLESPACE name
 				 {
 					parser_ybc_not_support(@1, "ALTER DATABASE SET TABLESPACE");
+					// TODO(Deepayan): Ensure database shdep on tablespace updates to
+					// new tablespace
 					AlterDatabaseStmt *n = makeNode(AlterDatabaseStmt);
 					n->dbname = $3;
 					n->options = list_make1(makeDefElem("tablespace",

@@ -14,9 +14,7 @@
 #include "yb/docdb/doc_pgsql_scanspec.h"
 
 #include "yb/common/pgsql_protocol.pb.h"
-#include "yb/common/ql_value.h"
 
-#include "yb/docdb/doc_expr.h"
 #include "yb/docdb/doc_scanspec_util.h"
 #include "yb/rocksdb/db/compaction.h"
 
@@ -85,6 +83,8 @@ class PgsqlRangeBasedFileFilter : public rocksdb::ReadFileFilter {
 DocPgsqlScanSpec::DocPgsqlScanSpec(const Schema& schema,
                                    const rocksdb::QueryId query_id,
                                    const DocKey& doc_key,
+                                   const boost::optional<int32_t> hash_code,
+                                   const boost::optional<int32_t> max_hash_code,
                                    const DocKey& start_doc_key,
                                    bool is_forward_scan)
     : PgsqlScanSpec(nullptr),
@@ -92,6 +92,8 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(const Schema& schema,
       query_id_(query_id),
       hashed_components_(nullptr),
       range_components_(nullptr),
+      hash_code_(hash_code),
+      max_hash_code_(max_hash_code),
       start_doc_key_(start_doc_key.empty() ? KeyBytes() : start_doc_key.Encode()),
       lower_doc_key_(doc_key.Encode()),
       is_forward_scan_(is_forward_scan) {
@@ -100,6 +102,27 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(const Schema& schema,
   // We add +inf as an extra component to make sure this is greater than all keys in range.
   // For lower bound, this is true already, because dockey + suffix is > dockey
   upper_doc_key_ = lower_doc_key_;
+
+  if (hash_code && !doc_key.has_hash()) {
+    DocKey lower_doc_key = DocKey(doc_key);
+    lower_doc_key.set_hash(*hash_code);
+    if (lower_doc_key.hashed_group().empty()) {
+      lower_doc_key.hashed_group()
+                    .push_back(PrimitiveValue(ValueType::kLowest));
+    }
+    lower_doc_key_ = lower_doc_key.Encode();
+  }
+
+  if (max_hash_code) {
+    DocKey upper_doc_key = DocKey(doc_key);
+    upper_doc_key.set_hash(*max_hash_code);
+    if (upper_doc_key.hashed_group().empty()) {
+      upper_doc_key.hashed_group()
+                    .push_back(PrimitiveValue(ValueType::kHighest));
+    }
+    upper_doc_key_ = upper_doc_key.Encode();
+  }
+
   upper_doc_key_.AppendValueTypeBeforeGroupEnd(ValueType::kHighest);
 }
 
@@ -222,12 +245,16 @@ KeyBytes DocPgsqlScanSpec::bound_key(const Schema& schema, const bool lower_boun
   if (hash_components_unset) {
     // use lower bound hash code if set in request (for scans using token)
     if (lower_bound && hash_code_) {
-      encoder.HashAndRange(*hash_code_, { PrimitiveValue(ValueType::kLowest) }, {});
+      encoder.HashAndRange(*hash_code_,
+      {PrimitiveValue(ValueType::kLowest)},
+      {PrimitiveValue(ValueType::kLowest)});
     }
     // use upper bound hash code if set in request (for scans using token)
     if (!lower_bound) {
       if (max_hash_code_) {
-        encoder.HashAndRange(*max_hash_code_, { PrimitiveValue(ValueType::kHighest) }, {});
+        encoder.HashAndRange(*max_hash_code_,
+        {PrimitiveValue(ValueType::kHighest)},
+        {PrimitiveValue(ValueType::kHighest)});
       } else {
         result.AppendValueTypeBeforeGroupEnd(ValueType::kHighest);
       }

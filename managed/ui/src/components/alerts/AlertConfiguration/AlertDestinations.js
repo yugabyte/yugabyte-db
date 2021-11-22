@@ -11,23 +11,32 @@ import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import { YBConfirmModal } from '../../modals';
 import { YBPanelItem } from '../../panels';
 import { AlertDestinationDetails } from './AlertDestinationDetails';
+import { isNonAvailable } from '../../../utils/LayoutUtils';
 
+import './AlertDestinationConfiguration.scss';
 /**
  * This is the header for YB Panel Item.
  */
-const header = (destinationCount, onAddAlertDestination) => (
+const header = (isReadOnly, destinationCount, onAddAlertDestination) => (
   <>
-    <h5 className="table-container-title pull-left">{`${destinationCount} Alert Destinations`}</h5>
-    <FlexContainer className="pull-right">
+    <FlexContainer>
       <FlexShrink>
-        <Button
-          bsClass="alert-config-actions btn btn-orange btn-config"
-          onClick={() => onAddAlertDestination(true)}
-        >
+        A destination consist of one or more{' '}
+        <a className="channel-link" href="/admin/alertConfig/notificationChannels" target="_self">
+          channels
+        </a>
+        <br />
+        Whenever an alert is triggered, it sends the related data to its designated destination.
+      </FlexShrink>
+      <FlexShrink className="pull-right">
+        {!isReadOnly && (
+        <Button bsClass="btn btn-orange btn-config" onClick={() => onAddAlertDestination(true)}>
           Add Destination
         </Button>
+        )}
       </FlexShrink>
     </FlexContainer>
+    <h5 className="table-container-title alert-dest-count pull-left">{`${destinationCount} Alert Destinations`}</h5>
   </>
 );
 
@@ -35,6 +44,7 @@ export const AlertDestinations = (props) => {
   const [alertDestination, setAlertDestination] = useState([]);
   const [alertDestinationDetails, setAlertDestinationDetails] = useState({});
   const {
+    customer,
     alertDestinations,
     closeModal,
     deleteAlertDestination,
@@ -50,6 +60,8 @@ export const AlertDestinations = (props) => {
     sortName: 'name',
     sortOrder: 'asc'
   });
+  const isReadOnly = isNonAvailable(
+    customer.data.features, 'alert.destinations.actions');
 
   const setRsponseObject = () => {
     const result = new Map();
@@ -154,6 +166,8 @@ export const AlertDestinations = (props) => {
   };
 
   // This method will handle all the required actions for the particular row.
+
+  const editActionLabel = isReadOnly ? "Destination Details" : "Edit Destination";
   const formatConfigActions = (cell, row) => {
     return (
       <>
@@ -169,16 +183,18 @@ export const AlertDestinations = (props) => {
               showDetailsModal();
             }}
           >
-            <i className="fa fa-info-circle"></i> Details
+            <i className="fa fa-info-circle"></i> Channels Details
           </MenuItem>
 
           <MenuItem onClick={() => onEditDestination(row)}>
-            <i className="fa fa-pencil"></i> Edit Destination
+            <i className="fa fa-pencil"></i> {editActionLabel}
           </MenuItem>
 
+          {!isReadOnly && (
           <MenuItem onClick={() => showDeleteModal(row.name)}>
             <i className="fa fa-trash"></i> Delete Destination
           </MenuItem>
+          )}
 
           {
             <YBConfirmModal
@@ -200,7 +216,7 @@ export const AlertDestinations = (props) => {
   return (
     <>
       <YBPanelItem
-        header={header(alertDestination.length, onAddAlertDestination)}
+        header={header(isReadOnly, alertDestination.length, onAddAlertDestination)}
         body={
           <>
             <BootstrapTable

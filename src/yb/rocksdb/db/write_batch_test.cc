@@ -22,6 +22,9 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include <memory>
+#include <string>
+
+#include <gtest/gtest.h>
 
 #include "yb/rocksdb/db.h"
 
@@ -35,7 +38,7 @@
 #include "yb/rocksdb/table/scoped_arena_iterator.h"
 #include "yb/rocksdb/util/logging.h"
 #include "yb/util/string_util.h"
-#include "yb/rocksdb/util/testharness.h"
+#include "yb/util/test_macros.h"
 
 namespace rocksdb {
 

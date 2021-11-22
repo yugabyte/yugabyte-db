@@ -39,6 +39,58 @@ CREATE INDEX iix ON ihighway USING lsm (name text_ops);
 CREATE INDEX six ON shighway USING lsm (name text_ops);
 
 --
+-- GIN over int[] and text[]
+--
+-- Note: GIN currently supports only bitmap scans, not plain indexscans
+-- YB Note: ybgin uses plain indexscans, not bitmap scans
+--
+
+SET enable_seqscan = OFF;
+SET enable_indexscan = OFF;
+SET enable_bitmapscan = ON;
+
+-- YB note: the following CREATE INDEXes are commented because errdetail varies.
+-- TODO(jason): uncomment when working on (issue #9959).
+-- CREATE INDEX NONCONCURRENTLY intarrayidx ON array_index_op_test USING gin (i);
+--
+-- CREATE INDEX NONCONCURRENTLY textarrayidx ON array_index_op_test USING gin (t);
+
+-- And try it with a multicolumn GIN index
+
+DROP INDEX intarrayidx, textarrayidx;
+-- TODO(jason): remove the following drops when working on issue #880
+DROP INDEX intarrayidx;
+DROP INDEX textarrayidx;
+
+CREATE INDEX botharrayidx ON array_index_op_test USING gin (i, t);
+
+RESET enable_seqscan;
+RESET enable_indexscan;
+RESET enable_bitmapscan;
+
+--
+-- Try a GIN index with a lot of items with same key. (GIN creates a posting
+-- tree when there are enough duplicates)
+-- YB Note: ybgin does not use a posting list or tree
+--
+CREATE TABLE array_gin_test (a int[]);
+
+INSERT INTO array_gin_test SELECT ARRAY[1, g%5, g] FROM generate_series(1, 10000) g;
+
+CREATE INDEX array_gin_test_idx ON array_gin_test USING gin (a);
+
+SELECT COUNT(*) FROM array_gin_test WHERE a @> '{2}';
+
+DROP TABLE array_gin_test;
+
+--
+-- Test GIN index's reloptions
+--
+CREATE INDEX gin_relopts_test ON array_index_op_test USING gin (i)
+  WITH (FASTUPDATE=on, GIN_PENDING_LIST_LIMIT=128);
+\d+ gin_relopts_test
+
+--
 -- Try some concurrent index builds
 --
 -- Unfortunately this only tests about half the code paths because there are

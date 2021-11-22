@@ -342,6 +342,9 @@ class OutboundCall : public RpcCall {
   // Can be used only while callback_ object is alive.
   google::protobuf::Message* response_;
 
+  // The trace buffer.
+  scoped_refptr<Trace> trace_;
+
  private:
   friend class RpcController;
 
@@ -365,7 +368,7 @@ class OutboundCall : public RpcCall {
   // This will only be non-NULL if status().IsRemoteError().
   const ErrorStatusPB* error_pb() const;
 
-  CHECKED_STATUS InitHeader(RequestHeader* header, bool copy);
+  CHECKED_STATUS InitHeader(RequestHeader* header);
 
   // Lock for state_ status_, error_pb_ fields, since they
   // may be mutated by the reactor thread while the client thread
@@ -377,6 +380,8 @@ class OutboundCall : public RpcCall {
 
   // Invokes the user-provided callback. Uses callback_thread_pool_ if set.
   void InvokeCallback();
+
+  Result<uint32_t> TimeoutMs() const;
 
   int32_t call_id_;
 
@@ -397,9 +402,6 @@ class OutboundCall : public RpcCall {
 
   // Once a response has been received for this call, contains that response.
   CallResponse call_response_;
-
-  // The trace buffer.
-  scoped_refptr<Trace> trace_;
 
   std::shared_ptr<OutboundCallMetrics> outbound_call_metrics_;
 

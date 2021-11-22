@@ -161,6 +161,9 @@ Result<PGConn> PGConn::Connect(const std::string& conn_str,
   auto start = CoarseMonoClock::now();
   for (;;) {
     PGConnPtr result(PQconnectdb(conn_str.c_str()));
+    if (!result) {
+      return STATUS(NetworkError, "Failed to connect to DB");
+    }
     auto status = PQstatus(result.get());
     if (status == ConnStatusType::CONNECTION_OK) {
       LOG(INFO) << "Connected to PG (" << conn_str << "), time taken: "
@@ -169,8 +172,16 @@ Result<PGConn> PGConn::Connect(const std::string& conn_str,
     }
     auto now = CoarseMonoClock::now();
     if (now >= deadline) {
+      std::string msg(yb::Format("$0", status));
+      if (status == CONNECTION_BAD) {
+        msg = PQerrorMessage(result.get());
+        // Avoid double newline (postgres adds a newline after the error message).
+        if (msg.back() == '\n') {
+          msg.resize(msg.size() - 1);
+        }
+      }
       return STATUS_FORMAT(NetworkError, "Connect failed: $0, passed: $1",
-                           status, MonoDelta(now - start));
+                           msg, MonoDelta(now - start));
     }
   }
 }
@@ -196,16 +207,21 @@ void PGResultClear::operator()(PGresult* result) const {
   PQclear(result);
 }
 
-Status PGConn::Execute(const std::string& command) {
+Status PGConn::Execute(const std::string& command, bool show_query_in_error) {
+  VLOG(1) << __func__ << " " << command;
   PGResultPtr res(PQexec(impl_.get(), command.c_str()));
   auto status = PQresultStatus(res.get());
   if (ExecStatusType::PGRES_COMMAND_OK != status) {
     if (status == ExecStatusType::PGRES_TUPLES_OK) {
-      return STATUS(IllegalState, "Tuples received in Execute");
+      return STATUS_FORMAT(IllegalState,
+                           "Tuples received in Execute$0",
+                           show_query_in_error ? Format(" of '$0'", command) : "");
     }
     return STATUS(NetworkError,
-                  Format("Execute '$0' failed: $1, message: $2",
-                         command, status, PQresultErrorMessage(res.get())),
+                  Format("Execute$0 failed: $1, message: $2",
+                         show_query_in_error ? Format(" of '$0'", command) : "",
+                         status,
+                         PQresultErrorMessage(res.get())),
                   Slice() /* msg2 */,
                   PgsqlError(GetSqlState(res.get())));
   }
@@ -225,6 +241,7 @@ Result<PGResultPtr> CheckResult(PGResultPtr result, const std::string& command) 
 }
 
 Result<PGResultPtr> PGConn::Fetch(const std::string& command) {
+  VLOG(1) << __func__ << " " << command;
   return CheckResult(
       PGResultPtr(simple_query_protocol_
           ? PQexec(impl_.get(), command.c_str())

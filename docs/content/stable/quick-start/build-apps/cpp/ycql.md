@@ -15,14 +15,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/quick-start/build-apps/cpp/ysql" class="nav-link">
+    <a href="../ysql/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li>
-    <a href="/latest/quick-start/build-apps/cpp/ycql" class="nav-link active">
+    <a href="../ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -35,7 +35,7 @@ showAsideToc: true
 The tutorial assumes that you have:
 
 - installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell (`ycqlsh`). If
-  not, follow the steps in [Quick Start](../../../../api/ycql/quick-start/).
+  not, follow the steps in [Quick Start](../../../explore/ycql/).
 - have a 32-bit (x86) or 64-bit (x64) architecture machine.
 - have gcc 4.1.2 or later, Clang 3.4 or later installed.
 
@@ -239,7 +239,7 @@ $ ./yb_cql_hello_world
 
 You should see the following output:
 
-```
+```output
 Created keyspace ybdemo
 Created table ybdemo.employee
 Inserted data: INSERT INTO ybdemo.employee (id, name, age, language) VALUES (1, 'John', 35, 'C/C++')

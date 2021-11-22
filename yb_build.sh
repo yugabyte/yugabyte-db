@@ -35,7 +35,9 @@ Options:
   --help, -h
     Show help.
   --verbose
-    Show debug output from CMake.
+    Show debug output
+  --bash-debug
+    Show detailed debug information for each command executed by this script.
   --force-run-cmake, --frcm
     Ensure that we explicitly invoke CMake from this script. CMake may still run as a result of
     changes made to CMakeLists.txt files if we just invoke make on the CMake-generated Makefile.
@@ -200,7 +202,7 @@ Options:
     Specify compiler type, e.g. gcc, clang, or a specific version, e.g. gcc10 or clang12.
   --gcc, --gcc<version> --clang, --clang<version>
     A shorter way to achieve the same thing as --compiler-type.
-  --export-compile-commands
+  --export-compile-commands, --ccmds
     Export the C/C++ compilation database. Equivalent to setting YB_EXPORT_COMPILE_COMMANDS to 1.
   --
     Pass all arguments after -- to repeat_unit_test.
@@ -699,6 +701,9 @@ while [[ $# -gt 0 ]]; do
       verbose=true
       export YB_VERBOSE=1
     ;;
+    --bash-debug)
+      yb_activate_debug_mode
+    ;;
     --force-run-cmake|--frcm)
       force_run_cmake=true
     ;;
@@ -901,7 +906,7 @@ while [[ $# -gt 0 ]]; do
       if [[ ${#make_targets[@]} -eq 0 ]]; then
         fatal "Failed to identify the set of targets to build for the release package"
       fi
-      make_targets+=( "initial_sys_catalog_snapshot" )
+      make_targets+=( "initial_sys_catalog_snapshot" "update_ysql_migrations" )
     ;;
     --skip-build|--sb)
       set_flags_to_skip_build
@@ -1055,7 +1060,7 @@ while [[ $# -gt 0 ]]; do
     --cmake-unit-tests)
       run_cmake_unit_tests=true
     ;;
-    --export-compile-commands)
+    --export-compile-commands|--ccmds)
       export YB_EXPORT_COMPILE_COMMANDS=1
     ;;
     *)
@@ -1177,7 +1182,7 @@ fi
 configure_remote_compilation
 
 if "$java_lint"; then
-  log "--lint-java-code specified, only linting java code and then exiting."
+  log "--java-lint specified, only linting java code and then exiting."
   lint_java_code
   exit
 fi
@@ -1240,6 +1245,8 @@ fi
 # End of the section for supporting --save-log.
 # -------------------------------------------------------------------------------------------------
 
+check_arc_wrapper
+
 if "$verbose"; then
   log "$script_name command line: ${original_args[*]}"
 fi
@@ -1247,6 +1254,7 @@ fi
 # shellcheck disable=SC2119
 set_build_root
 
+find_or_download_ysql_snapshots
 find_or_download_thirdparty
 detect_toolchain
 find_make_or_ninja_and_update_cmake_opts
@@ -1366,8 +1374,9 @@ create_build_descriptor_file
 create_build_root_file
 
 if [[ ${#make_targets[@]} -eq 0 && -n $java_test_name ]]; then
-  # Only build yb-master / yb-tserver / postgres when we're only trying to run a Java test.
-  make_targets+=( yb-master yb-tserver postgres )
+  # Build only yb-master / yb-tserver / postgres / update_ysql_migrations when we're only trying
+  # to run a Java test.
+  make_targets+=( yb-master yb-tserver postgres update_ysql_migrations )
 fi
 
 if [[ $build_type == "compilecmds" ]]; then

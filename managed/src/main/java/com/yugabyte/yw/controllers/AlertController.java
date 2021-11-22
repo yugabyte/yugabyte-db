@@ -14,15 +14,16 @@
 
 package com.yugabyte.yw.controllers;
 
-import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.AlertManager;
+import com.yugabyte.yw.common.AlertManager.SendNotificationResult;
+import com.yugabyte.yw.common.AlertManager.SendNotificationStatus;
 import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertChannelService;
+import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.alerts.AlertService;
-import com.yugabyte.yw.common.alerts.impl.AlertConfigurationTemplate;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.forms.AlertChannelFormData;
 import com.yugabyte.yw.forms.AlertDestinationFormData;
@@ -34,14 +35,15 @@ import com.yugabyte.yw.forms.filters.AlertTemplateApiFilter;
 import com.yugabyte.yw.forms.paging.AlertConfigurationPagedApiQuery;
 import com.yugabyte.yw.forms.paging.AlertPagedApiQuery;
 import com.yugabyte.yw.models.Alert;
-import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertChannel;
+import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.AlertDestination;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.extended.AlertConfigurationTemplate;
 import com.yugabyte.yw.models.filters.AlertConfigurationFilter;
-import com.yugabyte.yw.models.filters.AlertTemplateFilter;
 import com.yugabyte.yw.models.filters.AlertFilter;
+import com.yugabyte.yw.models.filters.AlertTemplateFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.paging.AlertConfigurationPagedQuery;
 import com.yugabyte.yw.models.paging.AlertConfigurationPagedResponse;
@@ -70,6 +72,8 @@ public class AlertController extends AuthenticatedController {
   @Inject private AlertChannelService alertChannelService;
 
   @Inject private AlertDestinationService alertDestinationService;
+
+  @Inject private AlertManager alertManager;
 
   @ApiOperation(value = "Get details of an alert", response = Alert.class)
   public Result get(UUID customerUUID, UUID alertUUID) {
@@ -112,7 +116,7 @@ public class AlertController extends AuthenticatedController {
   public Result pageAlerts(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
 
-    AlertPagedApiQuery apiQuery = parseJson(AlertPagedApiQuery.class);
+    AlertPagedApiQuery apiQuery = parseJsonAndValidate(AlertPagedApiQuery.class);
     AlertApiFilter apiFilter = apiQuery.getFilter();
     AlertFilter filter = apiFilter.toFilter().toBuilder().customerUuid(customerUUID).build();
     AlertPagedQuery query = apiQuery.copyWithFilter(filter, AlertPagedQuery.class);
@@ -146,7 +150,7 @@ public class AlertController extends AuthenticatedController {
   public Result acknowledgeByFilter(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
 
-    AlertApiFilter apiFilter = parseJson(AlertApiFilter.class);
+    AlertApiFilter apiFilter = parseJsonAndValidate(AlertApiFilter.class);
     AlertFilter filter = apiFilter.toFilter().toBuilder().customerUuid(customerUUID).build();
 
     alertService.acknowledge(filter);
@@ -175,7 +179,7 @@ public class AlertController extends AuthenticatedController {
   public Result listAlertTemplates(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
-    AlertTemplateApiFilter apiFilter = parseJson(AlertTemplateApiFilter.class);
+    AlertTemplateApiFilter apiFilter = parseJsonAndValidate(AlertTemplateApiFilter.class);
     AlertTemplateFilter filter = apiFilter.toFilter();
 
     List<AlertConfigurationTemplate> templates =
@@ -201,7 +205,8 @@ public class AlertController extends AuthenticatedController {
   public Result pageAlertConfigurations(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
 
-    AlertConfigurationPagedApiQuery apiQuery = parseJson(AlertConfigurationPagedApiQuery.class);
+    AlertConfigurationPagedApiQuery apiQuery =
+        parseJsonAndValidate(AlertConfigurationPagedApiQuery.class);
     AlertConfigurationApiFilter apiFilter = apiQuery.getFilter();
     AlertConfigurationFilter filter =
         apiFilter.toFilter().toBuilder().customerUuid(customerUUID).build();
@@ -226,7 +231,7 @@ public class AlertController extends AuthenticatedController {
   public Result listAlertConfigurations(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
 
-    AlertConfigurationApiFilter apiFilter = parseJson(AlertConfigurationApiFilter.class);
+    AlertConfigurationApiFilter apiFilter = parseJsonAndValidate(AlertConfigurationApiFilter.class);
     AlertConfigurationFilter filter =
         apiFilter.toFilter().toBuilder().customerUuid(customerUUID).build();
 
@@ -298,6 +303,19 @@ public class AlertController extends AuthenticatedController {
     return YBPSuccess.empty();
   }
 
+  @ApiOperation(value = "Send test alert for alert configuration", response = YBPSuccess.class)
+  public Result sendTestAlert(UUID customerUUID, UUID configurationUUID) {
+    Customer.getOrBadRequest(customerUUID);
+
+    AlertConfiguration configuration = alertConfigurationService.getOrBadRequest(configurationUUID);
+    Alert alert = alertConfigurationService.createTestAlert(configuration);
+    SendNotificationResult result = alertManager.sendNotification(alert);
+    if (result.getStatus() != SendNotificationStatus.SUCCEEDED) {
+      throw new PlatformServiceException(BAD_REQUEST, result.getMessage());
+    }
+    return YBPSuccess.withMessage(result.getMessage());
+  }
+
   @ApiOperation(value = "Create an alert channel", response = AlertChannel.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -307,7 +325,7 @@ public class AlertController extends AuthenticatedController {
           required = true))
   public Result createAlertChannel(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
-    AlertChannelFormData data = parseJson(AlertChannelFormData.class);
+    AlertChannelFormData data = parseJsonAndValidate(AlertChannelFormData.class);
     AlertChannel channel =
         new AlertChannel().setCustomerUUID(customerUUID).setName(data.name).setParams(data.params);
     alertChannelService.save(channel);
@@ -333,7 +351,7 @@ public class AlertController extends AuthenticatedController {
   public Result updateAlertChannel(UUID customerUUID, UUID alertChannelUUID) {
     Customer.getOrBadRequest(customerUUID);
     AlertChannel channel = alertChannelService.getOrBadRequest(customerUUID, alertChannelUUID);
-    AlertChannelFormData data = parseJson(AlertChannelFormData.class);
+    AlertChannelFormData data = parseJsonAndValidate(AlertChannelFormData.class);
     channel
         .setName(data.name)
         .setParams(CommonUtils.unmaskObject(channel.getParams(), data.params));
@@ -432,20 +450,5 @@ public class AlertController extends AuthenticatedController {
   public Result listAlertDestinations(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
     return PlatformResults.withData(alertDestinationService.listByCustomer(customerUUID));
-  }
-
-  @VisibleForTesting
-  void setAlertConfigurationService(AlertConfigurationService alertConfigurationService) {
-    this.alertConfigurationService = alertConfigurationService;
-  }
-
-  @VisibleForTesting
-  void setAlertService(AlertService alertService) {
-    this.alertService = alertService;
-  }
-
-  @VisibleForTesting
-  void setMetricService(MetricService metricService) {
-    this.metricService = metricService;
   }
 }

@@ -36,14 +36,9 @@
 
 #include <glog/logging.h>
 
-#include "yb/fs/fs_manager.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/server/rpc_server.h"
-#include "yb/server/webserver.h"
 #include "yb/master/catalog_manager.h"
-#include "yb/master/master.h"
 #include "yb/rpc/messenger.h"
-#include "yb/util/flag_tags.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/tunnel.h"
 #include "yb/util/status.h"
@@ -221,6 +216,10 @@ std::string MiniMaster::permanent_uuid() const {
 
 std::string MiniMaster::bound_rpc_addr_str() const {
   return yb::ToString(bound_rpc_addr());
+}
+
+const std::shared_ptr<tablet::TabletPeer> MiniMaster::tablet_peer() const {
+  return master_->catalog_manager()->tablet_peer();
 }
 
 } // namespace master

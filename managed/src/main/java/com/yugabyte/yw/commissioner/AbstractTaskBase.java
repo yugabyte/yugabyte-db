@@ -3,15 +3,17 @@
 package com.yugabyte.yw.commissioner;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.util.concurrent.MoreExecutors;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
-import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -20,6 +22,8 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import play.Application;
@@ -28,6 +32,8 @@ import play.libs.Json;
 
 @Slf4j
 public abstract class AbstractTaskBase implements ITask {
+
+  private static final String SLEEP_DISABLED_PATH = "yb.tasks.disabled_timeouts";
 
   // The params for this task.
   protected ITaskParams taskParams;
@@ -96,6 +102,16 @@ public abstract class AbstractTaskBase implements ITask {
   @Override
   public abstract void run();
 
+  @Override
+  public void terminate() {
+    if (executor != null && !executor.isShutdown()) {
+      MoreExecutors.shutdownAndAwaitTermination(executor, 5, TimeUnit.MINUTES);
+    }
+    if (subTaskGroupQueue != null) {
+      subTaskGroupQueue.cleanup();
+    }
+  }
+
   // Create an task pool which can handle an unbounded number of tasks, while using an initial set
   // of threads which get spawned upto TASK_THREADS limit.
   public void createThreadpool() {
@@ -161,5 +177,13 @@ public abstract class AbstractTaskBase implements ITask {
    */
   public static <T> T createTask(Class<T> taskClass) {
     return Play.current().injector().instanceOf(taskClass);
+  }
+
+  public int getSleepMultiplier() {
+    try {
+      return config.getBoolean(SLEEP_DISABLED_PATH) ? 0 : 1;
+    } catch (Exception e) {
+      return 1;
+    }
   }
 }

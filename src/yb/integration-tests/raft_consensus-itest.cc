@@ -41,7 +41,6 @@
 #include <glog/stl_logging.h>
 #include <gtest/gtest.h>
 
-#include "yb/client/client-test-util.h"
 #include "yb/client/client.h"
 #include "yb/client/error.h"
 #include "yb/client/session.h"
@@ -286,7 +285,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
         QLAddInt32HashValue(req, j);
         table.AddInt32ColumnValue(req, "int_val", j * 2);
         table.AddStringColumnValue(req, "string_val", StringPrintf("hello %d", j));
-        ASSERT_OK(session->Apply(op));
+        session->Apply(op);
       }
 
       // We don't handle write idempotency yet. (i.e making sure that when a leader fails

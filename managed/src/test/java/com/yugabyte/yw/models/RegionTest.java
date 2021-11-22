@@ -16,25 +16,30 @@ import static org.junit.Assert.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.models.helpers.ProviderAndRegion;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import javax.persistence.PersistenceException;
+import org.hamcrest.Matchers;
 import org.junit.Before;
 import org.junit.Test;
 import play.libs.Json;
 
 public class RegionTest extends FakeDBApplication {
   Provider defaultProvider;
+  Provider otherProvider;
   Customer defaultCustomer;
 
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
+    otherProvider = ModelFactory.azuProvider(defaultCustomer);
   }
 
   @Test
@@ -101,6 +106,21 @@ public class RegionTest extends FakeDBApplication {
     for (Region region : regions) {
       assertThat(region.code, containsString("region-"));
     }
+  }
+
+  @Test
+  public void testFindRegionByKey() {
+    Region region1 = Region.create(defaultProvider, "region-1", "region 1", "default-image");
+    Region region2 = Region.create(defaultProvider, "region-2", "region 2", "default-image");
+    Region region3 = Region.create(otherProvider, "region-1", "region 2", "default-image");
+
+    List<Region> regions =
+        Region.findByKeys(
+            ImmutableList.of(
+                new ProviderAndRegion(defaultProvider.uuid, "region-1"),
+                new ProviderAndRegion(otherProvider.uuid, "region-1")));
+
+    assertThat(regions, Matchers.containsInAnyOrder(region1, region3));
   }
 
   @Test
@@ -198,7 +218,7 @@ public class RegionTest extends FakeDBApplication {
   public void testNullConfig() {
     Region r = Region.create(defaultProvider, "region-1", "region 1", "default-image");
     assertNotNull(r.uuid);
-    assertTrue(r.getConfig().isEmpty());
+    assertTrue(r.getUnmaskedConfig().isEmpty());
   }
 
   @Test
@@ -207,6 +227,6 @@ public class RegionTest extends FakeDBApplication {
     r.setConfig(ImmutableMap.of("Foo", "Bar"));
     r.save();
     assertNotNull(r.uuid);
-    assertNotNull(r.getConfig().toString(), allOf(notNullValue(), equalTo("{Foo=Bar}")));
+    assertNotNull(r.getUnmaskedConfig().toString(), allOf(notNullValue(), equalTo("{Foo=Bar}")));
   }
 }

@@ -1309,6 +1309,10 @@ create trigger trg1 after insert on trigpart for each row execute procedure trig
 create table trigpart2 partition of trigpart for values from (1000) to (2000);
 create table trigpart3 (like trigpart);
 alter table trigpart attach partition trigpart3 for values from (2000) to (3000);
+create table trigpart4 partition of trigpart for values from (3000) to (4000) partition by range (a);
+create table trigpart41 partition of trigpart4 for values from (3000) to (3500);
+create table trigpart42 (like trigpart);
+alter table trigpart4 attach partition trigpart42 for values from (3500) to (4000);
 select tgrelid::regclass, tgname, tgfoid::regproc from pg_trigger
   where tgrelid::regclass::text like 'trigpart%' order by tgrelid::regclass::text;
 drop trigger trg1 on trigpart1;	-- fail
@@ -2129,3 +2133,19 @@ drop table self_ref;
 drop function dump_insert();
 drop function dump_update();
 drop function dump_delete();
+
+-- Leave around some objects for other tests
+create table trigger_parted (a int primary key) partition by list (a);
+create function trigger_parted_trigfunc() returns trigger language plpgsql as
+  $$ begin end; $$;
+create trigger aft_row after insert or update on trigger_parted
+  for each row execute function trigger_parted_trigfunc();
+create table trigger_parted_p1 partition of trigger_parted for values in (1)
+  partition by list (a);
+create table trigger_parted_p1_1 partition of trigger_parted_p1 for values in (1);
+create table trigger_parted_p2 partition of trigger_parted for values in (2)
+  partition by list (a);
+create table trigger_parted_p2_2 partition of trigger_parted_p2 for values in (2);
+alter table only trigger_parted_p2 disable trigger aft_row;
+alter table trigger_parted_p2_2 enable always trigger aft_row;
+

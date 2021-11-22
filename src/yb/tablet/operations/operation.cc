@@ -35,7 +35,6 @@
 #include "yb/consensus/consensus_round.h"
 
 #include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/tserver_error.h"
 
@@ -106,13 +105,6 @@ void Operation::set_hybrid_time(const HybridTime& hybrid_time) {
 
 HybridTime Operation::WriteHybridTime() const {
   return hybrid_time();
-}
-
-void Operation::UpdateIfMaxTtl(const MonoDelta& ttl) {
-  std::lock_guard<simple_spinlock> l(mutex_);
-  if (!ttl_.Initialized() || ttl > ttl_) {
-    ttl_ = ttl;
-  }
 }
 
 void Operation::AddedToLeader(const OpId& op_id, const OpId& committed_op_id) {

@@ -43,6 +43,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.Api;
@@ -117,20 +118,20 @@ public class CustomerController extends AuthenticatedController {
     CustomerConfig config = CustomerConfig.getAlertConfig(customerUUID);
     // TODO: get rid of this
     if (config != null) {
-      responseJson.set("alertingData", config.getData());
+      responseJson.set("alertingData", config.getMaskedData());
     } else {
       responseJson.set("alertingData", null);
     }
     CustomerConfig smtpConfig = CustomerConfig.getSmtpConfig(customerUUID);
     if (smtpConfig != null) {
-      responseJson.set("smtpData", smtpConfig.getData());
+      responseJson.set("smtpData", smtpConfig.getMaskedData());
     } else {
       responseJson.set("smtpData", null);
     }
     responseJson.put(
         "callhomeLevel", CustomerConfig.getOrCreateCallhomeLevel(customerUUID).toString());
 
-    Users user = (Users) ctx().args.get("user");
+    UserWithFeatures user = (UserWithFeatures) ctx().args.get("user");
     if (customer.getFeatures().size() != 0 && user.getFeatures().size() != 0) {
       JsonNode featureSet = user.getFeatures();
       CommonUtils.deepMerge(featureSet, customer.getFeatures());
@@ -174,7 +175,7 @@ public class CustomerController extends AuthenticatedController {
           CustomerConfig.createAlertConfig(
               customerUUID, Json.toJson(alertingFormData.alertingData));
         } else {
-          config.setData(Json.toJson(alertingFormData.alertingData));
+          config.unmaskAndSetData((ObjectNode) Json.toJson(alertingFormData.alertingData));
           config.update();
         }
       }
@@ -183,7 +184,7 @@ public class CustomerController extends AuthenticatedController {
       if (smtpConfig == null && alertingFormData.smtpData != null) {
         CustomerConfig.createSmtpConfig(customerUUID, Json.toJson(alertingFormData.smtpData));
       } else if (smtpConfig != null && alertingFormData.smtpData != null) {
-        smtpConfig.setData(Json.toJson(alertingFormData.smtpData));
+        smtpConfig.unmaskAndSetData((ObjectNode) Json.toJson(alertingFormData.smtpData));
         smtpConfig.update();
       } // In case we want to reset the smtpData and use the default mailing server.
       else if (request.has("smtpData") && alertingFormData.smtpData == null) {
@@ -383,7 +384,7 @@ public class CustomerController extends AuthenticatedController {
         }
         namespaces.add(
             PlacementInfoUtil.getKubernetesNamespace(
-                isMultiAZ, nodePrefix, az.code, az.getConfig()));
+                isMultiAZ, nodePrefix, az.code, az.getUnmaskedConfig()));
       }
     }
 

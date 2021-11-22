@@ -87,10 +87,11 @@ class YBSchema;
 class YBTableAlterer;
 class YBTableCreator;
 class YBTableName;
-class YBTabletServer;
-class YBTabletServerPlacementInfo;
+class UniverseKeyClient;
 
 struct YBTableInfo;
+struct YBTabletServer;
+struct YBTabletServerPlacementInfo;
 
 typedef std::function<void(std::vector<const TabletId*>*)> LocalTabletFilter;
 
@@ -109,8 +110,7 @@ class TabletInvoker;
 class WriteRpc;
 
 struct InFlightOp;
-typedef std::shared_ptr<InFlightOp> InFlightOpPtr;
-typedef std::vector<InFlightOpPtr> InFlightOps;
+typedef boost::iterator_range<std::vector<InFlightOp>::iterator> InFlightOps;
 
 class RemoteTablet;
 typedef scoped_refptr<RemoteTablet> RemoteTabletPtr;
@@ -118,7 +118,7 @@ typedef scoped_refptr<RemoteTablet> RemoteTabletPtr;
 class RemoteTabletServer;
 
 class Batcher;
-typedef scoped_refptr<Batcher> BatcherPtr;
+using BatcherPtr = std::shared_ptr<Batcher>;
 
 struct AsyncRpcMetrics;
 typedef std::shared_ptr<AsyncRpcMetrics> AsyncRpcMetricsPtr;

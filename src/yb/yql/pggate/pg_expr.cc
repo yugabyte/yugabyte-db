@@ -20,11 +20,9 @@
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_dml.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
-#include "yb/util/string_util.h"
 #include "yb/util/decimal.h"
 #include "yb/util/flag_tags.h"
 
-#include "postgres/src/include/pg_config_manual.h"
 
 DEFINE_test_flag(bool, do_not_add_enum_sort_order, false,
                  "Do not add enum type sort order when buidling a constant "
@@ -287,20 +285,23 @@ void PgExpr::TranslateDecimal(Slice *yb_cursor, const PgWireDataHeader& header, 
     return pg_tuple->WriteNull(index, header);
   }
 
+  // Get the value size.
   int64_t data_size;
   size_t read_size = PgDocData::ReadNumber(yb_cursor, &data_size);
   yb_cursor->remove_prefix(read_size);
 
-  std::string serialized_decimal = yb_cursor->ToBuffer();
-  yb_cursor->remove_prefix(data_size);
-
+  // Read the decimal value from Protobuf and decode it to internal format.
+  std::string serialized_decimal;
+  read_size = PgDocData::ReadString(yb_cursor, &serialized_decimal, data_size);
+  yb_cursor->remove_prefix(read_size);
   util::Decimal yb_decimal;
   if (!yb_decimal.DecodeFromComparable(serialized_decimal).ok()) {
     LOG(FATAL) << "Failed to deserialize DECIMAL from " << serialized_decimal;
     return;
   }
-  auto plaintext = yb_decimal.ToString();
 
+  // Translate to decimal format and write to datum.
+  auto plaintext = yb_decimal.ToString();
   pg_tuple->WriteDatum(index, type_entity->yb_to_datum(plaintext.c_str(), data_size, type_attrs));
 }
 
@@ -439,6 +440,10 @@ void PgExpr::InitializeTranslateData() {
       translate_data_ = TranslateDecimal;
       break;
 
+    case YB_YQL_DATA_TYPE_GIN_NULL:
+      translate_data_ = TranslateNumber<uint8_t>;
+      break;
+
     YB_PG_UNSUPPORTED_TYPES_IN_SWITCH:
     YB_PG_INVALID_TYPES_IN_SWITCH:
       LOG(DFATAL) << "Internal error: unsupported type " << type_entity_->yb_type;
@@ -574,11 +579,18 @@ PgConstant::PgConstant(const YBCPgTypeEntity *type_entity,
     case YB_YQL_DATA_TYPE_DECIMAL:
       if (!is_null) {
         char* plaintext;
-        // Calls YBCDatumToDecimalText in ybctype.c
+        // Calls YBCDatumToDecimalText in yb_type.c
         type_entity_->datum_to_yb(datum, &plaintext, nullptr);
         util::Decimal yb_decimal(plaintext);
         ql_value_.set_decimal_value(yb_decimal.EncodeToComparable());
       }
+      break;
+
+    case YB_YQL_DATA_TYPE_GIN_NULL:
+      CHECK(is_null) << "gin null type should be marked null";
+      uint8_t value;
+      type_entity_->datum_to_yb(datum, &value, nullptr);
+      ql_value_.set_gin_null_value(value);
       break;
 
     YB_PG_UNSUPPORTED_TYPES_IN_SWITCH:

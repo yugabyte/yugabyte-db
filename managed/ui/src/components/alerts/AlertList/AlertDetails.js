@@ -1,10 +1,25 @@
 import React, { Component } from 'react';
 import { Row, Col, Label, ButtonGroup, DropdownButton, MenuItem } from 'react-bootstrap';
 import './AlertDetails.scss';
+import { isNonAvailable } from '../../../utils/LayoutUtils';
 
 const findValueforlabel = (labels, labelToFind) => {
   const label = labels.find((l) => l.name === labelToFind);
   return label ? label.value : '';
+};
+
+const getSourceName = (alertDetails) => {
+  const source_name = findValueforlabel(alertDetails.labels, 'source_name');
+  if (alertDetails.configurationType !== 'UNIVERSE') {
+    return source_name;
+  }
+  const universeUUID = findValueforlabel(alertDetails.labels, 'source_uuid');
+
+  return (
+    <a target="_blank" rel="noopener noreferrer" className="universeLink" href={`/universes/${universeUUID}`}>
+      {source_name}
+    </a>
+  );
 };
 
 function getSeverityLabel(severity) {
@@ -35,11 +50,12 @@ export default class AlertDetails extends Component {
   }
 
   render() {
-    const { onHide, alertDetails, onAcknowledge } = this.props;
+    const { customer, onHide, alertDetails, onAcknowledge } = this.props;
+    const isReadOnly = isNonAvailable(
+      customer.data.features, 'alert.list.actions');
 
     if (!alertDetails) return null;
 
-    const source_name = findValueforlabel(alertDetails.labels, 'source_name');
     return (
       <div id="universe-tab-panel-pane-queries" className={'alert-details'}>
         <div className={`side-panel`}>
@@ -51,11 +67,21 @@ export default class AlertDetails extends Component {
           </div>
           <div className="side-panel__content">
             <Row>
-              <Col lg={12} title={alertDetails.message} className="alert-message noLeftPadding">
-                {alertDetails.message}
+              <Col className="alert-label noLeftPadding" xs={12} md={12} lg={12}>
+                <h6 className="alert-label-header">Name</h6>
+                <div title={alertDetails.name} className="alert-label-value">
+                  {alertDetails.name}
+                </div>
               </Col>
             </Row>
             <Row>
+              <Col
+                lg={12}
+                className="alert-label noLeftPadding noMarginBottom"
+              >
+                <h6 className="alert-label-header">DESCRIPTION</h6>
+                <div className="alert-label-message">{alertDetails.message}</div>
+              </Col>
               <Col lg={12} className="noLeftPadding">
                 {getSeverityLabel(alertDetails.severity)}
               </Col>
@@ -63,22 +89,22 @@ export default class AlertDetails extends Component {
             <Row>
               <Col lg={12} className="noLeftPadding">
                 <Row className="marginTop">
-                  <Col className="alert-label noLeftPadding" xs={6} md={6} lg={3}>
+                  <Col className="alert-label noLeftPadding" xs={12} md={12} lg={12}>
                     <h6 className="alert-label-header">Source</h6>
-                    <div title={source_name} className="alert-label-value">
-                      {source_name}
-                    </div>
+                    <div className="alert-label-value">{getSourceName(alertDetails)}</div>
                   </Col>
-                  <Col className="alert-label" xs={6} md={6} lg={3}>
+                </Row>
+                <Row>
+                  <Col className="alert-label noLeftPadding" xs={6} md={6} lg={3}>
                     <h6 className="alert-label-header">Start</h6>
                     <div label={alertDetails.createTime} className="alert-label-value">
                       {alertDetails.createTime}
                     </div>
                   </Col>
-                  <Col className="alert-label" xs={6} md={6} lg={3}>
+                  <Col className="alert-label noLeftPadding" xs={6} md={6} lg={3}>
                     <h6 className="alert-label-header">End</h6>
                     <div label={alertDetails.acknowledgedTime} className="alert-label-value">
-                      {alertDetails.acknowledgedTime}
+                      {alertDetails.resolvedTime ?? '-'}
                     </div>
                   </Col>
                 </Row>
@@ -90,7 +116,7 @@ export default class AlertDetails extends Component {
 
                 <div className="alert-label-value">{alertDetails.state}</div>
               </Col>
-              {alertDetails.state === 'ACTIVE' && (
+              {alertDetails.state === 'ACTIVE' && !isReadOnly && (
                 <Col lg={3} className="noLeftPadding">
                   <ButtonGroup>
                     <DropdownButton id="alert-mark-as-button" title="Mark as">
@@ -113,13 +139,9 @@ export default class AlertDetails extends Component {
                 <h5>History</h5>
                 <div className="alert-history">
                   <ul>
-                    {alertDetails.createTime && (
+                    {alertDetails.resolvedTime && (
                       <li className="alert-history-item">
-                        <div className="content">
-                          <div className="timeline-flow">
-                            Alert created on {alertDetails.createTime}
-                          </div>
-                        </div>
+                        <div className="content">Alert resolved on {alertDetails.resolvedTime}</div>
                       </li>
                     )}
                     {alertDetails.acknowledgedTime && (
@@ -129,9 +151,13 @@ export default class AlertDetails extends Component {
                         </div>
                       </li>
                     )}
-                    {alertDetails.resolvedTime && (
+                    {alertDetails.createTime && (
                       <li className="alert-history-item">
-                        <div className="content">Alert resolved on {alertDetails.resolvedTime}</div>
+                        <div className="content">
+                          <div className="timeline-flow">
+                            Alert Triggered on {alertDetails.createTime}
+                          </div>
+                        </div>
                       </li>
                     )}
                   </ul>

@@ -5,7 +5,7 @@ package com.yugabyte.yw.controllers;
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -177,7 +177,7 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
             + zoneUUID;
     Result result;
     if (isYWServiceException) {
-      result = assertYWSE(() -> FakeApiHelper.doRequest("DELETE", uri));
+      result = assertPlatformException(() -> FakeApiHelper.doRequest("DELETE", uri));
     } else {
       result = FakeApiHelper.doRequest("DELETE", uri);
     }
@@ -197,7 +197,7 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
             + "/zones";
     Result result;
     if (isYWServiceException) {
-      result = assertYWSE(() -> FakeApiHelper.doRequest("GET", uri));
+      result = assertPlatformException(() -> FakeApiHelper.doRequest("GET", uri));
     } else {
       result = FakeApiHelper.doRequest("GET", uri);
     }
@@ -224,13 +224,15 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
     Result result;
     if (azRequestJson != null) {
       if (isYWServiceException) {
-        result = assertYWSE(() -> FakeApiHelper.doRequestWithBody("POST", uri, azRequestJson));
+        result =
+            assertPlatformException(
+                () -> FakeApiHelper.doRequestWithBody("POST", uri, azRequestJson));
       } else {
         result = FakeApiHelper.doRequestWithBody("POST", uri, azRequestJson);
       }
     } else {
       if (isYWServiceException) {
-        result = assertYWSE(() -> FakeApiHelper.doRequest("POST", uri));
+        result = assertPlatformException(() -> FakeApiHelper.doRequest("POST", uri));
       } else {
         result = FakeApiHelper.doRequest("POST", uri);
       }

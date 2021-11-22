@@ -4,8 +4,8 @@ package com.yugabyte.yw.controllers;
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.junit.Assert.assertEquals;
@@ -23,6 +23,7 @@ import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.commissioner.tasks.params.DetachedNodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeApiHelper;
@@ -38,7 +39,6 @@ import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -56,6 +56,7 @@ import play.mvc.Result;
 public class NodeInstanceControllerTest extends FakeDBApplication {
   private final String FAKE_IP = "fake_ip";
   private final String FAKE_IP_2 = "fake_ip_2";
+  private final String FAKE_INSTANCE_TYPE = "fake_instance_type";
   private Customer customer;
   private Provider provider;
   private Region region;
@@ -80,7 +81,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     nodeData1.ip = FAKE_IP;
     nodeData1.region = region.code;
     nodeData1.zone = zone.code;
-    nodeData1.instanceType = "fake_instance_type";
+    nodeData1.instanceType = FAKE_INSTANCE_TYPE;
     nodeData1.sshUser = "ssh-user";
     node = NodeInstance.create(zone.uuid, nodeData1);
     // Give it a name.
@@ -141,6 +142,23 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     return FakeApiHelper.doRequestWithBody("PUT", uri, params);
   }
 
+  private Result performDetachedNodeAction(
+      UUID customerUUID,
+      UUID providerUUID,
+      String nodeIP,
+      NodeActionType nodeAction,
+      boolean mimicError) {
+    String uri =
+        "/api/customers/" + customerUUID + "/providers/" + providerUUID + "/instances/" + nodeIP;
+    ObjectNode params = Json.newObject();
+    if (mimicError) {
+      params.put("foo", "bar");
+    } else {
+      params.put("nodeAction", nodeAction.name());
+    }
+    return FakeApiHelper.doRequestWithBody("POST", uri, params);
+  }
+
   private void setInTransitNode(UUID universeUUID) {
     Universe.UniverseUpdater updater =
         new Universe.UniverseUpdater() {
@@ -167,8 +185,8 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   }
 
   private void checkNodesMatch(JsonNode queryNode, NodeInstance dbNode) {
-    assertEquals(dbNode.nodeUuid.toString(), queryNode.get("nodeUuid").asText());
-    assertEquals(dbNode.zoneUuid.toString(), queryNode.get("zoneUuid").asText());
+    assertEquals(dbNode.getNodeUuid().toString(), queryNode.get("nodeUuid").asText());
+    assertEquals(dbNode.getZoneUuid().toString(), queryNode.get("zoneUuid").asText());
     assertEquals(dbNode.getDetailsJson(), queryNode.get("details").toString());
     assertEquals(dbNode.getDetails().sshUser, queryNode.get("details").get("sshUser").asText());
   }
@@ -183,7 +201,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
 
   @Test
   public void testGetNodeWithValidUuid() {
-    Result r = getNode(node.nodeUuid);
+    Result r = getNode(node.getNodeUuid());
     checkOk(r);
     JsonNode json = parseResult(r);
     assertTrue(json.isObject());
@@ -194,7 +212,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   @Test
   public void testGetNodeWithInvalidUuid() {
     UUID uuid = UUID.randomUUID();
-    Result r = assertYWSE(() -> getNode(uuid));
+    Result r = assertPlatformException(() -> getNode(uuid));
     String expectedError = "Invalid node UUID: " + uuid;
     assertBadRequest(r, expectedError);
     assertAuditEntry(0, customer.uuid);
@@ -225,7 +243,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   @Test
   public void testListByZoneWrongZone() {
     UUID wrongUuid = UUID.randomUUID();
-    Result r = assertYWSE(() -> listByZone(wrongUuid));
+    Result r = assertPlatformException(() -> listByZone(wrongUuid));
     String expectedError = "Invalid AvailabilityZone UUID: " + wrongUuid.toString();
     checkNotOk(r, expectedError);
     assertAuditEntry(0, customer.uuid);
@@ -233,7 +251,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
 
   @Test
   public void testListByZoneNoFreeNodes() {
-    node.inUse = true;
+    node.setInUse(true);
     node.save();
     Result r = listByZone(zone.uuid);
     checkOk(r);
@@ -241,7 +259,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     JsonNode json = parseResult(r);
     assertEquals(0, json.size());
 
-    node.inUse = false;
+    node.setInUse(false);
     node.save();
     assertAuditEntry(0, customer.uuid);
   }
@@ -272,7 +290,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateFailureDuplicateIp() {
-    Result failedReq = assertYWSE(() -> createNode(zone.uuid, node.getDetails()));
+    Result failedReq = assertPlatformException(() -> createNode(zone.uuid, node.getDetails()));
     checkNotOk(failedReq, "Invalid nodes in request. Duplicate IP Addresses are not allowed.");
     assertAuditEntry(0, customer.uuid);
   }
@@ -280,7 +298,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   @Test
   public void testCreateFailureInvalidZone() {
     UUID wrongUuid = UUID.randomUUID();
-    Result r = assertYWSE(() -> createNode(wrongUuid, node.getDetails()));
+    Result r = assertPlatformException(() -> createNode(wrongUuid, node.getDetails()));
     String error = "Invalid AvailabilityZone UUID: " + wrongUuid.toString();
     checkNotOk(r, error);
     assertAuditEntry(0, customer.uuid);
@@ -297,14 +315,15 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   @Test
   public void testDeleteInstanceWithInvalidProviderValidInstanceIP() {
     UUID invalidProviderUUID = UUID.randomUUID();
-    Result r = assertYWSE(() -> deleteInstance(customer.uuid, invalidProviderUUID, FAKE_IP));
-    assertBadRequest(r, "Cannot find universe " + invalidProviderUUID);
+    Result r =
+        assertPlatformException(() -> deleteInstance(customer.uuid, invalidProviderUUID, FAKE_IP));
+    assertBadRequest(r, "Cannot find provider " + invalidProviderUUID);
     assertAuditEntry(0, customer.uuid);
   }
 
   @Test
   public void testDeleteInstanceWithValidProviderInvalidInstanceIP() {
-    Result r = assertYWSE(() -> deleteInstance(customer.uuid, provider.uuid, "abc"));
+    Result r = assertPlatformException(() -> deleteInstance(customer.uuid, provider.uuid, "abc"));
     assertBadRequest(r, "Node Not Found");
     assertAuditEntry(0, customer.uuid);
   }
@@ -335,11 +354,11 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     customer.addUniverseUUID(universe.universeUUID);
     customer.save();
     Result r =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 performNodeAction(
                     customer.uuid, universe.universeUUID, "host-n1", NodeActionType.DELETE, true));
-    assertBadRequest(r, "{\"nodeAction\":[\"This field is required\"]}");
+    assertBadRequest(r, "{\"nodeAction\":[\"may not be null\"]}");
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -351,7 +370,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
       customer.save();
       verify(mockCommissioner, times(0)).submit(any(), any());
       Result r =
-          assertYWSE(
+          assertPlatformException(
               () ->
                   performNodeAction(
                       customer.uuid, u.universeUUID, "fake-n1", nodeActionType, true));
@@ -411,7 +430,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
 
     NodeDetails curNode = nodes.iterator().next();
     Result invalidRemove =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 performNodeAction(
                     customer.uuid, u.universeUUID, curNode.nodeName, NodeActionType.REMOVE, false));
@@ -422,7 +441,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
             + ": As it will under replicate the masters (count = 2, replicationFactor = 3)");
 
     Result invalidStop =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 performNodeAction(
                     customer.uuid, u.universeUUID, curNode.nodeName, NodeActionType.STOP, false));
@@ -457,5 +476,82 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
         u.getUniverseDetails().clusters.get(0).equals(taskParams.getValue().clusters.get(0)));
     assertEquals(u.getUniverseDetails().rootCA, taskParams.getValue().rootCA);
     Mockito.reset(mockCommissioner);
+  }
+
+  @Test
+  public void testDetachedNodeActionValid() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(TaskType.class), any(DetachedNodeTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    Result r =
+        performDetachedNodeAction(
+            customer.uuid, provider.uuid, FAKE_IP, NodeActionType.PRECHECK_DETACHED, false);
+    ArgumentCaptor<DetachedNodeTaskParams> paramsCaptor =
+        ArgumentCaptor.forClass(DetachedNodeTaskParams.class);
+    assertOk(r);
+    verify(mockCommissioner, times(1))
+        .submit(Mockito.eq(TaskType.PrecheckNodeDetached), paramsCaptor.capture());
+    DetachedNodeTaskParams params = paramsCaptor.getValue();
+    assertEquals(params.getInstanceType(), FAKE_INSTANCE_TYPE);
+    assertEquals(params.getNodeUuid(), node.getNodeUuid());
+    assertEquals(params.getAzUuid(), node.getZoneUuid());
+    assertAuditEntry(1, customer.uuid);
+  }
+
+  @Test
+  public void testDetachedNodeActionInvalidProviderIP() {
+    UUID invalidProviderUUID = UUID.randomUUID();
+    Result r =
+        assertPlatformException(
+            () ->
+                performDetachedNodeAction(
+                    customer.uuid,
+                    invalidProviderUUID,
+                    FAKE_IP,
+                    NodeActionType.PRECHECK_DETACHED,
+                    false));
+
+    assertBadRequest(r, "Cannot find provider " + invalidProviderUUID);
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testDetachedNodeActionInvalidIP() {
+    Result r =
+        assertPlatformException(
+            () ->
+                performDetachedNodeAction(
+                    customer.uuid,
+                    provider.uuid,
+                    FAKE_IP_2,
+                    NodeActionType.PRECHECK_DETACHED,
+                    false));
+
+    assertBadRequest(r, "Node Not Found");
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testDetachedNodeActionAlreadyInProgress() {
+    CustomerTask.create(
+        customer,
+        node.getNodeUuid(),
+        UUID.randomUUID(),
+        CustomerTask.TargetType.Node,
+        CustomerTask.TaskType.PrecheckNode,
+        node.getNodeName());
+
+    Result r =
+        assertPlatformException(
+            () ->
+                performDetachedNodeAction(
+                    customer.uuid,
+                    provider.uuid,
+                    FAKE_IP,
+                    NodeActionType.PRECHECK_DETACHED,
+                    false));
+
+    assertBadRequest(r, "Node " + node.getNodeUuid() + " has incomplete tasks");
+    assertAuditEntry(0, customer.uuid);
   }
 }

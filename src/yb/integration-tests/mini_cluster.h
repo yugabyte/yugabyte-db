@@ -81,7 +81,7 @@ struct MiniClusterOptions {
   // Number of TS to start.
   int num_tablet_servers = 1;
 
-  // Number of drives to use on TS. MiniCluster only.
+  // Number of drives to use on TS.
   int num_drives = 1;
 
   Env* master_env = Env::Default();
@@ -223,11 +223,6 @@ class MiniCluster : public MiniClusterBase {
 
  private:
 
-  enum {
-    kTabletReportWaitTimeSeconds = 5,
-    kRegistrationWaitTimeSeconds = NonTsanVsTsan(30, 60)
-  };
-
   void ConfigureClientBuilder(client::YBClientBuilder* builder) override;
 
   Result<HostPort> DoGetLeaderMasterBoundRpcAddr() override;
@@ -267,6 +262,9 @@ void StepDownRandomTablet(MiniCluster* cluster);
 YB_DEFINE_ENUM(ListPeersFilter, (kAll)(kLeaders)(kNonLeaders));
 
 std::unordered_set<string> ListTabletIdsForTable(MiniCluster* cluster, const string& table_id);
+
+std::unordered_set<string> ListActiveTabletIdsForTable(
+    MiniCluster* cluster, const string& table_id);
 
 std::vector<std::shared_ptr<tablet::TabletPeer>> ListTabletPeers(
     MiniCluster* cluster, ListPeersFilter filter);

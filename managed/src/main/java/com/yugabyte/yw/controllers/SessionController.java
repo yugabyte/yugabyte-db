@@ -31,6 +31,8 @@ import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
+import com.yugabyte.yw.common.user.UserService;
+import com.yugabyte.yw.controllers.handlers.SessionHandler;
 import com.yugabyte.yw.forms.CustomerLoginFormData;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.forms.PasswordPolicyFormData;
@@ -40,6 +42,7 @@ import com.yugabyte.yw.forms.SetSecurityFormData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.extended.UserWithFeatures;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -48,6 +51,9 @@ import io.swagger.annotations.Authorization;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -56,6 +62,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletionStage;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -113,10 +120,15 @@ public class SessionController extends AbstractPlatformController {
 
   @Inject private HttpExecutionContext ec;
 
+  @Inject private SessionHandler sessionHandler;
+
+  @Inject private UserService userService;
+
   public static final String AUTH_TOKEN = "authToken";
   public static final String API_TOKEN = "apiToken";
   public static final String CUSTOMER_UUID = "customerUUID";
   private static final Integer FOREVER = 2147483647;
+  public static final String FILTERED_LOGS_SCRIPT = "bin/filtered_logs.sh";
 
   private CommonProfile getProfile() {
     final PlayWebContext context = new PlayWebContext(ctx(), playSessionStore);
@@ -151,7 +163,7 @@ public class SessionController extends AbstractPlatformController {
       response = SessionInfo.class)
   @With(TokenAuthenticator.class)
   public Result getSessionInfo() {
-    Users user = (Users) Http.Context.current().args.get("user");
+    Users user = getCurrentUser();
     Customer cust = Customer.get(user.customerUUID);
     Cookie authCookie = request().cookie(AUTH_TOKEN);
     SessionInfo sessionInfo =
@@ -209,6 +221,45 @@ public class SessionController extends AbstractPlatformController {
       LOG.error("Log file open failed.", ex);
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Could not open log file with error " + ex.getMessage());
+    }
+  }
+
+  @ApiOperation(value = "getFilteredLogs", produces = "text/plain")
+  @With(TokenAuthenticator.class)
+  public Result getFilteredLogs(Integer maxLines, String universeName, String queryRegex) {
+    LOG.debug(
+        "getFilteredLogs: maxLines - {}, universeName - {}, queryRegex - {}",
+        maxLines,
+        universeName,
+        queryRegex);
+
+    Universe universe = null;
+    if (universeName != null) {
+      universe = Universe.getUniverseByName(universeName);
+      if (universe == null) {
+        LOG.error("Universe {} not found", universeName);
+        throw new PlatformServiceException(BAD_REQUEST, "Universe name given does not exist");
+      }
+    }
+    if (queryRegex != null) {
+      try {
+        Pattern.compile(queryRegex);
+      } catch (PatternSyntaxException exception) {
+        LOG.error("Invalid regular expression given: {}", queryRegex);
+        throw new PlatformServiceException(BAD_REQUEST, "Invalid regular expression given");
+      }
+    }
+
+    try {
+      Path filteredLogsPath = sessionHandler.getFilteredLogs(maxLines, universe, queryRegex);
+      LOG.debug("filtered logs temporary file path {}", filteredLogsPath.toString());
+      InputStream is = Files.newInputStream(filteredLogsPath, StandardOpenOption.DELETE_ON_CLOSE);
+      return ok(is).as("text/plain");
+    } catch (IOException ex) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Could not find temporary file with error " + ex.getMessage());
+    } catch (PlatformServiceException ex) {
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, ex.getMessage());
     }
   }
 
@@ -279,7 +330,7 @@ public class SessionController extends AbstractPlatformController {
     } else {
       Customer cust = Customer.get(user.customerUUID);
       ctx().args.put("customer", cust);
-      ctx().args.put("user", user);
+      ctx().args.put("user", userService.getUserWithFeatures(cust, user));
       response()
           .setCookie(
               Http.Cookie.builder("customerId", cust.uuid.toString())
@@ -347,7 +398,7 @@ public class SessionController extends AbstractPlatformController {
     SetSecurityFormData data = formData.get();
     configHelper.loadConfigToDB(Security, ImmutableMap.of("level", data.level));
     if (data.level.equals("insecure")) {
-      Users user = (Users) Http.Context.current().args.get("user");
+      Users user = getCurrentUser();
       String apiToken = user.getApiToken();
       if (apiToken == null || apiToken.isEmpty()) {
         user.upsertApiToken();
@@ -368,7 +419,7 @@ public class SessionController extends AbstractPlatformController {
   @With(TokenAuthenticator.class)
   @ApiOperation(value = "UI_ONLY", hidden = true, response = SessionInfo.class)
   public Result api_token(UUID customerUUID) {
-    Users user = (Users) Http.Context.current().args.get("user");
+    Users user = getCurrentUser();
 
     if (user == null) {
       throw new PlatformServiceException(
@@ -442,7 +493,7 @@ public class SessionController extends AbstractPlatformController {
                 .build());
     // When there is no authenticated user in context; we just pretend that the user
     // created himself for auditing purpose.
-    ctx().args.putIfAbsent("user", user);
+    ctx().args.putIfAbsent("user", userService.getUserWithFeatures(cust, user));
     auditService().createAuditEntry(ctx(), request());
     return sessionInfo;
   }
@@ -451,7 +502,7 @@ public class SessionController extends AbstractPlatformController {
   @With(TokenAuthenticator.class)
   public Result logout() {
     response().discardCookie(AUTH_TOKEN);
-    Users user = (Users) Http.Context.current().args.get("user");
+    Users user = getCurrentUser();
     if (user != null) {
       user.deleteAuthToken();
     }
@@ -541,5 +592,10 @@ public class SessionController extends AbstractPlatformController {
                 return internalServerError(errorMsg);
               }
             });
+  }
+
+  private Users getCurrentUser() {
+    UserWithFeatures userWithFeatures = (UserWithFeatures) Http.Context.current().args.get("user");
+    return userWithFeatures.getUser();
   }
 }

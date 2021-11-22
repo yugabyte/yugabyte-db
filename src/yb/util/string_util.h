@@ -132,6 +132,13 @@ std::string RightPadToWidth(const T& val, int width) {
   return ss_str + string(padding, ' ');
 }
 
+// Returns true if s starts with substring start.
+bool StringStartsWithOrEquals(const std::string& s, const char* start, size_t start_len);
+
+inline bool StringStartsWithOrEquals(const std::string& s, const std::string start) {
+  return StringStartsWithOrEquals(s, start.c_str(), start.length());
+}
+
 // Returns true if s ends with substring end, and s has at least one more character before
 // end. If left is a valid string pointer, it will contain s minus the end substring.
 // Example 1: s = "15ms", end = "ms", then this function will return true and set left to "15".
@@ -167,6 +174,13 @@ vector<string> ToStringVector(Args&&... args) {
   result.reserve(details::ItemCount(args...));
   details::AppendItem(&result, args...);
   return result;
+}
+
+inline void EnlargeBufferIfNeeded(std::string* buffer, const size_t new_capacity) {
+  if (new_capacity <= buffer->capacity()) {
+    return;
+  }
+  buffer->reserve(new_capacity);
 }
 
 }  // namespace yb

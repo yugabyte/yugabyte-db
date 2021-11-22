@@ -1,0 +1,15 @@
+name: Platform
+description: Create a Platform issue.
+title: "[Platform] Title"
+labels: ["area/platform"]
+body:
+- type: textarea
+  id: platform
+  attributes:
+    label: Description
+    placeholder: |
+      **Provide a detailed description of the issue you want to report with Yugabyte platform.**
+      
+      **Include the steps to reproduce the issue.**
+  validations:
+    required: true

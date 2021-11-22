@@ -4,8 +4,8 @@ package com.yugabyte.yw.controllers;
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertErrorResponse;
 import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -30,7 +30,6 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.YugawareProperty;
-import java.util.List;
 import java.util.UUID;
 import org.hamcrest.CoreMatchers;
 import org.hamcrest.core.AllOf;
@@ -175,7 +174,7 @@ public class RegionControllerTest extends FakeDBApplication {
     ObjectNode regionJson = Json.newObject();
     regionJson.put("code", "foo-region");
     UUID randomUUID = UUID.randomUUID();
-    Result result = assertYWSE(() -> createRegion(randomUUID, regionJson));
+    Result result = assertPlatformException(() -> createRegion(randomUUID, regionJson));
     assertEquals(BAD_REQUEST, result.status());
     assertErrorResponse(result, "Invalid Provider UUID: " + randomUUID);
     assertAuditEntry(0, customer.uuid);
@@ -183,7 +182,7 @@ public class RegionControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateRegionsWithoutRequiredParams() {
-    Result result = assertYWSE(() -> createRegion(provider.uuid, Json.newObject()));
+    Result result = assertPlatformException(() -> createRegion(provider.uuid, Json.newObject()));
     assertEquals(BAD_REQUEST, result.status());
     assertThat(
         contentAsString(result),
@@ -261,7 +260,7 @@ public class RegionControllerTest extends FakeDBApplication {
     ObjectNode vpcInfo = Json.newObject();
     vpcInfo.put("error", "Something went wrong!!.");
     when(mockNetworkManager.bootstrap(any(), any(), any())).thenReturn(vpcInfo);
-    Result result = assertYWSE(() -> createRegion(provider.uuid, regionJson));
+    Result result = assertPlatformException(() -> createRegion(provider.uuid, regionJson));
     assertInternalServerError(result, "Region Bootstrap failed.");
     Region r = Region.getByCode(provider, "foo-region");
     assertNull(r);
@@ -273,7 +272,7 @@ public class RegionControllerTest extends FakeDBApplication {
     ObjectNode regionJson = Json.newObject();
     regionJson.put("code", "datacenter-azure-washington");
     regionJson.put("name", "Gcp US West 1");
-    Result result = assertYWSE(() -> createRegion(provider.uuid, regionJson));
+    Result result = assertPlatformException(() -> createRegion(provider.uuid, regionJson));
     assertEquals(BAD_REQUEST, result.status());
     JsonNode json = Json.parse(contentAsString(result));
     assertValue(json, "success", "false");
@@ -284,7 +283,7 @@ public class RegionControllerTest extends FakeDBApplication {
   @Test
   public void testDeleteRegionWithInvalidParams() {
     UUID randomUUID = UUID.randomUUID();
-    Result result = assertYWSE(() -> deleteRegion(provider.uuid, randomUUID));
+    Result result = assertPlatformException(() -> deleteRegion(provider.uuid, randomUUID));
     assertEquals(BAD_REQUEST, result.status());
     assertThat(
         contentAsString(result), CoreMatchers.containsString("Invalid Provider/Region UUID"));
@@ -296,19 +295,32 @@ public class RegionControllerTest extends FakeDBApplication {
     Region r = Region.create(provider, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.createOrThrow(r, "az-1", "AZ 1", "subnet-1");
     AvailabilityZone.createOrThrow(r, "az-2", "AZ 2", "subnet-2");
+
+    Region actualRegion = getFirstRegion();
+    assertTrue(actualRegion.isActive());
+    for (AvailabilityZone az : actualRegion.zones) {
+      assertTrue(az.active);
+    }
+
     Result result = deleteRegion(provider.uuid, r.uuid);
     assertEquals(OK, result.status());
 
     JsonNode json = Json.parse(contentAsString(result));
     assertTrue(json.get("success").asBoolean());
 
-    r = Region.get(r.uuid);
-    assertFalse(r.active);
-
-    List<AvailabilityZone> zones = AvailabilityZone.getAZsForRegion(r.uuid);
-    for (AvailabilityZone az : zones) {
+    actualRegion = getFirstRegion();
+    assertFalse(actualRegion.isActive());
+    for (AvailabilityZone az : actualRegion.zones) {
       assertFalse(az.active);
     }
     assertAuditEntry(1, customer.uuid);
+  }
+
+  public Region getFirstRegion() {
+    Result result;
+    result = listAllRegions();
+    assertEquals(OK, result.status());
+    Region actualRegion = Json.fromJson(Json.parse(contentAsString(result)).get(0), Region.class);
+    return actualRegion;
   }
 }

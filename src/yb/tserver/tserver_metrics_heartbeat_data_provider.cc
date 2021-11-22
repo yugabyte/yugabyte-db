@@ -15,7 +15,6 @@
 
 #include "yb/master/master.pb.h"
 #include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/util/logging.h"
@@ -83,11 +82,11 @@ void TServerMetricsHeartbeatDataProvider::DoAddData(
 
   // Get the total number of read and write operations.
   auto reads_hist = server().GetMetricsHistogram(
-      TabletServerServiceIf::RpcMetricIndexes::kMetricIndexRead);
+      TabletServerServiceIf::RpcMethodIndexes::kMethodIndexRead);
   uint64_t num_reads = (reads_hist != nullptr) ? reads_hist->TotalCount() : 0;
 
   auto writes_hist = server().GetMetricsHistogram(
-      TabletServerServiceIf::RpcMetricIndexes::kMetricIndexWrite);
+      TabletServerServiceIf::RpcMethodIndexes::kMethodIndexWrite);
   uint64_t num_writes = (writes_hist != nullptr) ? writes_hist->TotalCount() : 0;
 
   // Calculate the read and write ops per second.

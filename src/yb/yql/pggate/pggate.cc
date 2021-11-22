@@ -35,13 +35,11 @@
 #include "yb/yql/pggate/pg_txn_manager.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
-#include "yb/util/flag_tags.h"
 #include "yb/util/range.h"
 
 #include "yb/client/client.h"
 #include "yb/client/client_fwd.h"
 #include "yb/client/client_utils.h"
-#include "yb/client/table.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/secure_stream.h"
 #include "yb/server/secure.h"
@@ -246,7 +244,9 @@ PgApiImpl::PgApiImpl(
   }
   async_client_init_.Start();
 
-  pg_client_.Start(proxy_cache_.get(), *DCHECK_NOTNULL(tserver_shared_object_));
+  CHECK_OK(pg_client_.Start(
+      proxy_cache_.get(), &messenger_holder_.messenger->scheduler(),
+      *DCHECK_NOTNULL(tserver_shared_object_)));
 }
 
 PgApiImpl::~PgApiImpl() {
@@ -477,7 +477,8 @@ Status PgApiImpl::AlterDatabaseRenameDatabase(PgStatement *handle, const char *n
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-  return down_cast<PgAlterDatabase*>(handle)->RenameDatabase(newname);
+  down_cast<PgAlterDatabase*>(handle)->RenameDatabase(newname);
+  return Status::OK();
 }
 
 Status PgApiImpl::ExecAlterDatabase(PgStatement *handle) {
@@ -568,7 +569,7 @@ Status PgApiImpl::NewCreateTable(const char *database_name,
       table_id, is_shared_table, if_not_exist, add_primary_key, colocated, tablegroup_oid,
       tablespace_oid);
   if (pg_txn_manager_->IsDdlMode()) {
-    stmt->AddTransaction(pg_txn_manager_->GetDdlTxnMetadata());
+    stmt->UseTransaction(VERIFY_RESULT(Copy(pg_txn_manager_->GetDdlTxnMetadata().get())));
   }
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
@@ -617,7 +618,7 @@ Status PgApiImpl::NewAlterTable(const PgObjectId& table_id,
                                 PgStatement **handle) {
   auto stmt = std::make_unique<PgAlterTable>(pg_session_, table_id);
   if (pg_txn_manager_->IsDdlMode()) {
-    stmt->AddTransaction(pg_txn_manager_->GetDdlTxnMetadata());
+    stmt->UseTransaction(VERIFY_RESULT(Copy(pg_txn_manager_->GetDdlTxnMetadata().get())));
   }
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
@@ -716,11 +717,9 @@ Status PgApiImpl::GetTableDesc(const PgObjectId& table_id,
   return Status::OK();
 }
 
-Status PgApiImpl::GetColumnInfo(YBCPgTableDesc table_desc,
-                                int16_t attr_number,
-                                bool *is_primary,
-                                bool *is_hash) {
-  return table_desc->GetColumnInfo(attr_number, is_primary, is_hash);
+Result<YBCPgColumnInfo> PgApiImpl::GetColumnInfo(YBCPgTableDesc table_desc,
+                                                 int16_t attr_number) {
+  return table_desc->GetColumnInfo(attr_number);
 }
 
 Status PgApiImpl::DmlModifiesRow(PgStatement *handle, bool *modifies_row) {
@@ -793,12 +792,13 @@ Status PgApiImpl::NewCreateIndex(const char *database_name,
                                  const PgObjectId& tablegroup_oid,
                                  const PgObjectId& tablespace_oid,
                                  PgStatement **handle) {
-  auto stmt = std::make_unique<PgCreateIndex>(
-      pg_session_, database_name, schema_name, index_name, index_id, base_table_id,
-      is_shared_index, is_unique_index, skip_index_backfill, if_not_exist, tablegroup_oid,
-      tablespace_oid);
+  auto stmt = std::make_unique<PgCreateTable>(
+      pg_session_, database_name, schema_name, index_name, index_id, is_shared_index,
+      if_not_exist, false /* add_primary_key */,
+      tablegroup_oid.IsValid() ? false : true /* colocated */, tablegroup_oid, tablespace_oid);
+  stmt->SetupIndex(base_table_id, is_unique_index, skip_index_backfill);
   if (pg_txn_manager_->IsDdlMode()) {
-    stmt->AddTransaction(pg_txn_manager_->GetDdlTxnMetadata());
+    stmt->UseTransaction(VERIFY_RESULT(Copy(pg_txn_manager_->GetDdlTxnMetadata().get())));
   }
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
@@ -813,7 +813,7 @@ Status PgApiImpl::CreateIndexAddColumn(PgStatement *handle, const char *attr_nam
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
 
-  return AddColumn(down_cast<PgCreateIndex*>(handle), attr_name, attr_num, attr_type,
+  return AddColumn(down_cast<PgCreateTable*>(handle), attr_name, attr_num, attr_type,
       is_hash, is_range, is_desc, is_nulls_first);
 }
 
@@ -821,7 +821,7 @@ Status PgApiImpl::CreateIndexSetNumTablets(PgStatement *handle, int32_t num_tabl
   SCHECK(PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_INDEX),
          InvalidArgument,
          "Invalid statement handle");
-  return down_cast<PgCreateIndex*>(handle)->SetNumTablets(num_tablets);
+  return down_cast<PgCreateTable*>(handle)->SetNumTablets(num_tablets);
 }
 
 Status PgApiImpl::ExecCreateIndex(PgStatement *handle) {
@@ -829,7 +829,7 @@ Status PgApiImpl::ExecCreateIndex(PgStatement *handle) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-  return down_cast<PgCreateIndex*>(handle)->Exec();
+  return down_cast<PgCreateTable*>(handle)->Exec();
 }
 
 Status PgApiImpl::NewDropIndex(const PgObjectId& index_id,
@@ -838,10 +838,6 @@ Status PgApiImpl::NewDropIndex(const PgObjectId& index_id,
   auto stmt = std::make_unique<PgDropIndex>(pg_session_, index_id, if_exist);
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
-}
-
-Status PgApiImpl::AsyncUpdateIndexPermissions(const PgObjectId& indexed_table_id) {
-  return pg_session_->AsyncUpdateIndexPermissions(indexed_table_id);
 }
 
 Status PgApiImpl::ExecPostponedDdlStmt(PgStatement *handle) {
@@ -862,7 +858,9 @@ Status PgApiImpl::ExecPostponedDdlStmt(PgStatement *handle) {
 }
 
 Status PgApiImpl::BackfillIndex(const PgObjectId& table_id) {
-  return pg_session_->BackfillIndex(table_id);
+  tserver::PgBackfillIndexRequestPB req;
+  table_id.ToPB(req.mutable_table_id());
+  return pg_session_->pg_client().BackfillIndex(&req, CoarseTimePoint());
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -887,6 +885,15 @@ Status PgApiImpl::DmlBindColumnCondBetween(PgStatement *handle, int attr_num, Pg
 Status PgApiImpl::DmlBindColumnCondIn(PgStatement *handle, int attr_num, int n_attr_values,
     PgExpr **attr_values) {
   return down_cast<PgDmlRead*>(handle)->BindColumnCondIn(attr_num, n_attr_values, attr_values);
+}
+
+Status PgApiImpl::DmlBindHashCode(PgStatement *handle, bool start_valid,
+                                    bool start_inclusive,
+                                    uint64_t start_hash_val, bool end_valid,
+                                    bool end_inclusive, uint64_t end_hash_val) {
+  return down_cast<PgDmlRead*>(handle)
+                  ->BindHashCode(start_valid, start_inclusive, start_hash_val,
+                                  end_valid, end_inclusive, end_hash_val);
 }
 
 Status PgApiImpl::DmlBindTable(PgStatement *handle) {
@@ -918,8 +925,7 @@ Status PgApiImpl::ProcessYBTupleId(const YBCPgYBTupleIdDescriptor& descr,
   google::protobuf::RepeatedPtrField<PgsqlExpressionPB> hashed_values;
   vector<docdb::PrimitiveValue> hashed_components, range_components;
   hashed_components.reserve(target_desc->num_hash_key_columns());
-  range_components.reserve(
-      target_desc->num_hash_key_columns() - target_desc->num_hash_key_columns());
+  range_components.reserve(target_desc->num_key_columns() - target_desc->num_hash_key_columns());
   size_t remain_attr = descr.nattrs;
   // DocDB API requires that partition columns must be listed in their created-order.
   // Order from target_desc should be used as attributes sequence may have different order.
@@ -994,6 +1000,10 @@ Status PgApiImpl::StopOperationsBuffering() {
 
 void PgApiImpl::ResetOperationsBuffering() {
   pg_session_->ResetOperationsBuffering();
+}
+
+Status PgApiImpl::FlushBufferedOperations() {
+  return pg_session_->FlushBufferedOperations();
 }
 
 Status PgApiImpl::DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_count) {
@@ -1371,16 +1381,20 @@ Status PgApiImpl::RestartTransaction() {
   return pg_txn_manager_->RestartTransaction();
 }
 
+Status PgApiImpl::MaybeResetTransactionReadPoint() {
+  return pg_txn_manager_->MaybeResetTransactionReadPoint();
+}
+
 Status PgApiImpl::CommitTransaction() {
   pg_session_->InvalidateForeignKeyReferenceCache();
   RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
   return pg_txn_manager_->CommitTransaction();
 }
 
-Status PgApiImpl::AbortTransaction() {
+void PgApiImpl::AbortTransaction() {
   pg_session_->InvalidateForeignKeyReferenceCache();
   pg_session_->DropBufferedOperations();
-  return pg_txn_manager_->AbortTransaction();
+  pg_txn_manager_->AbortTransaction();
 }
 
 Status PgApiImpl::SetTransactionIsolationLevel(int isolation) {
@@ -1389,6 +1403,10 @@ Status PgApiImpl::SetTransactionIsolationLevel(int isolation) {
 
 Status PgApiImpl::SetTransactionReadOnly(bool read_only) {
   return pg_txn_manager_->SetReadOnly(read_only);
+}
+
+Status PgApiImpl::EnableFollowerReads(bool enable_follower_reads, int32_t staleness_ms) {
+  return pg_txn_manager_->EnableFollowerReads(enable_follower_reads, staleness_ms);
 }
 
 Status PgApiImpl::SetTransactionDeferrable(bool deferrable) {
@@ -1401,21 +1419,18 @@ Status PgApiImpl::EnterSeparateDdlTxnMode() {
   return pg_txn_manager_->EnterSeparateDdlTxnMode();
 }
 
-Status PgApiImpl::ExitSeparateDdlTxnMode(bool success) {
+Status PgApiImpl::ExitSeparateDdlTxnMode() {
   // Flush all buffered operations as ddl txn use its own transaction session.
-  if (success) {
-    RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
-  } else {
-    pg_session_->DropBufferedOperations();
-  }
-
-  RETURN_NOT_OK(pg_txn_manager_->ExitSeparateDdlTxnMode(success));
-  ReadHybridTime read_time;
-  if (success) {
-    // Next reads from catalog tables have to see changes made by the DDL transaction.
-    ResetCatalogReadTime();
-  }
+  RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
+  RETURN_NOT_OK(pg_txn_manager_->ExitSeparateDdlTxnMode());
+  // Next reads from catalog tables have to see changes made by the DDL transaction.
+  ResetCatalogReadTime();
   return Status::OK();
+}
+
+void PgApiImpl::ClearSeparateDdlTxnMode() {
+  pg_session_->DropBufferedOperations();
+  pg_txn_manager_->ClearSeparateDdlTxnMode();
 }
 
 Status PgApiImpl::SetActiveSubTransaction(SubTransactionId id) {
@@ -1456,7 +1471,7 @@ void PgApiImpl::SetTimeout(const int timeout_ms) {
   pg_session_->SetTimeout(timeout_ms);
 }
 
-Result<client::YBClient::TabletServersInfo> PgApiImpl::ListTabletServers() {
+Result<client::TabletServersInfo> PgApiImpl::ListTabletServers() {
   return pg_session_->ListTabletServers();
 }
 

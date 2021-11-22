@@ -20,8 +20,8 @@
 
 namespace yb {
 
-// Derive a socket directory name for postgres index backfill tserver-postgres authentication
-// purposes.  Since the socket itself is named with the port number, the directory holding it must
+// Derive a socket directory name for tserver-postgres authentication purposes.
+// Since the socket itself is named with the port number, the directory holding it must
 // be unique with respect to the bind address in order to avoid conflicts with other clusters
 // listening on different addresses but same ports.  To avoid the 108 character limit for the socket
 // path, use a hash of the bind address.

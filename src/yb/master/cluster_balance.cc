@@ -18,20 +18,15 @@
 #include <utility>
 
 #include <boost/algorithm/string/join.hpp>
-#include <boost/none.hpp>
 #include <boost/optional/optional.hpp>
-#include <boost/thread/locks.hpp>
 
 #include "yb/common/common.pb.h"
 #include "yb/consensus/quorum_util.h"
 #include "yb/master/catalog_manager.h"
-#include "yb/master/master.h"
-#include "yb/master/master_error.h"
 #include "yb/master/master_fwd.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/random_util.h"
 
-#include "yb/master/catalog_entity_info.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status.h"
 
@@ -127,6 +122,11 @@ DEFINE_bool(load_balancer_count_move_as_add, true,
 DEFINE_bool(load_balancer_drive_aware, true,
             "When LB decides to move a tablet from server A to B, on the target LB "
             "should select the tablet to move from most loaded drive.");
+
+// TODO(tsplit): make false by default or even remove flag after
+// https://github.com/yugabyte/yugabyte-db/issues/10301 is fixed.
+DEFINE_test_flag(
+    bool, load_balancer_skip_inactive_tablets, true, "Don't move inactive (hidden) tablets");
 
 namespace yb {
 namespace master {
@@ -617,9 +617,8 @@ void ClusterLoadBalancer::ResetTableStatePtr(const TableId& table_id, Options* o
 }
 
 Status ClusterLoadBalancer::AnalyzeTabletsUnlocked(const TableId& table_uuid) {
-  vector<scoped_refptr<TabletInfo>> tablets;
-  Status s = GetTabletsForTable(table_uuid, &tablets);
-  YB_RETURN_NOT_OK_PREPEND(s, "Skipping table " + table_uuid + "due to error: ");
+  auto tablets = VERIFY_RESULT_PREPEND(
+      GetTabletsForTable(table_uuid), "Skipping table " + table_uuid + "due to error: ");
 
   // Loop over tablet map to register the load that is already live in the cluster.
   for (const auto& tablet : tablets) {
@@ -1378,19 +1377,16 @@ const scoped_refptr<TableInfo> ClusterLoadBalancer::GetTableInfo(const TableId& 
   return catalog_manager_->GetTableInfoUnlocked(table_uuid);
 }
 
-const Status ClusterLoadBalancer::GetTabletsForTable(
-    const TableId& table_uuid, vector<scoped_refptr<TabletInfo>>* tablets) const {
-  scoped_refptr<TableInfo> table_info = GetTableInfo(table_uuid);
+Result<TabletInfos> ClusterLoadBalancer::GetTabletsForTable(const TableId& table_uuid) const {
+  auto table_info = GetTableInfo(table_uuid);
 
   if (table_info == nullptr) {
-    return STATUS(InvalidArgument,
-                  Substitute("Invalid UUID '$0' - no entry found in catalog manager table map.",
-                             table_uuid));
+    return STATUS_FORMAT(
+        InvalidArgument, "Invalid UUID '$0' - no entry found in catalog manager table map",
+        table_uuid);
   }
 
-  table_info->GetAllTablets(tablets);
-
-  return Status::OK();
+  return table_info->GetTablets(IncludeInactive(!FLAGS_TEST_load_balancer_skip_inactive_tablets));
 }
 
 const TableInfoMap& ClusterLoadBalancer::GetTableMap() const {

@@ -54,7 +54,7 @@ CHECKED_STATUS DecodeIntentDocHT(Slice* slice, DocHybridTime* doc_ht) {
 
 Status Value::DecodeTTL(rocksdb::Slice* slice, MonoDelta* ttl) {
   if (DecodeType(ValueType::kTtl, kMaxTtl, slice, ttl)) {
-    *ttl = MonoDelta::FromMilliseconds(VERIFY_RESULT(util::FastDecodeSignedVarInt(slice)));
+    *ttl = MonoDelta::FromMilliseconds(VERIFY_RESULT(util::FastDecodeSignedVarIntUnsafe(slice)));
   }
   return Status::OK();
 }
@@ -200,6 +200,13 @@ const string& Value::EncodedTombstone() {
 
 void Value::ClearIntentDocHt() {
   intent_doc_ht_ = DocHybridTime::kInvalid;
+}
+
+Result<bool> Value::IsTombstoned(const Slice& slice) {
+  Value doc_value;
+  Slice value = slice;
+  RETURN_NOT_OK(doc_value.DecodeControlFields(&value));
+  return value[0] == ValueTypeAsChar::kTombstone;
 }
 
 }  // namespace docdb

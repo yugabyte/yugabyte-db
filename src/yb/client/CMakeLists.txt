@@ -59,6 +59,7 @@ set(CLIENT_SRCS
   transaction_manager.cc
   transaction_pool.cc
   transaction_rpc.cc
+  universe_key_client.cc
   value.cc
   yb_op.cc
   yb_table_name.cc

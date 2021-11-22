@@ -32,7 +32,7 @@ showAsideToc: true
   </li>
 </ul>
 
-Use [docker-compose](https://docs.docker.com/compose/overview/) utility to create and manage YugabyteDB local clusters. Note that this approach is not recommended for multi-node clusters used for performance testing and production environments.
+Use [docker-compose](https://docs.docker.com/compose/overview/) utility to create and manage YugabyteDB local clusters. Note that this approach is not recommended for multi-node clusters used for performance testing and production environments. Refer to the [deployment checklist](../../../deploy/checklist/) to understand the configuration to create clusters.
 
 ## Prerequisites
 

@@ -1,6 +1,9 @@
 --
 -- YB_TABLEGROUP Testsuite: Testing Statments for TABLEGROUP.
 --
+\h CREATE TABLEGROUP
+\h ALTER TABLEGROUP
+\h DROP TABLEGROUP
 
 --
 -- pg_catalog alterations. Validate columns of pg_tablegroup and oids.
@@ -39,13 +42,19 @@ CREATE TABLE tgroup_optout (col1 int, col2 int) WITH (colocated=true) TABLEGROUP
 CREATE TABLE tgroup_optout (col1 int, col2 int) WITH (colocated=false) TABLEGROUP bad_tgroupname;
 CREATE TEMP TABLE tgroup_temp (col1 int, col2 int) TABLEGROUP tgroup1;
 
---
--- Usage of WITH clause or specifying tablegroup name for CREATE INDEX. These all fail.
---
+-- Can use WITH to create a tablegroup
+CREATE TABLE tgroup_with1 (col1 int, col2 int) WITH (tablegroup=16385);
+-- Cannot use tablegroups and colocated=true/false
+CREATE TABLE tgroup_with2 (col1 int, col2 int) WITH (tablegroup=16385, colocated=true);
+CREATE TABLE tgroup_with2 (col1 int, col2 int) WITH (tablegroup=16385, colocated=false);
+-- Cannot specify tablegroup OID and tablegroup name
+CREATE TABLE tgroup_with3 (col1 int, col2 int) WITH (tablegroup=16385) TABLEGROUP tgroup1;
+-- Cannot use an invalid tablegroup OID
+CREATE TABLE tgroup_with4 (col1 int, col2 int) WITH (tablegroup=123);
 
-CREATE TABLE tgroup_with (col1 int, col2 int) WITH (tablegroup=123);
-CREATE TABLE tgroup_with (col1 int, col2 int) WITH (tablegroup=123, colocated=true);
-CREATE TABLE tgroup_with (col1 int, col2 int) WITH (tablegroup=123) TABLEGROUP tgroup1;
+--
+-- Specifying tablegroup name for CREATE INDEX. These all fail.
+--
 CREATE INDEX ON tgroup_test1(col1) WITH (tablegroup=123);
 CREATE INDEX ON tgroup_test1(col1) WITH (tablegroup=123, colocated=true);
 CREATE INDEX ON tgroup_test1(col1) WITH (tablegroup=123) TABLEGROUP tgroup1;
@@ -99,6 +108,7 @@ DROP TABLEGROUP bad_tgroupname;
 DROP TABLE tgroup_test1;
 DROP TABLE tgroup_test2;
 DROP INDEX tgroup_test3_col1_idx1;
+DROP TABLE tgroup_with1;
 DROP TABLEGROUP tgroup1;
 -- Create a tablegroup with the name of a dropped tablegroup.
 CREATE TABLEGROUP tgroup1;
@@ -109,7 +119,5 @@ CREATE TABLEGROUP tgroup1;
 
 CREATE DATABASE db_colocated colocated=true;
 \c db_colocated
--- These should fail.
+-- This should fail.
 CREATE TABLEGROUP tgroup1;
-CREATE TABLE tgroup_test (col1 int, col2 int) TABLEGROUP tgroup1;
-CREATE TABLE tgroup_optout (col1 int, col2 int) WITH (colocated=false) TABLEGROUP tgroup1;

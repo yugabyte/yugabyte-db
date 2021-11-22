@@ -5,7 +5,7 @@ package com.yugabyte.yw.controllers;
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
-import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static org.junit.Assert.assertEquals;
 import static play.mvc.Http.Status.FORBIDDEN;
 import static play.test.Helpers.contentAsString;
@@ -116,7 +116,8 @@ public class ScheduleControllerTest extends FakeDBApplication {
     UUID invalidScheduleUUID = UUID.randomUUID();
     JsonNode resultJson = Json.parse(contentAsString(listSchedules(defaultCustomer.uuid)));
     assertEquals(1, resultJson.size());
-    Result result = assertYWSE(() -> deleteSchedule(invalidScheduleUUID, defaultCustomer.uuid));
+    Result result =
+        assertPlatformException(() -> deleteSchedule(invalidScheduleUUID, defaultCustomer.uuid));
     assertBadRequest(result, "Invalid Schedule UUID: " + invalidScheduleUUID);
     resultJson = Json.parse(contentAsString(listSchedules(defaultCustomer.uuid)));
     assertEquals(1, resultJson.size());

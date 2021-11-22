@@ -1,6 +1,25 @@
 --
 -- YB_TABLEGROUP Testsuite: Testing Statments for TABLEGROUP.
 --
+\h CREATE TABLEGROUP
+Command:     CREATE TABLEGROUP
+Description: define a new tablegroup
+Syntax:
+CREATE TABLEGROUP tablegroup_name
+
+\h ALTER TABLEGROUP
+Command:     ALTER TABLEGROUP
+Description: change the definition of a tablegroup
+Syntax:
+ALTER TABLEGROUP name RENAME TO new_name
+ALTER TABLEGROUP name OWNER TO { new_owner | CURRENT_USER | SESSION_USER }
+
+\h DROP TABLEGROUP
+Command:     DROP TABLEGROUP
+Description: remove a tablegroup
+Syntax:
+DROP TABLEGROUP name
+
 --
 -- pg_catalog alterations. Validate columns of pg_tablegroup and oids.
 --
@@ -86,15 +105,22 @@ CREATE TABLE tgroup_optout (col1 int, col2 int) WITH (colocated=false) TABLEGROU
 ERROR:  tablegroup "bad_tgroupname" does not exist
 CREATE TEMP TABLE tgroup_temp (col1 int, col2 int) TABLEGROUP tgroup1;
 ERROR:  Cannot use TABLEGROUP with TEMP table.
+-- Can use WITH to create a tablegroup
+CREATE TABLE tgroup_with1 (col1 int, col2 int) WITH (tablegroup=16385);
+-- Cannot use tablegroups and colocated=true/false
+CREATE TABLE tgroup_with2 (col1 int, col2 int) WITH (tablegroup=16385, colocated=true);
+ERROR:  cannot use 'colocated=true/false' with tablegroup
+CREATE TABLE tgroup_with2 (col1 int, col2 int) WITH (tablegroup=16385, colocated=false);
+ERROR:  cannot use 'colocated=true/false' with tablegroup
+-- Cannot specify tablegroup OID and tablegroup name
+CREATE TABLE tgroup_with3 (col1 int, col2 int) WITH (tablegroup=16385) TABLEGROUP tgroup1;
+ERROR:  cannot specify both tablegroup and tablegroup oid
+-- Cannot use an invalid tablegroup OID
+CREATE TABLE tgroup_with4 (col1 int, col2 int) WITH (tablegroup=123);
+ERROR:  tablegroup with oid 123 does not exist
 --
--- Usage of WITH clause or specifying tablegroup name for CREATE INDEX. These all fail.
+-- Specifying tablegroup name for CREATE INDEX. These all fail.
 --
-CREATE TABLE tgroup_with (col1 int, col2 int) WITH (tablegroup=123);
-ERROR:  cannot supply tablegroup through WITH clause
-CREATE TABLE tgroup_with (col1 int, col2 int) WITH (tablegroup=123, colocated=true);
-ERROR:  cannot supply tablegroup through WITH clause
-CREATE TABLE tgroup_with (col1 int, col2 int) WITH (tablegroup=123) TABLEGROUP tgroup1;
-ERROR:  cannot supply tablegroup through WITH clause
 CREATE INDEX ON tgroup_test1(col1) WITH (tablegroup=123);
 ERROR:  cannot supply tablegroup through WITH clause
 CREATE INDEX ON tgroup_test1(col1) WITH (tablegroup=123, colocated=true);
@@ -149,11 +175,12 @@ List of tablegroups
  tgroup1    | yugabyte    | tgroup_test2           | table | yugabyte
  tgroup1    | yugabyte    | tgroup_test1_col2_idx  | index | yugabyte
  tgroup1    | yugabyte    | tgroup_test3_col1_idx1 | index | yugabyte
+ tgroup1    | yugabyte    | tgroup_with1           | table | yugabyte
  tgroup2    | yugabyte    | tgroup_test4_col2_idx  | index | yugabyte
  tgroup2    | yugabyte    | tgroup_test4           | table | yugabyte
- tgroup2    | yugabyte    | tgroup_test4_col1_idx  | index | yugabyte
  tgroup2    | yugabyte    | tgroup_test3           | table | yugabyte
-(8 rows)
+ tgroup2    | yugabyte    | tgroup_test4_col1_idx  | index | yugabyte
+(9 rows)
 
 \dgrt+
                                                                     List of tablegroup tables
@@ -163,11 +190,12 @@ List of tablegroups
  tgroup1    | yugabyte    |                   | Comment for Tablegroup 1 |               | tgroup_test2           | table | yugabyte |                 | 0 bytes
  tgroup1    | yugabyte    |                   | Comment for Tablegroup 1 |               | tgroup_test1_col2_idx  | index | yugabyte |                 | 0 bytes
  tgroup1    | yugabyte    |                   | Comment for Tablegroup 1 |               | tgroup_test3_col1_idx1 | index | yugabyte |                 | 0 bytes
+ tgroup1    | yugabyte    |                   | Comment for Tablegroup 1 |               | tgroup_with1           | table | yugabyte |                 | 0 bytes
  tgroup2    | yugabyte    |                   | Comment for Tablegroup 2 |               | tgroup_test4_col2_idx  | index | yugabyte |                 | 0 bytes
  tgroup2    | yugabyte    |                   | Comment for Tablegroup 2 |               | tgroup_test4           | table | yugabyte |                 | 0 bytes
- tgroup2    | yugabyte    |                   | Comment for Tablegroup 2 |               | tgroup_test4_col1_idx  | index | yugabyte |                 | 0 bytes
  tgroup2    | yugabyte    |                   | Comment for Tablegroup 2 |               | tgroup_test3           | table | yugabyte |                 | 0 bytes
-(8 rows)
+ tgroup2    | yugabyte    |                   | Comment for Tablegroup 2 |               | tgroup_test4_col1_idx  | index | yugabyte |                 | 0 bytes
+(9 rows)
 
 COMMENT ON TABLEGROUP tgroup2 IS NULL;
 \dgr+ tgroup2
@@ -247,6 +275,7 @@ ERROR:  tablegroup "bad_tgroupname" does not exist
 DROP TABLE tgroup_test1;
 DROP TABLE tgroup_test2;
 DROP INDEX tgroup_test3_col1_idx1;
+DROP TABLE tgroup_with1;
 DROP TABLEGROUP tgroup1;
 -- Create a tablegroup with the name of a dropped tablegroup.
 CREATE TABLEGROUP tgroup1;
@@ -255,10 +284,6 @@ CREATE TABLEGROUP tgroup1;
 --
 CREATE DATABASE db_colocated colocated=true;
 \c db_colocated
--- These should fail.
+-- This should fail.
 CREATE TABLEGROUP tgroup1;
-ERROR:  cannot use tablegroups in a colocated database
-CREATE TABLE tgroup_test (col1 int, col2 int) TABLEGROUP tgroup1;
-ERROR:  cannot use tablegroups in a colocated database
-CREATE TABLE tgroup_optout (col1 int, col2 int) WITH (colocated=false) TABLEGROUP tgroup1;
 ERROR:  cannot use tablegroups in a colocated database

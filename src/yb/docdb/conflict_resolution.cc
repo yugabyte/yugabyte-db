@@ -16,7 +16,6 @@
 #include "yb/docdb/conflict_resolution.h"
 
 #include "yb/common/hybrid_time.h"
-#include "yb/common/pgsql_error.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/transaction.h"
 #include "yb/common/transaction_error.h"
@@ -32,7 +31,6 @@
 #include "yb/util/metrics.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/trace.h"
-#include "yb/util/yb_pg_errcodes.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -244,12 +242,14 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
 
   MUST_USE_RESULT bool CheckResolutionDone(const Result<bool>& result) {
     if (!result.ok()) {
+      TRACE("Abort: $0", result.status().ToString());
       VLOG_WITH_PREFIX(4) << "Abort: " << result.status();
       InvokeCallback(result.status());
       return true;
     }
 
     if (result.get()) {
+      TRACE("No conflicts.");
       VLOG_WITH_PREFIX(4) << "No conflicts: " << context_->GetResolutionHt();
       InvokeCallback(context_->GetResolutionHt());
       return true;
@@ -261,6 +261,8 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
   void ResolveConflicts() {
     VLOG_WITH_PREFIX(3) << "Conflicts: " << yb::ToString(conflicts_);
     if (conflicts_.empty()) {
+      VTRACE(1, LogPrefix());
+      TRACE("No conflicts.");
       InvokeCallback(context_->GetResolutionHt());
       return;
     }
@@ -395,6 +397,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
     pending_requests_.store(remaining_transactions_);
     for (auto& i : RemainingTransactions()) {
       auto& transaction = i;
+      TRACE("FetchingTransactionStatus for $0", yb::ToString(transaction.id));
       StatusRequest request = {
         &transaction.id,
         context_->GetResolutionHt(),
@@ -428,6 +431,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
     pending_requests_.store(remaining_transactions_);
     for (auto& i : RemainingTransactions()) {
       auto& transaction = i;
+      TRACE("Aborting $0", yb::ToString(transaction.id));
       status_manager().Abort(
           transaction.id,
           [self, &transaction](Result<TransactionStatusResult> result) {

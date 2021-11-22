@@ -2,11 +2,9 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import static com.yugabyte.yw.controllers.ScheduleScriptController.PLT_EXT_SCRIPT_CONTENT;
 import static com.yugabyte.yw.controllers.ScheduleScriptController.PLT_EXT_SCRIPT_PARAM;
-import static com.yugabyte.yw.controllers.ScheduleScriptController.PLT_EXT_SCRIPT_SCHEDULE;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
@@ -16,15 +14,12 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.AbstractTaskParams;
-import com.yugabyte.yw.models.Schedule;
-import com.yugabyte.yw.models.Schedule.State;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
-import java.nio.charset.Charset;
 import java.io.File;
 import java.io.FileOutputStream;
-import java.io.FileWriter;
 import java.io.OutputStreamWriter;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -72,7 +67,7 @@ public class RunExternalScript extends AbstractTaskBase {
       RuntimeConfig<Universe> config = sConfigFactory.forUniverse(universe);
 
       List<String> keys = Arrays.asList(PLT_EXT_SCRIPT_CONTENT, PLT_EXT_SCRIPT_PARAM);
-      Map<String, String> configKeysMap = null;
+      Map<String, String> configKeysMap;
       try {
         // Extracting the set of keys in synchronized way as they are interconnected and During the
         // scheduled script update the task should not extract partially updated multi keys.
@@ -86,17 +81,21 @@ public class RunExternalScript extends AbstractTaskBase {
       String devopsHome = appConfig.getString("yb.devops.home");
       File directory = new File(devopsHome + SCRIPT_STORE_DIR);
       if (!directory.exists()) {
-        directory.mkdir();
+        if (!directory.mkdir()) {
+          throw new RuntimeException("Failed to mkdir " + directory);
+        }
       }
       tempScriptFile =
           File.createTempFile(
               TEMP_SCRIPT_FILE_NAME + params().universeUUID.toString(), ".py", directory);
 
       FileOutputStream file = new FileOutputStream(tempScriptFile.getAbsoluteFile());
-      OutputStreamWriter output = new OutputStreamWriter(file, Charset.forName("UTF-8"));
-      output.write(configKeysMap.get(PLT_EXT_SCRIPT_CONTENT));
-      output.close();
-      tempScriptFile.setExecutable(true);
+      try (OutputStreamWriter output = new OutputStreamWriter(file, StandardCharsets.UTF_8)) {
+        output.write(configKeysMap.get(PLT_EXT_SCRIPT_CONTENT));
+      }
+      if (!tempScriptFile.setExecutable(true)) {
+        throw new RuntimeException("script file permission change failed " + tempScriptFile);
+      }
 
       // Add the commands to the script.
       List<String> commandList = new ArrayList<>();
@@ -108,7 +107,7 @@ public class RunExternalScript extends AbstractTaskBase {
       commandList.add("--platform_url");
       commandList.add(params().platformUrl);
       commandList.add("--auth_token");
-      Users user = Users.getOrBadRequest(params().userUUID);
+      Users.getOrBadRequest(params().userUUID);
       commandList.add(Users.getOrBadRequest(params().userUUID).createAuthToken());
 
       String scriptParam = configKeysMap.get(PLT_EXT_SCRIPT_PARAM);
@@ -139,7 +138,9 @@ public class RunExternalScript extends AbstractTaskBase {
     } finally {
       // Delete temporary file if exists.
       if (tempScriptFile != null && tempScriptFile.exists()) {
-        tempScriptFile.delete();
+        if (tempScriptFile.delete()) {
+          log.warn("Failed to delete file {}", tempScriptFile);
+        }
       }
     }
     log.info("Finished {} task.", getName());

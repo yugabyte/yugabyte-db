@@ -617,8 +617,7 @@ TEST_F(SnapshotTest, ImportSnapshotMeta) {
       scoped_refptr<TableInfo> info = cluster_->mini_master()->master()->catalog_manager()->
           GetTableInfo(table_pair.new_id());
       ASSERT_EQ(old_table_name, info->name());
-      vector<scoped_refptr<TabletInfo>> tablets;
-      info->GetAllTablets(&tablets);
+      auto tablets = info->GetTablets();
       ASSERT_EQ(old_table_num_tablets, tablets.size());
 
       const RepeatedPtrField<IdPairPB>& tablets_map = table_meta.tablets_ids();

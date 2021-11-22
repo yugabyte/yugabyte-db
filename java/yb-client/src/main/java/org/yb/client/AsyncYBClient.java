@@ -72,6 +72,7 @@ import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -798,14 +799,14 @@ public class AsyncYBClient implements AutoCloseable {
    *
    * @return a deferred object that yields a create xCluster replication response.
    * */
-  public Deferred<CreateXClusterReplicationResponse> createXClusterReplication(
+  public Deferred<SetupUniverseReplicationResponse> setupUniverseReplication(
     UUID sourceUniverseUUID,
-    List<String> sourceTableIDs,
-    List<Common.HostPortPB> sourceMasterAddresses,
-    List<String> sourceBootstrapIDs) {
+    Set<String> sourceTableIDs,
+    Set<Common.HostPortPB> sourceMasterAddresses,
+    Set<String> sourceBootstrapIDs) {
     checkIsClosed();
-    CreateXClusterReplicationRequest request =
-      new CreateXClusterReplicationRequest(
+    SetupUniverseReplicationRequest request =
+      new SetupUniverseReplicationRequest(
         this.masterTable,
         sourceUniverseUUID,
         sourceTableIDs,
@@ -815,25 +816,37 @@ public class AsyncYBClient implements AutoCloseable {
     return sendRpcToTablet(request);
   }
 
-  public Deferred<AlterXClusterReplicationResponse> alterXClusterReplicationAddTables(
-    UUID sourceUniverseUUID,
-    List<String> sourceTableIDsToAdd) {
-    return alterXClusterReplication(
-      sourceUniverseUUID, sourceTableIDsToAdd, new ArrayList<>(), new ArrayList<>());
+  public Deferred<IsSetupUniverseReplicationDoneResponse> isSetupUniverseReplicationDone(
+    String producerId) {
+    checkIsClosed();
+    IsSetupUniverseReplicationDoneRequest request =
+      new IsSetupUniverseReplicationDoneRequest(
+        this.masterTable,
+        producerId);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
   }
 
-  public Deferred<AlterXClusterReplicationResponse> alterXClusterReplicationRemoveTables(
+  public Deferred<AlterUniverseReplicationResponse> alterUniverseReplicationAddTables(
     UUID sourceUniverseUUID,
-    List<String> sourceTableIDsToRemove) {
-    return alterXClusterReplication(
-      sourceUniverseUUID, new ArrayList<>(), sourceTableIDsToRemove, new ArrayList<>());
+    Set<String> sourceTableIDsToAdd) {
+    return alterUniverseReplication(
+      sourceUniverseUUID, sourceTableIDsToAdd, new HashSet<>(), new HashSet<>());
   }
 
-  public Deferred<AlterXClusterReplicationResponse>
-    alterXClusterReplicationChangeSourceMasterAddresses(
-      UUID sourceUniverseUUID, List<Common.HostPortPB> sourceMasterAddresses) {
-    return alterXClusterReplication(
-      sourceUniverseUUID, new ArrayList<>(), new ArrayList<>(), sourceMasterAddresses);
+  public Deferred<AlterUniverseReplicationResponse> alterUniverseReplicationRemoveTables(
+    UUID sourceUniverseUUID,
+    Set<String> sourceTableIDsToRemove) {
+    return alterUniverseReplication(
+      sourceUniverseUUID, new HashSet<>(), sourceTableIDsToRemove, new HashSet<>());
+  }
+
+  public Deferred<AlterUniverseReplicationResponse>
+  alterUniverseReplicationSourceMasterAddresses(
+    UUID sourceUniverseUUID,
+    Set<Common.HostPortPB> sourceMasterAddresses) {
+    return alterUniverseReplication(
+      sourceUniverseUUID, new HashSet<>(), new HashSet<>(), sourceMasterAddresses);
   }
 
   /**
@@ -851,11 +864,11 @@ public class AsyncYBClient implements AutoCloseable {
    *
    * @return a deferred object that yields an alter xCluster replication response.
    * */
-  private Deferred<AlterXClusterReplicationResponse> alterXClusterReplication(
+  private Deferred<AlterUniverseReplicationResponse> alterUniverseReplication(
     UUID sourceUniverseUUID,
-    List<String> sourceTableIDsToAdd,
-    List<String> sourceTableIDsToRemove,
-    List<Common.HostPortPB> sourceMasterAddresses) {
+    Set<String> sourceTableIDsToAdd,
+    Set<String> sourceTableIDsToRemove,
+    Set<Common.HostPortPB> sourceMasterAddresses) {
     int addedTables = sourceTableIDsToAdd.isEmpty() ? 0 : 1;
     int removedTables = sourceTableIDsToRemove.isEmpty() ? 0 : 1;
     int changedMasterAddresses = sourceMasterAddresses.isEmpty() ? 0 : 1;
@@ -865,8 +878,8 @@ public class AsyncYBClient implements AutoCloseable {
     }
 
     checkIsClosed();
-    AlterXClusterReplicationRequest request =
-      new AlterXClusterReplicationRequest(
+    AlterUniverseReplicationRequest request =
+      new AlterUniverseReplicationRequest(
         this.masterTable,
         sourceUniverseUUID,
         sourceTableIDsToAdd,
@@ -885,11 +898,11 @@ public class AsyncYBClient implements AutoCloseable {
    *
    * @return a deferred object that yields a delete xCluster replication response.
    * */
-  public Deferred<DeleteXClusterReplicationResponse> deleteXClusterReplication(
+  public Deferred<DeleteUniverseReplicationResponse> deleteUniverseReplication(
     UUID sourceUniverseUUID) {
     checkIsClosed();
-    DeleteXClusterReplicationRequest request =
-      new DeleteXClusterReplicationRequest(this.masterTable, sourceUniverseUUID);
+    DeleteUniverseReplicationRequest request =
+      new DeleteUniverseReplicationRequest(this.masterTable, sourceUniverseUUID);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
   }
@@ -904,11 +917,11 @@ public class AsyncYBClient implements AutoCloseable {
    *
    * @return a deferred object that yields a get xCluster replication response.
    * */
-  public Deferred<GetXClusterReplicationInfoResponse> getXClusterReplicationInfo(
+  public Deferred<GetUniverseReplicationResponse> getUniverseReplication(
     UUID sourceUniverseUUID) {
     checkIsClosed();
-    GetXClusterReplicationInfoRequest request =
-      new GetXClusterReplicationInfoRequest(this.masterTable, sourceUniverseUUID);
+    GetUniverseReplicationRequest request =
+      new GetUniverseReplicationRequest(this.masterTable, sourceUniverseUUID);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
   }
@@ -924,11 +937,11 @@ public class AsyncYBClient implements AutoCloseable {
    *
    * @return a deferred object that yields a set xCluster replication active response.
    * */
-  public Deferred<SetXClusterReplicationActiveResponse> setXClusterReplicationActive(
+  public Deferred<SetUniverseReplicationEnabledResponse> setUniverseReplicationEnabled(
     UUID sourceUniverseUUID, boolean active) {
     checkIsClosed();
-    SetXClusterReplicationActiveRequest request =
-      new SetXClusterReplicationActiveRequest(this.masterTable, sourceUniverseUUID, active);
+    SetUniverseReplicationEnabledRequest request =
+      new SetUniverseReplicationEnabledRequest(this.masterTable, sourceUniverseUUID, active);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
   }

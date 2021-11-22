@@ -20,6 +20,7 @@ import com.yugabyte.yw.models.paging.PagedQuery.SortByIF;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
+import io.ebean.PersistenceContextScope;
 import io.ebean.annotation.Formula;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -36,6 +37,8 @@ import javax.persistence.Enumerated;
 import javax.persistence.Id;
 import javax.persistence.OneToMany;
 import javax.persistence.Transient;
+import javax.validation.constraints.NotNull;
+import javax.validation.constraints.Size;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.experimental.Accessors;
@@ -93,23 +96,26 @@ public class Alert extends Model implements AlertLabelsProvider {
   @ApiModelProperty(value = "Alert UUID", accessMode = READ_ONLY)
   private UUID uuid;
 
+  @NotNull
   @Column(nullable = false)
-  @ApiModelProperty(value = "Cutomer UUID", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "Customer UUID", accessMode = READ_ONLY)
   private UUID customerUUID;
 
+  @NotNull
   @Column(nullable = false)
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
   @ApiModelProperty(value = "Alert creation timestamp", accessMode = READ_ONLY)
   private Date createTime = nowWithoutMillis();
 
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
   @ApiModelProperty(value = "Timestamp at which the alert was acknowledged", accessMode = READ_ONLY)
   private Date acknowledgedTime;
 
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
   @ApiModelProperty(value = "Timestamp at which the alert was resolved", accessMode = READ_ONLY)
   private Date resolvedTime;
 
+  @NotNull
   @Enumerated(EnumType.STRING)
   @ApiModelProperty(value = "Alert configuration severity", accessMode = READ_ONLY)
   private AlertConfiguration.Severity severity;
@@ -123,16 +129,22 @@ public class Alert extends Model implements AlertLabelsProvider {
               + " else 0 end)")
   private Integer severityIndex;
 
+  @NotNull
+  @Size(min = 1, max = 1000)
   @ApiModelProperty(value = "The alert's name", accessMode = READ_ONLY)
   private String name;
 
+  @NotNull
+  @Size(min = 1)
   @Column(columnDefinition = "Text", nullable = false)
   @ApiModelProperty(value = "The alert's message text", accessMode = READ_ONLY)
   private String message;
 
+  @NotNull
   @ApiModelProperty(value = "The source of the alert", accessMode = READ_ONLY)
   private String sourceName;
 
+  @NotNull
   @Enumerated(EnumType.STRING)
   @ApiModelProperty(value = "The alert's state", accessMode = READ_ONLY)
   private State state = State.ACTIVE;
@@ -147,12 +159,15 @@ public class Alert extends Model implements AlertLabelsProvider {
               + " else 0 end)")
   private Integer stateIndex;
 
+  @NotNull
   @ApiModelProperty(value = "Alert definition UUID", accessMode = READ_ONLY)
   private UUID definitionUuid;
 
+  @NotNull
   @ApiModelProperty(value = "Alert configuration UUID", accessMode = READ_ONLY)
   private UUID configurationUuid;
 
+  @NotNull
   @ApiModelProperty(value = "Alert configuration type", accessMode = READ_ONLY)
   private AlertConfiguration.TargetType configurationType;
 
@@ -160,11 +175,11 @@ public class Alert extends Model implements AlertLabelsProvider {
   private List<AlertLabel> labels;
 
   @ApiModelProperty(value = "Time of the last notification attempt", accessMode = READ_ONLY)
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
   private Date notificationAttemptTime;
 
   @ApiModelProperty(value = "Time of the next notification attempt", accessMode = READ_ONLY)
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
   private Date nextNotificationTime = nowWithoutMillis();
 
   @ApiModelProperty(value = "Count of failures to send a notification", accessMode = READ_ONLY)
@@ -234,7 +249,11 @@ public class Alert extends Model implements AlertLabelsProvider {
   }
 
   public static ExpressionList<Alert> createQueryByFilter(AlertFilter filter) {
-    ExpressionList<Alert> query = find.query().fetch("labels").where();
+    ExpressionList<Alert> query =
+        find.query()
+            .setPersistenceContextScope(PersistenceContextScope.QUERY)
+            .fetch("labels")
+            .where();
     appendInClause(query, "uuid", filter.getUuids());
     appendNotInClause(query, "uuid", filter.getExcludeUuids());
     if (filter.getCustomerUuid() != null) {

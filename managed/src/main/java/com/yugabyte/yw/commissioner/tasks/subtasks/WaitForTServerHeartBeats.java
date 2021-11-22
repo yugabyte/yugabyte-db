@@ -77,7 +77,7 @@ public class WaitForTServerHeartBeats extends AbstractTaskBase {
             WAIT_EACH_ATTEMPT_MS,
             numTries);
 
-        Thread.sleep(WAIT_EACH_ATTEMPT_MS);
+        Thread.sleep(getSleepMultiplier() * WAIT_EACH_ATTEMPT_MS);
         numTries++;
       } catch (Exception e) {
         log.warn("{}: ignoring error '{}'.", getName(), e.getMessage());

@@ -1065,6 +1065,7 @@ class Schema {
 
     for (size_t i = 0; i < other.cols_.size(); i++) {
       if (!this->cols_[i].Equals(other.cols_[i])) return false;
+      if (this->column_id(i) != other.column_id(i)) return false;
     }
 
     return true;

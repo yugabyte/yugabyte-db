@@ -26,15 +26,10 @@
 #include <glog/logging.h>
 #include <boost/optional.hpp>
 #include <boost/thread/shared_mutex.hpp>
-#include "yb/common/common_flags.h"
 #include "yb/common/partial_row.h"
 #include "yb/common/partition.h"
 #include "yb/common/roles_permissions.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/consensus/consensus.h"
-#include "yb/consensus/consensus.proxy.h"
-#include "yb/consensus/consensus_peers.h"
-#include "yb/consensus/quorum_util.h"
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/mathlimits.h"
@@ -45,50 +40,18 @@
 #include "yb/gutil/sysinfo.h"
 #include "yb/gutil/walltime.h"
 #include "yb/master/async_rpc_tasks.h"
-#include "yb/master/catalog_loaders.h"
-#include "yb/master/catalog_manager_bg_tasks.h"
-#include "yb/master/catalog_manager_util.h"
-#include "yb/master/cluster_balance.h"
-#include "yb/master/master.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
-#include "yb/master/master_util.h"
 #include "yb/master/sys_catalog.h"
-#include "yb/master/system_tablet.h"
-#include "yb/master/tasks_tracker.h"
-#include "yb/master/ts_descriptor.h"
-#include "yb/master/ts_manager.h"
-#include "yb/master/yql_aggregates_vtable.h"
-#include "yb/master/yql_auth_resource_role_permissions_index.h"
-#include "yb/master/yql_auth_role_permissions_vtable.h"
-#include "yb/master/yql_auth_roles_vtable.h"
-#include "yb/master/yql_columns_vtable.h"
-#include "yb/master/yql_empty_vtable.h"
-#include "yb/master/yql_functions_vtable.h"
-#include "yb/master/yql_indexes_vtable.h"
-#include "yb/master/yql_keyspaces_vtable.h"
-#include "yb/master/yql_local_vtable.h"
-#include "yb/master/yql_partitions_vtable.h"
-#include "yb/master/yql_peers_vtable.h"
-#include "yb/master/yql_size_estimates_vtable.h"
-#include "yb/master/yql_tables_vtable.h"
-#include "yb/master/yql_triggers_vtable.h"
-#include "yb/master/yql_types_vtable.h"
-#include "yb/master/yql_views_vtable.h"
 
 #include "yb/docdb/doc_rowwise_iterator.h"
 
-#include "yb/rpc/messenger.h"
-#include "yb/tserver/ts_tablet_manager.h"
 
-#include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 
 #include "yb/tserver/tserver_admin.proxy.h"
-#include "yb/yql/redis/redisserver/redis_constants.h"
 
-#include "yb/util/crypt.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flag_tags.h"
@@ -96,22 +59,14 @@
 #include "yb/util/math_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
-#include "yb/util/rw_mutex.h"
-#include "yb/util/stopwatch.h"
 #include "yb/util/thread.h"
-#include "yb/util/thread_restrictions.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
-#include "yb/util/tsan_util.h"
 #include "yb/util/uuid.h"
 
 #include "yb/client/client.h"
-#include "yb/client/meta_cache.h"
-#include "yb/client/table_creator.h"
-#include "yb/client/table_handle.h"
 #include "yb/client/yb_table_name.h"
 
-#include "yb/tserver/remote_bootstrap_client.h"
 
 DEFINE_int32(ysql_index_backfill_rpc_timeout_ms, 60 * 1000, // 1 min.
              "Timeout used by the master when attempting to backfill a YSQL tablet during index "
@@ -743,8 +698,7 @@ void BackfillTable::Launch() {
 }
 
 void BackfillTable::LaunchComputeSafeTimeForRead() {
-  vector<scoped_refptr<TabletInfo>> tablets;
-  indexed_table_->GetAllTablets(&tablets);
+  auto tablets = indexed_table_->GetTablets();
 
   num_tablets_.store(tablets.size(), std::memory_order_release);
   tablets_pending_.store(tablets.size(), std::memory_order_release);
@@ -850,8 +804,7 @@ Status BackfillTable::UpdateSafeTime(const Status& s, HybridTime ht) {
 void BackfillTable::LaunchBackfill() {
   VLOG_WITH_PREFIX(1) << "launching backfill with timestamp: "
                       << read_time_for_backfill_;
-  vector<scoped_refptr<TabletInfo>> tablets;
-  indexed_table_->GetAllTablets(&tablets);
+  auto tablets = indexed_table_->GetTablets();
 
   num_tablets_.store(tablets.size(), std::memory_order_release);
   tablets_pending_.store(tablets.size(), std::memory_order_release);
@@ -994,8 +947,7 @@ Status BackfillTable::UpdateIndexPermissionsForIndexes() {
 }
 
 Status BackfillTable::ClearCheckpointStateInTablets() {
-  vector<scoped_refptr<TabletInfo>> tablets;
-  indexed_table_->GetAllTablets(&tablets);
+  auto tablets = indexed_table_->GetTablets();
   std::vector<TabletInfo*> tablet_ptrs;
   for (scoped_refptr<TabletInfo>& tablet : tablets) {
     tablet_ptrs.push_back(tablet.get());
@@ -1088,8 +1040,7 @@ Status BackfillTable::AllowCompactionsToGCDeleteMarkers(
 
 Status BackfillTable::SendRpcToAllowCompactionsToGCDeleteMarkers(
     const scoped_refptr<TableInfo> &table) {
-  vector<scoped_refptr<TabletInfo>> tablets;
-  table->GetAllTablets(&tablets);
+  auto tablets = table->GetTablets();
 
   for (const scoped_refptr<TabletInfo>& tablet : tablets) {
     RETURN_NOT_OK(SendRpcToAllowCompactionsToGCDeleteMarkers(tablet, table->id()));

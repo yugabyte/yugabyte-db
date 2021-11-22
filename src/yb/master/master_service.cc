@@ -45,14 +45,10 @@
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/encryption_manager.h"
 #include "yb/master/flush_manager.h"
-#include "yb/master/master.h"
 #include "yb/master/master_service_base-internal.h"
 #include "yb/master/master_service_base.h"
 #include "yb/master/permissions_manager.h"
-#include "yb/master/ts_descriptor.h"
-#include "yb/master/ts_manager.h"
 
-#include "yb/server/webserver.h"
 
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/flag_tags.h"
@@ -75,6 +71,9 @@ DEFINE_int32(tablet_report_limit, 1000,
              "Max Number of tablets to report during a single heartbeat. "
              "If this is set to INT32_MAX, then heartbeat will report all dirty tablets.");
 TAG_FLAG(tablet_report_limit, advanced);
+
+DEFINE_test_flag(bool, timeout_non_leader_master_rpcs, false,
+                 "Timeout all master requests to non leader.");
 
 DECLARE_CAPABILITY(TabletReportLimit);
 DECLARE_int32(heartbeat_rpc_timeout_ms);
@@ -209,19 +208,6 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
   if (!req->has_tablet_report() || req->tablet_report().is_incremental()) {
     // Only process split tablets if we have plenty of time to process the work (> 50% of timeout).
     auto safe_time_left = CoarseMonoClock::Now() + (FLAGS_heartbeat_rpc_timeout_ms * 1ms / 2);
-    if (rpc.GetClientDeadline() > safe_time_left) {
-      for (const auto& tablet : req->tablets_for_split()) {
-        VLOG(1) << "Got tablet to split: " << AsString(tablet);
-        const auto split_status = server_->catalog_manager()->SplitTablet(tablet.tablet_id());
-        if (!split_status.ok()) {
-          if (MasterError(split_status) == MasterErrorPB::REACHED_SPLIT_LIMIT) {
-            YB_LOG_EVERY_N_SECS(WARNING, 60 * 60) << split_status;
-          } else {
-            LOG(WARNING) << split_status;
-          }
-        }
-      }
-    }
 
     safe_time_left = CoarseMonoClock::Now() + (FLAGS_heartbeat_rpc_timeout_ms * 1ms / 2);
     if (rpc.GetClientDeadline() > safe_time_left) {
@@ -257,6 +243,9 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
                  << s.ToUserMessage();
   }
 
+  uint64_t txn_table_versions_hash = server_->catalog_manager()->GetTxnTableVersionsHash();
+  resp->set_txn_table_versions_hash(txn_table_versions_hash);
+
   rpc.RespondSuccess();
 }
 
@@ -275,8 +264,7 @@ void MasterServiceImpl::GetTabletLocations(const GetTabletLocationsRequestPB* re
     auto tables = server_->catalog_manager()->GetTables(GetTablesMode::kAll);
     const auto& tablet_id = req->tablet_ids(0);
     for (const auto& table : tables) {
-      TabletInfos tablets;
-      table->GetAllTablets(&tablets);
+      TabletInfos tablets = table->GetTablets();
       for (const auto& tablet : tablets) {
         if (tablet->tablet_id() == tablet_id) {
           TableType table_type;
@@ -396,6 +384,7 @@ BOOST_PP_SEQ_FOR_EACH(
     (IsLoadBalancerIdle)
     (AreLeadersOnPreferredOnly)
     (SplitTablet)
+    (CreateTransactionStatusTable)
     (DeleteNotServingTablet)
     (DdlLog)
 )

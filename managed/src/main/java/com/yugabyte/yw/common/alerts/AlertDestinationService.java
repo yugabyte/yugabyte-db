@@ -12,9 +12,10 @@ package com.yugabyte.yw.common.alerts;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
+import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertChannel;
+import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertDestination;
 import com.yugabyte.yw.models.filters.AlertConfigurationFilter;
 import io.ebean.annotation.Transactional;
@@ -25,12 +26,12 @@ import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.lang3.StringUtils;
 
 @Singleton
 @Slf4j
 public class AlertDestinationService {
+
+  private final BeanValidator beanValidator;
 
   private final AlertConfigurationService alertConfigurationService;
 
@@ -38,8 +39,10 @@ public class AlertDestinationService {
 
   @Inject
   public AlertDestinationService(
+      BeanValidator beanValidator,
       AlertChannelService alertChannelService,
       AlertConfigurationService alertConfigurationService) {
+    this.beanValidator = beanValidator;
     this.alertChannelService = alertChannelService;
     this.alertConfigurationService = alertConfigurationService;
   }
@@ -88,12 +91,7 @@ public class AlertDestinationService {
       oldValue = get(destination.getCustomerUUID(), destination.getUuid());
     }
 
-    try {
-      validate(oldValue, destination);
-    } catch (PlatformValidationException e) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Unable to create/update alert destination: " + e.getMessage());
-    }
+    validate(oldValue, destination);
 
     // Next will check that all the channels exist.
     alertChannelService.getOrBadRequest(
@@ -163,8 +161,8 @@ public class AlertDestinationService {
    */
   public AlertDestination createDefaultDestination(UUID customerUUID) {
     AlertChannelEmailParams defaultParams = new AlertChannelEmailParams();
-    defaultParams.defaultSmtpSettings = true;
-    defaultParams.defaultRecipients = true;
+    defaultParams.setDefaultSmtpSettings(true);
+    defaultParams.setDefaultRecipients(true);
     AlertChannel defaultChannel =
         new AlertChannel()
             .setCustomerUUID(customerUUID)
@@ -182,32 +180,27 @@ public class AlertDestinationService {
     return destination;
   }
 
-  private void validate(AlertDestination oldValue, AlertDestination destination)
-      throws PlatformValidationException {
-    if (CollectionUtils.isEmpty(destination.getChannelsList())) {
-      throw new PlatformValidationException("Can't save alert destination without channels.");
-    }
-
-    if (StringUtils.isEmpty(destination.getName())) {
-      throw new PlatformValidationException("Name is mandatory.");
-    }
-
-    if (destination.getName().length() > AlertDestination.MAX_NAME_LENGTH / 4) {
-      throw new PlatformValidationException(
-          String.format("Name length (%d) is exceeded.", AlertChannel.MAX_NAME_LENGTH / 4));
-    }
+  private void validate(AlertDestination oldValue, AlertDestination destination) {
+    beanValidator.validate(destination);
 
     if ((oldValue != null)
         && oldValue.isDefaultDestination()
         && !destination.isDefaultDestination()) {
-      throw new PlatformValidationException(
-          "Can't set the alert destination as non-default."
-              + " Make another destination as default at first.");
+      beanValidator
+          .error()
+          .forField(
+              "defaultDestination",
+              "can't set the alert destination as non-default -"
+                  + " make another destination as default at first.")
+          .throwError();
     }
 
     AlertDestination valueWithSameName = get(destination.getCustomerUUID(), destination.getName());
     if ((valueWithSameName != null) && !destination.getUuid().equals(valueWithSameName.getUuid())) {
-      throw new PlatformValidationException("Alert destination with such name already exists.");
+      beanValidator
+          .error()
+          .forField("name", "alert destination with such name already exists.")
+          .throwError();
     }
   }
 }

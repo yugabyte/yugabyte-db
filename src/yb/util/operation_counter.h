@@ -149,7 +149,7 @@ class ScopedRWOperation {
   void Reset();
 
   std::string resource_name() const {
-    return data_.resource_name_;
+    return data_.counter_ ? data_.counter_->resource_name() : "null";
   }
  private:
   struct Data {
@@ -166,7 +166,7 @@ class ScopedRWOperation {
 // RETURN_NOT_OK macro support.
 inline Status MoveStatus(const ScopedRWOperation& scoped) {
   return scoped.ok() ? Status::OK()
-                     : STATUS_FORMAT(TryAgain, "Resource unavailable : $0", scoped.resource_name());
+                     : STATUS_FORMAT(TryAgain, "Resource unavailable: $0", scoped.resource_name());
 }
 
 // A convenience class to automatically pause/resume a RWOperationCounter.
@@ -186,6 +186,10 @@ class ScopedRWOperationPause {
   ~ScopedRWOperationPause();
 
   void Reset();
+
+  std::string resource_name() const {
+    return data_.counter_ ? data_.counter_->resource_name() : "null";
+  }
 
   void operator=(ScopedRWOperationPause&& p) {
     Reset();

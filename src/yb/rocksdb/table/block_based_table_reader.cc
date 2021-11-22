@@ -25,7 +25,6 @@
 
 #include <string>
 #include <utility>
-#include <cinttypes>
 
 #include "yb/rocksdb/db/dbformat.h"
 
@@ -46,7 +45,6 @@
 #include "yb/rocksdb/table/block_prefix_index.h"
 #include "yb/rocksdb/table/filter_block.h"
 #include "yb/rocksdb/table/format.h"
-#include "yb/rocksdb/table/forwarding_iterator.h"
 #include "yb/rocksdb/table/fixed_size_filter_block.h"
 #include "yb/rocksdb/table/full_filter_block.h"
 #include "yb/rocksdb/table/get_context.h"
@@ -232,6 +230,8 @@ struct BlockBasedTable::Rep {
   bool hash_index_allow_collision = false;
   bool whole_key_filtering = false;
   bool prefix_filtering = false;
+  KeyValueEncodingFormat data_block_key_value_encoding_format =
+      KeyValueEncodingFormat::kKeyDeltaEncodingSharedPrefix;
   // TODO(kailiu) It is very ugly to use internal key in table, since table
   // module should not be relying on db module. However to make things easier
   // and compatible with existing code, we introduce a wrapper that allows
@@ -310,6 +310,16 @@ void BlockBasedTable::SetupCacheKeyPrefix(Rep* rep,
         reader_with_cache_prefix->reader->file(),
         &reader_with_cache_prefix->compressed_cache_key_prefix);
   }
+}
+
+KeyValueEncodingFormat BlockBasedTable::GetKeyValueEncodingFormat(const BlockType block_type) {
+  switch (block_type) {
+    case BlockType::kData:
+      return rep_->data_block_key_value_encoding_format;
+    case BlockType::kIndex:
+      return kIndexBlockKeyValueEncodingFormat;
+  }
+  FATAL_INVALID_ENUM_VALUE(BlockType, block_type);
 }
 
 BlockBasedTable::FileReaderWithCachePrefix* BlockBasedTable::GetBlockReader(BlockType block_type) {
@@ -548,6 +558,13 @@ Status BlockBasedTable::ReadPropertiesBlock(InternalIterator* meta_iter) {
     rep_->prefix_filtering &= IsFeatureSupported(
         *(rep_->table_properties),
         BlockBasedTablePropertyNames::kPrefixFiltering, rep_->ioptions.info_log);
+
+    auto& props = rep_->table_properties->user_collected_properties;
+    auto it = props.find(BlockBasedTablePropertyNames::kDataBlockKeyValueEncodingFormat);
+    if (it != props.end()) {
+      rep_->data_block_key_value_encoding_format =
+          static_cast<KeyValueEncodingFormat>(DecodeFixed8(it->second.c_str()));
+    }
   }
 
   return Status::OK();
@@ -705,7 +722,8 @@ Status BlockBasedTable::ReadMetaBlock(Rep* rep,
 
   *meta_block = std::move(meta);
   // meta block uses bytewise comparator.
-  iter->reset(meta_block->get()->NewIterator(BytewiseComparator()));
+  iter->reset(
+      meta_block->get()->NewIterator(BytewiseComparator(), kMetaIndexBlockKeyValueEncodingFormat));
   return Status::OK();
 }
 
@@ -1232,7 +1250,8 @@ InternalIterator* BlockBasedTable::NewDataBlockIterator(const ReadOptions& ro,
 
   InternalIterator* iter;
   if (s.ok() && block.value != nullptr) {
-    iter = block.value->NewIterator(rep_->comparator.get(), input_iter);
+    iter = block.value->NewIterator(
+        rep_->comparator.get(), GetKeyValueEncodingFormat(block_type), input_iter);
     if (block.cache_handle != nullptr) {
       iter->RegisterCleanup(&ReleaseCachedEntry, block_cache,
           block.cache_handle);

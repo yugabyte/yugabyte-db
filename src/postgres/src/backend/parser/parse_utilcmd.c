@@ -387,11 +387,7 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 							errmsg("users cannot create system catalog tables")));
 		}
 		else if (strcmp(def->defname, "tablegroup") == 0)
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("cannot supply tablegroup through WITH clause")));
-		}
+			(void) strtol(defGetString(def), NULL, 10);
 		else if (strcmp(def->defname, "colocated") == 0)
 			(void) defGetBoolean(def);
 		else if (strcmp(def->defname, "table_oid") == 0)
@@ -2078,14 +2074,18 @@ transformIndexConstraints(CreateStmtContext *cxt)
 
 		index = lfirst(lc);
 
-		/*
-		 * For system tables, we need to check not just a presence of
-		 * table_oid option but also it's correctness.
-		 * Even though index creation would do that anyway, we do this ahead
-		 * to spare DocDB from rolling back table creation.
-		 */
-		if (IsYugaByteEnabled() && cxt->isSystem && IsYsqlUpgrade)
+		if (IsYsqlUpgrade && cxt->isSystem)
 		{
+			if (index->idxname == NULL)
+				elog(ERROR, "system indexes must have an explicit name "
+							"(exactly as defined in indexing.h header file!)");
+
+			/*
+			 * For system tables, we need to check not just a presence of
+			 * table_oid option but also it's correctness.
+			 * Even though index creation would do that anyway, we do this ahead
+			 * to spare DocDB from rolling back table creation.
+			 */
 			Oid oid = GetTableOidFromRelOptions(
 				index->options,
 				cxt->tablespaceOid,
@@ -2146,6 +2146,16 @@ transformIndexConstraints(CreateStmtContext *cxt)
 	bms_free(oids_used);
 }
 
+static char
+ybcGetIndexedRelPersistence(IndexStmt* index, CreateStmtContext *cxt) {
+  /*
+   * Use persistence from relation info. It is available in case of 'ALTER TABLE' statement.
+   * Or use persistence from statement itself. This is a case when relation is not yet exists
+   * (i.e. 'CREATE TABLE' statement).
+   */
+  return cxt->rel ? cxt->rel->rd_rel->relpersistence : index->relation->relpersistence;
+}
+
 /*
  * transformIndexConstraint
  *		Transform one UNIQUE, PRIMARY KEY, or EXCLUDE constraint for
@@ -2187,7 +2197,7 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 
 	index->relation = cxt->relation;
 	index->accessMethod = constraint->access_method ? constraint->access_method :
-			(IsYugaByteEnabled() && index->relation->relpersistence != RELPERSISTENCE_TEMP
+			(IsYugaByteEnabled() && ybcGetIndexedRelPersistence(index, cxt) != RELPERSISTENCE_TEMP
 					? DEFAULT_YB_INDEX_TYPE
 					: DEFAULT_INDEX_TYPE);
 	index->options = constraint->options;

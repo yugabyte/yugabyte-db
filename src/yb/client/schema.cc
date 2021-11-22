@@ -37,7 +37,6 @@
 #include <glog/logging.h>
 
 #include "yb/client/schema-internal.h"
-#include "yb/client/value-internal.h"
 #include "yb/common/partial_row.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/gutil/map-util.h"
@@ -204,8 +203,7 @@ YBSchemaBuilder* YBSchemaBuilder::SetTableProperties(const TableProperties& tabl
 }
 
 Status YBSchemaBuilder::Build(YBSchema* schema) {
-  vector<YBColumnSchema> cols;
-  cols.resize(data_->specs.size(), YBColumnSchema());
+  std::vector<YBColumnSchema> cols(data_->specs.size(), YBColumnSchema());
   for (int i = 0; i < cols.size(); i++) {
     RETURN_NOT_OK(data_->specs[i]->ToColumnSchema(&cols[i]));
   }
@@ -218,40 +216,40 @@ Status YBSchemaBuilder::Build(YBSchema* schema) {
     // Removing the following restriction from Kudu:
     //   If they didn't explicitly pass the column names for key,
     //   then they should have set it on exactly one column.
-    bool has_order_error = false;
-    bool reached_regular_column = false;
-    bool reached_primary_column = false;
+    const YBColumnSpec::Data* reached_primary_column = nullptr;
+    const YBColumnSpec::Data* reached_regular_column = nullptr;
     for (int i = 0; i < cols.size(); i++) {
-      if (data_->specs[i]->data_->hash_primary_key) {
+      auto& column_data = *data_->specs[i]->data_;
+      if (column_data.hash_primary_key) {
         num_key_cols++;
-        if (reached_primary_column || reached_regular_column) {
-          has_order_error = true;
-          break;
+        if (reached_primary_column) {
+          return STATUS_FORMAT(
+              InvalidArgument, "Hash primary key column '$0' should be before primary key '$1'",
+              column_data.name, reached_primary_column->name);
+        }
+        if (reached_regular_column) {
+          return STATUS_FORMAT(
+              InvalidArgument, "Hash primary key column '$0' should be before regular column '$1'",
+              column_data.name, reached_regular_column->name);
         }
 
-      } else if (data_->specs[i]->data_->primary_key) {
+      } else if (column_data.primary_key) {
         num_key_cols++;
         if (reached_regular_column) {
-          has_order_error = true;
-          break;
+          return STATUS_FORMAT(
+              InvalidArgument, "Primary key column '$0' should be before regular column '$1'",
+              column_data.name, reached_regular_column->name);
         }
-        reached_primary_column = true;
 
+        reached_primary_column = &column_data;
       } else {
-        reached_regular_column = true;
+        reached_regular_column = &column_data;
       }
     }
 
     if (num_key_cols <= 0) {
-      return STATUS(InvalidArgument, "no primary key specified");
+      return STATUS(InvalidArgument, "No primary key specified");
     }
-
-    if (has_order_error) {
-      return STATUS(InvalidArgument,
-                    "The given columns in a schema must be ordered as hash primary key columns "
-                    "then primary key columns and then regular columns");
-    }
-
   } else {
     // Build a map from name to index of all of the columns.
     unordered_map<string, int> name_to_idx_map;
@@ -260,7 +258,7 @@ Status YBSchemaBuilder::Build(YBSchema* schema) {
       // If they did pass the key column names, then we should not have explicitly
       // set it on any columns.
       if (spec->data_->primary_key) {
-        return STATUS(InvalidArgument, "primary key specified by both SetPrimaryKey() and on a "
+        return STATUS(InvalidArgument, "Primary key specified by both SetPrimaryKey() and on a "
                                        "specific column", spec->data_->name);
       }
 
@@ -282,7 +280,7 @@ Status YBSchemaBuilder::Build(YBSchema* schema) {
     for (const string& key_col_name : data_->key_col_names) {
       int idx;
       if (!FindCopy(name_to_idx_map, key_col_name, &idx)) {
-        return STATUS(InvalidArgument, "primary key column not defined", key_col_name);
+        return STATUS(InvalidArgument, "Primary key column not defined", key_col_name);
       }
       key_col_indexes.push_back(idx);
     }
@@ -292,7 +290,7 @@ Status YBSchemaBuilder::Build(YBSchema* schema) {
     // flexible user-facing API.
     for (int i = 0; i < key_col_indexes.size(); i++) {
       if (key_col_indexes[i] != i) {
-        return STATUS(InvalidArgument, "primary key columns must be listed first in the schema",
+        return STATUS(InvalidArgument, "Primary key columns must be listed first in the schema",
                                        data_->key_col_names[i]);
       }
     }

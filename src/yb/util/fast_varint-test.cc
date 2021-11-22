@@ -11,14 +11,18 @@
 // under the License.
 //
 
-#include <iostream>
+#include <algorithm>
+#include <cstdint>
+#include <random>
+#include <string>
+
+#include <glog/logging.h>
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/cast.h"
 #include "yb/util/fast_varint.h"
 #include "yb/util/random.h"
-#include "yb/util/random_util.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/varint.h"
@@ -42,11 +46,29 @@ void CheckEncoding(int64_t v) {
   FastEncodeSignedVarInt(v, buf, &encoded_size);
   ASSERT_EQ(correct_encoded.size(), encoded_size);
   ASSERT_EQ(correct_encoded, string(to_char_ptr(buf), encoded_size));
-  int64_t decoded = 0;
-  size_t decoded_size = 0;
-  ASSERT_OK(FastDecodeSignedVarInt(correct_encoded, &decoded, &decoded_size));
-  ASSERT_EQ(v, decoded);
-  ASSERT_EQ(decoded_size, correct_encoded.size());
+
+  {
+    int64_t decoded = 0;
+    size_t decoded_size = 0;
+    ASSERT_OK(FastDecodeSignedVarIntUnsafe(correct_encoded, &decoded, &decoded_size));
+    ASSERT_EQ(v, decoded);
+    ASSERT_EQ(correct_encoded.size(), decoded_size);
+  }
+
+  {
+    constexpr auto kPrefixSize = 4;
+    const auto encoded_prefixed = std::string(kPrefixSize, 'x') + correct_encoded;
+    int64_t decoded = 0;
+    size_t decoded_size = 0;
+    ASSERT_OK(FastDecodeSignedVarInt(
+        encoded_prefixed.c_str() + kPrefixSize,
+        correct_encoded.size(),
+        encoded_prefixed.c_str(),
+        &decoded,
+        &decoded_size));
+    ASSERT_EQ(v, decoded);
+    ASSERT_EQ(correct_encoded.size(), decoded_size);
+  }
 
   {
     // Provide a way to generate examples for checking value validity during decoding. These could
@@ -56,9 +78,9 @@ void CheckEncoding(int64_t v) {
 
     constexpr bool kGenerateInvalidDecodingExamples = false;
     if (kGenerateInvalidDecodingExamples &&
-        !FastDecodeSignedVarInt(
+        !FastDecodeSignedVarIntUnsafe(
             buf + 1, encoded_size - 1, &unused_decoded_value, &unused_decoded_size).ok()) {
-      std::cout << "ASSERT_FALSE(FastDecodeSignedVarInt("
+      std::cout << "ASSERT_FALSE(FastDecodeSignedVarIntUnsafe("
                 << FormatBytesAsStr(to_char_ptr(buf) + 1, encoded_size - 1) << ", "
                 << encoded_size - 1 << ", "
                 << "&v, &n).ok());" << std::endl;
@@ -78,7 +100,7 @@ void CheckEncoding(int64_t v) {
 
     Slice slice_for_decoding(encoded_dest.c_str() + kPrefix.size(), encoded_size);
     int64_t decoded_value = 0;
-    ASSERT_OK(FastDecodeDescendingSignedVarInt(&slice_for_decoding, &decoded_value));
+    ASSERT_OK(FastDecodeDescendingSignedVarIntUnsafe(&slice_for_decoding, &decoded_value));
     ASSERT_EQ(0, slice_for_decoding.size());
     ASSERT_EQ(-v, decoded_value);
   }
@@ -326,7 +348,7 @@ TEST(FastVarIntTest, TestDecodeIncorrectValues) {
   size_t n;
   const auto& incorrect_values = IncorrectValues();
   for (const auto& value : incorrect_values) {
-    ASSERT_NOK(FastDecodeSignedVarInt(value, &v, &n))
+    ASSERT_NOK(FastDecodeSignedVarIntUnsafe(value, &v, &n))
         << "Input: " << Slice(value).ToDebugHexString();
   }
 }
@@ -425,7 +447,7 @@ void TestDecodeDescendingSignedPerformance() {
     for (auto cur : bounds) {
       Slice slice(prev, cur);
       int64_t value;
-      ASSERT_OK_FAST(FastDecodeDescendingSignedVarInt(&slice, &value));
+      ASSERT_OK_FAST(FastDecodeDescendingSignedVarIntUnsafe(&slice, &value));
       prev = cur;
     }
   }
@@ -450,7 +472,7 @@ TEST(FastVarIntTest, DecodeDescendingSignedCheck) {
     SCOPED_TRACE(Format("Value: $0", value));
     auto end = FastEncodeDescendingSignedVarInt(value, buffer);
     Slice slice(buffer, end);
-    auto decoded_value = ASSERT_RESULT_FAST(FastDecodeDescendingSignedVarInt(&slice));
+    auto decoded_value = ASSERT_RESULT_FAST(FastDecodeDescendingSignedVarIntUnsafe(&slice));
     ASSERT_TRUE(slice.empty());
     ASSERT_EQ(value, decoded_value);
   }

@@ -22,12 +22,21 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.ListIterator;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.builder.HashCodeBuilder;
 import org.apache.commons.lang3.tuple.Pair;
 import org.junit.After;
 import org.junit.Before;
@@ -35,10 +44,14 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TestName;
 import org.junit.runner.RunWith;
+import com.yugabyte.jdbc.PgArray;
+import com.yugabyte.util.PGobject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.yb.util.SanitizerUtil;
+import org.yb.client.TestUtils;
+import org.yb.minicluster.YsqlSnapshotVersion;
+import org.yb.util.BuildTypeUtil;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
 /**
@@ -55,11 +68,23 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
 public class TestYsqlUpgrade extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestYsqlUpgrade.class);
 
+  /**
+   * Prefix which should be used for all shared tables created in this test. Used to filter out test
+   * rels when computing system catalog checksum.
+   */
+  private static final String SHARED_ENTITY_PREFIX = "pg_yb_test_";
+
+  private static final String CATALOG_VERSION_TABLE = "pg_yb_catalog_version";
+  private static final String MIGRATIONS_TABLE = "pg_yb_migration";
+
+  /** Guaranteed to be greated than any real OID, needed for sorted entities to appear at the end */
+  private static final long PLACEHOLDER_OID = 1234567890L;
+
   /** Static in order to persist between tests. */
   private static int LAST_USED_SYS_OID = 9000;
 
   /** Tests are performed on a fresh database. */
-  private final String customDbName = "test_sys_tables_db";
+  private final String customDbName = SHARED_ENTITY_PREFIX + "sys_tables_db";
 
   /** Since shared relations aren't cleared between tests, we can't reuse names. */
   private String sharedRelName;
@@ -69,7 +94,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
 
   @Before
   public void beforeTestYsqlUpgrade() throws Exception {
-    sharedRelName = "pg_yb_shared_" + Math.abs(name.getMethodName().hashCode());
+    sharedRelName = SHARED_ENTITY_PREFIX + "shared_" + Math.abs(name.getMethodName().hashCode());
 
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE DATABASE " + customDbName);
@@ -104,7 +129,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
           "permission denied for schema pg_catalog");
 
       runInvalidQuery(stmt,
-          "CREATE TABLE pg_catalog.pg_yb_shared_fail(v int) WITH ("
+          "CREATE TABLE pg_catalog." + SHARED_ENTITY_PREFIX + "shared_fail(v int) WITH ("
               + "  table_oid = " + newSysOid()
               + ", row_type_oid = " + newSysOid()
               + ") TABLESPACE pg_global",
@@ -127,8 +152,10 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       String createSharedRelSql = "CREATE TABLE pg_catalog." + sharedRelName + " ("
           + "  c1 int"
           + ", c2 timestamp with time zone NOT NULL"
-          + ", c3 date UNIQUE WITH (table_oid = " + newSysOid() + ")"
-          + ", PRIMARY KEY(oid DESC) WITH (table_oid = " + newSysOid() + ")"
+          + ", c3 date CONSTRAINT " + sharedRelName + "_c3_idx UNIQUE"
+          + "    WITH (table_oid = " + newSysOid() + ")"
+          + ", CONSTRAINT " + sharedRelName + "_pk PRIMARY KEY (oid DESC)"
+          + "    WITH (table_oid = " + newSysOid() + ")"
           + ") WITH ("
           + "  oids = true"
           + ", table_oid = " + newSysOid()
@@ -166,12 +193,12 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       String ts2 = "2002-03-04";
       // write -> template1
       // read  <- user DB
-      stmtTpl.execute(String.format("INSERT INTO %s VALUES (1, '%s', '%s')",
+      executeSystemTableDml(stmtTpl, String.format("INSERT INTO %s VALUES (1, '%s', '%s')",
           sharedRelName, ts1, ts2));
       assertQuery(stmtUsr, "SELECT * FROM " + sharedRelName,
           new Row(1, Timestamp.valueOf(ts1), new SimpleDateFormat("yyyy-MM-dd").parse(ts2)));
 
-      assertAllOidsAreSysGeneated(stmtUsr, sharedRelName);
+      assertAllOidsAreSysGenerated(stmtUsr, sharedRelName);
     }
   }
 
@@ -183,10 +210,10 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
             Pair.of("pg_database_datname_index", 2671L),
             Pair.of("pg_database_oid_index", 2672L)));
 
-    TableInfo newTi = new TableInfo("pg_database_2", newSysOid(), newSysOid(),
+    TableInfo newTi = new TableInfo(SHARED_ENTITY_PREFIX + "database_2", newSysOid(), newSysOid(),
         Arrays.asList(
-            Pair.of("pg_database_2_datname_index", newSysOid()),
-            Pair.of("pg_database_2_oid_index", newSysOid())));
+            Pair.of(SHARED_ENTITY_PREFIX + "database_2_datname_index", newSysOid()),
+            Pair.of(SHARED_ENTITY_PREFIX + "database_2_oid_index", newSysOid())));
 
     try (Connection connB = getConnectionBuilder().withDatabase(customDbName).connect();
          Statement stmtA = connection.createStatement();
@@ -211,8 +238,8 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
           + "    WITH (table_oid = " + newTi.indexes.get(1).getRight() + ")"
           + ") WITH ("
           + "  oids = true"
-          + ", table_oid = " + newTi.oid
-          + ", row_type_oid = " + newTi.typeOid
+          + ", table_oid = " + newTi.getOid()
+          + ", row_type_oid = " + newTi.getTypeOid()
           + ") TABLESPACE pg_global";
       LOG.info("Executing '{}'", createRelSql);
       stmtA.execute(createRelSql);
@@ -289,8 +316,8 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
           + "    WITH (table_oid = " + newTi.indexes.get(0).getRight() + ")"
           + ") WITH ("
           + "  oids = true"
-          + ", table_oid = " + newTi.oid
-          + ", row_type_oid = " + newTi.typeOid
+          + ", table_oid = " + newTi.getOid()
+          + ", row_type_oid = " + newTi.getTypeOid()
           + ")";
       LOG.info("Executing '{}'", createRelSql);
       stmtA.execute(createRelSql);
@@ -344,7 +371,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       // Create a simple system relation.
       stmt.execute("CREATE TABLE pg_catalog.simple_system_table ("
           + "  id int"
-          + ", PRIMARY KEY (id ASC)"
+          + ", CONSTRAINT simple_system_table_pk PRIMARY KEY (id ASC)"
           + "    WITH (table_oid = " + newSysOid() + ")"
           + ") WITH ("
           + "  table_oid = " + newSysOid()
@@ -354,7 +381,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       // Create a simple SHARED system relation.
       stmt.execute("CREATE TABLE pg_catalog." + sharedRelName + " ("
           + "  id int"
-          + ", PRIMARY KEY (id ASC)"
+          + ", CONSTRAINT " + sharedRelName + "_pk PRIMARY KEY (id ASC)"
           + "    WITH (table_oid = " + newSysOid() + ")"
           + ") WITH ("
           + "  table_oid = " + newSysOid()
@@ -373,7 +400,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
 
       String ddlSql = "CREATE TABLE pg_catalog.simple_system_table ("
           + "  id int"
-          + ", PRIMARY KEY (id ASC)"
+          + ", CONSTRAINT simple_system_table_pk PRIMARY KEY (id ASC)"
           + "    WITH (table_oid = " + newSysOid() + ")"
           + ") WITH ("
           + "  table_oid = " + newSysOid()
@@ -384,13 +411,13 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       runInvalidQuery(stmt, ddlSql, "DDL failed as requested");
 
       // Letting CatalogManagerBgTasks do the cleanup.
-      Thread.sleep(SanitizerUtil.adjustTimeout(5000));
+      Thread.sleep(BuildTypeUtil.adjustTimeout(5000));
 
       stmt.execute(ddlSql);
 
       String selectSql = "SELECT * FROM simple_system_table";
       assertNoRows(stmt, selectSql);
-      stmt.execute("INSERT INTO simple_system_table VALUES (2), (1), (3)");
+      executeSystemTableDml(stmt, "INSERT INTO simple_system_table VALUES (2), (1), (3)");
       assertQuery(stmt, selectSql, new Row(1), new Row(2), new Row(3));
     }
   }
@@ -406,7 +433,8 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       String createSharedRelSql = "CREATE TABLE pg_catalog." + sharedRelName + " ("
           + "  id int"
           + ", v int"
-          + ", PRIMARY KEY (id ASC) WITH (table_oid = " + newSysOid() + ")"
+          + ", CONSTRAINT " + sharedRelName + "_pk PRIMARY KEY (id ASC)"
+          + "    WITH (table_oid = " + newSysOid() + ")"
           + ") WITH ("
           + "  table_oid = " + newSysOid()
           + ", row_type_oid = " + newSysOid()
@@ -416,8 +444,8 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       LOG.info("Created shared relation {}", sharedRelName);
 
       // Inserting some data before creating index.
-      stmtTpl.execute(String.format("INSERT INTO %s VALUES (1, 10), (2, 20), (3, 30)",
-          sharedRelName));
+      executeSystemTableDml(stmtTpl,
+          String.format("INSERT INTO %s VALUES (1, 10), (2, 20), (3, 30)", sharedRelName));
 
       // Creating index.
       String sharedIndexName = sharedRelName + "_idx";
@@ -453,7 +481,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       // Another insert after index is in place already.
       // This time we write into user DB and read from template1.
       setSystemRelsModificationGuc(stmtUsr, true);
-      stmtUsr.execute(String.format("INSERT INTO %s VALUES (4, 40)", sharedRelName));
+      executeSystemTableDml(stmtUsr, String.format("INSERT INTO %s VALUES (4, 40)", sharedRelName));
       assertTrue(isIndexOnlyScan(stmtUsr, query, sharedIndexName));
       assertQuery(stmtUsr, query,
           new Row(20),
@@ -470,11 +498,9 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
   /** Create a system view just like pg_stats and verify they look the same. */
   @Test
   public void creatingSystemViewsIsLikeInitdb() throws Exception {
-    TableInfo origTi = new TableInfo("pg_stats", 12081L, 12082L, 12083L,
-        Arrays.asList());
+    ViewInfo origTi = new ViewInfo("pg_stats");
 
-    TableInfo newTi = new TableInfo("pg_stats_2", newSysOid(), newSysOid(), newSysOid(),
-        Arrays.asList());
+    ViewInfo newTi = new ViewInfo("pg_stats_2");
 
     try (Connection conn = getConnectionBuilder().withDatabase(customDbName).connect();
          Statement stmtA = conn.createStatement();
@@ -482,10 +508,8 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       setSystemRelsModificationGuc(stmtA, true);
 
       String createViewSql = "CREATE VIEW pg_catalog." + newTi.name + " WITH ("
-          + "  table_oid = " + newTi.oid
-          + ", row_type_oid = " + newTi.typeOid
-          + ", rewrite_rule_oid = " + newTi.ruleOid
-          + ", security_barrier = true"
+          + "  security_barrier = true"
+          + ", use_initdb_acl = true"
           + ") AS"
           + " SELECT"
           + "     nspname AS schemaname,"
@@ -567,7 +591,8 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       String commonCreateSqlPattern = "CREATE TABLE pg_catalog.%s ("
           + "  v1 int  NOT NULL"
           + ", v2 text NOT NULL"
-          + ", PRIMARY KEY (oid ASC) WITH (table_oid = %d)"
+          + ", CONSTRAINT %s_pk PRIMARY KEY (oid ASC)"
+          + "    WITH (table_oid = %d)"
           + ") WITH ("
           + "  oids = true"
           + ", table_oid = %d"
@@ -578,14 +603,15 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
 
       {
         String createSharedRelSql = String.format(commonCreateSqlPattern,
-            sharedRelName, newSysOid(), newSysOid(), newSysOid()) + " TABLESPACE pg_global";
+            sharedRelName, sharedRelName, newSysOid(), newSysOid(), newSysOid()) +
+            " TABLESPACE pg_global";
         LOG.info("Executing '{}'", createSharedRelSql);
         stmt.execute(createSharedRelSql);
       }
 
       {
         String createNonSharedRelSql = String.format(commonCreateSqlPattern,
-            nonSharedRelName, newSysOid(), newSysOid(), newSysOid());
+            nonSharedRelName, nonSharedRelName, newSysOid(), newSysOid(), newSysOid());
         LOG.info("Executing '{}'", createNonSharedRelSql);
         stmt.execute(createNonSharedRelSql);
       }
@@ -596,44 +622,152 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
         assertNoRows(stmt, selectSql);
 
         // Insert something.
-        stmt.execute("INSERT INTO " + tableName + " (oid, v1, v2) VALUES (123, 111, 't1')");
+        executeSystemTableDml(stmt,
+            "INSERT INTO " + tableName + " (oid, v1, v2) VALUES (123, 111, 't1')");
         assertQuery(stmt, selectSql,
             new Row(123, 111, "t1"));
 
         // Insert something conflicting, with and without ON CONFLICT DO NOTHING.
         String conflictingInsertSql = "INSERT INTO " + tableName + " (oid, v1, v2)"
             + " VALUES (123, -1, 'Nope')";
-        runInvalidQuery(stmt, conflictingInsertSql,
-            "duplicate key value violates unique constraint \"" + tableName + "_pkey\"");
-        runInvalidQuery(stmt, conflictingInsertSql + " ON CONFLICT (oid) DO UPDATE SET v2 = 'No!'",
+        runInvalidSystemQuery(stmt, conflictingInsertSql,
+            "duplicate key value violates unique constraint \"" + tableName + "_pk\"");
+        runInvalidSystemQuery(stmt, conflictingInsertSql
+            + " ON CONFLICT (oid) DO UPDATE SET v2 = 'No!'",
             "only ON CONFLICT DO NOTHING can be used in YSQL upgrade");
         stmt.execute(conflictingInsertSql + " ON CONFLICT DO NOTHING");
         assertQuery(stmt, selectSql,
             new Row(123, 111, "t1"));
 
         // Insert with an oid out of bounds.
-        runInvalidQuery(stmt, "INSERT INTO " + tableName + " (oid, v1, v2) VALUES (17000, -1, 'x')",
+        runInvalidSystemQuery(stmt, "INSERT INTO " + tableName + " (oid, v1, v2)"
+            + " VALUES (17000, -1, 'x')",
             "rows inserted during YSQL upgrade must have OIDs below user range");
         assertQuery(stmt, selectSql,
             new Row(123, 111, "t1"));
 
         // Insert non-conflicting row with ON CONFLICT DO NOTHING.
-        stmt.execute("INSERT INTO " + tableName + " (oid, v1, v2) VALUES (234, 222, 't2')"
-            + " ON CONFLICT DO NOTHING");
+        executeSystemTableDml(stmt, "INSERT INTO " + tableName + " (oid, v1, v2)"
+            + " VALUES (234, 222, 't2') ON CONFLICT DO NOTHING");
         assertQuery(stmt, selectSql,
             new Row(123, 111, "t1"),
             new Row(234, 222, "t2"));
 
-        stmt.execute("DELETE FROM " + tableName);
+        executeSystemTableDml(stmt, "DELETE FROM " + tableName);
         assertNoRows(stmt, selectSql);
 
         // Insert without oid column.
-        stmt.execute("INSERT INTO " + tableName + " (v1, v2) VALUES (333, 't3')");
+        executeSystemTableDml(stmt, "INSERT INTO " + tableName + " (v1, v2) VALUES (333, 't3')");
         assertQuery(stmt, "SELECT * FROM " + tableName + " ORDER BY oid",
             new Row(333, "t3"));
-        assertAllOidsAreSysGeneated(stmt, tableName);
+        assertAllOidsAreSysGenerated(stmt, tableName);
       }
     }
+  }
+
+  /**
+   * Clear applied migrations table, re-run migrations and expect nothing to change from reapplying
+   * migrations.
+   */
+  @Test
+  public void upgradeIsIdempotent() throws Exception {
+    final int lastHardcodedMigrationVersion = 8;
+
+    // Ignore pg_yb_catalog_version because we bump current_version disregarding
+    // IF NOT EXISTS clause (whether the entity is actually created doesn't matter).
+    // For pg_yb_migration, verify that all migrations were applied.
+    try (Connection conn = getConnectionBuilder().withDatabase(customDbName).connect();
+         Statement stmt = conn.createStatement()) {
+      SysCatalogSnapshot preSnapshot = takeSysCatalogSnapshot(stmt);
+      final int latestMajorVersion = preSnapshot.catalog.get(MIGRATIONS_TABLE).get(0).getInt(0);
+      final int latestMinorVersion = preSnapshot.catalog.get(MIGRATIONS_TABLE).get(0).getInt(1);
+      final int totalMigrations = latestMajorVersion + latestMinorVersion;
+      // Make sure the latest version is at least as big as the last hardcoded one (it will be
+      // greater if more migrations were introduced after YSQL upgrade is released).
+      assertTrue(latestMajorVersion >= lastHardcodedMigrationVersion);
+      preSnapshot.catalog.remove(MIGRATIONS_TABLE);
+      preSnapshot.catalog.remove(CATALOG_VERSION_TABLE);
+
+      setSystemRelsModificationGuc(stmt, true);
+      executeSystemTableDml(stmt, "DELETE FROM " + MIGRATIONS_TABLE);
+      runMigrations();
+
+      SysCatalogSnapshot postSnapshot = takeSysCatalogSnapshot(stmt);
+      List<Row> appliedMigrations = postSnapshot.catalog.get(MIGRATIONS_TABLE);
+      assertEquals("Expected an entry for the last hardcoded migration"
+          + " and each migration past that!",
+          totalMigrations - lastHardcodedMigrationVersion + 1,
+          appliedMigrations.size());
+      assertEquals(
+          lastHardcodedMigrationVersion,
+          appliedMigrations
+              .get(0).getInt(0).intValue());
+      assertEquals(
+          latestMajorVersion,
+          appliedMigrations
+              .get(postSnapshot.catalog.get(MIGRATIONS_TABLE).size() - 1).getInt(0).intValue());
+      assertEquals(
+          latestMinorVersion,
+          appliedMigrations
+              .get(postSnapshot.catalog.get(MIGRATIONS_TABLE).size() - 1).getInt(1).intValue());
+      postSnapshot.catalog.remove(MIGRATIONS_TABLE);
+      postSnapshot.catalog.remove(CATALOG_VERSION_TABLE);
+
+      assertSysCatalogSnapshotsEquals(preSnapshot, postSnapshot);
+    }
+  }
+
+  /**
+   * Verify that applying migrations to and old initdb snapshot transforms pg_catalog to a state
+   * equivalent to a fresh initdb.
+   * <p>
+   * If you see this test failing, please make sure you've added a new YSQL migration as described
+   * in {@code src/yb/yql/pgwrapper/ysql_migrations/README.md}.
+   * <p>
+   * After that's done, fix this test by updating values to new ones.
+   */
+  @Test
+  public void migratingIsEquivalentToReinitdb() throws Exception {
+    final SysCatalogSnapshot preSnapshotCustom, preSnapshotTemplate1;
+    try (Connection conn = getConnectionBuilder().withDatabase(customDbName).connect();
+         Statement stmt = conn.createStatement()) {
+      preSnapshotCustom = takeSysCatalogSnapshot(stmt);
+    }
+    try (Connection conn = getConnectionBuilder().withDatabase("template1").connect();
+         Statement stmt = conn.createStatement()) {
+      preSnapshotTemplate1 = takeSysCatalogSnapshot(stmt);
+    }
+
+    recreateWithYsqlVersion(YsqlSnapshotVersion.EARLIEST);
+
+    try (Connection conn = getConnectionBuilder().withDatabase("template1").connect();
+         Statement stmt = conn.createStatement()) {
+      // Sanity check - no migrations table
+      assertNoRows(stmt,
+          "SELECT oid, relname FROM pg_class WHERE relname = '" + MIGRATIONS_TABLE + "'");
+
+      stmt.execute("CREATE DATABASE " + customDbName);
+    }
+
+    runMigrations();
+
+    final SysCatalogSnapshot postSnapshotCustom, postSnapshotTemplate1;
+    try (Connection conn = getConnectionBuilder().withDatabase(customDbName).connect();
+         Statement stmt = conn.createStatement()) {
+      postSnapshotCustom = takeSysCatalogSnapshot(stmt);
+    }
+    try (Connection conn = getConnectionBuilder().withDatabase("template1").connect();
+         Statement stmt = conn.createStatement()) {
+      postSnapshotTemplate1 = takeSysCatalogSnapshot(stmt);
+    }
+
+    assertMigrationsWorked(preSnapshotCustom, postSnapshotCustom);
+    assertMigrationsWorked(preSnapshotTemplate1, postSnapshotTemplate1);
+
+    assertEquals("Maximum system-generated OID differs between databases!"
+        + " Migration bug?",
+        getMaxSysGeneratedOid(postSnapshotTemplate1),
+        getMaxSysGeneratedOid(postSnapshotCustom));
   }
 
   /** Invalid stuff which doesn't belong to other test cases. */
@@ -654,11 +788,14 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
 
   /**
    * Assert that tables (represented by two instancs of {@link TableInfo}) are the same, minus
-   * differences in OIDs and names.
+   * obvious differences in OIDs and names.
    * <p>
    * Both tables should have indexes listed in the same order.
    * <p>
    * JDBC statements for querying info about original and new table could be different.
+   * <p>
+   * If OIDs for {@link TableInfo} are zeros, they will be determined at runtime - and verified to
+   * be in the system generated OIDs range.
    */
   private void assertTablesAreSimilar(
       TableInfo origTi,
@@ -674,6 +811,26 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     // if we want to test creating a similar table, we'd have to ignore this mismatch.
     boolean expectRelfilenodeMismatch = //
         Arrays.asList("pg_type", "pg_attribute", "pg_proc", "pg_class").contains(origTi.name);
+
+    // Determine OIDs for tables if not predefined.
+    for (TableInfo ti : Arrays.asList(origTi, newTi)) {
+      if (ti.getOid() == 0) {
+        Row row = getSingleRow(stmtForNew, "SELECT oid, reltype FROM pg_class"
+            + " WHERE relname = '" + ti.name
+            + "' AND relnamespace = 'pg_catalog'::regnamespace");
+        ti.setOid(row.getLong(0));
+        ti.setTypeOid(row.getLong(1));
+        assertSysGeneratedOid(ti.getOid());
+        assertSysGeneratedOid(ti.getTypeOid());
+      }
+
+      if (ti instanceof ViewInfo) {
+        ViewInfo vi = (ViewInfo) ti;
+        vi.setRuleOid(getSingleRow(stmtForNew, "SELECT oid FROM pg_rewrite"
+            + " WHERE ev_class = " + ti.oid + " AND is_instead = true").getLong(0));
+        assertSysGeneratedOid(vi.getRuleOid());
+      }
+    }
 
     // Functions to fetch rows from system tables corresponding to the original and new table
     // respectively, that transforms them to "look" like they belong to the same table - replaces
@@ -695,9 +852,11 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       return rows.stream()
           .map(r -> excluded(r, "reltuples"))
           .map(r -> expectRelfilenodeMismatch ? excluded(r, "relfilenode") : r)
-          .map(r -> replaced(r, newTi.oid, origTi.oid))
-          .map(r -> replaced(r, newTi.typeOid, origTi.typeOid))
-          .map(r -> origTi.ruleOid != 0 ? replaced(r, newTi.ruleOid, origTi.ruleOid) : r)
+          .map(r -> replaced(r, newTi.getOid(), origTi.getOid()))
+          .map(r -> replaced(r, newTi.getTypeOid(), origTi.getTypeOid()))
+          .map(r -> origTi instanceof ViewInfo
+              ? replaced(r, ((ViewInfo) newTi).getRuleOid(), ((ViewInfo) origTi).getRuleOid())
+              : r)
           .map(r -> replacedString(r, newTi.name, origTi.name))
           .map(r -> {
             for (int i = 0; i < newTi.indexes.size(); ++i) {
@@ -714,7 +873,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
           + " LEFT JOIN pg_type tp ON cl.oid = tp.typrelid"
           + " WHERE cl.oid = %d ORDER By cl.oid, tp.oid";
       {
-        TableInfoSqlFormatter fmt = (ti) -> String.format(sql, ti.oid);
+        TableInfoSqlFormatter fmt = (ti) -> String.format(sql, ti.getOid());
         assertRows(origTi.name,
             fetchExpected.fetch(fmt), fetchActual.fetch(fmt));
       }
@@ -731,7 +890,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       String sql = "SELECT * FROM pg_attribute attr"
           + " LEFT JOIN pg_attrdef def ON def.adrelid = attr.attrelid AND def.adnum = attr.attnum"
           + " WHERE attr.attrelid = %d ORDER BY attr.attnum";
-      TableInfoSqlFormatter fmt = (ti) -> String.format(sql, ti.oid);
+      TableInfoSqlFormatter fmt = (ti) -> String.format(sql, ti.getOid());
       assertRows("attributes",
           fetchExpected.fetch(fmt), fetchActual.fetch(fmt));
     }
@@ -740,7 +899,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       // pg_index
       String sql = "SELECT * FROM pg_index idx"
           + " WHERE idx.indrelid = %d ORDER BY idx.indexrelid";
-      TableInfoSqlFormatter fmt = (ti) -> String.format(sql, ti.oid);
+      TableInfoSqlFormatter fmt = (ti) -> String.format(sql, ti.getOid());
       assertRows("pg_index",
           fetchExpected.fetch(fmt), fetchActual.fetch(fmt));
     }
@@ -749,7 +908,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       // pg_constraints
       String sql = "SELECT * FROM pg_constraint"
           + " WHERE conrelid = %d ORDER BY conname";
-      TableInfoSqlFormatter fmt = (ti) -> String.format(sql, ti.oid);
+      TableInfoSqlFormatter fmt = (ti) -> String.format(sql, ti.getOid());
       assertRows("pg_constraint",
           fetchExpected.fetch(fmt), fetchActual.fetch(fmt));
     }
@@ -760,12 +919,12 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
           + " WHERE objid = %d OR refobjid = %d"
           + " ORDER BY classid, objid, objsubid, refclassid, refobjid, refobjsubid, deptype";
       {
-        TableInfoSqlFormatter fmt = (ti) -> String.format(sql, ti.oid, ti.oid);
+        TableInfoSqlFormatter fmt = (ti) -> String.format(sql, ti.getOid(), ti.getOid());
         assertRows("pg_depend for " + newTi.name,
             fetchExpected.fetch(fmt), fetchActual.fetch(fmt));
       }
       {
-        TableInfoSqlFormatter fmt = (ti) -> String.format(sql, ti.typeOid, ti.typeOid);
+        TableInfoSqlFormatter fmt = (ti) -> String.format(sql, ti.getTypeOid(), ti.getTypeOid());
         assertRows("pg_depend for type",
             fetchExpected.fetch(fmt), fetchActual.fetch(fmt));
       }
@@ -786,12 +945,12 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
           + " WHERE objid = %d OR refobjid = %d"
           + " ORDER BY dbid, classid, objid, objsubid, refclassid, refobjid, deptype";
       {
-        TableInfoSqlFormatter fmt = (ti) -> String.format(sql, ti.oid, ti.oid);
+        TableInfoSqlFormatter fmt = (ti) -> String.format(sql, ti.getOid(), ti.getOid());
         assertRows("pg_shdepend for " + newTi.name,
             fetchExpected.fetch(fmt), fetchActual.fetch(fmt));
       }
       {
-        TableInfoSqlFormatter fmt = (ti) -> String.format(sql, ti.typeOid, ti.typeOid);
+        TableInfoSqlFormatter fmt = (ti) -> String.format(sql, ti.getTypeOid(), ti.getTypeOid());
         assertRows("pg_shdepend for type",
             fetchExpected.fetch(fmt), fetchActual.fetch(fmt));
       }
@@ -812,7 +971,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
           + " WHERE objoid IN (%s)"
           + " ORDER BY objoid";
       TableInfoSqlFormatter fmt = (ti) -> {
-        List<Long> list = new ArrayList<>(Arrays.asList(ti.oid, ti.typeOid));
+        List<Long> list = new ArrayList<>(Arrays.asList(ti.getOid(), ti.getTypeOid()));
         list.addAll(ti.indexes.stream().map(p -> p.getRight()).collect(Collectors.toList()));
         return String.format(sql, StringUtils.join(list, ","));
       };
@@ -823,55 +982,151 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
 
   /** Returns a new row with certain column removed. */
   private Row excluded(Row row, String colNameToRemove) {
-    try {
-      Row row2 = row.clone();
-      ListIterator<String> colNamesIter = row2.columnNames.listIterator();
-      ListIterator<Object> elemsIter = row2.elems.listIterator();
-      while (colNamesIter.hasNext()) {
-        String currColName = colNamesIter.next();
-        elemsIter.next();
-        if (currColName.equals(colNameToRemove)) {
-          colNamesIter.remove();
-          elemsIter.remove();
-        }
+    Row row2 = row.clone();
+    ListIterator<String> colNamesIter = row2.columnNames.listIterator();
+    ListIterator<Object> elemsIter = row2.elems.listIterator();
+    while (colNamesIter.hasNext()) {
+      String currColName = colNamesIter.next();
+      elemsIter.next();
+      if (currColName.equals(colNameToRemove)) {
+        colNamesIter.remove();
+        elemsIter.remove();
       }
-      return row2;
-    } catch (CloneNotSupportedException ex) {
-      throw new RuntimeException(ex);
     }
+    return row2;
   }
 
   /** Returns a new row with all occurrences of one value replaced with another. */
   private <T> Row replaced(Row row, T from, T to) {
-    try {
-      Row row2 = row.clone();
-      ListIterator<Object> iter = row2.elems.listIterator();
-      while (iter.hasNext()) {
-        Object curr = iter.next();
-        if (Objects.equals(curr, from)) {
-          iter.set(to);
-        }
+    Row row2 = row.clone();
+    ListIterator<Object> iter = row2.elems.listIterator();
+    while (iter.hasNext()) {
+      Object curr = iter.next();
+      if (Objects.equals(curr, from)) {
+        iter.set(to);
       }
-      return row2;
-    } catch (CloneNotSupportedException ex) {
-      throw new RuntimeException(ex);
     }
+    return row2;
   }
 
   /** Returns a new row with substring replaced in all string columns. */
   private Row replacedString(Row row, String what, String replacement) {
-    try {
-      Row row2 = row.clone();
-      ListIterator<Object> iter = row2.elems.listIterator();
-      while (iter.hasNext()) {
-        Object curr = iter.next();
-        if (curr instanceof String && ((String) curr).contains(what)) {
-          iter.set(((String) curr).replace(what, replacement));
-        }
+    Row row2 = row.clone();
+    ListIterator<Object> iter = row2.elems.listIterator();
+    while (iter.hasNext()) {
+      Object curr = iter.next();
+      if (curr instanceof String && ((String) curr).contains(what)) {
+        iter.set(((String) curr).replace(what, replacement));
       }
-      return row2;
-    } catch (CloneNotSupportedException ex) {
-      throw new RuntimeException(ex);
+    }
+    return row2;
+  }
+
+  /**
+   * Take a "snapshot" (sorted content) of current pg_catalog state, filtering out test relations
+   * and databases.
+   */
+  private SysCatalogSnapshot takeSysCatalogSnapshot(Statement stmt) throws Exception {
+    String testRelOidsCsv = getRowList(stmt.executeQuery("SELECT oid"
+        + " FROM pg_class"
+        + " WHERE relname LIKE '" + SHARED_ENTITY_PREFIX + "%'"))
+            .stream()
+            .map(r -> r.getLong(0).toString())
+            .collect(Collectors.joining(","));
+    if (testRelOidsCsv.isEmpty()) {
+      // SQL IN clause cannot be empty, use a safe placeholder value (OIDs are >= 0).
+      testRelOidsCsv = "-1";
+    }
+
+    List<Row> tablesInfo = getSortedRowList(stmt.executeQuery("SELECT relname, relhasoids"
+        + " FROM pg_class"
+        + " WHERE relnamespace = 'pg_catalog'::regnamespace"
+        + " AND relkind = 'r'"
+        + " AND oid NOT IN (" + testRelOidsCsv + ")"));
+
+    Map<String, List<Row>> catalog = new HashMap<>();
+
+    for (Row tableInfoRow : tablesInfo) {
+      String tableName = tableInfoRow.getString(0);
+      String query;
+      // Filter out stuff created for shared entities.
+      switch (tableName) {
+        // Databases
+        case "pg_database":
+          query = "SELECT oid, * FROM pg_database"
+              + " WHERE datname NOT LIKE '" + SHARED_ENTITY_PREFIX + "%'";
+          break;
+        case "pg_shdepend":
+          query = "SELECT sd.* FROM pg_shdepend sd"
+              + " LEFT JOIN pg_database db ON sd.classid = 'pg_database'::regclass"
+              + "   AND sd.objid = db.oid"
+              + " WHERE (db.oid IS NULL OR db.datname NOT LIKE '" + SHARED_ENTITY_PREFIX + "%')";
+          break;
+
+        // Tables
+        case "pg_class":
+          query = "SELECT oid, * FROM pg_class"
+              + " WHERE oid NOT IN (" + testRelOidsCsv + ")";
+          break;
+        case "pg_index":
+          query = "SELECT * FROM pg_index"
+              + " WHERE indrelid NOT IN (" + testRelOidsCsv + ")";
+          break;
+        case "pg_attribute":
+          query = "SELECT * FROM pg_attribute"
+              + " WHERE attrelid NOT IN (" + testRelOidsCsv + ")";
+          break;
+        case "pg_type":
+          query = "SELECT oid, * FROM pg_type"
+              + " WHERE typrelid NOT IN (" + testRelOidsCsv + ")";
+          break;
+        case "pg_init_privs":
+          query = "SELECT ip.* FROM pg_init_privs ip"
+              + " LEFT JOIN pg_class c ON ip.classoid = 'pg_class'::regclass"
+              + "   AND ip.objoid = c.oid"
+              + " WHERE (c.oid IS NULL OR c.oid NOT IN (" + testRelOidsCsv + "))";
+          break;
+        case "pg_depend":
+          query = "SELECT d.* FROM pg_depend d"
+              + " LEFT JOIN pg_class c ON d.refclassid = 'pg_class'::regclass"
+              + "   AND d.refobjid = c.oid"
+              + " LEFT JOIN pg_type t  ON d.refclassid = 'pg_type'::regclass"
+              + "   AND d.refobjid = t.oid"
+              + " WHERE (c.oid IS NULL OR c.oid NOT IN (" + testRelOidsCsv + "))"
+              + "   AND (t.typrelid IS NULL OR t.typrelid NOT IN (" + testRelOidsCsv + "))";
+          break;
+
+        default:
+          boolean hasOid = tableInfoRow.getBoolean(1);
+          query = String.format("SELECT %s FROM %s", (hasOid ? "oid, *" : "*"), tableName);
+      }
+      List<Row> rows = getSortedRowList(stmt.executeQuery(query));
+      catalog.put(
+          tableName,
+          rows.stream()
+              .map(r -> excluded(r, "reltuples"))
+              .collect(Collectors.toList()));
+    }
+
+    return new SysCatalogSnapshot(catalog);
+  }
+
+  private void assertSysCatalogSnapshotsEquals(
+      SysCatalogSnapshot expected,
+      SysCatalogSnapshot actual) throws Exception {
+    if (expected.catalog.size() > actual.catalog.size()) {
+      Set<String> difference = new TreeSet<>(expected.catalog.keySet());
+      difference.removeAll(actual.catalog.keySet());
+      fail("Tables lost: " + difference);
+    }
+    if (expected.catalog.size() < actual.catalog.size()) {
+      Set<String> difference = new TreeSet<>(actual.catalog.keySet());
+      difference.removeAll(expected.catalog.keySet());
+      fail("Unexpected tables found: " + difference);
+    }
+
+    for (String tableName : expected.catalog.keySet()) {
+      assertRows(tableName + ":", expected.catalog.get(tableName), actual.catalog.get(tableName));
     }
   }
 
@@ -885,16 +1140,306 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     return ++LAST_USED_SYS_OID;
   }
 
-  private void assertAllOidsAreSysGeneated(Statement stmt, String tableName) throws Exception {
+  /** Whether this OID looks like it was auto-generated during initdb. */
+  private boolean isSysGeneratedOid(Long oid) {
+    return oid >= 10000 /* FirstBootstrapObjectId */ && oid < 16384 /* FirstNormalObjectId */;
+  }
+
+  private void assertAllOidsAreSysGenerated(Statement stmt, String tableName) throws Exception {
     List<Row> rows = getRowList(stmt, "SELECT oid, * FROM " + tableName + " ORDER BY oid");
     assertTrue("Expected all rows in " + tableName
         + " to have system-generated OIDs assigned: " + rows,
         rows.stream().allMatch(r -> isSysGeneratedOid(r.getLong(0))));
   }
 
-  /** Whether this OID looks like it was auto-generated during initdb. */
-  private boolean isSysGeneratedOid(Long oid) {
-    return oid >= 10000 /* FirstBootstrapObjectId */ && oid < 16384 /* FirstNormalObjectId */;
+  private void assertSysGeneratedOid(Long oid) throws Exception {
+    assertTrue(oid + " is not generated in system OID range", isSysGeneratedOid(oid));
+  }
+
+  private Long getMaxSysGeneratedOid(SysCatalogSnapshot snapshot) {
+    return snapshot.catalog.get("pg_class").stream()
+        .filter((classRow) -> classRow.getBoolean(18 /* relhasoids, with reltuples filtered out */))
+        .mapToLong((classRow) -> {
+          String tableName = classRow.getString(1);
+          return snapshot.catalog.get(tableName).stream()
+              .mapToLong((r) -> r.getLong(0))
+              .filter(this::isSysGeneratedOid)
+              .max().orElse(0L);
+        })
+        .max().orElse(0L);
+  }
+
+  /**
+   * Given two system catalog snapshots (fresh one created by reinitdb, and an older one migrated to
+   * the latest), verify that they are equivalent for all practical purposes (e.g. OIDs from
+   * auto-generated range might differ).
+   * <p>
+   * Main idea here is simple - we "resolve" OIDs referenced in system table rows, replacing them
+   * with entity names, so that values can be compared ignoring OID differences.
+   * <p>
+   * Also check that migration populates history table up to the latest.
+   */
+  private void assertMigrationsWorked(
+      SysCatalogSnapshot freshSnapshot,
+      SysCatalogSnapshot migratedSnapshot) {
+    assertCollectionSizes("Migrated table set differs from the fresh one! ",
+        freshSnapshot.catalog.keySet(), migratedSnapshot.catalog.keySet());
+
+    {
+      // Reinitdb migrations table has just one baseline row.
+      List<Row> reinitdbMigrations = freshSnapshot.catalog.get(MIGRATIONS_TABLE);
+      assertEquals(
+          "Expected \"fresh\" migrations table to have just one row, got " + reinitdbMigrations,
+          1, reinitdbMigrations.size());
+      final int latestVersion = reinitdbMigrations.get(0).getInt(0);
+      assertRow(new Row(latestVersion, 0, "<baseline>", null), reinitdbMigrations.get(0));
+
+      // Applied migrations table has a baseline row
+      // followed by rows for all migrations (up to the latest).
+      List<Row> appliedMigrations = migratedSnapshot.catalog.get(MIGRATIONS_TABLE);
+      assertEquals(
+          "Expected applied migrations table to have exactly " + (latestVersion + 1) + " rows, got "
+              + appliedMigrations,
+          latestVersion + 1, appliedMigrations.size());
+      assertRow(new Row(0, 0, "<baseline>", null), appliedMigrations.get(0));
+      for (int ver = 1; ver <= latestVersion; ++ver) {
+        // Rows should be like [1, 0, 'V1__...', <recent timestamp in ms>]
+        Row migrationRow = appliedMigrations.get(ver);
+        assertEquals(ver, migrationRow.getInt(0).intValue());
+        assertEquals(0, migrationRow.getInt(1).intValue());
+        assertTrue(migrationRow.getString(2).startsWith("V" + ver + "__"));
+        assertTrue("Expected migration timestamp to be at most 10 mins old!",
+            migrationRow.getLong(3) != null &&
+                System.currentTimeMillis() - migrationRow.getLong(3) < 10 * 60 * 1000);
+      }
+    }
+
+    // reltuples column is filtered out, so column index is one less than normal.
+    final int relkindColIdx = 15;
+    final int relhasoidsColIdx = 18;
+
+    Map<String, Row> pgClassByNameMap = freshSnapshot.catalog.get("pg_class").stream()
+        .collect(Collectors.toMap((r) -> r.getString(1), (r) -> r));
+
+    // Replace referenced OIDs with entity names, do a few more simplifications.
+    Function<SysCatalogSnapshot, SysCatalogSnapshot> simplifyCatalogSnapshot = (snapshot) -> {
+      Map<Long, String> pgTypeNameByOidMap = snapshot.catalog.get("pg_type").stream()
+          .collect(Collectors.toMap((r) -> r.getLong(0), (r) -> r.getString(1)));
+      Map<Long, String> pgOpfamilyNameByOidMap = snapshot.catalog.get("pg_opfamily").stream()
+          .collect(Collectors.toMap((r) -> r.getLong(0), (r) -> r.getString(2)));
+
+      Map<Long, Map<Long, String>> entityNamesMap = snapshot.catalog.get("pg_class").stream()
+          .filter((classRow) -> classRow.getBoolean(relhasoidsColIdx))
+          .collect(Collectors.toMap(
+              (classRow) -> classRow.getLong(0),
+              (classRow) -> {
+                String tableName = classRow.getString(1);
+                return snapshot.catalog.get(tableName).stream()
+                    .collect(Collectors.toMap(
+                        (r) -> r.getLong(0),
+                        (r) -> {
+                          switch (tableName) {
+                            case "pg_amop":
+                            case "pg_amproc":
+                              return String.format("%s for %s",
+                                  tableName,
+                                  pgOpfamilyNameByOidMap.get(r.getLong(1)));
+                            case "pg_cast":
+                              return String.format("pg_cast for %s->%s",
+                                  pgTypeNameByOidMap.get(r.getLong(1)),
+                                  pgTypeNameByOidMap.get(r.getLong(2)));
+                            case "pg_opclass":
+                            case "pg_opfamily":
+                              return r.getString(2);
+                            default:
+                              return r.getString(1);
+                          }
+                        }));
+              }));
+
+      Map<String, List<Row>> simplifiedCatalog = new HashMap<>();
+      snapshot.catalog.forEach((tableName, rows) -> {
+        simplifiedCatalog.put(tableName, copyWithResolvedOids(tableName, rows, entityNamesMap));
+      });
+      // Replace auto-generated OIDs with placeholders.
+      simplifiedCatalog.forEach((tableName, rows) -> {
+        if (pgClassByNameMap.get(tableName).getBoolean(relhasoidsColIdx)) {
+          rows.stream()
+              .filter((r) -> isSysGeneratedOid(r.getLong(0)))
+              .forEach((r) -> r.elems.set(0, PLACEHOLDER_OID));
+          Collections.sort(rows);
+        }
+      });
+      return new SysCatalogSnapshot(simplifiedCatalog);
+    };
+
+    SysCatalogSnapshot simplifiedFreshSnapshot = simplifyCatalogSnapshot.apply(freshSnapshot);
+    SysCatalogSnapshot simplifiedMigratedSnapshot = simplifyCatalogSnapshot.apply(migratedSnapshot);
+
+    List<String> tablesToSkip = Arrays.asList(MIGRATIONS_TABLE, CATALOG_VERSION_TABLE);
+
+    simplifiedMigratedSnapshot.catalog.forEach((tableName, migratedRows) -> {
+      if (tablesToSkip.contains(tableName))
+        return;
+
+      // Snapshot only contains data for real tables.
+      if (!pgClassByNameMap.get(tableName).getString(relkindColIdx).equals("r"))
+        return;
+
+      List<Row> reinitdbRows = simplifiedFreshSnapshot.catalog.get(tableName);
+
+      assertCollectionSizes("Table '" + tableName + "' has different size after migration!",
+          reinitdbRows, migratedRows);
+
+      for (int i = 0; i < migratedRows.size(); ++i) {
+        assertRow("Table '" + tableName + "': ", reinitdbRows.get(i), migratedRows.get(i));
+      }
+    });
+  }
+
+  /** Returns the deep copy with referenced OIDs replaced with entity names. */
+  private List<Row> copyWithResolvedOids(
+      String tableName,
+      List<Row> rows,
+      Map<Long, Map<Long, String>> entityNamesMap) {
+    List<Row> copy = deepCopyRows(rows);
+
+    if (copy.isEmpty())
+      return copy;
+
+    final long pgTypeOid = 1247;
+    final long pgProcOid = 1255;
+    final long pgClassOid = 1259;
+    final long pgNamespaceOid = 2615;
+
+    Map<Long, String> flatEntityNamesMap = new HashMap<>();
+    entityNamesMap.values().forEach(flatEntityNamesMap::putAll);
+
+    /** Replace OIDs at the given position with resolved entity names from the given catalog. */
+    BiConsumer<Integer, Map<Long, String>> replace = (oidColIdx, catalogRowByOidMap) -> {
+      for (Row row : copy) {
+        Long oid = row.getLong(oidColIdx);
+        if (oid != null && oid != 0L) {
+          assertTrue("Unknown OID " + oid, catalogRowByOidMap.containsKey(oid));
+          row.elems.set(oidColIdx, catalogRowByOidMap.get(oid));
+        } else {
+          row.elems.set(oidColIdx, null);
+        }
+      }
+    };
+
+    /**
+     * Given two OID columns, one denoting a table and the other - an entity in that table, replace
+     * an entity OID with its resolved name.
+     */
+    BiConsumer<Integer, Integer> replaceByClass = (regclassColIdx, oidColIdx) -> {
+      for (Row row : copy) {
+        Long classOid = row.getLong(regclassColIdx);
+        if (classOid != null && classOid != 0L) {
+          assertTrue("Unknown pg_class OID " + classOid, entityNamesMap.containsKey(classOid));
+          Long entityOid = row.getLong(oidColIdx);
+          assertTrue(entityOid != null && entityOid > 0L);
+          row.elems.set(oidColIdx, entityNamesMap.get(classOid).get(entityOid));
+        } else {
+          row.elems.set(oidColIdx, null);
+        }
+      }
+    };
+
+    /**
+     * In pg_node_tree string-wrapping structure:
+     * <ul>
+     * <li>Replace auto-generated OIDs with resolved names.
+     * <li>Replace values for :location and :stmt_len with placeholders.
+     * </ul>
+     * Format the result as a plain string. We don't care about minor formatting losses as long as
+     * it's consistent.
+     */
+    Consumer<Integer> simplifyPgNodeTree = (nodeTreeColIdx) -> {
+      for (Row row : copy) {
+        String nodeTree = ((PGobject) row.get(nodeTreeColIdx)).getValue();
+        String[] nodeTreeParts = nodeTree.split("\\s+");
+        for (int i = 0; i < nodeTreeParts.length; i++) {
+          if (nodeTreeParts[i].matches("1\\d{4}\\)?" /* 10000 to 19999 for simplicity */)) {
+            /* There may be ending ')' such as "13032)" and we need to remove the trailing ')'. */
+            long oid = Long.parseLong(nodeTreeParts[i].replaceAll("\\)", ""));
+            if (isSysGeneratedOid(oid)) {
+              nodeTreeParts[i] = flatEntityNamesMap.get(oid);
+            }
+          } else if (nodeTreeParts[i].equals(":location")) {
+            nodeTreeParts[i + 1] = "<location>";
+          } else if (nodeTreeParts[i].equals(":stmt_len")) {
+            nodeTreeParts[i + 1] = "<stmt_len>";
+          }
+        }
+        row.elems.set(nodeTreeColIdx, StringUtils.join(nodeTreeParts, " "));
+      }
+    };
+
+    // NOTE: There are definitely more tables requiring special treatment like that, but those
+    //       aren't affected by migrations, so we don't care (yet).
+    switch (tableName) {
+      case "pg_class":
+        replace.accept(2 /* relnamespace */, entityNamesMap.get(pgNamespaceOid));
+        replace.accept(3 /* reltype */, entityNamesMap.get(pgTypeOid));
+        replace.accept(7 /* relfilenode */, entityNamesMap.get(pgClassOid));
+        break;
+      case "pg_type":
+        replace.accept(2 /* typnamespace */, entityNamesMap.get(pgNamespaceOid));
+        replace.accept(11 /* typrelid */, entityNamesMap.get(pgClassOid));
+        replace.accept(12 /* typelem */, entityNamesMap.get(pgTypeOid));
+        replace.accept(13 /* typarray */, entityNamesMap.get(pgTypeOid));
+        break;
+      case "pg_attribute":
+        replace.accept(0 /* attrelid */, entityNamesMap.get(pgClassOid));
+        replace.accept(2 /* atttypid */, entityNamesMap.get(pgTypeOid));
+        break;
+      case "pg_description":
+      case "pg_shdescription":
+      case "pg_init_privs":
+        replaceByClass.accept(1 /* classoid */, 0 /* objoid */);
+        break;
+      case "pg_depend":
+        replaceByClass.accept(0 /* classid */, 1 /* objid */);
+        replaceByClass.accept(3 /* refclassid */, 4 /* refobjid */);
+        break;
+      case "pg_rewrite":
+        replace.accept(2 /* ev_class */, entityNamesMap.get(pgClassOid));
+        simplifyPgNodeTree.accept(7 /* ev_action */);
+        break;
+      case "pg_constraint":
+        replace.accept(2 /* connamespace */, entityNamesMap.get(pgNamespaceOid));
+        replace.accept(8 /* contypid */, entityNamesMap.get(pgTypeOid));
+        break;
+      case "pg_language":
+        replace.accept(5 /* lanplcallfoid */, entityNamesMap.get(pgProcOid));
+        replace.accept(6 /* laninline */, entityNamesMap.get(pgProcOid));
+        replace.accept(7 /* lanvalidator */, entityNamesMap.get(pgProcOid));
+        break;
+      case "pg_proc":
+        replace.accept(2 /* pronamespace */, entityNamesMap.get(pgNamespaceOid));
+        break;
+      default:
+        return copy;
+    }
+    Collections.sort(copy);
+    return copy;
+  }
+
+  private void runMigrations() throws Exception {
+    // Set migrations timeout to 6 min, adjusted
+    long timeoutMs = BuildTypeUtil.adjustTimeout(360 * 1000);
+    List<String> lines = runProcess(
+        TestUtils.findBinary("yb-admin"),
+        "--master_addresses",
+        masterAddresses,
+        "-timeout_ms",
+        String.valueOf(timeoutMs),
+        "upgrade_ysql");
+    String joined = String.join("\n", lines);
+    if (!joined.toLowerCase().contains("successfully upgraded")) {
+      throw new IllegalStateException("Unexpected migrations result: " + joined);
+    }
   }
 
   @FunctionalInterface
@@ -911,23 +1456,60 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
 
   private class TableInfo {
     public final String name;
-    public final long oid;
-    public final long typeOid;
-    /** Only when applicable, set to 0 otherwise. */
-    public final long ruleOid;
+
+    // OIDs, 0 means not known in advance or not applicable.
+    private long oid;
+    private long typeOid;
+
     public final List<Pair<String, Long>> indexes;
 
     public TableInfo(String name, long oid, long typeOid, List<Pair<String, Long>> indexes) {
-      this(name, oid, typeOid, 0L, indexes);
+      this.name = name;
+      this.setOid(oid);
+      this.setTypeOid(typeOid);
+      this.indexes = Collections.unmodifiableList(new ArrayList<>(indexes));
     }
 
-    public TableInfo(String name, long oid, long typeOid, long ruleOid,
-        List<Pair<String, Long>> indexes) {
-      this.name = name;
+    public long getOid() {
+      return oid;
+    }
+
+    public void setOid(long oid) {
       this.oid = oid;
+    }
+
+    public long getTypeOid() {
+      return typeOid;
+    }
+
+    public void setTypeOid(long typeOid) {
       this.typeOid = typeOid;
+    }
+  }
+
+  private class ViewInfo extends TableInfo {
+    private long ruleOid = 0L;
+
+    public ViewInfo(String name) {
+      super(name, 0L, 0L, Collections.emptyList());
+    }
+
+    public long getRuleOid() {
+      return ruleOid;
+    }
+
+    public void setRuleOid(long ruleOid) {
       this.ruleOid = ruleOid;
-      this.indexes = Collections.unmodifiableList(new ArrayList<>(indexes));
+    }
+  }
+
+  /** A "snapshot" (sorted content) of pg_catalog. */
+  private class SysCatalogSnapshot {
+    /** We expect rows to be sorted according to Row default ordering. */
+    public final Map<String, List<Row>> catalog;
+
+    public SysCatalogSnapshot(Map<String, List<Row>> catalog) {
+      this.catalog = new TreeMap<>(catalog);
     }
   }
 }

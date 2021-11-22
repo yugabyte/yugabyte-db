@@ -23,10 +23,10 @@ public enum PlatformMetrics {
   // Health check error nodes count
   HEALTH_CHECK_MASTER_DOWN("Master process down nodes count", Unit.COUNT),
   HEALTH_CHECK_MASTER_VERSION_MISMATCH("Master nodes with version mismatch count", Unit.COUNT),
-  HEALTH_CHECK_MASTER_FATAL_LOGS("Master fatal log nodes count", Unit.COUNT),
+  HEALTH_CHECK_MASTER_ERROR_LOGS("Master error log nodes count", Unit.COUNT),
   HEALTH_CHECK_TSERVER_DOWN("TServer process down nodes count", Unit.COUNT),
   HEALTH_CHECK_TSERVER_VERSION_MISMATCH("TServer nodes with version mismatch count", Unit.COUNT),
-  HEALTH_CHECK_TSERVER_FATAL_LOGS("TServer fatal log nodes count", Unit.COUNT),
+  HEALTH_CHECK_TSERVER_ERROR_LOGS("TServer error log nodes count", Unit.COUNT),
   HEALTH_CHECK_TSERVER_CORE_FILES("TServer core files nodes count", Unit.COUNT),
   HEALTH_CHECK_YSQLSH_CONNECTIVITY_ERROR("Ysqlsh connectivity error nodes count", Unit.COUNT),
   HEALTH_CHECK_CQLSH_CONNECTIVITY_ERROR("Cqlsh connectivity error nodes count", Unit.COUNT),
@@ -46,6 +46,10 @@ public enum PlatformMetrics {
   HEALTH_CHECK_MASTER_BOOT_TIME_SEC("Master process boot time in seconds from epoch", Unit.SECOND),
   HEALTH_CHECK_TSERVER_BOOT_TIME_SEC(
       "TServer process boot time in seconds from epoch", Unit.SECOND),
+  HEALTH_CHECK_NODE_MASTER_FATAL_LOGS("Master process recent fatal logs", Unit.STATUS),
+  HEALTH_CHECK_NODE_MASTER_ERROR_LOGS("Master process recent error logs", Unit.STATUS),
+  HEALTH_CHECK_NODE_TSERVER_FATAL_LOGS("TServer process recent fatal logs", Unit.STATUS),
+  HEALTH_CHECK_NODE_TSERVER_ERROR_LOGS("TServer process recent error logs", Unit.STATUS),
   HEALTH_CHECK_N2N_CA_CERT_VALIDITY_DAYS(
       "Remaining Node to Node CA certificate validity days", Unit.DAY),
   HEALTH_CHECK_N2N_CERT_VALIDITY_DAYS("Remaining Node to Node certificate validity days", Unit.DAY),

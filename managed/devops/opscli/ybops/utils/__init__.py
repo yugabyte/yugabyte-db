@@ -63,6 +63,18 @@ DNS_RECORD_SET_TTL = 5
 MIN_MEM_SIZE_GB = 2
 MIN_NUM_CORES = 2
 
+DEFAULT_MASTER_HTTP_PORT = 7000
+DEFAULT_MASTER_RPC_PORT = 7100
+DEFAULT_TSERVER_HTTP_PORT = 9000
+DEFAULT_TSERVER_RPC_PORT = 9100
+DEFAULT_CQL_PROXY_HTTP_PORT = 12000
+DEFAULT_CQL_PROXY_RPC_PORT = 9042
+DEFAULT_YSQL_PROXY_HTTP_PORT = 13000
+DEFAULT_YSQL_PROXY_RPC_PORT = 5433
+DEFAULT_REDIS_PROXY_HTTP_PORT = 11000
+DEFAULT_REDIS_PROXY_RPC_PORT = 6379
+DEFAULT_NODE_EXPORTER_HTTP_PORT = 9300
+
 
 class ReleasePackage(object):
     def __init__(self):
@@ -430,16 +442,14 @@ def wait_for_ssh(host_ip, ssh_port, ssh_user, ssh_key, num_retries=SSH_RETRY_LIM
         (boolean): Returns true if the ssh was successful.
     """
     retry_count = 0
-    while True:
-        retry_count += 1
+    while retry_count < num_retries:
         if can_ssh(host_ip, ssh_port, ssh_user, ssh_key):
             return True
 
         time.sleep(1)
+        retry_count += 1
 
-        if retry_count > num_retries:
-            raise YBOpsRuntimeError(
-                "Timed out trying to SSH to instance: {}:{}".format(host_ip, ssh_port))
+    return False
 
 
 def format_rsa_key(key, public_key):

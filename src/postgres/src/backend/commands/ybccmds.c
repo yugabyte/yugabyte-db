@@ -36,7 +36,7 @@
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_type_d.h"
-#include "catalog/ybctype.h"
+#include "catalog/yb_type.h"
 #include "commands/dbcommands.h"
 #include "commands/ybccmds.h"
 #include "commands/tablegroup.h"
@@ -157,7 +157,7 @@ static void CreateTableAddColumn(YBCPgStatement handle,
 								 bool is_nulls_first)
 {
 	const AttrNumber attnum = att->attnum;
-	const YBCPgTypeEntity *col_type = YBCDataTypeFromOidMod(attnum,
+	const YBCPgTypeEntity *col_type = YbDataTypeFromOidMod(attnum,
 															att->atttypid);
 	HandleYBStatus(YBCPgCreateTableAddColumn(handle,
 											 NameStr(att->attname),
@@ -210,7 +210,7 @@ static void CreateTableAddColumns(YBCPgStatement handle,
 							 &is_desc,
 							 &is_nulls_first);
 		const YBCPgTypeEntity *col_type =
-			YBCDataTypeFromOidMod(ObjectIdAttributeNumber, OIDOID);
+			YbDataTypeFromOidMod(ObjectIdAttributeNumber, OIDOID);
 		HandleYBStatus(YBCPgCreateTableAddColumn(handle,
 												 "oid",
 												 ObjectIdAttributeNumber,
@@ -232,7 +232,7 @@ static void CreateTableAddColumns(YBCPgStatement handle,
 				Form_pg_attribute att = TupleDescAttr(desc, i);
 				if (strcmp(NameStr(att->attname), index_elem->name) == 0)
 				{
-					if (!YBCDataTypeIsValidForKey(att->atttypid))
+					if (!YbDataTypeIsValidForKey(att->atttypid))
 						ereport(ERROR,
 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								 errmsg("PRIMARY KEY containing column of type"
@@ -323,7 +323,14 @@ YBTransformPartitionSplitPoints(YBCPgStatement yb_stmt,
 				{
 					/* Given value is not null. Convert it to YugaByte format. */
 					Const *value = castNode(Const, datums[idx]->value);
-					exprs[idx] = YBCNewConstant(yb_stmt, value->consttype, value->constcollid,
+					/*
+					 * Use attr->attcollation because the split value will be compared against
+					 * collation-encoded strings that are encoded using the column collation.
+					 * We assume collation-encoding will likely to retain the similar key
+					 * distribution as the original text values.
+					 */
+					Form_pg_attribute attr = attrs[idx];
+					exprs[idx] = YBCNewConstant(yb_stmt, value->consttype, attr->attcollation,
 												value->constvalue, false /* is_null */);
 					break;
 				}
@@ -495,7 +502,7 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 
 		if (strcmp(def->defname, "colocated") == 0)
 		{
-			if (stmt->tablegroup)
+			if (tablegroupId != InvalidOid)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("cannot use \'colocated=true/false\' with tablegroup")));
@@ -514,6 +521,11 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 			break;
 		}
 	}
+
+	if (colocated && stmt->tablespacename)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("cannot create colocated table with a tablespace")));
 
 	HandleYBStatus(YBCPgNewCreateTable(db_name,
 									   schema_name,
@@ -768,12 +780,12 @@ YBCCreateIndex(const char *indexName,
 		Form_pg_attribute     att         = TupleDescAttr(indexTupleDesc, i);
 		char                  *attname    = NameStr(att->attname);
 		AttrNumber            attnum      = att->attnum;
-		const YBCPgTypeEntity *col_type   = YBCDataTypeFromOidMod(attnum, att->atttypid);
+		const YBCPgTypeEntity *col_type   = YbDataTypeFromOidMod(attnum, att->atttypid);
 		const bool            is_key      = (i < indexInfo->ii_NumIndexKeyAttrs);
 
 		if (is_key)
 		{
-			if (!YBCDataTypeIsValidForKey(att->atttypid))
+			if (!YbDataTypeIsValidForKey(att->atttypid))
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("INDEX on column of type '%s' not yet supported",
@@ -834,7 +846,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, YBCPgStatement handle,
 			typeTuple = typenameType(NULL, colDef->typeName, &typmod);
 			typeOid = HeapTupleGetOid(typeTuple);
 			order = RelationGetNumberOfAttributes(rel) + *col;
-			const YBCPgTypeEntity *col_type = YBCDataTypeFromOidMod(order, typeOid);
+			const YBCPgTypeEntity *col_type = YbDataTypeFromOidMod(order, typeOid);
 
 			HandleYBStatus(YBCPgAlterTableAddColumn(handle, colDef->colname,
 													order, col_type));
@@ -962,6 +974,15 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, YBCPgStatement handle,
 							errmsg("This ALTER TABLE command is not yet supported.")));
 				}
 			}
+			/*
+			 * Do not allow collation update because that requires different collation
+			 * encoding and therefore can cause on-disk changes.
+			 */
+			Oid cur_collation_id = attTup->attcollation;
+			Oid new_collation_id = GetColumnDefCollation(NULL, colDef, newTypId);
+			if (cur_collation_id != new_collation_id)
+				ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						errmsg("This ALTER TABLE command is not yet supported.")));
 			break;
 		}
 
@@ -991,6 +1012,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, YBCPgStatement handle,
 		case AT_NoForceRowSecurity:
 		case AT_AttachPartition:
 		case AT_DetachPartition:
+		case AT_SetTableSpace:
 			/* For these cases a YugaByte alter isn't required, so we do nothing. */
 			break;
 

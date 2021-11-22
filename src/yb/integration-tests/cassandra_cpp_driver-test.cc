@@ -15,26 +15,15 @@
 
 #include <tuple>
 
-#include "yb/common/ql_value.h"
 
-#include "yb/client/client-internal.h"
-#include "yb/client/client-test-util.h"
 #include "yb/client/client.h"
-#include "yb/client/session.h"
-#include "yb/client/table_alterer.h"
-#include "yb/client/table_creator.h"
-#include "yb/client/table_handle.h"
-#include "yb/client/transaction.h"
-#include "yb/client/transaction_manager.h"
-#include "yb/client/yb_op.h"
+#include "yb/client/table.h"
+#include "yb/master/master.pb.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/strip.h"
 #include "yb/gutil/strings/substitute.h"
 
-#include "yb/master/master.pb.h"
 
-#include "yb/server/hybrid_clock.h"
-#include "yb/server/clock.h"
 
 #include "yb/integration-tests/backfill-test-util.h"
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
@@ -983,10 +972,30 @@ TEST_F(CppCassandraDriverTest, TestLongJson) {
   }
 }
 
+namespace {
+
 Result<IndexPermissions> TestBackfillCreateIndexTableSimple(CppCassandraDriverTestIndex* test) {
   return TestBackfillCreateIndexTableSimple(
       test, false, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
 }
+
+Status ExecuteQueryWithRetriesOnSchemaMismatch(CassandraSession* session, const string& query) {
+  return LoggedWaitFor(
+      [session, &query]() -> Result<bool> {
+        auto result = session->ExecuteQuery(query);
+        if (result.ok()) {
+          return true;
+        }
+        if (result.IsQLError() &&
+            result.message().ToBuffer().find("Wrong Metadata Version.") != string::npos) {
+          return false;  // Retry.
+        }
+        return result;
+      },
+      MonoDelta::FromSeconds(90), yb::Format("Retrying query: $0", query));
+}
+
+}  // namespace
 
 Result<IndexPermissions> TestBackfillCreateIndexTableSimple(
     CppCassandraDriverTestIndex* test, bool deferred, IndexPermissions target_permission) {
@@ -1004,10 +1013,10 @@ Result<IndexPermissions> TestBackfillCreateIndexTableSimple(
               "create-index failed.");
 
   LOG(INFO) << "Inserting two rows";
-  RETURN_NOT_OK(test->session_.ExecuteQuery(
-      "insert into test_table (k, v) values (2, 'two');"));
-  RETURN_NOT_OK(test->session_.ExecuteQuery(
-      "insert into test_table (k, v) values (3, 'three');"));
+  RETURN_NOT_OK(ExecuteQueryWithRetriesOnSchemaMismatch(
+      &test->session_, "insert into test_table (k, v) values (2, 'two');"));
+  RETURN_NOT_OK(ExecuteQueryWithRetriesOnSchemaMismatch(
+      &test->session_, "insert into test_table (k, v) values (3, 'three');"));
 
   constexpr auto kNamespace = "test";
   const YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "test_table");

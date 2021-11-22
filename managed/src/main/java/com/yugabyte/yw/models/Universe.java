@@ -31,18 +31,18 @@ import java.util.Comparator;
 import java.util.ConcurrentModificationException;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import javax.persistence.CascadeType;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
-import javax.persistence.OneToMany;
 import javax.persistence.Table;
+import javax.persistence.Transient;
 import javax.persistence.UniqueConstraint;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -91,7 +91,7 @@ public class Universe extends Model {
   // Tracks when the universe was created.
   @Constraints.Required
   @Column(nullable = false)
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
   public Date creationDate;
 
   // The universe name.
@@ -128,13 +128,7 @@ public class Universe extends Model {
   @Column(columnDefinition = "TEXT", nullable = false)
   private String universeDetailsJson;
 
-  private UniverseDefinitionTaskParams universeDetails;
-
-  @OneToMany(mappedBy = "sourceUniverse", cascade = CascadeType.ALL)
-  public Set<AsyncReplicationRelationship> sourceAsyncReplicationRelationships;
-
-  @OneToMany(mappedBy = "targetUniverse", cascade = CascadeType.ALL)
-  public Set<AsyncReplicationRelationship> targetAsyncReplicationRelationships;
+  @Transient private UniverseDefinitionTaskParams universeDetails;
 
   public void setUniverseDetails(UniverseDefinitionTaskParams details) {
     universeDetails = details;
@@ -148,22 +142,22 @@ public class Universe extends Model {
     return universeUUID;
   }
 
-  public String getDnsName() {
-    Provider p =
-        Provider.get(UUID.fromString(universeDetails.getPrimaryCluster().userIntent.provider));
-    if (p == null) {
-      return null;
-    }
-    String dnsSuffix = p.getHostedZoneName();
-    if (dnsSuffix == null) {
-      return null;
-    }
-    return String.format("%s.%s.%s", name, Customer.get(p.customerUUID).code, dnsSuffix);
-  }
-
   public void resetVersion() {
     this.version = -1;
     this.update();
+  }
+
+  @JsonIgnore
+  public List<String> getVersions() {
+    if (null == universeDetails || null == universeDetails.clusters) {
+      return new ArrayList<>();
+    }
+    return universeDetails
+        .clusters
+        .stream()
+        .filter(c -> c != null && c.userIntent != null)
+        .map(c -> c.userIntent.ybSoftwareVersion)
+        .collect(Collectors.toList());
   }
 
   public static final Finder<UUID, Universe> find = new Finder<UUID, Universe>(Universe.class) {};
@@ -283,9 +277,10 @@ public class Universe extends Model {
     return find.query().where().eq("name", universeName).findOne();
   }
 
-  public static Optional<Universe> maybeGetUniverseByName(String universeName) {
+  public static Optional<Universe> maybeGetUniverseByName(Long customerId, String universeName) {
     return find.query()
         .where()
+        .eq("customerId", customerId)
         .eq("name", universeName)
         .findOneOrEmpty()
         .map(Universe::fillUniverseDetails);
@@ -827,8 +822,30 @@ public class Universe extends Model {
         .collect(Collectors.toSet());
   }
 
+  public static Set<Universe> universeDetailsIfReleaseExists(String version) {
+    Set<Universe> universes = new HashSet<Universe>();
+    Customer.getAll()
+        .forEach(customer -> universes.addAll(Customer.get(customer.getUuid()).getUniverses()));
+    Set<Universe> universesWithGivenRelease = new HashSet<Universe>();
+    for (Universe u : universes) {
+      List<Cluster> clusters = u.getUniverseDetails().clusters;
+      for (Cluster c : clusters) {
+        if (c.userIntent.ybSoftwareVersion != null
+            && c.userIntent.ybSoftwareVersion.equals(version)) {
+          universesWithGivenRelease.add(u);
+          break;
+        }
+      }
+    }
+    return universesWithGivenRelease;
+  }
+
   public static boolean existsCertificate(UUID certUUID, UUID customerUUID) {
     return universeDetailsIfCertsExists(certUUID, customerUUID).size() != 0;
+  }
+
+  public static boolean existsRelease(String version) {
+    return universeDetailsIfReleaseExists(version).size() != 0;
   }
 
   static boolean isUniversePaused(UUID uuid) {

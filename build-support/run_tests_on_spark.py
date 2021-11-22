@@ -62,6 +62,7 @@ import re
 import socket
 import subprocess
 import sys
+import threading
 import time
 import traceback
 import errno
@@ -83,6 +84,10 @@ TEST_TIMEOUT_UPPER_BOUND_SEC = 35 * 60
 # this amount of time, we terminate the run-test.sh script. This should prevent tests getting stuck
 # for a long time in macOS builds.
 TIME_SEC_TO_START_RUNNING_TEST = 5 * 60
+
+# Defaults for maximum test failure threshold, after which the Spark job will be aborted
+DEFAULT_MAX_NUM_TEST_FAILURES_MACOS_DEBUG = 150
+DEFAULT_MAX_NUM_TEST_FAILURES = 50
 
 
 def wait_for_path_to_exist(target_path: str) -> None:
@@ -179,6 +184,7 @@ propagated_env_vars: Dict[str, str] = {}
 global_conf_dict = None
 spark_context = None
 archive_sha256sum = None
+g_max_num_test_failures = sys.maxsize
 
 
 def configure_logging() -> None:
@@ -211,6 +217,16 @@ def delete_if_exists_log_errors(file_path: str) -> None:
 
 def log_heading(msg: str) -> None:
     logging.info('\n%s\n%s\n%s' % ('-' * 80, msg, '-' * 80))
+
+
+def find_python_interpreter() -> str:
+    # We are not using "which" here because we don't want to pick up the python3 script inside the
+    # virtualenv's bin directory.
+    candidates = ['/usr/local/bin/python3', '/usr/bin/python3']
+    for python_interpreter_path in candidates:
+        if os.path.isfile(python_interpreter_path):
+            return python_interpreter_path
+    raise ValueError("Could not find Python interpreter at any of the paths: %s" % candidates)
 
 
 # Initializes the spark context. The details list will be incorporated in the Spark application
@@ -247,7 +263,9 @@ def init_spark_context(details: List[str] = []) -> None:
     if 'BUILD_URL' in os.environ:
         details.append('URL: {}'.format(os.environ['BUILD_URL']))
 
-    SparkContext.setSystemProperty("spark.pyspark.python", "/usr/local/bin/python3")
+    python_interpreter = find_python_interpreter()
+    logging.info("Using this Python interpreter for Spark: %s", python_interpreter)
+    SparkContext.setSystemProperty("spark.pyspark.python", python_interpreter)
     spark_context = SparkContext(spark_master_url, "YB tests: {}".format(' '.join(details)))
     yb_python_zip_path = yb_dist_tests.get_tmp_filename(
             prefix='yb_python_module_for_spark_workers_', suffix='.zip', auto_remove=True)
@@ -276,7 +294,7 @@ def get_bash_path() -> str:
     return '/bin/bash'
 
 
-def parallel_run_test(test_descriptor_str: str) -> yb_dist_tests.TestResult:
+def parallel_run_test(test_descriptor_str: str, fail_count: Any) -> yb_dist_tests.TestResult:
     """
     This is invoked in parallel to actually run tests.
     """
@@ -383,6 +401,8 @@ def parallel_run_test(test_descriptor_str: str) -> yb_dist_tests.TestResult:
         elapsed_time_sec = time.time() - start_time_sec
         logging.info("Test %s ran on %s in %.1f seconds, rc=%d",
                      test_descriptor, socket.gethostname(), elapsed_time_sec, exit_code)
+        if exit_code != 0:
+            fail_count.add(1)
         return exit_code, elapsed_time_sec
 
     # End of the local run_test() function.
@@ -1040,8 +1060,12 @@ def run_spark_action(action: Any) -> Any:
     import py4j  # type: ignore
     try:
         results = action()
-    except py4j.protocol.Py4JJavaError:
-        logging.error("Spark job failed to run! Jenkins should probably restart this build.")
+    except py4j.protocol.Py4JJavaError as e:
+        if "cancelled as part of cancellation of all jobs" in str(e):
+            logging.warning("Spark job was killed after hitting test failure threshold of %s",
+                            g_max_num_test_failures)
+        else:
+            logging.error("Spark job failed to run! Jenkins should probably restart this build.")
         raise
 
     return results
@@ -1107,6 +1131,12 @@ def main() -> None:
                         help='When --send_archive_to_workers is specified, use this option to '
                              're-create the archive that we would send to workers even if it '
                              'already exists.')
+    parser.add_argument('--max-num-test_failures', type=int, dest='max_num_test_failures',
+                        default=None,
+                        help='Maximum number of test failures before aborting the Spark test job.'
+                             'Default is {} for all the builds except {} for macOS debug.'.format(
+                              DEFAULT_MAX_NUM_TEST_FAILURES,
+                              DEFAULT_MAX_NUM_TEST_FAILURES_MACOS_DEBUG))
 
     args = parser.parse_args()
     global g_spark_master_url_override
@@ -1166,6 +1196,17 @@ def main() -> None:
 
     if not args.send_archive_to_workers and args.recreate_archive_for_workers:
         fatal_error("Specify --send_archive_to_workers to use --recreate_archive_for_workers")
+
+    global g_max_num_test_failures
+    if not (args.max_num_test_failures or os.environ.get('YB_MAX_NUM_TEST_FAILURES', None)):
+        if is_macos() and global_conf.build_type == 'debug':
+            g_max_num_test_failures = DEFAULT_MAX_NUM_TEST_FAILURES_MACOS_DEBUG
+        else:
+            g_max_num_test_failures = DEFAULT_MAX_NUM_TEST_FAILURES
+    elif args.max_num_test_failures:
+        g_max_num_test_failures = args.max_num_test_failures
+    else:
+        g_max_num_test_failures = int(str(os.environ.get('YB_MAX_NUM_TEST_FAILURES')))
 
     # ---------------------------------------------------------------------------------------------
     # End of argument validation.
@@ -1246,6 +1287,20 @@ def main() -> None:
     # attempt indexes attached to each test descriptor.
     spark_succeeded = False
     if test_descriptors:
+        def monitor_fail_count(stop_event: threading.Event) -> None:
+            while fail_count.value < g_max_num_test_failures and not stop_event.is_set():
+                time.sleep(5)
+
+            if fail_count.value >= g_max_num_test_failures:
+                logging.info("Stopping all jobs for application %s",
+                             spark_context.applicationId)  # type: ignore
+                spark_context.cancelAllJobs()  # type: ignore
+
+        fail_count = spark_context.accumulator(0)  # type: ignore
+        counter_stop = threading.Event()
+        counter_thread = threading.Thread(target=monitor_fail_count, args=(counter_stop,))
+        counter_thread.daemon = True
+
         logging.info("Running {} tasks on Spark".format(total_num_tests))
         assert total_num_tests == len(test_descriptors), \
             "total_num_tests={}, len(test_descriptors)={}".format(
@@ -1253,12 +1308,20 @@ def main() -> None:
 
         # Randomize test order to avoid any kind of skew.
         random.shuffle(test_descriptors)
-
         test_names_rdd = spark_context.parallelize(  # type: ignore
                 [test_descriptor.descriptor_str for test_descriptor in test_descriptors],
                 numSlices=total_num_tests)
 
-        results = run_spark_action(lambda: test_names_rdd.map(parallel_run_test).collect())
+        try:
+            counter_thread.start()
+            results = run_spark_action(lambda: test_names_rdd.map(
+              lambda test_name: parallel_run_test(test_name, fail_count)
+            ).collect())
+
+        finally:
+            counter_stop.set()
+            counter_thread.join(timeout=10)
+
     else:
         # Allow running zero tests, for testing the reporting logic.
         results = []
@@ -1284,7 +1347,7 @@ def main() -> None:
             failed_test_desc_strs.append(result.test_descriptor.descriptor_str)
         if result.num_errors_copying_artifacts > 0:
             logging.info("Test had errors copying artifacts to build host: %s",
-                         result.test_descriptors)
+                         result.test_descriptor)
         num_tests_by_language[test_language] += 1
 
     if had_errors_copying_artifacts and global_exit_code == 0:

@@ -39,6 +39,7 @@ import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
@@ -46,6 +47,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.Users.Role;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.UUID;
@@ -126,6 +128,49 @@ public class CustomerControllerTest extends FakeDBApplication {
     String resultString = contentAsString(result);
     assertThat(resultString, allOf(notNullValue(), equalTo("Unable To Authenticate User")));
     assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testCustomerGETWithBadUUID() {
+    String authToken = user.createAuthToken();
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
+    Result result = route(fakeRequest("GET", baseRoute + "null").cookie(validCookie));
+    assertEquals(BAD_REQUEST, result.status());
+
+    JsonNode ybpError = Json.parse(contentAsString(result));
+    assertEquals(
+        Json.toJson(
+            new YBPError("Cannot parse parameter cUUID as UUID: Invalid UUID string: null")),
+        ybpError);
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testCustomerGETWithReadonlyUser() {
+    String authToken = user.createAuthToken();
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
+    ObjectNode params = Json.newObject();
+    params.put("code", "tc");
+    params.put("email", "foo@bar.com");
+    params.put("name", "Test Customer");
+    JsonNode features = Json.parse("{\"foo\": \"bar\"}");
+    params.set("features", features);
+
+    Result result =
+        route(fakeRequest("PUT", baseRoute + customer.uuid).cookie(validCookie).bodyJson(params));
+    assertEquals(OK, result.status());
+
+    user.setRole(Role.ReadOnly);
+    user.save();
+
+    result = route(fakeRequest("GET", baseRoute + customer.uuid).cookie(validCookie));
+    assertEquals(OK, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+
+    JsonNode loadedFeatures = json.get("features");
+
+    assertThat(loadedFeatures.get("foo").asText(), equalTo("bar"));
+    assertThat(loadedFeatures.get("main").get("stats").asText(), equalTo("hidden"));
   }
 
   @Test
@@ -271,32 +316,6 @@ public class CustomerControllerTest extends FakeDBApplication {
     assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(features, json.get("features"));
-    assertAuditEntry(0, customer.uuid);
-  }
-
-  @Test
-  public void testCustomerPUTWithValidUserFeatures() {
-    String authToken = user.createAuthToken();
-    Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
-    ObjectNode params = Json.newObject();
-    params.put("code", "tc");
-    params.put("email", "foo@bar.com");
-    params.put("name", "Test Customer");
-    JsonNode features = Json.parse("{\"foo\": \"bar\"}");
-    params.set("features", features);
-    user.setFeatures(Json.parse("{\"abc\": \"xyz\"}"));
-    user.save();
-    JsonNode expectedFeatures = Json.parse("{\"foo\": \"bar\", \"abc\": \"xyz\"}");
-
-    Result result =
-        route(fakeRequest("PUT", baseRoute + customer.uuid).cookie(validCookie).bodyJson(params));
-    assertEquals(OK, result.status());
-    JsonNode json = Json.parse(contentAsString(result));
-    assertEquals(features, json.get("features"));
-    result = route(fakeRequest("GET", baseRoute + customer.uuid).cookie(validCookie));
-    assertEquals(OK, result.status());
-    json = Json.parse(contentAsString(result));
-    assertEquals(expectedFeatures, json.get("features"));
     assertAuditEntry(0, customer.uuid);
   }
 

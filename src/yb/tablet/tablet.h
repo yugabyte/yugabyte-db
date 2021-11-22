@@ -229,6 +229,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const QLTableRow& row,
       const std::vector<TableId>& table_ids,
       const HybridTime read_time,
+      const CoarseTimePoint deadline,
       const bool is_main_table,
       std::vector<std::pair<const TableId, QLReadRequestPB>>* requests,
       CoarseTimePoint* last_flushed_at,
@@ -236,8 +237,15 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       std::unordered_map<TableId, uint64>* consistency_stats);
 
   CHECKED_STATUS FlushVerifyBatchIfRequired(
-      bool force_flush,
       const HybridTime read_time,
+      const CoarseTimePoint deadline,
+      std::vector<std::pair<const TableId, QLReadRequestPB>>* requests,
+      CoarseTimePoint* last_flushed_at,
+      std::unordered_set<TableId>* failed_indexes,
+      std::unordered_map<TableId, uint64>* index_consistency_states);
+  CHECKED_STATUS FlushVerifyBatch(
+      const HybridTime read_time,
+      const CoarseTimePoint deadline,
       std::vector<std::pair<const TableId, QLReadRequestPB>>* requests,
       CoarseTimePoint* last_flushed_at,
       std::unordered_set<TableId>* failed_indexes,
@@ -265,17 +273,21 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const QLTableRow& row,
       const std::vector<IndexInfo>& indexes,
       const HybridTime write_time,
+      const CoarseTimePoint deadline,
       std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
       std::unordered_set<TableId>* failed_indexes);
 
-  Result<std::shared_ptr<client::YBSession>> GetSessionForVerifyOrBackfill();
+  Result<std::shared_ptr<client::YBSession>> GetSessionForVerifyOrBackfill(
+      const CoarseTimePoint deadline);
 
   CHECKED_STATUS FlushWriteIndexBatchIfRequired(
       const HybridTime write_time,
+      const CoarseTimePoint deadline,
       std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
       std::unordered_set<TableId>* failed_indexes);
   CHECKED_STATUS FlushWriteIndexBatch(
       const HybridTime write_time,
+      const CoarseTimePoint deadline,
       std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
       std::unordered_set<TableId>* failed_indexes);
 
@@ -683,7 +695,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return (val != additional_metadata_.end()) ? val->second : nullptr;
   }
 
-  void InitRocksDBOptions(rocksdb::Options* options, const std::string& log_prefix);
+  void InitRocksDBOptions(
+      rocksdb::Options* options, const std::string& log_prefix,
+      rocksdb::BlockBasedTableOptions table_options = rocksdb::BlockBasedTableOptions());
 
   TabletRetentionPolicy* RetentionPolicy() override {
     return retention_policy_.get();
@@ -781,9 +795,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       Destroy destroy, ScopedRWOperationPauses* ops_pauses);
 
   ScopedRWOperation CreateAbortableScopedRWOperation(
-      const CoarseTimePoint& deadline = CoarseTimePoint()) const;
+      const CoarseTimePoint deadline = CoarseTimePoint()) const;
   ScopedRWOperation CreateNonAbortableScopedRWOperation(
-      const CoarseTimePoint& deadline = CoarseTimePoint()) const;
+      const CoarseTimePoint deadline = CoarseTimePoint()) const;
 
   CHECKED_STATUS DoEnableCompactions();
 
@@ -891,7 +905,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   docdb::SharedLockManager shared_lock_manager_;
 
   // For the block cache and memory manager shared across tablets
-  TabletOptions tablet_options_;
+  const TabletOptions tablet_options_;
 
   // A lightweight way to reject new operations when the tablet is shutting down. This is used to
   // prevent race conditions between destroying the RocksDB instance and read/write operations.

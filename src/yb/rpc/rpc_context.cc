@@ -32,7 +32,6 @@
 
 #include "yb/rpc/rpc_context.h"
 
-#include <ostream>
 #include <sstream>
 
 #include <boost/core/null_deleter.hpp>
@@ -45,7 +44,6 @@
 #include "yb/rpc/reactor.h"
 #include "yb/rpc/yb_rpc.h"
 
-#include "yb/util/hdr_histogram.h"
 #include "yb/util/metrics.h"
 #include "yb/util/trace.h"
 #include "yb/util/debug/trace_event.h"

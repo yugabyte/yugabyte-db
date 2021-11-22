@@ -309,8 +309,8 @@ class ClusterLoadBalancer {
       REQUIRES_SHARED(catalog_manager_->mutex_);
 
   // Get access to all the tablets for the given table.
-  const CHECKED_STATUS GetTabletsForTable(const TableId& table_uuid,
-      vector<scoped_refptr<TabletInfo>>* tablets) const REQUIRES_SHARED(catalog_manager_->mutex_);
+  Result<TabletInfos> GetTabletsForTable(const TableId& table_uuid) const
+      REQUIRES_SHARED(catalog_manager_->mutex_);
 
   // Returns true when not choosing a leader as victim during normal load balance move operation.
   // Currently skips leader for RF=1 case only.

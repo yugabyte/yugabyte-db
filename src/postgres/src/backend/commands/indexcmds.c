@@ -25,6 +25,7 @@
 #include "catalog/indexing.h"
 #include "catalog/partition.h"
 #include "catalog/pg_am.h"
+#include "catalog/pg_collation.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_inherits.h"
 #include "catalog/pg_opclass.h"
@@ -792,7 +793,8 @@ DefineIndex(Oid relationId,
 	}
 	accessMethodId = HeapTupleGetOid(tuple);
 
-	if (IsYBRelation(rel) && accessMethodId != LSM_AM_OID)
+	if (IsYBRelation(rel) && (accessMethodId != LSM_AM_OID &&
+							  accessMethodId != YBGIN_AM_OID))
 		ereport(ERROR,
 				(errmsg("index method \"%s\" not supported yet",
 						accessMethodName),
@@ -845,8 +847,9 @@ DefineIndex(Oid relationId,
 	/*
 	 * Parse AM-specific options, convert to text array form, validate.
 	 */
-	reloptions = transformRelOptions((Datum) 0, stmt->options,
-									 NULL, NULL, false, false);
+	reloptions = ybTransformRelOptions((Datum) 0, stmt->options,
+										NULL, NULL, false, false,
+										IsYsqlUpgrade);
 
 	(void) index_reloptions(amoptions, reloptions, true);
 
@@ -1358,8 +1361,7 @@ DefineIndex(Oid relationId,
 	 * TODO(jason): handle nested CREATE INDEX (this assumes we're at nest
 	 * level 1).
 	 */
-	YBDecrementDdlNestingLevel(true /* success */,
-	                           true /* is_catalog_version_increment */,
+	YBDecrementDdlNestingLevel(true /* is_catalog_version_increment */,
 	                           false /* is_breaking_catalog_change */);
 	CommitTransactionCommand();
 
@@ -1381,8 +1383,7 @@ DefineIndex(Oid relationId,
 	 * TODO(jason): handle nested CREATE INDEX (this assumes we're at nest
 	 * level 1).
 	 */
-	YBDecrementDdlNestingLevel(true /* success */,
-	                           true /* is_catalog_version_increment */,
+	YBDecrementDdlNestingLevel(true /* is_catalog_version_increment */,
 	                           false /* is_breaking_catalog_change */);
 	CommitTransactionCommand();
 
@@ -1475,6 +1476,46 @@ CheckPredicate(Expr *predicate)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 				 errmsg("functions in index predicate must be marked IMMUTABLE")));
+}
+
+/*
+ * YbCheckCollationRestrictions
+ *		Checks that the given partial-index predicate is valid.
+ * Disallow some built-in operator classes if the column has non-C collation.
+ * We already accept them if the column has C collation so continue to allow that.
+ */
+static void
+YbCheckCollationRestrictions(Oid attcollation, Oid opclassoid)
+{
+	HeapTuple classtup;
+	Form_pg_opclass classform;
+	char *opclassname;
+	HeapTuple collationtup;
+	Form_pg_collation collform;
+	char *collname;
+
+	classtup = SearchSysCache1(CLAOID, ObjectIdGetDatum(opclassoid));
+	if (!HeapTupleIsValid(classtup))
+		elog(ERROR, "cache lookup failed for operator class %u", opclassoid);
+	classform = (Form_pg_opclass) GETSTRUCT(classtup);
+	opclassname = NameStr(classform->opcname);
+	if (strcasecmp(opclassname, "bpchar_pattern_ops") == 0 ||
+		strcasecmp(opclassname, "text_pattern_ops") == 0 ||
+		strcasecmp(opclassname, "varchar_pattern_ops") == 0)
+	{
+		collationtup = SearchSysCache1(COLLOID, ObjectIdGetDatum(attcollation));
+		if (!HeapTupleIsValid(collationtup))
+			elog(ERROR, "cache lookup failed for collation %u", attcollation);
+		collform = (Form_pg_collation) GETSTRUCT(collationtup);
+		collname = NameStr(collform->collname);
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("could not use operator class \"%s\" with column collation \"%s\"",
+						opclassname, collname),
+				 errhint("Use the COLLATE clause to set \"C\" collation explicitly.")));
+		ReleaseSysCache(collationtup);
+	}
+	ReleaseSysCache(classtup);
 }
 
 /*
@@ -1756,6 +1797,15 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 										 atttype,
 										 accessMethodName,
 										 accessMethodId);
+
+		/*
+	 	 * In Yugabyte mode, disallow some built-in operator classes if the column has non-C
+	 	 * collation.
+		 */
+		if (IsYugaByteEnabled() &&
+			YBIsCollationValidNonC(attcollation) &&
+			!kTestOnlyUseOSDefaultCollation)
+			YbCheckCollationRestrictions(attcollation, classOidP[attn]);
 
 		/*
 		 * Identify the exclusion operator, if any.

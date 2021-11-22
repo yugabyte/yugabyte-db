@@ -3,6 +3,7 @@
 package com.yugabyte.yw.common;
 
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
+import static com.yugabyte.yw.models.helpers.CommonUtils.nowMinusWithoutMillis;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
@@ -18,25 +19,20 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableList;
-import com.yugabyte.yw.common.alerts.AlertConfigurationService;
-import com.yugabyte.yw.common.alerts.AlertDefinitionService;
-import com.yugabyte.yw.common.alerts.AlertNotificationReport;
 import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
 import com.yugabyte.yw.common.alerts.AlertChannelManager;
 import com.yugabyte.yw.common.alerts.AlertChannelService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
-import com.yugabyte.yw.common.alerts.AlertService;
+import com.yugabyte.yw.common.alerts.AlertNotificationReport;
 import com.yugabyte.yw.common.alerts.AlertUtils;
-import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.alerts.PlatformNotificationException;
 import com.yugabyte.yw.common.alerts.impl.AlertChannelEmail;
-import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.Alert.State;
+import com.yugabyte.yw.models.AlertChannel;
 import com.yugabyte.yw.models.AlertChannel.ChannelType;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertDefinition;
-import com.yugabyte.yw.models.AlertChannel;
 import com.yugabyte.yw.models.AlertDestination;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Metric;
@@ -44,6 +40,7 @@ import com.yugabyte.yw.models.MetricKey;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
+import java.time.temporal.ChronoUnit;
 import java.util.Collections;
 import java.util.Date;
 import java.util.UUID;
@@ -78,14 +75,6 @@ public class AlertManagerTest extends FakeDBApplication {
 
   @Mock private EmailHelper emailHelper;
 
-  private MetricService metricService;
-
-  private AlertService alertService;
-
-  private AlertDefinitionService alertDefinitionService;
-
-  private AlertConfigurationService alertConfigurationService;
-
   private AlertManager am;
 
   private AlertConfiguration configuration;
@@ -111,15 +100,8 @@ public class AlertManagerTest extends FakeDBApplication {
     configuration = ModelFactory.createAlertConfiguration(defaultCustomer, universe);
     definition = ModelFactory.createAlertDefinition(defaultCustomer, universe, configuration);
 
-    metricService = new MetricService();
-    alertService = new AlertService();
-    alertDefinitionService = new AlertDefinitionService(alertService);
-    alertConfigurationService =
-        new AlertConfigurationService(
-            alertDefinitionService, new SettableRuntimeConfigFactory(app.config()));
-    alertChannelService = new AlertChannelService();
-    alertDestinationService =
-        new AlertDestinationService(alertChannelService, alertConfigurationService);
+    alertChannelService = app.injector().instanceOf(AlertChannelService.class);
+    alertDestinationService = app.injector().instanceOf(AlertDestinationService.class);
     am =
         new AlertManager(
             emailHelper,
@@ -262,8 +244,8 @@ public class AlertManagerTest extends FakeDBApplication {
 
     assertThat(AlertUtils.getJsonTypeName(channelCaptor.getValue().getParams()), is("Email"));
     AlertChannelEmailParams params = (AlertChannelEmailParams) channelCaptor.getValue().getParams();
-    assertThat(params.recipients, nullValue());
-    assertThat(params.defaultRecipients, is(true));
+    assertThat(params.getRecipients(), nullValue());
+    assertThat(params.isDefaultRecipients(), is(true));
   }
 
   @Test
@@ -362,5 +344,28 @@ public class AlertManagerTest extends FakeDBApplication {
     ArgumentCaptor<Alert> captor = ArgumentCaptor.forClass(Alert.class);
     verify(emailChannel, times(1)).sendNotification(eq(defaultCustomer), captor.capture(), any());
     assertThat(captor.getValue().getState(), is(State.ACTIVE));
+  }
+
+  @Test
+  public void testSendNotificationForState_()
+      throws PlatformNotificationException, MessagingException {
+    Alert alert = ModelFactory.createAlert(defaultCustomer, definition);
+
+    defaultDestination.setDefaultDestination(false);
+    defaultDestination.save();
+
+    am.sendNotificationForState(alert, State.ACTIVE, report);
+
+    verify(emailHelper, never()).sendEmail(any(), anyString(), anyString(), any(), any());
+    assertThat(alert.getNotificationsFailed(), equalTo(1));
+    assertThat(alert.getNextNotificationTime().after(new Date()), equalTo(true));
+
+    alert = ModelFactory.createAlert(defaultCustomer, definition);
+    alert.setCreateTime(nowMinusWithoutMillis(2, ChronoUnit.DAYS));
+    am.sendNotificationForState(alert, State.ACTIVE, report);
+
+    verify(emailHelper, never()).sendEmail(any(), anyString(), anyString(), any(), any());
+    assertThat(alert.getNotificationsFailed(), equalTo(1));
+    assertThat(alert.getNextNotificationTime(), nullValue());
   }
 }

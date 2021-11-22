@@ -57,7 +57,8 @@ TEST(RestoreSysCatalogStateTest, Filter) {
   table_entry.set_namespace_id(kNamespaceId);
   table_entry.set_namespace_name(kNamespaceName);
 
-  TableIdentifierPB& table_identifier = *restoration.filter.mutable_tables()->add_tables();
+  restoration.schedules.emplace_back(SnapshotScheduleId::Nil(), SnapshotScheduleFilterPB());
+  auto& table_identifier = *restoration.schedules[0].second.mutable_tables()->add_tables();
 
   for (bool use_table_id : {true, false}) {
     SCOPED_TRACE(Format("use_table_id: $0", use_table_id));

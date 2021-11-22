@@ -31,15 +31,12 @@
 //
 #include "yb/tools/yb-admin_cli.h"
 
-#include <iostream>
 #include <memory>
 #include <utility>
 
 #include <boost/lexical_cast.hpp>
-#include <boost/range.hpp>
 
 #include "yb/common/json_util.h"
-#include "yb/rpc/messenger.h"
 #include "yb/tools/yb-admin_client.h"
 #include "yb/util/flags.h"
 #include "yb/util/stol_utils.h"
@@ -830,6 +827,18 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
+      "create_transaction_table", " <table_name>",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() < 1) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+        const string table_name = args[0];
+        RETURN_NOT_OK_PREPEND(client->CreateTransactionsStatusTable(table_name),
+                              Format("Unable to create transaction table named $0", table_name));
+        return Status::OK();
+      });
+
+  Register(
       "ysql_catalog_version", "",
       [client](const CLIArguments&) -> Status {
         RETURN_NOT_OK_PREPEND(client->GetYsqlCatalogVersion(),
@@ -838,7 +847,15 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   RegisterJson("ddl_log", "", std::bind(&DdlLog, client, _1));
-}
+
+  Register(
+      "upgrade_ysql", "",
+      [client](const CLIArguments&) -> Status {
+        RETURN_NOT_OK_PREPEND(client->UpgradeYsql(),
+                              "Unable to upgrade YSQL cluster");
+        return Status::OK();
+      });
+} // NOLINT, prevents long function message
 
 Result<std::vector<client::YBTableName>> ResolveTableNames(
     ClusterAdminClientClass* client,

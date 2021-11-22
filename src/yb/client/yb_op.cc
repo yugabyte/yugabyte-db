@@ -56,8 +56,6 @@
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
-#include "yb/yql/cql/ql/util/errcodes.h"
-#include "yb/yql/redis/redisserver/redis_constants.h"
 
 #include "yb/util/flag_tags.h"
 
@@ -656,7 +654,9 @@ std::unique_ptr<YBPgsqlWriteOp> YBPgsqlWriteOp::NewTruncateColocated(
 }
 
 std::string YBPgsqlWriteOp::ToString() const {
-  return "PGSQL_WRITE " + write_request_->ShortDebugString() + ResponseSuffix(response());
+  return Format(
+      "PGSQL_WRITE $0$1$2", write_request_->ShortDebugString(),
+      (write_time_ ? " write_time: " + write_time_.ToString() : ""), ResponseSuffix(response()));
 }
 
 Status YBPgsqlWriteOp::GetPartitionKey(string* partition_key) const {
@@ -788,7 +788,7 @@ Status YBPgsqlReadOp::GetHashPartitionKey(string* partition_key) const {
         return STATUS_SUBSTITUTE(
             InternalError,
             "Out of bounds partition key found in paging state:"
-            "Query's partition bounds: [%d, %d], paging state partition: %d",
+            "Query's partition bounds: [$0, $1], paging state partition: $2",
             read_request_->has_hash_code() ? read_request_->hash_code() : 0,
             read_request_->has_max_hash_code() ? read_request_->max_hash_code() : 0,
             paging_state_hash_code);

@@ -42,7 +42,7 @@ The section [The sensitivity of _timestamptz-interval_ arithmetic to the current
 
 - The sensitivity is specific to adding or subtracting an _interval_ value to or from exactly and only a _timestamptz_ value.
 
-- The sensitivity is specific to only the _dd_ value of the _[&#91;mm, dd, ss&#93;](../../date-time-data-types-semantics/type-interval/interval-representation/)_ internal representation of an _interval_ value.
+- The sensitivity is specific to only the _dd_ value of the _[\[mm, dd, ss\]](../../date-time-data-types-semantics/type-interval/interval-representation/)_ internal representation of an _interval_ value.
 
 - Only the session's _TimeZone_ setting matters. There is no explicit syntax, analogous to the _at time zone_ operator or its equivalent _timezone()_ function overloads to let you override the session's setting.
 

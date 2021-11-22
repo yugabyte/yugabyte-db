@@ -16,6 +16,7 @@ from msrestazure.azure_exceptions import CloudError
 from ybops.utils import validated_key_file, format_rsa_key, DNS_RECORD_SET_TTL, MIN_MEM_SIZE_GB, \
     MIN_NUM_CORES
 from ybops.common.exceptions import YBOpsRuntimeError
+from threading import Thread
 
 import logging
 import os
@@ -23,6 +24,7 @@ import re
 import requests
 import adal
 import json
+import datetime
 
 SUBSCRIPTION_ID = os.environ.get("AZURE_SUBSCRIPTION_ID")
 RESOURCE_GROUP = os.environ.get("AZURE_RG")
@@ -51,6 +53,24 @@ VM_PRICING_URL_FORMAT = "https://prices.azure.com/api/retail/prices?$filter=" \
 PRIVATE_DNS_ZONE_ID_REGEX = re.compile(
     "/subscriptions/(?P<subscription_id>[^/]*)/resourceGroups/(?P<resource_group>[^/]*)"
     "/providers/Microsoft.Network/privateDnsZones/(?P<zone_name>[^/]*)")
+
+
+class GetPriceWorker(Thread):
+    def __init__(self, region):
+        Thread.__init__(self)
+        self.region = region
+        self.vm_name_to_price_dict = {}
+
+    def run(self):
+        url = VM_PRICING_URL_FORMAT.format(self.region)
+        while url:
+            price_info = requests.get(url).json()
+            for info in price_info.get('Items'):
+                # Azure API doesn't support regex as of 3/08/2021, so manually parse out Windows.
+                # Some VMs also show $0.0 as the price for some reason, so ignore those as well.
+                if not (info['productName'].endswith(' Windows') or info['unitPrice'] == 0):
+                    self.vm_name_to_price_dict[info['armSkuName']] = info['unitPrice']
+            url = price_info.get('NextPageLink')
 
 
 def get_credentials():
@@ -611,6 +631,8 @@ class AzureCloudAdmin():
         return vm_info
 
     def get_instance_types(self, regions):
+        operation_start = datetime.datetime.now()
+
         # TODO: This regex probably should be refined? It returns a LOT of VMs right now.
         premium_regex_format = 'Standard_.*s'
         burstable_prefix = 'Standard_B'
@@ -631,28 +653,25 @@ class AzureCloudAdmin():
                 continue
             all_vms[vm_size] = vm_info
 
+        workers = []
         for region in regions:
-            price_info = self.get_pricing_info(VM_PRICING_URL_FORMAT.format(region))
+            worker = GetPriceWorker(region)
+            worker.start()
+            workers.append(worker)
+
+        for worker in workers:
+            worker.join()
+            price_info = worker.vm_name_to_price_dict
             common_vms = set(price_info.keys()) & set(all_vms.keys())
             for vm_name in common_vms:
-                all_vms[vm_name]['prices'][region] = price_info[vm_name]
+                all_vms[vm_name]['prices'][worker.region] = price_info[vm_name]
             # Only return VMs that are present in all regions
             all_vms = {k: all_vms[k] for k in common_vms}
 
+        execution_time = datetime.datetime.now() - operation_start
+        logging.info("Finished price retrieving process [ %s ms ]",
+                     execution_time.seconds * 1000 + execution_time.microseconds // 1000)
         return all_vms
-
-    def get_pricing_info(self, url):
-        price_info = requests.get(url).json()
-        vm_name_to_price_dict = {}
-        for info in price_info.get('Items'):
-            # Azure API doesn't support regex as of 3/08/2021, so manually parse out Windows.
-            # Some VMs also show $0.0 as the price for some reason, so ignore those as well.
-            if not (info['productName'].endswith(' Windows') or info['unitPrice'] == 0):
-                vm_name_to_price_dict[info['armSkuName']] = info['unitPrice']
-        next_url = price_info.get('NextPageLink')
-        if next_url:
-            vm_name_to_price_dict.update(self.get_pricing_info(next_url))
-        return vm_name_to_price_dict
 
     def ultra_ssd_available(self, capabilities):
         if not capabilities:
@@ -723,11 +742,14 @@ class AzureCloudAdmin():
 
         subnet = id_to_name(nic.ip_configurations[0].subnet.id)
         server_type = vm.tags.get("yb-server-type", None) if vm.tags else None
+        node_uuid = vm.tags.get("node-uuid", None) if vm.tags else None
+        universe_uuid = vm.tags.get("universe-uuid", None) if vm.tags else None
         zone_full = "{}-{}".format(region, zone) if zone is not None else region
         return {"private_ip": private_ip, "public_ip": public_ip, "region": region,
                 "zone": zone_full, "name": vm.name, "ip_name": ip_name,
                 "instance_type": vm.hardware_profile.vm_size, "server_type": server_type,
-                "subnet": subnet, "nic": nic_name, "id": vm.name}
+                "subnet": subnet, "nic": nic_name, "id": vm.name, "node_uuid": node_uuid,
+                "universe_uuid": universe_uuid}
 
     def list_dns_record_set(self, dns_zone_id):
         return self.dns_client.private_zones.get(*self._get_dns_zone_info(dns_zone_id))

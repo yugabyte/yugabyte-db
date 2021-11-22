@@ -85,16 +85,16 @@ public class CommonUtilsTest {
   @Test
   public void testUnmaskConfig() {
     ObjectNode config = prepareConfig();
-    JsonNode maskedData = CommonUtils.maskConfig(config);
+    ObjectNode maskedData = CommonUtils.maskConfig(config);
 
     // 1. No changes.
-    JsonNode unmaskedData = CommonUtils.unmaskConfig(config, maskedData);
+    JsonNode unmaskedData = CommonUtils.unmaskJsonObject(config, maskedData);
     assertThat(unmaskedData, equalTo(config));
 
     // 2. Two fields changed.
-    ((ObjectNode) maskedData).put("MY_KEY_DATA", "SENSITIVE_DATA_2");
-    ((ObjectNode) maskedData).put("MY_PASSWORD", "SENSITIVE_DATA_2");
-    unmaskedData = CommonUtils.unmaskConfig(config, maskedData);
+    maskedData.put("MY_KEY_DATA", "SENSITIVE_DATA_2");
+    maskedData.put("MY_PASSWORD", "SENSITIVE_DATA_2");
+    unmaskedData = CommonUtils.unmaskJsonObject(config, maskedData);
 
     assertValue(unmaskedData, "SOME_KEY", "SENSITIVE_DATA");
     assertValue(unmaskedData, "KEY_DATA", "SENSITIVE_DATA");
@@ -109,12 +109,12 @@ public class CommonUtilsTest {
   @Test
   public void testMaskComplexObject() {
     AlertChannelEmailParams params = new AlertChannelEmailParams();
-    params.recipients = Collections.singletonList("test@test.com");
-    params.smtpData = EmailFixtures.createSmtpData();
+    params.setRecipients(Collections.singletonList("test@test.com"));
+    params.setSmtpData(EmailFixtures.createSmtpData());
 
     AlertChannelEmailParams maskedParams = CommonUtils.maskObject(params);
     assertThat(maskedParams, not(params));
-    assertThat(maskedParams.smtpData.smtpPassword, not(params.smtpData.smtpPassword));
+    assertThat(maskedParams.getSmtpData().smtpPassword, not(params.getSmtpData().smtpPassword));
 
     AlertChannelEmailParams unmaskedParams = CommonUtils.unmaskObject(params, maskedParams);
     assertThat(unmaskedParams, not(maskedParams));

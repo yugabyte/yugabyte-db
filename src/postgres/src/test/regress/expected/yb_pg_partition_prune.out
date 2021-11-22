@@ -146,19 +146,31 @@ explain (costs off) select * from lp where a not in ('a', 'd');
 
 -- collation matches the partitioning collation, pruning works
 create table coll_pruning (a text collate "C") partition by list (a);
-ERROR:  COLLATE not supported yet
-LINE 1: create table coll_pruning (a text collate "C") partition by ...
-                                          ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1127. Click '+' on the description to raise its priority
 -- Support following cases after collation is supported.
-/*
 create table coll_pruning_a partition of coll_pruning for values in ('a');
 create table coll_pruning_b partition of coll_pruning for values in ('b');
 create table coll_pruning_def partition of coll_pruning default;
 explain (costs off) select * from coll_pruning where a collate "C" = 'a' collate "C";
+                 QUERY PLAN
+---------------------------------------------
+ Append
+   ->  Seq Scan on coll_pruning_a
+         Filter: (a = 'a'::text COLLATE "C")
+(3 rows)
+
 -- collation doesn't match the partitioning collation, no pruning occurs
 explain (costs off) select * from coll_pruning where a collate "POSIX" = 'a' collate "POSIX";
-*/
+                       QUERY PLAN
+---------------------------------------------------------
+ Append
+   ->  Seq Scan on coll_pruning_a
+         Filter: ((a)::text = 'a'::text COLLATE "POSIX")
+   ->  Seq Scan on coll_pruning_b
+         Filter: ((a)::text = 'a'::text COLLATE "POSIX")
+   ->  Seq Scan on coll_pruning_def
+         Filter: ((a)::text = 'a'::text COLLATE "POSIX")
+(7 rows)
+
 create table rlp (a int, b varchar) partition by range (a);
 create table rlp_default partition of rlp default partition by list (a);
 create table rlp_default_default partition of rlp_default default;
@@ -1321,24 +1333,42 @@ explain (costs off) select * from rlp where a = 15 and b <> 'ab' and b <> 'cd' a
 -- different collations for different keys with same expression
 --
 create table coll_pruning_multi (a text) partition by range (substr(a, 1) collate "POSIX", substr(a, 1) collate "C");
-ERROR:  CREATE INDEX COLLATE not supported yet
-LINE 1: ...g_multi (a text) partition by range (substr(a, 1) collate "P...
-                                                             ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
-/*
 create table coll_pruning_multi1 partition of coll_pruning_multi for values from ('a', 'a') to ('a', 'e');
 create table coll_pruning_multi2 partition of coll_pruning_multi for values from ('a', 'e') to ('a', 'z');
 create table coll_pruning_multi3 partition of coll_pruning_multi for values from ('b', 'a') to ('b', 'e');
-
 -- no pruning, because no value for the leading key
 explain (costs off) select * from coll_pruning_multi where substr(a, 1) = 'e' collate "C";
+                       QUERY PLAN
+--------------------------------------------------------
+ Append
+   ->  Seq Scan on coll_pruning_multi1
+         Filter: (substr(a, 1) = 'e'::text COLLATE "C")
+   ->  Seq Scan on coll_pruning_multi2
+         Filter: (substr(a, 1) = 'e'::text COLLATE "C")
+   ->  Seq Scan on coll_pruning_multi3
+         Filter: (substr(a, 1) = 'e'::text COLLATE "C")
+(7 rows)
 
 -- pruning, with a value provided for the leading key
 explain (costs off) select * from coll_pruning_multi where substr(a, 1) = 'a' collate "POSIX";
+                         QUERY PLAN
+------------------------------------------------------------
+ Append
+   ->  Seq Scan on coll_pruning_multi1
+         Filter: (substr(a, 1) = 'a'::text COLLATE "POSIX")
+   ->  Seq Scan on coll_pruning_multi2
+         Filter: (substr(a, 1) = 'a'::text COLLATE "POSIX")
+(5 rows)
 
 -- pruning, with values provided for both keys
 explain (costs off) select * from coll_pruning_multi where substr(a, 1) = 'e' collate "C" and substr(a, 1) = 'a' collate "POSIX";
-*/
+                                               QUERY PLAN
+---------------------------------------------------------------------------------------------------------
+ Append
+   ->  Seq Scan on coll_pruning_multi2
+         Filter: ((substr(a, 1) = 'e'::text COLLATE "C") AND (substr(a, 1) = 'a'::text COLLATE "POSIX"))
+(3 rows)
+
 --
 -- LIKE operators don't prune
 --
@@ -2060,14 +2090,52 @@ deallocate ab_q5;
 -- UPDATE on a partition subtree has been seen to have problems.
 insert into ab values (1,2);
 explain (analyze, costs off, summary off, timing off)
--- TODO(jason): fix output when closing issue #5310
 update ab_a1 set b = 3 from ab where ab.a = 1 and ab.a = ab_a1.a;
-ERROR:  This operation would cause a row to change the partition, this is not yet supported
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/5310. Click '+' on the description to raise its priority
+                                            QUERY PLAN
+--------------------------------------------------------------------------------------------------
+ Update on ab_a1 (actual rows=0 loops=1)
+   Update on ab_a1_b1
+   Update on ab_a1_b2
+   Update on ab_a1_b3
+   ->  Nested Loop (actual rows=0 loops=1)
+         ->  Append (actual rows=1 loops=1)
+               ->  Index Scan using ab_a1_b1_a_idx on ab_a1_b1 ab_a1_b1_1 (actual rows=0 loops=1)
+                     Index Cond: (a = 1)
+               ->  Index Scan using ab_a1_b2_a_idx on ab_a1_b2 ab_a1_b2_1 (actual rows=1 loops=1)
+                     Index Cond: (a = 1)
+               ->  Index Scan using ab_a1_b3_a_idx on ab_a1_b3 ab_a1_b3_1 (actual rows=0 loops=1)
+                     Index Cond: (a = 1)
+         ->  Materialize (actual rows=0 loops=1)
+               ->  Index Scan using ab_a1_b1_a_idx on ab_a1_b1 (actual rows=0 loops=1)
+                     Index Cond: (a = 1)
+   ->  Nested Loop (actual rows=1 loops=1)
+         ->  Append (actual rows=1 loops=1)
+               ->  Index Scan using ab_a1_b1_a_idx on ab_a1_b1 ab_a1_b1_1 (actual rows=0 loops=1)
+                     Index Cond: (a = 1)
+               ->  Index Scan using ab_a1_b2_a_idx on ab_a1_b2 ab_a1_b2_1 (actual rows=1 loops=1)
+                     Index Cond: (a = 1)
+               ->  Index Scan using ab_a1_b3_a_idx on ab_a1_b3 ab_a1_b3_1 (actual rows=0 loops=1)
+                     Index Cond: (a = 1)
+         ->  Materialize (actual rows=1 loops=1)
+               ->  Index Scan using ab_a1_b2_a_idx on ab_a1_b2 (actual rows=1 loops=1)
+                     Index Cond: (a = 1)
+   ->  Nested Loop (actual rows=0 loops=1)
+         ->  Append (actual rows=1 loops=1)
+               ->  Index Scan using ab_a1_b1_a_idx on ab_a1_b1 ab_a1_b1_1 (actual rows=0 loops=1)
+                     Index Cond: (a = 1)
+               ->  Index Scan using ab_a1_b2_a_idx on ab_a1_b2 ab_a1_b2_1 (actual rows=1 loops=1)
+                     Index Cond: (a = 1)
+               ->  Index Scan using ab_a1_b3_a_idx on ab_a1_b3 ab_a1_b3_1 (actual rows=0 loops=1)
+                     Index Cond: (a = 1)
+         ->  Materialize (actual rows=0 loops=1)
+               ->  Index Scan using ab_a1_b3_a_idx on ab_a1_b3 (actual rows=0 loops=1)
+                     Index Cond: (a = 1)
+(37 rows)
+
 table ab;
  a | b
 ---+---
- 1 | 2
+ 1 | 3
 (1 row)
 
 drop table ab, lprt_a;

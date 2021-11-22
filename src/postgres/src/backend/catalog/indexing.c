@@ -23,7 +23,7 @@
 #include "utils/rel.h"
 
 #include "pg_yb_utils.h"
-#include "access/ybcam.h"
+#include "access/yb_scan.h"
 #include "executor/ybcModifyTable.h"
 #include "miscadmin.h"
 

@@ -41,11 +41,8 @@
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/catalog_manager.h"
-#include "yb/master/master.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog.h"
-#include "yb/master/ts_descriptor.h"
-#include "yb/master/ts_manager.h"
 
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/rate_limiter.h"
@@ -108,7 +105,9 @@ using yb::master::SysClusterConfigEntryPB;
 namespace {
 
 const std::vector<uint16_t> EMPTY_MASTER_RPC_PORTS = {};
-const int kMasterLeaderElectionWaitTimeSeconds = NonTsanVsTsan(20, 60);
+const int kMasterLeaderElectionWaitTimeSeconds = 20 * kTimeMultiplier;
+const int kRegistrationWaitTimeSeconds = 45 * kTimeMultiplier;
+const int kTabletReportWaitTimeSeconds = 5;
 
 std::string GetClusterDataDirName(const MiniClusterOptions& options) {
   std::string cluster_name = "minicluster-data";
@@ -688,6 +687,15 @@ std::unordered_set<string> ListTabletIdsForTable(MiniCluster* cluster, const str
     if (peer->tablet_metadata()->table_id() == table_id) {
       tablet_ids.insert(peer->tablet_id());
     }
+  }
+  return tablet_ids;
+}
+
+std::unordered_set<string> ListActiveTabletIdsForTable(
+    MiniCluster* cluster, const string& table_id) {
+  std::unordered_set<string> tablet_ids;
+  for (auto peer : ListTableActiveTabletPeers(cluster, table_id)) {
+    tablet_ids.insert(peer->tablet_id());
   }
   return tablet_ids;
 }

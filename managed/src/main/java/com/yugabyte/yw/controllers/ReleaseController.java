@@ -143,4 +143,24 @@ public class ReleaseController extends AuthenticatedController {
     }
     return YBPSuccess.empty();
   }
+
+  @ApiOperation(
+      value = "Delete a release",
+      response = ReleaseManager.ReleaseMetadata.class,
+      nickname = "deleteRelease")
+  public Result delete(UUID customerUUID, String version) {
+    if (releaseManager.getReleaseByVersion(version) == null) {
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid Release version: " + version);
+    }
+
+    if (releaseManager.getInUse(version)) {
+      throw new PlatformServiceException(BAD_REQUEST, "Release " + version + " is in use!");
+    }
+    try {
+      releaseManager.removeRelease(version);
+    } catch (RuntimeException re) {
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, re.getMessage());
+    }
+    return YBPSuccess.empty();
+  }
 }

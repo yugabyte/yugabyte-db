@@ -45,6 +45,7 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_fwd.h"
+#include "yb/server/server_base_options.h"
 #include "yb/util/atomic.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
@@ -63,6 +64,8 @@ class MasterServiceProxy;
 } // namespace master
 
 namespace client {
+
+YB_STRONGLY_TYPED_BOOL(Retry);
 
 class YBClient::Data {
  public:
@@ -328,7 +331,7 @@ class YBClient::Data {
   void SetMasterServerProxyAsync(CoarseTimePoint deadline,
                                  bool skip_resolution,
                                  bool wait_for_leader_election,
-                                 const StatusCallback& cb);
+                                 const StdStatusCallback& cb);
 
   // Synchronous version of SetMasterServerProxyAsync method above.
   //
@@ -391,6 +394,10 @@ class YBClient::Data {
 
   void CompleteShutdown();
 
+  void DoSetMasterServerProxy(
+      CoarseTimePoint deadline, bool skip_resolution, bool wait_for_leader_election);
+  Result<server::MasterAddresses> ParseMasterAddresses(const Status& reinit_status);
+
   rpc::Messenger* messenger_ = nullptr;
   std::unique_ptr<rpc::Messenger> messenger_holder_;
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
@@ -400,10 +407,6 @@ class YBClient::Data {
   // Set of hostnames and IPs on the local host.
   // This is initialized at client startup.
   std::unordered_set<std::string> local_host_names_;
-
-  // This is a REST endpoint from which the list of master hosts and ports can be queried. This
-  // takes precedence over both 'master_server_addrs_file_' and 'master_server_addrs_'.
-  std::string master_server_endpoint_;
 
   // Flag name to fetch master addresses from flagfile.
   std::string master_address_flag_name_;
@@ -439,7 +442,7 @@ class YBClient::Data {
   // itself, as to avoid a "use-after-free" scenario.
   rpc::Rpcs rpcs_;
   rpc::Rpcs::Handle leader_master_rpc_;
-  std::vector<StatusCallback> leader_master_callbacks_;
+  std::vector<StdStatusCallback> leader_master_callbacks_;
 
   // Protects 'leader_master_rpc_', 'leader_master_hostport_',
   // and master_proxy_
@@ -461,7 +464,8 @@ class YBClient::Data {
   // aid in detecting local tservers.
   TabletServerId uuid_;
 
-  std::unique_ptr<ThreadPool> cb_threadpool_;
+  bool use_threadpool_for_callbacks_;
+  std::unique_ptr<ThreadPool> threadpool_;
 
   const ClientId id_;
 
@@ -475,7 +479,7 @@ class YBClient::Data {
   simple_spinlock tablet_requests_mutex_;
   std::unordered_map<TabletId, TabletRequests> tablet_requests_;
 
-  std::atomic<int> tserver_count_cached_{0};
+  std::array<std::atomic<int>, 2> tserver_count_cached_;
 
   // The proxy for the node local tablet server.
   std::shared_ptr<tserver::TabletServerForwardServiceProxy> node_local_forward_proxy_;

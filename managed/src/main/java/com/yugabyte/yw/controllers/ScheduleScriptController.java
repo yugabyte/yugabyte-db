@@ -18,7 +18,7 @@ import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.Authorization;
@@ -30,6 +30,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.apache.commons.lang3.math.NumberUtils;
 import play.mvc.Http;
 import play.mvc.Http.MultipartFormData;
 import play.mvc.Result;
@@ -38,6 +39,7 @@ import play.mvc.Result;
     value = "ScheduleExternalScript",
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class ScheduleScriptController extends AuthenticatedController {
+
   @Inject SettableRuntimeConfigFactory sConfigFactory;
 
   public static final String PLT_EXT_SCRIPT_CONTENT = "platform_ext_script_content";
@@ -58,8 +60,8 @@ public class ScheduleScriptController extends AuthenticatedController {
     taskParams.timeLimitMins = Long.toString(timeLimitMins);
     taskParams.platformUrl = request().host();
     taskParams.universeUUID = universeUUID;
-    Users user = (Users) Http.Context.current().args.get("user");
-    taskParams.userUUID = user.uuid;
+    UserWithFeatures user = (UserWithFeatures) Http.Context.current().args.get("user");
+    taskParams.userUUID = user.getUser().uuid;
 
     // Using RuntimeConfig to save the script params because this isn't intended to be that commonly
     // used. If we start using it more commonly, we should migrate to a separate db table for these
@@ -89,7 +91,7 @@ public class ScheduleScriptController extends AuthenticatedController {
     return PlatformResults.withData(schedule);
   }
 
-  public Result stopScheduledScript(UUID customerUUID, UUID universeUUID) throws IOException {
+  public Result stopScheduledScript(UUID customerUUID, UUID universeUUID) {
     // Validate Customer
     Customer.getOrBadRequest(customerUUID);
 
@@ -97,7 +99,7 @@ public class ScheduleScriptController extends AuthenticatedController {
     // script.
     Universe universe = Universe.getOrBadRequest(universeUUID);
     RuntimeConfig<Universe> config = sConfigFactory.forUniverse(universe);
-    UUID scheduleUUID = null;
+    UUID scheduleUUID;
     try {
       scheduleUUID = UUID.fromString(config.getString(PLT_EXT_SCRIPT_SCHEDULE));
     } catch (Exception e) {
@@ -130,14 +132,14 @@ public class ScheduleScriptController extends AuthenticatedController {
     taskParams.timeLimitMins = Long.toString(timeLimitMins);
     taskParams.platformUrl = request().host();
     taskParams.universeUUID = universeUUID;
-    Users user = (Users) Http.Context.current().args.get("user");
-    taskParams.userUUID = user.uuid;
+    UserWithFeatures user = (UserWithFeatures) Http.Context.current().args.get("user");
+    taskParams.userUUID = user.getUser().uuid;
 
     Universe universe = Universe.getOrBadRequest(universeUUID);
     RuntimeConfig<Universe> config = sConfigFactory.forUniverse(universe);
 
     // Extract the already present External Script Scheduler for universe.
-    UUID scheduleUUID = null;
+    UUID scheduleUUID;
     try {
       scheduleUUID = UUID.fromString(config.getString(PLT_EXT_SCRIPT_SCHEDULE));
     } catch (Exception e) {
@@ -190,7 +192,7 @@ public class ScheduleScriptController extends AuthenticatedController {
   }
 
   private String extractCronExpression(MultipartFormData<File> body) {
-    String cronExpression = null;
+    String cronExpression;
     if (body.asFormUrlEncoded().get("cronExpression") != null) {
       // Validate cronExpression if present
       try {
@@ -209,20 +211,13 @@ public class ScheduleScriptController extends AuthenticatedController {
   }
 
   private long extractTimeLimitMins(MultipartFormData<File> body) {
-    if (body.asFormUrlEncoded().get("timeLimitMins") == null) {
+    String[] timeLimitMinsParams =
+        body.asFormUrlEncoded().getOrDefault("timeLimitMins", new String[] {"0"});
+    long timeLimitMins = NumberUtils.toLong(timeLimitMinsParams[0], 0L);
+    if (timeLimitMins == 0L) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "Please provide a time limit in mins for script execution.");
+          BAD_REQUEST, "Please provide valid timeLimitMins for script execution.");
     }
-    long timeLimitMins = 0L;
-    try {
-      timeLimitMins = Long.parseLong(body.asFormUrlEncoded().get("timeLimitMins")[0]);
-      if (timeLimitMins == 0L) {
-        throw new Exception();
-      }
-      return timeLimitMins;
-    } catch (Exception e) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Please provide a valid time limit in mins for script execution.");
-    }
+    return timeLimitMins;
   }
 }

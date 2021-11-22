@@ -14,8 +14,8 @@ package org.yb.pgsql;
 
 import static com.google.common.base.Preconditions.*;
 import static org.yb.AssertionWrappers.*;
-import static org.yb.util.SanitizerUtil.isASAN;
-import static org.yb.util.SanitizerUtil.isTSAN;
+import static org.yb.util.BuildTypeUtil.isASAN;
+import static org.yb.util.BuildTypeUtil.isTSAN;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
@@ -29,11 +29,11 @@ import org.apache.commons.lang3.StringUtils;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
-import org.postgresql.core.TransactionState;
-import org.postgresql.jdbc.PgArray;
-import org.postgresql.jdbc.PgConnection;
-import org.postgresql.util.PGobject;
-import org.postgresql.util.PSQLException;
+import com.yugabyte.core.TransactionState;
+import com.yugabyte.jdbc.PgArray;
+import com.yugabyte.jdbc.PgConnection;
+import com.yugabyte.util.PGobject;
+import com.yugabyte.util.PSQLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.IsInitDbDoneResponse;
@@ -42,7 +42,7 @@ import org.yb.minicluster.*;
 import org.yb.minicluster.Metrics.YSQLStat;
 import org.yb.util.EnvAndSysPropertyUtil;
 import org.yb.util.MiscUtil.ThrowingCallable;
-import org.yb.util.SanitizerUtil;
+import org.yb.util.BuildTypeUtil;
 import org.yb.util.YBBackupUtil;
 import org.yb.util.YBBackupException;
 import org.yb.master.Master;
@@ -91,6 +91,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       METRIC_PREFIX + "Single_Shard_Transactions";
   protected static final String TRANSACTIONS_METRIC = METRIC_PREFIX + "Transactions";
   protected static final String AGGREGATE_PUSHDOWNS_METRIC = METRIC_PREFIX + "AggregatePushdowns";
+  protected static final String CATALOG_CACHE_MISSES_METRICS = METRIC_PREFIX + "CatalogCacheMisses";
 
   // CQL and Redis settings, will be reset before each test via resetSettings method.
   protected boolean startCqlProxy = false;
@@ -142,9 +143,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     if (TestUtils.isReleaseBuild()) {
       return 10000;
     } else if (TestUtils.IS_LINUX) {
-      if (SanitizerUtil.isASAN()) {
+      if (BuildTypeUtil.isASAN()) {
         return 20000;
-      } else if (SanitizerUtil.isTSAN()) {
+      } else if (BuildTypeUtil.isTSAN()) {
         return 45000;
       } else {
         // Linux debug builds.
@@ -177,9 +178,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     if (TestUtils.isReleaseBuild()) {
       return releaseRuntime;
     } else if (TestUtils.IS_LINUX) {
-      if (SanitizerUtil.isASAN()) {
+      if (BuildTypeUtil.isASAN()) {
         return asanRuntime;
-      } else if (SanitizerUtil.isTSAN()) {
+      } else if (BuildTypeUtil.isTSAN()) {
         return tsanRuntime;
       } else {
         // Linux debug builds.
@@ -232,7 +233,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected Map<String, String> getMasterFlags() {
     Map<String, String> flagMap = super.getMasterFlags();
     flagMap.put("client_read_write_timeout_ms",
-        String.valueOf(SanitizerUtil.adjustTimeout(120000)));
+        String.valueOf(BuildTypeUtil.adjustTimeout(120000)));
     flagMap.put("memory_limit_hard_bytes", String.valueOf(2L * 1024 * 1024 * 1024));
     return flagMap;
   }
@@ -250,7 +251,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
-    builder.enablePostgres(true);
+    builder.enableYsql(true);
   }
 
   @Before
@@ -265,7 +266,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       return;
 
     LOG.info("Loading PostgreSQL JDBC driver");
-    Class.forName("org.postgresql.Driver");
+    Class.forName("com.yugabyte.Driver");
 
     // Postgres bin directory.
     pgBinDir = new File(TestUtils.getBuildRootDir(), "postgres/bin");
@@ -304,6 +305,22 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     pgInitialized = true;
   }
 
+  public void restartClusterWithFlags(
+      Map<String, String> additionalMasterFlags,
+      Map<String, String> additionalTserverFlags) throws Exception {
+    destroyMiniCluster();
+
+    createMiniCluster(additionalMasterFlags, additionalTserverFlags);
+    pgInitialized = false;
+    initPostgresBefore();
+  }
+
+  public void restartCluster() throws Exception {
+    restartClusterWithFlags(
+      Collections.<String, String>emptyMap(),
+      Collections.<String, String>emptyMap());
+  }
+
   @Override
   protected void resetSettings() {
     super.resetSettings();
@@ -311,7 +328,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     startRedisProxy = false;
   }
 
-  static ConnectionBuilder getConnectionBuilder() {
+  protected ConnectionBuilder getConnectionBuilder() {
     return new ConnectionBuilder(miniCluster);
   }
 
@@ -368,6 +385,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     cleanUpCustomDatabases();
 
     cleanUpCustomEntities();
+
+    if (isClusterNeedsRecreation()) {
+      pgInitialized = false;
+    }
   }
 
   /**
@@ -412,7 +433,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       for (int i = 0; i < 2; i++) {
         try {
         List<String> roles = getRowList(stmt, "SELECT rolname FROM pg_roles"
-            + " WHERE rolname <> 'postgres' AND rolname NOT LIKE 'pg_%'").stream()
+            + " WHERE rolname <> 'postgres'"
+            + " AND rolname NOT LIKE 'pg_%'"
+            + " AND rolname NOT LIKE 'yb_%'").stream()
                 .map(r -> r.getString(0))
                 .collect(Collectors.toList());
 
@@ -447,6 +470,16 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       destroyMiniCluster();
       miniCluster = null;
     }
+  }
+
+  protected void recreateWithYsqlVersion(YsqlSnapshotVersion version) throws Exception {
+    destroyMiniCluster();
+    pgInitialized = false;
+    markClusterNeedsRecreation();
+    createMiniCluster((builder) -> {
+      builder.ysqlSnapshotVersion(version);
+    });
+    initPostgresBefore();
   }
 
   /**
@@ -881,6 +914,11 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         elems.add(rs.getObject(i));
         columnNames.add(rs.getMetaData().getColumnLabel(i));
       }
+      // Pre-initialize stuff while connection is still available
+      for (Object el : elems) {
+        if (el instanceof PgArray)
+          ((PgArray) el).getArray();
+      }
       return new Row(elems, columnNames);
     }
 
@@ -988,11 +1026,16 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
 
     @Override
-    public Row clone() throws CloneNotSupportedException {
-      Row clone = (Row) super.clone();
-      clone.elems = new ArrayList<>(this.elems);
-      clone.columnNames = new ArrayList<>(this.columnNames);
-      return clone;
+    public Row clone() {
+      try {
+        Row clone = (Row) super.clone();
+        clone.elems = new ArrayList<>(this.elems);
+        clone.columnNames = new ArrayList<>(this.columnNames);
+        return clone;
+      } catch (CloneNotSupportedException ex) {
+        // Not possible
+        throw new RuntimeException(ex);
+      }
     }
 
     //
@@ -1119,6 +1162,14 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
+  protected List<Row> deepCopyRows(List<Row> rows) {
+    List<Row> copy = new ArrayList<>();
+    for (Row row : rows) {
+      copy.add(row.clone());
+    }
+    return copy;
+  }
+
   protected Set<Row> getRowSet(ResultSet rs) throws SQLException {
     Set<Row> rows = new HashSet<>();
     while (rs.next()) {
@@ -1140,20 +1191,21 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
-  protected static boolean runSystemTableQuery(Statement stmt, String query) throws SQLException {
-    return systemTableQueryHelper(stmt, () -> stmt.execute(query));
+  protected static int executeSystemTableDml(
+      Statement stmt, String dml) throws SQLException {
+    return systemTableQueryHelper(stmt, () -> stmt.executeUpdate(dml));
   }
 
-  protected static List<Row> executeSystemTableQuery(
-        Statement stmt, String query) throws SQLException {
+  protected static List<Row> getSystemTableRowsList(
+      Statement stmt, String query) throws SQLException {
     return systemTableQueryHelper(stmt, () -> {
-      try (ResultSet result = stmt.executeQuery(query)){
+      try (ResultSet result = stmt.executeQuery(query)) {
         return getRowList(result);
       }
     });
   }
 
-  private  static <T> T systemTableQueryHelper(
+  private static <T> T systemTableQueryHelper(
       Statement stmt, ThrowingCallable<T, SQLException> callable) throws SQLException {
     String allow_non_ddl_pattern = "SET yb_non_ddl_txn_for_sys_tables_allowed=%d";
     stmt.execute(String.format(allow_non_ddl_pattern, 1));
@@ -1185,6 +1237,25 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return rows;
   }
 
+  /**
+   * Checks that collections are of the same sizes, printing unexpected and missing rows otherwise.
+   */
+  protected <T> void assertCollectionSizes(
+      String errorPrefix,
+      Collection<T> expected,
+      Collection<T> actual) {
+    if (expected.size() != actual.size()) {
+      List<T> unexpected = new ArrayList<>(actual);
+      unexpected.removeAll(expected);
+      List<T> missing = new ArrayList<>(expected);
+      missing.removeAll(actual);
+      fail(errorPrefix + "Collection length mismatch: expected<" + expected.size()
+          + "> but was:<" + actual.size() + ">"
+          + "\nUnexpected rows: " + unexpected
+          + "\nMissing rows:    " + missing);
+    }
+  }
+
   /** Better alternative to assertEquals that provides more mismatch details. */
   protected void assertRows(List<Row> expected, List<Row> actual) {
     assertRows(null, expected, actual);
@@ -1193,7 +1264,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   /** Better alternative to assertEquals that provides more mismatch details. */
   protected void assertRows(String messagePrefix, List<Row> expected, List<Row> actual) {
     String fullPrefix = StringUtils.isEmpty(messagePrefix) ? "" : (messagePrefix + ": ");
-    assertEquals(fullPrefix + "Collection length mismatch:", expected.size(), actual.size());
+    assertCollectionSizes(fullPrefix, expected, actual);
     for (int i = 0; i < expected.size(); ++i) {
       assertRow(fullPrefix + "Mismatch at row " + (i + 1) + ": ", expected.get(i), actual.get(i));
     }
@@ -1353,6 +1424,14 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
                            e.getMessage(), errorSubstring));
       }
     }
+  }
+
+  protected void runInvalidSystemQuery(Statement stmt, String query, String errorSubstring)
+      throws Exception {
+    systemTableQueryHelper(stmt, () -> {
+      runInvalidQuery(stmt, query, errorSubstring);
+      return 0;
+    });
   }
 
   /**
@@ -1706,6 +1785,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     private static final int INITIAL_CONNECTION_DELAY_MS = 500;
 
     private final MiniYBCluster miniCluster;
+    private boolean loadBalance;
 
     private int tserverIndex = 0;
     private String database = DEFAULT_PG_DATABASE;
@@ -1802,7 +1882,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       final InetSocketAddress postgresAddress = miniCluster.getPostgresContactPoints()
           .get(tserverIndex);
       String url = String.format(
-          "jdbc:postgresql://%s:%d/%s",
+          "jdbc:yugabytedb://%s:%d/%s",
           postgresAddress.getHostName(),
           postgresAddress.getPort(),
           database
@@ -1832,6 +1912,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         props.setProperty("loggerLevel", "TRACE");
       }
 
+      boolean loadBalance = getLoadBalance();
+      String lbValue = loadBalance ? "true" : "false";
+      props.setProperty("load-balance", lbValue);
       int delayMs = INITIAL_CONNECTION_DELAY_MS;
       for (int attempt = 1; attempt <= MAX_CONNECTION_ATTEMPTS; ++attempt) {
         Connection connection = null;
@@ -1886,6 +1969,14 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         }
       }
       throw new IllegalStateException("Should not be able to reach here");
+    }
+
+    public boolean getLoadBalance() {
+      return loadBalance;
+    }
+
+    public void setLoadBalance(boolean lb) {
+      loadBalance = lb;
     }
   }
 }

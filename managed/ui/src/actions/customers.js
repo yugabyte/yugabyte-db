@@ -56,6 +56,8 @@ export const GET_ALERTS_FAILURE = 'GET_ALERTS_FAILURE';
 
 export const CREATE_ALERT_CHANNEL = 'CREATE_ALERT_CHANNEL';
 export const CREATE_ALERT_CHANNEL_RESPONSE = 'CREATE_ALERT_CHANNEL_RESPONSE';
+export const UPDATE_ALERT_CHANNEL = 'UPDATE_ALERT_CHANNEL';
+export const DELETE_ALERT_CHANNEL = 'DELETE_ALERT_CHANNEL';
 
 export const CREATE_ALERT_DESTINATION = 'CREATE_ALERT_DESTINATION';
 export const CREATE_ALERT_DESTINATION_RESPONSE = 'CREATE_ALERT_DESTINATION_RESPONSE';
@@ -103,6 +105,7 @@ export const RESET_TOKEN_ERROR = 'RESET_TOKEN_ERROR';
 export const GET_LOGS = 'GET_LOGS';
 export const GET_LOGS_SUCCESS = 'GET_LOGS_SUCCESS';
 export const GET_LOGS_FAILURE = 'GET_LOGS_FAILURE';
+export const LOGS_FETCHING = 'LOGS_FETCHING';
 
 export const GET_RELEASES = 'GET_RELEASES';
 export const GET_RELEASES_RESPONSE = 'GET_RELEASES_RESPONSE';
@@ -135,7 +138,8 @@ export const DELETE_SCHEDULE = 'DELETE_SCHEDULE';
 export const DELETE_SCHEDULE_RESPONSE = 'DELETE_SCHEDULE_RESPONSE';
 
 export const CREATE_USER = 'CREATE_USER';
-export const CREATE_USER_RESPONSE = 'CREATE_USER_RESPONSE';
+export const CREATE_USER_SUCCESS = 'CREATE_USER_SUCCESS';
+export const CREATE_USER_FAILURE = 'CREATE_USER_FAILURE';
 
 export const DELETE_USER = 'DELETE_USER';
 export const DELETE_USER_RESPONSE = 'DELETE_USER_RESPONSE';
@@ -495,6 +499,27 @@ export function createAlertChannelResponse(response) {
   };
 }
 
+export function updateAlertChannel(channelUUID, payload) {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.put(
+    `${ROOT_URL}/customers/${cUUID}/alert_channels/${channelUUID}`,
+    payload
+  );
+  return {
+    type: UPDATE_ALERT_CHANNEL,
+    payload: request
+  };
+}
+
+export function deleteAlertChannel(channelUUID) {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.delete(`${ROOT_URL}/customers/${cUUID}/alert_channels/${channelUUID}`);
+  return {
+    type: DELETE_ALERT_CHANNEL,
+    payload: request
+  };
+}
+
 export function createAlertDestination(payload) {
   const cUUID = localStorage.getItem('customerId');
   const request = axios.post(`${ROOT_URL}/customers/${cUUID}/alert_destinations`, payload);
@@ -522,10 +547,7 @@ export function createAlertConfig(payload) {
 
 export function updateAlertConfig(payload, uuid) {
   const cUUID = localStorage.getItem('customerId');
-  const request = axios.put(
-    `${ROOT_URL}/customers/${cUUID}/alert_configurations/${uuid}`,
-    payload
-  );
+  const request = axios.put(`${ROOT_URL}/customers/${cUUID}/alert_configurations/${uuid}`, payload);
   return {
     type: UPDATE_ALERT_CONFIG,
     payload: request
@@ -544,6 +566,11 @@ export function createAlertConfigResponse(response) {
     type: CREATE_ALERT_CONFIG_RESPONSE,
     payload: response
   };
+}
+
+export function sendTestAlert(uuid) {
+  const cUUID = localStorage.getItem('customerId');
+  return axios.post(`${ROOT_URL}/customers/${cUUID}/alert_configurations/${uuid}/test_alert`);
 }
 
 export function updateAlertDestination(payload, uuid) {
@@ -582,7 +609,7 @@ export function deleteAlertConfig(uuid) {
 
 export function getAlertConfigByName(name) {
   const cUUID = localStorage.getItem('customerId');
-  return axios.post(`${ROOT_URL}/customers/${cUUID}/alert_configurations/list`, {name});
+  return axios.post(`${ROOT_URL}/customers/${cUUID}/alert_configurations/list`, { name });
 }
 
 export function getAlertChannels() {
@@ -630,10 +657,7 @@ export function getTargetMetrics(payload) {
 
 export function alertConfigs(payload) {
   const cUUID = localStorage.getItem('customerId');
-  const request = axios.post(
-    `${ROOT_URL}/customers/${cUUID}/alert_configurations/list`,
-    payload
-  );
+  const request = axios.post(`${ROOT_URL}/customers/${cUUID}/alert_configurations/list`, payload);
   return {
     type: GET_ALERT_CONFIGS,
     payload: request
@@ -796,11 +820,22 @@ export function deleteScheduleResponse(response) {
   };
 }
 
-export function getLogs() {
-  // TODO(bogdan): Maybe make this a URL param somehow?
-  const request = axios.get(`${ROOT_URL}/logs/1000`);
+export function setLogsLoading() {
   return {
-    type: FETCH_HOST_INFO,
+    type: LOGS_FETCHING
+  };
+}
+
+export function getLogs(maxLines, regex, universe) {
+  const request = axios.get(`${ROOT_URL}/logs`, {
+    params: {
+      maxLines,
+      queryRegex: regex,
+      universeName: universe
+    }
+  });
+  return {
+    type: GET_LOGS,
     payload: request
   };
 }
@@ -867,6 +902,15 @@ export function importYugaByteReleaseResponse(response) {
   };
 }
 
+export function deleteYugaByteRelease(version) {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.delete(`${ROOT_URL}/customers/${cUUID}/releases/${version}`);
+  return {
+    type: UPDATE_RELEASE,
+    payload: request
+  };
+}
+
 export function updateYugaByteRelease(version, payload) {
   const cUUID = localStorage.getItem('customerId');
   const request = axios.put(`${ROOT_URL}/customers/${cUUID}/releases/${version}`, payload);
@@ -892,10 +936,17 @@ export function createUser(formValues) {
   };
 }
 
-export function createUserResponse(response) {
+export function createUserSuccess(response) {
   return {
-    type: CREATE_USER_RESPONSE,
+    type: CREATE_USER_SUCCESS,
     payload: response
+  };
+}
+
+export function createUserFailure(error) {
+  return {
+    type: CREATE_USER_FAILURE,
+    payload: error
   };
 }
 
@@ -927,15 +978,17 @@ export function deleteUserResponse(response) {
 export function updateTLS(universeUuid, formValues) {
   const cUUID = localStorage.getItem('customerId');
   const values = {
-    "enableNodeToNodeEncrypt": formValues.enableNodeToNodeEncrypt,
-    "enableClientToNodeEncrypt": formValues.enableClientToNodeEncrypt,
-    "rootCA": formValues.rootCA,
-    "clientRootCA": formValues.clientRootCA,
-    "rootAndClientRootCASame": formValues.rootAndClientRootCASame,
-    "upgradeOption": formValues.rollingUpgrade ? "Rolling" : "Non-Rolling",
-    "sleepAfterMasterRestartMillis": formValues.timeDelay * 1000,
-    "sleepAfterTServerRestartMillis": formValues.timeDelay * 1000
-  }
+    enableNodeToNodeEncrypt: formValues.enableNodeToNodeEncrypt,
+    enableClientToNodeEncrypt: formValues.enableClientToNodeEncrypt,
+    rootCA: formValues.rootCA,
+    createNewRootCA: formValues.createNewRootCA,
+    clientRootCA: formValues.clientRootCA,
+    createNewClientRootCA: formValues.createNewClientRootCA,
+    rootAndClientRootCASame: formValues.rootAndClientRootCASame,
+    upgradeOption: formValues.rollingUpgrade ? 'Rolling' : 'Non-Rolling',
+    sleepAfterMasterRestartMillis: formValues.timeDelay * 1000,
+    sleepAfterTServerRestartMillis: formValues.timeDelay * 1000
+  };
   const request = axios.post(
     `${ROOT_URL}/customers/${cUUID}/universes/${universeUuid}/update_tls`,
     values

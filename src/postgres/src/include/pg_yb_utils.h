@@ -38,7 +38,6 @@
 #include "yb/common/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
-
 /*
  * Version of the catalog entries in the relcache and catcache.
  * We (only) rely on a following invariant: If the catalog cache version here is
@@ -74,6 +73,15 @@ extern uint64_t YBGetActiveCatalogCacheVersion();
 
 extern void YBResetCatalogVersion();
 
+typedef enum GeolocationDistance {
+    ZONE_LOCAL,
+    REGION_LOCAL,
+    CLOUD_LOCAL,
+    INTER_CLOUD,
+    UNKNOWN_DISTANCE
+} GeolocationDistance;
+
+extern GeolocationDistance get_tablespace_distance (Oid tablespaceoid);
 /*
  * Checks whether YugaByte functionality is enabled within PostgreSQL.
  * This relies on pgapi being non-NULL, so probably should not be used
@@ -84,6 +92,7 @@ extern void YBResetCatalogVersion();
 extern bool IsYugaByteEnabled();
 
 extern bool yb_read_from_followers;
+extern int32_t yb_follower_read_staleness_ms;
 
 /*
  * Iterate over databases and execute a given code snippet.
@@ -188,6 +197,13 @@ extern bool YBRelHasSecondaryIndices(Relation relation);
 extern bool YBTransactionsEnabled();
 
 /*
+ * Whether the current txn is of READ COMMITTED (or READ UNCOMMITTED) isolation level and it it uses
+ * the new READ COMMITTED implementation instead of mapping to REPEATABLE READ level. The latter
+ * condition is dictated by the value of gflag yb_enable_read_committed_isolation.
+ */
+extern bool IsYBReadCommitted();
+
+/*
  * Whether to allow users to use SAVEPOINT commands at the query layer.
  */
 extern bool YBSavepointsEnabled();
@@ -264,6 +280,12 @@ extern void YBCRollbackSubTransaction(SubTransactionId id);
  * while system tables are still managed by PostgreSQL.
  */
 extern bool YBIsPgLockingEnabled();
+
+/*
+ * Get the type ID of a real or virtual attribute (column).
+ * Returns InvalidOid if the attribute number is invalid.
+ */
+extern Oid GetTypeId(int attrNum, TupleDesc tupleDesc);
 
 /*
  * Return a string representation of the given type id, or say it is unknown.
@@ -380,6 +402,11 @@ extern bool yb_enable_create_with_table_oid;
 extern int yb_index_state_flags_update_delay;
 
 //------------------------------------------------------------------------------
+// GUC variables needed by YB via their YB pointers.
+extern int StatementTimeout;
+extern int *YBCStatementTimeoutPtr;
+
+//------------------------------------------------------------------------------
 // YB Debug utils.
 
 /**
@@ -435,8 +462,7 @@ bool YBIsInitDbAlreadyDone();
 
 int YBGetDdlNestingLevel();
 void YBIncrementDdlNestingLevel();
-void YBDecrementDdlNestingLevel(bool success,
-                                bool is_catalog_version_increment,
+void YBDecrementDdlNestingLevel(bool is_catalog_version_increment,
                                 bool is_breaking_catalog_change);
 bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
                                  bool *is_catalog_version_increment,
@@ -444,8 +470,10 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 extern void YBBeginOperationsBuffering();
 extern void YBEndOperationsBuffering();
 extern void YBResetOperationsBuffering();
+extern void YBFlushBufferedOperations();
 
 bool YBReadFromFollowersEnabled();
+int32_t YBFollowerReadStalenessMs();
 
 /*
  * Allocates YBCPgYBTupleIdDescriptor with nattrs arguments by using palloc.
@@ -476,7 +504,7 @@ void YBGetCollationInfo(
 /*
  * Setup collation info in attr.
  */
-void YBSetupAttrCollationInfo(YBCPgAttrValueDescriptor *attr);
+void YBSetupAttrCollationInfo(YBCPgAttrValueDescriptor *attr, const YBCPgColumnInfo *column_info);
 
 /*
  * Check whether the collation is a valid non-C collation.
@@ -491,5 +519,36 @@ bool YBIsCollationValidNonC(Oid collation_id);
  * for the column string value.
  */
 Oid YBEncodingCollation(YBCPgStatement handle, int attr_num, Oid attcollation);
+
+/*
+ * Check whether the user ID is of a user who has the yb_extension role.
+ */
+bool IsYbExtensionUser(Oid member);
+
+/*
+ * Check whether the user ID is of a user who has the yb_fdw role.
+ */
+bool IsYbFdwUser(Oid member);
+
+/*
+ * Array of IDs of non-immutable functions that do not perform any database
+ * lookups or writes. When these functions are used in an INSERT/UPDATE/DELETE
+ * statement, they will not cause the actual modify statement to become a
+ * cross shard operation.
+ */
+extern const uint32 yb_funcs_safe_for_modify_fast_path[];
+
+/*
+ * Number of functions in 'yb_funcs_safe_for_modify_fast_path' above.
+ */
+extern const int yb_funcs_safe_for_modify_fast_path_count;
+
+/** 
+ * Use the YB_PG_PDEATHSIG environment variable to set the signal to be sent to 
+ * the current process in case the parent process dies. This is Linux-specific
+ * and can only be done from the child process (the postmaster process). The
+ * parent process here is yb-master or yb-tserver.
+ */
+void YBSetParentDeathSignal();
 
 #endif /* PG_YB_UTILS_H */

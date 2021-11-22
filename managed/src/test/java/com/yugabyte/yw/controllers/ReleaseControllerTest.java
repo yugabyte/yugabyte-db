@@ -7,7 +7,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.ReleaseManager.ReleaseState.DISABLED;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -79,6 +79,11 @@ public class ReleaseControllerTest extends FakeDBApplication {
   private Result updateRelease(UUID customerUUID, String version, JsonNode body) {
     String uri = "/api/customers/" + customerUUID + "/releases/" + version;
     return FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", uri, user.createAuthToken(), body);
+  }
+
+  private Result deleteRelease(UUID customerUUID, String version) {
+    String uri = "/api/customers/" + customerUUID + "/releases/" + version;
+    return FakeApiHelper.doRequestWithAuthToken("DELETE", uri, user.createAuthToken());
   }
 
   private void mockReleaseData(boolean multiple) {
@@ -205,7 +210,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
     doThrow(new PlatformServiceException(BAD_REQUEST, "Some Error"))
         .when(mockReleaseManager)
         .addReleaseWithMetadata(any(), any());
-    Result result = assertYWSE(() -> createRelease(customer.uuid, body));
+    Result result = assertPlatformException(() -> createRelease(customer.uuid, body));
     verify(mockReleaseManager, times(1)).addReleaseWithMetadata(any(), any());
     assertEquals(INTERNAL_SERVER_ERROR, result.status());
     assertAuditEntry(0, customer.uuid);
@@ -227,7 +232,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
 
     ObjectNode body =
         (ObjectNode) Json.newObject().set("2.7.2.0-b137", Json.newObject().set("s3", s3));
-    Result result = assertYWSE(() -> createRelease(customer.uuid, body));
+    Result result = assertPlatformException(() -> createRelease(customer.uuid, body));
     verify(mockReleaseManager, times(0)).addReleaseWithMetadata(any(), any());
     assertEquals(BAD_REQUEST, result.status());
     assertAuditEntry(0, customer.uuid);
@@ -237,14 +242,14 @@ public class ReleaseControllerTest extends FakeDBApplication {
 
     ObjectNode body2 =
         (ObjectNode) Json.newObject().set("2.7.2.0-b137", Json.newObject().set("s3", s3));
-    result = assertYWSE(() -> createRelease(customer.uuid, body2));
+    result = assertPlatformException(() -> createRelease(customer.uuid, body2));
     verify(mockReleaseManager, times(0)).addReleaseWithMetadata(any(), any());
     assertEquals(BAD_REQUEST, result.status());
     assertAuditEntry(0, customer.uuid);
 
     ObjectNode body3 =
         (ObjectNode) Json.newObject().set("2.7.2.0-b137", Json.newObject().set("http", http));
-    result = assertYWSE(() -> createRelease(customer.uuid, body3));
+    result = assertPlatformException(() -> createRelease(customer.uuid, body3));
     verify(mockReleaseManager, times(0)).addReleaseWithMetadata(any(), any());
     assertEquals(INTERNAL_SERVER_ERROR, result.status());
     assertAuditEntry(0, customer.uuid);
@@ -276,7 +281,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
     doThrow(new PlatformServiceException(BAD_REQUEST, "Some Error"))
         .when(mockReleaseManager)
         .getReleaseMetadata();
-    Result result = assertYWSE(() -> getReleases(customer.uuid));
+    Result result = assertPlatformException(() -> getReleases(customer.uuid));
     assertBadRequest(result, "Some Error");
     assertAuditEntry(0, customer.uuid);
   }
@@ -365,7 +370,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
   public void testUpdateReleaseWithInvalidVersion() {
     ObjectNode body = Json.newObject();
     body.put("state", "DISABLED");
-    Result result = assertYWSE(() -> updateRelease(customer.uuid, "0.0.2", body));
+    Result result = assertPlatformException(() -> updateRelease(customer.uuid, "0.0.2", body));
     verify(mockReleaseManager, times(1)).getReleaseByVersion("0.0.2");
     assertBadRequest(result, "Invalid Release version: 0.0.2");
     assertAuditEntry(0, customer.uuid);
@@ -378,7 +383,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
         .getReleaseByVersion("0.0.2");
     ObjectNode body = Json.newObject();
     body.put("state", "DISABLED");
-    Result result = assertYWSE(() -> updateRelease(customer.uuid, "0.0.2", body));
+    Result result = assertPlatformException(() -> updateRelease(customer.uuid, "0.0.2", body));
     verify(mockReleaseManager, times(1)).getReleaseByVersion("0.0.2");
     assertBadRequest(result, "Some Error");
     assertAuditEntry(0, customer.uuid);
@@ -389,7 +394,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
     ReleaseManager.ReleaseMetadata metadata = ReleaseManager.ReleaseMetadata.create("0.0.1");
     when(mockReleaseManager.getReleaseByVersion("0.0.1")).thenReturn(metadata);
     ObjectNode body = Json.newObject();
-    Result result = assertYWSE(() -> updateRelease(customer.uuid, "0.0.1", body));
+    Result result = assertPlatformException(() -> updateRelease(customer.uuid, "0.0.1", body));
     verify(mockReleaseManager, times(1)).getReleaseByVersion("0.0.1");
     assertBadRequest(result, "Missing Required param: State");
     assertAuditEntry(0, customer.uuid);
@@ -417,7 +422,36 @@ public class ReleaseControllerTest extends FakeDBApplication {
   @Test
   public void testRefreshReleaseReleaseManagerException() {
     doThrow(new RuntimeException("Some Error")).when(mockReleaseManager).importLocalReleases();
-    Result result = assertYWSE(() -> refreshReleases(customer.uuid));
+    Result result = assertPlatformException(() -> refreshReleases(customer.uuid));
+    assertInternalServerError(result, "Some Error");
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testDeleteInvalidRelease() {
+    Result result = assertPlatformException(() -> deleteRelease(customer.uuid, "0.0.1"));
+    verify(mockReleaseManager, times(1)).getReleaseByVersion("0.0.1");
+    assertBadRequest(result, "Invalid Release version: 0.0.1");
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testDeleteReleaseSuccess() {
+    ReleaseManager.ReleaseMetadata metadata = ReleaseManager.ReleaseMetadata.create("0.0.2");
+    when(mockReleaseManager.getReleaseByVersion("0.0.2")).thenReturn(metadata);
+    Result result = deleteRelease(customer.uuid, "0.0.2");
+    verify(mockReleaseManager, times(1)).getReleaseByVersion("0.0.2");
+    assertOk(result);
+    assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testDeleteReleaseWithException() {
+    ReleaseManager.ReleaseMetadata metadata = ReleaseManager.ReleaseMetadata.create("0.0.3");
+    when(mockReleaseManager.getReleaseByVersion("0.0.3")).thenReturn(metadata);
+    doThrow(new RuntimeException("Some Error")).when(mockReleaseManager).removeRelease("0.0.3");
+    Result result = assertPlatformException(() -> deleteRelease(customer.uuid, "0.0.3"));
+    verify(mockReleaseManager, times(1)).getReleaseByVersion("0.0.3");
     assertInternalServerError(result, "Some Error");
     assertAuditEntry(0, customer.uuid);
   }

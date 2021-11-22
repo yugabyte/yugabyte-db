@@ -35,7 +35,9 @@
 #include "yb/rocksdb/table/table_builder.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
-#include "yb/rocksdb/util/testharness.h"
+#include <gtest/gtest.h>
+#include "yb/rocksdb/env.h"
+#include "yb/util/test_macros.h"
 #include "yb/rocksdb/util/testutil.h"
 
 namespace rocksdb {

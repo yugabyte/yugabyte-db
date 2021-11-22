@@ -13,8 +13,12 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+
+import java.time.Duration;
+
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.ChangeConfigResponse;
@@ -22,6 +26,9 @@ import org.yb.client.YBClient;
 
 @Slf4j
 public class ChangeMasterConfig extends AbstractTaskBase {
+
+  private static final Duration YBCLIENT_ADMIN_OPERATION_TIMEOUT = Duration.ofMinutes(15);
+
   @Inject
   protected ChangeMasterConfig(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
@@ -88,7 +95,9 @@ public class ChangeMasterConfig extends AbstractTaskBase {
         taskParams().opType.toString(),
         taskParams().useHostPort);
     ChangeConfigResponse response = null;
-    YBClient client = ybService.getClient(masterAddresses, certificate);
+    YBClientService.Config config = new YBClientService.Config(masterAddresses, certificate);
+    config.setAdminOperationTimeout(YBCLIENT_ADMIN_OPERATION_TIMEOUT);
+    YBClient client = ybService.getClientWithConfig(config);
     try {
       response =
           client.changeMasterConfig(

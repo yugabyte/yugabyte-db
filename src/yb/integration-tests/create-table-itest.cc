@@ -49,9 +49,7 @@
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_util.h"
-#include "yb/master/sys_catalog_initialization.h"
 #include "yb/util/metrics.h"
-#include "yb/util/path_util.h"
 
 using std::multimap;
 using std::set;
@@ -367,7 +365,7 @@ TEST_F(CreateTableITest, TableColocationRemoteBootstrapTest) {
   ASSERT_OK(
       client_->CreateNamespace("colocation_test", boost::none /* db */, "" /* creator */,
                                "" /* ns_id */, "" /* src_ns_id */,
-                               boost::none /* next_pg_oid */, boost::none /* txn */, true));
+                               boost::none /* next_pg_oid */, nullptr /* txn */, true));
 
   {
     string ns_id;
@@ -437,7 +435,7 @@ TEST_F(CreateTableITest, TablegroupRemoteBootstrapTest) {
 
   ASSERT_OK(client_->CreateNamespace(namespace_name, YQL_DATABASE_PGSQL, "" /* creator */,
                                      "" /* ns_id */, "" /* src_ns_id */,
-                                     boost::none /* next_pg_oid */, boost::none /* txn */, false));
+                                     boost::none /* next_pg_oid */, nullptr /* txn */, false));
 
   {
     auto namespaces = ASSERT_RESULT(client_->ListNamespaces(boost::none));
@@ -547,7 +545,7 @@ TEST_F(CreateTableITest, YB_DISABLE_TEST_IN_TSAN(TestTransactionStatusTableCreat
   // Check that the transaction table hasn't been created yet.
   YQLDatabase db = YQL_DATABASE_CQL;
   YBTableName transaction_status_table(db, master::kSystemNamespaceId,
-                                  master::kSystemNamespaceName, kTransactionsTableName);
+                                  master::kSystemNamespaceName, kGlobalTransactionsTableName);
   bool exists = ASSERT_RESULT(client_->TableExists(transaction_status_table));
   ASSERT_FALSE(exists) << "Transaction table exists even though the "
                           "requirement for the minimum number of TS not met";

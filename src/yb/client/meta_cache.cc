@@ -55,9 +55,7 @@
 
 #include "yb/tserver/local_tablet_server.h"
 #include "yb/tserver/tserver_service.proxy.h"
-#include "yb/tserver/tserver_forward_service.proxy.h"
 
-#include "yb/util/algorithm_util.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/net/net_util.h"
@@ -69,7 +67,8 @@
 using std::map;
 using std::shared_ptr;
 using strings::Substitute;
-using namespace std::literals;  // NOLINT
+using namespace std::literals;
+using namespace std::placeholders;
 
 DEFINE_int32(max_concurrent_master_lookups, 500,
              "Maximum number of concurrent tablet location lookups from YB client to master");
@@ -86,6 +85,9 @@ DEFINE_int64(meta_cache_lookup_throttling_step_ms, 5,
 
 DEFINE_int64(meta_cache_lookup_throttling_max_delay_ms, 1000,
              "Max delay between calls during lookup throttling.");
+
+DEFINE_int64(reset_master_leader_timeout_ms, 15000,
+             "Timeout to reset master leader in milliseconds.");
 
 DEFINE_test_flag(bool, force_master_lookup_all_tablets, false,
                  "If set, force the client to go to the master for all tablet lookup "
@@ -659,7 +661,7 @@ class LookupRpc : public Rpc, public RequestCleanup {
   MetaCache* meta_cache() { return meta_cache_.get(); }
   YBClient* client() const { return meta_cache_->client_; }
 
-  void ResetMasterLeaderAndRetry();
+  void ResetMasterLeader(Retry retry);
 
   virtual void NotifyFailure(const Status& status) = 0;
 
@@ -770,13 +772,14 @@ void LookupRpc::SendRpc() {
   DoSendRpc();
 }
 
-void LookupRpc::ResetMasterLeaderAndRetry() {
+void LookupRpc::ResetMasterLeader(Retry retry) {
   client()->data_->SetMasterServerProxyAsync(
-      retrier().deadline(),
+      retry ? retrier().deadline()
+            : CoarseMonoClock::now() + FLAGS_reset_master_leader_timeout_ms * 1ms,
       false /* skip_resolution */,
       true /* wait for leader election */,
-      Bind(&LookupRpc::NewLeaderMasterDeterminedCb,
-           Unretained(this)));
+      retry ? std::bind(&LookupRpc::NewLeaderMasterDeterminedCb, this, _1)
+            : StdStatusCallback([](auto){}));
 }
 
 void LookupRpc::NewLeaderMasterDeterminedCb(const Status& status) {
@@ -831,8 +834,8 @@ void LookupRpc::DoFinished(const Status& status, const Response& resp) {
     if (resp.error().code() == master::MasterErrorPB::NOT_THE_LEADER ||
         resp.error().code() == master::MasterErrorPB::CATALOG_MANAGER_NOT_INITIALIZED) {
       if (client()->IsMultiMaster()) {
-        YB_LOG_EVERY_N_SECS(WARNING, 1) << "Leader Master has changed, re-trying...";
-        ResetMasterLeaderAndRetry();
+        YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 1) << "Leader Master has changed, re-trying...";
+        ResetMasterLeader(Retry::kTrue);
       } else {
         ScheduleRetry(new_status);
       }
@@ -842,19 +845,20 @@ void LookupRpc::DoFinished(const Status& status, const Response& resp) {
 
   if (new_status.IsTimedOut()) {
     if (CoarseMonoClock::Now() < retrier().deadline()) {
-      YB_LOG_EVERY_N_SECS(WARNING, 1) << "Leader Master timed out, re-trying...";
-      ResetMasterLeaderAndRetry();
+      YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 1) << "Leader Master timed out, re-trying...";
+      ResetMasterLeader(Retry::kTrue);
       return;
     } else {
       // Operation deadline expired during this latest RPC.
       new_status = new_status.CloneAndPrepend("timed out after deadline expired");
+      ResetMasterLeader(Retry::kFalse);
     }
   }
 
   if (new_status.IsNetworkError() || new_status.IsRemoteError()) {
-    YB_LOG_EVERY_N_SECS(WARNING, 1) << "Encountered a error from the Master: "
-         << new_status << ", retrying...";
-    ResetMasterLeaderAndRetry();
+    YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 1)
+         << "Encountered a error from the Master: " << new_status << ", retrying...";
+    ResetMasterLeader(Retry::kTrue);
     return;
   }
 

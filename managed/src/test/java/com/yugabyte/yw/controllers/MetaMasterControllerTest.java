@@ -5,7 +5,7 @@ import static com.yugabyte.yw.commissioner.Common.CloudType.kubernetes;
 import static com.yugabyte.yw.common.ApiUtils.getDefaultUserIntent;
 import static com.yugabyte.yw.common.ApiUtils.getDefaultUserIntentSingleAZ;
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
-import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -332,7 +332,7 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   private void testServerGetWithInvalidUniverse(boolean isYql) {
     String universeUUID = "11111111-2222-3333-4444-555555555555";
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 route(
                     app,

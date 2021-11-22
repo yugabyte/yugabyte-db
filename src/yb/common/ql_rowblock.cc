@@ -15,8 +15,6 @@
 
 #include "yb/common/ql_rowblock.h"
 
-#include "yb/util/bfql/directory.h"
-#include "yb/util/bfql/bfql.h"
 
 #include "yb/common/ql_value.h"
 #include "yb/common/wire_protocol.h"

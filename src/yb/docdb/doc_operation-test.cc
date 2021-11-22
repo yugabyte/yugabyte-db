@@ -14,6 +14,7 @@
 #include <thread>
 
 #include "yb/common/common.pb.h"
+#include "yb/rocksdb/compaction_filter.h"
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/db/column_family.h"
 #include "yb/rocksdb/db/internal_stats.h"
@@ -63,6 +64,72 @@ std::vector<ColumnId> CreateColumnIds(size_t count) {
 }
 
 constexpr int32_t kFixedHashCode = 0;
+const int64_t kAlwaysDiscard = -1;
+
+// DiscardUntilFileFilter is a test CompactionFileFilter than will be used to mark some
+// files for direct deletion during the PickCompaction process in UniversalCompactionPicker.
+// Any files with numbers less than the provided last discard file number will be
+// included in the compaction but directly deleted.
+//
+// DiscardUntilFileFilter emulates behavior of DocDBCompactionFileFilter, which expires
+// files based on their TTL.
+class DiscardUntilFileFilter : public rocksdb::CompactionFileFilter {
+ public:
+  explicit DiscardUntilFileFilter(int64_t last_discard) :
+      last_discard_(last_discard) {}
+
+  // Filters all file numbers less than or equal to the filter's last_discard_.
+  // Setting last_discard_ to the kAlwaysDiscard constant will result in every
+  // incoming file being filtered.
+  rocksdb::FilterDecision Filter(const rocksdb::FileMetaData* file) override {
+    if (last_discard_ == kAlwaysDiscard || file->fd.GetNumber() <= last_discard_) {
+      LOG(INFO) << "Filtering file: " << file->fd.GetNumber() << ", size: "
+          << file->fd.GetBaseFileSize() << ", total file size: " << file->fd.GetTotalFileSize();
+      return rocksdb::FilterDecision::kDiscard;
+    }
+    return rocksdb::FilterDecision::kKeep;
+  }
+
+  const char* Name() const override { return "DiscardUntilFileFilter"; }
+
+ private:
+  const int64_t last_discard_;
+};
+
+// A CompactionFileFilterFactory that takes a file number as input, and filters all
+// file numbers lower than or equal to that one. Any larger file numbers will not
+// be filtered.
+class DiscardUntilFileFilterFactory : public rocksdb::CompactionFileFilterFactory {
+ public:
+  explicit DiscardUntilFileFilterFactory(const int64_t last_to_discard) :
+      last_to_discard_(last_to_discard) {}
+
+  std::unique_ptr<rocksdb::CompactionFileFilter> CreateCompactionFileFilter(
+      const std::vector<rocksdb::FileMetaData*>& inputs) override {
+    return std::make_unique<DiscardUntilFileFilter>(last_to_discard_);
+  }
+
+  const char* Name() const override { return "DiscardUntilFileFilterFactory"; }
+
+ private:
+  const int64_t last_to_discard_;
+};
+
+// MakeMaxFileSizeFunction will create a function that returns the
+// rocksdb_max_file_size_for_compaction flag if it is set to a positive number, and returns
+// the max uint64 otherwise. It does NOT take the schema's table TTL into consideration.
+auto MakeMaxFileSizeFunction() {
+  // Trick to get type of max_file_size_for_compaction field.
+  typedef typename decltype(
+      static_cast<rocksdb::Options*>(nullptr)->max_file_size_for_compaction)::element_type
+      MaxFileSizeFunction;
+  return std::make_shared<MaxFileSizeFunction>([]{
+    if (FLAGS_rocksdb_max_file_size_for_compaction > 0) {
+      return FLAGS_rocksdb_max_file_size_for_compaction;
+    }
+    return std::numeric_limits<uint64_t>::max();
+  });
+}
 
 } // namespace
 
@@ -262,6 +329,13 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
     Slice data(rows_data.data(), rows_data.size());
     EXPECT_OK(row_block.Deserialize(YQL_CLIENT_CQL, &data));
     return row_block;
+  }
+
+  void SetMaxFileSizeForCompaction(const uint64_t max_size) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_file_size_for_compaction) = max_size;
+    // Make a function that will always use rocksdb_max_file_size_for_compaction.
+    // Normally, max_file_size_for_compaction is only used for tables with TTL.
+    max_file_size_for_compaction_ = MakeMaxFileSizeFunction();
   }
 };
 
@@ -1024,11 +1098,10 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ physical: 1000 logical: 1 w
 
 namespace {
 
-size_t GenerateFiles(int total_batches, DocOperationTest* test) {
+size_t GenerateFiles(int total_batches, DocOperationTest* test, const int kBigFileFrequency = 7) {
   auto schema = test->CreateSchema();
 
   auto t0 = HybridTime::FromMicrosecondsAndLogicalValue(1000, 0);
-  const int kBigFileFrequency = 7;
   const int kBigFileRows = 10000;
   size_t expected_files = 0;
   bool first = true;
@@ -1055,6 +1128,17 @@ size_t GenerateFiles(int total_batches, DocOperationTest* test) {
   return expected_files;
 }
 
+int CountBigFiles(const std::vector<rocksdb::LiveFileMetaData>& files,
+    const size_t kMaxFileSize) {
+  int num_large_files = 0;
+  for (auto file : files) {
+    if (file.uncompressed_size > kMaxFileSize) {
+      num_large_files++;
+    }
+  }
+  return num_large_files;
+}
+
 void WaitCompactionsDone(rocksdb::DB* db) {
   for (;;) {
     std::this_thread::sleep_for(500ms);
@@ -1079,7 +1163,7 @@ TEST_F(DocOperationTest, MaxFileSizeForCompaction) {
   rocksdb()->GetLiveFilesMetaData(&files);
   ASSERT_EQ(kTotalBatches, files.size());
 
-  FLAGS_rocksdb_max_file_size_for_compaction = 100_KB;
+  SetMaxFileSizeForCompaction(100_KB);
   ASSERT_OK(ReinitDBOptions());
 
   WaitCompactionsDone(rocksdb());
@@ -1096,7 +1180,7 @@ TEST_F(DocOperationTest, MaxFileSizeWithWritesTrigger) {
   const int kTotalBatches = 20;
   GenerateFiles(kTotalBatches, this);
 
-  FLAGS_rocksdb_max_file_size_for_compaction = 100_KB;
+  SetMaxFileSizeForCompaction(100_KB);
   ASSERT_OK(ReinitDBOptions());
 
   WaitCompactionsDone(rocksdb());
@@ -1114,6 +1198,81 @@ TEST_F(DocOperationTest, MaxFileSizeWithWritesTrigger) {
   auto stats = handle_impl->cfd()->internal_stats();
   ASSERT_EQ(0, stats->GetCFStats(rocksdb::InternalStats::LEVEL0_NUM_FILES_TOTAL));
   ASSERT_EQ(0, stats->GetCFStats(rocksdb::InternalStats::LEVEL0_SLOWDOWN_TOTAL));
+}
+
+TEST_F(DocOperationTest, MaxFileSizeIgnoredWithFileFilter) {
+  ASSERT_OK(DisableCompactions());
+  const size_t kMaxFileSize = 100_KB;
+  const int kNumFilesToWrite = 20;
+  const int kBigFileFrequency = 7;
+  const int kExpectedBigFiles = (kNumFilesToWrite-1)/kBigFileFrequency + 1;
+  auto expected_files = GenerateFiles(kNumFilesToWrite, this, kBigFileFrequency);
+  LOG(INFO) << "Files that would exist without compaction, if no filtering: " << expected_files;
+
+  auto files = rocksdb()->GetLiveFilesMetaData();
+  ASSERT_EQ(kNumFilesToWrite, files.size());
+  ASSERT_EQ(kExpectedBigFiles, CountBigFiles(files, kMaxFileSize));
+
+  SetMaxFileSizeForCompaction(kMaxFileSize);
+
+  // Use a filter factory that will expire every file.
+  compaction_file_filter_factory_ =
+      std::make_shared<DiscardUntilFileFilterFactory>(kAlwaysDiscard);
+
+  ASSERT_OK(ReinitDBOptions());
+
+  WaitCompactionsDone(rocksdb());
+
+  files = rocksdb()->GetLiveFilesMetaData();
+
+  // We expect all files to be filtered and thus removed, no matter the size.
+  ASSERT_EQ(0, files.size());
+  auto stats = rocksdb()->GetOptions().statistics;
+  ASSERT_EQ(kNumFilesToWrite, stats->getTickerCount(rocksdb::COMPACTION_FILES_FILTERED));
+}
+
+TEST_F(DocOperationTest, EarlyFilesFilteredBeforeBigFile) {
+  ASSERT_OK(DisableCompactions());
+  const size_t kMaxFileSize = 100_KB;
+  const int kNumFilesToWrite = 20;
+  const int kBigFileFrequency = 7;
+  const int kNumFilesToExpire = 3;
+  const int kExpectedBigFiles = (kNumFilesToWrite-1)/kBigFileFrequency + 1;
+  // Expected files should be one fewer than if none were discarded, since the first "big file"
+  // will be expired.
+  auto expected_files = GenerateFiles(kNumFilesToWrite, this, kBigFileFrequency) - 1;
+  LOG(INFO) << "Expiring " << kNumFilesToExpire <<
+      " files, first kept big file at " << kBigFileFrequency + 1;
+  LOG(INFO) << "Expected files after compaction: " << expected_files;
+
+  auto files = rocksdb()->GetLiveFilesMetaData();
+  ASSERT_EQ(kNumFilesToWrite, files.size());
+  ASSERT_EQ(kExpectedBigFiles, CountBigFiles(files, kMaxFileSize));
+  // Files will be ordered from latest to earliest, so select the nth file from the back.
+  auto last_to_discard =
+      rocksdb::TableFileNameToNumber(files[files.size() - kNumFilesToExpire].name);
+
+  SetMaxFileSizeForCompaction(kMaxFileSize);
+
+  // Use a filter factory that will expire every three files.
+  compaction_file_filter_factory_ =
+      std::make_shared<DiscardUntilFileFilterFactory>(last_to_discard);
+
+  ASSERT_OK(ReinitDBOptions());
+
+  WaitCompactionsDone(rocksdb());
+
+  files = rocksdb()->GetLiveFilesMetaData();
+
+  // We expect three files to expire, one big file and two small ones.
+  // The remaining small files should be compacted, leaving 5 files remaining.
+  //
+  // [large][small][small]....[large][small][small]...[large][small][small]...
+  // becomes [compacted small][large][compacted small][large][compacted small]
+  ASSERT_EQ(expected_files, files.size());
+
+  auto stats = rocksdb()->GetOptions().statistics;
+  ASSERT_EQ(kNumFilesToExpire, stats->getTickerCount(rocksdb::COMPACTION_FILES_FILTERED));
 }
 
 }  // namespace docdb

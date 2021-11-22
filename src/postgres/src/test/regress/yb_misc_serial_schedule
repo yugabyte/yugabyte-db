@@ -9,3 +9,4 @@ test: yb_schema
 test: yb_select
 test: yb_guc
 test: yb_depend
+test: yb_query_consistent_snapshot

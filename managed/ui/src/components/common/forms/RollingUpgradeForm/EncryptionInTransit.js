@@ -66,6 +66,10 @@ function getEncryptionComponent(
             component={YBFormToggle}
             onChange={(_, e) => {
               disableUniverseEncryption(values, inputName, e.target.checked, setFieldValue);
+              //If NodeToNode is disabled, disable rootAndClientRootCASame
+              if (inputName === 'enableNodeToNodeEncrypt' && !e.target.checked) {
+                setFieldValue('rootAndClientRootCASame', false);
+              }
             }}
           />
         </Col>
@@ -111,7 +115,7 @@ function getEncryptionComponent(
   );
 }
 
-export function EncryptionInTransit({ visible, onHide, currentUniverse }) {
+export function EncryptionInTransit({ visible, onHide, currentUniverse, fetchCurrentUniverse }) {
   const userCertificates = useSelector((state) => state.customer.userCertificates);
 
   const isCertificateListLoading =
@@ -137,6 +141,8 @@ export function EncryptionInTransit({ visible, onHide, currentUniverse }) {
       : universeDetails.rootAndClientRootCASame
       ? universeDetails.rootCA
       : CREATE_NEW_CERTIFICATE,
+    createNewRootCA: false,
+    createNewClientRootCA: false,
     rootAndClientRootCASame: universeDetails.rootAndClientRootCASame,
     timeDelay: 240,
     rollingUpgrade: true
@@ -150,7 +156,9 @@ export function EncryptionInTransit({ visible, onHide, currentUniverse }) {
         enableClientToNodeEncrypt: false,
         enableNodeToNodeEncrypt: false,
         rootCA: null,
+        createNewRootCA: false,
         clientRootCA: null,
+        createNewClientRootCA: false,
         rootAndClientRootCASame: false
       };
     }
@@ -162,25 +170,36 @@ export function EncryptionInTransit({ visible, onHide, currentUniverse }) {
       return;
     }
 
-    if (
-      formValues.enableNodeToNodeEncrypt === false ||
-      (formValues.enableNodeToNodeEncrypt && formValues.rootCA === CREATE_NEW_CERTIFICATE)
-    ) {
+    if (formValues.enableNodeToNodeEncrypt === false) {
       formValues['rootCA'] = null;
+      formValues['createNewRootCA'] = false;
     }
-    if (formValues.enableClientToNodeEncrypt === false) {
-      formValues['clientRootCA'] = null;
+    if (formValues.enableNodeToNodeEncrypt === true) {
+      if (formValues['rootCA'] === CREATE_NEW_CERTIFICATE) {
+        formValues['rootCA'] = null;
+        formValues['createNewRootCA'] = true;
+      } else {
+        formValues['createNewRootCA'] = false;
+      }
     }
 
+    if (formValues.enableClientToNodeEncrypt === false) {
+      formValues['clientRootCA'] = null;
+      formValues['createNewClientRootCA'] = false;
+    }
     if (formValues.enableClientToNodeEncrypt === true && !formValues.rootAndClientRootCASame) {
       if (formValues['clientRootCA'] === CREATE_NEW_CERTIFICATE) {
         formValues['clientRootCA'] = null;
+        formValues['createNewClientRootCA'] = true;
+      } else {
+        formValues['createNewClientRootCA'] = false;
       }
     }
 
     if (formValues.rootAndClientRootCASame) {
       if (formValues.enableNodeToNodeEncrypt && formValues.enableClientToNodeEncrypt) {
         formValues['clientRootCA'] = formValues['rootCA'];
+        formValues['createNewClientRootCA'] = false;
       }
     }
 
@@ -197,6 +216,7 @@ export function EncryptionInTransit({ visible, onHide, currentUniverse }) {
       if (resp.error) {
         setStatus({ error: resp.payload.response.data.error });
       } else {
+        fetchCurrentUniverse(currentUniverse.data.universeDetails.universeUUID);
         onHide();
       }
     });

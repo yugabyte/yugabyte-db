@@ -48,7 +48,6 @@
 #include <gperftools/malloc_extension.h>
 #include <gperftools/profiler.h>
 #endif
-#include <sys/stat.h>
 
 #include <fstream>
 #include <string>
@@ -63,7 +62,6 @@
 #include "yb/gutil/sysinfo.h"
 #include "yb/server/webserver.h"
 #include "yb/util/env.h"
-#include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/spinlock_profiling.h"
 #include "yb/util/status.h"

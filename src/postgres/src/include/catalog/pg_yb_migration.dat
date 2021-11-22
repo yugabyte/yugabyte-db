@@ -1,0 +1,16 @@
+#----------------------------------------------------------------------
+#
+# pg_yb_migration.dat
+#    Initial contents of the pg_yb_migration system catalog.
+#
+# Copyright (c) YugaByte, Inc.
+#
+# src/include/catalog/pg_yb_migration.dat
+#
+#----------------------------------------------------------------------
+
+[
+
+{ major => '12', minor => '0', name => '<baseline>', time_applied => '_null_' }
+
+]

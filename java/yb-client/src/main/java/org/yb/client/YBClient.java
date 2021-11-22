@@ -32,14 +32,23 @@
 package org.yb.client;
 
 import com.google.common.net.HostAndPort;
+import com.stumbleupon.async.Callback;
 import com.stumbleupon.async.Deferred;
+import java.lang.InterruptedException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.ColumnSchema;
@@ -469,26 +478,60 @@ public class YBClient implements AutoCloseable {
    * @return The host and port of the leader master, or null if no leader found.
    */
   public HostAndPort getLeaderMasterHostAndPort() {
-    for (HostAndPort hostAndPort : asyncClient.getMasterAddresses()) {
-      Deferred<GetMasterRegistrationResponse> d;
+    List<HostAndPort> masterAddresses = asyncClient.getMasterAddresses();
+    Map<HostAndPort, TabletClient> clients = new HashMap<>();
+    for (HostAndPort hostAndPort : masterAddresses) {
       TabletClient clientForHostAndPort = asyncClient.newMasterClient(hostAndPort);
       if (clientForHostAndPort == null) {
         String message = "Couldn't resolve this master's host/port " + hostAndPort.toString();
         LOG.warn(message);
-      } else {
-        d = asyncClient.getMasterRegistration(clientForHostAndPort);
-        try {
-          GetMasterRegistrationResponse resp = d.join(getDefaultAdminOperationTimeoutMs());
-          if (resp.getRole() == Metadata.RaftPeerPB.Role.LEADER) {
-            return hostAndPort;
-          }
-        } catch (Exception e) {
-          LOG.warn("Couldn't get registration info for master " + hostAndPort.toString());
-        }
       }
+      clients.put(hostAndPort, clientForHostAndPort);
     }
 
-    return null;
+    CountDownLatch finished = new CountDownLatch(1);
+    AtomicInteger workersLeft = new AtomicInteger(clients.entrySet().size());
+
+    AtomicReference<HostAndPort> result = new AtomicReference<>(null);
+    for (Entry<HostAndPort, TabletClient> entry : clients.entrySet()) {
+      asyncClient.getMasterRegistration(entry.getValue())
+          .addCallback(new Callback<Object, GetMasterRegistrationResponse>() {
+            @Override
+            public Object call(GetMasterRegistrationResponse response) throws Exception {
+              if (response.getRole() == Metadata.RaftPeerPB.Role.LEADER) {
+                boolean wasNullResult = result.compareAndSet(null, entry.getKey());
+                if (!wasNullResult) {
+                  LOG.warn(
+                      "More than one node reported they are master-leaders ({} and {})",
+                      result.get().toString(), entry.getKey().toString());
+                }
+                finished.countDown();
+              } else if (workersLeft.decrementAndGet() == 0) {
+                finished.countDown();
+              }
+              return null;
+            }
+          }).addErrback(new Callback<Exception, Exception>() {
+            @Override
+            public Exception call(final Exception e) {
+              // If finished == 0 then we are here because of closeClient() and the master is
+              // already found.
+              if (finished.getCount() != 0) {
+                LOG.warn("Couldn't get registration info for master " + entry.getKey().toString());
+                if (workersLeft.decrementAndGet() == 0) {
+                  finished.countDown();
+                }
+              }
+              return null;
+            }
+          });
+    }
+
+    try {
+      finished.await(getDefaultAdminOperationTimeoutMs(), TimeUnit.MILLISECONDS);
+    } catch (InterruptedException e) {
+    }
+    return result.get();
   }
 
   /**
@@ -1256,21 +1299,13 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
-  public CreateXClusterReplicationResponse createXClusterReplication(
+  public SetupUniverseReplicationResponse setupUniverseReplication(
     UUID sourceUniverseUUID,
-    List<String> sourceTableIDs,
-    List<Common.HostPortPB> sourceMasterAddresses) throws Exception {
-    return createXClusterReplication(
-      sourceUniverseUUID, sourceTableIDs, sourceMasterAddresses, new ArrayList<>());
-  }
-
-  public CreateXClusterReplicationResponse createXClusterReplication(
-    UUID sourceUniverseUUID,
-    List<String> sourceTableIDs,
-    List<Common.HostPortPB> sourceMasterAddresses,
-    List<String> sourceBootstrapIDs) throws Exception {
-    Deferred<CreateXClusterReplicationResponse> d =
-      asyncClient.createXClusterReplication(
+    Set<String> sourceTableIDs,
+    Set<Common.HostPortPB> sourceMasterAddresses,
+    Set<String> sourceBootstrapIDs) throws Exception {
+    Deferred<SetupUniverseReplicationResponse> d =
+      asyncClient.setupUniverseReplication(
         sourceUniverseUUID,
         sourceTableIDs,
         sourceMasterAddresses,
@@ -1278,52 +1313,66 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
-  public AlterXClusterReplicationResponse alterXClusterReplicationAddTables(
+  public IsSetupUniverseReplicationDoneResponse isSetupUniverseReplicationDone(
+    UUID sourceUniverseUUID) throws Exception {
+    Deferred<IsSetupUniverseReplicationDoneResponse> d =
+      asyncClient.isSetupUniverseReplicationDone(sourceUniverseUUID.toString());
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public SetUniverseReplicationEnabledResponse setUniverseReplicationEnabled(
+    UUID sourceUniverseUUID, boolean active) throws Exception {
+    Deferred<SetUniverseReplicationEnabledResponse> d =
+      asyncClient.setUniverseReplicationEnabled(sourceUniverseUUID, active);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public AlterUniverseReplicationResponse alterUniverseReplicationAddTables(
     UUID sourceUniverseUUID,
-    List<String> sourceTableIDsToAdd) throws Exception {
-    Deferred<AlterXClusterReplicationResponse> d =
-      asyncClient.alterXClusterReplicationAddTables(
+    Set<String> sourceTableIDsToAdd) throws Exception {
+    Deferred<AlterUniverseReplicationResponse> d =
+      asyncClient.alterUniverseReplicationAddTables(
         sourceUniverseUUID, sourceTableIDsToAdd);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
-  public AlterXClusterReplicationResponse alterXClusterReplicationRemoveTables(
+  public AlterUniverseReplicationResponse alterUniverseReplicationRemoveTables(
     UUID sourceUniverseUUID,
-    List<String> sourceTableIDsToRemove) throws Exception {
-    Deferred<AlterXClusterReplicationResponse> d =
-      asyncClient.alterXClusterReplicationRemoveTables(
+    Set<String> sourceTableIDsToRemove) throws Exception {
+    Deferred<AlterUniverseReplicationResponse> d =
+      asyncClient.alterUniverseReplicationRemoveTables(
         sourceUniverseUUID, sourceTableIDsToRemove);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
-  public AlterXClusterReplicationResponse alterXClusterReplicationChangeSourceMasterAddresses(
+  public AlterUniverseReplicationResponse alterUniverseReplicationSourceMasterAddresses(
     UUID sourceUniverseUUID,
-    List<Common.HostPortPB> sourceMasterAddresses) throws Exception {
-    Deferred<AlterXClusterReplicationResponse> d =
-      asyncClient.alterXClusterReplicationChangeSourceMasterAddresses(
+    Set<Common.HostPortPB> sourceMasterAddresses) throws Exception {
+    Deferred<AlterUniverseReplicationResponse> d =
+      asyncClient.alterUniverseReplicationSourceMasterAddresses(
         sourceUniverseUUID, sourceMasterAddresses);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
-  public DeleteXClusterReplicationResponse deleteXClusterReplication(
+  public IsSetupUniverseReplicationDoneResponse isAlterUniverseReplicationDone(
     UUID sourceUniverseUUID) throws Exception {
-    Deferred<DeleteXClusterReplicationResponse> d =
-      asyncClient.deleteXClusterReplication(
+    Deferred<IsSetupUniverseReplicationDoneResponse> d =
+      asyncClient.isSetupUniverseReplicationDone(sourceUniverseUUID + ".ALTER");
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public DeleteUniverseReplicationResponse deleteUniverseReplication(
+    UUID sourceUniverseUUID) throws Exception {
+    Deferred<DeleteUniverseReplicationResponse> d =
+      asyncClient.deleteUniverseReplication(
         sourceUniverseUUID);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
-  public GetXClusterReplicationInfoResponse getXClusterReplicationInfo(
+  public GetUniverseReplicationResponse getUniverseReplication(
     UUID sourceUniverseUUID) throws Exception {
-    Deferred<GetXClusterReplicationInfoResponse> d =
-      asyncClient.getXClusterReplicationInfo(sourceUniverseUUID);
-    return d.join(getDefaultAdminOperationTimeoutMs());
-  }
-
-  public SetXClusterReplicationActiveResponse setXClusterReplicationActive(
-    UUID sourceUniverseUUID, boolean active) throws Exception {
-    Deferred<SetXClusterReplicationActiveResponse> d =
-      asyncClient.setXClusterReplicationActive(sourceUniverseUUID, active);
+    Deferred<GetUniverseReplicationResponse> d =
+      asyncClient.getUniverseReplication(sourceUniverseUUID);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 

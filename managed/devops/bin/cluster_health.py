@@ -29,8 +29,8 @@ from six import string_types, PY2, PY3
 
 
 # Try to read home dir from environment variable, else assume it's /home/yugabyte.
-ALERT_ENHANCEMENTS_RELEASE = "2.6.0.0"
-RELEASE_VERSION_PATTERN = "(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)(.*)"
+ALERT_ENHANCEMENTS_RELEASE_BUILD = "2.6.0.0-b0"
+RELEASE_BUILD_PATTERN = "(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)[-]b(\\d+).*"
 YB_HOME_DIR = os.environ.get("YB_HOME_DIR", "/home/yugabyte")
 YB_TSERVER_DIR = os.path.join(YB_HOME_DIR, "tserver")
 YB_CORES_DIR = os.path.join(YB_HOME_DIR, "cores/")
@@ -38,7 +38,10 @@ YB_PROCESS_LOG_PATH_FORMAT = os.path.join(YB_HOME_DIR, "{}/logs/")
 VM_ROOT_CERT_FILE_PATH = os.path.join(YB_HOME_DIR, "yugabyte-tls-config/ca.crt")
 
 K8S_CERTS_PATH = "/opt/certs/yugabyte/"
+K8S_CLIENT_CERTS_PATH = "/root/.yugabytedb/"
 K8S_CERT_FILE_PATH = os.path.join(K8S_CERTS_PATH, "ca.crt")
+K8S_CLIENT_CA_CERT_FILE_PATH = os.path.join(K8S_CLIENT_CERTS_PATH, "root.crt")
+K8S_CLIENT_CERT_FILE_PATH = os.path.join(K8S_CLIENT_CERTS_PATH, "yugabytedb.crt")
 
 RECENT_FAILURE_THRESHOLD_SEC = 8 * 60
 FATAL_TIME_THRESHOLD_MINUTES = 12
@@ -118,7 +121,7 @@ class Entry:
             EntryType.HAS_ERROR: self.has_error,
             EntryType.HAS_WARNING: self.has_warning
         }
-        if self.metric_value:
+        if self.metric_value is not None:
             j[EntryType.METRIC_VALUE] = self.metric_value
         if self.process:
             j[EntryType.PROCESS] = self.process
@@ -220,7 +223,7 @@ class NodeChecker():
     def __init__(self, node, node_name, identity_file, ssh_port, start_time_ms,
                  namespace_to_config, ysql_port, ycql_port, redis_port, enable_tls_client,
                  root_and_client_root_ca_same, ssl_protocol, enable_ysql_auth,
-                 master_http_port, tserver_http_port, universe_version):
+                 master_http_port, tserver_http_port, collect_metrics_script, universe_version):
         self.node = node
         self.node_name = node_name
         self.identity_file = identity_file
@@ -244,6 +247,7 @@ class NodeChecker():
         self.enable_ysql_auth = enable_ysql_auth
         self.master_http_port = master_http_port
         self.tserver_http_port = tserver_http_port
+        self.collect_metrics_script = collect_metrics_script
         self.universe_version = universe_version
         self.additional_info = {}
 
@@ -281,6 +285,35 @@ class NodeChecker():
 
         output = check_output(cmd_to_run, env_conf).strip()
 
+        return self.convert_output(output)
+
+    def _upload_file(self, local_file, remote_file):
+        cmd_to_run = []
+        env_conf = os.environ.copy()
+        if self.is_k8s:
+            env_conf["KUBECONFIG"] = self.k8s_details.config
+            cmd_to_run.extend([
+                'kubectl',
+                'cp',
+                local_file,
+                '{}/{}:{}'.format(
+                    self.k8s_details.namespace, self.k8s_details.pod_name, remote_file),
+                '-c', self.k8s_details.container])
+        else:
+            cmd_to_run.extend(
+                ['scp', '-P', str(self.ssh_port),
+                 '-o', 'StrictHostKeyChecking no',
+                 '-o', 'ConnectTimeout={}'.format(SSH_TIMEOUT_SEC),
+                 '-o', 'UserKnownHostsFile /dev/null',
+                 '-o', 'LogLevel ERROR',
+                 '-i', self.identity_file,
+                 local_file, 'yugabyte@{}:{}'.format(self.node, remote_file)])
+
+        output = check_output(cmd_to_run, env_conf).strip()
+
+        return self.convert_output(output)
+
+    def convert_output(self, output):
         # TODO: this is only relevant for SSH, so non-k8s.
         if output.endswith('No route to host'):
             return 'Error: Node {} is unreachable'.format(self.node)
@@ -354,7 +387,23 @@ class NodeChecker():
             False,
             days_till_expiry)
 
+    def get_node_to_node_ca_certificate_path(self):
+        if self.is_k8s:
+            return K8S_CERT_FILE_PATH
+
+        return VM_ROOT_CERT_FILE_PATH
+
+    def get_node_to_node_certificate_path(self):
+        if self.is_k8s:
+            return os.path.join(K8S_CERTS_PATH, "node.{}.crt".format(self.node))
+
+        return os.path.join(YB_HOME_DIR,
+                            "yugabyte-tls-config/node.{}.crt".format(self.node))
+
     def get_client_to_node_ca_certificate_path(self):
+        if self.is_k8s:
+            return K8S_CLIENT_CA_CERT_FILE_PATH
+
         remote_cmd = 'if [ -f "{0}" ]; then echo "{0}";'.format(
             os.path.join(YB_HOME_DIR, "yugabyte-client-tls-config/ca.crt"))
 
@@ -365,64 +414,55 @@ class NodeChecker():
         remote_cmd += ' fi;'
         return self._remote_check_output(remote_cmd).strip()
 
-    def check_node_to_node_ca_certificate_expiration(self):
-        return self.check_certificate_expiration("Node To Node CA",
-                                                 VM_ROOT_CERT_FILE_PATH if not self.is_k8s
-                                                 else K8S_CERT_FILE_PATH)
-
-    def check_node_to_node_certificate_expiration(self):
-        if not self.is_k8s:
-            cert_path = os.path.join(YB_HOME_DIR,
-                                     "yugabyte-tls-config/node.{}.crt".format(self.node))
-        else:
-            cert_path = os.path.join(K8S_CERTS_PATH, "node.{}.crt".format(self.node))
-        return self.check_certificate_expiration("Node To Node", cert_path)
-
-    def check_client_to_node_ca_certificate_expiration(self):
-        return self.check_certificate_expiration(
-            "Client To Node CA", self.get_client_to_node_ca_certificate_path())
-
     def get_client_to_node_certificate_path(self):
+        if self.is_k8s:
+            return K8S_CLIENT_CERT_FILE_PATH
+
         cert_path = os.path.join(
             YB_HOME_DIR, "yugabyte-client-tls-config/node.{}.crt".format(self.node))
-        remote_cmd = 'if [ -f "{0}" ]; then echo "{0}"; elif [ -f "{1}" ]; then echo "{1}"; fi'.\
+        remote_cmd = 'if [ -f "{0}" ]; then echo "{0}"; elif [ -f "{1}" ]; then echo "{1}"; fi'. \
             format(cert_path, os.path.join(YB_HOME_DIR, ".yugabytedb/yugabytedb.crt"))
         return self._remote_check_output(remote_cmd).strip()
 
-    def check_client_to_node_certificate_expiration(self):
-        return self.check_certificate_expiration(
-            "Client To Node", self.get_client_to_node_certificate_path())
+    def check_node_to_node_ca_certificate_expiration(self):
+        return self.check_certificate_expiration("Node To Node CA",
+                                                 self.get_node_to_node_ca_certificate_path())
 
-    def get_yb_version(self, host_port):
-        try:
-            url = 'http://{}/api/v1/version'.format(host_port)
-            response = requests.get(url, timeout=2)
-            return response.text
-        except Exception as ex:
-            message = str(ex)
-            return "Error querying for version: " + message
+    def check_node_to_node_certificate_expiration(self):
+        return self.check_certificate_expiration("Node To Node",
+                                                 self.get_node_to_node_certificate_path())
+
+    def check_client_to_node_ca_certificate_expiration(self):
+        return self.check_certificate_expiration("Client To Node CA",
+                                                 self.get_client_to_node_ca_certificate_path())
+
+    def check_client_to_node_certificate_expiration(self):
+        return self.check_certificate_expiration("Client To Node",
+                                                 self.get_client_to_node_certificate_path())
 
     def check_yb_version(self, ip_address, process, port, expected):
         logging.info("Checking YB Version on node {} process {}".format(self.node, process))
         e = self._new_entry("YB Version")
 
-        output = self.get_yb_version('{}:{}'.format(ip_address, port))
+        remote_cmd = 'curl --silent http://{}:{}/api/v1/version'.format(ip_address, port)
+        output = self._remote_check_output(remote_cmd)
         if has_errors(output):
             return e.fill_and_return_entry([output], True)
 
         try:
             json_version = json.loads(output)
-            version = json_version["version_number"] + "-b" + json_version["build_number"]
+            release_build = json_version["version_number"] + "-b" + json_version["build_number"]
         except Exception as ex:
             message = str(ex)
             return e.fill_and_return_entry([message], True)
 
-        matched = version == expected
+        matched = is_equal_release_build(release_build, expected)
         if not matched:
             return e.fill_and_return_entry(
-                ['Expected version {}, Actual version {}'.format(expected, version)],
+                ['Version from platform metadata {}, version reported by instance process {}'.
+                 format(expected, release_build)],
                 True)
-        return e.fill_and_return_entry([version])
+        return e.fill_and_return_entry([release_build])
 
     def check_master_yb_version(self, process):
         return self.check_yb_version(
@@ -432,20 +472,8 @@ class NodeChecker():
         return self.check_yb_version(
             self.node, process, self.tserver_http_port, self.universe_version)
 
-    def check_for_fatal_logs(self, process):
-        logging.info("Checking for fatals on node {}".format(self.node))
-        e = self._new_entry("Fatal log files")
+    def check_logs_find_output(self, output):
         logs = []
-        process_dir = process.strip("yb-")
-        search_dir = YB_PROCESS_LOG_PATH_FORMAT.format(process_dir)
-        remote_cmd = (
-            'find {} {} -name "*FATAL*" -type f -printf "%T@ %p\\n" | sort -rn'.format(
-                search_dir,
-                '-mmin -{}'.format(FATAL_TIME_THRESHOLD_MINUTES)))
-        output = self._remote_check_output(remote_cmd)
-        if has_errors(output):
-            return e.fill_and_return_entry([output], True)
-
         if output:
             for line in output.strip().split('\n'):
                 splits = line.strip().split()
@@ -461,7 +489,42 @@ class NodeChecker():
                 logs.append('{} ({} old)'.format(
                     filename,
                     ''.join(seconds_to_human_readable_time(int(time.time() - int(epoch))))))
-        return e.fill_and_return_entry(logs, len(logs) > 0)
+        return logs
+
+    def check_for_error_logs(self, process):
+        logging.info("Checking for error logs on node {}".format(self.node))
+        e = self._new_entry("Fatal log files")
+        logs = []
+        process_name = process.strip("yb-")
+        search_dir = YB_PROCESS_LOG_PATH_FORMAT.format(process_name)
+
+        metric_value = 0
+        for log_severity in ["FATAL", "ERROR"]:
+            remote_cmd = ('find {} {} -name "*{}*" -type f -printf "%T@ %p\\n" | sort -rn'.format(
+                search_dir,
+                '-mmin -{}'.format(FATAL_TIME_THRESHOLD_MINUTES),
+                log_severity))
+            output = self._remote_check_output(remote_cmd)
+            if has_errors(output):
+                return e.fill_and_return_entry([output], True)
+
+            log_files = self.check_logs_find_output(output)
+
+            # For now only show error on fatal logs - until error logs are cleaned up enough
+            if log_severity == "FATAL":
+                logs.extend(log_files)
+
+            # 0 = no error and fatal logs
+            # 1 = error logs only
+            # 2 = fatal logs only
+            # 3 = error and fatal logs
+            if len(log_files) > 0:
+                if log_severity == "ERROR":
+                    metric_value = metric_value + 1
+                if log_severity == "FATAL":
+                    metric_value = metric_value + 2
+
+        return e.fill_and_return_entry(logs, len(logs) > 0, metric_value)
 
     def check_for_core_files(self):
         logging.info("Checking for core files on node {}".format(self.node))
@@ -562,10 +625,7 @@ class NodeChecker():
         cqlsh = '{}/bin/cqlsh'.format(YB_TSERVER_DIR)
         remote_cmd = '{} {} {} -e "SHOW HOST"'.format(cqlsh, self.node, self.ycql_port)
         if self.enable_tls_client:
-            if self.is_k8s:
-                cert_file = K8S_CERT_FILE_PATH
-            else:
-                cert_file = self.get_client_to_node_ca_certificate_path()
+            cert_file = self.get_client_to_node_ca_certificate_path()
             protocols = re.split('\\W+', self.ssl_protocol or "")
             ssl_version = DEFAULT_SSL_VERSION
             for protocol in protocols:
@@ -680,6 +740,13 @@ class NodeChecker():
         return {"ssl_installed:" + self.node: (output == "0")
                 if not has_errors(output) else None}
 
+    def upload_collect_metrics_script(self):
+        remote_script_path = "{}/bin/collect_metrics.sh".format(YB_HOME_DIR)
+        output = self._upload_file(self.collect_metrics_script, remote_script_path).rstrip()
+        logging.info("Metrics collection script uploaded to node %s: %s",  self.node, output)
+        return {"collect_metrics_script_uploaded:" + self.node: (output == "0")
+                if not has_errors(output) else None}
+
 
 ###################################################################################################
 # Utility functions
@@ -695,28 +762,48 @@ def local_time():
     return datetime.utcnow().replace(tzinfo=tz.tzutc())
 
 
-def is_equal_or_newer_release(current_version, threshold_version):
-    if not current_version:
+def parse_release_build(release_build):
+    if not release_build:
+        return None
+
+    match = re.match(RELEASE_BUILD_PATTERN, release_build)
+    if match is None:
+        raise RuntimeError("Invalid release build format: {}".format(release_build))
+
+    return match
+
+
+def is_equal_release_build(release_build1, release_build2):
+    parsed_release_build_1 = parse_release_build(release_build1)
+    parsed_release_build_2 = parse_release_build(release_build2)
+    if not parsed_release_build_1 or not parsed_release_build_2:
         return False
 
-    c_match = re.match(RELEASE_VERSION_PATTERN, current_version)
-    t_match = re.match(RELEASE_VERSION_PATTERN, threshold_version)
+    for i in range(1, 6):
+        component1 = int(parsed_release_build_1.group(i))
+        component2 = int(parsed_release_build_2.group(i))
+        if component1 != component2:
+            # If any component is behind or ahead, release builds are not equal.
+            return False
+    return True
 
-    if c_match is None:
-        raise RuntimeError("Invalid universe version format: {}".format(current_version))
-    if t_match is None:
-        raise RuntimeError("Invalid threshold version format: {}".format(threshold_version))
 
-    for i in range(1, 5):
-        c = int(c_match.group(i))
-        t = int(t_match.group(i))
+def is_equal_or_newer_release_build(current_release_build, threshold_release_build):
+    parsed_current_release_build = parse_release_build(current_release_build)
+    parsed_threshold_release_build = parse_release_build(threshold_release_build)
+    if not parsed_current_release_build or not parsed_threshold_release_build:
+        return False
+
+    for i in range(1, 6):
+        c = int(parsed_current_release_build.group(i))
+        t = int(parsed_threshold_release_build.group(i))
         if c < t:
-            # If any component is behind, the whole version is older.
+            # If any component is behind, the whole release build is older.
             return False
         elif c > t:
-            # If any component is ahead, the whole version is newer.
+            # If any component is ahead, the whole release build is newer.
             return True
-    # If all components were equal, then the versions are compatible.
+    # If all components were equal, then release builds are compatible.
     return True
 
 
@@ -843,6 +930,7 @@ class Cluster():
         self.enable_ysql_auth = data["enableYSQLAuth"]
         self.master_http_port = data["masterHttpPort"]
         self.tserver_http_port = data["tserverHttpPort"]
+        self.collect_metrics_script = data["collectMetricsScript"]
 
 
 class UniverseDefinition():
@@ -872,8 +960,8 @@ def main():
         # Technically, each cluster can have its own version, but in practice,
         # we disallow that in YW.
         universe_version = universe.clusters[0].yb_version if universe.clusters else None
-        alert_enhancements_version = is_equal_or_newer_release(
-            universe_version, ALERT_ENHANCEMENTS_RELEASE)
+        alert_enhancements_version = is_equal_or_newer_release_build(
+            universe_version, ALERT_ENHANCEMENTS_RELEASE_BUILD)
         report = Report(universe_version)
         for c in universe.clusters:
             master_nodes = c.master_nodes
@@ -887,9 +975,11 @@ def main():
                         args.start_time_ms, c.namespace_to_config, c.ysql_port,
                         c.ycql_port, c.redis_port, c.enable_tls_client,
                         c.root_and_client_root_ca_same, c.ssl_protocol, c.enable_ysql_auth,
-                        c.master_http_port, c.tserver_http_port, universe_version)
+                        c.master_http_port, c.tserver_http_port, c.collect_metrics_script,
+                        universe_version)
 
                 coordinator.add_precheck(checker, "check_openssl_availability")
+                coordinator.add_precheck(checker, "upload_collect_metrics_script")
 
                 # TODO: use paramiko to establish ssh connection to the nodes.
                 if node in master_nodes:
@@ -897,13 +987,13 @@ def main():
                         checker, "check_uptime_for_process", "yb-master")
                     if alert_enhancements_version:
                         coordinator.add_check(checker, "check_master_yb_version", "yb-master")
-                    coordinator.add_check(checker, "check_for_fatal_logs", "yb-master")
+                    coordinator.add_check(checker, "check_for_error_logs", "yb-master")
                 if node in tserver_nodes:
                     coordinator.add_check(
                         checker, "check_uptime_for_process", "yb-tserver")
                     if alert_enhancements_version:
                         coordinator.add_check(checker, "check_tserver_yb_version", "yb-tserver")
-                    coordinator.add_check(checker, "check_for_fatal_logs", "yb-tserver")
+                    coordinator.add_check(checker, "check_for_error_logs", "yb-tserver")
                     # Only need to check redis-cli/cqlsh for tserver nodes
                     # to be docker/k8s friendly.
                     if c.enable_ycql:

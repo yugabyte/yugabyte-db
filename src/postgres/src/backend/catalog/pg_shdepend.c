@@ -61,6 +61,7 @@
 #include "commands/tablecmds.h"
 #include "commands/tablespace.h"
 #include "commands/typecmds.h"
+#include "postgres_ext.h"
 #include "storage/lmgr.h"
 #include "miscadmin.h"
 #include "utils/acl.h"
@@ -173,37 +174,6 @@ recordDependencyOnOwner(Oid classId, Oid objectId, Oid owner)
 }
 
 /*
- * recordDependencyOnTablespace
- *
- * A convenient wrapper of recordSharedDependencyOn -- mark that an object is
- * associated with a tablespace.
- *
- * Note: it's the caller's responsibility to ensure that there isn't a
- * tablespace entry for the object already.
- */
-void
-recordDependencyOnTablespace(Oid classId, Oid objectId, Oid tablespaceOid)
-{
-	if (tablespaceOid == InvalidOid)
-	{
-		/* Nothing to do */
-		return;
-	}
-	ObjectAddress myself, referenced;
-
-	myself.classId = classId;
-	myself.objectId = objectId;
-	myself.objectSubId = 0;
-
-	referenced.classId = TableSpaceRelationId;
-	referenced.objectId = tablespaceOid;
-	referenced.objectSubId = 0;
-
-	recordSharedDependencyOn(&myself, &referenced,
-							 SHARED_DEPENDENCY_TABLESPACE);
-}
-
-/*
  * shdepChangeDep
  *
  * Update shared dependency records to account for an updated referenced
@@ -212,11 +182,14 @@ recordDependencyOnTablespace(Oid classId, Oid objectId, Oid tablespaceOid)
  *
  * There must be no more than one existing entry for the given dependent
  * object and dependency type!	So in practice this can only be used for
- * updating SHARED_DEPENDENCY_OWNER entries, which should have that property.
+ * updating SHARED_DEPENDENCY_OWNER and SHARED_DEPENDENCY_TABLESPACE
+ * entries, which should have that property.
  *
  * If there is no previous entry, we assume it was referencing a PINned
  * object, so we create a new entry.  If the new referenced object is
  * PINned, we don't create an entry (and drop the old one, if any).
+ * (For tablespaces, we don't record dependencies in certain cases, so
+ * there are other possible reasons for entries to be missing.)
  *
  * sdepRel must be the pg_shdepend relation, already opened and suitably
  * locked.
@@ -366,6 +339,77 @@ changeDependencyOnOwner(Oid classId, Oid objectId, Oid newOwnerId)
 	shdepDropDependency(sdepRel, classId, objectId, 0, true,
 						AuthIdRelationId, newOwnerId,
 						SHARED_DEPENDENCY_ACL);
+
+	heap_close(sdepRel, RowExclusiveLock);
+}
+
+/*
+ * recordDependencyOnTablespace
+ *
+ * A convenient wrapper of recordSharedDependencyOn -- register the specified
+ * tablespace as default for the given object.
+ *
+ * Note: it's the caller's responsibility to ensure that there isn't a
+ * tablespace entry for the object already.
+ */
+void
+recordDependencyOnTablespace(Oid classId, Oid objectId, Oid tablespace)
+{
+	/*
+	 * When recording dependencies on tablespaces for relations, InvalidOid
+	 * indicates the database's default tablespace and should never be
+	 * passed as an argument tablespace to record a tablespace dependency.
+	 * Instead, a dependency on the database's default tablespace is added on
+	 * the creation of the database and exists for the lifetime of the database
+	 * or until the database default tablespace is altered.
+	 */
+	if (tablespace == InvalidOid)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					errmsg("Tablespace dependencies cannot be recorded on InvalidOid")));
+
+	/*
+	 * Since the pg_default and pg_global tablespaces cannot be dropped,
+	 * it is safe to never record dependencies on these tablespaces.
+	 */
+	if (tablespace == DEFAULTTABLESPACE_OID || tablespace == GLOBALTABLESPACE_OID)
+		return;
+
+	ObjectAddress myself, referenced;
+
+	ObjectAddressSet(myself, classId, objectId);
+	ObjectAddressSet(referenced, TableSpaceRelationId, tablespace);
+
+	recordSharedDependencyOn(&myself, &referenced,
+							 SHARED_DEPENDENCY_TABLESPACE);
+}
+
+/*
+ * changeDependencyOnTablespace
+ *
+ * Update the shared dependencies to account for the new tablespace.
+ *
+ * Note: we don't need an objsubid argument because only whole objects
+ * have tablespaces.
+ */
+void
+changeDependencyOnTablespace(Oid classId, Oid objectId, Oid newTablespaceId)
+{
+	Relation	sdepRel;
+
+	sdepRel = heap_open(SharedDependRelationId, RowExclusiveLock);
+
+	if (newTablespaceId != DEFAULTTABLESPACE_OID &&
+		newTablespaceId != InvalidOid)
+		shdepChangeDep(sdepRel,
+					   classId, objectId, 0,
+					   TableSpaceRelationId, newTablespaceId,
+					   SHARED_DEPENDENCY_TABLESPACE);
+	else
+		shdepDropDependency(sdepRel,
+							classId, objectId, 0, true,
+							InvalidOid, InvalidOid,
+							SHARED_DEPENDENCY_INVALID);
 
 	heap_close(sdepRel, RowExclusiveLock);
 }
@@ -1135,7 +1179,7 @@ storeObjectDescription(StringInfo descs,
 static bool
 isSharedObjectPinned(Oid classId, Oid objectId, Relation sdepRel)
 {
-	if (YBHasPinnedObjectsCache())
+	if (YBIsPinnedObjectsCacheAvailable())
 		return YBIsSharedObjectPinned(classId, objectId);
 
 	bool		result = false;

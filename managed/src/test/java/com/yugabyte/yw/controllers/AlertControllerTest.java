@@ -3,7 +3,7 @@
 package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
-import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -23,6 +23,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.AlertTemplate;
@@ -30,18 +31,14 @@ import com.yugabyte.yw.common.AssertHelper;
 import com.yugabyte.yw.common.EmailFixtures;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
 import com.yugabyte.yw.common.alerts.AlertChannelParams;
 import com.yugabyte.yw.common.alerts.AlertChannelService;
 import com.yugabyte.yw.common.alerts.AlertChannelSlackParams;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
-import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
-import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.alerts.AlertUtils;
 import com.yugabyte.yw.common.alerts.SmtpData;
-import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.forms.filters.AlertApiFilter;
@@ -73,17 +70,22 @@ import com.yugabyte.yw.models.paging.AlertConfigurationPagedResponse;
 import com.yugabyte.yw.models.paging.AlertPagedResponse;
 import com.yugabyte.yw.models.paging.PagedQuery;
 import java.io.IOException;
+import java.nio.charset.Charset;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import okhttp3.HttpUrl;
+import okhttp3.mockwebserver.MockResponse;
+import okhttp3.mockwebserver.MockWebServer;
+import okhttp3.mockwebserver.RecordedRequest;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
-import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 import play.libs.Json;
 import play.mvc.Result;
@@ -99,8 +101,6 @@ public class AlertControllerTest extends FakeDBApplication {
 
   private Universe universe;
 
-  @Mock private ValidatingFormFactory formFactory;
-
   @InjectMocks private AlertController controller;
 
   private SmtpData defaultSmtp = EmailFixtures.createSmtpData();
@@ -109,12 +109,9 @@ public class AlertControllerTest extends FakeDBApplication {
 
   private int alertDestinationIndex;
 
-  private MetricService metricService;
-  private AlertService alertService;
-  private AlertDefinitionService alertDefinitionService;
-  private AlertConfigurationService alertConfigurationService;
   private AlertChannelService alertChannelService;
   private AlertDestinationService alertDestinationService;
+  private AlertConfigurationService alertConfigurationService;
 
   private AlertConfiguration alertConfiguration;
   private AlertDefinition alertDefinition;
@@ -127,21 +124,11 @@ public class AlertControllerTest extends FakeDBApplication {
 
     universe = ModelFactory.createUniverse();
 
-    metricService = new MetricService();
-    alertService = new AlertService();
-    alertDefinitionService = new AlertDefinitionService(alertService);
-    alertConfigurationService =
-        new AlertConfigurationService(
-            alertDefinitionService, new SettableRuntimeConfigFactory(app.config()));
-    alertChannelService = new AlertChannelService();
-    alertDestinationService =
-        new AlertDestinationService(alertChannelService, alertConfigurationService);
+    alertChannelService = app.injector().instanceOf(AlertChannelService.class);
+    alertDestinationService = app.injector().instanceOf(AlertDestinationService.class);
+    alertConfigurationService = app.injector().instanceOf(AlertConfigurationService.class);
     alertConfiguration = ModelFactory.createAlertConfiguration(customer, universe);
     alertDefinition = ModelFactory.createAlertDefinition(customer, universe, alertConfiguration);
-
-    controller.setMetricService(metricService);
-    controller.setAlertService(alertService);
-    controller.setAlertConfigurationService(alertConfigurationService);
   }
 
   private void checkEmptyAnswer(String url) {
@@ -152,8 +139,8 @@ public class AlertControllerTest extends FakeDBApplication {
 
   private AlertChannelParams getAlertChannelParamsForTests() {
     AlertChannelEmailParams arParams = new AlertChannelEmailParams();
-    arParams.recipients = Collections.singletonList("test@test.com");
-    arParams.smtpData = defaultSmtp;
+    arParams.setRecipients(Collections.singletonList("test@test.com"));
+    arParams.setSmtpData(defaultSmtp);
     return arParams;
   }
 
@@ -215,7 +202,7 @@ public class AlertControllerTest extends FakeDBApplication {
     data.put("name", "name");
     data.put("params", Json.toJson(new AlertChannelEmailParams()));
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 doRequestWithAuthTokenAndBody(
                     "POST",
@@ -224,7 +211,7 @@ public class AlertControllerTest extends FakeDBApplication {
                     data));
 
     AssertHelper.assertBadRequest(
-        result, "Email parameters: only one of defaultRecipients and recipients[] should be set.");
+        result, "{\"params\":[\"only one of defaultRecipients and recipients[] should be set.\"]}");
     checkEmptyAnswer("/api/customers/" + customer.getUuid() + "/alert_channels");
   }
 
@@ -249,7 +236,7 @@ public class AlertControllerTest extends FakeDBApplication {
   public void testGetAlertChannel_ErrorResult() {
     UUID uuid = UUID.randomUUID();
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 doRequestWithAuthToken(
                     "GET",
@@ -264,8 +251,8 @@ public class AlertControllerTest extends FakeDBApplication {
     assertThat(createdChannel.getUuid(), notNullValue());
 
     AlertChannelEmailParams params = (AlertChannelEmailParams) createdChannel.getParams();
-    params.recipients = Collections.singletonList("new@test.com");
-    params.smtpData.smtpPort = 1111;
+    params.setRecipients(Collections.singletonList("new@test.com"));
+    params.getSmtpData().smtpPort = 1111;
     createdChannel.setParams(params);
 
     ObjectNode data = Json.newObject();
@@ -303,7 +290,7 @@ public class AlertControllerTest extends FakeDBApplication {
         .put("params", Json.toJson(createdChannel.getParams()));
 
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 doRequestWithAuthTokenAndBody(
                     "PUT",
@@ -314,7 +301,9 @@ public class AlertControllerTest extends FakeDBApplication {
                     authToken,
                     data));
     AssertHelper.assertBadRequest(
-        result, "Unable to create/update alert channel: Slack parameters: username is empty.");
+        result,
+        "{\"params.webhookUrl\":[\"may not be null\"],"
+            + "\"params.username\":[\"may not be null\"]}");
   }
 
   @Test
@@ -362,7 +351,7 @@ public class AlertControllerTest extends FakeDBApplication {
   public void testDeleteAlertChannel_ErrorResult() {
     UUID uuid = UUID.randomUUID();
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 doRequestWithAuthToken(
                     "DELETE",
@@ -406,7 +395,7 @@ public class AlertControllerTest extends FakeDBApplication {
     assertThat(result.status(), is(OK));
 
     result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 doRequestWithAuthToken(
                     "DELETE",
@@ -426,15 +415,9 @@ public class AlertControllerTest extends FakeDBApplication {
 
   private ObjectNode getAlertDestinationJson(boolean isDefault) {
     AlertChannel channel1 =
-        ModelFactory.createAlertChannel(
-            customer.getUuid(),
-            getAlertChannelName(),
-            AlertUtils.createParamsInstance(ChannelType.Email));
+        ModelFactory.createEmailChannel(customer.getUuid(), getAlertChannelName());
     AlertChannel channel2 =
-        ModelFactory.createAlertChannel(
-            customer.getUuid(),
-            getAlertChannelName(),
-            AlertUtils.createParamsInstance(ChannelType.Slack));
+        ModelFactory.createSlackChannel(customer.getUuid(), getAlertChannelName());
 
     ObjectNode data = Json.newObject();
     data.put("name", getAlertDestinationName())
@@ -506,7 +489,7 @@ public class AlertControllerTest extends FakeDBApplication {
         .putArray("channels")
         .add(alertChannelUUID);
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 doRequestWithAuthTokenAndBody(
                     "POST",
@@ -557,7 +540,7 @@ public class AlertControllerTest extends FakeDBApplication {
   public void testGetAlertDestination_ErrorResult() {
     UUID uuid = UUID.randomUUID();
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 doRequestWithAuthToken(
                     "GET",
@@ -613,7 +596,7 @@ public class AlertControllerTest extends FakeDBApplication {
 
     destination.setDefaultDestination(false);
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 doRequestWithAuthTokenAndBody(
                     "PUT",
@@ -625,8 +608,8 @@ public class AlertControllerTest extends FakeDBApplication {
                     Json.toJson(destination)));
     AssertHelper.assertBadRequest(
         result,
-        "Can't set the alert destination as non-default. Make another"
-            + " destination as default at first.");
+        "{\"defaultDestination\":[\"can't set the alert destination as non-default - "
+            + "make another destination as default at first.\"]}");
     destination.setDefaultDestination(true);
     assertThat(alertDestinationService.getDefaultDestination(customer.uuid), equalTo(destination));
   }
@@ -655,7 +638,7 @@ public class AlertControllerTest extends FakeDBApplication {
   public void testDeleteAlertDestination_InvalidUUID_ErrorResult() {
     UUID uuid = UUID.randomUUID();
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 doRequestWithAuthToken(
                     "DELETE",
@@ -673,7 +656,7 @@ public class AlertControllerTest extends FakeDBApplication {
     String destinationUUID = createdDestination.getUuid().toString();
 
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 doRequestWithAuthToken(
                     "DELETE",
@@ -912,7 +895,7 @@ public class AlertControllerTest extends FakeDBApplication {
   public void testGetConfigurationFailure() {
     UUID uuid = UUID.randomUUID();
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 doRequestWithAuthToken(
                     "GET",
@@ -957,6 +940,20 @@ public class AlertControllerTest extends FakeDBApplication {
     assertThat(configurations.getTotalCount(), equalTo(3));
     assertThat(configurations.getEntities(), hasSize(2));
     assertThat(configurations.getEntities(), contains(configuration2, configuration3));
+  }
+
+  @Ignore("See PLAT-545 why we cannot fail on unknown params")
+  public void testListConfigurations_unknown_filter_props() {
+    JsonNode badFilter =
+        Json.parse(
+            "{\n" + "\"jatin\": 3,\n" + "\"alexander\": \"bar\",\n" + "\"shashank\": null\n" + "}");
+    Result result =
+        doRequestWithAuthTokenAndBody(
+            "POST",
+            "/api/customers/" + customer.getUuid() + "/alert_configurations/list",
+            authToken,
+            Json.toJson(badFilter));
+    assertBadRequest(result, "unknown fields error");
   }
 
   @Test
@@ -1033,14 +1030,14 @@ public class AlertControllerTest extends FakeDBApplication {
     alertConfiguration.setName(null);
 
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 doRequestWithAuthTokenAndBody(
                     "POST",
                     "/api/customers/" + customer.getUuid() + "/alert_configurations",
                     authToken,
                     Json.toJson(alertConfiguration)));
-    assertBadRequest(result, "Name field is mandatory");
+    assertBadRequest(result, "{\"name\":[\"may not be null\"]}");
   }
 
   @Test
@@ -1070,7 +1067,7 @@ public class AlertControllerTest extends FakeDBApplication {
     alertConfiguration.setTargetType(null);
 
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 doRequestWithAuthTokenAndBody(
                     "PUT",
@@ -1080,7 +1077,7 @@ public class AlertControllerTest extends FakeDBApplication {
                         + alertConfiguration.getUuid(),
                     authToken,
                     Json.toJson(alertConfiguration)));
-    assertBadRequest(result, "Target type field is mandatory");
+    assertBadRequest(result, "{\"targetType\":[\"may not be null\"]}");
   }
 
   @Test
@@ -1094,5 +1091,58 @@ public class AlertControllerTest extends FakeDBApplication {
                 + alertConfiguration.getUuid(),
             authToken);
     assertThat(result.status(), equalTo(OK));
+  }
+
+  @Test
+  public void testSendTestAlert() throws IOException, InterruptedException {
+    try (MockWebServer server = new MockWebServer()) {
+      server.start();
+      HttpUrl baseUrl = server.url("/some/path");
+      server.enqueue(new MockResponse().setBody("{\"status\":\"ok\"}"));
+
+      AlertChannel channel = new AlertChannel();
+      channel.setName("Some channel");
+      channel.setCustomerUUID(customer.getUuid());
+      AlertChannelSlackParams params = new AlertChannelSlackParams();
+      params.setUsername("Slack Bot");
+      params.setWebhookUrl(baseUrl.toString());
+      channel.setParams(params);
+
+      alertChannelService.save(channel);
+
+      AlertDestination destination = new AlertDestination();
+      destination.setCustomerUUID(customer.getUuid());
+      destination.setName("Some destination");
+      destination.setChannelsList(ImmutableList.of(channel));
+
+      alertDestinationService.save(destination);
+
+      alertConfiguration.setDestinationUUID(destination.getUuid());
+      alertConfiguration.setDefaultDestination(false);
+      alertConfigurationService.save(alertConfiguration);
+
+      Result result =
+          doRequestWithAuthToken(
+              "POST",
+              "/api/customers/"
+                  + customer.getUuid()
+                  + "/alert_configurations/"
+                  + alertConfiguration.getUuid()
+                  + "/test_alert",
+              authToken);
+      assertThat(result.status(), equalTo(OK));
+      JsonNode resultJson = Json.parse(contentAsString(result));
+      assertThat(resultJson.get("message").asText(), equalTo("Alert sent successfully"));
+      RecordedRequest request = server.takeRequest();
+      assertThat(request.getPath(), is("/some/path"));
+      assertThat(
+          request.getBody().readString(Charset.defaultCharset()),
+          equalTo(
+              "{\"username\":\"Slack Bot\","
+                  + "\"text\":\"*Yugabyte Platform Alert - <[test@customer.com][tc]>*\\n"
+                  + "alertConfiguration Alert for Test Universe is firing.\\n"
+                  + "\\n[TEST ALERT!!!] Average memory usage for universe 'Test Universe' "
+                  + "is above 1%. Current value is 2%\",\"icon_url\":null}"));
+    }
   }
 }

@@ -714,6 +714,9 @@ message ReportedTabletPB {
   optional bool should_disable_lb_move = 7;
 
   optional bytes fs_data_dir = 8;
+
+  // Is the tablet hidden.
+  optional bool is_hidden = 9;
 }
 
 // Sent by the tablet server to report the set of tablets hosted by that TS.
@@ -840,7 +843,7 @@ message TSHeartbeatRequestPB {
   optional int32 cluster_config_version = 8;
 
   // List of candidate tablets for split based on tablet splitting strategy and settings.
-  repeated TabletForSplitPB tablets_for_split = 9;
+  repeated TabletForSplitPB DEPRECATED_tablets_for_split = 9;
 
   // Physical time on tablet server
   optional fixed64 ts_physical_time = 10;
@@ -904,6 +907,10 @@ message TSHeartbeatResponsePB {
   optional TSSnapshotsInfoPB snapshots_info = 17;
 
   optional int64 DEPRECATED_tablet_split_size_threshold_bytes = 14;
+
+  // Hash of transaction status table ids and versions, so that the TS knows when
+  // to update the cached list of status tablet ids in the transaction manager.
+  optional uint64 txn_table_versions_hash = 18;
 }
 
 message TSInformationPB {
@@ -2088,6 +2095,10 @@ message AlterUniverseReplicationRequestPB {
   repeated HostPortPB producer_master_addresses = 2;
   repeated string producer_table_ids_to_add = 4;
   repeated string producer_table_ids_to_remove = 5;
+  optional string new_producer_universe_id = 7;
+
+  // Optional bootstrap ids for the add table operation.
+  repeated string producer_bootstrap_ids_to_add = 6;
 }
 
 message AlterUniverseReplicationResponsePB {
@@ -2129,6 +2140,14 @@ message SplitTabletRequestPB {
 }
 
 message SplitTabletResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message CreateTransactionStatusTableRequestPB {
+  required string table_name = 1;
+}
+
+message CreateTransactionStatusTableResponsePB {
   optional MasterErrorPB error = 1;
 }
 
@@ -2300,6 +2319,8 @@ service MasterService {
       returns (HasUniverseKeyInMemoryResponsePB);
 
   rpc SplitTablet(SplitTabletRequestPB) returns (SplitTabletResponsePB);
+  rpc CreateTransactionStatusTable(CreateTransactionStatusTableRequestPB)
+      returns (CreateTransactionStatusTableResponsePB);
   rpc DeleteNotServingTablet(DeleteNotServingTabletRequestPB)
       returns (DeleteNotServingTabletResponsePB);
 

@@ -32,12 +32,9 @@
 
 #include "yb/rpc/reactor.h"
 
-#include <arpa/inet.h>
 #include <netinet/in.h>
 #include <stdlib.h>
-#include <sys/socket.h>
 #include <sys/types.h>
-#include <unistd.h>
 
 #include <functional>
 #include <mutex>
@@ -53,17 +50,14 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_introspection.pb.h"
-#include "yb/rpc/yb_rpc.h"
 
 #include "yb/util/countdown_latch.h"
 #include "yb/util/errno.h"
-#include "yb/util/flag_tags.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/monotime.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/thread.h"
-#include "yb/util/threadpool.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/trace.h"
 #include "yb/util/net/socket.h"
@@ -773,6 +767,13 @@ DelayedTask::DelayedTask(StatusFunctor func, MonoDelta when, int64_t id,
 void DelayedTask::Run(Reactor* reactor) {
   DCHECK(reactor_ == nullptr) << "Task has already been scheduled";
   DCHECK(reactor->IsCurrentThread());
+
+  const auto reactor_state = reactor->state();
+  if (reactor_state != ReactorState::kRunning) {
+    LOG(WARNING) << "Reactor is not running (state: " << reactor_state
+                 << "), not scheduling a delayed task.";
+    return;
+  }
 
   // Acquire lock to prevent task from being aborted in the middle of scheduling, in case abort
   // will be requested in the middle of scheduling - task will be aborted right after return

@@ -43,6 +43,26 @@ using yb::HybridTime;
 YB_DEFINE_ENUM(UpdateUserValueType, ((kSmallest, 1))((kLargest, -1)));
 YB_DEFINE_ENUM(FrontierModificationMode, (kForce)(kUpdate));
 
+// Specific how key value entries are encoded inside the block.
+// See Block and BlockBuilder for more details.
+YB_DEFINE_ENUM(
+    KeyValueEncodingFormat,
+    // <key_shared_prefix_size<key_non_shared_size><value_size><key_non_shared_bytes><value_bytes>
+    ((kKeyDeltaEncodingSharedPrefix, 1))
+    // Advanced key delta encoding optimized for docdb-specific encoded key structure.
+    ((kKeyDeltaEncodingThreeSharedParts, 2))
+);
+
+inline std::string KeyValueEncodingFormatToString(KeyValueEncodingFormat encoding_format) {
+  switch (encoding_format) {
+    case KeyValueEncodingFormat::kKeyDeltaEncodingSharedPrefix:
+      return "shared_prefix";
+    case KeyValueEncodingFormat::kKeyDeltaEncodingThreeSharedParts:
+      return "three_shared_parts";
+  }
+  FATAL_INVALID_ENUM_VALUE(KeyValueEncodingFormat, encoding_format);
+}
+
 }  //  namespace rocksdb
 
 #endif // YB_ROCKSDB_TYPES_H

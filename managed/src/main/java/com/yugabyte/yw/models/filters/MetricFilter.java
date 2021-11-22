@@ -9,45 +9,35 @@
  */
 package com.yugabyte.yw.models.filters;
 
+import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.MetricKey;
 import com.yugabyte.yw.models.MetricSourceKey;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
-import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Date;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.Builder;
 import lombok.NonNull;
 import lombok.Value;
+import org.apache.commons.collections.CollectionUtils;
 
 @Value
 @Builder
 public class MetricFilter {
-  Set<UUID> uuids;
   UUID customerUuid;
   UUID sourceUuid;
-  List<PlatformMetrics> metrics;
+  Set<String> metricNames;
   Set<MetricSourceKey> sourceKeys;
   Set<MetricKey> keys;
   Boolean expired;
 
   public static class MetricFilterBuilder {
-    Set<UUID> uuids = new HashSet<>();
-    List<PlatformMetrics> metrics = new ArrayList<>();
+    Set<String> metricNames = new HashSet<>();
     Set<MetricSourceKey> sourceKeys = new HashSet<>();
     Set<MetricKey> keys = new HashSet<>();
-
-    public MetricFilterBuilder uuids(@NonNull Collection<UUID> uuids) {
-      this.uuids.addAll(uuids);
-      return this;
-    }
-
-    public MetricFilterBuilder uuid(@NonNull UUID uuid) {
-      this.uuids.add(uuid);
-      return this;
-    }
 
     public MetricFilterBuilder customerUuid(@NonNull UUID customerUuid) {
       this.customerUuid = customerUuid;
@@ -59,13 +49,17 @@ public class MetricFilter {
       return this;
     }
 
-    public MetricFilterBuilder metrics(@NonNull Collection<PlatformMetrics> metrics) {
-      this.metrics.addAll(metrics);
+    public MetricFilterBuilder metricNames(@NonNull Collection<PlatformMetrics> platformMetrics) {
+      this.metricNames.addAll(
+          platformMetrics
+              .stream()
+              .map(PlatformMetrics::getMetricName)
+              .collect(Collectors.toList()));
       return this;
     }
 
-    public MetricFilterBuilder metric(@NonNull PlatformMetrics metric) {
-      this.metrics.add(metric);
+    public MetricFilterBuilder metricName(@NonNull PlatformMetrics platformMetric) {
+      this.metricNames.add(platformMetric.getMetricName());
       return this;
     }
 
@@ -93,5 +87,28 @@ public class MetricFilter {
       this.expired = expired;
       return this;
     }
+  }
+
+  public boolean match(Metric metric) {
+    if (customerUuid != null && !customerUuid.equals(metric.getCustomerUUID())) {
+      return false;
+    }
+    if (sourceUuid != null && !sourceUuid.equals(metric.getSourceUuid())) {
+      return false;
+    }
+    if (CollectionUtils.isNotEmpty(metricNames) && !metricNames.contains(metric.getName())) {
+      return false;
+    }
+    MetricKey metricKey = MetricKey.from(metric);
+    if (CollectionUtils.isNotEmpty(sourceKeys) && !sourceKeys.contains(metricKey.getSourceKey())) {
+      return false;
+    }
+    if (CollectionUtils.isNotEmpty(keys) && !keys.contains(metricKey)) {
+      return false;
+    }
+    if (expired != null) {
+      return metric.getExpireTime().before(new Date()) == expired;
+    }
+    return true;
   }
 }

@@ -164,11 +164,6 @@ class YBClientBuilder {
   // Add RPC addresses of multiple masters.
   YBClientBuilder& master_server_addrs(const std::vector<std::string>& addrs);
 
-  // Add a REST endpoint from which the address of the masters can be queried initially, and
-  // refreshed in case of retries. Note that the endpoint mechanism overrides
-  // both 'add_master_server_addr_file' and 'add_master_server_addr'.
-  YBClientBuilder& add_master_server_endpoint(const std::string& endpoint);
-
   // Add an RPC address of a master. At least one master is required.
   YBClientBuilder& add_master_server_addr(const std::string& addr);
 
@@ -241,6 +236,8 @@ class YBClientBuilder {
   DISALLOW_COPY_AND_ASSIGN(YBClientBuilder);
 };
 
+using TabletServersInfo = std::vector<YBTabletServerPlacementInfo>;
+
 // The YBClient represents a connection to a cluster. From the user
 // perspective, they should only need to create one of these in their
 // application, likely a singleton -- but it's not a singleton in YB in any
@@ -267,8 +264,6 @@ class YBClientBuilder {
 // This class is thread-safe.
 class YBClient {
  public:
-  using TabletServersInfo = std::vector<std::unique_ptr<yb::client::YBTabletServerPlacementInfo>>;
-
   ~YBClient();
 
   std::unique_ptr<YBTableCreator> NewTableCreator();
@@ -297,7 +292,8 @@ class YBClient {
   // Delete the specified table.
   // Set 'wait' to true if the call must wait for the table to be fully deleted before returning.
   CHECKED_STATUS DeleteTable(const YBTableName& table_name, bool wait = true);
-  CHECKED_STATUS DeleteTable(const std::string& table_id, bool wait = true);
+  CHECKED_STATUS DeleteTable(
+      const std::string& table_id, bool wait = true, CoarseTimePoint deadline = CoarseTimePoint());
 
   // Delete the specified index table.
   // Set 'wait' to true if the call must wait for the table to be fully deleted before returning.
@@ -307,7 +303,8 @@ class YBClient {
 
   CHECKED_STATUS DeleteIndexTable(const std::string& table_id,
                                   YBTableName* indexed_table_name = nullptr,
-                                  bool wait = true);
+                                  bool wait = true,
+                                  CoarseTimePoint deadline = CoarseTimePoint());
 
   // Flush or compact the specified tables.
   CHECKED_STATUS FlushTables(const std::vector<TableId>& table_ids,
@@ -368,9 +365,6 @@ class YBClient {
       const CoarseTimePoint deadline,
       const CoarseDuration max_wait = std::chrono::seconds(2));
 
-  // Trigger an async index permissions update after new YSQL index permissions are committed.
-  Status AsyncUpdateIndexPermissions(const TableId& indexed_table_id);
-
   // Namespace related methods.
 
   // Create a new namespace with the given name.
@@ -382,8 +376,9 @@ class YBClient {
                                  const std::string& namespace_id = "",
                                  const std::string& source_namespace_id = "",
                                  const boost::optional<uint32_t>& next_pg_oid = boost::none,
-                                 const boost::optional<TransactionMetadata>& txn = boost::none,
-                                 const bool colocated = false);
+                                 const TransactionMetadata* txn = nullptr,
+                                 const bool colocated = false,
+                                 CoarseTimePoint deadline = CoarseTimePoint());
 
   // It calls CreateNamespace(), but before it checks that the namespace has NOT been yet
   // created. So, it prevents error 'namespace already exists'.
@@ -408,7 +403,8 @@ class YBClient {
   // Delete namespace with the given name.
   CHECKED_STATUS DeleteNamespace(const std::string& namespace_name,
                                  const boost::optional<YQLDatabase>& database_type = boost::none,
-                                 const std::string& namespace_id = "");
+                                 const std::string& namespace_id = "",
+                                 CoarseTimePoint deadline = CoarseTimePoint());
 
   // Set 'delete_in_progress' to true if a DeleteNamespace operation is in-progress.
   CHECKED_STATUS IsDeleteNamespaceInProgress(const std::string& namespace_name,
@@ -571,10 +567,9 @@ class YBClient {
   CHECKED_STATUS TabletServerCount(int *tserver_count, bool primary_only = false,
       bool use_cache = false);
 
-  CHECKED_STATUS ListTabletServers(std::vector<std::unique_ptr<YBTabletServer>>* tablet_servers);
+  Result<std::vector<YBTabletServer>> ListTabletServers();
 
-  CHECKED_STATUS ListLiveTabletServers(TabletServersInfo* tablet_servers,
-                                       bool primary_only = false);
+  Result<TabletServersInfo> ListLiveTabletServers(bool primary_only = false);
 
   // Sets local tserver and its proxy.
   void SetLocalTabletServer(const std::string& ts_uuid,
@@ -648,6 +643,14 @@ class YBClient {
   Result<bool> IsLoadBalanced(uint32_t num_servers);
   Result<bool> IsLoadBalancerIdle();
 
+  CHECKED_STATUS ModifyTablePlacementInfo(
+      const YBTableName& table_name,
+      master::PlacementInfoPB* replicas);
+
+  // Creates a transaction status table. 'table_name' is required to start with
+  // kTransactionTablePrefix.
+  CHECKED_STATUS CreateTransactionsStatusTable(const std::string& table_name);
+
   // Open the table with the given name or id. This will do an RPC to ensure that
   // the table exists and look up its schema.
   //
@@ -680,6 +683,9 @@ class YBClient {
   // Caller knows that the existing leader might have died or stepped down, so it can use this API
   // to reset the client state to point to new master leader.
   Result<HostPort> RefreshMasterLeaderAddress();
+
+  // Refreshes master leader address asynchronously.
+  void RefreshMasterLeaderAddressAsync();
 
   // Once a config change is completed to add/remove a master, update the client to add/remove it
   // from its own master address list.
@@ -817,6 +823,8 @@ class YBClient {
 
   friend std::future<Result<internal::RemoteTabletPtr>> LookupFirstTabletFuture(
       YBClient* client, const YBTablePtr& table);
+
+  CoarseTimePoint PatchAdminDeadline(CoarseTimePoint deadline) const;
 
   YBClient();
 

@@ -1,7 +1,7 @@
 ---
 title: Interval arithmetic [YSQL]
 headerTitle: Interval arithmetic
-linkTitle: interval arithmetic
+linkTitle: Interval arithmetic
 description: Explains the semantics of timestamp-interval arithmetic and interval-only arithmetic. [YSQL]
 image: /images/section_icons/api/subsection.png
 menu:
@@ -13,21 +13,28 @@ isTocNested: true
 showAsideToc: true
 ---
 
-If you haven't already done so, then install the code presented in the section [User-defined interval utility functions](../interval-utilities/).
-
-This section uses the term "moment" as an umbrella for a _timestamptz_ value, a _timestamp_ value, or a _time_ value. (In a broader scenario, a _date_ value is also a moment. But you get an _integer_ value when you subtract one _date_ value from another. And you cannot add or subtract an _interval_ value and a _date_ value.) The term "_interval_ arithmetic" is used somewhat loosely to denote these three distinct scenarios:
+This section uses the term "moment" as an umbrella for a _timestamptz_ value, a _timestamp_ value, or a _time_ value. (In a broader scenario, a _date_ value is also a moment. But you get an _integer_ value when you subtract one _date_ value from another. And you cannot add or subtract an _interval_ value to/from a _date_ value.) The term "_interval_ arithmetic" is used somewhat loosely to denote these three distinct scenarios:
 
 - **[The interval-interval overload of the "=" operator](#the-interval-interval-overload-of-the-operator)**—_interval-interval_ equality. This is what the term implies.
-- **[Interval-only addition/subtraction and multiplication/division](#interval-only-addition-subtraction-and-multiplication-division):** This has two subtopics: (1) [The _interval-interval_ overloads of the "+" and "-" operators](#the-interval-interval-overloads-of-the-and-operators) to produce a new _interval_ value. And (2) [The _interval_-number overloads of the "*" and "/" operators](#the-interval-number-overloads-of-the-and-operators) to produce a new _interval_ value.
 
-- **[moment-interval arithmetic](#moment-interval-arithmetic):** This has two subtopics: (1) [The moment-moment overloads of the "-" operator](#the-moment-moment-overloads-of-the-operator) to produce an _interval_ value. (Addition of two moments is meaningless and is therefore illegal. So is multiplication or division of a moment by a number.) And (2) [The moment-interval overloads of the "+" and "-" operators](#the-moment-interval-overloads-of-the-and-operators) to produce a new moment of the same data type.
+- **[Interval-only addition/subtraction and multiplication/division](#interval-only-addition-subtraction-and-multiplication-division):** This has two subtopics:
 
-You need to understand the notions that the section [Two ways of conceiving of time: calendar-time and clock-time](../../../conceptual-background/#two-ways-of-conceiving-of-time-calendar-time-and-clock-time) addresses in order to understand the code and the explanations in this page's child page [The moment-_interval_ overloads of the "+" and "-" operators for _timestamptz_, _timestamp_, and _time_](./moment-interval-overloads-of-plus-and-minus/). The notions help you understand how the semantics of the native [moment-moment overloads of the "-" operator for timestamptz, timestamp, and time](./moment-moment-overloads-of-minus/) is ultimately confusing and therefore unhelpful and why you should instead adopt the practices that the section [Defining and using custom domain types to specialize the native interval functionality](../custom-interval-domains/) explains. The _clock-time-semantics/calendar-time-semantics_ distinction is only implicitly relevant for the notions that the sections [The interval-interval overload of the "=" operator](#the-interval-interval-overload-of-the-operator) and [Interval-only addition/subtraction and multiplication/division](#interval-only-addition-subtraction-and-multiplication-division) explain.
+  - _First_ [The _interval-interval_ overloads of the "+" and "-" operators](#the-interval-interval-overloads-of-the-and-operators) to produce a new _interval_ value.
+
+  - And _second_ [The _interval_-number overloads of the "*" and "/" operators](#the-interval-number-overloads-of-the-and-operators) to produce a new _interval_ value.
+
+- **[moment-interval arithmetic](#moment-interval-arithmetic):** This has two subtopics:
+
+  - _First_ [The moment-moment overloads of the "-" operator](#the-moment-moment-overloads-of-the-operator) to produce an _interval_ value. (Addition of two moments is meaningless and is therefore illegal. So is multiplication or division of a moment by a number.)
+
+  - And _second_ [The moment-interval overloads of the "+" and "-" operators](#the-moment-interval-overloads-of-the-and-operators) to produce a new moment of the same data type.
+
+You need to understand the notions that the section [Two ways of conceiving of time: calendar-time and clock-time](../../../conceptual-background/#two-ways-of-conceiving-of-time-calendar-time-and-clock-time) addresses in order to understand the code and the explanations in this page's child page [The moment-_interval_ overloads of the "+" and "-" operators for _timestamptz_, _timestamp_, and _time_](./moment-interval-overloads-of-plus-and-minus/). The notions help you understand how the semantic rules of the native [moment-moment overloads of the "-" operator for timestamptz, timestamp, and time](./moment-moment-overloads-of-minus/) are ultimately confusing and therefore unhelpful—and why you should therefore adopt the practices that the section [Custom domain types for specializing the native _interval_ functionality](../custom-interval-domains/) explains. The distinction between _clock-time-semantics_ and _calendar-time-semantics_ is only implicitly relevant for the notions that the sections [The interval-interval overload of the "=" operator](#the-interval-interval-overload-of-the-operator) and [Interval-only addition/subtraction and multiplication/division](#interval-only-addition-subtraction-and-multiplication-division) explain.
 
 The PostgreSQL documentation does not carefully specify the semantics of _interval_ arithmetic. This page and its children aim to specify the operations in terms of the individual fields of the [internal representation](../interval-representation/).
 
-{{< note title="The results of interval arithmetic are, in general, sensitive to the session's timezone." >}}
-More carefully stated, the results of some moment-interval arithmetic operations (the moment-moment overloads of the `-` operator and the moment-interval overloads of the `+` and `-` operators) are sensitive to the session's _TimeZone_ setting when the moments are _timestamptz_ values.
+{{< note title="The results of 'interval' arithmetic are, in general, sensitive to the session's timezone." >}}
+More carefully stated, the results of some moment-_interval_ arithmetic operations (the moment-moment overloads of the `-` operator and the moment-_interval_ overloads of the `+` and `-` operators) are sensitive to the session's _TimeZone_ setting when the moments are _timestamptz_ values.
 {{< /note >}}
 
 ## The interval-interval overload of the "=" operator
@@ -48,7 +55,7 @@ select
 
 The result for each equality expression is _true_. This is a strange definition of equality because there are _29 days_ in February in a leap year and otherwise _28 days_, there are four _30 day_ months, and there are seven _31 day_ months. Further, _1 day_ is only _usually_ _24 hours_. (The _usually_ caveat acknowledges the consequences of Daylight Savings Time changes.) All this crucially effects the semantics—see [_interval_-moment arithmetic](#moment-interval-arithmetic) below.
 
-The section [Comparing two _interval_ values for equality](./interval-interval-equality/) explains the model that the _interval_ overload of the `=` operator uses and tests it with a PL/pgSQL implementation. It also shows how to implement a [user-defined _interval-interval_ `==` operator](../interval-utilities#the-user-defined-strict-equals-interval-interval-operator) that implements _strict equality_. The criterion for this is that each field of the LHS and RHS _[&#91;mm, dd, ss&#93;](../interval-representation/)_ internal representations must be pairwise equal.
+The section [Comparing two _interval_ values](./interval-interval-comparison/) explains the model that the _interval_ overload of the `=` operator uses and tests it with a PL/pgSQL implementation. It also shows how to implement a [user-defined _interval-interval_ `==` operator](../interval-utilities#the-user-defined-strict-equals-interval-interval-operator) that implements _strict equality_. The criterion for this is that each field of the LHS and RHS _[\[mm, dd, ss\]](../interval-representation/)_ internal representations must be pairwise equal.
 
 ## Interval-only addition/subtraction and multiplication/division
 
@@ -80,13 +87,13 @@ This is the result:
  2 mons 2 days
 ```
 
-This is consistent with the assumed model. And it shows that a practice that the user might adopt to use only interval values that have just a single non-zero internal representation field can easily be thwarted by _interval-interval_ addition or subtraction. 
+This is consistent with the assumed model. And it shows that a practice that the user might adopt to use only _interval_ values that have just a single non-zero internal representation field can easily be thwarted by _interval-interval_ addition or subtraction. 
 
 ### The interval-number overloads of the "*" and "/" operators
 
 The operation is assumed to be intended to act separately on each of the three individual fields:
 
-- _[mm, dd, ss]&#42;x = [mm&#42;x, dd&#42;x, ss*x]_
+- _[mm, dd, ss]\*x = [mm\*x, dd\*x, ss*x]_
 
 When _x_ is equal to _f_, where _f > 1_, the effect is multiplication by _f_. And when _x_ is equal to _1/f_, where _f > 1_, the effect is division by _f_. Therefore a single mental model explains both operations.
 
@@ -132,13 +139,13 @@ Compare the apparently different results using the forgiving native _interval-in
 select ('1 mon 30 days 03:21:36'::interval = '1 mon 29 days 27:21:36'::interval)::text;
 ```
 
-The result is _true_. The section [Multiplying or dividing an _interval_ value by a real or integral number](./interval-number-multiplication/) simulates and tests the model for how this works in PL/pgSQL code and examines this unexpected outcome closely.
+The result is _true_. The section [Multiplying or dividing an _interval_ value by a number](./interval-number-multiplication/) simulates and tests the model for how this works in PL/pgSQL code, and examines this unexpected outcome closely.
 
 One thing, at least, is clear: a practice that the user might adopt to use only _interval_ values that have just a single non-zero internal representation field can easily be thwarted by _interval-number_ multiplication or division. Moreover, the semantics of these operations is not documented and cannot be reliably determined by empirical investigation. The outcomes must, therefore, be considered to be unpredictable.
 
 ## Recommendation
 
-{{< tip title="Avoid native interval-interval addition/subtraction and interval-number multiplication/division." >}}
+{{< tip title="Avoid native 'interval'-'interval' addition/subtraction and 'interval'-number multiplication/division." >}}
 Yugabyte recommends that you avoid performing operations whose results can easily thwart an adopted principle for good practice and especially that you avoid operations whose outcomes  must be considered to be unpredictable. It recommends that instead you adopt the practice that the section [Defining and using custom domain types to specialize the native _interval_ functionality](../custom-interval-domains/) explains. Doing this will let you perform the addition, subtraction, multiplication, and division operations that are unsafe with native _interval_ values in a controlled fashion that brings safety.
 {{< /tip >}}
 
@@ -177,9 +184,7 @@ begin
 end;
 $body$;
 
-\t on
 select t from f();
-\t off
 ```
 
 This is the result:
@@ -191,11 +196,11 @@ This is the result:
  timestamptz: interval
 ```
 
-The _interval_ value that results from subtracting one moment from another (for the _timestamptz_, _timestamp_, or _time_ data types) has, in general, a non-zero value for each of the _dd_ and _ss_ fields of the internal _[&#91;mm, dd, ss&#93;](../interval-representation/)_ representation. The value of the _mm_ field is _always_ zero. The section [The moment-moment overloads of the "-" operator for _timestamptz_, _timestamp_, and _time_](./moment-moment-overloads-of-minus/) explains the algorithm that produces the value and shows that, because it has two fields that have different rules for the semantics of the _interval_-moment overloads of the `+` and `-` operators, this approach for producing an _interval_ value should be avoided. See the section [Defining and using custom domain types to specialize the native interval functionality](../custom-interval-domains/) for the recommended alternative approach.
+The _interval_ value that results from subtracting one moment from another (for the _timestamptz_, _timestamp_, or _time_ data types) has, in general, a non-zero value for each of the _dd_ and _ss_ fields of the internal _[\[mm, dd, ss\]](../interval-representation/)_ representation. The value of the _mm_ field is _always_ zero. The section [The moment-moment overloads of the "-" operator for _timestamptz_, _timestamp_, and _time_](./moment-moment-overloads-of-minus/) explains the algorithm that produces the value and shows that, because it has two fields that have different rules for the semantics of the _interval_-moment overloads of the `+` and `-` operators, this approach for producing an _interval_ value should be avoided. See the section [Custom domain types for specializing the native _interval_ functionality](../custom-interval-domains/) for the recommended alternative approach.
 
 ### The moment-interval overloads of the "+" and "-" operators
 
-The  `+` and `-` operators have overloads for each pair of operands of each of the _timestamptz_, _timestamp_, and _time_ data types with an _interval_ operand. The notions that the section [Two ways of conceiving of time: calendar-time and clock-time](../../../conceptual-background/#two-ways-of-conceiving-of-time-calendar-time-and-clock-time) addresses are critical for the understanding of this functionality. The topic is explained carefully in the child page [The moment-_interval_ overloads of the "+" and "-" operators for _timestamptz_, _timestamp_, and _time_](./moment-interval-overloads-of-plus-and-minus/). This test is coped from that page:
+The  `+` and `-` operators have overloads for each pair of operands of each of the _timestamptz_, _timestamp_, and _time_ data types with an _interval_ operand. The notions that the section [Two ways of conceiving of time: calendar-time and clock-time](../../../conceptual-background/#two-ways-of-conceiving-of-time-calendar-time-and-clock-time) addresses are critical for the understanding of this functionality. The topic is explained carefully in the child page [The moment-_interval_ overloads of the "+" and "-" operators for _timestamptz_, _timestamp_, and _time_](./moment-interval-overloads-of-plus-and-minus/). This test is copied from that page:
 
 ```plpgsql
 select (

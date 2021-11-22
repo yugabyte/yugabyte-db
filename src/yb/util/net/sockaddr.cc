@@ -32,9 +32,6 @@
 
 #include "yb/util/net/sockaddr.h"
 
-#include <arpa/inet.h>
-#include <errno.h>
-#include <netdb.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -47,8 +44,6 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/util/net/net_util.h"
-#include "yb/util/stopwatch.h"
 
 namespace yb {
 

@@ -186,6 +186,11 @@ class CQLMessage {
     std::string name;
     std::string value; // As required by QLValue::Deserialize() for CQL, the value includes
                        // the 4-byte length header, i.e. "<4-byte-length><value>".
+
+    std::string ToString() const {
+      constexpr int kLengthHeaderSize = 4;
+      return (value.length() > kLengthHeaderSize ? value.substr(kLengthHeaderSize) : "n/a");
+    }
   };
 
   // Id of a prepared query for PREPARE, EXECUTE and BATCH requests.

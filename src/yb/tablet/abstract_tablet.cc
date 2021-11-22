@@ -20,7 +20,6 @@
 
 #include "yb/tablet/abstract_tablet.h"
 #include "yb/util/trace.h"
-#include "yb/yql/pggate/util/pg_doc_data.h"
 
 namespace yb {
 namespace tablet {

@@ -41,6 +41,7 @@
 #include "yb/gutil/bind.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/master/master.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_util.h"
 #include "yb/master/sys_catalog.h"
@@ -175,9 +176,12 @@ class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
     l.mutable_data()->pb.CopyFrom(metadata);
 
     // If the table has been deleted, then mark this stream as DELETING so it can be deleted by the
-    // catalog manager background thread.
+    // catalog manager background thread. Otherwise if this stream is missing an entry
+    // for state, then mark its state as Active.
     if (table->LockForRead()->is_deleting() && !l.data().is_deleting()) {
       l.mutable_data()->pb.set_state(SysCDCStreamEntryPB::DELETING);
+    } else if (!l.mutable_data()->pb.has_state()) {
+      l.mutable_data()->pb.set_state(SysCDCStreamEntryPB::ACTIVE);
     }
 
     // Add the CDC stream to the CDC stream map.
@@ -413,6 +417,7 @@ void CatalogManager::Submit(std::unique_ptr<tablet::Operation> operation, int64_
 Result<SysRowEntries> CatalogManager::CollectEntries(
     const google::protobuf::RepeatedPtrField<TableIdentifierPB>& table_identifiers,
     CollectFlags flags) {
+  RETURN_NOT_OK(CheckIsLeaderAndReady());
   SysRowEntries entries;
   std::unordered_set<NamespaceId> namespaces;
   auto tables = VERIFY_RESULT(CollectTables(table_identifiers, flags, &namespaces));
@@ -1168,6 +1173,141 @@ Status CatalogManager::RecreateTable(const NamespaceId& new_namespace_id,
   return Status::OK();
 }
 
+Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
+                                        const ExternalTableSnapshotData* table_data) {
+  DCHECK_EQ(table->id(), table_data->new_table_id);
+  if (table->GetTableType() != PGSQL_TABLE_TYPE) {
+    return STATUS_FORMAT(InvalidArgument,
+                         "Cannot repartition non-YSQL table: got $0",
+                         TableType_Name(table->GetTableType()));
+  }
+  LOG_WITH_FUNC(INFO) << "Repartition table " << table->id()
+                      << " using external snapshot table " << table_data->old_table_id;
+
+  // Get partitions from external snapshot.
+  size_t i = 0;
+  vector<Partition> partitions(table_data->partitions.size());
+  for (const auto& partition_pb : table_data->partitions) {
+    Partition::FromPB(partition_pb, &partitions[i++]);
+  }
+  VLOG_WITH_FUNC(3) << "Got " << partitions.size()
+                    << " partitions from external snapshot for table " << table->id();
+
+  // Change TableInfo to point to the new tablets.
+  string deletion_msg;
+  vector<scoped_refptr<TabletInfo>> new_tablets;
+  vector<scoped_refptr<TabletInfo>> old_tablets;
+  {
+    // Acquire the TableInfo pb write lock. Although it is not required for some of the individual
+    // steps, we want to hold it through so that we guarantee the state does not change during the
+    // whole process. Consequently, we hold it through some steps that require mutex_, but since
+    // taking mutex_ after TableInfo pb lock is prohibited for deadlock reasons, acquire mutex_
+    // first, then release it when it is no longer needed, still holding table pb lock.
+    TableInfo::WriteLock table_lock;
+    {
+      LockGuard lock(mutex_);
+      TRACE("Acquired catalog manager lock");
+
+      // Make sure the table is in RUNNING state.
+      // This by itself doesn't need a pb write lock: just a read lock. However, we want to prevent
+      // other writers from entering from this point forward, so take the write lock now.
+      table_lock = table->LockForWrite();
+      if (table->old_pb().state() != SysTablesEntryPB::RUNNING) {
+        return STATUS_FORMAT(IllegalState,
+                             "Table $0 not running: $1",
+                             table->ToString(),
+                             SysTablesEntryPB_State_Name(table->old_pb().state()));
+      }
+      // Make sure the table's tablets can be deleted.
+      RETURN_NOT_OK_PREPEND(CheckIfForbiddenToDeleteTabletOf(table),
+                            Format("Cannot repartition table $0", table->id()));
+
+      // Create and mark new tablets for creation.
+
+      // Use partitions from external snapshot to create new tablets in state PREPARING. The tablets
+      // will start CREATING once they are committed in memory.
+      for (const auto& partition : partitions) {
+        PartitionPB partition_pb;
+        partition.ToPB(&partition_pb);
+        new_tablets.push_back(CreateTabletInfo(table.get(), partition_pb));
+      }
+
+      // Add tablets to catalog manager tablet_map_. This should be safe to do after creating
+      // tablets since we're still holding mutex_.
+      auto tablet_map_checkout = tablet_map_.CheckOut();
+      for (auto& new_tablet : new_tablets) {
+        InsertOrDie(tablet_map_checkout.get_ptr(), new_tablet->tablet_id(), new_tablet);
+      }
+      VLOG_WITH_FUNC(3) << "Prepared creation of " << new_tablets.size()
+                        << " new tablets for table " << table->id();
+
+      // mutex_ is no longer needed, so release by going out of scope.
+    }
+    // The table pb write lock is still held, ensuring that the table state does not change. Later
+    // steps, like GetTablets or AddTablets, will acquire/release the TableInfo lock_, but it's
+    // probably fine that they are released between the steps since the table pb write lock is held
+    // throughout. In other words, there should be no risk that TableInfo tablets_ changes between
+    // GetTablets and RemoveTablets.
+
+    // Abort tablet mutations in case of early returns.
+    ScopedInfoCommitter<TabletInfo> unlocker_new(&new_tablets);
+
+    // Mark old tablets for deletion.
+    old_tablets = table->GetTablets(IncludeInactive::kTrue);
+    // Sort so that locking can be done in a deterministic order.
+    std::sort(old_tablets.begin(), old_tablets.end(), [](const auto& lhs, const auto& rhs) {
+      return lhs->tablet_id() < rhs->tablet_id();
+    });
+    deletion_msg = Format("Old tablets of table $0 deleted at $1",
+                          table->id(), LocalTimeAsString());
+    for (auto& old_tablet : old_tablets) {
+      old_tablet->mutable_metadata()->StartMutation();
+      old_tablet->mutable_metadata()->mutable_dirty()->set_state(
+          SysTabletsEntryPB::DELETED, deletion_msg);
+    }
+    VLOG_WITH_FUNC(3) << "Prepared deletion of " << old_tablets.size() << " old tablets for table "
+                      << table->id();
+
+    // Abort tablet mutations in case of early returns.
+    ScopedInfoCommitter<TabletInfo> unlocker_old(&old_tablets);
+
+    // Change table's partition schema to the external snapshot's.
+    table_lock.mutable_data()->pb.mutable_partition_schema()->CopyFrom(
+        table_data->table_entry_pb.partition_schema());
+
+    // Remove old tablets from TableInfo.
+    table->RemoveTablets(old_tablets);
+    // Add new tablets to TableInfo. This must be done after removing tablets because
+    // TableInfo::partitions_ has key PartitionKey, which old and new tablets may conflict on.
+    table->AddTablets(new_tablets);
+
+    // Commit table and tablets to disk.
+    RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), table, new_tablets, old_tablets));
+    VLOG_WITH_FUNC(2) << "Committed to disk: table " << table->id() << " repartition from "
+                      << old_tablets.size() << " tablets to " << new_tablets.size() << " tablets";
+
+    // Commit to memory. Commit new tablets (addition) first since that doesn't break anything.
+    // Commit table next since new tablets are already committed and ready to be referenced. Commit
+    // old tablets (deletion) last since the table is not referencing them anymore.
+    unlocker_new.Commit();
+    table_lock.Commit();
+    unlocker_old.Commit();
+    VLOG_WITH_FUNC(1) << "Committed to memory: table " << table->id() << " repartition from "
+                      << old_tablets.size() << " tablets to " << new_tablets.size() << " tablets";
+  }
+
+  // Finally, now that everything is committed, send the delete tablet requests.
+  for (auto& old_tablet : old_tablets) {
+    DeleteTabletReplicas(old_tablet.get(), deletion_msg, HideOnly::kFalse);
+  }
+  VLOG_WITH_FUNC(2) << "Sent delete tablet requests for " << old_tablets.size() << " old tablets"
+                    << " of table " << table->id();
+  // The create tablet requests should be handled by bg tasks which find the PREPARING tablets after
+  // commit.
+
+  return Status::OK();
+}
+
 // Helper function for ImportTableEntry.
 //
 // Given an internal table and an external table snapshot, do some checks to determine if we should
@@ -1374,7 +1514,7 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
       TRACE("Locking table");
       auto table_lock = table->LockForRead();
       RETURN_NOT_OK(table->GetSchema(&persisted_schema));
-      new_num_tablets = table->NumTablets();
+      new_num_tablets = table->NumPartitions();
     }
 
     // Ignore 'nullable' attribute - due to difference in implementation
@@ -1396,13 +1536,42 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
       return STATUS(InternalError, msg, MasterError(MasterErrorPB::SNAPSHOT_FAILED));
     }
 
-    if (table_data->num_tablets > 0 && new_num_tablets != table_data->num_tablets) {
-      const string msg = Format(
-          "Wrong number of tablets in created $0 table '$1' in namespace id $2: $3 (expected $4)",
-          TableType_Name(meta.table_type()), meta.name(), new_namespace_id,
-          new_num_tablets, table_data->num_tablets);
-      LOG_WITH_FUNC(WARNING) << msg;
-      return STATUS(InternalError, msg, MasterError(MasterErrorPB::SNAPSHOT_FAILED));
+    if (table_data->num_tablets > 0) {
+      if (meta.table_type() == TableType::PGSQL_TABLE_TYPE) {
+        bool partitions_match = true;
+        if (new_num_tablets != table_data->num_tablets) {
+          partitions_match = false;
+        } else {
+          // Check if partition boundaries match.  Only check the starts; assume the ends are fine.
+          size_t i = 0;
+          vector<PartitionKey> partition_starts(table_data->num_tablets);
+          for (const auto& partition_pb : table_data->partitions) {
+            partition_starts[i] = partition_pb.partition_key_start();
+            LOG_IF(DFATAL, (i == 0) ? partition_starts[i] != ""
+                                    : partition_starts[i] <= partition_starts[i-1])
+                << "Wrong partition key start: " << b2a_hex(partition_starts[i]);
+            i++;
+          }
+          if (!table->HasPartitions(partition_starts)) {
+            LOG_WITH_FUNC(INFO) << "Partition boundaries mismatch for table " << table->id();
+            partitions_match = false;
+          }
+        }
+
+        if (!partitions_match) {
+          RETURN_NOT_OK(RepartitionTable(table, table_data));
+        }
+      } else { // not PGSQL_TABLE_TYPE
+        if (new_num_tablets != table_data->num_tablets) {
+          const string msg = Format(
+              "Wrong number of tablets in created $0 table '$1' in namespace id $2:"
+              " $3 (expected $4)",
+              TableType_Name(meta.table_type()), meta.name(), new_namespace_id,
+              new_num_tablets, table_data->num_tablets);
+          LOG_WITH_FUNC(WARNING) << msg;
+          return STATUS(InternalError, msg, MasterError(MasterErrorPB::SNAPSHOT_FAILED));
+        }
+      }
     }
 
     // Update the table column ids if it's not equal to the stored ids.
@@ -1453,11 +1622,11 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
     }
   }
 
-  vector<scoped_refptr<TabletInfo>> new_tablets;
+  TabletInfos new_tablets;
   {
     TRACE("Locking table");
     auto table_lock = table->LockForRead();
-    table->GetAllTablets(&new_tablets);
+    new_tablets = table->GetTablets();
   }
 
   for (const scoped_refptr<TabletInfo>& tablet : new_tablets) {
@@ -1607,6 +1776,7 @@ Status CatalogManager::RestoreSysCatalog(
     RETURN_NOT_OK(state.ProcessPgCatalogRestores(
         pg_yb_catalog_version_schema, doc_db, tablet->doc_db(), &write_batch));
   }
+
   // Restore the other tables.
   RETURN_NOT_OK(state.PrepareWriteBatch(schema(), &write_batch));
 
@@ -1620,7 +1790,8 @@ Status CatalogManager::RestoreSysCatalog(
 }
 
 Status CatalogManager::VerifyRestoredObjects(const SnapshotScheduleRestoration& restoration) {
-  auto entries = VERIFY_RESULT(CollectEntriesForSnapshot(restoration.filter.tables().tables()));
+  auto entries = VERIFY_RESULT(CollectEntriesForSnapshot(
+      restoration.schedules[0].second.tables().tables()));
   auto objects_to_restore = restoration.non_system_objects_to_restore;
   VLOG_WITH_PREFIX(1) << "Objects to restore: " << AsString(objects_to_restore);
   for (const auto& entry : entries.entries()) {
@@ -2313,9 +2484,8 @@ Status CatalogManager::CreateCDCStream(const CreateCDCStreamRequestPB* req,
     SysCDCStreamEntryPB *metadata = &stream->mutable_metadata()->mutable_dirty()->pb;
     metadata->set_table_id(table->id());
     metadata->mutable_options()->CopyFrom(req->options());
-    if (req->has_initial_state()) {
-      metadata->set_state(req->initial_state());
-    }
+    metadata->set_state(
+      req->has_initial_state() ? req->initial_state() : SysCDCStreamEntryPB::ACTIVE);
 
     // Add the stream to the in-memory map.
     cdc_stream_map_[stream->id()] = stream;
@@ -2455,16 +2625,16 @@ Status CatalogManager::CleanUpDeletedCDCStreams(
   std::set<CDCStreamId> failed_streams;
   for (const auto& stream : streams) {
     LOG(INFO) << "Deleting rows for stream " << stream->id();
-    vector<scoped_refptr<TabletInfo>> tablets;
+    TabletInfos tablets;
     scoped_refptr<TableInfo> table;
     {
       TRACE("Acquired catalog manager lock");
       SharedLock lock(mutex_);
       table = FindPtrOrNull(*table_ids_map_, stream->table_id());
     }
-    // GetAllTablets locks lock_ in shared mode.
+    // GetTablets locks lock_ in shared mode.
     if (table) {
-      table->GetAllTablets(&tablets);
+      tablets = table->GetTablets();
     }
 
     for (const auto& tablet : tablets) {
@@ -2473,17 +2643,10 @@ Status CatalogManager::CleanUpDeletedCDCStreams(
 
       QLAddStringHashValue(delete_req, tablet->tablet_id());
       QLAddStringRangeValue(delete_req, stream->id());
-      s = session->Apply(delete_op);
+      session->Apply(delete_op);
       stream_ops.push_back(std::make_pair(stream->id(), delete_op));
       LOG(INFO) << "Deleting stream " << stream->id() << " for tablet " << tablet->tablet_id()
               << " with request " << delete_req->ShortDebugString();
-      if (!s.ok()) {
-        LOG(WARNING) << "Unable to delete stream with id "
-                     << stream->id() << " from table " << master::kCdcStateTableName
-                     << " for tablet " << tablet->tablet_id()
-                     << ". Status: " << s
-                     << ", Response: " << delete_op->response().ShortDebugString();
-      }
     }
   }
   // Flush all the delete operations.
@@ -3623,7 +3786,8 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
   // Currently, config options are mutually exclusive to simplify transactionality.
   int config_count = (req->producer_master_addresses_size() > 0 ? 1 : 0) +
                      (req->producer_table_ids_to_remove_size() > 0 ? 1 : 0) +
-                     (req->producer_table_ids_to_add_size() > 0 ? 1 : 0);
+                     (req->producer_table_ids_to_add_size() > 0 ? 1 : 0) +
+                     (req->has_new_producer_universe_id() ? 1 : 0);
   if (config_count != 1) {
     return STATUS(InvalidArgument, "Only 1 Alter operation per request currently supported",
                   req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
@@ -3759,6 +3923,13 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
     // 'add_table'
     string alter_producer_id = req->producer_id() + ".ALTER";
 
+    // If user passed in bootstrap ids, check that there is a bootstrap id for every table.
+    if (req->producer_bootstrap_ids_to_add().size() > 0 &&
+      req->producer_table_ids_to_add().size() != req->producer_bootstrap_ids_to_add().size()) {
+      return STATUS(InvalidArgument, "Number of bootstrap ids must be equal to number of tables",
+        req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
+    }
+
     // Verify no 'alter' command running.
     scoped_refptr<UniverseReplicationInfo> alter_ri;
     {
@@ -3787,6 +3958,26 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
         }
       }
     }
+
+    // Map each table id to its corresponding bootstrap id.
+    std::unordered_map<TableId, std::string> table_id_to_bootstrap_id;
+    if (req->producer_bootstrap_ids_to_add().size() > 0) {
+      for (int i = 0; i < req->producer_table_ids_to_add().size(); i++) {
+        table_id_to_bootstrap_id[req->producer_table_ids_to_add(i)]
+          = req->producer_bootstrap_ids_to_add(i);
+      }
+
+      // Ensure that table ids are unique. We need to do this here even though
+      // the same check is performed by SetupUniverseReplication because
+      // duplicate table ids can cause a bootstrap id entry in table_id_to_bootstrap_id
+      // to be overwritten.
+      if (table_id_to_bootstrap_id.size() != req->producer_table_ids_to_add().size()) {
+        return STATUS(InvalidArgument, "When providing bootstrap ids, "
+                      "the list of tables must be unique", req->ShortDebugString(),
+                      MasterError(MasterErrorPB::INVALID_REQUEST));
+      }
+    }
+
     // Only add new tables.  Ignore tables that are currently being replicated.
     auto tid_iter = req->producer_table_ids_to_add();
     unordered_set<string> new_tables(tid_iter.begin(), tid_iter.end());
@@ -3812,6 +4003,12 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
         original_ri->LockForRead()->pb.producer_master_addresses());
     for (auto t : new_tables) {
       setup_req.add_producer_table_ids(t);
+
+      // Add bootstrap id to request if it exists.
+      auto bootstrap_id_lookup_result = table_id_to_bootstrap_id.find(t);
+      if (bootstrap_id_lookup_result != table_id_to_bootstrap_id.end()) {
+        setup_req.add_producer_bootstrap_ids(bootstrap_id_lookup_result->second);
+      }
     }
 
     // 2. run the 'setup_replication' pipeline on the ALTER Table
@@ -3824,6 +4021,57 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
       return SetupError(resp->mutable_error(), s);
     }
     // NOTE: ALTER merges back into original after completion.
+  } else if (req->has_new_producer_universe_id()) {
+    Status s = RenameUniverseReplication(original_ri, req, resp, rpc);
+    if (!s.ok()) {
+      return SetupError(resp->mutable_error(), s);
+    }
+  }
+
+  return Status::OK();
+}
+
+Status CatalogManager::RenameUniverseReplication(
+    scoped_refptr<UniverseReplicationInfo> universe,
+    const AlterUniverseReplicationRequestPB* req,
+    AlterUniverseReplicationResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  const string old_universe_replication_id = universe->id();
+  const string new_producer_universe_id = req->new_producer_universe_id();
+  if (old_universe_replication_id == new_producer_universe_id) {
+    return STATUS(InvalidArgument, "Old and new replication ids must be different",
+                  req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
+  }
+
+  {
+    LockGuard lock(mutex_);
+    auto l = universe->LockForWrite();
+
+    // Assert that new_replication_name isn't already in use.
+    if (FindPtrOrNull(universe_replication_map_, new_producer_universe_id) != nullptr) {
+      return STATUS(InvalidArgument, "New replication id is already in use",
+                    req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
+    }
+
+    // Update the name.
+    *l.mutable_data()->pb.mutable_producer_id() = new_producer_universe_id;
+
+    // Also need to update internal maps.
+    universe_replication_map_[new_producer_universe_id] =
+        std::move(universe_replication_map_[old_universe_replication_id]);
+    universe_replication_map_.erase(old_universe_replication_id);
+
+    auto cl = cluster_config_->LockForWrite();
+    auto producer_map = cl.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
+    (*producer_map)[new_producer_universe_id] =
+        std::move((*producer_map)[old_universe_replication_id]);
+    producer_map->erase(old_universe_replication_id);
+
+    RETURN_NOT_OK(CheckStatus(
+        sys_catalog_->Upsert(leader_ready_term(), universe, cluster_config_),
+        "Updating universe replication info and cluster config in sys-catalog"));
+    cl.Commit();
+    l.Commit();
   }
 
   return Status::OK();

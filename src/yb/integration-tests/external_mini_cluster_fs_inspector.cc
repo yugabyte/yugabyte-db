@@ -32,9 +32,7 @@
 
 #include "yb/integration-tests/external_mini_cluster_fs_inspector.h"
 
-#include <sys/stat.h>
 #include <sys/types.h>
-#include <unistd.h>
 
 #include <algorithm>
 #include <set>
@@ -69,6 +67,26 @@ ExternalMiniClusterFsInspector::ExternalMiniClusterFsInspector(ExternalMiniClust
 
 ExternalMiniClusterFsInspector::~ExternalMiniClusterFsInspector() {}
 
+void ExternalMiniClusterFsInspector::TabletsWithDataOnTS(
+    int index,
+    std::function<void (const std::string&, const std::string&)> handler) {
+  static const std::string kTabletDirPrefix = "tablet-";
+  for (const auto& data_dir : cluster_->tablet_server(index)->GetDataDirs()) {
+    string wal_dir = JoinPathSegments(data_dir, FsManager::kWalDirName);
+    vector<string> tables;
+    vector<string> table_tablets;
+    CHECK_OK(ListFilesInDir(wal_dir, &tables));
+    for (const auto& table : tables) {
+      auto table_wal_dir = JoinPathSegments(wal_dir, table);
+      CHECK_OK(ListFilesInDir(table_wal_dir, &table_tablets));
+      for (const auto& tablet : table_tablets) {
+        CHECK(Slice(tablet).starts_with(kTabletDirPrefix));
+        handler(data_dir, tablet.substr(kTabletDirPrefix.size()));
+      }
+    }
+  }
+}
+
 Status ExternalMiniClusterFsInspector::ListFilesInDir(const string& path,
                                                       vector<string>* entries) {
   RETURN_NOT_OK(env_->GetChildren(path, entries));
@@ -91,19 +109,20 @@ int ExternalMiniClusterFsInspector::CountFilesInDir(const string& path) {
 }
 
 int ExternalMiniClusterFsInspector::CountWALSegmentsOnTS(int index) {
-  string data_dir = cluster_->tablet_server(index)->GetFullDataDir();
-  string ts_wal_dir = JoinPathSegments(data_dir, FsManager::kWalDirName);
-  vector<string> tablets;
-  vector<string> tables;
-  CHECK_OK(ListFilesInDir(ts_wal_dir, &tables));
   int total_segments = 0;
-  for (const auto& table : tables) {
-    auto table_wal_dir = JoinPathSegments(ts_wal_dir, table);
-    // tablets vector will be cleared before any elements are inserted into it.
-    CHECK_OK(ListFilesInDir(table_wal_dir, &tablets));
-    for (const string &tablet : tablets) {
-      string tablet_wal_dir = JoinPathSegments(table_wal_dir, tablet);
-      total_segments += CountFilesInDir(tablet_wal_dir);
+  for (const auto& data_dir : cluster_->tablet_server(index)->GetDataDirs()) {
+    string ts_wal_dir = JoinPathSegments(data_dir, FsManager::kWalDirName);
+    vector<string> tablets;
+    vector<string> tables;
+    CHECK_OK(ListFilesInDir(ts_wal_dir, &tables));
+    for (const auto& table : tables) {
+      auto table_wal_dir = JoinPathSegments(ts_wal_dir, table);
+      // tablets vector will be cleared before any elements are inserted into it.
+      CHECK_OK(ListFilesInDir(table_wal_dir, &tablets));
+      for (const string &tablet : tablets) {
+        string tablet_wal_dir = JoinPathSegments(table_wal_dir, tablet);
+        total_segments += CountFilesInDir(tablet_wal_dir);
+      }
     }
   }
   return total_segments;
@@ -119,51 +138,53 @@ vector<string> ExternalMiniClusterFsInspector::ListTablets() {
 }
 
 vector<string> ExternalMiniClusterFsInspector::ListTabletsOnTS(int index) {
-  string data_dir = cluster_->tablet_server(index)->GetFullDataDir();
-  string meta_dir = FsManager::GetRaftGroupMetadataDir(data_dir);
-  vector<string> tablets;
-  CHECK_OK(ListFilesInDir(meta_dir, &tablets));
-  return tablets;
+  vector<string> all_tablets;
+  for (const auto& data_dir : cluster_->tablet_server(index)->GetDataDirs()) {
+    string meta_dir = FsManager::GetRaftGroupMetadataDir(data_dir);
+    vector<string> tablets;
+    CHECK_OK(ListFilesInDir(meta_dir, &tablets));
+    std::copy(tablets.begin(), tablets.end(), std::back_inserter(all_tablets));
+  }
+  return all_tablets;
+}
+
+unordered_map<string, vector<string>> ExternalMiniClusterFsInspector::DrivesOnTS(int index) {
+  unordered_map<string, vector<string>> drives;
+  TabletsWithDataOnTS(index, [&](const std::string& drive, const std::string& tablet) {
+    drives[drive].push_back(tablet);
+  });
+  return drives;
 }
 
 vector<string> ExternalMiniClusterFsInspector::ListTabletsWithDataOnTS(int index) {
-  static const std::string kTabletDirPrefix = "tablet-";
-  string data_dir = cluster_->tablet_server(index)->GetFullDataDir();
-  string wal_dir = JoinPathSegments(data_dir, FsManager::kWalDirName);
-  vector<string> tables;
-  vector<string> tablets;
-  vector<string> table_tablets;
-  CHECK_OK(ListFilesInDir(wal_dir, &tables));
-  for (const auto& table : tables) {
-    auto table_wal_dir = JoinPathSegments(wal_dir, table);
-    CHECK_OK(ListFilesInDir(table_wal_dir, &table_tablets));
-    for (const auto& tablet : table_tablets) {
-      CHECK(Slice(tablet).starts_with(kTabletDirPrefix));
-      tablets.push_back(tablet.substr(kTabletDirPrefix.size()));
-    }
-  }
-  return tablets;
+  vector<string> all_tablets;
+  TabletsWithDataOnTS(index, [&](const std::string& drive, const std::string& tablet) {
+    all_tablets.push_back(tablet);
+  });
+  return all_tablets;
 }
 
 int ExternalMiniClusterFsInspector::CountWALSegmentsForTabletOnTS(int index,
                                                                   const string& tablet_id) {
-  string data_dir = cluster_->tablet_server(index)->GetFullDataDir();
-  string wal_dir = JoinPathSegments(data_dir, FsManager::kWalDirName);
-  vector<string> tables;
-  vector<string> tablets;
-  CHECK_OK(ListFilesInDir(wal_dir, &tables));
-  for (const auto& table : tables) {
-    auto table_wal_dir = JoinPathSegments(wal_dir, table);
-    CHECK_OK(ListFilesInDir(table_wal_dir, &tablets));
-    for (const auto& tablet : tablets) {
-      // All tablets wal directories start with the string 'tablet-'
-      if (tablet == Substitute("tablet-$0", tablet_id)) {
-        auto tablet_wal_dir = JoinPathSegments(table_wal_dir, tablet);
-        return CountFilesInDir(tablet_wal_dir);
+  int count = 0;
+  for (const auto& data_dir : cluster_->tablet_server(index)->GetDataDirs()) {
+    string wal_dir = JoinPathSegments(data_dir, FsManager::kWalDirName);
+    vector<string> tables;
+    vector<string> tablets;
+    CHECK_OK(ListFilesInDir(wal_dir, &tables));
+    for (const auto& table : tables) {
+      auto table_wal_dir = JoinPathSegments(wal_dir, table);
+      CHECK_OK(ListFilesInDir(table_wal_dir, &tablets));
+      for (const auto& tablet : tablets) {
+        // All tablets wal directories start with the string 'tablet-'
+        if (tablet == Substitute("tablet-$0", tablet_id)) {
+          auto tablet_wal_dir = JoinPathSegments(table_wal_dir, tablet);
+          count += CountFilesInDir(tablet_wal_dir);
+        }
       }
     }
   }
-  return 0;
+  return count;
 }
 
 bool ExternalMiniClusterFsInspector::DoesConsensusMetaExistForTabletOnTS(int index,
@@ -180,24 +201,26 @@ int ExternalMiniClusterFsInspector::CountReplicasInMetadataDirs() {
   // tablet servers isn't easy.
   int count = 0;
   for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
-    string data_dir = cluster_->tablet_server(i)->GetFullDataDir();
-    count += CountFilesInDir(FsManager::GetRaftGroupMetadataDir(data_dir));
+    for (const auto& data_dir : cluster_->tablet_server(i)->GetDataDirs()) {
+      count += CountFilesInDir(FsManager::GetRaftGroupMetadataDir(data_dir));
+    }
   }
   return count;
 }
 
 Status ExternalMiniClusterFsInspector::CheckNoDataOnTS(int index) {
-  string data_dir = cluster_->tablet_server(index)->GetFullDataDir();
-  if (CountFilesInDir(FsManager::GetRaftGroupMetadataDir(data_dir)) > 0) {
-    return STATUS(IllegalState, "tablet metadata blocks still exist", data_dir);
+  for (const auto& data_dir : cluster_->tablet_server(index)->GetDataDirs()) {
+    if (CountFilesInDir(FsManager::GetRaftGroupMetadataDir(data_dir)) > 0) {
+      return STATUS(IllegalState, "tablet metadata blocks still exist", data_dir);
+    }
+    if (CountWALSegmentsOnTS(index) > 0) {
+      return STATUS(IllegalState, "wals still exist", data_dir);
+    }
+    if (CountFilesInDir(FsManager::GetConsensusMetadataDir(data_dir)) > 0) {
+      return STATUS(IllegalState, "consensus metadata still exists", data_dir);
+    }
   }
-  if (CountWALSegmentsOnTS(index) > 0) {
-    return STATUS(IllegalState, "wals still exist", data_dir);
-  }
-  if (CountFilesInDir(FsManager::GetConsensusMetadataDir(data_dir)) > 0) {
-    return STATUS(IllegalState, "consensus metadata still exists", data_dir);
-  }
-  return Status::OK();;
+  return Status::OK();
 }
 
 Status ExternalMiniClusterFsInspector::CheckNoData() {
@@ -209,7 +232,7 @@ Status ExternalMiniClusterFsInspector::CheckNoData() {
 
 std::string ExternalMiniClusterFsInspector::GetTabletSuperBlockPathOnTS(
     int ts_index, const string& tablet_id) const {
-  string data_dir = cluster_->tablet_server(ts_index)->GetFullDataDir();
+  string data_dir = cluster_->tablet_server(ts_index)->GetDataDirs()[0];
   std::string meta_dir = FsManager::GetRaftGroupMetadataDir(data_dir);
   return JoinPathSegments(meta_dir, tablet_id);
 }
@@ -236,7 +259,7 @@ int64_t ExternalMiniClusterFsInspector::GetTabletSuperBlockMTimeOrDie(
 Status ExternalMiniClusterFsInspector::ReadConsensusMetadataOnTS(int index,
                                                                  const string& tablet_id,
                                                                  ConsensusMetadataPB* cmeta_pb) {
-  string data_dir = cluster_->tablet_server(index)->GetFullDataDir();
+  string data_dir = cluster_->tablet_server(index)->GetDataDirs()[0];
   string cmeta_dir = FsManager::GetConsensusMetadataDir(data_dir);
   string cmeta_file = JoinPathSegments(cmeta_dir, tablet_id);
   if (!env_->FileExists(cmeta_file)) {
@@ -359,7 +382,11 @@ Status ExternalMiniClusterFsInspector::WaitForFilePatternInTabletWalDirOnTs(
   MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(timeout);
 
-  string data_dir = cluster_->tablet_server(ts_index)->GetFullDataDir();
+  auto dirs = cluster_->tablet_server(ts_index)->GetDataDirs();
+  if (dirs.size() != 1) {
+    return STATUS(IllegalState, "Multi drive is not supported");
+  }
+  string data_dir = dirs[0];
   string ts_wal_dir = JoinPathSegments(data_dir, FsManager::kWalDirName);
   vector<string> tables;
   RETURN_NOT_OK_PREPEND(ListFilesInDir(ts_wal_dir, &tables),

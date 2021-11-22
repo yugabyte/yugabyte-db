@@ -919,6 +919,13 @@ char *FastHex64ToBuffer(uint64 value, char* buffer) {
   return InternalFastHexToBuffer(value, buffer, 16);
 }
 
+std::string FastHex64ToString(uint64 value) {
+  std::string result;
+  result.resize(16);
+  InternalFastHexToBuffer(value, &result[0], 16);
+  return result;
+}
+
 char *FastHex32ToBuffer(uint32 value, char* buffer) {
   return InternalFastHexToBuffer(value, buffer, 8);
 }

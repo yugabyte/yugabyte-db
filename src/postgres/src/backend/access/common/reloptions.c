@@ -160,6 +160,15 @@ static relopt_bool boolRelOpts[] =
 		 * colocated. This option will be ignored in non-colocated database. */
 		true
 	},
+	{
+		{
+			"use_initdb_acl",
+			"Initialize view's permissions as if it was created by initdb via yb_system_views.sql",
+			RELOPT_KIND_VIEW,
+			AccessExclusiveLock
+		},
+		false
+	},
 	/* list terminator */
 	{{NULL}}
 };
@@ -391,17 +400,6 @@ static relopt_int intRelOpts[] =
 		InvalidOid,
 		1 /* parse_utilcmd takes care of OID >= FirstNormalObjectId for user tables */,
 		INT_MAX
-	},
-	{
-		{
-			"rewrite_rule_oid",
-			"Postgres rewrite rule oid for the new rewrite rule defined for this view.",
-			RELOPT_KIND_VIEW,
-			AccessExclusiveLock
-		},
-		InvalidOid,
-		1,
-		FirstNormalObjectId - 1 /* we don't expect this for non-system views */
 	},
 	/* list terminator */
 	{{NULL}}
@@ -841,16 +839,16 @@ transformRelOptions(Datum oldOptions, List *defList, const char *namspace,
 {
 	return ybTransformRelOptions(oldOptions, defList, namspace, validnsps,
 								 ignoreOids, isReset,
-								 false /* ybIgnoreYsqlUpgradeViewOptions */);
+								 false /* ybIgnoreYsqlUpgradeOptions */);
 }
 
 /*
  * See above for transformRelOptions description.
  * 
- * If ybIgnoreYsqlUpgradeViewOptions is specified, ignore "table_oid",
- * "row_type_oid" and "rewrite_rule_oid" options. This is needed in
- * YSQL upgrade mode, where we use them to simulate initdb-like behaviour
- * for creating relations but don't want them to be persisted.
+ * If ybIgnoreYsqlUpgradeOptions is specified, ignore "table_oid"
+ * and "row_type_oid" options. This is needed in YSQL upgrade mode, where we
+ * use them to simulate initdb-like behaviour for creating relations but don't
+ * want them to be persisted.
  */
 Datum
 ybTransformRelOptions(Datum oldOptions, List *defList, const char *namspace,
@@ -969,10 +967,15 @@ ybTransformRelOptions(Datum oldOptions, List *defList, const char *namspace,
 			if (ignoreOids && strcmp(def->defname, "oids") == 0)
 				continue;
 
+			/*
+			 * These options serve as temporary markers during YSQL upgrade,
+			 * but they might also be used for other purposes (e.g. table_oid
+			 * is used to backup/restore colocated tables).
+			 */
 			if (ybIgnoreYsqlUpgradeOptions &&
 				(strcmp(def->defname, "table_oid") == 0 ||
 				 strcmp(def->defname, "row_type_oid") == 0 ||
-				 strcmp(def->defname, "rewrite_rule_oid") == 0))
+				 strcmp(def->defname, "use_initdb_acl") == 0))
 				continue;
 
 			/* ignore if not in the same namespace */
@@ -1511,8 +1514,8 @@ view_reloptions(Datum reloptions, bool validate)
 		offsetof(ViewOptions, security_barrier)},
 		{"check_option", RELOPT_TYPE_STRING,
 		offsetof(ViewOptions, check_option_offset)},
-		{"rewrite_rule_oid", RELOPT_TYPE_BOOL,
-		offsetof(ViewOptions, rewrite_rule_oid)},
+		{"use_initdb_acl", RELOPT_TYPE_BOOL,
+		offsetof(ViewOptions, yb_use_initdb_acl)},
 	};
 
 	options = parseRelOptions(reloptions, validate, RELOPT_KIND_VIEW, &numoptions);

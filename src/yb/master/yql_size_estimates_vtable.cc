@@ -14,9 +14,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/yql_size_estimates_vtable.h"
 
-#include "yb/rpc/messenger.h"
 
-#include "yb/util/net/dns_resolver.h"
 #include "yb/util/yb_partition.h"
 
 namespace yb {
@@ -48,8 +46,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLSizeEstimatesVTable::RetrieveData(
     }
 
     // Get tablets for table.
-    std::vector<scoped_refptr<TabletInfo> > tablets;
-    table->GetAllTablets(&tablets);
+    auto tablets = table->GetTablets();
     for (const scoped_refptr<TabletInfo>& tablet : tablets) {
       TabletLocationsPB tabletLocationsPB;
       Status s = catalog_manager->GetTabletLocations(tablet->id(), &tabletLocationsPB);

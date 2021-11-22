@@ -8,8 +8,8 @@ import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
 import static com.yugabyte.yw.common.AssertHelper.assertForbidden;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
@@ -42,6 +42,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.protobuf.ByteString;
+import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeApiHelper;
@@ -49,16 +50,19 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.audit.AuditService;
+import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.TableDefinitionTaskParams;
+import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.ColumnDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
@@ -74,6 +78,7 @@ import java.util.Set;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.Ignore;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Matchers;
 import org.slf4j.Logger;
@@ -120,7 +125,12 @@ public class TablesControllerTest extends FakeDBApplication {
     when(mockService.getClient(any(), any())).thenReturn(mockClient);
 
     auditService = new AuditService();
-    tablesController = new TablesController(mockService);
+    Commissioner commissioner = app.injector().instanceOf(Commissioner.class);
+    MetricQueryHelper metricQueryHelper = app.injector().instanceOf(MetricQueryHelper.class);
+    CustomerConfigService customerConfigService =
+        app.injector().instanceOf(CustomerConfigService.class);
+    tablesController =
+        new TablesController(commissioner, mockService, metricQueryHelper, customerConfigService);
     tablesController.setAuditService(auditService);
   }
 
@@ -228,7 +238,7 @@ public class TablesControllerTest extends FakeDBApplication {
     ObjectNode emptyJson = Json.newObject();
 
     Result r =
-        assertYWSE(
+        assertPlatformException(
             () -> FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, emptyJson));
     assertEquals(BAD_REQUEST, r.status());
     String errMsg = "Cannot find universe " + badUUID;
@@ -253,7 +263,7 @@ public class TablesControllerTest extends FakeDBApplication {
     String errorString = "Table details can not be null.";
 
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () -> FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, emptyJson));
     assertEquals(BAD_REQUEST, result.status());
     assertThat(contentAsString(result), containsString(errorString));
@@ -390,7 +400,8 @@ public class TablesControllerTest extends FakeDBApplication {
     customer.save();
 
     Result result =
-        assertYWSE(() -> tablesController.describe(customer.uuid, u.universeUUID, mockTableUUID2));
+        assertPlatformException(
+            () -> tablesController.describe(customer.uuid, u.universeUUID, mockTableUUID2));
     assertEquals(BAD_REQUEST, result.status());
     // String errMsg = "Invalid Universe UUID: " + universe.universeUUID;
     String errMsg =
@@ -514,7 +525,7 @@ public class TablesControllerTest extends FakeDBApplication {
     topJson.put("tableName", "mock_table");
 
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () -> FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, topJson));
     assertEquals(BAD_REQUEST, result.status());
     assertThat(contentAsString(result), containsString("Invalid S3 Bucket provided: foobar"));
@@ -537,7 +548,7 @@ public class TablesControllerTest extends FakeDBApplication {
     ObjectNode bodyJson = Json.newObject();
 
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 FakeApiHelper.doRequestWithAuthTokenAndBody(
                     "PUT", url, user.createAuthToken(), bodyJson));
@@ -569,7 +580,7 @@ public class TablesControllerTest extends FakeDBApplication {
     bodyJson.put("storageConfigUUID", randomUUID.toString());
 
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 FakeApiHelper.doRequestWithAuthTokenAndBody(
                     "PUT", url, user.createAuthToken(), bodyJson));
@@ -682,6 +693,7 @@ public class TablesControllerTest extends FakeDBApplication {
   }
 
   @Test
+  @Ignore
   public void testCreateBackupOnDisabledTableFails() {
     Customer customer = ModelFactory.testCustomer();
     Users user = ModelFactory.testUser(customer);
@@ -697,7 +709,8 @@ public class TablesControllerTest extends FakeDBApplication {
         .validateTables(any(), any());
     UUID uuid = UUID.randomUUID();
     Result r =
-        assertYWSE(() -> mockTablesController.createBackup(customer.uuid, u.universeUUID, uuid));
+        assertPlatformException(
+            () -> mockTablesController.createBackup(customer.uuid, u.universeUUID, uuid));
 
     assertBadRequest(r, "bad request");
   }
@@ -729,7 +742,7 @@ public class TablesControllerTest extends FakeDBApplication {
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
 
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 FakeApiHelper.doRequestWithAuthTokenAndBody(
                     "PUT", url, user.createAuthToken(), bodyJson));
@@ -774,7 +787,8 @@ public class TablesControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateMultiBackup() {
+  @Ignore
+  public void testCreateMultiBackup() throws Exception {
     Customer customer = ModelFactory.testCustomer();
     Users user = ModelFactory.testUser(customer);
     Universe universe = ModelFactory.createUniverse(customer.getCustomerId());
@@ -830,7 +844,7 @@ public class TablesControllerTest extends FakeDBApplication {
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
 
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 FakeApiHelper.doRequestWithAuthTokenAndBody(
                     "PUT", url, user.createAuthToken(), bodyJson));
@@ -842,7 +856,7 @@ public class TablesControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateMultiBackupScheduleCron() {
+  public void testCreateMultiBackupScheduleCronNoTables() {
     Customer customer = ModelFactory.testCustomer();
     Users user = ModelFactory.testUser(customer);
     Universe universe = ModelFactory.createUniverse(customer.getCustomerId());
@@ -857,20 +871,19 @@ public class TablesControllerTest extends FakeDBApplication {
     bodyJson.put("actionType", "CREATE");
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
     bodyJson.put("cronExpression", "5 * * * *");
+    bodyJson.put("keyspace", "$$$Default");
 
     Result result =
-        FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", url, user.createAuthToken(), bodyJson);
-    assertOk(result);
-    JsonNode resultJson = Json.parse(contentAsString(result));
-    UUID scheduleUUID = UUID.fromString(resultJson.path("scheduleUUID").asText());
-    Schedule schedule = Schedule.getOrBadRequest(scheduleUUID);
-    assertNotNull(schedule);
-    assertEquals(schedule.getCronExpression(), "5 * * * *");
-    assertAuditEntry(1, customer.uuid);
+        assertPlatformException(
+            () ->
+                FakeApiHelper.doRequestWithAuthTokenAndBody(
+                    "PUT", url, user.createAuthToken(), bodyJson));
+    String errMsg = "Cannot initiate backup with empty Keyspace";
+    assertBadRequest(result, errMsg);
   }
 
   @Test
-  public void testCreateMultiBackupScheduleFrequency() {
+  public void testCreateMultiBackupScheduleFrequencyEmptyKeyspace() {
     Customer customer = ModelFactory.testCustomer();
     Users user = ModelFactory.testUser(customer);
     Universe universe = ModelFactory.createUniverse(customer.getCustomerId());
@@ -885,16 +898,14 @@ public class TablesControllerTest extends FakeDBApplication {
     bodyJson.put("actionType", "CREATE");
     bodyJson.put("storageConfigUUID", customerConfig.configUUID.toString());
     bodyJson.put("schedulingFrequency", "6000");
+    bodyJson.put("keyspace", "$$$Default");
 
     Result result =
-        FakeApiHelper.doRequestWithAuthTokenAndBody("PUT", url, user.createAuthToken(), bodyJson);
-    assertOk(result);
-    JsonNode resultJson = Json.parse(contentAsString(result));
-    UUID scheduleUUID = UUID.fromString(resultJson.path("scheduleUUID").asText());
-    Schedule schedule = Schedule.getOrBadRequest(scheduleUUID);
-    assertNotNull(schedule);
-    assertEquals(schedule.getFrequency(), 6000);
-    assertAuditEntry(1, customer.uuid);
+        assertPlatformException(
+            () ->
+                FakeApiHelper.doRequestWithAuthTokenAndBody(
+                    "PUT", url, user.createAuthToken(), bodyJson));
+    assertBadRequest(result, "Cannot initiate backup with empty Keyspace");
   }
 
   @Test
@@ -902,7 +913,7 @@ public class TablesControllerTest extends FakeDBApplication {
     Customer customer = ModelFactory.testCustomer();
     Users user = ModelFactory.testUser(customer);
     Map<String, String> flashData = Collections.emptyMap();
-    Map<String, Object> argData = ImmutableMap.of("user", user);
+    Map<String, Object> argData = ImmutableMap.of("user", new UserWithFeatures().setUser(user));
     Http.Request request = mock(Http.Request.class);
     Long id = 2L;
     play.api.mvc.RequestHeader header = mock(play.api.mvc.RequestHeader.class);
@@ -949,7 +960,8 @@ public class TablesControllerTest extends FakeDBApplication {
     String errorString = "No table for UUID: " + badTableUUID;
 
     Result result =
-        assertYWSE(() -> tablesController.drop(customer.uuid, u.universeUUID, badTableUUID));
+        assertPlatformException(
+            () -> tablesController.drop(customer.uuid, u.universeUUID, badTableUUID));
     assertEquals(BAD_REQUEST, result.status());
     assertThat(contentAsString(result), containsString(errorString));
     assertAuditEntry(0, customer.uuid);
@@ -1004,13 +1016,13 @@ public class TablesControllerTest extends FakeDBApplication {
     when(universe.getCertificateNodetoNode()).thenReturn("fake_certificate");
 
     // Disallow on Index Table.
-    assertYWSE(
+    assertPlatformException(
         () ->
             tablesController.validateTables(
                 Arrays.asList(table1Uuid, table2Uuid, indexUuid), universe));
 
     // Disallow on YSQL table.
-    assertYWSE(
+    assertPlatformException(
         () ->
             tablesController.validateTables(
                 Arrays.asList(table1Uuid, table2Uuid, ysqlUuid), universe));

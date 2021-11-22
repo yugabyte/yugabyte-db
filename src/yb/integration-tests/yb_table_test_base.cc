@@ -21,8 +21,6 @@
 #include "yb/common/ql_value.h"
 
 #include "yb/util/monotime.h"
-#include "yb/yql/redis/redisserver/redis_parser.h"
-#include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/util/curl_util.h"
 
 DECLARE_bool(enable_ysql);
@@ -108,11 +106,13 @@ void YBTableTestBase::SetUp() {
 
   Status mini_cluster_status;
   if (use_external_mini_cluster()) {
-    auto opts = ExternalMiniClusterOptions();
-    opts.num_masters = num_masters();
-    opts.master_rpc_ports = master_rpc_ports();
-    opts.num_tablet_servers = num_tablet_servers();
-    opts.enable_ysql = enable_ysql();
+    auto opts = ExternalMiniClusterOptions {
+        .num_masters = num_masters(),
+        .num_tablet_servers = num_tablet_servers(),
+        .num_drives = num_drives(),
+        .master_rpc_ports = master_rpc_ports(),
+        .enable_ysql = enable_ysql()
+    };
     CustomizeExternalMiniCluster(&opts);
 
     external_mini_cluster_.reset(new ExternalMiniCluster(opts));

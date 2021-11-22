@@ -1,8 +1,8 @@
 ---
-title: Explore features
-headerTitle: Explore features
-linkTitle: Explore features
-description: Explore the features of YugabyteDB on macOS, Linux, Docker, and Kubernetes (Minikube).
+title: Explore YugabyteDB
+headerTitle: Explore YugabyteDB
+linkTitle: Explore
+description: Explore the features of YugabyteDB on macOS, Linux, Docker, and Kubernetes.
 headcontent:
 image: /images/section_icons/index/explore.png
 section: YUGABYTEDB CORE
@@ -23,16 +23,16 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
     <a class="section-link icon-offset" href="ysql-language-features/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/fault_tolerance.png" aria-hidden="true" />
-        <div class="title">PostgreSQL features in YSQL</div>
+        <div class="title">Distributed SQL features</div>
       </div>
       <div class="body">
-        YSQL supports most PostgreSQL language features.
+        Distributed SQL features in YSQL.
       </div>
     </a>
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="fault-tolerance/macos/">
+    <a class="section-link icon-offset" href="fault-tolerance/macos">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/fault_tolerance.png" aria-hidden="true" />
         <div class="title">Fault tolerance</div>
@@ -78,7 +78,7 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
       </div>
     </a>
   </div>
-   
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="multi-region-deployments/">
       <div class="head">
@@ -103,18 +103,7 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
     </a>
   </div>
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="follower-reads/fr-ycql/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
-        <div class="title">Follower reads</div>
-      </div>
-      <div class="body">
-        Reduce read latency by reading from follower replicas.
-      </div>
-    </a>
-  </div>
-
+<!--
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="colocated-tables/macos/">
       <div class="head">
@@ -123,6 +112,19 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
       </div>
       <div class="body">
         Model large number of relations and databases with fault tolerance.
+      </div>
+    </a>
+  </div>
+-->
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="security/security/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/secure.png" aria-hidden="true" />
+        <div class="title">Security</div>
+      </div>
+      <div class="body">
+        Learn about strategies for securing YugabyteDB.
       </div>
     </a>
   </div>
@@ -139,46 +141,12 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
     </a>
   </div>
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="extensions/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
-        <div class="title">Extensions</div>
-      </div>
-      <div class="body">
-        Take advantage of powerful pre-bundled extensions.
-      </div>
-    </a>
-  </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="linear-scalability/sharding-data/">
+    <a class="section-link icon-offset" href="cluster-management/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/fault_tolerance.png" aria-hidden="true" />
-        <div class="title">Sharding strategies</div>
-      </div>
-      <div class="body">
-        Learn about range and hash sharding strategies.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="security/security/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/secure.png" aria-hidden="true" />
-        <div class="title">Security</div>
-      </div>
-      <div class="body">
-        Learn about strategies for securing YugabyteDB.
-      </div>
-    </a>
-  </div>
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="backup-restore/point-in-time-recovery-ysql/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/fault_tolerance.png" aria-hidden="true" />
-        <div class="title">Point-in-time recovery</div>
+        <div class="title">Cluster management</div>
       </div>
       <div class="body">
         Learn about point-in-time recovery.

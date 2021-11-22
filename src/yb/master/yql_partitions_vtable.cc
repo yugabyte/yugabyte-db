@@ -108,8 +108,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::GenerateAndCacheData() 
     auto namespace_info = VERIFY_RESULT(catalog_manager->FindNamespaceById(table->namespace_id()));
 
     // Get tablets for table.
-    std::vector<scoped_refptr<TabletInfo>> tablet_infos;
-    table->GetAllTablets(&tablet_infos);
+    auto tablet_infos = table->GetTablets();
     for (const auto& info : tablet_infos) {
       tablets.emplace_back();
       auto& data = tablets.back();
@@ -133,7 +132,12 @@ Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::GenerateAndCacheData() 
   std::unordered_map<std::string, InetAddress> dns_results;
 
   for (auto& p : dns_lookups) {
-    dns_results.emplace(p.first, InetAddress(VERIFY_RESULT(Copy(p.second.get()))));
+    const auto res = p.second.get();
+    if (!res.ok()) {
+      YB_LOG_EVERY_N_SECS(WARNING, 30) << "Unable to resolve host: " << res;
+    } else {
+      dns_results.emplace(p.first, InetAddress(res.get()));
+    }
   }
 
   // Reserve upfront memory, as we're likely to need to insert a row for each tablet.
@@ -162,9 +166,13 @@ Result<std::shared_ptr<QLRowBlock>> YQLPartitionsVTable::GenerateAndCacheData() 
     QLMapValuePB *map_value = replica_addresses.mutable_map_value();
     for (const auto& replica : data.locations->replicas()) {
       auto host = DesiredHostPort(replica.ts_info(), CloudInfoPB()).host();
-      QLValue::set_inetaddress_value(dns_results[host], map_value->add_keys());
 
-      map_value->add_values()->set_string_value(consensus::RaftPeerPB::Role_Name(replica.role()));
+      // In case of resolution failure, we may not find the host in dns_results.
+      const auto addr = dns_results.find(host);
+      if (addr != dns_results.end()) {
+        QLValue::set_inetaddress_value(addr->second, map_value->add_keys());
+        map_value->add_values()->set_string_value(consensus::RaftPeerPB::Role_Name(replica.role()));
+      }
     }
     RETURN_NOT_OK(SetColumnValue(kReplicaAddresses, replica_addresses, &row));
   }

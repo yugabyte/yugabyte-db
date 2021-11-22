@@ -20,10 +20,8 @@
 #include <fstream>
 #include <regex>
 
-#include <gflags/gflags.h>
 #include <boost/algorithm/string.hpp>
 
-#include "yb/common/common_flags.h"
 #include "yb/util/errno.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
@@ -41,7 +39,7 @@ DEFINE_bool(pg_verbose_error_log, false,
             "True to enable verbose logging of errors in PostgreSQL server");
 DEFINE_int32(pgsql_proxy_webserver_port, 13000, "Webserver port for PGSQL");
 
-DEFINE_test_flag(bool, pg_collation_enabled, false,
+DEFINE_test_flag(bool, pg_collation_enabled, true,
                  "True to enable collation support in YugaByte PostgreSQL.");
 
 DECLARE_string(metric_node_name);
@@ -78,6 +76,7 @@ DEFINE_string(ysql_pg_conf_csv, "",
               "CSV formatted line represented list of postgres setting assignments");
 DEFINE_string(ysql_hba_conf_csv, "",
               "CSV formatted line represented list of postgres hba rules (in order)");
+TAG_FLAG(ysql_hba_conf_csv, sensitive_info);
 
 DEFINE_string(ysql_pg_conf, "",
               "Deprecated, use the `ysql_pg_conf_csv` flag instead. " \
@@ -85,6 +84,7 @@ DEFINE_string(ysql_pg_conf, "",
 DEFINE_string(ysql_hba_conf, "",
               "Deprecated, use `ysql_hba_conf_csv` flag instead. " \
               "Comma separated list of postgres hba rules (in order)");
+TAG_FLAG(ysql_hba_conf, sensitive_info);
 
 using std::vector;
 using std::string;
@@ -204,6 +204,7 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
   if (FLAGS_pg_stat_statements_enabled) {
     metricsLibs.push_back("pg_stat_statements");
   }
+  metricsLibs.push_back("pg_stat_monitor");
   metricsLibs.push_back("yb_pg_metrics");
   metricsLibs.push_back("pgaudit");
   metricsLibs.push_back("pg_hint_plan");
@@ -303,12 +304,10 @@ Result<string> WritePgHbaConfig(const PgProcessConf& conf) {
   }
 
   // Add comments to the hba config file noting the internally hardcoded config line.
-  if (!FLAGS_ysql_disable_index_backfill) {
-    lines.insert(lines.begin(), {
-          "# Internal configuration:",
-          "# local all postgres yb-tserver-key",
-        });
-  }
+  lines.insert(lines.begin(), {
+      "# Internal configuration:",
+      "# local all postgres yb-tserver-key",
+  });
 
   const auto conf_path = JoinPathSegments(conf.data_dir, "ysql_hba.conf");
   RETURN_NOT_OK(WriteConfigFile(conf_path, lines));
@@ -422,7 +421,8 @@ Status PgWrapper::Start() {
   pg_proc_->SetEnv("LD_LIBRARY_PATH", boost::join(ld_library_path, ":"));
   pg_proc_->ShareParentStderr();
   pg_proc_->ShareParentStdout();
-  pg_proc_->SetParentDeathSignal(SIGINT);
+  // See YBSetParentDeathSignal in pg_yb_utils.c for how this is used.
+  pg_proc_->SetEnv("YB_PG_PDEATHSIG", Format("$0", SIGINT));
   pg_proc_->InheritNonstandardFd(conf_.tserver_shm_fd);
   SetCommonEnv(&pg_proc_.get(), /* yb_enabled */ true);
   RETURN_NOT_OK(pg_proc_->Start());

@@ -33,10 +33,9 @@ import org.slf4j.LoggerFactory;
 
 import org.yb.BaseYBTest;
 import org.yb.client.TestUtils;
-import org.yb.util.SanitizerUtil;
+import org.yb.util.BuildTypeUtil;
 import org.yb.util.Timeouts;
 
-import com.google.common.base.Preconditions;
 import com.google.common.net.HostAndPort;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -57,9 +56,7 @@ public class BaseMiniClusterTest extends BaseYBTest {
   protected static final int DEFAULT_TIMEOUT_MS =
           (int) Timeouts.adjustTimeoutSecForBuildType(50000);
 
-  /**
-   * This is used as the default timeout when calling YB Java client's async API.
-   */
+  /** Default timeout used when calling YB Java client's async API. */
   protected static final int DEFAULT_SLEEP = (int) Timeouts.adjustTimeoutSecForBuildType(50000);
 
   /**
@@ -75,14 +72,19 @@ public class BaseMiniClusterTest extends BaseYBTest {
   protected String clientCertFile = null;
   protected String clientKeyFile = null;
 
-  // This is used as the default bind address (Used only for mTLS verification).
+  /** Default bind address (Used only for mTLS verification). */
   protected String clientHost = null;
   protected int clientPort = 0;
 
-
-  // Comma separate describing the master addresses and ports.
+  /** Comma separate describing the master addresses and ports. */
   protected static String masterAddresses;
   protected static List<HostAndPort> masterHostPorts;
+
+  /**
+   * Whether the fresh cluster should be created for the next test, so that custom
+   * {@code createMiniCluster} won't affect other tests.
+   */
+  private static boolean clusterNeedsRecreation = false;
 
   protected int getReplicationFactor() {
     return -1;
@@ -106,6 +108,15 @@ public class BaseMiniClusterTest extends BaseYBTest {
     return true;
   }
 
+  /** Mark cluster as custom, that needs to be recreated fresh for the next test. */
+  protected static void markClusterNeedsRecreation() {
+    clusterNeedsRecreation = true;
+  }
+
+  protected static boolean isClusterNeedsRecreation() {
+    return clusterNeedsRecreation;
+  }
+
   /** To customize, override and use {@code super} call. */
   protected Map<String, String> getMasterFlags() {
     Map<String, String> flagMap = new TreeMap<>();
@@ -116,7 +127,7 @@ public class BaseMiniClusterTest extends BaseYBTest {
 
     // For sanitizer builds, it is easy to overload the master, leading to quorum changes.
     // This could end up breaking ever trivial DDLs like creating an initial table in the cluster.
-    if (SanitizerUtil.isSanitizerBuild()) {
+    if (BuildTypeUtil.isSanitizerBuild()) {
       flagMap.put("leader_failure_max_missed_heartbeat_periods", "10");
     }
 
@@ -151,6 +162,10 @@ public class BaseMiniClusterTest extends BaseYBTest {
       return;
     }
     TestUtils.clearReservedPorts();
+    if (clusterNeedsRecreation) {
+      destroyMiniCluster();
+      clusterNeedsRecreation = false;
+    }
     if (miniCluster == null) {
       createMiniCluster();
     } else if (shouldRestartMiniClusterBetweenTests()) {
@@ -180,24 +195,18 @@ public class BaseMiniClusterTest extends BaseYBTest {
 
   /**
    * Creates a new cluster with additional flags.
+   * <p>
    * Flags will override initial ones on name clash.
    */
   protected final void createMiniCluster(
       Map<String, String> additionalMasterFlags,
       Map<String, String> additionalTserverFlags) throws Exception {
-    if (!isMiniClusterEnabled()) {
-      return;
-    }
-    final int replicationFactor = getReplicationFactor();
-    createMiniCluster(
-        TestUtils.getFirstPositiveNumber(
-            getInitialNumMasters(), replicationFactor,
-            MiniYBClusterParameters.DEFAULT_NUM_MASTERS),
-        TestUtils.getFirstPositiveNumber(
-            getInitialNumTServers(), replicationFactor,
-            MiniYBClusterParameters.DEFAULT_NUM_TSERVERS),
-        additionalMasterFlags,
-        additionalTserverFlags);
+    createMiniCluster(-1, -1, additionalMasterFlags, additionalTserverFlags);
+  }
+
+  protected final void createMiniCluster(
+      Consumer<MiniYBClusterBuilder> customize) throws Exception {
+    createMiniCluster(-1, -1, customize);
   }
 
   /** Creates a new cluster with the requested number of masters and tservers. */
@@ -206,8 +215,10 @@ public class BaseMiniClusterTest extends BaseYBTest {
   }
 
   /**
-   * Creates a new cluster with the requested number of masters and tservers with additional
-   * flags. Flags will override initial ones on name clash.
+   * Creates a new cluster with the requested number of masters and tservers (or -1 for default)
+   * with additional flags.
+   * <p>
+   * Flags will override initial ones on name clash.
    */
   protected final void createMiniCluster(
       int numMasters,
@@ -234,6 +245,17 @@ public class BaseMiniClusterTest extends BaseYBTest {
     if (!isMiniClusterEnabled()) {
       return;
     }
+
+    final int replicationFactor = getReplicationFactor();
+
+    numMasters = TestUtils.getFirstPositiveNumber(numMasters,
+        getInitialNumMasters(), replicationFactor,
+        MiniYBClusterParameters.DEFAULT_NUM_MASTERS);
+
+    numTservers = TestUtils.getFirstPositiveNumber(numTservers,
+        getInitialNumTServers(), replicationFactor,
+        MiniYBClusterParameters.DEFAULT_NUM_TSERVERS);
+
     LOG.info("BaseMiniClusterTest.createMiniCluster is running");
     MiniYBClusterBuilder clusterBuilder = new MiniYBClusterBuilder()
                       .numMasters(numMasters)
@@ -246,7 +268,7 @@ public class BaseMiniClusterTest extends BaseYBTest {
                       .addCommonTServerFlags(additionalTserverFlags)
                       .numShardsPerTServer(getNumShardsPerTServer())
                       .useIpWithCertificate(useIpWithCertificate)
-                      .replicationFactor(getReplicationFactor())
+                      .replicationFactor(replicationFactor)
                       .sslCertFile(certFile)
                       .sslClientCertFiles(clientCertFile, clientKeyFile)
                       .bindHostAddress(clientHost, clientPort);

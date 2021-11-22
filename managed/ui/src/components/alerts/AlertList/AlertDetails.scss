@@ -28,7 +28,9 @@
   .noLeftPadding {
     padding-left: 0;
   }
-
+  .noMarginBottom {
+    margin-bottom: 0 !important;
+  }
   .alert-message {
     font-size: 13px;
     max-height: 250px;
@@ -36,7 +38,6 @@
   }
 
   .alert-label {
-    height: 45px;
     margin-bottom: 10px;
 
     .alert-label-header {
@@ -47,9 +48,16 @@
 
     .alert-label-value {
       font-size: 12px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      max-height: 200px;
+      overflow-y: auto;
+      margin-bottom: 5px;
+    }
+
+    .alert-label-message {
+      display: inline-block;
+      font-size: 12px;
+      max-height: 200px;
+      margin-bottom: 5px;
     }
   }
   .marginTop {
@@ -91,5 +99,8 @@
         position: absolute;
       }
     }
+  }
+  .universeLink {
+    text-decoration: underline;
   }
 }

@@ -1021,17 +1021,25 @@ index_create(Relation heapRelation,
 	indexRelation->rd_rel->relispartition = OidIsValid(parentIndexRelid);
 
 	/*
+	 * YSQL upgrade notes:
+	 * -------------------
 	 * At this point, reloptions no longer affects the index
 	 * creation process, the only remaining use for them is to be
-	 * stored in pg_class.
+	 * stored in pg_class. ybTransformRelOptions has already
+	 * removed all temporary reloptions.
 	 *
-	 * For YSQL upgrade, we want system indexes to not have
-	 * reloptions stored to imitate BKI processing, so we can safely
-	 * remove them now.
+	 * We want system tables and indexes to not have any reloptions
+	 * stored to imitate BKI processing, so we don't allow any reloption
+	 * not removed by ybTransformRelOptions.
 	 */
-	if (IsCatalogRelation(heapRelation) && IsYsqlUpgrade)
+	if (IsYsqlUpgrade && IsCatalogRelation(heapRelation) &&
+		reloptions != (Datum) 0)
 	{
-		reloptions = (Datum) 0;
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("unsuppored reloptions were used for a system index "
+				        "during YSQL upgrade"),
+				 errhint("Only a small subset is allowed due to BKI restrictions.")));
 	}
 
 	/*
@@ -1239,9 +1247,6 @@ index_create(Relation heapRelation,
 												DEPENDENCY_NORMAL,
 												DEPENDENCY_AUTO, false);
 			}
-
-			/* Store dependency on tablespace */
-			recordDependencyOnTablespace(RelationRelationId, indexRelationId, tableSpaceId);
 		}
 	}
 	else
@@ -2748,19 +2753,6 @@ IndexBuildHeapRangeScanInternal(Relation heapRelation,
 	econtext = GetPerTupleExprContext(estate);
 	slot = MakeSingleTupleTableSlot(RelationGetDescr(heapRelation));
 
-	/*
-	 * Set some exec params.
-	 */
-	YBCPgExecParameters *exec_params = &estate->yb_exec_params;
-	if (bfinfo)
-	{
-		if (bfinfo->bfinstr)
-			exec_params->bfinstr = pstrdup(bfinfo->bfinstr);
-		exec_params->read_time = bfinfo->read_time;
-		exec_params->partition_key = pstrdup(bfinfo->row_bounds->partition_key);
-		exec_params->out_param = bfresult;
-	}
-
 	/* Arrange for econtext's scan tuple to be the tuple under test */
 	econtext->ecxt_scantuple = slot;
 
@@ -2803,7 +2795,20 @@ IndexBuildHeapRangeScanInternal(Relation heapRelation,
 									true,	/* buffer access strategy OK */
 									allow_sync);	/* syncscan OK? */
 		if (IsYBRelation(heapRelation))
+		{
+			YBCPgExecParameters *exec_params = &estate->yb_exec_params;
+			if (bfinfo)
+			{
+				if (bfinfo->bfinstr)
+					exec_params->bfinstr = pstrdup(bfinfo->bfinstr);
+				*exec_params->statement_read_time = bfinfo->read_time;
+				exec_params->partition_key = pstrdup(bfinfo->row_bounds->partition_key);
+				exec_params->out_param = bfresult;
+				exec_params->is_index_backfill = true;
+			}
+
 			scan->ybscan->exec_params = exec_params;
+		}
 	}
 	else
 	{

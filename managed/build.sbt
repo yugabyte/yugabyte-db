@@ -4,6 +4,8 @@ import play.sbt.PlayInteractionMode
 
 import scala.sys.process.Process
 
+useCoursier := false
+
 // ------------------------------------------------------------------------------------------------
 // Constants
 // ------------------------------------------------------------------------------------------------
@@ -142,7 +144,6 @@ libraryDependencies ++= Seq(
   "org.mockito" % "mockito-core" % "2.13.0",
   "org.mindrot" % "jbcrypt" % "0.4",
   "org.postgresql" % "postgresql" % "42.2.23",
-  "commons-io" % "commons-io" % "2.4",
   "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
   "org.codehaus.janino" % "janino" % "3.1.6",
   "org.apache.commons" % "commons-compress" % "1.21",
@@ -159,7 +160,9 @@ libraryDependencies ++= Seq(
   "com.amazonaws" % "aws-java-sdk-iam" % "1.11.670",
   "com.amazonaws" % "aws-java-sdk-sts" % "1.11.678",
   "com.amazonaws" % "aws-java-sdk-s3" % "1.11.931",
-  "com.cronutils" % "cron-utils" % "9.0.1",
+  "com.cronutils" % "cron-utils" % "9.1.5",
+  "com.azure" % "azure-storage-blob" % "12.7.0",
+  "com.azure" % "azure-core" % "1.1.0",
   "io.prometheus" % "simpleclient" % "0.11.0",
   "io.prometheus" % "simpleclient_hotspot" % "0.11.0",
   "io.prometheus" % "simpleclient_servlet" % "0.11.0",
@@ -183,9 +186,12 @@ libraryDependencies ++= Seq(
   "commons-codec" % "commons-codec" % "1.15",
   "com.google.cloud" % "google-cloud-storage" % "1.115.0",
   "org.projectlombok" % "lombok" % "1.18.20",
+  "com.squareup.okhttp3" % "okhttp" % "4.9.1",
   "com.squareup.okhttp3" % "mockwebserver" % "4.9.1" % Test,
   "io.kamon" %% "kamon-bundle" % "2.2.2",
-  "io.kamon" %% "kamon-prometheus" % "2.2.2"
+  "io.kamon" %% "kamon-prometheus" % "2.2.2",
+  "org.unix4j" % "unix4j-command" % "0.6",
+  "com.github.dikhan" % "pagerduty-client" % "3.1.2"
 )
 // Clear default resolvers.
 appResolvers := None
@@ -341,7 +347,7 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.6-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.10-SNAPSHOT"
 
 libraryDependencies ++= Seq(
   // We wont use swagger-ui jar since we want to change some of the assets:
@@ -354,9 +360,11 @@ libraryDependencies ++= Seq(
   "io.netty" % "netty-handler" % "4.1.66.Final",
   "io.netty" % "netty-codec-http" % "4.1.66.Final",
   "io.netty" % "netty" % "3.10.6.Final",
+  "io.netty" % "netty-tcnative-boringssl-static" % "2.0.44.Final",
   "com.cronutils" % "cron-utils" % "9.1.5",
   "com.nimbusds" % "nimbus-jose-jwt" % "9.11.3",
   "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor" % "2.9.10",
+  "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.9.10",
   "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % "2.9.10"
 )
 // https://mvnrepository.com/artifact/eu.unicredit/sbt-swagger-codegen-lib
@@ -365,6 +373,12 @@ libraryDependencies ++= Seq(
 
 dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "latest.integration"
 dependencyOverrides += "com.google.guava" % "guava" % "23.0"
+dependencyOverrides += "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.9.10"
+dependencyOverrides += "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor" % "2.9.10"
+dependencyOverrides += "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % "2.9.10"
+dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-databind" % "2.9.10.8"
+
+
 
 
 javaOptions in Test += "-Dconfig.file=src/main/resources/application.test.conf"

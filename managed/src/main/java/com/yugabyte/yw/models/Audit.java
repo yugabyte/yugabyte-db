@@ -132,15 +132,10 @@ public class Audit extends Model {
    * @return Newly Created Audit table entry.
    */
   public static Audit create(
-      UUID userUUID,
-      UUID customerUUID,
-      String apiCall,
-      String apiMethod,
-      JsonNode body,
-      UUID taskUUID) {
+      Users user, String apiCall, String apiMethod, JsonNode body, UUID taskUUID) {
     Audit entry = new Audit();
-    entry.customerUUID = customerUUID;
-    entry.userUUID = userUUID;
+    entry.customerUUID = user.customerUUID;
+    entry.userUUID = user.uuid;
     entry.apiCall = apiCall;
     entry.apiMethod = apiMethod;
     entry.taskUUID = taskUUID;

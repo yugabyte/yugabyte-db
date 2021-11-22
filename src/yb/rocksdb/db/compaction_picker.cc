@@ -21,6 +21,7 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "yb/rocksdb/db/compaction_picker.h"
+#include "yb/rocksdb/immutable_options.h"
 
 #ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
@@ -33,13 +34,9 @@
 #include <string>
 #include <utility>
 
-#include <gflags/gflags.h>
 
-#include "yb/rocksdb/db/column_family.h"
-#include "yb/rocksdb/db/filename.h"
-#include "yb/rocksdb/util/log_buffer.h"
+#include "yb/rocksdb/compaction_filter.h"
 #include "yb/rocksdb/util/random.h"
-#include "yb/rocksdb/util/statistics.h"
 #include "yb/util/string_util.h"
 #include "yb/rocksdb/util/sync_point.h"
 
@@ -462,6 +459,24 @@ void CompactionPicker::GetGrandparents(
   }
 }
 
+void CompactionPicker::MarkL0FilesForDeletion(
+    const VersionStorageInfo* vstorage,
+    const ImmutableCFOptions* ioptions) {
+  // CompactionFileFilterFactory is used to determine files that can be directly removed during
+  // compaction rather than requiring a full iteration through the files.
+  if (!ioptions->compaction_file_filter_factory) {
+    return;
+  }
+  // Compaction file filter factory should only look at files in Level 0.
+  auto file_filter = ioptions->compaction_file_filter_factory->CreateCompactionFileFilter(
+      vstorage->LevelFiles(0));
+  for (FileMetaData* f : vstorage->LevelFiles(0)) {
+    if (file_filter && file_filter->Filter(f) == FilterDecision::kDiscard) {
+      f->delete_after_compaction = true;
+    }
+  }
+}
+
 std::unique_ptr<Compaction> CompactionPicker::CompactRange(
     const std::string& cf_name, const MutableCFOptions& mutable_cf_options,
     VersionStorageInfo* vstorage, int input_level, int output_level,
@@ -503,6 +518,7 @@ std::unique_ptr<Compaction> CompactionPicker::CompactRange(
     for (int level = start_level; level < vstorage->num_levels(); level++) {
       inputs[level - start_level].level = level;
       auto& files = inputs[level - start_level].files;
+
       for (FileMetaData* f : vstorage->LevelFiles(level)) {
         files.push_back(f);
       }
@@ -519,6 +535,7 @@ std::unique_ptr<Compaction> CompactionPicker::CompactRange(
         /* grandparents = */ std::vector<FileMetaData*>(), ioptions_.info_log,
         /* is_manual = */ true);
     if (c && start_level == 0) {
+      MarkL0FilesForDeletion(vstorage, &ioptions_);
       level0_compactions_in_progress_.insert(c.get());
     }
     return c;
@@ -624,6 +641,7 @@ std::unique_ptr<Compaction> CompactionPicker::CompactRange(
 
   TEST_SYNC_POINT_CALLBACK("CompactionPicker::CompactRange:Return", compaction.get());
   if (input_level == 0) {
+    MarkL0FilesForDeletion(vstorage, &ioptions_);
     level0_compactions_in_progress_.insert(compaction.get());
   }
 
@@ -1231,8 +1249,12 @@ std::vector<std::vector<UniversalCompactionPicker::SortedRun>>
                                                    const ImmutableCFOptions& ioptions,
                                                    uint64_t max_file_size) {
   std::vector<std::vector<SortedRun>> ret(1);
+  MarkL0FilesForDeletion(&vstorage, &ioptions);
+
   for (FileMetaData* f : vstorage.LevelFiles(0)) {
-    if (f->fd.GetTotalFileSize() <= max_file_size) {
+    // Any files that can be directly removed during compaction can be included, even if they
+    // exceed the "max file size for compaction."
+    if (f->fd.GetTotalFileSize() <= max_file_size || f->delete_after_compaction) {
       ret.back().emplace_back(0, f, f->fd.GetTotalFileSize(), f->compensated_file_size,
           f->being_compacted);
     // If last sequence is empty it means that there are multiple too-large-to-compact files in
@@ -1362,7 +1384,7 @@ std::unique_ptr<Compaction> UniversalCompactionPicker::PickCompaction(
   std::vector<std::vector<SortedRun>> sorted_runs = CalculateSortedRuns(
       *vstorage,
       ioptions_,
-      mutable_cf_options.max_file_size_for_compaction);
+      mutable_cf_options.MaxFileSizeForCompaction());
 
   for (const auto& block : sorted_runs) {
     auto result = DoPickCompaction(cf_name, mutable_cf_options, vstorage, log_buffer, block);
@@ -1370,6 +1392,7 @@ std::unique_ptr<Compaction> UniversalCompactionPicker::PickCompaction(
       return result;
     }
   }
+  TEST_SYNC_POINT("UniversalCompactionPicker::PickCompaction:SkippingCompaction");
   return nullptr;
 }
 

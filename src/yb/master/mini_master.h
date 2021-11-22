@@ -35,6 +35,8 @@
 #include <string>
 #include <vector>
 
+#include "yb/tablet/tablet_fwd.h"
+
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
 #include "yb/util/env.h"
@@ -91,6 +93,8 @@ class MiniMaster {
   std::string permanent_uuid() const;
 
   std::string bound_rpc_addr_str() const;
+
+  const std::shared_ptr<tablet::TabletPeer> tablet_peer() const;
 
  private:
   CHECKED_STATUS StartDistributedMasterOnPorts(uint16_t rpc_port, uint16_t web_port,

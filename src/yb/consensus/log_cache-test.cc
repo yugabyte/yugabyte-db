@@ -60,6 +60,7 @@ using std::thread;
 
 DECLARE_int32(log_cache_size_limit_mb);
 DECLARE_int32(global_log_cache_size_limit_mb);
+DECLARE_int32(global_log_cache_size_limit_percentage);
 
 METRIC_DECLARE_entity(tablet);
 
@@ -306,12 +307,33 @@ TEST_F(LogCacheTest, TestMemoryLimit) {
   ASSERT_EQ(cache_->BytesUsed(), 0);
 }
 
-TEST_F(LogCacheTest, TestGlobalMemoryLimit) {
-  FLAGS_global_log_cache_size_limit_mb = 4;
+TEST_F(LogCacheTest, TestGlobalMemoryLimitMB) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_global_log_cache_size_limit_mb) = 4;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_global_log_cache_size_limit_percentage) = 100;
   CloseAndReopenCache(MinimumOpId());
 
-  // Exceed the global hard limit.
+  // Consume all but 1 MB of cache space.
   ScopedTrackedConsumption consumption(cache_->parent_tracker_, 3_MB);
+
+  const int kPayloadSize = 768_KB;
+
+  // Should succeed, but only end up caching one of the two ops because of the global limit.
+  ASSERT_OK(AppendReplicateMessagesToCache(1, 2, kPayloadSize));
+  ASSERT_OK(log_->WaitUntilAllFlushed());
+
+  ASSERT_EQ(1, cache_->num_cached_ops());
+  ASSERT_LE(cache_->BytesUsed(), 1_MB);
+}
+
+TEST_F(LogCacheTest, TestGlobalMemoryLimitPercentage) {
+  FLAGS_global_log_cache_size_limit_mb = INT32_MAX;
+  FLAGS_global_log_cache_size_limit_percentage = 5;
+  const int64_t root_mem_limit = MemTracker::GetRootTracker()->limit();
+
+  CloseAndReopenCache(MinimumOpId());
+
+  // Consume all but 1 MB of cache space.
+  ScopedTrackedConsumption consumption(cache_->parent_tracker_, root_mem_limit * 0.05 - 1_MB);
 
   const int kPayloadSize = 768_KB;
 

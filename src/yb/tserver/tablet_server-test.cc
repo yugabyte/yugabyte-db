@@ -56,7 +56,6 @@
 
 #include "yb/util/crc.h"
 #include "yb/util/curl_util.h"
-#include "yb/util/url-coding.h"
 
 using yb::consensus::RaftConfigPB;
 using yb::consensus::RaftPeerPB;
@@ -102,6 +101,30 @@ class TabletServerTest : public TabletServerTestBase {
   void SetUp() override {
     TabletServerTestBase::SetUp();
     StartTabletServer();
+  }
+
+  CHECKED_STATUS CallDeleteTablet(const std::string& uuid,
+                    const char* tablet_id,
+                    tablet::TabletDataState state) {
+    DeleteTabletRequestPB req;
+    DeleteTabletResponsePB resp;
+    RpcController rpc;
+
+    req.set_dest_uuid(uuid);
+    req.set_tablet_id(tablet_id);
+    req.set_delete_type(state);
+
+    // Send the call
+    {
+      SCOPED_TRACE(req.DebugString());
+      RETURN_NOT_OK(admin_proxy_->DeleteTablet(req, &resp, &rpc));
+      SCOPED_TRACE(resp.DebugString());
+      if (resp.has_error()) {
+        auto status = StatusFromPB(resp.error().status());
+        RETURN_NOT_OK(status);
+      }
+    }
+    return Status::OK();
   }
 };
 
@@ -591,21 +614,9 @@ TEST_F(TabletServerTest, TestDeleteTablet) {
   tablet_peer_.reset();
   tablet.reset();
 
-  DeleteTabletRequestPB req;
-  DeleteTabletResponsePB resp;
-  RpcController rpc;
-
-  req.set_dest_uuid(mini_server_->server()->fs_manager()->uuid());
-  req.set_tablet_id(kTabletId);
-  req.set_delete_type(tablet::TABLET_DATA_DELETED);
-
-  // Send the call
-  {
-    SCOPED_TRACE(req.DebugString());
-    ASSERT_OK(admin_proxy_->DeleteTablet(req, &resp, &rpc));
-    SCOPED_TRACE(resp.DebugString());
-    ASSERT_FALSE(resp.has_error());
-  }
+  ASSERT_OK(CallDeleteTablet(mini_server_->server()->fs_manager()->uuid(),
+                             kTabletId,
+                             tablet::TABLET_DATA_DELETED));
 
   // Verify that the tablet is removed from the tablet map
   ASSERT_FALSE(mini_server_->server()->tablet_manager()->LookupTablet(kTabletId, &tablet));
@@ -625,22 +636,10 @@ TEST_F(TabletServerTest, TestDeleteTablet) {
 }
 
 TEST_F(TabletServerTest, TestDeleteTablet_TabletNotCreated) {
-  DeleteTabletRequestPB req;
-  DeleteTabletResponsePB resp;
-  RpcController rpc;
-
-  req.set_dest_uuid(mini_server_->server()->fs_manager()->uuid());
-  req.set_tablet_id("NotPresentTabletId");
-  req.set_delete_type(tablet::TABLET_DATA_DELETED);
-
-  // Send the call
-  {
-    SCOPED_TRACE(req.DebugString());
-    ASSERT_OK(admin_proxy_->DeleteTablet(req, &resp, &rpc));
-    SCOPED_TRACE(resp.DebugString());
-    ASSERT_TRUE(resp.has_error());
-    ASSERT_EQ(TabletServerErrorPB::TABLET_NOT_FOUND, resp.error().code());
-  }
+  Status s = CallDeleteTablet(mini_server_->server()->fs_manager()->uuid(),
+                              "NotPresentTabletId",
+                              tablet::TABLET_DATA_DELETED);
+  ASSERT_TRUE(s.IsNotFound()) << s.ToString();
 }
 
 // Test that with concurrent requests to delete the same tablet, one wins and

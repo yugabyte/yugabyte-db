@@ -484,16 +484,18 @@ TypeCreate(Oid newTypeOid,
 			HeapTupleSetOid(tup, binary_upgrade_next_pg_type_oid);
 			binary_upgrade_next_pg_type_oid = InvalidOid;
 		}
-		else if (isSystem && IsYsqlUpgrade)
+		else if (IsYsqlUpgrade && isSystem && relationKind != RELKIND_VIEW)
 		{
 			/*
-			 * There's actually a bunch of system relations without explicit type OIDs
-			 * created by initdb - e.g. pg_attrdef (non-shared, gets typoid=10000)
-			 * or pg_db_role_setting (shared, gets typoid=11555), also a whole
-			 * lot of views in yb_system_views.sql
-			 * Those OIDs still are predictable and consistent between runs though,
-			 * so we require migrations to specify those OIDs even if they're
-			 * not declared in BKIs.
+			 * Views in yb_system_views.sql don't define their oids, we
+			 * auto-assign them.
+			 *
+			 * Also, there's actually a bunch of system relations without
+			 * explicit type OIDs created by initdb - e.g.
+			 * pg_attrdef (non-shared, gets typoid=10000) or
+			 * pg_db_role_setting (shared, gets typoid=11555).
+			 * For now though we hope that any future system relations won't
+			 * be like that - YB relations certainly shouldn't be.
 			 */
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),

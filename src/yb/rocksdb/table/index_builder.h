@@ -126,7 +126,7 @@ class ShortenedIndexBuilder : public IndexBuilder {
   explicit ShortenedIndexBuilder(const Comparator* comparator,
                                  int index_block_restart_interval)
       : IndexBuilder(comparator),
-        index_block_builder_(index_block_restart_interval) {}
+        index_block_builder_(index_block_restart_interval, kIndexBlockKeyValueEncodingFormat) {}
 
   void AddIndexEntry(
       std::string* last_key_in_current_block,

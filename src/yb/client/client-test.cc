@@ -39,9 +39,7 @@
 
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
-#include <glog/stl_logging.h>
 
-#include "yb/client/callbacks.h"
 #include "yb/client/async_initializer.h"
 #include "yb/client/client.h"
 #include "yb/client/client-internal.h"
@@ -69,19 +67,13 @@
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/master/catalog_manager.h"
-#include "yb/master/master-test-util.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/ts_descriptor.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_test_util.h"
-#include "yb/server/metadata.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
-#include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_peer.h"
-#include "yb/tablet/operations/write_operation.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
@@ -116,6 +108,7 @@ DECLARE_int32(min_backoff_ms_exponent);
 DECLARE_int32(max_backoff_ms_exponent);
 DECLARE_bool(TEST_force_master_lookup_all_tablets);
 DECLARE_double(TEST_simulate_lookup_timeout_probability);
+DECLARE_string(TEST_fail_to_fast_resolve_address);
 
 METRIC_DECLARE_counter(rpcs_queue_overflow);
 
@@ -179,13 +172,12 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     // Start minicluster and wait for tablet servers to connect to master.
     auto opts = MiniClusterOptions();
     opts.num_tablet_servers = 3;
+    opts.num_masters = NumMasters();
     cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
 
     // Connect to the cluster.
-    client_ = ASSERT_RESULT(YBClientBuilder()
-        .add_master_server_addr(yb::ToString(cluster_->mini_master()->bound_rpc_addr()))
-        .Build());
+    ASSERT_OK(InitClient());
 
     // Create a keyspace;
     ASSERT_OK(client_->CreateNamespace(kKeyspaceName));
@@ -208,6 +200,17 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
   static const YBTableName kTable2Name;
   static const YBTableName kTable3Name;
 
+  virtual int NumMasters() {
+    return 1;
+  }
+
+  virtual Status InitClient() {
+    client_ = VERIFY_RESULT(YBClientBuilder()
+        .add_master_server_addr(yb::ToString(cluster_->mini_master()->bound_rpc_addr()))
+        .Build());
+    return Status::OK();
+  }
+
   string GetFirstTabletId(YBTable* table) {
     GetTableLocationsRequestPB req;
     GetTableLocationsResponsePB resp;
@@ -223,7 +226,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
       MiniTabletServer* server = cluster_->mini_tablet_server(i);
       if (server->is_started()) {
         ASSERT_EQ(0, server->server()->rpc_server()->
-            service_pool("yb.tserver.TabletServerService")->
+            TEST_service_pool("yb.tserver.TabletServerService")->
             RpcsQueueOverflowMetric()->value());
       }
     }
@@ -242,7 +245,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
   void InsertTestRows(YBClient* client, const TableHandle& table, int num_rows, int first_row = 0) {
     auto session = CreateSession(client);
     for (int i = first_row; i < num_rows + first_row; i++) {
-      ASSERT_OK(session->Apply(BuildTestRow(table, i)));
+      session->Apply(BuildTestRow(table, i));
     }
     FlushSessionOrDie(session);
     ASSERT_NO_FATALS(CheckNoRpcOverflow());
@@ -256,7 +259,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
   void UpdateTestRows(const TableHandle& table, int lo, int hi) {
     auto session = CreateSession();
     for (int i = lo; i < hi; i++) {
-      ASSERT_OK(session->Apply(UpdateTestRow(table, i)));
+      session->Apply(UpdateTestRow(table, i));
     }
     FlushSessionOrDie(session);
     ASSERT_NO_FATALS(CheckNoRpcOverflow());
@@ -265,7 +268,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
   void DeleteTestRows(const TableHandle& table, int lo, int hi) {
     auto session = CreateSession();
     for (int i = lo; i < hi; i++) {
-      ASSERT_OK(session->Apply(DeleteTestRow(table, i)));
+      session->Apply(DeleteTestRow(table, i));
     }
     FlushSessionOrDie(session);
     ASSERT_NO_FATALS(CheckNoRpcOverflow());
@@ -663,8 +666,7 @@ TEST_F(ClientTest, TestListTables) {
 }
 
 TEST_F(ClientTest, TestListTabletServers) {
-  std::vector<std::unique_ptr<YBTabletServer>> tss;
-  ASSERT_OK(client_->ListTabletServers(&tss));
+  auto tss = ASSERT_RESULT(client_->ListTabletServers());
   ASSERT_EQ(3, tss.size());
   set<string> actual_ts_uuids;
   set<string> actual_ts_hostnames;
@@ -673,9 +675,9 @@ TEST_F(ClientTest, TestListTabletServers) {
   for (int i = 0; i < tss.size(); ++i) {
     auto server = cluster_->mini_tablet_server(i)->server();
     expected_ts_uuids.insert(server->instance_pb().permanent_uuid());
-    actual_ts_uuids.insert(tss[i]->uuid());
+    actual_ts_uuids.insert(tss[i].uuid);
     expected_ts_hostnames.insert(server->options().broadcast_addresses[0].host());
-    actual_ts_hostnames.insert(tss[i]->hostname());
+    actual_ts_hostnames.insert(tss[i].hostname);
   }
   ASSERT_EQ(expected_ts_uuids, actual_ts_uuids);
   ASSERT_EQ(expected_ts_hostnames, actual_ts_hostnames);
@@ -761,10 +763,10 @@ TEST_F(ClientTest, TestScanMultiTablet) {
   // tablet, except the first which is empty.
     auto session = CreateSession();
   for (int i = 1; i < 5; i++) {
-    ASSERT_OK(session->Apply(BuildTestRow(table, 2 + (i * 10))));
-    ASSERT_OK(session->Apply(BuildTestRow(table, 3 + (i * 10))));
-    ASSERT_OK(session->Apply(BuildTestRow(table, 5 + (i * 10))));
-    ASSERT_OK(session->Apply(BuildTestRow(table, 7 + (i * 10))));
+    session->Apply(BuildTestRow(table, 2 + (i * 10)));
+    session->Apply(BuildTestRow(table, 3 + (i * 10)));
+    session->Apply(BuildTestRow(table, 5 + (i * 10)));
+    session->Apply(BuildTestRow(table, 7 + (i * 10)));
   }
   FlushSessionOrDie(session);
 
@@ -773,8 +775,8 @@ TEST_F(ClientTest, TestScanMultiTablet) {
 
   // Update every other row
   for (int i = 1; i < 5; ++i) {
-    ASSERT_OK(session->Apply(UpdateTestRow(table, 2 + i * 10)));
-    ASSERT_OK(session->Apply(UpdateTestRow(table, 5 + i * 10)));
+    session->Apply(UpdateTestRow(table, 2 + i * 10));
+    session->Apply(UpdateTestRow(table, 5 + i * 10));
   }
   FlushSessionOrDie(session);
 
@@ -783,8 +785,8 @@ TEST_F(ClientTest, TestScanMultiTablet) {
 
   // Delete half the rows
   for (int i = 1; i < 5; ++i) {
-    ASSERT_OK(session->Apply(DeleteTestRow(table, 5 + i*10)));
-    ASSERT_OK(session->Apply(DeleteTestRow(table, 7 + i*10)));
+    session->Apply(DeleteTestRow(table, 5 + i*10));
+    session->Apply(DeleteTestRow(table, 7 + i*10));
   }
   FlushSessionOrDie(session);
 
@@ -793,8 +795,8 @@ TEST_F(ClientTest, TestScanMultiTablet) {
 
   // Delete rest of rows
   for (int i = 1; i < 5; ++i) {
-    ASSERT_OK(session->Apply(DeleteTestRow(table, 2 + i*10)));
-    ASSERT_OK(session->Apply(DeleteTestRow(table, 3 + i*10)));
+    session->Apply(DeleteTestRow(table, 2 + i*10));
+    session->Apply(DeleteTestRow(table, 3 + i*10));
   }
   FlushSessionOrDie(session);
 
@@ -1026,7 +1028,7 @@ TEST_F(ClientTest, DISABLED_TestInsertSingleRowManualBatch) {
 
   // Retry
   QLAddInt32HashValue(insert->mutable_request(), 12345);
-  ASSERT_OK(session->Apply(insert));
+  session->Apply(insert);
   ASSERT_TRUE(session->TEST_HasPendingOperations()) << "Should be pending until we Flush";
 
   FlushSessionOrDie(session, { insert });
@@ -1034,7 +1036,7 @@ TEST_F(ClientTest, DISABLED_TestInsertSingleRowManualBatch) {
 
 namespace {
 
-CHECKED_STATUS ApplyInsertToSession(YBSession* session,
+void ApplyInsertToSession(YBSession* session,
                                     const TableHandle& table,
                                     int row_key,
                                     int int_val,
@@ -1047,25 +1049,25 @@ CHECKED_STATUS ApplyInsertToSession(YBSession* session,
   if (op) {
     *op = insert;
   }
-  return session->Apply(insert);
+  session->Apply(insert);
 }
 
-CHECKED_STATUS ApplyUpdateToSession(YBSession* session,
+void ApplyUpdateToSession(YBSession* session,
                                     const TableHandle& table,
                                     int row_key,
                                     int int_val) {
   auto update = table.NewUpdateOp();
   QLAddInt32HashValue(update->mutable_request(), row_key);
   table.AddInt32ColumnValue(update->mutable_request(), "int_val", int_val);
-  return session->Apply(update);
+  session->Apply(update);
 }
 
-CHECKED_STATUS ApplyDeleteToSession(YBSession* session,
+void ApplyDeleteToSession(YBSession* session,
                                     const TableHandle& table,
                                     int row_key) {
   auto del = table.NewDeleteOp();
   QLAddInt32HashValue(del->mutable_request(), row_key);
-  return session->Apply(del);
+  session->Apply(del);
 }
 
 } // namespace
@@ -1078,7 +1080,7 @@ TEST_F(ClientTest, TestWriteTimeout) {
     google::FlagSaver saver;
     FLAGS_master_inject_latency_on_tablet_lookups_ms = 110;
     session->SetTimeout(100ms);
-    ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "row"));
+    ApplyInsertToSession(session.get(), client_table_, 1, 1, "row");
     const auto flush_status = session->FlushAndGetOpsErrors();
     ASSERT_TRUE(flush_status.status.IsIOError())
         << "unexpected status: " << flush_status.status.ToString();
@@ -1097,7 +1099,7 @@ TEST_F(ClientTest, TestWriteTimeout) {
     SetAtomicFlag(110, &FLAGS_log_inject_latency_ms_mean);
     SetAtomicFlag(0, &FLAGS_log_inject_latency_ms_stddev);
 
-    ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "row"));
+    ApplyInsertToSession(session.get(), client_table_, 1, 1, "row");
     const auto flush_status = session->FlushAndGetOpsErrors();
     ASSERT_TRUE(flush_status.status.IsIOError()) << AsString(flush_status.status.ToString());
     auto error = GetSingleErrorFromFlushStatus(flush_status);
@@ -1109,26 +1111,26 @@ TEST_F(ClientTest, TestWriteTimeout) {
 // to the Session. This should still call the callback.
 TEST_F(ClientTest, TestAsyncFlushResponseAfterSessionDropped) {
   auto session = CreateSession();
-  ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "row"));
+  ApplyInsertToSession(session.get(), client_table_, 1, 1, "row");
   auto flush_future = session->FlushFuture();
   session.reset();
   ASSERT_OK(flush_future.get().status);
 
   // Try again, this time should not have an error response (to re-insert the same row).
   session = CreateSession();
-  ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "row"));
+  ApplyInsertToSession(session.get(), client_table_, 1, 1, "row");
   ASSERT_EQ(1, session->TEST_CountBufferedOperations());
-  ASSERT_EQ(1, session->GetAddedNotFlushedOperationsCount());
+  ASSERT_TRUE(session->HasNotFlushedOperations());
   flush_future = session->FlushFuture();
   ASSERT_EQ(0, session->TEST_CountBufferedOperations());
-  ASSERT_EQ(0, session->GetAddedNotFlushedOperationsCount());
+  ASSERT_FALSE(session->HasNotFlushedOperations());
   session.reset();
   ASSERT_OK(flush_future.get().status);
 }
 
 TEST_F(ClientTest, TestSessionClose) {
   auto session = CreateSession();
-  ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "row"));
+  ApplyInsertToSession(session.get(), client_table_, 1, 1, "row");
   // Closing the session now should return Status::IllegalState since we
   // have a pending operation.
   ASSERT_TRUE(session->Close().IsIllegalState());
@@ -1150,10 +1152,10 @@ TEST_F(ClientTest, TestMultipleMultiRowManualBatches) {
 
   for (int batch_num = 0; batch_num < kNumBatches; batch_num++) {
     for (int i = 0; i < kRowsPerBatch; i++) {
-      ASSERT_OK(ApplyInsertToSession(
-                         session.get(),
-                         (row_key % 2 == 0) ? client_table_ : client_table2_,
-                         row_key, row_key * 10, "hello world"));
+      ApplyInsertToSession(
+          session.get(),
+          (row_key % 2 == 0) ? client_table_ : client_table2_,
+          row_key, row_key * 10, "hello world");
       row_key++;
     }
     ASSERT_TRUE(session->TEST_HasPendingOperations()) << "Should be pending until we Flush";
@@ -1178,13 +1180,13 @@ TEST_F(ClientTest, TestBatchWithDuplicates) {
   auto session = CreateSession();
 
   // Insert a row with key "1"
-  ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "original row"));
+  ApplyInsertToSession(session.get(), client_table_, 1, 1, "original row");
   FlushSessionOrDie(session);
 
   // Now make a batch that has key "1" along with
   // key "2" which will succeed. Flushing should not return an error.
-  ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "Attempted dup"));
-  ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 2, 1, "Should succeed"));
+  ApplyInsertToSession(session.get(), client_table_, 1, 1, "Attempted dup");
+  ApplyInsertToSession(session.get(), client_table_, 2, 1, "Should succeed");
   Status s = session->Flush();
   ASSERT_TRUE(s.ok());
 
@@ -1220,7 +1222,7 @@ void ClientTest::DoTestWriteWithDeadServer(WhichServerToKill which) {
   }
 
   // Try a write.
-  ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "x"));
+  ApplyInsertToSession(session.get(), client_table_, 1, 1, "x");
   const auto flush_status = session->FlushAndGetOpsErrors();
   ASSERT_TRUE(flush_status.status.IsIOError()) << flush_status.status.ToString();
 
@@ -1256,7 +1258,7 @@ TEST_F(ClientTest, TestWriteWithDeadTabletServer) {
 
 void ClientTest::DoApplyWithoutFlushTest(int sleep_micros) {
   auto session = CreateSession();
-  ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "x"));
+  ApplyInsertToSession(session.get(), client_table_, 1, 1, "x");
   SleepFor(MonoDelta::FromMicroseconds(sleep_micros));
   session.reset(); // should not crash!
 
@@ -1293,14 +1295,7 @@ TEST_F(ClientTest, DISABLED_TestApplyTooMuchWithoutFlushing) {
     bool got_expected_error = false;
     auto session = CreateSession();
     for (int i = 0; i < 1000000; i++) {
-      Status s = ApplyInsertToSession(session.get(), client_table_, 1, 1, "x");
-      if (s.IsIncomplete()) {
-        ASSERT_STR_CONTAINS(s.ToString(), "not enough space remaining in buffer");
-        got_expected_error = true;
-        break;
-      } else {
-        ASSERT_OK(s);
-      }
+      ApplyInsertToSession(session.get(), client_table_, 1, 1, "x");
     }
     ASSERT_TRUE(got_expected_error);
   }
@@ -1310,25 +1305,24 @@ TEST_F(ClientTest, DISABLED_TestApplyTooMuchWithoutFlushing) {
     string huge_string(10 * 1024 * 1024, 'x');
 
     shared_ptr<YBSession> session = client_->NewSession();
-    Status s = ApplyInsertToSession(session.get(), client_table_, 1, 1, huge_string.c_str());
-    ASSERT_TRUE(s.IsIncomplete()) << "got unexpected status: " << s.ToString();
+    ApplyInsertToSession(session.get(), client_table_, 1, 1, huge_string.c_str());
   }
 }
 
 // Test that update updates and delete deletes with expected use
 TEST_F(ClientTest, TestMutationsWork) {
   auto session = CreateSession();
-  ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "original row"));
+  ApplyInsertToSession(session.get(), client_table_, 1, 1, "original row");
   FlushSessionOrDie(session);
 
-  ASSERT_OK(ApplyUpdateToSession(session.get(), client_table_, 1, 2));
+  ApplyUpdateToSession(session.get(), client_table_, 1, 2);
   FlushSessionOrDie(session);
   auto rows = ScanTableToStrings(client_table_);
   ASSERT_EQ(1, rows.size());
   ASSERT_EQ("{ int32:1, int32:2, string:\"original row\", null }", rows[0]);
   rows.clear();
 
-  ASSERT_OK(ApplyDeleteToSession(session.get(), client_table_, 1));
+  ApplyDeleteToSession(session.get(), client_table_, 1);
   FlushSessionOrDie(session);
   ScanTableToStrings(client_table_, &rows);
   ASSERT_EQ(0, rows.size());
@@ -1336,22 +1330,22 @@ TEST_F(ClientTest, TestMutationsWork) {
 
 TEST_F(ClientTest, TestMutateDeletedRow) {
   auto session = CreateSession();
-  ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "original row"));
+  ApplyInsertToSession(session.get(), client_table_, 1, 1, "original row");
   FlushSessionOrDie(session);
-  ASSERT_OK(ApplyDeleteToSession(session.get(), client_table_, 1));
+  ApplyDeleteToSession(session.get(), client_table_, 1);
   FlushSessionOrDie(session);
   auto rows = ScanTableToStrings(client_table_);
   ASSERT_EQ(0, rows.size());
 
   // Attempt update deleted row
-  ASSERT_OK(ApplyUpdateToSession(session.get(), client_table_, 1, 2));
+  ApplyUpdateToSession(session.get(), client_table_, 1, 2);
   Status s = session->Flush();
   ASSERT_TRUE(s.ok());
   ScanTableToStrings(client_table_, &rows);
   ASSERT_EQ(1, rows.size());
 
   // Attempt delete deleted row
-  ASSERT_OK(ApplyDeleteToSession(session.get(), client_table_, 1));
+  ApplyDeleteToSession(session.get(), client_table_, 1);
   s = session->Flush();
   ASSERT_TRUE(s.ok());
   ScanTableToStrings(client_table_, &rows);
@@ -1362,14 +1356,14 @@ TEST_F(ClientTest, TestMutateNonexistentRow) {
   auto session = CreateSession();
 
   // Attempt update nonexistent row
-  ASSERT_OK(ApplyUpdateToSession(session.get(), client_table_, 1, 2));
+  ApplyUpdateToSession(session.get(), client_table_, 1, 2);
   Status s = session->Flush();
   ASSERT_TRUE(s.ok());
   auto rows = ScanTableToStrings(client_table_);
   ASSERT_EQ(1, rows.size());
 
   // Attempt delete nonexistent row
-  ASSERT_OK(ApplyDeleteToSession(session.get(), client_table_, 1));
+  ApplyDeleteToSession(session.get(), client_table_, 1);
   s = session->Flush();
   ASSERT_TRUE(s.ok());
   ScanTableToStrings(client_table_, &rows);
@@ -1387,7 +1381,7 @@ TEST_F(ClientTest, TestWriteWithBadSchema) {
   // Try to do a write with the bad schema.
   auto session = CreateSession();
   std::shared_ptr<YBqlOp> op;
-  ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 12345, 12345, "x", &op));
+  ApplyInsertToSession(session.get(), client_table_, 12345, 12345, "x", &op);
   ASSERT_OK(session->Flush());
   ASSERT_EQ(QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH, op->response().status());
 }
@@ -1813,7 +1807,7 @@ TEST_F(ClientTest, TestRandomWriteOperation) {
 
   // First half-fill
   for (int i = 0; i < FLAGS_test_scan_num_rows/2; ++i) {
-    ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, i, i, ""));
+    ApplyInsertToSession(session.get(), client_table_, i, i, "");
     row[i] = i;
   }
   for (int i = FLAGS_test_scan_num_rows/2; i < FLAGS_test_scan_num_rows; ++i) {
@@ -1836,7 +1830,7 @@ TEST_F(ClientTest, TestRandomWriteOperation) {
     int change = rand_r(&seed) % FLAGS_test_scan_num_rows;
     // Insert if empty
     if (row[change] == -1) {
-      ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, change, change, ""));
+      ApplyInsertToSession(session.get(), client_table_, change, change, "");
       row[change] = change;
       ++nrows;
       VLOG(1) << "Insert " << change;
@@ -1844,10 +1838,10 @@ TEST_F(ClientTest, TestRandomWriteOperation) {
       // Update or delete otherwise
       int update = rand_r(&seed) & 1;
       if (update) {
-        ASSERT_OK(ApplyUpdateToSession(session.get(), client_table_, change, ++row[change]));
+        ApplyUpdateToSession(session.get(), client_table_, change, ++row[change]);
         VLOG(1) << "Update " << change;
       } else {
-        ASSERT_OK(ApplyDeleteToSession(session.get(), client_table_, change));
+        ApplyDeleteToSession(session.get(), client_table_, change);
         row[change] = -1;
         --nrows;
         VLOG(1) << "Delete " << change;
@@ -1866,8 +1860,8 @@ TEST_F(ClientTest, TestSeveralRowMutatesPerBatch) {
 
   // Test insert/update
   LOG(INFO) << "Testing insert/update in same batch, key " << 1 << ".";
-  ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, ""));
-  ASSERT_OK(ApplyUpdateToSession(session.get(), client_table_, 1, 2));
+  ApplyInsertToSession(session.get(), client_table_, 1, 1, "");
+  ApplyUpdateToSession(session.get(), client_table_, 1, 2);
   FlushSessionOrDie(session);
   auto rows = ScanTableToStrings(client_table_);
   ASSERT_EQ(1, rows.size());
@@ -1877,8 +1871,8 @@ TEST_F(ClientTest, TestSeveralRowMutatesPerBatch) {
 
   LOG(INFO) << "Testing insert/delete in same batch, key " << 2 << ".";
   // Test insert/delete
-  ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 2, 1, ""));
-  ASSERT_OK(ApplyDeleteToSession(session.get(), client_table_, 2));
+  ApplyInsertToSession(session.get(), client_table_, 2, 1, "");
+  ApplyDeleteToSession(session.get(), client_table_, 2);
   FlushSessionOrDie(session);
   ScanTableToStrings(client_table_, &rows);
   ASSERT_EQ(1, rows.size());
@@ -1887,23 +1881,23 @@ TEST_F(ClientTest, TestSeveralRowMutatesPerBatch) {
 
   // Test update/delete
   LOG(INFO) << "Testing update/delete in same batch, key " << 1 << ".";
-  ASSERT_OK(ApplyUpdateToSession(session.get(), client_table_, 1, 1));
-  ASSERT_OK(ApplyDeleteToSession(session.get(), client_table_, 1));
+  ApplyUpdateToSession(session.get(), client_table_, 1, 1);
+  ApplyDeleteToSession(session.get(), client_table_, 1);
   FlushSessionOrDie(session);
   ScanTableToStrings(client_table_, &rows);
   ASSERT_EQ(0, rows.size());
 
   // Test delete/insert (insert a row first)
   LOG(INFO) << "Inserting row for delete/insert test, key " << 1 << ".";
-  ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, ""));
+  ApplyInsertToSession(session.get(), client_table_, 1, 1, "");
   FlushSessionOrDie(session);
   ScanTableToStrings(client_table_, &rows);
   ASSERT_EQ(1, rows.size());
   ASSERT_EQ("{ int32:1, int32:1, string:\"\", null }", rows[0]);
   rows.clear();
   LOG(INFO) << "Testing delete/insert in same batch, key " << 1 << ".";
-  ASSERT_OK(ApplyDeleteToSession(session.get(), client_table_, 1));
-  ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 2, ""));
+  ApplyDeleteToSession(session.get(), client_table_, 1);
+  ApplyInsertToSession(session.get(), client_table_, 1, 2, "");
   FlushSessionOrDie(session);
   ScanTableToStrings(client_table_, &rows);
   ASSERT_EQ(1, rows.size());
@@ -1965,7 +1959,7 @@ shared_ptr<YBSession> LoadedSession(YBClient* client,
   session->SetTimeout(timeout);
   for (int i = 0; i < max; ++i) {
     int key = fwd ? i : max - i;
-    CHECK_OK(ApplyUpdateToSession(session.get(), tbl, key, fwd));
+    ApplyUpdateToSession(session.get(), tbl, key, fwd);
   }
   return session;
 }
@@ -1995,7 +1989,7 @@ TEST_F(ClientTest, TestDeadlockSimulation) {
   const auto kTimeout = 60s;
   auto session = CreateSession();
   for (int i = 0; i < kNumRows; ++i)
-    ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, i, i,  ""));
+    ApplyInsertToSession(session.get(), client_table_, i, i,  "");
   FlushSessionOrDie(session);
 
   // Check both clients see rows
@@ -2339,7 +2333,7 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
   pgsql_column->set_column_id(pgsq_table->schema().ColumnId(kColIdx));
   pgsql_column->mutable_expr()->mutable_value()->set_int64_value(kKeyValue);
   std::shared_ptr<YBSession> session = CreateSession(client_.get());
-  EXPECT_OK(session->Apply(pgsql_write_op));
+  session->Apply(pgsql_write_op);
 
   // Create a YQL table using range partition.
   s = table_creator->table_name(yql_table_name)
@@ -2360,7 +2354,7 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
   // 1 is the index for column value.
   column->set_column_id(pgsq_table->schema().ColumnId(kColIdx));
   column->mutable_expr()->mutable_value()->set_int64_value(kKeyValue);
-  EXPECT_OK(session->Apply(write_op));
+  session->Apply(write_op);
 }
 
 // TODO(jason): enable the test in clang when we use clang version at least 9 (otherwise, there is a
@@ -2438,7 +2432,7 @@ TEST_F(ClientTest, GetNamespaceInfo) {
                                      kPgsqlKeyspaceID,
                                      "" /* source_namespace_id */,
                                      boost::none /* next_pg_oid */,
-                                     boost::none /* txn */,
+                                     nullptr /* txn */,
                                      true /* colocated */));
 
   // CQL non-colocated.
@@ -2571,7 +2565,7 @@ TEST_F(ClientTest, ColocatedTablesLookupTablet) {
       common_table_name.namespace_id(),
       /* source_namespace_id =*/ "",
       /* next_pg_oid =*/ boost::none,
-      /* txn =*/ boost::none,
+      /* txn =*/ nullptr,
       /* colocated =*/ true));
 
   YBSchemaBuilder schemaBuilder;
@@ -2670,7 +2664,7 @@ TEST_F_EX(ClientTest, EmptiedBatcherFlush, ClientTestWithHashAndRangePk) {
         }
         auto session = CreateSession(client_.get());
         for (int r = 0; r < num_rows_per_batch; r++) {
-          ASSERT_OK(session->Apply(BuildTestRow(client_table_, batch_hash_key, r, 0)));
+          session->Apply(BuildTestRow(client_table_, batch_hash_key, r, 0));
         }
         auto flush_future = session->FlushFuture();
         ASSERT_EQ(flush_future.wait_for(kFlushTimeout), std::future_status::ready)
@@ -2699,6 +2693,54 @@ TEST_F_EX(ClientTest, EmptiedBatcherFlush, ClientTestWithHashAndRangePk) {
   });
 
   thread_holder.JoinAll();
+}
+
+class ClientTestWithThreeMasters : public ClientTest {
+ protected:
+  int NumMasters() override {
+    return 3;
+  }
+
+  Status InitClient() override {
+    // Connect to the cluster using hostnames.
+    string master_addrs;
+    for (int i = 1; i <= NumMasters(); ++i) {
+      // TEST_RpcAddress is 1-indexed, but mini_master is 0-indexed.
+      master_addrs += server::TEST_RpcAddress(i, server::Private::kFalse) +
+                      ":" + yb::ToString(cluster_->mini_master(i - 1)->bound_rpc_addr().port());
+      if (i < NumMasters()) {
+        master_addrs += ",";
+      }
+    }
+
+    client_ = VERIFY_RESULT(YBClientBuilder()
+        .add_master_server_addr(master_addrs)
+        .Build());
+
+    return Status::OK();
+  }
+};
+
+TEST_F_EX(ClientTest, IsMultiMasterWithFailingHostnameResolution, ClientTestWithThreeMasters) {
+  google::FlagSaver flag_saver;
+  // TEST_RpcAddress is 1-indexed.
+  string hostname = server::TEST_RpcAddress(cluster_->LeaderMasterIdx() + 1,
+                                            server::Private::kFalse);
+
+  // Shutdown the master leader, and wait for new leader to get elected.
+  ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->Shutdown();
+  ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+
+  // Fail resolution of the old leader master's hostname.
+  FLAGS_TEST_fail_to_fast_resolve_address = hostname;
+  LOG(INFO) << "Setting FLAGS_TEST_fail_to_fast_resolve_address to: "
+            << FLAGS_TEST_fail_to_fast_resolve_address;
+
+  // Make a client request to the leader master, since that master is no longer the leader, we will
+  // check that we have a MultiMaster setup. That check should not fail even though one of the
+  // master addresses currently doesn't resolve. Thus, we should be able to find the new master
+  // leader and complete the request.
+  ASSERT_RESULT(client_->ListTables());
 }
 
 }  // namespace client

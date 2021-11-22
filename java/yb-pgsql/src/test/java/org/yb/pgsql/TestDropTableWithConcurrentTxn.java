@@ -45,8 +45,8 @@ public class TestDropTableWithConcurrentTxn extends BasePgSQLTest {
   private static final String NO_ERROR = "";
   private static final boolean executeDmlBeforeDrop = true;
   private static final boolean executeDmlAfterDrop = false;
-  private static enum Resource { TABLE, INDEX, VIEW }
-  private static enum Dml { INSERT, SELECT }
+  private enum Resource { TABLE, INDEX, VIEW }
+  private enum Dml { INSERT, SELECT }
 
   private void prepareResources(Resource resourceToDrop, String tableName) throws Exception {
     // Separate connection is used to create and load the table to avoid
@@ -61,7 +61,7 @@ public class TestDropTableWithConcurrentTxn extends BasePgSQLTest {
         }
         case INDEX: {
           String indexName = tableName + "_index";
-          statement.execute("CREATE INDEX " + indexName + " ON " + tableName + " (a)");
+          statement.execute("CREATE INDEX " + indexName + " ON " + tableName + " (b)");
           statement.execute("INSERT INTO " + tableName + " VALUES (1, 'foo')");
           break;
         }
@@ -150,8 +150,8 @@ public class TestDropTableWithConcurrentTxn extends BasePgSQLTest {
         Statement statement2 = ddlConnection.createStatement()) {
 
       if (withCachedMetadata) {
-        // Running a simple insert on statement to load table's metadata into the PgGate cache.
-        statement1.execute("SELECT * FROM " + resource);
+        // Run query to load table and index metadata into the PgGate cache.
+        statement1.execute("SELECT * FROM " + resource + " WHERE b like 'bar'");
       }
 
       statement1.execute("BEGIN");
@@ -203,8 +203,8 @@ public class TestDropTableWithConcurrentTxn extends BasePgSQLTest {
         Statement statement2 = ddlConnection.createStatement()) {
 
       if (withCachedMetadata) {
-        // Running a simple insert on statement to load table's metadata into the PgGate cache.
-        statement1.execute("SELECT * FROM " + resource);
+        // Run query to load table and index metadata into the PgGate cache.
+        statement1.execute("SELECT * FROM " + resource + " WHERE b like 'bar'");
       }
 
       statement1.execute("BEGIN");
@@ -339,7 +339,7 @@ public class TestDropTableWithConcurrentTxn extends BasePgSQLTest {
         executeDmlBeforeDrop, TRANSACTION_CONFLICT_ERROR);
     LOG.info("Run INSERT transaction AFTER drop");
     runDmlTxnWithDropOnCurrentResource(Dml.INSERT, indexDrop, withCachedMetadata,
-        executeDmlAfterDrop, SCHEMA_VERSION_MISMATCH_ERROR);
+        executeDmlAfterDrop, TABLE_DELETED_ERROR);
     LOG.info("Run SELECT transaction AFTER drop");
     runDmlTxnWithDropOnCurrentResource(Dml.SELECT, indexDrop, withCachedMetadata,
         executeDmlAfterDrop, SCHEMA_VERSION_MISMATCH_ERROR);

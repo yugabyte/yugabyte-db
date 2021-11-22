@@ -4,7 +4,6 @@ package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
-
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -21,6 +20,8 @@ import javax.persistence.Id;
 import javax.persistence.JoinColumn;
 import javax.persistence.JoinTable;
 import javax.persistence.ManyToMany;
+import javax.validation.constraints.NotNull;
+import javax.validation.constraints.Size;
 import lombok.AccessLevel;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -29,7 +30,6 @@ import lombok.NonNull;
 import lombok.Setter;
 import lombok.ToString;
 import lombok.experimental.Accessors;
-import play.data.validation.Constraints;
 
 @Data
 @Accessors(chain = true)
@@ -37,22 +37,22 @@ import play.data.validation.Constraints;
 @Entity
 public class AlertDestination extends Model {
 
-  public static final int MAX_NAME_LENGTH = 255;
-
-  @Constraints.Required
   @Id
   @Column(nullable = false, unique = true)
   private UUID uuid;
 
-  @Constraints.Required
+  @NotNull
   @Column(nullable = false)
   private UUID customerUUID;
 
-  @Constraints.Required
-  @Column(columnDefinition = "Text", length = MAX_NAME_LENGTH, nullable = false)
+  @NotNull
+  @Size(min = 1, max = 63)
+  @Column(columnDefinition = "Text", nullable = false)
   private String name;
 
   @ToString.Exclude
+  @NotNull
+  @Size(min = 1)
   @Getter(AccessLevel.NONE)
   @Setter(AccessLevel.NONE)
   @ManyToMany(fetch = FetchType.LAZY)
@@ -74,7 +74,7 @@ public class AlertDestination extends Model {
       })
   private Set<AlertChannel> channels;
 
-  @Constraints.Required
+  @NotNull
   @Column(nullable = false)
   private boolean defaultDestination = false;
 

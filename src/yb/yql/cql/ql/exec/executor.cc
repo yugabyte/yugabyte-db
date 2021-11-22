@@ -36,8 +36,6 @@
 #include "yb/util/decimal.h"
 #include "yb/util/logging.h"
 #include "yb/util/random_util.h"
-#include "yb/util/scope_exit.h"
-#include "yb/util/thread_restrictions.h"
 #include "yb/util/trace.h"
 
 using namespace std::literals;
@@ -1051,13 +1049,13 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_conte
     // - the estimated max number of rows is less than req limit (min of page size and CQL limit).
     // - there is no offset (which requires passing skipped rows from one request to the next).
     if (*max_rows_estimate <= req->limit() && !req->has_offset()) {
-      RETURN_NOT_OK(AddOperation(select_op, tnode_context));
+      AddOperation(select_op, tnode_context);
       while (tnode_context->UnreadPartitionsRemaining() > 1) {
         YBqlReadOpPtr op(table->NewQLSelect());
         op->mutable_request()->CopyFrom(select_op->request());
         op->set_yb_consistency_level(select_op->yb_consistency_level());
         tnode_context->AdvanceToNextPartition(op->mutable_request());
-        RETURN_NOT_OK(AddOperation(op, tnode_context));
+        AddOperation(op, tnode_context);
         select_op = op; // Use new op as base for the next one, if any.
       }
       return Status::OK();
@@ -1076,7 +1074,8 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_conte
   }
 
   // Add the operation.
-  return AddOperation(select_op, tnode_context);
+  AddOperation(select_op, tnode_context);
+  return Status::OK();
 }
 
 Result<QueryPagingState*> Executor::LoadPagingStateFromUser(const PTSelectStmt* tnode,
@@ -1234,7 +1233,7 @@ Result<bool> Executor::FetchRowsByKeys(const PTSelectStmt* tnode,
     QLReadRequestPB* req = op->mutable_request();
     req->CopyFrom(select_op->request());
     RETURN_NOT_OK(WhereKeyToPB(req, schema, key));
-    RETURN_NOT_OK(AddOperation(op, tnode_context));
+    AddOperation(op, tnode_context);
   }
   return !keys.rows().empty();
 }
@@ -1665,7 +1664,7 @@ Status ProcessTnodeContexts(ExecContext* exec_context,
 bool NeedsFlush(const client::YBSessionPtr& session) {
   // We need to flush session if we have added operations because some errors are only checked
   // during session flush and passed into flush callback.
-  return session->GetAddedNotFlushedOperationsCount() > 0;
+  return session->HasNotFlushedOperations();
 }
 
 } // namespace
@@ -1997,7 +1996,7 @@ Result<bool> Executor::ProcessTnodeResults(TnodeContext* tnode_context) {
           std::static_pointer_cast<YBqlWriteOp>(op), tnode_context, exec_context_)) {
         YBSessionPtr session = GetSession(exec_context_);
         TRACE("Apply");
-        RETURN_NOT_OK(session->Apply(op));
+        session->Apply(op);
         has_buffered_ops = true;
       }
       op_itr++;
@@ -2089,7 +2088,7 @@ Result<bool> Executor::ProcessTnodeResults(TnodeContext* tnode_context) {
         if (VERIFY_RESULT(FetchMoreRows(select_stmt, read_op, tnode_context, exec_context_))) {
           op->mutable_response()->Clear();
           TRACE("Apply");
-          RETURN_NOT_OK(session_->Apply(op));
+          session_->Apply(op);
           has_buffered_ops = true;
           op_itr++;
           continue;
@@ -2406,7 +2405,7 @@ bool Executor::WriteBatch::Empty() const {
 
 //--------------------------------------------------------------------------------------------------
 
-Status Executor::AddOperation(const YBqlReadOpPtr& op, TnodeContext *tnode_context) {
+void Executor::AddOperation(const YBqlReadOpPtr& op, TnodeContext *tnode_context) {
   DCHECK(write_batch_.Empty()) << "Concurrent read and write operations not supported yet";
 
   op->mutable_request()->set_request_id(exec_context_->params().request_id());
@@ -2419,7 +2418,7 @@ Status Executor::AddOperation(const YBqlReadOpPtr& op, TnodeContext *tnode_conte
   }
 
   TRACE("Apply");
-  return session_->Apply(op);
+  session_->Apply(op);
 }
 
 Status Executor::AddOperation(const YBqlWriteOpPtr& op, TnodeContext* tnode_context) {
@@ -2431,7 +2430,7 @@ Status Executor::AddOperation(const YBqlWriteOpPtr& op, TnodeContext* tnode_cont
   if (write_batch_.Add(op, tnode_context, exec_context_)) {
     YBSessionPtr session = GetSession(exec_context_);
     TRACE("Apply");
-    RETURN_NOT_OK(session->Apply(op));
+    session->Apply(op);
   }
 
   // Also update secondary indexes if needed.

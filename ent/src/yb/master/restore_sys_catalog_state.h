@@ -67,10 +67,13 @@ class RestoreSysCatalogState {
 
  private:
   struct Objects;
+  using RetainedExistingTables = std::unordered_map<TableId, std::vector<SnapshotScheduleId>>;
 
   // Determine entries that should be restored. I.e. apply filter and serialize.
   template <class ProcessEntry>
-  CHECKED_STATUS DetermineEntries(Objects* objects, const ProcessEntry& process_entry);
+  CHECKED_STATUS DetermineEntries(
+      Objects* objects, RetainedExistingTables* retained_existing_tables,
+      const ProcessEntry& process_entry);
 
   template <class PB>
   CHECKED_STATUS IterateSysCatalog(
@@ -113,6 +116,11 @@ class RestoreSysCatalogState {
     std::unordered_map<TabletId, SysTabletsEntryPB> tablets;
 
     std::string SizesToString() const;
+
+    Result<const std::pair<const TableId, SysTablesEntryPB>&> FindRootTable(
+        const TableId& table_id);
+    Result<const std::pair<const TableId, SysTablesEntryPB>&> FindRootTable(
+        const std::pair<const TableId, SysTablesEntryPB>& id_and_metadata);
   };
 
   SnapshotScheduleRestoration& restoration_;
@@ -120,6 +128,7 @@ class RestoreSysCatalogState {
 
   Objects restoring_objects_;
   Objects existing_objects_;
+  RetainedExistingTables retained_existing_tables_;
 };
 
 }  // namespace master

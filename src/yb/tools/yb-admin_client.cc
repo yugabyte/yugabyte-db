@@ -31,17 +31,13 @@
 //
 #include "yb/tools/yb-admin_client.h"
 
-#include <array>
-#include <iomanip>
 #include <sstream>
 #include <type_traits>
 
 #include <boost/multi_index_container.hpp>
 #include <boost/multi_index/composite_key.hpp>
 #include <boost/multi_index/global_fun.hpp>
-#include <boost/multi_index/mem_fun.hpp>
 #include <boost/multi_index/ordered_index.hpp>
-#include <boost/tti/has_member_function.hpp>
 
 #include <google/protobuf/util/json_util.h>
 #include <gtest/gtest.h>
@@ -53,9 +49,7 @@
 #include "yb/client/table_alterer.h"
 #include "yb/client/table_creator.h"
 #include "yb/master/master.pb.h"
-#include "yb/master/master_error.h"
 #include "yb/master/sys_catalog.h"
-#include "yb/rpc/messenger.h"
 
 #include "yb/util/string_case.h"
 #include "yb/util/net/net_util.h"
@@ -67,7 +61,7 @@
 #include "yb/gutil/strings/numbers.h"
 
 #include "yb/consensus/consensus.proxy.h"
-#include "yb/tserver/tserver_service.proxy.h"
+#include "yb/tserver/tserver_admin.proxy.h"
 
 DEFINE_bool(wait_if_no_leader_master, false,
             "When yb-admin connects to the cluster and no leader master is present, "
@@ -108,6 +102,9 @@ using rpc::MessengerBuilder;
 using rpc::RpcController;
 using strings::Substitute;
 using tserver::TabletServerServiceProxy;
+using tserver::TabletServerAdminServiceProxy;
+using tserver::UpgradeYsqlRequestPB;
+using tserver::UpgradeYsqlResponsePB;
 
 using consensus::ConsensusServiceProxy;
 using consensus::LeaderStepDownRequestPB;
@@ -1646,6 +1643,12 @@ Status ClusterAdminClient::ModifyTablePlacementInfo(
   const YBTableName& table_name, const std::string& placement_info, int replication_factor,
   const std::string& optional_uuid) {
 
+  YBTableName global_transactions(
+      YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
+  if (table_name == global_transactions) {
+    return STATUS(InvalidCommand, "Placement cannot be modified for the global transactions table");
+  }
+
   std::vector<std::string> placement_info_split = strings::Split(
       placement_info, ",", strings::SkipEmpty());
   if (placement_info_split.size() < 1) {
@@ -1679,32 +1682,7 @@ Status ClusterAdminClient::ModifyTablePlacementInfo(
     live_replicas->set_placement_uuid(optional_uuid);
   }
 
-  master::ReplicationInfoPB replication_info;
-  // Merge the obtained info with the existing table replication info.
-  std::shared_ptr<client::YBTable> table;
-  RETURN_NOT_OK_PREPEND(yb_client_->OpenTable(table_name, &table),
-                        "Fetching table schema failed!");
-
-  // If it does not exist, fetch the cluster replication info.
-  if (!table->replication_info()) {
-    auto resp_cluster_config = VERIFY_RESULT(GetMasterClusterConfig());
-    master::SysClusterConfigEntryPB* sys_cluster_config_entry =
-      resp_cluster_config.mutable_cluster_config();
-    replication_info.CopyFrom(sys_cluster_config_entry->replication_info());
-    // TODO(bogdan): Figure out how to handle read replias and leader affinity.
-    replication_info.clear_read_replicas();
-    replication_info.clear_affinitized_leaders();
-  } else {
-    // Table replication info exists, copy it over.
-    replication_info.CopyFrom(table->replication_info().get());
-  }
-
-  // Put in the new live placement info.
-  replication_info.set_allocated_live_replicas(live_replicas);
-
-  std::unique_ptr<yb::client::YBTableAlterer> table_alterer(
-    yb_client_->NewTableAlterer(table_name));
-  return table_alterer->replication_info(replication_info)->Alter();
+  return yb_client_->ModifyTablePlacementInfo(table_name, live_replicas);
 }
 
 Status ClusterAdminClient::ModifyPlacementInfo(
@@ -1843,6 +1821,41 @@ Result<rapidjson::Document> ClusterAdminClient::DdlLog() {
   return result;
 }
 
+Status ClusterAdminClient::UpgradeYsql() {
+  // Pick some alive TServer.
+  RepeatedPtrField<ListTabletServersResponsePB::Entry> servers;
+  RETURN_NOT_OK(ListTabletServers(&servers));
+  boost::optional<HostPortPB> ts_rpc_addr;
+  for (const ListTabletServersResponsePB::Entry& server : servers) {
+    if (!server.has_alive() || !server.alive()) {
+      continue;
+    }
+
+    if (!server.has_registration() ||
+        server.registration().common().private_rpc_addresses().empty()) {
+      continue;
+    }
+
+    ts_rpc_addr.emplace(server.registration().common().private_rpc_addresses(0));
+    break;
+  }
+  if (!ts_rpc_addr.has_value()) {
+    return STATUS(IllegalState, "Couldn't find alive tablet server to connect to");
+  }
+
+  TabletServerAdminServiceProxy ts_admin_proxy(proxy_cache_.get(), HostPortFromPB(*ts_rpc_addr));
+
+  UpgradeYsqlRequestPB req;
+  const auto resp = VERIFY_RESULT(InvokeRpc(&TabletServerAdminServiceProxy::UpgradeYsql,
+                                            &ts_admin_proxy, req));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  cout << "YSQL successfully upgraded to the latest version" << endl;
+  return Status::OK();
+}
+
 Status ClusterAdminClient::ChangeBlacklist(const std::vector<HostPort>& servers, bool add,
     bool blacklist_leader) {
   auto config = VERIFY_RESULT(GetMasterClusterConfig());
@@ -1903,6 +1916,10 @@ CHECKED_STATUS ClusterAdminClient::SplitTablet(const std::string& tablet_id) {
       InvokeRpc(&MasterServiceProxy::SplitTablet, master_proxy_.get(), req));
   std::cout << "Response: " << AsString(resp) << std::endl;
   return Status::OK();
+}
+
+Status ClusterAdminClient::CreateTransactionsStatusTable(const std::string& table_name) {
+  return yb_client_->CreateTransactionsStatusTable(table_name);
 }
 
 template<class Response, class Request, class Object>

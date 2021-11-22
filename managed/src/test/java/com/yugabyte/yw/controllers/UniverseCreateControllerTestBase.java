@@ -15,7 +15,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
-import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
 import static com.yugabyte.yw.common.PlacementInfoUtil.updateUniverseDefinition;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
@@ -117,7 +117,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
   /** Migrated to {@link UniverseClustersControllerTest} */
   @Test
   public void testUniverseCreateWithInvalidParams() {
-    Result result = assertYWSE(() -> sendCreateRequest(Json.newObject()));
+    Result result = assertPlatformException(() -> sendCreateRequest(Json.newObject()));
     assertBadRequest(result, "clusters: This field is required");
     assertAuditEntry(0, customer.uuid);
   }
@@ -144,7 +144,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
     ArrayNode clustersJsonArray =
         Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
     bodyJson.set("clusters", clustersJsonArray);
-    Result result = assertYWSE(() -> sendCreateRequest(bodyJson));
+    Result result = assertPlatformException(() -> sendCreateRequest(bodyJson));
     assertBadRequest(result, "Invalid universe name format, valid characters [a-zA-Z0-9-].");
     assertAuditEntry(0, customer.uuid);
   }
@@ -288,7 +288,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
 
     String url = "/api/customers/" + customer.uuid + "/universes";
     Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "Password shouldn't be empty.");
   }
 
@@ -329,7 +330,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
 
     String url = "/api/customers/" + customer.uuid + "/universes";
     Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "Password shouldn't be empty.");
   }
 
@@ -370,7 +372,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
 
     String url = "/api/customers/" + customer.uuid + "/universes";
     Result result =
-        assertYWSE(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "Enable atleast one endpoint among YSQL and YCQL");
   }
 
@@ -480,7 +483,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
     bodyJson.set("clusters", clustersJsonArray);
     bodyJson.set("nodeDetailsSet", Json.newArray());
 
-    Result result = assertYWSE(() -> sendCreateRequest(bodyJson));
+    Result result = assertPlatformException(() -> sendCreateRequest(bodyJson));
     assertBadRequest(
         result,
         "Only one universe can be created with providers having "
@@ -618,7 +621,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
       Result result = sendCreateRequest(bodyJson);
       assertOk(result);
     } else {
-      Result result = assertYWSE(() -> sendCreateRequest(bodyJson));
+      Result result = assertPlatformException(() -> sendCreateRequest(bodyJson));
       assertBadRequest(result, errorMessage);
     }
   }
@@ -1131,7 +1134,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
         Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
     bodyJson.set("clusters", clustersJsonArray);
 
-    Result result = assertYWSE(() -> sendPrimaryCreateConfigureRequest(bodyJson));
+    Result result = assertPlatformException(() -> sendPrimaryCreateConfigureRequest(bodyJson));
     assertInternalServerError(result, "No AZ found across regions: [" + r.uuid + "]");
     assertAuditEntry(0, customer.uuid);
   }
@@ -1225,7 +1228,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
     }
 
     ObjectNode topJson = (ObjectNode) Json.toJson(taskParams);
-    Result result = assertYWSE(() -> sendPrimaryCreateConfigureRequest(topJson));
+    Result result = assertPlatformException(() -> sendPrimaryCreateConfigureRequest(topJson));
 
     assertBadRequest(result, "Invalid Node/AZ combination for given instance type type.small");
     assertAuditEntry(0, customer.uuid);
@@ -1266,7 +1269,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
 
     ObjectNode topJson = (ObjectNode) Json.toJson(taskParams);
 
-    Result result = assertYWSE(() -> sendPrimaryCreateConfigureRequest(topJson));
+    Result result = assertPlatformException(() -> sendPrimaryCreateConfigureRequest(topJson));
     assertBadRequest(result, "Invalid Node/AZ combination for given instance type type.small");
     assertAuditEntry(0, customer.uuid);
   }

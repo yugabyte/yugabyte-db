@@ -3,7 +3,7 @@
 package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
-import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.models.Users.Role;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
@@ -29,6 +29,7 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.extended.UserWithFeatures;
 import java.io.IOException;
 import java.util.List;
 import org.junit.Before;
@@ -55,7 +56,8 @@ public class UsersControllerTest extends FakeDBApplication {
     authToken2 = user2.createAuthToken();
   }
 
-  public List<Users> getListOfUsers(String authToken, Customer customer) throws IOException {
+  public List<UserWithFeatures> getListOfUsers(String authToken, Customer customer)
+      throws IOException {
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken1).build();
     Result result =
         route(fakeRequest("GET", String.format(baseRoute, customer.uuid)).cookie(validCookie));
@@ -64,24 +66,24 @@ public class UsersControllerTest extends FakeDBApplication {
     }
     JsonNode json = Json.parse(contentAsString(result));
     ObjectMapper mapper = new ObjectMapper();
-    ObjectReader reader = mapper.readerFor(new TypeReference<List<Users>>() {});
-    List<Users> userList = reader.readValue(json);
+    ObjectReader reader = mapper.readerFor(new TypeReference<List<UserWithFeatures>>() {});
+    List<UserWithFeatures> userList = reader.readValue(json);
     return userList;
   }
 
   @Test
   public void testGetUsersWithValidToken() throws IOException {
-    List<Users> userList = getListOfUsers(authToken1, customer1);
+    List<UserWithFeatures> userList = getListOfUsers(authToken1, customer1);
     assertNotNull(userList);
     assertEquals(userList.size(), 1);
-    assertThat(userList.get(0).uuid, allOf(notNullValue(), equalTo(user1.uuid)));
-    assertEquals(userList.get(0).email, user1.email);
+    assertThat(userList.get(0).getUser().uuid, allOf(notNullValue(), equalTo(user1.uuid)));
+    assertEquals(userList.get(0).getUser().email, user1.email);
     assertAuditEntry(0, customer1.uuid);
   }
 
   @Test
   public void testGetUsersWithInvalidToken() throws IOException {
-    List<Users> userList = getListOfUsers(authToken1, customer2);
+    List<UserWithFeatures> userList = getListOfUsers(authToken1, customer2);
     assertNull(userList);
     assertAuditEntry(0, customer1.uuid);
   }
@@ -102,10 +104,10 @@ public class UsersControllerTest extends FakeDBApplication {
     assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));
     ObjectMapper mapper = new ObjectMapper();
-    ObjectReader reader = mapper.readerFor(new TypeReference<Users>() {});
-    Users user = reader.readValue(json);
-    assertEquals(user.email, "foo@bar.com");
-    List<Users> userList = getListOfUsers(authToken1, customer1);
+    ObjectReader reader = mapper.readerFor(new TypeReference<UserWithFeatures>() {});
+    UserWithFeatures user = reader.readValue(json);
+    assertEquals(user.getUser().email, "foo@bar.com");
+    List<UserWithFeatures> userList = getListOfUsers(authToken1, customer1);
     assertEquals(userList.size(), 2);
     assertAuditEntry(1, customer1.uuid);
   }
@@ -119,7 +121,7 @@ public class UsersControllerTest extends FakeDBApplication {
                     "DELETE",
                     String.format("%s/%s", String.format(baseRoute, customer1.uuid), user1.uuid))
                 .cookie(validCookie));
-    List<Users> userList = getListOfUsers(authToken1, customer1);
+    List<UserWithFeatures> userList = getListOfUsers(authToken1, customer1);
     assertNull(userList);
     assertAuditEntry(1, customer1.uuid);
   }
@@ -148,7 +150,7 @@ public class UsersControllerTest extends FakeDBApplication {
     assertEquals(testUser1.getRole(), Role.SuperAdmin);
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken1).build();
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 route(
                     fakeRequest(
@@ -221,7 +223,7 @@ public class UsersControllerTest extends FakeDBApplication {
     params.put("role", "Admin");
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 route(
                     fakeRequest(
@@ -243,7 +245,7 @@ public class UsersControllerTest extends FakeDBApplication {
     params.put("confirmPassword", "new-password");
     params.put("role", "ReadOnly");
     Result result =
-        assertYWSE(
+        assertPlatformException(
             () ->
                 route(
                     fakeRequest("POST", String.format(baseRoute, customer1.uuid))

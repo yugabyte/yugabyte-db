@@ -28,15 +28,14 @@ import java.util.Base64;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.yb.client.YBClient;
 import scala.concurrent.ExecutionContext;
 import scala.concurrent.duration.Duration;
 
 @Singleton
+@Slf4j
 public class SetUniverseKey {
-  public static final Logger LOG = LoggerFactory.getLogger(SetUniverseKey.class);
 
   private AtomicBoolean running = new AtomicBoolean(false);
 
@@ -90,7 +89,7 @@ public class SetUniverseKey {
     } catch (Exception e) {
       String errMsg =
           String.format("Error sending universe encryption key to node %s", masterAddr.toString());
-      LOG.error(errMsg, e);
+      log.error(errMsg, e);
     } finally {
       ybService.closeClient(client, hostPorts);
     }
@@ -99,7 +98,7 @@ public class SetUniverseKey {
   public void setUniverseKey(Universe u) {
     try {
       if (!u.universeIsLocked() && EncryptionAtRestUtil.getNumKeyRotations(u.universeUUID) > 0) {
-        LOG.debug(
+        log.debug(
             String.format(
                 "Setting universe encryption key for universe %s", u.universeUUID.toString()));
 
@@ -109,7 +108,7 @@ public class SetUniverseKey {
             || activeKey.uuid.keyRef.length() == 0) {
           final String errMsg =
               String.format("No active key found for universe %s", u.universeUUID.toString());
-          LOG.debug(errMsg);
+          log.debug(errMsg);
           return;
         }
 
@@ -123,12 +122,12 @@ public class SetUniverseKey {
       String errMsg =
           String.format(
               "Error setting universe encryption key for universe %s", u.universeUUID.toString());
-      LOG.error(errMsg, e);
+      log.error(errMsg, e);
     }
   }
 
   public void handleCustomerError(UUID cUUID, Exception e) {
-    LOG.error(
+    log.error(
         String.format("Error detected running universe key setter for customer %s", cUUID), e);
   }
 
@@ -138,13 +137,17 @@ public class SetUniverseKey {
 
   @VisibleForTesting
   void scheduleRunner() {
-    if (HighAvailabilityConfig.isFollower()) {
-      LOG.debug("Skipping universe key setter for follower platform");
+    if (!running.compareAndSet(false, true)) {
+      log.info("Previous run of universe key setter is in progress");
       return;
     }
 
-    if (running.compareAndSet(false, true)) {
-      LOG.debug("Running universe key setter");
+    try {
+      if (HighAvailabilityConfig.isFollower()) {
+        log.debug("Skipping universe key setter for follower platform");
+        return;
+      }
+      log.debug("Running universe key setter");
       Customer.getAll()
           .forEach(
               c -> {
@@ -154,6 +157,9 @@ public class SetUniverseKey {
                   handleCustomerError(c.uuid, e);
                 }
               });
+    } catch (Exception e) {
+      log.error("Error running universe key setter", e);
+    } finally {
       running.set(false);
     }
   }

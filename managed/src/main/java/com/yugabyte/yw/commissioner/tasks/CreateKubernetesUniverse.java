@@ -16,8 +16,10 @@ import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.Set;
@@ -30,6 +32,14 @@ import org.yb.client.YBClient;
 @Slf4j
 public class CreateKubernetesUniverse extends KubernetesTaskBase {
 
+  private String ysqlPassword;
+  private String ycqlPassword;
+  private String ysqlCurrentPassword = Util.DEFAULT_YSQL_PASSWORD;
+  private String ysqlUsername = Util.DEFAULT_YSQL_USERNAME;
+  private String ycqlCurrentPassword = Util.DEFAULT_YCQL_PASSWORD;
+  private String ycqlUsername = Util.DEFAULT_YCQL_USERNAME;
+  private String ysqlDb = Util.YUGABYTE_DB;
+
   @Inject
   protected CreateKubernetesUniverse(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
@@ -41,13 +51,24 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       // Verify the task params.
       verifyParams(UniverseOpType.CREATE);
 
+      if (taskParams().getPrimaryCluster().userIntent.enableYCQL
+          && taskParams().getPrimaryCluster().userIntent.enableYCQLAuth) {
+        ycqlPassword = taskParams().getPrimaryCluster().userIntent.ycqlPassword;
+        taskParams().getPrimaryCluster().userIntent.ycqlPassword = Util.redactString(ycqlPassword);
+      }
+      if (taskParams().getPrimaryCluster().userIntent.enableYSQL
+          && taskParams().getPrimaryCluster().userIntent.enableYSQLAuth) {
+        ysqlPassword = taskParams().getPrimaryCluster().userIntent.ysqlPassword;
+        taskParams().getPrimaryCluster().userIntent.ysqlPassword = Util.redactString(ysqlPassword);
+      }
+
       // Create the task list sequence.
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
       // Set all the in-memory node names first.
-      setNodeNames(UniverseOpType.CREATE, universe);
+      setNodeNames(universe);
 
       PlacementInfo pi = taskParams().getPrimaryCluster().placementInfo;
 
@@ -103,6 +124,23 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       // Create a simple redis table.
       if (taskParams().getPrimaryCluster().userIntent.enableYEDIS) {
         createTableTask(Common.TableType.REDIS_TABLE_TYPE, YBClient.REDIS_DEFAULT_TABLE_NAME, null)
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      }
+
+      Cluster primaryCluster = taskParams().getPrimaryCluster();
+
+      // Change admin password for Admin user, as specified.
+      if ((primaryCluster.userIntent.enableYSQL && primaryCluster.userIntent.enableYSQLAuth)
+          || (primaryCluster.userIntent.enableYCQL && primaryCluster.userIntent.enableYCQLAuth)) {
+        createChangeAdminPasswordTask(
+                primaryCluster,
+                ysqlPassword,
+                ysqlCurrentPassword,
+                ysqlUsername,
+                ysqlDb,
+                ycqlPassword,
+                ycqlCurrentPassword,
+                ycqlUsername)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 

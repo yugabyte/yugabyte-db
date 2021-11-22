@@ -25,17 +25,17 @@
 #include <stdio.h>
 
 #include <algorithm>
-#include <iostream>
 #include <map>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include <boost/optional.hpp>
+
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/memtable.h"
 #include "yb/rocksdb/db/write_batch_internal.h"
 #include "yb/rocksdb/db/writebuffer.h"
-#include "yb/rocksdb/memtable/stl_wrappers.h"
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/env.h"
@@ -186,7 +186,8 @@ class Constructor {
 
 class BlockConstructor: public Constructor {
  public:
-  explicit BlockConstructor(const Comparator* cmp)
+  explicit BlockConstructor(
+      const Comparator* cmp)
       : Constructor(cmp),
         comparator_(cmp),
         block_(nullptr) { }
@@ -200,7 +201,8 @@ class BlockConstructor: public Constructor {
                             const stl_wrappers::KVMap& kv_map) override {
     delete block_;
     block_ = nullptr;
-    BlockBuilder builder(table_options.block_restart_interval);
+    BlockBuilder builder(
+        table_options.block_restart_interval, table_options.data_block_key_value_encoding_format);
 
     for (const auto& kv : kv_map) {
       builder.Add(kv.first, kv.second);
@@ -211,14 +213,16 @@ class BlockConstructor: public Constructor {
     contents.data = data_;
     contents.cachable = false;
     block_ = new Block(std::move(contents));
+    key_value_encoding_format_ = table_options.data_block_key_value_encoding_format;
     return Status::OK();
   }
   InternalIterator* NewIterator() const override {
-    return block_->NewIterator(comparator_);
+    return block_->NewIterator(comparator_, key_value_encoding_format_);
   }
 
  private:
   const Comparator* comparator_;
+  KeyValueEncodingFormat key_value_encoding_format_;
   std::string data_;
   Block* block_;
 
@@ -302,6 +306,10 @@ class TableConstructor: public Constructor {
                             /* skip_filters */ false),
         TablePropertiesCollectorFactory::Context::kUnknownColumnFamily,
         file_writer_.get()));
+    if (TEST_skip_writing_key_value_encoding_format) {
+      dynamic_cast<BlockBasedTableBuilder*>(builder.get())
+          ->TEST_skip_writing_key_value_encoding_format();
+    }
 
     for (const auto& kv : kv_map) {
       if (convert_to_internal_key_) {
@@ -363,6 +371,8 @@ class TableConstructor: public Constructor {
   TableProperties GetTableProperties() const {
     return table_properties_;
   }
+
+  bool TEST_skip_writing_key_value_encoding_format = false;
 
  private:
   void Reset() {
@@ -1044,7 +1054,7 @@ TEST_F(BlockBasedTableTest, BasicBlockBasedTableProperties) {
   ASSERT_EQ("", props.filter_policy_name);  // no filter policy is used
 
   // Verify data size.
-  BlockBuilder block_builder(1);
+  BlockBuilder block_builder(1, table_options.data_block_key_value_encoding_format);
   for (const auto& item : kvmap) {
     block_builder.Add(item.first, item.second);
   }
@@ -2421,46 +2431,66 @@ TEST_P(IndexBlockRestartIntervalTest, IndexBlockRestartInterval) {
 
   int index_block_restart_interval = GetParam();
 
-  Options options;
-  BlockBasedTableOptions table_options;
-  table_options.block_size = 64;  // small block size to get big index block
-  table_options.index_block_restart_interval = index_block_restart_interval;
-  options.table_factory.reset(new BlockBasedTableFactory(table_options));
-
-  TableConstructor c(BytewiseComparator());
-  static Random rnd(301);
-  for (int i = 0; i < kKeysInTable; i++) {
-    InternalKey k(RandomString(&rnd, kKeySize), 0, kTypeValue);
-    c.Add(k.Encode().ToString(), RandomString(&rnd, kValSize));
+  std::vector<boost::optional<KeyValueEncodingFormat>> formats_to_test;
+  for (const auto& format : kKeyValueEncodingFormatList) {
+    formats_to_test.push_back(format);
   }
+  // Also test backward compatibility with SST files without
+  // BlockBasedTablePropertyNames::kDataBlockKeyValueEncodingFormat property.
+  formats_to_test.push_back(boost::none);
 
-  std::vector<std::string> keys;
-  stl_wrappers::KVMap kvmap;
-  auto comparator = std::make_shared<InternalKeyComparator>(BytewiseComparator());
-  const ImmutableCFOptions ioptions(options);
-  c.Finish(options, ioptions, table_options, comparator, &keys, &kvmap);
-  auto reader = c.GetTableReader();
+  for (const auto& format : formats_to_test) {
+    Options options;
+    BlockBasedTableOptions table_options;
+    table_options.block_size = 64;  // small block size to get big index block
+    table_options.index_block_restart_interval = index_block_restart_interval;
+    // SST files without BlockBasedTablePropertyNames::kDataBlockKeyValueEncodingFormat only could
+    // be written with using KeyValueEncodingFormat::kKeyDeltaEncodingSharedPrefix, because there
+    // were no other formats before we added this property.
+    table_options.data_block_key_value_encoding_format =
+        format.get_value_or(KeyValueEncodingFormat::kKeyDeltaEncodingSharedPrefix);
+    options.table_factory.reset(new BlockBasedTableFactory(table_options));
 
-  std::unique_ptr<InternalIterator> db_iter(reader->NewIterator(ReadOptions()));
+    TableConstructor c(BytewiseComparator());
+    if (!format.has_value()) {
+      // Backward compatibility: test that we can read files without
+      // BlockBasedTablePropertyNames::kDataBlockKeyValueEncodingFormat property.
+      c.TEST_skip_writing_key_value_encoding_format = true;
+    }
+    static Random rnd(301);
+    for (int i = 0; i < kKeysInTable; i++) {
+      InternalKey k(RandomString(&rnd, kKeySize), 0, kTypeValue);
+      c.Add(k.Encode().ToString(), RandomString(&rnd, kValSize));
+    }
 
-  // Test point lookup
-  for (auto& kv : kvmap) {
-    db_iter->Seek(kv.first);
+    std::vector<std::string> keys;
+    stl_wrappers::KVMap kvmap;
+    auto comparator = std::make_shared<InternalKeyComparator>(BytewiseComparator());
+    const ImmutableCFOptions ioptions(options);
+    c.Finish(options, ioptions, table_options, comparator, &keys, &kvmap);
+    auto reader = c.GetTableReader();
 
-    ASSERT_TRUE(db_iter->Valid());
-    ASSERT_OK(db_iter->status());
-    ASSERT_EQ(db_iter->key(), kv.first);
-    ASSERT_EQ(db_iter->value(), kv.second);
+    std::unique_ptr<InternalIterator> db_iter(reader->NewIterator(ReadOptions()));
+
+    // Test point lookup
+    for (auto& kv : kvmap) {
+      db_iter->Seek(kv.first);
+
+      ASSERT_TRUE(db_iter->Valid());
+      ASSERT_OK(db_iter->status());
+      ASSERT_EQ(db_iter->key(), kv.first);
+      ASSERT_EQ(db_iter->value(), kv.second);
+    }
+
+    // Test iterating
+    auto kv_iter = kvmap.begin();
+    for (db_iter->SeekToFirst(); db_iter->Valid(); db_iter->Next()) {
+      ASSERT_EQ(db_iter->key(), kv_iter->first);
+      ASSERT_EQ(db_iter->value(), kv_iter->second);
+      kv_iter++;
+    }
+    ASSERT_EQ(kv_iter, kvmap.end());
   }
-
-  // Test iterating
-  auto kv_iter = kvmap.begin();
-  for (db_iter->SeekToFirst(); db_iter->Valid(); db_iter->Next()) {
-    ASSERT_EQ(db_iter->key(), kv_iter->first);
-    ASSERT_EQ(db_iter->value(), kv_iter->second);
-    kv_iter++;
-  }
-  ASSERT_EQ(kv_iter, kvmap.end());
 }
 
 class PrefixTest : public testing::Test {

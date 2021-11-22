@@ -32,7 +32,6 @@
 
 #include "yb/tools/ysck.h"
 
-#include <iostream>
 #include <mutex>
 #include <unordered_set>
 #include <glog/logging.h>

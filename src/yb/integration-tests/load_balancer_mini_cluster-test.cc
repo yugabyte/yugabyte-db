@@ -19,16 +19,11 @@
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/external_mini_cluster.h"
-#include "yb/integration-tests/cluster_verifier.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/cluster_balance.h"
-#include "yb/master/master.h"
-#include "yb/master/master-test-util.h"
 #include "yb/master/master_fwd.h"
-#include "yb/master/sys_catalog.h"
 #include "yb/master/master.proxy.h"
-#include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/tools/yb-admin_client.h"
 #include "yb/tserver/tablet_server_options.h"
@@ -91,8 +86,7 @@ void WaitForReplicaOnTS(yb::MiniCluster* mini_cluster,
           GetTableInfoFromNamespaceNameAndTableName(table_name.namespace_type(),
                                                     table_name.namespace_name(),
                                                     table_name.table_name());
-    vector<scoped_refptr<master::TabletInfo>> tablets;
-    tbl_info->GetAllTablets(&tablets);
+    auto tablets  = tbl_info->GetTablets();
     int count = min_expected_count;
     for (const auto& tablet : tablets) {
       auto replica_map = tablet->GetReplicaLocations();
@@ -129,8 +123,7 @@ CHECKED_STATUS GetTabletsDriveStats(DriveStats* stats,
       GetTableInfoFromNamespaceNameAndTableName(table_name.namespace_type(),
                                                 table_name.namespace_name(),
                                                 table_name.table_name());
-  vector<scoped_refptr<master::TabletInfo>> tablets;
-  tbl_info->GetAllTablets(&tablets);
+  auto tablets = tbl_info->GetTablets();
 
   for (const auto& tablet : tablets) {
     auto replica_map = tablet->GetReplicaLocations();
@@ -262,17 +255,14 @@ TEST_F(LoadBalancerMiniClusterTest, UninitializedTSDescriptorOnPendingAddTest) {
           GetTableInfoFromNamespaceNameAndTableName(table_name().namespace_type(),
                                                     table_name().namespace_name(),
                                                     table_name().table_name());
-    vector<scoped_refptr<master::TabletInfo>> tablets;
-    tbl_info->GetAllTablets(&tablets);
-    bool foundReplica = false;
+    auto tablets = tbl_info->GetTablets();
     for (const auto& tablet : tablets) {
       auto replica_map = tablet->GetReplicaLocations();
       if (replica_map->find(ts3_uuid) != replica_map->end()) {
-        foundReplica = true;
-        break;
+        return true;
       }
     }
-    return foundReplica;
+    return false;
   }, kDefaultTimeout, "WaitForAddTaskToBeProcessed"));
 
   // Modify GetAllReportedDescriptors so that it does not report the new tserver
@@ -381,8 +371,7 @@ TEST_F(LoadBalancerMiniClusterTest, CheckTabletSizeData) {
           GetTableInfoFromNamespaceNameAndTableName(table_name().namespace_type(),
                                                     table_name().namespace_name(),
                                                     table_name().table_name());
-    vector<scoped_refptr<master::TabletInfo>> tablets;
-    tbl_info->GetAllTablets(&tablets);
+    auto tablets = tbl_info->GetTablets();
 
     int updated = 0;
     for (const auto& tablet : tablets) {
@@ -426,8 +415,7 @@ TEST_F_EX(LoadBalancerMiniClusterTest, CheckLoadBalanceWithoutDriveData,
         GetTableInfoFromNamespaceNameAndTableName(table_name().namespace_type(),
                                                   table_name().namespace_name(),
                                                   table_name().table_name());
-  vector<scoped_refptr<master::TabletInfo>> tablets;
-  tbl_info->GetAllTablets(&tablets);
+  auto tablets = tbl_info->GetTablets();
 
   for (const auto& tablet : tablets) {
     auto replica_map = tablet->GetReplicaLocations();

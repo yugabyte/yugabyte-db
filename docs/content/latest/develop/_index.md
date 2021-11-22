@@ -38,7 +38,7 @@ menu:
         <div class="title">Real world examples</div>
       </div>
       <div class="body">
-        Try out e-commerce, retail analytics, and IoT fleet management in these real world, end-to-end YugabyteDB applications.
+        Try out e-commerce and IoT fleet management in these real world, end-to-end YugabyteDB applications.
       </div>
     </a>
   </div>

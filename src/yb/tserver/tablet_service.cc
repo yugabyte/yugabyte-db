@@ -45,7 +45,6 @@
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/consensus/leader_lease.h"
 #include "yb/consensus/raft_consensus.h"
 
 #include "yb/docdb/cql_operation.h"
@@ -57,7 +56,6 @@
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/escaping.h"
-#include "yb/master/sys_catalog_constants.h"
 #include "yb/server/hybrid_clock.h"
 
 #include "yb/tablet/tablet_bootstrap_if.h"
@@ -72,7 +70,6 @@
 #include "yb/tablet/operations/update_txn_operation.h"
 #include "yb/tablet/operations/write_operation.h"
 
-#include "yb/tserver/remote_bootstrap_service.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_error.h"
@@ -96,7 +93,7 @@
 #include "yb/consensus/consensus.pb.h"
 #include "yb/tserver/service_util.h"
 
-#include "yb/yql/pggate/util/pg_doc_data.h"
+#include "yb/yql/pgwrapper/ysql_upgrade.h"
 
 using namespace std::literals;  // NOLINT
 
@@ -239,6 +236,8 @@ DEFINE_test_flag(bool, disable_post_split_tablet_rbs_check, false,
 
 DEFINE_test_flag(double, fail_tablet_split_probability, 0.0,
                  "Probability of failing in TabletServiceAdminImpl::SplitTablet.");
+
+DECLARE_int32(heartbeat_interval_ms);
 
 double TEST_delay_create_transaction_probability = 0;
 
@@ -411,8 +410,13 @@ class WriteOperationCompletionCallback {
       tablet::WriteOperation* operation,
       const server::ClockPtr& clock,
       bool trace = false)
-      : tablet_peer_(std::move(tablet_peer)), context_(std::move(context)), response_(response),
-        operation_(operation), clock_(clock), include_trace_(trace) {}
+      : tablet_peer_(std::move(tablet_peer)),
+        context_(std::move(context)),
+        response_(response),
+        operation_(operation),
+        clock_(clock),
+        include_trace_(trace),
+        trace_(include_trace_ ? Trace::CurrentTrace() : nullptr) {}
 
   void operator()(Status status) const {
     VLOG(1) << __PRETTY_FUNCTION__ << " completing with status " << status;
@@ -424,8 +428,13 @@ class WriteOperationCompletionCallback {
       status = Status::OK();
     }
 
+    TRACE("Write completing with status $0", yb::ToString(status));
+
     if (!status.ok()) {
       LOG(INFO) << tablet_peer_->LogPrefix() << "Write failed: " << status;
+      if (include_trace_ && trace_) {
+        response_->set_trace_buffer(trace_->DumpToString(true));
+      }
       SetupErrorAndRespond(get_error(), status, context_.get());
       return;
     }
@@ -464,8 +473,8 @@ class WriteOperationCompletionCallback {
       }
     }
 
-    if (include_trace_ && Trace::CurrentTrace() != nullptr) {
-      response_->set_trace_buffer(Trace::CurrentTrace()->DumpToString(true));
+    if (include_trace_ && trace_) {
+      response_->set_trace_buffer(trace_->DumpToString(true));
     }
     response_->set_propagated_hybrid_time(clock_->Now().ToUint64());
     context_->RespondSuccess();
@@ -483,6 +492,7 @@ class WriteOperationCompletionCallback {
   tablet::WriteOperation* const operation_;
   server::ClockPtr clock_;
   const bool include_trace_;
+  scoped_refptr<Trace> trace_;
 };
 
 // Checksums the scan result.
@@ -1542,6 +1552,27 @@ void TabletServiceAdminImpl::SplitTablet(
 
   leader_tablet_peer.peer->Submit(std::move(state), leader_tablet_peer.leader_term);
 }
+
+void TabletServiceAdminImpl::UpgradeYsql(
+    const UpgradeYsqlRequestPB* req,
+    UpgradeYsqlResponsePB* resp,
+    rpc::RpcContext context) {
+  LOG(INFO) << "Starting YSQL upgrade";
+
+  pgwrapper::YsqlUpgradeHelper upgrade_helper(server_->pgsql_proxy_bind_address(),
+                                              server_->GetSharedMemoryPostgresAuthKey(),
+                                              FLAGS_heartbeat_interval_ms);
+  const auto status = upgrade_helper.Upgrade();
+  if (!status.ok()) {
+    LOG(INFO) << "YSQL upgrade failed: " << status;
+    SetupErrorAndRespond(resp->mutable_error(), status, &context);
+    return;
+  }
+
+  LOG(INFO) << "YSQL upgrade done successfully";
+  context.RespondSuccess();
+}
+
 
 bool EmptyWriteBatch(const docdb::KeyValueWriteBatchPB& write_batch) {
   return write_batch.write_pairs().empty() && write_batch.apply_external_transactions().empty();
@@ -2905,7 +2936,8 @@ void TabletServiceImpl::IsTabletServerReady(const IsTabletServerReadyRequestPB* 
 void TabletServiceImpl::TakeTransaction(const TakeTransactionRequestPB* req,
                                         TakeTransactionResponsePB* resp,
                                         rpc::RpcContext context) {
-  auto transaction = server_->TransactionPool()->Take();
+  auto transaction = server_->TransactionPool()->Take(
+      client::ForceGlobalTransaction(req->has_is_global() && req->is_global()));
   auto metadata = transaction->Release();
   if (!metadata.ok()) {
     LOG(INFO) << "Take failed: " << metadata.status();
@@ -2951,7 +2983,7 @@ void TabletServiceImpl::Shutdown() {
 }
 
 scoped_refptr<Histogram> TabletServer::GetMetricsHistogram(
-    TabletServerServiceIf::RpcMetricIndexes metric) {
+    TabletServerServiceIf::RpcMethodIndexes metric) {
   // Returns the metric Histogram by holding a lock to make sure tablet_server_service_ remains
   // unchanged during the operation.
   std::lock_guard<simple_spinlock> l(lock_);

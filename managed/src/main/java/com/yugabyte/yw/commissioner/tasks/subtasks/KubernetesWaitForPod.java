@@ -88,7 +88,7 @@ public class KubernetesWaitForPod extends AbstractTaskBase {
             break;
           }
           try {
-            TimeUnit.SECONDS.sleep(SLEEP_TIME);
+            TimeUnit.SECONDS.sleep(getSleepMultiplier() * SLEEP_TIME);
           } catch (InterruptedException ex) {
             // Do nothing
           }
@@ -104,7 +104,7 @@ public class KubernetesWaitForPod extends AbstractTaskBase {
   private String waitForPod() {
     Map<String, String> config = taskParams().config;
     if (taskParams().config == null) {
-      config = Provider.get(taskParams().providerUUID).getConfig();
+      config = Provider.get(taskParams().providerUUID).getUnmaskedConfig();
     }
     ShellResponse podResponse =
         kubernetesManager.getPodStatus(config, taskParams().namespace, taskParams().podName);

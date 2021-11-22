@@ -36,6 +36,7 @@
     "pylib": ["thirdparty/installed/common/cqlsh/pylib/*"],
     "share": [
       "$BUILD_ROOT/share/initial_sys_catalog_snapshot",
+      "$BUILD_ROOT/share/ysql_migrations",
       "sample/*.sql"
     ],
     "tools": [

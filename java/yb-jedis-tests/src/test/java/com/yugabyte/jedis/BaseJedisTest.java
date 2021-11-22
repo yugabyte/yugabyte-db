@@ -21,7 +21,7 @@ import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.YBClient;
 import org.yb.Common.PartitionSchemaPB.HashSchema;
 import org.yb.minicluster.BaseMiniClusterTest;
-import org.yb.util.SanitizerUtil;
+import org.yb.util.BuildTypeUtil;
 import redis.clients.jedis.HostAndPort;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisCluster;
@@ -195,7 +195,7 @@ public abstract class BaseJedisTest extends BaseMiniClusterTest {
 
     // TODO(bogdan): Fake sleep until after #4663 is fixed, as we're seeing issues with test work
     // starting, while initial leaders are still moving.
-    Thread.sleep(SanitizerUtil.adjustTimeout(10000));
+    Thread.sleep(BuildTypeUtil.adjustTimeout(10000));
 
     GetTableSchemaResponse tableSchema = miniCluster.getClient().getTableSchema(
         YBClient.REDIS_KEYSPACE_NAME, tableName);

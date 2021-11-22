@@ -36,7 +36,6 @@
 #include <gtest/gtest.h>
 
 #include "yb/common/schema.h"
-#include "yb/common/wire_protocol-test-util.h"
 #include "yb/fs/fs_manager.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
@@ -45,7 +44,6 @@
 #include "yb/master/master.pb.h"
 #include "yb/master/master-test-util.h"
 #include "yb/master/sys_catalog.h"
-#include "yb/master/ts_descriptor.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/curl_util.h"
@@ -107,6 +105,7 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
     ASSERT_STR_CONTAINS(buf.ToString(), expected_uuid);
   }
 
+  // For debugging, try running with --test-args --vmodule=sys_catalog_writer=2,tablet=3.
   void CheckTabletReports(bool co_partition = false) {
     string tablet_id_1;
     string tablet_id_2;
@@ -129,6 +128,7 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
       return prototype.Instantiate(metrics)->value();
     };
     int before_rows_inserted = GetCatalogMetric(METRIC_rows_inserted);
+    LOG(INFO) << "Begin calculating sys catalog rows inserted";
 
     // Add a tablet, make sure it reports itself.
     CreateTabletForTesting(cluster_->mini_master(),
@@ -143,15 +143,15 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
     LOG(INFO) << "Tablet successfully reported on " <<
               locs.replicas(0).ts_info().permanent_uuid();
 
+    LOG(INFO) << "Finish calculating sys catalog rows inserted";
+    int after_create_rows_inserted = GetCatalogMetric(METRIC_rows_inserted);
     // Check that we inserted the right number of rows for the first table:
     // - 2 for the namespace
-    // - 2 for the table
+    // - 1 for the table
     // - 3 * FLAGS_yb_num_shards_per_tserver for the tablets:
     //    PREPARING, first heartbeat, leader election heartbeat
-    int after_create_rows_inserted = GetCatalogMetric(METRIC_rows_inserted);
-    int expected_rows = 2 + 2 + FLAGS_yb_num_shards_per_tserver * 3;
-    EXPECT_EQ(expected_rows, after_create_rows_inserted - before_rows_inserted)
-        << "Expected 2 writes for the table and 4 per each tablet";
+    int expected_rows = 2 + 1 + FLAGS_yb_num_shards_per_tserver * 3;
+    EXPECT_EQ(expected_rows, after_create_rows_inserted - before_rows_inserted);
 
     // Add another tablet, make sure it is reported via incremental.
     Schema schema_copy = Schema(schema_);
@@ -161,6 +161,7 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
 
     // Record the number of rows before the new table.
     before_rows_inserted = GetCatalogMetric(METRIC_rows_inserted);
+    LOG(INFO) << "Begin calculating sys catalog rows inserted (2)";
     CreateTabletForTesting(cluster_->mini_master(),
                            YBTableName(YQL_DATABASE_CQL, "my_keyspace", "fake-table2"),
                            schema_copy,
@@ -168,11 +169,12 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
     // Sleep for enough to make sure the TS has plenty of time to re-heartbeat.
     auto sleep_duration_sec = MonoDelta::FromSeconds(RegularBuildVsSanitizers(2, 5));
     SleepFor(sleep_duration_sec);
+    LOG(INFO) << "Finish calculating sys catalog rows inserted (2)";
     after_create_rows_inserted = GetCatalogMetric(METRIC_rows_inserted);
     // For a normal table, we expect 3 writes per tablet.
     // For a copartitioned table, we expect just 1 write per tablet.
-    expected_rows = (co_partition ? 1 : 2) +
-                    FLAGS_yb_num_shards_per_tserver * (co_partition ? 1 : 3);
+    // For both, we expect 1 write for the table.
+    expected_rows = 1 + FLAGS_yb_num_shards_per_tserver * (co_partition ? 1 : 3);
     EXPECT_EQ(expected_rows, after_create_rows_inserted - before_rows_inserted);
     ASSERT_OK(cluster_->WaitForReplicaCount(tablet_id_2, 1, &locs));
 

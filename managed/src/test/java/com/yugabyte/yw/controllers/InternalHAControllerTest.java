@@ -14,8 +14,10 @@ package com.yugabyte.yw.controllers;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static junit.framework.TestCase.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static play.libs.Files.singletonTemporaryFileCreator;
 import static play.mvc.Http.Status.BAD_REQUEST;
@@ -29,6 +31,7 @@ import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformInstanceClient;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ha.PlatformReplicationHelper;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
@@ -47,6 +50,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Random;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -58,6 +62,7 @@ import play.mvc.Result;
 import play.test.Helpers;
 
 public class InternalHAControllerTest extends FakeDBApplication {
+
   private static final String UPLOAD_ENDPOINT = "/api/settings/ha/internal/upload";
   private static final String SYNC_ENDPOINT = "/api/settings/ha/internal/config/sync/";
   private static final String DEMOTE_ENDPOINT = "/api/settings/ha/internal/config/demote/";
@@ -196,8 +201,11 @@ public class InternalHAControllerTest extends FakeDBApplication {
     createPlatformInstance(config.getUUID(), true, false);
     String uri = SYNC_ENDPOINT + new Date().getTime();
     Result syncResult =
-        FakeApiHelper.doRequestWithHATokenAndBody("PUT", uri, clusterKey, Json.newObject());
-    assertInternalServerError(syncResult, "Error importing platform instances");
+        assertPlatformException(
+            () ->
+                FakeApiHelper.doRequestWithHATokenAndBody(
+                    "PUT", uri, clusterKey, Json.newObject()));
+    assertBadRequest(syncResult, "Failed to parse List<PlatformInstance> object: {}");
   }
 
   @Test
@@ -206,10 +214,19 @@ public class InternalHAControllerTest extends FakeDBApplication {
     HighAvailabilityConfig config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
     String clusterKey = haConfigJson.get("cluster_key").asText();
     createPlatformInstance(config.getUUID(), true, false);
+    assertNoLocalInstanceErrorOnSync(clusterKey, new ArrayList<>());
+  }
+
+  public void assertNoLocalInstanceErrorOnSync(
+      String clusterKey, List<PlatformInstance> instancesToImport) {
+    JsonNode body = Json.toJson(instancesToImport);
     String uri = SYNC_ENDPOINT + new Date().getTime();
-    ArrayNode body = Json.newArray();
-    Result syncResult = FakeApiHelper.doRequestWithHATokenAndBody("PUT", uri, clusterKey, body);
-    assertOk(syncResult);
+    Result syncResult =
+        assertPlatformException(
+            () -> FakeApiHelper.doRequestWithHATokenAndBody("PUT", uri, clusterKey, body));
+    List<String> addresses =
+        instancesToImport.stream().map(PlatformInstance::getAddress).collect(Collectors.toList());
+    assertBadRequest(syncResult, "(http://abc.com) not found in Sync request " + addresses);
   }
 
   @Test
@@ -241,6 +258,37 @@ public class InternalHAControllerTest extends FakeDBApplication {
     Optional<PlatformInstance> leader = config.getLeader();
     assertTrue(leader.isPresent());
     assertEquals(leader.get().getAddress(), "http://jkl.com");
+  }
+
+  @Test
+  public void testSyncInstancesNoneMatchingLocalAddress() {
+    JsonNode haConfigJson = createHAConfig();
+    HighAvailabilityConfig config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
+    String clusterKey = haConfigJson.get("cluster_key").asText();
+    PlatformInstance localInstance =
+        Json.fromJson(
+            createPlatformInstance(config.getUUID(), true, false), PlatformInstance.class);
+    PlatformInstance leader = PlatformInstance.create(config, "http://ghi.com", true, false);
+
+    localInstance.setAddress(localInstance.getAddress() + ":9000");
+    List<PlatformInstance> instancesToImport = new ArrayList<>();
+    instancesToImport.add(leader);
+    instancesToImport.add(localInstance);
+    assertNoLocalInstanceErrorOnSync(clusterKey, instancesToImport);
+    Result getResult = FakeApiHelper.doRequestWithHAToken("GET", GET_CONFIG_ENDPOINT, clusterKey);
+    assertOk(getResult);
+    JsonNode getResponse = Json.parse(contentAsString(getResult));
+    ArrayNode instancesJson = (ArrayNode) getResponse.get("instances");
+    assertEquals(2, instancesJson.size());
+    int numLocalInstances = 0;
+    for (JsonNode i : instancesJson) {
+      PlatformInstance instance = Json.fromJson(i, PlatformInstance.class);
+      if (instance.getIsLocal()) {
+        numLocalInstances++;
+      }
+    }
+    // we expect exactly one local instance
+    assertEquals(1, numLocalInstances);
   }
 
   @Test

@@ -33,10 +33,8 @@
 #include "yb/master/master-path-handlers.h"
 
 #include <algorithm>
-#include <array>
 #include <functional>
 #include <map>
-#include <iomanip>
 #include <sstream>
 #include <unordered_set>
 
@@ -50,14 +48,10 @@
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/cluster_balance.h"
-#include "yb/master/master.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_util.h"
 #include "yb/master/sys_catalog.h"
-#include "yb/master/ts_descriptor.h"
-#include "yb/master/ts_manager.h"
 #include "yb/server/webserver.h"
 #include "yb/server/webui_util.h"
 #include "yb/util/curl_util.h"
@@ -817,8 +811,7 @@ void MasterPathHandlers::HandleHealthCheck(
         continue;
       }
 
-      TabletInfos tablets;
-      table->GetAllTablets(&tablets);
+      TabletInfos tablets = table->GetTablets();
 
       for (const auto& tablet : tablets) {
         auto replication_locations = tablet->GetReplicaLocations();
@@ -1097,7 +1090,7 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
   PartitionSchema partition_schema;
   NamespaceName keyspace_name;
   TableName table_name;
-  vector<scoped_refptr<TabletInfo> > tablets;
+  TabletInfos tablets;
   {
     auto l = table->LockForRead();
     keyspace_name = master_->catalog_manager()->GetNamespaceName(table->namespace_id());
@@ -1156,7 +1149,7 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
       *output << "Unable to decode partition schema: " << s.ToString();
       return;
     }
-    table->GetAllTablets(&tablets);
+    tablets = table->GetTablets(IncludeInactive::kTrue);
   }
 
   HtmlOutputSchemaTable(schema, output);
@@ -1255,8 +1248,7 @@ std::vector<TabletInfoPtr> MasterPathHandlers::GetNonSystemTablets() {
     if (master_->catalog_manager()->IsSystemTable(*table.get())) {
       continue;
     }
-    TabletInfos ts;
-    table->GetAllTablets(&ts);
+    TabletInfos ts = table->GetTablets(IncludeInactive::kTrue);
 
     for (TabletInfoPtr t : ts) {
       nonsystem_tablets.push_back(t);
@@ -2199,8 +2191,7 @@ void MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
       continue;
     }
 
-    TabletInfos tablets;
-    table->GetAllTablets(&tablets);
+    TabletInfos tablets = table->GetTablets(IncludeInactive::kTrue);
     bool is_user_table = master_->catalog_manager()->IsUserCreatedTable(*table);
 
     for (const auto& tablet : tablets) {
@@ -2249,8 +2240,7 @@ Status MasterPathHandlers::CalculateTServerTree(TServerTree* tserver_tree) {
       continue;
     }
 
-    TabletInfos tablets;
-    table->GetAllTablets(&tablets);
+    TabletInfos tablets = table->GetTablets(IncludeInactive::kTrue);
 
     for (const auto& tablet : tablets) {
       auto replica_locations = tablet->GetReplicaLocations();

@@ -14,11 +14,9 @@
 #include "yb/integration-tests/load_generator.h"
 
 #include <memory>
-#include <queue>
 #include <random>
 #include <thread>
 
-#include <gflags/gflags_declare.h>
 
 #include "yb/client/client.h"
 #include "yb/client/error.h"
@@ -39,10 +37,8 @@
 #include "yb/util/atomic.h"
 #include "yb/util/debug/leakcheck_disabler.h"
 #include "yb/util/env.h"
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/sockaddr.h"
-#include "yb/util/stopwatch.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/threadlocal.h"
 
@@ -413,13 +409,7 @@ bool YBSingleThreadedWriter::Write(
   table_->AddStringColumnValue(insert->mutable_request(), "v", value_str);
   // submit a the put to apply.
   // If successful, add to inserted
-  Status apply_status = session_->Apply(insert);
-  if (!apply_status.ok()) {
-    LOG(WARNING) << "Error inserting key '" << key_str << "': "
-                 << "Apply() failed"
-                 << " (" << apply_status.ToString() << ")";
-    return false;
-  }
+  session_->Apply(insert);
   const auto flush_status = session_->FlushAndGetOpsErrors();
   const auto& status = flush_status.status;
   if (!status.ok()) {

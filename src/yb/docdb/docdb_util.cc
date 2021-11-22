@@ -11,9 +11,7 @@
 // under the License.
 //
 
-#include <iostream>
 
-#include "yb/rocksdb/util/statistics.h"
 
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/docdb_debug.h"
@@ -24,7 +22,6 @@
 #include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/util/env.h"
-#include "yb/util/path_util.h"
 #include "yb/util/string_trim.h"
 
 using std::string;
@@ -417,6 +414,10 @@ Status DocDBRocksDBUtil::ReinitDBOptions() {
   regular_db_options_.compaction_filter_factory =
       std::make_shared<docdb::DocDBCompactionFilterFactory>(
           retention_policy_, &KeyBounds::kNoBounds);
+  regular_db_options_.compaction_file_filter_factory =
+      compaction_file_filter_factory_;
+  regular_db_options_.max_file_size_for_compaction =
+      max_file_size_for_compaction_;
   if (!regular_db_) {
     return Status::OK();
   }

@@ -54,8 +54,6 @@
 #include "yb/master/mini_master.h"
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_metrics.h"
-#include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
@@ -417,7 +415,7 @@ void FullStackInsertScanTest::InsertRows(CountDownLatch* start_latch, int id,
   for (int64_t key = start; key < end; ++key) {
     auto op = table->NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
     RandomRow(&rng, op->mutable_request(), randstr, key, id, table);
-    ASSERT_OK(session->Apply(op));
+    session->Apply(op);
 
     // Report updates or flush every so often, using the synchronizer to always
     // start filling up the next batch while previous one is sent out.

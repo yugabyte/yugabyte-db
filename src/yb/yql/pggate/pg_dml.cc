@@ -13,7 +13,6 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/client/table.h"
 #include "yb/client/yb_op.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/docdb/doc_key.h"
@@ -143,8 +142,10 @@ Status PgDml::BindColumn(int attr_num, PgExpr *attr_value) {
   PgColumn& column = VERIFY_RESULT(bind_.ColumnForAttr(attr_num));
 
   // Check datatype.
-  SCHECK_EQ(column.internal_type(), attr_value->internal_type(), Corruption,
-            "Attribute value type does not match column type");
+  if (attr_value->internal_type() != InternalType::kGinNullValue) {
+    SCHECK_EQ(column.internal_type(), attr_value->internal_type(), Corruption,
+              "Attribute value type does not match column type");
+  }
 
   // Alloc the protobuf.
   PgsqlExpressionPB *bind_pb = column.bind_pb();
@@ -336,34 +337,45 @@ Result<bool> PgDml::FetchDataFromServer() {
 }
 
 Result<bool> PgDml::GetNextRow(PgTuple *pg_tuple) {
-  for (auto rowset_iter = rowsets_.begin(); rowset_iter != rowsets_.end();) {
-    // Check if the rowset has any data.
-    auto& rowset = *rowset_iter;
-    if (rowset.is_eof()) {
-      rowset_iter = rowsets_.erase(rowset_iter);
-      continue;
+  for (;;) {
+    for (auto rowset_iter = rowsets_.begin(); rowset_iter != rowsets_.end();) {
+      // Check if the rowset has any data.
+      auto& rowset = *rowset_iter;
+      if (rowset.is_eof()) {
+        rowset_iter = rowsets_.erase(rowset_iter);
+        continue;
+      }
+
+      // If this rowset has the next row of the index order, load it. Otherwise, continue looking
+      // for the next row in the order.
+      //
+      // NOTE:
+      //   DML <Table> WHERE ybctid IN (SELECT base_ybctid FROM <Index> ORDER BY <Index Range>)
+      // The nested subquery should return rows in indexing order, but the ybctids are then grouped
+      // by hash-code for BATCH-DML-REQUEST, so the response here are out-of-order.
+      if (rowset.NextRowOrder() <= current_row_order_) {
+        // Write row to postgres tuple.
+        int64_t row_order = -1;
+        RETURN_NOT_OK(rowset.WritePgTuple(targets_, pg_tuple, &row_order));
+        SCHECK(row_order == -1 || row_order == current_row_order_, InternalError,
+               "The resulting row are not arranged in indexing order");
+
+        // Found the current row. Move cursor to next row.
+        current_row_order_++;
+        return true;
+      }
+
+      rowset_iter++;
     }
 
-    // If this rowset has the next row of the index order, load it. Otherwise, continue looking for
-    // the next row in the order.
-    //
-    // NOTE:
-    //   DML <Table> WHERE ybctid IN (SELECT base_ybctid FROM <Index> ORDER BY <Index Range>)
-    // The nested subquery should return rows in indexing order, but the ybctids are then grouped
-    // by hash-code for BATCH-DML-REQUEST, so the response here are out-of-order.
-    if (rowset.NextRowOrder() <= current_row_order_) {
-      // Write row to postgres tuple.
-      int64_t row_order = -1;
-      RETURN_NOT_OK(rowset.WritePgTuple(targets_, pg_tuple, &row_order));
-      SCHECK(row_order == -1 || row_order == current_row_order_, InternalError,
-             "The resulting row are not arranged in indexing order");
-
-      // Found the current row. Move cursor to next row.
+    if (!rowsets_.empty() && doc_op_->end_of_data()) {
+      // If the current desired row is missing, skip it and continue to look for the next
+      // desired row in order. A row is deemed missing if it is not found and the doc op
+      // has no more rows to return.
       current_row_order_++;
-      return true;
+    } else {
+      break;
     }
-
-    rowset_iter++;
   }
 
   return false;
@@ -386,10 +398,7 @@ Result<YBCPgColumnInfo> PgDml::GetColumnInfo(int attr_num) const {
   if (secondary_index_query_) {
     return secondary_index_query_->GetColumnInfo(attr_num);
   }
-  YBCPgColumnInfo column_info = {false, false};
-  RETURN_NOT_OK(bind_->GetColumnInfo(
-      attr_num, &column_info.is_primary, &column_info.is_hash));
-  return column_info;
+  return bind_->GetColumnInfo(attr_num);
 }
 
 }  // namespace pggate

@@ -1,7 +1,7 @@
 ---
-title: YSQL vs PostgreSQL
-headerTitle: YSQL vs PostgreSQL
-linkTitle: YSQL vs PostgreSQL
+title: Distributed SQL features
+headerTitle: Distributed SQL features
+linkTitle: Distributed SQL features
 description: PostgreSQL features in YSQL
 headcontent: PostgreSQL features in YSQL
 image: /images/section_icons/api/ysql.png
@@ -45,18 +45,14 @@ The following table lists the most important YSQL features which you would find 
 | <span style="font-size:16px">[Table Partitions](partitions)</span> | List, range, and hash partitioning of tables |
 | <span style="font-size:16px">[Tablespaces](tablespaces)</span> | Definition of tablespaces in YSQL |
 | <span style="font-size:16px">[Views](views/)</span> | Views and updatable views |
-| <span style="font-size:16px">[Extensions](../extensions/)</span> | Pre-bundled extensions for YugabyteDB |
+| <span style="font-size:16px">[Savepoints](savepoints/)</span> | Savepoints in YSQL |
+| <span style="font-size:16px">[Extensions](extensions/)</span> | Pre-bundled extensions for YugabyteDB |
+| <span style="font-size:16px">[Indexes](indexes-1/)</span> | Indexes to enhance database performance |
+| <span style="font-size:16px">[Constraints](constraints/)</span> | Define constraints in YSQL |  
 
 <!--
 | <span style="font-size:16px">[Functions and operators](functions-operators/)</span> | Conditional expressions, math / string / date / time / window functions and operators  |
 | <span style="font-size:16px">[Advanced Topics](advanced-topics/)</span>     | Using `VIEWS`, PostgreSQL extensions supported in YSQL, temporary tables, etc. |
--->
-See also:
-
-* [Distributed transactions](../transactions)
-
-<!--
-* [Indexes and constraints]()
 -->
 
 ## What's Extra in YSQL?
@@ -65,8 +61,8 @@ Since YugabyteDB is a distributed SQL database, YSQL has a number of features th
 
 | YSQL Feature                                                 | Description                                                  |
 | :----------------------------------------------------------- | :----------------------------------------------------------- |
-| <span style="font-size:16px">Data distribution with `HASH`</span> | Enables the use of `HASH` sort order, in addition to `ASC` and `DESC` for indexes |
-| <span style="font-size:16px">[`TABLESPACES`](tablespaces) for geographic placement</span> | Enables pinning of data in tables and table partitions to different geographic locations |
+| <span style="font-size:16px">[Data distribution with `HASH`](../linear-scalability/sharding-data/)</span> | Enables the use of `HASH` sort order, in addition to `ASC` and `DESC` for indexes |
+| <span style="font-size:16px">[`TABLESPACES` for geographic placement](tablespaces)</span> | Enables pinning of data in tables and table partitions to different geographic locations |
 | <span style="font-size:16px">`TABLEGROUPS` for colocating tables</span> | Enables colocation of multiple smaller tables into one tablet for better performance |
 
 <!--

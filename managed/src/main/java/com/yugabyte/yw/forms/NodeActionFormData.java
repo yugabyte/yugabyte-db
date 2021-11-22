@@ -1,9 +1,11 @@
 package com.yugabyte.yw.forms;
 
 import com.yugabyte.yw.common.NodeActionType;
-import play.data.validation.Constraints;
+import javax.validation.constraints.NotNull;
+import lombok.Data;
 
+@Data
 public class NodeActionFormData {
 
-  @Constraints.Required() public NodeActionType nodeAction;
+  @NotNull private NodeActionType nodeAction;
 }

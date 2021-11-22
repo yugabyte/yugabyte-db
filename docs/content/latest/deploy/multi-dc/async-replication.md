@@ -4,7 +4,7 @@ headerTitle: Asynchronous Replication
 linkTitle: Asynchronous Replication
 description: Enable deployment using unidirectional (master-follower) or bidirectional (multi-master) replication between universes
 aliases:
-- /latest/deploy/multi-dc/2dc-deployment
+  - /latest/deploy/multi-dc/2dc-deployment
 menu:
   latest:
     parent: multi-dc
@@ -40,7 +40,7 @@ After you created the required tables, you can set up asynchronous replication a
     - To find a table ID, execute the following command as an admin:
 
       ```shell
-      yb-admin list_tables [include_table_id]
+      yb-admin list_tables include_table_id
       ```
 
 - Run the following `yb-admin` [`setup_universe_replication`](../../../admin/yb-admin/#setup-universe-replication) command from the YugabyteDB home directory in the producer universe:

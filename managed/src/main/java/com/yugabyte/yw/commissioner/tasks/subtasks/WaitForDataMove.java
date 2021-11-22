@@ -62,7 +62,7 @@ public class WaitForDataMove extends AbstractTaskBase {
       log.info("Leader Master UUID={}.", client.getLeaderMasterUUID());
 
       // TODO: Have a mechanism to send this percent to the parent task completion.
-      while (percent < (double) 100) {
+      while (percent < 100) {
         GetLoadMovePercentResponse response = client.getLoadMoveCompletion();
 
         if (response.hasError()) {
@@ -73,14 +73,14 @@ public class WaitForDataMove extends AbstractTaskBase {
             errorMsg = getName() + ": hit too many errors during data move completion wait.";
             break;
           }
-          Thread.sleep(WAIT_EACH_ATTEMPT_MS);
+          Thread.sleep(getSleepMultiplier() * WAIT_EACH_ATTEMPT_MS);
           continue;
         }
 
         percent = response.getPercentCompleted();
         // No need to wait if completed (as in, percent == 100).
-        if (percent < (double) 100) {
-          Thread.sleep(WAIT_EACH_ATTEMPT_MS);
+        if (percent < 100) {
+          Thread.sleep(getSleepMultiplier() * WAIT_EACH_ATTEMPT_MS);
         }
 
         numIters++;

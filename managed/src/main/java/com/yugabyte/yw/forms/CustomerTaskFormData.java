@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.forms;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -20,10 +21,12 @@ public class CustomerTaskFormData {
   @ApiModelProperty(value = "Customer task percentage completed", example = "100")
   public int percentComplete;
 
-  @ApiModelProperty(value = "Customer task creation time", example = "1624295417405")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
+  @ApiModelProperty(value = "Customer task creation time", example = "2021-06-17T15:00:05-0400")
   public Date createTime;
 
-  @ApiModelProperty(value = "Customer task completion time", example = "1624295417405")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
+  @ApiModelProperty(value = "Customer task completion time", example = "2021-06-17T15:00:05-0400")
   public Date completionTime;
 
   @ApiModelProperty(value = "Customer task target", example = "Universe")
@@ -34,6 +37,9 @@ public class CustomerTaskFormData {
 
   @ApiModelProperty(value = "Customer task type", example = "Delete")
   public String type;
+
+  @ApiModelProperty(value = "Customer task type name", example = "Software Upgrade")
+  public String typeName;
 
   @ApiModelProperty(value = "Customer task status", example = "Complete")
   public String status;

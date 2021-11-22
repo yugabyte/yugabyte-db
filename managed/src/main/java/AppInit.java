@@ -7,18 +7,22 @@ import com.yugabyte.yw.commissioner.TaskGarbageCollector;
 import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
+import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.ExtraMigrationManager;
+import com.yugabyte.yw.common.logging.LogUtil;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.YamlWrapper;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.alerts.AlertsGarbageCollector;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
+import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.ExtraMigration;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.MetricConfig;
 import com.yugabyte.yw.models.Provider;
+import ch.qos.logback.core.joran.spi.JoranException;
 import io.ebean.Ebean;
 import io.prometheus.client.hotspot.DefaultExports;
 import java.util.List;
@@ -46,7 +50,9 @@ public class AppInit {
       PlatformReplicationManager replicationManager,
       AlertsGarbageCollector alertsGC,
       AlertConfigurationService alertConfigurationService,
-      AlertDestinationService alertDestinationService)
+      AlertDestinationService alertDestinationService,
+      PlatformMetricsProcessor platformMetricsProcessor,
+      SettableRuntimeConfigFactory sConfigFactory)
       throws ReflectiveOperationException {
     Logger.info("Yugaware Application has started");
     Configuration appConfig = application.configuration();
@@ -75,6 +81,13 @@ public class AppInit {
 
         if (storagePath == null || storagePath.length() == 0) {
           throw new RuntimeException(("yb.storage.path is not set in application.conf"));
+        }
+
+        String logLevel = LogUtil.getLoggingConfig(sConfigFactory);
+        try {
+          LogUtil.setLoggingLevel(logLevel);
+        } catch (JoranException ex) {
+          Logger.warn("Could not re-initialize logback");
         }
       }
 
@@ -121,6 +134,8 @@ public class AppInit {
       // Schedule garbage collection of old completed tasks in database.
       taskGC.start();
       alertsGC.start();
+
+      platformMetricsProcessor.start();
 
       // Startup platform HA.
       replicationManager.init();

@@ -74,7 +74,7 @@ public class PlatformInstanceClient {
     }
 
     if (response == null || response.get("error") != null) {
-      LOG.error("Error received from remote instance {}", this.remoteAddress);
+      LOG.error("Error received from remote instance {}: {}", this.remoteAddress, response);
 
       throw new RuntimeException("Error received from remote instance " + this.remoteAddress);
     }
@@ -121,7 +121,7 @@ public class PlatformInstanceClient {
             buildPartsList(
                 backupFile, ImmutableMap.of("leader", leaderAddr, "sender", senderAddr)));
     if (response == null || response.get("error") != null) {
-      LOG.error("Error received from remote instance {}", this.remoteAddress);
+      LOG.error("Error received from remote instance {}. Got {}", this.remoteAddress, response);
       return false;
     } else {
       return true;

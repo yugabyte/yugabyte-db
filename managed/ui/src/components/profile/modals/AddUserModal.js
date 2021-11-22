@@ -49,9 +49,9 @@ export class AddUserModal extends Component {
         .required('Password is required')
         .min(8, `Password is too short - must be ${minPasswordLength} characters minimum.`)
         .matches(/^(?=.*[0-9])(?=.*[!@#$%^&*])(?=.*[a-z])(?=.*[A-Z])[a-zA-Z0-9!@#$%^&*]{8,256}$/,
-          `Password must contain at least ${passwordValidationInfo?.minDigits} digit, 
-          ${passwordValidationInfo?.minUppercase} capital, 
-          ${passwordValidationInfo?.minLowercase} lowercase 
+          `Password must contain at least ${passwordValidationInfo?.minDigits} digit,
+          ${passwordValidationInfo?.minUppercase} capital,
+          ${passwordValidationInfo?.minLowercase} lowercase
           and ${passwordValidationInfo?.minSpecialCharacters} of the !@#$%^&* (special) characters.`),
       confirmPassword: Yup.string().oneOf([Yup.ref('password')], 'Passwords must match'),
       role: Yup.object().required('Role is required')

@@ -36,6 +36,7 @@
 #include <shared_mutex>
 
 #include <mutex>
+#include <vector>
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
@@ -52,7 +53,8 @@
 namespace yb {
 namespace master {
 
-YB_STRONGLY_TYPED_BOOL(IncludeSplitTablets);
+YB_STRONGLY_TYPED_BOOL(IncludeInactive);
+YB_STRONGLY_TYPED_BOOL(DeactivateOnly);
 
 // Drive usage information on a current replica of a tablet.
 // This allows us to look at individual resource usage per replica of a tablet.
@@ -428,17 +430,26 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   }
 
   // Add a tablet to this table.
-  void AddTablet(TabletInfo *tablet);
+  void AddTablet(const TabletInfoPtr& tablet);
+
+  // Replace existing tablet with a new one.
+  void ReplaceTablet(const TabletInfoPtr& old_tablet, const TabletInfoPtr& new_tablet);
 
   // Add multiple tablets to this table.
-  void AddTablets(const std::vector<TabletInfo*>& tablets);
+  void AddTablets(const TabletInfos& tablets);
 
-  // Remove tablet that has been split.
-  void RemoveSplitTablet(const TabletId& tablet_id);
+  // Removes the tablet from 'partitions_' and 'tablets_' structures.
+  // Return true if the tablet was removed from 'partitions_'.
+  // If deactivate_only is set to true then it only
+  // deactivates the tablet (i.e. removes it only from partitions_ and not from tablets_).
+  // See the declaration of partitions_ structure to understand what constitutes inactive tablets.
+  bool RemoveTablet(const TabletId& tablet_id,
+                    DeactivateOnly deactivate_only = DeactivateOnly::kFalse);
 
-  // Return true if tablet with 'partition_key_start' has been
-  // removed from 'tablet_map_' below.
-  bool RemoveTablet(const std::string& partition_key_start);
+  // Remove multiple tablets from this table.
+  // Return true if all given tablets were removed from 'partitions_'.
+  bool RemoveTablets(const TabletInfos& tablets,
+                     DeactivateOnly deactivate_only = DeactivateOnly::kFalse);
 
   // This only returns tablets which are in RUNNING state.
   void GetTabletsInRange(const GetTableLocationsRequestPB* req, TabletInfos *ret) const;
@@ -447,16 +458,14 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
       TabletInfos* ret,
       int32_t max_returned_locations = std::numeric_limits<int32_t>::max()) const;
 
-  std::size_t NumTablets() const;
+  std::size_t NumPartitions() const;
+  // Return whether given partition start keys match partitions_.
+  bool HasPartitions(const std::vector<PartitionKey> other) const;
 
   // Get all tablets of the table.
-  // If include_split_tablets is true, also returns not yet deleted split parent tablets for
-  // which we've already registered child split tablets.
-  void GetAllTablets(
-      TabletInfos* ret,
-      IncludeSplitTablets include_split_tablets = IncludeSplitTablets::kFalse) const;
-
-  bool HasTablets() const;
+  // If include_inactive is true then it also returns inactive tablets along with the active ones.
+  // See the declaration of partitions_ structure to understand what constitutes inactive tablets.
+  TabletInfos GetTablets(IncludeInactive include_inactive = IncludeInactive::kFalse) const;
 
   // Get the tablet of the table.  The table must be colocated.
   TabletInfoPtr GetColocatedTablet() const;
@@ -469,6 +478,10 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // Returns true if all tablets of the table are deleted or hidden.
   bool AreAllTabletsHidden() const;
+
+  // Clears partitons_ and tablets_.
+  // If deactivate_only is set to true then clear only the partitions_.
+  void ClearTabletMaps(DeactivateOnly deactivate_only = DeactivateOnly::kFalse);
 
   // Returns true if the table creation is in-progress.
   bool IsCreateInProgress() const;
@@ -528,7 +541,11 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   friend class RefCountedThreadSafe<TableInfo>;
   ~TableInfo();
 
-  void AddTabletUnlocked(TabletInfo* tablet) REQUIRES_SHARED(lock_);
+  void AddTabletUnlocked(const TabletInfoPtr& tablet) REQUIRES(lock_);
+  bool RemoveTabletUnlocked(
+      const TableId& tablet_id,
+      DeactivateOnly deactivate_only = DeactivateOnly::kFalse) REQUIRES(lock_);
+
   void AbortTasksAndCloseIfRequested(bool close);
 
   std::string LogPrefix() const {
@@ -541,11 +558,16 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // Sorted index of tablet start partition-keys to TabletInfo.
   // The TabletInfo objects are owned by the CatalogManager.
-  typedef std::map<PartitionKey, TabletInfo*> TabletInfoMap;
-  TabletInfoMap tablet_map_ GUARDED_BY(lock_);
-  std::unordered_map<TabletId, TabletInfo*> split_tablets_ GUARDED_BY(lock_);
+  // At any point in time it contains only the active tablets.
+  std::map<PartitionKey, TabletInfo*> partitions_ GUARDED_BY(lock_);
+  // At any point in time it contains both active and inactive tablets.
+  // Currently there are two cases for a tablet to be categorized as inactive:
+  // 1) Not yet deleted split parent tablets for which we've already
+  //    registered child split tablets.
+  // 2) Tablets that are marked as HIDDEN for PITR.
+  std::unordered_map<TabletId, TabletInfo*> tablets_ GUARDED_BY(lock_);
 
-  // Protects tablet_map_ and pending_tasks_.
+  // Protects partitions_, tablets_ and pending_tasks_.
   mutable rw_spinlock lock_;
 
   // If closing, requests to AddTask will be promptly aborted.
@@ -845,6 +867,41 @@ class DdlLogEntry {
 
  protected:
   DdlLogEntryPB pb_;
+};
+
+// Helper class to commit Info mutations at the end of a scope.
+template <class Info>
+class ScopedInfoCommitter {
+ public:
+  typedef scoped_refptr<Info> InfoPtr;
+  typedef std::vector<InfoPtr> Infos;
+  explicit ScopedInfoCommitter(const Infos* infos) : infos_(DCHECK_NOTNULL(infos)), done_(false) {}
+  ~ScopedInfoCommitter() {
+    if (!done_) {
+      Commit();
+    }
+  }
+  // This method is not thread safe. Must be called by the same thread
+  // that would destroy this instance.
+  void Abort() {
+    if (PREDICT_TRUE(!done_)) {
+      for (const InfoPtr& info : *infos_) {
+        info->mutable_metadata()->AbortMutation();
+      }
+    }
+    done_ = true;
+  }
+  void Commit() {
+    if (PREDICT_TRUE(!done_)) {
+      for (const InfoPtr& info : *infos_) {
+        info->mutable_metadata()->CommitMutation();
+      }
+    }
+    done_ = true;
+  }
+ private:
+  const Infos* infos_;
+  bool done_;
 };
 
 // Convenience typedefs.

@@ -35,7 +35,6 @@
 #include <regex>
 
 #include "yb/client/client.h"
-#include "yb/client/client-test-util.h"
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
@@ -57,7 +56,6 @@
 #include "yb/util/pstack_watcher.h"
 #include "yb/util/random.h"
 #include "yb/util/size_literals.h"
-#include "yb/util/stol_utils.h"
 #include "yb/util/test_util.h"
 
 DECLARE_int32(memory_limit_soft_percentage);
@@ -365,7 +363,7 @@ TEST_F_EX(ClientStressTest, MasterQueueFull, ClientStressTestSmallQueueMultiMast
     QLAddInt32HashValue(req, ++key);
     item.table->AddInt32ColumnValue(req, item.table->schema().columns()[1].name(), -key);
     item.table->AddStringColumnValue(req, item.table->schema().columns()[2].name(), kStringValue);
-    ASSERT_OK(item.session->Apply(op));
+    item.session->Apply(op);
     item.future = item.session->FlushFuture();
   }
 
@@ -494,6 +492,7 @@ TEST_F_EX(ClientStressTest, PauseFollower, ClientStressTest_FollowerOom) {
   ts->mutable_flags()->push_back("--TEST_yb_inbound_big_calls_parse_delay_ms=30000");
   ts->mutable_flags()->push_back("--binary_call_parser_reject_on_mem_tracker_hard_limit=true");
   ts->mutable_flags()->push_back(Format("--rpc_throttle_threshold_bytes=$0", 1_MB));
+  ts->mutable_flags()->push_back("--read_buffer_memory_limit=-10");
   ASSERT_OK(ts->Restart());
 
   ThrottleLogCounter log_counter(ts);

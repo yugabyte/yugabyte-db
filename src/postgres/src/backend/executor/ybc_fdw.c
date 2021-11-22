@@ -54,13 +54,13 @@
 /*  YB includes. */
 #include "commands/dbcommands.h"
 #include "catalog/pg_operator.h"
-#include "catalog/ybctype.h"
+#include "catalog/yb_type.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
-#include "access/ybcam.h"
+#include "access/yb_scan.h"
 #include "executor/ybcExpr.h"
 #include "executor/ybc_fdw.h"
 
@@ -125,23 +125,24 @@ ybcGetForeignPaths(PlannerInfo *root,
 	/* Estimate costs */
 	ybcCostEstimate(baserel, YBC_FULL_SCAN_SELECTIVITY,
 					false /* is_backwards scan */,
+					true /* is_seq_scan */,
 					false /* is_uncovered_idx_scan */,
 					&startup_cost,
 					&total_cost,
-					baserel->reltablespace /* tablespace of current path */);
+					baserel->reltablespace /* index_tablespace_oid */);
 
 	/* Create a ForeignPath node and it as the scan path */
 	add_path(baserel,
-	         (Path *) create_foreignscan_path(root,
-	                                          baserel,
-	                                          NULL, /* default pathtarget */
-	                                          baserel->rows,
-	                                          startup_cost,
-	                                          total_cost,
-	                                          NIL,  /* no pathkeys */
-	                                          NULL, /* no outer rel either */
-	                                          NULL, /* no extra plan */
-	                                          NULL  /* no options yet */ ));
+			 (Path *) create_foreignscan_path(root,
+											  baserel,
+											  NULL, /* default pathtarget */
+											  baserel->rows,
+											  startup_cost,
+											  total_cost,
+											  NIL,  /* no pathkeys */
+											  NULL, /* no outer rel either */
+											  NULL, /* no extra plan */
+											  NULL  /* no options yet */ ));
 
 	/* Add primary key and secondary index paths also */
 	create_index_paths(root, baserel);
@@ -393,7 +394,7 @@ ybcSetupScanTargets(ForeignScanState *node)
 			const YBCPgTypeEntity *type_entity;
 
 			/* Get type entity for the operator from the aggref. */
-			type_entity = YBCDataTypeFromOidMod(InvalidAttrNumber, aggref->aggtranstype);
+			type_entity = YbDataTypeFromOidMod(InvalidAttrNumber, aggref->aggtranstype);
 
 			/* Create operator. */
 			HandleYBStatus(YBCPgNewOperator(ybc_state->handle, func_name, type_entity, aggref->aggcollid, &op_handle));

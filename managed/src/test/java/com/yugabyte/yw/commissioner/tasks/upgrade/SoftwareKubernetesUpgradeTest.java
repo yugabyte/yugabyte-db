@@ -32,9 +32,9 @@ import play.libs.Json;
 @RunWith(MockitoJUnitRunner.class)
 public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
 
-  @InjectMocks SoftwareKubernetesUpgrade softwareKubernetesUpgrade;
+  @InjectMocks private SoftwareKubernetesUpgrade softwareKubernetesUpgrade;
 
-  List<TaskType> UPGRADE_TASK_SEQUENCE =
+  private static final List<TaskType> UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesCommandExecutor,
@@ -175,10 +175,10 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
         .getPodInfos(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedNamespace.capture());
 
-    assertEquals(ybSoftwareVersionNew, expectedYbSoftwareVersion.getValue());
+    assertEquals(YB_SOFTWARE_VERSION_NEW, expectedYbSoftwareVersion.getValue());
     assertEquals(config, expectedConfig.getValue());
-    assertEquals(nodePrefix, expectedNodePrefix.getValue());
-    assertEquals(nodePrefix, expectedNamespace.getValue());
+    assertEquals(NODE_PREFIX, expectedNodePrefix.getValue());
+    assertEquals(NODE_PREFIX, expectedNamespace.getValue());
     assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
@@ -202,7 +202,7 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
 
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
-    taskParams.ybSoftwareVersion = ybSoftwareVersionNew;
+    taskParams.ybSoftwareVersion = YB_SOFTWARE_VERSION_NEW;
     TaskInfo taskInfo = submitTask(taskParams);
 
     verify(mockKubernetesManager, times(6))
@@ -219,10 +219,10 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
         .getPodInfos(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedNamespace.capture());
 
-    assertEquals(ybSoftwareVersionNew, expectedYbSoftwareVersion.getValue());
+    assertEquals(YB_SOFTWARE_VERSION_NEW, expectedYbSoftwareVersion.getValue());
     assertEquals(config, expectedConfig.getValue());
-    assertTrue(expectedNodePrefix.getValue().contains(nodePrefix));
-    assertTrue(expectedNamespace.getValue().contains(nodePrefix));
+    assertTrue(expectedNodePrefix.getValue().contains(NODE_PREFIX));
+    assertTrue(expectedNamespace.getValue().contains(NODE_PREFIX));
     assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();

@@ -43,6 +43,7 @@ public class HealthManager extends DevopsBase {
     public int redisPort = 6379;
     public int masterHttpPort = 7000;
     public int tserverHttpPort = 9000;
+    public String collectMetricsScript;
   }
 
   public ShellResponse runCommand(
@@ -75,7 +76,7 @@ public class HealthManager extends DevopsBase {
 
     // Start with a copy of the cloud config env vars.
     HashMap<String, String> extraEnvVars =
-        provider == null ? new HashMap<>() : new HashMap<>(provider.getConfig());
+        provider == null ? new HashMap<>() : new HashMap<>(provider.getUnmaskedConfig());
 
     return shellProcessHandler.run(commandArgs, extraEnvVars, shouldLogOutput, description);
   }

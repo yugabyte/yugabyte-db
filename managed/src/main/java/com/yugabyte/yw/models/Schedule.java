@@ -180,7 +180,16 @@ public class Schedule extends Model {
     return find.query().where().eq("status", "Active").findList();
   }
 
-  public static boolean existsStorageConfig(UUID customerConfigUUID) {
+  public static List<Schedule> getActiveBackupSchedules(UUID customerUUID) {
+    return find.query()
+        .where()
+        .eq("customer_uuid", customerUUID)
+        .eq("status", "Active")
+        .in("task_type", TaskType.BackupUniverse, TaskType.MultiTableBackup)
+        .findList();
+  }
+
+  public static List<Schedule> findAllScheduleWithCustomerConfig(UUID customerConfigUUID) {
     List<Schedule> scheduleList =
         find.query()
             .where()
@@ -188,7 +197,10 @@ public class Schedule extends Model {
             .eq("task_type", TaskType.BackupUniverse)
             .eq("task_type", TaskType.MultiTableBackup)
             .endOr()
+            .or()
+            .eq("status", "Paused")
             .eq("status", "Active")
+            .endOr()
             .findList();
     // This should be safe to do since storageConfigUUID is a required constraint.
     scheduleList =
@@ -201,7 +213,7 @@ public class Schedule extends Model {
                         .asText()
                         .equals(customerConfigUUID.toString()))
             .collect(Collectors.toList());
-    return scheduleList.size() != 0;
+    return scheduleList;
   }
 
   public void setFailureCount(int count) {

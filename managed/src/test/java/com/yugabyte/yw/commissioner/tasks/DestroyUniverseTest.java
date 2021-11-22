@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
+import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertEquals;
@@ -31,14 +32,11 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.File;
-import java.io.IOException;
-import java.security.NoSuchAlgorithmException;
 import java.util.UUID;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnitRunner;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -46,12 +44,15 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
 
   private CustomerConfig s3StorageConfig;
 
-  @InjectMocks private MetricService metricService;
+  private MetricService metricService;
 
   private Universe defaultUniverse;
+
   private CertificateInfo certInfo;
+
   private File certFolder;
 
+  @Override
   @Before
   public void setUp() {
     super.setUp();
@@ -78,6 +79,8 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     } catch (Exception e) {
 
     }
+
+    metricService = app.injector().instanceOf(MetricService.class);
 
     defaultUniverse = createUniverse(defaultCustomer.getCustomerId(), certInfo.uuid);
     Universe.saveDetails(
@@ -108,7 +111,8 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     metricService.setOkStatusMetric(
         buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_STATUS, defaultUniverse));
 
-    submitTask(taskParams, 4);
+    TaskInfo taskInfo = submitTask(taskParams, 4);
+    assertEquals(Success, taskInfo.getTaskState());
     assertFalse(Universe.checkIfUniverseExists(defaultUniverse.name));
 
     MetricKey metricKey =
@@ -138,6 +142,7 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     taskParams.isDeleteBackups = Boolean.TRUE;
     taskParams.isDeleteAssociatedCerts = Boolean.FALSE;
     TaskInfo taskInfo = submitTask(taskParams, 4);
+    assertEquals(Success, taskInfo.getTaskState());
 
     Backup backup = Backup.get(defaultCustomer.uuid, b.backupUUID);
     verify(mockTableManager, times(1)).deleteBackup(any());
@@ -160,6 +165,7 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     taskParams.isDeleteBackups = Boolean.FALSE;
     taskParams.isDeleteAssociatedCerts = Boolean.FALSE;
     TaskInfo taskInfo = submitTask(taskParams, 4);
+    assertEquals(Success, taskInfo.getTaskState());
     b.setTaskUUID(taskInfo.getTaskUUID());
 
     Backup backup = Backup.get(defaultCustomer.uuid, b.backupUUID);
@@ -177,7 +183,8 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     taskParams.isForceDelete = Boolean.FALSE;
     taskParams.isDeleteBackups = Boolean.FALSE;
     taskParams.isDeleteAssociatedCerts = Boolean.TRUE;
-    submitTask(taskParams, 4);
+    TaskInfo taskInfo = submitTask(taskParams, 4);
+    assertEquals(Success, taskInfo.getTaskState());
     assertFalse(Universe.checkIfUniverseExists(defaultUniverse.name));
     assertFalse(certFolder.exists());
     assertNull(CertificateInfo.get(certInfo.uuid));

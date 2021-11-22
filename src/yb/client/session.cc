@@ -35,7 +35,6 @@ namespace client {
 
 using internal::AsyncRpcMetrics;
 using internal::Batcher;
-using internal::ErrorCollector;
 
 using std::shared_ptr;
 
@@ -43,7 +42,6 @@ YBSession::YBSession(YBClient* client, const scoped_refptr<ClockBase>& clock) {
   batcher_config_.client = client;
   batcher_config_.non_transactional_read_point =
       clock ? std::make_unique<ConsistentReadPoint>(clock) : nullptr;
-  batcher_config_.hybrid_time_for_write = HybridTime::kInvalid;
   const auto metric_entity = client->metric_entity();
   async_rpc_metrics_ = metric_entity ? std::make_shared<AsyncRpcMetrics>(metric_entity) : nullptr;
 }
@@ -75,10 +73,7 @@ void YBSession::SetTransaction(YBTransactionPtr transaction) {
   batcher_config_.transaction = std::move(transaction);
   internal::BatcherPtr old_batcher;
   old_batcher.swap(batcher_);
-  if (old_batcher) {
-    LOG_IF(DFATAL, old_batcher->HasPendingOperations()) << "SetTransaction with non empty batcher";
-    old_batcher->Abort(STATUS(Aborted, "Transaction changed"));
-  }
+  LOG_IF(DFATAL, old_batcher) << "SetTransaction with non empty batcher";
 }
 
 void YBSession::SetRejectionScoreSource(RejectionScoreSourcePtr rejection_score_source) {
@@ -94,7 +89,6 @@ YBSession::~YBSession() {
 
 void YBSession::Abort() {
   if (batcher_ && batcher_->HasPendingOperations()) {
-    batcher_->Abort(STATUS(Aborted, "Batch aborted"));
     batcher_.reset();
   }
 }
@@ -104,7 +98,6 @@ Status YBSession::Close(bool force) {
     if (batcher_->HasPendingOperations() && !force) {
       return STATUS(IllegalState, "Could not close. There are pending operations.");
     }
-    batcher_->Abort(STATUS(Aborted, "Batch aborted"));
     batcher_.reset();
   }
   return Status::OK();
@@ -138,13 +131,10 @@ FlushStatus YBSession::FlushAndGetOpsErrors() {
 namespace {
 
 internal::BatcherPtr CreateBatcher(const YBSession::BatcherConfig& config) {
-  internal::BatcherPtr batcher(new internal::Batcher(
+  auto batcher = std::make_shared<internal::Batcher>(
       config.client, config.session.lock(), config.transaction, config.read_point(),
-      config.force_consistent_read));
+      config.force_consistent_read);
   batcher->SetRejectionScoreSource(config.rejection_score_source);
-  if (config.hybrid_time_for_write.is_valid()) {
-    batcher->SetHybridTimeForWrite(config.hybrid_time_for_write);
-  }
   return batcher;
 }
 
@@ -191,44 +181,17 @@ void BatcherFlushDone(
                     << done_batcher->LogPrefix() << " due to: " << s
                     << ": (first op error: " << errors[0]->status() << ")";
 
-  internal::BatcherPtr retry_batcher;
-  const auto deadline = done_batcher->deadline();
-  while (CoarseMonoClock::now() < deadline) {
-    retry_batcher = CreateBatcher(batcher_config);
-    retry_batcher->SetDeadline(deadline);
-    Status batcher_add_status = Status::OK();
-    for (auto& error : errors) {
-      VLOG_WITH_FUNC(5) << "Retrying " << AsString(error->failed_op())
-              << " due to: " << error->status();
-      const auto op = error->shared_failed_op();
-      op->ResetTablet();
-      batcher_add_status = retry_batcher->Add(op);
-      if (!batcher_add_status.ok()) {
-        YB_LOG_EVERY_N_SECS(INFO, 1) << Format(
-            "Failed to add operation $0 to batcher for retry: $1 (retry reason: $2)", op,
-            batcher_add_status, error->status());
-        if (ShouldSessionRetryError(batcher_add_status)) {
-          // Will retry whole batch in outer while loop if we are still under deadline.
-          break;
-        } else {
-          // Replace original retriable error with non-retriable occurred during retry.
-          error.reset(new YBError(error->shared_failed_op(), batcher_add_status));
-          MoveErrorsAndRunCallback(done_batcher, std::move(errors), std::move(callback), s);
-          return;
-        }
-      }
-    }
-    if (batcher_add_status.ok()) {
-      FlushBatcherAsync(retry_batcher, std::move(callback), batcher_config,
-          internal::IsWithinTransactionRetry::kTrue);
-      return;
-    }
+  internal::BatcherPtr retry_batcher = CreateBatcher(batcher_config);
+  retry_batcher->SetDeadline(done_batcher->deadline());
+  for (auto& error : errors) {
+    VLOG_WITH_FUNC(5) << "Retrying " << AsString(error->failed_op())
+            << " due to: " << error->status();
+    const auto op = error->shared_failed_op();
+    op->ResetTablet();
+    retry_batcher->Add(op);
   }
-
-  LOG(INFO) << STATUS_FORMAT(
-      TimedOut, "Timed out when retrying due to error: $0, now: $1, deadline: $2",
-      s, CoarseMonoClock::now(), deadline);
-  MoveErrorsAndRunCallback(done_batcher, std::move(errors), std::move(callback), s);
+  FlushBatcherAsync(retry_batcher, std::move(callback), batcher_config,
+      internal::IsWithinTransactionRetry::kTrue);
 }
 
 void FlushBatcherAsync(
@@ -320,13 +283,6 @@ ConsistentReadPoint* YBSession::read_point() {
   return batcher_config_.read_point();
 }
 
-void YBSession::SetHybridTimeForWrite(const HybridTime ht) {
-  batcher_config_.hybrid_time_for_write = ht;
-  if (batcher_) {
-    batcher_->SetHybridTimeForWrite(batcher_config_.hybrid_time_for_write);
-  }
-}
-
 internal::Batcher& YBSession::Batcher() {
   if (!batcher_) {
     batcher_config_.session = shared_from_this();
@@ -348,12 +304,12 @@ internal::Batcher& YBSession::Batcher() {
   return *batcher_;
 }
 
-Status YBSession::Apply(YBOperationPtr yb_op) {
-  return Batcher().Add(yb_op);
+void YBSession::Apply(YBOperationPtr yb_op) {
+  Batcher().Add(yb_op);
 }
 
 Status YBSession::ApplyAndFlush(YBOperationPtr yb_op) {
-  RETURN_NOT_OK(Apply(std::move(yb_op)));
+  Apply(std::move(yb_op));
 
   return FlushFuture().get().status;
 }
@@ -371,16 +327,18 @@ bool YBSession::IsInProgress(YBOperationPtr yb_op) const {
   return false;
 }
 
-Status YBSession::Apply(const std::vector<YBOperationPtr>& ops) {
+void YBSession::Apply(const std::vector<YBOperationPtr>& ops) {
+  if (ops.empty()) {
+    return;
+  }
   auto& batcher = Batcher();
   for (const auto& op : ops) {
-    RETURN_NOT_OK(batcher.Add(op));
+    batcher.Add(op);
   }
-  return Status::OK();
 }
 
 Status YBSession::ApplyAndFlush(const std::vector<YBOperationPtr>& ops) {
-  RETURN_NOT_OK(Apply(ops));
+  Apply(ops);
   return FlushFuture().get().status;
 }
 
@@ -388,8 +346,8 @@ int YBSession::TEST_CountBufferedOperations() const {
   return batcher_ ? batcher_->CountBufferedOperations() : 0;
 }
 
-int YBSession::GetAddedNotFlushedOperationsCount() const {
-  return batcher_ ? batcher_->GetAddedNotFlushedOperationsCount() : 0;
+bool YBSession::HasNotFlushedOperations() const {
+  return batcher_ != nullptr && batcher_->HasPendingOperations();
 }
 
 bool YBSession::TEST_HasPendingOperations() const {

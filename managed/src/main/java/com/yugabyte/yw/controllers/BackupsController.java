@@ -4,11 +4,12 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.TaskInfoManager;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
@@ -22,7 +23,7 @@ import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.swagger.annotations.Api;
@@ -34,6 +35,7 @@ import io.swagger.annotations.Authorization;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import javax.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
@@ -45,7 +47,16 @@ public class BackupsController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(BackupsController.class);
   private static final int maxRetryCount = 5;
 
-  @Inject Commissioner commissioner;
+  private final Commissioner commissioner;
+  private final CustomerConfigService customerConfigService;
+
+  @Inject
+  public BackupsController(Commissioner commissioner, CustomerConfigService customerConfigService) {
+    this.commissioner = commissioner;
+    this.customerConfigService = customerConfigService;
+  }
+
+  @Inject TaskInfoManager taskManager;
 
   @ApiOperation(
       value = "List a customer's backups",
@@ -64,7 +75,7 @@ public class BackupsController extends AuthenticatedController {
             Customer.get(customerUUID).getFeatures(), "universes.details.backups.storageLocation");
     boolean isStorageLocMasked = custStorageLoc != null && custStorageLoc.asText().equals("hidden");
     if (!isStorageLocMasked) {
-      Users user = (Users) ctx().args.get("user");
+      UserWithFeatures user = (UserWithFeatures) ctx().args.get("user");
       JsonNode userStorageLoc =
           CommonUtils.getNodeProperty(
               user.getFeatures(), "universes.details.backups.storageLocation");
@@ -147,7 +158,7 @@ public class BackupsController extends AuthenticatedController {
       }
     }
     CustomerConfig storageConfig =
-        CustomerConfig.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
+        customerConfigService.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
     if (taskParams.getTableName() != null && taskParams.getKeyspace() == null) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Restore table request must specify keyspace.");
@@ -226,9 +237,15 @@ public class BackupsController extends AuthenticatedController {
         LOG.info(
             "Can not delete {} backup as it is not present in the database.", backupUUID.asText());
       } else {
-        if (backup.state != Backup.BackupState.Completed) {
+        if (backup.state != Backup.BackupState.Completed
+            && backup.state != Backup.BackupState.Failed) {
           LOG.info("Can not delete {} backup as it is still in progress", uuid);
         } else {
+          if (taskManager.isDuplicateDeleteBackupTask(customerUUID, uuid)) {
+            throw new PlatformServiceException(
+                BAD_REQUEST, "Task to delete same backup already exists.");
+          }
+
           DeleteBackup.Params taskParams = new DeleteBackup.Params();
           taskParams.customerUUID = customerUUID;
           taskParams.backupUUID = uuid;
@@ -276,7 +293,7 @@ public class BackupsController extends AuthenticatedController {
       LOG.info("Error while waiting for the backup task to get finished.");
     }
     backup.transitionState(BackupState.Stopped);
-    auditService().createAuditEntry(ctx(), request(), backup.taskUUID);
+    auditService().createAuditEntry(ctx(), request());
     return YBPSuccess.withMessage("Successfully stopped the backup process.");
   }
 

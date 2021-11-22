@@ -16,13 +16,18 @@
 
 #include "yb/client/client_fwd.h"
 
+#include "yb/rpc/rpc_fwd.h"
+
 #include "yb/tserver/pg_client.service.h"
 
 namespace yb {
 namespace tserver {
 
 #define YB_PG_CLIENT_METHODS \
-    (GetDatabaseInfo)(IsInitDbDone)(OpenTable)(ReserveOids)
+    (Heartbeat)(AlterDatabase)(AlterTable)(BackfillIndex)(CreateDatabase) \
+    (CreateSequencesDataTable)(CreateTable)(CreateTablegroup)(DropDatabase)(DropTable) \
+    (DropTablegroup)(GetCatalogMasterVersion)(GetDatabaseInfo)(IsInitDbDone) \
+    (ListLiveTabletServers)(OpenTable)(ReserveOids)(TabletServerCount)(TruncateTable)
 
 using TransactionPoolProvider = std::function<client::TransactionPool*()>;
 
@@ -31,7 +36,9 @@ class PgClientServiceImpl : public PgClientServiceIf {
   explicit PgClientServiceImpl(
       const std::shared_future<client::YBClient*>& client_future,
       TransactionPoolProvider transaction_pool_provider,
-      const scoped_refptr<MetricEntity>& entity);
+      const scoped_refptr<MetricEntity>& entity,
+      rpc::Scheduler* scheduler);
+
   ~PgClientServiceImpl();
 
 #define YB_PG_CLIENT_METHOD_DECLARE(r, data, method) \

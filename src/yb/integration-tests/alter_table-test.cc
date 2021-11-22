@@ -33,7 +33,6 @@
 #include <map>
 #include <string>
 #include <utility>
-#include <boost/assign.hpp>
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
 
@@ -56,9 +55,7 @@
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/master.h"
 #include "yb/master/master.pb.h"
-#include "yb/master/master-test-util.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/tablet/tablet.h"
@@ -71,7 +68,6 @@
 #include "yb/util/metrics.h"
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
-#include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
 
 using namespace std::literals;
@@ -444,7 +440,7 @@ void AlterTableTest::InsertRows(int start_row, int num_rows) {
     }
 
     ops.push_back(op);
-    ASSERT_OK(session->Apply(op));
+    session->Apply(op);
 
     if (ops.size() >= 50) {
       FlushSessionOrDie(session, ops);
@@ -469,7 +465,7 @@ void AlterTableTest::UpdateRow(int32_t row_key,
   for (const auto& e : updates) {
     table.AddInt32ColumnValue(update->mutable_request(), e.first, e.second);
   }
-  CHECK_OK(session->Apply(update));
+  session->Apply(update);
   FlushSessionOrDie(session);
 }
 
@@ -770,7 +766,7 @@ void AlterTableTest::WriteThread(QLWriteRequestPB::QLStmtType type) {
       }
 
       ops.push_back(op);
-      ASSERT_OK(session->Apply(op));
+      session->Apply(op);
     }
 
     if (should_stop || ops.size() >= 10) {
@@ -884,7 +880,7 @@ TEST_P(AlterTableTest, TestInsertAfterAlterTable) {
   table.AddInt32ColumnValue(req, "new-i32", 1);
   shared_ptr<YBSession> session = client_->NewSession();
   session->SetTimeout(15s);
-  ASSERT_OK(session->Apply(insert));
+  session->Apply(insert);
   auto flush_status = session->FlushAndGetOpsErrors();
   const auto& s = flush_status.status;
   if (!s.ok()) {

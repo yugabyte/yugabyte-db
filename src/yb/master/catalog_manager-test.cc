@@ -91,9 +91,9 @@ TEST(TableInfoTest, TestAssignmentRanges) {
     LOG(INFO) << "Key " << start_key << " found in tablet " << tablet_id;
   }
 
-  for (const scoped_refptr<TabletInfo>& tablet : tablets) {
-    ASSERT_TRUE(
-        table->RemoveTablet(tablet->metadata().state().pb.partition().partition_key_start()));
+  for (const TabletInfoPtr& tablet : tablets) {
+    auto lock = tablet->LockForWrite();
+    ASSERT_TRUE(table->RemoveTablet(tablet->id()));
   }
 }
 
@@ -317,17 +317,18 @@ const std::string GetSplitKey(const std::string& start_key, const std::string& e
 
 std::array<scoped_refptr<TabletInfo>, kNumSplitParts> SplitTablet(
     const scoped_refptr<TabletInfo>& source_tablet) {
-  const auto partition = source_tablet->LockForRead()->pb.partition();
+  auto lock = source_tablet->LockForRead();
+  const auto partition = lock->pb.partition();
 
   const auto split_key =
       GetSplitKey(partition.partition_key_start(), partition.partition_key_end());
 
   auto child1 = CreateTablet(
       source_tablet->table(), source_tablet->tablet_id() + ".1", partition.partition_key_start(),
-      split_key);
+      split_key, lock->pb.split_depth() + 1);
   auto child2 = CreateTablet(
       source_tablet->table(), source_tablet->tablet_id() + ".2", split_key,
-      partition.partition_key_end());
+      partition.partition_key_end(), lock->pb.split_depth() + 1);
   return { child1, child2 };
 }
 

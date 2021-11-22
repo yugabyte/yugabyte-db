@@ -13,7 +13,8 @@ import {
   YBMultiSelectWithLabel,
   YBSelectWithLabel,
   YBTextArea,
-  YBTextInputWithLabel
+  YBTextInputWithLabel,
+  YBToggle
 } from '../../common/forms/fields';
 import { connect } from 'react-redux';
 import '../CreateAlerts.scss';
@@ -21,11 +22,14 @@ import { AlertsPolicy } from './AlertsPolicy';
 import { isNonEmptyArray } from '../../../utils/ObjectUtils';
 import { getAlertConfigByName } from '../../../actions/customers';
 import { toast } from 'react-toastify';
+import YBInfoTip from '../../common/descriptors/YBInfoTip';
+import { isNonAvailable } from '../../../utils/LayoutUtils';
 
 const required = (value) => (value ? undefined : 'This field is required.');
 
 const CreateAlert = (props) => {
   const {
+    customer,
     enablePlatformAlert,
     alertUniverseList,
     onCreateCancel,
@@ -37,35 +41,48 @@ const CreateAlert = (props) => {
     alertDestinations,
     updateAlertConfig
   } = props;
-  const [isAllUniversesDisabled, setIsAllUniversesDisabled] = useState(initialValues.ALERT_TARGET_TYPE==='allUniverses');
+  const [isAllUniversesDisabled, setIsAllUniversesDisabled] = useState(
+    initialValues.ALERT_TARGET_TYPE === 'allUniverses'
+  );
   const [alertDestination, setAlertDestination] = useState([]);
   const [currentMetric, setCurrentMetric] = useState(undefined);
+  const isReadOnly = isNonAvailable(customer.data.features, 'alert.configuration.actions');
 
   useEffect(() => {
     alertDestinations().then((res) => {
-      const defaultDestination = res.find(destination => destination.defaultDestination);
+      const defaultDestination = res.find((destination) => destination.defaultDestination);
       res = res.map((destination, index) => (
         <option key={index} value={destination.uuid}>
           {destination.name}
         </option>
       ));
       setAlertDestination([
-        <option key="default" value='<default>'>Use Default ({defaultDestination.name})</option>,
-        <option key="empty" value='<empty>'>No Destination</option>,
-        ...res]);
+        <option key="default" value="<default>">
+          Use Default ({defaultDestination.name})
+        </option>,
+        <option key="empty" value="<empty>">
+          No Destination
+        </option>,
+        ...res
+      ]);
     });
   }, [alertDestinations]);
 
   useEffect(() => {
-    setCurrentMetric(initialValues.ALERT_METRICS_CONDITION ? metricsData.find((metric) =>
-      metric.template === initialValues.ALERT_METRICS_CONDITION) : undefined);
+    setCurrentMetric((currentMetric) =>
+      initialValues.ALERT_METRICS_CONDITION
+        ? metricsData.find((metric) => metric.template === initialValues.ALERT_METRICS_CONDITION)
+        : currentMetric
+    );
   }, [metricsData, initialValues.ALERT_METRICS_CONDITION]);
 
   /**
    * Constant option for metrics condition.
    */
   const alertMetricsConditionList = [
-    <option key="default" value={null}>Select Template</option>,
+    <option key="default" value={null}>
+      Select Template
+    </option>,
     ...metricsData.map((metric, i) => {
       return (
         <option key={i} value={metric.template}>
@@ -114,6 +131,7 @@ const CreateAlert = (props) => {
     props.updateField('alertConfigForm', 'ALERT_METRICS_DURATION', metric.durationSec);
     props.updateField('alertConfigForm', 'ALERT_CONFIGURATION_NAME', metric.name);
     props.updateField('alertConfigForm', 'ALERT_CONFIGURATION_DESCRIPTION', metric.description);
+    props.updateField('alertConfigForm', 'ALERT_STATUS', true);
   };
 
   /**
@@ -123,11 +141,13 @@ const CreateAlert = (props) => {
    */
   const handleOnSubmit = async (values) => {
     const cUUID = localStorage.getItem('customerId');
-
-    if(values.type !== 'update' || values['ALERT_CONFIGURATION_NAME'] !== initialValues['ALERT_CONFIGURATION_NAME']){
-      const alertListByName = await getAlertConfigByName(values['ALERT_CONFIGURATION_NAME'])
-      if(alertListByName.data.length !== 0){
-        toast.error(`Alert with name "${values['ALERT_CONFIGURATION_NAME']}" already exists!`)
+    if (
+      values.type !== 'update' ||
+      values['ALERT_CONFIGURATION_NAME'] !== initialValues['ALERT_CONFIGURATION_NAME']
+    ) {
+      const alertListByName = await getAlertConfigByName(values['ALERT_CONFIGURATION_NAME']);
+      if (alertListByName.data.length !== 0) {
+        toast.error(`Alert with name "${values['ALERT_CONFIGURATION_NAME']}" already exists!`);
         return;
       }
     }
@@ -141,15 +161,15 @@ const CreateAlert = (props) => {
       targetType: !enablePlatformAlert ? 'UNIVERSE' : 'PLATFORM',
       target: !enablePlatformAlert
         ? {
-          all: isNonEmptyArray(values['ALERT_UNIVERSE_LIST']) ? false : true,
-          uuids: isNonEmptyArray(values['ALERT_UNIVERSE_LIST']) ? [] : null
-        }
+            all: isNonEmptyArray(values['ALERT_UNIVERSE_LIST']) ? false : true,
+            uuids: isNonEmptyArray(values['ALERT_UNIVERSE_LIST']) ? [] : null
+          }
         : { all: true },
       thresholds: '',
       thresholdUnit: currentMetric.thresholdUnit,
       template: values['ALERT_METRICS_CONDITION'] || 'REPLICATION_LAG',
       durationSec: values['ALERT_METRICS_DURATION'],
-      active: true
+      active: values['ALERT_STATUS']
     };
 
     switch (values['ALERT_DESTINATION_LIST']) {
@@ -203,30 +223,37 @@ const CreateAlert = (props) => {
               validate={required}
               options={alertMetricsConditionList}
               onInputChanged={handleMetricConditionChange}
+              readOnlySelect={isReadOnly}
             />
           </Col>
         </Row>
-        {currentMetric && (<Row>
-          <Col md={6}>
-            <div className="form-item-custom-label">Name</div>
-            <Field
-              name="ALERT_CONFIGURATION_NAME"
-              placeHolder="Enter an alert name"
-              component={YBTextInputWithLabel}
-              validate={required}
-              isReadOnly={false}
-            />
-          </Col>
-          <Col md={6}>
-            <div className="form-item-custom-label">Description</div>
-            <Field
-              name="ALERT_CONFIGURATION_DESCRIPTION"
-              placeHolder="Enter an alert description"
-              component={YBTextArea}
-              isReadOnly={false}
-            />
-          </Col>
-        </Row>)}
+        {currentMetric && (
+          <>
+            <Row>
+              <Col md={6}>
+                <div className="form-item-custom-label">Name</div>
+                <Field
+                  name="ALERT_CONFIGURATION_NAME"
+                  placeHolder="Enter an alert name"
+                  component={YBTextInputWithLabel}
+                  validate={required}
+                  isReadOnly={isReadOnly}
+                />
+              </Col>
+            </Row>
+            <Row>
+              <Col md={6}>
+                <div className="form-item-custom-label">Description</div>
+                <Field
+                  name="ALERT_CONFIGURATION_DESCRIPTION"
+                  placeHolder="Enter an alert description"
+                  component={YBTextArea}
+                  isReadOnly={isReadOnly}
+                />
+              </Col>
+            </Row>
+          </>
+        )}
         {currentMetric && !enablePlatformAlert && (
           <Row>
             <Col md={6}>
@@ -238,6 +265,7 @@ const CreateAlert = (props) => {
                     component="input"
                     onChange={handleTargetTypeChange}
                     type="radio"
+                    disabled={isReadOnly}
                     value={target.value}
                   />{' '}
                   {target.label}
@@ -250,49 +278,86 @@ const CreateAlert = (props) => {
                 hideSelectedOptions={false}
                 isMulti={true}
                 validate={!isAllUniversesDisabled && required}
+                isReadOnly={isReadOnly}
                 className={isAllUniversesDisabled ? 'hide-field' : ''}
               />
             </Col>
           </Row>
         )}
-        {currentMetric && (<hr />)}
-        {currentMetric && (<Row>
-          <Col md={12}>
-            <h4>Conditions</h4>
-          </Col>
+        {currentMetric && (
           <Row>
             <Col md={6}>
-              <div className="form-item-custom-label">Duration, sec</div>
               <Field
-                name="ALERT_METRICS_DURATION"
-                component={YBTextInputWithLabel}
-                validate={required}
-                placeHolder="Enter duration in minutes"
+                name="ALERT_STATUS"
+                component={YBToggle}
+                isReadOnly={isReadOnly}
+                onChange={(event) =>
+                  props.updateField('alertConfigForm', 'ALERT_STATUS', event?.target?.checked)
+                }
+                label="Active"
               />
             </Col>
           </Row>
+        )}
+        {currentMetric && <hr />}
+        {currentMetric && (
           <Row>
             <Col md={12}>
-              <div className="form-field-grid">
-                <FieldArray
-                  name="ALERT_METRICS_CONDITION_POLICY"
-                  component={AlertsPolicy}
-                  props={{ currentMetric: currentMetric }}
-                />
-              </div>
+              <h4>Conditions</h4>
+            </Col>
+            <Col md={12}>
+              <div className="form-item-custom-label">Duration</div>
+            </Col>
+            <div className="form-field-grid">
+              <Col md={12}>
+                <Row>
+                  <Col lg={2}>
+                    <Field
+                      name="ALERT_METRICS_DURATION"
+                      component={YBTextInputWithLabel}
+                      validate={required}
+                      placeHolder="Enter duration in minutes"
+                      isReadOnly={isReadOnly}
+                    />
+                  </Col>
+                  <Col lg={1}>
+                    <div className="flex-container">
+                      <p className="percent-text">sec</p>
+                    </div>
+                  </Col>
+                </Row>
+              </Col>
+            </div>
+            <Row>
+              <Col md={12}>
+                <div className="form-field-grid">
+                  <FieldArray
+                    name="ALERT_METRICS_CONDITION_POLICY"
+                    component={AlertsPolicy}
+                    props={{ currentMetric: currentMetric, isReadOnly: isReadOnly }}
+                  />
+                </div>
+              </Col>
+            </Row>
+          </Row>
+        )}
+        {currentMetric && (
+          <Row className="actionBtnsMargin">
+            <Col md={6}>
+              <span className="form-item-custom-label marginRight">Destination</span>
+              <YBInfoTip
+                title="Destination"
+                content={`A destination consist of one or more channels. Whenever an Alert is triggered, it sends the related data to its designated destination.`}
+              />
+              <Field
+                name="ALERT_DESTINATION_LIST"
+                component={YBSelectWithLabel}
+                options={alertDestination}
+                readOnlySelect={isReadOnly}
+              />
             </Col>
           </Row>
-        </Row>)}
-        {currentMetric && (<Row className="actionBtnsMargin">
-          <Col md={6}>
-            <div className="form-item-custom-label">Destination</div>
-            <Field
-              name="ALERT_DESTINATION_LIST"
-              component={YBSelectWithLabel}
-              options={alertDestination}
-            />
-          </Col>
-        </Row>)}
+        )}
         <Row className="alert-action-button-container">
           <Col lg={6} lgOffset={6}>
             <YBButton
@@ -303,8 +368,9 @@ const CreateAlert = (props) => {
                 setInitialValues();
               }}
             />
-            {currentMetric &&
-              (<YBButton btnText="Save" btnType="submit" btnClass="btn btn-orange" />)}
+            {currentMetric && !isReadOnly && (
+              <YBButton btnText="Save" btnType="submit" btnClass="btn btn-orange" />
+            )}
           </Col>
         </Row>
       </Row>

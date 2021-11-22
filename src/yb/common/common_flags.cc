@@ -17,34 +17,40 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/flag_tags.h"
-#include "yb/util/logging.h"
 #include "yb/util/tsan_util.h"
 #include "yb/gutil/sysinfo.h"
 
 // Note that this is used by the client or master only, not by tserver.
 DEFINE_int32(yb_num_shards_per_tserver, kAutoDetectNumShardsPerTServer,
     "The default number of shards per table per tablet server when a table is created. If the "
-    "value is -1, the system automatically determines the number of tablets "
-    "based on number of CPU cores.");
+    "value is -1, the system sets the number of shards per tserver to 1 if "
+    "enable_automatic_tablet_splitting is true, and otherwise automatically determines an "
+    "appropriate value based on number of CPU cores.");
 
 DEFINE_int32(ysql_num_shards_per_tserver, kAutoDetectNumShardsPerTServer,
     "The default number of shards per YSQL table per tablet server when a table is created. If the "
-    "value is -1, the system automatically determines the number of tablets "
-    "based on number of CPU cores.");
+    "value is -1, the system sets the number of shards per tserver to 1 if "
+    "enable_automatic_tablet_splitting is true, and otherwise automatically determines an "
+    "appropriate value based on number of CPU cores.");
 
 DEFINE_bool(ysql_disable_index_backfill, false,
     "A kill switch to disable multi-stage backfill for YSQL indexes.");
 TAG_FLAG(ysql_disable_index_backfill, hidden);
 TAG_FLAG(ysql_disable_index_backfill, advanced);
 
-DEFINE_bool(enable_pg_savepoints, false,
-            "True to enable savepoints in YugaByte PostgreSQL API. This should eventually be set "
-            "to true by default.");
-TAG_FLAG(enable_pg_savepoints, unsafe);
+DEFINE_bool(enable_pg_savepoints, true,
+            "DEPRECATED -- Set to false to disable savepoints in YugaByte PostgreSQL API.");
+TAG_FLAG(enable_pg_savepoints, hidden);
+
+DEFINE_bool(enable_automatic_tablet_splitting, false,
+            "If false, disables automatic tablet splitting driven from the yb-master side.");
 
 namespace yb {
 
 static int GetYCQLNumShardsPerTServer() {
+  if (GetAtomicFlag(&FLAGS_enable_automatic_tablet_splitting)) {
+    return 1;
+  }
   int value = 8;
   if (IsTsan()) {
     value = 2;
@@ -55,6 +61,9 @@ static int GetYCQLNumShardsPerTServer() {
 }
 
 static int GetYSQLNumShardsPerTServer() {
+  if (GetAtomicFlag(&FLAGS_enable_automatic_tablet_splitting)) {
+    return 1;
+  }
   int value = 8;
   if (IsTsan()) {
     value = 2;

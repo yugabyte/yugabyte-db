@@ -44,6 +44,7 @@ YB_FIREWALL_TARGET_TAGS = "cluster-server"
 
 GCP_SCRATCH = "scratch"
 GCP_PERSISTENT = "persistent"
+GCP_INTERNAL_INSTANCE_PREFIXES = ("N2-")
 
 
 # Code 429 does not have a name in httplib.
@@ -673,14 +674,15 @@ class GoogleCloudAdmin():
         return pricing_map
 
     @gcp_request_limit_retry
-    def get_instances(self, zone, instance_name, get_all=False):
+    def get_instances(self, zone, instance_name, get_all=False, filters=None):
         # TODO: filter should work to do (zone eq args.zone), but it doesn't right now...
-        filter = "(status eq RUNNING)"
+        if not filters:
+            filters = "(status eq RUNNING)"
         if instance_name is not None:
-            filter += " (name eq {})".format(instance_name)
+            filters += " (name eq {})".format(instance_name)
         instances = self.compute.instances().aggregatedList(
             project=self.project,
-            filter=filter,
+            filter=filters,
             maxResults=(LIST_MAX_RESULTS if get_all else 1)).execute()
         instances = instances.get("items", [])
         if zone is not None:
@@ -699,6 +701,8 @@ class GoogleCloudAdmin():
             disks = data.get("disks", [])
             root_vol = next(disk for disk in disks if disk.get("boot", False))
             server_types = [i["value"] for i in metadata if i["key"] == "server_type"]
+            node_uuid_tags = [i["value"] for i in metadata if i["key"] == "node-uuid"]
+            universe_uuid_tags = [i["value"] for i in metadata if i["key"] == "universe-uuid"]
             interface = [None]
             private_ip = None
             primary_subnet = None
@@ -734,6 +738,8 @@ class GoogleCloudAdmin():
                 zone=zone,
                 instance_type=machine_type,
                 server_type=server_types[0] if server_types else None,
+                node_uuid=node_uuid_tags[0] if node_uuid_tags else None,
+                universe_uuid=universe_uuid_tags[0] if universe_uuid_tags else None,
                 launched_by=None,
                 launch_time=data.get("creationTimestamp"),
                 root_volume=root_vol["source"],

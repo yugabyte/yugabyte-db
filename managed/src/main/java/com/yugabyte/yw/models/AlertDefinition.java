@@ -21,6 +21,7 @@ import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
+import io.ebean.PersistenceContextScope;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -33,10 +34,11 @@ import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.OneToMany;
 import javax.persistence.Version;
+import javax.validation.Valid;
+import javax.validation.constraints.NotNull;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.experimental.Accessors;
-import play.data.validation.Constraints;
 
 @Entity
 @Data
@@ -44,24 +46,23 @@ import play.data.validation.Constraints;
 @EqualsAndHashCode(callSuper = false)
 public class AlertDefinition extends Model {
 
-  @Constraints.Required
   @Id
   @Column(nullable = false, unique = true)
   private UUID uuid;
 
-  @Constraints.Required
+  @NotNull
   @Column(columnDefinition = "Text", nullable = false)
   private String query;
 
-  @Constraints.Required
+  @NotNull
   @Column(nullable = false)
   private UUID customerUUID;
 
-  @Constraints.Required
+  @NotNull
   @Column(nullable = false)
   private UUID configurationUUID;
 
-  @Constraints.Required
+  @NotNull
   @Column(nullable = false)
   @JsonIgnore
   private boolean configWritten = false;
@@ -71,13 +72,18 @@ public class AlertDefinition extends Model {
   private int version;
 
   @OneToMany(mappedBy = "definition", cascade = CascadeType.ALL, orphanRemoval = true)
+  @Valid
   private List<AlertDefinitionLabel> labels;
 
   private static final Finder<UUID, AlertDefinition> find =
       new Finder<UUID, AlertDefinition>(AlertDefinition.class) {};
 
   public static ExpressionList<AlertDefinition> createQueryByFilter(AlertDefinitionFilter filter) {
-    ExpressionList<AlertDefinition> query = find.query().fetch("labels").where();
+    ExpressionList<AlertDefinition> query =
+        find.query()
+            .setPersistenceContextScope(PersistenceContextScope.QUERY)
+            .fetch("labels")
+            .where();
     appendInClause(query, "uuid", filter.getUuids());
     if (filter.getCustomerUuid() != null) {
       query.eq("customerUUID", filter.getCustomerUuid());

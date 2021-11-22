@@ -160,9 +160,11 @@ export default class CreateBackup extends Component {
 
   validateForm = (values) => {
     const errors = {};
-
     if (values.schedulingFrequency && !_.isNumber(values.schedulingFrequency)) {
       errors.schedulingFrequency = 'Frequency must be a number';
+    }
+    if (_.isNumber(values.schedulingFrequency) && values.schedulingFrequency < 1) {
+      errors.schedulingFrequency = 'Backup frequency should be greater than zero';
     }
     if (!values.schedulingFrequencyUnit) {
       errors.schedulingFrequencyUnit = 'Please select a valid frequency unit';
@@ -232,7 +234,6 @@ export default class CreateBackup extends Component {
       props.form.setFieldValue(props.field.name, []);
     }
   };
-  
 
   render() {
     const { visible, isScheduled, onHide, tableInfo, storageConfigs, universeTables } = this.props;
@@ -313,9 +314,9 @@ export default class CreateBackup extends Component {
           onFormSubmit={(values) => {
             const payload = {
               ...values,
-              storageConfigUUID: values.storageConfigUUID.value,
+              storageConfigUUID: values.storageConfigUUID.value
             };
-           
+
             this.createBackup(payload);
           }}
           initialValues={initialValues}
@@ -339,7 +340,7 @@ export default class CreateBackup extends Component {
             const isSchedulingFrequencyReadOnly = cronExpression !== '';
             const isCronExpressionReadOnly = schedulingFrequency !== '';
             const isTableSelected = backupTableUUID && backupTableUUID.length;
-            const s3StorageSelected = storageConfigUUID && storageConfigUUID.label === 'S3 Storage';
+            const s3StorageSelected = storageConfigUUID && storageConfigUUID.id === 'S3';
             const showTransactionalToggle =
               isKeyspaceSelected &&
               !!isTableSelected &&

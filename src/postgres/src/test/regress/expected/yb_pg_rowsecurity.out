@@ -3215,71 +3215,30 @@ SELECT refclassid::regclass, deptype
 (2 rows)
 
 SAVEPOINT q;
-ERROR:  SAVEPOINT <transaction> not supported yet
-LINE 1: SAVEPOINT q;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 DROP ROLE regress_rls_eve; --fails due to dependency on POLICY p
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ERROR:  role "regress_rls_eve" cannot be dropped because some objects depend on it
+DETAIL:  privileges for table tbl1
+target of policy p on table tbl1
 ROLLBACK TO q;
-ERROR:  ROLLBACK <transaction> not supported yet
-LINE 1: ROLLBACK TO q;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 ALTER POLICY p ON tbl1 TO regress_rls_frank USING (true);
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
 SAVEPOINT q;
-ERROR:  SAVEPOINT <transaction> not supported yet
-LINE 1: SAVEPOINT q;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 DROP ROLE regress_rls_eve; --fails due to dependency on GRANT SELECT
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ERROR:  role "regress_rls_eve" cannot be dropped because some objects depend on it
+DETAIL:  privileges for table tbl1
 ROLLBACK TO q;
-ERROR:  ROLLBACK <transaction> not supported yet
-LINE 1: ROLLBACK TO q;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 REVOKE ALL ON TABLE tbl1 FROM regress_rls_eve;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
 SAVEPOINT q;
-ERROR:  SAVEPOINT <transaction> not supported yet
-LINE 1: SAVEPOINT q;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 DROP ROLE regress_rls_eve; --succeeds
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
 ROLLBACK TO q;
-ERROR:  ROLLBACK <transaction> not supported yet
-LINE 1: ROLLBACK TO q;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 SAVEPOINT q;
-ERROR:  SAVEPOINT <transaction> not supported yet
-LINE 1: SAVEPOINT q;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 DROP ROLE regress_rls_frank; --fails due to dependency on POLICY p
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ERROR:  role "regress_rls_frank" cannot be dropped because some objects depend on it
+DETAIL:  target of policy p on table tbl1
 ROLLBACK TO q;
-ERROR:  ROLLBACK <transaction> not supported yet
-LINE 1: ROLLBACK TO q;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 DROP POLICY p ON tbl1;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
 SAVEPOINT q;
-ERROR:  SAVEPOINT <transaction> not supported yet
-LINE 1: SAVEPOINT q;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 DROP ROLE regress_rls_frank; -- succeeds
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
 ROLLBACK TO q;
-ERROR:  ROLLBACK <transaction> not supported yet
-LINE 1: ROLLBACK TO q;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 ROLLBACK; -- cleanup
 --
 -- Converting table to view
@@ -3289,38 +3248,19 @@ CREATE TABLE t (c int);
 CREATE POLICY p ON t USING (c % 2 = 1);
 ALTER TABLE t ENABLE ROW LEVEL SECURITY;
 SAVEPOINT q;
-ERROR:  SAVEPOINT <transaction> not supported yet
-LINE 1: SAVEPOINT q;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 CREATE RULE "_RETURN" AS ON SELECT TO t DO INSTEAD
   SELECT * FROM generate_series(1,5) t0(c); -- fails due to row level security enabled
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ERROR:  could not convert table "t" to a view because it has row security enabled
 ROLLBACK TO q;
-ERROR:  ROLLBACK <transaction> not supported yet
-LINE 1: ROLLBACK TO q;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 ALTER TABLE t DISABLE ROW LEVEL SECURITY;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
 SAVEPOINT q;
-ERROR:  SAVEPOINT <transaction> not supported yet
-LINE 1: SAVEPOINT q;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 CREATE RULE "_RETURN" AS ON SELECT TO t DO INSTEAD
   SELECT * FROM generate_series(1,5) t0(c); -- fails due to policy p on t
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ERROR:  could not convert table "t" to a view because it has row security policies
 ROLLBACK TO q;
-ERROR:  ROLLBACK <transaction> not supported yet
-LINE 1: ROLLBACK TO q;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 DROP POLICY p ON t;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
 CREATE RULE "_RETURN" AS ON SELECT TO t DO INSTEAD
   SELECT * FROM generate_series(1,5) t0(c); -- succeeds
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
 ROLLBACK;
 --
 -- Policy expression handling

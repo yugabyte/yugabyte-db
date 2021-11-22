@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include "yb/tools/yb-admin_cli.h"
 #include "yb/tools/yb-admin_client.h"
 
 #include <iostream>
@@ -479,10 +480,11 @@ Result<TxnSnapshotId> ClusterAdminClient::SuitableSnapshotId(
           return VERIFY_RESULT(FullyDecodeTxnSnapshotId(snapshot.id()));
         }
       }
-    }
-    if (last_snapshot_time > restore_at) {
-      return STATUS_FORMAT(
-          IllegalState, "Cannot restore at $0, last snapshot: $1", restore_at, last_snapshot_time);
+      if (last_snapshot_time > restore_at) {
+        return STATUS_FORMAT(
+            IllegalState, "Cannot restore at $0, last snapshot: $1, snapshots: $2",
+            restore_at, last_snapshot_time, resp.schedules()[0].snapshots());
+      }
     }
     RpcController rpc;
     rpc.set_deadline(deadline);
@@ -603,16 +605,23 @@ Status ClusterAdminClient::CreateSnapshotMetaFile(const string& snapshot_id,
     req.set_snapshot_id(StringToSnapshotId(snapshot_id));
 
     // Format 0 - latest format (== Format 2 at the moment).
+    // Format -1 - old format (no 'namespace_name' in the Table entry).
     // Format 1 - old format.
     // Format 2 - new format.
-    if (FLAGS_TEST_metadata_file_format_version != 1) {
+    if (FLAGS_TEST_metadata_file_format_version == 0 ||
+        FLAGS_TEST_metadata_file_format_version >= 2) {
       req.set_prepare_for_backup(true);
     }
     return master_backup_proxy_->ListSnapshots(req, &resp, rpc);
   }));
 
-  const SnapshotInfoPB* snapshot = nullptr;
-  for (const auto& snapshot_entry : resp.snapshots()) {
+  if (resp.snapshots_size() > 1) {
+    LOG(WARNING) << "Requested snapshot metadata for snapshot '" << snapshot_id << "', but got "
+                 << resp.snapshots_size() << " snapshots in the response";
+  }
+
+  SnapshotInfoPB* snapshot = nullptr;
+  for (SnapshotInfoPB& snapshot_entry : *resp.mutable_snapshots()) {
     if (SnapshotIdToString(snapshot_entry.id()) == snapshot_id) {
       snapshot = &snapshot_entry;
       break;
@@ -623,9 +632,17 @@ Status ClusterAdminClient::CreateSnapshotMetaFile(const string& snapshot_id,
         InternalError, "Response contained $0 entries but no entry for snapshot '$1'",
         resp.snapshots_size(), snapshot_id);
   }
-  if (resp.snapshots_size() > 1) {
-    LOG(WARNING) << "Requested snapshot metadata for snapshot '" << snapshot_id << "', but got "
-                 << resp.snapshots_size() << " snapshots in the response";
+
+  if (FLAGS_TEST_metadata_file_format_version == -1) {
+    // Remove 'namespace_name' from SysTablesEntryPB.
+    SysSnapshotEntryPB& sys_entry = *snapshot->mutable_entry();
+    for (SysRowEntry& entry : *sys_entry.mutable_entries()) {
+      if (entry.type() == SysRowEntry::TABLE) {
+        auto meta = VERIFY_RESULT(ParseFromSlice<SysTablesEntryPB>(entry.data()));
+        meta.clear_namespace_name();
+        entry.set_data(meta.SerializeAsString());
+      }
+    }
   }
 
   cout << "Exporting snapshot " << snapshot_id << " ("
@@ -714,10 +731,6 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
           return STATUS(IllegalState, "Could not find table name from snapshot metadata");
         }
 
-        if (meta.namespace_name().empty()) {
-          return STATUS(IllegalState, "Could not find keyspace name from snapshot metadata");
-        }
-
         // Update the table name if needed.
         if (update_meta) {
           entry.set_data(meta.SerializeAsString());
@@ -743,7 +756,9 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
         }
 
         cout << (meta.colocated() ? "Colocated t" : "T") << "able being imported: "
-             << meta.namespace_name() << "." << meta.name() << endl;
+             << (meta.namespace_name().empty() ?
+                 "[" + meta.namespace_id() + "]" : meta.namespace_name())
+             << "." << meta.name() << endl;
         ++table_index;
         break;
       }
@@ -1008,6 +1023,9 @@ Status ClusterAdminClient::AllMastersHaveUniverseKeyInMemory(const std::string& 
     if (resp.has_error()) {
       return StatusFromPB(resp.error().status());
     }
+    if (!resp.has_key()) {
+      return STATUS_FORMAT(TryAgain, "Node $0 does not have universe key in memory", hp);
+    }
 
     std::cout << Format("Node $0 has universe key in memory: $1\n", hp.ToString(), resp.has_key());
   }
@@ -1191,17 +1209,52 @@ Status ClusterAdminClient::SetupUniverseReplication(
 
   RpcController rpc;
   rpc.set_timeout(timeout_);
-  RETURN_NOT_OK(master_proxy_->SetupUniverseReplication(req, &resp, &rpc));
+  Status setup_result_status = master_proxy_->SetupUniverseReplication(req, &resp, &rpc);
+
+  // Clean up config files if setup fails.
+  if (!setup_result_status.ok()) {
+    CleanupEnvironmentOnSetupUniverseReplicationFailure(producer_uuid, setup_result_status);
+    return setup_result_status;
+  }
 
   if (resp.has_error()) {
     cout << "Error setting up universe replication: " << resp.error().status().message() << endl;
-    return StatusFromPB(resp.error().status());
+
+    Status status_from_error = StatusFromPB(resp.error().status());
+    CleanupEnvironmentOnSetupUniverseReplicationFailure(producer_uuid, status_from_error);
+
+    return status_from_error;
   }
 
-  RETURN_NOT_OK(WaitForSetupUniverseReplicationToFinish(producer_uuid));
+  setup_result_status = WaitForSetupUniverseReplicationToFinish(producer_uuid);
+
+  // Clean up config files if setup fails to complete.
+  if (!setup_result_status.ok()) {
+    CleanupEnvironmentOnSetupUniverseReplicationFailure(producer_uuid, setup_result_status);
+    return setup_result_status;
+  }
 
   cout << "Replication setup successfully" << endl;
   return Status::OK();
+}
+
+// Helper function for deleting the universe if SetupUniverseReplicaion fails.
+void ClusterAdminClient::CleanupEnvironmentOnSetupUniverseReplicationFailure(
+  const std::string& producer_uuid, const Status& failure_status) {
+  // We don't need to delete the universe if the call to SetupUniverseReplication
+  // failed due to one of the sanity checks.
+  if (failure_status.IsInvalidArgument()) {
+    return;
+  }
+
+  cout << "Replication setup failed, cleaning up environment" << endl;
+
+  Status delete_result_status = DeleteUniverseReplication(producer_uuid, false);
+  if (!delete_result_status.ok()) {
+    cout << "Could not clean up environment: " << delete_result_status.message() << endl;
+  } else {
+    cout << "Successfully cleaned up environment" << endl;
+  }
 }
 
 Status ClusterAdminClient::DeleteUniverseReplication(const std::string& producer_id, bool force) {
@@ -1233,7 +1286,9 @@ Status ClusterAdminClient::DeleteUniverseReplication(const std::string& producer
 Status ClusterAdminClient::AlterUniverseReplication(const std::string& producer_uuid,
     const std::vector<std::string>& producer_addresses,
     const std::vector<TableId>& add_tables,
-    const std::vector<TableId>& remove_tables) {
+    const std::vector<TableId>& remove_tables,
+    const std::vector<std::string>& producer_bootstrap_ids_to_add,
+    const std::string& new_producer_universe_id) {
   master::AlterUniverseReplicationRequestPB req;
   master::AlterUniverseReplicationResponsePB resp;
   req.set_producer_id(producer_uuid);
@@ -1252,6 +1307,20 @@ Status ClusterAdminClient::AlterUniverseReplication(const std::string& producer_
     for (const auto& table : add_tables) {
       req.add_producer_table_ids_to_add(table);
     }
+
+    if (!producer_bootstrap_ids_to_add.empty()) {
+      // There msut be a bootstrap id for every table id.
+      if (producer_bootstrap_ids_to_add.size() != add_tables.size()) {
+        cout << "The number of bootstrap ids must equal the number of table ids. "
+             << "Use separate alter commands if only some tables are being bootstrapped." << endl;
+        return STATUS(InternalError, "Invalid number of bootstrap ids");
+      }
+
+      req.mutable_producer_bootstrap_ids_to_add()->Reserve(producer_bootstrap_ids_to_add.size());
+      for (const auto& bootstrap_id : producer_bootstrap_ids_to_add) {
+        req.add_producer_bootstrap_ids_to_add(bootstrap_id);
+      }
+    }
   }
 
   if (!remove_tables.empty()) {
@@ -1259,6 +1328,10 @@ Status ClusterAdminClient::AlterUniverseReplication(const std::string& producer_
     for (const auto& table : remove_tables) {
       req.add_producer_table_ids_to_remove(table);
     }
+  }
+
+  if (!new_producer_universe_id.empty()) {
+    req.set_new_producer_universe_id(new_producer_universe_id);
   }
 
   RpcController rpc;

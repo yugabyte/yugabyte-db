@@ -24,8 +24,11 @@
  * 'indexing.h', make sure to increment this value. Additionally, the script
  * 'catalog/unused_oids' will help by outputting the blocks of unused OIDs to
  * validate that this value is up to date.
+ *
+ * If you increment it, make sure you didn't forget to add a new SQL migration
+ * (see pg_yb_migration.dat and src/yb/yql/pgwrapper/ysql_migrations/README.md)
  */
-#define YB_MIN_UNUSED_OID 8027
+#define YB_MIN_UNUSED_OID 8033
 
 extern bool IsSystemRelation(Relation relation);
 extern bool IsToastRelation(Relation relation);
@@ -36,6 +39,7 @@ extern bool IsToastClass(Form_pg_class reltuple);
 extern bool IsCatalogClass(Oid relid, Form_pg_class reltuple);
 
 extern bool IsSystemNamespace(Oid namespaceId);
+extern bool YbIsSystemNamespaceByName(const char *namespace_name);
 extern bool IsToastNamespace(Oid namespaceId);
 
 extern bool IsReservedName(const char *name);
@@ -48,11 +52,14 @@ extern Oid GetNewOidWithIndex(Relation relation, Oid indexId,
 extern Oid GetNewRelFileNode(Oid reltablespace, Relation pg_class,
 				  char relpersistence);
 
+// TODO: Rename according to new style guide
 extern Oid GetTableOidFromRelOptions(List *relOptions, Oid reltablespace,
 				  char relpersistence);
 
 extern Oid GetRowTypeOidFromRelOptions(List *relOptions);
 
-extern Oid GetRewriteRuleOidFromRelOptions(List *relOptions);
+extern Oid GetTablegroupOidFromRelOptions(List *relOptions);
+
+extern bool YbGetUseInitdbAclFromRelOptions(List *options);
 
 #endif							/* CATALOG_H */

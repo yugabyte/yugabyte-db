@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.ITaskParams;
@@ -174,26 +175,30 @@ public class Commissioner {
 
     private void scheduleRunner(Map<UUID, TaskRunner> runningTasks) {
       // Loop through all the active tasks.
-      Iterator<Entry<UUID, TaskRunner>> iter = runningTasks.entrySet().iterator();
-      while (iter.hasNext()) {
-        Entry<UUID, TaskRunner> entry = iter.next();
-        TaskRunner taskRunner = entry.getValue();
+      try {
+        Iterator<Entry<UUID, TaskRunner>> iter = runningTasks.entrySet().iterator();
+        while (iter.hasNext()) {
+          Entry<UUID, TaskRunner> entry = iter.next();
+          TaskRunner taskRunner = entry.getValue();
 
-        // If the task is still running, update its latest timestamp as a part of the heartbeat.
-        if (taskRunner.isTaskRunning()) {
-          taskRunner.doHeartbeat();
-        } else if (taskRunner.hasTaskSucceeded()) {
-          LOG.info("Task " + taskRunner.toString() + " has succeeded.");
-          // Remove task from the set of live tasks.
-          iter.remove();
-        } else if (taskRunner.hasTaskFailed()) {
-          LOG.info("Task " + taskRunner.toString() + " has failed.");
-          // Remove task from the set of live tasks.
-          iter.remove();
+          // If the task is still running, update its latest timestamp as a part of the heartbeat.
+          if (taskRunner.isTaskRunning()) {
+            taskRunner.doHeartbeat();
+          } else if (taskRunner.hasTaskSucceeded()) {
+            LOG.info("Task " + taskRunner.toString() + " has succeeded.");
+            // Remove task from the set of live tasks.
+            iter.remove();
+          } else if (taskRunner.hasTaskFailed()) {
+            LOG.info("Task " + taskRunner.toString() + " has failed.");
+            // Remove task from the set of live tasks.
+            iter.remove();
+          }
         }
-      }
 
-      // TODO: Scan the DB for tasks that have failed to make progress and claim one if possible.
+        // TODO: Scan the DB for tasks that have failed to make progress and claim one if possible.
+      } catch (Exception e) {
+        log.error("Error running commissioner progress checker", e);
+      }
     }
 
     private Duration progressCheckInterval() {

@@ -19,8 +19,6 @@
 #include <sys/syscall.h>
 #endif
 #include <fcntl.h>
-#include <sys/stat.h>
-#include <unistd.h>
 #include <string>
 #include <glog/logging.h>
 

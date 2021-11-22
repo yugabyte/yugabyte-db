@@ -45,7 +45,7 @@ Before you can deploy YugabyteDB on AKS, you need to verify that the following a
 - `kubectl`
   - For more information, see [Install and Set Up kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl/).
   - [Kubernetes API v1.18.0](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.18/)
-- Helm 3 - v3.1.0 or later
+- Helm 3.4 or later
   - For more information, see [Installing Helm](https://helm.sh/docs/intro/install/).
 
 - [Microsoft Azure](https://azure.microsoft.com/en-au/pricing/purchase-options/pay-as-you-go/) account
@@ -183,7 +183,7 @@ You should see output similar to the following:
 Merged "yugabytedbAKSCluster" as current context in /Users/yugabyte-user/.kube/config
 ```
 
-If you generated your own SSH keys, point `kubectl `to the cluster by running the following command instead:
+If you generated your own SSH keys, point `kubectl` to the cluster by running the following command instead:
 
 ```sh
 $ az aks get-credentials --resource-group yugabytedbRG --name yugabytedbAKSCluster -ssh-key-file <path_to>id_rsa
@@ -248,7 +248,7 @@ $ helm search repo yugabytedb/yugabyte
 
 ```output
 NAME                    CHART VERSION   APP VERSION     DESCRIPTION                                       
-yugabytedb/yugabyte     2.9.0           2.9.0.0-b4      YugabyteDB is the high-performance distributed ...
+yugabytedb/yugabyte     2.9.1           2.9.1.0-b140    YugabyteDB is the high-performance distributed ...
 ```
 
 #### Create the namespace

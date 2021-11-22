@@ -47,6 +47,7 @@ class AbstractCloud(AbstractCommandParser):
     CERT_LOCATION_PLATFORM = "platform"
     SSH_RETRY_COUNT = 30
     SSH_WAIT_SECONDS = 30
+    SSH_TIMEOUT_SECONDS = 10
 
     def __init__(self, name):
         super(AbstractCloud, self).__init__(name)
@@ -163,39 +164,32 @@ class AbstractCloud(AbstractCommandParser):
         updated_vars.update(extra_vars)
         updated_vars.update(get_ssh_host_port(host_info, args.custom_ssh_port))
         remote_shell = RemoteShell(updated_vars)
+
+        if process == "thirdparty" or process == "platform-services":
+            self.setup_ansible(args).run("yb-server-ctl.yml", updated_vars, host_info)
+            return
+
+        if args.systemd_services:
+            if command == "start":
+                remote_shell.run_command(
+                    "sudo systemctl enable yb-{}".format(process)
+                )
+            remote_shell.run_command(
+                "sudo systemctl {} yb-{}".format(command, process)
+            )
+            if command == "stop":
+                remote_shell.run_command(
+                    "sudo systemctl disable yb-{}".format(process)
+                )
+            return
+
         if os.environ.get("YB_USE_FABRIC", False):
-            if args.systemd_services:
-                if command == "start":
-                    remote_shell.run_command(
-                        "sudo systemctl enable yb-{}".format(process)
-                    )
-                remote_shell.run_command(
-                    "sudo systemctl {} yb-{}".format(command, process)
-                )
-                if command == "stop":
-                    remote_shell.run_command(
-                        "sudo systemctl disable yb-{}".format(process)
-                    )
-            else:
-                file_path = os.path.join(YB_HOME_DIR, "bin/yb-server-ctl.sh")
-                remote_shell.run_command(
-                    "{} {} {}".format(file_path, process, command)
-                )
+            file_path = os.path.join(YB_HOME_DIR, "bin/yb-server-ctl.sh")
+            remote_shell.run_command(
+                "{} {} {}".format(file_path, process, command)
+            )
         else:
-            if args.systemd_services:
-                if command == "start":
-                    remote_shell.run_command(
-                        "sudo systemctl enable yb-{}".format(process)
-                    )
-                remote_shell.run_command(
-                    "sudo systemctl {} yb-{}".format(command, process)
-                )
-                if command == "stop":
-                    remote_shell.run_command(
-                        "sudo systemctl disable yb-{}".format(process)
-                    )
-            else:
-                self.setup_ansible(args).run("yb-server-ctl.yml", updated_vars, host_info)
+            self.setup_ansible(args).run("yb-server-ctl.yml", updated_vars, host_info)
 
     def initYSQL(self, master_addresses, ssh_options):
         remote_shell = RemoteShell(ssh_options)
@@ -208,8 +202,8 @@ class AbstractCloud(AbstractCommandParser):
 
     def configure_secondary_interface(self, args, extra_vars, subnet_cidr):
         logging.info("[app] Configuring second NIC")
-        self._wait_for_ssh_port(extra_vars["ssh_host"], args.search_pattern,
-                                extra_vars["ssh_port"])
+        self.wait_for_ssh_port(extra_vars["ssh_host"], args.search_pattern,
+                               extra_vars["ssh_port"])
         subnet_network, subnet_netmask = subnet_cidr.split('/')
         # Copy and run script to configure routes
         scp_to_tmp(
@@ -229,8 +223,8 @@ class AbstractCloud(AbstractCommandParser):
         remote_exec_command(
             extra_vars["ssh_host"], extra_vars["ssh_port"], extra_vars["ssh_user"],
             args.private_key_file, 'sudo reboot')
-        self._wait_for_ssh_port(extra_vars["ssh_host"],
-                                args.search_pattern, extra_vars["ssh_port"])
+        self.wait_for_ssh_port(extra_vars["ssh_host"],
+                               args.search_pattern, extra_vars["ssh_port"])
         # Verify that the command ran successfully:
         rc, stdout, stderr = remote_exec_command(extra_vars["ssh_host"], extra_vars["ssh_port"],
                                                  extra_vars["ssh_user"], args.private_key_file,
@@ -308,6 +302,7 @@ class AbstractCloud(AbstractCommandParser):
     def __verify_certs_hostname(self, node_crt_path, ssh_options):
         host = ssh_options["ssh_host"]
         remote_shell = RemoteShell(ssh_options)
+        logging.info("Verifying Subject for certs {}".format(node_crt_path))
 
         # Get readable text version of cert
         cert_text = remote_shell.run_command(
@@ -348,13 +343,20 @@ class AbstractCloud(AbstractCommandParser):
 
     def verify_certs(self, root_crt_path, node_crt_path, ssh_options, verify_hostname=False):
         remote_shell = RemoteShell(ssh_options)
-
+        # Verify that both cert are present in FS and have read rights
+        root_file_verify = remote_shell.run_command_raw("test -r {}".format(root_crt_path))
+        if root_file_verify.exited == 1:
+            raise YBOpsRuntimeError(
+                            "Root cert: {} is absent or is not readable.".format(root_crt_path))
+        node_file_verify = remote_shell.run_command_raw("test -r {}".format(node_crt_path))
+        if node_file_verify.exited == 1:
+            raise YBOpsRuntimeError(
+                            "Node cert: {} is absent or is not readable.".format(node_crt_path))
         try:
             remote_shell.run_command('which openssl')
         except YBOpsRuntimeError:
             logging.debug("Openssl not found, skipping certificate verification.")
             return
-
         # Verify if the node cert is not expired
         validity_verify = remote_shell.run_command_raw(
             "openssl x509 -noout -checkend 86400 -in {}".format(node_crt_path))
@@ -381,7 +383,8 @@ class AbstractCloud(AbstractCommandParser):
             server_key_path,
             certs_location,
             certs_dir,
-            rotate_certs):
+            rotate_certs,
+            skip_cert_validation):
         remote_shell = RemoteShell(ssh_options)
         node_ip = ssh_options["ssh_host"]
         cert_file = 'node.{}.crt'.format(node_ip)
@@ -422,8 +425,16 @@ class AbstractCloud(AbstractCommandParser):
         remote_shell.run_command('chmod -f 666 {}/* || true'.format(certs_dir))
 
         if certs_location == self.CERT_LOCATION_NODE:
-            self.verify_certs(root_cert_path, server_cert_path,
-                              ssh_options, verify_hostname=True)
+            if skip_cert_validation == 'ALL':
+                logging.info("Skipping all validations for certs for node {}".format(node_ip))
+            else:
+                verify_hostname = True
+                if skip_cert_validation == 'HOSTNAME':
+                    logging.info(
+                      "Skipping host name validation for certs for node {}".format(node_ip))
+                    verify_hostname = False
+                self.verify_certs(root_cert_path, server_cert_path,
+                                  ssh_options, verify_hostname)
             if copy_root:
                 remote_shell.run_command("cp '{}' '{}'".format(root_cert_path,
                                                                yb_root_cert_path))
@@ -522,7 +533,7 @@ class AbstractCloud(AbstractCommandParser):
             logging.info("Expanding file system with mount point: {}".format(mount_point))
             remote_shell.run_command('sudo xfs_growfs {}'.format(mount_point))
 
-    def _wait_for_ssh_port(self, private_ip, instance_name, ssh_port):
+    def wait_for_ssh_port(self, private_ip, instance_name, ssh_port):
         try:
             sock = None
             retry_count = 0
@@ -532,11 +543,13 @@ class AbstractCloud(AbstractCommandParser):
             while retry_count < self.SSH_RETRY_COUNT:
                 logging.info("[app] Waiting for ssh: {}:{}".format(private_ip, str(ssh_port)))
                 time.sleep(self.SSH_WAIT_SECONDS)
-                retry_count = retry_count + 1
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 result = sock.connect_ex((private_ip, ssh_port))
+
                 if result == 0:
                     break
+
+                retry_count += 1
             else:
                 logging.error("[app] Start instance {} exceeded maxRetries!".format(instance_name))
                 raise YBOpsRuntimeError(
@@ -546,3 +559,34 @@ class AbstractCloud(AbstractCommandParser):
         finally:
             if sock:
                 sock.close()
+
+    def wait_for_ssh_ports(self, private_ip, instance_name, ssh_ports):
+        sock = None
+        retry_count = 0
+
+        while retry_count < self.SSH_RETRY_COUNT:
+            logging.info("[app] Waiting for ssh: {}:{}".format(private_ip, str(ssh_ports)))
+            time.sleep(self.SSH_WAIT_SECONDS)
+            # Try connecting with the given ssh ports in succession.
+            for ssh_port in ssh_ports:
+                ssh_port = int(ssh_port)
+                logging.info("[app] Attempting ssh: {}:{}".format(private_ip, str(ssh_port)))
+                try:
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.settimeout(self.SSH_TIMEOUT_SECONDS)
+                    result = sock.connect_ex((private_ip, ssh_port))
+
+                    if result == 0:
+                        logging.info("[app] Connected to {}:{}".format(private_ip, str(ssh_port)))
+                        return ssh_port
+                finally:
+                    if sock:
+                        sock.close()
+            # Increment retry only after attempts on all ports fail.
+            retry_count += 1
+        else:
+            logging.error("[app] Start instance {} exceeded maxRetries!".format(instance_name))
+            raise YBOpsRuntimeError(
+                "Cannot reach the instance {} after its start at ports {}".format(
+                    instance_name, str(ssh_ports))
+                )

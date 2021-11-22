@@ -41,6 +41,7 @@ public class TableManager extends DevopsBase {
   private static final String K8S_CERT_PATH = "/opt/certs/yugabyte/";
   private static final String VM_CERT_DIR = "/yugabyte-tls-config/";
   private static final String BACKUP_SCRIPT = "bin/yb_backup.py";
+  private static final String BACKUP_LOCATION = "BACKUP_LOCATION";
 
   public enum CommandSubType {
     BACKUP(BACKUP_SCRIPT),
@@ -70,7 +71,7 @@ public class TableManager extends DevopsBase {
     String accessKeyCode = userIntent.accessKeyCode;
     AccessKey accessKey = AccessKey.get(region.provider.uuid, accessKeyCode);
     List<String> commandArgs = new ArrayList<>();
-    Map<String, String> extraVars = region.provider.getConfig();
+    Map<String, String> extraVars = region.provider.getUnmaskedConfig();
     Map<String, String> namespaceToConfig = new HashMap<>();
 
     boolean nodeToNodeTlsEnabled = userIntent.enableNodeToNodeEncrypt;
@@ -101,6 +102,10 @@ public class TableManager extends DevopsBase {
             || userIntent.tserverGFlags.getOrDefault("ysql_enable_auth", "false").equals("true")) {
           commandArgs.add("--ysql_enable_auth");
         }
+        commandArgs.add("--ysql_port");
+        commandArgs.add(
+            Integer.toString(universe.getUniverseDetails().communicationPorts.ysqlServerRpcPort));
+
         if (backupTableParams.actionType == BackupTableParams.ActionType.CREATE) {
           if (backupTableParams.tableUUIDList != null
               && !backupTableParams.tableUUIDList.isEmpty()) {
@@ -171,7 +176,7 @@ public class TableManager extends DevopsBase {
         }
         if (backupTableParams.actionType == BackupTableParams.ActionType.RESTORE) {
           if (backupTableParams.restoreTimeStamp != null) {
-            String backupLocation = customerConfig.data.get("BACKUP_LOCATION").asText();
+            String backupLocation = customerConfig.data.get(BACKUP_LOCATION).asText();
             String restoreTimeStampMicroUnix =
                 getValidatedRestoreTimeStampMicroUnix(
                     backupTableParams.restoreTimeStamp,
@@ -320,7 +325,7 @@ public class TableManager extends DevopsBase {
     commandArgs.add(customerConfig.name.toLowerCase());
     if (customerConfig.name.toLowerCase().equals("nfs")) {
       commandArgs.add("--nfs_storage_path");
-      commandArgs.add(customerConfig.getData().get("BACKUP_LOCATION").asText());
+      commandArgs.add(customerConfig.getData().get(BACKUP_LOCATION).asText());
     }
     if (nodeToNodeTlsEnabled) {
       commandArgs.add("--certs_dir");

@@ -17,6 +17,26 @@
     <encoder>
       <pattern>%date [%level] from %logger{0} in %thread - %message%n%xException</pattern>
     </encoder>
+
+    <!--
+      this is to conditionally log to a specific appender using markers
+      a similar block is used for the console appender below
+      for a usage example see ShellProcessHandler
+    -->
+    <if condition='property("cloud").equals("true")'>
+      <then>
+        <filter class="ch.qos.logback.core.filter.EvaluatorFilter">
+          <evaluator class="ch.qos.logback.classic.boolex.OnMarkerEvaluator">
+              <marker>consoleOnly</marker>
+          </evaluator>
+          <onMatch>DENY</onMatch>
+        </filter>
+      </then>
+    </if>
+
+    <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+      <level>${applicationLogLevel:-DEBUG}</level>
+    </filter>
   </appender>
 
   <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
@@ -44,6 +64,13 @@
             </pattern>
           </providers>
         </encoder>
+
+        <filter class="ch.qos.logback.core.filter.EvaluatorFilter">
+          <evaluator class="ch.qos.logback.classic.boolex.OnMarkerEvaluator">
+              <marker>fileOnly</marker>
+          </evaluator>
+          <onMatch>DENY</onMatch>
+        </filter>
       </then>
       <else>
         <encoder>
@@ -53,7 +80,7 @@
     </if>
 
     <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
-      <level>${APPLICATION_CONSOLE_LOG_LEVEL:-DEBUG}</level>
+      <level>${APPLICATION_CONSOLE_LOG_LEVEL:-${applicationLogLevel:-DEBUG}}</level>
     </filter>
   </appender>
 
@@ -69,9 +96,9 @@
 
   <logger name="play" level="INFO" />
   <logger name="org.yb" level="INFO" />
-  <logger name="application" level="DEBUG" />
-  <logger name="org.yb" level="INFO" />
-  <logger name="com.yugabyte.yw" level="DEBUG" />
+  <logger name="application" level="TRACE" />
+  <logger name="com.yugabyte.yw" level="TRACE" />
+  <logger name="org.flywaydb.core" level="TRACE" />
 
   <!-- Off these ones as they are annoying, and anyway we manage configuration ourselves -->
   <logger name="com.gargoylesoftware.htmlunit.javascript" level="OFF" />

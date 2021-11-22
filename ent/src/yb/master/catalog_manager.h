@@ -156,6 +156,12 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                           AlterUniverseReplicationResponsePB* resp,
                                           rpc::RpcContext* rpc);
 
+  // Rename an existing Universe Replication.
+  CHECKED_STATUS RenameUniverseReplication(scoped_refptr<UniverseReplicationInfo> universe,
+                                           const AlterUniverseReplicationRequestPB* req,
+                                           AlterUniverseReplicationResponsePB* resp,
+                                           rpc::RpcContext* rpc);
+
   // Enable/Disable an Existing Universe Replication.
   CHECKED_STATUS SetUniverseReplicationEnabled(const SetUniverseReplicationEnabledRequestPB* req,
                                                SetUniverseReplicationEnabledResponsePB* resp,
@@ -251,6 +257,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   CHECKED_STATUS RecreateTable(const NamespaceId& new_namespace_id,
                                const ExternalTableSnapshotDataMap& table_map,
                                ExternalTableSnapshotData* table_data);
+  CHECKED_STATUS RepartitionTable(scoped_refptr<TableInfo> table,
+                                  const ExternalTableSnapshotData* table_data);
   CHECKED_STATUS ImportTableEntry(const NamespaceMap& namespace_map,
                                   const ExternalTableSnapshotDataMap& table_map,
                                   ExternalTableSnapshotData* s_data);

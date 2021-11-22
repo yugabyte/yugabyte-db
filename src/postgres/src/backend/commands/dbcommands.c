@@ -415,7 +415,8 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 							 "https://github.com/yugabyte/yugabyte-db/issues"),
 					 parser_errposition(pstate, dencoding->location)));
 
-		if (!YBIsCollationEnabled() && dcollate && dbcollate && strcmp(dbcollate, "C") != 0)
+		if (!(YBIsCollationEnabled() && kTestOnlyUseOSDefaultCollation) && dcollate &&
+			dbcollate && strcmp(dbcollate, "C") != 0)
 			ereport(YBUnsupportedFeatureSignalLevel(),
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("Value other than 'C' for lc_collate "
@@ -666,6 +667,12 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 
 	/* Register owner dependency */
 	recordDependencyOnOwner(DatabaseRelationId, dboid, datdba);
+
+	/*
+	 * Register tablespace dependency to prevent dropping database default
+	 * tablespace.
+	 */
+	recordDependencyOnTablespace(DatabaseRelationId, dboid, dst_deftablespace);
 
 	/* Create pg_shdepend entries for objects within database */
 	copyTemplateDependencies(src_dboid, dboid);

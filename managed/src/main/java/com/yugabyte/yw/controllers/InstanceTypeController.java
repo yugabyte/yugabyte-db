@@ -69,7 +69,7 @@ public class InstanceTypeController extends AuthenticatedController {
    */
   @ApiOperation(
       value = "List a provider's instance types",
-      response = PlatformResults.class,
+      response = InstanceType.class,
       responseContainer = "List",
       nickname = "listOfInstanceType")
   @ApiResponses(

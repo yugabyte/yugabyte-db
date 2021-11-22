@@ -16,6 +16,7 @@ import static com.yugabyte.yw.models.helpers.EntityOperation.CREATE;
 import static com.yugabyte.yw.models.helpers.EntityOperation.UPDATE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.Alert.SortBy;
@@ -35,14 +36,21 @@ import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.lang3.StringUtils;
 
 @Singleton
 @Slf4j
 public class AlertService {
+
+  private final BeanValidator beanValidator;
+
+  @Inject
+  public AlertService(BeanValidator beanValidator) {
+    this.beanValidator = beanValidator;
+  }
 
   @Transactional
   public List<Alert> save(List<Alert> alerts) {
@@ -83,7 +91,7 @@ public class AlertService {
       Alert.db().updateAll(toUpdate);
     }
 
-    log.debug("{} alerts saved", toCreate.size() + toUpdate.size());
+    log.trace("{} alerts saved", toCreate.size() + toUpdate.size());
     return alerts;
   }
 
@@ -180,13 +188,13 @@ public class AlertService {
       return;
     }
     alert.delete();
-    log.debug("Alert {} deleted", uuid);
+    log.trace("Alert {} deleted", uuid);
   }
 
   @Transactional
   public int delete(AlertFilter filter) {
     int deleted = createQueryByFilter(filter).delete();
-    log.debug("{} alerts deleted", deleted);
+    log.trace("{} alerts deleted", deleted);
     return deleted;
   }
 
@@ -212,37 +220,39 @@ public class AlertService {
   }
 
   private void validate(Alert alert, Alert before) {
-    if (alert.getCustomerUUID() == null) {
-      throw new PlatformServiceException(BAD_REQUEST, "Customer UUID field is mandatory");
-    }
-    if (alert.getSeverity() == null) {
-      throw new PlatformServiceException(BAD_REQUEST, "Alert severity field is mandatory");
-    }
-    if (StringUtils.isEmpty(alert.getMessage())) {
-      throw new PlatformServiceException(BAD_REQUEST, "Message field is mandatory");
-    }
+    beanValidator.validate(alert);
     if (before != null) {
       if (!alert.getCustomerUUID().equals(before.getCustomerUUID())) {
-        throw new PlatformServiceException(
-            BAD_REQUEST, "Can't change customer UUID for alert " + alert.getUuid());
+        beanValidator
+            .error()
+            .forField("customerUUID", "can't change for alert '" + alert.getUuid() + "'")
+            .throwError();
       }
       if (before.getDefinitionUuid() != null
           && !alert.getDefinitionUuid().equals(before.getDefinitionUuid())) {
-        throw new PlatformServiceException(
-            BAD_REQUEST, "Can't change definition for alert " + alert.getUuid());
+        beanValidator
+            .error()
+            .forField("definitionUuid", "can't change for alert '" + alert.getUuid() + "'")
+            .throwError();
       }
       if (before.getConfigurationUuid() != null
           && !alert.getConfigurationUuid().equals(before.getConfigurationUuid())) {
-        throw new PlatformServiceException(
-            BAD_REQUEST, "Can't change configuration for alert " + alert.getUuid());
+        beanValidator
+            .error()
+            .forField("configurationUuid", "can't change for alert '" + alert.getUuid() + "'")
+            .throwError();
       }
       if (!alert.getCreateTime().equals(before.getCreateTime())) {
-        throw new PlatformServiceException(
-            BAD_REQUEST, "Can't change create time for alert " + alert.getUuid());
+        beanValidator
+            .error()
+            .forField("createTime", "can't change for alert '" + alert.getUuid() + "'")
+            .throwError();
       }
     } else if (!alert.isNew()) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Can't update missing alert " + alert.getUuid());
+      beanValidator
+          .error()
+          .forField("", "can't update missing alert '" + alert.getUuid() + "'")
+          .throwError();
     }
   }
 }

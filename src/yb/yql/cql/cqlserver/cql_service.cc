@@ -21,7 +21,6 @@
 #include <boost/compute/detail/lru_cache.hpp>
 
 #include "yb/client/meta_data_cache.h"
-#include "yb/client/transaction_pool.h"
 
 #include "yb/yql/cql/cqlserver/cql_processor.h"
 #include "yb/yql/cql/cqlserver/cql_rpc.h"
@@ -29,8 +28,6 @@
 #include "yb/yql/cql/cqlserver/system_query_cache.h"
 
 #include "yb/gutil/strings/substitute.h"
-#include "yb/rpc/messenger.h"
-#include "yb/rpc/rpc_context.h"
 
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/crypt.h"
@@ -383,6 +380,10 @@ client::TransactionPool* CQLServiceImpl::TransactionPool() {
 
 server::Clock* CQLServiceImpl::clock() {
   return server_->clock();
+}
+
+void CQLServiceImpl::FillEndpoints(const rpc::RpcServicePtr& service, rpc::RpcEndpointMap* map) {
+  map->emplace(CQLInboundCall::static_serialized_remote_method(), std::make_pair(service, 0ULL));
 }
 
 }  // namespace cqlserver

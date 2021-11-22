@@ -6,36 +6,16 @@
 # To analyze and upload dependencies:
 # fossa analyze --debug
 
-version: 2
-cli:
-  server: https://app.fossa.com
-  fetcher: custom
-  project: yugabyte-db-platform
-analyze:
-  modules:
-    - name: Yugabyte Platform
-      type: mvn
-      target: pom.xml
-      path: managed
-      options:
-        cmd: |
-          set -euo pipefail -x
-          mvn --batch-mode dependency:tree -f "$(
-            USE_MAVEN_LOCAL=true sbt -Dsbt.log.noformat=true make-pom | perl -n -e '/^\[info\] Wrote (.*[.]pom)$/ && print $1'
-          )"
-    - name: ui
-      type: npm
-      target: managed/ui
-      path: managed/ui
-    - name: opscli
-      type: pip
-      target: managed/devops
-      path: managed/devops
-      options:
-        requirements: managed/devops/python_requirements_frozen.txt
-    - name: opscli-py3
-      type: pip
-      target: managed/devops
-      path: managed/devops
-      options:
-        requirements: managed/devops/python3_requirements_frozen.txt
+version: 3
+
+project:
+  id: yugabyte-db-platform
+
+revision:
+  branch: master
+
+paths:
+  only:
+    - ./managed
+  exclude:
+    - ./managed/src/test

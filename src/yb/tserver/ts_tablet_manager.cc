@@ -57,14 +57,11 @@
 #include "yb/consensus/retryable_requests.h"
 #include "yb/consensus/raft_consensus.h"
 
-#include "yb/docdb/consensus_frontier.h"
 
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/fs/fs_manager.h"
 
-#include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/gutil/strings/util.h"
 #include "yb/gutil/sysinfo.h"
 
 #include "yb/master/master.pb.h"
@@ -89,7 +86,6 @@
 #include "yb/tserver/tablet_memory_manager.h"
 #include "yb/tserver/remote_bootstrap_client.h"
 #include "yb/tserver/remote_bootstrap_session.h"
-#include "yb/tserver/remote_bootstrap_snapshots.h"
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/debug/long_operation_tracker.h"
@@ -97,7 +93,6 @@
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
 #include "yb/util/fault_injection.h"
-#include "yb/util/file_util.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
@@ -107,7 +102,6 @@
 #include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/trace.h"
-#include "yb/util/tsan_util.h"
 #include "yb/util/shared_lock.h"
 
 using namespace std::literals;
@@ -180,6 +174,9 @@ DEFINE_test_flag(int32, apply_tablet_split_inject_delay_ms, 0,
 DEFINE_test_flag(bool, skip_deleting_split_tablets, false,
                  "Skip deleting tablets which have been split.");
 
+DEFINE_test_flag(bool, skip_post_split_compaction, false,
+                 "Skip processing post split compaction.");
+
 DEFINE_int32(verify_tablet_data_interval_sec, 0,
              "The tick interval time for the tablet data integrity verification background task. "
              "This defaults to 0, which means disable the background task.");
@@ -209,7 +206,7 @@ DEFINE_int32(post_split_trigger_compaction_pool_max_queue_size, 16,
 DEFINE_test_flag(int32, sleep_after_tombstoning_tablet_secs, 0,
                  "Whether we sleep in LogAndTombstone after calling DeleteTabletData.");
 
-constexpr int kTServerYbClientDefaultTimeoutMs = yb::RegularBuildVsSanitizers(5, 60) * 1000;
+constexpr int kTServerYbClientDefaultTimeoutMs = 60 * 1000;
 
 DEFINE_int32(tserver_yb_client_default_timeout_ms, kTServerYbClientDefaultTimeoutMs,
              "Default timeout for the YBClient embedded into the tablet server that is used "
@@ -517,7 +514,7 @@ void TSTabletManager::CleanupCheckpoints() {
       auto tablets = fs_manager_->env()->GetChildren(table_dir, ExcludeDots::kTrue);
       if (!tablets.ok()) {
         LOG_WITH_PREFIX(WARNING)
-            << "Failed to get tablets in " << table_dir << ": " << tables.status();
+            << "Failed to get tablets in " << table_dir << ": " << tablets.status();
         continue;
       }
       for (const auto& tablet : *tablets) {
@@ -1067,8 +1064,8 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   }
 
   // Registering a non-initialized TabletPeer offers visibility through the Web UI.
-  RegisterTabletPeerMode mode = replacing_tablet ? REPLACEMENT_PEER : NEW_PEER;
-  TabletPeerPtr tablet_peer = VERIFY_RESULT(CreateAndRegisterTabletPeer(meta, mode));
+  TabletPeerPtr tablet_peer = VERIFY_RESULT(
+        CreateAndRegisterTabletPeer(meta, replacing_tablet ? REPLACEMENT_PEER : NEW_PEER));
   MarkTabletBeingRemoteBootstrapped(tablet_peer->tablet_id(),
       tablet_peer->tablet_metadata()->table_id());
 
@@ -1426,11 +1423,16 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
     }
   }
 
-  WARN_NOT_OK(
-      tablet->TriggerPostSplitCompactionIfNeeded([&]() {
-        return post_split_trigger_compaction_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL);
-      }),
-      "Failed to submit compaction for post-split tablet.");
+  if (PREDICT_TRUE(!FLAGS_TEST_skip_post_split_compaction)) {
+    WARN_NOT_OK(
+    tablet->TriggerPostSplitCompactionIfNeeded([&]() {
+      return post_split_trigger_compaction_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL);
+    }),
+    "Failed to submit compaction for post-split tablet.");
+  } else {
+    LOG(INFO) << "Skipping post split compaction " << meta->raft_group_id();
+  }
+
   if (tablet->ShouldDisableLbMove()) {
     std::lock_guard<RWMutex> lock(mutex_);
     tablets_blocked_from_lb_.insert(tablet->tablet_id());
@@ -1845,6 +1847,9 @@ void TSTabletManager::CreateReportedTabletPB(const TabletPeerPtr& tablet_peer,
     *reported_tablet->mutable_committed_consensus_state() =
         consensus->ConsensusState(consensus::CONSENSUS_CONFIG_COMMITTED);
   }
+
+  // Set the hide status of the tablet.
+  reported_tablet->set_is_hidden(tablet_peer->tablet_metadata()->hidden());
 }
 
 void TSTabletManager::GenerateTabletReport(TabletReportPB* report, bool include_bootstrap) {

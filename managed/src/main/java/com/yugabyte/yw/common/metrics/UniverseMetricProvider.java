@@ -22,7 +22,6 @@ import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 
@@ -39,25 +38,26 @@ public class UniverseMetricProvider implements MetricsProvider {
           PlatformMetrics.UNIVERSE_NODE_FUNCTION);
 
   @Override
-  public List<Metric> getMetrics() throws Exception {
-    List<Metric> metrics = new ArrayList<>();
+  public List<MetricSaveGroup> getMetricGroups() throws Exception {
+    List<MetricSaveGroup> metricSaveGroups = new ArrayList<>();
     for (Customer customer : Customer.getAll()) {
       for (Universe universe : Universe.getAllWithoutResources(customer)) {
-        metrics.add(
+        MetricSaveGroup.MetricSaveGroupBuilder universeGroup = MetricSaveGroup.builder();
+        universeGroup.metric(
             createUniverseMetric(customer, universe, PlatformMetrics.UNIVERSE_EXISTS, STATUS_OK));
-        metrics.add(
+        universeGroup.metric(
             createUniverseMetric(
                 customer,
                 universe,
                 PlatformMetrics.UNIVERSE_PAUSED,
                 statusValue(universe.getUniverseDetails().universePaused)));
-        metrics.add(
+        universeGroup.metric(
             createUniverseMetric(
                 customer,
                 universe,
                 PlatformMetrics.UNIVERSE_UPDATE_IN_PROGRESS,
                 statusValue(universe.getUniverseDetails().updateInProgress)));
-        metrics.add(
+        universeGroup.metric(
             createUniverseMetric(
                 customer,
                 universe,
@@ -75,51 +75,62 @@ public class UniverseMetricProvider implements MetricsProvider {
             }
 
             String ipAddress = nodeDetails.cloudInfo.private_ip;
-            createNodeMetric(
-                customer,
-                universe,
-                PlatformMetrics.UNIVERSE_NODE_FUNCTION,
-                ipAddress,
-                nodeDetails.masterHttpPort,
-                "master_export",
-                statusValue(nodeDetails.isMaster));
-            createNodeMetric(
-                customer,
-                universe,
-                PlatformMetrics.UNIVERSE_NODE_FUNCTION,
-                ipAddress,
-                nodeDetails.tserverHttpPort,
-                "tserver_export",
-                statusValue(nodeDetails.isTserver));
-            createNodeMetric(
-                customer,
-                universe,
-                PlatformMetrics.UNIVERSE_NODE_FUNCTION,
-                ipAddress,
-                nodeDetails.ysqlServerHttpPort,
-                "ysql_export",
-                statusValue(nodeDetails.isYsqlServer));
-            createNodeMetric(
-                customer,
-                universe,
-                PlatformMetrics.UNIVERSE_NODE_FUNCTION,
-                ipAddress,
-                nodeDetails.yqlServerHttpPort,
-                "cql_export",
-                statusValue(nodeDetails.isYqlServer));
-            createNodeMetric(
-                customer,
-                universe,
-                PlatformMetrics.UNIVERSE_NODE_FUNCTION,
-                ipAddress,
-                nodeDetails.redisServerHttpPort,
-                "redis_export",
-                statusValue(nodeDetails.isRedisServer));
+            universeGroup.metric(
+                createNodeMetric(
+                    customer,
+                    universe,
+                    PlatformMetrics.UNIVERSE_NODE_FUNCTION,
+                    ipAddress,
+                    nodeDetails.masterHttpPort,
+                    "master_export",
+                    statusValue(nodeDetails.isMaster)));
+            universeGroup.metric(
+                createNodeMetric(
+                    customer,
+                    universe,
+                    PlatformMetrics.UNIVERSE_NODE_FUNCTION,
+                    ipAddress,
+                    nodeDetails.tserverHttpPort,
+                    "tserver_export",
+                    statusValue(nodeDetails.isTserver)));
+            universeGroup.metric(
+                createNodeMetric(
+                    customer,
+                    universe,
+                    PlatformMetrics.UNIVERSE_NODE_FUNCTION,
+                    ipAddress,
+                    nodeDetails.ysqlServerHttpPort,
+                    "ysql_export",
+                    statusValue(nodeDetails.isYsqlServer)));
+            universeGroup.metric(
+                createNodeMetric(
+                    customer,
+                    universe,
+                    PlatformMetrics.UNIVERSE_NODE_FUNCTION,
+                    ipAddress,
+                    nodeDetails.yqlServerHttpPort,
+                    "cql_export",
+                    statusValue(nodeDetails.isYqlServer)));
+            universeGroup.metric(
+                createNodeMetric(
+                    customer,
+                    universe,
+                    PlatformMetrics.UNIVERSE_NODE_FUNCTION,
+                    ipAddress,
+                    nodeDetails.redisServerHttpPort,
+                    "redis_export",
+                    statusValue(nodeDetails.isRedisServer)));
           }
         }
+        universeGroup.cleanMetricFilter(
+            MetricFilter.builder()
+                .metricNames(UNIVERSE_METRICS)
+                .sourceUuid(universe.getUniverseUUID())
+                .build());
+        metricSaveGroups.add(universeGroup.build());
       }
     }
-    return metrics;
+    return metricSaveGroups;
   }
 
   private Metric createUniverseMetric(
@@ -144,11 +155,6 @@ public class UniverseMetricProvider implements MetricsProvider {
         .setKeyLabel(KnownAlertLabels.INSTANCE, ipAddress + ":" + port)
         .setLabel(KnownAlertLabels.EXPORT_TYPE, exportType)
         .setValue(value);
-  }
-
-  @Override
-  public List<MetricFilter> getMetricsToRemove() throws Exception {
-    return Collections.singletonList(MetricFilter.builder().metrics(UNIVERSE_METRICS).build());
   }
 
   @Override

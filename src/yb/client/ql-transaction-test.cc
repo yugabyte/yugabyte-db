@@ -28,8 +28,6 @@
 
 #include "yb/rpc/rpc.h"
 
-#include "yb/tablet/tablet_peer.h"
-#include "yb/tablet/transaction_coordinator.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
@@ -687,7 +685,7 @@ void QLTransactionTest::TestWriteConflicts(const WriteConflictsOptions& options)
       const auto val = ++value;
       table_.AddInt32ColumnValue(req, kValueColumn, val);
       LOG(INFO) << "TXN: " << active_txn.ToString() << " write " << key << " = " << val;
-      ASSERT_OK(active_txn.session->Apply(op));
+      active_txn.session->Apply(op);
       active_txn.flush_future = active_txn.session->FlushFuture();
 
       ++tries;

@@ -12,11 +12,30 @@
 //
 
 #include "yb/docdb/compaction_file_filter.h"
-#include <algorithm>
 
+#include "yb/common/hybrid_time.h"
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_ttl_util.h"
 #include "yb/rocksdb/compaction_filter.h"
+#include "yb/util/flag_tags.h"
+
+DEFINE_bool(file_expiration_ignore_value_ttl, false,
+             "When deciding whether a file has expired, assume that it is safe to ignore "
+             "value-level TTL and expire based on table TTL only. CAUTION - Shoule only be "
+             "used for expiration of older SST files without value-level TTL metadata, or "
+             "for expiring files with incorrect value-level expiration. Misuse can result "
+             "in the deletion of live data!");
+TAG_FLAG(file_expiration_ignore_value_ttl, unsafe);
+TAG_FLAG(file_expiration_ignore_value_ttl, runtime);
+
+DEFINE_bool(file_expiration_value_ttl_overrides_table_ttl, false,
+            "When deciding whether a file has expired, assume that any file with "
+            "value-level TTL metadata can be expired solely on that metadata. Useful for "
+            "the expiration of files earlier than the table-level TTL that is set. "
+            "CAUTION - Should only be used in workloads where the user is certain all data is "
+            "written with a value-level TTL. Misuse can result in the deletion of live data!");
+TAG_FLAG(file_expiration_value_ttl_overrides_table_ttl, unsafe);
+TAG_FLAG(file_expiration_value_ttl_overrides_table_ttl, runtime);
 
 namespace yb {
 namespace docdb {
@@ -27,6 +46,17 @@ using rocksdb::FilterDecision;
 using std::unique_ptr;
 using std::vector;
 
+namespace {
+  const ExpiryMode CurrentExpiryMode() {
+    if (FLAGS_file_expiration_ignore_value_ttl) {
+      return EXP_TABLE_ONLY;
+    } else if (FLAGS_file_expiration_value_ttl_overrides_table_ttl) {
+      return EXP_TRUST_VALUE;
+    }
+    return EXP_NORMAL;
+  }
+}
+
 ExpirationTime ExtractExpirationTime(const FileMetaData* file) {
   // If no frontier detected, return an expiration time that will not expire.
   if (!file || !file->largest.user_frontier) {
@@ -35,22 +65,35 @@ ExpirationTime ExtractExpirationTime(const FileMetaData* file) {
   auto& consensus_frontier = down_cast<ConsensusFrontier&>(*file->largest.user_frontier);
   // If the TTL expiration time is uninitialized, return a max expiration time with the
   // frontier's hybrid time.
-  if (!consensus_frontier.max_value_level_ttl_expiration_time().is_valid()) {
-    return ExpirationTime{
-      .ttl_expiration_ht = kNoExpiration,
-      .created_ht = consensus_frontier.hybrid_time()
-    };
-  }
+  const auto ttl_expiry_ht =
+      consensus_frontier.max_value_level_ttl_expiration_time().GetValueOr(kNoExpiration);
+
   return ExpirationTime{
-    .ttl_expiration_ht = consensus_frontier.max_value_level_ttl_expiration_time(),
+    .ttl_expiration_ht = ttl_expiry_ht,
     .created_ht = consensus_frontier.hybrid_time()
   };
 }
 
-bool IsExpired(ExpirationTime expiry, MonoDelta table_ttl, HybridTime now) {
-  auto file_expiry = MaxExpirationFromValueAndTableTTL(
-      expiry.created_ht, table_ttl, expiry.ttl_expiration_ht);
-  return HasExpiredTTL(file_expiry, now);
+bool TtlIsExpired(const ExpirationTime expiry,
+    const MonoDelta table_ttl,
+    const HybridTime now,
+    const ExpiryMode mode) {
+  // If FLAGS_file_expiration_ignore_value_ttl is set, ignore the value level TTL
+  // entirely and use only the default table TTL.
+  const auto ttl_expiry_ht =
+      mode == EXP_TABLE_ONLY ? kUseDefaultTTL : expiry.ttl_expiration_ht;
+
+  if (mode == EXP_TRUST_VALUE && ttl_expiry_ht.is_valid() && ttl_expiry_ht != kUseDefaultTTL) {
+    return HasExpiredTTL(ttl_expiry_ht, now);
+  }
+
+  auto file_expiry_ht = MaxExpirationFromValueAndTableTTL(
+      expiry.created_ht, table_ttl, ttl_expiry_ht);
+  return HasExpiredTTL(file_expiry_ht, now);
+}
+
+bool IsLastKeyCreatedBeforeHistoryCutoff(ExpirationTime expiry, HybridTime history_cutoff) {
+  return expiry.created_ht < history_cutoff;
 }
 
 FilterDecision DocDBCompactionFileFilter::Filter(const FileMetaData* file) {
@@ -60,22 +103,36 @@ FilterDecision DocDBCompactionFileFilter::Filter(const FileMetaData* file) {
   // the file_filter, then we need to stop filtering files at that point.
   //
   // max_ht_to_expire_ indicates the expiration cutoff as determined when the filter was created.
+  // history_cutoff_ indicates the timestamp after which it is unsafe to delete data.
+  // table_ttl_ indicates the current default_time_to_live for the table.
+  // filter_ht_ indicates the timestamp at which the filter was created.
 
   auto expiry = ExtractExpirationTime(file);
   // If the created HT is less than the max to expire, then we're clear to expire the file.
   if (expiry.created_ht < max_ht_to_expire_) {
-    // Sanity check to ensure that we don't accidentally expire a file that should be kept.
-    // This path should never be taken.
-    if (!IsExpired(expiry, table_ttl_, filter_ht_)) {
-      LOG(WARNING) << "Attempted to expire a file that is still needed (kept file): "
-          << file->ToString();
+    // Sanity checks to ensure that we don't accidentally expire a file that should be kept.
+    // These paths should never be taken.
+    if (!IsLastKeyCreatedBeforeHistoryCutoff(expiry, history_cutoff_)) {
+      LOG(DFATAL) << "Attempted to discard a file that has not exceeded its "
+          << "history cutoff: "
+          << " filter: " << ToString()
+          << " file: " << file->ToString();
+      return FilterDecision::kKeep;
+    } else if (!TtlIsExpired(expiry, table_ttl_, filter_ht_, mode_)) {
+      LOG(DFATAL) << "Attempted to discard a file that has not expired: "
+          << " filter: " << ToString()
+          << " file: " << file->ToString();
       return FilterDecision::kKeep;
     }
-    LOG(INFO) << "Filtering file, TTL expired: " << file->ToString();
+    VLOG(2) << "Filtering file, TTL expired: "
+        << " filter: " << ToString()
+        << " file: " << file->ToString();
     return FilterDecision::kDiscard;
   } else {
     VLOG(3) << "Keeping file, has a key HybridTime greater than the max to expire ("
-        << max_ht_to_expire_ << "): " << file->ToString();
+        << max_ht_to_expire_ << "): "
+        << " filter: " << ToString()
+        << " file: " << file->ToString();
     return FilterDecision::kKeep;
   }
 }
@@ -87,23 +144,37 @@ const char* DocDBCompactionFileFilter::Name() const {
 unique_ptr<CompactionFileFilter> DocDBCompactionFileFilterFactory::CreateCompactionFileFilter(
     const vector<FileMetaData*>& input_files) {
   const HybridTime filter_ht = clock_->Now();
-  MonoDelta table_ttl = TableTTL(*schema_);
+  auto history_retention = retention_policy_->GetRetentionDirective();
+  MonoDelta table_ttl = history_retention.table_ttl;
+  HybridTime history_cutoff = history_retention.history_cutoff;
   HybridTime min_kept_ht = HybridTime::kMax;
+  const ExpiryMode mode = CurrentExpiryMode();
+
   // Need to iterate through all files and determine the minimum HybridTime of a file that
   // will *not* be expired. This will prevent us from expiring a file prematurely and accidentally
   // exposing old data.
   for (auto file : input_files) {
     auto expiry = ExtractExpirationTime(file);
-    if (!IsExpired(expiry, table_ttl, filter_ht)) {
-      VLOG(4) << "File is not expired, updating minimum HybridTime for filter: "
-          << file->ToString();
+    auto format_expiration_details = [expiry, table_ttl, mode, history_cutoff, file]() {
+      return Format("file expiration info: $0, table ttl: $1,"
+          " mode: $2, history_cutoff: $3, file: $4",
+          expiry, table_ttl, mode, history_cutoff, file);
+    };
+
+    // A file is *not* expired if either A) its latest table TTL/value TTL time has not expired,
+    // or B) its latest key is still within the history retention window.
+    if (!TtlIsExpired(expiry, table_ttl, filter_ht, mode) ||
+        !IsLastKeyCreatedBeforeHistoryCutoff(expiry, history_cutoff)) {
+      VLOG(4) << "File is not expired or contains data created after history cutoff time, "
+          << "updating minimum HybridTime for filter: " << format_expiration_details();
       min_kept_ht = min_kept_ht < expiry.created_ht ? min_kept_ht : expiry.created_ht;
     } else {
       VLOG(4) << "File is expired (may or may not be filtered during compaction): "
-          << file->ToString();
+          << format_expiration_details();
     }
   }
-  return std::make_unique<DocDBCompactionFileFilter>(table_ttl, min_kept_ht, filter_ht);
+  return std::make_unique<DocDBCompactionFileFilter>(
+      table_ttl, history_cutoff, min_kept_ht, filter_ht, mode);
 }
 
 const char* DocDBCompactionFileFilterFactory::Name() const {

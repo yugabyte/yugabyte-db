@@ -330,7 +330,7 @@ TEST_P(CDCServiceTxnTestEnableReplicateIntents, MetricsTest) {
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     const auto& tserver = cluster_->mini_tablet_server(0)->server();
     auto cdc_service = dynamic_cast<CDCServiceImpl*>(
-        tserver->rpc_server()->service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+        tserver->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
     auto metrics = cdc_service->GetCDCTabletMetrics({"" /* UUID */, stream_id, tablet_id});
     auto lag = metrics->async_replication_sent_lag_micros->value();
     YB_LOG_EVERY_N_SECS(INFO, 1) << "Sent lag: " << lag << "us";

@@ -34,7 +34,6 @@
 #include <iostream>
 
 #include <boost/optional/optional.hpp>
-#include "yb/tserver/tserver_error.h"
 #include <glog/logging.h>
 
 #ifdef TCMALLOC_ENABLED
@@ -45,7 +44,6 @@
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/redis/redisserver/redis_server.h"
 
-#include "yb/consensus/log_util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/call_home.h"
 #include "yb/rpc/io_thread_pool.h"
@@ -143,6 +141,7 @@ void SetProxyAddresses() {
   LOG(INFO) << "Using parsed rpc = " << FLAGS_rpc_bind_addresses;
   SetProxyAddress(&FLAGS_redis_proxy_bind_address, "YEDIS", RedisServer::kDefaultPort);
   SetProxyAddress(&FLAGS_cql_proxy_bind_address, "YCQL", CQLServer::kDefaultPort);
+  SetProxyAddress(&FLAGS_pgsql_proxy_bind_address, "YSQL", PgProcessConf::kDefaultPort);
 }
 
 int TabletServerMain(int argc, char** argv) {

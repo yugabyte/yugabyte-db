@@ -32,21 +32,39 @@
 
 #include "yb/tablet/operations/operation_driver.h"
 
+#include <atomic>
+#include <future>
+#include <map>
+#include <memory>
 #include <mutex>
+#include <string>
+#include <vector>
 
 #include "yb/client/client.h"
 #include "yb/consensus/consensus.h"
 #include "yb/gutil/strings/strcat.h"
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_peer.h"
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/consensus_types.h"
+#include "yb/gutil/callback.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/tablet/mvcc.h"
+#include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/operations/operation_tracker.h"
+#include "yb/tablet/preparer.h"
+#include "yb/tablet/tablet_options.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/util/metrics.h"
+#include "yb/util/semaphore.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/threadpool.h"
-#include "yb/util/thread_restrictions.h"
 #include "yb/util/trace.h"
 #include "yb/util/atomic.h"
 
@@ -161,6 +179,7 @@ void OperationDriver::ExecuteAsync() {
   VLOG_WITH_PREFIX(4) << "ExecuteAsync()";
   TRACE_EVENT_FLOW_BEGIN0("operation", "ExecuteAsync", this);
   ADOPT_TRACE(trace());
+  TRACE_FUNC();
 
   auto delay = GetAtomicFlag(&FLAGS_TEST_delay_execute_async_ms);
   if (delay != 0 &&

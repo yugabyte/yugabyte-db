@@ -173,12 +173,27 @@ CreateExecutorState(void)
 	 */
 	estate->es_yb_is_single_row_modify_txn = false;
 	estate->yb_conflict_slot = NULL;
+	/*
+	 * The read hybrid time used for this query. This will be initialized
+	 * by the first read operation invoked for this query, and all later
+	 * reads performed by this query will not read any data written past this time.
+	 */
+	estate->yb_es_read_ht = 0;
+
 	estate->yb_exec_params.limit_count = 0;
 	estate->yb_exec_params.limit_offset = 0;
 	estate->yb_exec_params.limit_use_default = true;
 	estate->yb_exec_params.rowmark = -1;
 	estate->yb_can_batch_updates = false;
 	estate->yb_exec_params.read_from_followers = false;
+	estate->yb_exec_params.is_index_backfill = false;
+	/*
+	 * Pointer to the query read hybrid time. This pointer is passed
+	 * down to all the DocDB read operations invoked for this query. Only
+	 * the first read operation initializes its value, and all the other
+	 * operations ensure that they don't read any value written past this time.
+	 */
+	estate->yb_exec_params.statement_read_time = &estate->yb_es_read_ht;
 
 	return estate;
 }

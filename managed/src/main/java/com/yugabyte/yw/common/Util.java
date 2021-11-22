@@ -4,6 +4,7 @@ package com.yugabyte.yw.common;
 import static com.yugabyte.yw.common.PlacementInfoUtil.getNumMasters;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -20,7 +21,9 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.ApiModel;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileWriter;
+import java.io.InputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.net.InetAddress;
@@ -45,6 +48,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.TimeZone;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -61,9 +65,18 @@ public class Util {
 
   public static final String DEFAULT_YSQL_USERNAME = "yugabyte";
   public static final String DEFAULT_YSQL_PASSWORD = "yugabyte";
+  public static final String DEFAULT_YSQL_ADMIN_ROLE_NAME = "yb_superuser";
   public static final String DEFAULT_YCQL_USERNAME = "cassandra";
   public static final String DEFAULT_YCQL_PASSWORD = "cassandra";
   public static final String YUGABYTE_DB = "yugabyte";
+  public static final int MIN_NUM_BACKUPS_TO_RETAIN = 3;
+  public static final String REDACT = "REDACTED";
+  public static final String KEY_LOCATION_SUFFIX = "/backup_keys.json";
+
+  public static final String AZ = "AZ";
+  public static final String GCS = "GCS";
+  public static final String S3 = "S3";
+  public static final String NFS = "NFS";
 
   /**
    * Returns a list of Inet address objects in the proxy tier. This is needed by Cassandra clients.
@@ -78,6 +91,13 @@ public class Util {
       inetAddrs.add(new InetSocketAddress(privateIp, yqlRPCPort));
     }
     return inetAddrs;
+  }
+
+  public static String redactString(String input) {
+    String length = ((Integer) input.length()).toString();
+    String regex = "(.)" + "{" + length + "}";
+    String output = input.replaceAll(regex, REDACT);
+    return output;
   }
 
   /**
@@ -372,6 +392,31 @@ public class Util {
     }
   }
 
+  /**
+   * @deprecated Avoid using request body with Json ArrayNode as root. This is because
+   *     for @ApiImplicitParam does not support that. Instead create a top level request object that
+   *     wraps the array If at all, use this only for undocumented API
+   */
+  @Deprecated
+  public static <T> List<T> parseJsonArray(String content, Class<T> elementType) {
+    try {
+      return Json.mapper()
+          .readValue(
+              content,
+              Json.mapper().getTypeFactory().constructCollectionType(List.class, elementType));
+    } catch (IOException e) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Failed to parse List<"
+              + elementType.getSimpleName()
+              + ">"
+              + " object: "
+              + content
+              + " error: "
+              + e.getMessage());
+    }
+  }
+
   @ApiModel(value = "UniverseDetailSubset", description = "A small subset of universe information")
   @Getter
   public static class UniverseDetailSubset {
@@ -541,6 +586,12 @@ public class Util {
     return formatter.format(new Date(unixTimestampMs));
   }
 
+  public static String unixTimeToDateString(long unixTimestampMs, String dateFormat, TimeZone tz) {
+    SimpleDateFormat formatter = new SimpleDateFormat(dateFormat);
+    formatter.setTimeZone(tz);
+    return formatter.format(new Date(unixTimestampMs));
+  }
+
   // Update the Universe's 'backupInProgress' flag to new state in synchronized manner to avoid
   // race condition.
   public static synchronized void lockedUpdateBackupState(
@@ -570,6 +621,14 @@ public class Util {
     } catch (UnknownHostException e) {
       LOG.error("Could not determine the host IP", e);
       return "";
+    }
+  }
+
+  public static InputStream getInputStreamOrFail(File file) {
+    try {
+      return new FileInputStream(file);
+    } catch (FileNotFoundException e) {
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
   }
 }

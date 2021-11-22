@@ -5,7 +5,9 @@ import static play.libs.Json.toJson;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.DatabaseSecurityFormData;
 import com.yugabyte.yw.forms.DatabaseUserFormData;
 import com.yugabyte.yw.forms.RunQueryFormData;
@@ -30,6 +32,21 @@ public class YsqlQueryExecutor {
   private static final Logger LOG = LoggerFactory.getLogger(YsqlQueryExecutor.class);
   private static final String DEFAULT_DB_USER = Util.DEFAULT_YSQL_USERNAME;
   private static final String DEFAULT_DB_PASSWORD = Util.DEFAULT_YSQL_PASSWORD;
+  private static final String DB_ADMIN_ROLE_NAME = Util.DEFAULT_YSQL_ADMIN_ROLE_NAME;
+
+  private static final String DEL_PG_ROLES_CMD_1 =
+      "SET YB_NON_DDL_TXN_FOR_SYS_TABLES_ALLOWED=ON; "
+          + "DELETE FROM pg_shdepend WHERE refclassid IN "
+          + "(SELECT oid FROM pg_class WHERE relname='pg_authid')"
+          + " AND refobjid IN (SELECT oid FROM pg_roles WHERE rolname IN "
+          + "('pg_execute_server_program', 'pg_read_server_files', "
+          + "'pg_write_server_files' )); ";
+  private static final String DEL_PG_ROLES_CMD_2 =
+      "DROP ROLE pg_execute_server_program, pg_read_server_files, pg_write_server_files; "
+          + " UPDATE  pg_yb_catalog_version "
+          + " SET current_version = current_version + 1 WHERE db_oid = 1;";
+
+  @Inject RuntimeConfigFactory runtimeConfigFactory;
 
   private String getQueryType(String queryString) {
     String[] queryParts = queryString.split(" ");
@@ -103,21 +120,95 @@ public class YsqlQueryExecutor {
     return response;
   }
 
-  public void createUser(Universe universe, DatabaseUserFormData data) {
+  public JsonNode runQueryUtil(Universe universe, DatabaseUserFormData data, String query) {
     RunQueryFormData ysqlQuery = new RunQueryFormData();
     // Create user for customer YSQL.
-    ysqlQuery.query =
-        String.format(
-            "CREATE USER \"%s\" SUPERUSER INHERIT CREATEROLE "
-                + "CREATEDB LOGIN REPLICATION BYPASSRLS PASSWORD '%s'",
-            data.username, Util.escapeSingleQuotesOnly(data.password));
+    ysqlQuery.query = query;
     ysqlQuery.db_name = data.dbName;
     JsonNode ysqlResponse =
         executeQuery(universe, ysqlQuery, data.ysqlAdminUsername, data.ysqlAdminPassword);
-    LOG.info("Creating YSQL user, result: " + ysqlResponse.toString());
     if (ysqlResponse.has("error")) {
-      throw new PlatformServiceException(
-          Http.Status.BAD_REQUEST, ysqlResponse.get("error").asText());
+      String errorMsg = ysqlResponse.get("error").asText();
+      LOG.error("Error executing query: {}", errorMsg);
+      throw new PlatformServiceException(Http.Status.BAD_REQUEST, errorMsg);
+    }
+    return ysqlResponse;
+  }
+
+  public void createUser(Universe universe, DatabaseUserFormData data) {
+
+    boolean isCloudEnabled =
+        runtimeConfigFactory.forUniverse(universe).getBoolean("yb.cloud.enabled");
+
+    RunQueryFormData ysqlQuery = new RunQueryFormData();
+    JsonNode ysqlResponse;
+
+    if (isCloudEnabled) {
+      // Create admin role if it doesn't exist already
+      ysqlQuery.query =
+          String.format(
+              "CREATE ROLE \"%s\" INHERIT CREATEROLE CREATEDB BYPASSRLS", DB_ADMIN_ROLE_NAME);
+      ysqlQuery.db_name = data.dbName;
+      ysqlResponse =
+          executeQuery(universe, ysqlQuery, data.ysqlAdminUsername, data.ysqlAdminPassword);
+      LOG.info("Creating YSQL admin role, result: " + ysqlResponse.toString());
+      if (ysqlResponse.has("error")) {
+        String roleError = ysqlResponse.get("error").asText();
+        if (!roleError.toUpperCase().contains("ALREADY EXISTS")) {
+          throw new PlatformServiceException(Http.Status.BAD_REQUEST, roleError);
+        } else {
+          LOG.info(
+              "Creating YSQL admin role, ignoring error for existing role: {}",
+              ysqlResponse.toString());
+        }
+      } else {
+        boolean versionMatch =
+            universe
+                .getVersions()
+                .stream()
+                .allMatch(v -> Util.compareYbVersions(v, "2.6.4.0") >= 0);
+        String rolesList = "pg_read_all_stats, pg_signal_backend";
+        if (versionMatch) {
+          // yb_extension is only supported in recent YB versions 2.6.x >= 2.6.4 and >= 2.8.0
+          // not including the odd 2.7.x, 2.9.x releases
+          rolesList += ", yb_extension";
+        }
+        ysqlResponse =
+            runQueryUtil(
+                universe,
+                data,
+                String.format(
+                    "GRANT %2$s TO \"%1$s\"; "
+                        + "GRANT EXECUTE ON FUNCTION pg_stat_statements_reset TO  \"%1$s\"; "
+                        + " GRANT ALL ON DATABASE yugabyte, postgres TO \"%1$s\";",
+                    DB_ADMIN_ROLE_NAME, rolesList));
+        LOG.info("GRANT privs to admin role, result {}", ysqlResponse.toString());
+
+        ysqlResponse = runQueryUtil(universe, data, DEL_PG_ROLES_CMD_1);
+        LOG.info("Delete pg roles 1 result: {}", ysqlResponse.toString());
+
+        ysqlResponse = runQueryUtil(universe, data, DEL_PG_ROLES_CMD_2);
+        LOG.info("Delete pg roles 2 result: {}", ysqlResponse.toString());
+      }
+    }
+
+    ysqlResponse =
+        runQueryUtil(
+            universe,
+            data,
+            String.format(
+                "CREATE USER \"%s\" INHERIT CREATEROLE CREATEDB LOGIN BYPASSRLS PASSWORD '%s'",
+                data.username, Util.escapeSingleQuotesOnly(data.password)));
+    LOG.info("Creating YSQL user {}, result: {}", data.username, ysqlResponse.toString());
+
+    if (isCloudEnabled) {
+      ysqlResponse =
+          runQueryUtil(
+              universe,
+              data,
+              String.format(
+                  "GRANT \"%s\" TO \"%s\" WITH ADMIN OPTION", DB_ADMIN_ROLE_NAME, data.username));
+      LOG.info("Grant admin role to user {}, result: {}", data.username, ysqlResponse.toString());
     }
   }
 

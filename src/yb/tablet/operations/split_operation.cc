@@ -17,10 +17,8 @@
 
 #include "yb/consensus/consensus_error.h"
 #include "yb/consensus/consensus_round.h"
-#include "yb/consensus/raft_consensus.h"
 
 #include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_splitter.h"
 
 using namespace std::literals;
@@ -71,12 +69,14 @@ bool SplitOperation::ShouldAllowOpAfterSplitTablet(const consensus::OperationTyp
       // We allow NO_OP, so old tablet can have leader changes in case of re-elections.
     case consensus::NO_OP: FALLTHROUGH_INTENDED;
       // We allow SNAPSHOT_OP, so old tablet can be restored.
-    case consensus::SNAPSHOT_OP:
+    case consensus::SNAPSHOT_OP: FALLTHROUGH_INTENDED;
+      // Allow CHANGE_CONFIG_OP, so the old tablet replicas can be moved between tservers while we
+      // keep the tablet available.
+    case consensus::CHANGE_CONFIG_OP:
       return true;
     case consensus::UNKNOWN_OP: FALLTHROUGH_INTENDED;
     case consensus::WRITE_OP: FALLTHROUGH_INTENDED;
     case consensus::CHANGE_METADATA_OP: FALLTHROUGH_INTENDED;
-    case consensus::CHANGE_CONFIG_OP: FALLTHROUGH_INTENDED;
     case consensus::HISTORY_CUTOFF_OP: FALLTHROUGH_INTENDED;
     case consensus::UPDATE_TRANSACTION_OP: FALLTHROUGH_INTENDED;
     case consensus::TRUNCATE_OP: FALLTHROUGH_INTENDED;

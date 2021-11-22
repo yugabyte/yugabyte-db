@@ -64,12 +64,12 @@ for idx in range(num_rows):
               , ("k1"))
 ```
 
-Since the Python psycopg2 driver does not support prepared bind statements (using a cursor.prepare() API), the explicit PREPARE statement as in the case of PostgreSQL. The above code snippet can be optimized by changing the above query to the following equivalent query.
+Since the Python psycopg2 driver does not support prepared bind statements (using a cursor.prepare() API), the explicit PREPARE statement is used. The above code snippet can be optimized by changing the above query to the following equivalent query.
 
 ```
 cur.execute("PREPARE myplan as " + 
             "  SELECT * from t1, t2 " +
-            "  WHERE t1.k = t2.k AND $1 = $2 LIMIT 1")
+            "  WHERE t1.k = t2.k AND t1.v = $1 LIMIT 1")
   for idx in range(num_rows):
-    cur.execute("""EXECUTE myplan(%s, %s)""", ("foo", "foo"))
+    cur.execute("""EXECUTE myplan(%s)""" % "'foo'")
 ```

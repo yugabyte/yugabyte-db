@@ -83,13 +83,13 @@ class PgAlterDatabase : public PgDdl {
 
   StmtOp stmt_op() const override { return StmtOp::STMT_ALTER_DATABASE; }
 
-  CHECKED_STATUS RenameDatabase(const char *newname);
+  void RenameDatabase(const char *newname);
 
   // Execute.
   CHECKED_STATUS Exec();
 
  private:
-  client::YBNamespaceAlterer* namespace_alterer_;
+  tserver::PgAlterDatabaseRequestPB req_;
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -110,9 +110,7 @@ class PgCreateTablegroup : public PgDdl {
   CHECKED_STATUS Exec();
 
  private:
-  const char *database_name_;
-  const PgOid database_oid_;
-  const PgOid tablegroup_oid_;
+  tserver::PgCreateTablegroupRequestPB req_;
 };
 
 class PgDropTablegroup : public PgDdl {
@@ -128,8 +126,7 @@ class PgDropTablegroup : public PgDdl {
   CHECKED_STATUS Exec();
 
  private:
-  const PgOid database_oid_;
-  const PgOid tablegroup_oid_;
+  tserver::PgDropTablegroupRequestPB req_;
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -150,12 +147,10 @@ class PgCreateTable : public PgDdl {
                 const PgObjectId& tablegroup_oid,
                 const PgObjectId& tablespace_oid);
 
-  StmtOp stmt_op() const override { return StmtOp::STMT_CREATE_TABLE; }
+  void SetupIndex(
+      const PgObjectId& base_table_id, bool is_unique_index, bool skip_index_backfill);
 
-  // For PgCreateIndex: the indexed (base) table id and if this is a unique index.
-  virtual boost::optional<const PgObjectId&> indexed_table_id() const { return boost::none; }
-  virtual bool is_unique_index() const { return false; }
-  virtual bool skip_index_backfill() const { return false; }
+  StmtOp stmt_op() const override;
 
   CHECKED_STATUS AddColumn(const char *attr_name,
                            int attr_num,
@@ -182,41 +177,20 @@ class PgCreateTable : public PgDdl {
 
   CHECKED_STATUS AddSplitBoundary(PgExpr **exprs, int expr_count);
 
-  void AddTransaction(std::shared_future<Result<TransactionMetadata>> txn) {
-    txn_future_ = txn;
+  void UseTransaction(const TransactionMetadata& txn_metadata) {
+    txn_metadata.ToPB(req_.mutable_use_transaction());
   }
 
   // Execute.
   virtual CHECKED_STATUS Exec();
 
  protected:
-  virtual CHECKED_STATUS AddColumnImpl(const char *attr_name,
-                                       int attr_num,
-                                       int attr_ybtype,
-                                       bool is_hash,
-                                       bool is_range,
-                                       ColumnSchema::SortingType sorting_type =
-                                           ColumnSchema::SortingType::kNotSpecified);
-
-  virtual size_t PrimaryKeyRangeColumnCount() const;
+  virtual CHECKED_STATUS AddColumnImpl(
+      const char *attr_name, int attr_num, int attr_ybtype, bool is_hash, bool is_range,
+      ColumnSchema::SortingType sorting_type = ColumnSchema::SortingType::kNotSpecified);
 
  private:
-  Result<std::vector<std::string>> BuildSplitRows(const client::YBSchema& schema);
-
-  client::YBTableName table_name_;
-  const PgObjectId table_id_;
-  int32_t num_tablets_;
-  bool is_pg_catalog_table_;
-  bool is_shared_table_;
-  bool if_not_exist_;
-  bool colocated_ = true;
-  const PgObjectId tablegroup_oid_;
-  const PgObjectId tablespace_oid_;
-  boost::optional<YBHashSchema> hash_schema_;
-  std::vector<std::string> range_columns_;
-  std::vector<std::vector<QLValuePB>> split_rows_; // Split rows for range tables
-  client::YBSchemaBuilder schema_builder_;
-  boost::optional<std::shared_future<Result<TransactionMetadata>>> txn_future_ = boost::none;
+  tserver::PgCreateTableRequestPB req_;
 };
 
 class PgDropTable : public PgDdl {
@@ -245,63 +219,7 @@ class PgTruncateTable : public PgDdl {
   CHECKED_STATUS Exec();
 
  private:
-  const PgObjectId table_id_;
-};
-
-//--------------------------------------------------------------------------------------------------
-// CREATE INDEX
-//--------------------------------------------------------------------------------------------------
-
-class PgCreateIndex : public PgCreateTable {
- public:
-  PgCreateIndex(PgSession::ScopedRefPtr pg_session,
-                const char *database_name,
-                const char *schema_name,
-                const char *index_name,
-                const PgObjectId& index_id,
-                const PgObjectId& base_table_id,
-                bool is_shared_index,
-                bool is_unique_index,
-                const bool skip_index_backfill,
-                bool if_not_exist,
-                const PgObjectId& tablegroup_oid,
-                const PgObjectId& tablespace_oid);
-
-  StmtOp stmt_op() const override { return StmtOp::STMT_CREATE_INDEX; }
-
-  boost::optional<const PgObjectId&> indexed_table_id() const override {
-    return base_table_id_;
-  }
-
-  bool is_unique_index() const override {
-    return is_unique_index_;
-  }
-
-  bool skip_index_backfill() const override {
-    return skip_index_backfill_;
-  }
-
-  // Execute.
-  CHECKED_STATUS Exec() override;
-
- protected:
-  CHECKED_STATUS AddColumnImpl(const char *attr_name,
-                               int attr_num,
-                               int attr_ybtype,
-                               bool is_hash,
-                               bool is_range,
-                               ColumnSchema::SortingType sorting_type) override;
-
- private:
-  size_t PrimaryKeyRangeColumnCount() const override;
-
-  CHECKED_STATUS AddYBbasectidColumn();
-
-  const PgObjectId base_table_id_;
-  bool is_unique_index_ = false;
-  bool skip_index_backfill_ = false;
-  bool ybbasectid_added_ = false;
-  size_t primary_key_range_column_count_ = 0;
+  tserver::PgTruncateTableRequestPB req_;
 };
 
 class PgDropIndex : public PgDropTable {
@@ -340,15 +258,12 @@ class PgAlterTable : public PgDdl {
 
   StmtOp stmt_op() const override { return StmtOp::STMT_ALTER_TABLE; }
 
-  void AddTransaction(std::shared_future<Result<TransactionMetadata>> transaction) {
-    txn_future_ = transaction;
+  void UseTransaction(const TransactionMetadata& txn_metadata) {
+    txn_metadata.ToPB(req_.mutable_use_transaction());
   }
 
  private:
-  const client::YBTableName table_name_;
-  const PgObjectId table_id_;
-  std::unique_ptr<client::YBTableAlterer> table_alterer;
-  boost::optional<std::shared_future<Result<TransactionMetadata>>> txn_future_ = boost::none;
+  tserver::PgAlterTableRequestPB req_;
 };
 
 }  // namespace pggate

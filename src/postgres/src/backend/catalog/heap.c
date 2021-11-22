@@ -301,7 +301,6 @@ heap_create(const char *relname,
 		case RELKIND_VIEW:
 		case RELKIND_COMPOSITE_TYPE:
 		case RELKIND_FOREIGN_TABLE:
-		case RELKIND_PARTITIONED_TABLE:
 			create_storage = false;
 
 			/*
@@ -311,10 +310,11 @@ heap_create(const char *relname,
 			reltablespace = InvalidOid;
 			break;
 
+		case RELKIND_PARTITIONED_TABLE:
 		case RELKIND_PARTITIONED_INDEX:
 			/*
-			 * Preserve tablespace so that it's used as tablespace for indexes
-			 * on future partitions.
+			 * For partitioned tables and indexes, preserve tablespace so that
+			 * it's used as the tablespace for future partitions.
 			 */
 			create_storage = false;
 			break;
@@ -396,6 +396,15 @@ heap_create(const char *relname,
 		RelationOpenSmgr(rel);
 		RelationCreateStorage(rel->rd_node, relpersistence);
 	}
+
+	/*
+	 * If a tablespace is specified, removal of that tablespace is normally
+	 * protected by the existence of a physical file; but for Yugabyte relations
+	 * and relations with no files, add a pg_shdepend entry to account for that.
+	 */
+	if ((IsYBRelation(rel) || !create_storage) && reltablespace != InvalidOid)
+		recordDependencyOnTablespace(RelationRelationId, relid,
+									 reltablespace);
 
 	return rel;
 }
@@ -1040,6 +1049,66 @@ AddNewRelationType(const char *typeName,
 				   yb_new_rel_is_shared); /* whether new relation is shared */
 }
 
+/*
+ * Insert initdb-like permissions into pg_init_privs and return the relacl
+ * to be set in pg_class.
+ *
+ * initdb sets a very specific set of permissions which we replicate here:
+ * '=r/$BOOTSTRAP_SUPERUSERID' followed by
+ * pg_catalog.acldefault('r', BOOTSTRAP_SUPERUSERID)
+ * (which results in {=r/postgres,postgres=arwdDxt/postgres}).
+ *
+ * See setup_privileges() in initdb.c.
+ */
+static Acl*
+YbSetInitdbPermissions(Oid relid, char relkind, bool relisshared)
+{
+	Acl* acl;
+
+	AclItem aclitem;
+	aclitem.ai_grantee = ACL_ID_PUBLIC;
+	aclitem.ai_grantor = BOOTSTRAP_SUPERUSERID;
+	ACLITEM_SET_RIGHTS(aclitem, ACL_SELECT);
+
+	Acl *allow_read_to_everyone = aclupdate(make_empty_acl(), &aclitem,
+		ACL_MODECHG_EQL, BOOTSTRAP_SUPERUSERID, DROP_RESTRICT);
+
+	Acl *superuser_default =
+	    acldefault(relkind == RELKIND_SEQUENCE ? OBJECT_SEQUENCE
+											   : OBJECT_TABLE,
+				   BOOTSTRAP_SUPERUSERID);
+
+	acl = aclconcat(allow_read_to_everyone, superuser_default);
+
+	/*
+	 * We also need to insert this ACL value into pg_init_privs
+	 * (for shared rels - do the insert in all databases).
+	 */
+
+	Relation    pg_init_privs       = heap_open(InitPrivsRelationId, RowExclusiveLock);
+	HeapTuple   pg_init_privs_tuple;
+	Datum       values[Natts_pg_init_privs];
+	bool        nulls[Natts_pg_init_privs];
+
+	values[Anum_pg_init_privs_objoid - 1]    = ObjectIdGetDatum(relid);
+	values[Anum_pg_init_privs_classoid - 1]  = ObjectIdGetDatum(RelationRelationId);
+	values[Anum_pg_init_privs_objsubid - 1]  = (Datum) 0;
+	values[Anum_pg_init_privs_privtype - 1]  = CharGetDatum(INITPRIVS_INITDB);
+	values[Anum_pg_init_privs_initprivs - 1] = PointerGetDatum(acl);
+
+	MemSet(nulls, false, sizeof(nulls));
+
+	pg_init_privs_tuple =
+		heap_form_tuple(RelationGetDescr(pg_init_privs), values, nulls);
+
+	YBCatalogTupleInsert(pg_init_privs, pg_init_privs_tuple, relisshared);
+
+	heap_freetuple(pg_init_privs_tuple);
+	heap_close(pg_init_privs, RowExclusiveLock);
+
+	return acl;
+}
+
 /* --------------------------------
  *		heap_create_with_catalog
  *
@@ -1066,9 +1135,11 @@ AddNewRelationType(const char *typeName,
  *		Not used for system relations in YSQL upgrade mode.
  *	use_user_acl: true if should look for user-defined default permissions;
  *		if false, relacl is always set NULL.
- *		Not used for system relations in YSQL upgrade mode.
  *	allow_system_table_mods: true to allow creation in system namespaces
  *	is_internal: is this a system-generated catalog?
+ *	yb_use_initdb_acl: if true, permissions will be set as if the relation
+ *		is created by initdb via BKI or yb_system_views.sql.
+ *		Can only be used in YSQL upgrade mode, has priority over use_user_acl.
  *
  * Output parameters:
  *	typaddress: if not null, gets the object address of the new pg_type entry
@@ -1098,7 +1169,8 @@ heap_create_with_catalog(const char *relname,
 						 bool allow_system_table_mods,
 						 bool is_internal,
 						 Oid relrewrite,
-						 ObjectAddress *typaddress)
+						 ObjectAddress *typaddress,
+						 bool yb_use_initdb_acl)
 {
 	Relation	pg_class_desc;
 	Relation	new_rel_desc;
@@ -1118,6 +1190,7 @@ heap_create_with_catalog(const char *relname,
 	 * sanity checks
 	 */
 	Assert(IsNormalProcessingMode() || IsBootstrapProcessingMode());
+	Assert(IsYsqlUpgrade || !is_system || !yb_use_initdb_acl);
 
 	CheckAttributeNamesTypes(tupdesc, relkind, allow_system_table_mods);
 
@@ -1217,12 +1290,13 @@ heap_create_with_catalog(const char *relname,
 	 * imitate BKI processing, so we don't allow any reloption not
 	 * removed by ybTransformRelOptions.
 	 *
-	 * System views, on the other hand, are defined in
-	 * yb_system_views.sql rather than via BKI, so they are allowed
-	 * to have non-temporary reloptions.
+	 * Stuff defined through yb_system_views.sql, on the other hand, is
+	 * allowed to have non-temporary reloptions.
+	 *
+	 * (Note: heap_create_with_catalog is not used for CREATE INDEX.)
 	 */
-	if (IsYsqlUpgrade && is_system && relkind != RELKIND_VIEW
-		&& reloptions != (Datum) 0)
+	if (IsYsqlUpgrade && is_system && relkind == RELKIND_RELATION &&
+		reloptions != (Datum) 0)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
@@ -1234,55 +1308,11 @@ heap_create_with_catalog(const char *relname,
 	/*
 	 * Determine the relation's initial permissions.
 	 */
-	if (is_system && IsYsqlUpgrade)
+	if (yb_use_initdb_acl)
 	{
-		/*
-		 * initdb sets a very specific set of permissions which we replicate here:
-		 * '=r/$BOOTSTRAP_SUPERUSERID' followed by
-		 * pg_catalog.acldefault('r', BOOTSTRAP_SUPERUSERID)
-		 * (which results in {=r/postgres,postgres=arwdDxt/postgres}).
-		 *
-		 * See setup_privileges() in initdb.c.
-		 */
-		AclItem aclitem;
-		aclitem.ai_grantee = ACL_ID_PUBLIC;
-		aclitem.ai_grantor = BOOTSTRAP_SUPERUSERID;
-		ACLITEM_SET_RIGHTS(aclitem, ACL_SELECT);
-
-		Acl *allow_read_to_everyone = aclupdate(make_empty_acl(), &aclitem,
-			ACL_MODECHG_EQL, BOOTSTRAP_SUPERUSERID, DROP_RESTRICT);
-
-		Acl *superuser_default = acldefault(OBJECT_TABLE, BOOTSTRAP_SUPERUSERID);
-
-		relacl = aclconcat(allow_read_to_everyone, superuser_default);
-
-		/*
-		 * We also need to insert this ACL value into pg_init_privs
-		 * (for shared rels - do the insert in all databases).
-		 */
-
-		Relation    pg_init_privs       = heap_open(InitPrivsRelationId, RowExclusiveLock);
-		HeapTuple   pg_init_privs_tuple;
-		Datum       values[Natts_pg_init_privs];
-		bool        nulls[Natts_pg_init_privs];
-
-		values[Anum_pg_init_privs_objoid - 1]    = ObjectIdGetDatum(relid);
-		values[Anum_pg_init_privs_classoid - 1]  = ObjectIdGetDatum(RelationRelationId);
-		values[Anum_pg_init_privs_objsubid - 1]  = (Datum) 0;
-		values[Anum_pg_init_privs_privtype - 1]  = CharGetDatum(INITPRIVS_INITDB);
-		values[Anum_pg_init_privs_initprivs - 1] = PointerGetDatum(relacl);
-
-		MemSet(nulls, false, sizeof(nulls));
-
-		pg_init_privs_tuple =
-			heap_form_tuple(RelationGetDescr(pg_init_privs), values, nulls);
-
-		YBCatalogTupleInsert(pg_init_privs, pg_init_privs_tuple, shared_relation);
-
-		heap_freetuple(pg_init_privs_tuple);
-		heap_close(pg_init_privs, RowExclusiveLock);
+		relacl = YbSetInitdbPermissions(relid, relkind, shared_relation);
 	}
-	else if (use_user_acl)
+	else if (use_user_acl && !(IsYsqlUpgrade && is_system && relkind == RELKIND_RELATION))
 	{
 		switch (relkind)
 		{
@@ -1481,8 +1511,6 @@ heap_create_with_catalog(const char *relname,
 			recordDependencyOnNewAcl(RelationRelationId, relid, 0, ownerid, relacl);
 
 			recordDependencyOnCurrentExtension(&myself, false);
-
-			recordDependencyOnTablespace(RelationRelationId, relid, reltablespace);
 
 			if (reloftypeid)
 			{

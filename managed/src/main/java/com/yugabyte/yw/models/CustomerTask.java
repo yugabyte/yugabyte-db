@@ -2,6 +2,9 @@
 
 package com.yugabyte.yw.models;
 
+import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
@@ -20,6 +23,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.GeneratedValue;
@@ -28,8 +32,6 @@ import javax.persistence.Id;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
-import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
-import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Entity
 @ApiModel(
@@ -56,8 +58,14 @@ public class CustomerTask extends Model {
     @EnumValue("Backup")
     Backup(false),
 
+    @EnumValue("Customer Configuration")
+    CustomerConfiguration(false),
+
     @EnumValue("KMS Configuration")
-    KMSConfiguration(false);
+    KMSConfiguration(false),
+
+    @EnumValue("XCluster Configuration")
+    XClusterConfig(false);
 
     private final boolean universeTarget;
 
@@ -183,29 +191,38 @@ public class CustomerTask extends Model {
     @EnumValue("ExternalScript")
     ExternalScript,
 
-    @EnumValue("CreateXClusterReplication")
-    CreateXClusterReplication,
+    @EnumValue("CreateXClusterConfig")
+    CreateXClusterConfig,
 
-    @EnumValue("DeleteXClusterReplication")
-    DeleteXClusterReplication,
+    @EnumValue("DeleteXClusterConfig")
+    DeleteXClusterConfig,
 
-    @EnumValue("EditXClusterReplication")
-    EditXClusterReplication,
+    @EnumValue("EditXClusterConfig")
+    EditXClusterConfig,
 
-    @EnumValue("PauseXClusterReplication")
-    PauseXClusterReplication,
-
-    @EnumValue("ResumeXClusterReplication")
-    ResumeXClusterReplication;
+    @EnumValue("PrecheckNode")
+    PrecheckNode;
 
     public String toString(boolean completed) {
       switch (this) {
+        case Add:
+          return completed ? "Added " : "Adding ";
         case Create:
           return completed ? "Created " : "Creating ";
         case Pause:
           return completed ? "Paused " : "Pausing ";
+        case Release:
+          return completed ? "Released " : "Releasing ";
+        case Remove:
+          return completed ? "Removed " : "Removing ";
+        case ResizeNode:
+          return completed ? "Resized Node " : "Resizing Node ";
         case Resume:
           return completed ? "Resumed " : "Resuming ";
+        case Start:
+          return completed ? "Started " : "Starting ";
+        case Stop:
+          return completed ? "Stopped " : "Stopping ";
         case Update:
           return completed ? "Updated " : "Updating ";
         case Delete:
@@ -223,9 +240,12 @@ public class CustomerTask extends Model {
         case TlsToggle:
           return completed ? "Toggled TLS " : "Toggling TLS ";
         case VMImageUpgrade:
+        case UpgradeVMImage:
           return completed ? "Upgraded VM Image " : "Upgrading VM Image ";
         case UpgradeSoftware:
           return completed ? "Upgraded Software " : "Upgrading Software ";
+        case UpdateDiskSize:
+          return completed ? "Updated Disk Size " : "Updating Disk Size ";
         case UpdateCert:
           return completed ? "Updated Cert " : "Updating Cert ";
         case ToggleTls:
@@ -256,16 +276,14 @@ public class CustomerTask extends Model {
           return completed ? "Created alert definitions " : "Creating alert definitions ";
         case ExternalScript:
           return completed ? "Script execution completed " : "Script execution is running";
-        case CreateXClusterReplication:
-          return completed ? "Created xCluster replication " : "Creating xCluster replication ";
-        case DeleteXClusterReplication:
-          return completed ? "Deleted xCluster replication " : "Deleting xCluster replication ";
-        case EditXClusterReplication:
-          return completed ? "Edited xCluster replication " : "Editing xCluster replication ";
-        case PauseXClusterReplication:
-          return completed ? "Paused xCluster replication " : "Pausing xCluster replication ";
-        case ResumeXClusterReplication:
-          return completed ? "Resumed xCluster replication " : "Resuming xCluster replication ";
+        case CreateXClusterConfig:
+          return completed ? "Created xcluster config " : "Creating xcluster config ";
+        case DeleteXClusterConfig:
+          return completed ? "Deleted xcluster config " : "Deleting xcluster config ";
+        case EditXClusterConfig:
+          return completed ? "Edited xcluster config " : "Editing xcluster config ";
+        case PrecheckNode:
+          return completed ? "Performed preflight check on " : "Performing preflight check on ";
         default:
           return null;
       }
@@ -289,9 +307,15 @@ public class CustomerTask extends Model {
       switch (this) {
         case StartMaster:
           return "Start Master Process on";
+        case PrecheckNode:
+          return "Precheck";
         default:
-          return name();
+          return toFriendlyTypeName();
       }
+    }
+
+    private String toFriendlyTypeName() {
+      return name().replaceAll("([a-z]+)([A-Z]+)", "$1 $2");
     }
   }
 
@@ -361,11 +385,11 @@ public class CustomerTask extends Model {
 
   @Constraints.Required
   @Column(nullable = false)
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
   @ApiModelProperty(
       value = "Creation time",
       accessMode = READ_ONLY,
-      example = "2021-06-17 15:00:05",
+      example = "2021-06-17T15:00:05-0400",
       required = true)
   private Date createTime;
 
@@ -374,15 +398,23 @@ public class CustomerTask extends Model {
   }
 
   @Column
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
   @ApiModelProperty(
       value = "Completion time (present only if a task has completed)",
       accessMode = READ_ONLY,
-      example = "2021-06-17 15:00:05")
+      example = "2021-06-17T15:00:05-0400")
   private Date completionTime;
 
   public Date getCompletionTime() {
     return completionTime;
+  }
+
+  @Column
+  @ApiModelProperty(value = "Custom type name", accessMode = READ_ONLY, example = "TLS Toggle ON")
+  private String customTypeName;
+
+  public String getCustomTypeName() {
+    return customTypeName;
   }
 
   public void markAsCompleted() {
@@ -406,7 +438,8 @@ public class CustomerTask extends Model {
       UUID taskUUID,
       TargetType targetType,
       TaskType type,
-      String targetName) {
+      String targetName,
+      @Nullable String customTypeName) {
     CustomerTask th = new CustomerTask();
     th.customerUUID = customer.uuid;
     th.targetUUID = targetUUID;
@@ -415,8 +448,19 @@ public class CustomerTask extends Model {
     th.type = type;
     th.targetName = targetName;
     th.createTime = new Date();
+    th.customTypeName = customTypeName;
     th.save();
     return th;
+  }
+
+  public static CustomerTask create(
+      Customer customer,
+      UUID targetUUID,
+      UUID taskUUID,
+      TargetType targetType,
+      TaskType type,
+      String targetName) {
+    return create(customer, targetUUID, taskUUID, targetType, type, targetName, null);
   }
 
   public static CustomerTask get(Long id) {

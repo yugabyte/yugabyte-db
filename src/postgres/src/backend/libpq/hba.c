@@ -2249,15 +2249,12 @@ load_hba(void)
 	FreeFile(file);
 
 	/* Add hardcoded hba config lines in front of user-defined ones. */
-	if (!YBCGetDisableIndexBackfill())
-	{
-		List	   *hba_lines_hardcoded = NIL;
+	List	   *hba_lines_hardcoded = NIL;
 
-		oldcxt = MemoryContextSwitchTo(linecxt);
-		tokenize_hardcoded(&hba_lines_hardcoded, LOG);
-		hba_lines = list_concat(hba_lines_hardcoded, hba_lines);
-		MemoryContextSwitchTo(oldcxt);
-	}
+	oldcxt = MemoryContextSwitchTo(linecxt);
+	tokenize_hardcoded(&hba_lines_hardcoded, LOG);
+	hba_lines = list_concat(hba_lines_hardcoded, hba_lines);
+	MemoryContextSwitchTo(oldcxt);
 
 	/* Now parse all the lines */
 	Assert(PostmasterContext);

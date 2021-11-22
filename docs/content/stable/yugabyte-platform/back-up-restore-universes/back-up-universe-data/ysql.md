@@ -30,32 +30,35 @@ showAsideToc: true
 
 </ul>
 
-Use Yugabyte Platform to back up your YugabyteDB universe YSQL data. To schedule backups for a later time, or as a recurring task, see [Schedule universe YSQL data backups](../../schedule-data-backups/ysql).
+Use Yugabyte Platform to back up your YugabyteDB universe YSQL data. 
+
+To schedule backups for a later time, or as a recurring task, see [Schedule universe YSQL data backups](../../schedule-data-backups/ysql).
 
 To immediately back up your YugabyteDB universe YSQL data:
 
 1. Open the **Universe Overview** and then click the **Backups** tab. The **Backups** page appears.
-2. Click **Create Backup** to open the **Create Backup** dialog.
+1. Click **Create Backup** to open the **Create Backup** dialog.
+
+    <br/><br/>
 
     ![Create Backup - YSQL](/images/yp/create-backup-ysql.png)
 
-3. Click the **YSQL** tab and enter the following information:
+1. Click the **YSQL** tab and enter the following information:
 
     - **Storage**: Select the storage type: `GCS Storage`, `S3 Storage`, or `NFS Storage`.
     - **Namespace**: Select the namespace from the drop-down list of available namespaces.
-    - **Parallel Threads**: Enter or select the number of threads. The default value of `8` appears.
+    - **Parallel Threads**: Enter or select the number of threads. The default is `8`.
 
-Click **OK**. The requested backup begins immediately.
+1. Click **OK**. The requested backup begins immediately.
 
-{{< note title="Backup tips" >}}
+{{< note title="Note" >}}
 
-If the universe has encryption at rest enabled, data files are backed up as-is (encrypted) to reduce the computation cost of a backup and to keep the files encrypted.
-A universe key metadata file, containing key references, is also backed up.
+If the universe has [encryption at rest enabled](../../../security/enable-encryption-at-rest), data files are backed up as-is (encrypted) to reduce the computation cost of a backup and to keep the files encrypted. A universe key metadata file, containing key references, is also backed up.
 
-To allow Yugabyte Platform to back up your data with user authentication enabled, follow the [instructions here](../../../manage-deployments/edit-config-flags) to add the following T-Server flags:
+To allow Yugabyte Platform to back up your data with user authentication enabled, follow the [instructions here](../../../manage-deployments/edit-config-flags) to add the following YB-TServer flags:
 
-`ysql_enable_auth = true`
+`ysql_enable_auth=true`
 
-`ysql_hba_conf_csv= "local all all trust"`
+`ysql_hba_conf_csv="local all all trust"`
 
 {{< /note >}}
