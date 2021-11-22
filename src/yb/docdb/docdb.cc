@@ -70,7 +70,7 @@ using strings::Substitute;
 
 using namespace std::placeholders;
 
-DEFINE_test_flag(bool, docdb_sort_weak_intents_in_tests, false,
+DEFINE_test_flag(bool, docdb_sort_weak_intents, false,
                 "Sort weak intents to make their order deterministic.");
 DEFINE_bool(enable_transaction_sealing, false,
             "Whether transaction sealing is enabled.");
@@ -371,7 +371,7 @@ Status SetDocOpQLErrorResponse(DocOperation* doc_op, string err_msg) {
   return Status::OK();
 }
 
-Status ExecuteDocWriteOperation(const vector<unique_ptr<DocOperation>>& doc_write_ops,
+Status AssembleDocWriteBatch(const vector<unique_ptr<DocOperation>>& doc_write_ops,
                                 CoarseTimePoint deadline,
                                 const ReadHybridTime& read_time,
                                 const DocDB& doc_db,
@@ -733,7 +733,7 @@ Status EnumerateWeakIntents(
       return Status::OK();
     }
 
-    // Generate a week intent that only includes the hash component.
+    // Generate a weak intent that only includes the hash component.
     RETURN_NOT_OK(functor(
         IntentStrength::kWeak, FullDocKey(key[0] == ValueTypeAsChar::kGroupEnd), kEmptyIntentValue,
         encoded_key_buffer, LastKey::kFalse));
@@ -925,11 +925,7 @@ class PrepareTransactionWriteBatchHelper {
         transaction_id_.AsSlice(),
     }};
 
-    if (PREDICT_TRUE(!FLAGS_TEST_docdb_sort_weak_intents_in_tests)) {
-      for (const auto& intent_and_types : weak_intents_) {
-        AddWeakIntent(intent_and_types, value, &doc_ht_buffer);
-      }
-    } else {
+    if (PREDICT_FALSE(FLAGS_TEST_docdb_sort_weak_intents)) {
       // This is done in tests when deterministic DocDB state is required.
       std::vector<std::pair<KeyBuffer, IntentTypeSet>> intents_and_types(
           weak_intents_.begin(), weak_intents_.end());
@@ -937,6 +933,11 @@ class PrepareTransactionWriteBatchHelper {
       for (const auto& intent_and_types : intents_and_types) {
         AddWeakIntent(intent_and_types, value, &doc_ht_buffer);
       }
+      return;
+    }
+
+    for (const auto& intent_and_types : weak_intents_) {
+      AddWeakIntent(intent_and_types, value, &doc_ht_buffer);
     }
   }
 

@@ -71,7 +71,7 @@ using namespace std::chrono_literals;
 
 DECLARE_bool(use_docdb_aware_bloom_filter);
 DECLARE_int32(max_nexts_to_avoid_seek);
-DECLARE_bool(TEST_docdb_sort_weak_intents_in_tests);
+DECLARE_bool(TEST_docdb_sort_weak_intents);
 
 #define ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(str) ASSERT_NO_FATALS(AssertDocDbDebugDumpStrEq(str))
 
@@ -3603,7 +3603,7 @@ SubDocKey(DocKey([], ["c"]), ["k5"; HT{ physical: 1100 }]) -> "vv5"; ttl: 25.000
 }
 
 TEST_P(DocDBTestWrapper, CompactionWithTransactions) {
-  FLAGS_TEST_docdb_sort_weak_intents_in_tests = true;
+  FLAGS_TEST_docdb_sort_weak_intents = true;
 
   const DocKey doc_key(PrimitiveValues("mydockey", 123456));
   KeyBytes encoded_doc_key(doc_key.Encode());

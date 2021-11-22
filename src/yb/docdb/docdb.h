@@ -128,7 +128,7 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
 // Input: doc_write_ops, read snapshot hybrid_time if requested in PrepareDocWriteOperation().
 // Context: rocksdb
 // Outputs: keys_locked, write_batch
-CHECKED_STATUS ExecuteDocWriteOperation(
+CHECKED_STATUS AssembleDocWriteBatch(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
