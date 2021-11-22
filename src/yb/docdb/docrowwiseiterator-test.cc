@@ -34,7 +34,7 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
-DECLARE_bool(TEST_docdb_sort_weak_intents_in_tests);
+DECLARE_bool(TEST_docdb_sort_weak_intents);
 
 namespace yb {
 namespace docdb {
@@ -53,7 +53,7 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
   static Schema kProjectionForIteratorTests;
 
   void SetUp() override {
-    FLAGS_TEST_docdb_sort_weak_intents_in_tests = true;
+    FLAGS_TEST_docdb_sort_weak_intents = true;
     DocDBTestBase::SetUp();
   }
 

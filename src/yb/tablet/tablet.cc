@@ -3647,8 +3647,8 @@ class DocWriteOperation : public std::enable_shared_from_this<DocWriteOperation>
         // When need_read_snapshot is false, this time is used only to write TTL field of record.
         : ReadHybridTime::SingleTime(tablet_.clock()->Now());
 
-    // We expect all read operations for this transaction to be done in ExecuteDocWriteOperation.
-    // Once read_txn goes out of scope, the read point is deregistered.
+    // We expect all read operations for this transaction to be done in AssembleDocWriteBatch. Once
+    // read_txn goes out of scope, the read point is deregistered.
     HybridTime restart_read_ht;
     bool local_limit_updated = false;
 
@@ -3659,7 +3659,7 @@ class DocWriteOperation : public std::enable_shared_from_this<DocWriteOperation>
         ? InitMarkerBehavior::kRequired
         : InitMarkerBehavior::kOptional;
     for (;;) {
-      RETURN_NOT_OK(docdb::ExecuteDocWriteOperation(
+      RETURN_NOT_OK(docdb::AssembleDocWriteBatch(
           operation_->doc_ops(), operation_->deadline(), real_read_time, tablet_.doc_db(),
           operation_->mutable_request()->mutable_write_batch(), init_marker_behavior,
           tablet_.monotonic_counter(), &restart_read_ht,
