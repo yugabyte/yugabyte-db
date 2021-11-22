@@ -1248,8 +1248,7 @@ export default class ClusterFields extends Component {
     if (
       isNonEmptyObject(formValues[clusterType].instanceTags) &&
       currentProviderUUID &&
-      (this.getCurrentProvider(currentProviderUUID).code === 'aws' ||
-        this.getCurrentProvider(currentProviderUUID).code === 'azu')
+      ['aws', 'azu', 'gcp'].includes(this.getCurrentProvider(currentProviderUUID).code)
     ) {
       userIntent['instanceTags'] = formValues[clusterType].instanceTags;
     }
@@ -2245,7 +2244,7 @@ export default class ClusterFields extends Component {
           </Col>
         </Row>
       );
-      if (currentProviderCode === 'azu' || currentProviderCode === 'aws') {
+      if (['azu', 'aws', 'gcp'].includes(currentProviderCode)) {
         tagsArray = (
           <Row>
             <Col md={12}>
