@@ -135,7 +135,6 @@ const initialState = {
 };
 
 export default class ClusterFields extends Component {
-
   constructor(props) {
     super(props);
     this.providerChanged = this.providerChanged.bind(this);
@@ -195,7 +194,9 @@ export default class ClusterFields extends Component {
           gcpInstanceWithEphemeralStorage: false
         };
       } else {
-        const {userIntent} = getPrimaryCluster(this.props.universe.currentUniverse.data.universeDetails.clusters);
+        const { userIntent } = getPrimaryCluster(
+          this.props.universe.currentUniverse.data.universeDetails.clusters
+        );
         this.state = {
           ...initialState,
           enableYSQL: userIntent.enableYSQL,
@@ -204,7 +205,7 @@ export default class ClusterFields extends Component {
           enableYCQLAuth: userIntent.enableYCQLAuth,
           isReadOnlyExists: false,
           editNotAllowed: false,
-          useSystemd:userIntent.useSystemd
+          useSystemd: userIntent.useSystemd
         };
       }
     } else {
@@ -216,12 +217,14 @@ export default class ClusterFields extends Component {
           enableYSQLAuth: tempState.enableYSQLAuth,
           enableYCQL: tempState.enableYCQL,
           enableYCQLAuth: tempState.enableYCQLAuth,
-          isReadOnlyExists: tempState.provider && this.props.type === 'Create' && this.props.clusterType === 'async',
-          useSystemd:tempState.useSystemd
-
-        }
+          isReadOnlyExists:
+            tempState.provider &&
+            this.props.type === 'Create' &&
+            this.props.clusterType === 'async',
+          useSystemd: tempState.useSystemd
+        };
       }
-      this.state = tempState? tempState : initialState;
+      this.state = tempState ? tempState : initialState;
     }
   }
 
@@ -262,7 +265,8 @@ export default class ClusterFields extends Component {
         }
       } else {
         // when adding read replica post universe creation
-        currentSoftwareVersion = getPrimaryCluster(universeDetails.clusters).userIntent.ybSoftwareVersion;
+        currentSoftwareVersion = getPrimaryCluster(universeDetails.clusters).userIntent
+          .ybSoftwareVersion;
       }
       this.setState({ ybSoftwareVersion: currentSoftwareVersion });
       updateFormField(`${clusterType}.ybSoftwareVersion`, currentSoftwareVersion);
@@ -311,14 +315,16 @@ export default class ClusterFields extends Component {
       const primaryCluster = getPrimaryCluster(universeDetails.clusters);
       const readOnlyCluster = getReadOnlyCluster(universeDetails.clusters);
       const userIntent =
-        clusterType === 'async' ?
-          readOnlyCluster ? (readOnlyCluster && {
-              ...readOnlyCluster.userIntent,
-              universeName: primaryCluster.userIntent.universeName
-            }) : (primaryCluster && {
-              ...primaryCluster.userIntent,
-              universeName: primaryCluster.userIntent.universeName
-            })
+        clusterType === 'async'
+          ? readOnlyCluster
+            ? readOnlyCluster && {
+                ...readOnlyCluster.userIntent,
+                universeName: primaryCluster.userIntent.universeName
+              }
+            : primaryCluster && {
+                ...primaryCluster.userIntent,
+                universeName: primaryCluster.userIntent.universeName
+              }
           : primaryCluster && primaryCluster.userIntent;
       const providerUUID = userIntent && userIntent.provider;
       const encryptionAtRestEnabled =
@@ -368,7 +374,7 @@ export default class ClusterFields extends Component {
           storageType: storageType,
           regionList: userIntent.regionList,
           volumeType: storageType === null ? 'SSD' : 'EBS', //TODO(wesley): fixme - establish volumetype/storagetype relationship
-          useSystemd: userIntent.useSystemd,
+          useSystemd: userIntent.useSystemd
         });
       }
 
@@ -714,9 +720,13 @@ export default class ClusterFields extends Component {
         .join(',');
     }
     if (volumeDetail) {
-      let storageType = this.state.deviceInfo.storageType ? this.state.deviceInfo.storageType : DEFAULT_STORAGE_TYPES[instanceTypeSelectedData.providerCode.toUpperCase()];
-      if (instanceTypeSelectedData.providerCode === 'aws' &&
-        isEphemeralAwsStorageInstance(instanceTypeCode)) {
+      let storageType = this.state.deviceInfo.storageType
+        ? this.state.deviceInfo.storageType
+        : DEFAULT_STORAGE_TYPES[instanceTypeSelectedData.providerCode.toUpperCase()];
+      if (
+        instanceTypeSelectedData.providerCode === 'aws' &&
+        isEphemeralAwsStorageInstance(instanceTypeCode)
+      ) {
         storageType = null;
       }
 
@@ -784,11 +794,14 @@ export default class ClusterFields extends Component {
   setThroughputByIops(currentIops, currentThroughput) {
     const { updateFormField, clusterType } = this.props;
     if (this.state.deviceInfo.storageType === 'GP3') {
-      if ((currentIops > GP3_DEFAULT_DISK_IOPS ||
-          currentThroughput > GP3_DEFAULT_DISK_THROUGHPUT) &&
-          currentIops / currentThroughput < GP3_IOPS_TO_MAX_DISK_THROUGHPUT) {
-        const newThroughput = Math.min(GP3_MAX_THROUGHPUT,
-          Math.max(currentIops / GP3_IOPS_TO_MAX_DISK_THROUGHPUT, GP3_DEFAULT_DISK_THROUGHPUT));
+      if (
+        (currentIops > GP3_DEFAULT_DISK_IOPS || currentThroughput > GP3_DEFAULT_DISK_THROUGHPUT) &&
+        currentIops / currentThroughput < GP3_IOPS_TO_MAX_DISK_THROUGHPUT
+      ) {
+        const newThroughput = Math.min(
+          GP3_MAX_THROUGHPUT,
+          Math.max(currentIops / GP3_IOPS_TO_MAX_DISK_THROUGHPUT, GP3_DEFAULT_DISK_THROUGHPUT)
+        );
         updateFormField(`${clusterType}.throughput`, newThroughput);
         this.setState({ deviceInfo: { ...this.state.deviceInfo, throughput: newThroughput } });
       }
@@ -797,11 +810,14 @@ export default class ClusterFields extends Component {
 
   diskIopsChanged(val) {
     const { updateFormField, clusterType } = this.props;
-    const maxDiskIops = this.state.deviceInfo.storageType === 'IO1' ?
-      IO1_MAX_DISK_IOPS : GP3_MAX_IOPS;
+    const maxDiskIops =
+      this.state.deviceInfo.storageType === 'IO1' ? IO1_MAX_DISK_IOPS : GP3_MAX_IOPS;
     const actualVal = Math.max(0, Math.min(maxDiskIops, val));
     updateFormField(`${clusterType}.diskIops`, actualVal);
-    if (this.state.deviceInfo.storageType === 'IO1' || this.state.deviceInfo.storageType === 'GP3') {
+    if (
+      this.state.deviceInfo.storageType === 'IO1' ||
+      this.state.deviceInfo.storageType === 'GP3'
+    ) {
       this.setState({ deviceInfo: { ...this.state.deviceInfo, diskIops: actualVal } });
       this.setThroughputByIops(actualVal, this.state.deviceInfo.throughput);
     }
@@ -838,7 +854,7 @@ export default class ClusterFields extends Component {
   }
 
   updateFormFields(obj) {
-    const { updateFormField} = this.props;
+    const { updateFormField } = this.props;
     for (let x in obj) {
       updateFormField(x, obj[x]);
     }
@@ -1021,12 +1037,11 @@ export default class ClusterFields extends Component {
     const { clusterType } = this.props;
 
     if (clusterType === 'primary') {
-      
       this.updateFormFields({
         'primary.useSystemd': event.target.checked,
         'async.useSystemd': event.target.checked
       });
-      
+
       this.setState({
         useSystemd: event.target.checked
       });
@@ -1187,8 +1202,7 @@ export default class ClusterFields extends Component {
     if (
       isNonEmptyObject(formValues[clusterType].instanceTags) &&
       currentProviderUUID &&
-      (this.getCurrentProvider(currentProviderUUID).code === 'aws' ||
-        this.getCurrentProvider(currentProviderUUID).code === 'azu')
+      ['aws', 'azu', 'gcp'].includes(this.getCurrentProvider(currentProviderUUID).code)
     ) {
       userIntent['instanceTags'] = formValues[clusterType].instanceTags;
     }
@@ -1218,7 +1232,7 @@ export default class ClusterFields extends Component {
 
   setDefaultProviderStorage = (providerData) => {
     this.storageTypeChanged(DEFAULT_STORAGE_TYPES[providerData.code.toUpperCase()]);
-  }
+  };
 
   providerChanged = (value) => {
     const {
@@ -1257,7 +1271,8 @@ export default class ClusterFields extends Component {
         accessKeyCode: defaultAccessKeyCode,
         awsInstanceWithEphemeralStorage: false,
         gcpInstanceWithEphemeralStorage: false,
-        isReadOnlyExists: providerUUID && this.props.type === 'Create' && this.props.clusterType === 'async'
+        isReadOnlyExists:
+          providerUUID && this.props.type === 'Create' && this.props.clusterType === 'async'
       });
 
       this.props.getRegionListItems(providerUUID, true);
@@ -1321,20 +1336,29 @@ export default class ClusterFields extends Component {
   }
 
   validatePassword(value, formValues, formikBag, fieldName) {
-    const errorMsg = 'Password must be 8 characters minimum and must contain at least 1 digit, 1 uppercase, 1 lowercase and one of the !@#$%^&* (special) characters.';
-    const isAuthEnabled = formValues.primary[(fieldName === 'primary.ysqlPassword')? "enableYSQLAuth" : "enableYCQLAuth"];
-    if (!isAuthEnabled) {return undefined;}
+    const errorMsg =
+      'Password must be 8 characters minimum and must contain at least 1 digit, 1 uppercase, 1 lowercase and one of the !@#$%^&* (special) characters.';
+    const isAuthEnabled =
+      formValues.primary[
+        fieldName === 'primary.ysqlPassword' ? 'enableYSQLAuth' : 'enableYCQLAuth'
+      ];
+    if (!isAuthEnabled) {
+      return undefined;
+    }
     if (value) {
       const passwordValidationRegex = /^(?=.*[0-9])(?=.*[!@#$%^&*])(?=.*[a-z])(?=.*[A-Z])[a-zA-Z0-9!@#$%^&*]{8,256}$/;
-      return (passwordValidationRegex.test(value) ? undefined : errorMsg);
+      return passwordValidationRegex.test(value) ? undefined : errorMsg;
     }
     return errorMsg;
   }
 
   validateConfirmPassword(value, formValues, formikBag, fieldName) {
-    const passwordValue = formValues.primary[(fieldName === 'primary.ysqlConfirmPassword')? 'ysqlPassword' : 'ycqlPassword'];
+    const passwordValue =
+      formValues.primary[
+        fieldName === 'primary.ysqlConfirmPassword' ? 'ysqlPassword' : 'ycqlPassword'
+      ];
     if (!_.isEmpty(passwordValue)) {
-      return (value === passwordValue) ? undefined : 'Password should match';
+      return value === passwordValue ? undefined : 'Password should match';
     }
     return undefined;
   }
@@ -1456,19 +1480,16 @@ export default class ClusterFields extends Component {
       })
     ];
     const isFieldReadOnly =
-      (
-        isNonEmptyObject(universe.currentUniverse.data) &&
-        (this.props.type === 'Edit' || (this.props.type === 'Async' && this.state.isReadOnlyExists))
-      ) || (
-        this.props.type === 'Create' && this.props.clusterType === 'async' && this.state.isReadOnlyExists
-      );
-    const isSWVersionReadOnly = 
-      (
-        isNonEmptyObject(universe.currentUniverse.data) &&
-        (this.props.type === 'Edit' || this.props.type === 'Async')
-      ) || (
-        this.props.type === 'Create' && this.props.clusterType === 'async'
-      );
+      (isNonEmptyObject(universe.currentUniverse.data) &&
+        (this.props.type === 'Edit' ||
+          (this.props.type === 'Async' && this.state.isReadOnlyExists))) ||
+      (this.props.type === 'Create' &&
+        this.props.clusterType === 'async' &&
+        this.state.isReadOnlyExists);
+    const isSWVersionReadOnly =
+      (isNonEmptyObject(universe.currentUniverse.data) &&
+        (this.props.type === 'Edit' || this.props.type === 'Async')) ||
+      (this.props.type === 'Create' && this.props.clusterType === 'async');
     const isReadOnlyOnEdit =
       isNonEmptyObject(universe.currentUniverse.data) &&
       (this.props.type === 'Edit' || (this.props.type === 'Async' && this.state.isReadOnlyExists));
@@ -1663,7 +1684,6 @@ export default class ClusterFields extends Component {
         currentProvider.code === 'onprem' ||
         currentProvider.code === 'kubernetes')
     ) {
-
       enableYSQL = (
         <Field
           name={`${clusterType}.enableYSQL`}
@@ -1693,34 +1713,33 @@ export default class ClusterFields extends Component {
             </div>
           </Col>
         </Row>
-
       );
       ysqlAuthPassword = (
         <Row>
           <Col sm={12} md={6} lg={6}>
             <div className="form-right-aligned-labels">
-            <Field
-              name={`${clusterType}.ysqlPassword`}
-              type="password"
-              component={YBTextInputWithLabel}
-              validate={this.validatePassword}
-              autoComplete="new-password"
-              label="YSQL Auth Password"
-              placeholder="Enter Password"
-            />
+              <Field
+                name={`${clusterType}.ysqlPassword`}
+                type="password"
+                component={YBTextInputWithLabel}
+                validate={this.validatePassword}
+                autoComplete="new-password"
+                label="YSQL Auth Password"
+                placeholder="Enter Password"
+              />
             </div>
           </Col>
           <Col sm={12} md={6} lg={6}>
             <div className="form-right-aligned-labels">
-            <Field
-              name={`${clusterType}.ysqlConfirmPassword`}
-              type="password"
-              component={YBTextInputWithLabel}
-              validate={this.validateConfirmPassword}
-              autoComplete="new-password"
-              label="Confirm Password"
-              placeholder="Confirm Password"
-            />
+              <Field
+                name={`${clusterType}.ysqlConfirmPassword`}
+                type="password"
+                component={YBTextInputWithLabel}
+                validate={this.validateConfirmPassword}
+                autoComplete="new-password"
+                label="Confirm Password"
+                placeholder="Confirm Password"
+              />
             </div>
           </Col>
         </Row>
@@ -1760,28 +1779,28 @@ export default class ClusterFields extends Component {
         <Row>
           <Col sm={12} md={6} lg={6}>
             <div className="form-right-aligned-labels">
-            <Field
-              name={`${clusterType}.ycqlPassword`}
-              type="password"
-              component={YBTextInputWithLabel}
-              validate={this.validatePassword}
-              autoComplete="new-password"
-              label="YCQL Auth Password"
-              placeholder="Enter Password"
-            />
+              <Field
+                name={`${clusterType}.ycqlPassword`}
+                type="password"
+                component={YBTextInputWithLabel}
+                validate={this.validatePassword}
+                autoComplete="new-password"
+                label="YCQL Auth Password"
+                placeholder="Enter Password"
+              />
             </div>
           </Col>
           <Col sm={12} md={6} lg={6}>
             <div className="form-right-aligned-labels">
-            <Field
-              name={`${clusterType}.ycqlConfirmPassword`}
-              type="password"
-              component={YBTextInputWithLabel}
-              validate={this.validateConfirmPassword}
-              autoComplete="new-password"
-              label="Confirm Password"
-              placeholder="Confirm Password"
-            />
+              <Field
+                name={`${clusterType}.ycqlConfirmPassword`}
+                type="password"
+                component={YBTextInputWithLabel}
+                validate={this.validateConfirmPassword}
+                autoComplete="new-password"
+                label="Confirm Password"
+                placeholder="Confirm Password"
+              />
             </div>
           </Col>
         </Row>
@@ -2138,7 +2157,7 @@ export default class ClusterFields extends Component {
           </Col>
         </Row>
       );
-      if (currentProviderCode === 'azu' || currentProviderCode === 'aws') {
+      if (['azu', 'aws', 'gcp'].includes(currentProviderCode)) {
         tagsArray = (
           <Row>
             <Col md={12}>
@@ -2354,27 +2373,35 @@ export default class ClusterFields extends Component {
               </div>
             </Col>
           </Row>
-          {(currentProviderUUID && !this.state.enableYSQL && !this.state.enableYCQL) && (
-            <div className="has-error"><div className="help-block standard-error">Enable atleast one endpoint among YSQL and YCQL</div></div>
+          {currentProviderUUID && !this.state.enableYSQL && !this.state.enableYCQL && (
+            <div className="has-error">
+              <div className="help-block standard-error">
+                Enable atleast one endpoint among YSQL and YCQL
+              </div>
+            </div>
           )}
           <Row>
             <Col sm={12} md={12} lg={6}>
-              <div className="form-right-aligned-labels">
-                {enableYSQL}
-              </div>
+              <div className="form-right-aligned-labels">{enableYSQL}</div>
             </Col>
           </Row>
           {this.state.enableYSQL && enableYSQLAuth}
-          { clusterType === 'primary' && type === 'Create' && this.state.enableYSQL && this.state.enableYSQLAuth && ysqlAuthPassword}
+          {clusterType === 'primary' &&
+            type === 'Create' &&
+            this.state.enableYSQL &&
+            this.state.enableYSQLAuth &&
+            ysqlAuthPassword}
           <Row>
             <Col sm={12} md={12} lg={6}>
-              <div className="form-right-aligned-labels">
-                {enableYCQL}
-              </div>
+              <div className="form-right-aligned-labels">{enableYCQL}</div>
             </Col>
           </Row>
           {this.state.enableYCQL && enableYCQLAuth}
-          { clusterType === 'primary' && type === 'Create' && this.state.enableYCQL && this.state.enableYCQLAuth && ycqlAuthPassword}
+          {clusterType === 'primary' &&
+            type === 'Create' &&
+            this.state.enableYCQL &&
+            this.state.enableYCQLAuth &&
+            ycqlAuthPassword}
           <Row>
             <Col sm={12} md={12} lg={6}>
               <div className="form-right-aligned-labels">
