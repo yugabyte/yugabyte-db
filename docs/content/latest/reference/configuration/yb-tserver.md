@@ -743,7 +743,7 @@ Default: `false`
 
 ##### --cipher_list
 
-Specify cipher lists for TLS 1.2 and below. (For TLS 1.3, use `--ciphersuite`.) Use a colon (":") separated list of TLSv1.2 cipher names in order of preference. Use an exclamation mark ("!") to exclude ciphers. For example:
+Specify cipher lists for TLS 1.2 and below. (For TLS 1.3, use [--ciphersuite](#ciphersuite).) Use a colon (":") separated list of TLSv1.2 cipher names in order of preference. Use an exclamation mark ("!") to exclude ciphers. For example:
 
 ```sh
 --cipher_list DEFAULTS:!DES:!IDEA:!3DES:!RC2
@@ -759,7 +759,7 @@ For more information, refer to [SSL_CTX_set_cipher_list](https://www.openssl.org
 
 ##### --ciphersuite
 
-Specify cipher lists for TLS 1.3. (For TLS 1.2 and below, use `--cipher_list`.)
+Specify cipher lists for TLS 1.3. (For TLS 1.2 and below, use [--cipher_list](#cipher-list).)
 
 Use a colon (":") separated list of TLSv1.3 ciphersuite names in order of preference. Use an exclamation mark ("!") to exclude ciphers. For example:
 
