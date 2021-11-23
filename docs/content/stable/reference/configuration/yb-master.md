@@ -20,7 +20,7 @@ Use the `yb-master` binary and its flags to configure the [YB-Master](../../../a
 yb-master [ flag  ] | [ flag ]
 ```
 
-### Example 
+### Example
 
 ```sh
 $ ./bin/yb-master \
@@ -130,7 +130,7 @@ Specifies the policy that determines when to use private IP addresses for inter-
 Valid values for the policy are:
 
 - `never` — Always use the [`--server_broadcast_addresses`](#server-broadcast-addresses).
-- `zone` — Use the private IP inside a zone; use the [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the zone. 
+- `zone` — Use the private IP inside a zone; use the [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the zone.
 - `region` — Use the private IP address across all zone in a region; use [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the region.
 
 Default: `never`
@@ -195,7 +195,7 @@ Default: `30`
 
 ##### --logemaillevel
 
-Email log messages logged at this level, or higher. 
+Email log messages logged at this level, or higher.
 
 Values: `0` (all); `1` (WARN), `2` (ERROR), `3` (FATAL), `999` (none)
 
@@ -345,7 +345,7 @@ For load balancing commands in `yb-admin`, see [Rebalancing commands (yb-admin)]
 
 For information on internal load balancing to power geo-distributed applications, see [Yugabyte JDBC Driver](../../../integrations/jdbc-driver).
 
-#### --enable_load_balancing
+##### --enable_load_balancing
 
 Enables or disables the load balancing algorithm, to move tablets around.
 
@@ -413,7 +413,7 @@ Default: `5`
 
 ##### --load_balancer_skip_leader_as_remove_victim
 
-Should the LB skip a leader as a possible remove candidate. 
+Should the LB skip a leader as a possible remove candidate.
 
 Default: `false`
 
@@ -463,7 +463,7 @@ On a per-table basis, the [`CREATE TABLE ...SPLIT INTO`](../../../api/ysql/the-s
 
 {{< /note >}}
 
-#### --enable_automatic_tablet_splitting
+##### --enable_automatic_tablet_splitting
 
 Enables YugabyteDB to [automatically split tablets](../../../architecture/docdb-sharding/tablet-splitting/#automatic-tablet-splitting) while online, based on the specified tablet threshold sizes configured below.
 

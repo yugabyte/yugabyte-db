@@ -20,7 +20,7 @@ Use the `yb-master` binary and its flags to configure the [YB-Master](../../../a
 yb-master [ flag  ] | [ flag ]
 ```
 
-### Example 
+### Example
 
 ```sh
 $ ./bin/yb-master \
@@ -130,7 +130,7 @@ Specifies the policy that determines when to use private IP addresses for inter-
 Valid values for the policy are:
 
 - `never` — Always use the [`--server_broadcast_addresses`](#server-broadcast-addresses).
-- `zone` — Use the private IP inside a zone; use the [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the zone. 
+- `zone` — Use the private IP inside a zone; use the [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the zone.
 - `region` — Use the private IP address across all zone in a region; use [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the region.
 
 Default: `never`
@@ -195,7 +195,7 @@ Default: `30`
 
 ##### --logemaillevel
 
-Email log messages logged at this level, or higher. 
+Email log messages logged at this level, or higher.
 
 Values: `0` (all); `1` (WARN), `2` (ERROR), `3` (FATAL), `999` (none)
 
@@ -411,7 +411,7 @@ Default: `5`
 
 ##### --load_balancer_skip_leader_as_remove_victim
 
-Should the LB skip a leader as a possible remove candidate. 
+Should the LB skip a leader as a possible remove candidate.
 
 Default: `false`
 
@@ -461,7 +461,7 @@ On a per-table basis, the [`CREATE TABLE ...SPLIT INTO`](../../../api/ysql/the-s
 
 {{< /note >}}
 
-#### --tablet_split_size_threshold_bytes
+##### --tablet_split_size_threshold_bytes
 
 Enables tablets to automatically split tablets while online, based on the specified tablet threshold size.
 
@@ -567,7 +567,7 @@ Default: `14400` (4 hours)
 
 ## Admin UI
 
-The Admin UI for yb-master is available at http://localhost:7000.
+The Admin UI for yb-master is available at <http://localhost:7000>.
 
 ### Home
 
