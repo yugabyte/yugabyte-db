@@ -167,7 +167,6 @@ The assumption in the following examples is that the user is using the GIN index
     ```sql
     SET enable_indexscan = on;
     SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'the');
-    -- Run it once more to reduce cache bias.
     SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'the');
     ```
 
