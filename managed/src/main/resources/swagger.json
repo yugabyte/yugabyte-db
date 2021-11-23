@@ -1855,7 +1855,7 @@
         "configName" : {
           "description" : "Config name",
           "example" : "backup20-01-2021",
-          "maxLength" : 50,
+          "maxLength" : 100,
           "minLength" : 1,
           "type" : "string"
         },
@@ -1899,7 +1899,7 @@
         "configName" : {
           "description" : "Config name",
           "example" : "backup20-01-2021",
-          "maxLength" : 50,
+          "maxLength" : 100,
           "minLength" : 1,
           "type" : "string"
         },
