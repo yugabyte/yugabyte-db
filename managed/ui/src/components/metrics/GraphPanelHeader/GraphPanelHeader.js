@@ -448,12 +448,10 @@ class GraphPanelHeader extends Component {
                     </div>
                     {datePicker}
                     <Dropdown id="graphFilterDropdown" className="graph-filter-dropdown" pullRight>
-                      {!universePaused && (
-                        <Dropdown.Toggle>
-                          <i className="fa fa-clock-o"></i>&nbsp;
-                          {this.state.filterLabel}
-                        </Dropdown.Toggle>
-                      )}
+                      <Dropdown.Toggle>
+                        <i className="fa fa-clock-o"></i>&nbsp;
+                        {this.state.filterLabel}
+                      </Dropdown.Toggle>
                       <Dropdown.Menu>{menuItems}</Dropdown.Menu>
                     </Dropdown>
                     <Dropdown
