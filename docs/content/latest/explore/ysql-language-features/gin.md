@@ -150,8 +150,7 @@ The assumption in the following examples is that the user is using the GIN index
     ```sql
     SET enable_indexscan = off;
     SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'the');
-    -- Run it several times to reduce cache bias.
-    SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'the');
+    -- Run it once more to reduce cache bias.
     SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'the');
     ```
 
@@ -168,8 +167,7 @@ The assumption in the following examples is that the user is using the GIN index
     ```sql
     SET enable_indexscan = on;
     SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'the');
-    -- Run it several times to reduce cache bias.
-    SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'the');
+    -- Run it once more to reduce cache bias.
     SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'the');
     ```
 
@@ -189,7 +187,6 @@ The assumption in the following examples is that the user is using the GIN index
     SET enable_indexscan = off;
     SELECT * FROM arrays WHERE a @> '{6}';
     SELECT * FROM arrays WHERE a @> '{6}';
-    SELECT * FROM arrays WHERE a @> '{6}';
     ```
 
     ```output
@@ -207,7 +204,6 @@ The assumption in the following examples is that the user is using the GIN index
     SET enable_indexscan = on;
     SELECT * FROM arrays WHERE a @> '{6}';
     SELECT * FROM arrays WHERE a @> '{6}';
-    SELECT * FROM arrays WHERE a @> '{6}';
     ```
 
     ```output
@@ -219,7 +215,6 @@ The assumption in the following examples is that the user is using the GIN index
 
     ```sql
     SET enable_indexscan = off;
-    SELECT * FROM jsonbs WHERE j ? 'some';
     SELECT * FROM jsonbs WHERE j ? 'some';
     SELECT * FROM jsonbs WHERE j ? 'some';
     ```
@@ -239,7 +234,6 @@ The assumption in the following examples is that the user is using the GIN index
 
     ```sql
     SET enable_indexscan = on;
-    SELECT * FROM jsonbs WHERE j ? 'some';
     SELECT * FROM jsonbs WHERE j ? 'some';
     SELECT * FROM jsonbs WHERE j ? 'some';
     ```
