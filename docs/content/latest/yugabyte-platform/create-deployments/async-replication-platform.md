@@ -38,9 +38,9 @@ You can set up asynchronous replication for a universe which does not contain da
 
 2. Select the universe you want to replicate and navigate to **Replication**.
 
-3. Click **Configure Replication** to open the dialog shown in the following illustration:<br>
+3. Click **Configure Replication** to open the dialog shown in the following illustration:<br><br>
 
-   ![Configure Replication](/images/yp/asynch-replication-2.png)
+   ![Configure Replication](/images/yp/asynch-replication-2.png)<br><br>
 
 4. Provide the name for your replication.
 
@@ -48,7 +48,7 @@ You can set up asynchronous replication for a universe which does not contain da
 
 6. Click **Next: Select Tables**.
 
-7. From a list of common tables between source and target universes, select the tables you want to include in the replication and then click **Create Replication**, as per the following illustration:<br>
+7. From a list of common tables between source and target universes, select the tables you want to include in the replication and then click **Create Replication**, as per the following illustration:<br><br>
 
    ![Create Replication](/images/yp/asynch-replication-3.png)
 
@@ -56,13 +56,13 @@ You can set up asynchronous replication for a universe which does not contain da
 
 You can configure an existing replication as follows:
 
-- Open the Yugabyte Platform UI and navigate to **Universes**.
+1. Open the Yugabyte Platform UI and navigate to **Universes**.
 
-- Select the universe whose existing replication you want to modify and then navigate to **Replication**, as per the following illustration:<br><br>
+2. Select the universe whose existing replication you want to modify and then navigate to **Replication**, as per the following illustration:<br><br>
 
-  ![Replication](/images/yp/asynch-replication-1.png)
+   ![Replication](/images/yp/asynch-replication-1.png)<br><br>
 
-- Click **Configure Replication** and perform steps 4 through 7 from [Set up](#set-up).
+3. Click **Configure Replication** and perform steps 4 through 7 from [How to set up replication](#set-up).
 
 ### How to view, manage, and monitor replication
 
@@ -88,7 +88,7 @@ This page allows you to do the following:
 
     ![Change Tables](/images/yp/asynch-replication-8.png)<br><br>
 
-    The following illustration shows the **Add tables to the replication** dialog after modifications:<br><br><br>
+    The following illustration shows the **Add tables to the replication** dialog after modifications:<br><br>
 
     ![Change Tables](/images/yp/asynch-replication-9.png)<br><br>
 
@@ -142,7 +142,7 @@ You can find your user UUID in Yugabyte Platform as follows:
       [http|https]://myPlatformServer/api/customers
   ```
 
-  For example:
+  <br>For example:
 
   ```sh
   curl -X "X-AUTH-YW-API-TOKEN: e5c6eb2f-7e30-4d5e-b0a2-f197b01d9f79" \
@@ -155,5 +155,5 @@ You can find your user UUID in Yugabyte Platform as follows:
   ["6553ea6d-485c-4ae8-861a-736c2c29ec46"]
   ```
 
-  To find a universe's UUID in Yugabyte Platform, click **Universes** in the left column, then click the name of the universe. The URL of the universe's **Overview** page ends with the universe's UUID. For example, `http://myPlatformServer/universes/d73833fc-0812-4a01-98f8-f4f24db76dbe`
+  <br>To find a universe's UUID in Yugabyte Platform, click **Universes** in the left column, then click the name of the universe. The URL of the universe's **Overview** page ends with the universe's UUID. For example, `http://myPlatformServer/universes/d73833fc-0812-4a01-98f8-f4f24db76dbe`
 
