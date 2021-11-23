@@ -28,6 +28,7 @@
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/tablet_split_complete_handler.h"
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/server/monitored_task.h"
@@ -725,7 +726,7 @@ class AsyncSplitTablet : public AsyncTabletLeaderTask {
       Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
       const std::array<TabletId, kNumSplitParts>& new_tablet_ids,
       const std::string& split_encoded_key, const std::string& split_partition_key,
-      std::function<void(const Status&)> result_cb);
+      TabletSplitCompleteHandlerIf* tablet_split_complete_handler);
 
   Type type() const override { return ASYNC_SPLIT_TABLET; }
 
@@ -738,7 +739,7 @@ class AsyncSplitTablet : public AsyncTabletLeaderTask {
 
   tserver::SplitTabletRequestPB req_;
   tserver::SplitTabletResponsePB resp_;
-  std::function<void(const Status&)> result_cb_;
+  TabletSplitCompleteHandlerIf* tablet_split_complete_handler_;
 };
 
 } // namespace master

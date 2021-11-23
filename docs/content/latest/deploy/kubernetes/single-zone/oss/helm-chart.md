@@ -1,5 +1,5 @@
 ---
-title: Deploy on OSS Kubernetes using Helm Chart 
+title: Deploy on OSS Kubernetes using Helm Chart
 headerTitle: Open source Kubernetes
 linkTitle: Open source Kubernetes
 description: Deploy a YugabyteDB cluster on OSS Kubernetes using Helm Chart.
@@ -103,13 +103,13 @@ $ helm search repo yugabytedb/yugabyte
 **Output:**
 
 ```output
-NAME                    CHART VERSION   APP VERSION     DESCRIPTION                                       
-yugabytedb/yugabyte     2.9.1           2.9.1.0-b140    YugabyteDB is the high-performance distributed ...
+NAME                    CHART VERSION   APP VERSION     DESCRIPTION
+yugabytedb/yugabyte     2.11.0           2.11.0.0-b7    YugabyteDB is the high-performance distributed ...
 ```
 
 ### Install YugabyteDB
 
-Install YugabyteDB in the Kubernetes cluster using the commands below. 
+Install YugabyteDB in the Kubernetes cluster using the commands below.
 
 #### On multi-node Kubernetes
 
@@ -232,7 +232,7 @@ $ helm history yb-demo -n yb-demo
 
 ```output
 REVISION  UPDATED                   STATUS    CHART           APP VERSION   DESCRIPTION
-1         Thu Apr 13 13:29:13 2020  deployed  yugabyte-2.9.1  2.9.1.0-b140  Install complete
+1         Thu Apr 13 13:29:13 2020  deployed  yugabyte-2.11.0  2.11.0.0-b7  Install complete
 ```
 
 ## Connect using YugabyteDB Shells

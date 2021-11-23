@@ -17,6 +17,7 @@
 #include "yb/cdc/cdc_util.h"
 #include "yb/cdc/cdc_rpc.h"
 #include "yb/client/client.h"
+#include "yb/client/client_error.h"
 #include "yb/client/client_utils.h"
 #include "yb/client/meta_cache.h"
 #include "yb/gutil/strings/join.h"
@@ -331,6 +332,10 @@ void TwoDCOutputClient::HandleError(const Status& s, bool done) {
   {
     std::lock_guard<decltype(lock_)> l(lock_);
     error_status_ = s;
+    // In case of a consumer side tablet split, need to refresh the partitions.
+    if (client::ClientError(error_status_) == client::ClientErrorCode::kTablePartitionListIsStale) {
+      table_->MarkPartitionsAsStale();
+    }
   }
   if (done) {
     HandleResponse();

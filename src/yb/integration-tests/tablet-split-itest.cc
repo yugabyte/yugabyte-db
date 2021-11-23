@@ -118,6 +118,7 @@ DECLARE_int32(outstanding_tablet_split_limit);
 DECLARE_double(TEST_fail_tablet_split_probability);
 DECLARE_bool(TEST_skip_post_split_compaction);
 DECLARE_int32(TEST_nodes_per_cloud);
+DECLARE_bool(enable_tablet_split_of_xcluster_replicated_tables);
 
 namespace yb {
 
@@ -1556,35 +1557,18 @@ TEST_F(TabletSplitITest, DifferentYBTableInstances) {
   ASSERT_EQ(rows_count, kNumRows);
 }
 
-class NotSupportedTabletSplitITest : public TabletSplitITest {
+class CdcTabletSplitITest : public TabletSplitITest {
  public:
   void SetUp() override {
     FLAGS_cdc_state_table_num_tablets = 1;
     TabletSplitITest::SetUp();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_validate_all_tablet_candidates) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = true;
 
     CreateSingleTablet();
   }
 
  protected:
-  Result<docdb::DocKeyHash> SplitTabletAndCheckForNotSupported(bool restart_server) {
-    auto split_hash_code = VERIFY_RESULT(WriteRowsAndGetMiddleHashCode(kDefaultNumRows));
-    auto s = SplitTabletAndValidate(split_hash_code, kDefaultNumRows);
-    EXPECT_NOT_OK(s);
-    EXPECT_TRUE(s.status().IsNotSupported()) << s.status();
-
-    if (restart_server) {
-      // Now try to restart the cluster and check that tablet splitting still fails.
-      RETURN_NOT_OK(cluster_->RestartSync());
-
-      s = SplitTabletAndValidate(split_hash_code, kDefaultNumRows);
-      EXPECT_NOT_OK(s);
-      EXPECT_TRUE(s.status().IsNotSupported()) << s.status();
-    }
-
-    return split_hash_code;
-  }
-
   Status WaitForCdcStateTableToBeReady() {
     return WaitFor([&]() -> Result<bool> {
       master::IsCreateTableDoneRequestPB is_create_req;
@@ -1621,6 +1605,132 @@ class NotSupportedTabletSplitITest : public TabletSplitITest {
         cluster_client.get(),
         table);
     return cluster;
+  }
+};
+
+// For testing xCluster setups. Since most test utility functions expect there to be only one
+// cluster, they implicitly use cluster_ / client_ / table_ everywhere. For this test, we default
+// those to point to the producer cluster, but allow calls to SwitchToProducer/Consumer, to swap
+// those to point to the other cluster.
+class XClusterTabletSplitITest : public CdcTabletSplitITest {
+ public:
+  void SetUp() override {
+    CdcTabletSplitITest::SetUp();
+
+    // Also create the consumer cluster.
+    consumer_cluster_ = ASSERT_RESULT(CreateNewUniverseAndTable("consumer", &consumer_table_));
+    consumer_client_ = ASSERT_RESULT(consumer_cluster_->CreateClient());
+
+    ASSERT_OK(RunAdminToolCommand(consumer_cluster_->GetMasterAddresses(),
+                                  "setup_universe_replication",
+                                  "producer",
+                                  cluster_->GetMasterAddresses(),
+                                  table_->id()));
+  }
+
+ protected:
+  void DoBeforeTearDown() override {
+    if (consumer_cluster_) {
+      consumer_cluster_->Shutdown();
+    } else {
+      producer_cluster_->Shutdown();
+    }
+
+    CdcTabletSplitITest::DoBeforeTearDown();
+  }
+
+  void SwitchToProducer() {
+    if (!producer_cluster_) {
+      return;
+    }
+    // cluster_ is currently the consumer.
+    consumer_cluster_ = std::move(cluster_);
+    consumer_client_ = std::move(client_);
+    consumer_table_ = std::move(table_);
+    cluster_ = std::move(producer_cluster_);
+    client_ = std::move(producer_client_);
+    table_ = std::move(producer_table_);
+    LOG(INFO) << "Swapped to the producer cluster.";
+  }
+
+  void SwitchToConsumer() {
+    if (!consumer_cluster_) {
+      return;
+    }
+    // cluster_ is currently the producer.
+    producer_cluster_ = std::move(cluster_);
+    producer_client_ = std::move(client_);
+    producer_table_ = std::move(table_);
+    cluster_ = std::move(consumer_cluster_);
+    client_ = std::move(consumer_client_);
+    table_ = std::move(consumer_table_);
+    LOG(INFO) << "Swapped to the consumer cluster.";
+  }
+
+  // Only one set of these is valid at any time.
+  // The other cluster is accessible via cluster_ / client_ / table_.
+  std::unique_ptr<MiniCluster> consumer_cluster_;
+  std::unique_ptr<client::YBClient> consumer_client_;
+  client::TableHandle consumer_table_;
+
+  std::unique_ptr<MiniCluster> producer_cluster_;
+  std::unique_ptr<client::YBClient> producer_client_;
+  client::TableHandle producer_table_;
+};
+
+TEST_F(XClusterTabletSplitITest, SplittingWithXClusterReplicationOnConsumer) {
+  // To begin with, cluster_ will be our producer.
+  // Write some rows to the producer.
+  auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kDefaultNumRows));
+
+  // Wait until the rows are all replicated on the consumer.
+  client::YBSessionPtr consumer_session = consumer_client_->NewSession();
+  consumer_session->SetTimeout(60s);
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    int num_rows = VERIFY_RESULT(SelectRowsCount(consumer_session, consumer_table_));
+    return num_rows == kDefaultNumRows;
+  }, MonoDelta::FromSeconds(60), "Wait for data to be replicated"));
+
+  SwitchToConsumer();
+
+  // Perform a split on the CONSUMER cluster.
+  ASSERT_OK(SplitTabletAndValidate(split_hash_code, kDefaultNumRows));
+
+  SwitchToProducer();
+
+  // Write another set of rows, and make sure the new poller picks up on the changes.
+  ASSERT_RESULT(WriteRows(kDefaultNumRows, kDefaultNumRows + 1));
+
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    int num_rows = VERIFY_RESULT(SelectRowsCount(consumer_session, consumer_table_));
+    return num_rows == 2 * kDefaultNumRows;
+  }, MonoDelta::FromSeconds(60), "Wait for data to be replicated"));
+}
+
+class NotSupportedTabletSplitITest : public CdcTabletSplitITest {
+ public:
+  void SetUp() override {
+    CdcTabletSplitITest::SetUp();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = false;
+  }
+
+ protected:
+  Result<docdb::DocKeyHash> SplitTabletAndCheckForNotSupported(bool restart_server) {
+    auto split_hash_code = VERIFY_RESULT(WriteRowsAndGetMiddleHashCode(kDefaultNumRows));
+    auto s = SplitTabletAndValidate(split_hash_code, kDefaultNumRows);
+    EXPECT_NOT_OK(s);
+    EXPECT_TRUE(s.status().IsNotSupported()) << s.status();
+
+    if (restart_server) {
+      // Now try to restart the cluster and check that tablet splitting still fails.
+      RETURN_NOT_OK(cluster_->RestartSync());
+
+      s = SplitTabletAndValidate(split_hash_code, kDefaultNumRows);
+      EXPECT_NOT_OK(s);
+      EXPECT_TRUE(s.status().IsNotSupported()) << s.status();
+    }
+
+    return split_hash_code;
   }
 };
 
