@@ -752,6 +752,24 @@ public class AlertControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCountAlerts() {
+    Alert initial = ModelFactory.createAlert(customer, alertDefinition);
+
+    AlertApiFilter filter = new AlertApiFilter();
+    Result result =
+        doRequestWithAuthTokenAndBody(
+            "POST",
+            "/api/customers/" + customer.getUuid() + "/alerts/count",
+            authToken,
+            Json.toJson(filter));
+    assertThat(result.status(), equalTo(OK));
+    JsonNode alertsJson = Json.parse(contentAsString(result));
+    int alertCount = Json.fromJson(alertsJson, int.class);
+
+    assertThat(alertCount, equalTo(1));
+  }
+
+  @Test
   public void testPageAlerts() {
     ModelFactory.createAlert(customer, alertDefinition);
     Alert initial2 = ModelFactory.createAlert(customer, alertDefinition);
