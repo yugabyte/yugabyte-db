@@ -11,22 +11,23 @@ import distutils.spawn
 import json
 import os
 
-from subprocess import check_call, check_output
+from subprocess import check_call, check_output, Popen
 from sys import exit
 from time import sleep
 
-# Replace the following with your own k8s cluster contexts
+# Replace the following with your own zone:context mappings
 contexts = {
-    'us-west1-b': 'gke_yugabyte_us-west1-b_yugabytedb1',
-    'us-central1-b': 'gke_yugabyte_us-central1-b_yugabytedb2',
-    'us-east1-b': 'gke_yugabyte_us-east1-b_yugabytedb3',
+    'us-east1-b': 'gke_yugabyte_us-east1-b_anthos-east-example',
+    'us-west1-b': 'gke_yugabyte_us-west1-b_anthos-west-example',
+    'us-central1-b': 'gke_yugabyte_us-central1-b_anthos-central-example'
 }
 
-# Replace the following with your own `zone`: `region` names
-regions = {
-    'us-west1-b': 'us-west1',
-    'us-central1-b': 'us-central1',
-    'us-east1-b': 'us-east1',
+# Replace the following with your own zone:namespace mappings
+# The namespaces need to be created beforehand.
+namespaces = {
+    'us-east1-b': 'east',
+    'us-west1-b': 'west',
+    'us-central1-b': 'central'
 }
 
 # Set the path to the directory where the generated yaml files will be stored
@@ -39,7 +40,6 @@ except OSError:
 
 # Create a load balancer for the DNS pods in each k8s cluster.
 for zone, context in contexts.items():
-    check_call(['kubectl', 'create', 'namespace', 'yb-demo-'+zone, '--context', context])
     check_call(['kubectl', 'apply', '-f', 'yb-dns-lb.yaml', '--context', context])
 
 # Set up each load balancer to forward DNS requests for zone-scoped namespaces to the
@@ -55,7 +55,6 @@ for zone, context in contexts.items():
         if external_ip:
             break
         print('Waiting for DNS load balancer IP in %s...' % (zone))
-        sleep(10)
     print('DNS endpoint for zone %s: %s' % (zone, external_ip))
     dns_ips[zone] = external_ip
 
@@ -68,7 +67,7 @@ for zone, context in contexts.items():
     for z, ip in dns_ips.items():
         if z == zone:
             continue
-        remote_dns_ips['yb-demo-'+z+'.svc.cluster.local'] = [ip]
+        remote_dns_ips[namespaces[z] + '.svc.cluster.local'] = [ip]
     config_filename = '%s/dns-configmap-%s.yaml' % (generated_files_dir, zone)
     with open(config_filename, 'w') as f:
         f.write("""\
@@ -83,5 +82,5 @@ data:
 """ % (json.dumps(remote_dns_ips)))
     check_call(['kubectl', 'apply', '-f', config_filename, '--namespace', 'kube-system',
                 '--context', context])
-    check_call(['kubectl', 'delete', 'pods', '-l', 'k8s-app=kube-dns', '--namespace', 'kube-system',
+    Popen(['kubectl', 'delete', 'pods', '-l', 'k8s-app=kube-dns', '--namespace', 'kube-system',
                 '--context', context])
