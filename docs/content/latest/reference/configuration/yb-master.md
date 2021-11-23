@@ -22,7 +22,7 @@ Use the `yb-master` binary and its flags to configure the [YB-Master](../../../a
 yb-master [ flag  ] | [ flag ]
 ```
 
-### Example 
+### Example
 
 ```sh
 $ ./bin/yb-master \
@@ -132,7 +132,7 @@ Specifies the policy that determines when to use private IP addresses for inter-
 Valid values for the policy are:
 
 - `never` — Always use the [`--server_broadcast_addresses`](#server-broadcast-addresses).
-- `zone` — Use the private IP inside a zone; use the [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the zone. 
+- `zone` — Use the private IP inside a zone; use the [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the zone.
 - `region` — Use the private IP address across all zone in a region; use [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the region.
 
 Default: `never`
@@ -197,7 +197,7 @@ Default: `30`
 
 ##### --logemaillevel
 
-Email log messages logged at this level, or higher. 
+Email log messages logged at this level, or higher.
 
 Values: `0` (all); `1` (WARN), `2` (ERROR), `3` (FATAL), `999` (none)
 
@@ -347,7 +347,7 @@ For load balancing commands in `yb-admin`, see [Rebalancing commands (yb-admin)]
 
 For information on internal load balancing to power geo-distributed applications, see [Yugabyte JDBC Driver](../../../integrations/jdbc-driver).
 
-#### --enable_load_balancing
+##### --enable_load_balancing
 
 Enables or disables the load balancing algorithm, to move tablets around.
 
@@ -415,7 +415,7 @@ Default: `5`
 
 ##### --load_balancer_skip_leader_as_remove_victim
 
-Should the LB skip a leader as a possible remove candidate. 
+Should the LB skip a leader as a possible remove candidate.
 
 Default: `false`
 
@@ -465,7 +465,7 @@ On a per-table basis, the [`CREATE TABLE ...SPLIT INTO`](../../../api/ysql/the-s
 
 {{< /note >}}
 
-#### --enable_automatic_tablet_splitting
+##### --enable_automatic_tablet_splitting
 
 Enables YugabyteDB to [automatically split tablets](../../../architecture/docdb-sharding/tablet-splitting/#automatic-tablet-splitting) while online, based on the specified tablet threshold sizes configured below.
 
@@ -569,6 +569,40 @@ Enable server-server, or node-to-node, encryption between YugabyteDB YB-Master a
 
 Default: `false`
 
+##### --cipher_list
+
+Specify cipher lists for TLS 1.2 and below. (For TLS 1.3, use [--ciphersuite](#ciphersuite).) Use a colon (":") separated list of TLSv1.2 cipher names in order of preference. Use an exclamation mark ("!") to exclude ciphers. For example:
+
+```sh
+--cipher_list DEFAULTS:!DES:!IDEA:!3DES:!RC2
+```
+
+This allows all ciphers for TLS 1.2 to be accepted, except those matching the category of ciphers omitted.
+
+This flag requires a restart or rolling restart.
+
+Default: `DEFAULTS`
+
+For more information, refer to [SSL_CTX_set_cipher_list](https://www.openssl.org/docs/man1.1.1/man3/SSL_CTX_set_cipher_list.html) in the OpenSSL documentation.
+
+##### --ciphersuite
+
+Specify cipher lists for TLS 1.3. (For TLS 1.2 and below, use [--cipher_list](#cipher-list).)
+
+Use a colon (":") separated list of TLSv1.3 ciphersuite names in order of preference. Use an exclamation mark ("!") to exclude ciphers. For example:
+
+```sh
+--ciphersuite DEFAULTS:!CHACHA20
+```
+
+This allows all ciphersuites for TLS 1.3 to be accepted, except CHACHA20 ciphers.
+
+This flag requires a restart or rolling restart.
+
+Default: `DEFAULTS`
+
+For more information, refer to [SSL_CTX_set_cipher_list](https://www.openssl.org/docs/man1.1.1/man3/SSL_CTX_set_cipher_list.html) in the OpenSSL documentation.
+
 ---
 
 ### Change data capture (CDC) flags
@@ -591,7 +625,7 @@ Default: `14400` (4 hours)
 
 ## Admin UI
 
-The Admin UI for yb-master is available at http://localhost:7000.
+The Admin UI for yb-master is available at <http://localhost:7000>.
 
 ### Home
 
