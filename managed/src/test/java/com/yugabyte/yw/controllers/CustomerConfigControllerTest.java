@@ -137,7 +137,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
 
     JsonNode node = Json.parse(contentAsString(result));
     assertEquals(BAD_REQUEST, result.status());
-    assertErrorNodeValue(node, "configName", "size must be between 1 and 50");
+    assertErrorNodeValue(node, "configName", "size must be between 1 and 100");
     assertAuditEntry(0, defaultCustomer.uuid);
   }
 
