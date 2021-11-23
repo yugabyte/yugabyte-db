@@ -286,10 +286,10 @@ bin/yb-admin \
 ```
 
 ```output
-Tablet-UUID                      	Range                                                    	Leader-IP       	Leader-UUID
-43b2a0f0dac44018b60eebeee489e391 	partition_key_start: "" partition_key_end: "S\001some\000\000!" 	127.0.0.201:9100 	2702ace451fe46bd81dd2a19ea539163
-c32e1066cefb449cb191ff23d626125f 	partition_key_start: "S\001some\000\000!" partition_key_end: "S\005jsonb\000\000!" 	127.0.0.203:9100 	3a80acb8df5d45e38b388ffdc17a59e0
-ba23b657eb5b4bc891ca794bcad06db7 	partition_key_start: "S\005jsonb\000\000!" partition_key_end: "" 	127.0.0.202:9100 	e24423119e734860bb0c3516df948b5c
+Tablet-UUID                       Range                                                                               Leader-IP         Leader-UUID
+43b2a0f0dac44018b60eebeee489e391  partition_key_start: "" partition_key_end: "S\001some\000\000!"                     127.0.0.201:9100  2702ace451fe46bd81dd2a19ea539163
+c32e1066cefb449cb191ff23d626125f  partition_key_start: "S\001some\000\000!" partition_key_end: "S\005jsonb\000\000!"  127.0.0.203:9100  3a80acb8df5d45e38b388ffdc17a59e0
+ba23b657eb5b4bc891ca794bcad06db7  partition_key_start: "S\005jsonb\000\000!" partition_key_end: ""                    127.0.0.202:9100  e24423119e734860bb0c3516df948b5c
 ```
 
 Then, check the data in each partition.
