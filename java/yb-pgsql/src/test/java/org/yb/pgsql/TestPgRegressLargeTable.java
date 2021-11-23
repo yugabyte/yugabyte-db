@@ -49,6 +49,9 @@ public class TestPgRegressLargeTable extends BasePgSQLTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flags = super.getTServerFlags();
     flags.put("ysql_pg_conf", TURN_OFF_COPY_FROM_BATCH_TRANSACTION);
+    // TODO(#10163) -- Remove this to ensure the test is against the default value #10163 is
+    // resolved.
+    flags.put("txn_max_apply_batch_records", "100000");
     return flags;
   }
 
