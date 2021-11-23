@@ -23,6 +23,8 @@ import io.swagger.annotations.Authorization;
 import java.util.*;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
+
+import net.logstash.logback.encoder.org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
@@ -228,7 +230,7 @@ public class UsersController extends AuthenticatedController {
 
     UserProfileFormData formData = form.get();
 
-    if (formData.getPassword() != null) {
+    if (StringUtils.isNotEmpty(formData.getPassword())) {
       passwordPolicyService.checkPasswordPolicy(customerUUID, formData.getPassword());
       if (!formData.getPassword().equals(formData.getConfirmPassword())) {
         throw new PlatformServiceException(
