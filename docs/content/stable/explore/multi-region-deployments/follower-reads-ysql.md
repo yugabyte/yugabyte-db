@@ -28,32 +28,27 @@ showAsideToc: true
 
 ## Introduction
 
-YugabyteDB requires reading from the **leader** to read the latest data. However, for applications that do not require the latest data, and/or are working with unchanging data; the cost of contacting a potentially remote leader to fetch the data may be wasteful. The application could benefit with better latency by reading from a **replica** that may be closer to the client.
+YugabyteDB requires reading from the **leader** to read the latest data. However, for applications that don't require the latest data, or are working with unchanging data, the cost of contacting a potentially remote leader to fetch the data may be wasteful. Your application may benefit from better latency by reading from a **replica** that is closer to the client.
 
-Since the replicas may not be up to date with respect to all the updates, it should be noted that this design may respond with stale data. The user may specify how much staleness the application can tolerate. When enabled, read-only operations may be handled by the closest replica; instead of having to go to the leader.
+Replicas may not be completely up to date with all updates, so this design may respond with stale data. You can specify how much staleness the application can tolerate. When enabled, read-only operations may be handled by the closest replica, instead of having to go to the leader.
 
-## Surface area and Usage
+## Surface area and usage
 
 ### Surface area
 
-- *yb_read_from_followers* : This session variable controls whether read from followers is enabled.
+Two session variables control the behavior of follower reads:
 
-- *yb_follower_read_staleness_ms* : This session variable defines the maximum staleness that the user is willing to tolerate.
-
-### Default behavior
-
-- *yb_read_from_followers* : Defaults to false.
-
-- *yb_follower_read_staleness_ms* : Defaults to 30 seconds.
+- `yb_read_from_followers` controls whether reading from followers is enabled. Default is false.
+- `yb_follower_read_staleness_ms` sets the maximum allowable staleness. Default is 30 seconds.
 
 ### Expected behavior
 
 The table describes what the expected behavior is when a read happens from a follower.
 
 | Conditions | Expected behavior |
-| --- | --- |
-| yb_read_from_followers is true AND <br> (Transaction is marked read-only <br>OR<br> Single-statement-select can be inferred to be read-only) <br> | Read will happen from the closest follower|
-|yb_read_from_followers is false OR <br> Transaction/statement is not read only | Read will happen from the leader |
+| :--------- | :---------------- |
+| yb_read_from_followers is true AND transaction is marked read-only | Read happens from the closest follower |
+| yb_read_from_followers is false OR transaction/statement is not read-only | Read happens from the leader |
 
 ### Read from follower conditions
 
@@ -68,9 +63,9 @@ The table describes what the expected behavior is when a read happens from a fol
 
 Regarding marking the transaction as read only, a user can do one of the following:
 
-- `SET TRANSACTION READ ONLY` : Applies only to the current transaction block.
-- `SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY` : Applies the read-only setting for all statements and transaction blocks that follow.
-- `SET default_transaction_read_only = TRUE` : Applies the read-only setting for all statements and transaction blocks that follow.
+- `SET TRANSACTION READ ONLY` applies only to the current transaction block.
+- `SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY` applies the read-only setting to all statements and transaction blocks that follow.
+- `SET default_transaction_read_only = TRUE` applies the read-only setting to all statements and transaction blocks that follow.
 
 ## Examples
 
@@ -104,14 +99,14 @@ SELECT * from t WHERE k='k1';
 (1 row)
 ```
 
-This next two examples use follower reads since **pg_hint** can be used during PREPARE and CREATE FUNCTION to do follower reads.
+This following examples use follower reads since **pg_hint** can be used during PREPARE, CREATE FUNCTION, and SELECT to do follower reads.
 
 ```sql
 set session characteristics as transaction read write;
 set yb_read_from_followers = true;
 
 PREPARE select_stmt(text) AS
-/*+ Set(transaction_read_only on)*/
+/*+ Set(transaction_read_only on) */
 SELECT * from t WHERE k=$1;
 
 EXECUTE select_stmt(‘k1’);
@@ -129,7 +124,7 @@ set session characteristics as transaction read write;
 set yb_read_from_followers = true;
 
 CREATE FUNCTION func() RETURNS text AS
-$$ /*+ Set(transaction_read_only on)*/
+$$ /*+ Set(transaction_read_only on) */
 SELECT * from t WHERE k=1 $$ LANGUAGE SQL;
 CREATE FUNCTION
 SELECT func();
@@ -137,6 +132,19 @@ SELECT func();
 
 ```output
  k  | v
+----+----
+ k1 | v1
+(1 row)
+```
+
+```sql
+set session characteristics as transaction read write;
+set yb_read_from_followers = true;
+/*+ Set(transaction_read_only on) */
+SELECT * from t WHERE k='k1';
+```
+
+```output
 ----+----
  k1 | v1
 (1 row)
@@ -204,7 +212,7 @@ select * from t where k = 'k1';
 ```sql
 set yb_follower_read_staleness_ms = 5000;
 
-select * from t where k = 'k1';   /* 5s old value */
+select * from t where k = 'k1';   /* up to 5s old value */
 ```
 
 ```output
@@ -217,7 +225,7 @@ select * from t where k = 'k1';   /* 5s old value */
 ```sql
 set yb_follower_read_staleness_ms = 15000;
 
-select * from t where k = 'k1';   /* 15s old value */
+select * from t where k = 'k1';   /* up to 15s old value */
 ```
 
 ```output
@@ -229,7 +237,7 @@ select * from t where k = 'k1';   /* 15s old value */
 
 ```sql
 postgres=# set yb_follower_read_staleness_ms = 25000;
-postgres=# select * from t where k = 'k1';   /* 25s old value */
+postgres=# select * from t where k = 'k1';   /* up to 25s old value */
 ```
 
 ```output
