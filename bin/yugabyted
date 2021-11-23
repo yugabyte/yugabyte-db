@@ -57,7 +57,6 @@ yugabyte
 # Script constants.
 SCRIPT_NAME = os.path.basename(__file__)
 YUGABYTE_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-DEFAULT_CALLHOME = True
 TRUE_CHOICES = ["true", "True", "t", "T", "yes", "Yes", "y", "Y", "1"]
 FALSE_CHOICES = ["false", "False", "f", "F", "no", "No", "n", "N", "0"]
 BOOL_CHOICES = TRUE_CHOICES + FALSE_CHOICES
@@ -1262,7 +1261,12 @@ class ControlScript(object):
 
             args.ui = self.parse_bool(args.ui)
             args.daemon = self.parse_bool(args.daemon)
-            args.callhome = self.parse_bool(args.callhome)
+            if args.callhome is not None:
+                args.callhome = self.parse_bool(args.callhome)
+            elif os.environ.get("YB_DISABLE_CALLHOME") is not None:
+                args.callhome = os.environ.get("YB_DISABLE_CALLHOME") not in TRUE_CHOICES
+            else:
+                args.callhome = DEFAULT_CALLHOME
 
             # Set authentication flags same as provided in the command-line flags.
             if args.ysql_enable_auth:
@@ -1411,7 +1415,7 @@ class ControlScript(object):
                 help="Runs {} in the background as a daemon. Does not persist on restart. "
                      "Default true.".format(SCRIPT_NAME))
             cur_parser.add_argument(
-                "--callhome", choices=BOOL_CHOICES, default="true", metavar="BOOL",
+                "--callhome", choices=BOOL_CHOICES, metavar="BOOL",
                 help="Enable or disable callhome feature that sends analytics data to Yugabyte. "
                      "Default true.")
             cur_parser.add_argument(
