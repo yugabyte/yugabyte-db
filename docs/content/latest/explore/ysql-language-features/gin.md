@@ -385,7 +385,6 @@ Since this is currently not supported, it throws an ERROR.
 
 ```sql
 RESET enable_indexscan;
-\timing off
 
 SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'quick | lazy');
 ```
