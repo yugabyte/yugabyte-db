@@ -79,7 +79,7 @@ public class CustomerConfig extends Model {
   public UUID configUUID;
 
   @NotNull
-  @Size(min = 1, max = 50)
+  @Size(min = 1, max = 100)
   @Column(length = 100, nullable = true)
   @ApiModelProperty(value = "Config name", example = "backup20-01-2021")
   public String configName;
