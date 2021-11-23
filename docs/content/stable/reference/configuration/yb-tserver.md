@@ -739,6 +739,40 @@ Enable server-server, or node-to-node, encryption between YugabyteDB YB-Master a
 
 Default: `false`
 
+##### --cipher_list
+
+Specify cipher lists for TLS 1.2 and below. (For TLS 1.3, use [--ciphersuite](#ciphersuite).) Use a colon (":") separated list of TLSv1.2 cipher names in order of preference. Use an exclamation mark ("!") to exclude ciphers. For example:
+
+```sh
+--cipher_list DEFAULTS:!DES:!IDEA:!3DES:!RC2
+```
+
+This allows all ciphers for TLS 1.2 to be accepted, except those matching the category of ciphers omitted.
+
+This flag requires a restart or rolling restart.
+
+Default: `DEFAULTS`
+
+For more information, refer to [SSL_CTX_set_cipher_list](https://www.openssl.org/docs/man1.1.1/man3/SSL_CTX_set_cipher_list.html) in the OpenSSL documentation.
+
+##### --ciphersuite
+
+Specify cipher lists for TLS 1.3. (For TLS 1.2 and below, use [--cipher_list](#cipher-list).)
+
+Use a colon (":") separated list of TLSv1.3 ciphersuite names in order of preference. Use an exclamation mark ("!") to exclude ciphers. For example:
+
+```sh
+--ciphersuite DEFAULTS:!CHACHA20
+```
+
+This allows all ciphersuites for TLS 1.3 to be accepted, except CHACHA20 ciphers.
+
+This flag requires a restart or rolling restart.
+
+Default: `DEFAULTS`
+
+For more information, refer to [SSL_CTX_set_cipher_list](https://www.openssl.org/docs/man1.1.1/man3/SSL_CTX_set_cipher_list.html) in the OpenSSL documentation.
+
 ---
 
 ### Change data capture (CDC) flags
