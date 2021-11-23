@@ -79,10 +79,14 @@ YugabyteDB GIN indexes are somewhat different from PostgreSQL GIN indexes:
 
 ## Examples
 
-1. To begin, set up a YugabyteDB cluster. For instance, using `yb-ctl`,
+1. To begin, set up a YugabyteDB cluster. For instance, using `yugabyted`,
 
     ```sh
-    ./bin/yb-ctl --data_dir /tmp/gindemo --rf 3 create --ip_start 201
+    ./bin/yugabyted start --base_dir /tmp/gindemo/1 --listen 127.0.0.201
+    ./bin/yugabyted start --base_dir /tmp/gindemo/2 --listen 127.0.0.202 \
+      --join 127.0.0.201
+    ./bin/yugabyted start --base_dir /tmp/gindemo/3 --listen 127.0.0.203 \
+      --join 127.0.0.201
     ./bin/ysqlsh --host 127.0.0.201
     ```
 
@@ -146,8 +150,7 @@ The assumption in the following examples is that the user is using the GIN index
     ```sql
     SET enable_indexscan = off;
     SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'the');
-    -- Run it several times to reduce cache bias.
-    SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'the');
+    -- Run it once more to reduce cache bias.
     SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'the');
     ```
 
@@ -163,8 +166,6 @@ The assumption in the following examples is that the user is using the GIN index
 
     ```sql
     SET enable_indexscan = on;
-    SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'the');
-    -- Run it several times to reduce cache bias.
     SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'the');
     SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'the');
     ```
@@ -185,7 +186,6 @@ The assumption in the following examples is that the user is using the GIN index
     SET enable_indexscan = off;
     SELECT * FROM arrays WHERE a @> '{6}';
     SELECT * FROM arrays WHERE a @> '{6}';
-    SELECT * FROM arrays WHERE a @> '{6}';
     ```
 
     ```output
@@ -203,7 +203,6 @@ The assumption in the following examples is that the user is using the GIN index
     SET enable_indexscan = on;
     SELECT * FROM arrays WHERE a @> '{6}';
     SELECT * FROM arrays WHERE a @> '{6}';
-    SELECT * FROM arrays WHERE a @> '{6}';
     ```
 
     ```output
@@ -215,7 +214,6 @@ The assumption in the following examples is that the user is using the GIN index
 
     ```sql
     SET enable_indexscan = off;
-    SELECT * FROM jsonbs WHERE j ? 'some';
     SELECT * FROM jsonbs WHERE j ? 'some';
     SELECT * FROM jsonbs WHERE j ? 'some';
     ```
@@ -235,7 +233,6 @@ The assumption in the following examples is that the user is using the GIN index
 
     ```sql
     SET enable_indexscan = on;
-    SELECT * FROM jsonbs WHERE j ? 'some';
     SELECT * FROM jsonbs WHERE j ? 'some';
     SELECT * FROM jsonbs WHERE j ? 'some';
     ```
@@ -289,10 +286,10 @@ bin/yb-admin \
 ```
 
 ```output
-Tablet-UUID                      	Range                                                    	Leader-IP       	Leader-UUID
-43b2a0f0dac44018b60eebeee489e391 	partition_key_start: "" partition_key_end: "S\001some\000\000!" 	127.0.0.201:9100 	2702ace451fe46bd81dd2a19ea539163
-c32e1066cefb449cb191ff23d626125f 	partition_key_start: "S\001some\000\000!" partition_key_end: "S\005jsonb\000\000!" 	127.0.0.203:9100 	3a80acb8df5d45e38b388ffdc17a59e0
-ba23b657eb5b4bc891ca794bcad06db7 	partition_key_start: "S\005jsonb\000\000!" partition_key_end: "" 	127.0.0.202:9100 	e24423119e734860bb0c3516df948b5c
+Tablet-UUID                       Range                                                                               Leader-IP         Leader-UUID
+43b2a0f0dac44018b60eebeee489e391  partition_key_start: "" partition_key_end: "S\001some\000\000!"                     127.0.0.201:9100  2702ace451fe46bd81dd2a19ea539163
+c32e1066cefb449cb191ff23d626125f  partition_key_start: "S\001some\000\000!" partition_key_end: "S\005jsonb\000\000!"  127.0.0.203:9100  3a80acb8df5d45e38b388ffdc17a59e0
+ba23b657eb5b4bc891ca794bcad06db7  partition_key_start: "S\005jsonb\000\000!" partition_key_end: ""                    127.0.0.202:9100  e24423119e734860bb0c3516df948b5c
 ```
 
 Then, check the data in each partition.
@@ -309,8 +306,8 @@ while read -r tablet_id; do
   bin/sst_dump \
     --command=scan \
     --output_format=decoded_regulardb \
-    --file=$(find /tmp/gindemo -name tablet-"$tablet_id" \
-             | grep 'node-1.*rocksdb') \
+    --file=$(find /tmp/gindemo/1/data/yb-data/tserver/data \
+               -name tablet-"$tablet_id") \
   | grep -v filler
 done <<(!! \
         | tail -n +2 \
@@ -319,7 +316,7 @@ done <<(!! \
 
 ```output
 from [] to []
-Process /tmp/gindemo/node-1/disk-1/yb-data/tserver/data/rocksdb/table-000033c000003000800000000000401d/tablet-43b2a0f0dac44018b60eebeee489e391/000010.sst
+Process /tmp/gindemo/1/data/yb-data/tserver/data/rocksdb/table-000033c000003000800000000000401d/tablet-43b2a0f0dac44018b60eebeee489e391/000010.sst
 Sst file format: block-based
 SubDocKey(DocKey([], ["\x01a", EncodedSubDocKey(DocKey(0x1210, [1], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 73 }]) -> null; intent doc ht: HT{ physical: 1636678107937571 w: 73 }
 SubDocKey(DocKey([], ["\x01a", EncodedSubDocKey(DocKey(0x4e58, [6], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 315 }]) -> null; intent doc ht: HT{ physical: 1636678107947022 w: 142 }
@@ -332,7 +329,7 @@ SubDocKey(DocKey([], ["\x01not", EncodedSubDocKey(DocKey(0x4e58, [6], []), [])])
 SubDocKey(DocKey([], ["\x01number", EncodedSubDocKey(DocKey(0x1210, [1], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 74 }]) -> null; intent doc ht: HT{ physical: 1636678107937571 w: 74 }
 SubDocKey(DocKey([], ["\x01number", EncodedSubDocKey(DocKey(0x4e58, [6], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 321 }]) -> null; intent doc ht: HT{ physical: 1636678107947022 w: 148 }
 from [] to []
-Process /tmp/gindemo/node-1/disk-1/yb-data/tserver/data/rocksdb/table-000033c000003000800000000000401d/tablet-c32e1066cefb449cb191ff23d626125f/000010.sst
+Process /tmp/gindemo/1/data/yb-data/tserver/data/rocksdb/table-000033c000003000800000000000401d/tablet-c32e1066cefb449cb191ff23d626125f/000010.sst
 Sst file format: block-based
 SubDocKey(DocKey([], ["\x01some", EncodedSubDocKey(DocKey(0x0a73, [5], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 }]) -> null; intent doc ht: HT{ physical: 1636678107935594 }
 SubDocKey(DocKey([], ["\x01some", EncodedSubDocKey(DocKey(0x4e58, [6], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 3 }]) -> null; intent doc ht: HT{ physical: 1636678107944604 }
@@ -343,7 +340,7 @@ SubDocKey(DocKey([], ["\x01where", EncodedSubDocKey(DocKey(0x0a73, [5], []), [])
 SubDocKey(DocKey([], ["\x045", EncodedSubDocKey(DocKey(0x1210, [1], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 2 }]) -> null; intent doc ht: HT{ physical: 1636678107935594 w: 2 }
 SubDocKey(DocKey([], ["\x05body", EncodedSubDocKey(DocKey(0xc0c4, [2], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 6 }]) -> null; intent doc ht: HT{ physical: 1636678107973196 w: 1 }
 from [] to []
-Process /tmp/gindemo/node-1/disk-1/yb-data/tserver/data/rocksdb/table-000033c000003000800000000000401d/tablet-ba23b657eb5b4bc891ca794bcad06db7/000010.sst
+Process /tmp/gindemo/1/data/yb-data/tserver/data/rocksdb/table-000033c000003000800000000000401d/tablet-ba23b657eb5b4bc891ca794bcad06db7/000010.sst
 Sst file format: block-based
 SubDocKey(DocKey([], ["\x05jsonb", EncodedSubDocKey(DocKey(0x4e58, [6], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 }]) -> null; intent doc ht: HT{ physical: 1636678107944677 }
 SubDocKey(DocKey([], ["\x05one", EncodedSubDocKey(DocKey(0xfca0, [3], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 2 }]) -> null; intent doc ht: HT{ physical: 1636678107974363 }
@@ -388,7 +385,6 @@ Since this is currently not supported, it throws an ERROR.
 
 ```sql
 RESET enable_indexscan;
-\timing off
 
 SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'quick | lazy');
 ```
