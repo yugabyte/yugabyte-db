@@ -4,6 +4,7 @@ package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertYWSE;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.models.Users.Role;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
@@ -249,6 +250,202 @@ public class UsersControllerTest extends FakeDBApplication {
             () ->
                 route(
                     fakeRequest("POST", String.format(baseRoute, customer1.uuid))
+                        .cookie(validCookie)
+                        .bodyJson(params)));
+    assertEquals(result.status(), BAD_REQUEST);
+  }
+
+  @Test
+  public void testUpdateUserProfileValid() throws IOException {
+    Users testUser1 = ModelFactory.testUser(customer1, "tc3@test.com", Role.Admin);
+    String testTimezone1 = "America/Toronto";
+    String testTimezone2 = "America/Los_Angeles";
+    testUser1.setTimezone(testTimezone1);
+    String authTokenTest = testUser1.createAuthToken();
+    assertEquals(testUser1.getRole(), Role.Admin);
+    ObjectNode params = Json.newObject();
+    params.put("email", "tc3@test.com");
+    params.put("password", "new-Password1!");
+    params.put("confirmPassword", "new-Password1!");
+    params.put("role", "ReadOnly");
+    params.put("timezone", testTimezone2);
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
+    Result result =
+        route(
+            fakeRequest(
+                    "PUT",
+                    String.format(
+                        "%s/%s/update_profile",
+                        String.format(baseRoute, customer1.uuid), testUser1.uuid))
+                .cookie(validCookie)
+                .bodyJson(params));
+    testUser1 = Users.get(testUser1.uuid);
+    assertEquals(testUser1.getTimezone(), testTimezone2);
+    assertTrue(BCrypt.checkpw("new-Password1!", testUser1.passwordHash));
+    assertEquals(testUser1.getRole(), Role.ReadOnly);
+    assertAuditEntry(1, customer1.uuid);
+  }
+
+  @Test
+  public void testUpdateUserProfileValidOnlyTimezone() throws IOException {
+    Users testUser1 = ModelFactory.testUser(customer1, "tc3@test.com", Role.Admin);
+    String testTimezone1 = "America/Toronto";
+    String testTimezone2 = "America/Los_Angeles";
+    testUser1.setTimezone(testTimezone1);
+    String authTokenTest = testUser1.createAuthToken();
+    assertEquals(testUser1.getRole(), Role.Admin);
+    ObjectNode params = Json.newObject();
+    params.put("timezone", testTimezone2);
+    params.put("role", "Admin");
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
+    Result result =
+        route(
+            fakeRequest(
+                    "PUT",
+                    String.format(
+                        "%s/%s/update_profile",
+                        String.format(baseRoute, customer1.uuid), testUser1.uuid))
+                .cookie(validCookie)
+                .bodyJson(params));
+    testUser1 = Users.get(testUser1.uuid);
+    assertEquals(testUser1.getTimezone(), testTimezone2);
+  }
+
+  @Test
+  public void testUpdateUserProfileNullifyTimezone() throws IOException {
+    Users testUser1 = ModelFactory.testUser(customer1, "tc3@test.com", Role.Admin);
+    String testTimezone1 = "America/Toronto";
+    testUser1.setTimezone(testTimezone1);
+    String authTokenTest = testUser1.createAuthToken();
+    assertEquals(testUser1.getRole(), Role.Admin);
+    ObjectNode params = Json.newObject();
+    params.put("email", "tc3@test.com");
+    params.put("password", "new-Password1!");
+    params.put("confirmPassword", "new-Password1!");
+    params.put("role", "ReadOnly");
+    params.put("timezone", "");
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
+    Result result =
+        route(
+            fakeRequest(
+                    "PUT",
+                    String.format(
+                        "%s/%s/update_profile",
+                        String.format(baseRoute, customer1.uuid), testUser1.uuid))
+                .cookie(validCookie)
+                .bodyJson(params));
+    testUser1 = Users.get(testUser1.uuid);
+    assertEquals(testUser1.getTimezone(), "");
+    assertTrue(BCrypt.checkpw("new-Password1!", testUser1.passwordHash));
+    assertEquals(testUser1.getRole(), Role.ReadOnly);
+    assertAuditEntry(1, customer1.uuid);
+  }
+
+  @Test
+  public void testUpdateUserProfileInvalid() throws IOException {
+    Users testUser1 = ModelFactory.testUser(customer1, "tc3@test.com", Role.Admin);
+    String testTimezone1 = "America/Toronto";
+    String testTimezone2 = "America/Los_Angeles";
+    testUser1.setTimezone(testTimezone1);
+    String authTokenTest = testUser1.createAuthToken();
+    assertEquals(testUser1.getRole(), Role.Admin);
+    ObjectNode params = Json.newObject();
+    params.put("email", "tc3@test.com");
+    params.put("password", "new-password");
+    params.put("confirmPassword", "new-password");
+    params.put("role", "ReadOnly");
+    params.put("timezone", testTimezone2);
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
+    Result result =
+        assertPlatformException(
+            () ->
+                route(
+                    fakeRequest(
+                            "PUT",
+                            String.format(
+                                "%s/%s/update_profile",
+                                String.format(baseRoute, customer1.uuid), testUser1.uuid))
+                        .cookie(validCookie)
+                        .bodyJson(params)));
+    Users resultTestUser1 = Users.get(testUser1.uuid);
+    assertEquals(resultTestUser1.getTimezone(), testTimezone1);
+    assertEquals(resultTestUser1.getRole(), Role.Admin);
+    assertEquals(result.status(), BAD_REQUEST);
+  }
+
+  @Test
+  public void testUpdateUserProfileValidOnlyPassword() throws IOException {
+    Users testUser1 = ModelFactory.testUser(customer1, "tc3@test.com", Role.Admin);
+    String testTimezone1 = "America/Toronto";
+    testUser1.setTimezone(testTimezone1);
+    String authTokenTest = testUser1.createAuthToken();
+    assertEquals(testUser1.getRole(), Role.Admin);
+    ObjectNode params = Json.newObject();
+    params.put("password", "new-Password1!");
+    params.put("confirmPassword", "new-Password1!");
+    params.put("role", "Admin");
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
+    Result result =
+        route(
+            fakeRequest(
+                    "PUT",
+                    String.format(
+                        "%s/%s/update_profile",
+                        String.format(baseRoute, customer1.uuid), testUser1.uuid))
+                .cookie(validCookie)
+                .bodyJson(params));
+    testUser1 = Users.get(testUser1.uuid);
+    assertTrue(BCrypt.checkpw("new-Password1!", testUser1.passwordHash));
+  }
+
+  @Test
+  public void testUpdateUserProfileInvalidPassword() throws IOException {
+    Users testUser1 = ModelFactory.testUser(customer1, "tc3@test.com", Role.Admin);
+    String testTimezone = "America/Toronto";
+    testUser1.setTimezone(testTimezone);
+    String authTokenTest = testUser1.createAuthToken();
+    assertEquals(testUser1.getRole(), Role.Admin);
+    ObjectNode params = Json.newObject();
+    params.put("email", "tc3@test.com");
+    params.put("password", "new-password");
+    params.put("confirmPassword", "new-password");
+    params.put("role", "Admin");
+    params.put("timezone", testTimezone);
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
+    Result result =
+        assertPlatformException(
+            () ->
+                route(
+                    fakeRequest(
+                            "PUT",
+                            String.format(
+                                "%s/%s/update_profile",
+                                String.format(baseRoute, customer1.uuid), testUser1.uuid))
+                        .cookie(validCookie)
+                        .bodyJson(params)));
+    assertEquals(result.status(), BAD_REQUEST);
+  }
+
+  @Test
+  public void testUpdateUserProfileSuperAdminRole() throws IOException {
+    Users testUser1 = ModelFactory.testUser(customer1, "tc3@test.com", Role.SuperAdmin);
+    String testTimezone = "America/Toronto";
+    testUser1.setTimezone(testTimezone);
+    String authTokenTest = testUser1.createAuthToken();
+    assertEquals(testUser1.getRole(), Role.SuperAdmin);
+    ObjectNode params = Json.newObject();
+    params.put("role", "ReadOnly");
+    params.put("timezone", testTimezone);
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
+    Result result =
+        assertPlatformException(
+            () ->
+                route(
+                    fakeRequest(
+                            "PUT",
+                            String.format(
+                                "%s/%s/update_profile",
+                                String.format(baseRoute, customer1.uuid), testUser1.uuid))
                         .cookie(validCookie)
                         .bodyJson(params)));
     assertEquals(result.status(), BAD_REQUEST);
