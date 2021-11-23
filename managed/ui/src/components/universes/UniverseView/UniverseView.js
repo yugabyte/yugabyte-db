@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { usePrevious } from 'react-use';
 import { Link } from 'react-router';
 import { Dropdown, Tooltip, OverlayTrigger } from 'react-bootstrap';
+import { useQuery } from 'react-query';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import moment from 'moment';
 import _ from 'lodash';
@@ -38,6 +39,7 @@ import {
   isDisabled,
   showOrRedirect
 } from '../../../utils/LayoutUtils';
+import { api } from '../../../redesign/helpers/api';
 import { isNonEmptyArray, isNonEmptyObject, isDefinedNotNull } from '../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { QuerySearchInput } from '../../queries/QuerySearchInput';
@@ -118,8 +120,17 @@ const filterStatusesArr = Object.values(filterStatuses).map((status) => ({
   value: status.statusText,
   label: status.statusText
 }));
-const tableMinPageSize = 10;
-const listMinPageSize = 4;
+
+const TABLE_MIN_PAGE_SIZE = 10;
+const LIST_MIN_PAGE_SIZE = 4;
+
+const ALERT_REFETCH_INTERVAL = 60000;
+
+const defaultAlertFilters = {
+  states: ['ACTIVE'],
+  severities: ['SEVERE', 'WARNING'],
+  configurationTypes: ['UNIVERSE']
+};
 
 export const UniverseView = (props) => {
   const [searchTokens, setSearchTokens] = useState([]);
@@ -165,7 +176,7 @@ export const UniverseView = (props) => {
       updateUniversePendingTasks(universeUUIDs, customerTaskList);
     }
 
-    if (universeList) {
+    if (universeList && isNonEmptyArray(universeList.data)) {
       for (const universe of universeList.data) {
         if (
           universe.universeDetails.updateInProgress &&
@@ -351,7 +362,7 @@ export const UniverseView = (props) => {
           <ul className="list-group" aria-label="Universe List">
             {getUniverseListItems(universes)}
           </ul>
-          {universes.length > listMinPageSize && (
+          {universes.length > LIST_MIN_PAGE_SIZE && (
             <div className="list-pagination-control">
               <YBControlledSelect
                 options={[4, 10, 20, 30, 40].map((option, idx) => (
@@ -382,7 +393,7 @@ export const UniverseView = (props) => {
           className="universe-table"
           trClassName="tr-row-style"
           options={tableOptions}
-          pagination={universes.length > tableMinPageSize}
+          pagination={universes.length > TABLE_MIN_PAGE_SIZE}
           hover
         >
           <TableHeaderColumn
@@ -492,6 +503,20 @@ export const UniverseView = (props) => {
   }));
   universes = filterBySearchTokens(universes, searchTokens, dropdownFieldKeys, statusFilterTokens);
 
+  const filteredUniverses = universes.reduce(
+    (prev, curUniverse) => ({
+      ...prev,
+      [curUniverse.universeUUID]: curUniverse.statusText
+    }),
+    {}
+  );
+  const { data: alertCount } = useQuery(
+    ['alerts', { ...defaultAlertFilters, ...filteredUniverses }],
+    () =>
+      api.getAlertCount({ ...defaultAlertFilters, sourceUUIDs: Object.keys(filteredUniverses) }),
+    { refetchInterval: ALERT_REFETCH_INTERVAL }
+  );
+
   let numNodes = 0;
   let totalCost = 0;
   if (universes) {
@@ -574,8 +599,13 @@ export const UniverseView = (props) => {
           sizePrefix="$"
           size={<YBFormattedNumber value={totalCost} maximumFractionDigits={2} />}
         />
-        {/* TODO: Support fetching and filtering alert by a group of universes */}
-        {/* <YBResourceCount kind="Alert" pluralizeKind separatorLine icon="fa-bell-o" size={0} /> */}
+        <YBResourceCount
+          kind="Active Alert"
+          pluralizeKind
+          separatorLine
+          icon="fa-bell-o"
+          size={isNonEmptyObject(filteredUniverses) ? alertCount : 0}
+        />
       </div>
       <div className="universe-view-toolbar-container">
         <YBMultiSelectRedesiged

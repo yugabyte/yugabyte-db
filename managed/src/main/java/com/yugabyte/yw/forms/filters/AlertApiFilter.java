@@ -28,6 +28,7 @@ public class AlertApiFilter {
   private Set<AlertConfiguration.TargetType> configurationTypes;
   private Set<Alert.State> states;
   private String sourceName;
+  private Set<UUID> sourceUUIDs;
 
   public AlertFilter toFilter() {
     AlertFilter.AlertFilterBuilder builder = AlertFilter.builder();
@@ -48,6 +49,9 @@ public class AlertApiFilter {
     }
     if (!StringUtils.isEmpty(sourceName)) {
       builder.sourceName(sourceName);
+    }
+    if (!CollectionUtils.isEmpty(sourceUUIDs)) {
+      builder.sourceUUIDs(sourceUUIDs);
     }
     return builder.build();
   }
