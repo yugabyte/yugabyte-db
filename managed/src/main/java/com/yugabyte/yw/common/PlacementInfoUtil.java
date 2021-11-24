@@ -280,6 +280,7 @@ public class PlacementInfoUtil {
     return nodeRegionSet;
   }
 
+  @VisibleForTesting
   /**
    * Helper API to check if the list of regions is the same in existing nodes of the placement and
    * the new userIntent's region list.
@@ -288,20 +289,20 @@ public class PlacementInfoUtil {
    * @param nodes The set of nodes used to compare the current region layout.
    * @return true if the provider or region list changed. false if neither changed.
    */
-  private static boolean isProviderOrRegionChange(Cluster cluster, Collection<NodeDetails> nodes) {
+  static boolean isProviderOrRegionChange(Cluster cluster, Collection<NodeDetails> nodes) {
     // Initial state. No nodes have been requested, so nothing has changed.
     if (nodes.isEmpty()) {
-
       return false;
     }
 
     // Compare Providers.
-    UUID intentProvider = getProviderUUID(nodes, cluster.uuid);
-    UUID nodeProvider = cluster.placementInfo.cloudList.get(0).uuid;
-    if (!intentProvider.equals(nodeProvider)) {
+    UUID nodeProvider = getProviderUUID(nodes, cluster.uuid);
+    UUID placementProvider = cluster.placementInfo.cloudList.get(0).uuid;
+    if (!Objects.equals(placementProvider, nodeProvider)) {
       LOG.info(
-          "Provider in intent {} is different from provider in existing nodes {} in cluster {}.",
-          intentProvider,
+          "Provider in placement information {} is different from provider "
+              + "in existing nodes {} in cluster {}.",
+          placementProvider,
           nodeProvider,
           cluster.uuid);
 
@@ -317,7 +318,7 @@ public class PlacementInfoUtil {
         nodeRegionSet,
         cluster.uuid);
 
-    return !intentRegionSet.equals(nodeRegionSet);
+    return !intentRegionSet.containsAll(nodeRegionSet);
   }
 
   public static int getNodeCountInPlacement(PlacementInfo placementInfo) {
