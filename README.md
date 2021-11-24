@@ -159,7 +159,11 @@ ALTER SYSTEM SET shared_preload_libraries = 'pg_stat_monitor';
 ALTER SYSTEM
 ```
 
-**NOTE**: If you’ve added other values to the shared_preload_libraries parameter, list all of them separated by commas for the `ALTER SYSTEM` command. For example, `ALTER SYSTEM SET shared_preload_libraries = 'foo, bar, pg_stat_monitor'`
+> **NOTE**: If you’ve added other modules to the `shared_preload_libraries` parameter (for example, `pg_stat_statements`), list all of them separated by commas for the `ALTER SYSTEM` command. 
+>
+>:warning: For PostgreSQL 13 and earlier versions,`pg_stat_monitor` **must** follow `pg_stat_statements`. For example, `ALTER SYSTEM SET shared_preload_libraries = 'foo, pg_stat_statements, pg_stat_monitor'`.
+>
+>In PostgreSQL 14, modules can be specified in any order.
 
 Start or restart the `postgresql` instance to apply the changes.
 
@@ -187,6 +191,7 @@ CREATE EXTENSION
 
 This allows you to see the stats collected by `pg_stat_monitor`.
 
+By default, `pg_stat_monitor` is created for the `postgres` database. To access the statistics from other databases, you need to create the extension for every database.
 
 ```
 -- Select some of the query information, like client_ip, username and application_name etc.
