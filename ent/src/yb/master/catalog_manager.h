@@ -430,7 +430,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   // CDC Stream map: CDCStreamId -> CDCStreamInfo.
   typedef std::unordered_map<CDCStreamId, scoped_refptr<CDCStreamInfo>> CDCStreamInfoMap;
-  CDCStreamInfoMap cdc_stream_map_;
+  CDCStreamInfoMap cdc_stream_map_ GUARDED_BY(mutex_);
 
   // Map of tables -> number of cdc streams they are producers for.
   std::unordered_map<TableId, int> cdc_stream_tables_count_map_ GUARDED_BY(mutex_);
@@ -441,7 +441,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   typedef std::unordered_map<std::string, scoped_refptr<UniverseReplicationInfo>>
       UniverseReplicationInfoMap;
-  UniverseReplicationInfoMap universe_replication_map_;
+  UniverseReplicationInfoMap universe_replication_map_ GUARDED_BY(mutex_);
 
   // mutex on should_send_consumer_registry_mutex_.
   mutable simple_spinlock should_send_consumer_registry_mutex_;
