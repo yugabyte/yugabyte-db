@@ -32,14 +32,24 @@ To create a VPC, do the following:
 
 Yugabyte Cloud adds the VPC to the VPCs list with a status of Creating. If successful, after a minute or two, the status will change to Active.
 
-The VPC network name 
+The VPC's network name and project ID are automatically assigned. You will need these details when configuring the peering in GCP.
 
 ## View VPC details
 
-To view VPC details:
+The VPC details include the following:
+
+- Provider hosting the VPC
+- Status
+- Name
+- CIDR
+- Network Name
+- Region
+- Project ID
+
+To view the VPC details:
 
 1. On the **Network Access** page, select **VPCs**.
-1. Select a VPC in the list to display the **VPC Detail** sheet.
+1. Select a VPC in the list to display the **VPC Details** sheet.
 
 ## Terminate a VPC
 

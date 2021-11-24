@@ -44,6 +44,10 @@ To create a peering connection for AWS, do the following:
 
 The peering connection is created with a status of Pending. To complete the peering, you must accept the peering request in your cloud provider account.
 
+## Configure the cloud provider
+
+Once the peering connection is set up, you need to sign in to your cloud provider and configure the connection.
+
 ### Accept the peering request in AWS
 
 Once the peering request is made, in AWS, use the VPC Dashboard to do the following:
@@ -69,7 +73,7 @@ For information on VPC network peering in GCP, refer to [VPC Network Peering ove
 
 ## View peering connection details
 
-The **Peering Details** displays information about the peering connection, including details of both the Yugabyte Cloud VPC and the peered VPC.
+The **Peering Details** displays information about the peering connection, including both the Yugabyte Cloud VPC details and the peered VPC details.
 
 To view peering connection details:
 
