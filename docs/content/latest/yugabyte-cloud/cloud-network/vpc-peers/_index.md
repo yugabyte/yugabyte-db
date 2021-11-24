@@ -29,15 +29,10 @@ Setting up and peering a VPC works as follows:
 - [Create a VPC](#create-a-vpc)
 - [Create a Peering Connection](#create-a-peering-connection)
 - [Configure the provider](#configure-the-cloud-provider)
-- [Deploy a cluster in the VPC](#deploy-a-cluster-in-the-vpc)
 
-### Prerequisites
+Once the peering connection is active, you can deploy clusters in the VPC. Refer to [Create clusters](../../cloud-basics/create-clusters/).
 
-To set up a VPC in Yugabyte Cloud, you need the details of the VPC you want to peer with. This includes:
-
-- AWS account or GCP project
-- VPC ID/network name
-- CIDR blocks of the VPC network
+Once the cluster is active, you must add at least one of the CIDR blocks associated with the peered application VPC to the [IP allow list](../../cloud-basics/add-connections) for your cluster.
 
 ### Create a VPC
 
@@ -64,22 +59,13 @@ Refer to [Manage peering connections](cloud-add-peering/).
 
 Once the peering connection is set up, you need to sign in to your cloud provider and configure the connection.
 
-In the Google Cloud Console, this involves creating a peering connection using the project ID and VPC network name.
+In the Google Cloud Console, this involves creating a peering connection using the project ID and network name of the Yugabyte Cloud VPC.
 
 For AWS, you use the VPC Dashboard to do the following:
 
 - Enable DNS hostnames and DNS resolution. This ensures that the cluster's hostnames in standard connection strings automatically resolve to private instead of public IP addresses when the Yugabyte Cloud cluster is accessed from the VPC.
 - Approve the peering connection request that you received from Yugabyte.
 - Add a route table entry to the VPC peer and add the Yugabyte Cloud cluster CIDR block to the Destination column, and the Peering Connection ID to the Target column.
-
-### Deploy a cluster in the VPC
-
-Once the peering connection is active, you can deploy clusters in the VPC. Refer to [Create clusters](../../cloud-basics/create-clusters/).
-
-Before your VPC peer can connect to your cluster, you must:
-
-1. Locate the VPC CIDR block addresses (or subset) associated with the VPC for your cloud provider.
-1. Add at least one of these CIDR blocks to the [IP allow list](../../cloud-basics/add-connections) for your Yugabyte Cloud cluster.
 
 <div class="row">
 
