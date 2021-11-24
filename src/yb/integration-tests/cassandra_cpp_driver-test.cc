@@ -1800,28 +1800,38 @@ TEST_F_EX(
   TestTable<cass_int32_t, string> table;
   ASSERT_OK(table.CreateTable(&session_, "test.test_table", {"k", "v"}, {"(k)"}, true));
 
-  LOG(INFO) << "Creating index";
+  LOG(INFO) << "Creating two indexes that will backfill together";
+  // Create 2 indexes that backfill together. One of them will be deleted while the backfill
+  // is happening. The deleted index should be successfully deleted, and the other index will
+  // be successfully backfilled.
   auto session2 = ASSERT_RESULT(EstablishSession());
-  CassandraFuture create_index_future = session2.ExecuteGetFuture(
-      "CREATE INDEX test_table_index_by_v ON test_table (v)");
+  CassandraFuture create_index_future0 =
+      session2.ExecuteGetFuture("CREATE DEFERRED INDEX test_table_index_by_v0 ON test_table (v)");
+  CassandraFuture create_index_future1 =
+      session2.ExecuteGetFuture("CREATE INDEX test_table_index_by_v1 ON test_table (v)");
 
   constexpr auto kNamespace = "test";
   const YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "test_table");
-  const YBTableName index_table_name(YQL_DATABASE_CQL, kNamespace, "test_table_index_by_v");
+  const YBTableName index_table_name0(YQL_DATABASE_CQL, kNamespace, "test_table_index_by_v0");
+  const YBTableName index_table_name1(YQL_DATABASE_CQL, kNamespace, "test_table_index_by_v1");
 
   auto res = client_->WaitUntilIndexPermissionsAtLeast(
-      table_name, index_table_name, IndexPermissions::INDEX_PERM_DO_BACKFILL, 50ms /* max_wait */);
+      table_name, index_table_name1, IndexPermissions::INDEX_PERM_DO_BACKFILL, 50ms /* max_wait */);
   // Allow backfill to get past GetSafeTime
   ASSERT_OK(WaitForBackfillSafeTimeOn(cluster_.get(), table_name));
 
-  ASSERT_OK(session_.ExecuteQuery("drop index test_table_index_by_v"));
+  ASSERT_OK(session_.ExecuteQuery("drop index test_table_index_by_v1"));
 
   // Wait for the backfill to actually run to completion/failure.
   SleepFor(MonoDelta::FromSeconds(10));
   res = client_->WaitUntilIndexPermissionsAtLeast(
-      table_name, index_table_name, IndexPermissions::INDEX_PERM_NOT_USED, 50ms /* max_wait */);
+      table_name, index_table_name1, IndexPermissions::INDEX_PERM_NOT_USED, 50ms /* max_wait */);
   ASSERT_TRUE(!res.ok());
   ASSERT_TRUE(res.status().IsNotFound());
+
+  auto perm = ASSERT_RESULT(client_->WaitUntilIndexPermissionsAtLeast(
+      table_name, index_table_name0, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE));
+  ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
 }
 
 TEST_F_EX(CppCassandraDriverTest, TestPartialFailureDeferred, CppCassandraDriverTestIndex) {
