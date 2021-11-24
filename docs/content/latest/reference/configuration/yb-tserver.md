@@ -657,7 +657,7 @@ Default: `20`
 
 The time interval, in seconds, to retain history/older versions of data. Point-in-time reads at a hybrid time prior to this interval might not be allowed after a compaction and return a `Snapshot too old` error. Set this to be greater than the expected maximum duration of any single transaction in your application.
 
-Default: `120`
+Default: `900`
 
 ##### --remote_bootstrap_rate_limit_bytes_per_sec
 
