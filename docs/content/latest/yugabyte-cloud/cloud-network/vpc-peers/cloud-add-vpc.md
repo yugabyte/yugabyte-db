@@ -57,4 +57,5 @@ To terminate a VPC, click the **Delete** icon for the VPC in the list you want t
 
 ## Next steps
 
-[Add a peering connection](../cloud-add-peering)
+- Create a cluster in a VPN. You do this by selecting the VPC during cluster creation. Refer to [Create a cluster](../../../cloud-basics/create-clusters).
+- Connect a Yugabyte Cloud VPN to an application VPN. Refer to [Add a peering connection](../cloud-add-peering).

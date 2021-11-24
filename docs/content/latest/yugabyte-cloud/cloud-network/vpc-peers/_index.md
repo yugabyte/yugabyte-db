@@ -30,9 +30,9 @@ Setting up and peering a VPC works as follows:
 - [Create a Peering Connection](#create-a-peering-connection)
 - [Configure the provider](#configure-the-cloud-provider)
 
-Once the peering connection is active, you can deploy clusters in the VPC. Refer to [Create clusters](../../cloud-basics/create-clusters/).
+Once a VPC has been created, you can deploy clusters in the VPC. Refer to [Create clusters](../../cloud-basics/create-clusters/).
 
-Once the cluster is active, you must add at least one of the CIDR blocks associated with the peered application VPC to the [IP allow list](../../cloud-basics/add-connections) for your cluster.
+Once the cluster and the peering connection are active, you can connect your cluster deployed in the VPC with the peering connection by adding at least one of the CIDR blocks associated with the peered application VPC to the [IP allow list](../../cloud-basics/add-connections) for your cluster.
 
 ### Create a VPC
 
