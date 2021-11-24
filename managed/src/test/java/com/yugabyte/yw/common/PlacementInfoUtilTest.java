@@ -58,6 +58,7 @@ import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -1905,7 +1906,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     regionList.add(r1.uuid);
     regionList.add(r2.uuid);
 
-    // Update userIntent for Universe
+    // Update userIntent for the universe/cluster.
     UserIntent userIntent = new UserIntent();
     userIntent.universeName = "Test universe";
     userIntent.replicationFactor = 3;
@@ -2211,8 +2212,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
 
     UUID placementUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
     PlacementCloud cloud = new PlacementCloud();
-    cloud.uuid = UUID.randomUUID();
-    cloud.code = "aws";
+    cloud.uuid = provider.uuid;
+    cloud.code = provider.code;
 
     PlacementInfo placementInfo = new PlacementInfo();
     placementInfo.cloudList.add(cloud);
@@ -2294,5 +2295,66 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         };
 
     return Universe.saveDetails(universe.universeUUID, updater);
+  }
+
+  @Test
+  public void testIsProviderOrRegionChange() {
+    // 1. Empty list of nodes.
+    assertFalse(PlacementInfoUtil.isProviderOrRegionChange(null, Collections.emptyList()));
+
+    // 2. Some preparations for further steps + check for a universe without
+    // changes.
+    Common.CloudType cloud = Common.CloudType.aws;
+    Customer customer = ModelFactory.testCustomer("1", "Test Customer");
+
+    Provider provider1 = ModelFactory.newProvider(customer, cloud, "Provider-1");
+    Universe universe1 =
+        createFromConfig(provider1, "Universe1", "r1-az1-1-1;r1-az2-1-1;r1-az3-1-1");
+
+    Provider provider2 = ModelFactory.newProvider(customer, cloud, "Provider-2");
+    Universe universe2 =
+        createFromConfig(provider2, "Universe2", "r3-az1-1-1;r3-az2-1-1;r3-az3-1-1");
+
+    assertFalse(
+        PlacementInfoUtil.isProviderOrRegionChange(
+            universe1.getUniverseDetails().getPrimaryCluster(), universe1.getNodes()));
+    assertFalse(
+        PlacementInfoUtil.isProviderOrRegionChange(
+            universe2.getUniverseDetails().getPrimaryCluster(), universe2.getNodes()));
+
+    // 3. Emulating a provider change. All the nodes receive azUuid from AZ placed
+    // in a region of another provider.
+    for (NodeDetails node : universe1.getNodes()) {
+      node.azUuid =
+          AvailabilityZone.getByCode(provider2, AvailabilityZone.get(node.azUuid).code).uuid;
+    }
+
+    assertTrue(
+        PlacementInfoUtil.isProviderOrRegionChange(
+            universe1.getUniverseDetails().getPrimaryCluster(), universe1.getNodes()));
+
+    // 4. Two regions in placement info. All nodes are initially in the first
+    // region.
+    Universe universe3 = createFromConfig(provider1, "Universe3", "r1-r1/az1-1-1;r2-r2/az1-0-0");
+    List<UUID> regions = universe3.getUniverseDetails().getPrimaryCluster().userIntent.regionList;
+    regions.clear();
+    regions.add(Region.getByCode(provider1, "r1").uuid);
+    regions.add(Region.getByCode(provider1, "r2").uuid);
+
+    // Moving nodes to another region which is already in the same placement info.
+    for (NodeDetails node : universe3.getNodes()) {
+      node.azUuid = AvailabilityZone.getByCode(provider1, "r2/az1").uuid;
+    }
+
+    assertFalse(
+        PlacementInfoUtil.isProviderOrRegionChange(
+            universe3.getUniverseDetails().getPrimaryCluster(), universe3.getNodes()));
+
+    // 5. The same as before, but the new region is not in the placement info.
+    regions.remove(1);
+
+    assertTrue(
+        PlacementInfoUtil.isProviderOrRegionChange(
+            universe3.getUniverseDetails().getPrimaryCluster(), universe3.getNodes()));
   }
 }
