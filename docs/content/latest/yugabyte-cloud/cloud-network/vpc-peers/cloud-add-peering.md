@@ -56,6 +56,8 @@ Once the peering request is made, in AWS, use the VPC Dashboard to do the follow
 1. Approve the peering connection request that you received from Yugabyte.
 1. Add a route table entry to the VPC peer and add the Yugabyte Cloud cluster CIDR block to the Destination column, and the Peering Connection ID to the Target column.
 
+For information on VPC network peering in AWS, refer to [VPC Peering](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-peering.html.) in the AWS documentation.
+
 ### Create a peering connection in GCP
 
 To make a GCP peering connection active, you must create a peering connection in GCP. You will need the the **Project ID** and **VPC network name** of the Yugabyte Cloud VPC you are peering with. You can view and copy these details in the [Peering Details](#view-peering-connection-details) sheet.
