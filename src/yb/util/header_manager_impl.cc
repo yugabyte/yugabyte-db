@@ -18,6 +18,7 @@
 #include "yb/util/encryption.pb.h"
 #include "yb/util/header_manager.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/status_format.h"
 #include "yb/util/universe_key_manager.h"
 
 #include "yb/gutil/endian.h"

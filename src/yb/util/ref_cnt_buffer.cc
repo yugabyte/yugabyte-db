@@ -88,4 +88,9 @@ std::string RefCntPrefix::ShortDebugString() const {
   return Slice(data(), size()).ToDebugHexString();
 }
 
+void RefCntPrefix::Resize(size_t value) {
+  DCHECK_LE(value, bytes_.size());
+  size_ = value;
+}
+
 } // namespace yb

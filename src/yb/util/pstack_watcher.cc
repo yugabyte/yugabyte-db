@@ -29,7 +29,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/util/pstack_watcher.h"
 
 #include <stdio.h>
@@ -40,11 +39,12 @@
 #include <string>
 #include <vector>
 
-#include "yb/gutil/strings/substitute.h"
 #include "yb/util/env.h"
 #include "yb/util/errno.h"
 #include "yb/util/status.h"
+#include "yb/util/status_log.h"
 #include "yb/util/subprocess.h"
+#include "yb/util/thread.h"
 
 namespace yb {
 

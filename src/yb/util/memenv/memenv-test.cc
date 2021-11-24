@@ -30,6 +30,7 @@
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
 #include "yb/util/memenv/memenv.h"
+#include "yb/util/result.h"
 #include "yb/util/test_macros.h"
 
 using std::shared_ptr;

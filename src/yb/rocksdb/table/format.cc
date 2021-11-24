@@ -35,6 +35,7 @@
 #include "yb/rocksdb/util/perf_context_imp.h"
 #include "yb/rocksdb/util/xxhash.h"
 
+#include "yb/util/debug-util.h"
 #include "yb/util/format.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/std_util.h"

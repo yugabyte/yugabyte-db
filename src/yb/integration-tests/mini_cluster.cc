@@ -63,6 +63,7 @@
 #include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
+#include "yb/util/test_thread_holder.h"
 
 using namespace std::literals;
 using strings::Substitute;

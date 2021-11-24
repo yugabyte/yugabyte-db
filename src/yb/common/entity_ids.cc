@@ -81,7 +81,7 @@ std::string UuidToString(uuid* id) {
   id->data[6] &= 0x0F;
   id->data[6] |= (kUuidVersion << 4);
 
-  return b2a_hex(util::to_char_ptr(id->data), sizeof(id->data));
+  return b2a_hex(to_char_ptr(id->data), sizeof(id->data));
 }
 
 } // namespace

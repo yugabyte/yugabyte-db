@@ -34,7 +34,6 @@
 // Utilities for working with protobufs.
 // Some of this code is cribbed from the protobuf source,
 // but modified to work with yb's 'faststring' instead of STL strings.
-
 #include "yb/util/pb_util.h"
 
 #include <memory>
@@ -52,12 +51,10 @@
 #include <google/protobuf/message.h>
 #include <google/protobuf/util/message_differencer.h>
 
-#include "yb/gutil/bind.h"
 #include "yb/gutil/callback.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/fastmem.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/util/coding-inl.h"
 #include "yb/util/coding.h"
 #include "yb/util/crc.h"
@@ -68,7 +65,9 @@
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util-internal.h"
 #include "yb/util/pb_util.pb.h"
+#include "yb/util/result.h"
 #include "yb/util/status.h"
+#include "yb/util/status_log.h"
 
 using google::protobuf::Descriptor;
 using google::protobuf::DescriptorPool;

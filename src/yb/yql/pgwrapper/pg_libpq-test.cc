@@ -20,6 +20,7 @@
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/test_thread_holder.h"
 
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -291,7 +292,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableColoring)) {
           if (!status.ok()) {
             auto msg = status.message().ToBuffer();
             // Missing metadata means that transaction was aborted and cleaned.
-            ASSERT_TRUE(msg.find("Try again.") != std::string::npos ||
+            ASSERT_TRUE(msg.find("Try again") != std::string::npos ||
                         msg.find("Missing metadata") != std::string::npos) << status;
             break;
           }

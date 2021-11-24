@@ -30,6 +30,8 @@
 #include <string>
 #include <vector>
 
+#include "yb/gutil/casts.h"
+
 #include "yb/rocksdb/compaction_filter.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/iterator.h"

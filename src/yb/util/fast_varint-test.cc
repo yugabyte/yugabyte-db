@@ -10,7 +10,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include <algorithm>
 #include <cstdint>
 #include <random>
@@ -18,11 +17,11 @@
 
 #include <glog/logging.h>
 
-#include "yb/gutil/strings/substitute.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/cast.h"
 #include "yb/util/fast_varint.h"
 #include "yb/util/random.h"
+#include "yb/util/result.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/varint.h"

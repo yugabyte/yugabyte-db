@@ -46,7 +46,7 @@
 
 #include "yb/gutil/macros.h"
 #include "yb/util/enums.h"
-#include "yb/util/result.h"
+#include "yb/util/status.h"
 #include "yb/gutil/thread_annotations.h"
 
 namespace yb {
@@ -135,7 +135,7 @@ class Subprocess {
   // NOTE: unlike the standard wait(2) call, this may be called multiple
   // times. If the process has exited, it will repeatedly return the same
   // exit code.
-  CHECKED_STATUS WaitNoBlock(int* ret) { return DoWait(ret, WNOHANG); }
+  CHECKED_STATUS WaitNoBlock(int* ret);
 
   // Send a signal to the subprocess.
   // Note that this does not reap the process -- you must still Wait()

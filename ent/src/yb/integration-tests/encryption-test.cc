@@ -26,6 +26,7 @@
 
 #include "yb/util/test_util.h"
 #include "yb/util/random_util.h"
+#include "yb/util/stol_utils.h"
 #include "yb/util/string_util.h"
 #include "yb/master/master.pb.h"
 
@@ -100,9 +101,8 @@ class EncryptionTest : public YBTableTestBase, public testing::WithParamInterfac
   void VerifyWrittenRecords() {
     auto result_kvs = GetScanResults(client::TableRange(table_));
     for (uint32_t i = 0; i < result_kvs.size(); i++) {
-      int32_t key;
       auto split = StringSplit(result_kvs[i].first, '_');
-      key = boost::lexical_cast<int32_t>(split.back());
+      int32_t key = CHECK_RESULT(CheckedStoInt<int32_t>(split.back()));
       ASSERT_EQ(Format("k_$0", key), result_kvs[i].first);
       ASSERT_TRUE(string(kKeySize, 'a' + (key % 26)) == result_kvs[i].second);
     }

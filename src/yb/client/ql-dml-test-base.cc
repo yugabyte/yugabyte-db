@@ -25,7 +25,7 @@
 #include "yb/common/ql_value.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"
-#include "yb/util/bfql/gen_opcodes.h"
+#include "yb/bfql/gen_opcodes.h"
 
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/util/statement_result.h"

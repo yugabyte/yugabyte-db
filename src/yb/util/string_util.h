@@ -27,6 +27,8 @@
 #include <string>
 #include <vector>
 
+#include <boost/range/iterator_range.hpp>
+
 #include "yb/util/slice.h"
 #include "yb/util/tostring.h"
 

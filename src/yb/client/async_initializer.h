@@ -19,6 +19,8 @@
 
 #include "yb/server/server_base_options.h"
 
+#include "yb/util/atomic.h"
+
 namespace yb {
 namespace client {
 

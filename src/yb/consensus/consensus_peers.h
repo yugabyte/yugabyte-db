@@ -50,6 +50,7 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/locks.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
 #include "yb/util/semaphore.h"
 #include "yb/util/status.h"
 

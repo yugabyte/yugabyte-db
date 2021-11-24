@@ -19,8 +19,8 @@
 #define YB_YQL_CQL_QL_PTREE_PT_BCALL_H_
 
 #include "yb/yql/cql/ql/ptree/pt_expr.h"
-#include "yb/util/bfql/gen_opcodes.h"
-#include "yb/util/bfql/bfunc_names.h"
+#include "yb/bfql/gen_opcodes.h"
+#include "yb/bfql/bfunc_names.h"
 
 namespace yb {
 namespace ql {

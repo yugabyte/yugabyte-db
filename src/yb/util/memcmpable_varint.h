@@ -43,8 +43,7 @@
 
 #include "yb/util/faststring.h"
 #include "yb/util/slice.h"
-#include "yb/util/status.h"
-#include "yb/util/slice.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 

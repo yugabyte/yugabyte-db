@@ -9,10 +9,10 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
-
 #include "yb/util/async_util.h"
 
-#include "yb/util/logging.h"
+#include "yb/util/logging.h" // Required in NDEBUG mode
+#include "yb/util/status_log.h"
 
 namespace yb {
 

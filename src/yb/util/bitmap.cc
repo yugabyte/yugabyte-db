@@ -37,6 +37,8 @@
 
 #include "yb/gutil/stringprintf.h"
 #include "yb/util/coding.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 

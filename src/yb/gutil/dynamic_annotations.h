@@ -72,6 +72,8 @@
 #ifndef YB_GUTIL_DYNAMIC_ANNOTATIONS_H
 #define YB_GUTIL_DYNAMIC_ANNOTATIONS_H
 
+#include <stddef.h>
+
 #ifdef __cplusplus
 #include <utility>
 #endif

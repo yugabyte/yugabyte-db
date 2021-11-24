@@ -35,10 +35,13 @@
 #include <gtest/gtest.h>
 
 #include "yb/server/hybrid_clock.h"
+#include "yb/server/mock_hybrid_clock.h"
+#include "yb/util/atomic.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
 #include "yb/util/test_util.h"
+#include "yb/util/thread.h"
 
 DECLARE_uint64(max_clock_sync_error_usec);
 DECLARE_bool(disable_clock_sync_error);

@@ -29,11 +29,13 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/util/curl_util.h"
-#include "yb/util/scope_exit.h"
 
-#include <glog/logging.h>
+#include <vector>
+
+#include "yb/util/faststring.h"
+#include "yb/util/scope_exit.h"
+#include "yb/util/status.h"
 
 using std::string;
 
@@ -71,7 +73,7 @@ EasyCurl::~EasyCurl() {
 Status EasyCurl::FetchURL(const string& url,
                           faststring* buf,
                           int64_t timeout_sec,
-                          const vector<string>& headers) {
+                          const std::vector<std::string>& headers) {
   return DoRequest(url, boost::none, boost::none, timeout_sec, buf, headers);
 }
 

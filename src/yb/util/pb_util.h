@@ -41,8 +41,8 @@
 #include <gtest/gtest_prod.h>
 
 #include "yb/util/faststring.h"
-#include "yb/util/status.h"
-#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_fwd.h"
 
 namespace google {
 namespace protobuf {

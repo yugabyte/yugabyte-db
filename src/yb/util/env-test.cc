@@ -54,6 +54,7 @@
 #include "yb/util/path_util.h"
 #include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
 DECLARE_int32(o_direct_block_size_bytes);

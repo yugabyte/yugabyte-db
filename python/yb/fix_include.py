@@ -17,7 +17,6 @@ PREFIXES = ['../../ent/src/', '../../src/', 'src/']
 INCLUDE_RE = re.compile(R'^#include\s+"([^"]+)"$')
 SYSTEM_INCLUDE_RE = re.compile(R'^#include\s+<([^>]+)>$')
 IGNORE_RE = re.compile(R'^(?://.*|using\s.*)$')
-IGNORE_RE = re.compile(R'^(?://.*|using\s.*)$')
 IF_OPEN_RE = re.compile(R'^#if.*$')
 IF_CLOSE_RE = re.compile(R'^#endif.*$')
 
@@ -68,6 +67,7 @@ class Include(typing.NamedTuple):
     name: str
     line_no: int
     system: bool
+    if_nesting: int
 
 
 class ParsedFile:
@@ -101,8 +101,6 @@ def parse(fname, lines) -> ParsedFile:
                 prev_lines[1] == "#ifndef" + line[7:]:
             if_nesting -= 1
             continue
-        if if_nesting != 0:
-            continue
         match = INCLUDE_RE.match(line)
         system = False
         if not match:
@@ -119,7 +117,9 @@ def parse(fname, lines) -> ParsedFile:
                     print("File not found: {} in {}".format(name, fname))
                     missing.add(name)
                 continue
-            result.includes.append(Include(name, line_no, system))
+            if result.trivial and if_nesting != 0:
+                result.trivial = False
+            result.includes.append(Include(name, line_no, system, if_nesting))
         else:
             last_unknown = line
     return result
@@ -171,21 +171,98 @@ class Step(enum.Enum):
     FINISH = 2
 
 
+def extract_includes(includes: typing.Dict[str, bool], filter) -> typing.List[str]:
+    result = []
+    todel = []
+    for include, system in includes.items():
+        if filter(include, system):
+            todel.append(include)
+            result.append("#include " + ('<{}>' if system else '"{}"').format(include))
+    for include in todel:
+        del includes[include]
+    result.sort()
+    if len(result) > 0:
+        result.append("")
+    return result
+
+
+lib_headers = frozenset([
+    'ev++.h',
+    'squeasel.h',
+    ])
+
+lib_header_prefixes = frozenset([
+    'boost',
+    'cds',
+    'cpp_redis',
+    'google',
+    'gflags',
+    'glog',
+    'gmock',
+    'gtest',
+    'rapidjson',
+    'tacopie',
+    ])
+
+
+def include_prefix(include: str) -> str:
+    idx = include.find('/')
+    return "" if idx == -1 else include[:idx]
+
+
+def is_c_system_header(include: str, system: bool) -> bool:
+    return system and include.find(".") != -1 and (include not in lib_headers) and \
+           (include_prefix(include) not in lib_header_prefixes)
+
+
+def is_cpp_system_header(include: str, system: bool) -> bool:
+    return system and include.find(".") == -1
+
+
 class GeneratedSource:
-    def __init__(self):
-        self.lines = []
-        self.includes = set()
+    def __init__(self, fname):
+        self.fname = fname
+        self.header_lines = []
+        self.footer_lines = []
+        self.includes = {}
 
     def append(self, line: str):
-        if INCLUDE_RE.match(line) or SYSTEM_INCLUDE_RE.match(line):
-            if line in self.includes:
+        m = INCLUDE_RE.match(line)
+        system = False
+        if not m:
+            m = SYSTEM_INCLUDE_RE.match(line)
+            system = True
+        if m:
+            self.header_lines += self.footer_lines
+            self.footer_lines.clear()
+            include = m[1]
+            if include in self.includes:
                 return
-            self.includes.add(line)
-        self.lines.append(line)
+            self.includes[include] = system
+            return
+        self.footer_lines.append(line)
 
     def extend(self, other):
         for line in other:
             self.append(line)
+
+    def complete(self) -> typing.List[str]:
+        i = len(self.header_lines)
+        while i > 0 and self.header_lines[i - 1] == "":
+            i -= 1
+        result = self.header_lines[:i]
+        includes = dict(self.includes)
+        result += extract_includes(
+            includes, lambda include, system: self.fname.endswith(replace_ext(include, '.cc')))
+        result += extract_includes(includes, is_c_system_header)
+        result += extract_includes(includes, is_cpp_system_header)
+        result += extract_includes(includes, lambda include, system: system)
+        result += extract_includes(includes, lambda include, system: True)
+        i = 0
+        while i < len(self.footer_lines) and self.footer_lines[i] == "":
+            i += 1
+        result += self.footer_lines[i:]
+        return result
 
 
 class SourceFile:
@@ -269,11 +346,11 @@ class SourceFile:
         return replace_ext(self.fname, '.' + fname_for_task(task_idx, 'cc'))
 
     def generate_lines(self, modified_line):
-        modified_lines = list(self.modified_lines.items())
+        modified_lines: typing.List[typing.Tuple[int, str]] = list(self.modified_lines.items())
         if modified_line is not None:
             modified_lines.append(modified_line)
         modified_lines.sort()
-        result = GeneratedSource()
+        result = GeneratedSource(self.fname)
         p = 0
         for modification in modified_lines:
             if p != modification[0]:
@@ -287,7 +364,7 @@ class SourceFile:
                         result.append('#include "{}"'.format(include.name))
             p = modification[0] + 1
         result.extend(self.lines[p:])
-        return result.lines
+        return result.complete()
 
     def write_source(self, fname, modification):
         new_lines = self.generate_lines(modification)
@@ -373,6 +450,7 @@ def cleanup(sources: typing.List[SourceFile]):
 
 
 def parse_deps(filter):
+    global filter_re
     filter_re = re.compile(filter) if filter is not None else None
     sources = []
     with open('deps.txt') as inp:

@@ -14,6 +14,7 @@
 #ifndef YB_MASTER_MASTER_FWD_H
 #define YB_MASTER_MASTER_FWD_H
 
+#include <map>
 #include <memory>
 #include <vector>
 

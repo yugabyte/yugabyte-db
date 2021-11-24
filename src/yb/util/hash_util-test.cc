@@ -29,23 +29,20 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
 
 #include <iosfwd>
-#include <memory>
 #include <string>
 #include <type_traits>
 
 #include <gtest/gtest.h>
 
+#include "yb/gutil/hash/hash.h"
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/port.h"
 #include "yb/gutil/type_traits.h"
-#include "yb/gutil/hash/hash.h"
-
 #include "yb/util/hash_util.h"
 
 namespace yb {
