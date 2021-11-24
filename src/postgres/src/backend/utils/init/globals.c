@@ -87,7 +87,7 @@ Oid			MyDatabaseTableSpace = InvalidOid;
 
 bool		MyDatabaseColocated = false;
 
-bool		TablegroupCatalogExists = false;
+bool		YbTablegroupCatalogExists = false;
 
 /*
  * DatabasePath is the path (relative to DataDir) of my database's

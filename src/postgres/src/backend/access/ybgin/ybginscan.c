@@ -92,7 +92,7 @@ isColocated(Oid relid)
 	{
 		Oid			tablegroupId = InvalidOid;
 
-		if (TablegroupCatalogExists)
+		if (YbTablegroupCatalogExists)
 			tablegroupId = get_tablegroup_oid_by_table_oid(relid);
 		return tablegroupId != InvalidOid;
 	}

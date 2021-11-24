@@ -46,8 +46,8 @@
 #include "catalog/pg_authid.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_db_role_setting.h"
-#include "catalog/pg_tablegroup.h"
 #include "catalog/pg_tablespace.h"
+#include "catalog/pg_yb_tablegroup.h"
 #include "catalog/yb_catalog_version.h"
 #include "libpq/auth.h"
 #include "libpq/libpq-be.h"
@@ -1036,8 +1036,8 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 	if (IsYugaByteEnabled())
 	{
 		HandleYBStatus(YBCPgTableExists(MyDatabaseId,
-										TableGroupRelationId,
-										&TablegroupCatalogExists));
+										YbTablegroupRelationId,
+										&YbTablegroupCatalogExists));
 	}
 
 	RelationCacheInitializePhase3();

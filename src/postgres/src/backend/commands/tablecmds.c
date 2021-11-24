@@ -1238,7 +1238,7 @@ GetTablegroupOidFromCreateStmt(CreateStmt *stmt)
 
 		aclresult = pg_tablegroup_aclcheck(tablegroupId, GetUserId(), ACL_CREATE);
 		if (aclresult != ACLCHECK_OK)
-			aclcheck_error(aclresult, OBJECT_TABLEGROUP,
+			aclcheck_error(aclresult, OBJECT_YBTABLEGROUP,
 						   get_tablegroup_name(tablegroupId));
 	}
 

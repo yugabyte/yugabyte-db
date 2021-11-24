@@ -50,7 +50,6 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_statistic_ext.h"
 #include "catalog/pg_subscription.h"
-#include "catalog/pg_tablegroup.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_ts_config.h"
@@ -58,6 +57,7 @@
 #include "catalog/pg_ts_parser.h"
 #include "catalog/pg_ts_template.h"
 #include "catalog/pg_transform.h"
+#include "catalog/pg_yb_tablegroup.h"
 #include "commands/dbcommands.h"
 #include "commands/event_trigger.h"
 #include "commands/extension.h"
@@ -272,7 +272,7 @@ restrict_and_check_grant(bool is_grant, AclMode avail_goptions, bool all_privs,
 		case OBJECT_SCHEMA:
 			whole_mask = ACL_ALL_RIGHTS_SCHEMA;
 			break;
-		case OBJECT_TABLEGROUP:
+		case OBJECT_YBTABLEGROUP:
 			whole_mask = ACL_ALL_RIGHTS_TABLEGROUP;
 			break;
 		case OBJECT_TABLESPACE:
@@ -498,7 +498,7 @@ ExecuteGrantStmt(GrantStmt *stmt)
 			all_privileges = ACL_ALL_RIGHTS_FUNCTION;
 			errormsg = gettext_noop("invalid privilege type %s for routine");
 			break;
-		case OBJECT_TABLEGROUP:
+		case OBJECT_YBTABLEGROUP:
 			all_privileges = ACL_ALL_RIGHTS_TABLEGROUP;
 			errormsg = gettext_noop("invalid privilege type %s for tablegroup");
 			break;
@@ -617,7 +617,7 @@ ExecGrantStmt_oids(InternalGrant *istmt)
 		case OBJECT_SCHEMA:
 			ExecGrant_Namespace(istmt);
 			break;
-		case OBJECT_TABLEGROUP:
+		case OBJECT_YBTABLEGROUP:
 			ExecGrant_Tablegroup(istmt);
 			break;
 		case OBJECT_TABLESPACE:
@@ -754,7 +754,7 @@ objectNamesToOids(ObjectType objtype, List *objnames)
 				objects = lappend_oid(objects, routid);
 			}
 			break;
-		case OBJECT_TABLEGROUP:
+		case OBJECT_YBTABLEGROUP:
 			foreach(cell, objnames)
 			{
 				char	   *grpname = strVal(lfirst(cell));
@@ -1034,7 +1034,7 @@ ExecAlterDefaultPrivilegesStmt(ParseState *pstate, AlterDefaultPrivilegesStmt *s
 			all_privileges = ACL_ALL_RIGHTS_FUNCTION;
 			errormsg = gettext_noop("invalid privilege type %s for routine");
 			break;
-		case OBJECT_TABLEGROUP:
+		case OBJECT_YBTABLEGROUP:
 			all_privileges = ACL_ALL_RIGHTS_TABLEGROUP;
 			errormsg = gettext_noop("invalid privilege type %s for tablegroup");
 			break;
@@ -1243,7 +1243,7 @@ SetDefaultACL(InternalDefaultACL *iacls)
 				this_privileges = ACL_ALL_RIGHTS_SCHEMA;
 			break;
 
-		case OBJECT_TABLEGROUP:
+		case OBJECT_YBTABLEGROUP:
 			if (OidIsValid(iacls->nspid))
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_GRANT_OPERATION),
@@ -1483,7 +1483,7 @@ RemoveRoleFromObjectACL(Oid roleid, Oid classid, Oid objid)
 				iacls.objtype = OBJECT_SCHEMA;
 				break;
 			case DEFACLOBJ_TABLEGROUP:
-				iacls.objtype = OBJECT_TABLEGROUP;
+				iacls.objtype = OBJECT_YBTABLEGROUP;
 				break;
 			default:
 				/* Shouldn't get here */
@@ -1533,8 +1533,8 @@ RemoveRoleFromObjectACL(Oid roleid, Oid classid, Oid objid)
 			case NamespaceRelationId:
 				istmt.objtype = OBJECT_SCHEMA;
 				break;
-			case TableGroupRelationId:
-				istmt.objtype = OBJECT_TABLEGROUP;
+			case YbTablegroupRelationId:
+				istmt.objtype = OBJECT_YBTABLEGROUP;
 				switch_fallthrough();
 			case TableSpaceRelationId:
 				istmt.objtype = OBJECT_TABLESPACE;
@@ -3065,12 +3065,12 @@ ExecGrant_Tablegroup(InternalGrant *istmt)
 	if (istmt->all_privs && istmt->privileges == ACL_NO_RIGHTS)
 		istmt->privileges = ACL_ALL_RIGHTS_TABLEGROUP;
 
-	relation = heap_open(TableGroupRelationId, RowExclusiveLock);
+	relation = heap_open(YbTablegroupRelationId, RowExclusiveLock);
 
 	foreach(cell, istmt->objects)
 	{
 		Oid			grpId = lfirst_oid(cell);
-		Form_pg_tablegroup pg_tablegroup_tuple;
+		Form_pg_yb_tablegroup pg_yb_tablegroup_tuple;
 		Datum		aclDatum;
 		bool		isNull;
 		AclMode		avail_goptions;
@@ -3080,31 +3080,31 @@ ExecGrant_Tablegroup(InternalGrant *istmt)
 		Oid			grantorId;
 		Oid			ownerId;
 		HeapTuple	newtuple;
-		Datum		values[Natts_pg_tablegroup];
-		bool		nulls[Natts_pg_tablegroup];
-		bool		replaces[Natts_pg_tablegroup];
+		Datum		values[Natts_pg_yb_tablegroup];
+		bool		nulls[Natts_pg_yb_tablegroup];
+		bool		replaces[Natts_pg_yb_tablegroup];
 		int			noldmembers;
 		int			nnewmembers;
 		Oid		   *oldmembers;
 		Oid		   *newmembers;
 		HeapTuple	tuple;
 
-		tuple = SearchSysCache1(TABLEGROUPOID, ObjectIdGetDatum(grpId));
+		tuple = SearchSysCache1(YBTABLEGROUPOID, ObjectIdGetDatum(grpId));
 		if (!HeapTupleIsValid(tuple))
 			elog(ERROR, "cache lookup failed for tablegroup %u", grpId);
 
-		pg_tablegroup_tuple = (Form_pg_tablegroup) GETSTRUCT(tuple);
+		pg_yb_tablegroup_tuple = (Form_pg_yb_tablegroup) GETSTRUCT(tuple);
 
 		/*
 		 * Get owner ID and working copy of existing ACL. If there's no ACL,
 		 * substitute the proper default.
 		 */
-		ownerId = pg_tablegroup_tuple->grpowner;
-		aclDatum = heap_getattr(tuple, Anum_pg_tablegroup_grpacl,
+		ownerId = pg_yb_tablegroup_tuple->grpowner;
+		aclDatum = heap_getattr(tuple, Anum_pg_yb_tablegroup_grpacl,
 								RelationGetDescr(relation), &isNull);
 		if (isNull)
 		{
-			old_acl = acldefault(OBJECT_TABLEGROUP, ownerId);
+			old_acl = acldefault(OBJECT_YBTABLEGROUP, ownerId);
 			/* There are no old member roles according to the catalogs */
 			noldmembers = 0;
 			oldmembers = NULL;
@@ -3128,8 +3128,8 @@ ExecGrant_Tablegroup(InternalGrant *istmt)
 		this_privileges =
 				restrict_and_check_grant(istmt->is_grant, avail_goptions,
 										 istmt->all_privs, istmt->privileges,
-										 grpId, grantorId, OBJECT_TABLEGROUP,
-										 NameStr(pg_tablegroup_tuple->grpname),
+										 grpId, grantorId, OBJECT_YBTABLEGROUP,
+										 NameStr(pg_yb_tablegroup_tuple->grpname),
 										 0, NULL);
 
 		/*
@@ -3151,8 +3151,8 @@ ExecGrant_Tablegroup(InternalGrant *istmt)
 		MemSet(nulls, false, sizeof(nulls));
 		MemSet(replaces, false, sizeof(replaces));
 
-		replaces[Anum_pg_tablegroup_grpacl - 1] = true;
-		values[Anum_pg_tablegroup_grpacl - 1] = PointerGetDatum(new_acl);
+		replaces[Anum_pg_yb_tablegroup_grpacl - 1] = true;
+		values[Anum_pg_yb_tablegroup_grpacl - 1] = PointerGetDatum(new_acl);
 
 		newtuple = heap_modify_tuple(tuple, RelationGetDescr(relation), values,
 									 nulls, replaces);
@@ -3160,7 +3160,7 @@ ExecGrant_Tablegroup(InternalGrant *istmt)
 		CatalogTupleUpdate(relation, &newtuple->t_self, newtuple);
 
 		/* Update the shared dependency ACL info */
-		updateAclDependencies(TableGroupRelationId, HeapTupleGetOid(tuple), 0,
+		updateAclDependencies(YbTablegroupRelationId, HeapTupleGetOid(tuple), 0,
 							  ownerId, noldmembers, oldmembers,
 							  nnewmembers, newmembers);
 
@@ -3610,7 +3610,7 @@ aclcheck_error(AclResult aclerr, ObjectType objtype,
 					case OBJECT_TABLE:
 						msg = gettext_noop("permission denied for table %s");
 						break;
-					case OBJECT_TABLEGROUP:
+					case OBJECT_YBTABLEGROUP:
 						msg = gettext_noop("permission denied for tablegroup %s");
 						break;
 					case OBJECT_TABLESPACE:
@@ -3744,7 +3744,7 @@ aclcheck_error(AclResult aclerr, ObjectType objtype,
 					case OBJECT_STATISTIC_EXT:
 						msg = gettext_noop("must be owner of statistics object %s");
 						break;
-					case OBJECT_TABLEGROUP:
+					case OBJECT_YBTABLEGROUP:
 						msg = gettext_noop("must be owner of tablegroup %s");
 						break;
 					case OBJECT_TABLESPACE:
@@ -3870,7 +3870,7 @@ pg_aclmask(ObjectType objtype, Oid table_oid, AttrNumber attnum, Oid roleid,
 			elog(ERROR, "grantable rights not supported for statistics objects");
 			/* not reached, but keep compiler quiet */
 			return ACL_NO_RIGHTS;
-		case OBJECT_TABLEGROUP:
+		case OBJECT_YBTABLEGROUP:
 			return pg_tablegroup_aclmask(table_oid, roleid, mask, how);
 		case OBJECT_TABLESPACE:
 			return pg_tablespace_aclmask(table_oid, roleid, mask, how);
@@ -4431,7 +4431,7 @@ pg_tablegroup_aclmask(Oid grp_oid, Oid roleid,
 	Oid			ownerId;
 
 	// First check that the pg_tablegroup catalog actually exists.
-	if (!TablegroupCatalogExists) {
+	if (!YbTablegroupCatalogExists) {
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("Tablegroup system catalog does not exist.")));
@@ -4444,21 +4444,21 @@ pg_tablegroup_aclmask(Oid grp_oid, Oid roleid,
 	/*
 	 * Get the tablegroup's ACL from pg_tablegroup
 	 */
-	tuple = SearchSysCache1(TABLEGROUPOID, ObjectIdGetDatum(grp_oid));
+	tuple = SearchSysCache1(YBTABLEGROUPOID, ObjectIdGetDatum(grp_oid));
 	if (!HeapTupleIsValid(tuple))
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
 		 			 errmsg("tablegroup with OID %u does not exist", grp_oid)));
 
-	ownerId = ((Form_pg_tablegroup) GETSTRUCT(tuple))->grpowner;
+	ownerId = ((Form_pg_yb_tablegroup) GETSTRUCT(tuple))->grpowner;
 
-	aclDatum = SysCacheGetAttr(TABLEGROUPOID, tuple,
-							   Anum_pg_tablegroup_grpacl, &isNull);
+	aclDatum = SysCacheGetAttr(YBTABLEGROUPOID, tuple,
+							   Anum_pg_yb_tablegroup_grpacl, &isNull);
 
 	if (isNull)
 	{
 		/* No ACL, so build default ACL */
-		acl = acldefault(OBJECT_TABLEGROUP, ownerId);
+		acl = acldefault(OBJECT_YBTABLEGROUP, ownerId);
 		aclDatum = (Datum) 0;
 	}
 	else
@@ -5204,7 +5204,7 @@ pg_tablegroup_ownercheck(Oid grp_oid, Oid roleid)
 	Oid			grpowner;
 
 	// Ensure that the pg_tablegroup catalog actually exists.
-	if (!TablegroupCatalogExists) {
+	if (!YbTablegroupCatalogExists) {
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("Tablegroup system catalog does not exist.")));
@@ -5215,13 +5215,13 @@ pg_tablegroup_ownercheck(Oid grp_oid, Oid roleid)
 		return true;
 
 	/* Search syscache for pg_tablegroup */
-	grptuple = SearchSysCache1(TABLEGROUPOID, ObjectIdGetDatum(grp_oid));
+	grptuple = SearchSysCache1(YBTABLEGROUPOID, ObjectIdGetDatum(grp_oid));
 	if (!HeapTupleIsValid(grptuple))
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
 					 errmsg("tablegroup with OID %u does not exist", grp_oid)));
 
-	grpowner = ((Form_pg_tablegroup) GETSTRUCT(grptuple))->grpowner;
+	grpowner = ((Form_pg_yb_tablegroup) GETSTRUCT(grptuple))->grpowner;
 
 	ReleaseSysCache(grptuple);
 
@@ -5771,7 +5771,7 @@ get_user_default_acl(ObjectType objtype, Oid ownerId, Oid nsp_oid)
 			defaclobjtype = DEFACLOBJ_NAMESPACE;
 			break;
 
-		case OBJECT_TABLEGROUP:
+		case OBJECT_YBTABLEGROUP:
 			defaclobjtype = DEFACLOBJ_TABLEGROUP;
 			break;
 

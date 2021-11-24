@@ -29,7 +29,7 @@
 #include "catalog/pg_operator.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
-#include "catalog/pg_tablegroup.h"
+#include "catalog/pg_yb_tablegroup.h"
 #include "miscadmin.h"
 #include "nodes/pg_list.h"
 #ifdef CATCACHE_STATS
@@ -954,10 +954,19 @@ CatalogCacheInitializeCache(CatCache *cache)
 
 	CatalogCacheInitializeCache_DEBUG1;
 
-	// Skip for TableGroupRelationId if not in snapshot
-	// (possible if using an older non-upgraded cluster state)
-	if (cache->cc_reloid == TableGroupRelationId && !TablegroupCatalogExists)
-		return;
+	/*
+	 * Skip for YbTablegroupRelationId if not in snapshot
+	 * (possible if using an older non-upgraded cluster state)
+	 */
+	if (cache->cc_reloid == YbTablegroupRelationId && !YbTablegroupCatalogExists)
+	{
+		/* double check that the Tablegroup catalog doesn't exist */
+		HeapTuple tuple = SearchSysCache1(RELOID, ObjectIdGetDatum(YbTablegroupRelationId));
+		YbTablegroupCatalogExists = HeapTupleIsValid(tuple);
+
+		if (!YbTablegroupCatalogExists)
+			return;
+	}
 	relation = heap_open(cache->cc_reloid, AccessShareLock);
 
 	/*
@@ -1156,24 +1165,24 @@ SetCatCacheList(CatCache *cache,
 				dlist_foreach(iter, bucket)
 				{
 					ct = dlist_container(CatCTup, cache_elem, iter.cur);
-	
+
 					if (ct->dead || ct->negative)
 						continue;    /* ignore dead and negative entries */
-	
+
 					if (ct->hash_value != hashValue)
 						continue;    /* quickly skip entry if wrong hash val */
-	
+
 					if (!ItemPointerEquals(&(ct->tuple.t_self),
 										   &(ntp->t_self)))
 						continue;    /* not same tuple */
-	
+
 					/*
 					 * Found a match, but can't use it if it belongs to another
 					 * list already
 					 */
 					if (ct->c_list)
 						continue;
-	
+
 					found = true;
 					break;            /* A-OK */
 				}
@@ -2100,23 +2109,23 @@ SearchCatCacheList(CatCache *cache,
 				dlist_foreach(iter, bucket)
 				{
 					ct = dlist_container(CatCTup, cache_elem, iter.cur);
-	
+
 					if (ct->dead || ct->negative)
 						continue;	/* ignore dead and negative entries */
-	
+
 					if (ct->hash_value != hashValue)
 						continue;	/* quickly skip entry if wrong hash val */
-	
+
 					if (!ItemPointerEquals(&(ct->tuple.t_self), &(ntp->t_self)))
 						continue;	/* not same tuple */
-	
+
 					/*
 					 * Found a match, but can't use it if it belongs to another
 					 * list already
 					 */
 					if (ct->c_list)
 						continue;
-	
+
 					found = true;
 					break;			/* A-OK */
 				}

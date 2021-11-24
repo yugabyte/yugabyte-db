@@ -49,7 +49,6 @@
 #include "catalog/pg_rewrite.h"
 #include "catalog/pg_statistic_ext.h"
 #include "catalog/pg_subscription.h"
-#include "catalog/pg_tablegroup.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_transform.h"
 #include "catalog/pg_trigger.h"
@@ -59,6 +58,7 @@
 #include "catalog/pg_ts_template.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_user_mapping.h"
+#include "catalog/pg_yb_tablegroup.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
 #include "commands/event_trigger.h"
@@ -343,16 +343,16 @@ static const ObjectPropertyType ObjectProperty[] =
 		true
 	},
 	{
-		TableGroupRelationId,
-		TablegroupOidIndexId,
-		TABLEGROUPOID,
+		YbTablegroupRelationId,
+		YbTablegroupOidIndexId,
+		YBTABLEGROUPOID,
 		-1,
-		Anum_pg_tablegroup_grpname,
+		Anum_pg_yb_tablegroup_grpname,
 		InvalidAttrNumber,
-		Anum_pg_tablegroup_grpowner,
-		Anum_pg_tablegroup_grpacl,
-		OBJECT_TABLEGROUP,
-		false
+		Anum_pg_yb_tablegroup_grpowner,
+		Anum_pg_yb_tablegroup_grpacl,
+		OBJECT_YBTABLEGROUP,
+		true
 	},
 	{
 		TableSpaceRelationId,
@@ -679,7 +679,7 @@ static const struct object_type_map
 	},
 	/* OCLASS_TBLGROUP */
 	{
-		"tablegroup", OBJECT_TABLEGROUP
+		"tablegroup", OBJECT_YBTABLEGROUP
 	},
 	/* OCLASS_TBLSPACE */
 	{
@@ -886,7 +886,7 @@ get_object_address(ObjectType objtype, Node *object,
 				break;
 			case OBJECT_DATABASE:
 			case OBJECT_EXTENSION:
-			case OBJECT_TABLEGROUP:
+			case OBJECT_YBTABLEGROUP:
 			case OBJECT_TABLESPACE:
 			case OBJECT_ROLE:
 			case OBJECT_SCHEMA:
@@ -1156,8 +1156,8 @@ get_object_address_unqualified(ObjectType objtype,
 			address.objectId = get_extension_oid(name, missing_ok);
 			address.objectSubId = 0;
 			break;
-		case OBJECT_TABLEGROUP:
-			address.classId = TableGroupRelationId;
+		case OBJECT_YBTABLEGROUP:
+			address.classId = YbTablegroupRelationId;
 			address.objectId = get_tablegroup_oid(name, missing_ok);
 			address.objectSubId = 0;
 			break;
@@ -2172,7 +2172,7 @@ pg_get_object_address(PG_FUNCTION_ARGS)
 		case OBJECT_ROLE:
 		case OBJECT_SCHEMA:
 		case OBJECT_SUBSCRIPTION:
-		case OBJECT_TABLEGROUP:
+		case OBJECT_YBTABLEGROUP:
 		case OBJECT_TABLESPACE:
 			if (list_length(name) != 1)
 				ereport(ERROR,
@@ -2395,7 +2395,7 @@ check_object_ownership(Oid roleid, ObjectType objtype, ObjectAddress address,
 					aclcheck_error_type(ACLCHECK_NOT_OWNER, typeid);
 			}
 			break;
-		case OBJECT_TABLEGROUP:
+		case OBJECT_YBTABLEGROUP:
 			if (!pg_tablegroup_ownercheck(address.objectId, roleid))
 				aclcheck_error(ACLCHECK_NOT_OWNER, objtype,
 							   strVal((Value *) object));

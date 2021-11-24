@@ -7166,7 +7166,7 @@ comment_type_name:
 			| SCHEMA							{ $$ = OBJECT_SCHEMA; }
 			| SERVER							{ $$ = OBJECT_FOREIGN_SERVER; }
 			| SUBSCRIPTION						{ $$ = OBJECT_SUBSCRIPTION; }
-			| TABLEGROUP						{ $$ = OBJECT_TABLEGROUP; }
+			| TABLEGROUP						{ $$ = OBJECT_YBTABLEGROUP; }
 			| TABLESPACE						{ $$ = OBJECT_TABLESPACE; }
 		;
 
@@ -7731,7 +7731,7 @@ privilege_target:
 				{
 					PrivTarget *n = (PrivTarget *) palloc(sizeof(PrivTarget));
 					n->targtype = ACL_TARGET_OBJECT;
-					n->objtype = OBJECT_TABLEGROUP;
+					n->objtype = OBJECT_YBTABLEGROUP;
 					n->objs = $2;
 					$$ = n;
 				}
@@ -7949,7 +7949,7 @@ defacl_privilege_target:
 			| FUNCTIONS		{ $$ = OBJECT_FUNCTION; }
 			| ROUTINES		{ $$ = OBJECT_FUNCTION; }
 			| SEQUENCES		{ $$ = OBJECT_SEQUENCE; }
-			| TABLEGROUPS	{ $$ = OBJECT_TABLEGROUP; }
+			| TABLEGROUPS	{ $$ = OBJECT_YBTABLEGROUP; }
 			| TYPES_P		{ $$ = OBJECT_TYPE; }
 			| SCHEMAS		{ $$ = OBJECT_SCHEMA; }
 		;
@@ -9704,7 +9704,7 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				{
 					parser_ybc_beta_feature(@1, "tablegroup", true);
 					RenameStmt *n = makeNode(RenameStmt);
-					n->renameType = OBJECT_TABLEGROUP;
+					n->renameType = OBJECT_YBTABLEGROUP;
 					n->subname = $3;
 					n->newname = $6;
 					n->missing_ok = false;
@@ -10305,7 +10305,7 @@ AlterOwnerStmt: ALTER AGGREGATE aggregate_with_argtypes OWNER TO RoleSpec
 				{
 					parser_ybc_beta_feature(@1, "tablegroup", true);
 					AlterOwnerStmt *n = makeNode(AlterOwnerStmt);
-					n->objectType = OBJECT_TABLEGROUP;
+					n->objectType = OBJECT_YBTABLEGROUP;
 					n->object = (Node *) makeString($3);
 					n->newowner = $6;
 					$$ = (Node *)n;

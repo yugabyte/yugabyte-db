@@ -1118,7 +1118,7 @@ EventTriggerSupportsObjectType(ObjectType obtype)
 		case OBJECT_EVENT_TRIGGER:
 			/* no support for event triggers on event triggers */
 			return false;
-		case OBJECT_TABLEGROUP:
+		case OBJECT_YBTABLEGROUP:
 			/* no support for event triggers on tablegroups */
 			return false;
 		case OBJECT_ACCESS_METHOD:
@@ -2264,7 +2264,7 @@ stringify_grant_objtype(ObjectType objtype)
 			return "PROCEDURE";
 		case OBJECT_ROUTINE:
 			return "ROUTINE";
-		case OBJECT_TABLEGROUP:
+		case OBJECT_YBTABLEGROUP:
 			return "TABLEGROUP";
 		case OBJECT_TABLESPACE:
 			return "TABLESPACE";
@@ -2348,7 +2348,7 @@ stringify_adefprivs_objtype(ObjectType objtype)
 			return "PROCEDURES";
 		case OBJECT_ROUTINE:
 			return "ROUTINES";
-		case OBJECT_TABLEGROUP:
+		case OBJECT_YBTABLEGROUP:
 			return "TABLEGROUPS";
 		case OBJECT_TABLESPACE:
 			return "TABLESPACES";
