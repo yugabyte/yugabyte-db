@@ -41,7 +41,7 @@
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/schema.h"
-#include "yb/util/bfql/tserver_opcodes.h"
+#include "yb/bfql/tserver_opcodes.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/join.h"
@@ -57,6 +57,7 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "yb/util/thread.h"
 #include "yb/tablet/local_tablet_writer.h"
 #include "yb/tablet/tablet-test-util.h"
 #include "yb/gutil/strings/numbers.h"
@@ -265,8 +266,7 @@ void GenerateTestCase(vector<TestOp>* ops, int len) {
   ops->clear();
   unsigned int random_seed = SeedRandom();
   while (ops->size() < len) {
-    TestOp r = tight_enum_cast<TestOp>(
-        rand_r(&random_seed) % enum_limits<TestOp>::max_enumerator);
+    TestOp r = static_cast<TestOp>(rand_r(&random_seed) % enum_limits<TestOp>::max_enumerator);
     switch (r) {
       case TEST_INSERT:
         if (exists) continue;

@@ -37,8 +37,6 @@ using std::set;
 using std::vector;
 using std::unordered_map;
 using strings::Substitute;
-using util::to_char_ptr;
-using util::to_uchar_ptr;
 using snappy::GetUncompressedLength;
 using snappy::MaxCompressedLength;
 using snappy::RawUncompress;

@@ -17,7 +17,9 @@
 #include "yb/master/encryption_manager.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/universe_key_registry_service.h"
+
 #include "yb/util/encryption.pb.h"
+#include "yb/util/env.h"
 #include "yb/util/pb_util.h"
 
 using namespace std::chrono_literals;

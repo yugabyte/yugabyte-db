@@ -35,7 +35,7 @@
 
 #include <string>
 
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/env.h"
 
 namespace yb {

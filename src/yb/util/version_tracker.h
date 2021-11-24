@@ -16,6 +16,10 @@
 #ifndef YB_UTIL_VERSION_TRACKER_H
 #define YB_UTIL_VERSION_TRACKER_H
 
+#include <stddef.h>
+
+#include <atomic>
+
 namespace yb {
 
 template <class Value>

@@ -284,7 +284,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   // Generate a new random and unique rowid. It is a v4 UUID.
   string GenerateNewRowid() {
-    return rowid_generator_.Next(true /* binary_id */);
+    return GenerateObjectId(true /* binary_id */);
   }
 
   void InvalidateCache() {
@@ -406,9 +406,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Execution status.
   Status status_;
   string errmsg_;
-
-  // Rowid generator.
-  ObjectIdGenerator rowid_generator_;
 
   std::unordered_map<PgObjectId, PgTableDescPtr, PgObjectIdHash> table_cache_;
   boost::unordered_set<PgForeignKeyReference> fk_reference_cache_;

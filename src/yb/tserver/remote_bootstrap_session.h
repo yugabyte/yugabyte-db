@@ -32,6 +32,7 @@
 #ifndef YB_TSERVER_REMOTE_BOOTSTRAP_SESSION_H_
 #define YB_TSERVER_REMOTE_BOOTSTRAP_SESSION_H_
 
+#include <array>
 #include <memory>
 #include <string>
 #include <unordered_map>

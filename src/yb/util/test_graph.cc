@@ -41,6 +41,7 @@
 #include "yb/gutil/walltime.h"
 #include "yb/util/locks.h"
 #include "yb/util/status.h"
+#include "yb/util/status_log.h"
 #include "yb/util/thread.h"
 
 using std::shared_ptr;
@@ -62,6 +63,9 @@ double TimeSeries::value() const {
   std::lock_guard<simple_spinlock> l(lock_);
   return val_;
 }
+
+TimeSeriesCollector::TimeSeriesCollector(std::string scope)
+    : scope_(std::move(scope)), exit_latch_(0), started_(false) {}
 
 TimeSeriesCollector::~TimeSeriesCollector() {
   if (started_) {

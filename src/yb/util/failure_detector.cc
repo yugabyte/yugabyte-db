@@ -29,7 +29,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/util/failure_detector.h"
 
 #include <mutex>
@@ -39,9 +38,9 @@
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/util/locks.h"
 #include "yb/util/status.h"
+#include "yb/util/status_log.h"
 #include "yb/util/thread.h"
 
 namespace yb {

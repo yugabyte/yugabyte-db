@@ -83,15 +83,15 @@ void SetAt(
 std::vector<AppStatusPB::ErrorCode> CreateStatusToErrorCode() {
   std::vector<AppStatusPB::ErrorCode> result;
   const auto default_value = AppStatusPB::UNKNOWN_ERROR;
-#define YB_SET_STATUS_TO_ERROR_CODE(name, pb_name, value, message) \
+  #define YB_STATUS_CODE(name, pb_name, value, message) \
     SetAt(Status::BOOST_PP_CAT(k, name), AppStatusPB::pb_name, default_value, &result); \
     static_assert( \
         to_underlying(AppStatusPB::pb_name) == to_underlying(Status::BOOST_PP_CAT(k, name)), \
         "The numeric value of AppStatusPB::" BOOST_PP_STRINGIZE(pb_name) " defined in" \
             " wire_protocol.proto does not match the value of Status::k" BOOST_PP_STRINGIZE(name) \
             " defined in status.h.");
-  BOOST_PP_SEQ_FOR_EACH(YB_STATUS_FORWARD_MACRO, YB_SET_STATUS_TO_ERROR_CODE, YB_STATUS_CODES);
-#undef YB_SET_STATUS_TO_ERROR_CODe
+  #include "yb/util/status_codes.h"
+  #undef YB_STATUS_CODE
   return result;
 }
 
@@ -362,9 +362,8 @@ Status SchemaFromPB(const SchemaPB& pb, Schema *schema) {
   if (pb.has_colocated_table_id()) {
     switch (pb.colocated_table_id().value_case()) {
       case ColocatedTableIdentifierPB::kCotableId: {
-        Uuid cotable_id;
-        RETURN_NOT_OK(cotable_id.FromString(pb.colocated_table_id().cotable_id()));
-        schema->set_cotable_id(cotable_id);
+        schema->set_cotable_id(
+            VERIFY_RESULT(Uuid::FromString(pb.colocated_table_id().cotable_id())));
         break;
       }
       case ColocatedTableIdentifierPB::kPgtableId:

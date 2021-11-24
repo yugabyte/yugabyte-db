@@ -39,7 +39,6 @@
 
 #include <gflags/gflags.h>
 
-
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
 
@@ -52,6 +51,7 @@
 #include "yb/rpc/serialization.h"
 
 #include "yb/util/flag_tags.h"
+#include "yb/util/logging.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/thread_restrictions.h"

@@ -51,6 +51,8 @@
 
 #include <atomic>
 
+#include <glog/logging.h>
+
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/util/allocator.h"
 #include "yb/rocksdb/util/random.h"

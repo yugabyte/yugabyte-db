@@ -92,6 +92,20 @@ ADD_YB_LIBRARY(pgsql_protocol_proto
                DEPS ${PGSQL_PROTOCOL_PROTO_LIBS}
                NONLINK_DEPS ${PGSQL_PROTOCOL_PROTO_TGTS})
 
+set(COMMON_BASE_SRCS
+  ql_type.cc
+  types.cc
+  )
+
+set(COMMON_BASE_LIBS
+  yb_util
+  yb_common_proto
+  )
+
+ADD_YB_LIBRARY(yb_common_base
+  SRCS ${COMMON_BASE_SRCS}
+  DEPS ${COMMON_BASE_LIBS})
+
 set(COMMON_SRCS
   clock.cc
   id_mapping.cc
@@ -124,6 +138,7 @@ set(COMMON_SRCS
   common_flags.cc
   pgsql_error.cc
   roles_permissions.cc
+  snapshot.cc
   ybc_util.cc
   ybc-internal.cc
   )

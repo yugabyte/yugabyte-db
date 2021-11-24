@@ -38,8 +38,9 @@
 
 #include <boost/preprocessor/cat.hpp>
 
+#include <gtest/gtest.h>
+
 #include "yb/util/string_trim.h"
-#include "yb/util/debug-util.h"
 #include "yb/util/tostring.h"
 #include "yb/util/tsan_util.h"
 

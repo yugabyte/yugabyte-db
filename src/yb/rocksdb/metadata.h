@@ -33,6 +33,8 @@
 
 #include "yb/common/hybrid_time.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/util/clone_ptr.h"
 #include "yb/util/slice.h"
 #include "yb/util/enums.h"

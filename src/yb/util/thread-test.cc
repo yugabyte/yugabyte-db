@@ -36,8 +36,11 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/gutil/bind.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/env.h"
+#include "yb/util/status_log.h"
+#include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread_restrictions.h"
 

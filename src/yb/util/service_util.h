@@ -23,7 +23,7 @@
 
 #include "yb/common/wire_protocol.h"
 #include "yb/rpc/rpc_context.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 // Utility macro to setup error response and return if status is not OK.
 #define RPC_STATUS_RETURN_ERROR(s, error, code, context) do { \

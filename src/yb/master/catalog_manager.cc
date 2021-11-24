@@ -1167,13 +1167,12 @@ Status CatalogManager::PrepareDefaultClusterConfig(int64_t term) {
 
   std::string cluster_uuid_source;
   if (!FLAGS_cluster_uuid.empty()) {
-    Uuid uuid;
-    RETURN_NOT_OK(uuid.FromString(FLAGS_cluster_uuid));
+    RETURN_NOT_OK(Uuid::FromString(FLAGS_cluster_uuid));
     config.set_cluster_uuid(FLAGS_cluster_uuid);
     cluster_uuid_source = "from the --cluster_uuid flag";
   } else {
     auto uuid = Uuid::Generate();
-    config.set_cluster_uuid(to_string(uuid));
+    config.set_cluster_uuid(uuid.ToString());
     cluster_uuid_source = "(randomly generated)";
   }
   LOG_WITH_PREFIX(INFO)
@@ -3813,7 +3812,7 @@ std::string CatalogManager::GenerateIdUnlocked(
     boost::optional<const SysRowEntry::Type> entity_type) {
   while (true) {
     // Generate id and make sure it is unique within its category.
-    std::string id = oid_generator_.Next();
+    std::string id = GenerateObjectId();
     if (!entity_type) {
       return id;
     }
@@ -4472,7 +4471,7 @@ Status CatalogManager::DeleteTableInternal(
 
   for (const auto& table : tables) {
     LOG(INFO) << "Deleting table: " << table.info->name() << ", retained by: "
-              << AsString(table.retained_by_snapshot_schedules, &TryFullyDecodeUuid);
+              << AsString(table.retained_by_snapshot_schedules, &Uuid::TryFullyDecode);
 
     // Send a DeleteTablet() request to each tablet replica in the table.
     RETURN_NOT_OK(DeleteTabletsAndSendRequests(table.info, table.retained_by_snapshot_schedules));

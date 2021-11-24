@@ -12,6 +12,7 @@
 //
 
 #include "yb/util/stol_utils.h"
+#include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
 namespace yb {

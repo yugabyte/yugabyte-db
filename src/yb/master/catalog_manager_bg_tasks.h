@@ -34,11 +34,13 @@
 
 #include <atomic>
 
+#include "yb/gutil/casts.h"
+#include "yb/gutil/ref_counted.h"
+
 #include "yb/util/status.h"
 #include "yb/util/mutex.h"
 #include "yb/util/condition_variable.h"
 #include "yb/util/thread.h"
-#include "yb/gutil/ref_counted.h"
 
 namespace yb {
 namespace master {

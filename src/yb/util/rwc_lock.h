@@ -39,8 +39,8 @@
 #include "yb/gutil/macros.h"
 
 #include "yb/util/condition_variable.h"
-#include "yb/util/debug-util.h"
 #include "yb/util/mutex.h"
+#include "yb/util/stack_trace.h"
 
 namespace yb {
 

@@ -14,6 +14,8 @@
 #ifndef YB_TSERVER_PG_CLIENT_SERVICE_H
 #define YB_TSERVER_PG_CLIENT_SERVICE_H
 
+#include <future>
+
 #include "yb/client/client_fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"

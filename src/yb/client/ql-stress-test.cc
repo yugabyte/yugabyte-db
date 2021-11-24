@@ -41,11 +41,13 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
-#include "yb/util/bfql/gen_opcodes.h"
+#include "yb/bfql/gen_opcodes.h"
 #include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
 
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
+
 #include "yb/yql/cql/ql/util/statement_result.h"
 
 DECLARE_bool(TEST_combine_batcher_errors);

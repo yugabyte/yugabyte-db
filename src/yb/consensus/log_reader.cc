@@ -50,6 +50,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/path_util.h"
+#include "yb/util/result.h"
 
 DEFINE_bool(enable_log_retention_by_op_idx, true,
             "If true, logs will be retained based on an op id passed by the cdc service");

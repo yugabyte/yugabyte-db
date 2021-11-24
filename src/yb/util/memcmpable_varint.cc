@@ -109,14 +109,12 @@
 //      8      2**56-1      16.8
 //      9      2**64-1      19.2
 //
-
-#include <glog/logging.h>
-
-#include "yb/gutil/endian.h"
-#include "yb/util/faststring.h"
 #include "yb/util/memcmpable_varint.h"
+
 #include "yb/util/cast.h"
+#include "yb/util/faststring.h"
 #include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
@@ -264,7 +262,7 @@ int PutVarint64ToBuf(uint8_t* buf, size_t bufsize, uint64_t value) {
 void PutMemcmpableVarint64(std::string *dst, uint64_t value) {
   uint8_t buf[16];
   int used = PutVarint64ToBuf(buf, sizeof(buf), value);
-  dst->append(yb::util::to_char_ptr(buf), used);
+  dst->append(to_char_ptr(buf), used);
 }
 
 void PutMemcmpableVarint64(faststring *dst, uint64_t value) {

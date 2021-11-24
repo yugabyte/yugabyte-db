@@ -21,6 +21,7 @@
 #include <vector>
 
 #include <boost/function.hpp>
+#include <boost/range/iterator_range.hpp>
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/entity_ids.h"

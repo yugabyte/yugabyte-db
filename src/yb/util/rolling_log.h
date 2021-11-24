@@ -32,11 +32,12 @@
 #ifndef YB_UTIL_ROLLING_LOG_H
 #define YB_UTIL_ROLLING_LOG_H
 
+#include <memory>
 #include <string>
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/strings/stringpiece.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 

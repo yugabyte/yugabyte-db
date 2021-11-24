@@ -23,8 +23,6 @@
 #include "yb/gutil/strings/strip.h"
 #include "yb/gutil/strings/substitute.h"
 
-
-
 #include "yb/integration-tests/backfill-test-util.h"
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
 #include "yb/integration-tests/cql_test_util.h"
@@ -37,6 +35,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/test_thread_holder.h"
 
 using namespace std::literals;
 

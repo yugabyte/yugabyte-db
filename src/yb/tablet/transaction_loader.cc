@@ -21,9 +21,11 @@
 
 #include "yb/util/bitmap.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/metrics.h"
 #include "yb/util/operation_counter.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/thread.h"
 
 using namespace std::literals;
 

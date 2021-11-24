@@ -16,8 +16,10 @@
 
 #include <memory>
 
+#include "yb/gutil/casts.h"
+
 #include "yb/util/locks.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/enums.h"
 
 namespace yb {

@@ -24,6 +24,8 @@ DEFINE_int64(transaction_rpc_timeout_ms, 5000 * yb::kTimeMultiplier,
 
 namespace yb {
 
+YB_STRONGLY_TYPED_UUID_IMPL(TransactionId);
+
 const std::string kGlobalTransactionsTableName = "transactions";
 const std::string kMetricsSnapshotsTableName = "metrics";
 

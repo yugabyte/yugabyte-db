@@ -48,8 +48,10 @@
 #endif
 #include <deque>
 #include <set>
+
+#include "yb/gutil/casts.h"
+
 #include "yb/rocksdb/port/port.h"
-#include "yb/util/slice.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/util/io_posix.h"
 #include "yb/rocksdb/util/thread_posix.h"
@@ -58,6 +60,7 @@
 #include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/thread_local.h"
 
+#include "yb/util/slice.h"
 #include "yb/util/stats/iostats_context_imp.h"
 #include "yb/util/string_util.h"
 
