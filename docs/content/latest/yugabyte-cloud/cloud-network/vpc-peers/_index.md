@@ -39,7 +39,7 @@ Once the cluster is active, you must add at least one of the CIDR blocks associa
 To create a VPC in Yugabyte Cloud, you need to specify the following:
 
 - Cloud provider (AWS or GCP)
-- Region in which to deploy the VPC (AWC only)
+- Region in which to deploy the VPC (AWS only)
 - Preferred CIDR to use for your database VPC.
 
 Refer to [Manage VPCs](cloud-add-vpc/).
