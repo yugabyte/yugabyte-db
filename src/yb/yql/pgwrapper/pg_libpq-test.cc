@@ -1362,7 +1362,7 @@ Result<TableGroupInfo> SelectTableGroup(
       conn->FetchFormat("SELECT oid FROM pg_database WHERE datname=\'$0\'", database_name));
   const int database_oid = VERIFY_RESULT(GetInt32(res.get(), 0, 0));
   res = VERIFY_RESULT(
-      conn->FetchFormat("SELECT oid FROM pg_tablegroup WHERE grpname=\'$0\'", group_name));
+      conn->FetchFormat("SELECT oid FROM pg_yb_tablegroup WHERE grpname=\'$0\'", group_name));
   group_info.oid = VERIFY_RESULT(GetInt32(res.get(), 0, 0));
 
   group_info.id = GetPgsqlTablegroupId(database_oid, group_info.oid);

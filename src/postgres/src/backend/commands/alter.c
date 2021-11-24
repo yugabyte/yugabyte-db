@@ -340,7 +340,7 @@ ExecRenameStmt(RenameStmt *stmt)
 		case OBJECT_SCHEMA:
 			return RenameSchema(stmt->subname, stmt->newname);
 
-		case OBJECT_TABLEGROUP:
+		case OBJECT_YBTABLEGROUP:
 			return RenameTablegroup(stmt->subname, stmt->newname);
 
 		case OBJECT_TABLESPACE:
@@ -841,7 +841,7 @@ ExecAlterOwnerStmt(AlterOwnerStmt *stmt)
 			return AlterSubscriptionOwner(strVal((Value *) stmt->object),
 										  newowner);
 
-		case OBJECT_TABLEGROUP:
+		case OBJECT_YBTABLEGROUP:
 			return AlterTablegroupOwner(strVal((Value *) stmt->object),
 										newowner);
 

@@ -458,7 +458,7 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 	else if (!ybScan->prepare_params.querying_colocated_table)
 	{
 		Oid tablegroupId = InvalidOid;
-		if (TablegroupCatalogExists)
+		if (YbTablegroupCatalogExists)
 			tablegroupId = get_tablegroup_oid_by_table_oid(RelationGetRelid(relation));
 		ybScan->prepare_params.querying_colocated_table |= (tablegroupId != InvalidOid);
 	}
