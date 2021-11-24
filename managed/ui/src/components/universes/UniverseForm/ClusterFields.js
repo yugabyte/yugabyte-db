@@ -618,10 +618,14 @@ export default class ClusterFields extends Component {
     if (!formValues[clusterType] && isNonEmptyArray(cloud.providers?.data)) {
       // AC: Editing Read-Replica is type 'Async'. We should change this at some point
       if (type === 'Edit' || type === 'Async') {
-        const currentCluster =
+        let currentCluster =
           type === 'Edit'
             ? getPrimaryCluster(currentUniverse.data.universeDetails.clusters)
             : getReadOnlyCluster(currentUniverse.data.universeDetails.clusters);
+        if (!currentCluster)
+          //init primary cluster as current cluster (creation of first read replica) -
+          currentCluster = getPrimaryCluster(currentUniverse.data.universeDetails.clusters);
+
         const currentProviderUuid = currentCluster.userIntent.provider;
         updateFormField(`${clusterType}.provider`, currentProviderUuid);
       } else {
