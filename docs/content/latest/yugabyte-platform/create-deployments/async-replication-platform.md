@@ -14,7 +14,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Yugabyte Platform allows you to use its UI or API to manage asynchronous replication between independent YugabyteDB clusters. You can perform deployment via unidirectional (master-follower) or bidirectional (multi-master) asynchronous replication between two data centers.
+Yugabyte Platform allows you to use its UI or API to manage asynchronous replication between independent YugabyteDB clusters. You can perform deployment via unidirectional (master-follower) or [bidirectional](#setting-up-bidirectional-replication) (multi-master) asynchronous replication between two data centers.
 
 Within the concept of replication, universes are divided into the following categories:
 
@@ -24,15 +24,18 @@ Within the concept of replication, universes are divided into the following cate
 
 - A target universe is the recepient of the replicated data. One source universe can replicate to one or more target universes.
 
-For additional information on asynchronous replication in YugabyteDB, see [Asynchronous Replication: Overview and Architecture](https://docs.yugabyte.com/latest/architecture/docdb-replication/async-replication/).
+For additional information on asynchronous replication in YugabyteDB, see the following: 
 
-## Use the Yugabyte Platform UI
+- [Asynchronous Replication: Overview and Architecture](https://docs.yugabyte.com/latest/architecture/docdb-replication/async-replication/)
+- [Asynchronous Replication Between Universes in YugabyteDB](https://docs.yugabyte.com/latest/deploy/multi-dc/async-replication/)
 
-You can use the Yugabyte Platform UI to set up and configure asynchronous replication. In addition, you can perform monitoring by accessing the information about the replication lag and enabling alerts on excessive lag.
+## Using the Yugabyte Platform UI
+
+You can use the Yugabyte Platform UI to set up and configure asynchronous replication for universes whose tables do not contain data. In addition, you can perform monitoring by accessing the information about the replication lag and enabling alerts on excessive lag.
 
 ### How to set up replication
 
-You can set up asynchronous replication for a universe which does not contain data as follows:
+You can set up asynchronous replication as follows:
 
 1. Open the Yugabyte Platform UI and navigate to **Universes**.
 
@@ -108,13 +111,21 @@ This page allows you to do the following:
 
     ![Alert](/images/yp/asynch-replication-6.png)<br><br>
 
-- Pause the replication process by clicking **Pause Replication**. This is useful when performing maintainance.
+- Pause the replication process (stop the traffic) by clicking **Pause Replication**. This is useful when performing maintenance. Paused replications can be resumed from the last checkpoint.
 
 - Delete the universe replication by clicking **Actions > Delete replication**.
 
-## Use the REST API
+## Setting up bidirectional replication
 
-You may chose to use the API to manage universes. You can call the following REST API endpoint on your Yugabyte Platform instance for the source universe and the target universe involved in the asynchronous replication between two data sources:
+You can set up bidirectional replication using either the Yugabyte Platform UI or API by creating two separate replication configurations. Under this scenario, a source universe of the first replication becomes the target universe of the second replication, and vice versa.
+
+
+
+<!--
+
+## Using the REST API
+
+You may choose to use the API to manage universes. You can call the following REST API endpoint on your Yugabyte Platform instance for the source universe and the target universe involved in the asynchronous replication between two data sources:
 
 ```sh
 PUT /api/customers/<customerUUID>/universes/<universeUUID>/setup_universe_2dc
@@ -157,3 +168,4 @@ You can find your user UUID in Yugabyte Platform as follows:
 
   <br>To find a universe's UUID in Yugabyte Platform, click **Universes** in the left column, then click the name of the universe. The URL of the universe's **Overview** page ends with the universe's UUID. For example, `http://myPlatformServer/universes/d73833fc-0812-4a01-98f8-f4f24db76dbe`
 
+-->
