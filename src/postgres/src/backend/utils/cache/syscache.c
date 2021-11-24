@@ -29,6 +29,7 @@
 #include "catalog/pg_am.h"
 #include "catalog/pg_amop.h"
 #include "catalog/pg_amproc.h"
+#include "catalog/pg_attrdef.h"
 #include "catalog/pg_auth_members.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_cast.h"
@@ -67,7 +68,6 @@
 #include "catalog/pg_statistic_ext.h"
 #include "catalog/pg_subscription.h"
 #include "catalog/pg_subscription_rel.h"
-#include "catalog/pg_tablegroup.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_transform.h"
 #include "catalog/pg_ts_config.h"
@@ -77,13 +77,13 @@
 #include "catalog/pg_ts_template.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_user_mapping.h"
+#include "catalog/pg_yb_tablegroup.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/rel.h"
 #include "utils/catcache.h"
 #include "utils/syscache.h"
 
-#include "catalog/pg_attrdef.h"
 #include "pg_yb_utils.h"
 
 /*---------------------------------------------------------------------------
@@ -812,17 +812,6 @@ static const struct cachedesc cacheinfo[] = {
 		},
 		64
 	},
-	{TableGroupRelationId,		/* TABLEGROUPOID */
-		TablegroupOidIndexId,
-		1,
-		{
-			ObjectIdAttributeNumber,
-			0,
-			0,
-			0,
-		},
-		4
-	},
 	{TableSpaceRelationId,		/* TABLESPACEOID */
 		TablespaceOidIndexId,
 		1,
@@ -998,7 +987,18 @@ static const struct cachedesc cacheinfo[] = {
 			0
 		},
 		2
-	}
+	},
+	{YbTablegroupRelationId,	/* YBTABLEGROUPOID */
+		YbTablegroupOidIndexId,
+		1,
+		{
+			ObjectIdAttributeNumber,
+			0,
+			0,
+			0,
+		},
+		4
+	},
 };
 
 typedef struct YBPinnedObjectKey
@@ -1075,11 +1075,11 @@ YBSysTablePrimaryKey(Oid relid)
 		case TSDictionaryRelationId:
 		case TSParserRelationId:
 		case TSTemplateRelationId:
-		case TableGroupRelationId:
 		case TableSpaceRelationId:
 		case TransformRelationId:
 		case TypeRelationId:
 		case UserMappingRelationId:
+		case YbTablegroupRelationId:
 			YBPkAddAttribute(ObjectIdAttributeNumber);
 			break;
 		case AttributeRelationId:

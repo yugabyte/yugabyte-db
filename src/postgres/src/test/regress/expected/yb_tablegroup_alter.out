@@ -7,7 +7,7 @@ CREATE DATABASE db_alter_tablegroup;
 -- Test rename
 CREATE TABLEGROUP alter_tgroup1;
 CREATE TABLEGROUP alter_tgroup2;
-SELECT grpname FROM pg_tablegroup ORDER BY grpname;
+SELECT grpname FROM pg_yb_tablegroup ORDER BY grpname;
     grpname
 ---------------
  alter_tgroup1
@@ -15,7 +15,7 @@ SELECT grpname FROM pg_tablegroup ORDER BY grpname;
 (2 rows)
 
 ALTER TABLEGROUP alter_tgroup1 RENAME TO alter_tgroup_try_alt;
-SELECT grpname FROM pg_tablegroup ORDER BY grpname;
+SELECT grpname FROM pg_yb_tablegroup ORDER BY grpname;
        grpname
 ----------------------
  alter_tgroup2
@@ -23,7 +23,7 @@ SELECT grpname FROM pg_tablegroup ORDER BY grpname;
 (2 rows)
 
 ALTER TABLEGROUP alter_tgroup_try_alt RENAME TO alter_tgroup_alt;
-SELECT grpname FROM pg_tablegroup ORDER BY grpname;
+SELECT grpname FROM pg_yb_tablegroup ORDER BY grpname;
      grpname
 ------------------
  alter_tgroup2
@@ -34,7 +34,7 @@ ALTER TABLEGROUP alter_tgroup2 RENAME TO alter_tgroup_alt; -- fail
 ERROR:  tablegroup "alter_tgroup_alt" already exists
 ALTER TABLEGROUP alter_tgroup2 RENAME TO alter_tgroup2; -- fail
 ERROR:  tablegroup "alter_tgroup2" already exists
-SELECT grpname FROM pg_tablegroup ORDER BY grpname;
+SELECT grpname FROM pg_yb_tablegroup ORDER BY grpname;
      grpname
 ------------------
  alter_tgroup2

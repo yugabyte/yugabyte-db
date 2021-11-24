@@ -6,11 +6,11 @@
 \h DROP TABLEGROUP
 
 --
--- pg_catalog alterations. Validate columns of pg_tablegroup and oids.
+-- pg_catalog alterations. Validate columns of pg_yb_tablegroup and oids.
 --
-\d pg_tablegroup
-SELECT oid, relname, reltype, relnatts FROM pg_class WHERE relname IN ('pg_tablegroup', 'pg_tablegroup_oid_index');
-SELECT oid, typname, typrelid FROM pg_type WHERE typname LIKE 'pg_tablegroup';
+\d pg_yb_tablegroup
+SELECT oid, relname, reltype, relnatts FROM pg_class WHERE relname IN ('pg_yb_tablegroup', 'pg_yb_tablegroup_oid_index');
+SELECT oid, typname, typrelid FROM pg_type WHERE typname LIKE 'pg_yb_tablegroup';
 --
 -- CREATE TABLEGROUP
 --
@@ -21,7 +21,7 @@ CREATE TABLEGROUP tgroup3;
 CREATE TABLE tgroup_test1 (col1 int, col2 int) TABLEGROUP tgroup1;
 CREATE TABLE tgroup_test2 (col1 int, col2 int) TABLEGROUP tgroup1;
 CREATE TABLE nogroup (col1 int) NO TABLEGROUP; -- fail
-SELECT grpname FROM pg_tablegroup;
+SELECT grpname FROM pg_yb_tablegroup;
 SELECT relname
     FROM (SELECT relname, unnest(reloptions) AS opts FROM pg_class) s
     WHERE opts LIKE '%tablegroup%';
@@ -31,9 +31,9 @@ CREATE TABLE tgroup_test3 (col1 int, col2 int) TABLEGROUP tgroup2;
 CREATE INDEX ON tgroup_test3(col1) NO TABLEGROUP;
 -- Index explicitly specify tablegroup other than that of indexed table
 CREATE INDEX ON tgroup_test3(col1) TABLEGROUP tgroup1;
-SELECT s.relname, pg_tablegroup.grpname
-    FROM (SELECT relname, unnest(reloptions) AS opts FROM pg_class) s, pg_tablegroup
-    WHERE opts LIKE CONCAT('%tablegroup=', CAST(pg_tablegroup.oid AS text), '%');
+SELECT s.relname, pg_yb_tablegroup.grpname
+    FROM (SELECT relname, unnest(reloptions) AS opts FROM pg_class) s, pg_yb_tablegroup
+    WHERE opts LIKE CONCAT('%tablegroup=', CAST(pg_yb_tablegroup.oid AS text), '%');
 -- These should fail.
 CREATE TABLEGROUP tgroup1;
 CREATE TABLE tgroup_test (col1 int, col2 int) TABLEGROUP bad_tgroupname;
@@ -100,7 +100,7 @@ CREATE INDEX ON tgroup_describe(col1) TABLEGROUP tgroup_describe2;
 --
 
 DROP TABLEGROUP tgroup3;
--- These should fail. CREATE TABLE is to check that the row entry was deleted from pg_tablegroup.
+-- These should fail. CREATE TABLE is to check that the row entry was deleted from pg_yb_tablegroup.
 CREATE TABLE tgroup_test5 (col1 int, col2 int) TABLEGROUP tgroup3;
 DROP TABLEGROUP tgroup1;
 DROP TABLEGROUP bad_tgroupname;
