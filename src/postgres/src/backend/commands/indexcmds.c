@@ -648,7 +648,7 @@ DefineIndex(Oid relationId,
 	 * If tablegroup specified then perform a lookup unless has_tablegroup is false.
 	 */
 	Oid tablegroupId = InvalidOid;
-	if (TablegroupCatalogExists)
+	if (YbTablegroupCatalogExists)
 	{
 		if (!stmt->tablegroup)
 		{
@@ -688,7 +688,7 @@ DefineIndex(Oid relationId,
 
 		aclresult = pg_tablegroup_aclcheck(tablegroupId, GetUserId(), ACL_CREATE);
 		if (aclresult != ACLCHECK_OK)
-			aclcheck_error(aclresult, OBJECT_TABLEGROUP,
+			aclcheck_error(aclresult, OBJECT_YBTABLEGROUP,
 						   get_tablegroup_name(tablegroupId));
 	}
 
@@ -1577,7 +1577,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 
 	/* Get whether the index is part of a tablegroup */
 	Oid tablegroupId = InvalidOid;
-	if (TablegroupCatalogExists && IsYugaByteEnabled() &&
+	if (YbTablegroupCatalogExists && IsYugaByteEnabled() &&
 		!IsBootstrapProcessingMode() && !YBIsPreparingTemplates())
 		tablegroupId = get_tablegroup_oid_by_table_oid(relId);
 
