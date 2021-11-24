@@ -453,6 +453,10 @@ class ClientStressTest_FollowerOom : public ClientStressTest {
         // Turn off exponential backoff and lagging follower threshold in order to hit soft memory
         // limit and check throttling.
         "--enable_consensus_exponential_backoff=false",
+        // The global log cache limit should only have to be set on the restarting tserver for
+        // the PauseFollower test, but it does not seem to pass without the limit set on all
+        // tservers. See GitHub issue #10689.
+        "--global_log_cache_size_limit_percentage=100",
         "--consensus_lagging_follower_threshold=-1"
     };
 
@@ -503,6 +507,7 @@ TEST_F_EX(ClientStressTest, PauseFollower, ClientStressTest_FollowerOom) {
   ts->mutable_flags()->push_back("--TEST_yb_inbound_big_calls_parse_delay_ms=30000");
   ts->mutable_flags()->push_back("--binary_call_parser_reject_on_mem_tracker_hard_limit=true");
   ts->mutable_flags()->push_back(Format("--rpc_throttle_threshold_bytes=$0", 1_MB));
+  // Read buffer should be large enough to accept the large RPCs.
   ts->mutable_flags()->push_back("--read_buffer_memory_limit=-10");
   ASSERT_OK(ts->Restart());
 
