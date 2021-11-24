@@ -14,7 +14,7 @@
 #include "yb/util/decimal.h"
 #include "yb/util/status.h"
 #include "yb/util/logging.h"
-#include "yb/util/bfql/bfunc_standard.h"
+#include "yb/bfql/bfunc_standard.h"
 
 #include "yb/docdb/docdb_pgapi.h"
 

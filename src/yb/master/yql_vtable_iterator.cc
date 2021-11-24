@@ -16,6 +16,8 @@
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_value.h"
 
+#include "yb/gutil/casts.h"
+
 namespace yb {
 namespace master {
 

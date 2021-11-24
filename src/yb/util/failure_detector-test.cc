@@ -40,6 +40,7 @@
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
+#include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
 namespace yb {

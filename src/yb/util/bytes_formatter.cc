@@ -74,7 +74,7 @@ string FormatBytesAsStr(const string& s, QuotesType quotes_type, size_t max_leng
 }
 
 string FormatSliceAsStr(const Slice& s, QuotesType quotes_type, size_t max_length) {
-  return FormatBytesAsStr(util::to_char_ptr(s.data()), s.size(), quotes_type, max_length);
+  return FormatBytesAsStr(s.cdata(), s.size(), quotes_type, max_length);
 }
 
 std::string FormatSliceAsStr(

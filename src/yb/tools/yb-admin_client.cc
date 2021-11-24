@@ -38,6 +38,7 @@
 #include <boost/multi_index/composite_key.hpp>
 #include <boost/multi_index/global_fun.hpp>
 #include <boost/multi_index/ordered_index.hpp>
+#include <boost/tti/has_member_function.hpp>
 
 #include <google/protobuf/util/json_util.h>
 #include <gtest/gtest.h>
@@ -56,6 +57,7 @@
 #include "yb/util/string_util.h"
 #include "yb/util/protobuf_util.h"
 #include "yb/util/random_util.h"
+#include "yb/util/stol_utils.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/numbers.h"
@@ -1618,7 +1620,7 @@ Status ClusterAdminClient::FillPlacementInfo(
       return STATUS(InvalidCommand, "Each placement info must be in format placement:rf");
     }
 
-    int min_num_replicas = boost::lexical_cast<int>(placement_block[1]);
+    int min_num_replicas = VERIFY_RESULT(CheckedStoInt<int>(placement_block[1]));
 
     std::vector<std::string> block = strings::Split(placement_block[0], ".",
                                                     strings::SkipEmpty());

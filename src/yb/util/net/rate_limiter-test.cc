@@ -17,6 +17,7 @@
 #include "yb/util/net/rate_limiter.h"
 #include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status.h"
 #include "yb/util/test_macros.h"
 
 #include <gtest/gtest.h>

@@ -10,20 +10,18 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/util/priority_thread_pool.h"
 
 #include <mutex>
 
 #include <boost/container/stable_vector.hpp>
-#include <boost/multi_index_container.hpp>
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/mem_fun.hpp>
 #include <boost/multi_index/ordered_index.hpp>
 #include <boost/multi_index/ranked_index.hpp>
+#include <boost/multi_index_container.hpp>
 
 #include "yb/gutil/thread_annotations.h"
-
 #include "yb/util/locks.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"

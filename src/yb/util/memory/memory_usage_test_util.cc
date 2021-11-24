@@ -15,6 +15,8 @@
 
 #include "yb/util/memory/memory_usage_test_util.h"
 
+#include <map>
+
 #include "yb/util/memory/arena.h"
 
 #if defined(TCMALLOC_ENABLED)

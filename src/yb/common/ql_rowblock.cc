@@ -168,7 +168,7 @@ Status QLRowBlock::AppendRowsData(const QLClient client, const string& src, stri
     if (dst_cnt == 0) {
       *dst = src;
     } else {
-      dst->append(util::to_char_ptr(src_slice.data()), src_slice.size());
+      dst->append(to_char_ptr(src_slice.data()), src_slice.size());
       dst_cnt += src_cnt;
       CQLEncodeLength(dst_cnt, &(*dst)[0]);
     }

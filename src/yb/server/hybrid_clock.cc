@@ -41,10 +41,11 @@
 #include "yb/gutil/walltime.h"
 #include "yb/util/errno.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
-#include "yb/util/status.h"
+#include "yb/util/result.h"
 
 DEFINE_bool(use_hybrid_clock, true,
             "Whether HybridClock should be used as the default clock"

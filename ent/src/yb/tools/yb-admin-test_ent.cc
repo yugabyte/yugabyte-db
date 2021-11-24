@@ -23,6 +23,7 @@
 
 #include "yb/rpc/secure_stream.h"
 
+#include "yb/tools/admin-test-base.h"
 #include "yb/tools/yb-admin_util.h"
 
 #include "yb/tserver/mini_tablet_server.h"
@@ -71,8 +72,13 @@ class AdminCliTest : public client::KeyValueTableTest<MiniCluster> {
   }
 
   template <class... Args>
+  Result<std::string> RunAdminToolCommand(MiniCluster* cluster, Args&&... args) {
+    return tools::RunAdminToolCommand(cluster->GetMasterAddresses(), std::forward<Args>(args)...);
+  }
+
+  template <class... Args>
   Result<std::string> RunAdminToolCommand(Args&&... args) {
-    return yb::RunAdminToolCommand(cluster_->GetMasterAddresses(), std::forward<Args>(args)...);
+    return RunAdminToolCommand(cluster_.get(), std::forward<Args>(args)...);
   }
 
   template <class... Args>
@@ -658,8 +664,7 @@ class XClusterAdminCliTest : public AdminCliTest {
   Status CheckTableIsBeingReplicated(
     const std::vector<TableId>& tables,
     SysCDCStreamEntryPB::State target_state = SysCDCStreamEntryPB::ACTIVE) {
-    string output = VERIFY_RESULT(yb::RunAdminToolCommand(producer_cluster_->GetMasterAddresses(),
-                                                          "list_cdc_streams"));
+    string output = VERIFY_RESULT(RunAdminToolCommand(producer_cluster_.get(), "list_cdc_streams"));
     string state_search_str = Format(
       "value: \"$0\"",
       SysCDCStreamEntryPB::State_Name(target_state));
@@ -776,10 +781,9 @@ TEST_F(XClusterAdminCliTest, TestSetupUniverseReplicationChecksForColumnIdMismat
   // Make a snapshot of the producer table.
   auto timestamp = DateTime::TimestampToString(DateTime::TimestampNow());
   auto producer_backup_proxy = ASSERT_RESULT(ProducerBackupServiceProxy());
-  ASSERT_OK(yb::RunAdminToolCommand(producer_cluster_->GetMasterAddresses(),
-                                    "create_snapshot",
-                                    producer_table.name().namespace_name(),
-                                    producer_table.name().table_name()));
+  ASSERT_OK(RunAdminToolCommand(
+      producer_cluster_.get(), "create_snapshot", producer_table.name().namespace_name(),
+      producer_table.name().table_name()));
 
   const auto snapshot_id = ASSERT_RESULT(GetCompletedSnapshot(1, 0, producer_backup_proxy));
   ASSERT_RESULT(WaitForAllSnapshots(producer_backup_proxy));
@@ -787,8 +791,8 @@ TEST_F(XClusterAdminCliTest, TestSetupUniverseReplicationChecksForColumnIdMismat
   string tmp_dir;
   ASSERT_OK(Env::Default()->GetTestDirectory(&tmp_dir));
   const auto snapshot_file = JoinPathSegments(tmp_dir, "exported_producer_snapshot.dat");
-  ASSERT_OK(yb::RunAdminToolCommand(producer_cluster_->GetMasterAddresses(),
-                                    "export_snapshot", snapshot_id, snapshot_file));
+  ASSERT_OK(RunAdminToolCommand(
+      producer_cluster_.get(), "export_snapshot", snapshot_id, snapshot_file));
 
   // Delete consumer table, then import snapshot of producer table into the existing
   // consumer table. This should fix the schema mismatch issue.
@@ -950,17 +954,15 @@ TEST_F(XClusterAdminCliTest, TestListCdcStreamsWithBootstrappedStreams) {
   client::kv_table_test::CreateTable(
       Transactional::kTrue, NumTablets(), producer_cluster_client_.get(), &producer_cluster_table);
 
-  string output = ASSERT_RESULT(yb::RunAdminToolCommand(producer_cluster_->GetMasterAddresses(),
-                                                        "list_cdc_streams"));
+  string output = ASSERT_RESULT(RunAdminToolCommand(producer_cluster_.get(), "list_cdc_streams"));
   // First check that the table and bootstrap status are not present.
   ASSERT_EQ(output.find(producer_cluster_table->id()), string::npos);
   ASSERT_EQ(output.find(SysCDCStreamEntryPB::State_Name(SysCDCStreamEntryPB::INITIATED)),
             string::npos);
 
   // Bootstrap the producer.
-  output = ASSERT_RESULT(yb::RunAdminToolCommand(producer_cluster_->GetMasterAddresses(),
-                                                 "bootstrap_cdc_producer",
-                                                 producer_cluster_table->id()));
+  output = ASSERT_RESULT(RunAdminToolCommand(
+      producer_cluster_.get(), "bootstrap_cdc_producer", producer_cluster_table->id()));
   // Get the bootstrap id (output format is "table id: 123, CDC bootstrap id: 123\n").
   string bootstrap_id = output.substr(output.find_last_of(' ') + 1, kStreamUuidLength);
 
@@ -1122,17 +1124,15 @@ TEST_F(XClusterAlterUniverseAdminCliTest, TestAlterUniverseReplicationWithBootst
       kTableName2);
 
   // Get bootstrap ids for both producer tables and get bootstrap ids.
-  string output = ASSERT_RESULT(yb::RunAdminToolCommand(producer_cluster_->GetMasterAddresses(),
-                                                        "bootstrap_cdc_producer",
-                                                        producer_table->id()));
+  string output = ASSERT_RESULT(RunAdminToolCommand(
+      producer_cluster_.get(), "bootstrap_cdc_producer", producer_table->id()));
   string bootstrap_id1 = output.substr(output.find_last_of(' ') + 1, kStreamUuidLength);
   ASSERT_OK(CheckTableIsBeingReplicated(
     {producer_table->id()},
     master::SysCDCStreamEntryPB_State_INITIATED));
 
-  output = ASSERT_RESULT(yb::RunAdminToolCommand(producer_cluster_->GetMasterAddresses(),
-                                                 "bootstrap_cdc_producer",
-                                                 producer_table2->id()));
+  output = ASSERT_RESULT(RunAdminToolCommand(
+      producer_cluster_.get(), "bootstrap_cdc_producer", producer_table2->id()));
   string bootstrap_id2 = output.substr(output.find_last_of(' ') + 1, kStreamUuidLength);
   ASSERT_OK(CheckTableIsBeingReplicated(
     {producer_table2->id()},

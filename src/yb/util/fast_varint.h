@@ -16,10 +16,11 @@
 
 #include <string>
 
+#include <glog/logging.h>
+
 #include "yb/util/cast.h"
-#include "yb/util/result.h"
-#include "yb/util/status.h"
 #include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace util {
@@ -52,7 +53,7 @@ inline CHECKED_STATUS FastDecodeSignedVarInt(
     const char* src, size_t src_size, const char* read_allowed_from, int64_t* v,
     size_t* decoded_size) {
   return FastDecodeSignedVarInt(
-      yb::util::to_uchar_ptr(src), src_size, yb::util::to_uchar_ptr(read_allowed_from), v,
+      to_uchar_ptr(src), src_size, to_uchar_ptr(read_allowed_from), v,
       decoded_size);
 }
 
@@ -70,7 +71,7 @@ CHECKED_STATUS FastDecodeSignedVarIntUnsafe(const uint8_t* src,
 // The same as FastDecodeSignedVarIntUnsafe but takes a regular char pointer.
 inline CHECKED_STATUS FastDecodeSignedVarIntUnsafe(
     const char* src, size_t src_size, int64_t* v, size_t* decoded_size) {
-  return FastDecodeSignedVarIntUnsafe(yb::util::to_uchar_ptr(src), src_size, v, decoded_size);
+  return FastDecodeSignedVarIntUnsafe(to_uchar_ptr(src), src_size, v, decoded_size);
 }
 
 CHECKED_STATUS FastDecodeSignedVarIntUnsafe(
@@ -79,7 +80,7 @@ CHECKED_STATUS FastDecodeSignedVarIntUnsafe(
 // Encoding a "descending VarInt" is simply decoding -v as a VarInt.
 inline char* FastEncodeDescendingSignedVarInt(int64_t v, char *buf) {
   size_t size = 0;
-  FastEncodeSignedVarInt(-v, yb::util::to_uchar_ptr(buf), &size);
+  FastEncodeSignedVarInt(-v, to_uchar_ptr(buf), &size);
   return buf + size;
 }
 

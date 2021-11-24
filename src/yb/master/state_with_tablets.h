@@ -21,6 +21,8 @@
 #include <boost/multi_index/member.hpp>
 #include <boost/multi_index/ordered_index.hpp>
 
+#include <boost/range/iterator_range.hpp>
+
 #include "yb/common/entity_ids.h"
 
 #include "yb/master/master_fwd.h"

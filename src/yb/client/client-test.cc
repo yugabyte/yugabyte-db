@@ -87,6 +87,7 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/tostring.h"
 
 DECLARE_bool(enable_data_block_fsync);

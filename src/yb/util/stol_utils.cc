@@ -13,6 +13,8 @@
 
 #include "yb/util/stol_utils.h"
 
+#include <cstring>
+
 using namespace std::placeholders;
 
 namespace yb {
@@ -29,7 +31,7 @@ CHECKED_STATUS CreateInvalid(Slice input, int err = 0) {
 }
 
 CHECKED_STATUS CheckNotSpace(Slice slice) {
-  if (slice.empty() || isspace(*util::to_char_ptr(slice.data()))) {
+  if (slice.empty() || isspace(*slice.cdata())) {
     // disable skip of spaces.
     return CreateInvalid(slice);
   }

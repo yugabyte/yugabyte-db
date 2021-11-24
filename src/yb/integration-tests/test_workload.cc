@@ -46,6 +46,7 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/common/wire_protocol-test-util.h"
+#include "yb/gutil/casts.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/macros.h"

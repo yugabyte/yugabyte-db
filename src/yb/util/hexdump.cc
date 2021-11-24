@@ -29,12 +29,11 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include "yb/util/hexdump.h"
 
-#include <algorithm>
 #include <string>
 
 #include "yb/gutil/stringprintf.h"
-#include "yb/util/hexdump.h"
 #include "yb/util/slice.h"
 
 namespace yb {

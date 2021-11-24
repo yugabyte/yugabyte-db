@@ -31,8 +31,8 @@
 
 #include "yb/common/common_fwd.h"
 
-#include "yb/util/bfql/gen_opcodes.h"
-#include "yb/util/bfpg/gen_opcodes.h"
+#include "yb/bfql/gen_opcodes.h"
+#include "yb/bfpg/gen_opcodes.h"
 #include "yb/util/status.h"
 
 namespace yb {

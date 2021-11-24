@@ -96,7 +96,7 @@ TEST_F(SysCatalogTest, TestPrepareDefaultClusterConfig) {
 
 
   // Test that config.cluster_uuid gets set to the value that we specify through flag cluster_uuid.
-  FLAGS_cluster_uuid = to_string(Uuid::Generate());
+  FLAGS_cluster_uuid = Uuid::Generate().ToString();
   ASSERT_OK(mini_master->Start());
   auto master = mini_master->master();
   ASSERT_OK(master->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
@@ -125,8 +125,7 @@ TEST_F(SysCatalogTest, TestPrepareDefaultClusterConfig) {
   ASSERT_FALSE(config.cluster_uuid().empty());
 
   // Check that the cluster uuid is valid.
-  Uuid uuid;
-  ASSERT_OK(uuid.FromString(config.cluster_uuid()));
+  ASSERT_OK(Uuid::FromString(config.cluster_uuid()));
 
   mini_master->Shutdown();
 }

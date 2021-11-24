@@ -34,8 +34,10 @@
 
 #include <string>
 
-#include "yb/util/logging.h"
-#include "yb/util/status.h"
+#include <gflags/gflags_declare.h>
+
+#include "yb/util/status_fwd.h"
+#include "yb/util/status_ec.h"
 
 DECLARE_bool(suicide_on_eio);
 

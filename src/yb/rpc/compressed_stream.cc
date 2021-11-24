@@ -21,6 +21,7 @@
 #include <zlib.h>
 
 #include <boost/preprocessor/cat.hpp>
+#include <boost/range/iterator_range.hpp>
 
 #include "yb/rpc/circular_read_buffer.h"
 #include "yb/rpc/outbound_data.h"

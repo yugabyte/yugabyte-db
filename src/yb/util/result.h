@@ -19,7 +19,10 @@
 #include <string>
 #include <type_traits>
 
+#include "yb/gutil/dynamic_annotations.h"
+
 #include "yb/util/status.h"
+#include "yb/util/tostring.h"
 
 namespace yb {
 
@@ -51,6 +54,8 @@ struct ResultTraits<TValue&> {
   static void Destroy(Stored* value) {}
   static TValue* GetPtr(const Stored* value) { return *value; }
 };
+
+void StatusCheck(bool);
 
 template<class TValue>
 class NODISCARD_CLASS Result {
@@ -88,11 +93,11 @@ class NODISCARD_CLASS Result {
   Result(Status::OK&&) = delete; // NOLINT
 
   Result(const Status& status) : success_(false), status_(status) { // NOLINT
-    CHECK(!status_.ok());
+    StatusCheck(!status_.ok());
   }
 
   Result(Status&& status) : success_(false), status_(std::move(status)) { // NOLINT
-    CHECK(!status_.ok());
+    StatusCheck(!status_.ok());
   }
 
   Result(const TValue& value) : success_(true), value_(Traits::ToStored(value)) {} // NOLINT
@@ -131,13 +136,13 @@ class NODISCARD_CLASS Result {
   }
 
   Result& operator=(const Status& status) {
-    CHECK(!status.ok());
+    StatusCheck(!status.ok());
     this->~Result();
     return *new (this) Result(status);
   }
 
   Result& operator=(Status&& status) {
-    CHECK(!status.ok());
+    StatusCheck(!status.ok());
     this->~Result();
     return *new (this) Result(std::move(status));
   }
@@ -172,25 +177,25 @@ class NODISCARD_CLASS Result {
 
   const Status& status() const& {
 #ifndef NDEBUG
-    CHECK(ANNOTATE_UNPROTECTED_READ(success_checked_));
+    StatusCheck(ANNOTATE_UNPROTECTED_READ(success_checked_));
 #endif
-    CHECK(!success_);
+    StatusCheck(!success_);
     return status_;
   }
 
   Status& status() & {
 #ifndef NDEBUG
-    CHECK(ANNOTATE_UNPROTECTED_READ(success_checked_));
+    StatusCheck(ANNOTATE_UNPROTECTED_READ(success_checked_));
 #endif
-    CHECK(!success_);
+    StatusCheck(!success_);
     return status_;
   }
 
   Status&& status() && {
 #ifndef NDEBUG
-    CHECK(ANNOTATE_UNPROTECTED_READ(success_checked_));
+    StatusCheck(ANNOTATE_UNPROTECTED_READ(success_checked_));
 #endif
-    CHECK(!success_);
+    StatusCheck(!success_);
     return std::move(status_);
   }
 
@@ -200,9 +205,9 @@ class NODISCARD_CLASS Result {
 
   TValue&& operator*() && {
 #ifndef NDEBUG
-    CHECK(ANNOTATE_UNPROTECTED_READ(success_checked_));
+    StatusCheck(ANNOTATE_UNPROTECTED_READ(success_checked_));
 #endif
-    CHECK(success_);
+    StatusCheck(success_);
     return value_;
   }
 
@@ -211,17 +216,17 @@ class NODISCARD_CLASS Result {
 
   auto get_ptr() const {
 #ifndef NDEBUG
-    CHECK(ANNOTATE_UNPROTECTED_READ(success_checked_));
+    StatusCheck(ANNOTATE_UNPROTECTED_READ(success_checked_));
 #endif
-    CHECK(success_);
+    StatusCheck(success_);
     return Traits::GetPtr(&value_);
   }
 
   auto get_ptr() {
 #ifndef NDEBUG
-    CHECK(ANNOTATE_UNPROTECTED_READ(success_checked_));
+    StatusCheck(ANNOTATE_UNPROTECTED_READ(success_checked_));
 #endif
-    CHECK(success_);
+    StatusCheck(success_);
     return Traits::GetPtr(&value_);
   }
 
@@ -350,10 +355,6 @@ struct IsNonConstResultRvalue<Result<T>&&> : std::true_type {};
         ::yb::IsNonConstResultRvalue<decltype(__result)>::value ? 1 : -1] = {0}; \
     checker; \
     WrapMove(std::move(__result)); })
-
-// Checks that result is ok, extracts result value is case of success.
-#define CHECK_RESULT(expr) \
-  RESULT_CHECKER_HELPER(expr, CHECK_OK(__result))
 
 // Returns if result is not ok, extracts result value in case of success.
 #define VERIFY_RESULT(expr) \

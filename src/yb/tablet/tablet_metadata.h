@@ -56,6 +56,7 @@
 #include "yb/tablet/metadata.pb.h"
 #include "yb/tablet/tablet_fwd.h"
 
+#include "yb/util/locks.h"
 #include "yb/util/mutex.h"
 #include "yb/util/opid.h"
 #include "yb/util/opid.pb.h"

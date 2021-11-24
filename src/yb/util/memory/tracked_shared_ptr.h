@@ -16,7 +16,9 @@
 
 #include <memory>
 
+#include "yb/util/debug-util.h"
 #include "yb/util/locks.h"
+#include "yb/util/thread.h"
 
 namespace yb {
 

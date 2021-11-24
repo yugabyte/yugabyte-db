@@ -29,6 +29,7 @@
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/errno.h"
 #include "yb/util/malloc.h"
+#include "yb/util/result.h"
 #include "yb/util/thread_restrictions.h"
 
 // For platforms without fdatasync (like OS X)

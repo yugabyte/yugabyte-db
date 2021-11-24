@@ -29,21 +29,18 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include "yb/util/env_util.h"
 
-#include <algorithm>
 #include <memory>
 #include <string>
 
-#include <glog/logging.h>
-
 #include <boost/container/small_vector.hpp>
 
-#include "yb/gutil/strings/substitute.h"
-#include "yb/util/env.h"
-#include "yb/util/env_util.h"
-#include "yb/util/path_util.h"
-#include "yb/util/status.h"
 #include "yb/gutil/strings/util.h"
+#include "yb/util/env.h"
+#include "yb/util/path_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status_log.h"
 
 using strings::Substitute;
 using std::shared_ptr;

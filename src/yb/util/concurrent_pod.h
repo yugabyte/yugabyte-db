@@ -14,6 +14,9 @@
 #ifndef YB_UTIL_CONCURRENT_POD_H
 #define YB_UTIL_CONCURRENT_POD_H
 
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/util/monotime.h"
+
 namespace yb {
 
 // Concurrent wrapper for POD objects that does not fit into std::atomic.

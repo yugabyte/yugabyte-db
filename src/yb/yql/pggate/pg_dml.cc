@@ -16,6 +16,7 @@
 #include "yb/client/yb_op.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/docdb/doc_key.h"
+#include "yb/util/atomic.h"
 #include "yb/util/debug-util.h"
 #include "yb/yql/pggate/pg_dml.h"
 #include "yb/yql/pggate/pggate_flags.h"

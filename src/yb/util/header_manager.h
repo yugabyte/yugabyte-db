@@ -14,10 +14,14 @@
 #ifndef YB_UTIL_HEADER_MANAGER_H
 #define YB_UTIL_HEADER_MANAGER_H
 
-#include "yb/util/status.h"
-#include "yb/util/result.h"
+#include <memory>
+#include <string>
+
+#include "yb/util/status_fwd.h"
 
 namespace yb {
+
+class Slice;
 
 struct EncryptionParams;
 typedef std::unique_ptr<EncryptionParams> EncryptionParamsPtr;

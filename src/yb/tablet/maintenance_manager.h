@@ -34,6 +34,7 @@
 
 #include <stdint.h>
 
+#include <condition_variable>
 #include <map>
 #include <memory>
 #include <set>
@@ -41,6 +42,8 @@
 #include <vector>
 
 #include "yb/gutil/macros.h"
+#include "yb/gutil/thread_annotations.h"
+
 #include "yb/tablet/tablet.pb.h"
 #include "yb/util/condition_variable.h"
 #include "yb/util/monotime.h"

@@ -20,7 +20,8 @@
 #include <boost/system/error_code.hpp>
 
 #include "yb/gutil/strings/substitute.h"
-#include "yb/util/status.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
@@ -59,15 +60,9 @@ class InetAddress {
     return boost_addr_;
   }
 
-  bool isV4() const {
-    DCHECK(!boost_addr_.is_unspecified());
-    return boost_addr_.is_v4();
-  }
+  bool isV4() const;
 
-  bool isV6() const {
-    DCHECK(!boost_addr_.is_unspecified());
-    return boost_addr_.is_v6();
-  }
+  bool isV6() const;
 
   bool operator==(const InetAddress& other) const {
     return (boost_addr_ == other.boost_addr_);
@@ -77,13 +72,7 @@ class InetAddress {
     return !(*this == other);
   }
 
-  bool operator<(const InetAddress& other) const {
-    string this_bytes, other_bytes;
-    Status s = ToBytes(&this_bytes);
-    Status t = other.ToBytes(&other_bytes);
-    DCHECK(s.ok() && t.ok());
-    return this_bytes < other_bytes;
-  }
+  bool operator<(const InetAddress& other) const;
 
   bool operator>(const InetAddress& other) const {
     return (other < *this);
