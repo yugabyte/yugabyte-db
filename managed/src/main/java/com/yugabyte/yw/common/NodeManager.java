@@ -84,6 +84,8 @@ public class NodeManager extends DevopsBase {
       ImmutableList.of(ServerType.MASTER.name(), ServerType.TSERVER.name());
   static final String VERIFY_SERVER_ENDPOINT_GFLAG = "verify_server_endpoint";
   static final String SKIP_CERT_VALIDATION = "yb.tls.skip_cert_validation";
+  static final String CERTS_NODE_SUBDIR = "/yugabyte-tls-config";
+  static final String CERT_CLIENT_NODE_SUBDIR = "/yugabyte-client-tls-config";
 
   @Inject ReleaseManager releaseManager;
 
@@ -346,7 +348,7 @@ public class NodeManager extends DevopsBase {
 
     if (isRootCARequired) {
       subcommandStrings.add("--certs_node_dir");
-      subcommandStrings.add(ybHomeDir + "/yugabyte-tls-config");
+      subcommandStrings.add(getCertsNodeDir(ybHomeDir));
 
       CertificateInfo rootCert = CertificateInfo.get(taskParam.rootCA);
       if (rootCert == null) {
@@ -440,7 +442,7 @@ public class NodeManager extends DevopsBase {
     }
     if (isClientRootCARequired) {
       subcommandStrings.add("--certs_client_dir");
-      subcommandStrings.add(ybHomeDir + "/yugabyte-client-tls-config");
+      subcommandStrings.add(getCertsForClientDir(ybHomeDir));
 
       CertificateInfo clientRootCert = CertificateInfo.get(taskParam.clientRootCA);
       if (clientRootCert == null) {
@@ -521,6 +523,14 @@ public class NodeManager extends DevopsBase {
     return subcommandStrings;
   }
 
+  private static String getCertsNodeDir(String ybHomeDir) {
+    return ybHomeDir + CERTS_NODE_SUBDIR;
+  }
+
+  private static String getCertsForClientDir(String ybHomeDir) {
+    return ybHomeDir + CERT_CLIENT_NODE_SUBDIR;
+  }
+
   // Return the map of default gflags which will be passed as extra gflags to the db nodes.
   private Map<String, String> addExtraGFlags(
       AnsibleConfigureServers.Params taskParam, boolean useHostname) {
@@ -590,15 +600,15 @@ public class NodeManager extends DevopsBase {
         extra_gflags.put("use_client_to_server_encryption", "true");
       }
       extra_gflags.put("allow_insecure_connections", taskParam.allowInsecure ? "true" : "false");
-      String yb_home_dir = taskParam.getProvider().getYbHome();
+      String ybHomeDir = taskParam.getProvider().getYbHome();
 
       extra_gflags.put("cert_node_filename", node.cloudInfo.private_ip);
 
       if (CertificateHelper.isRootCARequired(taskParam)) {
-        extra_gflags.put("certs_dir", yb_home_dir + "/yugabyte-tls-config");
+        extra_gflags.put("certs_dir", getCertsNodeDir(ybHomeDir));
       }
       if (CertificateHelper.isClientRootCARequired(taskParam)) {
-        extra_gflags.put("certs_for_client_dir", yb_home_dir + "/yugabyte-client-tls-config");
+        extra_gflags.put("certs_for_client_dir", getCertsForClientDir(ybHomeDir));
       }
     }
     if (taskParam.callhomeLevel != null) {
@@ -845,13 +855,13 @@ public class NodeManager extends DevopsBase {
             subcommand.add(processType.toLowerCase());
           }
 
-          String yb_home_dir =
+          String ybHomeDir =
               Provider.getOrBadRequest(
                       UUID.fromString(
                           universe.getUniverseDetails().getPrimaryCluster().userIntent.provider))
                   .getYbHome();
-          String certsNodeDir = yb_home_dir + "/yugabyte-tls-config";
-          String certsForClientDir = yb_home_dir + "/yugabyte-client-tls-config";
+          String certsNodeDir = getCertsNodeDir(ybHomeDir);
+          String certsForClientDir = getCertsForClientDir(ybHomeDir);
 
           subcommand.add("--cert_rotate_action");
           subcommand.add(taskParam.certRotateAction.toString());
@@ -906,7 +916,7 @@ public class NodeManager extends DevopsBase {
                         taskParam.rootCARotationType != CertRotationType.None,
                         taskParam.clientRootCARotationType != CertRotationType.None,
                         node.cloudInfo.private_ip,
-                        yb_home_dir));
+                        ybHomeDir));
               }
               break;
             case UPDATE_CERT_DIRS:
@@ -947,8 +957,8 @@ public class NodeManager extends DevopsBase {
                       UUID.fromString(
                           universe.getUniverseDetails().getPrimaryCluster().userIntent.provider))
                   .getYbHome();
-          String certsDir = ybHomeDir + "/yugabyte-tls-config";
-          String certsForClientDir = ybHomeDir + "/yugabyte-client-tls-config";
+          String certsDir = getCertsNodeDir(ybHomeDir);
+          String certsForClientDir = getCertsForClientDir(ybHomeDir);
 
           if (UpgradeTaskParams.UpgradeTaskSubType.CopyCerts.name().equals(subType)) {
             if (taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt) {

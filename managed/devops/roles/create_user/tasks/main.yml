@@ -66,6 +66,15 @@
     when: home_stat.stat.isdir is defined
   when: user_existence_check_result.rc != 0
 
+- name: Cleanup old homedir if custom homedir is used
+  file:
+    state: absent
+    path: "/home/{{ create_user.name }}"
+  ignore_errors: True
+  when: >
+    cloud_type == 'onprem' and
+    create_user.home_dir is not match('/home/{{ create_user.name }}(/.*)?$')
+
 - name: "Setup {{ create_user.name }} ssh"
   include: setup-ssh.yml
   when: ssh_config is defined and ssh_config.enabled
