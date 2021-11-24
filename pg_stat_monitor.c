@@ -1046,7 +1046,8 @@ static void pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
                                     context, params, queryEnv,
 									dest,
 									qc);
-            standard_ProcessUtility(pstmt, queryString,
+            else
+				standard_ProcessUtility(pstmt, queryString,
                                         readOnlyTree,
 										context, params, queryEnv,
 										dest,
@@ -1057,7 +1058,8 @@ static void pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
                                     context, params, queryEnv,
 									dest,
 									qc);
-            standard_ProcessUtility(pstmt, queryString,
+            else
+				standard_ProcessUtility(pstmt, queryString,
 										context, params, queryEnv,
 										dest,
                                         qc);
@@ -1067,7 +1069,8 @@ static void pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 									context, params, queryEnv,
 									dest,
 									completionTag);
-			standard_ProcessUtility(pstmt, queryString,
+			else
+				standard_ProcessUtility(pstmt, queryString,
 										context, params, queryEnv,
 										dest,
                                         completionTag);
