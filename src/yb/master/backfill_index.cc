@@ -298,6 +298,7 @@ Result<bool> MultiStageAlterTable::UpdateIndexPermission(
     const scoped_refptr<TableInfo>& indexed_table,
     const std::unordered_map<TableId, IndexPermissions>& perm_mapping,
     boost::optional<uint32_t> current_version) {
+  TRACE(__func__);
   DVLOG(3) << __PRETTY_FUNCTION__ << " " << yb::ToString(*indexed_table);
   if (FLAGS_TEST_slowdown_backfill_alter_table_rpcs_ms > 0) {
     TRACE("Sleeping for $0 ms", FLAGS_TEST_slowdown_backfill_alter_table_rpcs_ms);
@@ -331,6 +332,13 @@ Result<bool> MultiStageAlterTable::UpdateIndexPermission(
       auto& idx_table_id = idx_pb->table_id();
       if (perm_mapping.find(idx_table_id) != perm_mapping.end()) {
         const auto new_perm = perm_mapping.at(idx_table_id);
+        if (idx_pb->index_permissions() >= new_perm) {
+          LOG(WARNING) << "Index " << idx_pb->table_id() << " on table "
+                       << indexed_table->ToString() << " has index_permission "
+                       << IndexPermissions_Name(idx_pb->index_permissions()) << " already past "
+                       << IndexPermissions_Name(new_perm) << ". Will not update it";
+          continue;
+        }
         // TODO(alex, amit): Non-OK status here should be converted to TryAgain,
         //                   which should be handled on an upper level.
         if (is_pgsql && !VERIFY_RESULT(ShouldProceedWithPgsqlIndexPermissionUpdate(catalog_manager,
@@ -532,7 +540,8 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
   // TODO(jason): when using INDEX_PERM_DO_BACKFILL, update this comment (issue #6218).
 
   if (!indexes_to_update.empty()) {
-    VLOG(1) << "Updating index permissions for " << yb::ToString(indexes_to_update);
+    VLOG(1) << "Updating index permissions for " << yb::ToString(indexes_to_update) << " on "
+            << indexed_table->ToString();
     Result<bool> permissions_updated =
         VERIFY_RESULT(UpdateIndexPermission(catalog_manager, indexed_table, indexes_to_update,
                                             current_version));
@@ -1032,9 +1041,14 @@ Status BackfillTable::ClearCheckpointStateInTablets() {
 Status BackfillTable::AllowCompactionsToGCDeleteMarkers(
     const TableId &index_table_id) {
   DVLOG(3) << __PRETTY_FUNCTION__;
-  scoped_refptr<TableInfo> index_table_info = VERIFY_RESULT_PREPEND(
-      master_->catalog_manager()->FindTableById(index_table_id),
-      "This is ok in case somebody issued a delete index.");
+  auto res = master_->catalog_manager()->FindTableById(index_table_id);
+  if (!res && res.status().IsNotFound()) {
+    LOG(ERROR) << "Index " << index_table_id << " was not found."
+               << " This is ok in case somebody issued a delete index. : " << res.ToString();
+    return Status::OK();
+  }
+  scoped_refptr<TableInfo> index_table_info = VERIFY_RESULT_PREPEND(std::move(res),
+      Format("Could not find the index table $0", index_table_id));
 
   // Add a sleep here to wait until the Table is fully created.
   bool is_ready = false;
@@ -1051,7 +1065,14 @@ Status BackfillTable::AllowCompactionsToGCDeleteMarkers(
     {
       VLOG(2) << __func__ << ": Trying to lock index table for Read";
       auto l = index_table_info->LockForRead();
-      is_ready = l->pb.state() == SysTablesEntryPB::RUNNING;
+      auto state = l->pb.state();
+      if (state != SysTablesEntryPB::RUNNING && state != SysTablesEntryPB::ALTERING) {
+        LOG(ERROR) << "Index " << index_table_id << " is in state "
+                   << SysTablesEntryPB_State_Name(state) << " : cannot enable compactions on it";
+        // Treating it as success so that we can proceed with updating other indexes.
+        return Status::OK();
+      }
+      is_ready = state == SysTablesEntryPB::RUNNING;
     }
     VLOG(2) << __func__ << ": Unlocked index table for Read";
   } while (!is_ready);
