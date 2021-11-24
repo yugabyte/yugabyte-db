@@ -746,6 +746,7 @@ class UniverseDetail extends Component {
                           editTLSAvailability={editTLSAvailability}
                           showManageKeyModal={showManageKeyModal}
                           manageKeyAvailability={manageKeyAvailability}
+                          isItKubernetesUniverse={isItKubernetesUniverse}
                         />
                       </>
                     )
