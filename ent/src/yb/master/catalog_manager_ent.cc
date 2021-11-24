@@ -2467,8 +2467,8 @@ std::vector<scoped_refptr<CDCStreamInfo>> CatalogManager::FindCDCStreamsForTable
 
 void CatalogManager::GetAllCDCStreams(std::vector<scoped_refptr<CDCStreamInfo>>* streams) {
   streams->clear();
-  streams->reserve(cdc_stream_map_.size());
   SharedLock lock(mutex_);
+  streams->reserve(cdc_stream_map_.size());
   for (const CDCStreamInfoMap::value_type& e : cdc_stream_map_) {
     if (!e.second->LockForRead()->is_deleting()) {
       streams->push_back(e.second);
