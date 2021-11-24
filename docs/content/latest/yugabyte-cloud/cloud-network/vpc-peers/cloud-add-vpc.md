@@ -54,3 +54,7 @@ To view the VPC details:
 ## Terminate a VPC
 
 To terminate a VPC, click the **Delete** icon for the VPC in the list you want to terminate, then click **Terminate**. You can also terminate a VPC by clicking **Terminate VPC** in the **VPC Details** sheet.
+
+## Next steps
+
+[Add a peering connection](../cloud-add-peering)

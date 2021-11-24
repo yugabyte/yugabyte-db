@@ -67,6 +67,8 @@ For AWS, you use the VPC Dashboard to do the following:
 - Approve the peering connection request that you received from Yugabyte.
 - Add a route table entry to the VPC peer and add the Yugabyte Cloud cluster CIDR block to the Destination column, and the Peering Connection ID to the Target column.
 
+Refer to [Configure the cloud provider](cloud-add-peering/#configure-the-cloud-provider).
+
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">

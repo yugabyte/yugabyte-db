@@ -85,3 +85,9 @@ To view peering connection details:
 ## Terminate a peering connection
 
 To terminate a peering connection, click the **Delete** icon for the peering connection in the list you want to terminate, then click **Terminate**. You can also terminate a peering connection by clicking **Terminate Peering** in the **Peering Details** sheet.
+
+## Next steps
+
+- Create a cluster in a VPN. You do this by selecting the VPN during cluster creation. Refer to [Create a cluster](../../../cloud-basics/create-clusters).
+
+- Add the peered VPN to the IP allow list of your cluster. To communicate with you cluster, the CIDR block of the application VPN must be added to your cluster's IP allow list. Refer to [Assign IP allow lists](../../../cloud-basics/add-connections).
