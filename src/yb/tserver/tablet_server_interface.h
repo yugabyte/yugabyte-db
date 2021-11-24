@@ -14,6 +14,8 @@
 #ifndef YB_TSERVER_TABLET_SERVER_INTERFACE_H
 #define YB_TSERVER_TABLET_SERVER_INTERFACE_H
 
+#include <future>
+
 #include "yb/client/client_fwd.h"
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/server/clock.h"

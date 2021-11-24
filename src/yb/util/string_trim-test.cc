@@ -10,16 +10,12 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
-#include <atomic>
 #include <string>
+
 #include <gtest/gtest.h>
 
-#include "yb/util/test_macros.h"
-#include "yb/util/monotime.h"
-#include "yb/util/result.h"
 #include "yb/util/string_trim.h"
-#include "yb/util/thread.h"
+#include "yb/util/test_macros.h"
 #include "yb/util/tsan_util.h"
 
 namespace yb {

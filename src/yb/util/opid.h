@@ -19,7 +19,6 @@
 #include <iosfwd>
 #include <vector>
 
-#include "yb/util/result.h"
 #include "yb/util/slice.h"
 
 namespace yb {

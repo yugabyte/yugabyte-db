@@ -36,8 +36,7 @@
 #include <string>
 
 #include "yb/server/clock.h"
-#include "yb/util/metrics.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 class MonoDelta;
@@ -56,8 +55,7 @@ namespace server {
 // NOTE: this class is thread safe.
 class LogicalClock : public Clock {
  public:
-
-  CHECKED_STATUS Init() override { return Status::OK(); }
+  CHECKED_STATUS Init() override;
 
   // Returns the current value of the clock without incrementing it.
   HybridTime Peek();
@@ -81,7 +79,7 @@ class LogicalClock : public Clock {
 
   std::atomic<uint64_t> now_;
 
-  FunctionGaugeDetacher metric_detacher_;
+  std::shared_ptr<void> metric_detacher_;
 };
 
 }  // namespace server

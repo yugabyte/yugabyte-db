@@ -29,13 +29,10 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include <vector>
 
 #include <gtest/gtest.h>
 
-#include "yb/gutil/bind.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/util/once.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/thread.h"

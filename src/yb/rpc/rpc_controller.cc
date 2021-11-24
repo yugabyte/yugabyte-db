@@ -38,6 +38,8 @@
 
 #include "yb/rpc/outbound_call.h"
 
+#include "yb/util/result.h"
+
 namespace yb { namespace rpc {
 
 RpcController::RpcController() {

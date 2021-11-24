@@ -53,8 +53,10 @@
 #include "yb/util/status.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_fwd.h"
-#include "yb/util/threadpool.h"
+
+#include "yb/util/locks.h"
 #include "yb/util/opid.h"
+#include "yb/util/threadpool.h"
 
 namespace yb {
 

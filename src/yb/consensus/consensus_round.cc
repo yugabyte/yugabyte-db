@@ -13,7 +13,11 @@
 
 #include "yb/consensus/consensus_round.h"
 
+#include <glog/logging.h>
+
 #include "yb/consensus/consensus.pb.h"
+
+#include "yb/util/status.h"
 
 namespace yb {
 namespace consensus {

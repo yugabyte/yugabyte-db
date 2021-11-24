@@ -18,7 +18,7 @@
 #include "yb/client/client.h"
 #include "yb/yql/pggate/util/pg_doc_data.h"
 #include "yb/yql/pggate/util/pg_tuple.h"
-#include "yb/util/bfpg/tserver_opcodes.h"
+#include "yb/bfpg/tserver_opcodes.h"
 
 namespace yb {
 namespace pggate {

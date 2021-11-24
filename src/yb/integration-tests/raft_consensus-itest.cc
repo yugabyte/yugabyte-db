@@ -3349,7 +3349,6 @@ TEST_F(RaftConsensusITest, DisruptiveServerAndSlowWAL) {
 // Checking that not yet committed split operation is correctly aborted after leader change and
 // then new split op id is successfully set on all replicas after retry.
 TEST_F(RaftConsensusITest, SplitOpId) {
-  ObjectIdGenerator oid_generator;
   RpcController rpc;
   const auto kTimeout = 60s * kTimeMultiplier;
 
@@ -3389,8 +3388,8 @@ TEST_F(RaftConsensusITest, SplitOpId) {
   // Add SPLIT_OP to the leader.
   tserver::SplitTabletRequestPB req;
   req.set_tablet_id(tablet_id_);
-  req.set_new_tablet1_id(oid_generator.Next());
-  req.set_new_tablet2_id(oid_generator.Next());
+  req.set_new_tablet1_id(GenerateObjectId());
+  req.set_new_tablet2_id(GenerateObjectId());
   {
     const auto min_hash_code = std::numeric_limits<docdb::DocKeyHash>::max();
     const auto max_hash_code = std::numeric_limits<docdb::DocKeyHash>::min();

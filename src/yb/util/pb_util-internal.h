@@ -36,7 +36,9 @@
 
 #include <glog/logging.h>
 #include <google/protobuf/io/zero_copy_stream.h>
+
 #include "yb/util/env.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace pb_util {

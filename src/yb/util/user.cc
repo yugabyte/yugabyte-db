@@ -38,6 +38,7 @@
 
 #include "yb/util/errno.h"
 #include "yb/util/malloc.h"
+#include "yb/util/result.h"
 #include "yb/util/subprocess.h"
 
 using std::string;

@@ -72,6 +72,7 @@
 #include "yb/util/memory/memory.h"
 #include "yb/util/metrics.h"
 #include "yb/util/jsonwriter.h"
+#include "yb/util/result.h"
 #include "yb/util/version_info.h"
 #include "yb/util/version_info.pb.h"
 

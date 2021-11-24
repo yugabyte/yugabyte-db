@@ -14,6 +14,7 @@
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
 #include "yb/util/flags.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
 
 DEFINE_int32(flagstest_testflag, 0, "test flag");

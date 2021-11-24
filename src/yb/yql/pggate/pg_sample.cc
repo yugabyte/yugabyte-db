@@ -15,6 +15,8 @@
 
 #include "yb/yql/pggate/pg_sample.h"
 
+#include "yb/gutil/casts.h"
+
 namespace yb {
 namespace pggate {
 

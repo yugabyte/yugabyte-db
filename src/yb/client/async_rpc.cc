@@ -599,7 +599,7 @@ void WriteRpc::SwapResponses() {
           Slice rows_data = CHECK_RESULT(retrier().controller().GetSidecar(
               pgsql_response.rows_data_sidecar()));
           down_cast<YBPgsqlWriteOp*>(yb_op)->mutable_rows_data()->assign(
-              util::to_char_ptr(rows_data.data()), rows_data.size());
+              to_char_ptr(rows_data.data()), rows_data.size());
         }
         pgsql_idx++;
         break;
@@ -729,7 +729,7 @@ void ReadRpc::SwapResponses() {
         if (ql_response.has_rows_data_sidecar()) {
           Slice rows_data = CHECK_RESULT(retrier().controller().GetSidecar(
               ql_response.rows_data_sidecar()));
-          ql_op->mutable_rows_data()->assign(util::to_char_ptr(rows_data.data()), rows_data.size());
+          ql_op->mutable_rows_data()->assign(to_char_ptr(rows_data.data()), rows_data.size());
         }
         ql_idx++;
         break;
@@ -750,7 +750,7 @@ void ReadRpc::SwapResponses() {
           Slice rows_data = CHECK_RESULT(retrier().controller().GetSidecar(
               pgsql_response.rows_data_sidecar()));
           down_cast<YBPgsqlReadOp*>(yb_op)->mutable_rows_data()->assign(
-              util::to_char_ptr(rows_data.data()), rows_data.size());
+              to_char_ptr(rows_data.data()), rows_data.size());
         }
         pgsql_idx++;
         break;

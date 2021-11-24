@@ -29,21 +29,20 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/util/subprocess.h"
 
 #include <dirent.h>
 #include <fcntl.h>
 #include <signal.h>
-#include <sys/wait.h>
 #include <spawn.h>
+#include <sys/wait.h>
 
-#include <vector>
-#include <mutex>
 #include <memory>
+#include <mutex>
 #include <string>
-#include <boost/container/small_vector.hpp>
+#include <vector>
 
+#include <boost/container/small_vector.hpp>
 #include <glog/logging.h>
 
 #include "yb/gutil/once.h"
@@ -51,10 +50,12 @@
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/split.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/util/errno.h"
-#include "yb/util/status.h"
+#include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 using std::shared_ptr;
 using std::string;
@@ -758,6 +759,10 @@ void Subprocess::FinalizeParentSideOfPipes(const Subprocess::ChildPipes& child_p
   child_fds_[STDIN_FILENO] = child_pipes.child_stdin[1];
   child_fds_[STDOUT_FILENO] = child_pipes.child_stdout[0];
   child_fds_[STDERR_FILENO] = child_pipes.child_stderr[0];
+}
+
+Status Subprocess::WaitNoBlock(int* ret) {
+  return DoWait(ret, WNOHANG);
 }
 
 } // namespace yb

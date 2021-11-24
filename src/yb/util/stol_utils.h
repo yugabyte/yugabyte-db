@@ -15,6 +15,7 @@
 #define YB_UTIL_STOL_UTILS_H
 
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 

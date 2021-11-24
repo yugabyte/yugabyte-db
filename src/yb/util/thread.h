@@ -42,22 +42,19 @@
 #include <vector>
 
 #include "yb/gutil/atomicops.h"
+#include "yb/gutil/callback.h"
 #include "yb/gutil/ref_counted.h"
-#include "yb/util/async_util.h"
+
+#include "yb/util/countdown_latch.h"
+#include "yb/util/monotime.h"
 #include "yb/util/result.h"
-#include "yb/util/status.h"
+#include "yb/util/stack_trace.h"
 
 namespace yb {
 
 class MetricEntity;
 class Thread;
 class WebCallbackRegistry;
-
-#if defined(__linux__)
-typedef int64_t ThreadIdForStack;
-#else
-typedef pthread_t ThreadIdForStack;
-#endif
 
 // Utility to join on a thread, printing warning messages if it
 // takes too long. For example:
@@ -212,7 +209,7 @@ class Thread : public RefCountedThreadSafe<Thread> {
 
   // Blocks until this thread finishes execution. Once this method returns, the thread
   // will be unregistered with the ThreadMgr and will not appear in the debug UI.
-  void Join() { WARN_NOT_OK(ThreadJoiner(this).Join(), "Thread join failed"); }
+  void Join();
 
   // Call the given Closure on the thread before it exits. The closures are executed
   // in the order they are added.

@@ -40,6 +40,7 @@
 #include "yb/gutil/endian.h"
 #include "yb/util/cast.h"
 #include "yb/util/status.h"
+#include "yb/util/status_ec.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/strongly_typed_uuid.h"
 
@@ -288,7 +289,7 @@ static inline CHECKED_STATUS CQLDecodeFloat(
 
 static inline CHECKED_STATUS CQLDecodeBytes(size_t len, Slice* data, std::string* val) {
   RETURN_NOT_ENOUGH(data, len);
-  *val = std::string(util::to_char_ptr(data->data()), len);
+  *val = std::string(to_char_ptr(data->data()), len);
   data->remove_prefix(len);
   return Status::OK();
 }

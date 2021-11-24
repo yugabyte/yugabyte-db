@@ -36,6 +36,8 @@
 #include <gperftools/malloc_extension.h>
 #endif
 
+#include "yb/gutil/bind.h"
+
 #include "yb/util/metrics.h"
 
 #ifndef TCMALLOC_ENABLED

@@ -15,8 +15,11 @@
 #ifndef YB_UTIL_SIGNAL_UTIL_H
 #define YB_UTIL_SIGNAL_UTIL_H
 
+#include <vector>
+
+#include <glog/logging.h>
+
 #include "yb/util/result.h"
-#include "yb/util/status.h"
 
 namespace yb {
 
@@ -41,9 +44,7 @@ CHECKED_STATUS ThreadSignalMaskRestore(sigset_t old_mask);
 extern const std::vector<int> kYsqlHandledSignals;
 
 // Calls ThreadSignalMaskBlock to block signals with handlers installed by postgres layer.
-Result<sigset_t> ThreadYsqlSignalMaskBlock() {
-  return ThreadSignalMaskBlock(kYsqlHandledSignals);
-}
+Result<sigset_t> ThreadYsqlSignalMaskBlock();
 
 // Applies ThreadYsqlSignalMaskBlock, executes a given code (which should return a Status or Result)
 // and apples ThreadSignalMaskRestore, returning execution result.

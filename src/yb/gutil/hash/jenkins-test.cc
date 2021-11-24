@@ -49,11 +49,11 @@ TEST(Jenkins, TestHash64) {
     0x1d, 0xc2, 0xd7, 0x7d, 0xc6, 0xc7, 0x10, 0xb2, 0xac, 0xcf, 0x8b, 0x25, 0xd9, 0x7d, 0xd5, 0x20};
 
   EXPECT_EQ(1789751740810280356ul,
-            Hash64StringWithSeed(yb::util::to_char_ptr(b1), sizeof(b1), seed));
+            Hash64StringWithSeed(to_char_ptr(b1), sizeof(b1), seed));
   EXPECT_EQ(4001818822847464429ul,
-            Hash64StringWithSeed(yb::util::to_char_ptr(b2), sizeof(b2), seed));
+            Hash64StringWithSeed(to_char_ptr(b2), sizeof(b2), seed));
   EXPECT_EQ(15240025333683105143ul,
-            Hash64StringWithSeed(yb::util::to_char_ptr(b3), sizeof(b3), seed));
+            Hash64StringWithSeed(to_char_ptr(b3), sizeof(b3), seed));
 }
 
 } // namespace yb

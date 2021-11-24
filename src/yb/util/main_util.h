@@ -20,8 +20,7 @@
 
 #include "yb/util/env.h"
 #include "yb/util/logging.h"
-#include "yb/util/result.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/util/path_util.h"
 

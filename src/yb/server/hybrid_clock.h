@@ -44,7 +44,6 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/server/clock.h"
 #include "yb/util/locks.h"
-#include "yb/util/metrics.h"
 #include "yb/util/physical_time.h"
 
 namespace yb {
@@ -166,7 +165,7 @@ class HybridClock : public Clock {
   // Clock metrics are set to detach to their last value. This means
   // that, during our destructor, we'll need to access other class members
   // declared above this. Hence, this member must be declared last.
-  FunctionGaugeDetacher metric_detacher_;
+  std::shared_ptr<void> metric_detacher_;
 };
 
 }  // namespace server

@@ -45,9 +45,7 @@ class EncryptedRandomAccessFile : public RandomAccessFileWrapper {
     return header_size_;
   }
 
-  Result<uint64_t> Size() const override {
-    return VERIFY_RESULT(RandomAccessFileWrapper::Size()) - header_size_;
-  }
+  Result<uint64_t> Size() const override;
 
   virtual bool IsEncrypted() const override {
     return true;

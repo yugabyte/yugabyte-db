@@ -31,6 +31,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/random.h"
 #include "yb/util/sync_point.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 

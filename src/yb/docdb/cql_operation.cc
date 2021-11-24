@@ -33,7 +33,7 @@
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/primitive_value_util.h"
 
-#include "yb/util/bfpg/tserver_opcodes.h"
+#include "yb/bfpg/tserver_opcodes.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/status.h"
 #include "yb/util/trace.h"

@@ -41,8 +41,11 @@
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/debug/trace_event_synthetic_delay.h"
 #include "yb/util/debug/trace_logging.h"
+#include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "yb/util/thread.h"
 
 using yb::debug::TraceLog;
 using yb::debug::TraceResultBuffer;
@@ -100,7 +103,7 @@ TEST_F(TraceTest, TestAttach) {
   TRACE("this goes nowhere");
 
   EXPECT_EQ(XOutDigits(traceA->DumpToString(false)),
-            "XXXX XX:XX:XX.XXXXXX trace-test.cc:XX] hello from traceA\n");
+            "XXXX XX:XX:XX.XXXXXX trace-test.cc:XXX] hello from traceA\n");
   EXPECT_EQ(XOutDigits(traceB->DumpToString(false)),
             "XXXX XX:XX:XX.XXXXXX trace-test.cc:XX] hello from traceB\n");
 }

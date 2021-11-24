@@ -29,14 +29,13 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include <chrono>
 #include <thread>
 
 #include <gtest/gtest.h>
 
 #include "yb/util/background_task.h"
-
+#include "yb/util/result.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"

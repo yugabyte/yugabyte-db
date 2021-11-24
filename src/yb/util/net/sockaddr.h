@@ -40,7 +40,7 @@
 #include <boost/asio/ip/tcp.hpp>
 #undef EV_ERROR // sys/event.h conflicts with libev
 
-#include "yb/util/result.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 

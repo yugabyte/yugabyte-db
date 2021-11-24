@@ -22,7 +22,10 @@
 #include "yb/util/atomic.h"
 #include "yb/util/errno.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 DEFINE_uint64(max_clock_sync_error_usec, 10 * 1000 * 1000,
               "Maximum allowed clock synchronization error as reported by NTP "
@@ -118,6 +121,10 @@ class AdjTimeClockImpl : public PhysicalClock {
 #endif
 
 } // namespace
+
+std::string PhysicalTime::ToString() const {
+  return YB_STRUCT_TO_STRING(time_point, max_error);
+}
 
 const PhysicalClockPtr& WallClock() {
   static PhysicalClockPtr instance = std::make_shared<WallClockImpl>();

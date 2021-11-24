@@ -58,9 +58,12 @@
 
 #include <cstdint>
 #include <iosfwd>
+#include <memory>
 
 #include "yb/gutil/atomicops.h"
-#include "yb/util/status.h"
+#include "yb/gutil/macros.h"
+
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 

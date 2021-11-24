@@ -397,8 +397,7 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstUuid *const_pt, QLValuePB *cons
   const auto& value = const_pt->value();
   switch (const_pt->expected_internal_type()) {
     case InternalType::kUuidValue: {
-      Uuid uuid;
-      RETURN_NOT_OK(uuid.FromString(value->c_str()));
+      Uuid uuid = VERIFY_RESULT(Uuid::FromString(value->c_str()));
 
       QLValue ql_const;
       ql_const.set_uuid_value(uuid);
@@ -406,8 +405,7 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstUuid *const_pt, QLValuePB *cons
       break;
     }
     case InternalType::kTimeuuidValue: {
-      Uuid uuid;
-      RETURN_NOT_OK(uuid.FromString(value->c_str()));
+      Uuid uuid = VERIFY_RESULT(Uuid::FromString(value->c_str()));
       RETURN_NOT_OK(uuid.IsTimeUuid());
 
       QLValue ql_const;

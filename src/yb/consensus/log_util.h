@@ -54,6 +54,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/opid.h"
 #include "yb/util/restart_safe_clock.h"
+#include "yb/util/status.h"
 #include "yb/util/tostring.h"
 
 // Used by other classes, now part of the API.

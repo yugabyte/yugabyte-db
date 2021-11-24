@@ -34,6 +34,7 @@
 #include "yb/common/pgsql_error.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/test_thread_holder.h"
 
 using namespace std::literals;
 

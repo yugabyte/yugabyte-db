@@ -14,6 +14,7 @@
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 #include "yb/util/test_macros.h"
+#include "yb/util/test_thread_holder.h"
 
 using namespace std::literals;
 

@@ -61,6 +61,7 @@
 
 #include "yb/util/debug-util.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
 
 DEFINE_string(log_filename, "",
     "Prefix of log filename - "

@@ -19,6 +19,7 @@
 #include <random>
 #include <fstream>
 #include <regex>
+#include <thread>
 
 #include <boost/algorithm/string.hpp>
 

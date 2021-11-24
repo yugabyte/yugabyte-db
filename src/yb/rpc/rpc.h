@@ -33,6 +33,7 @@
 #define YB_RPC_RPC_H
 
 #include <atomic>
+#include <future>
 #include <memory>
 #include <string>
 

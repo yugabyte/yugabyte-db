@@ -25,6 +25,9 @@
 
 #include "yb/common/common.pb.h"
 #include "yb/common/schema.h"
+
+#include "yb/gutil/casts.h"
+
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 
 DECLARE_bool(allow_index_table_read_write);

@@ -14,8 +14,11 @@
 #ifndef YB_UTIL_NET_RATE_LIMITER_H
 #define YB_UTIL_NET_RATE_LIMITER_H
 
+#include <functional>
+#include <vector>
+
 #include "yb/util/monotime.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 

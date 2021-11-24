@@ -22,8 +22,6 @@
 #include "yb/util/cast.h"
 #include "yb/util/flag_tags.h"
 
-using yb::util::to_char_ptr;
-
 DEFINE_bool(encryption_counter_overflow_read_path_workaround, true,
             "Enable a read-path workaround for the encryption counter overflow bug #3707. "
             "This is enabled by default and could be disabled to reproduce the bug in testing.");
@@ -86,6 +84,10 @@ Status EncryptedRandomAccessFile::ReadAndValidate(
     }
   }
   return status_without_workaround;
+}
+
+Result<uint64_t> EncryptedRandomAccessFile::Size() const {
+  return VERIFY_RESULT(RandomAccessFileWrapper::Size()) - header_size_;
 }
 
 } // namespace yb

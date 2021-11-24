@@ -10,14 +10,14 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
-#include <vector>
-#include <limits>
-#include <iomanip>
-#include <glog/logging.h>
-
-#include "yb/gutil/strings/substitute.h"
 #include "yb/util/decimal.h"
+
+#include <iomanip>
+#include <limits>
+#include <vector>
+
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/stol_utils.h"
 
 using std::string;
@@ -25,6 +25,18 @@ using std::vector;
 
 namespace yb {
 namespace util {
+
+Decimal::Decimal(const std::string& string_val) {
+  CHECK_OK(FromString(string_val));
+}
+
+Decimal::Decimal(double double_val) {
+  CHECK_OK(FromDouble(double_val));
+}
+
+Decimal::Decimal(const VarInt& varint_val) {
+  CHECK_OK(FromVarInt(varint_val));
+}
 
 void Decimal::clear() {
   digits_ = {};
@@ -347,10 +359,6 @@ Status Decimal::DecodeFromComparable(const Slice& slice, size_t *num_decoded_byt
 Status Decimal::DecodeFromComparable(const Slice& slice) {
   size_t num_decoded_bytes;
   return DecodeFromComparable(slice, &num_decoded_bytes);
-}
-
-Status Decimal::DecodeFromComparable(const string& str) {
-  return DecodeFromComparable(Slice(str));
 }
 
 string Decimal::EncodeToSerializedBigDecimal(bool* is_out_of_range) const {

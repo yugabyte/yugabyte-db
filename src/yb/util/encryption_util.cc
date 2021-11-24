@@ -10,25 +10,25 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
-#include <openssl/rand.h>
-#include <openssl/err.h>
-#include <openssl/ssl.h>
-#include <memory>
-#include <boost/pointer_cast.hpp>
-
-#include "yb/util/atomic.h"
-#include "yb/util/flag_tags.h"
-#include "yb/util/logging.h"
-
 #include "yb/util/encryption_util.h"
 
-#include "yb/util/cipher_stream.h"
-#include "yb/util/header_manager.h"
-#include "yb/util/encryption.pb.h"
+#include <openssl/err.h>
+#include <openssl/rand.h>
+#include <openssl/ssl.h>
+
+#include <memory>
+
+#include <boost/pointer_cast.hpp>
 
 #include "yb/gutil/endian.h"
+#include "yb/util/atomic.h"
+#include "yb/util/cipher_stream.h"
+#include "yb/util/encryption.pb.h"
+#include "yb/util/flag_tags.h"
+#include "yb/util/header_manager.h"
+#include "yb/util/logging.h"
 #include "yb/util/random_util.h"
+#include "yb/util/status_format.h"
 
 DEFINE_int64(encryption_counter_min, 0,
              "Minimum value (inclusive) for the randomly generated 32-bit encryption counter at "
@@ -188,6 +188,20 @@ class OpenSSLInitializer {
 OpenSSLInitializer& InitOpenSSL() {
   static OpenSSLInitializer initializer;
   return initializer;
+}
+
+Status CompleteCreateEncryptionInfoForWrite(const std::string& header,
+                                            std::unique_ptr<EncryptionParams> encryption_params,
+                                            std::unique_ptr<BlockAccessCipherStream>* stream,
+                                            uint32_t* header_size) {
+  // Since file doesn't exist or this overwrites, append key to the name and create.
+  *stream = std::make_unique<BlockAccessCipherStream>(std::move(encryption_params));
+  RETURN_NOT_OK((*stream)->Init());
+  if (header.size() > std::numeric_limits<uint32_t>::max()) {
+    return STATUS_FORMAT(Corruption, "Invalid encryption header size: $0", header.size());
+  }
+  *header_size = static_cast<uint32_t>(header.size());
+  return Status::OK();
 }
 
 } // namespace yb

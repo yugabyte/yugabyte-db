@@ -43,15 +43,15 @@
 #include <gtest/gtest.h>
 
 #include "yb/gutil/atomicops.h"
-#include "yb/util/barrier.h"
 #include "yb/gutil/bind.h"
+#include "yb/gutil/sysinfo.h"
+
+#include "yb/util/barrier.h"
 #include "yb/util/countdown_latch.h"
+#include "yb/util/locks.h"
 #include "yb/util/metrics.h"
 #include "yb/util/promise.h"
 #include "yb/util/random.h"
-#include "yb/gutil/sysinfo.h"
-
-#include "yb/util/locks.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"

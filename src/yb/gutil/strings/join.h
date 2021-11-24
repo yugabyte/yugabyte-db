@@ -18,8 +18,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef STRINGS_JOIN_H_
-#define STRINGS_JOIN_H_
+#ifndef YB_GUTIL_STRINGS_JOIN_H
+#define YB_GUTIL_STRINGS_JOIN_H
 
 #include <stdio.h>
 #include <string.h>
@@ -52,7 +52,6 @@ using std::vector;
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/strcat.h"    // For backward compatibility.
 #include "yb/gutil/strings/stringpiece.h"
-#include "yb/gutil/hash/hash.h"
 
 // ----------------------------------------------------------------------
 // JoinUsing()
@@ -382,4 +381,4 @@ inline string JoinInts(const CONTAINER& components,
   return JoinElements(components, delim);
 }
 
-#endif  // STRINGS_JOIN_H_
+#endif  // YB_GUTIL_STRINGS_JOIN_H

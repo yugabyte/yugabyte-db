@@ -42,6 +42,7 @@
 #endif // defined(__linux__)
 
 #include <algorithm>
+#include <array>
 #include <functional>
 #include <map>
 #include <memory>
@@ -52,15 +53,19 @@
 #include <cds/gc/dhp.h>
 
 #include "yb/gutil/atomicops.h"
+#include "yb/gutil/bind.h"
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/once.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/errno.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/mutex.h"
 #include "yb/util/os-util.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/url-coding.h"
 #include "yb/util/web_callback_registry.h"
@@ -770,6 +775,10 @@ void* Thread::SuperviseThread(void* arg) {
   pthread_cleanup_pop(true);
 
   return NULL;
+}
+
+void Thread::Join() {
+  WARN_NOT_OK(ThreadJoiner(this).Join(), "Thread join failed");
 }
 
 void Thread::FinishThread(void* arg) {

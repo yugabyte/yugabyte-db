@@ -18,8 +18,7 @@
 
 #include <string>
 
-#include "yb/util/status.h"
-#include "yb/util/result.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/locks.h"
 #include "yb/util/cipher_stream_fwd.h"
 

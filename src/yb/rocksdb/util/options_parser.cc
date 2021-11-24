@@ -20,6 +20,8 @@
 
 #include "yb/rocksdb/util/options_parser.h"
 
+#include <math.h>
+
 #include <map>
 #include <string>
 #include <utility>

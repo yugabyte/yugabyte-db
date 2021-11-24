@@ -15,6 +15,8 @@
 #ifndef YB_UTIL_SIZE_LITERALS_H
 #define YB_UTIL_SIZE_LITERALS_H
 
+#include <stddef.h>
+
 namespace yb {
 
 namespace size_literals {

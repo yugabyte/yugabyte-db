@@ -29,7 +29,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/util/version_info.h"
 
 #include <atomic>
@@ -41,9 +40,10 @@
 #include <rapidjson/istreamwrapper.h>
 #include <rapidjson/writer.h>
 
-#include "yb/gutil/strings/substitute.h"
 #include "yb/util/env_util.h"
 #include "yb/util/path_util.h"
+#include "yb/util/status.h"
+#include "yb/util/status_log.h"
 
 DEFINE_string(version_file_json_path, "",
               "Path to directory containing JSON file with version info.");

@@ -11,14 +11,14 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include <limits>
 
 #include <gtest/gtest.h>
 
-#include "yb/util/format.h"
 #include "yb/util/proto_container_test.pb.h"
 #include "yb/util/random.h"
+#include "yb/util/result.h"
+#include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/uint_set.h"
 

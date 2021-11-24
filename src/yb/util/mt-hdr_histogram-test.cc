@@ -35,9 +35,9 @@
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/util/hdr_histogram.h"
 #include "yb/util/status.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
 

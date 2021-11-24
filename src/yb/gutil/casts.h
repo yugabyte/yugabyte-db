@@ -28,10 +28,6 @@
 #include <string.h>         // for memcpy
 #include <limits.h>         // for enumeration casts and tests
 
-#include <memory>
-
-#include <glog/logging.h>
-
 #include "yb/gutil/macros.h"
 #include "yb/gutil/template_util.h"
 #include "yb/gutil/type_traits.h"
@@ -92,11 +88,11 @@ inline To down_cast(From* f) {                   // so we only accept pointers
 
   // TODO(user): This should use COMPILE_ASSERT.
   if (false) {
-    yb::implicit_cast<From*, To>(NULL);
+    yb::implicit_cast<From*, To>(nullptr);
   }
 
   // uses RTTI in dbg and fastbuild. asserts are disabled in opt builds.
-  assert(f == NULL || dynamic_cast<To>(f) != NULL);
+  assert(f == nullptr || dynamic_cast<To>(f) != nullptr);
   return static_cast<To>(f);
 }
 
@@ -114,10 +110,10 @@ inline To down_cast(From& f) { // NOLINT
   typedef typename base::remove_reference<To>::type* ToAsPointer;
   if (false) {
     // Compile-time check that To inherits from From. See above for details.
-    yb::implicit_cast<From*, ToAsPointer>(NULL);
+    yb::implicit_cast<From*, ToAsPointer>(nullptr);
   }
 
-  assert(dynamic_cast<ToAsPointer>(&f) != NULL);  // RTTI: debug mode only
+  assert(dynamic_cast<ToAsPointer>(&f) != nullptr);  // RTTI: debug mode only
   return static_cast<To>(f);
 }
 
@@ -383,54 +379,10 @@ inline bool tight_enum_test_cast(int e_val, Enum* e_var) {
   }
 }
 
-namespace base_internal {
-
-inline void WarnEnumCastError(int value_of_int) {
-  LOG(DFATAL) << "Bad enum value " << value_of_int;
-}
-
-}  // namespace base_internal
-
-template <typename Enum>
-inline Enum loose_enum_cast(int e_val) {
-  if (!loose_enum_test<Enum>(e_val)) {
-    base_internal::WarnEnumCastError(e_val);
-  }
-  return static_cast<Enum>(e_val);
-}
-
-template <typename Enum>
-inline Enum tight_enum_cast(int e_val) {
-  if (!tight_enum_test<Enum>(e_val)) {
-    base_internal::WarnEnumCastError(e_val);
-  }
-  return static_cast<Enum>(e_val);
-}
-
-template<class Out, class In>
-Out pointer_cast(In* in) {
-  void* temp = in;
-  return static_cast<Out>(temp);
-}
-
-template<class Out, class In>
-Out pointer_cast(const In* in) {
-  const void* temp = in;
-  return static_cast<Out>(temp);
-}
-
-template<class D, class S>
-std::unique_ptr<D> down_pointer_cast(std::unique_ptr<S> s) {
-  return std::unique_ptr<D>(down_cast<D*>(s.release()));
-}
-
 } // namespace yb
 
 using yb::bit_cast;
 using yb::down_cast;
 using yb::implicit_cast;
-using yb::loose_enum_cast;
-using yb::pointer_cast;
-using yb::tight_enum_cast;
 
 #endif // YB_GUTIL_CASTS_H

@@ -27,6 +27,7 @@
 
 #include "yb/util/enums.h"
 #include "yb/util/status.h"
+#include "yb/util/status_ec.h"
 
 // Return an unauthorized error if authentication is not enabled through the flag
 // use_cassandra_authentication.

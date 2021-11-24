@@ -17,12 +17,16 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/util/string_util.h"
 
 #include <regex>
-#include <boost/algorithm/string/predicate.hpp>
+#include <string>
 
+#include <boost/algorithm/string/predicate.hpp>
+#include <boost/preprocessor/cat.hpp>
+#include <glog/logging.h>
+
+#include "yb/gutil/dynamic_annotations.h"
 
 using std::vector;
 using std::regex;

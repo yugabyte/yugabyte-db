@@ -10,9 +10,10 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/util/net/rate_limiter.h"
+
 #include "yb/util/size_literals.h"
+#include "yb/util/status.h"
 
 using namespace yb::size_literals;
 

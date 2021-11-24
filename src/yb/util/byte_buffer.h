@@ -17,8 +17,6 @@
 #include <cstddef>
 #include <string>
 
-#include <boost/container_hash/extensions.hpp>
-
 #include "yb/util/slice.h"
 
 namespace yb {

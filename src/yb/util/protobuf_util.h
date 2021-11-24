@@ -38,6 +38,7 @@
 #include <google/protobuf/message_lite.h>
 
 #include "yb/util/enums.h"
+#include "yb/util/format.h"
 
 namespace yb {
 

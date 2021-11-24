@@ -24,8 +24,12 @@
 #include "yb/rocksdb/comparator.h"
 
 #include <stdint.h>
+
 #include <algorithm>
 #include <memory>
+
+#include <glog/logging.h>
+
 #include "yb/util/slice.h"
 
 namespace rocksdb {

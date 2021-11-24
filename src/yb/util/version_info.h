@@ -37,14 +37,14 @@
 #include <string>
 
 #include "yb/gutil/macros.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/version_info.pb.h"
 
 namespace yb {
 
 struct VersionData {
   VersionInfoPB pb;
-  string json;
+  std::string json;
 };
 
 // Static functions related to fetching information about the current build.

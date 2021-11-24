@@ -33,6 +33,8 @@
 #define YB_CONSENSUS_CONSENSUS_META_H_
 
 #include <stdint.h>
+
+#include <atomic>
 #include <string>
 
 #include "yb/common/entity_ids.h"

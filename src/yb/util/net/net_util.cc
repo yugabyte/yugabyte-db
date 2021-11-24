@@ -29,7 +29,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/util/net/net_util.h"
 
 #include <ifaddrs.h>
@@ -48,18 +47,19 @@
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/strip.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/util/debug/trace_event.h"
+#include "yb/util/env.h"
+#include "yb/util/env_util.h"
 #include "yb/util/errno.h"
 #include "yb/util/faststring.h"
 #include "yb/util/flag_tags.h"
-#include "yb/util/env.h"
-#include "yb/util/env_util.h"
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/socket.h"
 #include "yb/util/random.h"
+#include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/subprocess.h"
 
@@ -187,6 +187,24 @@ Status HostPort::ParseString(const string &str_in, uint16_t default_port) {
   host_ = host;
   port_ = port;
   return Status::OK();
+}
+
+Result<HostPort> HostPort::FromString(const std::string& str, uint16_t default_port) {
+  HostPort result;
+  RETURN_NOT_OK(result.ParseString(str, default_port));
+  return result;
+}
+
+Result<std::vector<HostPort>> HostPort::ParseStrings(
+    const std::string& comma_sep_addrs, uint16_t default_port,
+    const char* separator) {
+  std::vector<HostPort> result;
+  RETURN_NOT_OK(ParseStrings(comma_sep_addrs, default_port, &result, separator));
+  return result;
+}
+
+size_t HostPortHash::operator()(const HostPort& hostPort) const {
+  return GStringPiece(std::to_string(hostPort.port()) + hostPort.host()).hash();
 }
 
 namespace {

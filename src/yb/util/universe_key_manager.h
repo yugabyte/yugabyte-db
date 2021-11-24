@@ -16,7 +16,6 @@
 
 #include "yb/util/encryption.pb.h"
 #include "yb/util/encryption_util.h"
-#include "yb/util/result.h"
 
 namespace yb {
 

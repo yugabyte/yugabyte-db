@@ -53,4 +53,8 @@ const std::vector<int> kYsqlHandledSignals{
     SIGQUIT // bgworker_quickdie
 };
 
+Result<sigset_t> ThreadYsqlSignalMaskBlock() {
+  return ThreadSignalMaskBlock(kYsqlHandledSignals);
+}
+
 } // namespace yb

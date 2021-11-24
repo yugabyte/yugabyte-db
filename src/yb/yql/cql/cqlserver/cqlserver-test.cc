@@ -118,7 +118,7 @@ Status TestCQLService::SendRequestAndGetResponse(
   LOG(INFO) << "Send CQL: {" << FormatBytesAsStr(cmd) << "}";
   // Send the request.
   int32_t bytes_written = 0;
-  EXPECT_OK(client_sock_.Write(util::to_uchar_ptr(cmd.c_str()), cmd.length(), &bytes_written));
+  EXPECT_OK(client_sock_.Write(to_uchar_ptr(cmd.c_str()), cmd.length(), &bytes_written));
 
   EXPECT_EQ(cmd.length(), bytes_written);
 

@@ -26,8 +26,6 @@ using yb::util::FastDecodeDescendingSignedVarIntUnsafe;
 using yb::FormatBytesAsStr;
 using yb::FormatSliceAsStr;
 using yb::QuotesType;
-using yb::util::to_char_ptr;
-using yb::util::to_uchar_ptr;
 
 using strings::Substitute;
 using strings::SubstituteAndAppend;

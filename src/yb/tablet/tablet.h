@@ -864,7 +864,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   MetricEntityPtr tablet_metrics_entity_;
   MetricEntityPtr table_metrics_entity_;
   std::unique_ptr<TabletMetrics> metrics_;
-  FunctionGaugeDetacher metric_detacher_;
+  std::shared_ptr<void> metric_detacher_;
 
   // A pointer to the server's clock.
   scoped_refptr<server::Clock> clock_;

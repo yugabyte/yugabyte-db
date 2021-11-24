@@ -16,6 +16,7 @@
 
 #include <boost/algorithm/string.hpp>
 #include <boost/optional/optional_io.hpp>
+#include <boost/preprocessor/seq/for_each.hpp>
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/random_generator.hpp>
 
@@ -37,6 +38,9 @@
 #include "yb/yql/cql/ql/util/statement_result.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 #include "yb/util/type_traits.h"
 
@@ -155,10 +159,12 @@ YB_DEFINE_ENUM(Category, (QUERY)(DML)(DDL)(DCL)(AUTH)(PREPARE)(ERROR)(OTHER))
     static const Type type_name; \
     /**/
 
+#define YCQL_FORWARD_MACRO(r, data, tuple) data tuple
+
 // Audit type with category, an enum-like class.
 class Type {
  public:
-  BOOST_PP_SEQ_FOR_EACH(YB_STATUS_FORWARD_MACRO, DECLARE_YCQL_AUDIT_TYPE, YCQL_AUDIT_TYPES)
+  BOOST_PP_SEQ_FOR_EACH(YCQL_FORWARD_MACRO, DECLARE_YCQL_AUDIT_TYPE, YCQL_AUDIT_TYPES)
 
   const std::string name_;
   const Category    category_;
@@ -173,7 +179,7 @@ class Type {
     const Type Type::type_name = Type(BOOST_PP_STRINGIZE(type_name), Category::category_name); \
     /**/
 
-BOOST_PP_SEQ_FOR_EACH(YB_STATUS_FORWARD_MACRO, DEFINE_YCQL_AUDIT_TYPE, YCQL_AUDIT_TYPES)
+BOOST_PP_SEQ_FOR_EACH(YCQL_FORWARD_MACRO, DEFINE_YCQL_AUDIT_TYPE, YCQL_AUDIT_TYPES)
 
 struct LogEntry {
   // Username of the currently active user, special case is "anonymous" user. None if not logged in.

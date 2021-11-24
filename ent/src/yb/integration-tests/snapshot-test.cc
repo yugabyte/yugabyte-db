@@ -73,7 +73,6 @@ using rpc::RpcController;
 using tablet::Tablet;
 using tablet::TabletPeer;
 using tserver::MiniTabletServer;
-using util::to_uchar_ptr;
 
 using master::CreateSnapshotRequestPB;
 using master::CreateSnapshotResponsePB;

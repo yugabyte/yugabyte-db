@@ -277,13 +277,13 @@ class MasterSnapshotCoordinator::Impl {
 
     if (value_type == docdb::ValueType::kTombstone) {
       std::lock_guard<std::mutex> lock(mutex_);
-      auto id = TryFullyDecodeUuid(id_str);
-      if (id.is_nil()) {
+      auto id = Uuid::TryFullyDecode(id_str);
+      if (id.IsNil()) {
         LOG(WARNING) << "Unable to decode id: " << id_str;
         return Status::OK();
       }
       bool erased = map->erase(typename Map::key_type(id)) != 0;
-      LOG_IF(DFATAL, !erased) << "Unknown entry tombstoned: " << id;
+      LOG_IF(DFATAL, !erased) << "Unknown entry tombstoned: " << id.ToString();
       return Status::OK();
     }
 
@@ -603,8 +603,8 @@ class MasterSnapshotCoordinator::Impl {
   CHECKED_STATUS LoadEntry(const Slice& id_slice, const Slice& data, Map* map) REQUIRES(mutex_) {
     VLOG(2) << __func__ << "(" << id_slice.ToDebugString() << ", " << data.ToDebugString() << ")";
 
-    auto id = TryFullyDecodeUuid(id_slice);
-    if (id.is_nil()) {
+    auto id = Uuid::TryFullyDecode(id_slice);
+    if (id.IsNil()) {
       return Status::OK();
     }
     auto metadata = VERIFY_RESULT(pb_util::ParseFromSlice<Pb>(data));

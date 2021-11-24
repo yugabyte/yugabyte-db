@@ -14,6 +14,8 @@
 #ifndef YB_UTIL_FILE_SYSTEM_MEM_H
 #define YB_UTIL_FILE_SYSTEM_MEM_H
 
+#include <vector>
+
 #include "yb/util/file_system.h"
 #include "yb/util/malloc.h"
 #include "yb/util/size_literals.h"
@@ -45,14 +47,14 @@ class InMemoryFileState {
 
   CHECKED_STATUS AppendRaw(const uint8_t *src, size_t src_len);
 
-  const string& filename() const { return filename_; }
+  const std::string& filename() const { return filename_; }
 
   size_t memory_footprint() const;
 
  private:
   static constexpr const size_t kBlockSize = 8_KB;
 
-  const string filename_;
+  const std::string filename_;
 
   // The following fields are not protected by any mutex. They are only mutable
   // while the file is being written, and concurrent access is not allowed
@@ -72,7 +74,7 @@ class InMemorySequentialFile : public SequentialFile {
 
   CHECKED_STATUS Skip(uint64_t n) override;
 
-  const string& filename() const override {
+  const std::string& filename() const override {
     return file_->filename();
   }
 
@@ -88,19 +90,13 @@ class InMemoryRandomAccessFile : public RandomAccessFile {
 
   ~InMemoryRandomAccessFile() {}
 
-  virtual Status Read(uint64_t offset, size_t n, Slice* result, uint8_t* scratch) const override {
-    return file_->Read(offset, n, result, scratch);
-  }
+  Status Read(uint64_t offset, size_t n, Slice* result, uint8_t* scratch) const override;
 
-  Result<uint64_t> Size() const override {
-    return file_->Size();
-  }
+  Result<uint64_t> Size() const override;
 
-  Result<uint64_t> INode() const override {
-    return 0;
-  }
+  Result<uint64_t> INode() const override;
 
-  const string& filename() const override {
+  const std::string& filename() const override {
     return file_->filename();
   }
 

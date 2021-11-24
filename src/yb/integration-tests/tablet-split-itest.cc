@@ -55,6 +55,8 @@
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/tablet_metadata.h"
 
+#include "yb/tools/admin-test-base.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver_admin.pb.h"
@@ -1621,11 +1623,9 @@ class XClusterTabletSplitITest : public CdcTabletSplitITest {
     consumer_cluster_ = ASSERT_RESULT(CreateNewUniverseAndTable("consumer", &consumer_table_));
     consumer_client_ = ASSERT_RESULT(consumer_cluster_->CreateClient());
 
-    ASSERT_OK(RunAdminToolCommand(consumer_cluster_->GetMasterAddresses(),
-                                  "setup_universe_replication",
-                                  "producer",
-                                  cluster_->GetMasterAddresses(),
-                                  table_->id()));
+    ASSERT_OK(tools::RunAdminToolCommand(
+        consumer_cluster_->GetMasterAddresses(), "setup_universe_replication", "producer",
+        cluster_->GetMasterAddresses(), table_->id()));
   }
 
  protected:
@@ -1757,18 +1757,18 @@ TEST_F(NotSupportedTabletSplitITest, SplittingWithXClusterReplicationOnProducer)
   auto consumer_cluster =
       ASSERT_RESULT(CreateNewUniverseAndTable("consumer", &consumer_cluster_table));
 
-  ASSERT_OK(RunAdminToolCommand(consumer_cluster->GetMasterAddresses(),
-                                "setup_universe_replication",
-                                "",  // Producer cluster id (default is set to "").
-                                cluster_->GetMasterAddresses(),
-                                table_->id()));
+  ASSERT_OK(tools::RunAdminToolCommand(consumer_cluster->GetMasterAddresses(),
+                                       "setup_universe_replication",
+                                       "",  // Producer cluster id (default is set to "").
+                                       cluster_->GetMasterAddresses(),
+                                       table_->id()));
 
   // Try splitting this tablet, and restart the server to ensure split still fails after a restart.
   const auto split_hash_code =
       ASSERT_RESULT(SplitTabletAndCheckForNotSupported(true /* restart_server */));
 
   // Now delete replication and verify that the tablet can now be split.
-  ASSERT_OK(RunAdminToolCommand(
+  ASSERT_OK(tools::RunAdminToolCommand(
       consumer_cluster->GetMasterAddresses(), "delete_universe_replication", ""));
   // Deleting cdc streams is async so wait for that to complete.
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
@@ -1786,18 +1786,18 @@ TEST_F(NotSupportedTabletSplitITest, SplittingWithXClusterReplicationOnConsumer)
   auto producer_cluster =
       ASSERT_RESULT(CreateNewUniverseAndTable(kProducerClusterId, &producer_cluster_table));
 
-  ASSERT_OK(RunAdminToolCommand(cluster_->GetMasterAddresses(),
-                                "setup_universe_replication",
-                                kProducerClusterId,
-                                producer_cluster->GetMasterAddresses(),
-                                producer_cluster_table->id()));
+  ASSERT_OK(tools::RunAdminToolCommand(cluster_->GetMasterAddresses(),
+                                       "setup_universe_replication",
+                                       kProducerClusterId,
+                                       producer_cluster->GetMasterAddresses(),
+                                       producer_cluster_table->id()));
 
   // Try splitting this tablet, and restart the server to ensure split still fails after a restart.
   const auto split_hash_code =
       ASSERT_RESULT(SplitTabletAndCheckForNotSupported(true /* restart_server */));
 
   // Now delete replication and verify that the tablet can now be split.
-  ASSERT_OK(RunAdminToolCommand(
+  ASSERT_OK(tools::RunAdminToolCommand(
       cluster_->GetMasterAddresses(), "delete_universe_replication", kProducerClusterId));
   ASSERT_OK(SplitTabletAndValidate(split_hash_code, kDefaultNumRows));
 

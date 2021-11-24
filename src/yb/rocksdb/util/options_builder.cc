@@ -19,6 +19,8 @@
 //
 
 #include <algorithm>
+#include <cmath>
+
 #include "yb/rocksdb/options.h"
 
 namespace rocksdb {

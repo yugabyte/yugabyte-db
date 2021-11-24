@@ -28,6 +28,8 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
+#include "yb/util/test_thread_holder.h"
+
 using namespace std::literals;
 using yb::master::SysSnapshotEntryPB;
 

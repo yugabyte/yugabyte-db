@@ -13,10 +13,11 @@
 
 #include "yb/util/net/inetaddress.h"
 
-#include "yb/util/test_macros.h"
-#include "yb/util/test_util.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
 
 namespace yb {
 

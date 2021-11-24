@@ -46,6 +46,7 @@
 #include "yb/util/uuid.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 namespace yb {
 

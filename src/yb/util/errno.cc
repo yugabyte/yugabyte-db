@@ -29,15 +29,13 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/util/errno.h"
-
 #include <errno.h>
+
 #include <string.h>
 
-#include "yb/util/logging.h"
-#include "yb/util/status.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/status.h"
 
 DEFINE_bool(suicide_on_eio, true,
             "Kill the process if an I/O operation results in EIO");

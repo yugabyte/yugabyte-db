@@ -41,10 +41,10 @@
 #include <boost/atomic.hpp>
 
 #include "yb/gutil/atomicops.h"
-#include "yb/gutil/casts.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
 
+#include "yb/util/cast.h"
 #include "yb/util/random_util.h"
 
 namespace yb {

@@ -39,7 +39,7 @@
 #include <boost/optional.hpp>
 
 #include "yb/gutil/macros.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 typedef void CURL;
 

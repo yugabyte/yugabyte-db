@@ -29,19 +29,19 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include <mutex>
 #include <unordered_set>
 
 #include <glog/logging.h>
+
 #include "yb/gutil/macros.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/env.h"
 #include "yb/util/locks.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
 #include "yb/util/threadlocal.h"

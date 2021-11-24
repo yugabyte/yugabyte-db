@@ -33,6 +33,7 @@
 
 #include "yb/util/priority_thread_pool.h"
 #include "yb/util/random_util.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 

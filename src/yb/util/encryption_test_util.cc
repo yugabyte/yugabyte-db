@@ -14,6 +14,7 @@
 #include "yb/util/encryption_test_util.h"
 
 #include "yb/util/random_util.h"
+#include "yb/util/test_macros.h"
 
 namespace yb {
 

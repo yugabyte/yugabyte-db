@@ -17,7 +17,6 @@
 #include <vector>
 #include <limits>
 
-#include "yb/util/result.h"
 #include "yb/util/slice.h"
 #include "yb/util/varint.h"
 
@@ -98,9 +97,9 @@ class Decimal {
   }
 
   // Ensure the type conversion is possible if you use these constructors. Use FromX() otherwise.
-  explicit Decimal(const std::string& string_val) { CHECK_OK(FromString(string_val)); }
-  explicit Decimal(double double_val) { CHECK_OK(FromDouble(double_val)); }
-  explicit Decimal(const VarInt& varint_val) { CHECK_OK(FromVarInt(varint_val)); }
+  explicit Decimal(const std::string& string_val);
+  explicit Decimal(double double_val);
+  explicit Decimal(const VarInt& varint_val);
 
   void clear();
 
@@ -147,12 +146,8 @@ class Decimal {
 
   // Decodes a Decimal from a given Slice. Sets num_decoded_bytes = number of bytes decoded.
   CHECKED_STATUS DecodeFromComparable(const Slice& slice, size_t *num_decoded_bytes);
-  CHECKED_STATUS DecodeFromComparable(const std::string& string, size_t* num_decoded_bytes) {
-    return DecodeFromComparable(Slice(string), num_decoded_bytes);
-  }
 
   CHECKED_STATUS DecodeFromComparable(const Slice& string);
-  CHECKED_STATUS DecodeFromComparable(const std::string& string);
 
   // Encode the decimal by using to Cassandra serialization format, as described above.
   std::string EncodeToSerializedBigDecimal(bool* is_out_of_range) const;
@@ -180,7 +175,7 @@ class Decimal {
 Decimal DecimalFromComparable(const Slice& slice);
 Decimal DecimalFromComparable(const std::string& string);
 
-std::ostream& operator<<(ostream& os, const Decimal& d);
+std::ostream& operator<<(std::ostream& os, const Decimal& d);
 
 template <typename T>
 inline T BitMask(int32_t a, int32_t b) {

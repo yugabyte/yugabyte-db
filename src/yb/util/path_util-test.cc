@@ -32,7 +32,9 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/util/init.h"
 #include "yb/util/path_util.h"
+#include "yb/util/status.h"
 #include "yb/util/test_macros.h"
 
 namespace yb {

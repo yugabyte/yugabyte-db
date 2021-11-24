@@ -14,6 +14,7 @@
 #include <gmock/gmock.h>
 
 #include "yb/util/split.h"
+#include "yb/util/status.h"
 #include "yb/util/test_macros.h"
 
 

@@ -20,6 +20,7 @@
 
 #include "yb/util/stats/iostats_context_imp.h"
 
+#include <sstream>
 
 namespace yb {
 

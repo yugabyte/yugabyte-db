@@ -13,6 +13,7 @@
 
 #include "yb/util/uuid.h"
 
+#include "yb/util/result.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
@@ -22,8 +23,7 @@ class UuidTest : public YBTest {
  protected:
   void RunRoundTrip(const std::string& strval) {
     // Test regular byte conversion.
-    Uuid uuid_orig;
-    ASSERT_OK(uuid_orig.FromString(strval));
+    Uuid uuid_orig = ASSERT_RESULT(Uuid::FromString(strval));
     std::string bytes;
     uuid_orig.ToBytes(&bytes);
     Uuid uuid_new;
@@ -66,90 +66,91 @@ TEST_F(UuidTest, TestRoundTrip) {
 
 TEST_F(UuidTest, TestOperators) {
   // Assignment.
-  Uuid uuid1;
-  ASSERT_OK(uuid1.FromString("11111111-1111-1111-1111-111111111111"));
+  Uuid uuid1 = ASSERT_RESULT(Uuid::FromString("11111111-1111-1111-1111-111111111111"));
   Uuid uuid2 = uuid1;
   std::string strval;
   ASSERT_OK(uuid2.ToString(&strval));
   ASSERT_EQ("11111111-1111-1111-1111-111111111111", strval);
 
   // InEquality.
-  ASSERT_OK(uuid1.FromString("11111111-1111-1111-1111-111111111111"));
-  ASSERT_OK(uuid2.FromString("11111111-1111-1111-1111-111111111112"));
+  uuid1 = ASSERT_RESULT(Uuid::FromString("11111111-1111-1111-1111-111111111111"));
+  uuid2 = ASSERT_RESULT(Uuid::FromString("11111111-1111-1111-1111-111111111112"));
   ASSERT_NE(uuid1, uuid2);
 
   // Comparison.
   // Same type lexical comparison.
-  ASSERT_OK(uuid1.FromString("11111111-1111-4111-1111-111111111111"));
-  ASSERT_OK(uuid2.FromString("21111111-1111-4111-1111-111111111111"));
+  uuid1 = ASSERT_RESULT(Uuid::FromString("11111111-1111-4111-1111-111111111111"));
+  uuid2 = ASSERT_RESULT(Uuid::FromString("21111111-1111-4111-1111-111111111111"));
   ASSERT_LT(uuid1, uuid2);
   ASSERT_LE(uuid1, uuid2);
 
   // Different type comparison.
-  ASSERT_OK(uuid1.FromString("11111111-1111-1111-1111-111111111111"));
-  ASSERT_OK(uuid2.FromString("01111111-1111-2111-1111-111111111111"));
+  uuid1 = ASSERT_RESULT(Uuid::FromString("11111111-1111-1111-1111-111111111111"));
+  uuid2 = ASSERT_RESULT(Uuid::FromString("01111111-1111-2111-1111-111111111111"));
   LOG(INFO) << (uuid1 < uuid2);
   ASSERT_LT(uuid1, uuid2);
   ASSERT_GT(uuid2, uuid1);
 
-  ASSERT_OK(uuid1.FromString("11111111-1111-1111-1111-111111111111"));
-  ASSERT_OK(uuid2.FromString("01111111-1111-1211-1111-111111111111"));
+  uuid1 = ASSERT_RESULT(Uuid::FromString("11111111-1111-1111-1111-111111111111"));
+  uuid2 = ASSERT_RESULT(Uuid::FromString("01111111-1111-1211-1111-111111111111"));
   LOG(INFO) << (uuid1 < uuid2);
   ASSERT_LT(uuid1, uuid2);
   ASSERT_GT(uuid2, uuid1);
 
-  ASSERT_OK(uuid1.FromString("11111111-1111-1111-1111-111111111111"));
-  ASSERT_OK(uuid2.FromString("01111111-1111-1121-1111-111111111111"));
+  uuid1 = ASSERT_RESULT(Uuid::FromString("11111111-1111-1111-1111-111111111111"));
+  uuid2 = ASSERT_RESULT(Uuid::FromString("01111111-1111-1121-1111-111111111111"));
   LOG(INFO) << (uuid1 < uuid2);
   ASSERT_LT(uuid1, uuid2);
   ASSERT_GT(uuid2, uuid1);
 
-  ASSERT_OK(uuid1.FromString("11111111-1111-1111-1111-111111111111"));
-  ASSERT_OK(uuid2.FromString("01111111-1111-1112-1111-111111111111"));
+  uuid1 = ASSERT_RESULT(Uuid::FromString("11111111-1111-1111-1111-111111111111"));
+  uuid2 = ASSERT_RESULT(Uuid::FromString("01111111-1111-1112-1111-111111111111"));
   LOG(INFO) << (uuid1 < uuid2);
   ASSERT_LT(uuid1, uuid2);
   ASSERT_GT(uuid2, uuid1);
 
   // Same type other time comparison.
-  ASSERT_OK(uuid1.FromString("11111111-1111-1111-1111-111111111111"));
-  ASSERT_OK(uuid2.FromString("01111111-2111-1111-1111-111111111111"));
+  uuid1 = ASSERT_RESULT(Uuid::FromString("11111111-1111-1111-1111-111111111111"));
+  uuid2 = ASSERT_RESULT(Uuid::FromString("01111111-2111-1111-1111-111111111111"));
   LOG(INFO) << (uuid1 < uuid2);
   ASSERT_LT(uuid1, uuid2);
   ASSERT_GT(uuid2, uuid1);
 
-  ASSERT_OK(uuid1.FromString("11111111-1111-1111-1111-111111111111"));
-  ASSERT_OK(uuid2.FromString("01111111-1211-1111-1111-111111111111"));
+  uuid1 = ASSERT_RESULT(Uuid::FromString("11111111-1111-1111-1111-111111111111"));
+  uuid2 = ASSERT_RESULT(Uuid::FromString("01111111-1211-1111-1111-111111111111"));
   LOG(INFO) << (uuid1 < uuid2);
   ASSERT_LT(uuid1, uuid2);
   ASSERT_GT(uuid2, uuid1);
 
-  ASSERT_OK(uuid1.FromString("11111111-1111-1111-1111-111111111111"));
-  ASSERT_OK(uuid2.FromString("01111111-1121-1111-1111-111111111111"));
+  uuid1 = ASSERT_RESULT(Uuid::FromString("11111111-1111-1111-1111-111111111111"));
+  uuid2 = ASSERT_RESULT(Uuid::FromString("01111111-1121-1111-1111-111111111111"));
   LOG(INFO) << (uuid1 < uuid2);
   ASSERT_LT(uuid1, uuid2);
   ASSERT_GT(uuid2, uuid1);
 
-  ASSERT_OK(uuid1.FromString("11111111-1111-1111-1111-111111111111"));
-  ASSERT_OK(uuid2.FromString("01111111-1112-1111-1111-111111111111"));
+  uuid1 = ASSERT_RESULT(Uuid::FromString("11111111-1111-1111-1111-111111111111"));
+  uuid2 = ASSERT_RESULT(Uuid::FromString("01111111-1112-1111-1111-111111111111"));
   LOG(INFO) << (uuid1 < uuid2);
   ASSERT_LT(uuid1, uuid2);
   ASSERT_GT(uuid2, uuid1);
 
   // Equality comparison
-  ASSERT_OK(uuid1.FromString("11111111-1111-1111-1111-111111111111"));
-  ASSERT_OK(uuid2.FromString("11111111-1111-1111-1111-111111111111"));
+  uuid1 = ASSERT_RESULT(Uuid::FromString("11111111-1111-1111-1111-111111111111"));
+  uuid2 = ASSERT_RESULT(Uuid::FromString("11111111-1111-1111-1111-111111111111"));
   ASSERT_LE(uuid1, uuid2);
   ASSERT_GE(uuid1, uuid2);
 }
 
 TEST_F(UuidTest, TestErrors) {
-  Uuid uuid;
-  ASSERT_FALSE(uuid.FromString("11111111-1111-1111-1111-11111111111").ok());
+  ASSERT_FALSE(Uuid::FromString("11111111-1111-1111-1111-11111111111").ok());
   // Test non-hex UUID.
-  ASSERT_FALSE(uuid.FromString("11111111-1111-1111-1111-11111111111X").ok());
-  ASSERT_FALSE(uuid.FromString("00000-00-0-0-0-0-0").ok());
-  ASSERT_FALSE(uuid.FromString("").ok());
+  ASSERT_FALSE(Uuid::FromString("11111111-1111-1111-1111-11111111111X").ok());
+  ASSERT_FALSE(Uuid::FromString("00000-00-0-0-0-0-0").ok());
+  auto empty_uuid = Uuid::FromString("");
+  ASSERT_TRUE(empty_uuid.ok());
+  ASSERT_EQ(*empty_uuid, Uuid::Nil());
 
+  Uuid uuid;
   std::string bytes;
   ASSERT_FALSE(uuid.FromBytes(bytes).ok());
   bytes = "0";

@@ -40,7 +40,7 @@
 #include "yb/gutil/macros.h"
 
 #include "yb/util/net/sockaddr.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 

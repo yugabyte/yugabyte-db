@@ -14,6 +14,8 @@
 #ifndef YB_UTIL_SCOPE_EXIT_H
 #define YB_UTIL_SCOPE_EXIT_H
 
+#include <type_traits>
+
 namespace yb {
 
 template <class F>

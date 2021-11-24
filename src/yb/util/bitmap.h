@@ -39,9 +39,11 @@
 
 #include "yb/gutil/bits.h"
 
-#include "yb/util/result.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
+
+class Slice;
 
 // Return the number of bytes necessary to store the given number of bits.
 inline size_t BitmapSize(size_t num_bits) {

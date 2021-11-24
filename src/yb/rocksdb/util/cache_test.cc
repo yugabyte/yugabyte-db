@@ -657,7 +657,7 @@ TEST_F(CacheTest, ApplyToAllCacheEntiresTest) {
 }
 
 void AssertCacheSizes(Cache *cache, size_t single_touch_count, size_t multi_touch_count) {
-  std::vector<pair<size_t, size_t>> usages = cache->TEST_GetIndividualUsages();
+  std::vector<std::pair<size_t, size_t>> usages = cache->TEST_GetIndividualUsages();
   ASSERT_EQ(usages.size(), 1);
   ASSERT_EQ(usages[0].first, single_touch_count);
   ASSERT_EQ(usages[0].second, multi_touch_count);

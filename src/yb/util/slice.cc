@@ -29,11 +29,10 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/util/slice.h"
 
-#include "yb/gutil/stringprintf.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 
 DEFINE_int32(non_graph_characters_percentage_to_use_hexadecimal_rendering, 10,
              "Non graph charaters percentage to use hexadecimal rendering");
@@ -137,6 +136,51 @@ Status Slice::consume_byte(char c) {
   }
 
   return Status::OK();
+}
+
+uint8_t Slice::operator[](size_t n) const {
+  DCHECK_LT(n, size());
+  return begin_[n];
+}
+
+void Slice::remove_prefix(size_t n) {
+  DCHECK_LE(n, size());
+  begin_ += n;
+}
+
+Slice Slice::Prefix(size_t n) const {
+  DCHECK_LE(n, size());
+  return Slice(begin_, n);
+}
+
+Slice Slice::WithoutPrefix(size_t n) const {
+  DCHECK_LE(n, size());
+  return Slice(begin_ + n, end_);
+}
+
+void Slice::remove_suffix(size_t n) {
+  DCHECK_LE(n, size());
+  end_ -= n;
+}
+
+Slice Slice::Suffix(size_t n) const {
+  DCHECK_LE(n, size());
+  return Slice(end_ - n, end_);
+}
+
+Slice Slice::WithoutSuffix(size_t n) const {
+  DCHECK_LE(n, size());
+  return Slice(begin_, end_ - n);
+}
+
+void Slice::truncate(size_t n) {
+  DCHECK_LE(n, size());
+  end_ = begin_ + n;
+}
+
+char Slice::consume_byte() {
+  DCHECK_GT(end_, begin_);
+  return *begin_++;
 }
 
 std::string SliceParts::ToDebugHexString() const {

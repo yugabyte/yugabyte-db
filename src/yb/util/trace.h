@@ -48,6 +48,7 @@
 #include "yb/util/atomic.h"
 #include "yb/util/locks.h"
 #include "yb/util/memory/arena_fwd.h"
+#include "yb/util/monotime.h"
 
 DECLARE_bool(enable_tracing);
 DECLARE_int32(tracing_level);

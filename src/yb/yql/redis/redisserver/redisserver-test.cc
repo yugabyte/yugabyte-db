@@ -854,7 +854,7 @@ void TestRedisService::TearDown() {
 Status TestRedisService::Send(const std::string& cmd) {
   // Send the command.
   int32_t bytes_written = 0;
-  EXPECT_OK(client_sock_.Write(util::to_uchar_ptr(cmd.c_str()), cmd.length(), &bytes_written));
+  EXPECT_OK(client_sock_.Write(to_uchar_ptr(cmd.c_str()), cmd.length(), &bytes_written));
 
   EXPECT_EQ(cmd.length(), bytes_written);
 
@@ -922,7 +922,7 @@ void TestRedisService::SendCommandAndExpectResponse(int line,
 
   // Verify that the response is as expected.
 
-  std::string response(util::to_char_ptr(resp_.data()), expected.length());
+  std::string response(to_char_ptr(resp_.data()), expected.length());
   ASSERT_EQ(expected, response)
                 << "Command: " << Slice(cmd).ToDebugString() << std::endl
                 << "Originator: " << __FILE__ << ":" << line;
@@ -2514,7 +2514,7 @@ class TestRedisServiceExternal : public TestRedisService {
   void CustomizeExternalMiniCluster(ExternalMiniClusterOptions* opts) override {
     opts->extra_tserver_flags.push_back(
         "--redis_connection_soft_limit_grace_period_sec=" +
-        yb::ToString(kSoftLimitGracePeriod.ToSeconds()));
+        AsString(static_cast<int>(kSoftLimitGracePeriod.ToSeconds())));
   }
 
   static const MonoDelta kSoftLimitGracePeriod;

@@ -3645,8 +3645,7 @@ TEST_P(DocDBTestWrapper, CompactionWithTransactions) {
     { DocPath(encoded_doc_key, "subkey3"), Value(PrimitiveValue("value6")) },
     { DocPath(encoded_doc_key, "subkey4"), Value(PrimitiveValue("value7")) }
   };
-  Uuid status_tablet;
-  ASSERT_OK(status_tablet.FromString("4c3e1d91-5ea7-4449-8bb3-8b0a3f9ae903"));
+  Uuid status_tablet = ASSERT_RESULT(Uuid::FromString("4c3e1d91-5ea7-4449-8bb3-8b0a3f9ae903"));
   ASSERT_OK(AddExternalIntents(txn3, intents, status_tablet, kTxn3HT));
 
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(

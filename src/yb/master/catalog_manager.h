@@ -1391,7 +1391,6 @@ class CatalogManager :
 
   Master *master_;
   Atomic32 closing_;
-  ObjectIdGenerator oid_generator_;
 
   // Random number generator used for selecting replica locations.
   ThreadSafeRandom rng_;

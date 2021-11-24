@@ -40,7 +40,7 @@
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/schema.h"
-#include "yb/util/bfql/tserver_opcodes.h"
+#include "yb/bfql/tserver_opcodes.h"
 #include "yb/tablet/tablet.h"
 #include "yb/common/partial_row.h"
 #include "yb/common/ql_protocol_util.h"

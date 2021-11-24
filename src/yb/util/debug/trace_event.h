@@ -1297,13 +1297,15 @@ AddTraceEventWithThreadIdAndTimestamp(
       kZeroNumArgs, NULL, NULL, NULL, NULL, flags);
 }
 
+int TraceEventThreadId();
+
 static inline yb::debug::TraceEventHandle AddTraceEvent(
     char phase,
     const unsigned char* category_group_enabled,
     const char* name,
     uint64_t id,
     unsigned char flags) {
-  int thread_id = static_cast<int>(yb::Thread::UniqueThreadId());
+  int thread_id = TraceEventThreadId();
   MicrosecondsInt64 now = GetMonoTimeMicros();
   return AddTraceEventWithThreadIdAndTimestamp(phase, category_group_enabled,
                                                name, id, thread_id, now, flags);
@@ -1339,7 +1341,7 @@ static inline yb::debug::TraceEventHandle AddTraceEvent(
     unsigned char flags,
     const char* arg1_name,
     const ARG1_TYPE& arg1_val) {
-  int thread_id = static_cast<int>(yb::Thread::UniqueThreadId());
+  int thread_id = TraceEventThreadId();
   MicrosecondsInt64 now = GetMonoTimeMicros();
   return AddTraceEventWithThreadIdAndTimestamp(phase, category_group_enabled,
                                                name, id, thread_id, now, flags,
@@ -1382,7 +1384,7 @@ static inline yb::debug::TraceEventHandle AddTraceEvent(
     const ARG1_TYPE& arg1_val,
     const char* arg2_name,
     const ARG2_TYPE& arg2_val) {
-  int thread_id = static_cast<int>(yb::Thread::UniqueThreadId());
+  int thread_id = TraceEventThreadId();
   MicrosecondsInt64 now = GetMonoTimeMicros();
   return AddTraceEventWithThreadIdAndTimestamp(phase, category_group_enabled,
                                                name, id, thread_id, now, flags,

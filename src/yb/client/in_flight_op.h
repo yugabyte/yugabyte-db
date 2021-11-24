@@ -16,6 +16,8 @@
 
 #include "yb/client/client_fwd.h"
 
+#include "yb/gutil/ref_counted.h"
+
 #include "yb/util/locks.h"
 #include "yb/util/enums.h"
 

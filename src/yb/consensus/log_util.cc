@@ -53,6 +53,7 @@
 #include "yb/util/env_util.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/result.h"
 #include "yb/util/size_literals.h"
 
 DEFINE_int32(log_segment_size_mb, 64,

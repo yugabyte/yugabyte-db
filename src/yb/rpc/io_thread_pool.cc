@@ -15,6 +15,7 @@
 
 #include "yb/rpc/io_thread_pool.h"
 
+#include <thread>
 
 #include <boost/optional.hpp>
 #include <boost/asio/io_service.hpp>

@@ -18,6 +18,7 @@
 
 #include "yb/tablet/metadata.pb.h"
 #include "yb/util/status.h"
+#include "yb/util/status_ec.h"
 
 namespace yb {
 namespace tablet {

@@ -31,6 +31,7 @@
 #include <stdint.h>
 
 #include <algorithm>
+#include <cmath>
 #include <functional>
 #include <list>
 #include <memory>

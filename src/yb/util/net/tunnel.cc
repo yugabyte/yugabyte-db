@@ -20,6 +20,8 @@
 
 #include "yb/util/logging.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
 
 using namespace std::placeholders;
 

@@ -165,10 +165,7 @@ class RefCntPrefix {
     return static_cast<bool>(bytes_);
   }
 
-  void Resize(size_t value) {
-    DCHECK_LE(value, bytes_.size());
-    size_ = value;
-  }
+  void Resize(size_t value);
 
   Slice as_slice() const {
     return Slice(bytes_.data(), size_);

@@ -16,12 +16,9 @@
 
 #include <string>
 
-#include <boost/function.hpp>
-
 #include "yb/util/coding_consts.h"
 #include "yb/util/slice.h"
-#include "yb/util/result.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
@@ -72,9 +69,7 @@ class SequentialFile {
   // Remove any kind of caching of data from the offset to offset+length
   // of this file. If the length is 0, then it refers to the end of file.
   // If the system is not caching the file contents, then this is a noop.
-  virtual CHECKED_STATUS InvalidateCache(size_t offset, size_t length) {
-    return STATUS(NotSupported, "InvalidateCache not supported.");
-  }
+  virtual CHECKED_STATUS InvalidateCache(size_t offset, size_t length);
 
   // Returns the filename provided when the SequentialFile was constructed.
   virtual const std::string& filename() const = 0;
@@ -129,14 +124,9 @@ class RandomAccessFile : public FileWithUniqueId {
 
   // Similar to Read, but uses the given callback to validate the result.
   virtual CHECKED_STATUS ReadAndValidate(
-      uint64_t offset, size_t n, Slice* result, char* scratch, const ReadValidator& validator) {
-    RETURN_NOT_OK(Read(offset, n, result, scratch));
-    return validator.Validate(*result);
-  }
+      uint64_t offset, size_t n, Slice* result, char* scratch, const ReadValidator& validator);
 
-  CHECKED_STATUS Read(uint64_t offset, size_t n, Slice* result, char* scratch) {
-    return Read(offset, n, result, reinterpret_cast<uint8_t*>(scratch));
-  }
+  CHECKED_STATUS Read(uint64_t offset, size_t n, Slice* result, char* scratch);
 
   // Returns the size of the file
   virtual Result<uint64_t> Size() const = 0;
@@ -179,23 +169,18 @@ class RandomAccessFile : public FileWithUniqueId {
   // Remove any kind of caching of data from the offset to offset+length
   // of this file. If the length is 0, then it refers to the end of file.
   // If the system is not caching the file contents, then this is a noop.
-  virtual Status InvalidateCache(size_t offset, size_t length) {
-    return STATUS(NotSupported, "InvalidateCache not supported.");
-  }
+  virtual CHECKED_STATUS InvalidateCache(size_t offset, size_t length);
 };
 
 class SequentialFileWrapper : public SequentialFile {
  public:
   explicit SequentialFileWrapper(std::unique_ptr<SequentialFile> t) : target_(std::move(t)) {}
 
-  Status Read(size_t n, Slice* result, uint8_t* scratch) override {
-    return target_->Read(n, result, scratch); }
+  Status Read(size_t n, Slice* result, uint8_t* scratch) override;
 
-  Status Skip(uint64_t n) override { return target_->Skip(n); }
+  Status Skip(uint64_t n) override;
 
-  Status InvalidateCache(size_t offset, size_t length) override {
-    return target_->InvalidateCache(offset, length);
-  }
+  Status InvalidateCache(size_t offset, size_t length) override;
 
   const std::string& filename() const override { return target_->filename(); }
 
@@ -210,13 +195,11 @@ class RandomAccessFileWrapper : public RandomAccessFile {
   // Return the target to which this RandomAccessFile forwards all calls.
   RandomAccessFile* target() const { return target_.get(); }
 
-  CHECKED_STATUS Read(uint64_t offset, size_t n, Slice* result, uint8_t* scratch) const override {
-    return target_->Read(offset, n , result, scratch);
-  }
+  CHECKED_STATUS Read(uint64_t offset, size_t n, Slice* result, uint8_t* scratch) const override;
 
-  Result<uint64_t> Size() const override { return target_->Size(); }
+  Result<uint64_t> Size() const override;
 
-  Result<uint64_t> INode() const override { return target_->INode(); }
+  Result<uint64_t> INode() const override;
 
   const std::string& filename() const override { return target_->filename(); }
 
@@ -238,9 +221,7 @@ class RandomAccessFileWrapper : public RandomAccessFile {
 
   void Hint(AccessPattern pattern) override { return target_->Hint(pattern); }
 
-  Status InvalidateCache(size_t offset, size_t length) override {
-    return target_->InvalidateCache(offset, length);
-  }
+  Status InvalidateCache(size_t offset, size_t length) override;
 
  private:
   std::unique_ptr<RandomAccessFile> target_;

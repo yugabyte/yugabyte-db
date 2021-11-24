@@ -119,8 +119,7 @@ Result<std::shared_ptr<QLRowBlock>> LocalVTable::RetrieveData(
                                 yb::master::kSystemTablesReleaseVersion, &row));
     RETURN_NOT_OK(SetColumnValue(kSystemLocalRpcAddressColumn, public_ip, &row));
 
-    Uuid schema_version;
-    RETURN_NOT_OK(schema_version.FromString(master::kDefaultSchemaVersion));
+    Uuid schema_version = VERIFY_RESULT(Uuid::FromString(master::kDefaultSchemaVersion));
     RETURN_NOT_OK(SetColumnValue(kSystemLocalSchemaVersionColumn, schema_version, &row));
     RETURN_NOT_OK(SetColumnValue(kSystemLocalThriftVersionColumn, "20.1.0", &row));
     // setting tokens

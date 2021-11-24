@@ -14,6 +14,9 @@
 #define YB_MASTER_FLUSH_MANAGER_H
 
 #include "yb/common/entity_ids.h"
+
+#include "yb/gutil/ref_counted.h"
+
 #include "yb/master/master.pb.h"
 #include "yb/util/locks.h"
 #include "yb/util/status.h"

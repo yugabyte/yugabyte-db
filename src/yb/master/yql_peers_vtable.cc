@@ -140,8 +140,7 @@ Result<std::shared_ptr<QLRowBlock>> PeersVTable::RetrieveData(
         yb::master::kSystemTablesReleaseVersion, &row));
 
     // schema_version.
-    Uuid schema_version;
-    RETURN_NOT_OK(schema_version.FromString(master::kDefaultSchemaVersion));
+    Uuid schema_version = VERIFY_RESULT(Uuid::FromString(master::kDefaultSchemaVersion));
     RETURN_NOT_OK(SetColumnValue(kSchemaVersion, schema_version, &row));
 
     // Tokens.

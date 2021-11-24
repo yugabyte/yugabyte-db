@@ -13,8 +13,11 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/yql/pggate/pg_dml_write.h"
 #include "yb/client/yb_op.h"
+
+#include "yb/gutil/casts.h"
+
+#include "yb/yql/pggate/pg_dml_write.h"
 
 namespace yb {
 namespace pggate {

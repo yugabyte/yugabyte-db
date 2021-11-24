@@ -53,6 +53,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/lockfree.h"
+#include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"

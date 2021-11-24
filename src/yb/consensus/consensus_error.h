@@ -18,6 +18,7 @@
 
 #include "yb/consensus/consensus.pb.h"
 #include "yb/util/status.h"
+#include "yb/util/status_ec.h"
 
 namespace yb {
 namespace consensus {

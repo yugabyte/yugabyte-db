@@ -29,14 +29,14 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
 #include "yb/util/hexdump.h"
 #include "yb/util/memcmpable_varint.h"
 #include "yb/util/random.h"
-#include "yb/util/stopwatch.h"
+#include "yb/util/stopwatch.h" // Required in NDEBUG mode
+#include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
 // Add operator<< to print pairs, used in a test below.
