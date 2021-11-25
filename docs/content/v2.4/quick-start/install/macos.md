@@ -50,7 +50,7 @@ showAsideToc: true
 
 1. <i class="fab fa-apple" aria-hidden="true"></i> macOS 10.12 or later.
 
-2. Verify that you have Python 2 or 3 installed. 
+2. Verify that you have Python 2 or 3 installed.
 
     ```sh
     python --version
@@ -125,13 +125,13 @@ showAsideToc: true
 Download the YugabyteDB `tar.gz` file using the following `wget` command.
 
 ```sh
-wget https://downloads.yugabyte.com/yugabyte-2.4.4.0-darwin.tar.gz
+wget https://downloads.yugabyte.com/releases/2.4.8.0/yugabyte-2.4.8.0-b16-darwin-x86_64.tar.gz
 ```
 
 To unpack the archive file and change to the YugabyteDB home directory, run the following command.
 
 ```sh
-tar xvfz yugabyte-2.4.4.0-darwin.tar.gz && cd yugabyte-2.4.4.0/
+tar xvfz yugabyte-2.4.8.0-b16-darwin-x86_64.tar.gz && cd yugabyte-2.4.8.0/
 ```
 
 ## Configure
