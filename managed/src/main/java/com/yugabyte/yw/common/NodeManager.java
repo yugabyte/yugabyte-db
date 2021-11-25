@@ -637,15 +637,9 @@ public class NodeManager extends DevopsBase {
         if (releaseMetadata.s3 != null) {
           subcommand.add("--s3_remote_download");
           ybServerPackage = releaseMetadata.s3.paths.x86_64;
-          subcommand.add("--aws_access_key");
-          subcommand.add(releaseMetadata.s3.accessKeyId);
-          subcommand.add("--aws_secret_key");
-          subcommand.add(releaseMetadata.s3.secretAccessKey);
         } else if (releaseMetadata.gcs != null) {
           subcommand.add("--gcs_remote_download");
           ybServerPackage = releaseMetadata.gcs.paths.x86_64;
-          subcommand.add("--gcs_credentials_json");
-          subcommand.add(releaseMetadata.gcs.credentialsJson);
         } else if (releaseMetadata.http != null) {
           subcommand.add("--http_remote_download");
           ybServerPackage = releaseMetadata.http.paths.x86_64;
@@ -1136,6 +1130,7 @@ public class NodeManager extends DevopsBase {
     List<String> commandArgs = new ArrayList<>();
     UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
     Path bootScriptFile = null;
+    Map<String, String> sensitiveData = new HashMap<>();
 
     switch (type) {
       case Replace_Root_Volume:
@@ -1389,6 +1384,7 @@ public class NodeManager extends DevopsBase {
           if (nodeTaskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(nodeTaskParam));
           }
+          sensitiveData.putAll(getReleaseSensitiveData(taskParam));
           break;
         }
       case List:
@@ -1541,7 +1537,8 @@ public class NodeManager extends DevopsBase {
           type.toString().toLowerCase(),
           commandArgs,
           getCloudArgs(nodeTaskParam),
-          getAnsibleEnvVars(nodeTaskParam.universeUUID));
+          getAnsibleEnvVars(nodeTaskParam.universeUUID),
+          sensitiveData);
     } finally {
       if (bootScriptFile != null) {
         try {
@@ -1610,5 +1607,22 @@ public class NodeManager extends DevopsBase {
     if (nodeTaskParam.universeUUID != null) {
       tags.put("universe-uuid", nodeTaskParam.universeUUID.toString());
     }
+  }
+
+  private Map<String, String> getReleaseSensitiveData(AnsibleConfigureServers.Params taskParam) {
+    Map<String, String> data = new HashMap<>();
+    if (taskParam.ybSoftwareVersion != null) {
+      ReleaseManager.ReleaseMetadata releaseMetadata =
+          releaseManager.getReleaseByVersion(taskParam.ybSoftwareVersion);
+      if (releaseMetadata != null) {
+        if (releaseMetadata.s3 != null) {
+          data.put("--aws_access_key", releaseMetadata.s3.accessKeyId);
+          data.put("--aws_secret_key", releaseMetadata.s3.secretAccessKey);
+        } else if (releaseMetadata.gcs != null) {
+          data.put("--gcs_credentials_json", releaseMetadata.gcs.credentialsJson);
+        }
+      }
+    }
+    return data;
   }
 }
