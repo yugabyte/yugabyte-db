@@ -4804,13 +4804,14 @@ opt_procedural:
  *
  *****************************************************************************/
 
- CreateTableGroupStmt: CREATE TABLEGROUP name OptTableGroupOwner opt_reloptions
+ CreateTableGroupStmt: CREATE TABLEGROUP name OptTableGroupOwner opt_reloptions OptTableSpace
  				{
  					parser_ybc_beta_feature(@1, "tablegroup", true);
  					CreateTableGroupStmt *n = makeNode(CreateTableGroupStmt);
  					n->tablegroupname = $3;
  					n->owner = $4;
  					n->options = $5;
+ 					n->tablespacename = $6;
  					$$ = (Node *) n;
  				}
  		;

@@ -52,11 +52,13 @@
 #include "catalog/namespace.h"
 #include "catalog/objectaccess.h"
 #include "catalog/pg_namespace.h"
+#include "catalog/pg_tablespace.h"
 #include "catalog/pg_yb_tablegroup.h"
 #include "commands/comment.h"
 #include "commands/seclabel.h"
 #include "commands/tablecmds.h"
 #include "commands/tablegroup.h"
+#include "commands/tablespace.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
 #include "common/file_perm.h"
@@ -93,6 +95,7 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 	HeapTuple	tuple;
 	Oid			tablegroupoid;
 	Oid			ownerId;
+	Oid			tablespaceId;
 	Acl		   *grpacl = NULL;
 
 	if (!YbTablegroupCatalogExists)
@@ -133,6 +136,17 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 	else
 		ownerId = GetUserId();
 
+	if (stmt->tablespacename)
+		tablespaceId = get_tablespace_oid(stmt->tablespacename, false);
+	else
+		tablespaceId = GetDefaultTablespace(RELPERSISTENCE_PERMANENT);
+
+	if (tablespaceId == GLOBALTABLESPACE_OID)
+		/* In all cases disallow placing user relations in pg_global */
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("tablegroups cannot be placed in pg_global tablespace")));
+
 	/*
 	 * Insert tuple into pg_tablegroup.
 	 */
@@ -152,7 +166,7 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 		nulls[Anum_pg_yb_tablegroup_grpacl - 1] = true;
 
 	/* Set tablegroup tablespace oid */
-	values[Anum_pg_yb_tablegroup_grptablespace - 1] = InvalidOid;
+	values[Anum_pg_yb_tablegroup_grptablespace - 1] = tablespaceId;
 
 	/* Generate new proposed grpoptions (text array) */
 	/* For now no grpoptions. Will be part of Interleaved/Copartitioned */

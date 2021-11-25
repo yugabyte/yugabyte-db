@@ -4352,7 +4352,7 @@ listTablegroups(const char *pattern, bool verbose, bool showRelations)
 							  ",\n  pg_catalog.obj_description(g.oid, 'pg_yb_tablegroup') AS \"%s\"",
 							  gettext_noop("Group Description"));
 			appendPQExpBuffer(&buf,
-							  ",\n  g.grptablespace AS \"%s\"",
+							  ",\n  ts.spcname AS \"%s\"",
 							  gettext_noop("Group Tablespace"));
 			appendPQExpBuffer(&buf,
 							  ",\n  g.grpoptions AS \"%s\",\n",
@@ -4415,7 +4415,7 @@ listTablegroups(const char *pattern, bool verbose, bool showRelations)
 							  ",\n  pg_catalog.obj_description(g.oid, 'pg_yb_tablegroup') AS \"%s\"",
 							  gettext_noop("Description"));
 			appendPQExpBuffer(&buf,
-							  ",\n  g.grptablespace AS \"%s\"",
+							  ",\n  ts.spcname AS \"%s\"",
 							  gettext_noop("Tablespace"));
 			appendPQExpBuffer(&buf,
 							  ",\n  g.grpoptions AS \"%s\"",
@@ -4425,6 +4425,10 @@ listTablegroups(const char *pattern, bool verbose, bool showRelations)
 
 	appendPQExpBufferStr(&buf,
 						 "\nFROM pg_catalog.pg_yb_tablegroup g\n");
+
+	if (verbose)
+		appendPQExpBufferStr(&buf,
+							 "\nLEFT JOIN pg_catalog.pg_tablespace ts ON ts.oid = g.grptablespace\n");
 
 	// If 't' is included, need to do the join based on pg_class reloptions
 	if (showRelations)

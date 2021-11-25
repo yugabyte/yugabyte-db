@@ -2191,9 +2191,10 @@ typedef struct OptSplit
 typedef struct CreateTableGroupStmt
 {
 	NodeTag		type;
-	char 		 *tablegroupname;
-	RoleSpec *owner;
+	char 	   *tablegroupname;
+	RoleSpec   *owner;
 	List 	   *options;
+	char 	   *tablespacename;
 } CreateTableGroupStmt;
 
 typedef struct DropTableGroupStmt
