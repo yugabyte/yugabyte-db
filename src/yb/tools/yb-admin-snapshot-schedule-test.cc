@@ -83,17 +83,27 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
   }
 
   Result<rapidjson::Document> WaitScheduleSnapshot(
-      MonoDelta duration, const std::string& id = std::string(), int num_snashots = 1) {
+      MonoDelta duration, const std::string& id = std::string(), int num_snapshots = 1) {
     rapidjson::Document result;
-    RETURN_NOT_OK(WaitFor([this, id, num_snashots, &result]() -> Result<bool> {
+    RETURN_NOT_OK(WaitFor([this, id, num_snapshots, &result]() -> Result<bool> {
       auto schedule = VERIFY_RESULT(GetSnapshotSchedule(id));
       auto snapshots = VERIFY_RESULT(Get(&schedule, "snapshots")).get().GetArray();
-      if (snapshots.Size() < num_snashots) {
+      if (snapshots.Size() < num_snapshots) {
         return false;
       }
       result.CopyFrom(snapshots[snapshots.Size() - 1], result.GetAllocator());
       return true;
     }, duration, "Wait schedule snapshot"));
+
+    // Wait for the present time to become at-least the time chosen by the first snapshot.
+    auto snapshot_time_string = VERIFY_RESULT(Get(&result, "snapshot_time")).get().GetString();
+    HybridTime snapshot_ht = VERIFY_RESULT(HybridTime::ParseHybridTime(snapshot_time_string));
+
+    RETURN_NOT_OK(WaitFor([&snapshot_ht]() -> Result<bool> {
+      Timestamp current_time(VERIFY_RESULT(WallClock()->Now()).time_point);
+      HybridTime current_ht = HybridTime::FromMicros(current_time.ToInt64());
+      return snapshot_ht <= current_ht;
+    }, duration, "Wait Snapshot Time Elapses"));
     return result;
   }
 
@@ -149,6 +159,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
   virtual std::vector<std::string> ExtraTSFlags() {
     return { Format("--timestamp_history_retention_interval_sec=$0", kHistoryRetentionIntervalSec),
              "--history_cutoff_propagation_interval_ms=1000",
+             "--enable_automatic_tablet_splitting=true",
              Format("--cleanup_split_tablets_interval_sec=$0",
                       MonoDelta(kCleanupSplitTabletsInterval).ToSeconds()) };
   }
@@ -157,6 +168,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     // To speed up tests.
     return { "--snapshot_coordinator_cleanup_delay_ms=1000",
              "--snapshot_coordinator_poll_interval_ms=500",
+             "--enable_automatic_tablet_splitting=true",
              "--enable_transactional_ddl_gc=false", };
   }
 
