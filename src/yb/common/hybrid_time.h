@@ -241,6 +241,12 @@ class HybridTime {
   // It is slower than default one.
   static void TEST_SetPrettyToString(bool flag);
 
+  // Acceptable system time formats:
+  //  1. HybridTime Timestamp (in Microseconds)
+  //  2. Interval
+  //  3. Human readable string
+  static Result<HybridTime> ParseHybridTime(string input);
+
  private:
 
   HybridTimeRepr v;
