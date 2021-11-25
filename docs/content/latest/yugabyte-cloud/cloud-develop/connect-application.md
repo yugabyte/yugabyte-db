@@ -36,7 +36,7 @@ In this walkthrough, you will:
 
 ## Clone the Spring Data YugabyteDB PetClinic application
 
-1. On your computer, clone the Spring PetClinic sample application built with Spring Data YugabyteDB: 
+1. On your computer, clone the Spring PetClinic sample application built with Spring Data YugabyteDB:
 
     ```sh
     $ git clone https://github.com/yugabyte/petclinic-spring-data-yugabytedb.git
@@ -72,7 +72,7 @@ In this walkthrough, you will:
 
 1. Under **Add this connection string into your application**, copy the YSQL connection string.
 
-    The connection string is in the form 
+    The connection string is in the form
 
     ```url
     postgresql://<DB USER>:<DB PASSWORD>@[host]:[port]/[database]?ssl=true&sslmode=verify-full&sslrootcert=<ROOT_CERT_PATH>
@@ -86,7 +86,7 @@ In this walkthrough, you will:
 
 ## Connect and run the application
 
-1. On your computer, update the contents of the `spring-petclinic/src/main/resources/application.yml` file by updating the `yugabyte:datasource:url` with the modified YSQL connection string, and username and password with your YugabyteDB database credentials. 
+1. On your computer, update the contents of the `spring-petclinic/src/main/resources/application.yml` file by updating the `yugabyte:datasource:url` with the modified YSQL connection string, and username and password with your YugabyteDB database credentials.
 
     The connection string replaces the url after `jdbc:`, as follows:
 

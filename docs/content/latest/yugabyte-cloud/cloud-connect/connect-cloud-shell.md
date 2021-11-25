@@ -23,7 +23,7 @@ To connect to a cluster via Cloud Shell:
 
 1. Click **Connect**.
 
-1. Click **Launch Cloud Shell**. 
+1. Click **Launch Cloud Shell**.
 
 1. Enter the database name and user name.
 

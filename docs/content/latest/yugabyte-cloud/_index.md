@@ -103,7 +103,7 @@ To begin using Yugabyte Cloud, go to [Quickstart](cloud-quickstart).
           </div>
       </a>
   </div>
--->  
+-->
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
       <a class="section-link icon-offset" href="cloud-network/">
           <div class="head">
@@ -115,7 +115,7 @@ To begin using Yugabyte Cloud, go to [Quickstart](cloud-quickstart).
           </div>
       </a>
   </div>
-  
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
       <a class="section-link icon-offset" href="cloud-security/">
           <div class="head">
@@ -127,7 +127,7 @@ To begin using Yugabyte Cloud, go to [Quickstart](cloud-quickstart).
           </div>
       </a>
   </div>
-  
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
       <a class="section-link icon-offset" href="cloud-admin/">
           <div class="head">

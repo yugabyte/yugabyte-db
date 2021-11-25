@@ -33,7 +33,7 @@ showAsideToc: true
       YCQL
     </a>
   </li>
-  
+
 </ul>
 
 Using the `ysqlsh` shell, you can interact with your YugabyteDB database using the YSQL API. In the following exercise, you'll use ysqlsh to create a database, load a sample dataset, and run a simple query.
@@ -129,7 +129,7 @@ SELECT id, title, category, price, rating
 
 ## More to explore
 
-To explore more of the Retail Analytics database, refer to the exercises in [Retail Analytics](../../../sample-data/retail-analytics/). 
+To explore more of the Retail Analytics database, refer to the exercises in [Retail Analytics](../../../sample-data/retail-analytics/).
 
 Here are links to documentation on the tested datasets and the steps to create the other sample databases included with YugabyteDB:
 
