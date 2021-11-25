@@ -11,12 +11,121 @@ menu:
 aliases:
 type: page
 isTocNested: true
-showAsideToc: false
+showAsideToc: true
 ---
 
-You can perform deployment via unidirectional (master-follower) or bidirectional (multi-master) asynchronous replication between data centers.
+Yugabyte Platform allows you to use its UI or API to manage asynchronous replication between independent YugabyteDB clusters. You can perform deployment via unidirectional (master-follower) or [bidirectional](#setting-up-bidirectional-replication) (multi-master) asynchronous replication between two data centers.
 
-If you are using Yugabyte Platform to manage universes, you need to call the following REST API endpoint on your Yugabyte Platform instance for the producer universe and the consumer universe involved in the asynchronous replication between two data sources:
+Within the concept of replication, universes are divided into the following categories:
+
+- A source universe contains the original data that is subject to replication.
+
+  Note that in the current release, replicating a source universe that has already been populated with data can be done only by contacting Yugabyte Support.
+
+- A target universe is the recepient of the replicated data. One source universe can replicate to one or more target universes.
+
+For additional information on asynchronous replication in YugabyteDB, see the following: 
+
+- [Asynchronous Replication: Overview and Architecture](https://docs.yugabyte.com/latest/architecture/docdb-replication/async-replication/)
+- [Asynchronous Replication Between Universes in YugabyteDB](https://docs.yugabyte.com/latest/deploy/multi-dc/async-replication/)
+
+## Using the Yugabyte Platform UI
+
+You can use the Yugabyte Platform UI to set up and configure asynchronous replication for universes whose tables do not contain data. In addition, you can perform monitoring by accessing the information about the replication lag and enabling alerts on excessive lag.
+
+### How to set up replication
+
+You can set up asynchronous replication as follows:
+
+1. Open the Yugabyte Platform UI and navigate to **Universes**.
+
+2. Select the universe you want to replicate and navigate to **Replication**.
+
+3. Click **Configure Replication** to open the dialog shown in the following illustration:<br><br>
+
+   ![Configure Replication](/images/yp/asynch-replication-2.png)<br><br>
+
+4. Provide the name for your replication.
+
+5. Select the target universe.
+
+6. Click **Next: Select Tables**.
+
+7. From a list of common tables between source and target universes, select the tables you want to include in the replication and then click **Create Replication**, as per the following illustration:<br><br>
+
+   ![Create Replication](/images/yp/asynch-replication-3.png)
+
+### How to configure replication
+
+You can configure an existing replication as follows:
+
+1. Open the Yugabyte Platform UI and navigate to **Universes**.
+
+2. Select the universe whose existing replication you want to modify and then navigate to **Replication**, as per the following illustration:<br><br>
+
+   ![Replication](/images/yp/asynch-replication-1.png)<br><br>
+
+3. Click **Configure Replication** and perform steps 4 through 7 from [How to set up replication](#set-up).
+
+### How to view, manage, and monitor replication
+
+To view and manage an existing replication, as well as configure monitoring, click the replication name to open the details page shown the following illustration:
+
+<br>
+
+![Replication Details](/images/yp/asynch-replication-4.png)
+
+This page allows you to do the following:
+
+- View the replication details.
+
+- View and modify the list of tables included in the replication, as follows:
+
+  - Select **Tables**, as per the following illustration:<br><br>
+
+    ![Tables](/images/yp/asynch-replication-7.png)<br><br>
+
+  - Click **Modify Tables**. 
+
+  - Use the **Add tables to the replication** dialog to change the table selection, as per the following illustration:<br><br>
+
+    ![Change Tables](/images/yp/asynch-replication-8.png)<br><br>
+
+    The following illustration shows the **Add tables to the replication** dialog after modifications:<br><br>
+
+    ![Change Tables](/images/yp/asynch-replication-9.png)<br><br>
+
+- Configure the replication, as follows:
+
+  - Click **Actions > Edit replication configuration**.
+
+  - Make changes using the **Edit cluster replication** dialog shown in the following illustration:<br><br>
+
+    ![Edit Replication](/images/yp/asynch-replication-5.png)<br><br>
+
+- Set up monitoring by configuring alerts, as follows:
+
+  - Click **Configure Alert**.
+
+  - Use the **Configure Replication Alert** dialog to enable or disable alert issued when the replication lag exceeds the specified threshold, as per the following illustration:<br><br>
+
+    ![Alert](/images/yp/asynch-replication-6.png)<br><br>
+
+- Pause the replication process (stop the traffic) by clicking **Pause Replication**. This is useful when performing maintenance. Paused replications can be resumed from the last checkpoint.
+
+- Delete the universe replication by clicking **Actions > Delete replication**.
+
+## Setting up bidirectional replication
+
+You can set up bidirectional replication using either the Yugabyte Platform UI or API by creating two separate replication configurations. Under this scenario, a source universe of the first replication becomes the target universe of the second replication, and vice versa.
+
+
+
+<!--
+
+## Using the REST API
+
+You may choose to use the API to manage universes. You can call the following REST API endpoint on your Yugabyte Platform instance for the source universe and the target universe involved in the asynchronous replication between two data sources:
 
 ```sh
 PUT /api/customers/<customerUUID>/universes/<universeUUID>/setup_universe_2dc
@@ -30,9 +139,9 @@ curl -X PUT \
 https://myPlatformServer/api/customers/customerUUID/universes/universeUUID/setup_universe_2dc
 ```
 
-You can find your customer UUID in Yugabyte Platform as follows:
+You can find your user UUID in Yugabyte Platform as follows:
 
-- Click the person icon at the top left of any Yugabyte Platform page and open **Profile > General**.
+- Click the person icon at the top right of any Yugabyte Platform page and open **Profile > General**.
 
 - Copy your API token. If the **API Token** field is blank, click **Generate Key**, and then copy the resulting API token. Generating a new API token invalidates your existing token. Only the most-recently generated API token is valid.
 
@@ -44,18 +153,19 @@ You can find your customer UUID in Yugabyte Platform as follows:
       [http|https]://myPlatformServer/api/customers
   ```
 
-  For example:
+  <br>For example:
 
   ```sh
   curl -X "X-AUTH-YW-API-TOKEN: e5c6eb2f-7e30-4d5e-b0a2-f197b01d9f79" \
     http://localhost/api/customers
   ```
 
-- Copy your UUID from the resulting JSON output shown in the following example, only without the double quotes and square brackets:
+- Copy your UUID from the resulting JSON output shown in the following example, omitting the double quotes and square brackets:
 
   ```
   ["6553ea6d-485c-4ae8-861a-736c2c29ec46"]
   ```
 
-  To find a universe's UUID in Yugabyte Platform, click **Universes** in the left column, then click the name of the universe. The URL of the universe's **Overview** page ends with the universe's UUID. For example, `http://myPlatformServer/universes/d73833fc-0812-4a01-98f8-f4f24db76dbe`
+  <br>To find a universe's UUID in Yugabyte Platform, click **Universes** in the left column, then click the name of the universe. The URL of the universe's **Overview** page ends with the universe's UUID. For example, `http://myPlatformServer/universes/d73833fc-0812-4a01-98f8-f4f24db76dbe`
 
+-->
