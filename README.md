@@ -63,7 +63,7 @@ a future release.
 
 You can check the available hypothetical indexes in your own backend:
 
-    rjuju=# SELECT * FROM hypopg_list_indexes();
+    rjuju=# SELECT * FROM hypopg_list_indexes ;
      indexrelid |                 indexname                 | nspname | relname | amname
      -----------+-------------------------------------------+---------+---------+--------
          205101 | <41072>btree_hypo_id                      | public  | hypo    | btree
@@ -96,6 +96,6 @@ Of course, only `EXPLAIN` without `ANALYZE` will use hypothetical indexes:
     (5 rows)
 
 To remove your backend's hypothetical indexes, you can use the function
-`hypopg_drop_index(indexrelid)` with the OID that the `hypopg_list_indexes()`
-function returns and call `hypopg_reset()` to remove all at once, or just close
+`hypopg_drop_index(indexrelid)` with the OID that the `hypopg_list_indexes`
+view returns and call `hypopg_reset()` to remove all at once, or just close
 your current connection.

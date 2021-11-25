@@ -174,41 +174,53 @@ use such indexes.
 Manipulate hypothetical indexes
 -------------------------------
 
-Some other convenience functions are available:
+Some other convenience functions and views are available:
 
-- **hypopg_list_indexes()**: list all hypothetical indexes that have been
-  created
+- **hypopg_list_indexes**: view that lists all hypothetical indexes that have
+  been created
 
 .. code-block:: psql
 
-  SELECT * FROM hypopg_list_indexes()
+  SELECT * FROM hypopg_list_indexes ;
    indexrelid |      indexname       | nspname | relname | amname
   ------------+----------------------+---------+---------+--------
         18284 | <18284>btree_hypo_id | public  | hypo    | btree
   (1 row)
 
-- **hypopg_get_indexdef(oid)**: get the CREATE INDEX statement that would
-  recreate a stored hypothetical index
+- **hypopg()**: fuctions that lists all hypothetical indexes that have
+  been created with the same format as **pg_index**
 
 .. code-block:: psql
 
-  SELECT indexname, hypopg_get_indexdef(indexrelid) FROM hypopg_list_indexes() ;
-        indexname       |             hypopg_get_indexdef              
+  SELECT * FROM hypopg() ;
+      indexname       | indexrelid | indrelid | innatts | indisunique | indkey | indcollation | indclass | indoption | indexprs | indpred | amid
+----------------------+------------+----------+---------+-------------+--------+--------------+----------+-----------+----------+---------+------
+ <18284>btree_hypo_id |      13543 |    18122 |       1 | f           | 1      | 0            | 1978     | <NULL>    | <NULL>   | <NULL>  |  403
+(1 row)
+
+- **hypopg_get_indexdef(oid)**: function that lists the CREATE INDEX statement
+  that would recreate a stored hypothetical index
+
+.. code-block:: psql
+
+  SELECT indexname, hypopg_get_indexdef(indexrelid) FROM hypopg_list_indexes ;
+        indexname       |             hypopg_get_indexdef
   ----------------------+----------------------------------------------
    <18284>btree_hypo_id | CREATE INDEX ON public.hypo USING btree (id)
   (1 row)
 
-- **hypopg_relation_size(oid)**: estimate how big a hypothetical index would
-  be:
+- **hypopg_relation_size(oid)**: function that estimates how big a hypothetical
+  index would be:
 
 .. code-block:: psql
 
   SELECT indexname, pg_size_pretty(hypopg_relation_size(indexrelid))
-    FROM hypopg_list_indexes() ;
+    FROM hypopg_list_indexes ;
         indexname       | pg_size_pretty
   ----------------------+----------------
    <18284>btree_hypo_id | 2544 kB
   (1 row)
 
-- **hypopg_drop_index(oid)**: remove the given hypothetical index
-- **hypopg_reset()**: remove all hypothetical indexes
+- **hypopg_drop_index(oid)**: function that removes the given hypothetical
+  index
+- **hypopg_reset()**: function that removes all hypothetical indexes
