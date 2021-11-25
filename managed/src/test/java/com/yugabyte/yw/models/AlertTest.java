@@ -338,6 +338,7 @@ public class AlertTest extends FakeDBApplication {
         .setSeverity(AlertConfiguration.Severity.SEVERE)
         .setName("Alert 1")
         .setSourceName("Source 1")
+        .setSourceUUID(UUID.fromString("3ea389e6-07e7-487e-8592-c1b2a7339590"))
         .setMessage("Universe on fire!")
         .setDefinitionUuid(definition.getUuid())
         .setConfigurationUuid(configuration.getUuid())
@@ -402,6 +403,7 @@ public class AlertTest extends FakeDBApplication {
     assertThat(alert.getSeverity(), is(AlertConfiguration.Severity.SEVERE));
     assertThat(alert.getName(), is("Alert 1"));
     assertThat(alert.getSourceName(), is("Source 1"));
+    assertThat(alert.getSourceUUID(), is(UUID.fromString("3ea389e6-07e7-487e-8592-c1b2a7339590")));
     assertThat(alert.getMessage(), is("Universe on fire!"));
     assertThat(alert.getDefinitionUuid(), equalTo(definition.getUuid()));
     assertThat(alert.getConfigurationUuid(), equalTo(configuration.getUuid()));

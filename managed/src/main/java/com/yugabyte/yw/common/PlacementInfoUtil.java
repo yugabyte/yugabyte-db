@@ -54,6 +54,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.joda.time.DateTime;
@@ -130,7 +131,8 @@ public class PlacementInfoUtil {
    * @param azUUID UUID of the PlacementAZ to look for.
    * @return The specified PlacementAZ if it exists, else null.
    */
-  private static PlacementAZ findPlacementAzByUuid(PlacementInfo placementInfo, UUID azUUID) {
+  @VisibleForTesting
+  static PlacementAZ findPlacementAzByUuid(PlacementInfo placementInfo, UUID azUUID) {
     for (PlacementCloud cloud : placementInfo.cloudList) {
       for (PlacementRegion region : cloud.regionList) {
         for (PlacementAZ az : region.azList) {
@@ -278,6 +280,7 @@ public class PlacementInfoUtil {
     return nodeRegionSet;
   }
 
+  @VisibleForTesting
   /**
    * Helper API to check if the list of regions is the same in existing nodes of the placement and
    * the new userIntent's region list.
@@ -286,20 +289,20 @@ public class PlacementInfoUtil {
    * @param nodes The set of nodes used to compare the current region layout.
    * @return true if the provider or region list changed. false if neither changed.
    */
-  private static boolean isProviderOrRegionChange(Cluster cluster, Collection<NodeDetails> nodes) {
+  static boolean isProviderOrRegionChange(Cluster cluster, Collection<NodeDetails> nodes) {
     // Initial state. No nodes have been requested, so nothing has changed.
     if (nodes.isEmpty()) {
-
       return false;
     }
 
     // Compare Providers.
-    UUID intentProvider = getProviderUUID(nodes, cluster.uuid);
-    UUID nodeProvider = cluster.placementInfo.cloudList.get(0).uuid;
-    if (!intentProvider.equals(nodeProvider)) {
+    UUID nodeProvider = getProviderUUID(nodes, cluster.uuid);
+    UUID placementProvider = cluster.placementInfo.cloudList.get(0).uuid;
+    if (!Objects.equals(placementProvider, nodeProvider)) {
       LOG.info(
-          "Provider in intent {} is different from provider in existing nodes {} in cluster {}.",
-          intentProvider,
+          "Provider in placement information {} is different from provider "
+              + "in existing nodes {} in cluster {}.",
+          placementProvider,
           nodeProvider,
           cluster.uuid);
 
@@ -315,7 +318,7 @@ public class PlacementInfoUtil {
         nodeRegionSet,
         cluster.uuid);
 
-    return !intentRegionSet.equals(nodeRegionSet);
+    return !intentRegionSet.containsAll(nodeRegionSet);
   }
 
   public static int getNodeCountInPlacement(PlacementInfo placementInfo) {
@@ -1198,19 +1201,34 @@ public class PlacementInfoUtil {
     return numActiveServers;
   }
 
-  // Find a node running tserver only in the given AZ.
-  public static NodeDetails findActiveTServerOnlyInAz(
-      Collection<NodeDetails> nodes, UUID targetAZUuid) {
-    return nodes
-        .stream()
-        .filter(
-            node ->
-                node.isActive()
-                    && !node.isMaster
-                    && node.isTserver
-                    && node.azUuid.equals(targetAZUuid))
-        .max(Comparator.comparingInt(NodeDetails::getNodeIdx))
-        .orElse(null);
+  /**
+   * Find a node in the given AZ according to passed filter. Then items are sorted according to the
+   * next criteria: tservers only go at first, then go masters, each group is sorted by descending
+   * of node index.
+   *
+   * @param nodeFilter
+   * @param nodes
+   * @param targetAZUuid
+   * @param mastersPreferable For the remove operation we prefer tserver only nodes, to revert the
+   *     removal (ToBeRemoved -> old state) we prefer master nodes.
+   * @return
+   */
+  public static NodeDetails findNodeInAz(
+      Predicate<NodeDetails> nodeFilter,
+      Collection<NodeDetails> nodes,
+      UUID targetAZUuid,
+      boolean mastersPreferable) {
+    List<NodeDetails> items =
+        nodes
+            .stream()
+            .filter(node -> nodeFilter.test(node) && node.azUuid.equals(targetAZUuid))
+            .collect(Collectors.toList());
+    items.sort(
+        Comparator.comparing((NodeDetails node) -> node.isMaster == mastersPreferable)
+            .thenComparing(NodeDetails::getNodeIdx)
+            .reversed());
+
+    return items.isEmpty() ? null : items.get(0);
   }
 
   /**
@@ -1292,13 +1310,14 @@ public class PlacementInfoUtil {
 
   /**
    * This method configures nodes for Edit case, with user specified placement info. It supports the
-   * following combinations -- 1. Reset AZ, it result in a full move as new config is generated 2.
-   * Any subsequent operation after a Reset AZ will be a full move since subsequent operations will
-   * build on reset 3. Simple Node Count increase will result in an expand. 4. A shrink node count
-   * by AZ will check if the requested number of nodes is greater than or equal to the number of
-   * master nodes in the AZ. This is to prevent inconsistencies in cases where the node which is
-   * subtracted is a master node. 5. Multi to Single AZ ops will also be a full move operation since
-   * it involves shrinks
+   * following combinations:<br>
+   * 1. Reset AZ, it result in a full move as new config is generated.<br>
+   * 2. Any subsequent operation after a Reset AZ will be a full move since subsequent operations
+   * will build on reset.<br>
+   * 3. Simple Node Count increase/decrease will result in an expand/shrink.<br>
+   * 4. No separate branch for a full move (as example, with changes of all the used AZs) as it is
+   * covered by the same logic - all old nodes are marked as ToBeRemoved, all the new nodes as
+   * ToBeAdded.<br>
    *
    * @param taskParams
    */
@@ -1311,7 +1330,6 @@ public class PlacementInfoUtil {
             : taskParams.getReadOnlyClusters().get(0);
 
     Universe universe = Universe.getOrBadRequest(taskParams.universeUUID);
-    Collection<NodeDetails> existingNodes = universe.getNodesInCluster(currentCluster.uuid);
 
     // If placementInfo is null then user has chosen to Reset AZ config
     // Hence a new full move configuration is generated
@@ -1336,79 +1354,35 @@ public class PlacementInfoUtil {
               getDefaultRegion(taskParams));
       configureDefaultNodeStates(currentCluster, taskParams.nodeDetailsSet, universe);
     } else {
-      // In other operations we need to distinguish between expand and full-move.
-      Map<UUID, Integer> requiredAZToNodeMap = getAzUuidToNumNodes(currentCluster.placementInfo);
-      Map<UUID, Integer> existingAZToNodeMap =
-          getAzUuidToNumNodes(universe.getUniverseDetails().getNodesInCluster(currentCluster.uuid));
-
-      boolean isSimpleExpandShrink = true;
-      for (UUID requiredAZUUID : requiredAZToNodeMap.keySet()) {
-        long masterNodesInAz =
-            existingNodes
-                .stream()
-                .filter(c -> c.azUuid.compareTo(requiredAZUUID) == 0 && c.isMaster)
-                .count();
-
-        // Check if new placement requires a removal of master node
-        if (existingAZToNodeMap.containsKey(requiredAZUUID)
-            && requiredAZToNodeMap.get(requiredAZUUID) < (int) masterNodesInAz) {
-          isSimpleExpandShrink = false;
-          break;
-        } else {
-          existingAZToNodeMap.remove(requiredAZUUID);
-        }
-      }
-      if (existingAZToNodeMap.size() > 0) {
-        isSimpleExpandShrink = false;
-      }
-      if (isSimpleExpandShrink) {
-        // If simple expand we can go in the configure using placement info path
-        configureNodesUsingPlacementInfo(currentCluster, taskParams.nodeDetailsSet, true);
-
-        // Break execution sequence because there are no nodes to be decomissioned
-        return;
-      } else {
-        // If not simply create a nodeDetailsSet from the provided placement info.
-        taskParams.nodeDetailsSet.clear();
-        int startIndex = getNextIndexToConfigure(existingNodes);
-        int iter = 0;
-        LinkedHashSet<PlacementIndexes> placements = new LinkedHashSet<>();
-        for (int cIdx = 0; cIdx < currentCluster.placementInfo.cloudList.size(); cIdx++) {
-          PlacementCloud cloud = currentCluster.placementInfo.cloudList.get(cIdx);
-          for (int rIdx = 0; rIdx < cloud.regionList.size(); rIdx++) {
-            PlacementRegion region = cloud.regionList.get(rIdx);
-            for (int azIdx = 0; azIdx < region.azList.size(); azIdx++) {
-              PlacementAZ az = region.azList.get(azIdx);
-              int numDesired = az.numNodesInAZ;
-
-              int numChange = Math.abs(numDesired);
-              // Add all new nodes in the tbe added state
-              while (numChange > 0) {
-                iter++;
-                placements.add(new PlacementIndexes(azIdx, rIdx, cIdx, true));
-                NodeDetails nodeDetails =
-                    createNodeDetailsWithPlacementIndex(
-                        currentCluster,
-                        new PlacementIndexes(azIdx, rIdx, cIdx, true),
-                        startIndex + iter);
-                taskParams.nodeDetailsSet.add(nodeDetails);
-                numChange--;
-              }
-            }
-          }
-        }
-      }
-    }
-
-    LOG.info("Removing {} nodes.", existingNodes.size());
-    for (NodeDetails node : existingNodes) {
-      node.state = NodeDetails.NodeState.ToBeRemoved;
-      taskParams.nodeDetailsSet.add(node);
+      LOG.info("Doing shrink/expand.");
+      configureNodesUsingPlacementInfo(currentCluster, taskParams.nodeDetailsSet, universe);
     }
   }
 
+  /**
+   * Configuring nodes according to the passed set of nodes + placement information from the
+   * cluster. Here are some details:<br>
+   * 1. If count of nodes in PI (placementInfo) is greater than we already have in the passed
+   * collection of nodes (i.e. we need to increase a count of nodes in this AZ), all the necessary
+   * nodes are added with state ToBeAdded;<br>
+   * 2. If we need to add a node to AZ and it has a node marked as ToBeRemoved at the same time, the
+   * last node will be recovered to the previous state taken from the stored universe;<br>
+   * 3. If count of nodes in PI is less than the actual count of nodes (i.e. we need to decrease a
+   * count of nodes in this AZ), some nodes from the passed collection are marked as ToBeRemoved. At
+   * first it will be tserver nodes only, then tserver + master;<br>
+   * 4. If we need to remove a node from AZ and it has a node in state ToBeAdded at the same time,
+   * the last node will be simply removed from the collection of nodes;<br>
+   * A special case:<br>
+   * 5. We can have nodes (in the collection of nodes) for AZs which aren't mentioned in PI anymore.
+   * Marking all such nodes as ToBeRemoved (except of nodes which are in some intermediate states
+   * and can't be simply removed).
+   *
+   * @param cluster
+   * @param nodes
+   * @param universe
+   */
   private static void configureNodesUsingPlacementInfo(
-      Cluster cluster, Collection<NodeDetails> nodes, boolean isEditUniverse) {
+      Cluster cluster, Collection<NodeDetails> nodes, Universe universe) {
     LinkedHashSet<PlacementIndexes> indexes =
         getDeltaPlacementIndices(
             cluster.placementInfo,
@@ -1420,22 +1394,43 @@ public class PlacementInfoUtil {
     int startIndex = getNextIndexToConfigure(nodes);
     int iter = 0;
     for (PlacementIndexes index : indexes) {
+      PlacementCloud placementCloud = cluster.placementInfo.cloudList.get(index.cloudIdx);
+      PlacementRegion placementRegion = placementCloud.regionList.get(index.regionIdx);
+      PlacementAZ placementAZ = placementRegion.azList.get(index.azIdx);
+
       if (index.action == Action.ADD) {
-        NodeDetails nodeDetails =
-            createNodeDetailsWithPlacementIndex(cluster, index, startIndex + iter);
-        deltaNodesSet.add(nodeDetails);
+        boolean added = false;
+        // We can have some nodes in ToBeRemoved state, in such case we can simply
+        // revert their state back to the state from the stored universe.
+        if (universe != null) {
+          NodeDetails nodeDetails =
+              findNodeInAz(
+                  node -> node.state == NodeState.ToBeRemoved, nodes, placementAZ.uuid, true);
+          if (nodeDetails != null) {
+            NodeState prevState = getNodeState(universe, nodeDetails.getNodeName());
+            if ((prevState != null) && (prevState != NodeState.ToBeRemoved)) {
+              nodeDetails.state = prevState;
+              LOG.trace("Recovering node [{}] state to {}.", nodeDetails.getNodeName(), prevState);
+              added = true;
+            }
+          }
+        }
+        if (!added) {
+          NodeDetails nodeDetails =
+              createNodeDetailsWithPlacementIndex(cluster, index, startIndex + iter);
+          deltaNodesSet.add(nodeDetails);
+        }
       } else if (index.action == Action.REMOVE) {
-        PlacementCloud placementCloud = cluster.placementInfo.cloudList.get(index.cloudIdx);
-        PlacementRegion placementRegion = placementCloud.regionList.get(index.regionIdx);
-        PlacementAZ placementAZ = placementRegion.azList.get(index.azIdx);
-        if (isEditUniverse) {
-          NodeDetails nodeDetails = findActiveTServerOnlyInAz(nodes, placementAZ.uuid);
+        boolean removed = false;
+        if (universe != null) {
+          NodeDetails nodeDetails =
+              findNodeInAz(NodeDetails::isActive, nodes, placementAZ.uuid, false);
           if (nodeDetails == null || !nodeDetails.state.equals(NodeState.ToBeAdded)) {
             decommissionNodeInAZ(nodes, placementAZ.uuid);
-          } else {
-            removeNodeInAZ(nodes, placementAZ.uuid);
+            removed = true;
           }
-        } else {
+        }
+        if (!removed) {
           removeNodeInAZ(nodes, placementAZ.uuid);
         }
       }
@@ -1443,6 +1438,44 @@ public class PlacementInfoUtil {
     }
 
     nodes.addAll(deltaNodesSet);
+
+    // For the 'Edit Universe' flow marking all nodes from the removed zones
+    // with ACTIVE and NOT IN TRANSIT states as ToBeRemoved. For nodes with transit
+    // states (see NodeDetails.IN_TRANSIT_STATES) EditUniverse will fail. And
+    // remaining states (Unreachable, Removing, Starting, Adding,
+    // BeingDecommissioned) are intermediate and should not be present in universes
+    // on this stage.
+    if (universe != null) {
+      List<UUID> existingAZs =
+          getPlacementAZStream(cluster.placementInfo).map(p -> p.uuid).collect(Collectors.toList());
+      for (NodeDetails node : nodes) {
+        if (!existingAZs.contains(node.azUuid)) {
+          if (node.isActive() && !node.isInTransit()) {
+            node.state = NodeState.ToBeRemoved;
+            LOG.trace("Removing node from removed AZ [{}].", node);
+          } else if (node.state != NodeState.ToBeRemoved) {
+            LOG.trace("Removed AZ has inactive node %s. Edit Universe may fail.", node);
+          }
+        }
+      }
+      removeUnusedNodes(nodes);
+    }
+  }
+
+  // Remove nodes which are new (don't have name) and marked as ToBeRemoved.
+  private static void removeUnusedNodes(Collection<NodeDetails> nodes) {
+    Iterator<NodeDetails> nodeIter = nodes.iterator();
+    while (nodeIter.hasNext()) {
+      NodeDetails currentNode = nodeIter.next();
+      if ((currentNode.nodeName == null) && (currentNode.state == NodeState.ToBeRemoved)) {
+        nodeIter.remove();
+      }
+    }
+  }
+
+  private static NodeState getNodeState(Universe universe, String nodeName) {
+    NodeDetails node = universe.getNode(nodeName);
+    return node == null ? null : node.state;
   }
 
   private static long getNumTserverNodes(Collection<NodeDetails> nodeDetailsSet) {
@@ -1606,7 +1639,7 @@ public class PlacementInfoUtil {
         break;
       case UPDATE_CONFIG_FROM_PLACEMENT_INFO:
         // The case where there are custom expand/shrink in the placement info.
-        configureNodesUsingPlacementInfo(cluster, taskParams.nodeDetailsSet, universe != null);
+        configureNodesUsingPlacementInfo(cluster, taskParams.nodeDetailsSet, universe);
         break;
       case UPDATE_CONFIG_FROM_USER_INTENT:
         // Case where userIntent numNodes has to be favored - as it is different from the
@@ -1630,19 +1663,15 @@ public class PlacementInfoUtil {
   }
 
   /**
-   * Find a node which has tservers only to decommission, from the given AZ. Node should be an
-   * active T-Server and should not be Master.
+   * Find a node to be decommissioned, from the given AZ.
    *
    * @param nodes the list of nodes from which to choose the victim.
    * @param targetAZUuid AZ in which the node should be present.
    */
   private static void decommissionNodeInAZ(Collection<NodeDetails> nodes, UUID targetAZUuid) {
-    NodeDetails nodeDetails = findActiveTServerOnlyInAz(nodes, targetAZUuid);
+    NodeDetails nodeDetails = findNodeInAz(NodeDetails::isActive, nodes, targetAZUuid, false);
     if (nodeDetails == null) {
-      LOG.error(
-          "Could not find an active node running tservers only in AZ {}. All nodes: {}.",
-          targetAZUuid,
-          nodes);
+      LOG.error("Could not find an active node in AZ {}. All nodes: {}.", targetAZUuid, nodes);
       throw new IllegalStateException("Should find an active running tserver.");
     } else {
       nodeDetails.state = NodeDetails.NodeState.ToBeRemoved;
@@ -2271,8 +2300,8 @@ public class PlacementInfoUtil {
     // this map for subsequent calls, instead of recomputing the list every time.
     Map<UUID, List<AvailabilityZone>> azByRegionMap = new HashMap<>();
 
-    for (UUID element : userIntent.regionList) {
-      List<AvailabilityZone> zones = AvailabilityZone.getAZsForRegion(element);
+    for (UUID regionUuid : userIntent.regionList) {
+      List<AvailabilityZone> zones = AvailabilityZone.getAZsForRegion(regionUuid);
 
       // Filter out zones which doesn't have enough nodes.
       if (userIntent.providerType.equals(CloudType.onprem)) {
@@ -2285,7 +2314,7 @@ public class PlacementInfoUtil {
 
       if (!zones.isEmpty()) {
         // TODO: sort zones by instance type
-        azByRegionMap.put(element, zones);
+        azByRegionMap.put(regionUuid, zones);
       }
     }
 

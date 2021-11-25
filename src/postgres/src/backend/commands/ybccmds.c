@@ -571,7 +571,7 @@ YBCDropTable(Oid relationId)
 
 	/* Create table-level tombstone for colocated tables / tables in a tablegroup */
 	Oid tablegroupId = InvalidOid;
-	if (TablegroupCatalogExists)
+	if (YbTablegroupCatalogExists)
 		tablegroupId = get_tablegroup_oid_by_table_oid(relationId);
 	if (colocated || tablegroupId != InvalidOid)
 	{
@@ -627,7 +627,7 @@ YBCTruncateTable(Relation rel) {
 											 relationId,
 											 &colocated));
 	Oid tablegroupId = InvalidOid;
-	if (TablegroupCatalogExists)
+	if (YbTablegroupCatalogExists)
 		tablegroupId = get_tablegroup_oid_by_table_oid(relationId);
 	if (colocated || tablegroupId != InvalidOid)
 	{
@@ -670,7 +670,7 @@ YBCTruncateTable(Relation rel) {
 												 &colocated));
 
 		tablegroupId = InvalidOid;
-		if (TablegroupCatalogExists)
+		if (YbTablegroupCatalogExists)
 			tablegroupId = get_tablegroup_oid_by_table_oid(indexId);
 		if (colocated || tablegroupId != InvalidOid)
 		{
@@ -1130,7 +1130,7 @@ YBCDropIndex(Oid relationId)
 
 	/* Create table-level tombstone for colocated tables / tables in a tablegroup */
 	Oid tablegroupId = InvalidOid;
-	if (TablegroupCatalogExists)
+	if (YbTablegroupCatalogExists)
 		tablegroupId = get_tablegroup_oid_by_table_oid(relationId);
 	if (colocated || tablegroupId != InvalidOid)
 	{

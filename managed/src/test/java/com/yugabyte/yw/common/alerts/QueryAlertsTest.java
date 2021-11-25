@@ -374,6 +374,7 @@ public class QueryAlertsTest extends FakeDBApplication {
         .setSeverity(AlertConfiguration.Severity.SEVERE)
         .setName("Clock Skew Alert")
         .setSourceName("Some Source")
+        .setSourceUUID(universe.getUniverseUUID())
         .setMessage("Clock Skew Alert for universe Test is firing")
         .setState(Alert.State.ACTIVE)
         .setLabel(KnownAlertLabels.CUSTOMER_UUID, customer.getUuid().toString())
@@ -382,6 +383,7 @@ public class QueryAlertsTest extends FakeDBApplication {
         .setLabel(
             KnownAlertLabels.CONFIGURATION_TYPE, AlertConfiguration.TargetType.UNIVERSE.name())
         .setLabel(KnownAlertLabels.SOURCE_NAME, "Some Source")
+        .setLabel(KnownAlertLabels.SOURCE_UUID, universe.getUniverseUUID().toString())
         .setLabel(KnownAlertLabels.DEFINITION_NAME, "Clock Skew Alert")
         .setLabel(KnownAlertLabels.SEVERITY, AlertConfiguration.Severity.SEVERE.name());
   }
@@ -398,6 +400,7 @@ public class QueryAlertsTest extends FakeDBApplication {
     labels.put("configuration_uuid", definition.getConfigurationUUID().toString());
     labels.put("configuration_type", "UNIVERSE");
     labels.put("source_name", "Some Source");
+    labels.put("source_uuid", universe.getUniverseUUID().toString());
     labels.put("definition_name", "Clock Skew Alert");
     labels.put("severity", severity.name());
     return AlertData.builder()

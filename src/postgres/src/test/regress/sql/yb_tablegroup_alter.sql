@@ -9,15 +9,15 @@ CREATE DATABASE db_alter_tablegroup;
 CREATE TABLEGROUP alter_tgroup1;
 CREATE TABLEGROUP alter_tgroup2;
 
-SELECT grpname FROM pg_tablegroup ORDER BY grpname;
+SELECT grpname FROM pg_yb_tablegroup ORDER BY grpname;
 ALTER TABLEGROUP alter_tgroup1 RENAME TO alter_tgroup_try_alt;
-SELECT grpname FROM pg_tablegroup ORDER BY grpname;
+SELECT grpname FROM pg_yb_tablegroup ORDER BY grpname;
 ALTER TABLEGROUP alter_tgroup_try_alt RENAME TO alter_tgroup_alt;
-SELECT grpname FROM pg_tablegroup ORDER BY grpname;
+SELECT grpname FROM pg_yb_tablegroup ORDER BY grpname;
 
 ALTER TABLEGROUP alter_tgroup2 RENAME TO alter_tgroup_alt; -- fail
 ALTER TABLEGROUP alter_tgroup2 RENAME TO alter_tgroup2; -- fail
-SELECT grpname FROM pg_tablegroup ORDER BY grpname;
+SELECT grpname FROM pg_yb_tablegroup ORDER BY grpname;
 ALTER TABLEGROUP alter_tgroup_not_exists RENAME TO alter_tgroup_not_exists; -- fail
 
 -- Test alter owner
