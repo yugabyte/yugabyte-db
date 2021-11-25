@@ -3,6 +3,7 @@
 import React, { Component, Fragment } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { Field, Formik } from 'formik';
+import { toast } from 'react-toastify';
 import {
   YBFormInput,
   YBButton,
@@ -51,14 +52,49 @@ class KeyManagementConfiguration extends Component {
         this.setState({ listView: true });
       }
     });
+    this._ismounted = true;
   }
 
+  componentWillUnmount() {
+    this._ismounted = false;
+  }
+
+  //recursively monitor task status
+  onTaskFailure = () => toast.error('Failed to add configuration');
+
+  onTaskSuccess = () => {
+    toast.success('Successfully added the configuration');
+    this.props.fetchKMSConfigList();
+  };
+
+  monitorTaskStatus = (taskUUID) => {
+    this._ismounted &&
+      this.props.getCurrentTaskData(taskUUID).then((res) => {
+        if (res.error) this.onTaskFailure();
+        else {
+          const status = res.payload?.data?.status;
+          if (status === 'Failure') this.onTaskFailure();
+          else if (status === 'Success') this.onTaskSuccess();
+          else setTimeout(() => this.monitorTaskStatus(taskUUID), 5000); //recursively check task status
+        }
+      });
+  };
+
   submitKMSForm = (values) => {
-    const { fetchKMSConfigList, setKMSConfig } = this.props;
+    const { setKMSConfig } = this.props;
     const { kmsProvider } = values;
     if (kmsProvider) {
-      const data = {};
-      data['name'] = values.name;
+      const data = { name: values.name };
+
+      const createConfig = (data) => {
+        setKMSConfig(kmsProvider.value, data).then((res) => {
+          if (res) {
+            this.setState({ listView: true });
+            this.monitorTaskStatus(res.payload.data.taskUUID);
+          }
+        });
+      };
+
       switch (kmsProvider.value) {
         case 'AWS':
           data['AWS_REGION'] = values.region.value;
@@ -72,10 +108,7 @@ class KeyManagementConfiguration extends Component {
           if (values.cmkPolicyContent) {
             readUploadedFile(values.cmkPolicyContent).then((text) => {
               data['cmk_policy'] = text;
-              setKMSConfig(kmsProvider.value, data).then(() => {
-                fetchKMSConfigList();
-                this.setState({ listView: true });
-              });
+              createConfig(data);
             });
             return;
           } else if (values.cmkId) {
@@ -88,10 +121,7 @@ class KeyManagementConfiguration extends Component {
           data['api_key'] = values.apiKey;
           break;
       }
-      setKMSConfig(kmsProvider.value, data).then(() => {
-        fetchKMSConfigList();
-        this.setState({ listView: true });
-      });
+      createConfig(data);
     }
   };
 
@@ -272,12 +302,10 @@ class KeyManagementConfiguration extends Component {
 
   deleteAuthConfig = (configUUID) => {
     const { configList, deleteKMSConfig, fetchKMSConfigList } = this.props;
-    deleteKMSConfig(configUUID);
-    if (configList.data.length <= 1) {
-      this.setState({ listView: false });
-    } else {
-      fetchKMSConfigList();
-    }
+    deleteKMSConfig(configUUID).then(() => {
+      if (configList.data.length <= 1) this.setState({ listView: false });
+      else fetchKMSConfigList();
+    });
   };
 
   /**
