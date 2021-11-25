@@ -191,7 +191,8 @@ function mapStateToProps(state, ownProps) {
     modal: state.modal,
     providers: state.cloud.providers,
     updateAvailable: isUpdateAvailable(state),
-    featureFlags: state.featureFlags
+    featureFlags: state.featureFlags,
+    accessKeys: state.cloud.accessKeys
   };
 }
 
