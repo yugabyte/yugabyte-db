@@ -187,7 +187,7 @@ Some other convenience functions and views are available:
         18284 | <18284>btree_hypo_id | public  | hypo    | btree
   (1 row)
 
-- **hypopg()**: fuctions that lists all hypothetical indexes that have
+- **hypopg()**: function that lists all hypothetical indexes that have
   been created with the same format as **pg_index**
 
 .. code-block:: psql
