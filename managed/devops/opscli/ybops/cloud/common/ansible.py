@@ -26,6 +26,7 @@ class AnsibleProcess(object):
     """
     DEFAULT_SSH_USER = "centos"
     DEFAULT_SSH_CONNECTION_TYPE = "ssh"
+    REDACT_STRING = "REDACTED"
 
     def __init__(self):
         self.yb_user_name = "yugabyte"
@@ -38,6 +39,7 @@ class AnsibleProcess(object):
         self.can_ssh = True
         self.connection_type = self.DEFAULT_SSH_CONNECTION_TYPE
         self.connection_target = "localhost"
+        self.sensitive_data_keywords = ["KEY", "SECRET", "CREDENTIALS", "API", "POLICY"]
 
     def set_connection_params(self, conn_type, target):
         self.connection_type = conn_type
@@ -45,6 +47,18 @@ class AnsibleProcess(object):
 
     def build_connection_target(self, target):
         return target + ","
+
+    def is_sensitive(self, key_string):
+        for word in self.sensitive_data_keywords:
+            if word in key_string:
+                return True
+        return False
+
+    def redact_sensitive_data(self, playbook_args):
+        for key, value in playbook_args.items():
+            if self.is_sensitive(key.upper()):
+                playbook_args[key] = self.REDACT_STRING
+        return playbook_args
 
     def run(self, filename, extra_vars=dict(), host_info={}, print_output=True):
         """Method used to call out to the respective Ansible playbooks.
@@ -120,14 +134,18 @@ class AnsibleProcess(object):
             "-c", connection_type,
         ])
 
+        redacted_process_args = process_args.copy()
+
         # Setup the full list of extra-vars needed for ansible plays.
         process_args.extend(["--extra-vars", json.dumps(playbook_args)])
+        redacted_process_args.extend(
+            ["--extra-vars", json.dumps(self.redact_sensitive_data(playbook_args))])
         env = os.environ.copy()
         if env.get('APPLICATION_CONSOLE_LOG_LEVEL') != 'INFO':
             env['PROFILE_TASKS_TASK_OUTPUT_LIMIT'] = '30'
         logging.info("[app] Running ansible playbook {} against target {}".format(
                         filename, inventory_target))
-        logging.info("Running ansible command {}".format(json.dumps(process_args,
+        logging.info("Running ansible command {}".format(json.dumps(redacted_process_args,
                                                                     separators=(' ', ' '))))
         p = subprocess.Popen(process_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
         stdout, stderr = p.communicate()
@@ -137,5 +155,5 @@ class AnsibleProcess(object):
                                 "failed with return code {} and error '{}'")
         if p.returncode != 0:
             raise YBOpsRuntimeError(EXCEPTION_MSG_FORMAT.format(
-                    filename, inventory_target, process_args, p.returncode, stderr))
+                    filename, inventory_target, redacted_process_args, p.returncode, stderr))
         return p.returncode

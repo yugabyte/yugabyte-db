@@ -17,6 +17,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -60,7 +61,7 @@ public class ShellProcessHandler {
       Map<String, String> extraEnvVars,
       boolean logCmdOutput,
       String description) {
-    return run(command, extraEnvVars, logCmdOutput, description, null);
+    return run(command, extraEnvVars, logCmdOutput, description, null, null);
   }
 
   public ShellResponse run(
@@ -68,7 +69,22 @@ public class ShellProcessHandler {
       Map<String, String> extraEnvVars,
       boolean logCmdOutput,
       String description,
-      UUID uuid) {
+      UUID uuid,
+      Map<String, String> sensitiveData) {
+
+    List<String> redactedCommand = new ArrayList<>(command);
+
+    // Redacting the sensitive data in the command which is used for logging.
+    if (sensitiveData != null) {
+      sensitiveData.forEach(
+          (key, value) -> {
+            redactedCommand.add(key);
+            command.add(key);
+            command.add(value);
+            redactedCommand.add(Util.redactString(value));
+          });
+    }
+
     ProcessBuilder pb = new ProcessBuilder(command);
     Map envVars = pb.environment();
     if (extraEnvVars != null && !extraEnvVars.isEmpty()) {
@@ -82,7 +98,7 @@ public class ShellProcessHandler {
     ShellResponse response = new ShellResponse();
     response.code = -1;
     if (description == null) {
-      response.setDescription(command);
+      response.setDescription(redactedCommand);
     } else {
       response.description = description;
     }
@@ -98,7 +114,7 @@ public class ShellProcessHandler {
       pb.redirectError(tempErrorFile);
       startMs = System.currentTimeMillis();
       LOG.info("Starting proc (abbrev cmd) - {}", response.description);
-      String fullCommand = "'" + String.join("' '", command) + "'";
+      String fullCommand = "'" + String.join("' '", redactedCommand) + "'";
       if (appConfig.getBoolean("yb.log.logEnvVars", false) && extraEnvVars != null) {
         fullCommand = Joiner.on(" ").withKeyValueSeparator("=").join(extraEnvVars) + fullCommand;
       }
@@ -203,12 +219,20 @@ public class ShellProcessHandler {
   }
 
   public ShellResponse run(List<String> command, Map<String, String> extraEnvVars, UUID uuid) {
-    return run(command, extraEnvVars, true /*logCommandOutput*/, null, uuid);
+    return run(command, extraEnvVars, true /*logCommandOutput*/, null, uuid, null);
   }
 
   public ShellResponse run(
       List<String> command, Map<String, String> extraEnvVars, String description) {
     return run(command, extraEnvVars, true /*logCommandOutput*/, description);
+  }
+
+  public ShellResponse run(
+      List<String> command,
+      Map<String, String> extraEnvVars,
+      String description,
+      Map<String, String> sensitiveData) {
+    return run(command, extraEnvVars, true /*logCommandOutput*/, description, null, sensitiveData);
   }
 
   private static void waitForProcessExit(Process process, File outFile, File errFile)
