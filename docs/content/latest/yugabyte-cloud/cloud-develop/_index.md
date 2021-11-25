@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: cloud-develop
     parent: yugabyte-cloud
-    weight: 25
+    weight: 20
 isTocNested: true
 showAsideToc: true
 ---
@@ -20,7 +20,7 @@ Use the examples in this section to learn how to connect your applications to Yu
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="../cloud-basics/connect-application/">
+    <a class="section-link icon-offset" href="connect-application/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
         <div class="title">Connect a Spring Data YugabyteDB application</div>

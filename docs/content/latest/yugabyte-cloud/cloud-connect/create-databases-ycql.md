@@ -1,16 +1,15 @@
 ---
-title: Create and explore a database using YCQL
-headerTitle: Create and explore a database using YCQL
+title: Create and explore a database
 linkTitle: Create a database
-description: Create and explore a database using YCQL.
+description: Use distributed CQL to explore core features of YugabteDB.
 headcontent:
 image: /images/section_icons/quick_start/explore_ycql.png
 menu:
   latest:
-    parent: cloud-basics
+    parent: cloud-connect
     name: Create a database
     identifier: create-databases-2-ycql
-    weight: 60
+    weight: 70
 type: page
 isTocNested: false
 showAsideToc: true
@@ -31,7 +30,6 @@ showAsideToc: true
       YCQL
     </a>
   </li>
-  
 </ul>
 
 Using the `ycqlsh` shell, you can interact with your YugabyteDB database using the YCQL API. In the following exercise, you'll use ycqlsh to create a keyspace, add a table, insert some data, and run a simple query.
@@ -40,7 +38,7 @@ Using the `ycqlsh` shell, you can interact with your YugabyteDB database using t
 
 To create a keyspace and add a table, do the following:
 
-1. Connect to your cluster using `ycqlsh` using the [Client Shell](../connect-to-clusters#connect-via-client-shell) from your computer. You can also do this exercise from the [Cloud Shell](../connect-to-clusters#connect-via-cloud-shell).
+1. Connect to your cluster using `ycqlsh` using the [Client Shell](../connect-client-shell/) from your computer. You can also do this exercise from the [Cloud Shell](../connect-cloud-shell/).
 
 1. Create a keyspace called 'myapp'.
 

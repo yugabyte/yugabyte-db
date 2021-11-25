@@ -1,6 +1,5 @@
 ---
 title: Create and explore a database
-headerTitle: Create and explore a database using YSQL
 linkTitle: Create a database
 description: Create and explore a database using YSQL.
 headcontent:
@@ -10,10 +9,10 @@ aliases:
   - /latest/yugabyte-cloud/create-databases/
 menu:
   latest:
-    parent: cloud-basics
+    parent: cloud-connect
     name: Create a database
     identifier: create-databases-1-ysql
-    weight: 60
+    weight: 70
 type: page
 isTocNested: true
 showAsideToc: true
@@ -53,7 +52,7 @@ The following files are used:
 
 To create a database and load the Retail Analytics dataset, do the following:
 
-1. Connect to your cluster using `ysqlsh` using the [Client Shell](../connect-to-clusters#connect-via-client-shell) from your computer.
+1. Connect to your cluster using `ysqlsh` using the [Client Shell](../connect-client-shell/) from your computer.
 
 1. Create a database (`yb_demo`) using the `CREATE DATABASE` command.
 

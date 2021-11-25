@@ -7,8 +7,8 @@ image: /images/section_icons/deploy/enterprise.png
 menu:
   latest:
     identifier: connect-application
-    parent: cloud-basics
-    weight: 80
+    parent: cloud-develop
+    weight: 10
 isTocNested: true
 showAsideToc: true
 ---

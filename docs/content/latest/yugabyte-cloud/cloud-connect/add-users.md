@@ -7,8 +7,8 @@ image: /images/section_icons/deploy/enterprise.png
 menu:
   latest:
     identifier: add-users
-    parent: cloud-basics
-    weight: 70
+    parent: cloud-connect
+    weight: 60
 isTocNested: true
 showAsideToc: true
 ---
@@ -17,7 +17,7 @@ Create database users to provide clients access to the cluster's YugabyteDB data
 
 Once you have added them as a user to the database, send them the credentials.
 
-You will also have to authorize their network so that they can access the cluster. Refer to [Assign IP allow lists](../add-connections/).
+You will also have to authorize their network so that they can access the cluster. Refer to [Assign IP allow lists](../../cloud-basics/add-connections/).
 
 ## Create a database user
 
@@ -25,7 +25,7 @@ When a cluster is added, an admin user is created for the database. You must add
 
 To add a database user:
 
-1. [Connect to the cluster](../../cloud-basics/connect-to-clusters/) using `ysqlsh` or `ycqlsh`.
+1. Connect to the cluster via [cloud shell](../connect-cloud-shell/) using `ysqlsh` or `ycqlsh`.
 
 1. Add a user using the `CREATE ROLE` statement.
 
