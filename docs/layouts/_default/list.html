@@ -30,7 +30,7 @@
 				<h1>{{ if .Page.Params.headerTitle }}{{ .Page.Params.headerTitle }}{{ else }}{{ .Page.Title }}{{ end }}  {{ if .Draft }} (Draft){{ end }}</h1>
 
 				<div class="head-content clearfix">{{ .Page.Params.headcontent }}</div>
-				
+
 				{{ $urlArray := split (urls.Parse .Permalink).Path "/" }}
 				{{ $latestUrl := path.Join "latest" (after 2 $urlArray) }}
 				{{ $latestUrl = add (add "/" $latestUrl) "/" }}
@@ -38,20 +38,20 @@
 				{{ if eq (index $urlArray 1) "stable" }}
 				<div class="admonition warning">
 					<p class="admonition-title">Attention</p>
-					This page documents the stable (production) version. For testing and development with the latest features, use <a href="{{ $latestUrl }}">the latest (v2.9) version.</a>
+					This page documents the stable (production) version. For testing and development with the latest features, use <a href="{{ $latestUrl }}">the latest (v2.11) version.</a>
 				</div>
 				{{ else if eq (index $urlArray 1) "latest" }}
 				{{ else }}
 				<div class="admonition warning">
 					<p class="admonition-title">Attention</p>
-					This page documents an earlier version. <a href="{{ $latestUrl }}">Go to the latest (v2.9) version.</a>
+					This page documents an earlier version. <a href="{{ $latestUrl }}">Go to the latest (v2.11) version.</a>
 				</div>
 				{{ end }}
 
 				{{ .Content }}
 
 				</div>
-				
+
 				{{ partialCached "footer_links" . }}
 
 			</article>
