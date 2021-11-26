@@ -22,7 +22,7 @@
 # Redirects
 # - Default status is a 301 unless otherwise specified.
 # - First match wins: put wildcards AFTER specific paths!
-# - Wildcards include empty matches: /v1.0/* WILL match /v1.0 
+# - Wildcards include empty matches: /v1.0/* WILL match /v1.0
 #
 # docs: https://docs.netlify.com/routing/redirects/
 #
@@ -141,3 +141,17 @@
     debug = true
     # Relative path to source directory in case you use Hugo's "--s" option
     srcdir = "docs"
+
+[[headers]]
+  #
+  # https://docs.netlify.com/configure-builds/file-based-configuration/#headers
+  #
+  for = "/*"
+  [headers.values]
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains"
+    Content-Security-Policy = ""
+    X-Frame-Options = "SAMEORIGIN"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = ""
+    Permissions-Policy = ""
+    X-XSS-Protection = "1"
