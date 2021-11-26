@@ -35,16 +35,16 @@
 						{{ if eq (index $urlArray 1) "stable" }}
 						<div class="admonition warning">
 							<p class="admonition-title">Attention</p>
-							This page documents the stable (production) version. For testing and development with the latest features, use <a href="{{ $latestUrl }}">the latest (v2.9) version.</a>
+							This page documents the stable (production) version. For testing and development with the latest features, use <a href="{{ $latestUrl }}">the latest (v2.11) version.</a>
 						</div>
 						{{ else if eq (index $urlArray 1) "latest" }}
 						{{ else }}
 						<div class="admonition warning">
 							<p class="admonition-title">Attention</p>
-							This page documents an earlier version. <a href="{{ $latestUrl }}">Go to the latest (v2.9) version.</a>
+							This page documents an earlier version. <a href="{{ $latestUrl }}">Go to the latest (v2.11) version.</a>
 						</div>
 						{{ end }}
-		
+
 						{{if (.Params.showAsideToc) }}
 							<div id="toc-static">{{ .TableOfContents }}</div>
 						{{ else if (and (ge (len .TableOfContents) 50) (ne .Params.toc "false")) }}
@@ -56,9 +56,9 @@
 					<div class="menu-flex-container">
 						<div class="toc-container" id="toc-aside">{{ .TableOfContents }}</div>
 					</div>
-					{{ end }}	
-				</div>	
-			</div>	
+					{{ end }}
+				</div>
+			</div>
 <!--
 				{{if not (.Params.hidePagination) }}
 					{{ partial "pagination" . }}
