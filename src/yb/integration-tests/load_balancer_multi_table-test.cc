@@ -60,7 +60,7 @@ class LoadBalancerMultiTableTest : public YBTableTestBase {
   }
 
   int num_drives() override {
-    return 4;
+    return 2;
   }
 
   client::YBTableName table_name() override {
