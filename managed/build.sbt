@@ -134,7 +134,7 @@ libraryDependencies ++= Seq(
   "org.mindrot" % "jbcrypt" % "0.3m",
   "org.postgresql" % "postgresql" % "9.4.1208",
   "commons-io" % "commons-io" % "2.4",
-  "org.apache.commons" % "commons-compress" % "1.20",
+  "org.apache.commons" % "commons-compress" % "1.21",
   "org.apache.httpcomponents" % "httpcore" % "4.4.5",
   "org.apache.httpcomponents" % "httpclient" % "4.5.2",
   "org.flywaydb" %% "flyway-play" % "4.0.0",
@@ -166,6 +166,7 @@ libraryDependencies ++= Seq(
   "org.apache.velocity" % "velocity" % "1.7",
   "org.apache.velocity" % "velocity-tools" % "2.0",
   "com.fasterxml.jackson.core" % "jackson-core" % "2.10.5",
+  "com.fasterxml.jackson.core" % "jackson-databind" % "2.13.0",
   "com.jayway.jsonpath" % "json-path" % "2.4.0",
   "commons-io" % "commons-io" % "2.8.0",
   "commons-codec" % "commons-codec" % "1.15"
@@ -284,11 +285,14 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.3-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.3-SNAPSHOT" exclude("com.google.code.gson", "gson")
+libraryDependencies += "io.netty" % "netty-handler" % "4.1.68.Final"
+libraryDependencies += "io.netty" % "netty-codec-http" % "4.1.68.Final"
+libraryDependencies += "com.google.code.gson" % "gson" % "2.8.9"
 
-dependencyOverrides += "io.netty" % "netty-handler" % "4.0.36.Final"
 dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "latest.integration"
 dependencyOverrides += "com.google.guava" % "guava" % "23.0"
+dependencyOverrides += "com.google.code.gson" % "gson" % "2.8.9"
 
 javaOptions in Test += "-Dconfig.file=src/main/resources/application.test.conf"
 testOptions += Tests.Argument(TestFrameworks.JUnit, "-v", "-q", "-a")
