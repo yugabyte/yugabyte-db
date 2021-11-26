@@ -25,6 +25,8 @@
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_rowblock.h"
 
+#include "yb/gutil/callback.h"
+
 namespace yb {
 namespace ql {
 

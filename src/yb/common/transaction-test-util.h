@@ -20,6 +20,7 @@
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/transaction.h"
+#include "yb/util/result.h"
 #include "yb/util/test_macros.h"
 
 namespace yb {

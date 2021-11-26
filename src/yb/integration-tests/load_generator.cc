@@ -20,6 +20,7 @@
 
 #include "yb/client/client.h"
 #include "yb/client/error.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
@@ -39,6 +40,7 @@
 #include "yb/util/env.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/sockaddr.h"
+#include "yb/util/result.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/threadlocal.h"
 
@@ -69,7 +71,6 @@ using yb::client::YBError;
 using yb::client::YBNoOp;
 using yb::client::YBSession;
 using yb::client::YBTable;
-using yb::client::YBValue;
 using yb::redisserver::RedisReply;
 
 DEFINE_bool(load_gen_verbose,

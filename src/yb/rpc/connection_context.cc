@@ -10,13 +10,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/rpc/connection_context.h"
 
 #include "yb/rpc/connection.h"
-
-
-#include "yb/util/env.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/size_literals.h"
 
@@ -28,6 +24,10 @@ DEFINE_int64(read_buffer_memory_limit, -5,
 
 namespace yb {
 namespace rpc {
+
+Status ConnectionContextBase::ReportPendingWriteBytes(size_t bytes_in_queue) {
+  return Status::OK();
+}
 
 void ConnectionContext::UpdateLastRead(const ConnectionPtr& connection) {
   // By default any read events on connection updates it's last activity. This could be
@@ -55,6 +55,12 @@ ConnectionContextFactory::ConnectionContextFactory(
 }
 
 ConnectionContextFactory::~ConnectionContextFactory() = default;
+
+std::string ProcessCallsResult::ToString() const {
+  return Format(
+      "{ consumed: $0 buffer.size(): $1 bytes_to_skip: $2 }",
+      consumed, buffer.size(), bytes_to_skip);
+}
 
 } // namespace rpc
 } // namespace yb

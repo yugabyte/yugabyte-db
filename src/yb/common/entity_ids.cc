@@ -17,6 +17,7 @@
 
 #include "yb/gutil/strings/escaping.h"
 #include "yb/util/cast.h"
+#include "yb/util/result.h"
 
 using boost::uuids::uuid;
 

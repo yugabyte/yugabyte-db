@@ -59,6 +59,7 @@
 
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/debug/long_operation_tracker.h"
+#include "yb/util/debug-util.h"
 #include "yb/util/enums.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"

@@ -24,11 +24,11 @@
 #include "yb/common/transaction_error.h"
 
 #include "yb/docdb/doc_ttl_util.h"
+#include "yb/docdb/docdb_compaction_filter.h"
 
 #include "yb/server/hybrid_clock.h"
 
 #include "yb/common/transaction.h"
-#include "yb/docdb/docdb_compaction_filter.h"
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/thread_annotations.h"
@@ -96,7 +96,7 @@ HistoryRetentionDirective TabletRetentionPolicy::GetRetentionDirective() {
     }
   }
 
-  std::shared_ptr<ColumnIds> deleted_before_history_cutoff = std::make_shared<ColumnIds>();
+  auto deleted_before_history_cutoff = std::make_shared<docdb::ColumnIds>();
   for (const auto& deleted_col : *metadata_.deleted_cols()) {
     if (deleted_col.ht < history_cutoff) {
       deleted_before_history_cutoff->insert(deleted_col.id);

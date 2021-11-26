@@ -19,6 +19,7 @@
 #include "yb/master/master.pb.h"
 #include "yb/client/namespace_alterer.h"
 #include "yb/client/yb_op.h"
+#include "yb/client/yb_table_name.h"
 
 #include "yb/common/common.pb.h"
 #include "yb/common/entity_ids.h"
@@ -203,7 +204,7 @@ Status PgCreateTable::AddColumnImpl(const char *attr_name,
                                     int attr_ybtype,
                                     bool is_hash,
                                     bool is_range,
-                                    ColumnSchema::SortingType sorting_type) {
+                                    SortingType sorting_type) {
   auto& column = *req_.mutable_create_columns()->Add();
   column.set_attr_name(attr_name);
   column.set_attr_num(attr_num);

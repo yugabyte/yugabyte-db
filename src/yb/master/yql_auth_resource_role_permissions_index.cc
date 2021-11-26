@@ -11,9 +11,12 @@
 // under the License.
 //
 
+#include "yb/master/yql_auth_resource_role_permissions_index.h"
+
+#include "yb/common/ql_type.h"
+
 #include "yb/master/catalog_manager.h"
 #include "yb/master/permissions_manager.h"
-#include "yb/master/yql_auth_resource_role_permissions_index.h"
 
 namespace yb {
 namespace master {

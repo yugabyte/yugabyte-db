@@ -10,7 +10,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/docdb/intent.h"
 
 #include <string>
@@ -21,6 +20,8 @@
 #include "yb/common/transaction.h"
 #include "yb/docdb/value_type.h"
 #include "yb/gutil/endian.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 namespace docdb {

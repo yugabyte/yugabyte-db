@@ -27,7 +27,6 @@
 #include "ybgate/ybgate_api.h"
 
 #include "yb/common/ql_value.h"
-#include "yb/common/schema.h"
 
 namespace yb {
 namespace docdb {

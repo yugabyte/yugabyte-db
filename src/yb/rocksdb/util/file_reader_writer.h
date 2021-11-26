@@ -25,6 +25,9 @@
 #define YB_ROCKSDB_UTIL_FILE_READER_WRITER_H
 
 #include <string>
+
+#include <gflags/gflags_declare.h>
+
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/util/aligned_buffer.h"
 #include "yb/rocksdb/util/statistics.h"
@@ -167,9 +170,7 @@ class WritableFileWriter {
 
   WritableFileWriter& operator=(const WritableFileWriter&) = delete;
 
-  ~WritableFileWriter() {
-    WARN_NOT_OK(Close(), "Failed to close file");
-  }
+  ~WritableFileWriter();
 
   Status Append(const Slice& data);
 
@@ -186,9 +187,7 @@ class WritableFileWriter {
 
   uint64_t GetFileSize() { return filesize_; }
 
-  Status InvalidateCache(size_t offset, size_t length) {
-    return writable_file_->InvalidateCache(offset, length);
-  }
+  Status InvalidateCache(size_t offset, size_t length);
 
   WritableFile* writable_file() const { return writable_file_.get(); }
 

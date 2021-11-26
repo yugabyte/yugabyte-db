@@ -57,4 +57,14 @@ void UpdateUserFrontier(UserFrontierPtr* value, UserFrontierPtr&& update,
   }
 }
 
+std::string UserFrontiers::ToString() const {
+  return ::yb::Format("{ smallest: $0 largest: $1 }", Smallest(), Largest());
+}
+
+std::string LiveFileMetaData::ToString() const {
+  return YB_STRUCT_TO_STRING(
+      total_size, base_size, uncompressed_size, name, db_path, imported,
+      being_compacted, column_family_name, level, smallest, largest);
+}
+
 } // namespace rocksdb

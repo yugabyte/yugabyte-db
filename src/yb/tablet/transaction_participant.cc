@@ -55,6 +55,7 @@
 #include "yb/util/delayer.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/locks.h"
+#include "yb/util/logging.h"
 #include "yb/util/lru_cache.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random_util.h"

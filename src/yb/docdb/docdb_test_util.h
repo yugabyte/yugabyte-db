@@ -22,13 +22,10 @@
 
 #include "yb/rocksdb/db.h"
 
-#include "yb/docdb/doc_key.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_util.h"
-#include "yb/docdb/docdb_compaction_filter.h"
 #include "yb/docdb/in_mem_docdb.h"
-#include "yb/docdb/primitive_value.h"
 #include "yb/docdb/subdocument.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/util/strongly_typed_bool.h"
@@ -135,6 +132,7 @@ class DocDBLoadGenerator {
                      int max_nesting_level = 10,
                      uint64 random_seed = kDefaultRandomSeed,
                      int verification_frequency = 100);
+  ~DocDBLoadGenerator();
 
   // Performs a random DocDB operation according to the configured options. This also verifies
   // the consistency of RocksDB-backed DocDB (which is close to the production codepath) with an
@@ -240,7 +238,7 @@ class DocDBLoadGenerator {
   // invalid after history cleanup.
   void RecordSnapshotDivergence(const InMemDocDbState &snapshot, HybridTime cleanup_ht);
 
-  TransactionOperationContextOpt GetReadOperationTransactionContext();
+  TransactionOperationContext GetReadOperationTransactionContext();
 };
 
 // Used for pre-processing multi-line DocDB debug dump strings in tests.  Removes common indentation

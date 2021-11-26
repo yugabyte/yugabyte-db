@@ -39,6 +39,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/common/common_fwd.h"
+#include "yb/common/ql_rowblock.h"
 #include "yb/common/schema.h"
 #include "yb/bfql/tserver_opcodes.h"
 #include "yb/tablet/tablet.h"

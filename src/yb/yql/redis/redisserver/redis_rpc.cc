@@ -27,6 +27,8 @@
 #include "yb/rpc/rpc_introspection.pb.h"
 
 #include "yb/util/logging.h"
+#include "yb/util/metrics.h"
+#include "yb/util/result.h"
 #include "yb/util/size_literals.h"
 
 #include "yb/util/debug/trace_event.h"

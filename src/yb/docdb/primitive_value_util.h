@@ -16,9 +16,7 @@
 #ifndef YB_DOCDB_PRIMITIVE_VALUE_UTIL_H
 #define YB_DOCDB_PRIMITIVE_VALUE_UTIL_H
 
-#include "yb/common/schema.h"
 #include "yb/docdb/docdb.h"
-#include "yb/docdb/primitive_value.h"
 
 namespace yb {
 namespace docdb {

@@ -17,6 +17,7 @@
 #include <ostream>
 
 #include <string>
+#include <unordered_set>
 
 #include <boost/function.hpp>
 

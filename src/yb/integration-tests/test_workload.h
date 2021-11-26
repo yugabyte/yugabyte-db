@@ -34,6 +34,7 @@
 
 #include "yb/client/client.h"
 #include "yb/client/table.h"
+#include "yb/client/yb_table_name.h"
 
 namespace yb {
 

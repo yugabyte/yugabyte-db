@@ -24,6 +24,8 @@
 
 namespace yb {
 
+class faststring;
+
 //--------------------------------------------------------------------------------------------------
 // A rsrow descriptor represents the metadata of a row in the resultset.
 class QLRSRowDesc {
@@ -50,12 +52,12 @@ class QLRSRowDesc {
     return rscol_descs_.size();
   }
 
-  const vector<RSColDesc>& rscol_descs() const {
+  const std::vector<RSColDesc>& rscol_descs() const {
     return rscol_descs_;
   }
 
  private:
-  vector<RSColDesc> rscol_descs_;
+  std::vector<RSColDesc> rscol_descs_;
 };
 
 //--------------------------------------------------------------------------------------------------

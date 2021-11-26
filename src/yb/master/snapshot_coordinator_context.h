@@ -84,7 +84,7 @@ class SnapshotCoordinatorContext {
 };
 
 Result<docdb::KeyBytes> EncodedKey(
-    SysRowEntry::Type type, const Slice& id, SnapshotCoordinatorContext* context);
+    SysRowEntryType type, const Slice& id, SnapshotCoordinatorContext* context);
 
 } // namespace master
 } // namespace yb

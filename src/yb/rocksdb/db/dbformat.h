@@ -31,7 +31,6 @@
 #include <string>
 
 #include "yb/util/logging.h"
-#include "yb/util/result.h"
 
 #include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/db.h"

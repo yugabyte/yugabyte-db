@@ -54,13 +54,14 @@
 
 #include "yb/util/enums.h"
 #include "yb/util/ev_util.h"
-#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
+#include "yb/util/metrics_fwd.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/socket.h"
 #include "yb/util/object_pool.h"
 #include "yb/util/ref_cnt_buffer.h"
+#include "yb/util/locks.h"
 #include "yb/util/status.h"
 #include "yb/util/strongly_typed_bool.h"
 

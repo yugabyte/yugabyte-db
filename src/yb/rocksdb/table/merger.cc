@@ -36,6 +36,7 @@
 #include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
 #include "yb/rocksdb/util/autovector.h"
+#include "yb/util/status_log.h"
 
 namespace rocksdb {
 // Without anonymous namespace here, we fail the warning -Wmissing-prototypes

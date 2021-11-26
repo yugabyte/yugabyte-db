@@ -46,6 +46,7 @@
 #include "yb/util/status.h"
 #include "yb/util/test_util.h"
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
 #include "yb/common/common.pb.h"
 
 using yb::rpc::Messenger;

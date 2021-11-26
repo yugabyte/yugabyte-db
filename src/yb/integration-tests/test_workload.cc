@@ -38,6 +38,7 @@
 
 #include "yb/client/client-test-util.h"
 #include "yb/client/error.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
@@ -66,7 +67,6 @@ namespace yb {
 
 using client::YBClient;
 using client::YBClientBuilder;
-using client::YBColumnSchema;;
 using client::YBSchema;
 using client::YBSchemaBuilder;
 using client::YBSchemaFromSchema;

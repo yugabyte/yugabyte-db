@@ -21,6 +21,7 @@
 #include "yb/server/random_error_clock.h"
 
 #include "yb/util/random_util.h"
+#include "yb/util/thread.h"
 
 #include "yb/yql/cql/ql/util/errcodes.h"
 

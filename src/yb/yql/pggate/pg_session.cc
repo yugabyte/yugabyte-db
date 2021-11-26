@@ -30,6 +30,7 @@
 #include "yb/client/tablet_server.h"
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
+#include "yb/client/yb_table_name.h"
 
 #include "yb/common/pgsql_error.h"
 #include "yb/common/pg_types.h"
@@ -40,6 +41,8 @@
 
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/primitive_value.h"
+
+#include "yb/gutil/casts.h"
 
 #include "yb/tserver/tserver_shared_mem.h"
 
@@ -200,9 +203,7 @@ CHECKED_STATUS CombineErrorsToStatus(const client::CollectedErrors& errors, cons
   return AppendTxnErrorCode(AppendPsqlErrorCode(result, errors), errors);
 }
 
-docdb::PrimitiveValue NullValue(ColumnSchema::SortingType sorting) {
-  using SortingType = ColumnSchema::SortingType;
-
+docdb::PrimitiveValue NullValue(SortingType sorting) {
   return docdb::PrimitiveValue(
       sorting == SortingType::kAscendingNullsLast || sorting == SortingType::kDescendingNullsLast
           ? docdb::ValueType::kNullHigh
@@ -1095,6 +1096,10 @@ Result<int> PgSession::TabletServerCount(bool primary_only) {
 
 Result<client::TabletServersInfo> PgSession::ListTabletServers() {
   return pg_client_.ListLiveTabletServers(false);
+}
+
+bool PgSession::ShouldUseFollowerReads() const {
+  return pg_txn_manager_->ShouldUseFollowerReads();
 }
 
 void PgSession::SetTimeout(const int timeout_ms) {

@@ -28,6 +28,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/rocksdb/env.h"
+
 #include "yb/util/test_macros.h"
 
 namespace rocksdb {

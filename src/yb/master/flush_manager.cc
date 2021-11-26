@@ -18,6 +18,8 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager-internal.h"
 
+#include "yb/util/trace.h"
+
 namespace yb {
 namespace master {
 

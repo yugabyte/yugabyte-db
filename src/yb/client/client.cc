@@ -69,6 +69,7 @@
 #include "yb/util/monotime.h"
 #include "yb/client/client-internal.h"
 #include "yb/client/client_fwd.h"
+#include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/rpc.h"
 #include "yb/util/result.h"

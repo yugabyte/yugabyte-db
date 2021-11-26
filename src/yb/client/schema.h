@@ -51,6 +51,7 @@
 
 #include "yb/client/client_fwd.h"
 #include "yb/client/value.h"
+#include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 
 #include "yb/util/status.h"
@@ -165,7 +166,7 @@ class YBColumnSchema {
                  bool is_static = false,
                  bool is_counter = false,
                  int32_t order = 0,
-                 ColumnSchema::SortingType sorting_type = ColumnSchema::SortingType::kNotSpecified);
+                 SortingType sorting_type = SortingType::kNotSpecified);
   YBColumnSchema(const YBColumnSchema& other);
   ~YBColumnSchema();
 
@@ -183,7 +184,7 @@ class YBColumnSchema {
   bool is_static() const;
   bool is_counter() const;
   int32_t order() const;
-  ColumnSchema::SortingType sorting_type() const;
+  SortingType sorting_type() const;
 
  private:
   friend class YBColumnSpec;
@@ -252,7 +253,7 @@ class YBColumnSpec {
   YBColumnSpec* Order(int32_t order);
 
   // Specify the user-defined sorting direction.
-  YBColumnSpec* SetSortingType(ColumnSchema::SortingType sorting_type);
+  YBColumnSpec* SetSortingType(SortingType sorting_type);
 
   // Identify this column as counter.
   YBColumnSpec* Counter();

@@ -15,8 +15,11 @@
 
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/schema.h"
 
 #include "yb/gutil/casts.h"
+
+#include "yb/util/result.h"
 
 namespace yb {
 namespace master {

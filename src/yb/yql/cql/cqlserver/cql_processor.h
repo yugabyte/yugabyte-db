@@ -115,7 +115,7 @@ class CQLProcessor : public ql::QLProcessor {
   void PrepareAndSendResponse(const std::unique_ptr<ql::CQLResponse>& response);
   void SendResponse(const ql::CQLResponse& response);
 
-  const unordered_map<string, vector<string>> kSupportedOptions = {
+  const std::unordered_map<string, vector<string>> kSupportedOptions = {
       {ql::CQLMessage::kCQLVersionOption,
           {"3.0.0" /* minimum */, "3.4.2" /* current */}},
       {ql::CQLMessage::kCompressionOption,

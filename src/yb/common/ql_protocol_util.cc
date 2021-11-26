@@ -14,7 +14,11 @@
 #include "yb/common/ql_protocol_util.h"
 
 #include "yb/common/ql_rowblock.h"
+#include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
+
+#include "yb/util/result.h"
+#include "yb/util/status_log.h"
 
 namespace yb {
 
@@ -120,6 +124,13 @@ bool RequireRead(const QLWriteRequestPB& request, const Schema& schema) {
   bool is_range_operation = IsRangeOperation(request, schema);
 
   return RequireReadForExpressions(request) || has_user_timestamp || is_range_operation;
+}
+
+Result<int32_t> CQLDecodeLength(Slice* data) {
+  RETURN_NOT_ENOUGH(data, sizeof(int32_t));
+  const auto len = static_cast<int32_t>(NetworkByteOrder::Load32(data->data()));
+  data->remove_prefix(sizeof(int32_t));
+  return len;
 }
 
 } // namespace yb

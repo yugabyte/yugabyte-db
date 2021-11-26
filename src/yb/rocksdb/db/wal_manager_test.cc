@@ -33,11 +33,13 @@
 #include "yb/rocksdb/db/writebuffer.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/mock_env.h"
-#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/table/mock_table.h"
 #include "yb/rocksdb/db/db_impl.h"
+
+#include "yb/util/status_log.h"
+#include "yb/util/string_util.h"
 
 namespace rocksdb {
 
