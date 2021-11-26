@@ -19,6 +19,7 @@
 #include <boost/multi_index/ordered_index.hpp>
 
 #include "yb/client/client.h"
+#include "yb/client/schema.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/tablet_server.h"
@@ -28,11 +29,13 @@
 #include "yb/master/master.proxy.h"
 
 #include "yb/rpc/rpc_context.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/scheduler.h"
 
 #include "yb/tserver/pg_client_session.h"
 
 #include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
 
 using namespace std::literals;
 
@@ -136,8 +139,8 @@ class PgClientServiceImpl::Impl {
       const PgOpenTableRequestPB& req, PgOpenTableResponsePB* resp, rpc::RpcContext* context) {
     client::YBTablePtr table;
     RETURN_NOT_OK(client().OpenTable(req.table_id(), &table, resp->mutable_info()));
-    RSTATUS_DCHECK_EQ(
-        table->table_type(), client::YBTableType::PGSQL_TABLE_TYPE, RuntimeError,
+    RSTATUS_DCHECK(
+        table->table_type() == client::YBTableType::PGSQL_TABLE_TYPE, RuntimeError,
         "Wrong table type");
 
     auto partitions = table->GetVersionedPartitions();

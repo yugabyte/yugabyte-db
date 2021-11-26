@@ -13,6 +13,8 @@
 
 #include "yb/master/yql_triggers_vtable.h"
 
+#include "yb/common/ql_type.h"
+
 namespace yb {
 namespace master {
 

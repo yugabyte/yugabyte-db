@@ -30,8 +30,8 @@
 #include "yb/rocksdb/util/random.h"
 #include "yb/rocksdb/util/testharness.h"
 
+#include "yb/util/format.h"
 #include "yb/util/random_util.h"
-
 
 namespace rocksdb {
 

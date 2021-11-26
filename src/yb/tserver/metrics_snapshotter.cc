@@ -51,6 +51,7 @@
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
+#include "yb/client/yb_table_name.h"
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/stringprintf.h"
@@ -65,6 +66,7 @@
 
 #include "yb/client/client_fwd.h"
 #include "yb/gutil/macros.h"
+#include "yb/util/logging.h"
 #include "yb/util/tsan_util.h"
 
 #include <boost/algorithm/string.hpp>

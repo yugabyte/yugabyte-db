@@ -36,6 +36,7 @@
 
 #include "yb/consensus/opid_util.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/util/result.h"
 
 namespace yb {
 namespace consensus {

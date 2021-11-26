@@ -15,6 +15,7 @@
 #define YB_TABLET_TRANSACTION_LOADER_H
 
 #include <condition_variable>
+#include <thread>
 
 #include "yb/common/transaction.h"
 

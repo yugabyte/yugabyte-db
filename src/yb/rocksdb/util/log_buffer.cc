@@ -18,6 +18,8 @@
 
 #include "yb/rocksdb/util/log_buffer.h"
 
+#include <glog/logging.h>
+
 #include "yb/rocksdb/port/sys_time.h"
 #include "yb/rocksdb/port/port.h"
 
@@ -28,6 +30,11 @@ namespace rocksdb {
 LogBuffer::LogBuffer(const InfoLogLevel log_level,
                      Logger*info_log)
     : log_level_(log_level), info_log_(info_log) {}
+
+LogBuffer::~LogBuffer() {
+  LOG_IF(DFATAL, !IsEmpty())
+      << "LogBuffer should be explicitly flushed in order to not lost accumulated log entries.";
+}
 
 void LogBuffer::AddLogToBuffer(
     const char* file,

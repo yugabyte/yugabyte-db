@@ -40,6 +40,7 @@
 #include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/sync_point.h"
 
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 
 namespace rocksdb {

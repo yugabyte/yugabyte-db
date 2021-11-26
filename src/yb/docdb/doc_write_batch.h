@@ -26,6 +26,7 @@
 #include "yb/docdb/doc_path.h"
 #include "yb/docdb/doc_write_batch_cache.h"
 #include "yb/docdb/intent_aware_iterator.h"
+#include "yb/docdb/key_bounds.h"
 #include "yb/docdb/subdocument.h"
 #include "yb/docdb/value.h"
 #include "yb/util/monotime.h"

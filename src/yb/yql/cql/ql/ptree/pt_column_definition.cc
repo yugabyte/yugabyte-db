@@ -37,7 +37,7 @@ PTColumnDefinition::PTColumnDefinition(MemoryContext *memctx,
       is_hash_key_(false),
       is_static_(false),
       order_(-1),
-      sorting_type_(ColumnSchema::SortingType::kNotSpecified),
+      sorting_type_(SortingType::kNotSpecified),
       coldef_name_(*name) {
 }
 

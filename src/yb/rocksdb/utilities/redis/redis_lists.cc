@@ -43,8 +43,10 @@
 #include <memory>
 #include <cmath>
 
-#include "yb/util/slice.h"
 #include "yb/rocksdb/util/coding.h"
+
+#include "yb/util/slice.h"
+#include "yb/util/status_log.h"
 
 namespace rocksdb {
 

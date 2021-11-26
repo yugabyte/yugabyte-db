@@ -18,6 +18,7 @@
 #ifndef YB_YQL_PGGATE_PG_COLUMN_H_
 #define YB_YQL_PGGATE_PG_COLUMN_H_
 
+#include "yb/common/schema.h"
 #include "yb/yql/pggate/pg_expr.h"
 
 namespace yb {

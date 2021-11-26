@@ -28,7 +28,6 @@
 #include <unordered_map>
 
 #include "yb/rocksdb/status.h"
-#include "yb/util/result.h"
 
 namespace rocksdb {
 

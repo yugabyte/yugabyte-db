@@ -37,18 +37,21 @@
 #include <vector>
 #include <unordered_map>
 
+#undef EV_ERROR
 #include <ev++.h> // NOLINT
 
 #include "yb/gutil/atomicops.h"
-#include "yb/util/thread.h"
+#include "yb/gutil/ref_counted.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/socket.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
 class Counter;
+class MetricEntity;
 class Socket;
+class Thread;
 
 namespace rpc {
 

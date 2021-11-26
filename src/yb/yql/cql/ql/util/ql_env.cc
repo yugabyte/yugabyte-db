@@ -18,11 +18,16 @@
 #include "yb/client/client.h"
 #include "yb/client/meta_data_cache.h"
 #include "yb/client/permissions.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/table_alterer.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/transaction_pool.h"
+
+#include "yb/common/ql_type.h"
+
+#include "yb/util/result.h"
 
 #include "yb/yql/cql/ql/util/ql_env.h"
 

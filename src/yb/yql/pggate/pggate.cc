@@ -65,7 +65,7 @@ namespace {
 CHECKED_STATUS AddColumn(PgCreateTable* pg_stmt, const char *attr_name, int attr_num,
                          const YBCPgTypeEntity *attr_type, bool is_hash, bool is_range,
                          bool is_desc, bool is_nulls_first) {
-  using SortingType = ColumnSchema::SortingType;
+  using SortingType = SortingType;
   SortingType sorting_type = SortingType::kNotSpecified;
 
   if (!is_hash && is_range) {

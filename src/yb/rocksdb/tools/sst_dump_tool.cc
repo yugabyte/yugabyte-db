@@ -53,6 +53,8 @@
 
 #include "yb/docdb/docdb_debug.h"
 
+#include "yb/util/status_log.h"
+
 using yb::docdb::EntryToString;
 using yb::docdb::StorageDbType;
 

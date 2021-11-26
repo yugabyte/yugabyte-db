@@ -17,6 +17,7 @@
 #include "yb/gutil/strings/join.h"
 
 #include "yb/util/flag_tags.h"
+#include "yb/util/thread.h"
 
 using namespace std::literals;
 

@@ -14,6 +14,8 @@
 #include "yb/master/cdc_rpc_tasks.h"
 
 #include "yb/client/client.h"
+#include "yb/client/yb_table_name.h"
+
 #include "yb/gutil/bind.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/secure_stream.h"

@@ -14,6 +14,8 @@
 #ifndef YB_TSERVER_PG_CLIENT_SESSION_H
 #define YB_TSERVER_PG_CLIENT_SESSION_H
 
+#include <mutex>
+
 #include <boost/preprocessor/seq/for_each.hpp>
 
 #include "yb/client/client_fwd.h"

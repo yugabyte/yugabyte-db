@@ -22,8 +22,6 @@
 namespace yb {
 namespace docdb {
 
-using common::QLScanRange;
-
 std::vector<PrimitiveValue> GetRangeKeyScanSpec(
     const Schema& schema,
     const std::vector<PrimitiveValue>* prefixed_hash_components,
@@ -64,8 +62,8 @@ std::vector<PrimitiveValue> GetRangeKeyScanSpec(
   return range_components;
 }
 
-PrimitiveValue GetQLRangeBoundAsPVal(const common::QLScanRange::QLRange& ql_range,
-                                     ColumnSchema::SortingType sorting_type,
+PrimitiveValue GetQLRangeBoundAsPVal(const QLScanRange::QLRange& ql_range,
+                                     SortingType sorting_type,
                                      bool lower_bound) {
   const auto sort_order = PrimitiveValue::SortOrderFromColumnSchemaSortingType(sorting_type);
 

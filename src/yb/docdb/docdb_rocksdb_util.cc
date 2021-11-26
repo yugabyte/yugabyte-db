@@ -10,37 +10,39 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/docdb/docdb_rocksdb_util.h"
 
-#include <thread>
 #include <memory>
+#include <thread>
 
 #include "yb/common/transaction.h"
-
-
-#include "yb/rocksdb/memtablerep.h"
-#include "yb/rocksdb/options.h"
-#include "yb/rocksdb/rate_limiter.h"
-#include "yb/rocksdb/table.h"
-#include "yb/rocksdb/types.h"
+#include "yb/docdb/bounded_rocksdb_iterator.h"
+#include "yb/docdb/consensus_frontier.h"
+#include "yb/docdb/doc_key.h"
+#include "yb/docdb/intent_aware_iterator.h"
+#include "yb/docdb/key_bounds.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/sysinfo.h"
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/version_edit.h"
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/db/writebuffer.h"
+#include "yb/rocksdb/memtablerep.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/rate_limiter.h"
+#include "yb/rocksdb/table.h"
 #include "yb/rocksdb/table/filtering_iterator.h"
+#include "yb/rocksdb/types.h"
 #include "yb/rocksdb/util/compression.h"
-
-#include "yb/docdb/bounded_rocksdb_iterator.h"
-#include "yb/docdb/consensus_frontier.h"
-#include "yb/docdb/intent_aware_iterator.h"
 #include "yb/rocksutil/yb_rocksdb_logger.h"
+#include "yb/util/bytes_formatter.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/priority_thread_pool.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/trace.h"
-#include "yb/gutil/sysinfo.h"
 
 using namespace yb::size_literals;  // NOLINT.
 using namespace std::literals;
@@ -338,7 +340,7 @@ unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
     BloomFilterMode bloom_filter_mode,
     const boost::optional<const Slice>& user_key_for_filter,
     const rocksdb::QueryId query_id,
-    const TransactionOperationContextOpt& txn_op_context,
+    const TransactionOperationContext& txn_op_context,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter,

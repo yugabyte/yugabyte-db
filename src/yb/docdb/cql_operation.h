@@ -30,13 +30,6 @@ class IndexMap;
 class QLResultSet;
 class QLRowBlock;
 
-namespace common {
-
-class QLScanSpec;
-class YQLStorageIf;
-
-}
-
 namespace docdb {
 
 class QLWriteOperation :
@@ -46,7 +39,7 @@ class QLWriteOperation :
   QLWriteOperation(std::shared_ptr<const Schema> schema,
                    std::reference_wrapper<const IndexMap> index_map,
                    const Schema* unique_index_key_schema,
-                   const TransactionOperationContextOpt& txn_op_context);
+                   const TransactionOperationContext& txn_op_context);
 
   // Construct a QLWriteOperation. Content of request will be swapped out by the constructor.
   CHECKED_STATUS Init(QLWriteRequestPB* request, QLResponsePB* response);
@@ -159,7 +152,7 @@ class QLWriteOperation :
 
   std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>> index_requests_;
 
-  const TransactionOperationContextOpt txn_op_context_;
+  const TransactionOperationContext txn_op_context_;
 
   // The row that is returned to the CQL client for an INSERT/UPDATE/DELETE that has a
   // "... IF <condition> ..." clause. The row contains the "[applied]" status column
@@ -194,10 +187,10 @@ class QLReadOperation : public DocExprExecutor {
  public:
   QLReadOperation(
       const QLReadRequestPB& request,
-      const TransactionOperationContextOpt& txn_op_context)
+      const TransactionOperationContext& txn_op_context)
       : request_(request), txn_op_context_(txn_op_context) {}
 
-  CHECKED_STATUS Execute(const common::YQLStorageIf& ql_storage,
+  CHECKED_STATUS Execute(const YQLStorageIf& ql_storage,
                          CoarseTimePoint deadline,
                          const ReadHybridTime& read_time,
                          const Schema& schema,
@@ -205,14 +198,14 @@ class QLReadOperation : public DocExprExecutor {
                          QLResultSet* result_set,
                          HybridTime* restart_read_ht);
 
-  CHECKED_STATUS PopulateResultSet(const std::unique_ptr<common::QLScanSpec>& spec,
+  CHECKED_STATUS PopulateResultSet(const std::unique_ptr<QLScanSpec>& spec,
                                    const QLTableRow& table_row,
                                    QLResultSet *result_set);
 
   CHECKED_STATUS EvalAggregate(const QLTableRow& table_row);
   CHECKED_STATUS PopulateAggregate(const QLTableRow& table_row, QLResultSet *resultset);
 
-  CHECKED_STATUS AddRowToResult(const std::unique_ptr<common::QLScanSpec>& spec,
+  CHECKED_STATUS AddRowToResult(const std::unique_ptr<QLScanSpec>& spec,
                                 const QLTableRow& row,
                                 const size_t row_count_limit,
                                 const size_t offset,
@@ -228,14 +221,14 @@ class QLReadOperation : public DocExprExecutor {
 
   // Checks whether we have processed enough rows for a page and sets the appropriate paging
   // state in the response object.
-  CHECKED_STATUS SetPagingStateIfNecessary(const common::YQLRowwiseIteratorIf* iter,
+  CHECKED_STATUS SetPagingStateIfNecessary(const YQLRowwiseIteratorIf* iter,
                                            const QLResultSet* resultset,
                                            const size_t row_count_limit,
                                            const size_t num_rows_skipped,
                                            const ReadHybridTime& read_time);
 
   const QLReadRequestPB& request_;
-  const TransactionOperationContextOpt txn_op_context_;
+  const TransactionOperationContext txn_op_context_;
   QLResponsePB response_;
 };
 

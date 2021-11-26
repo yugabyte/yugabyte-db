@@ -22,7 +22,7 @@ namespace yb {
 namespace master {
 
 // An iterator over a YQLVirtualTable.
-class YQLVTableIterator : public common::YQLRowwiseIteratorIf {
+class YQLVTableIterator : public YQLRowwiseIteratorIf {
  public:
   // hashed_column_values - is used to filter rows, i.e. if hashed_column_values is not empty
   // only rows starting with specified hashed columns will be iterated.

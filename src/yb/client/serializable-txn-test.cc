@@ -18,7 +18,7 @@
 
 #include "yb/util/async_util.h"
 #include "yb/util/random_util.h"
-
+#include "yb/util/thread.h"
 
 using namespace std::literals;
 

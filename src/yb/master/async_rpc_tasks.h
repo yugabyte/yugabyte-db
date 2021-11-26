@@ -20,6 +20,7 @@
 
 #include "yb/common/constants.h"
 #include "yb/common/entity_ids.h"
+#include "yb/common/transaction.h"
 
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/metadata.pb.h"

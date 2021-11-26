@@ -57,6 +57,7 @@
 #include "yb/master/master.pb.h"
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/util/enums.h"
+#include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/result.h"

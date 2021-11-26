@@ -10,11 +10,10 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include "yb/rocksutil/yb_rocksdb.h"
 
 #include <string>
 
-#include "yb/gutil/strings/substitute.h"
-#include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/util/bytes_formatter.h"
 
 using std::shared_ptr;

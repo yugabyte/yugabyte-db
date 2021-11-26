@@ -20,10 +20,11 @@
 #include <unordered_map>
 #include <vector>
 
+#include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/shared_lock_manager_fwd.h"
-#include "yb/docdb/lock_batch.h"
 #include "yb/gutil/spinlock.h"
 #include "yb/util/cross_thread_mutex.h"
+#include "yb/util/monotime.h"
 
 namespace yb {
 namespace docdb {

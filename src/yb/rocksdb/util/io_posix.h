@@ -58,7 +58,7 @@ class PosixWritableFile : public WritableFile {
 
   // Means Close() will properly take care of truncate
   // and it does not need any additional information
-  virtual Status Truncate(uint64_t size) override { return Status::OK(); }
+  virtual Status Truncate(uint64_t size) override;
   virtual Status Close() override;
   virtual Status Append(const Slice& data) override;
   virtual Status Flush() override;
@@ -87,7 +87,7 @@ class PosixMmapReadableFile : public RandomAccessFile {
   ~PosixMmapReadableFile();
   CHECKED_STATUS Read(uint64_t offset, size_t n, Slice* result, uint8_t* scratch) const override;
   CHECKED_STATUS InvalidateCache(size_t offset, size_t length) override;
-  yb::Result<uint64_t> Size() const override { return length_; }
+  yb::Result<uint64_t> Size() const override;
   yb::Result<uint64_t> INode() const override;
   // Doesn't include memory usage by mmap.
   size_t memory_footprint() const override;
@@ -130,16 +130,16 @@ class PosixMmapFile : public WritableFile {
 
   // Means Close() will properly take care of truncate
   // and it does not need any additional information
-  virtual Status Truncate(uint64_t size) override { return Status::OK(); }
-  virtual Status Close() override;
-  virtual Status Append(const Slice& data) override;
-  virtual Status Flush() override;
-  virtual Status Sync() override;
-  virtual Status Fsync() override;
-  virtual uint64_t GetFileSize() override;
-  virtual Status InvalidateCache(size_t offset, size_t length) override;
+  Status Truncate(uint64_t size) override;
+  Status Close() override;
+  Status Append(const Slice& data) override;
+  Status Flush() override;
+  Status Sync() override;
+  Status Fsync() override;
+  uint64_t GetFileSize() override;
+  Status InvalidateCache(size_t offset, size_t length) override;
 #ifdef ROCKSDB_FALLOCATE_PRESENT
-  virtual Status Allocate(uint64_t offset, uint64_t len) override;
+  Status Allocate(uint64_t offset, uint64_t len) override;
 #endif
 };
 

@@ -29,6 +29,7 @@
 #include "yb/yql/cql/ql/ptree/ycql_predtest.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/result.h"
 
 DEFINE_bool(enable_uncovered_index_select, true,
             "Enable executing select statements using uncovered index");
@@ -962,8 +963,8 @@ bool PTSelectStmt::IsReadableByAllSystemTable() const {
 
 namespace {
 
-PTOrderBy::Direction directionFromSortingType(ColumnSchema::SortingType sorting_type) {
-  return sorting_type == ColumnSchema::SortingType::kDescending ?
+PTOrderBy::Direction directionFromSortingType(SortingType sorting_type) {
+  return sorting_type == SortingType::kDescending ?
       PTOrderBy::Direction::kDESC : PTOrderBy::Direction::kASC;
 }
 

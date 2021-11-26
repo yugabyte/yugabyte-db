@@ -51,6 +51,7 @@
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
 #include "yb/server/rpc_server.h"
 #include "yb/server/server_base.proxy.h"
 #include "yb/util/capabilities.h"
@@ -61,6 +62,7 @@
 #include "yb/util/random_util.h"
 #include "yb/util/status.h"
 #include "yb/util/test_util.h"
+#include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/user.h"
 
@@ -576,7 +578,7 @@ TEST_F(MasterTest, TestCatalogHasBlockCache) {
 
   // Check block cache metrics directly and verify
   // that the counters are greater than 0
-  const unordered_map<const MetricPrototype*, scoped_refptr<Metric> > metric_map =
+  const std::unordered_map<const MetricPrototype*, scoped_refptr<Metric> > metric_map =
     mini_master_->master()->metric_entity()->UnsafeMetricsMapForTests();
 
   scoped_refptr<Counter> cache_misses_counter = down_cast<Counter *>(

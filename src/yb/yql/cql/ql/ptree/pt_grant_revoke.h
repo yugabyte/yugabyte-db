@@ -46,9 +46,9 @@ class PTGrantRevokeRole : public TreeNode {
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
   PTGrantRevokeRole(MemoryContext* memctx, YBLocation::SharedPtr loc,
-              GrantRevokeStatementType statement_type,
-              const MCSharedPtr<MCString>& granted_role_name,
-              const MCSharedPtr<MCString>& recipient_role_name);
+                    GrantRevokeStatementType statement_type,
+                    const MCSharedPtr<MCString>& granted_role_name,
+                    const MCSharedPtr<MCString>& recipient_role_name);
   virtual ~PTGrantRevokeRole();
 
   // Node type.

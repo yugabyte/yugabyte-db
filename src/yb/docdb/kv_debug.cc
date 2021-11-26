@@ -10,19 +10,18 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include "yb/docdb/kv_debug.h"
 
 #include <string>
 
-#include "yb/docdb/kv_debug.h"
-
-#include "yb/util/result.h"
-#include "yb/util/format.h"
-
-#include "yb/docdb/docdb_types.h"
 #include "yb/docdb/doc_key.h"
-#include "yb/docdb/intent.h"
-#include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/doc_kv_util.h"
+#include "yb/docdb/docdb-internal.h"
+#include "yb/docdb/docdb_types.h"
+#include "yb/docdb/intent.h"
+#include "yb/util/fast_varint.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 namespace docdb {

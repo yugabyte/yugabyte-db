@@ -57,6 +57,7 @@
 #include "yb/master/master_rpc.h"
 #include "yb/server/server_base.pb.h"
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/util/async_util.h"
 #include "yb/util/curl_util.h"

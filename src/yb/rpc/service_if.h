@@ -38,7 +38,7 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/remote_method.h"
-#include "yb/util/metrics.h"
+#include "yb/util/metrics_fwd.h"
 #include "yb/util/net/sockaddr.h"
 
 namespace google {
@@ -48,15 +48,19 @@ class Message;
 }
 
 namespace yb {
-
-class Histogram;
-
 namespace rpc {
 
 struct RpcMethodMetrics {
   scoped_refptr<Counter> request_bytes;
   scoped_refptr<Counter> response_bytes;
   scoped_refptr<Histogram> handler_latency;
+
+  RpcMethodMetrics();
+  RpcMethodMetrics(const scoped_refptr<Counter>& request_bytes,
+                   const scoped_refptr<Counter>& response_bytes,
+                   const scoped_refptr<Histogram>& handler_latency);
+  RpcMethodMetrics(const RpcMethodMetrics&);
+  ~RpcMethodMetrics();
 };
 
 struct RpcMethodDesc {

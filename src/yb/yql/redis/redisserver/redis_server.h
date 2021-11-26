@@ -20,6 +20,7 @@
 #include "yb/yql/redis/redisserver/redis_server_options.h"
 #include "yb/server/server_base.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/util/mem_tracker.h"
 #include "yb/util/status.h"
 
 namespace yb {

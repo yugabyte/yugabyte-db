@@ -33,6 +33,7 @@
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/tools/bulk_load_docdb_util.h"
 #include "yb/tools/bulk_load_utils.h"
@@ -308,7 +309,8 @@ Status BulkLoadTask::InsertRow(const string &row,
   // once we have secondary indexes we probably might need to ensure bulk load builds the indexes
   // as well.
   docdb::QLWriteOperation op(std::shared_ptr<const Schema>(&schema, [](const Schema*){}),
-                             index_map, nullptr /* unique_index_key_schema */, boost::none);
+                             index_map, nullptr /* unique_index_key_schema */,
+                             TransactionOperationContext{});
   RETURN_NOT_OK(op.Init(&req, &resp));
   RETURN_NOT_OK(op.Apply({
       doc_write_batch,
