@@ -43,6 +43,7 @@ public class HealthManager extends DevopsBase {
     public int redisPort = 6379;
     public int masterHttpPort = 7000;
     public int tserverHttpPort = 9000;
+    public int ysqlServerHttpPort = 13000;
     public String collectMetricsScript;
   }
 
