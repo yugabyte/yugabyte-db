@@ -36,6 +36,8 @@
 
 #include "yb/gutil/singleton.h"
 
+#include "yb/util/status.h"
+
 using std::shared_ptr;
 using std::unordered_map;
 
@@ -115,6 +117,27 @@ class TypeInfoResolver {
 
 const TypeInfo* GetTypeInfo(DataType type) {
   return Singleton<TypeInfoResolver>::get()->GetTypeInfo(type);
+}
+
+void DataTypeTraits<INET>::AppendDebugStringForValue(const void *val, std::string *str) {
+  const Slice *s = reinterpret_cast<const Slice *>(val);
+  InetAddress addr;
+  DCHECK(addr.FromSlice(*s).ok());
+  str->append(addr.ToString());
+}
+
+void DataTypeTraits<UUID>::AppendDebugStringForValue(const void *val, std::string *str) {
+  const Slice *s = reinterpret_cast<const Slice *>(val);
+  Uuid uuid;
+  DCHECK(uuid.FromSlice(*s).ok());
+  str->append(uuid.ToString());
+}
+
+void DataTypeTraits<TIMEUUID>::AppendDebugStringForValue(const void *val, std::string *str) {
+  const Slice *s = reinterpret_cast<const Slice *>(val);
+  Uuid uuid;
+  DCHECK(uuid.FromSlice(*s).ok());
+  str->append(uuid.ToString());
 }
 
 } // namespace yb

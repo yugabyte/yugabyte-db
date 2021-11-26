@@ -72,7 +72,7 @@ void YBTabletTest::AlterSchema(const Schema& schema) {
 }
 
 Status IterateToStringList(
-    common::YQLRowwiseIteratorIf* iter, std::vector<std::string> *out, int limit) {
+    YQLRowwiseIteratorIf* iter, std::vector<std::string> *out, int limit) {
   out->clear();
   Schema schema = iter->schema();
   int fetched = 0;

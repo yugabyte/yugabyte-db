@@ -45,6 +45,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
 #include "yb/server/default-path-handlers.h"
 #include "yb/server/generic_service.h"
 #include "yb/server/glog_metrics.h"

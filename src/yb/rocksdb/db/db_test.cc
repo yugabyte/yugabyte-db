@@ -55,8 +55,12 @@
 
 #include "yb/rocksutil/yb_rocksdb_logger.h"
 
+#include "yb/util/format.h"
 #include "yb/util/priority_thread_pool.h"
 #include "yb/util/slice.h"
+#include "yb/util/string_util.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tsan_util.h"
 
 DECLARE_bool(use_priority_thread_pool_for_compactions);
 DECLARE_bool(use_priority_thread_pool_for_flushes);

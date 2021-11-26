@@ -16,8 +16,7 @@
 #include <thread>
 
 #include <boost/algorithm/string/case_conv.hpp>
-
-
+#include <boost/lockfree/queue.hpp>
 
 #include <gflags/gflags.h>
 
@@ -1130,7 +1129,7 @@ std::unordered_set<string> RedisServiceImplData::GetSubscriptions(
 
 // ENG-4199: Consider getting all the cluster-wide subscriptions?
 std::unordered_set<string> RedisServiceImplData::GetAllSubscriptions(AsPattern type) {
-  unordered_set<string> ret;
+  std::unordered_set<string> ret;
   SharedLock<decltype(pubsub_mutex_)> lock(pubsub_mutex_);
   for (const auto& element :
        (type == AsPattern::kTrue ? patterns_to_clients_ : channels_to_clients_)) {

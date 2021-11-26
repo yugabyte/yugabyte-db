@@ -19,6 +19,8 @@
 
 #include "yb/common/pg_system_attr.h"
 
+#include "yb/util/result.h"
+
 namespace yb {
 namespace pggate {
 

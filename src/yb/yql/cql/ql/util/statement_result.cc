@@ -23,6 +23,7 @@
 
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/util/debug-util.h"
 #include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
 #include "yb/yql/cql/ql/ptree/pt_name.h"

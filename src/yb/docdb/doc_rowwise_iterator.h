@@ -24,12 +24,13 @@
 #include "yb/common/ql_rowwise_iterator_interface.h"
 #include "yb/common/ql_scanspec.h"
 #include "yb/common/read_hybrid_time.h"
-#include "yb/docdb/doc_key.h"
+#include "yb/common/schema.h"
+#include "yb/docdb/key_bounds.h"
 #include "yb/docdb/subdocument.h"
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/value.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/operation_counter.h"
 
 namespace yb {
@@ -39,11 +40,11 @@ class IntentAwareIterator;
 class ScanChoices;
 
 // An SQL-mapped-to-document-DB iterator.
-class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
+class DocRowwiseIterator : public YQLRowwiseIteratorIf {
  public:
   DocRowwiseIterator(const Schema &projection,
                      const Schema &schema,
-                     const TransactionOperationContextOpt& txn_op_context,
+                     const TransactionOperationContext& txn_op_context,
                      const DocDB& doc_db,
                      CoarseTimePoint deadline,
                      const ReadHybridTime& read_time,
@@ -51,7 +52,7 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
 
   DocRowwiseIterator(std::unique_ptr<Schema> projection,
                      const Schema &schema,
-                     const TransactionOperationContextOpt& txn_op_context,
+                     const TransactionOperationContext& txn_op_context,
                      const DocDB& doc_db,
                      CoarseTimePoint deadline,
                      const ReadHybridTime& read_time,
@@ -68,8 +69,8 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
   CHECKED_STATUS Init(TableType table_type);
 
   // Init QL read scan.
-  CHECKED_STATUS Init(const common::QLScanSpec& spec);
-  CHECKED_STATUS Init(const common::PgsqlScanSpec& spec);
+  CHECKED_STATUS Init(const QLScanSpec& spec);
+  CHECKED_STATUS Init(const PgsqlScanSpec& spec);
 
   // This must always be called before NextRow. The implementation actually finds the
   // first row to scan, and NextRow expects the RocksDB iterator to already be properly
@@ -169,7 +170,7 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
   // The schema for all columns, not just the columns we're scanning.
   const Schema& schema_;
 
-  const TransactionOperationContextOpt txn_op_context_;
+  const TransactionOperationContext txn_op_context_;
 
   bool is_forward_scan_ = true;
 

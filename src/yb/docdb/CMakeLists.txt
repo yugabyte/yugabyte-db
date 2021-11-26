@@ -27,6 +27,8 @@ ADD_YB_LIBRARY(docdb_proto
 set(DOCDB_ENCODING_SRCS
         doc_key.cc
         doc_kv_util.cc
+        doc_path.cc
+        key_bounds.cc
         key_bytes.cc
         primitive_value.cc
         primitive_value_util.cc
@@ -74,6 +76,7 @@ set(DOCDB_SRCS
         doc_rowwise_iterator.cc
         doc_write_batch_cache.cc
         doc_write_batch.cc
+        expiration.cc
         compaction_file_filter.cc
         intent_aware_iterator.cc
         lock_batch.cc

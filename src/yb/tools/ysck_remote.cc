@@ -39,6 +39,8 @@
 #include "yb/master/master_util.h"
 
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
+#include "yb/rpc/rpc_controller.h"
 
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"

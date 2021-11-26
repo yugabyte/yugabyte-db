@@ -10,10 +10,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
-#include <yb/gutil/stringprintf.h>
-
 #include "yb/rocksutil/write_batch_formatter.h"
+
 #include "yb/rocksdb/metadata.h"
 #include "yb/util/bytes_formatter.h"
 

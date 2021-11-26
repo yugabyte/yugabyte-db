@@ -38,6 +38,7 @@
 #include "yb/rocksdb/write_batch.h"
 #include "yb/rocksdb/port/port.h"
 
+#include "yb/util/cast.h"
 #include "yb/util/coding_consts.h"
 #include "yb/util/fast_varint.h"
 

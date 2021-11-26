@@ -51,6 +51,7 @@
 #include "yb/gutil/strings/fastmem.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
 #include "yb/tserver/remote_bootstrap_session.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/operations/write_operation.h"

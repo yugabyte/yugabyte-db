@@ -62,11 +62,13 @@
 #include "yb/master/master.proxy.h"
 #include "yb/common/redis_constants_common.h"
 #include "yb/util/monotime.h"
+#include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/messenger.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/scope_exit.h"
 

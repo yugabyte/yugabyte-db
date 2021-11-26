@@ -20,7 +20,6 @@
 // Copyright (c) 2011 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
-
 #include "yb/rocksdb/table/block_based_table_builder.h"
 
 #include <assert.h>
@@ -33,37 +32,35 @@
 #include <unordered_map>
 #include <utility>
 
-#include "yb/rocksdb/db/dbformat.h"
+#include <glog/logging.h>
 
+#include "yb/gutil/macros.h"
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/comparator.h"
+#include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/filter_policy.h"
 #include "yb/rocksdb/flush_block_policy.h"
 #include "yb/rocksdb/table.h"
-
 #include "yb/rocksdb/table/block.h"
+#include "yb/rocksdb/table/block_based_filter_block.h"
+#include "yb/rocksdb/table/block_based_table_factory.h"
 #include "yb/rocksdb/table/block_based_table_internal.h"
 #include "yb/rocksdb/table/block_builder.h"
 #include "yb/rocksdb/table/filter_block.h"
-#include "yb/rocksdb/table/block_based_filter_block.h"
-#include "yb/rocksdb/table/block_based_table_factory.h"
 #include "yb/rocksdb/table/fixed_size_filter_block.h"
-#include "yb/rocksdb/table/full_filter_block.h"
 #include "yb/rocksdb/table/format.h"
+#include "yb/rocksdb/table/full_filter_block.h"
 #include "yb/rocksdb/table/index_builder.h"
 #include "yb/rocksdb/table/meta_blocks.h"
 #include "yb/rocksdb/table/table_builder.h"
-
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/compression.h"
 #include "yb/rocksdb/util/crc32c.h"
 #include "yb/rocksdb/util/stop_watch.h"
 #include "yb/rocksdb/util/xxhash.h"
-
 #include "yb/util/mem_tracker.h"
-
-#include "yb/gutil/macros.h"
+#include "yb/util/status_log.h"
 
 namespace rocksdb {
 

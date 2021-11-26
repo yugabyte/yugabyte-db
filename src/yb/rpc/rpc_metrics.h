@@ -14,7 +14,7 @@
 #ifndef YB_RPC_RPC_METRICS_H
 #define YB_RPC_RPC_METRICS_H
 
-#include "yb/util/metrics.h"
+#include "yb/util/metrics_fwd.h"
 
 namespace yb {
 namespace rpc {

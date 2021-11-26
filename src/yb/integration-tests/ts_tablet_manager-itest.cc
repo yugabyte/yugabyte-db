@@ -35,6 +35,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
+#include "yb/client/schema.h"
 #include "yb/client/table_creator.h"
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/metadata.pb.h"
@@ -48,6 +49,7 @@
 #include "yb/master/master.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
 #include "yb/server/server_base.proxy.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"

@@ -21,12 +21,14 @@
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/test_workload.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-#include "yb/rpc/messenger.h"
 
 #include "yb/master/master.proxy.h"
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/master-test-util.h"
+
+#include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_snapshots.h"
@@ -64,6 +66,7 @@ using client::YBTableName;
 using master::MasterBackupServiceProxy;
 using master::MasterServiceProxy;
 using master::SysRowEntry;
+using master::SysRowEntryType;
 using master::BackupRowEntryPB;
 using master::TableInfo;
 using master::TabletInfo;
@@ -546,7 +549,7 @@ TEST_F(SnapshotTest, ImportSnapshotMeta) {
   for (const BackupRowEntryPB& backup_entry : snapshot.backup_entries()) {
     const SysRowEntry& entry = backup_entry.entry();
     switch (entry.type()) {
-      case SysRowEntry::NAMESPACE: { // Get NAMESPACE name.
+      case SysRowEntryType::NAMESPACE: { // Get NAMESPACE name.
         SysNamespaceEntryPB meta;
         const string& data = entry.data();
         ASSERT_OK(pb_util::ParseFromArray(&meta, to_uchar_ptr(data.data()), data.size()));
@@ -554,7 +557,7 @@ TEST_F(SnapshotTest, ImportSnapshotMeta) {
         old_namespace_name = meta.name();
         break;
       }
-      case SysRowEntry::TABLE: { // Recreate TABLE.
+      case SysRowEntryType::TABLE: { // Recreate TABLE.
         SysTablesEntryPB meta;
         const string& data = entry.data();
         ASSERT_OK(pb_util::ParseFromArray(&meta, to_uchar_ptr(data.data()), data.size()));
@@ -562,7 +565,7 @@ TEST_F(SnapshotTest, ImportSnapshotMeta) {
         old_table_name = meta.name();
         break;
       }
-      case SysRowEntry::TABLET: // No need to get tablet info. Ignore.
+      case SysRowEntryType::TABLET: // No need to get tablet info. Ignore.
         break;
       default:
         ASSERT_OK(STATUS_SUBSTITUTE(

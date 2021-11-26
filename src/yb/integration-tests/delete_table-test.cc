@@ -39,6 +39,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/client/client-test-util.h"
+#include "yb/client/schema.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/common/wire_protocol-test-util.h"

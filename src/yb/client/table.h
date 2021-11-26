@@ -22,6 +22,7 @@
 #include "yb/common/partition.h"
 
 #include "yb/util/locks.h"
+#include "yb/util/status_callback.h"
 
 DECLARE_int32(max_num_tablets_for_table);
 

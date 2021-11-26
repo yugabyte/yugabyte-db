@@ -10,10 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/common/consistent_read_point.h"
-
-#include "yb/util/debug-util.h"
 
 namespace yb {
 

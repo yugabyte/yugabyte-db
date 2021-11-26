@@ -40,7 +40,6 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
-#include "yb/util/result.h"
 #include "yb/util/slice.h"
 
 namespace google {

@@ -10,19 +10,17 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
-#include <atomic>
 #include <string>
+#include <type_traits>
 
 #include <gtest/gtest.h>
-
 #include <rapidjson/prettywriter.h>
 
 #include "yb/common/jsonb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/util/status.h"
 #include "yb/util/test_macros.h"
-#include "yb/util/monotime.h"
-#include "yb/util/result.h"
-#include "yb/util/thread.h"
+#include "yb/util/tostring.h"
 #include "yb/util/tsan_util.h"
 
 using std::to_string;

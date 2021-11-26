@@ -1327,7 +1327,7 @@ bool BackfillChunk::SendRequest(int attempt) {
   if (GetTableType() == TableType::PGSQL_TABLE_TYPE) {
     req.set_namespace_name(backfill_tablet_->GetNamespaceName());
   }
-  unordered_set<TableId> found_idxs;
+  std::unordered_set<TableId> found_idxs;
   for (const IndexInfoPB& idx_info : backfill_tablet_->index_infos()) {
     if (indexes_being_backfilled_.find(idx_info.table_id()) != indexes_being_backfilled_.end()) {
       req.add_indexes()->CopyFrom(idx_info);

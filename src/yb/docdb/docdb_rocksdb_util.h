@@ -20,7 +20,6 @@
 #include "yb/common/transaction.h"
 
 #include "yb/docdb/bounded_rocksdb_iterator.h"
-#include "yb/docdb/doc_key.h"
 #include "yb/docdb/value.h"
 
 #include "yb/rocksdb/cache.h"
@@ -98,7 +97,7 @@ std::unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
     BloomFilterMode bloom_filter_mode,
     const boost::optional<const Slice>& user_key_for_filter,
     const rocksdb::QueryId query_id,
-    const TransactionOperationContextOpt& transaction_context,
+    const TransactionOperationContext& transaction_context,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter = nullptr,

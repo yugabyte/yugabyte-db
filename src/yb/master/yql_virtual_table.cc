@@ -50,11 +50,11 @@ CHECKED_STATUS YQLVirtualTable::GetIterator(
     const QLReadRequestPB& request,
     const Schema& projection,
     const Schema& schema,
-    const TransactionOperationContextOpt& txn_op_context,
+    const TransactionOperationContext& txn_op_context,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
-    const common::QLScanSpec& spec,
-    std::unique_ptr<common::YQLRowwiseIteratorIf>* iter)
+    const QLScanSpec& spec,
+    std::unique_ptr<YQLRowwiseIteratorIf>* iter)
     const {
   // Acquire shared lock on catalog manager to verify it is still the leader and metadata will
   // not change.
@@ -74,13 +74,13 @@ CHECKED_STATUS YQLVirtualTable::BuildYQLScanSpec(
     const Schema& schema,
     const bool include_static_columns,
     const Schema& static_projection,
-    std::unique_ptr<common::QLScanSpec>* spec,
-    std::unique_ptr<common::QLScanSpec>* static_row_spec) const {
+    std::unique_ptr<QLScanSpec>* spec,
+    std::unique_ptr<QLScanSpec>* static_row_spec) const {
   // There should be no static columns in system tables so we are not handling it.
   if (include_static_columns) {
     return STATUS(IllegalState, "system table contains no static columns");
   }
-  spec->reset(new common::QLScanSpec(
+  spec->reset(new QLScanSpec(
       request.has_where_expr() ? &request.where_expr().condition() : nullptr,
       request.has_if_expr() ? &request.if_expr().condition() : nullptr,
       request.is_forward_scan()));

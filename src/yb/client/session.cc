@@ -24,6 +24,7 @@
 
 #include "yb/consensus/consensus_error.h"
 #include "yb/tserver/tserver_error.h"
+#include "yb/util/metrics.h"
 
 using namespace std::literals;
 using namespace std::placeholders;

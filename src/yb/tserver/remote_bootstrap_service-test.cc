@@ -42,6 +42,7 @@
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_header.pb.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/remote_bootstrap.pb.h"

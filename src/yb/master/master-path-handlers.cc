@@ -546,7 +546,7 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
   TabletCountMap tablet_map;
   CalculateTabletMap(&tablet_map);
 
-  unordered_set<string> read_replica_uuids;
+  std::unordered_set<string> read_replica_uuids;
   for (auto desc : descs) {
     if (!read_replica_uuids.count(desc->placement_uuid()) && desc->placement_uuid() != live_id) {
       read_replica_uuids.insert(desc->placement_uuid());
@@ -601,7 +601,7 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
   TabletCountMap tablet_map;
   CalculateTabletMap(&tablet_map);
 
-  unordered_set<string> cluster_uuids;
+  std::unordered_set<string> cluster_uuids;
   auto primary_uuid = config.replication_info().live_replicas().placement_uuid();
   cluster_uuids.insert(primary_uuid);
   for (auto desc : descs) {
@@ -1893,11 +1893,11 @@ void MasterPathHandlers::HandlePrettyLB(
   }
 
   // Don't render if there is a lot of placement nesting.
-  unordered_set<std::string> clouds;
-  unordered_set<std::string> regions;
+  std::unordered_set<std::string> clouds;
+  std::unordered_set<std::string> regions;
   // Map of zone -> {tserver UUIDs}
   // e.g. zone1 -> {ts1uuid, ts2uuid, ts3uuid}.
-  unordered_map<std::string, vector<std::string>> zones;
+  std::unordered_map<std::string, vector<std::string>> zones;
   for (const auto& desc : descs) {
     std::string uuid = desc->permanent_uuid();
     std::string cloud = desc->GetCloudInfo().placement_cloud();
@@ -1935,7 +1935,7 @@ void MasterPathHandlers::HandlePrettyLB(
 
   // A single zone.
   int color_index = 0;
-  unordered_map<std::string, std::string> tablet_colors;
+  std::unordered_map<std::string, std::string> tablet_colors;
 
   *output << "<div class='row'>\n";
   for (const auto& zone : zones) {

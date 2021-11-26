@@ -24,6 +24,7 @@
 #include <string>
 #include <utility>
 
+#include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/util/logging.h"
 #include "yb/util/string_util.h"
 #include <gtest/gtest.h>

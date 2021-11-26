@@ -92,7 +92,7 @@ import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
 import org.yb.master.Master;
 import org.yb.master.Master.ListTablesResponsePB.TableInfo;
-import org.yb.master.Master.RelationType;
+import org.yb.master.MasterTypes.RelationType;
 import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;

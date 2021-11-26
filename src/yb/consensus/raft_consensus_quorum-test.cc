@@ -481,9 +481,9 @@ class RaftConsensusQuorumTest : public YBTest {
   }
 
   void VerifyNoCommitsBeforeReplicates(const log::LogEntries& entries) {
-    unordered_set<OpIdPB,
-                  OpIdHashFunctor,
-                  OpIdEqualsFunctor> replication_ops;
+    std::unordered_set<OpIdPB,
+                       OpIdHashFunctor,
+                       OpIdEqualsFunctor> replication_ops;
 
     for (const auto& entry : entries) {
       if (entry->has_replicate()) {
@@ -568,7 +568,7 @@ class RaftConsensusQuorumTest : public YBTest {
   scoped_refptr<MetricEntity> table_metric_entity_;
   scoped_refptr<MetricEntity> tablet_metric_entity_;
   const Schema schema_;
-  unordered_map<ConsensusRound*, Synchronizer*> syncs_;
+  std::unordered_map<ConsensusRound*, Synchronizer*> syncs_;
 };
 
 TEST_F(RaftConsensusQuorumTest, TestConsensusContinuesIfAMinorityFallsBehind) {

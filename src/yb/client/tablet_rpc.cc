@@ -21,6 +21,8 @@
 #include "yb/client/client_error.h"
 #include "yb/client/meta_cache.h"
 
+#include "yb/rpc/rpc_header.pb.h"
+
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver_forward_service.proxy.h"
 #include "yb/tserver/tserver_error.h"

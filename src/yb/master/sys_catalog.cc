@@ -1209,7 +1209,7 @@ Status SysCatalogTable::CopyPgsqlTables(
     const std::shared_ptr<tablet::TableInfo> target_table_info =
         VERIFY_RESULT(meta->GetTableInfo(target_table_id));
     const Schema source_projection = source_table_info->schema.CopyWithoutColumnIds();
-    std::unique_ptr<common::YQLRowwiseIteratorIf> iter = VERIFY_RESULT(
+    std::unique_ptr<YQLRowwiseIteratorIf> iter = VERIFY_RESULT(
         tablet->NewRowIterator(source_projection, {}, source_table_id));
     QLTableRow source_row;
 
@@ -1273,7 +1273,7 @@ Status SysCatalogTable::FetchDdlLog(google::protobuf::RepeatedPtrField<DdlLogEnt
     return STATUS(ShutdownInProgress, "SysConfig is shutting down.");
   }
 
-  return EnumerateSysCatalog(tablet.get(), schema_, SysRowEntry::DDL_LOG_ENTRY,
+  return EnumerateSysCatalog(tablet.get(), schema_, SysRowEntryType::DDL_LOG_ENTRY,
                              [entries](const Slice& id, const Slice& data) -> Status {
     *entries->Add() = VERIFY_RESULT(pb_util::ParseFromSlice<DdlLogEntryPB>(data));
     return Status::OK();

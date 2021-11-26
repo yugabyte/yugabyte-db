@@ -16,6 +16,7 @@
 #include <unordered_map>
 
 #include "yb/client/schema.h"
+#include "yb/common/ql_type.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_dml.h"

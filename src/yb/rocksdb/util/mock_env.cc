@@ -30,6 +30,9 @@
 #include "yb/rocksdb/util/random.h"
 #include "yb/rocksdb/util/murmurhash.h"
 
+#include "yb/util/result.h"
+#include "yb/util/status_log.h"
+
 namespace rocksdb {
 
 class MemFile {

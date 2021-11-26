@@ -45,9 +45,11 @@
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
 #include "yb/util/metrics.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/opid.h"
+#include "yb/util/result.h"
 
 DEFINE_bool(print_headers, true, "print the log segment headers/footers");
 DEFINE_bool(filter_log_segment, false, "filter the input log segment");

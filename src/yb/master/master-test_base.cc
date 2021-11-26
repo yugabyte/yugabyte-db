@@ -47,6 +47,7 @@
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
 #include "yb/server/rpc_server.h"
 #include "yb/server/server_base.proxy.h"
 #include "yb/util/jsonreader.h"

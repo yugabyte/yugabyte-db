@@ -40,6 +40,7 @@
 #include "yb/util/init.h"
 #include "yb/util/logging.h"
 #include "yb/util/main_util.h"
+#include "yb/util/mem_tracker.h"
 #include "yb/util/ulimit_util.h"
 #include "yb/gutil/sysinfo.h"
 #include "yb/server/total_mem_watcher.h"

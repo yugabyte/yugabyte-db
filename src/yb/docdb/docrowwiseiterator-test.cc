@@ -10,7 +10,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include <memory>
 #include <string>
 
@@ -19,17 +18,14 @@
 #include "yb/common/ql_value.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction-test-util.h"
-
+#include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_test_base.h"
 #include "yb/docdb/docdb_test_util.h"
-#include "yb/docdb/intent.h"
-
 #include "yb/server/hybrid_clock.h"
-
 #include "yb/util/size_literals.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
@@ -1153,7 +1149,7 @@ TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 3 } -> \
   // first non-intent key.
   IntentAwareIterator iter(
       doc_db(), rocksdb::ReadOptions(), CoarseTimePoint::max() /* deadline */,
-      ReadHybridTime::FromMicros(1000), boost::none);
+      ReadHybridTime::FromMicros(1000), TransactionOperationContext());
   iter.Seek(DocKey());
   ASSERT_TRUE(iter.valid());
   auto key_data = ASSERT_RESULT(iter.FetchKey());

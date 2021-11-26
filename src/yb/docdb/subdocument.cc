@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "yb/common/ql_value.h"
+#include "yb/util/status.h"
 
 using std::endl;
 using std::make_pair;
@@ -204,7 +205,7 @@ const SubDocument* SubDocument::GetChild(const PrimitiveValue& key) const {
   }
 }
 
-pair<SubDocument*, bool> SubDocument::GetOrAddChild(const PrimitiveValue& key) {
+std::pair<SubDocument*, bool> SubDocument::GetOrAddChild(const PrimitiveValue& key) {
   DCHECK(IsObjectType(type_));
   EnsureContainerAllocated();
   auto& obj_container = object_container();
@@ -354,7 +355,7 @@ void SubDocument::EnsureContainerAllocated() {
 }
 
 SubDocument SubDocument::FromQLValuePB(const QLValuePB& value,
-                                       ColumnSchema::SortingType sorting_type,
+                                       SortingType sorting_type,
                                        TSOpcode write_instr) {
   switch (value.value_case()) {
     case QLValuePB::kMapValue: {

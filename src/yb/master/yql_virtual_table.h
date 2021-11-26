@@ -17,6 +17,7 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/ql_rowblock.h"
 #include "yb/common/ql_storage_interface.h"
+#include "yb/common/schema.h"
 #include "yb/master/master.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/util/yql_vtable_helpers.h"
@@ -26,7 +27,7 @@ namespace yb {
 namespace master {
 
 // A YQL virtual table which is based on in memory data.
-class YQLVirtualTable : public common::YQLStorageIf {
+class YQLVirtualTable : public YQLStorageIf {
  public:
   explicit YQLVirtualTable(const TableName& table_name,
                            const NamespaceName &namespace_name,
@@ -50,11 +51,11 @@ class YQLVirtualTable : public common::YQLStorageIf {
   CHECKED_STATUS GetIterator(const QLReadRequestPB& request,
                              const Schema& projection,
                              const Schema& schema,
-                             const TransactionOperationContextOpt& txn_op_context,
+                             const TransactionOperationContext& txn_op_context,
                              CoarseTimePoint deadline,
                              const ReadHybridTime& read_time,
-                             const common::QLScanSpec& spec,
-                             std::unique_ptr<common::YQLRowwiseIteratorIf>* iter) const override;
+                             const QLScanSpec& spec,
+                             std::unique_ptr<YQLRowwiseIteratorIf>* iter) const override;
 
   CHECKED_STATUS BuildYQLScanSpec(
       const QLReadRequestPB& request,
@@ -62,8 +63,8 @@ class YQLVirtualTable : public common::YQLStorageIf {
       const Schema& schema,
       bool include_static_columns,
       const Schema& static_projection,
-      std::unique_ptr<common::QLScanSpec>* spec,
-      std::unique_ptr<common::QLScanSpec>* static_row_spec) const override;
+      std::unique_ptr<QLScanSpec>* spec,
+      std::unique_ptr<QLScanSpec>* static_row_spec) const override;
 
   //------------------------------------------------------------------------------------------------
   // PGSQL Support.
@@ -71,15 +72,15 @@ class YQLVirtualTable : public common::YQLStorageIf {
 
   CHECKED_STATUS CreateIterator(const Schema& projection,
                                 const Schema& schema,
-                                const TransactionOperationContextOpt& txn_op_context,
+                                const TransactionOperationContext& txn_op_context,
                                 CoarseTimePoint deadline,
                                 const ReadHybridTime& read_time,
-                                common::YQLRowwiseIteratorIf::UniPtr* iter) const override {
+                                YQLRowwiseIteratorIf::UniPtr* iter) const override {
     LOG(FATAL) << "Postgresql virtual tables are not yet implemented";
     return Status::OK();
   }
 
-  CHECKED_STATUS InitIterator(common::YQLRowwiseIteratorIf* iter,
+  CHECKED_STATUS InitIterator(YQLRowwiseIteratorIf* iter,
                               const PgsqlReadRequestPB& request,
                               const Schema& schema,
                               const QLValuePB& ybctid) const override {
@@ -90,11 +91,11 @@ class YQLVirtualTable : public common::YQLStorageIf {
   CHECKED_STATUS GetIterator(const PgsqlReadRequestPB& request,
                              const Schema& projection,
                              const Schema& schema,
-                             const TransactionOperationContextOpt& txn_op_context,
+                             const TransactionOperationContext& txn_op_context,
                              CoarseTimePoint deadline,
                              const ReadHybridTime& read_time,
                              const docdb::DocKey& start_doc_key,
-                             common::YQLRowwiseIteratorIf::UniPtr* iter) const override {
+                             YQLRowwiseIteratorIf::UniPtr* iter) const override {
     LOG(FATAL) << "Postgresql virtual tables are not yet implemented";
     return Status::OK();
   }
@@ -102,11 +103,11 @@ class YQLVirtualTable : public common::YQLStorageIf {
   CHECKED_STATUS GetIterator(uint64 stmt_id,
                              const Schema& projection,
                              const Schema& schema,
-                             const TransactionOperationContextOpt& txn_op_context,
+                             const TransactionOperationContext& txn_op_context,
                              CoarseTimePoint deadline,
                              const ReadHybridTime& read_time,
                              const QLValuePB& ybctid,
-                             common::YQLRowwiseIteratorIf::UniPtr* iter) const override {
+                             YQLRowwiseIteratorIf::UniPtr* iter) const override {
     LOG(FATAL) << "Postgresql virtual tables are not yet implemented";
     return Status::OK();
   }

@@ -288,7 +288,7 @@ void PTTableProperty::PrintSemanticAnalysisResult(SemContext *sem_context) {
 CHECKED_STATUS PTTablePropertyListNode::Analyze(SemContext *sem_context) {
   // Set to ensure we don't have duplicate table properties.
   std::set<string> table_properties;
-  unordered_map<string, PTTableProperty::SharedPtr> order_tnodes;
+  std::unordered_map<string, PTTableProperty::SharedPtr> order_tnodes;
   vector<string> order_columns;
   for (PTTableProperty::SharedPtr tnode : node_list()) {
     if (tnode == nullptr) {
@@ -349,9 +349,9 @@ CHECKED_STATUS PTTablePropertyListNode::Analyze(SemContext *sem_context) {
       return sem_context->Error(tnode, msg.c_str(), ErrorCode::INVALID_TABLE_PROPERTY);
     }
     if (tnode->direction() == PTOrderBy::Direction::kASC) {
-      pc->set_sorting_type(ColumnSchema::SortingType::kAscending);
+      pc->set_sorting_type(SortingType::kAscending);
     } else if (tnode->direction() == PTOrderBy::Direction::kDESC) {
-      pc->set_sorting_type(ColumnSchema::SortingType::kDescending);
+      pc->set_sorting_type(SortingType::kDescending);
     }
     ++order_column_iter;
   }

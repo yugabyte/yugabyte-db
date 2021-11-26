@@ -299,7 +299,7 @@ bool CatalogManagerUtil::IsCloudInfoPrefix(const CloudInfoPB& ci1, const CloudIn
 
 CHECKED_STATUS CatalogManagerUtil::IsPlacementInfoValid(const PlacementInfoPB& placement_info) {
   // Check for duplicates.
-  unordered_set<string> cloud_info_string;
+  std::unordered_set<string> cloud_info_string;
 
   for (int i = 0; i < placement_info.placement_blocks_size(); i++) {
     if (!placement_info.placement_blocks(i).has_cloud_info()) {

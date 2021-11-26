@@ -20,7 +20,6 @@
 // Copyright (c) 2011 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
-
 #include "yb/rocksdb/table/format.h"
 
 #include <inttypes.h>
@@ -34,10 +33,12 @@
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
 #include "yb/rocksdb/util/xxhash.h"
-
 #include "yb/util/debug-util.h"
-#include "yb/util/format.h"
+#include "yb/util/env.h"
 #include "yb/util/mem_tracker.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/std_util.h"
 #include "yb/util/string_util.h"
 

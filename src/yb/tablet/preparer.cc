@@ -18,6 +18,8 @@
 #include <thread>
 #include <vector>
 
+#include <boost/range/iterator_range.hpp>
+
 #include <gflags/gflags.h>
 
 #include "yb/consensus/consensus.h"

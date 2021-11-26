@@ -10,12 +10,15 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/docdb/compaction_file_filter.h"
+
+#include <algorithm>
 
 #include "yb/common/hybrid_time.h"
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_ttl_util.h"
+#include "yb/docdb/docdb_compaction_filter.h"
+#include "yb/gutil/casts.h"
 #include "yb/rocksdb/compaction_filter.h"
 #include "yb/util/flag_tags.h"
 
@@ -137,6 +140,10 @@ FilterDecision DocDBCompactionFileFilter::Filter(const FileMetaData* file) {
   }
 }
 
+std::string DocDBCompactionFileFilter::ToString() const {
+  return YB_CLASS_TO_STRING(table_ttl, history_cutoff, max_ht_to_expire, filter_ht);
+}
+
 const char* DocDBCompactionFileFilter::Name() const {
   return "DocDBCompactionFileFilter";
 }
@@ -179,6 +186,14 @@ unique_ptr<CompactionFileFilter> DocDBCompactionFileFilterFactory::CreateCompact
 
 const char* DocDBCompactionFileFilterFactory::Name() const {
   return "DocDBCompactionFileFilterFactory";
+}
+
+std::string ExpirationTime::ToString() const {
+  return YB_STRUCT_TO_STRING(ttl_expiration_ht, created_ht);
+}
+
+bool operator==(const ExpirationTime& lhs, const ExpirationTime& rhs) {
+  return YB_STRUCT_EQUALS(ttl_expiration_ht, created_ht);
 }
 
 }  // namespace docdb

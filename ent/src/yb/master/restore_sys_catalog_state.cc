@@ -52,7 +52,7 @@ CHECKED_STATUS ApplyWriteRequest(
   std::shared_ptr<const Schema> schema_ptr(&schema, [](const Schema* schema){});
   docdb::DocOperationApplyData apply_data{.doc_write_batch = write_batch};
   IndexMap index_map;
-  docdb::QLWriteOperation operation(schema_ptr, index_map, nullptr, boost::none);
+  docdb::QLWriteOperation operation(schema_ptr, index_map, nullptr, TransactionOperationContext());
   QLResponsePB response;
   RETURN_NOT_OK(operation.Init(write_request, &response));
   return operation.Apply(apply_data);
@@ -95,13 +95,13 @@ template <class PB>
 struct GetEntryType;
 
 template<> struct GetEntryType<SysNamespaceEntryPB>
-    : public std::integral_constant<SysRowEntry::Type, SysRowEntry::NAMESPACE> {};
+    : public std::integral_constant<SysRowEntryType, SysRowEntryType::NAMESPACE> {};
 
 template<> struct GetEntryType<SysTablesEntryPB>
-    : public std::integral_constant<SysRowEntry::Type, SysRowEntry::TABLE> {};
+    : public std::integral_constant<SysRowEntryType, SysRowEntryType::TABLE> {};
 
 template<> struct GetEntryType<SysTabletsEntryPB>
-    : public std::integral_constant<SysRowEntry::Type, SysRowEntry::TABLET> {};
+    : public std::integral_constant<SysRowEntryType, SysRowEntryType::TABLET> {};
 
 } // namespace
 
@@ -144,7 +144,7 @@ template <class PB>
 Status RestoreSysCatalogState::AddRestoringEntry(
     const std::string& id, PB* pb, faststring* buffer) {
   auto type = GetEntryType<PB>::value;
-  VLOG_WITH_FUNC(1) << SysRowEntry::Type_Name(type) << ": " << id << ", " << pb->ShortDebugString();
+  VLOG_WITH_FUNC(1) << SysRowEntryType_Name(type) << ": " << id << ", " << pb->ShortDebugString();
 
   if (!VERIFY_RESULT(PatchRestoringEntry(id, pb))) {
     return Status::OK();
@@ -300,7 +300,7 @@ Status RestoreSysCatalogState::IterateSysCatalog(
     const Schema& schema, const docdb::DocDB& doc_db, HybridTime read_time,
     std::unordered_map<std::string, PB>* map) {
   auto iter = std::make_unique<docdb::DocRowwiseIterator>(
-      schema, schema, boost::none, doc_db, CoarseTimePoint::max(),
+      schema, schema, TransactionOperationContext(), doc_db, CoarseTimePoint::max(),
       ReadHybridTime::SingleTime(read_time), nullptr);
   return EnumerateSysCatalog(iter.get(), schema, GetEntryType<PB>::value, [map](
           const Slice& id, const Slice& data) -> Status {
@@ -310,7 +310,7 @@ Status RestoreSysCatalogState::IterateSysCatalog(
     }
     if (!map->emplace(id.ToBuffer(), std::move(pb)).second) {
       return STATUS_FORMAT(IllegalState, "Duplicate $0: $1",
-                           SysRowEntry::Type_Name(GetEntryType<PB>::value), id.ToBuffer());
+                           SysRowEntryType_Name(GetEntryType<PB>::value), id.ToBuffer());
     }
     return Status::OK();
   });
@@ -412,7 +412,7 @@ Status RestoreSysCatalogState::PrepareTabletCleanup(
     }
   }
   RETURN_NOT_OK(FillSysCatalogWriteRequest(
-      SysRowEntry::TABLET, id, pb.SerializeAsString(),
+      SysRowEntryType::TABLET, id, pb.SerializeAsString(),
       QLWriteRequestPB::QL_STMT_UPDATE, schema, &write_request));
   return ApplyWriteRequest(schema, &write_request, write_batch);
 }
@@ -426,7 +426,7 @@ Status RestoreSysCatalogState::PrepareTableCleanup(
   pb.set_hide_state(SysTablesEntryPB::HIDING);
   pb.set_version(pb.version() + 1);
   RETURN_NOT_OK(FillSysCatalogWriteRequest(
-      SysRowEntry::TABLE, id, pb.SerializeAsString(),
+      SysRowEntryType::TABLE, id, pb.SerializeAsString(),
       QLWriteRequestPB::QL_STMT_UPDATE, schema, &write_request));
   return ApplyWriteRequest(schema, &write_request, write_batch);
 }
@@ -461,7 +461,7 @@ class FetchState {
           docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
           boost::none,
           rocksdb::kDefaultQueryId,
-          boost::none,
+          TransactionOperationContext(),
           CoarseTimePoint::max(),
           read_time)) {
   }

@@ -29,7 +29,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/common/hybrid_time.h"
 
 #include <boost/algorithm/string/trim.hpp>
@@ -41,8 +40,6 @@
 #include "yb/util/result.h"
 
 using std::string;
-using strings::Substitute;
-using strings::SubstituteAndAppend;
 
 namespace yb {
 
@@ -136,7 +133,7 @@ MicrosTime HybridTime::CeilPhysicalValueMicros() const {
   return result;
 }
 
-Result<HybridTime> HybridTime::ParseHybridTime(string input) {
+Result<HybridTime> HybridTime::ParseHybridTime(std::string input) {
   boost::trim(input);
 
   HybridTime ht;

@@ -24,6 +24,7 @@
 #include "yb/master/sys_catalog_constants.h"
 
 #include "yb/util/shared_lock.h"
+#include "yb/util/trace.h"
 
 using std::shared_ptr;
 
@@ -949,7 +950,7 @@ void PermissionsManager::BuildRecursiveRoles() {
 }
 
 void PermissionsManager::TraverseRole(
-    const string& role_name, unordered_set<RoleName>* granted_roles) {
+    const string& role_name, std::unordered_set<RoleName>* granted_roles) {
   auto iter = recursive_granted_roles_.find(role_name);
   // This node has already been visited. So just add all the granted (directly or through
   // inheritance) roles to granted_roles.
