@@ -184,6 +184,10 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 		YBCCreateTablegroup(tablegroupoid);
 	}
 
+	if (tablespaceId != InvalidOid)
+		recordDependencyOnTablespace(YbTablegroupRelationId, tablegroupoid,
+									 tablespaceId);
+
 	/* We keep the lock on pg_tablegroup until commit */
 	heap_close(rel, NoLock);
 
@@ -310,6 +314,8 @@ DropTableGroup(DropTableGroupStmt *stmt)
 	 * Remove the pg_tablegroup tuple.
 	 */
 	CatalogTupleDelete(rel, tuple);
+
+	deleteSharedDependencyRecordsFor(YbTablegroupRelationId, tablegroupoid, 0 /* objectSubId */);
 
 	heap_endscan(scandesc);
 

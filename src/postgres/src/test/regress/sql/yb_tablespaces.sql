@@ -38,6 +38,13 @@ CREATE TABLESPACE z WITH (replica_placement='{"num_replicas":3, "placement_block
 -- describe command
 \db
 
+CREATE TABLEGROUP grp TABLESPACE x;
+-- Fail, not empty
+\set VERBOSITY terse \\ -- suppress dependency details.
+DROP TABLESPACE x;
+\set VERBOSITY default
+DROP TABLEGROUP grp;
+-- Should succeed, empty now
 DROP TABLESPACE x;
 DROP TABLESPACE y;
 
