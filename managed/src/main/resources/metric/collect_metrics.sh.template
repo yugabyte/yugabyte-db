@@ -63,6 +63,12 @@ EXITED_WITH_CODE_REGEX='server process \(PID \d+\) exited with exit code .*'
 PROCESS_MASTER="yb-master"
 PROCESS_TSERVER="yb-tserver"
 
+MASTER_HTTP_ENDPOINT="{{NODE_PRIVATE_IP}}:{{MASTER_HTTP_PORT}}"
+TSERVER_HTTP_ENDPOINT="{{NODE_PRIVATE_IP}}:{{TSERVER_HTTP_PORT}}"
+YSQL_SERVER_HTTP_ENDPOINT="{{NODE_PRIVATE_IP}}:{{YSQL_SERVER_HTTP_PORT}}"
+
+metrics=""
+
 get_oom_kills_last_10_minutes()
 {
   local oom_kills=$(journalctl -k --since "10min ago" | grep -c 'invoked oom-killer' | \
@@ -75,7 +81,7 @@ get_boot_time()
 {
   local process_name=$1
   local boot_time=$(ps --no-headers -C "$process_name" -o lstart=)
-  [[ -z "$boot_time" ]] && { echo "Process $process_name not running" ; exit 1; }
+  [[ -z "$boot_time" ]] && { echo "Process $process_name not running" ; return 1; }
   local boot_time_seconds=$(date +%s -d "$boot_time")
   echo "$boot_time_seconds"
   return $?
@@ -84,7 +90,7 @@ get_boot_time()
 get_postmaster_pid()
 {
   local tserver_pid=$(ps --no-headers -C yb-tserver -o pid=)
-  [[ -z "$tserver_pid" ]] && { echo "yb-tserver not running" ; exit 1; }
+  [[ -z "$tserver_pid" ]] && { echo "yb-tserver not running" ; return 1; }
   local postmaster_pid=$(ps --no-headers --ppid "$tserver_pid" -o pid= -o comm= | \
     grep postgres | tr -dc '0-9')
   echo "$postmaster_pid"
@@ -94,9 +100,9 @@ get_postmaster_pid()
 get_postmaster_boot_time()
 {
   local postmaster_pid=$(get_postmaster_pid)
-  [[ -z "$postmaster_pid" ]] && { echo "postmaster not running" ; exit 1; }
+  [[ -z "$postmaster_pid" ]] && { echo "postmaster not running" ; return 1; }
   local boot_time=$(ps --no-headers --pid "$postmaster_pid" -o lstart=)
-  [[ -z "$boot_time" ]] && { echo "postmaster not running" ; exit 1; }
+  [[ -z "$boot_time" ]] && { echo "postmaster not running" ; return 1; }
   local boot_time_seconds=$(date +%s -d "$boot_time")
   echo "$boot_time_seconds"
   return $?
@@ -105,7 +111,7 @@ get_postmaster_boot_time()
 get_postgres_worker_count()
 {
   local postmaster_pid=$(get_postmaster_pid)
-  [[ -z "$postmaster_pid" ]] && { echo "postmaster not running" ; exit 1; }
+  [[ -z "$postmaster_pid" ]] && { echo "postmaster not running" ; return 1; }
   local postgres_worker_count=$(ps --no-headers --ppid "$postmaster_pid" -o pid= | wc -l)
   echo "$postgres_worker_count"
   return $?
@@ -115,7 +121,7 @@ cat_today_logs()
 {
   local directory=$1
   local filename_prefix=$2
-  [[ ! -d "$directory" ]] && { echo "$directory is not a directory" ; exit 1; }
+  [[ ! -d "$directory" ]] && { echo "$directory is not a directory" ; return 1; }
   local today=$(date +"%Y-%m-%d")
   find "$directory" -regex ".*$filename_prefix$today.*" -print0 | sort -z | while read -d $'\0' file
   do
@@ -140,7 +146,7 @@ get_postgres_worker_terminated_count()
 get_postmaster_rss()
 {
   local postmaster_pid=$(get_postmaster_pid)
-  [[ -z "$postmaster_pid" ]] && { echo "postmaster not running" ; exit 1; }
+  [[ -z "$postmaster_pid" ]] && { echo "postmaster not running" ; return 1; }
   local postmaster_rss=$(cat /proc/$postmaster_pid/statm | awk '{print $2}')
   echo "$postmaster_rss"
   return $?
@@ -150,14 +156,69 @@ get_postmaster_rss()
 get_postgres_workers_rss()
 {
   local postmaster_pid=$(get_postmaster_pid)
-  [[ -z "$postmaster_pid" ]] && { echo "postmaster not running" ; exit 1; }
+  [[ -z "$postmaster_pid" ]] && { echo "postmaster not running" ; return 1; }
   local postgres_workers_rss=$(ps --no-headers --ppid "$postmaster_pid" -o pid= | \
     xargs -I {} cat /proc/{}/statm | awk -F' ' '{sum += $2} END {print sum;} ')
   echo "$postgres_workers_rss"
   return $?
 }
 
-metrics=""
+is_master_leader()
+{
+  local is_leader_response_code=$(curl -s -o /dev/null --head -w "%{http_code}" \
+    "$MASTER_HTTP_ENDPOINT/api/v1/is-leader")
+  if [[ $is_leader_response_code == "200" ]]; then
+    echo "1";
+    return 0;
+  elif [[ $is_leader_response_code == "503" ]]; then
+    echo "0";
+    return 0;
+  elif [[ $is_leader_response_code == "000" ]]; then
+    echo "Master http endpoint not responding";
+    return 1;
+  fi
+  echo "Unexpected return code received $is_leader_response_code";
+  return 1;
+}
+
+ysql_connections_count()
+{
+  local rpcs_response=$(curl -s "$YSQL_SERVER_HTTP_ENDPOINT"/rpcz)
+  local valid_response=$(echo "$rpcs_response" | grep '"connections":')
+  [[ -z "$valid_response" ]] && { echo "unexpected response received" ; return 1; }
+  local connections_count=$(echo "$rpcs_response" | grep -c '"backend_type": "client backend"')
+  echo "$connections_count";
+  return $?
+}
+
+collect_leaderless_tablets()
+{
+  local leaderless_tablets_response=$(curl -s "$MASTER_HTTP_ENDPOINT/api/v1/tablet-replication" | \
+    grep -P '{"leaderless_tablets":\[.*\]}')
+  [[ -z "$leaderless_tablets_response" ]] && { echo "unexpected response received" ; return 1; }
+  local leaderless_tablets=$(echo "$leaderless_tablets_response" | \
+    sed -r 's/^\{"leaderless_tablets":\[(.*)\]\}$/\1/' | sed 's/,/\n/g' | \
+    sed -r 's/^"(.*)"$/\1/')
+  [[ -z "$leaderless_tablets" ]] && { echo "no leaderless tablets" ; return 0; }
+  local leaderless_tablet_metrics=$(echo "$leaderless_tablets" | \
+    awk '{printf "yb_node_leaderless_tablet{tablet_id=\"%s\"} 1\n", $1}')
+  metrics="$metrics$leaderless_tablet_metrics\n"
+}
+
+collect_underreplicated_tablets()
+{
+  local ur_tablets_response=$(curl -s "$MASTER_HTTP_ENDPOINT/api/v1/tablet-under-replication" | \
+    grep -P '{"underreplicated_tablets":\[.*\]}')
+  [[ -z "$ur_tablets_response" ]] && { echo "unexpected response received" ; return 1; }
+  local underreplicated_tablets=$(echo "$ur_tablets_response" | \
+    sed -r 's/^\{"underreplicated_tablets":\[(.*)\]\}$/\1/' | sed 's/,/\n/g' | \
+    sed -r 's/^"(.*)"$/\1/')
+  [[ -z "$underreplicated_tablets" ]] && { echo "no under-replicated tablets" ; return 0; }
+  local underreplicated_tablet_metrics=$(echo "$underreplicated_tablets" | \
+    awk '{printf "yb_node_underreplicated_tablet{tablet_id=\"%s\"} 1\n", $1}')
+  metrics="$metrics$underreplicated_tablet_metrics\n"
+}
+
 collect_metric()
 {
   local metric_name=$1
@@ -189,6 +250,11 @@ collect_metric 'yb_node_postgres_worker_terminated_count{reason="exited_with_cod
  "get_postgres_worker_terminated_count \"$EXITED_WITH_CODE_REGEX\""
 collect_metric 'yb_node_postgres_rss{process="postmaster"}' 'get_postmaster_rss'
 collect_metric 'yb_node_postgres_rss{process="workers"}' 'get_postgres_workers_rss'
+collect_metric 'yb_node_is_master_leader' "is_master_leader"
+collect_metric 'yb_node_ysql_connections_count' "ysql_connections_count"
+collect_leaderless_tablets
+collect_underreplicated_tablets
+
 
 if [ "$output" = "file" ]; then
   mkdir -p "$(dirname "$filename")" && echo -e "$metrics" > "$filename"

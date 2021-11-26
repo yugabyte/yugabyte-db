@@ -722,6 +722,22 @@ public enum AlertTemplate {
           .defaultThresholdUnit(MILLISECOND)
           .build()),
 
+  HIGH_NUM_YSQL_CONNECTIONS(
+      "Number of YSQL connections is high",
+      "Number of YSQL connections is above threshold",
+      "max by (node_name) (max_over_time(yb_node_ysql_connections_count"
+          + "{node_prefix=\"__nodePrefix__\"}[5m])) {{ query_condition }} {{ query_threshold }}",
+      "Number of YSQL connections for universe '{{ $labels.source_name }}'"
+          + " is above {{ $labels.threshold }}."
+          + " Current value is {{ $value | printf \\\"%.0f\\\" }}",
+      15,
+      EnumSet.noneOf(DefinitionSettings.class),
+      TargetType.UNIVERSE,
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, "yb.alert.max_ysql_connections")
+          .defaultThresholdUnit(COUNT)
+          .build()),
+
   HIGH_NUM_YCQL_CONNECTIONS(
       "Number of YCQL connections is high",
       "Number of YCQL connections is above threshold",
@@ -788,6 +804,51 @@ public enum AlertTemplate {
       ThresholdSettings.builder()
           .defaultThreshold(SEVERE, "yb.alert.max_ycql_throughput")
           .defaultThresholdUnit(COUNT)
+          .build()),
+
+  MASTER_LEADER_MISSING(
+      "Master Leader missing",
+      "Master Leader is missing for configured duration",
+      "max by (node_prefix) (yb_node_is_master_leader{node_prefix=\"__nodePrefix__\"})"
+          + " {{ query_condition }} {{ query_threshold }}",
+      "Master Leader is missing for universe '{{ $labels.source_name }}'.",
+      300,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      TargetType.UNIVERSE,
+      ThresholdSettings.builder().statusThreshold(SEVERE).build()),
+
+  LEADERLESS_TABLETS(
+      "Leaderless tablets",
+      "Leader is missing for some tablet(s) for more than 5 minutes",
+      "count by (node_prefix) "
+          + "(max_over_time(yb_node_leaderless_tablet{node_prefix=\"__nodePrefix__\"}[5m])"
+          + " {{ query_condition }} {{ query_threshold }})",
+      "Tablet leader is missing for more than 5 minutes for "
+          + "{{ $value | printf \\\"%.0f\\\" }} tablet(s) in universe '{{ $labels.source_name }}'.",
+      15,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      TargetType.UNIVERSE,
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, 0)
+          .defaultThresholdCondition(Condition.GREATER_THAN)
+          .defaultThresholdUnit(STATUS)
+          .build()),
+
+  UNDER_REPLICATED_TABLETS(
+      "Under-replicated tablets",
+      "Some tablet(s) remain under-replicated for more than 5 minutes",
+      "count by (node_prefix) "
+          + "(max_over_time(yb_node_underreplicated_tablet{node_prefix=\"__nodePrefix__\"}[5m])"
+          + " {{ query_condition }} {{ query_threshold }})",
+      "{{ $value | printf \\\"%.0f\\\" }} tablet(s) remain under-replicated "
+          + "for more than 5 minutes in universe '{{ $labels.source_name }}'.",
+      15,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      TargetType.UNIVERSE,
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, 0)
+          .defaultThresholdCondition(Condition.GREATER_THAN)
+          .defaultThresholdUnit(STATUS)
           .build());
   // @formatter:on
 

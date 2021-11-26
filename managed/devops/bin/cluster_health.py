@@ -223,7 +223,8 @@ class NodeChecker():
     def __init__(self, node, node_name, identity_file, ssh_port, start_time_ms,
                  namespace_to_config, ysql_port, ycql_port, redis_port, enable_tls_client,
                  root_and_client_root_ca_same, ssl_protocol, enable_ysql_auth,
-                 master_http_port, tserver_http_port, collect_metrics_script, universe_version):
+                 master_http_port, tserver_http_port, ysql_server_http_port,
+                 collect_metrics_script, universe_version):
         self.node = node
         self.node_name = node_name
         self.identity_file = identity_file
@@ -247,6 +248,7 @@ class NodeChecker():
         self.enable_ysql_auth = enable_ysql_auth
         self.master_http_port = master_http_port
         self.tserver_http_port = tserver_http_port
+        self.ysql_server_http_port = ysql_server_http_port
         self.collect_metrics_script = collect_metrics_script
         self.universe_version = universe_version
         self.additional_info = {}
@@ -737,15 +739,35 @@ class NodeChecker():
         remote_cmd = "which openssl &>/dev/null; echo $?"
         output = self._remote_check_output(remote_cmd).rstrip()
         logging.info("OpenSSL installed state for node %s: %s",  self.node, output)
+
         return {"ssl_installed:" + self.node: (output == "0")
                 if not has_errors(output) else None}
 
     def upload_collect_metrics_script(self):
+        with open(self.collect_metrics_script, 'r') as file:
+            script_content = file.read()
+
+        script_content = script_content.replace('{{NODE_PRIVATE_IP}}', self.node)
+        script_content = script_content.replace('{{MASTER_HTTP_PORT}}',
+                                                str(self.master_http_port))
+        script_content = script_content.replace('{{TSERVER_HTTP_PORT}}',
+                                                str(self.tserver_http_port))
+        script_content = script_content.replace('{{YSQL_SERVER_HTTP_PORT}}',
+                                                str(self.ysql_server_http_port))
+
+        script_dir = os.path.dirname(os.path.abspath(self.collect_metrics_script))
+        node_script = os.path.join(script_dir, "cluster_health_" + self.node + ".sh")
+        with open(node_script, 'w') as file:
+            file.write(script_content)
+
         remote_script_path = "{}/bin/collect_metrics.sh".format(YB_HOME_DIR)
-        output = self._upload_file(self.collect_metrics_script, remote_script_path).rstrip()
-        logging.info("Metrics collection script uploaded to node %s: %s",  self.node, output)
-        return {"collect_metrics_script_uploaded:" + self.node: (output == "0")
-                if not has_errors(output) else None}
+        output = self._upload_file(node_script, remote_script_path).rstrip()
+        if (has_errors(output)):
+            return {"collect_metrics_script_uploaded:" + self.node: None}
+
+        remote_cmd = "chmod +x {}".format(remote_script_path)
+        output = self._remote_check_output(remote_cmd).rstrip()
+        return {"collect_metrics_script_uploaded:" + self.node: has_errors(output)}
 
 
 ###################################################################################################
@@ -930,6 +952,7 @@ class Cluster():
         self.enable_ysql_auth = data["enableYSQLAuth"]
         self.master_http_port = data["masterHttpPort"]
         self.tserver_http_port = data["tserverHttpPort"]
+        self.ysql_server_http_port = data["ysqlServerHttpPort"]
         self.collect_metrics_script = data["collectMetricsScript"]
 
 
@@ -975,8 +998,8 @@ def main():
                         args.start_time_ms, c.namespace_to_config, c.ysql_port,
                         c.ycql_port, c.redis_port, c.enable_tls_client,
                         c.root_and_client_root_ca_same, c.ssl_protocol, c.enable_ysql_auth,
-                        c.master_http_port, c.tserver_http_port, c.collect_metrics_script,
-                        universe_version)
+                        c.master_http_port, c.tserver_http_port, c.ysql_server_http_port,
+                        c.collect_metrics_script, universe_version)
 
                 coordinator.add_precheck(checker, "check_openssl_availability")
                 coordinator.add_precheck(checker, "upload_collect_metrics_script")
