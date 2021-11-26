@@ -53,13 +53,13 @@ showAsideToc: true
   </li>
 </ul>
 
-The following tutorial creates a simple Go application that connects to a YugabyteDB cluster using the [Go PostgreSQL driver](https://godoc.org/github.com/lib/pq), performs a few basic database operations — creating a table, inserting data, and running a SQL query — and then prints the results to the screen.
+The following tutorial creates a simple Go application that connects to a YugabyteDB cluster using the [pq driver](https://godoc.org/github.com/lib/pq), performs a few basic database operations — creating a table, inserting data, and running a SQL query — and then prints the results to the screen.
 
 ## Prerequisites
 
 This tutorial assumes that:
 
-- YugabyteDB is up and running. If you are new to YugabyteDB, you can download, install, and have YugabyteDB up and running within minutes by following the steps in [Quick start](../../../../quick-start/). Alternatively, you can use the [Yugabyte Cloud](http://cloud.yugabyte.com/register) portal, to get a fully managed database-as-a-service (DBaaS) for YugabyteDB.
+- YugabyteDB is up and running. If you are new to YugabyteDB, you can download, install, and have YugabyteDB up and running within minutes by following the steps in [Quick start](../../../../quick-start/). Alternatively, you can use [Yugabyte Cloud](http://cloud.yugabyte.com/register), to get a fully managed database-as-a-service (DBaaS) for YugabyteDB.
 
 - [Go version 1.8](https://golang.org/dl/), or later, is installed.
 
@@ -71,7 +71,7 @@ Refer to the [SSL/TLS configuration](../../../../secure/tls-encryption/client-to
 
 Install [OpenSSL](https://www.openssl.org/) 1.1.1 or later only if you have a YugabyteDB setup with SSL/TLS enabled. The **Yugabyte Cloud** clusters are always SSL/TLS enabled.
 
-## CA Certificate
+## CA certificate
 
 Download the CA certificate file to allow your application connect securely to the YugabyteDB cluster. In case of a **Yugabyte Cloud** cluster,
 
@@ -88,7 +88,7 @@ The [Go PostgreSQL driver package (`pq`)](https://godoc.org/github.com/lib/pq) i
 To install the package locally, run the following commands:
 
 {{< note title="Note">}}
-The environment variable GO111MODULE may need to be set, if your Go version is 1.11 or higher. It is set before installing the lib/pq package.
+The environment variable `GO111MODULE` may need to be set, if your Go version is 1.11 or higher. It is set before installing the lib/pq package.
 {{< /note >}}
 
 ```sh
@@ -101,9 +101,9 @@ $ go get github.com/lib/pq
 Create a file `ybsql_hello_world.go` and copy the contents below.
 
 {{< note title="Note">}}
-The constants defined under `const` block in the code below have the default values.
-You may need to change the values of host, user and password as per your YugabyteDB cluster setup.
-For a **Yugabyte Cloud** cluster, the host will have a value in the format similar to `xxxx-xxxx-xxxx-xxxx-xxxx.aws.ybdb.io`.
+The constants defined under the `const` block in the code below have the default values.
+You may need to change the values of `host`, `user` and `password` as per your YugabyteDB cluster setup.
+For a **Yugabyte Cloud** cluster, the `host` will have a value in the format similar to `xxxx-xxxx-xxxx-xxxx-xxxx.aws.ybdb.io`.
 {{< /note >}}
 
 ```go
@@ -189,7 +189,7 @@ For the **Yugabyte Cloud** cluster or a YugabyteDB cluster with SSL/TLS enabled,
 
    ```sh
     $ export PGSSLMODE=verify-ca
-    $ export PGSSLROOTCERT=~/root.crt  # Here, the CA certificate file is downloaded as `root.crt` under home directory. Please modify your path accordingly.
+    $ export PGSSLROOTCERT=~/root.crt  # Here, the CA certificate file is downloaded as `root.crt` under home directory. Modify your path accordingly.
    ```
 
 ## Run the application

@@ -53,13 +53,13 @@ showAsideToc: true
   </li>
 </ul>
 
-The following tutorial creates a simple Go application that connects to a YugabyteDB cluster using the [Go PostgreSQL driver](https://pkg.go.dev/github.com/go-pg/pg), performs a few basic database operations — creating a table, inserting data, and running a SQL query — and then prints the results to the screen.
+The following tutorial creates a simple Go application that connects to a YugabyteDB cluster using the [Go-pg client and ORM](https://pkg.go.dev/github.com/go-pg/pg), performs a few basic database operations — creating a table, inserting data, and running a SQL query — and then prints the results to the screen.
 
 ## Prerequisites
 
 This tutorial assumes that:
 
-- YugabyteDB is up and running. If you are new to YugabyteDB, you can download, install, and have YugabyteDB up and running within minutes by following the steps in [Quick start](../../../../quick-start/). Alternatively, you can use the [Yugabyte Cloud](http://cloud.yugabyte.com/register) portal, to get a fully managed database-as-a-service (DBaaS) for YugabyteDB.
+- YugabyteDB is up and running. If you are new to YugabyteDB, you can download, install, and have YugabyteDB up and running within minutes by following the steps in [Quick start](../../../../quick-start/). Alternatively, you can use [Yugabyte Cloud](http://cloud.yugabyte.com/register), to get a fully managed database-as-a-service (DBaaS) for YugabyteDB.
 
 - [Go version 1.8](https://golang.org/dl/), or later, is installed.
 
@@ -71,7 +71,7 @@ Refer to the [SSL/TLS configuration](../../../../secure/tls-encryption/client-to
 
 Install [OpenSSL](https://www.openssl.org/) 1.1.1 or later only if you have a YugabyteDB setup with SSL/TLS enabled. The **Yugabyte Cloud** clusters are always SSL/TLS enabled.
 
-## CA Certificate
+## CA certificate
 
 Download the CA certificate file to allow your application connect securely to the YugabyteDB cluster. In case of a **Yugabyte Cloud** cluster,
 
@@ -99,9 +99,9 @@ $ go get github.com/go-pg/pg/v10
 Create a file `ybsql_hello_world.go` and copy the contents below.
 
 {{< note title="Note">}}
-The constants defined under `const` block in the code below have the default values.
-You may need to change the values of host, user and password as per your YugabyteDB cluster setup.
-For a **Yugabyte Cloud** cluster, the host will have a value in the format similar to `xxxx-xxxx-xxxx-xxxx-xxxx.aws.ybdb.io`.
+The constants defined under the `const` block in the code below have the default values.
+You may need to change the values of `host`, `user` and `password` as per your YugabyteDB cluster setup.
+For a **Yugabyte Cloud** cluster, the `host` will have a value in the format similar to `xxxx-xxxx-xxxx-xxxx-xxxx.aws.ybdb.io`.
 {{< /note >}}
 
 ```go
@@ -150,16 +150,6 @@ func main() {
     if errors != nil {
         log.Fatal(errors)
     }
-
-    /*
-    Alternatively, you can use below code to initialize Options.
-    All options (except password and SSL related) are automatically read from the
-    standard environment variables.
-
-    opt := &pg.Options{
-        Password: os.Getenv("PGPASSWORD"),
-    }
-    */
 
     CAFile := os.Getenv("PGSSLROOTCERT")
     if (CAFile != "") {
@@ -233,17 +223,101 @@ func main() {
 }
 ```
 
-## SSL/TLS Disabled
+{{< note title="Note">}}
+If the `password` contains these special characters (#, %, ^), the driver may fail to parse the url. In such a case, use pg.Options() instead of pg.ParseURL() to initialize the Options in `ybsql_hello_world.go`. The standard PG environment variables except `PGPASSWORD` and `PGSSLROOTCERT` are implicitly read by the driver.
+{{< /note >}}
+
+```sh
+/* Modify the main() from the ybsql_hello_world.go script by replacing the first few lines and enabling pg.Options() */
+
+func main() {
+    opt := &pg.Options{
+        Password: os.Getenv("PGPASSWORD"),
+    }
+
+    CAFile := os.Getenv("PGSSLROOTCERT")
+    if (CAFile != "") {
+        CACert, err2 := ioutil.ReadFile(CAFile)
+        if err2 != nil {
+            log.Fatal(err2)
+        }
+
+        CACertPool := x509.NewCertPool()
+        CACertPool.AppendCertsFromPEM(CACert)
+
+        tlsConfig := &tls.Config{
+          RootCAs:            CACertPool,
+          ServerName:         host,
+        }
+        opt.TLSConfig = tlsConfig
+    }
+    db := pg.Connect(opt)
+
+    defer db.Close()
+
+    model := (*Employee)(nil)
+    err := db.Model(model).DropTable(&orm.DropTableOptions{
+        IfExists: true,
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    err = db.Model(model).CreateTable(&orm.CreateTableOptions{
+        Temp: false,
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    fmt.Println("Created table")
+
+    // Insert into the table.
+    employee1 := &Employee{
+        Name:   "John",
+        Age:    35,
+        Language: []string{"Go"},
+    }
+    _, err = db.Model(employee1).Insert()
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    _, err = db.Model(&Employee{
+        Name:      "Kelly",
+        Age:       35,
+        Language:  []string{"Golang", "Python"},
+    }).Insert()
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    fmt.Println("Inserted data")
+
+    // Read from the table.
+    emp := new(Employee)
+    err = db.Model(emp).
+        Where("employee.id = ?", employee1.Id).
+        Select()
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Printf("Query for id=1 returned: ");
+    fmt.Println(emp)
+}
+```
+
+## Disable SSL/TLS
 
 For the default YugabyteDB setup, the SSL/TLS is not enabled. So, you don't need to specify any SSL-related configuration and directly [run the application](../ysql-pg-ssl/#run-the-application).
 
-## SSL/TLS Enabled
+## Enable SSL/TLS
 
 For the **Yugabyte Cloud** cluster or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as below.
 
    ```sh
     $ export PGSSLMODE=verify-ca
-    $ export PGSSLROOTCERT=~/root.crt  # Here, the CA certificate file is downloaded as `root.crt` under home directory. Please modify your path accordingly.
+    $ export PGSSLROOTCERT=~/root.crt  # Here, the CA certificate file is downloaded as `root.crt` under home directory. Modify your path accordingly.
    ```
 
 ## Run the application
