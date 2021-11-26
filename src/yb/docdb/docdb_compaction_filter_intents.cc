@@ -10,22 +10,21 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/docdb/docdb_compaction_filter_intents.h"
 
 #include <memory>
 
 #include <glog/logging.h>
 
-#include "yb/rocksdb/compaction_filter.h"
-#include "yb/util/string_util.h"
-
-#include "yb/docdb/doc_key.h"
+#include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/intent.h"
 #include "yb/docdb/value.h"
-#include "yb/docdb/doc_kv_util.h"
+#include "yb/rocksdb/compaction_filter.h"
 #include "yb/tablet/transaction_participant.h"
+#include "yb/util/atomic.h"
+#include "yb/util/logging.h"
+#include "yb/util/string_util.h"
 
 DEFINE_uint64(aborted_intent_cleanup_ms, 60000, // 1 minute by default, 1 sec for testing
              "Duration in ms after which to check if a transaction is aborted.");

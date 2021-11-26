@@ -35,7 +35,6 @@
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/listener.h"
 #include "yb/util/slice.h"
-#include "yb/util/result.h"
 #include "yb/rocksdb/universal_compaction.h"
 
 #ifdef max

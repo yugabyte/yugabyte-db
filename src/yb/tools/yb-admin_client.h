@@ -50,6 +50,7 @@
 #include "yb/master/master.proxy.h"
 #include "yb/master/master_backup.proxy.h"
 #include "yb/rpc/rpc_fwd.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/messenger.h"
 
 namespace yb {
@@ -205,7 +206,7 @@ class ClusterAdminClient {
 
   CHECKED_STATUS ListLeaderCounts(const client::YBTableName& table_name);
 
-  Result<unordered_map<string, int>> GetLeaderCounts(const client::YBTableName& table_name);
+  Result<std::unordered_map<string, int>> GetLeaderCounts(const client::YBTableName& table_name);
 
   CHECKED_STATUS SetupRedisTable();
 

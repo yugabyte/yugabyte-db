@@ -13,6 +13,7 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master.pb.h"
+#include "yb/util/trace.h"
 
 using std::set;
 

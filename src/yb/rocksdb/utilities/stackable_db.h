@@ -23,6 +23,8 @@
 #include <string>
 #include "yb/rocksdb/db.h"
 
+#include "yb/util/result.h"
+
 #ifdef _WIN32
 // Windows API macro interference
 #undef DeleteFile

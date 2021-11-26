@@ -21,6 +21,7 @@
 #include "yb/common/ql_value.h"
 #include "yb/common/ybc-internal.h"
 #include "yb/util/atomic.h"
+#include "yb/util/thread.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "yb/yql/pggate/pggate.h"

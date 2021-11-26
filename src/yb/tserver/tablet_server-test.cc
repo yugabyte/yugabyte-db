@@ -40,6 +40,7 @@
 #include "yb/master/master.pb.h"
 
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_test_util.h"
 #include "yb/rpc/yb_rpc.h"
 

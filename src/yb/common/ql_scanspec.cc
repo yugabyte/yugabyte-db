@@ -15,12 +15,12 @@
 
 #include "yb/common/ql_scanspec.h"
 
-#include "yb/common/ql_expr.h"
 #include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/ql_expr.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/schema.h"
 
 namespace yb {
-namespace common {
 
 using std::unordered_map;
 using std::pair;
@@ -506,5 +506,4 @@ PgsqlScanSpec::PgsqlScanSpec(const PgsqlExpressionPB *where_expr,
 PgsqlScanSpec::~PgsqlScanSpec() {
 }
 
-} // namespace common
 } // namespace yb

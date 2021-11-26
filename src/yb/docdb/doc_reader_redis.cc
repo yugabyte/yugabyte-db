@@ -10,7 +10,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/docdb/doc_reader_redis.h"
 
 #include <string>
@@ -18,20 +17,19 @@
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/transaction.h"
-
+#include "yb/docdb/deadline_info.h"
+#include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_ttl_util.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/docdb_types.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/subdocument.h"
 #include "yb/docdb/value.h"
 #include "yb/docdb/value_type.h"
-#include "yb/docdb/deadline_info.h"
-#include "yb/docdb/docdb_types.h"
-
 #include "yb/server/hybrid_clock.h"
-
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 
 using std::vector;
 
@@ -43,6 +41,14 @@ namespace docdb {
 const SliceKeyBound& SliceKeyBound::Invalid() {
   static SliceKeyBound result;
   return result;
+}
+
+std::string SliceKeyBound::ToString() const {
+  if (!is_valid()) {
+    return "{ empty }";
+  }
+  return Format("{ $0$1 $2 }", is_lower() ? ">" : "<", is_exclusive() ? "" : "=",
+                SubDocKey::DebugSliceToString(key_));
 }
 
 const IndexBound& IndexBound::Empty() {
@@ -360,7 +366,7 @@ yb::Status GetRedisSubDocument(
     const DocDB& doc_db,
     const GetRedisSubDocumentData& data,
     const rocksdb::QueryId query_id,
-    const TransactionOperationContextOpt& txn_op_context,
+    const TransactionOperationContext& txn_op_context,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time) {
   auto iter = CreateIntentAwareIterator(
@@ -492,6 +498,14 @@ yb::Status GetRedisSubDocument(
   db_iter->SeekOutOfSubDoc(&key_bytes);
   return Status::OK();
 }
+
+std::string GetRedisSubDocumentData::ToString() const {
+  return Format("{ subdocument_key: $0 exp.ttl: $1 exp.write_time: $2 return_type_only: $3 "
+                    "low_subkey: $4 high_subkey: $5 }",
+                SubDocKey::DebugSliceToString(subdocument_key), exp.ttl,
+                exp.write_ht, return_type_only, low_subkey, high_subkey);
+}
+
 
 }  // namespace docdb
 }  // namespace yb

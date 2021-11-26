@@ -41,6 +41,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/logging.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/result.h"
 #include "yb/util/stopwatch.h"
 
 namespace yb {

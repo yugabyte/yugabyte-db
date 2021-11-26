@@ -41,6 +41,7 @@
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/master.proxy.h"
+#include "yb/util/async_util.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/flag_tags.h"
 

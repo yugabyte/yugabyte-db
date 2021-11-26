@@ -19,6 +19,7 @@
 #include "yb/common/pgsql_error.h"
 
 #include "yb/util/flag_tags.h"
+#include "yb/util/logging.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/trace.h"
 #include "yb/util/yb_pg_errcodes.h"

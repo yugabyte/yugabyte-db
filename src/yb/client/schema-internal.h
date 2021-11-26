@@ -47,7 +47,7 @@ class YBColumnSpec::Data {
       : name(std::move(name)),
         has_type(false),
         has_order(false),
-        sorting_type(ColumnSchema::SortingType::kNotSpecified),
+        sorting_type(SortingType::kNotSpecified),
         has_nullable(false),
         primary_key(false),
         hash_primary_key(false),
@@ -67,7 +67,7 @@ class YBColumnSpec::Data {
   bool has_order;
   int32_t order;
 
-  ColumnSchema::SortingType sorting_type;
+  SortingType sorting_type;
 
   bool has_nullable;
   bool nullable;

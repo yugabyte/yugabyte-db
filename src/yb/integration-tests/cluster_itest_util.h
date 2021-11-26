@@ -57,10 +57,12 @@
 #include "yb/consensus/leader_lease.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/server/server_base.pb.h"
 #include "yb/server/server_base.proxy.h"
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
+#include "yb/util/result.h"
 
 using namespace std::literals;
 

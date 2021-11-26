@@ -72,6 +72,7 @@
 #include "yb/master/ysql_tablespace_manager.h"
 #include "yb/master/ysql_transaction_ddl.h"
 #include "yb/rpc/rpc.h"
+#include "yb/rpc/scheduler.h"
 #include "yb/server/monitored_task.h"
 #include "yb/tserver/tablet_peer_lookup.h"
 
@@ -139,12 +140,12 @@ static const int32 kDelayAfterFailoverSecs = 120;
 
 using PlacementId = std::string;
 
-typedef unordered_map<TabletId, TabletServerId> TabletToTabletServerMap;
+typedef std::unordered_map<TabletId, TabletServerId> TabletToTabletServerMap;
 
-typedef unordered_map<TablespaceId, boost::optional<ReplicationInfoPB>>
+typedef std::unordered_map<TablespaceId, boost::optional<ReplicationInfoPB>>
   TablespaceIdToReplicationInfoMap;
 
-typedef unordered_map<TableId, boost::optional<TablespaceId>> TableToTablespaceIdMap;
+typedef std::unordered_map<TableId, boost::optional<TablespaceId>> TableToTablespaceIdMap;
 
 YB_STRONGLY_TYPED_BOOL(HideOnly);
 
@@ -152,7 +153,7 @@ YB_DEFINE_ENUM(GetTablesMode, (kAll) // All tables
                               (kRunning) // All running tables
                               (kVisibleToClient) // All tables visible to the client
                );
-typedef unordered_map<TableId, vector<scoped_refptr<TabletInfo>>> TableToTabletInfos;
+typedef std::unordered_map<TableId, vector<scoped_refptr<TabletInfo>>> TableToTabletInfos;
 
 // The component of the master which tracks the state and location
 // of tables/tablets in the cluster.
@@ -755,8 +756,8 @@ class CatalogManager :
     leader_lock_.AssertAcquiredForReading();
   }
 
-  std::string GenerateId(boost::optional<const SysRowEntry::Type> entity_type = boost::none);
-  std::string GenerateIdUnlocked(boost::optional<const SysRowEntry::Type> entity_type = boost::none)
+  std::string GenerateId(boost::optional<const SysRowEntryType> entity_type = boost::none);
+  std::string GenerateIdUnlocked(boost::optional<const SysRowEntryType> entity_type = boost::none)
       REQUIRES_SHARED(mutex_);
 
   ThreadPool* AsyncTaskPool() { return async_task_pool_.get(); }
@@ -1013,7 +1014,7 @@ class CatalogManager :
 
   // Remove the specified entries from the protobuf field table_ids of a TabletInfo.
   Status RemoveTableIdsFromTabletInfo(
-      TabletInfoPtr tablet_info, unordered_set<TableId> tables_to_remove);
+      TabletInfoPtr tablet_info, std::unordered_set<TableId> tables_to_remove);
 
   // Add index info to the indexed table.
   CHECKED_STATUS AddIndexInfoToTable(const scoped_refptr<TableInfo>& indexed_table,
@@ -1336,7 +1337,7 @@ class CatalogManager :
   }
 
   virtual Result<SnapshotSchedulesToObjectIdsMap> MakeSnapshotSchedulesToObjectIdsMap(
-      SysRowEntry::Type type) {
+      SysRowEntryType type) {
     return SnapshotSchedulesToObjectIdsMap();
   }
 

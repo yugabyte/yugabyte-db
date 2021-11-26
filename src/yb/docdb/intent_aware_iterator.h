@@ -16,10 +16,10 @@
 
 #include <boost/optional/optional.hpp>
 
+#include "yb/common/doc_hybrid_time.h"
 #include "yb/common/read_hybrid_time.h"
 
 #include "yb/docdb/bounded_rocksdb_iterator.h"
-#include "yb/docdb/doc_key.h"
 #include "yb/docdb/key_bytes.h"
 #include "yb/docdb/transaction_status_cache.h"
 
@@ -65,7 +65,7 @@ class IntentAwareIterator {
       const rocksdb::ReadOptions& read_opts,
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
-      const TransactionOperationContextOpt& txn_op_context);
+      const TransactionOperationContext& txn_op_context);
 
   IntentAwareIterator(const IntentAwareIterator& other) = delete;
   void operator=(const IntentAwareIterator& other) = delete;
@@ -284,7 +284,7 @@ class IntentAwareIterator {
   // one of the strings above.
   Slice encoded_read_time_regular_limit_;
 
-  const TransactionOperationContextOpt txn_op_context_;
+  const TransactionOperationContext txn_op_context_;
   docdb::BoundedRocksDbIterator intent_iter_;
   docdb::BoundedRocksDbIterator iter_;
   // iter_valid_ is true if and only if iter_ is positioned at key which matches top prefix from

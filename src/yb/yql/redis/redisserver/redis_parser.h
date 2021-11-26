@@ -24,6 +24,7 @@
 
 #include "yb/yql/redis/redisserver/redis_fwd.h"
 
+#include "yb/util/net/socket.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 #include "yb/util/size_literals.h"

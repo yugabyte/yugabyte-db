@@ -17,6 +17,7 @@
 
 #include "yb/tablet/running_transaction.h"
 
+#include "yb/util/logging.h"
 
 using namespace std::literals;
 

@@ -15,12 +15,15 @@
 
 #include "yb/rpc/rpc_with_queue.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/rpc/connection.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/reactor.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 
 #include "yb/util/string_util.h"
+#include <glog/logging.h>
 
 namespace yb {
 namespace rpc {

@@ -33,7 +33,7 @@ Result<ColumnId> MetadataColumnId(SnapshotCoordinatorContext* context) {
 } // namespace
 
 Result<docdb::KeyBytes> EncodedKey(
-    SysRowEntry::Type type, const Slice& id, SnapshotCoordinatorContext* context) {
+    SysRowEntryType type, const Slice& id, SnapshotCoordinatorContext* context) {
   docdb::DocKey doc_key({ docdb::PrimitiveValue::Int32(type),
                           docdb::PrimitiveValue(id.ToBuffer()) });
   docdb::SubDocKey sub_doc_key(

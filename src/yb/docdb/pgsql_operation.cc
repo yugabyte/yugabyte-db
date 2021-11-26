@@ -10,7 +10,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/docdb/pgsql_operation.h"
 
 #include <limits>
@@ -21,10 +20,9 @@
 #include <boost/optional/optional_io.hpp>
 
 #include "yb/common/partition.h"
+#include "yb/common/pg_system_attr.h"
 #include "yb/common/ql_storage_interface.h"
 #include "yb/common/ql_value.h"
-#include "yb/common/pg_system_attr.h"
-
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb_debug.h"
@@ -32,11 +30,10 @@
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/primitive_value_util.h"
-
 #include "yb/util/flag_tags.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
 #include "yb/util/trace.h"
-
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
 DECLARE_bool(ysql_disable_index_backfill);
@@ -128,18 +125,18 @@ Result<DocKey> FetchDocKey(const Schema& schema, const PgsqlWriteRequestPB& requ
       });
 }
 
-Result<common::YQLRowwiseIteratorIf::UniPtr> CreateIterator(
-    const common::YQLStorageIf& ql_storage,
+Result<YQLRowwiseIteratorIf::UniPtr> CreateIterator(
+    const YQLStorageIf& ql_storage,
     const PgsqlReadRequestPB& request,
     const Schema& projection,
     const Schema& schema,
-    const TransactionOperationContextOpt& txn_op_context,
+    const TransactionOperationContext& txn_op_context,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
     bool is_explicit_request_read_time) {
   VLOG_IF(2, request.is_for_backfill()) << "Creating iterator for " << yb::ToString(request);
 
-  common::YQLRowwiseIteratorIf::UniPtr result;
+  YQLRowwiseIteratorIf::UniPtr result;
   // TODO(neil) Remove the following IF block when it is completely obsolete.
   // The following IF block has not been used since 2.1 release.
   // We keep it here only for rolling upgrade purpose.
@@ -705,7 +702,7 @@ Status PgsqlWriteOperation::GetDocPaths(GetDocPathsMode mode,
 
 //--------------------------------------------------------------------------------------------------
 
-Result<size_t> PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storage,
+Result<size_t> PgsqlReadOperation::Execute(const YQLStorageIf& ql_storage,
                                            CoarseTimePoint deadline,
                                            const ReadHybridTime& read_time,
                                            bool is_explicit_request_read_time,
@@ -745,7 +742,7 @@ Result<size_t> PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storag
   return fetched_rows;
 }
 
-Result<size_t> PgsqlReadOperation::ExecuteSample(const common::YQLStorageIf& ql_storage,
+Result<size_t> PgsqlReadOperation::ExecuteSample(const YQLStorageIf& ql_storage,
                                                  CoarseTimePoint deadline,
                                                  const ReadHybridTime& read_time,
                                                  bool is_explicit_request_read_time,
@@ -864,7 +861,7 @@ Result<size_t> PgsqlReadOperation::ExecuteSample(const common::YQLStorageIf& ql_
   return fetched_rows;
 }
 
-Result<size_t> PgsqlReadOperation::ExecuteScalar(const common::YQLStorageIf& ql_storage,
+Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
                                                  CoarseTimePoint deadline,
                                                  const ReadHybridTime& read_time,
                                                  bool is_explicit_request_read_time,
@@ -890,7 +887,7 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const common::YQLStorageIf& ql_
   // columns and key columns.
   Schema projection;
   Schema index_projection;
-  common::YQLRowwiseIteratorIf *iter;
+  YQLRowwiseIteratorIf *iter;
   const Schema* scan_schema;
 
   RETURN_NOT_OK(CreateProjection(schema, request_.column_refs(), &projection));
@@ -983,7 +980,7 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const common::YQLStorageIf& ql_
   return fetched_rows;
 }
 
-Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(const common::YQLStorageIf& ql_storage,
+Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(const YQLStorageIf& ql_storage,
                                                       CoarseTimePoint deadline,
                                                       const ReadHybridTime& read_time,
                                                       const Schema& schema,
@@ -1018,7 +1015,7 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(const common::YQLStorageIf
   return row_count;
 }
 
-Status PgsqlReadOperation::SetPagingStateIfNecessary(const common::YQLRowwiseIteratorIf* iter,
+Status PgsqlReadOperation::SetPagingStateIfNecessary(const YQLRowwiseIteratorIf* iter,
                                                      size_t fetched_rows,
                                                      const size_t row_count_limit,
                                                      const bool scan_time_exceeded,

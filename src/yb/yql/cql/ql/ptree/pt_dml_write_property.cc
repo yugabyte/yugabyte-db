@@ -86,7 +86,7 @@ void PTDmlWriteProperty::PrintSemanticAnalysisResult(SemContext *sem_context) {
 CHECKED_STATUS PTDmlWritePropertyListNode::Analyze(SemContext *sem_context) {
   // Set to ensure we don't have duplicate update properties.
   std::set<string> update_properties;
-  unordered_map<string, PTDmlWriteProperty::SharedPtr> order_tnodes;
+  std::unordered_map<string, PTDmlWriteProperty::SharedPtr> order_tnodes;
   vector<string> order_columns;
   for (PTDmlWriteProperty::SharedPtr tnode : node_list()) {
     if (tnode == nullptr) {

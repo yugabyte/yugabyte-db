@@ -25,6 +25,7 @@
 #include <set>
 #include <unordered_map>
 
+#include "yb/common/ql_protocol_util.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/rpc/server_event.h"
 #include "yb/yql/cql/ql/util/statement_params.h"

@@ -31,6 +31,7 @@
 //
 
 #include <gtest/gtest.h>
+#include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/util/errno.h"

@@ -17,6 +17,7 @@
 
 #include "yb/tablet/tablet_peer.h"
 
+#include "yb/util/bitmap.h"
 
 using namespace std::literals;
 

@@ -205,9 +205,9 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
   } else {
     // If we do have placement information, figure out how the load is distributed based on
     // placement blocks, for this tablet.
-    unordered_map<CloudInfoPB, vector<TabletReplica>, cloud_hash, cloud_equal_to>
+    std::unordered_map<CloudInfoPB, vector<TabletReplica>, cloud_hash, cloud_equal_to>
                                                                     placement_to_replicas;
-    unordered_map<CloudInfoPB, int, cloud_hash, cloud_equal_to> placement_to_min_replicas;
+    std::unordered_map<CloudInfoPB, int, cloud_hash, cloud_equal_to> placement_to_min_replicas;
     // Preset the min_replicas, so we know if we're missing replicas somewhere as well.
     for (const auto& pb : placement.placement_blocks()) {
       // Default empty vector.

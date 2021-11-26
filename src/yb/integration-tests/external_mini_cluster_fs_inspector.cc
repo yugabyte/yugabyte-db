@@ -148,8 +148,8 @@ vector<string> ExternalMiniClusterFsInspector::ListTabletsOnTS(int index) {
   return all_tablets;
 }
 
-unordered_map<string, vector<string>> ExternalMiniClusterFsInspector::DrivesOnTS(int index) {
-  unordered_map<string, vector<string>> drives;
+std::unordered_map<string, vector<string>> ExternalMiniClusterFsInspector::DrivesOnTS(int index) {
+  std::unordered_map<string, vector<string>> drives;
   TabletsWithDataOnTS(index, [&](const std::string& drive, const std::string& tablet) {
     drives[drive].push_back(tablet);
   });
