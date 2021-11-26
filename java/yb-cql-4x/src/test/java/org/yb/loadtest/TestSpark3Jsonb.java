@@ -144,6 +144,61 @@ public class TestSpark3Jsonb extends BaseMiniClusterTest {
   }
 
   @Test
+  public void testCount() throws Exception {
+      // Set up config.
+      List<InetSocketAddress> addresses = miniCluster.getCQLContactPoints();
+
+      // Setup the local spark master
+      SparkConf conf = new SparkConf().setAppName("yb.spark-jsonb")
+        .setMaster("local[1]")
+        .set("spark.cassandra.connection.localDC", "datacenter1")
+        .set("spark.cassandra.connection.host", addresses.get(0).getHostName())
+        .set("spark.sql.catalog.mycatalog",
+          "com.datastax.spark.connector.datasource.CassandraCatalog");
+
+      CqlSession session = createTestSchemaIfNotExist(conf);
+      SparkSession spark = SparkSession.builder().config(conf)
+        .withExtensions(new CassandraSparkExtensions()).getOrCreate();
+
+      String createKeyspace = "CREATE KEYSPACE IF NOT EXISTS " + KEYSPACE + ";";
+      session.execute(createKeyspace);
+      String tbl = KEYSPACE + ".test_types";
+      session.execute("create table " + tbl + "(domain text, open_date date, " +
+        "subentity text, PRIMARY KEY ((domain,open_date), subentity) ) WITH CLUSTERING ORDER BY (" +
+        "subentity DESC) AND default_time_to_live=15768000 AND transactions = {'enabled': 'true'}");
+      session.execute("insert into " + tbl + " (domain, open_date, subentity)" +
+        "values ('a', '2021-7-29', 'c')");
+      session.execute("insert into " + tbl + " (domain, open_date, subentity)" +
+        "values ('a', '2021-7-28', 'c')");
+      session.execute("insert into " + tbl + " (domain, open_date, subentity)" +
+        "values ('b', '2021-7-27', 'c')");
+      session.execute("insert into " + tbl + " (domain, open_date, subentity)" +
+        "values ('a', '2021-7-26', 'c')");
+
+      String query = "select count(*) from " + "mycatalog."+ tbl +
+        " where domain='a' and open_date='2021-7-29'";
+      Dataset<Row> explain_rows = spark.sql("EXPLAIN " + query);
+      Iterator<Row> iterator = explain_rows.toLocalIterator();
+      StringBuilder explain_sb = new StringBuilder();
+      while (iterator.hasNext()) {
+          Row row = iterator.next();
+          explain_sb.append(row.getString(0));
+      }
+      String explain_text = explain_sb.toString();
+      logger.info("plan is " + explain_text);
+
+      Dataset<Row> rows = spark.sql(query);
+      iterator = rows.toLocalIterator();
+      int rows_count = 1;
+      while (iterator.hasNext()) {
+          Row row = iterator.next();
+          Long id = row.getLong(0);
+          logger.info("cnt = " + id);
+          assertTrue(id == 1);
+      }
+  }
+
+  @Test
   public void testCdr() throws Exception {
       // Set up config.
       List<InetSocketAddress> addresses = miniCluster.getCQLContactPoints();
