@@ -27,7 +27,7 @@ namespace tablet {
 Status AbstractTablet::HandleQLReadRequest(CoarseTimePoint deadline,
                                            const ReadHybridTime& read_time,
                                            const QLReadRequestPB& ql_read_request,
-                                           const TransactionOperationContextOpt& txn_op_context,
+                                           const TransactionOperationContext& txn_op_context,
                                            QLReadRequestResult* result) {
 
   // TODO(Robert): verify that all key column values are provided
@@ -74,7 +74,7 @@ Status AbstractTablet::HandlePgsqlReadRequest(CoarseTimePoint deadline,
                                               const ReadHybridTime& read_time,
                                               bool is_explicit_request_read_time,
                                               const PgsqlReadRequestPB& pgsql_read_request,
-                                              const TransactionOperationContextOpt& txn_op_context,
+                                              const TransactionOperationContext& txn_op_context,
                                               PgsqlReadRequestResult* result,
                                               size_t* num_rows_read) {
 

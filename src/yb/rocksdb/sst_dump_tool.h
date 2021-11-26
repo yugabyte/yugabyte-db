@@ -23,6 +23,8 @@
 #ifndef ROCKSDB_LITE
 #pragma once
 
+#include <glog/logging.h>
+
 #include "yb/docdb/docdb_types.h"
 #include "yb/util/enums.h"
 #include "yb/util/slice.h"

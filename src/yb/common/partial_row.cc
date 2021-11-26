@@ -36,12 +36,14 @@
 #include <string>
 
 #include "yb/common/common.pb.h"
+#include "yb/common/key_encoder.h"
 #include "yb/common/row.h"
 #include "yb/common/schema.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/bitmap.h"
-#include "yb/util/status.h"
 #include "yb/util/decimal.h"
+#include "yb/util/status.h"
+#include "yb/util/status_log.h"
 
 using strings::Substitute;
 

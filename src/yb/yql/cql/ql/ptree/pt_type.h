@@ -20,6 +20,7 @@
 
 #include "yb/client/schema.h"
 
+#include "yb/common/ql_type.h"
 #include "yb/common/types.h"
 
 #include "yb/yql/cql/ql/ptree/tree_node.h"

@@ -20,7 +20,10 @@
 #include "yb/consensus/metadata.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master.proxy.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/util/countdown_latch.h"
 #include "yb/util/logging.h"
+#include "yb/util/result.h"
 
 namespace yb {
 namespace master {

@@ -47,6 +47,7 @@
 #include "yb/rocksdb/util/xfunc.h"
 
 #include "yb/util/logging.h"
+#include <glog/logging.h>
 
 DEFINE_int32(memstore_arena_size_kb, 64, "Size of each arena allocation for the memstore");
 

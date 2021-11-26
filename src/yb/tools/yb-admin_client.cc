@@ -51,6 +51,7 @@
 #include "yb/client/table_creator.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/sys_catalog.h"
+#include "yb/rpc/proxy.h"
 
 #include "yb/util/string_case.h"
 #include "yb/util/net/net_util.h"
@@ -782,7 +783,7 @@ Status ClusterAdminClient::GetIsLoadBalancerIdle() {
 }
 
 Status ClusterAdminClient::ListLeaderCounts(const YBTableName& table_name) {
-  unordered_map<string, int> leader_counts = VERIFY_RESULT(GetLeaderCounts(table_name));
+  std::unordered_map<string, int> leader_counts = VERIFY_RESULT(GetLeaderCounts(table_name));
   int total_leader_count = 0;
   for (const auto& lc : leader_counts) { total_leader_count += lc.second; }
 
@@ -823,7 +824,7 @@ Status ClusterAdminClient::ListLeaderCounts(const YBTableName& table_name) {
   return Status::OK();
 }
 
-Result<unordered_map<string, int>> ClusterAdminClient::GetLeaderCounts(
+Result<std::unordered_map<string, int>> ClusterAdminClient::GetLeaderCounts(
     const client::YBTableName& table_name) {
   vector<string> tablet_ids, ranges;
   RETURN_NOT_OK(yb_client_->GetTablets(table_name, 0, &tablet_ids, &ranges));
@@ -834,7 +835,7 @@ Result<unordered_map<string, int>> ClusterAdminClient::GetLeaderCounts(
   const auto resp = VERIFY_RESULT(InvokeRpc(&MasterServiceProxy::GetTabletLocations,
       master_proxy_.get(), req));
 
-  unordered_map<string, int> leader_counts;
+  std::unordered_map<string, int> leader_counts;
   for (const auto& locs : resp.tablet_locations()) {
     for (const auto& replica : locs.replicas()) {
       const auto uuid = replica.ts_info().permanent_uuid();

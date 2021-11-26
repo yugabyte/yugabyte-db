@@ -17,13 +17,17 @@
 
 #include <memory>
 
+#include "yb/common/index.h"
 #include "yb/common/roles_permissions.h"
 #include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/gutil/bind.h"
+
 #include "yb/util/scope_exit.h"
 #include "yb/util/thread_restrictions.h"
 
+#include "yb/yql/cql/ql/ptree/pt_option.h"
 
 DECLARE_bool(use_cassandra_authentication);
 DECLARE_bool(ycql_require_drop_privs_for_truncate);

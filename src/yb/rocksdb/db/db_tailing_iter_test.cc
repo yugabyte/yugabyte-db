@@ -30,6 +30,8 @@
 #include "yb/rocksdb/db/forward_iterator.h"
 #include "yb/rocksdb/port/stack_trace.h"
 
+#include "yb/util/test_macros.h"
+
 namespace rocksdb {
 
 class DBTestTailingIterator : public DBTestBase {

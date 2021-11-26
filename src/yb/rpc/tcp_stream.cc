@@ -14,6 +14,7 @@
 #include "yb/rpc/tcp_stream.h"
 
 #include "yb/rpc/outbound_data.h"
+#include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/rpc_util.h"
 
 #include "yb/util/errno.h"
@@ -21,6 +22,8 @@
 #include "yb/util/logging.h"
 #include "yb/util/memory/memory_usage.h"
 #include "yb/util/metrics.h"
+#include "yb/util/result.h"
+#include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 
 using namespace std::literals;

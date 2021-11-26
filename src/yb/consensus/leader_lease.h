@@ -3,6 +3,8 @@
 #ifndef YB_CONSENSUS_LEADER_LEASE_H
 #define YB_CONSENSUS_LEADER_LEASE_H
 
+#include <gflags/gflags_declare.h>
+
 #include "yb/util/enums.h"
 
 DECLARE_int32(leader_lease_duration_ms);

@@ -21,6 +21,7 @@
 #include "yb/common/schema.h"
 
 #include "yb/tablet/tablet_fwd.h"
+#include "yb/util/result.h"
 
 namespace yb {
 namespace tablet {
@@ -45,7 +46,7 @@ class AbstractTablet {
 
   virtual yb::SchemaPtr GetSchema(const std::string& table_id = "") const = 0;
 
-  virtual const common::YQLStorageIf& QLStorage() const = 0;
+  virtual const YQLStorageIf& QLStorage() const = 0;
 
   virtual TableType table_type() const = 0;
 
@@ -118,7 +119,7 @@ class AbstractTablet {
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
       const QLReadRequestPB& ql_read_request,
-      const TransactionOperationContextOpt& txn_op_context,
+      const TransactionOperationContext& txn_op_context,
       QLReadRequestResult* result);
 
   virtual CHECKED_STATUS CreatePagingStateForRead(const PgsqlReadRequestPB& pgsql_read_request,
@@ -129,7 +130,7 @@ class AbstractTablet {
                                         const ReadHybridTime& read_time,
                                         bool is_explicit_request_read_time,
                                         const PgsqlReadRequestPB& pgsql_read_request,
-                                        const TransactionOperationContextOpt& txn_op_context,
+                                        const TransactionOperationContext& txn_op_context,
                                         PgsqlReadRequestResult* result,
                                         size_t* num_rows_read);
 

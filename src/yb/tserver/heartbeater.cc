@@ -79,6 +79,7 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/enums.h"
 #include "yb/util/locks.h"
+#include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/slice.h"
 #include "yb/util/threadpool.h"

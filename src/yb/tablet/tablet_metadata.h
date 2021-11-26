@@ -60,6 +60,7 @@
 #include "yb/util/mutex.h"
 #include "yb/util/opid.h"
 #include "yb/util/opid.pb.h"
+#include "yb/util/result.h"
 #include "yb/util/status.h"
 #include "yb/util/status_callback.h"
 

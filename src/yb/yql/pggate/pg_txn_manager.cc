@@ -14,15 +14,19 @@
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/pg_txn_manager.h"
 
+#include "yb/client/client.h"
 #include "yb/client/session.h"
 #include "yb/client/transaction.h"
 
 #include "yb/common/common.pb.h"
 #include "yb/common/transaction_priority.h"
 
+#include "yb/rpc/rpc_controller.h"
+
 #include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/debug-util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status.h"
 

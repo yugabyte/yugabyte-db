@@ -161,7 +161,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   TabletServiceImpl* tablet_server_service();
 
-  scoped_refptr<Histogram> GetMetricsHistogram(TabletServerServiceIf::RpcMethodIndexes metric);
+  scoped_refptr<Histogram> GetMetricsHistogram(TabletServerServiceRpcMethodIndexes metric);
 
   void SetPublisher(rpc::Publisher service) {
     publish_service_ptr_.reset(new rpc::Publisher(std::move(service)));

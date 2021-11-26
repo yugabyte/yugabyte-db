@@ -12,8 +12,9 @@
 // under the License.
 //
 //
-
 #include "yb/common/transaction-test-util.h"
+
+#include "yb/util/status_format.h"
 
 namespace yb {
 

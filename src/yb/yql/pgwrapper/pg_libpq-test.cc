@@ -26,6 +26,7 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 #include "yb/client/client_fwd.h"
+#include "yb/client/yb_table_name.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/master/catalog_manager.h"

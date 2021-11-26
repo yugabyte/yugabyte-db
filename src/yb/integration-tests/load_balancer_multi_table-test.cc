@@ -142,7 +142,7 @@ TEST_F(LoadBalancerMultiTableTest, MultipleLeaderTabletMovesPerTable) {
   WaitForLoadBalanceCompletion();
 
   // Get current leader counts.
-  unordered_map<string, unordered_map<string, int>> initial_leader_counts;
+  std::unordered_map<string, std::unordered_map<string, int>> initial_leader_counts;
   for (const auto& tn : table_names_) {
     initial_leader_counts[tn.table_name()] = ASSERT_RESULT(yb_admin_client_->GetLeaderCounts(tn));
   }
@@ -364,7 +364,7 @@ TEST_F(LoadBalancerMultiTableTest, TestDeadNodesLeaderBalancing) {
   ASSERT_EQ(tserver_loads[1], 15);
   ASSERT_EQ(tserver_loads[2], 15);
 
-  unordered_set<TabletServerId> zero_load_ts;
+  std::unordered_set<TabletServerId> zero_load_ts;
   zero_load_ts.insert(ts2_id);
   for (const auto& tn : table_names_) {
     const auto new_leader_counts = ASSERT_RESULT(yb_admin_client_->GetLeaderCounts(tn));

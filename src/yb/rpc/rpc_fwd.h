@@ -18,13 +18,11 @@
 
 #include <chrono>
 #include <functional>
+#include <unordered_map>
 
-#include <boost/version.hpp>
-#include <boost/functional/hash_fwd.hpp>
+#include <boost/functional/hash.hpp>
 
 #include "yb/gutil/ref_counted.h"
-
-#include "yb/rpc/rpc_introspection.pb.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/slice.h"
@@ -36,12 +34,18 @@ namespace rpc {
 class Acceptor;
 class AcceptorPool;
 class ConnectionContext;
+class DelayedTask;
+class DumpRunningRpcsRequestPB;
+class DumpRunningRpcsResponsePB;
 class GrowableBufferAllocator;
 class MessengerBuilder;
 class Proxy;
 class ProxyCache;
+class ProxyContext;
 class Reactor;
 class ReactorTask;
+class RemoteMethod;
+class RequestHeader;
 class RpcConnectionPB;
 class RpcContext;
 class RpcController;
@@ -61,7 +65,10 @@ class ThreadPoolTask;
 class LocalYBInboundCall;
 
 struct CallData;
+struct OutboundCallMetrics;
+struct OutboundMethodMetrics;
 struct ProcessCallsResult;
+struct ReactorMetrics;
 struct RpcMethodMetrics;
 struct RpcMetrics;
 
@@ -116,7 +123,18 @@ typedef int64_t ScheduledTaskId;
 constexpr ScheduledTaskId kInvalidTaskId = -1;
 constexpr size_t kMinBufferForSidecarSlices = 16;
 
+using ProxyPtr = std::shared_ptr<Proxy>;
+using ResponseCallback = std::function<void()>;
+
 YB_DEFINE_ENUM(ServicePriority, (kNormal)(kHigh));
+
+// Specifies how to run callback for async outbound call.
+YB_DEFINE_ENUM(InvokeCallbackMode,
+    // On reactor thread.
+    (kReactorThread)
+    // On thread pool.
+    (kThreadPoolNormal)
+    (kThreadPoolHigh));
 
 } // namespace rpc
 } // namespace yb

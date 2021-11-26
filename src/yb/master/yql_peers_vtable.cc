@@ -13,6 +13,7 @@
 
 #include "yb/master/yql_peers_vtable.h"
 
+#include "yb/common/ql_type.h"
 
 #include "yb/master/ts_descriptor.h"
 

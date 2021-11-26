@@ -44,6 +44,7 @@
 #include "yb/gutil/casts.h"
 
 #include "yb/util/format.h"
+#include "yb/util/status_format.h"
 
 #include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/file_numbers.h"

@@ -43,6 +43,7 @@
 #include "yb/common/schema.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master_error.h"
+#include "yb/master/master_types.pb.h"
 #include "yb/master/tasks_tracker.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/server/monitored_task.h"
@@ -100,7 +101,7 @@ struct TabletReplica {
 // sys_catalog. Subclasses of this will provide convenience getter/setter methods around the
 // protos and instances of these will be wrapped around CowObjects and locks for access and
 // modifications.
-template <class DataEntryPB, SysRowEntry::Type entry_type>
+template <class DataEntryPB, SysRowEntryType entry_type>
 struct Persistent {
   // Type declaration to be used in templated read/write methods. We are using typename
   // Class::data_type in templated methods for figuring out the type we need.
@@ -108,7 +109,7 @@ struct Persistent {
 
   // Subclasses of this need to provide a valid value of the entry type through
   // the template class argument.
-  static SysRowEntry::Type type() { return entry_type; }
+  static SysRowEntryType type() { return entry_type; }
 
   // The proto that is persisted in the sys_catalog.
   DataEntryPB pb;
@@ -166,7 +167,7 @@ class MetadataCowWrapper {
 // The data related to a tablet which is persisted on disk.
 // This portion of TabletInfo is managed via CowObject.
 // It wraps the underlying protobuf to add useful accessors.
-struct PersistentTabletInfo : public Persistent<SysTabletsEntryPB, SysRowEntry::TABLET> {
+struct PersistentTabletInfo : public Persistent<SysTabletsEntryPB, SysRowEntryType::TABLET> {
   bool is_running() const {
     return pb.state() == SysTabletsEntryPB::RUNNING;
   }
@@ -311,7 +312,7 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
 // The data related to a table which is persisted on disk.
 // This portion of TableInfo is managed via CowObject.
 // It wraps the underlying protobuf to add useful accessors.
-struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntry::TABLE> {
+struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntryType::TABLE> {
   bool started_deleting() const {
     return pb.state() == SysTablesEntryPB::DELETING ||
            pb.state() == SysTablesEntryPB::DELETED;
@@ -626,7 +627,8 @@ class DeletedTableInfo : public RefCountedThreadSafe<DeletedTableInfo> {
 // The data related to a namespace which is persisted on disk.
 // This portion of NamespaceInfo is managed via CowObject.
 // It wraps the underlying protobuf to add useful accessors.
-struct PersistentNamespaceInfo : public Persistent<SysNamespaceEntryPB, SysRowEntry::NAMESPACE> {
+struct PersistentNamespaceInfo : public Persistent<
+    SysNamespaceEntryPB, SysRowEntryType::NAMESPACE> {
   // Get the namespace name.
   const NamespaceName& name() const {
     return pb.name();
@@ -706,7 +708,7 @@ class TablegroupInfo : public RefCountedThreadSafe<TablegroupInfo>{
 // The data related to a User-Defined Type which is persisted on disk.
 // This portion of UDTypeInfo is managed via CowObject.
 // It wraps the underlying protobuf to add useful accessors.
-struct PersistentUDTypeInfo : public Persistent<SysUDTypeEntryPB, SysRowEntry::UDTYPE> {
+struct PersistentUDTypeInfo : public Persistent<SysUDTypeEntryPB, SysRowEntryType::UDTYPE> {
   // Return the type's name.
   const UDTypeName& name() const {
     return pb.name();
@@ -769,7 +771,7 @@ class UDTypeInfo : public RefCountedThreadSafe<UDTypeInfo>,
 // This wraps around the proto containing cluster level config information. It will be used for
 // CowObject managed access.
 struct PersistentClusterConfigInfo : public Persistent<SysClusterConfigEntryPB,
-                                                       SysRowEntry::CLUSTER_CONFIG> {
+                                                       SysRowEntryType::CLUSTER_CONFIG> {
 };
 
 // This is the in memory representation of the cluster config information serialized proto data,
@@ -792,7 +794,7 @@ class ClusterConfigInfo : public RefCountedThreadSafe<ClusterConfigInfo>,
 };
 
 struct PersistentRedisConfigInfo
-    : public Persistent<SysRedisConfigEntryPB, SysRowEntry::REDIS_CONFIG> {};
+    : public Persistent<SysRedisConfigEntryPB, SysRowEntryType::REDIS_CONFIG> {};
 
 class RedisConfigInfo : public RefCountedThreadSafe<RedisConfigInfo>,
                         public MetadataCowWrapper<PersistentRedisConfigInfo> {
@@ -810,7 +812,7 @@ class RedisConfigInfo : public RefCountedThreadSafe<RedisConfigInfo>,
   DISALLOW_COPY_AND_ASSIGN(RedisConfigInfo);
 };
 
-struct PersistentRoleInfo : public Persistent<SysRoleEntryPB, SysRowEntry::ROLE> {};
+struct PersistentRoleInfo : public Persistent<SysRoleEntryPB, SysRowEntryType::ROLE> {};
 
 class RoleInfo : public RefCountedThreadSafe<RoleInfo>,
                  public MetadataCowWrapper<PersistentRoleInfo> {
@@ -828,7 +830,7 @@ class RoleInfo : public RefCountedThreadSafe<RoleInfo>,
 };
 
 struct PersistentSysConfigInfo
-    : public Persistent<SysConfigEntryPB, SysRowEntry::SYS_CONFIG> {};
+    : public Persistent<SysConfigEntryPB, SysRowEntryType::SYS_CONFIG> {};
 
 class SysConfigInfo : public RefCountedThreadSafe<SysConfigInfo>,
                       public MetadataCowWrapper<PersistentSysConfigInfo> {
@@ -855,8 +857,8 @@ class DdlLogEntry {
       HybridTime time, const TableId& table_id, const SysTablesEntryPB& table,
       const std::string& action);
 
-  static SysRowEntry::Type type() {
-    return SysRowEntry::DDL_LOG_ENTRY;
+  static SysRowEntryType type() {
+    return SysRowEntryType::DDL_LOG_ENTRY;
   }
 
   std::string id() const;

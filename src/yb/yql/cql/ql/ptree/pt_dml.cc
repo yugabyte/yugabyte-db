@@ -24,9 +24,12 @@
 #include "yb/client/table.h"
 
 #include "yb/common/common.pb.h"
+#include "yb/common/index.h"
 #include "yb/common/schema.h"
 
 #include "yb/gutil/casts.h"
+
+#include "yb/util/result.h"
 
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 

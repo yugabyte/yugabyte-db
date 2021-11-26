@@ -11,6 +11,7 @@
 // under the License.
 //
 
+#include "yb/common/ql_type.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/yql_keyspaces_vtable.h"
 

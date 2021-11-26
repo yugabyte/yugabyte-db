@@ -37,6 +37,7 @@
 #include <gtest/gtest.h>
 #include "yb/util/test_macros.h"
 #include "yb/rocksdb/util/testutil.h"
+#include "yb/util/logging.h"
 
 #include "yb/util/random_util.h"
 

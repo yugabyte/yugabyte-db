@@ -15,8 +15,13 @@
 
 #include "yb/rpc/local_call.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/rpc/rpc_controller.h"
+#include "yb/util/format.h"
 #include "yb/util/memory/memory.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 namespace rpc {

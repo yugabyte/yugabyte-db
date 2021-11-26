@@ -36,6 +36,7 @@
 #include <unordered_set>
 #include <glog/logging.h>
 
+#include "yb/gutil/bind.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/join.h"
@@ -277,8 +278,8 @@ void TabletServerChecksumCallback(
 Status Ysck::ChecksumData(const vector<string>& tables,
                           const vector<string>& tablets,
                           const ChecksumOptions& opts) {
-  const unordered_set<string> tables_filter(tables.begin(), tables.end());
-  const unordered_set<string> tablets_filter(tablets.begin(), tablets.end());
+  const std::unordered_set<string> tables_filter(tables.begin(), tables.end());
+  const std::unordered_set<string> tablets_filter(tablets.begin(), tablets.end());
 
   // Copy options so that local modifications can be made and passed on.
   ChecksumOptions options = opts;

@@ -14,13 +14,18 @@
 #include "yb/tserver/pg_create_table.h"
 
 #include "yb/client/client.h"
+#include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 
+#include "yb/common/ql_type.h"
 #include "yb/common/pg_system_attr.h"
+#include "yb/common/schema.h"
 
 #include "yb/docdb/doc_key.h"
 
 #include "yb/tserver/pg_client.pb.h"
+
+#include "yb/util/result.h"
 
 namespace yb {
 namespace tserver {
@@ -152,12 +157,12 @@ Status PgCreateTable::AddColumn(const PgCreateColumnPB& req) {
   }
   client::YBColumnSpec* col = schema_builder_.AddColumn(req.attr_name())->Type(yb_type);
   col->Order(req.attr_num());
-  auto sorting_type = static_cast<ColumnSchema::SortingType>(req.sorting_type());
+  auto sorting_type = static_cast<SortingType>(req.sorting_type());
   if (req.is_hash()) {
     if (!range_columns_.empty()) {
       return STATUS(InvalidArgument, "Hash column not allowed after an ASC/DESC column");
     }
-    if (sorting_type != ColumnSchema::SortingType::kNotSpecified) {
+    if (sorting_type != SortingType::kNotSpecified) {
       return STATUS(InvalidArgument, "Hash column can't have sorting order");
     }
     col->HashPrimaryKey();

@@ -11,7 +11,6 @@
 // under the License.
 //
 #include <cstddef>
-#include <future>
 #include <memory>
 #include <random>
 #include <string>
@@ -19,22 +18,19 @@
 #include <utility>
 #include <vector>
 
-#include <boost/uuid/nil_generator.hpp>
-
-#include "yb/docdb/compaction_file_filter.h"
-
 #include "yb/common/common_fwd.h"
+#include "yb/common/schema.h"
+#include "yb/docdb/compaction_file_filter.h"
+#include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_ttl_util.h"
 #include "yb/docdb/docdb_compaction_filter.h"
-#include "yb/rocksdb/db.h"
-#include "yb/docdb/doc_key.h"
 #include "yb/docdb/primitive_value.h"
-#include "yb/util/strongly_typed_bool.h"
-#include "yb/util/test_util.h"
-#include "yb/util/test_macros.h"
-#include "yb/docdb/consensus_frontier.h"
 #include "yb/rocksdb/compaction_filter.h"
+#include "yb/rocksdb/db.h"
 #include "yb/util/monotime.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
 
 DECLARE_bool(file_expiration_ignore_value_ttl);
 DECLARE_bool(file_expiration_value_ttl_overrides_table_ttl);

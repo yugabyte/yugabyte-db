@@ -18,6 +18,7 @@
 #include "yb/client/table.h"
 
 #include "yb/common/common.pb.h"
+#include "yb/common/index.h"
 
 #include "yb/gutil/casts.h"
 

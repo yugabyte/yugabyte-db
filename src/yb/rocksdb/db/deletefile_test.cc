@@ -41,7 +41,9 @@
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/transaction_log.h"
 
+#include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
+#include "yb/util/test_macros.h"
 
 using namespace std::chrono_literals;
 

@@ -44,6 +44,7 @@
 #include "yb/rpc/thread_pool.h"
 #include "yb/server/rpc_server.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/metrics.h"
 #include "yb/util/status.h"
 
 using yb::rpc::Messenger;

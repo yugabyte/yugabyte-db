@@ -19,7 +19,6 @@
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 
-#include "yb/util/result.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/net/socket.h"
 #include "yb/util/size_literals.h"
@@ -37,11 +36,7 @@ struct ProcessCallsResult {
   Slice buffer;
   size_t bytes_to_skip = 0;
 
-  std::string ToString() const {
-    return Format(
-        "{ consumed: $0 buffer.size(): $1 bytes_to_skip: $2 }",
-        consumed, buffer.size(), bytes_to_skip);
-  }
+  std::string ToString() const;
 };
 
 // ConnectionContext class is used by connection for doing protocol
@@ -92,9 +87,7 @@ class ConnectionContext {
 
 class ConnectionContextBase : public ConnectionContext {
  public:
-  Status ReportPendingWriteBytes(size_t bytes_in_queue) override {
-    return Status::OK();
-  }
+  Status ReportPendingWriteBytes(size_t bytes_in_queue) override;
 };
 
 class ConnectionContextFactory {

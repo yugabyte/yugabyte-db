@@ -21,8 +21,9 @@
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.proxy.h"
 
-
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
+#include "yb/rpc/rpc_controller.h"
 
 #include "yb/server/server_base.proxy.h"
 

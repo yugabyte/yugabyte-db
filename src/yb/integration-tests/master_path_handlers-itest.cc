@@ -12,6 +12,7 @@
 //
 
 #include <chrono>
+#include "yb/client/schema.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/common/schema.h"

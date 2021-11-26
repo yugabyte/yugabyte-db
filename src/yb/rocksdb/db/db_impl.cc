@@ -114,6 +114,8 @@
 #include "yb/rocksdb/util/xfunc.h"
 #include "yb/rocksdb/db/db_iterator_wrapper.h"
 
+#include "yb/util/status_log.h"
+#include "yb/util/stats/iostats_context_imp.h"
 
 using namespace std::literals;
 

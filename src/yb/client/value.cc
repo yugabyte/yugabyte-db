@@ -32,6 +32,7 @@
 
 #include "yb/client/value.h"
 #include "yb/client/value-internal.h"
+#include "yb/common/ql_type.h"
 #include "yb/gutil/strings/substitute.h"
 
 using std::shared_ptr;

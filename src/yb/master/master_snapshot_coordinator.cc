@@ -223,11 +223,11 @@ class MasterSnapshotCoordinator::Impl {
 
   CHECKED_STATUS Load(tablet::Tablet* tablet) {
     std::lock_guard<std::mutex> lock(mutex_);
-    RETURN_NOT_OK(EnumerateSysCatalog(tablet, context_.schema(), SysRowEntry::SNAPSHOT,
+    RETURN_NOT_OK(EnumerateSysCatalog(tablet, context_.schema(), SysRowEntryType::SNAPSHOT,
         [this](const Slice& id, const Slice& data) NO_THREAD_SAFETY_ANALYSIS -> Status {
       return LoadEntry<SysSnapshotEntryPB>(id, data, &snapshots_);
     }));
-    return EnumerateSysCatalog(tablet, context_.schema(), SysRowEntry::SNAPSHOT_SCHEDULE,
+    return EnumerateSysCatalog(tablet, context_.schema(), SysRowEntryType::SNAPSHOT_SCHEDULE,
         [this](const Slice& id, const Slice& data) NO_THREAD_SAFETY_ANALYSIS -> Status {
       return LoadEntry<SnapshotScheduleOptionsPB>(id, data, &schedules_);
     });
@@ -255,12 +255,12 @@ class MasterSnapshotCoordinator::Impl {
                   << AsString(sub_doc_key.doc_key().range_group());;
     }
 
-    if (first_key.GetInt32() == SysRowEntry::SNAPSHOT) {
+    if (first_key.GetInt32() == SysRowEntryType::SNAPSHOT) {
       return DoApplyWrite<SysSnapshotEntryPB>(
           sub_doc_key.doc_key().range_group()[1].GetString(), value, &snapshots_);
     }
 
-    if (first_key.GetInt32() == SysRowEntry::SNAPSHOT_SCHEDULE) {
+    if (first_key.GetInt32() == SysRowEntryType::SNAPSHOT_SCHEDULE) {
       return DoApplyWrite<SnapshotScheduleOptionsPB>(
           sub_doc_key.doc_key().range_group()[1].GetString(), value, &schedules_);
     }
@@ -531,7 +531,7 @@ class MasterSnapshotCoordinator::Impl {
       LOG_IF(DFATAL, !status.ok()) << "Verify restoration failed: " << status;
       std::vector<TabletId> restore_tablets;
       for (const auto& id_and_type : restoration->non_system_objects_to_restore) {
-        if (id_and_type.second == SysRowEntry::TABLET) {
+        if (id_and_type.second == SysRowEntryType::TABLET) {
           restore_tablets.push_back(id_and_type.first);
         }
       }
@@ -545,7 +545,7 @@ class MasterSnapshotCoordinator::Impl {
   }
 
   Result<SnapshotSchedulesToObjectIdsMap> MakeSnapshotSchedulesToObjectIdsMap(
-      SysRowEntry::Type type) {
+      SysRowEntryType type) {
     std::vector<std::pair<SnapshotScheduleId, SnapshotScheduleFilterPB>> schedules;
     {
       std::lock_guard<std::mutex> lock(mutex_);
@@ -929,7 +929,7 @@ class MasterSnapshotCoordinator::Impl {
     VLOG(1) << __func__ << "(" << AsString(entries) << ", " << imported << ", " << schedule_id
             << ", " << snapshot_id << ")";
     for (const auto& entry : entries.entries()) {
-      if (entry.type() == SysRowEntry::TABLET) {
+      if (entry.type() == SysRowEntryType::TABLET) {
         request->add_tablet_id(entry.id());
       }
     }
@@ -1308,7 +1308,7 @@ Status MasterSnapshotCoordinator::FillHeartbeatResponse(TSHeartbeatResponsePB* r
 }
 
 Result<SnapshotSchedulesToObjectIdsMap>
-    MasterSnapshotCoordinator::MakeSnapshotSchedulesToObjectIdsMap(SysRowEntry::Type type) {
+    MasterSnapshotCoordinator::MakeSnapshotSchedulesToObjectIdsMap(SysRowEntryType type) {
   return impl_->MakeSnapshotSchedulesToObjectIdsMap(type);
 }
 

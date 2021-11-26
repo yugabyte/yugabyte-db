@@ -233,7 +233,6 @@ void PTCreateTable::PrintSemanticAnalysisResult(SemContext *sem_context) {
       sem_output += " <Hash key, Type = ";
     } else if (column->is_primary_key()) {
       sem_output += " <Primary key, ";
-      using SortingType = ColumnSchema::SortingType;
       switch (column->sorting_type()) {
         case SortingType::kNotSpecified: sem_output += "None"; break;
         case SortingType::kAscending: sem_output += "Asc"; break;

@@ -33,7 +33,7 @@
 
 #include "yb/bfql/gen_opcodes.h"
 #include "yb/bfpg/gen_opcodes.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 

@@ -14,11 +14,15 @@
 
 #include "yb/docdb/docdb_pgapi.h"
 
-#include "yb/util/status.h"
 #include "yb/common/ql_expr.h"
+#include "yb/common/schema.h"
+
+#include "yb/gutil/singleton.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pggate/pg_value.h"
 #include "yb/yql/pggate/pg_expr.h"
+
+#include "yb/util/result.h"
 
 // This file comes from this directory:
 // postgres_build/src/include/catalog

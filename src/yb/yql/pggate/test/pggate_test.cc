@@ -31,6 +31,7 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/pg_types.h"
 #include "yb/client/client.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/tserver/tserver_shared_mem.h"
 

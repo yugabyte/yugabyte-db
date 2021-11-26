@@ -38,16 +38,21 @@
 #include <gtest/gtest.h>
 
 #include "yb/gutil/stl_util.h"
+#include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/rtest.proxy.h"
 #include "yb/rpc/rtest.service.h"
 #include "yb/rpc/rpc-test-base.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/yb_rpc.h"
 
 #include "yb/util/countdown_latch.h"
 #include "yb/util/metrics.h"
+#include "yb/util/result.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_log.h"
 #include "yb/util/subprocess.h"
+#include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tostring.h"
 #include "yb/util/user.h"

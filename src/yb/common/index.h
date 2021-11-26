@@ -23,9 +23,12 @@
 #include <unordered_set>
 #include <vector>
 
+#include <boost/functional/hash.hpp>
+
+#include "yb/common/common_fwd.h"
+#include "yb/common/column_id.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/entity_ids.h"
-#include "yb/common/schema.h"
 
 namespace yb {
 
@@ -117,7 +120,7 @@ class IndexInfo {
   std::string ToString() const {
     IndexInfoPB pb;
     ToPB(&pb);
-    return yb::ToString(pb);
+    return pb.ShortDebugString();
   }
 
   // Same as "IsExprCovered" but only search the key columns.
@@ -149,7 +152,7 @@ class IndexInfo {
   const std::string backfill_error_message_;
 
   // Column ids covered by the index (include indexed columns).
-  std::unordered_set<ColumnId> covered_column_ids_;
+  std::unordered_set<ColumnId, boost::hash<ColumnIdRep>> covered_column_ids_;
 
   // Newer INDEX use mangled column name instead of ID.
   bool use_mangled_column_name_ = false;

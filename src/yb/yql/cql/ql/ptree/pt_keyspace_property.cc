@@ -13,9 +13,10 @@
 
 #include <set>
 #include "yb/client/schema.h"
+#include "yb/util/logging.h"
+#include "yb/util/string_case.h"
 #include "yb/yql/cql/ql/ptree/pt_keyspace_property.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
-#include "yb/util/string_case.h"
 
 namespace yb {
 namespace ql {

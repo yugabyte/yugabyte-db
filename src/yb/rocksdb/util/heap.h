@@ -29,6 +29,8 @@
 
 #include <boost/container/small_vector.hpp>
 
+#include "yb/util/status_log.h"
+
 namespace rocksdb {
 
 // Binary heap implementation optimized for use in multi-way merge sort.

@@ -13,6 +13,8 @@
 
 #include "yb/rpc/rpc_metrics.h"
 
+#include "yb/util/metrics.h"
+
 METRIC_DEFINE_gauge_int64(server, rpc_connections_alive,
                           "Number of alive RPC connections.",
                           yb::MetricUnit::kConnections,

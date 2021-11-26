@@ -72,7 +72,6 @@ namespace client {
 
 using std::shared_ptr;
 using std::unique_ptr;
-using common::QLScanRange;
 
 //--------------------------------------------------------------------------------------------------
 // YBOperation

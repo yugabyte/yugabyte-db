@@ -17,6 +17,7 @@
 #include "yb/master/master_util.h"
 
 #include "yb/client/client.h"
+#include "yb/client/yb_table_name.h"
 #include "yb/cdc/cdc_consumer.pb.h"
 
 #include "yb/util/random_util.h"

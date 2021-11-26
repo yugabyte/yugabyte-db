@@ -14,6 +14,7 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/client/table.h"
+#include "yb/common/index.h"
 #include "yb/yql/cql/ql/ptree/sem_state.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 

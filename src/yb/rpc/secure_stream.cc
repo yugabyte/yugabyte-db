@@ -27,6 +27,8 @@
 #include "yb/util/logging.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/encryption_util.h"
+#include "yb/util/format.h"
+#include "yb/util/status_format.h"
 
 using namespace std::literals;
 

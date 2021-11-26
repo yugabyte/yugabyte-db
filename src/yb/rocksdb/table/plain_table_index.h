@@ -35,6 +35,8 @@
 #include "yb/rocksdb/util/arena.h"
 #include "yb/rocksdb/util/histogram.h"
 
+#include "yb/util/status_log.h"
+
 namespace rocksdb {
 
 // PlainTableIndex contains buckets size of index_size_, each is a

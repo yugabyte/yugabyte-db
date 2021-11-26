@@ -13,6 +13,8 @@
 
 #include "yb/integration-tests/ts_itest-base.h"
 
+#include "yb/client/schema.h"
+
 #include "yb/gutil/strings/split.h"
 
 #include "yb/integration-tests/cluster_verifier.h"
@@ -250,7 +252,8 @@ void TabletServerIntegrationTestBase::WaitForTSAndReplicas() {
 
 // Removes a set of servers from the replicas_ list.
 // Handy for controlling who to validate against after killing servers.
-void TabletServerIntegrationTestBase::PruneFromReplicas(const unordered_set<std::string>& uuids) {
+void TabletServerIntegrationTestBase::PruneFromReplicas(
+    const std::unordered_set<std::string>& uuids) {
   auto iter = tablet_replicas_.begin();
   while (iter != tablet_replicas_.end()) {
     if (uuids.count((*iter).second->instance_id.permanent_uuid()) != 0) {

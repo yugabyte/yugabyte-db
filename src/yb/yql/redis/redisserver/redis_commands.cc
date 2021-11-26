@@ -32,8 +32,10 @@
 #include "yb/rpc/scheduler.h"
 
 #include "yb/util/crypt.h"
+#include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/redis_util.h"
+#include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_util.h"
 
@@ -226,9 +228,9 @@ void Command(
       BOOST_PP_CAT(type, _COMMAND)(cname); \
     }; \
     yb::rpc::RpcMethodMetrics metrics {               \
-        .request_bytes = nullptr, \
-        .response_bytes = nullptr, \
-        .handler_latency = YB_REDIS_METRIC(name).Instantiate(metric_entity), \
+        nullptr, \
+        nullptr, \
+        YB_REDIS_METRIC(name).Instantiate(metric_entity), \
     };\
     setup_method({BOOST_PP_STRINGIZE(name), functor, arity, std::move(metrics)}); \
   } \
@@ -409,7 +411,7 @@ void HandlePubSub(LocalCommandData data) {
   RedisResponsePB response;
   if (boost::iequals(data.arg(1).ToBuffer(), "CHANNELS") && data.arg_size() <= 3) {
     auto all = data.context()->service_data()->GetAllSubscriptions(AsPattern::kFalse);
-    unordered_set<string> matched;
+    std::unordered_set<std::string> matched;
     if (data.arg_size() > 2) {
       const string& pattern = data.arg(2).ToBuffer();
       for (auto& channel : all) {

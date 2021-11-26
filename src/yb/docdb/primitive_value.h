@@ -20,20 +20,23 @@
 #include <vector>
 #include <ostream>
 
+#include <glog/logging.h>
+
 #include "yb/util/slice.h"
 
-#include "yb/common/common.pb.h"
+#include "yb/common/column_id.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/doc_hybrid_time.h"
-#include "yb/common/schema.h"
 #include "yb/common/ql_protocol.pb.h"
-#include "yb/common/ql_rowblock.h"
+#include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/key_bytes.h"
 #include "yb/docdb/value_type.h"
 #include "yb/util/decimal.h"
+#include "yb/util/net/inetaddress.h"
 #include "yb/util/timestamp.h"
 #include "yb/util/algorithm_util.h"
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/util/uuid.h"
 
 namespace yb {
 namespace docdb {
@@ -42,10 +45,6 @@ namespace docdb {
 // PREPEND prepends the arguments one by one (PREPEND a b c) will prepend [c b a] to the list,
 // while PREPEND_BLOCK prepends the arguments together, so it will prepend [a b c] to the list.
 YB_DEFINE_ENUM(ListExtendOrder, (APPEND)(PREPEND_BLOCK)(PREPEND))
-
-// Automatically decode keys that are stored in string-typed PrimitiveValues when converting a
-// PrimitiveValue to string. This is useful when displaying write batches for secondary indexes.
-YB_STRONGLY_TYPED_BOOL(AutoDecodeKeys);
 
 // A necessary use of a forward declaration to avoid circular inclusion.
 class SubDocument;
@@ -203,17 +202,17 @@ class PrimitiveValue {
     column_id_val_ = column_id;
   }
 
-  static PrimitiveValue NullValue(ColumnSchema::SortingType sorting);
+  static PrimitiveValue NullValue(SortingType sorting);
 
-  // Converts a ColumnSchema::SortingType to its SortOrder equivalent.
-  // ColumnSchema::SortingType::kAscending and ColumnSchema::SortingType::kNotSpecified get
+  // Converts a SortingType to its SortOrder equivalent.
+  // SortingType::kAscending and SortingType::kNotSpecified get
   // converted to SortOrder::kAscending.
-  // ColumnSchema::SortingType::kDescending gets converted to SortOrder::kDescending.
-  static SortOrder SortOrderFromColumnSchemaSortingType(ColumnSchema::SortingType sorting_type);
+  // SortingType::kDescending gets converted to SortOrder::kDescending.
+  static SortOrder SortOrderFromColumnSchemaSortingType(SortingType sorting_type);
 
   // Construct a primitive value from a QLValuePB.
   static PrimitiveValue FromQLValuePB(const QLValuePB& value,
-                                      ColumnSchema::SortingType sorting_type);
+                                      SortingType sorting_type);
 
   // Set a primitive value in a QLValuePB.
   static void ToQLValuePB(const PrimitiveValue& pv,

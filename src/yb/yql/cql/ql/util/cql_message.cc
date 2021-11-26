@@ -16,15 +16,13 @@
 #include <lz4.h>
 #include <snappy.h>
 
-
-
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_value.h"
-
 
 #include "yb/gutil/endian.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/util/logging.h"
 #include "yb/util/random_util.h"
 
 namespace yb {
@@ -42,6 +40,7 @@ using snappy::MaxCompressedLength;
 using snappy::RawUncompress;
 using snappy::RawCompress;
 
+#undef RETURN_NOT_ENOUGH
 #define RETURN_NOT_ENOUGH(sz)                               \
   do {                                                      \
     if (body_.size() < (sz)) {                              \

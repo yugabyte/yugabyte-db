@@ -22,13 +22,15 @@
 #include "yb/master/cdc_rpc_tasks.h"
 #include "yb/master/cluster_balance.h"
 
+#include "yb/cdc/cdc_consumer.pb.h"
 #include "yb/cdc/cdc_service.h"
+
 #include "yb/client/client-internal.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
-#include "yb/client/table_handle.h"
 #include "yb/client/table_alterer.h"
+#include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/entity_ids.h"
@@ -68,7 +70,7 @@
 #include "yb/util/tostring.h"
 #include "yb/util/string_util.h"
 #include "yb/util/random_util.h"
-#include "yb/cdc/cdc_consumer.pb.h"
+#include "yb/util/trace.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -354,7 +356,7 @@ Status CatalogManager::CreateNonTransactionAwareSnapshot(
     }
 
     // Create a new snapshot UUID.
-    snapshot_id = GenerateIdUnlocked(SysRowEntry::SNAPSHOT);
+    snapshot_id = GenerateIdUnlocked(SysRowEntryType::SNAPSHOT);
   }
 
   vector<scoped_refptr<TabletInfo>> all_tablets;
@@ -521,7 +523,7 @@ Status CatalogManager::ListSnapshots(const ListSnapshotsRequestPB* req,
         // Setup BackupRowEntryPB fields.
         // Set BackupRowEntryPB::pg_schema_name for YSQL table to disambiguate in case tables
         // in different schema have same name.
-        if (entry.type() == SysRowEntry::TABLE) {
+        if (entry.type() == SysRowEntryType::TABLE) {
           TRACE("Looking up table");
           scoped_refptr<TableInfo> table_info = FindPtrOrNull(*table_ids_map_, entry.id());
           if (table_info == nullptr) {
@@ -648,7 +650,7 @@ Status CatalogManager::RestoreNonTransactionAwareSnapshot(const string& snapshot
 
 Status CatalogManager::RestoreEntry(const SysRowEntry& entry, const SnapshotId& snapshot_id) {
   switch (entry.type()) {
-    case SysRowEntry::NAMESPACE: { // Restore NAMESPACES.
+    case SysRowEntryType::NAMESPACE: { // Restore NAMESPACES.
       TRACE("Looking up namespace");
       scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(namespace_ids_map_, entry.id());
       if (ns == nullptr) {
@@ -661,7 +663,7 @@ Status CatalogManager::RestoreEntry(const SysRowEntry& entry, const SnapshotId& 
       }
       break;
     }
-    case SysRowEntry::TABLE: { // Restore TABLES.
+    case SysRowEntryType::TABLE: { // Restore TABLES.
       TRACE("Looking up table");
       scoped_refptr<TableInfo> table = FindPtrOrNull(*table_ids_map_, entry.id());
       if (table == nullptr) {
@@ -674,7 +676,7 @@ Status CatalogManager::RestoreEntry(const SysRowEntry& entry, const SnapshotId& 
       }
       break;
     }
-    case SysRowEntry::TABLET: { // Restore TABLETS.
+    case SysRowEntryType::TABLET: { // Restore TABLETS.
       TRACE("Looking up tablet");
       scoped_refptr<TabletInfo> tablet = FindPtrOrNull(*tablet_map_, entry.id());
       if (tablet == nullptr) {
@@ -758,7 +760,7 @@ Status CatalogManager::DeleteNonTransactionAwareSnapshot(const SnapshotId& snaps
 
   // Send DeleteSnapshot requests to all TServers (one tablet - one request).
   for (const SysRowEntry& entry : snapshot_pb.entries()) {
-    if (entry.type() == SysRowEntry::TABLET) {
+    if (entry.type() == SysRowEntryType::TABLET) {
       TRACE("Looking up tablet");
       scoped_refptr<TabletInfo> tablet = FindPtrOrNull(*tablet_map_, entry.id());
       if (tablet == nullptr) {
@@ -792,10 +794,10 @@ Status CatalogManager::ImportSnapshotPreprocess(const SnapshotInfoPB& snapshot_p
   for (const BackupRowEntryPB& backup_entry : snapshot_pb.backup_entries()) {
     const SysRowEntry& entry = backup_entry.entry();
     switch (entry.type()) {
-      case SysRowEntry::NAMESPACE: // Recreate NAMESPACE.
+      case SysRowEntryType::NAMESPACE: // Recreate NAMESPACE.
         RETURN_NOT_OK(ImportNamespaceEntry(entry, namespace_map));
         break;
-      case SysRowEntry::TABLE: { // Create TABLE metadata.
+      case SysRowEntryType::TABLE: { // Create TABLE metadata.
           LOG_IF(DFATAL, entry.id().empty()) << "Empty entry id";
           ExternalTableSnapshotData& data = (*tables_data)[entry.id()];
 
@@ -815,21 +817,21 @@ Status CatalogManager::ImportSnapshotPreprocess(const SnapshotInfoPB& snapshot_p
           LOG_IF(DFATAL, data.old_table_id.empty()) << "Not initialized table id";
         }
         break;
-      case SysRowEntry::TABLET: // Preprocess original tablets.
+      case SysRowEntryType::TABLET: // Preprocess original tablets.
         RETURN_NOT_OK(PreprocessTabletEntry(entry, tables_data));
         break;
-      case SysRowEntry::CLUSTER_CONFIG: FALLTHROUGH_INTENDED;
-      case SysRowEntry::REDIS_CONFIG: FALLTHROUGH_INTENDED;
-      case SysRowEntry::UDTYPE: FALLTHROUGH_INTENDED;
-      case SysRowEntry::ROLE: FALLTHROUGH_INTENDED;
-      case SysRowEntry::SYS_CONFIG: FALLTHROUGH_INTENDED;
-      case SysRowEntry::CDC_STREAM: FALLTHROUGH_INTENDED;
-      case SysRowEntry::UNIVERSE_REPLICATION: FALLTHROUGH_INTENDED;
-      case SysRowEntry::SNAPSHOT:  FALLTHROUGH_INTENDED;
-      case SysRowEntry::SNAPSHOT_SCHEDULE: FALLTHROUGH_INTENDED;
-      case SysRowEntry::DDL_LOG_ENTRY: FALLTHROUGH_INTENDED;
-      case SysRowEntry::UNKNOWN:
-        FATAL_INVALID_ENUM_VALUE(SysRowEntry::Type, entry.type());
+      case SysRowEntryType::CLUSTER_CONFIG: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::REDIS_CONFIG: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::UDTYPE: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::ROLE: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::SYS_CONFIG: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::CDC_STREAM: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::UNIVERSE_REPLICATION: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::SNAPSHOT:  FALLTHROUGH_INTENDED;
+      case SysRowEntryType::SNAPSHOT_SCHEDULE: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::DDL_LOG_ENTRY: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::UNKNOWN:
+        FATAL_INVALID_ENUM_VALUE(SysRowEntryType, entry.type());
     }
   }
 
@@ -844,7 +846,7 @@ Status CatalogManager::ImportSnapshotCreateObject(const SnapshotInfoPB& snapshot
   // Create ONLY TABLES or ONLY INDEXES in accordance to the argument.
   for (const BackupRowEntryPB& backup_entry : snapshot_pb.backup_entries()) {
     const SysRowEntry& entry = backup_entry.entry();
-    if (entry.type() == SysRowEntry::TABLE) {
+    if (entry.type() == SysRowEntryType::TABLE) {
       ExternalTableSnapshotData& data = (*tables_data)[entry.id()];
       if ((create_objects == CreateObjects::kOnlyIndexes) == data.is_index()) {
         RETURN_NOT_OK(ImportTableEntry(*namespace_map, *tables_data, &data));
@@ -860,7 +862,7 @@ Status CatalogManager::ImportSnapshotWaitForTables(const SnapshotInfoPB& snapsho
                                                    ExternalTableSnapshotDataMap* tables_data) {
   for (const BackupRowEntryPB& backup_entry : snapshot_pb.backup_entries()) {
     const SysRowEntry& entry = backup_entry.entry();
-    if (entry.type() == SysRowEntry::TABLE) {
+    if (entry.type() == SysRowEntryType::TABLE) {
       ExternalTableSnapshotData& data = (*tables_data)[entry.id()];
       if (!data.is_index()) {
         RETURN_NOT_OK(WaitForCreateTableToFinish(data.new_table_id));
@@ -876,7 +878,7 @@ Status CatalogManager::ImportSnapshotProcessTablets(const SnapshotInfoPB& snapsh
                                                     ExternalTableSnapshotDataMap* tables_data) {
   for (const BackupRowEntryPB& backup_entry : snapshot_pb.backup_entries()) {
     const SysRowEntry& entry = backup_entry.entry();
-    if (entry.type() == SysRowEntry::TABLET) {
+    if (entry.type() == SysRowEntryType::TABLET) {
       // Create tablets IDs map.
       RETURN_NOT_OK(ImportTabletEntry(entry, tables_data));
     }
@@ -1017,7 +1019,7 @@ Status CatalogManager::IsEncryptionEnabled(const IsEncryptionEnabledRequestPB* r
 
 Status CatalogManager::ImportNamespaceEntry(const SysRowEntry& entry,
                                             NamespaceMap* namespace_map) {
-  LOG_IF(DFATAL, entry.type() != SysRowEntry::NAMESPACE)
+  LOG_IF(DFATAL, entry.type() != SysRowEntryType::NAMESPACE)
       << "Unexpected entry type: " << entry.type();
 
   SysNamespaceEntryPB meta = VERIFY_RESULT(ParseFromSlice<SysNamespaceEntryPB>(entry.data()));
@@ -1656,7 +1658,7 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
 
 Status CatalogManager::PreprocessTabletEntry(const SysRowEntry& entry,
                                              ExternalTableSnapshotDataMap* table_map) {
-  LOG_IF(DFATAL, entry.type() != SysRowEntry::TABLET) << "Unexpected entry type: " << entry.type();
+  LOG_IF(DFATAL, entry.type() != SysRowEntryType::TABLET) << "Unexpected entry type: " << entry.type();
 
   SysTabletsEntryPB meta = VERIFY_RESULT(ParseFromSlice<SysTabletsEntryPB>(entry.data()));
 
@@ -1670,7 +1672,7 @@ Status CatalogManager::PreprocessTabletEntry(const SysRowEntry& entry,
 
 Status CatalogManager::ImportTabletEntry(const SysRowEntry& entry,
                                          ExternalTableSnapshotDataMap* table_map) {
-  LOG_IF(DFATAL, entry.type() != SysRowEntry::TABLET) << "Unexpected entry type: " << entry.type();
+  LOG_IF(DFATAL, entry.type() != SysRowEntryType::TABLET) << "Unexpected entry type: " << entry.type();
 
   SysTabletsEntryPB meta = VERIFY_RESULT(ParseFromSlice<SysTabletsEntryPB>(entry.data()));
 
@@ -1802,23 +1804,23 @@ Status CatalogManager::VerifyRestoredObjects(const SnapshotScheduleRestoration& 
   VLOG_WITH_PREFIX(1) << "Objects to restore: " << AsString(objects_to_restore);
   for (const auto& entry : entries.entries()) {
     VLOG_WITH_PREFIX(1)
-        << "Alive " << SysRowEntry::Type_Name(entry.type()) << ": " << entry.id();
+        << "Alive " << SysRowEntryType_Name(entry.type()) << ": " << entry.id();
     auto it = objects_to_restore.find(entry.id());
     if (it == objects_to_restore.end()) {
       return STATUS_FORMAT(IllegalState, "Object $0/$1 present, but should not be restored",
-                           SysRowEntry::Type_Name(entry.type()), entry.id());
+                           SysRowEntryType_Name(entry.type()), entry.id());
     }
     if (it->second != entry.type()) {
       return STATUS_FORMAT(
           IllegalState, "Restored object $0 has wrong type $1, while $2 expected",
-          entry.id(), SysRowEntry::Type_Name(entry.type()), SysRowEntry::Type_Name(it->second));
+          entry.id(), SysRowEntryType_Name(entry.type()), SysRowEntryType_Name(it->second));
     }
     objects_to_restore.erase(it);
   }
   for (const auto& id_and_type : objects_to_restore) {
     return STATUS_FORMAT(
         IllegalState, "Expected to restore $0/$1, but it is not present after restoration",
-        SysRowEntry::Type_Name(id_and_type.second), id_and_type.first);
+        SysRowEntryType_Name(id_and_type.second), id_and_type.first);
   }
   return Status::OK();
 }
@@ -2483,7 +2485,7 @@ Status CatalogManager::CreateCDCStream(const CreateCDCStreamRequestPB* req,
 
     // Construct the CDC stream if the producer wasn't bootstrapped.
     CDCStreamId stream_id;
-    stream_id = GenerateIdUnlocked(SysRowEntry::CDC_STREAM);
+    stream_id = GenerateIdUnlocked(SysRowEntryType::CDC_STREAM);
 
     stream = make_scoped_refptr<CDCStreamInfo>(stream_id);
     stream->mutable_metadata()->StartMutation();
@@ -3680,7 +3682,7 @@ Status CatalogManager::DeleteUniverseReplication(const DeleteUniverseReplication
     } else {
       auto cdc_rpc = *result;
       vector<CDCStreamId> streams;
-      unordered_map<CDCStreamId, TableId> stream_to_producer_table_id;
+      std::unordered_map<CDCStreamId, TableId> stream_to_producer_table_id;
       for (const auto& table : l->pb.table_streams()) {
         streams.push_back(table.second);
         stream_to_producer_table_id.emplace(table.second, table.first);
@@ -4041,7 +4043,7 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
 
     // Only add new tables.  Ignore tables that are currently being replicated.
     auto tid_iter = req->producer_table_ids_to_add();
-    unordered_set<string> new_tables(tid_iter.begin(), tid_iter.end());
+    std::unordered_set<string> new_tables(tid_iter.begin(), tid_iter.end());
     {
       auto l = original_ri->LockForRead();
       for(auto t : l->pb.tables()) {
@@ -4273,7 +4275,7 @@ void CatalogManager::Started() {
 }
 
 Result<SnapshotSchedulesToObjectIdsMap> CatalogManager::MakeSnapshotSchedulesToObjectIdsMap(
-    SysRowEntry::Type type) {
+    SysRowEntryType type) {
   return snapshot_coordinator_.MakeSnapshotSchedulesToObjectIdsMap(type);
 }
 

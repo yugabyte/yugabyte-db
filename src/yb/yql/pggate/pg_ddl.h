@@ -157,8 +157,7 @@ class PgCreateTable : public PgDdl {
                            int attr_ybtype,
                            bool is_hash,
                            bool is_range,
-                           ColumnSchema::SortingType sorting_type =
-                              ColumnSchema::SortingType::kNotSpecified) {
+                           SortingType sorting_type = SortingType::kNotSpecified) {
     return AddColumnImpl(attr_name, attr_num, attr_ybtype, is_hash, is_range, sorting_type);
   }
 
@@ -167,8 +166,7 @@ class PgCreateTable : public PgDdl {
                            const YBCPgTypeEntity *attr_type,
                            bool is_hash,
                            bool is_range,
-                           ColumnSchema::SortingType sorting_type =
-                               ColumnSchema::SortingType::kNotSpecified) {
+                           SortingType sorting_type = SortingType::kNotSpecified) {
     return AddColumnImpl(attr_name, attr_num, attr_type->yb_type, is_hash, is_range, sorting_type);
   }
 
@@ -187,7 +185,7 @@ class PgCreateTable : public PgDdl {
  protected:
   virtual CHECKED_STATUS AddColumnImpl(
       const char *attr_name, int attr_num, int attr_ybtype, bool is_hash, bool is_range,
-      ColumnSchema::SortingType sorting_type = ColumnSchema::SortingType::kNotSpecified);
+      SortingType sorting_type = SortingType::kNotSpecified);
 
  private:
   tserver::PgCreateTableRequestPB req_;

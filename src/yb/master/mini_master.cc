@@ -29,16 +29,16 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/master/mini_master.h"
 
 #include <string>
 
 #include <glog/logging.h>
 
-#include "yb/gutil/strings/substitute.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/master/master.h"
 #include "yb/rpc/messenger.h"
+#include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/tunnel.h"
 #include "yb/util/status.h"
@@ -215,11 +215,27 @@ std::string MiniMaster::permanent_uuid() const {
 }
 
 std::string MiniMaster::bound_rpc_addr_str() const {
-  return yb::ToString(bound_rpc_addr());
+  return bound_rpc_addr().ToString();
 }
 
-const std::shared_ptr<tablet::TabletPeer> MiniMaster::tablet_peer() const {
-  return master_->catalog_manager()->tablet_peer();
+CatalogManager& MiniMaster::catalog_manager() const {
+  return *master_->catalog_manager();
+}
+
+tablet::TabletPeerPtr MiniMaster::tablet_peer() const {
+  return catalog_manager().tablet_peer();
+}
+
+rpc::Messenger& MiniMaster::messenger() const {
+  return *master_->messenger();
+}
+
+master::SysCatalogTable& MiniMaster::sys_catalog() const {
+  return *catalog_manager().sys_catalog();
+}
+
+master::TSManager& MiniMaster::ts_manager() const {
+  return *master_->ts_manager();
 }
 
 } // namespace master

@@ -18,7 +18,6 @@
 
 #include "yb/common/hybrid_time.h"
 #include "yb/util/compare_util.h"
-#include "yb/util/result.h"
 
 namespace yb {
 

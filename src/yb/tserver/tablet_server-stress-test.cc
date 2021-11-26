@@ -35,6 +35,7 @@
 #include "yb/rpc/messenger.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/thread.h"
 
 DEFINE_int32(num_inserter_threads, 8, "Number of inserter threads to run");
 DEFINE_int32(num_inserts_per_thread, 0, "Number of inserts from each thread");

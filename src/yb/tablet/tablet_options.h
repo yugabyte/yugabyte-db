@@ -13,6 +13,7 @@
 #ifndef YB_TABLET_TABLET_OPTIONS_H
 #define YB_TABLET_TABLET_OPTIONS_H
 
+#include <future>
 #include <memory>
 #include <vector>
 
@@ -37,6 +38,7 @@ class Env;
 namespace yb {
 
 class Env;
+class MemTracker;
 class MetricRegistry;
 
 namespace tablet {

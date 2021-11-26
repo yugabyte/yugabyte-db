@@ -52,10 +52,10 @@ void HtmlOutputSchemaTable(const Schema& schema,
 
   for (int i = 0; i < schema.num_columns(); i++) {
     const ColumnSchema& col = schema.column(i);
-    *output << Substitute("<tr><th>$0</th><td>$1</td><td>$2</td></tr>\n",
-                          EscapeForHtmlToString(col.name()),
-                          schema.column_id(i),
-                          col.TypeToString());
+    *output << Format("<tr><th>$0</th><td>$1</td><td>$2</td></tr>\n",
+                      EscapeForHtmlToString(col.name()),
+                      schema.column_id(i),
+                      col.TypeToString());
   }
   *output << "</table>\n";
 }

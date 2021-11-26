@@ -38,7 +38,6 @@
 #include "yb/rocksdb/snapshot.h"
 #include "yb/rocksdb/transaction_log.h"
 #include "yb/rocksdb/types.h"
-#include "yb/util/result.h"
 
 #ifdef _WIN32
 // Windows API macro interference

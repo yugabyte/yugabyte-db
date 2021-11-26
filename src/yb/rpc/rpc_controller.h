@@ -40,21 +40,13 @@
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
 namespace rpc {
 
 class ErrorStatusPB;
-
-// Specifies how to run callback for async outbound call.
-YB_DEFINE_ENUM(InvokeCallbackMode,
-    // On reactor thread.
-    (kReactorThread)
-    // On thread pool.
-    (kThreadPoolNormal)
-    (kThreadPoolHigh));
 
 // Controller for managing properties of a single RPC call, on the client side.
 //

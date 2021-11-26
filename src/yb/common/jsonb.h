@@ -14,11 +14,14 @@
 #ifndef YB_COMMON_JSONB_H
 #define YB_COMMON_JSONB_H
 
+#include <string>
+
 #include <rapidjson/document.h>
 
 #include "yb/common/common_fwd.h"
 
-#include "yb/util/status.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 namespace common {

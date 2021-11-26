@@ -72,8 +72,10 @@
 
 #include <glog/logging.h>
 
+#include "yb/client/schema.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/common_flags.h"
+#include "yb/common/key_encoder.h"
 #include "yb/common/partial_row.h"
 #include "yb/common/partition.h"
 #include "yb/common/roles_permissions.h"
@@ -83,6 +85,7 @@
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/consensus_util.h"
+#include "yb/rpc/messenger.h"
 #include "yb/rpc/response_callback.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/util/atomic.h"
@@ -2532,7 +2535,7 @@ Status CatalogManager::DeleteNotServingTablet(
   RETURN_NOT_OK(CatalogManagerUtil::CheckIfCanDeleteSingleTablet(tablet_info));
 
   auto schedules_to_tables_map = VERIFY_RESULT(
-      MakeSnapshotSchedulesToObjectIdsMap(SysRowEntry::TABLE));
+      MakeSnapshotSchedulesToObjectIdsMap(SysRowEntryType::TABLE));
   RepeatedBytes retained_by_snapshot_schedules;
   FillRetainedBySnapshotSchedules(
       schedules_to_tables_map, table_info->id(), &retained_by_snapshot_schedules);
@@ -3645,7 +3648,7 @@ Status CatalogManager::CreateMetricsSnapshotsTableIfNeeded(rpc::RpcContext *rpc)
   schemaBuilder.AddColumn("entity_id")->Type(STRING)->PrimaryKey()->NotNull();
   schemaBuilder.AddColumn("metric")->Type(STRING)->PrimaryKey()->NotNull();
   schemaBuilder.AddColumn("ts")->Type(TIMESTAMP)->PrimaryKey()->NotNull()->
-    SetSortingType(ColumnSchema::SortingType::kDescending);
+    SetSortingType(SortingType::kDescending);
   schemaBuilder.AddColumn("value")->Type(INT64);
   schemaBuilder.AddColumn("details")->Type(JSONB);
 
@@ -3803,13 +3806,13 @@ Status CatalogManager::IsMetricsSnapshotsTableCreated(IsCreateTableDoneResponseP
   return IsCreateTableDone(&req, resp);
 }
 
-std::string CatalogManager::GenerateId(boost::optional<const SysRowEntry::Type> entity_type) {
+std::string CatalogManager::GenerateId(boost::optional<const SysRowEntryType> entity_type) {
   SharedLock lock(mutex_);
   return GenerateIdUnlocked(entity_type);
 }
 
 std::string CatalogManager::GenerateIdUnlocked(
-    boost::optional<const SysRowEntry::Type> entity_type) {
+    boost::optional<const SysRowEntryType> entity_type) {
   while (true) {
     // Generate id and make sure it is unique within its category.
     std::string id = GenerateObjectId();
@@ -3817,31 +3820,31 @@ std::string CatalogManager::GenerateIdUnlocked(
       return id;
     }
     switch (*entity_type) {
-      case SysRowEntry::NAMESPACE:
+      case SysRowEntryType::NAMESPACE:
         if (FindPtrOrNull(namespace_ids_map_, id) == nullptr) return id;
         break;
-      case SysRowEntry::TABLE:
+      case SysRowEntryType::TABLE:
         if (FindPtrOrNull(*table_ids_map_, id) == nullptr) return id;
         break;
-      case SysRowEntry::TABLET:
+      case SysRowEntryType::TABLET:
         if (FindPtrOrNull(*tablet_map_, id) == nullptr) return id;
         break;
-      case SysRowEntry::UDTYPE:
+      case SysRowEntryType::UDTYPE:
         if (FindPtrOrNull(udtype_ids_map_, id) == nullptr) return id;
         break;
-      case SysRowEntry::SNAPSHOT:
+      case SysRowEntryType::SNAPSHOT:
         return id;
-      case SysRowEntry::CDC_STREAM:
+      case SysRowEntryType::CDC_STREAM:
         if (!CDCStreamExistsUnlocked(id)) return id;
         break;
-      case SysRowEntry::CLUSTER_CONFIG: FALLTHROUGH_INTENDED;
-      case SysRowEntry::ROLE: FALLTHROUGH_INTENDED;
-      case SysRowEntry::REDIS_CONFIG: FALLTHROUGH_INTENDED;
-      case SysRowEntry::UNIVERSE_REPLICATION: FALLTHROUGH_INTENDED;
-      case SysRowEntry::SYS_CONFIG: FALLTHROUGH_INTENDED;
-      case SysRowEntry::SNAPSHOT_SCHEDULE: FALLTHROUGH_INTENDED;
-      case SysRowEntry::DDL_LOG_ENTRY: FALLTHROUGH_INTENDED;
-      case SysRowEntry::UNKNOWN:
+      case SysRowEntryType::CLUSTER_CONFIG: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::ROLE: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::REDIS_CONFIG: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::UNIVERSE_REPLICATION: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::SYS_CONFIG: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::SNAPSHOT_SCHEDULE: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::DDL_LOG_ENTRY: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::UNKNOWN:
         LOG(DFATAL) << "Invalid id type: " << *entity_type;
         return id;
     }
@@ -3856,7 +3859,7 @@ scoped_refptr<TableInfo> CatalogManager::CreateTableInfo(const CreateTableReques
                                                          IndexInfoPB* index_info) {
   DCHECK(schema.has_column_ids());
   TableId table_id
-      = !req.table_id().empty() ? req.table_id() : GenerateIdUnlocked(SysRowEntry::TABLE);
+      = !req.table_id().empty() ? req.table_id() : GenerateIdUnlocked(SysRowEntryType::TABLE);
   scoped_refptr<TableInfo> table = NewTableInfo(table_id);
   if (req.has_tablespace_id()) {
     table->SetTablespaceIdForTableCreation(req.tablespace_id());
@@ -3918,7 +3921,7 @@ scoped_refptr<TableInfo> CatalogManager::CreateTableInfo(const CreateTableReques
 
 TabletInfoPtr CatalogManager::CreateTabletInfo(TableInfo* table,
                                                const PartitionPB& partition) {
-  auto tablet = make_scoped_refptr<TabletInfo>(table, GenerateIdUnlocked(SysRowEntry::TABLET));
+  auto tablet = make_scoped_refptr<TabletInfo>(table, GenerateIdUnlocked(SysRowEntryType::TABLET));
   VLOG_WITH_PREFIX_AND_FUNC(2)
       << "Table: " << table->ToString() << ", tablet: " << tablet->ToString();
 
@@ -3935,7 +3938,7 @@ TabletInfoPtr CatalogManager::CreateTabletInfo(TableInfo* table,
 
 Status CatalogManager::RemoveTableIdsFromTabletInfo(
     TabletInfoPtr tablet_info,
-    unordered_set<TableId> tables_to_remove) {
+    std::unordered_set<TableId> tables_to_remove) {
   auto tablet_lock = tablet_info->LockForWrite();
 
   google::protobuf::RepeatedPtrField<std::string> new_table_ids;
@@ -4420,7 +4423,7 @@ Status CatalogManager::DeleteTable(
 Status CatalogManager::DeleteTableInternal(
     const DeleteTableRequestPB* req, DeleteTableResponsePB* resp, rpc::RpcContext* rpc) {
   auto schedules_to_tables_map = VERIFY_RESULT(
-      MakeSnapshotSchedulesToObjectIdsMap(SysRowEntry::TABLE));
+      MakeSnapshotSchedulesToObjectIdsMap(SysRowEntryType::TABLE));
 
   vector<DeletingTableData> tables;
   RETURN_NOT_OK(DeleteTableInMemory(req->table(), req->is_index_table(),
@@ -4429,7 +4432,7 @@ Status CatalogManager::DeleteTableInternal(
 
   // Update the in-memory state.
   TRACE("Committing in-memory state");
-  unordered_set<TableId> sys_table_ids;
+  std::unordered_set<TableId> sys_table_ids;
   for (auto& table : tables) {
     if (IsSystemTable(*table.info)) {
       sys_table_ids.insert(table.info->id());
@@ -5776,7 +5779,7 @@ bool CatalogManager::ProcessCommittedConsensusState(
 
     // 6d(ii). Delete any replicas from the previous config that are not in the new one.
     if (FLAGS_master_tombstone_evicted_tablet_replicas) {
-      unordered_set<string> current_member_uuids;
+      std::unordered_set<string> current_member_uuids;
       for (const consensus::RaftPeerPB &peer : cstate.config().peers()) {
         InsertOrDie(&current_member_uuids, peer.permanent_uuid());
       }
@@ -6383,8 +6386,8 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
     // Add the new namespace.
 
     // Create unique id for this new namespace.
-    NamespaceId new_id = !req->namespace_id().empty() ? req->namespace_id()
-                                                      : GenerateIdUnlocked(SysRowEntry::NAMESPACE);
+    NamespaceId new_id = !req->namespace_id().empty()
+        ? req->namespace_id() : GenerateIdUnlocked(SysRowEntryType::NAMESPACE);
     ns = new NamespaceInfo(new_id);
     ns->mutable_metadata()->StartMutation();
     SysNamespaceEntryPB *metadata = &ns->mutable_metadata()->mutable_dirty()->pb;
@@ -6819,7 +6822,7 @@ Status CatalogManager::DoDeleteNamespace(const DeleteNamespaceRequestPB* req,
   }
 
   // Disallow deleting namespaces with snapshot schedules.
-  auto map = VERIFY_RESULT(MakeSnapshotSchedulesToObjectIdsMap(SysRowEntry::NAMESPACE));
+  auto map = VERIFY_RESULT(MakeSnapshotSchedulesToObjectIdsMap(SysRowEntryType::NAMESPACE));
   for (const auto& schedule_and_objects : map) {
     for (const auto& id : schedule_and_objects.second) {
       if (id == ns->id()) {
@@ -7043,7 +7046,7 @@ void CatalogManager::DeleteYsqlDatabaseAsync(scoped_refptr<NamespaceInfo> databa
 Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& database) {
   TabletInfoPtr sys_tablet_info;
   vector<pair<scoped_refptr<TableInfo>, TableInfo::WriteLock>> tables;
-  unordered_set<TableId> sys_table_ids;
+  std::unordered_set<TableId> sys_table_ids;
   {
     // Lock the catalog to iterate over table_ids_map_.
     SharedLock lock(mutex_);
@@ -7375,7 +7378,7 @@ Status CatalogManager::CreateUDType(const CreateUDTypeRequestPB* req,
     }
 
     // Construct the new type (generate fresh name and set fields).
-    UDTypeId new_id = GenerateIdUnlocked(SysRowEntry::UDTYPE);
+    UDTypeId new_id = GenerateIdUnlocked(SysRowEntryType::UDTYPE);
     tp = new UDTypeInfo(new_id);
     tp->mutable_metadata()->StartMutation();
     SysUDTypeEntryPB *metadata = &tp->mutable_metadata()->mutable_dirty()->pb;
@@ -8570,7 +8573,7 @@ Status CatalogManager::ProcessPendingAssignments(const TabletInfos& tablets) {
     master_->ts_manager()->GetAllLiveDescriptors(&ts_descs, blacklist);
   }
   Status s;
-  unordered_set<TableInfo*> ok_status_tables;
+  std::unordered_set<TableInfo*> ok_status_tables;
   for (TabletInfo *tablet : deferred.needs_create_rpc) {
     // NOTE: if we fail to select replicas on the first pass (due to
     // insufficient Tablet Servers being online), we will still try
@@ -8816,7 +8819,7 @@ return allowed_ts;
 
 Status CatalogManager::SendCreateTabletRequests(const vector<TabletInfo*>& tablets) {
   auto schedules_to_tablets_map = VERIFY_RESULT(MakeSnapshotSchedulesToObjectIdsMap(
-      SysRowEntry::TABLET));
+      SysRowEntryType::TABLET));
   for (TabletInfo *tablet : tablets) {
     const consensus::RaftConfigPB& config =
         tablet->metadata().dirty().pb.committed_consensus_state().config();

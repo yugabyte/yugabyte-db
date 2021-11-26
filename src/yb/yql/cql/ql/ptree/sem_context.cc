@@ -20,6 +20,7 @@
 
 #include "yb/common/roles_permissions.h"
 #include "yb/util/flag_tags.h"
+#include "yb/yql/cql/ql/ptree/pt_option.h"
 #include "yb/yql/cql/ql/util/ql_env.h"
 
 DECLARE_bool(use_cassandra_authentication);

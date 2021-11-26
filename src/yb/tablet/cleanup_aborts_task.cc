@@ -15,6 +15,8 @@
 
 #include "yb/tablet/transaction_participant.h"
 
+#include "yb/util/logging.h"
+
 using namespace std::literals;
 
 DECLARE_uint64(aborted_intent_cleanup_ms);

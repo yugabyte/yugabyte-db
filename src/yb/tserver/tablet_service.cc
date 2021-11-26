@@ -56,6 +56,7 @@
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/escaping.h"
+#include "yb/rpc/thread_pool.h"
 #include "yb/server/hybrid_clock.h"
 
 #include "yb/tablet/tablet_bootstrap_if.h"
@@ -2983,7 +2984,7 @@ void TabletServiceImpl::Shutdown() {
 }
 
 scoped_refptr<Histogram> TabletServer::GetMetricsHistogram(
-    TabletServerServiceIf::RpcMethodIndexes metric) {
+    TabletServerServiceRpcMethodIndexes metric) {
   // Returns the metric Histogram by holding a lock to make sure tablet_server_service_ remains
   // unchanged during the operation.
   std::lock_guard<simple_spinlock> l(lock_);

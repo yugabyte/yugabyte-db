@@ -37,7 +37,7 @@ namespace master {
 
 Result<docdb::KeyBytes> EncodedSnapshotKey(
     const TxnSnapshotId& id, SnapshotCoordinatorContext* context) {
-  return EncodedKey(SysRowEntry::SNAPSHOT, id.AsSlice(), context);
+  return EncodedKey(SysRowEntryType::SNAPSHOT, id.AsSlice(), context);
 }
 
 namespace {

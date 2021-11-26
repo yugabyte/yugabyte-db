@@ -41,6 +41,7 @@
 #include <vector>
 
 #include "yb/common/schema.h"
+#include "yb/gutil/callback.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/locks.h"
 #include "yb/util/status.h"

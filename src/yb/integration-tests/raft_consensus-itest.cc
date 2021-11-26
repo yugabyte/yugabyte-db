@@ -54,6 +54,8 @@
 #include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/quorum_util.h"
+#include "yb/docdb/doc_key.h"
+#include "yb/docdb/key_bytes.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/strcat.h"
 #include "yb/gutil/strings/util.h"
@@ -65,6 +67,7 @@
 #include "yb/integration-tests/ts_itest-base.h"
 
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_test_util.h"
 
 #include "yb/server/server_base.pb.h"
@@ -75,6 +78,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/thread.h"
 
 using namespace std::literals;
 
@@ -118,7 +122,6 @@ using docdb::KeyValuePairPB;
 using docdb::SubDocKey;
 using docdb::DocKey;
 using docdb::PrimitiveValue;
-using docdb::ValueType;
 using itest::AddServer;
 using itest::GetReplicaStatusAndCheckIfLeader;
 using itest::LeaderStepDown;

@@ -34,12 +34,14 @@
 #include <mutex>
 
 #include "yb/master/catalog_entity_info.h"
-#include "yb/util/format.h"
-#include "yb/util/locks.h"
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/wire_protocol.h"
+
+#include "yb/util/atomic.h"
+#include "yb/util/format.h"
+#include "yb/util/locks.h"
 
 using std::string;
 

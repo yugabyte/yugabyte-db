@@ -10,19 +10,18 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/docdb/shared_lock_manager.h"
 
+#include <array>
 #include <vector>
 
 #include <boost/range/adaptor/reversed.hpp>
 #include <glog/logging.h>
 
-#include "yb/util/bytes_formatter.h"
+#include "yb/docdb/lock_batch.h"
 #include "yb/util/enums.h"
-#include "yb/util/logging.h"
+#include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/tostring.h"
 #include "yb/util/trace.h"
 
 using std::string;

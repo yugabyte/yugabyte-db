@@ -18,6 +18,8 @@
 
 #include <stdint.h>
 
+#include <glog/logging.h>
+
 #include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/ql_datatype.h"
 #include "yb/common/ql_protocol.pb.h"
@@ -155,11 +157,7 @@ class QLValue {
     return pb.inetaddress_value();
   }
 
-  static InetAddress inetaddress_value(const QLValuePB& pb) {
-    InetAddress addr;
-    CHECK_OK(addr.FromBytes(inetaddress_value_pb(pb)));
-    return addr;
-  }
+  static InetAddress inetaddress_value(const QLValuePB& pb);
 
   const std::string& inetaddress_value_pb() const {
     return inetaddress_value_pb(pb_);
@@ -173,11 +171,7 @@ class QLValue {
     CHECK(pb.has_uuid_value()) << "Value: " << pb.ShortDebugString();
     return pb.uuid_value();
   }
-  static Uuid uuid_value(const QLValuePB& pb) {
-    Uuid uuid;
-    CHECK_OK(uuid.FromBytes(uuid_value_pb(pb)));
-    return uuid;
-  }
+  static Uuid uuid_value(const QLValuePB& pb);
   const std::string& uuid_value_pb() const {
     return uuid_value_pb(pb_);
   }
@@ -190,12 +184,9 @@ class QLValue {
     DCHECK(pb.has_timeuuid_value()) << "Value: " << pb.ShortDebugString();
     return pb.timeuuid_value();
   }
-  static Uuid timeuuid_value(const QLValuePB& pb) {
-    Uuid timeuuid;
-    CHECK_OK(timeuuid.FromBytes(timeuuid_value_pb(pb)));
-    CHECK_OK(timeuuid.IsTimeUuid());
-    return timeuuid;
-  }
+
+  static Uuid timeuuid_value(const QLValuePB& pb);
+
   const std::string& timeuuid_value_pb() const {
     return timeuuid_value_pb(pb_);
   }
@@ -203,13 +194,7 @@ class QLValue {
     return timeuuid_value(pb_);
   }
 
-  static util::VarInt varint_value(const QLValuePB& pb) {
-    CHECK(pb.has_varint_value()) << "Value: " << pb.ShortDebugString();
-    util::VarInt varint;
-    size_t num_decoded_bytes;
-    CHECK_OK(varint.DecodeFromComparable(pb.varint_value(), &num_decoded_bytes));
-    return varint;
-  }
+  static util::VarInt varint_value(const QLValuePB& pb);
   util::VarInt varint_value() const {
     return varint_value(pb_);
   }
@@ -295,9 +280,7 @@ class QLValue {
     pb_.set_binary_value(val, size);
   }
 
-  static void set_inetaddress_value(const InetAddress& val, QLValuePB* pb) {
-    CHECK_OK(val.ToBytes(pb->mutable_inetaddress_value()));
-  }
+  static void set_inetaddress_value(const InetAddress& val, QLValuePB* pb);
 
   void set_inetaddress_value(const InetAddress& val) {
     set_inetaddress_value(val, &pb_);
@@ -311,10 +294,7 @@ class QLValue {
     set_uuid_value(val, &pb_);
   }
 
-  virtual void set_timeuuid_value(const Uuid& val) {
-    CHECK_OK(val.IsTimeUuid());
-    val.ToBytes(pb_.mutable_timeuuid_value());
-  }
+  virtual void set_timeuuid_value(const Uuid& val);
   virtual void set_varint_value(const util::VarInt& val) {
     pb_.set_varint_value(val.EncodeToComparable());
   }
@@ -462,12 +442,7 @@ class QLValue {
   template<typename num_type, typename data_type>
   CHECKED_STATUS CQLDeserializeNum(
       size_t len, data_type (*converter)(const void*), void (QLValue::*setter)(num_type),
-      Slice* data) {
-    num_type value = 0;
-    RETURN_NOT_OK(CQLDecodeNum(len, converter, data, &value));
-    (this->*setter)(value);
-    return Status::OK();
-  }
+      Slice* data);
 
   // Deserialize a CQL floating point number (float or double). <float_type> is the parsed floating
   // point type. <converter> converts the number from network byte-order to machine order and
@@ -476,12 +451,7 @@ class QLValue {
   template<typename float_type, typename data_type>
   CHECKED_STATUS CQLDeserializeFloat(
       size_t len, data_type (*converter)(const void*), void (QLValue::*setter)(float_type),
-      Slice* data) {
-    float_type value = 0.0;
-    RETURN_NOT_OK(CQLDecodeFloat(len, converter, data, &value));
-    (this->*setter)(value);
-    return Status::OK();
-  }
+      Slice* data);
 
   // TODO(neil) This should be changed to shared_ptr<QLValuePB>. That way, we assign the pointers
   // instead of copying the same value many times during expression evaluation.

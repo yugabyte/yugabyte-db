@@ -21,6 +21,7 @@
 #include "yb/rpc/tcp_stream.h"
 
 #include "yb/util/env.h"
+#include "yb/util/net/net_util.h"
 #include "yb/util/path_util.h"
 
 DEFINE_bool(use_node_to_node_encryption, false, "Use node to node encryption.");

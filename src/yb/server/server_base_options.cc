@@ -53,6 +53,7 @@
 #include "yb/util/shared_lock.h"
 #include "yb/util/faststring.h"
 #include "yb/util/monotime.h"
+#include "yb/util/result.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 #include "yb/util/flag_tags.h"

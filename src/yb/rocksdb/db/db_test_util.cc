@@ -31,6 +31,8 @@
 #include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
 #include "yb/rocksutil/yb_rocksdb_logger.h"
 
+#include "yb/util/status_log.h"
+
 namespace rocksdb {
 
 // Special Env used to delay background operations

@@ -14,6 +14,8 @@
 #ifndef YB_RPC_CALL_DATA_H
 #define YB_RPC_CALL_DATA_H
 
+#include "yb/util/strongly_typed_bool.h"
+
 namespace yb {
 namespace rpc {
 

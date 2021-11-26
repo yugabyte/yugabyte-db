@@ -29,6 +29,8 @@
 #include "yb/rocksdb/db/db_test_util.h"
 #include "yb/rocksdb/port/stack_trace.h"
 
+#include "yb/util/test_macros.h"
+
 namespace rocksdb {
 
 class DBTestXactLogIterator : public DBTestBase {

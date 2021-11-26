@@ -95,11 +95,11 @@ class PTColumnDefinition : public TreeNode {
     order_ = order;
   }
 
-  ColumnSchema::SortingType sorting_type() {
+  SortingType sorting_type() {
     return sorting_type_;
   }
 
-  void set_sorting_type(ColumnSchema::SortingType sorting_type) {
+  void set_sorting_type(SortingType sorting_type) {
     sorting_type_ = sorting_type;
   }
 
@@ -157,7 +157,7 @@ class PTColumnDefinition : public TreeNode {
   bool is_static_;
   int32_t order_;
   // Sorting order. Only relevant when this key is a primary key.
-  ColumnSchema::SortingType sorting_type_;
+  SortingType sorting_type_;
 
   // Ref column_id.
   // - In a TABLE, indexed_ref_ of a column is "-1" as it doesn't reference any column.

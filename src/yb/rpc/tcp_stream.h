@@ -16,10 +16,10 @@
 
 #include <ev++.h>
 
-#include "yb/rpc/growable_buffer.h"
 #include "yb/rpc/stream.h"
 
 #include "yb/util/net/socket.h"
+#include "yb/util/mem_tracker.h"
 #include "yb/util/ref_cnt_buffer.h"
 
 namespace yb {

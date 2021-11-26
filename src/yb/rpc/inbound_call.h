@@ -43,7 +43,6 @@
 
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/call_data.h"
-#include "yb/rpc/growable_buffer.h"
 #include "yb/rpc/rpc_call.h"
 #include "yb/rpc/remote_method.h"
 #include "yb/rpc/rpc_header.pb.h"
@@ -55,9 +54,10 @@
 #include "yb/util/lockfree.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/monotime.h"
+#include "yb/util/net/net_fwd.h"
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/slice.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace google {
 namespace protobuf {

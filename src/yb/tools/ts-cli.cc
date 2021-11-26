@@ -37,8 +37,10 @@
 #include <glog/logging.h>
 
 
+#include "yb/common/ql_rowblock.h"
 #include "yb/common/partition.h"
 #include "yb/common/schema.h"
+#include "yb/rpc/proxy.h"
 #include "yb/server/server_base.proxy.h"
 #include "yb/server/secure.h"
 #include "yb/tserver/tserver.pb.h"

@@ -53,13 +53,13 @@
 
 #include "yb/client/client.h"
 #include "yb/client/client-test-util.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/tablet_server.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/common/ql_value.h"
-
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
@@ -72,13 +72,13 @@
 
 #include "yb/server/hybrid_clock.h"
 
-
 #include "yb/util/blocking_queue.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/hdr_histogram.h"
 #include "yb/util/random.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
+#include "yb/util/thread.h"
 
 using namespace std::literals;
 

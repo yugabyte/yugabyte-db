@@ -27,6 +27,8 @@
 #include "yb/rocksdb/util/sst_file_manager_impl.h"
 #include "yb/rocksdb/util/sync_point.h"
 
+#include "yb/util/test_macros.h"
+
 namespace rocksdb {
 
 class DBTest : public DBTestBase {

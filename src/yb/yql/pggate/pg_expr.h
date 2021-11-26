@@ -16,6 +16,7 @@
 #define YB_YQL_PGGATE_PG_EXPR_H_
 
 #include "yb/client/client.h"
+#include "yb/client/schema.h"
 #include "yb/yql/pggate/util/pg_doc_data.h"
 #include "yb/yql/pggate/util/pg_tuple.h"
 #include "yb/bfpg/tserver_opcodes.h"

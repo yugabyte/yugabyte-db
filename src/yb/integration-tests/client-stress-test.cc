@@ -35,9 +35,12 @@
 #include <regex>
 
 #include "yb/client/client.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
+
+#include "yb/common/schema.h"
 
 #include "yb/gutil/mathlimits.h"
 #include "yb/gutil/strings/human_readable.h"
@@ -52,6 +55,7 @@
 #include "yb/rpc/rpc.h"
 
 #include "yb/util/curl_util.h"
+#include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/pstack_watcher.h"
 #include "yb/util/random.h"

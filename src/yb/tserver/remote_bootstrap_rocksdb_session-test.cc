@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include "yb/rpc/proxy.h"
+
 #include "yb/tserver/remote_bootstrap_session-test.h"
 
 namespace yb {

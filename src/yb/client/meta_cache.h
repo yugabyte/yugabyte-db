@@ -64,6 +64,7 @@
 #include "yb/util/capabilities.h"
 #include "yb/util/locks.h"
 #include "yb/util/lockfree.h"
+#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/semaphore.h"
 #include "yb/util/status.h"

@@ -14,6 +14,8 @@
 #ifndef YB_DOCDB_TRANSACTION_DUMP_H
 #define YB_DOCDB_TRANSACTION_DUMP_H
 
+#include <gflags/gflags_declare.h>
+
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"

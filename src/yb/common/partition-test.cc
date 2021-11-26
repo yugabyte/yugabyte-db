@@ -29,7 +29,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include <stdint.h>
 
 #include <atomic>
@@ -43,14 +42,11 @@
 #include "yb/common/crc16.h"
 #include "yb/common/partial_row.h"
 #include "yb/common/partition.h"
-#include "yb/common/row.h"
 #include "yb/common/schema.h"
-#include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/util/monotime.h"
-#include "yb/util/result.h"
 #include "yb/util/test_macros.h"
-#include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
+#include "yb/yql/redis/redisserver/redis_constants.h"
 
 using std::vector;
 using std::string;

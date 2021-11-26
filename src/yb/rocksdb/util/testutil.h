@@ -699,9 +699,7 @@ class TestUserFrontier : public UserFrontier {
     return value_;
   }
 
-  std::string ToString() const override {
-    return yb::Format("{ value: $0 }", value_);
-  }
+  std::string ToString() const override;
 
   void ToPB(google::protobuf::Any* pb) const override {
     UserBoundaryValuePB value;

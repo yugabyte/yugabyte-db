@@ -14,6 +14,7 @@
 #ifndef YB_CONSENSUS_RETRYABLE_REQUESTS_H
 #define YB_CONSENSUS_RETRYABLE_REQUESTS_H
 
+#include "yb/common/retryable_request.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus_fwd.h"
 

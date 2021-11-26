@@ -36,6 +36,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
+#include "yb/client/schema.h"
 #include "yb/client/table_creator.h"
 #include "yb/common/schema.h"
 #include "yb/gutil/strings/substitute.h"
@@ -44,6 +45,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
 #include "yb/util/test_util.h"
+#include "yb/util/thread.h"
 
 using std::vector;
 

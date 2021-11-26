@@ -24,6 +24,8 @@
 
 #include "yb/rocksdb/db/db_test_util.h"
 
+#include "yb/util/test_macros.h"
+
 namespace rocksdb {
 
 class SliceTransformTest : public testing::Test {};

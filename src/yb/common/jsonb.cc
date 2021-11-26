@@ -10,14 +10,15 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include "yb/common/jsonb.h"
 
 #include <rapidjson/error/en.h>
 
-#include "yb/common/jsonb.h"
 #include "yb/common/json_util.h"
 #include "yb/common/ql_value.h"
-
 #include "yb/util/kv_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 #include "yb/util/varint.h"
 
 namespace yb {
@@ -106,7 +107,7 @@ std::pair<size_t, size_t> Jsonb::ComputeOffsetsAndJsonbHeader(size_t num_entries
   BigEndian::Store32(&((*jsonb)[metadata_offset]), jsonb_header);
   metadata_offset += sizeof(JsonbHeader);
 
-  return make_pair(metadata_offset, jsonb_metadata_size);
+  return std::make_pair(metadata_offset, jsonb_metadata_size);
 }
 
 CHECKED_STATUS Jsonb::ToJsonbProcessObject(const rapidjson::Value& document,
@@ -617,11 +618,11 @@ Status Jsonb::FromJsonbInternal(const Slice& jsonb, rapidjson::Document* documen
   return Status::OK();
 }
 
-pair<size_t, size_t> Jsonb::GetOffsetAndLength(size_t element_metadata_offset,
-                                               const Slice& jsonb,
-                                               size_t element_end_offset,
-                                               size_t data_begin_offset,
-                                               size_t metadata_begin_offset) {
+std::pair<size_t, size_t> Jsonb::GetOffsetAndLength(size_t element_metadata_offset,
+                                                    const Slice& jsonb,
+                                                    size_t element_end_offset,
+                                                    size_t data_begin_offset,
+                                                    size_t metadata_begin_offset) {
   if (element_metadata_offset == metadata_begin_offset) {
     // This is the first element.
     return std::make_pair(data_begin_offset, element_end_offset);

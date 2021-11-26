@@ -21,6 +21,7 @@
 #ifndef YB_YQL_CQL_QL_UTIL_QL_ENV_H_
 #define YB_YQL_CQL_QL_UTIL_QL_ENV_H_
 
+#include "yb/client/client_fwd.h"
 #include "yb/client/callbacks.h"
 #include "yb/client/client.h"
 #include "yb/client/transaction.h"

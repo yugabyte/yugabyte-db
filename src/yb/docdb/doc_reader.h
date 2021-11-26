@@ -27,14 +27,12 @@
 #include "yb/docdb/deadline_info.h"
 #include "yb/docdb/docdb_types.h"
 #include "yb/docdb/expiration.h"
-#include "yb/docdb/intent.h"
-#include "yb/docdb/primitive_value.h"
 #include "yb/docdb/subdoc_reader.h"
 #include "yb/docdb/subdocument.h"
 #include "yb/docdb/value.h"
 
 #include "yb/util/monotime.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
@@ -61,7 +59,7 @@ Result<boost::optional<SubDocument>> TEST_GetSubDocument(
     const Slice& sub_doc_key,
     const DocDB& doc_db,
     const rocksdb::QueryId query_id,
-    const TransactionOperationContextOpt& txn_op_context,
+    const TransactionOperationContext& txn_op_context,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time = ReadHybridTime::Max(),
     const std::vector<PrimitiveValue>* projection = nullptr);

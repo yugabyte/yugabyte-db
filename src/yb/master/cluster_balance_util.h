@@ -245,7 +245,7 @@ class GlobalLoadState {
 
  private:
   // Map from tablet server ids to the global metadata we store for each.
-  unordered_map<TabletServerId, CBTabletServerLoadCounts> per_ts_global_meta_;
+  std::unordered_map<TabletServerId, CBTabletServerLoadCounts> per_ts_global_meta_;
 
   friend class PerTableLoadState;
 };
@@ -370,15 +370,15 @@ class PerTableLoadState {
   // PerTableLoadState member fields
 
   // Map from tablet ids to the metadata we store for each.
-  unordered_map<TabletId, CBTabletMetadata> per_tablet_meta_;
+  std::unordered_map<TabletId, CBTabletMetadata> per_tablet_meta_;
 
   // Map from tablet server ids to the metadata we store for each.
-  unordered_map<TabletServerId, CBTabletServerMetadata> per_ts_meta_;
+  std::unordered_map<TabletServerId, CBTabletServerMetadata> per_ts_meta_;
 
   // Map from table id to placement information for this table. This will be used for both
   // determining over-replication, by checking num_replicas, but also for az awareness, by keeping
   // track of the placement block policies between cluster and table level.
-  unordered_map<TableId, PlacementInfoPB> placement_by_table_;
+  std::unordered_map<TableId, PlacementInfoPB> placement_by_table_;
 
   // Total number of running tablets in the clusters (including replicas).
   int total_running_ = 0;
@@ -425,9 +425,9 @@ class PerTableLoadState {
   // If affinitized leaders is enabled, stores leader load for affinitized nodes.
   vector<TabletServerId> sorted_leader_load_;
 
-  unordered_map<TableId, TabletToTabletServerMap> pending_add_replica_tasks_;
-  unordered_map<TableId, TabletToTabletServerMap> pending_remove_replica_tasks_;
-  unordered_map<TableId, TabletToTabletServerMap> pending_stepdown_leader_tasks_;
+  std::unordered_map<TableId, TabletToTabletServerMap> pending_add_replica_tasks_;
+  std::unordered_map<TableId, TabletToTabletServerMap> pending_remove_replica_tasks_;
+  std::unordered_map<TableId, TabletToTabletServerMap> pending_stepdown_leader_tasks_;
 
   // Time at which we started the current round of load balancing.
   MonoTime current_time_;

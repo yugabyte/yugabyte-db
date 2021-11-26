@@ -115,7 +115,7 @@ add_library(tablet_test_util
             tablet-test-util.cc)
 target_link_libraries(tablet_test_util tablet yb_common yb_test_util yb_util)
 
-set(YB_TEST_LINK_LIBS tablet tablet_test_util ${YB_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS tablet tablet_test_util yb_common_test_util ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(tablet-test)
 ADD_YB_TEST(tablet-split-test)
 ADD_YB_TEST(tablet-metadata-test)

@@ -51,6 +51,7 @@
 #include "yb/rpc/service_pool.h"
 #include "yb/util/faststring.h"
 #include "yb/util/net/sockaddr.h"
+#include "yb/util/metrics.h"
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
 #include "yb/util/stopwatch.h"

@@ -32,7 +32,6 @@
 #include "yb/rocksdb/util/autovector.h"
 #include "yb/rocksdb/util/mutable_cf_options.h"
 #include "yb/rocksdb/db/version_edit.h"
-#include "yb/util/result.h"
 
 namespace yb {
 

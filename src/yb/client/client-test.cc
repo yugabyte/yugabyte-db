@@ -70,6 +70,7 @@
 #include "yb/master/master.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_test_util.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/yql/cql/ql/util/statement_result.h"

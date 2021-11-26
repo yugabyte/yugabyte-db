@@ -10,7 +10,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/docdb/cql_operation.h"
 
 #include <limits>
@@ -20,6 +19,7 @@
 #include <utility>
 #include <vector>
 
+#include "yb/bfpg/tserver_opcodes.h"
 #include "yb/common/index.h"
 #include "yb/common/jsonb.h"
 #include "yb/common/partition.h"
@@ -27,17 +27,15 @@
 #include "yb/common/ql_resultset.h"
 #include "yb/common/ql_storage_interface.h"
 #include "yb/common/ql_value.h"
-
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/primitive_value_util.h"
-
-#include "yb/bfpg/tserver_opcodes.h"
+#include "yb/util/debug-util.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 #include "yb/util/trace.h"
-
 #include "yb/yql/cql/ql/util/errcodes.h"
 
 DEFINE_test_flag(bool, pause_write_apply_after_if, false,
@@ -244,7 +242,7 @@ CHECKED_STATUS CheckUserTimestampForCollections(const UserTimeMicros user_timest
 QLWriteOperation::QLWriteOperation(std::shared_ptr<const Schema> schema,
                                    std::reference_wrapper<const IndexMap> index_map,
                                    const Schema* unique_index_key_schema,
-                                   const TransactionOperationContextOpt& txn_op_context)
+                                   const TransactionOperationContext& txn_op_context)
     : schema_(std::move(schema)),
       index_map_(index_map),
       unique_index_key_schema_(unique_index_key_schema),
@@ -723,7 +721,7 @@ Status QLWriteOperation::ApplyForSubscriptArgs(const QLColumnValuePB& column_val
     case MAP: {
       const PrimitiveValue &pv = PrimitiveValue::FromQLValuePB(
           column_value.subscript_args(0).value(),
-          ColumnSchema::SortingType::kNotSpecified);
+          SortingType::kNotSpecified);
       sub_path->AddSubKey(pv);
       RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
           *sub_path, sub_doc, data.read_time, data.deadline,
@@ -1402,7 +1400,7 @@ Result<QLWriteRequestPB*> CreateAndSetupIndexInsertRequest(
   return nullptr; // The index updating was skipped.
 }
 
-Status QLReadOperation::Execute(const common::YQLStorageIf& ql_storage,
+Status QLReadOperation::Execute(const YQLStorageIf& ql_storage,
                                 CoarseTimePoint deadline,
                                 const ReadHybridTime& read_time,
                                 const Schema& schema,
@@ -1433,8 +1431,8 @@ Status QLReadOperation::Execute(const common::YQLStorageIf& ql_storage,
   const bool read_static_columns = !static_projection.columns().empty();
   const bool read_distinct_columns = request_.distinct();
 
-  std::unique_ptr<common::YQLRowwiseIteratorIf> iter;
-  std::unique_ptr<common::QLScanSpec> spec, static_row_spec;
+  std::unique_ptr<YQLRowwiseIteratorIf> iter;
+  std::unique_ptr<QLScanSpec> spec, static_row_spec;
   RETURN_NOT_OK(ql_storage.BuildYQLScanSpec(
       request_, read_time, schema, read_static_columns, static_projection, &spec,
       &static_row_spec));
@@ -1450,7 +1448,7 @@ Status QLReadOperation::Execute(const common::YQLStorageIf& ql_storage,
   // the static columns for the next row to fetch are not included in the first iterator and we
   // need to fetch them with a separate spec and iterator before beginning the normal fetch below.
   if (static_row_spec != nullptr) {
-    std::unique_ptr<common::YQLRowwiseIteratorIf> static_row_iter;
+    std::unique_ptr<YQLRowwiseIteratorIf> static_row_iter;
     RETURN_NOT_OK(ql_storage.GetIterator(
         request_, static_projection, schema, txn_op_context_, deadline, read_time,
         *static_row_spec, &static_row_iter));
@@ -1553,7 +1551,7 @@ Status QLReadOperation::Execute(const common::YQLStorageIf& ql_storage,
   return Status::OK();
 }
 
-Status QLReadOperation::SetPagingStateIfNecessary(const common::YQLRowwiseIteratorIf* iter,
+Status QLReadOperation::SetPagingStateIfNecessary(const YQLRowwiseIteratorIf* iter,
                                                   const QLResultSet* resultset,
                                                   const size_t row_count_limit,
                                                   const size_t num_rows_skipped,
@@ -1614,7 +1612,7 @@ Status QLReadOperation::GetIntents(const Schema& schema, KeyValueWriteBatchPB* o
   return Status::OK();
 }
 
-Status QLReadOperation::PopulateResultSet(const std::unique_ptr<common::QLScanSpec>& spec,
+Status QLReadOperation::PopulateResultSet(const std::unique_ptr<QLScanSpec>& spec,
                                           const QLTableRow& table_row,
                                           QLResultSet *resultset) {
   resultset->AllocateRow();
@@ -1651,7 +1649,7 @@ Status QLReadOperation::PopulateAggregate(const QLTableRow& table_row, QLResultS
   return Status::OK();
 }
 
-Status QLReadOperation::AddRowToResult(const std::unique_ptr<common::QLScanSpec>& spec,
+Status QLReadOperation::AddRowToResult(const std::unique_ptr<QLScanSpec>& spec,
                                        const QLTableRow& row,
                                        const size_t row_count_limit,
                                        const size_t offset,

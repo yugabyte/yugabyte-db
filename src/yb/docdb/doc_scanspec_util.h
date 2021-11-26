@@ -17,9 +17,8 @@
 #define YB_DOCDB_DOC_SCANSPEC_UTIL_H_
 
 #include "yb/common/ql_scanspec.h"
-#include "yb/common/schema.h"
-#include "yb/docdb/primitive_value.h"
-#include "yb/util/status.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 namespace docdb {
@@ -28,12 +27,12 @@ namespace docdb {
 std::vector<PrimitiveValue> GetRangeKeyScanSpec(
     const Schema& schema,
     const std::vector<PrimitiveValue>* prefixed_range_components,
-    const common::QLScanRange* scan_range,
+    const QLScanRange* scan_range,
     bool lower_bound,
     bool include_static_columns = false);
 
-PrimitiveValue GetQLRangeBoundAsPVal(const common::QLScanRange::QLRange& ql_range,
-                                     ColumnSchema::SortingType sorting_type,
+PrimitiveValue GetQLRangeBoundAsPVal(const QLScanRange::QLRange& ql_range,
+                                     SortingType sorting_type,
                                      bool lower_bound);
 }  // namespace docdb
 }  // namespace yb

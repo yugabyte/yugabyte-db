@@ -13,6 +13,8 @@
 
 #include "yb/yql/pggate/pg_table.h"
 
+#include "yb/util/result.h"
+
 namespace yb {
 namespace pggate {
 

@@ -28,6 +28,7 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/common/common.pb.h"
+#include "yb/common/index.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/wire_protocol.h"
@@ -522,7 +523,7 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
   }
 
   for (const auto& column : tnode->hash_columns()) {
-    if (column->sorting_type() != ColumnSchema::SortingType::kNotSpecified) {
+    if (column->sorting_type() != SortingType::kNotSpecified) {
       return exec_context_->Error(tnode->columns().front(), s, ErrorCode::INVALID_TABLE_DEFINITION);
     }
     b.AddColumn(column->coldef_name().c_str())
@@ -542,7 +543,7 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
   }
 
   for (const auto& column : tnode->columns()) {
-    if (column->sorting_type() != ColumnSchema::SortingType::kNotSpecified) {
+    if (column->sorting_type() != SortingType::kNotSpecified) {
       return exec_context_->Error(tnode->columns().front(), s, ErrorCode::INVALID_TABLE_DEFINITION);
     }
     YBColumnSpec *column_spec = b.AddColumn(column->coldef_name().c_str())

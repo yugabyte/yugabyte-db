@@ -42,8 +42,8 @@
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/call_data.h"
 #include "yb/rpc/constants.h"
+#include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/remote_method.h"
-#include "yb/rpc/response_callback.h"
 #include "yb/rpc/rpc_call.h"
 #include "yb/rpc/rpc_header.pb.h"
 #include "yb/rpc/service_if.h"
@@ -56,7 +56,7 @@
 #include "yb/util/object_pool.h"
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/slice.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/trace.h"
 
 namespace google {
@@ -202,11 +202,6 @@ class InvokeCallbackTask : public rpc::ThreadPoolTask {
 
  private:
   OutboundCallPtr call_;
-};
-
-struct OutboundMethodMetrics {
-  scoped_refptr<Counter> request_bytes;
-  scoped_refptr<Counter> response_bytes;
 };
 
 // Tracks the status of a call on the client side.

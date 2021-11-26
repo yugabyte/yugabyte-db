@@ -73,7 +73,7 @@ YBColumnSpec* YBColumnSpec::Order(int32_t order) {
   return this;
 }
 
-YBColumnSpec* YBColumnSpec::SetSortingType(ColumnSchema::SortingType sorting_type) {
+YBColumnSpec* YBColumnSpec::SetSortingType(SortingType sorting_type) {
   data_->sorting_type = sorting_type;
   return this;
 }
@@ -319,7 +319,7 @@ YBColumnSchema::YBColumnSchema(const std::string &name,
                                bool is_static,
                                bool is_counter,
                                int32_t order,
-                               ColumnSchema::SortingType sorting_type) {
+                               SortingType sorting_type) {
   col_ = new ColumnSchema(name, type, is_nullable, is_hash_key, is_static, is_counter, order,
                           sorting_type);
 }
@@ -376,7 +376,7 @@ const shared_ptr<QLType>& YBColumnSchema::type() const {
   return DCHECK_NOTNULL(col_)->type();
 }
 
-ColumnSchema::SortingType YBColumnSchema::sorting_type() const {
+SortingType YBColumnSchema::sorting_type() const {
   return DCHECK_NOTNULL(col_)->sorting_type();
 }
 

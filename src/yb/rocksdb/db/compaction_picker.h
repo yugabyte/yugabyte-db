@@ -33,7 +33,6 @@
 #include <vector>
 
 #include "yb/rocksdb/db/compaction.h"
-#include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/status.h"

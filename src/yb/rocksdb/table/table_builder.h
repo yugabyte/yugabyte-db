@@ -30,7 +30,7 @@
 #include <utility>
 #include <vector>
 
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 #include "yb/rocksdb/db/table_properties_collector.h"
 

@@ -26,6 +26,7 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
+#include "yb/util/source_location.h"
 #include "yb/util/thread_restrictions.h"
 
 using namespace std::literals;
@@ -999,7 +1000,7 @@ void AsyncChangeConfigTask::HandleResponse(int attempt) {
 Status AsyncAddServerTask::PrepareRequest(int attempt) {
   // Select the replica we wish to add to the config.
   // Do not include current members of the config.
-  unordered_set<string> replica_uuids;
+  std::unordered_set<string> replica_uuids;
   for (const RaftPeerPB& peer : cstate_.config().peers()) {
     InsertOrDie(&replica_uuids, peer.permanent_uuid());
   }

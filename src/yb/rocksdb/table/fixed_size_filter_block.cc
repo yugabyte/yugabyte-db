@@ -14,12 +14,10 @@
 // Copyright (c) 2012 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
-
-#include <algorithm>
+#include "yb/rocksdb/table/fixed_size_filter_block.h"
 
 #include "yb/rocksdb/filter_policy.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
-#include "yb/rocksdb/table/fixed_size_filter_block.h"
 
 namespace rocksdb {
 

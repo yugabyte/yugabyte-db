@@ -37,6 +37,8 @@ int main() {
 #include "yb/rocksdb/types.h"
 #include "yb/rocksdb/util/testutil.h"
 
+#include "yb/util/status_log.h"
+
 // Run a thread to perform Put's.
 // Another thread uses GetUpdatesSince API to keep getting the updates.
 // options :

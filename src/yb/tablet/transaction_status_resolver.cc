@@ -13,7 +13,6 @@
 
 #include "yb/tablet/transaction_status_resolver.h"
 
-
 #include "yb/client/transaction_rpc.h"
 
 #include "yb/common/wire_protocol.h"
@@ -24,6 +23,7 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/logging.h"
 
 DEFINE_test_flag(int32, inject_status_resolver_delay_ms, 0,
                  "Inject delay before launching transaction status resolver RPC.");

@@ -14,6 +14,8 @@
 
 #include "yb/common/snapshot.h"
 
+#include "yb/util/result.h"
+
 namespace yb {
 namespace tools {
 

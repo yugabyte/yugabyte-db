@@ -16,18 +16,14 @@
 
 #include <boost/optional.hpp>
 
+#include "yb/common/common_fwd.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/read_hybrid_time.h"
-#include "yb/common/schema.h"
 #include "yb/common/ql_rowwise_iterator_interface.h"
 
 #include "yb/docdb/docdb_fwd.h"
 
 namespace yb {
-namespace common {
-
-class PgsqlScanSpec;
-class QLScanSpec;
 
 // An interface to support various different storage backends for a QL table.
 class YQLStorageIf {
@@ -42,7 +38,7 @@ class YQLStorageIf {
   virtual CHECKED_STATUS GetIterator(const QLReadRequestPB& request,
                                      const Schema& projection,
                                      const Schema& schema,
-                                     const TransactionOperationContextOpt& txn_op_context,
+                                     const TransactionOperationContext& txn_op_context,
                                      CoarseTimePoint deadline,
                                      const ReadHybridTime& read_time,
                                      const QLScanSpec& spec,
@@ -54,8 +50,8 @@ class YQLStorageIf {
       const Schema& schema,
       bool include_static_columns,
       const Schema& static_projection,
-      std::unique_ptr<common::QLScanSpec>* spec,
-      std::unique_ptr<common::QLScanSpec>* static_row_spec) const = 0;
+      std::unique_ptr<QLScanSpec>* spec,
+      std::unique_ptr<QLScanSpec>* static_row_spec) const = 0;
 
   //------------------------------------------------------------------------------------------------
   // PGSQL Support.
@@ -71,12 +67,12 @@ class YQLStorageIf {
   // - Doc_key needs to be changed to allow reusing iterator.
   virtual CHECKED_STATUS CreateIterator(const Schema& projection,
                                         const Schema& schema,
-                                        const TransactionOperationContextOpt& txn_op_context,
+                                        const TransactionOperationContext& txn_op_context,
                                         CoarseTimePoint deadline,
                                         const ReadHybridTime& read_time,
-                                        common::YQLRowwiseIteratorIf::UniPtr* iter) const = 0;
+                                        YQLRowwiseIteratorIf::UniPtr* iter) const = 0;
 
-  virtual CHECKED_STATUS InitIterator(common::YQLRowwiseIteratorIf* doc_iter,
+  virtual CHECKED_STATUS InitIterator(YQLRowwiseIteratorIf* doc_iter,
                                       const PgsqlReadRequestPB& request,
                                       const Schema& schema,
                                       const QLValuePB& ybctid) const = 0;
@@ -85,7 +81,7 @@ class YQLStorageIf {
   virtual CHECKED_STATUS GetIterator(const PgsqlReadRequestPB& request,
                                      const Schema& projection,
                                      const Schema& schema,
-                                     const TransactionOperationContextOpt& txn_op_context,
+                                     const TransactionOperationContext& txn_op_context,
                                      CoarseTimePoint deadline,
                                      const ReadHybridTime& read_time,
                                      const docdb::DocKey& start_doc_key,
@@ -95,13 +91,13 @@ class YQLStorageIf {
   virtual CHECKED_STATUS GetIterator(uint64 stmt_id,
                                      const Schema& projection,
                                      const Schema& schema,
-                                     const TransactionOperationContextOpt& txn_op_context,
+                                     const TransactionOperationContext& txn_op_context,
                                      CoarseTimePoint deadline,
                                      const ReadHybridTime& read_time,
                                      const QLValuePB& ybctid,
-                                     common::YQLRowwiseIteratorIf::UniPtr* iter) const = 0;
+                                     YQLRowwiseIteratorIf::UniPtr* iter) const = 0;
 };
 
-}  // namespace common
 }  // namespace yb
+
 #endif // YB_COMMON_QL_STORAGE_INTERFACE_H

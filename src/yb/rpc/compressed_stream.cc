@@ -26,9 +26,12 @@
 #include "yb/rpc/circular_read_buffer.h"
 #include "yb/rpc/outbound_data.h"
 #include "yb/rpc/refined_stream.h"
+#include "yb/util/format.h"
 
 #include "yb/util/logging.h"
+#include "yb/util/result.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
 
 using namespace std::literals;
 

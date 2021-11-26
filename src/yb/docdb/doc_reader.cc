@@ -20,6 +20,7 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/transaction.h"
 
+#include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_ttl_util.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb_fwd.h"
@@ -59,7 +60,7 @@ Result<boost::optional<SubDocument>> TEST_GetSubDocument(
     const Slice& sub_doc_key,
     const DocDB& doc_db,
     const rocksdb::QueryId query_id,
-    const TransactionOperationContextOpt& txn_op_context,
+    const TransactionOperationContext& txn_op_context,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
     const std::vector<PrimitiveValue>* projection) {

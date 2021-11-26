@@ -20,6 +20,7 @@
 #include <google/protobuf/repeated_field.h>
 
 #include "yb/gutil/strings/join.h"
+#include "yb/util/status.h"
 #include "yb/util/status_format.h"
 
 namespace yb {

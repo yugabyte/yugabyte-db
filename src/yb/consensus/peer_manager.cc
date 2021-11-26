@@ -123,7 +123,7 @@ void PeerManager::Close() {
 }
 
 void PeerManager::ClosePeersNotInConfig(const RaftConfigPB& config) {
-  unordered_map<string, RaftPeerPB> peers_in_config;
+  std::unordered_map<string, RaftPeerPB> peers_in_config;
   for (const RaftPeerPB &peer_pb : config.peers()) {
     InsertOrDie(&peers_in_config, peer_pb.permanent_uuid(), peer_pb);
   }

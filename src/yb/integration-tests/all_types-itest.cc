@@ -34,6 +34,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/gutil/strings/substitute.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"

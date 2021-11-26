@@ -29,7 +29,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/rpc/acceptor.h"
 
 #include <inttypes.h>
@@ -50,17 +49,14 @@
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/reactor.h"
-#include "yb/rpc/response_callback.h"
-#include "yb/util/debug-util.h"
-#include "yb/util/locks.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
-#include "yb/util/flag_tags.h"
-#include "yb/util/net/socket.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/thread.h"
 
 using google::protobuf::Message;

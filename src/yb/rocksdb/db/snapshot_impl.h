@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "yb/rocksdb/db.h"
+#include "yb/rocksdb/db/dbformat.h"
 
 namespace rocksdb {
 

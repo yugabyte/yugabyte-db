@@ -12,6 +12,8 @@
 //
 
 #include "yb/yql/cql/ql/ptree/pt_property.h"
+
+#include "yb/util/logging.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_case.h"
 

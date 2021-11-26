@@ -47,6 +47,7 @@
 
 #include "yb/tablet/tablet_fwd.h"
 
+#include "yb/util/async_util.h"
 #include "yb/util/auto_release_pool.h"
 #include "yb/util/locks.h"
 #include "yb/util/operation_counter.h"

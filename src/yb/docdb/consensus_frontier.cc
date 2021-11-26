@@ -13,7 +13,10 @@
 
 #include "yb/docdb/consensus_frontier.h"
 
+#include <google/protobuf/any.pb.h>
+
 #include "yb/docdb/docdb.pb.h"
+#include "yb/gutil/casts.h"
 #include "yb/util/tostring.h"
 
 namespace yb {

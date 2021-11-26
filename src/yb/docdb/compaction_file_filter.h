@@ -15,8 +15,7 @@
 #define YB_DOCDB_COMPACTION_FILE_FILTER_H_
 
 #include <memory>
-#include "yb/common/schema.h"
-#include "yb/docdb/docdb_compaction_filter.h"
+#include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/doc_ttl_util.h"
 #include "yb/rocksdb/compaction_filter.h"
 #include "yb/server/hybrid_clock.h"
@@ -37,14 +36,10 @@ struct ExpirationTime {
   // Indicates creation hybrid time, used to calculate table-level TTL expiration.
   HybridTime created_ht = HybridTime::kMax;
 
-  std::string ToString() const {
-    return YB_STRUCT_TO_STRING(ttl_expiration_ht, created_ht);
-  }
+  std::string ToString() const;
 };
 
-inline bool operator==(const ExpirationTime& lhs, const ExpirationTime& rhs) {
-  return YB_STRUCT_EQUALS(ttl_expiration_ht, created_ht);
-}
+bool operator==(const ExpirationTime& lhs, const ExpirationTime& rhs);
 
 ExpirationTime ExtractExpirationTime(const rocksdb::FileMetaData* file);
 
@@ -80,9 +75,7 @@ class DocDBCompactionFileFilter : public rocksdb::CompactionFileFilter {
 
   const char* Name() const override;
 
-  std::string ToString() const {
-    return YB_STRUCT_TO_STRING(table_ttl_, history_cutoff_, max_ht_to_expire_, filter_ht_, mode_);
-  }
+  std::string ToString() const;
 
  private:
   const MonoDelta table_ttl_;

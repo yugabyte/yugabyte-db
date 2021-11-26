@@ -38,6 +38,8 @@
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
+#include "yb/client/schema.h"
+#include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 
 #include "yb/common/json_util.h"
@@ -694,7 +696,7 @@ TEST_F(AdminCliTest, TestCreateTransactionStatusTablesWithPlacements) {
                                         "system",
                                         Substitute("transactions_z$0", i));
     ASSERT_OK(client->OpenTable(table_name, &table));
-    ASSERT_EQ(table->table_type(), TRANSACTION_STATUS_TABLE_TYPE);
+    ASSERT_EQ(table->table_type(), YBTableType::TRANSACTION_STATUS_TABLE_TYPE);
     ASSERT_EQ(table->replication_info().get().live_replicas().placement_blocks_size(), 1);
     auto pb = table->replication_info().get().live_replicas().placement_blocks(0).cloud_info();
     ASSERT_EQ(pb.placement_zone(), Substitute("z$0", i));

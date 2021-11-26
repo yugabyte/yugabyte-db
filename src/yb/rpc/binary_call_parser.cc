@@ -17,9 +17,12 @@
 
 #include "yb/rpc/connection.h"
 #include "yb/rpc/stream.h"
+#include "yb/util/format.h"
 
 #include "yb/util/logging.h"
+#include "yb/util/result.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
 
 using yb::operator"" _MB;
 

@@ -68,6 +68,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
+#include "yb/util/thread.h"
 #include "yb/util/test_util.h"
 
 using namespace std::literals;

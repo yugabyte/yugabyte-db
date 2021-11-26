@@ -36,15 +36,15 @@
 #include <string>
 #include <vector>
 
-#include "yb/common/common.pb.h"
-#include "yb/common/key_encoder.h"
+#include <boost/optional/optional.hpp>
+
+#include "yb/common/column_id.h"
 #include "yb/common/partial_row.h"
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/pgsql_protocol.pb.h"
-#include "yb/common/row.h"
-#include "yb/common/schema.h"
 #include "yb/gutil/ref_counted.h"
-#include "yb/util/status.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
@@ -132,13 +132,7 @@ class Partition {
     return ContainsPartition(other) && !BoundsEqualToPartition(other);
   }
 
-  std::string ToString() const {
-    return Format(
-        "{ partition_key_start: $0 partition_key_end: $1 hash_buckets: $2 }",
-        Slice(partition_key_start_).ToDebugString(),
-        Slice(partition_key_end_).ToDebugString(),
-        hash_buckets_);
-  }
+  std::string ToString() const;
 
  private:
   friend class PartitionSchema;
@@ -223,14 +217,9 @@ class PartitionSchema {
   CHECKED_STATUS EncodeKey(const ConstContiguousRow& row, std::string* buf) const
     WARN_UNUSED_RESULT;
 
-  bool IsHashPartitioning() const {
-    return hash_schema_ != boost::none;
-  }
+  bool IsHashPartitioning() const;
 
-  YBHashSchema hash_schema() const {
-    CHECK(hash_schema_);
-    return *hash_schema_;
-  }
+  YBHashSchema hash_schema() const;
 
   bool IsRangePartitioning() const {
     return range_schema_.column_ids.size() > 0;
@@ -240,13 +229,13 @@ class PartitionSchema {
   static std::string EncodeMultiColumnHashValue(uint16_t hash_value);
 
   // Decode the given partition_key to a 2-byte integer.
-  static uint16_t DecodeMultiColumnHashValue(const string& partition_key);
+  static uint16_t DecodeMultiColumnHashValue(const std::string& partition_key);
 
   // Does [partition_key_start, partition_key_end] form a valid range.
-  static CHECKED_STATUS IsValidHashPartitionRange(const string& partition_key_start,
-                                                  const string& partition_key_end);
+  static CHECKED_STATUS IsValidHashPartitionRange(const std::string& partition_key_start,
+                                                  const std::string& partition_key_end);
 
-  static bool IsValidHashPartitionKeyBound(const string& partition_key);
+  static bool IsValidHashPartitionKeyBound(const std::string& partition_key);
 
   // Encoded (sub)doc keys that belong to partition with partition_key lower bound
   // are starting with this prefix or greater than it
@@ -363,15 +352,15 @@ class PartitionSchema {
                                       std::string* buf);
 
   // Hashes a compound string of all columns into a 16-bit integer.
-  static uint16_t HashColumnCompoundValue(const string& compound);
+  static uint16_t HashColumnCompoundValue(const std::string& compound);
 
   // Encodes the specified columns of a row into 2-byte partition key using the multi column
   // hashing scheme.
-  static CHECKED_STATUS EncodeColumns(const YBPartialRow& row, string* buf);
+  static CHECKED_STATUS EncodeColumns(const YBPartialRow& row, std::string* buf);
 
   // Encodes the specified columns of a row into 2-byte partition key using the multi column
   // hashing scheme.
-  static CHECKED_STATUS EncodeColumns(const ConstContiguousRow& row, string* buf);
+  static CHECKED_STATUS EncodeColumns(const ConstContiguousRow& row, std::string* buf);
 
   // Assigns the row to a hash bucket according to the hash schema.
   template<typename Row>

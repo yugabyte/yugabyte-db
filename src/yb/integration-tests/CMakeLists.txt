@@ -79,7 +79,8 @@ target_link_libraries(cql_test_util cassandra integration-tests yb-cql yb_test_u
 
 # Tests
 set(YB_TEST_LINK_LIBS
-    integration-tests yb_client yb_tools_util ql-dml-test-base rpc_test_util ${YB_MIN_TEST_LIBS})
+    integration-tests yb_client yb_tools_util ql-dml-test-base rpc_test_util yb_common_test_util
+    ${YB_MIN_TEST_LIBS})
 
 ADD_YB_TEST(alter_table-test)
 ADD_YB_TEST(alter_table-randomized-test)

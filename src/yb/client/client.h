@@ -34,6 +34,7 @@
 
 #include <stdint.h>
 
+#include <future>
 #include <memory>
 #include <string>
 #include <vector>
@@ -46,6 +47,7 @@
 #include "yb/client/client_fwd.h"
 #include "yb/client/schema.h"
 #include "yb/common/common.pb.h"
+#include "yb/common/retryable_request.h"
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
 
@@ -71,6 +73,7 @@
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/util/enums.h"
+#include "yb/util/mem_tracker.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/result.h"

@@ -22,6 +22,8 @@
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/cdc/cdc_rpc.h"
 
+#include "yb/client/schema.h"
+
 #include "yb/common/entity_ids.h"
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_value.h"
@@ -51,6 +53,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
+#include "yb/util/trace.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
 constexpr uint32_t kUpdateIntervalMs = 15 * 1000;

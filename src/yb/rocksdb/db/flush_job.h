@@ -56,7 +56,6 @@
 #include "yb/rocksdb/db/flush_scheduler.h"
 #include "yb/rocksdb/db/write_thread.h"
 #include "yb/rocksdb/db/job_context.h"
-#include "yb/util/result.h"
 
 namespace rocksdb {
 

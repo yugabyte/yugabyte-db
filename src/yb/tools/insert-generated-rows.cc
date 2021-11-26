@@ -40,10 +40,12 @@
 
 #include "yb/client/client.h"
 #include "yb/client/error.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
+#include "yb/client/yb_table_name.h"
 
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/split.h"
@@ -53,6 +55,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
+#include "yb/util/result.h"
 
 using namespace std::literals;
 

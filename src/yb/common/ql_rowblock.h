@@ -17,10 +17,17 @@
 #define YB_COMMON_QL_ROWBLOCK_H
 
 #include <memory>
+#include <vector>
 
-#include "yb/common/schema.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/common.pb.h"
+
+#include "yb/util/status_fwd.h"
 
 namespace yb {
+
+class Slice;
+class faststring;
 
 //------------------------------------------ QL row ----------------------------------------
 // A QL row. It uses QLValue to store the column values.
@@ -35,12 +42,10 @@ class QLRow {
   const Schema& schema() const { return *schema_.get(); }
 
   // Column count
-  size_t column_count() const { return schema_->num_columns(); }
+  size_t column_count() const;
 
   // Column's datatype
-  const std::shared_ptr<QLType>& column_type(const size_t col_idx) const {
-    return schema_->column(col_idx).type();
-  }
+  const std::shared_ptr<QLType>& column_type(const size_t col_idx) const;
 
   // Get a mutable/non-mutable column value.
   const QLValue& column(const size_t col_idx) const;

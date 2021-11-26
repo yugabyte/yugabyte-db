@@ -20,6 +20,7 @@
 #include "yb/client/client_error.h"
 #include "yb/client/client_utils.h"
 #include "yb/client/meta_cache.h"
+#include "yb/client/table.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_fwd.h"

@@ -10,12 +10,14 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include "yb/docdb/value.h"
 
 #include <string>
 
 #include "yb/common/table_properties_constants.h"
-#include "yb/docdb/value.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/util/fast_varint.h"
+#include "yb/util/result.h"
 
 namespace yb {
 namespace docdb {
@@ -45,6 +47,11 @@ CHECKED_STATUS Value::DecodeMergeFlags(Slice* slice, uint64_t* merge_flags) {
   return Status::OK();
 }
 
+CHECKED_STATUS Value::DecodeMergeFlags(const rocksdb::Slice& slice, uint64_t* merge_flags) {
+  rocksdb::Slice value_copy = slice;
+  return DecodeMergeFlags(&value_copy, merge_flags);
+}
+
 CHECKED_STATUS DecodeIntentDocHT(Slice* slice, DocHybridTime* doc_ht) {
   if (!DecodeType(ValueType::kHybridTime, DocHybridTime::kInvalid, slice, doc_ht)) {
     return Status::OK();
@@ -57,6 +64,13 @@ Status Value::DecodeTTL(rocksdb::Slice* slice, MonoDelta* ttl) {
     *ttl = MonoDelta::FromMilliseconds(VERIFY_RESULT(util::FastDecodeSignedVarIntUnsafe(slice)));
   }
   return Status::OK();
+}
+
+Status Value::DecodeTTL(const rocksdb::Slice& rocksdb_value, MonoDelta* ttl) {
+  rocksdb::Slice value_copy = rocksdb_value;
+  uint64_t merge_flags;
+  RETURN_NOT_OK(DecodeMergeFlags(&value_copy, &merge_flags));
+  return DecodeTTL(&value_copy, ttl);
 }
 
 Status Value::DecodeUserTimestamp(const rocksdb::Slice& rocksdb_value,

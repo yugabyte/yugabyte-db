@@ -43,6 +43,7 @@
 #include "yb/master/master.pb.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/catalog_manager_util.h"
+#include "yb/util/atomic.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/shared_lock.h"

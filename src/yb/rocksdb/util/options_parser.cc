@@ -33,6 +33,7 @@
 #include "yb/util/string_util.h"
 #include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/port/port.h"
+#include "yb/util/status_log.h"
 #include "yb/util/version_info.h"
 
 namespace rocksdb {

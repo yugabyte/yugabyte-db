@@ -12,17 +12,15 @@
 // under the License.
 //
 //
-
 #include "yb/rpc/io_thread_pool.h"
 
 #include <thread>
 
-#include <boost/optional.hpp>
 #include <boost/asio/io_service.hpp>
-
+#include <boost/optional.hpp>
 #include <glog/logging.h>
 
-#include "yb/util/format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/thread.h"
 
 using namespace std::literals;

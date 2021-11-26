@@ -10,12 +10,12 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/rpc/strand.h"
 
 #include <thread>
 
 #include "yb/util/flag_tags.h"
+#include "yb/util/status.h"
 
 DEFINE_test_flag(int32, strand_done_inject_delay_ms, 0,
                  "Inject into Strand::Done after resetting running flag.");

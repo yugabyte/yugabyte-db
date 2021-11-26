@@ -14,6 +14,7 @@
 #ifndef YB_DOCDB_DOCDB_FWD_H
 #define YB_DOCDB_DOCDB_FWD_H
 
+#include "yb/util/enums.h"
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
@@ -21,21 +22,47 @@ namespace docdb {
 
 class ConsensusFrontier;
 class DeadlineInfo;
+class DocDBCompactionFilterFactory;
 class DocKey;
+class DocOperation;
 class DocPath;
 class DocRowwiseIterator;
 class DocWriteBatch;
+class HistoryRetentionPolicy;
 class IntentAwareIterator;
 class KeyBytes;
 class KeyValueWriteBatchPB;
+class ManualHistoryRetentionPolicy;
 class PgsqlWriteOperation;
+class PrimitiveValue;
 class QLWriteOperation;
+class RedisWriteOperation;
+class SharedLockManager;
 class SubDocKey;
 
 struct ApplyTransactionState;
 struct DocDB;
+struct KeyBounds;
+struct LockBatchEntry;
+
+using DocKeyHash = uint16_t;
+using LockBatchEntries = std::vector<LockBatchEntry>;
 
 YB_STRONGLY_TYPED_BOOL(PartialRangeKeyIntents);
+
+// Automatically decode keys that are stored in string-typed PrimitiveValues when converting a
+// PrimitiveValue to string. This is useful when displaying write batches for secondary indexes.
+YB_STRONGLY_TYPED_BOOL(AutoDecodeKeys);
+
+YB_DEFINE_ENUM(OperationKind, (kRead)(kWrite));
+
+// "Weak" intents are written for ancestor keys of a key that's being modified. For example, if
+// we're writing a.b.c with snapshot isolation, we'll write weak snapshot isolation intents for
+// keys "a" and "a.b".
+//
+// "Strong" intents are written for keys that are being modified. In the example above, we will
+// write a strong snapshot isolation intent for the key a.b.c itself.
+YB_DEFINE_ENUM(IntentStrength, (kWeak)(kStrong));
 
 }  // namespace docdb
 }  // namespace yb

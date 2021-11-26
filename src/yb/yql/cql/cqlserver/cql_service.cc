@@ -31,8 +31,8 @@
 
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/crypt.h"
-
 #include "yb/util/mem_tracker.h"
+#include "yb/util/trace.h"
 
 using namespace std::placeholders;
 using namespace yb::size_literals;

@@ -35,13 +35,15 @@
 #include <string>
 #include <vector>
 
-#include "yb/util/slice.h"
 #include "yb/rocksdb/utilities/transaction_db_mutex.h"
 #include "yb/rocksdb/util/autovector.h"
 #include "yb/rocksdb/util/murmurhash.h"
 #include "yb/rocksdb/util/thread_local.h"
 #include "yb/rocksdb/util/timeout_error.h"
 #include "yb/rocksdb/utilities/transactions/transaction_db_impl.h"
+
+#include "yb/util/slice.h"
+#include "yb/util/status_log.h"
 
 namespace rocksdb {
 

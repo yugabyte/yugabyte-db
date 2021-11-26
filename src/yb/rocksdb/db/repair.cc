@@ -98,6 +98,8 @@
 #include "yb/rocksdb/table/scoped_arena_iterator.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 
+#include "yb/util/status_log.h"
+
 namespace rocksdb {
 
 namespace {

@@ -20,6 +20,12 @@
 
 namespace rocksdb {
 
+Result<bool> IndexBuilder::FlushNextBlock(
+    IndexBlocks* index_blocks, const BlockHandle& last_partition_block_handle) {
+  RETURN_NOT_OK(Finish(index_blocks));
+  return true;
+}
+
 IndexBuilder* IndexBuilder::CreateIndexBuilder(
     IndexType type,
     const Comparator* comparator,

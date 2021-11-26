@@ -16,6 +16,7 @@
 
 #include "yb/util/env_util.h"
 #include "yb/util/path_util.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/tostring.h"
 
 using std::unique_ptr;

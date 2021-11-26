@@ -41,6 +41,7 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/server/webserver.h"
+#include "yb/util/jsonwriter.h"
 
 namespace yb {
 

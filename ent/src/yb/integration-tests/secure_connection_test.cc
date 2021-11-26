@@ -15,6 +15,7 @@
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
 
+#include "yb/client/schema.h"
 #include "yb/common/ql_value.h"
 
 #include "yb/rpc/messenger.h"

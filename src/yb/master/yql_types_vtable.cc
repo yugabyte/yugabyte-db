@@ -12,6 +12,9 @@
 //
 
 #include "yb/master/yql_types_vtable.h"
+
+#include "yb/common/ql_type.h"
+
 #include "yb/master/catalog_manager.h"
 
 namespace yb {

@@ -16,6 +16,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
+#include "yb/client/schema.h"
 #include "yb/client/table_creator.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
@@ -33,7 +34,6 @@
 
 using yb::client::YBClient;
 using yb::client::YBClientBuilder;
-using yb::client::YBColumnSchema;
 using yb::client::YBSchema;
 using yb::client::YBSchemaBuilder;
 using yb::client::YBTableCreator;

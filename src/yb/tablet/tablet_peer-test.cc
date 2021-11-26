@@ -46,6 +46,7 @@
 #include "yb/consensus/opid_util.h"
 #include "yb/gutil/macros.h"
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
 #include "yb/server/clock.h"
 #include "yb/server/logical_clock.h"
 #include "yb/tablet/operations/operation.h"

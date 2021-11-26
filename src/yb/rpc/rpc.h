@@ -46,7 +46,6 @@
 
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
-#include "yb/util/result.h"
 #include "yb/util/status_callback.h"
 
 namespace yb {

@@ -36,8 +36,11 @@
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/test_workload.h"
 
+#include "yb/rpc/rpc_controller.h"
+
 #include "yb/tserver/tserver_admin.proxy.h"
 
+#include "yb/util/size_literals.h"
 #include "yb/util/test_util.h"
 
 using std::string;

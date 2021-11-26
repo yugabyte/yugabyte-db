@@ -42,6 +42,7 @@
 #include "yb/client/callbacks.h"
 #include "yb/client/client.h"
 #include "yb/client/client-test-util.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"

@@ -24,6 +24,7 @@
 
 #include "yb/client/callbacks.h"
 #include "yb/client/client-test-util.h"
+#include "yb/client/schema.h"
 #include "yb/client/table_handle.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/split.h"

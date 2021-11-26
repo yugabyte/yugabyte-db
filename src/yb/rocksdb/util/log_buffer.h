@@ -43,10 +43,7 @@ class LogBuffer {
   // info_log:  logger to write the logs to
   LogBuffer(const InfoLogLevel log_level, Logger* info_log);
 
-  ~LogBuffer() {
-    LOG_IF(DFATAL, !IsEmpty())
-        << "LogBuffer should be explicitly flushed in order to not lost accumulated log entries.";
-  }
+  ~LogBuffer();
 
   // Add a log entry to the buffer. Use default max_log_size.
   // max_log_size indicates maximize log size, including some metadata.

@@ -16,6 +16,7 @@
 #include "yb/yql/cql/ql/ptree/ycql_predtest.h"
 #include "yb/yql/cql/ql/ptree/column_arg.h"
 #include "yb/yql/cql/ql/ptree/pt_expr.h"
+#include "yb/util/result.h"
 
 namespace yb {
 namespace ql {

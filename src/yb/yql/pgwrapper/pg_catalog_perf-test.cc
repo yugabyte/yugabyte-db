@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include "yb/gutil/map-util.h"
 #include "yb/master/master.h"
 #include "yb/master/mini_master.h"
 #include "yb/util/metrics.h"

@@ -27,8 +27,10 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/opid.h"
+#include "yb/util/result.h"
 
 using namespace std::literals;
 

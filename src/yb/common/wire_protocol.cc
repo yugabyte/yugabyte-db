@@ -29,26 +29,26 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/common/wire_protocol.h"
 
 #include <string>
 #include <vector>
 
-#include "yb/common/entity_ids.h"
+#include "yb/common/ql_type.h"
+#include "yb/common/schema.h"
 #include "yb/gutil/port.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/fastmem.h"
 #include "yb/gutil/strings/substitute.h"
-
+#include "yb/util/enums.h"
 #include "yb/util/errno.h"
 #include "yb/util/faststring.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
+#include "yb/util/result.h"
 #include "yb/util/slice.h"
-#include "yb/util/enums.h"
-
+#include "yb/util/status_format.h"
 #include "yb/yql/cql/ql/util/errcodes.h"
 
 using google::protobuf::RepeatedPtrField;
@@ -401,7 +401,7 @@ ColumnSchema ColumnSchemaFromPB(const ColumnSchemaPB& pb) {
   // processing SchemaPB.
   return ColumnSchema(pb.name(), QLType::FromQLTypePB(pb.type()), pb.is_nullable(),
                       pb.is_hash_key(), pb.is_static(), pb.is_counter(), pb.order(),
-                      ColumnSchema::SortingType(pb.sorting_type()));
+                      SortingType(pb.sorting_type()));
 }
 
 CHECKED_STATUS ColumnPBsToColumnTuple(
@@ -530,14 +530,13 @@ const HostPortPB& DesiredHostPort(const ServerRegistrationPB& registration,
       registration.cloud_info(), connect_from);
 }
 
-const std::string kMinRunningRequestIdCategoryName = "min running request ID";
-
-StatusCategoryRegisterer min_running_request_id_category_registerer(
-    StatusCategoryDescription::Make<MinRunningRequestIdTag>(&kMinRunningRequestIdCategoryName));
-
 static const std::string kSplitChildTabletIdsCategoryName = "split child tablet IDs";
 
 StatusCategoryRegisterer split_child_tablet_ids_category_registerer(
     StatusCategoryDescription::Make<SplitChildTabletIdsTag>(&kSplitChildTabletIdsCategoryName));
+
+std::string SplitChildTabletIdsTag::ToMessage(Value value) {
+  return Format("Split child tablet IDs: $0", value);
+}
 
 } // namespace yb

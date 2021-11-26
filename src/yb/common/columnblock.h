@@ -33,10 +33,9 @@
 #define YB_COMMON_COLUMNBLOCK_H
 
 #include "yb/common/types.h"
-#include "yb/common/row.h"
 #include "yb/util/bitmap.h"
 #include "yb/util/memory/arena.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 

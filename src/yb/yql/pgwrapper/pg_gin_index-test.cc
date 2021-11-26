@@ -14,7 +14,9 @@
 
 #include "yb/client/client.h"
 #include "yb/client/table.h"
+#include "yb/client/yb_table_name.h"
 #include "yb/integration-tests/mini_cluster_base.h"
+#include "yb/util/async_util.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 

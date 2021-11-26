@@ -308,7 +308,7 @@ void PeerMessageQueue::UntrackPeer(const string& uuid) {
 
 void PeerMessageQueue::CheckPeersInActiveConfigIfLeaderUnlocked() const {
   if (queue_state_.mode != Mode::LEADER) return;
-  unordered_set<string> config_peer_uuids;
+  std::unordered_set<string> config_peer_uuids;
   for (const RaftPeerPB& peer_pb : queue_state_.active_config->peers()) {
     InsertOrDie(&config_peer_uuids, peer_pb.permanent_uuid());
   }
