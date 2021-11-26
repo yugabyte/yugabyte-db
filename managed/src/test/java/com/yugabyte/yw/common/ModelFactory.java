@@ -466,9 +466,14 @@ public class ModelFactory {
    */
   public static KmsConfig createKMSConfig(
       UUID customerUUID, String keyProvider, ObjectNode authConfig) {
+    return createKMSConfig(customerUUID, keyProvider, authConfig, "Test KMS Configuration");
+  }
+
+  public static KmsConfig createKMSConfig(
+      UUID customerUUID, String keyProvider, ObjectNode authConfig, String configName) {
     EncryptionAtRestManager keyManager = new EncryptionAtRestManager();
     EncryptionAtRestService keyService = keyManager.getServiceInstance(keyProvider);
-    return keyService.createAuthConfig(customerUUID, "Test KMS Configuration", authConfig);
+    return keyService.createAuthConfig(customerUUID, configName, authConfig);
   }
 
   /*

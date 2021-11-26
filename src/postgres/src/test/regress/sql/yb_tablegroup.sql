@@ -114,6 +114,25 @@ DROP TABLEGROUP tgroup1;
 CREATE TABLEGROUP tgroup1;
 
 --
+-- Assigning a tablespace to a tablegroup
+--
+CREATE TABLESPACE tblspc WITH (replica_placement='{"num_replicas": 1, "placement_blocks": [{"cloud":"cloud1","region":"datacenter1","zone":"rack1","min_num_replicas":1}]}');
+
+-- These should fail
+CREATE TABLEGROUP grp1 TABLESPACE nonexistentspc;
+CREATE TABLEGROUP grp2 TABLESPACE pg_global;
+-- These should succeeed
+CREATE TABLEGROUP grp3 TABLESPACE tblspc;
+
+SET default_tablespace = "tblspc";
+CREATE TABLEGROUP grp4;
+SET default_tablespace = '';
+
+CREATE TABLE tgroup_test6 (col1 int, col2 int) TABLEGROUP grp3;
+\dgr+
+\dgrt+
+
+--
 -- Interactions with colocated database.
 --
 
