@@ -161,23 +161,23 @@ You now have the identical database table on each of your clusters and can now s
 
 ## 3. Configure unidirectional replication
 
-To configure "Data Center - West" to be the consumer of data changes from the "Data Center - East" cluster, you need to use the `yb-admin` `setup_universe_replication` command. Review the syntax and then you can run the command.
+To configure "Data Center - West" to be the target of data changes from the "Data Center - East" cluster, you need to use the `yb-admin` `setup_universe_replication` command. Review the syntax and then you can run the command.
 
 ```sh
-yb-admin -master_addresses <consumer-master-addresses> \
-setup_universe_replication <producer-universe_uuid> <producer_master_addresses> <producer-table-ids>
+yb-admin -master_addresses <target-master-addresses> \
+setup_universe_replication <source-universe_uuid> <source_master_addresses> <source-table-ids>
 ```
 
-- *consumer-master-addresses*: a comma-separated list of the YB-Master servers. For this simulation, you have one YB-Master server for each cluster (typically, there are three).
+- *target-master-addresses*: a comma-separated list of the YB-Master servers. For this simulation, you have one YB-Master server for each cluster (typically, there are three).
 - *producer-universe-uuid*: a unique identifier for the producer cluster. The UUID can be found in the YB-Master UI (`<yb-master-ip>:7000`).
 - *producer-table-ids*: A comma-separated list of `table_id` values. The generated UUIDs can be found in the YB-Master UI (`<yb-master-ip>:7000`/tables).
 
 Based on your actual values (which you got from the YB-Master UI page at `yb-master-ip>:7000`), run the `yb-admin` `setup_universe_replication` command like in this example.
 
-- consumer-master-addresses: `127.0.0.2:7100`
-- producer-universe-uuid: `7acd6399-657d-42dc-a90a-646869898c2d`
-- producer-master-addresses: `127.0.0.1:7100`
-- producer-table-ids: `000030a9000030008000000000004000`
+- target-master-addresses: `127.0.0.2:7100`
+- source-universe-uuid: `7acd6399-657d-42dc-a90a-646869898c2d`
+- source-master-addresses: `127.0.0.1:7100`
+- source-table-ids: `000030a9000030008000000000004000`
 
 ```sh
 $ ./bin/yb-admin -master_addresses 127.0.0.2:7100 \
@@ -205,7 +205,7 @@ ycqlsh:customers> INSERT INTO users(email, username) VALUES ('hector@example.com
 ycqlsh:customers> INSERT INTO users(email, username) VALUES ('steve@example.com', 'steve');
 ```
 
-On the consumer "Data Center - West" cluster, open `ycqlsh` and run the following to quickly see that data has been replicated between clusters.
+On the target "Data Center - West" cluster, open `ycqlsh` and run the following command to see that data has been replicated between clusters:
 
 ```sh
 $ ./bin/ycqlsh 127.0.0.2
@@ -215,7 +215,7 @@ $ ./bin/ycqlsh 127.0.0.2
 ycqlsh:customers> SELECT * FROM users;
 ```
 
-You should see the following in the results.
+You should see the following output:
 
 ```output
        email         | username
@@ -229,12 +229,12 @@ You should see the following in the results.
 
 Bidirectional asynchronous replication lets you insert data into the same table on either of the clusters and have the data changes added to the other cluster.
 
-To configure bidirectional asynchronous replication for the same table, you need to run the following `yb-admin` `setup_universe_replication` command to set up the "Data Center - East" cluster to be the consumer of the "Data Center - West" cluster. For this example, here are the values used and the command example.
+To configure bidirectional asynchronous replication for the same table, you need to run the following `yb-admin` `setup_universe_replication` command to set up the "Data Center - East" cluster to be the target of the "Data Center - West" cluster. For this example, here are the values used and the command example.
 
-- consumer-master-addresses: `127.0.0.1:7100`
-- producer-universe-uuid: `0a315687-e9bd-430f-b6f4-ac831193a394`
-- producer-master-addresses: `127.0.0.2:7100`
-- producer-table-ids: `000030a9000030008000000000004000`
+- target-master-addresses: `127.0.0.1:7100`
+- source-universe-uuid: `0a315687-e9bd-430f-b6f4-ac831193a394`
+- source-master-addresses: `127.0.0.2:7100`
+- source-table-ids: `000030a9000030008000000000004000`
 
 ```sh
 $ ./bin/yb-admin -master_addresses 127.0.0.1:7100 \
@@ -262,7 +262,7 @@ ycqlsh:customers> INSERT INTO users(email, username) VALUES ('neha@example.com',
 ycqlsh:customers> INSERT INTO users(email, username) VALUES ('mikhail@example.com', 'mikhail');
 ```
 
-On the new "consumer" cluster, open `ycqlsh` and run the following to quickly see that data has been replicated between clusters.
+On the new target cluster, open `ycqlsh` and run the following commands to see that data has been replicated between clusters:
 
 ```sh
 $ ./bin/ycqlsh 127.0.0.1
@@ -272,7 +272,7 @@ $ ./bin/ycqlsh 127.0.0.1
 ycqlsh:customers> SELECT * FROM users;
 ```
 
-You should see the following in the results.
+You should see the following output:
 
 ```output
        email         | username

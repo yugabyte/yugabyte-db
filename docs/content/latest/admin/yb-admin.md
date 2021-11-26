@@ -1151,7 +1151,7 @@ replication_info {
 
 #### setup_universe_replication
 
-Sets up the universe replication for the specified producer universe. Use this command only if no tables have been configured for replication. If tables are already configured for replication, use [`alter_universe_replication`](#alter-universe-replication) to add more tables.
+Sets up the universe replication for the specified source universe. Use this command only if no tables have been configured for replication. If tables are already configured for replication, use [`alter_universe_replication`](#alter-universe-replication) to add more tables.
 
 To verify if any tables are already configured for replication, use [`list_cdc_streams`](#list-cdc-streams).
 
@@ -1161,14 +1161,14 @@ To verify if any tables are already configured for replication, use [`list_cdc_s
 yb-admin \
     -master_addresses <master-addresses> \
     setup_universe_replication \
-    <producer_universe_uuid> \
-    <producer_master_addresses> \
+    <source_universe_uuid> \
+    <cource_master_addresses> \
     <comma_separated_list_of_table_ids>
 ```
 
 * _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *producer_universe_uuid*: The UUID of the producer universe.
-* *producer_master_addresses*: Comma-separated list of master producer addresses.
+* *soruce_universe_uuid*: The UUID of the producer universe.
+* *source_master_addresses*: Comma-separated list of master producer addresses.
 * *comma_separated_list_of_table_ids*: Comma-separated list of table identifiers (`table_id`).
 
 {{< note title="Tip" >}}
