@@ -17,7 +17,7 @@ showAsideToc: true
 
 You can perform deployment using unidirectional (master-follower) or bidirectional (multi-master) asynchronous replication between universes (also known as data centers).
 
-For information on two data-center (2DC) deployment architecture and supported replication scenarios, see [Two data center (2DC) deployments](../../../architecture/docdb-replication/async-replication/).
+For information on two data center (2DC) deployment architecture and supported replication scenarios, see [Two data center (2DC) deployments](../../../architecture/docdb-replication/async-replication/).
 
 ## Setting Up Universes
 
@@ -72,7 +72,7 @@ If you need to set up bidirectional replication, see instructions provided in [S
 
 ## Setting Up Bidirectional Replication
 
-To set up bidirectional replication, repeat the procedure descried in [Setting Up Unidirectional Replication](#setting-up-unidirectional-replication) applying the steps to the yugabyte-target universe. You need to set up each yugabyte-source to consume data from yugabyte-target.
+To set up bidirectional replication, repeat the procedure described in [Setting Up Unidirectional Replication](#setting-up-unidirectional-replication) applying the steps to the yugabyte-target universe. You need to set up each yugabyte-source to consume data from yugabyte-target.
 
 When completed, proceed to [Loading Data](#loading-data-into-the-source-universe).
 
