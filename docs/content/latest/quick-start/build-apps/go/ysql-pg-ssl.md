@@ -63,15 +63,15 @@ This tutorial assumes that:
 
 - [Go version 1.8](https://golang.org/dl/), or later, is installed.
 
-## SSL/TLS configuration
+### SSL/TLS configuration
 
 Refer to the [SSL/TLS configuration](../../../../secure/tls-encryption/client-to-server/) page to launch your YugabyteDB cluster with SSL/TLS enabled. This is already taken care of for you in **Yugabyte Cloud**, as the cluster is pre-configured to do client-side authentication with SSL/TLS enabled.
 
-## OpenSSL
+### OpenSSL
 
 Install [OpenSSL](https://www.openssl.org/) 1.1.1 or later only if you have a YugabyteDB setup with SSL/TLS enabled. The **Yugabyte Cloud** clusters are always SSL/TLS enabled.
 
-## CA certificate
+### CA certificate
 
 Download the CA certificate file to allow your application connect securely to the YugabyteDB cluster. In case of a **Yugabyte Cloud** cluster,
 
@@ -81,7 +81,7 @@ Download the CA certificate file to allow your application connect securely to t
 
 1. Click **Connect to your application** and download the CA cert.
 
-## Go PostgreSQL driver
+### Go PostgreSQL driver
 
 The [Go-pg/pg](https://github.com/go-pg/pg) is an ORM for Golang applications working with Postgresql. The current release of `pg v10` requires Go modules.
 
