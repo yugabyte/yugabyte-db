@@ -1,4 +1,4 @@
-name: 🐘 Test
+name: ✅ Test
 on:
   push:
   pull_request:
@@ -21,9 +21,9 @@ jobs:
           - { version: 9.2, upgrade_to: 9.3, update_from: "" }     # updatecheck is not supported prior to 9.3
           - { version: 9.1, upgrade_to: 9.2, update_from: "" }
           # Also test pg_upgrade across many versions
-          # - { version: 9.1,  upgrade_to: 14, update_from: 0.99.0 }
-          # - { version: 9.4,  upgrade_to: 14, update_from: 0.99.0 }
-    name: 🐘 PostgreSQL ${{ matrix.version }}
+          - { version: 9.1,  upgrade_to: 14, update_from: "", suffix: –14 }
+          - { version: 9.4,  upgrade_to: 14, update_from: "", suffix: –14 }
+    name: 🐘 PostgreSQL ${{ matrix.version }}${{ matrix.suffix }}
     runs-on: ubuntu-latest
     container: pgxn/pgxn-tools
     env:
@@ -39,16 +39,13 @@ jobs:
       # Test update.
       - run: 'if [ -d "$UPDATE_FROM" ]; then make uninstall clean updatecheck; fi'
 
-      # Test upgrade.
-      # - run: ./test/test_MVU.sh -s 55667 55778 "{{ matrix.version }}" "{{ matrix.upgrade_to }}" "/usr/lib/postgresql/{{ matrix.version }}/bin/" "/usr/lib/postgresql/{{ matrix.upgrade_to }}/bin/"
-
       # Test all, install, test, test-serial, and test-parallel, both from clean
       # repo and repeated with existing build, with and without PARALLEL_CONN=1.
       - run: make uninstall clean all
       - run: make all
       - run: make uninstall clean install
       - run: make install
-      - run: "psql -Ec 'CREATE EXTENSION pgtap'"
+      - run: psql -Ec 'CREATE EXTENSION pgtap'
       - run: make uninstall clean test
       - run: make test
       - run: make uninstall clean test PARALLEL_CONN=1
@@ -61,3 +58,13 @@ jobs:
       - run: make test-parallel
       - run: make uninstall clean test-parallel PARALLEL_CONN=1
       - run: make test-parallel PARALLEL_CONN=1
+
+      # Test upgrade last, since the new version's client will be preferred.
+      - if: ${{ matrix.upgrade_to != '' }}
+        name: Upgrade to ${{ matrix.upgrade_to }}
+        # Based on https://gist.github.com/petere/6023944
+        # See also https://askubuntu.com/a/104912 for --force options
+        run: |
+          make install
+          apt-get install -qq -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" postgresql-${{ matrix.upgrade_to }} postgresql-server-dev-${{ matrix.upgrade_to }}
+          sudo -u postgres test/test_MVU.sh -s 55432 55433 "${{ matrix.version }}" "${{ matrix.upgrade_to }}"

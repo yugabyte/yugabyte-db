@@ -10,8 +10,8 @@ set -E -e -u -o pipefail
 
 BASEDIR=`dirname $0`
 if ! . $BASEDIR/../tools/util.sh; then
-  echo "FATAL: error sourcing $BASEDIR/../tools/util.sh" 1>&2
-  exit 99
+    echo "FATAL: error sourcing $BASEDIR/../tools/util.sh" 1>&2
+    exit 99
 fi
 trap err_report ERR
 
@@ -19,12 +19,11 @@ debug 19 "Arguments: $@"
 
 rc=0
 
-
 byte_len() (
-[ $# -eq 1 ] || die 99 "Expected 1 argument, not $# ($@)"
-LANG=C LC_ALL=C
-debug 99 "byte_len($@) = ${#1}"
-echo ${#1}
+    [ $# -eq 1 ] || die 99 "Expected 1 argument, not $# ($@)"
+    LANG=C LC_ALL=C
+    debug 99 "byte_len($@) = ${#1}"
+    echo ${#1}
 )
 
 check_bin() {
@@ -36,22 +35,22 @@ check_bin() {
 # mktemp on OS X results is a super-long path name that can cause problems, ie:
 #   connection to database failed: Unix-domain socket path "/private/var/folders/rp/mv0457r17cg0xqyw5j7701892tlc0h/T/test_pgtap_upgrade.upgrade.7W4BLF/.s.PGSQL.50432" is too long (maximum 103 bytes)
 #
-# This function looks for that condition and replaces the output with something more sane
+# This function looks for that condition and replaces the output with something more legible
 short_tmpdir() (
-[ $# -eq 1 ] || die 99 "Expected 1 argument, not $# ($@)"
-[ "$TMPDIR" != "" ] || die 99 '$TMPDIR not set'
-out=$(mktemp -p '' -d $1.XXXXXX)
-if echo "$out" | egrep -q '^(/private)?/var/folders'; then
-    newout=$(echo "$out" | sed -e "s#.*/$TMPDIR#$TMPDIR#")
-    debug 19 "replacing '$out' with '$newout'"
-fi
+    [ $# -eq 1 ] || die 99 "Expected 1 argument, not $# ($@)"
+    [ "$TMPDIR" != "" ] || die 99 '$TMPDIR not set'
+    out=$(mktemp -p '' -d $1.XXXXXX)
+    if echo "$out" | egrep -q '^(/private)?/var/folders'; then
+        newout=$(echo "$out" | sed -e "s#.*/$TMPDIR#$TMPDIR#")
+        debug 19 "replacing '$out' with '$newout'"
+    fi
 
-debug 9 "$0($@) = $out"
-# Postgres blows up if this is too long. Technically the limit is 103 bytes,
-# but need to account for the socket name, plus the fact that OS X might
-# prepend '/private' to what we return. :(
-[ $(byte_len "$out") -lt 75 ] || die 9 "short_tmpdir($@) returning a value >= 75 bytes ('$out')"
-echo "$out"
+    debug 9 "$0($@) = $out"
+    # Postgres blows up if this is too long. Technically the limit is 103 bytes,
+    # but need to account for the socket name, plus the fact that OS X might
+    # prepend '/private' to what we return. :(
+    [ $(byte_len "$out") -lt 75 ] || die 9 "short_tmpdir($@) returning a value >= 75 bytes ('$out')"
+    echo "$out"
 )
 
 banner() {
@@ -62,47 +61,42 @@ banner() {
     echo
 }
 
-run_make() (
-cd $(dirname $0)/..
-$sudo make $@
-)
-
 modify_config() (
-# See below for definition of ctl_separator
-if [ -z "$ctl_separator" ]; then
-    confDir=$PGDATA
-    conf=$confDir/postgresql.conf
-    debug 6 "$0: conf = $conf"
+    # See below for definition of ctl_separator
+    if [ -z "$ctl_separator" ]; then
+        confDir=$PGDATA
+        conf=$confDir/postgresql.conf
+        debug 6 "$0: conf = $conf"
 
-    debug 0 "Modifying NATIVE $conf"
+        debug 0 "Modifying NATIVE $conf"
 
-    echo "port = $PGPORT" >> $conf
-else
-    confDir="/etc/postgresql/$1/$cluster_name"
-    conf="$confDir/postgresql.conf"
-    debug 6 "$0: confDir = $confDir conf=$conf"
-    debug_ls 9 -la $confDir
+        echo "port = $PGPORT" >> $conf
+    else
+        confDir="/etc/postgresql/$1/$cluster_name"
+        conf="$confDir/postgresql.conf"
+        debug 6 "$0: confDir = $confDir conf=$conf"
+        debug_ls 9 -la $confDir
 
-    debug 0 "Modifying DEBIAN $confDir and $PGDATA"
+        debug 0 "Modifying DEBIAN $confDir and $PGDATA"
 
-    debug 2 ln -s $conf $PGDATA/
-    ln -s $conf $PGDATA/
-    # Some versions also have a conf.d ...
-    if [ -e "$confDir/conf.d" ]; then
-        debug 2 ln -s $confDir/conf.d $PGDATA/
-        ln -s $confDir/conf.d $PGDATA/
+        debug 2 ln -s $conf $PGDATA/
+        ln -s $conf $PGDATA/
+        # Some versions also have a conf.d ...
+        if [ -e "$confDir/conf.d" ]; then
+            debug 2 ln -s $confDir/conf.d $PGDATA/
+            ln -s $confDir/conf.d $PGDATA/
+        fi
+        debug_ls 8 -la $PGDATA
+
+        # Shouldn't need to muck with PGPORT...
+
+        # GUC changed somewhere between 9.1 and 9.5, so read config to figure out correct value
+        guc=$(grep unix_socket_director $conf | sed -e 's/^# *//' | cut -d ' ' -f 1)
+        debug 4 "$0: guc = $guc"
+        echo "$guc = '/tmp'" >> $conf
     fi
-    debug_ls 8 -la $PGDATA
 
-    # Shouldn't need to muck with PGPORT...
-
-    # GUC changed somewhere between 9.1 and 9.5, so read config to figure out correct value
-    guc=$(grep unix_socket_director $conf | sed -e 's/^# *//' | cut -d ' ' -f 1)
-    debug 4 "$0: guc = $guc"
-    echo "$guc = '/tmp'" >> $conf
-fi
-
-echo "synchronous_commit = off" >> $conf
+    echo "synchronous_commit = off" >> $conf
 )
 
 #############################
@@ -127,8 +121,8 @@ OLD_PORT=$1
 NEW_PORT=$2
 OLD_VERSION=$3
 NEW_VERSION=$4
-OLD_PATH=$5
-NEW_PATH=$6
+OLD_PATH="${5:-/usr/lib/postgresql/$OLD_VERSION/bin}"
+NEW_PATH="${5:-/usr/lib/postgresql/$NEW_VERSION/bin}"
 
 export PGDATABASE=test_pgtap_upgrade
 
@@ -174,15 +168,15 @@ if command -v pg_ctlcluster > /dev/null; then
     export PGHOST=/tmp
 
     # And force current user
-    export PGUSER=$USER
+    export PGUSER=${USER:-$(whoami)}
 
-    old_initdb="sudo pg_createcluster $OLD_VERSION $cluster_name -u $USER -p $OLD_PORT -d $old_dir -- -A trust"
-    old_pg_ctl="sudo pg_ctlcluster $OLD_VERSION test_pg_upgrade"
-    new_initdb="sudo pg_createcluster $NEW_VERSION $cluster_name -u $USER -p $NEW_PORT -d $new_dir -- -A trust"
-    new_pg_ctl="sudo pg_ctlcluster $NEW_VERSION test_pg_upgrade"
+    old_initdb="$sudo pg_createcluster $OLD_VERSION $cluster_name -u $PGUSER -p $OLD_PORT -d $old_dir -- -A trust"
+    old_pg_ctl="$sudo pg_ctlcluster $OLD_VERSION test_pg_upgrade"
+    new_initdb="$sudo pg_createcluster $NEW_VERSION $cluster_name -u $PGUSER -p $NEW_PORT -d $new_dir -- -A trust"
+    new_pg_ctl="$sudo pg_ctlcluster $NEW_VERSION test_pg_upgrade"
 
     # See also ../.github/workflows/test.yml
-    new_pg_upgrade=/usr/lib/postgresql/$NEW_VERSION/bin/pg_upgrade
+    new_pg_upgrade="/usr/lib/postgresql/$NEW_VERSION/bin/pg_upgrade"
 else
     ctl_separator=''
     old_initdb="$(find_at_path "$OLD_PATH" initdb) -D $old_dir -N"
@@ -218,15 +212,13 @@ echo "Installing pgtap"
 # If user requested sudo then we need to use it for the install step. TODO:
 # it'd be nice to move this into the Makefile, if the PGXS make stuff allows
 # it...
-run_make clean install 
+$sudo make clean install
 
 banner "Loading extension"
 psql -c 'CREATE EXTENSION pgtap' # Also uses PGPORT
 
 echo "Stopping OLD postgres via $old_pg_ctl"
 $old_pg_ctl stop $ctl_separator -w # older versions don't support --wait
-
-
 
 ##################################################################################################
 banner "Running pg_upgrade"
@@ -258,8 +250,6 @@ modify_config $NEW_VERSION
     fi
 )
 
-
-
 ##################################################################################################
 banner "Testing UPGRADED cluster"
 
@@ -286,7 +276,7 @@ export PG_CONFIG=$(find_at_path "$NEW_PATH" pg_config)
 [ -x "$PG_CONFIG" ] || ( debug_ls 1 "$NEW_PATH"; die 4 "unable to find executable pg_config at $NEW_PATH" )
 
 # When crossing certain upgrade boundaries we need to exclude some tests
-# because they test functions not available in the previous version.
+# because the test functions are not available in the previous version.
 int_ver() {
     local ver
     ver=$(echo $1 | tr -d .)
@@ -316,7 +306,8 @@ add_exclude 9.6 10 test/sql/partitions.sql
 #(cd $(dirname $0)/..; pg_prove -v --pset tuples_only=1 test/sql/throwtap.sql)
 
 export EXCLUDE_TEST_FILES
-run_make clean test
+$sudo make clean
+make test
 
 if [ -n "$EXCLUDE_TEST_FILES" ]; then
     banner "Rerunning test after a reinstall due to version differences"
@@ -324,10 +315,9 @@ if [ -n "$EXCLUDE_TEST_FILES" ]; then
     export EXCLUDED_TEST_FILES=''
 
     # Need to build with the new version, then install
-    run_make install
+    $sudo make install
 
     psql -E -c 'DROP EXTENSION pgtap; CREATE EXTENSION pgtap;'
 
-    run_make test
+    make test
 fi
-
