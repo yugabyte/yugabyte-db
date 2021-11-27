@@ -19,8 +19,8 @@ For examples of connecting applications to Yugabyte Cloud, refer to [Develop](..
 
 Before you can connect, your application has to be able to reach your Yugabyte Cloud cluster. To add inbound network access from your application environment to a cluster, do one of the following:
 
-- Add the public IP addresses to the [cluster IP access list](../../cloud-basics/add-connections).
-- Use [VPC peering](../../cloud-network/vpc-peers) to add private IP addresses.
+- Add the public IP addresses to the [cluster IP access list](../../cloud-basics/add-connections/).
+- Use [VPC peering](../../cloud-network/vpc-peers/) to add private IP addresses.
 
 Clusters have SSL (encryption in-transit) enabled so make sure your driver details include SSL parameters.
 

@@ -86,12 +86,12 @@ For detailed steps for configuring popular third party tools, see [Third party t
 
 ## Related information
 
-- [ysqlsh](../../../admin/ysqlsh) — Overview of the command line interface (CLI), syntax, and commands.
-- [YSQL API](../../../api/ysql) — Reference for supported YSQL statements, data types, functions, and operators.
-- [ycqlsh](../../../admin/ycqlsh) — Overview of the command line interface (CLI), syntax, and commands.
-- [YCQL API](../../../api/ycql) — Reference for supported YCQL statements, data types, functions, and operators.
+- [ysqlsh](../../../admin/ysqlsh/) — Overview of the command line interface (CLI), syntax, and commands.
+- [YSQL API](../../../api/ysql/) — Reference for supported YSQL statements, data types, functions, and operators.
+- [ycqlsh](../../../admin/ycqlsh/) — Overview of the command line interface (CLI), syntax, and commands.
+- [YCQL API](../../../api/ycql/) — Reference for supported YCQL statements, data types, functions, and operators.
 
 ## Next steps
 
 - [Add database users](../add-users/)
-- [Connect an application](../connect-application/)
+- [Connect an application](../connect-applications/)

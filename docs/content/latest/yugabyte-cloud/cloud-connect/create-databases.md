@@ -140,10 +140,10 @@ Here are links to documentation on the tested datasets and the steps to create t
 
 For information on YSQL and the ysqlsh shell:
 
-- [ysqlsh](../../../admin/ysqlsh) — Overview of the command line interface (CLI), syntax, and commands.
-- [YSQL API](../../../api/ysql) — Reference for supported YCQL statements, data types, functions, and operators.
+- [ysqlsh](../../../admin/ysqlsh/) — Overview of the command line interface (CLI), syntax, and commands.
+- [YSQL API](../../../api/ysql/) — Reference for supported YCQL statements, data types, functions, and operators.
 
 ## Next steps
 
 - [Add database users](../add-users/)
-- [Connect an application](../connect-application/)
+- [Connect an application](../connect-applications/)

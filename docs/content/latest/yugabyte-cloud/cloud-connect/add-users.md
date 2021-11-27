@@ -45,4 +45,4 @@ For more information on managing users in YCQL, refer to [Enable users in YCQL](
 
 ## Next steps
 
-- [Connect an application](../connect-application)
+- [Connect an application](../connect-applications/)

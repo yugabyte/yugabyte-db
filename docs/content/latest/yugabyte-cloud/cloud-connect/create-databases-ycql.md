@@ -106,10 +106,10 @@ ycqlsh> SELECT * FROM myapp.stock_market WHERE stock_symbol in ('FB', 'GOOG');
 
 ## Learn more
 
-- [ycqlsh](../../../admin/ycqlsh) — Overview of the command line interface (CLI), syntax, and commands.
-- [YCQL API](../../../api/ycql) — Reference for supported YCQL statements, data types, functions, and operators.
+- [ycqlsh](../../../admin/ycqlsh/) — Overview of the command line interface (CLI), syntax, and commands.
+- [YCQL API](../../../api/ycql/) — Reference for supported YCQL statements, data types, functions, and operators.
 
 ## Next steps
 
 - [Add database users](../add-users/)
-- [Connect a YCQL Java application](../../cloud-develop/connect-ycql-application)
+- [Connect a YCQL Java application](../../cloud-develop/connect-ycql-application/)

@@ -62,13 +62,13 @@ Cloud shell is updated regularly. Check the [known issues list](../../release-no
 
 ## Related information
 
-- [YSQL API](../../../api/ysql) — Reference for supported YSQL statements, data types, functions, and operators.
-- [YCQL API](../../../api/ycql) — Reference for supported YCQL statements, data types, functions, and operators.
-- [ysqlsh](../../../admin/ysqlsh) — Overview of the command line interface (CLI), syntax, and commands.
-- [ycqlsh](../../../admin/ycqlsh) — Overview of the command line interface (CLI), syntax, and commands.
+- [YSQL API](../../../api/ysql/) — Reference for supported YSQL statements, data types, functions, and operators.
+- [YCQL API](../../../api/ycql/) — Reference for supported YCQL statements, data types, functions, and operators.
+- [ysqlsh](../../../admin/ysqlsh/) — Overview of the command line interface (CLI), syntax, and commands.
+- [ycqlsh](../../../admin/ycqlsh/) — Overview of the command line interface (CLI), syntax, and commands.
 
 ## Next steps
 
 - [Create a database](../create-databases/)
 - [Add database users](../add-users/)
-- [Connect an application](../connect-application/)
+- [Connect an application](../connect-applications/)
