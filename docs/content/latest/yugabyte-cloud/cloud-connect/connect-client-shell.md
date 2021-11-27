@@ -94,4 +94,4 @@ For detailed steps for configuring popular third party tools, see [Third party t
 ## Next steps
 
 - [Add database users](../add-users/)
-- [Connect an application](../connect-application)
+- [Connect an application](../connect-application/)

@@ -110,7 +110,7 @@ After you complete the wizard, the [**Clusters**](../../cloud-clusters/) page ap
 
 ![Cluster being provisioned](/images/yb-cloud/cloud-cluster-provisioning.png)
 
-Once the cluster is ready, the cluster [Overview](../../cloud-clusters/overview) is displayed.
+Once the cluster is ready, the cluster [Overview](../../cloud-clusters/overview) tab is displayed.
 
 You now have a fully configured YugabyteDB cluster provisioned in Yugabyte Cloud with the credentials you specified.
 

@@ -2,7 +2,7 @@
 title: Connect to clusters in Yugabyte Cloud
 linkTitle: Connect to clusters
 description: Connect to clusters in Yugabyte Cloud.
-headcontent: Connect to your cluster using the cloud shell, a client shell, and from applications
+headcontent: Connect to your cluster using the cloud shell, a client shell, and from applications.
 image: /images/section_icons/index/quick_start.png
 aliases:
   - /latest/deploy/yugabyte-cloud/connect-to-clusters/

@@ -146,4 +146,4 @@ For information on YSQL and the ysqlsh shell:
 ## Next steps
 
 - [Add database users](../add-users/)
-- [Connect an application](../connect-application)
+- [Connect an application](../connect-application/)
