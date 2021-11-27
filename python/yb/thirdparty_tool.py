@@ -45,7 +45,7 @@ NUM_TOP_COMMITS = 10
 
 DOWNLOAD_URL_PREFIX = 'https://github.com/yugabyte/yugabyte-db-thirdparty/releases/download/'
 
-ARCH_REGEX_STR = '|'.join(['x86_64', 'aarch64'])
+ARCH_REGEX_STR = '|'.join(['x86_64', 'aarch64', 'arm64'])
 
 
 def get_arch_regex(index: int) -> str:
