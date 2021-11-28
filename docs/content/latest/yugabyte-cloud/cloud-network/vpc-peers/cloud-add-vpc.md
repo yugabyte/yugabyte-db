@@ -14,9 +14,9 @@ showAsideToc: true
 
 To set up peering in Yugabyte Cloud, you first create a VPC to host your clusters. The VPC reserves a range of IP addresses with the cloud provider you select. A VPC must be created before you can configure a peering connection. You must set up a dedicated VPC and peering before deploying your cluster.
 
-The **VPCs** tab displays a list of VPCs configured for your cloud that includes the VPC name, provider, region, ID, CIDR, local VPC IP address, and cluster to which the VPC is assigned.
+**VPCs** on the **VPC Network** tab displays a list of VPCs configured for your cloud that includes the VPC name, provider, region, ID, CIDR, local VPC IP address, and cluster to which the VPC is assigned.
 
-![VPCs](/images/yb-cloud/cloud-networking-vpc.png)
+![VPCs](/images/yb-cloud/cloud-vpc.png)
 
 ## Create a VPC
 

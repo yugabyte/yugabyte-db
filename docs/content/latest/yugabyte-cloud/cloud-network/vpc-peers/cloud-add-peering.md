@@ -14,9 +14,9 @@ showAsideToc: true
 
 A peering connection connects a Yugabyte Cloud VPC with a VPC on the corresponding cloud provider - typically one that hosts an application that you want to have access to your cluster. Before you can peer a VPC, you must have an [active VPC configured](../cloud-add-vpc/) for the cloud provider hosting the application VPC.
 
-The **Peering Connections** tab displays a list of peering connections configured for your cloud that includes the peering connection name, cloud provider, the network name (GCP) or VPC ID (AWS) of the peered VPC, the name of the Yugabyte VPC, and status of the connection.
+**Peering Connections** on the **VPC Network** tab displays a list of peering connections configured for your cloud that includes the peering connection name, cloud provider, the network name (GCP) or VPC ID (AWS) of the peered VPC, the name of the Yugabyte VPC, and status of the connection.
 
-![Create VPC peer](/images/yb-cloud/cloud-networking-vpc.png)
+![Peering connections](/images/yb-cloud/cloud-vpc-peering.png)
 
 ## Create a peering connection
 
