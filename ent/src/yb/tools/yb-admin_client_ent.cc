@@ -146,7 +146,8 @@ Status ClusterAdminClient::ListSnapshots(const ListSnapshotsFlags& flags) {
           HybridTimeToString(HybridTime::FromPB(entry.previous_snapshot_hybrid_time())),
           &json_snapshot, &document.GetAllocator());
     } else {
-      cout << SnapshotIdToString(snapshot.id()) << kColumnSep << snapshot.entry().state() << kColumnSep << snapshot.entry().snapshot_hybrid_time() << endl;
+      cout << SnapshotIdToString(snapshot.id()) << kColumnSep << snapshot.entry().state() << 
+        kColumnSep << HybridTimeToString(snapshot.entry().snapshot_hybrid_time()) << endl;
     }
 
     // Not implemented in json mode.
