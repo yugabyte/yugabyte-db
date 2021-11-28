@@ -154,6 +154,12 @@ DEFINE_int32(taskstream_queue_max_wait_ms, 1000,
 DEFINE_int32(wait_for_safe_op_id_to_apply_default_timeout_ms, 15000 * yb::kTimeMultiplier,
              "Timeout used by WaitForSafeOpIdToApply when it was not specified by caller.");
 
+DEFINE_int64(time_based_wal_gc_clock_delta_usec, 0,
+             "A delta in microseconds to add to the clock value used to determine if a WAL "
+             "segment is safe to be garbage collected. This is needed for clusters running with a "
+             "skewed hybrid clock, because the clock used for time-based WAL GC is the wall clock, "
+             "not hybrid clock.");
+
 // Validate that log_min_segments_to_retain >= 1
 static bool ValidateLogsToRetain(const char* flagname, int value) {
   if (value >= 1) {
@@ -998,7 +1004,8 @@ Status Log::GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segment
   }
 
   // Don't GC segments that are newer than the configured time-based retention.
-  int64_t now = GetCurrentTimeMicros();
+  int64_t now = GetCurrentTimeMicros() + FLAGS_time_based_wal_gc_clock_delta_usec;
+
   for (int i = 0; i < segments_to_gc->size(); i++) {
     const scoped_refptr<ReadableLogSegment>& segment = (*segments_to_gc)[i];
 
