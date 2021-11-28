@@ -46,6 +46,7 @@
 #include "yb/gutil/sysinfo.h"
 #include "yb/server/total_mem_watcher.h"
 #include "yb/util/net/net_util.h"
+#include "yb/server/skewed_clock.h"
 
 DECLARE_bool(callhome_enabled);
 DECLARE_bool(evict_failed_followers);
@@ -99,6 +100,9 @@ static int MasterMain(int argc, char** argv) {
   // Do not sync GLOG to disk for INFO, WARNING.
   // ERRORs, and FATALs will still cause a sync to disk.
   FLAGS_logbuflevel = google::GLOG_WARNING;
+
+  server::SkewedClock::Register();
+
   ParseCommandLineFlags(&argc, &argv, true);
   if (argc != 1) {
     std::cerr << "usage: " << argv[0] << std::endl;
