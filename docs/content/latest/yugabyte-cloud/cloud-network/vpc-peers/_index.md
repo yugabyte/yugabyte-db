@@ -16,6 +16,8 @@ Virtual Private Cloud (VPC) peering allows applications running on instances on 
 
 To set up peering in Yugabyte Cloud, you first create a VPC to host your clusters, then peer it with the VPC that hosts client applications. Some configuration of your cloud provider settings is also required to make the peering connection active. Any cluster deployed using that VPC will then be able to connect with any application in the application VPC.
 
+VPCs and peering connections are managed in Yugabyte Cloud on the **VPC Network** tab of the **Network Access** page.
+
 {{< note title="Note" >}}
 
 To use VPC peering in a cluster, your cluster must be deployed in a dedicated VPC that is peered with your application VPC. You must set up a dedicated VPC before deploying your cluster. VPC peering is not supported in free clusters.
