@@ -76,9 +76,13 @@ LogGCOp::LogGCOp(TabletPeer* tablet_peer)
       sem_(1) {}
 
 void LogGCOp::UpdateStats(MaintenanceOpStats* stats) {
-  int64_t retention_size;
+  int64_t retention_size = 0;
 
-  if (!tablet_peer_->GetGCableDataSize(&retention_size).ok()) {
+  Status status = tablet_peer_->GetGCableDataSize(&retention_size);
+  if (!status.ok()) {
+    YB_LOG_EVERY_N_SECS(WARNING, 1)
+        << tablet_peer_->LogPrefix()
+        << "failed to get GC-able data size: " << status;
     return;
   }
   stats->set_logs_retained_bytes(retention_size);
