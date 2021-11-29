@@ -67,7 +67,8 @@ static int num_relations;							/*  Number of relation in the query */
 static bool system_init = false;
 static struct rusage  rusage_start;
 static struct rusage  rusage_end;
-static unsigned char *pgss_qbuf[MAX_BUCKETS];
+/* Query buffer, store queries' text. */
+static unsigned char *pgss_qbuf = NULL;
 static char *pgss_explain(QueryDesc *queryDesc);
 #ifdef BENCHMARK
 static struct pg_hook_stats_t *pg_hook_stats;
@@ -1311,7 +1312,6 @@ pgss_update_entry(pgssEntry *entry,
 			e->counters.blocks.blk_write_time += INSTR_TIME_GET_MILLISEC(bufusage->blk_write_time);
 		}
 		e->counters.calls.usage += USAGE_EXEC(total_time);
-		e->counters.info.host = pg_get_client_addr();
 		if (sys_info)
 		{
 			e->counters.sysinfo.utime = sys_info->utime;
@@ -1478,14 +1478,13 @@ pgss_store(uint64 queryid,
 	uint64          planid;
 	uint64          appid;
 	char            comments[512] = "";
-	size_t          query_len;
 
 	/*  Monitoring is disabled */
 	if (!PGSM_ENABLED)
 		return;
 
 	/* Safety check... */
-	if (!IsSystemInitialized() || !pgss_qbuf[pg_atomic_read_u64(&pgss->current_wbucket)])
+	if (!IsSystemInitialized())
 		return;
 
 	Assert(query != NULL);
@@ -1528,42 +1527,63 @@ pgss_store(uint64 queryid,
 	entry = (pgssEntry *) hash_search(pgss_hash, &key, HASH_FIND, NULL);
 	if (!entry)
 	{
-		uint64 prev_qbuf_len;
-		/* position in which the query's text was inserted into the query buffer. */
-		size_t qpos = 0;
+		pgssQueryEntry *query_entry;
+		size_t          query_len = 0;
+		bool query_found = false;
+		uint64 prev_qbuf_len = 0;
+		HTAB *pgss_query_hash;
 
-		query_len = strlen(query);
-		if (query_len > PGSM_QUERY_MAX_LEN)
-			query_len = PGSM_QUERY_MAX_LEN;
+		pgss_query_hash = pgsm_get_query_hash();
+
+		query_entry = hash_search(pgss_query_hash, &queryid, HASH_ENTER_NULL, &query_found);
+		if (query_entry == NULL)
+		{
+			LWLockRelease(pgss->lock);
+			pgsm_log_error("pgss_store: out of memory (pgss_query_hash).");
+			return;
+		}
+		else if (!query_found)
+		{
+			/* New query, must add it to the buffer, calculate its length. */
+			query_len = strlen(query);
+			if (query_len > PGSM_QUERY_MAX_LEN)
+				query_len = PGSM_QUERY_MAX_LEN;
+		}
 
 		/* Need exclusive lock to make a new hashtable entry - promote */
 		LWLockRelease(pgss->lock);
 		LWLockAcquire(pgss->lock, LW_EXCLUSIVE);
 
-		/*
-		 * Save current query buffer length, if we fail to add a new
-		 * new entry to the hash table then we must restore the
-		 * original length.
-		 */
-		memcpy(&prev_qbuf_len, pgss_qbuf[bucketid], sizeof(prev_qbuf_len));
-		if (!SaveQueryText(bucketid, queryid, pgss_qbuf[bucketid], query, query_len, &qpos))
+		if (!query_found)
 		{
-			LWLockRelease(pgss->lock);
-			elog(DEBUG1, "pg_stat_monitor: insufficient shared space for query.");
-			return;
+			if (!SaveQueryText(bucketid, queryid, pgss_qbuf, query, query_len, &query_entry->query_pos))
+			{
+				LWLockRelease(pgss->lock);
+				pgsm_log_error("pgss_store: insufficient shared space for query.");
+				return;
+			}
+			/*
+			* Save current query buffer length, if we fail to add a new
+			* new entry to the hash table then we must restore the
+			* original length.
+			*/
+			memcpy(&prev_qbuf_len, pgss_qbuf, sizeof(prev_qbuf_len));
 		}
 
 		 /* OK to create a new hashtable entry */
 		entry = hash_entry_alloc(pgss, &key, GetDatabaseEncoding());
 		if (entry == NULL)
 		{
-			/* Restore previous query buffer length. */
-			memcpy(pgss_qbuf[bucketid], &prev_qbuf_len, sizeof(prev_qbuf_len));
+			if (!query_found)
+			{
+				/* Restore previous query buffer length. */
+				memcpy(pgss_qbuf, &prev_qbuf_len, sizeof(prev_qbuf_len));
+			}
 			LWLockRelease(pgss->lock);
 			elog(DEBUG1, "pg_stat_monitor: out of memory");
 			return;
 		}
-		entry->query_pos = qpos;
+		entry->query_pos = query_entry->query_pos;
 	}
 
 	if (jstate == NULL)
@@ -1599,11 +1619,10 @@ pg_stat_monitor_reset(PG_FUNCTION_ARGS)
 				 errmsg("pg_stat_monitor: must be loaded via shared_preload_libraries")));
 	LWLockAcquire(pgss->lock, LW_EXCLUSIVE);
 	hash_entry_dealloc(-1, -1, NULL);
-	/* Reset query buffers. */
-	for (size_t i = 0; i < PGSM_MAX_BUCKETS; ++i)
-	{
-		*(uint64 *)pgss_qbuf[i] = 0;
-	}
+
+	/* Reset query buffer. */
+	*(uint64 *)pgss_qbuf = 0;
+
 #ifdef BENCHMARK
 	for (int i = STATS_START; i < STATS_END; ++i) {
 		pg_hook_stats[i].min_time = 0;
@@ -1713,7 +1732,6 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 		uint64		  userid = entry->key.userid;
 		uint64        ip = entry->key.ip;
 		uint64        planid = entry->key.planid;
-		unsigned char *buf = pgss_qbuf[bucketid];
 #if PG_VERSION_NUM < 140000
         bool          toplevel = 1;
 		bool 		  is_allowed_role = is_member_of_role(GetUserId(), DEFAULT_ROLE_READ_ALL_STATS);
@@ -1722,7 +1740,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
         bool          toplevel = entry->key.toplevel;
 #endif
 
-		if (read_query(buf, queryid, query_txt, entry->query_pos) == 0)
+		if (read_query(pgss_qbuf, queryid, query_txt, entry->query_pos) == 0)
 		{
 			int rc;
 			rc = read_query_buffer(bucketid, queryid, query_txt, entry->query_pos);
@@ -1749,8 +1767,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 
 		if (tmp.info.parentid != UINT64CONST(0))
 		{
-			int rc = 0;
-			if (read_query(buf, tmp.info.parentid, parent_query_txt, 0) == 0)
+			if (read_query(pgss_qbuf, tmp.info.parentid, parent_query_txt, 0) == 0)
 			{
 				rc = read_query_buffer(bucketid, tmp.info.parentid, parent_query_txt, 0);
 				if (rc != 1)
@@ -1802,7 +1819,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 				if (enc != query_txt)
 					pfree(enc);
 				/* plan at column number 7 */
-				if (planid && strlen(tmp.planinfo.plan_text) > 0)
+				if (planid && tmp.planinfo.plan_text[0])
 					values[i++] = CStringGetTextDatum(tmp.planinfo.plan_text);
 				else
 					nulls[i++] = true;
@@ -3120,17 +3137,17 @@ SaveQueryText(uint64 bucketid,
 
 				/*
 				 * If the query buffer is empty, there is nothing to dump, this also
-				 * means that the current query length exceeds MAX_QUERY_BUFFER_BUCKET.
+				 * means that the current query length exceeds MAX_QUERY_BUF.
 				 */
 				if (buf_len <= sizeof (uint64))
 					return false;
 
-				dump_ok = dump_queries_buffer(bucketid, buf, MAX_QUERY_BUFFER_BUCKET);
+				dump_ok = dump_queries_buffer(bucketid, buf, MAX_QUERY_BUF);
 				buf_len = sizeof (uint64);
 
 				/*
 				 * We must check for overflow again, as the query length may
-				 * exceed the size allocated to the buffer (MAX_QUERY_BUFFER_BUCKET).
+				 * exceed the total size allocated to the buffer (MAX_QUERY_BUF).
 				 */
 				if (QUERY_BUFFER_OVERFLOW(buf_len, query_len))
 				{
@@ -3293,9 +3310,10 @@ pg_stat_monitor_hook_stats(PG_FUNCTION_ARGS)
 }
 
 void
-set_qbuf(int i, unsigned char *buf)
+set_qbuf(unsigned char *buf)
 {
-	pgss_qbuf[i] = buf;
+	pgss_qbuf = buf;
+	*(uint64 *)pgss_qbuf = 0;
 }
 
 #ifdef BENCHMARK
@@ -3413,13 +3431,13 @@ read_query_buffer(int bucket_id, uint64 queryid, char *query_txt, size_t pos)
 	if (fd < 0)
 		goto exit;
 
-	buf = (unsigned char*) palloc(MAX_QUERY_BUFFER_BUCKET);
+	buf = (unsigned char*) palloc(MAX_QUERY_BUF);
 	while (!done)
 	{
 		off = 0;
-		/* read a chunck of MAX_QUERY_BUFFER_BUCKET size. */
+		/* read a chunck of MAX_QUERY_BUF size. */
 		do {
-			nread = read(fd, buf + off, MAX_QUERY_BUFFER_BUCKET - off);
+			nread = read(fd, buf + off, MAX_QUERY_BUF - off);
 			if (nread == -1)
 			{
 				if (errno == EINTR && tries++ < 3)  /* read() was interrupted, attempt to read again (max attempts=3) */
@@ -3434,9 +3452,9 @@ read_query_buffer(int bucket_id, uint64 queryid, char *query_txt, size_t pos)
 			}
 
 			off += nread;
-		} while (off < MAX_QUERY_BUFFER_BUCKET);
+		} while (off < MAX_QUERY_BUF);
 
-		if (off == MAX_QUERY_BUFFER_BUCKET)
+		if (off == MAX_QUERY_BUF)
 		{
 			/* we have a chunck, scan it looking for queryid. */
 			if (read_query(buf, queryid, query_txt, pos) != 0)
@@ -3449,7 +3467,7 @@ read_query_buffer(int bucket_id, uint64 queryid, char *query_txt, size_t pos)
 		}
 		else
 			/*
-			 * Either done=true or file has a size not multiple of MAX_QUERY_BUFFER_BUCKET.
+			 * Either done=true or file has a size not multiple of MAX_QUERY_BUF.
 			 * It is safe to assume that the file was truncated or corrupted.
 			 */
 			break;
