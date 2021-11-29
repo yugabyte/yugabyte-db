@@ -13,9 +13,21 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/common/ql_rowblock.h"
 #include "yb/common/ql_value.h"
-#include "yb/yql/cql/ql/exec/executor.h"
+
+#include "yb/common/schema.h"
+
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 #include "yb/util/yb_partition.h"
+
+#include "yb/yql/cql/ql/exec/exec_context.h"
+#include "yb/yql/cql/ql/exec/executor.h"
+#include "yb/yql/cql/ql/ptree/column_arg.h"
+#include "yb/yql/cql/ql/ptree/column_desc.h"
+#include "yb/yql/cql/ql/ptree/pt_expr.h"
+#include "yb/yql/cql/ql/ptree/pt_select.h"
 
 namespace yb {
 namespace ql {
@@ -363,9 +375,9 @@ Status Executor::FuncOpToPB(QLConditionPB *condition, const FuncOp& func_op) {
   condition->set_op(func_op.yb_op());
 
   // Operand 1: The function call.
-  PTBcall::SharedPtr ptr = func_op.func_expr();
+  auto ptr = func_op.func_expr();
   QLExpressionPB *expr_pb = condition->add_operands();
-  RETURN_NOT_OK(PTExprToPB(static_cast<const PTBcall*>(ptr.get()), expr_pb));
+  RETURN_NOT_OK(PTExprToPB(ptr.get(), expr_pb));
 
   // Operand 2: The expression.
   expr_pb = condition->add_operands();

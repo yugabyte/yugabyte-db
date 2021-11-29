@@ -13,7 +13,6 @@
 //
 //--------------------------------------------------------------------------------------------------
 #include "yb/yql/pggate/test/pggate_test.h"
-#include <gflags/gflags.h>
 
 namespace yb {
 namespace pggate {

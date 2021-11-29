@@ -37,7 +37,7 @@ class PTCreateKeyspace : public TreeNode {
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
   PTCreateKeyspace(MemoryContext *memctx,
-                   YBLocation::SharedPtr loc,
+                   YBLocationPtr loc,
                    const MCSharedPtr<MCString>& name,
                    bool create_if_not_exists,
                    const PTKeyspacePropertyListNode::SharedPtr& keyspace_properties);

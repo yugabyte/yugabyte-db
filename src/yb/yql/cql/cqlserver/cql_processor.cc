@@ -12,22 +12,29 @@
 // under the License.
 //
 //--------------------------------------------------------------------------------------------------
-
 #include "yb/yql/cql/cqlserver/cql_processor.h"
 
 #include <ldap.h>
 
 #include <boost/algorithm/string.hpp>
 
+#include "yb/common/ql_rowblock.h"
 #include "yb/common/ql_value.h"
-
+#include "yb/common/schema.h"
+#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/escaping.h"
-
 #include "yb/rpc/connection.h"
 #include "yb/rpc/messenger.h"
+#include "yb/util/crypt.h"
 #include "yb/util/flag_tags.h"
-
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/metrics.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/yql/cql/cqlserver/cql_service.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
 
 using namespace std::literals;
 

@@ -60,19 +60,13 @@ class PgColumn {
     return assign_pb_;
   }
 
-  const string& attr_name() const {
-    return desc().name();
-  }
+  const std::string& attr_name() const;
 
-  int attr_num() const {
-    return desc().order();
-  }
+  int attr_num() const;
 
   int id() const;
 
-  InternalType internal_type() const {
-    return client::YBColumnSchema::ToInternalDataType(desc().type());
-  }
+  InternalType internal_type() const;
 
   bool read_requested() const {
     return read_requested_;

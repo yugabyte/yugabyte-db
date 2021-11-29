@@ -301,20 +301,20 @@ const Type* GetAuditLogTypeOption(const TreeNode& tnode,
       const auto& cast_node = static_cast<const PTDropStmt&>(tnode);
       // We only expect a handful of types here, same as Executor::ExecPTNode(const PTDropStmt*)
       switch (cast_node.drop_type()) {
-        case OBJECT_SCHEMA:
+        case ObjectType::SCHEMA:
           *keyspace = cast_node.name()->last_name().data();
           return &Type::DROP_KEYSPACE;
-        case OBJECT_INDEX:
+        case ObjectType::INDEX:
           *keyspace = cast_node.yb_table_name().namespace_name();
           *scope    = cast_node.yb_table_name().table_name();
           return &Type::DROP_INDEX;
-        case OBJECT_ROLE:
+        case ObjectType::ROLE:
           return &Type::DROP_ROLE;
-        case OBJECT_TABLE:
+        case ObjectType::TABLE:
           *keyspace = cast_node.yb_table_name().namespace_name();
           *scope    = cast_node.yb_table_name().table_name();
           return &Type::DROP_TABLE;
-        case OBJECT_TYPE:
+        case ObjectType::TYPE:
           *keyspace = cast_node.name()->first_name().data();
           *scope    = cast_node.name()->last_name().data();
           return &Type::DROP_TYPE;

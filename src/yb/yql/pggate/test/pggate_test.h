@@ -18,7 +18,6 @@
 
 #include <dirent.h>
 
-#include "yb/client/client.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/master/mini_master.h"
 #include "yb/tserver/tserver_util_fwd.h"

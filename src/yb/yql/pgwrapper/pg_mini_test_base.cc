@@ -10,15 +10,11 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 #include "yb/master/sys_catalog_initialization.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
-
-#include "yb/util/random_util.h"
 
 DECLARE_bool(enable_ysql);
 DECLARE_bool(hide_pg_catalog_table_creation_logs);
