@@ -2,6 +2,7 @@
 package com.yugabyte.yw.models;
 
 import static com.yugabyte.yw.common.ModelFactory.createAlertConfiguration;
+import static com.yugabyte.yw.common.TestUtils.replaceFirstChar;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsInAnyOrder;
@@ -451,11 +452,5 @@ public class AlertTest extends FakeDBApplication {
             .build();
     list = alertService.list(filter);
     assertThat(list, containsInAnyOrder(alert1, alert3));
-  }
-
-  private UUID replaceFirstChar(UUID uuid, char firstChar) {
-    char[] chars = uuid.toString().toCharArray();
-    chars[0] = firstChar;
-    return UUID.fromString(new String(chars));
   }
 }
