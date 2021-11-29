@@ -11,6 +11,7 @@ package com.yugabyte.yw.common;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.UUID;
 import org.apache.commons.io.IOUtils;
 
 public class TestUtils {
@@ -21,5 +22,11 @@ public class TestUtils {
     } catch (IOException e) {
       throw new RuntimeException("Failed to read resource " + path, e);
     }
+  }
+
+  public static UUID replaceFirstChar(UUID uuid, char firstChar) {
+    char[] chars = uuid.toString().toCharArray();
+    chars[0] = firstChar;
+    return UUID.fromString(new String(chars));
   }
 }

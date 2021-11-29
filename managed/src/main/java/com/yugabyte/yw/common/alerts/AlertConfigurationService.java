@@ -29,6 +29,7 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertConfiguration;
+import com.yugabyte.yw.models.AlertConfiguration.QuerySettings;
 import com.yugabyte.yw.models.AlertConfiguration.Severity;
 import com.yugabyte.yw.models.AlertConfiguration.SortBy;
 import com.yugabyte.yw.models.AlertConfiguration.TargetType;
@@ -187,7 +188,13 @@ public class AlertConfigurationService {
       pagedQuery.setSortBy(SortBy.createTime);
       pagedQuery.setDirection(SortDirection.DESC);
     }
-    Query<AlertConfiguration> query = createQueryByFilter(pagedQuery.getFilter()).query();
+    QuerySettings settings =
+        QuerySettings.builder()
+            .queryTargetIndex(pagedQuery.getSortBy() == SortBy.target)
+            .queryDestinationIndex(pagedQuery.getSortBy() == SortBy.destination)
+            .queryCount(true)
+            .build();
+    Query<AlertConfiguration> query = createQueryByFilter(pagedQuery.getFilter(), settings).query();
     return performPagedQuery(query, pagedQuery, AlertConfigurationPagedResponse.class);
   }
 
