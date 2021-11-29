@@ -26,7 +26,6 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/common/ybc_util.h"
 
-#include "yb/client/client.h"
 #include "yb/client/callbacks.h"
 #include "yb/client/async_initializer.h"
 #include "yb/server/server_base_options.h"

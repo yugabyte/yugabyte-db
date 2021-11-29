@@ -24,13 +24,11 @@
 //
 // Scanning utility functions.
 //--------------------------------------------------------------------------------------------------
+#include "yb/yql/cql/ql/parser/scanner_util.h"
 
 #include <algorithm>
 
 #include "yb/gutil/macros.h"
-#include "yb/yql/cql/ql/parser/scanner_util.h"
-#include "yb/yql/cql/ql/util/errcodes.h"
-#include "yb/util/logging.h"
 
 namespace yb {
 namespace ql {

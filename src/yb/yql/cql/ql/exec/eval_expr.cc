@@ -12,15 +12,16 @@
 // under the License.
 //
 //--------------------------------------------------------------------------------------------------
-
 #include <string>
 
-#include "yb/common/ql_value.h"
-
-#include "yb/yql/cql/ql/exec/executor.h"
-#include "yb/util/logging.h"
 #include "yb/client/callbacks.h"
+#include "yb/common/ql_value.h"
 #include "yb/util/net/inetaddress.h"
+#include "yb/yql/cql/ql/exec/exec_context.h"
+#include "yb/yql/cql/ql/exec/executor.h"
+#include "yb/yql/cql/ql/ptree/column_desc.h"
+#include "yb/yql/cql/ql/ptree/pt_bcall.h"
+#include "yb/yql/cql/ql/ptree/pt_expr.h"
 
 namespace yb {
 namespace ql {

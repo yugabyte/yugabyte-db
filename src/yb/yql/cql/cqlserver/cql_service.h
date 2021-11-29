@@ -23,12 +23,13 @@
 
 #include "yb/client/client_fwd.h"
 
-#include "yb/yql/cql/cqlserver/cql_processor.h"
+#include "yb/yql/cql/cqlserver/cqlserver_fwd.h"
 #include "yb/yql/cql/cqlserver/cql_server_options.h"
 #include "yb/yql/cql/cqlserver/cql_service.service.h"
 #include "yb/yql/cql/cqlserver/cql_statement.h"
 #include "yb/yql/cql/cqlserver/system_query_cache.h"
 #include "yb/yql/cql/ql/statement.h"
+#include "yb/yql/cql/ql/parser/parser_fwd.h"
 #include "yb/yql/cql/ql/util/cql_message.h"
 
 #include "yb/util/object_pool.h"

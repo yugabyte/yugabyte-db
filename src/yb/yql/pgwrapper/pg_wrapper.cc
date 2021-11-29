@@ -9,29 +9,32 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
-
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
 #include <signal.h>
 
-#include <vector>
-#include <string>
-#include <random>
 #include <fstream>
+#include <random>
 #include <regex>
+#include <string>
 #include <thread>
+#include <vector>
 
 #include <boost/algorithm/string.hpp>
 
+#include "yb/util/env_util.h"
 #include "yb/util/errno.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
-#include "yb/util/subprocess.h"
-#include "yb/util/env_util.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pg_util.h"
+#include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/subprocess.h"
+#include "yb/util/thread.h"
 
 DEFINE_string(pg_proxy_bind_address, "", "Address for the PostgreSQL proxy to bind to");
 DEFINE_bool(pg_transactions_enabled, true,
@@ -600,6 +603,9 @@ void PgWrapper::SetCommonEnv(Subprocess* proc, bool yb_enabled) {
 
 PgSupervisor::PgSupervisor(PgProcessConf conf)
     : conf_(std::move(conf)) {
+}
+
+PgSupervisor::~PgSupervisor() {
 }
 
 Status PgSupervisor::Start() {

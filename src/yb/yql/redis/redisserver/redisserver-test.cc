@@ -27,6 +27,8 @@
 
 #include "yb/integration-tests/redis_table_test_base.h"
 
+#include "yb/master/master.h"
+
 #include "yb/yql/redis/redisserver/redis_client.h"
 #include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/yql/redis/redisserver/redis_encoding.h"
@@ -40,6 +42,7 @@
 #include "yb/util/protobuf.h"
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/result.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
 #include "yb/util/value_changer.h"
 

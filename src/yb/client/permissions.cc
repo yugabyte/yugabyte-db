@@ -215,12 +215,12 @@ bool PermissionsCache::HasCanonicalResourcePermission(const std::string& canonic
 
   // Check if the requested permission has been granted to 'ALL KEYSPACES' or to 'ALL ROLES'.
   const auto& role_permissions = role_permissions_iter->second;
-  if (object_type == ql::ObjectType::OBJECT_SCHEMA || object_type == ql::ObjectType::OBJECT_TABLE) {
+  if (object_type == ql::ObjectType::SCHEMA || object_type == ql::ObjectType::TABLE) {
     if (role_permissions.HasAllKeyspacesPermission(permission)) {
       // Found.
       return true;
     }
-  } else if (object_type == ql::ObjectType::OBJECT_ROLE) {
+  } else if (object_type == ql::ObjectType::ROLE) {
     if (role_permissions.HasAllRolesPermission(permission)) {
       // Found.
       return true;

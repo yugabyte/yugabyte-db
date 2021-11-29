@@ -16,7 +16,14 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/cql/ql/ptree/pt_update.h"
+
+#include "yb/yql/cql/ql/ptree/column_arg.h"
+#include "yb/yql/cql/ql/ptree/column_desc.h"
+#include "yb/yql/cql/ql/ptree/pt_dml_using_clause.h"
+#include "yb/yql/cql/ql/ptree/pt_expr.h"
+#include "yb/yql/cql/ql/ptree/sem_state.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/yql/cql/ql/ptree/yb_location.h"
 
 namespace yb {
 namespace ql {
@@ -24,9 +31,9 @@ namespace ql {
 //--------------------------------------------------------------------------------------------------
 
 PTAssign::PTAssign(MemoryContext *memctx,
-                   YBLocation::SharedPtr loc,
+                   YBLocationPtr loc,
                    const PTQualifiedName::SharedPtr& lhs,
-                   const PTExpr::SharedPtr& rhs,
+                   const PTExprPtr& rhs,
                    const PTExprListNode::SharedPtr& subscript_args,
                    const PTExprListNode::SharedPtr& json_ops)
     : TreeNode(memctx, loc),
@@ -258,7 +265,7 @@ ExplainPlanPB PTUpdateStmt::AnalysisResultToPB() {
   update_plan->set_update_type("Update on " + table_name().ToString());
   update_plan->set_scan_type("  ->  Primary Key Lookup on " + table_name().ToString());
   string key_conditions = "        Key Conditions: " +
-      conditionsToString<MCVector<ColumnOp>>(key_where_ops());
+      ConditionsToString<MCVector<ColumnOp>>(key_where_ops());
   update_plan->set_key_conditions(key_conditions);
   update_plan->set_output_width(max({
     update_plan->update_type().length(),

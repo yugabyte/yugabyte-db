@@ -11,7 +11,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //--------------------------------------------------------------------------------------------------
-
 #include "yb/yql/pggate/pg_doc_op.h"
 
 #include <algorithm>
@@ -20,9 +19,10 @@
 #include <utility>
 #include <vector>
 
-
 #include "yb/common/row_mark.h"
-#include "yb/docdb/doc_key.h"
+#include "yb/gutil/strings/escaping.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pggate_flags.h"

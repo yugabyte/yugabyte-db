@@ -18,33 +18,23 @@
 #ifndef YB_YQL_CQL_QL_EXEC_EXECUTOR_H_
 #define YB_YQL_CQL_QL_EXEC_EXECUTOR_H_
 
+#include <vector>
+
+#include <rapidjson/document.h>
+
 #include "yb/client/yb_op.h"
 #include "yb/common/ql_expr.h"
-#include "yb/common/ql_rowblock.h"
-#include "yb/common/common.pb.h"
+
 #include "yb/rpc/thread_pool.h"
-#include "yb/yql/cql/ql/audit/audit_logger.h"
-#include "yb/yql/cql/ql/exec/exec_context.h"
-#include "yb/yql/cql/ql/ptree/pt_create_keyspace.h"
-#include "yb/yql/cql/ql/ptree/pt_use_keyspace.h"
-#include "yb/yql/cql/ql/ptree/pt_alter_keyspace.h"
-#include "yb/yql/cql/ql/ptree/pt_create_table.h"
-#include "yb/yql/cql/ql/ptree/pt_alter_table.h"
-#include "yb/yql/cql/ql/ptree/pt_create_type.h"
-#include "yb/yql/cql/ql/ptree/pt_create_index.h"
-#include "yb/yql/cql/ql/ptree/pt_create_role.h"
-#include "yb/yql/cql/ql/ptree/pt_alter_role.h"
-#include "yb/yql/cql/ql/ptree/pt_drop.h"
-#include "yb/yql/cql/ql/ptree/pt_select.h"
-#include "yb/yql/cql/ql/ptree/pt_insert.h"
-#include "yb/yql/cql/ql/ptree/pt_grant_revoke.h"
-#include "yb/yql/cql/ql/ptree/pt_delete.h"
-#include "yb/yql/cql/ql/ptree/pt_update.h"
-#include "yb/yql/cql/ql/ptree/pt_transaction.h"
-#include "yb/yql/cql/ql/ptree/pt_truncate.h"
-#include "yb/yql/cql/ql/ptree/pt_explain.h"
-#include "yb/yql/cql/ql/util/statement_params.h"
+
+#include "yb/yql/cql/ql/exec/exec_fwd.h"
+#include "yb/yql/cql/ql/ptree/ptree_fwd.h"
+#include "yb/yql/cql/ql/ptree/pt_expr_types.h"
+
+#include "yb/yql/cql/ql/util/util_fwd.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
+
+#include "yb/util/memory/mc_types.h"
 
 namespace yb {
 
@@ -54,11 +44,13 @@ class YBColumnSpec;
 
 namespace ql {
 
-class QLMetrics;
+namespace audit {
 
-// A batch of statement parse trees to execute with the parameters.
-typedef std::vector<std::pair<std::reference_wrapper<const ParseTree>,
-                              std::reference_wrapper<const StatementParameters>>> StatementBatch;
+class AuditLogger;
+
+}
+
+class QLMetrics;
 
 class Executor : public QLExprExecutor {
  public:
@@ -126,13 +118,13 @@ class Executor : public QLExprExecutor {
   CHECKED_STATUS PreExecTreeNode(PTInsertJsonClause *tnode);
 
   // Convert JSON value to an expression acording to its given expected type
-  Result<PTExpr::SharedPtr> ConvertJsonToExpr(const rapidjson::Value& json_value,
-                                              const QLType::SharedPtr& type,
-                                              const YBLocation::SharedPtr& loc);
+  Result<PTExprPtr> ConvertJsonToExpr(const rapidjson::Value& json_value,
+                                      const QLType::SharedPtr& type,
+                                      const YBLocationPtr& loc);
 
-  Result<PTExpr::SharedPtr> ConvertJsonToExprInner(const rapidjson::Value& json_value,
-                                                   const QLType::SharedPtr& type,
-                                                   const YBLocation::SharedPtr& loc);
+  Result<PTExprPtr> ConvertJsonToExprInner(const rapidjson::Value& json_value,
+                                           const QLType::SharedPtr& type,
+                                           const YBLocationPtr& loc);
 
   // Execute any TreeNode. This function determines how to execute a node.
   CHECKED_STATUS ExecTreeNode(const TreeNode *tnode);
@@ -142,7 +134,7 @@ class Executor : public QLExprExecutor {
 
   CHECKED_STATUS GetOffsetOrLimit(
       const PTSelectStmt* tnode,
-      const std::function<PTExpr::SharedPtr(const PTSelectStmt* tnode)>& get_val,
+      const std::function<PTExprPtr(const PTSelectStmt* tnode)>& get_val,
       const string& clause_type,
       int32_t* value);
 
@@ -208,9 +200,7 @@ class Executor : public QLExprExecutor {
   // Result processing.
 
   // Returns the YBSession for the statement in execution.
-  client::YBSessionPtr GetSession(ExecContext* exec_context) {
-    return exec_context->HasTransaction() ? exec_context->transactional_session() : session_;
-  }
+  client::YBSessionPtr GetSession(ExecContext* exec_context);
 
   // Flush operations that have been applied and commit. If there is none, finish the statement
   // execution.
@@ -296,10 +286,10 @@ class Executor : public QLExprExecutor {
 
   // CHECKED_STATUS EvalTimeUuidExpr(const PTExpr::SharedPtr& expr, EvalTimeUuidValue *result);
   // CHECKED_STATUS ConvertFromTimeUuid(EvalValue *result, const EvalTimeUuidValue& uuid_value);
-  CHECKED_STATUS PTExprToPB(const PTExpr::SharedPtr& expr, QLExpressionPB *expr_pb);
+  CHECKED_STATUS PTExprToPB(const PTExprPtr& expr, QLExpressionPB *expr_pb);
 
   // Constant expressions.
-  CHECKED_STATUS PTConstToPB(const PTExpr::SharedPtr& const_pt, QLValuePB *const_pb,
+  CHECKED_STATUS PTConstToPB(const PTExprPtr& const_pt, QLValuePB *const_pb,
                              bool negate = false);
   CHECKED_STATUS PTExprToPB(const PTConstVarInt *const_pt, QLValuePB *const_pb, bool negate);
   CHECKED_STATUS PTExprToPB(const PTConstDecimal *const_pt, QLValuePB *const_pb, bool negate);
@@ -323,7 +313,7 @@ class Executor : public QLExprExecutor {
   // There's only one, so call it PTUMinus for now.
   CHECKED_STATUS PTUMinusToPB(const PTOperator1 *op_pt, QLExpressionPB *op_pb);
   CHECKED_STATUS PTUMinusToPB(const PTOperator1 *op_pt, QLValuePB *const_pb);
-  CHECKED_STATUS PTJsonOperatorToPB(const PTJsonOperator::SharedPtr& json_pt,
+  CHECKED_STATUS PTJsonOperatorToPB(const PTJsonOperatorPtr& json_pt,
                                     QLJsonOperationPB *op_pb);
 
   // Builtin calls.
@@ -357,7 +347,7 @@ class Executor : public QLExprExecutor {
   CHECKED_STATUS TimestampToPB(const PTDmlStmt *tnode, QLWriteRequestPB *req);
 
   // Convert PTExpr to appropriate QLExpressionPB with appropriate validation.
-  CHECKED_STATUS PTExprToPBValidated(const PTExpr::SharedPtr& expr, QLExpressionPB *expr_pb);
+  CHECKED_STATUS PTExprToPBValidated(const PTExprPtr& expr, QLExpressionPB *expr_pb);
 
   //------------------------------------------------------------------------------------------------
   // Column evaluation.

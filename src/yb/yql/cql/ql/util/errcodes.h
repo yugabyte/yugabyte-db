@@ -23,10 +23,7 @@
 
 #include <cstdint>
 
-#include "yb/common/ql_protocol.pb.h"
-
 #include "yb/util/enums.h"
-#include "yb/util/status.h"
 #include "yb/util/status_ec.h"
 
 // Return an unauthorized error if authentication is not enabled through the flag
@@ -154,7 +151,6 @@ constexpr const char *kErrorFontStart = "\033[31m";
 constexpr const char *kErrorFontEnd = "\033[0m";
 
 std::string FormatForComparisonFailureMessage(ErrorCode op, ErrorCode other);
-ErrorCode QLStatusToErrorCode(QLResponsePB::QLStatus status);
 
 struct QLErrorTag : IntegralErrorTag<ErrorCode> {
   // This category id is part of the wire protocol and should not be changed once released.

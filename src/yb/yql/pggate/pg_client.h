@@ -18,6 +18,8 @@
 
 #include <boost/preprocessor/seq/for_each.hpp>
 
+#include "yb/client/client_fwd.h"
+
 #include "yb/rpc/proxy.h"
 
 #include "yb/tserver/tserver_util_fwd.h"
