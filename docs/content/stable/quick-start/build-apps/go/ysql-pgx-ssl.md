@@ -69,21 +69,21 @@ Refer to the [SSL/TLS configuration](../../../../secure/tls-encryption/client-to
 
 ### OpenSSL
 
-Install [OpenSSL](https://www.openssl.org/) 1.1.1 or later only if you have a YugabyteDB setup with SSL/TLS enabled. The **Yugabyte Cloud** clusters are always SSL/TLS enabled.
+Install [OpenSSL](https://www.openssl.org/) 1.1.1 or later only if you have a YugabyteDB setup with SSL/TLS enabled. Yugabyte Cloud clusters are always SSL/TLS enabled.
 
 ### CA certificate
 
-Download the CA certificate file to allow your application connect securely to the YugabyteDB cluster. In case of a **Yugabyte Cloud** cluster,
+In case of a Yugabyte Cloud cluster, to download the CA certificate for your cluster in Yugabyte Cloud, do the following:
 
 1. On the **Clusters** tab, select a cluster.
 
-1. Click **Connect**
+1. Click **Connect**.
 
 1. Click **Connect to your application** and download the CA cert.
 
 ### Go PostgreSQL driver
 
-The [Go PostgreSQL driver package (`pgx`)](https://pkg.go.dev/github.com/jackc/pgx) is a Go driver and toolkit for the PostgreSQL. The current release of `pgx v4` requires Go modules.
+The [Go PostgreSQL driver package (`pgx`)](https://pkg.go.dev/github.com/jackc/pgx) is a Go driver and toolkit for PostgreSQL. The current release of `pgx v4` requires Go modules.
 
 To install the package locally, run the following commands:
 
@@ -97,12 +97,6 @@ $ go get github.com/jackc/pgx/v4
 ## Create the sample Go application
 
 Create a file `ybsql_hello_world.go` and copy the contents below.
-
-{{< note title="Note">}}
-The constants defined under the `const` block in the code below have the default values.
-You may need to change the values of `host`, `user` and `password` as per your YugabyteDB cluster setup.
-For a **Yugabyte Cloud** cluster, the `host` will have a value in the format similar to `xxxx-xxxx-xxxx-xxxx-xxxx.aws.ybdb.io`.
-{{< /note >}}
 
 ```go
 package main
@@ -185,13 +179,18 @@ func main() {
 }
 ```
 
-## Disable SSL/TLS
+The `const` values are set to the defaults for a local installation of YugabyteDB. If you are using Yugabyte Cloud, replace the `const` values in the file as follows:
 
-For the default YugabyteDB setup, the SSL/TLS is not enabled. So, you don't need to specify any SSL-related configuration and directly [run the application](../ysql-pgx-ssl/#run-the-application).
+- `host` - The host address of your cluster. The host address is displayed on the cluster Settings tab.
+- `user` - Your Yugabyte database username. In Yugabyte Cloud, the default user is `admin`.
+- `password` - Your Yugabyte database password.
+- `database` - The name of the Yugabyte database. The default Yugabyte database name is `yugabyte`.
+
+`port` is set to 5433, which is the default port for the YSQL API.
 
 ## Enable SSL/TLS
 
-For the **Yugabyte Cloud** cluster or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as below.
+For a Yugabyte Cloud cluster or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as below.
 
    ```sh
     $ export PGSSLMODE=verify-ca
