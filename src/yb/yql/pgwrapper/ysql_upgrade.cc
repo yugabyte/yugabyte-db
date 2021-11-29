@@ -20,6 +20,7 @@
 #include <boost/algorithm/string.hpp>
 
 #include "yb/util/env_util.h"
+#include "yb/util/format.h"
 #include "yb/util/path_util.h"
 
 namespace yb {

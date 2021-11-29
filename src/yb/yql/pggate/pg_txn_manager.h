@@ -25,7 +25,6 @@
 #include "yb/common/transaction.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/tserver/tserver_util_fwd.h"
-#include "yb/util/result.h"
 #include "yb/util/enums.h"
 #include "yb/yql/pggate/pg_callbacks.h"
 

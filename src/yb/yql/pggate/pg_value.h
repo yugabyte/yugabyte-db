@@ -15,7 +15,6 @@
 #ifndef YB_YQL_PGGATE_PG_VALUE_H_
 #define YB_YQL_PGGATE_PG_VALUE_H_
 
-#include "yb/client/client.h"
 #include "yb/common/ql_value.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 

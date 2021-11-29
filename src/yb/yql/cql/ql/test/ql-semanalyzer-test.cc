@@ -12,8 +12,16 @@
 //
 
 #include <memory>
-#include "yb/yql/cql/ql/test/ql-test-base.h"
+
+#include "yb/util/result.h"
+#include "yb/util/status_log.h"
 #include "yb/util/varint.h"
+
+#include "yb/yql/cql/ql/test/ql-test-base.h"
+#include "yb/yql/cql/ql/ptree/pt_create_table.h"
+#include "yb/yql/cql/ql/ptree/pt_expr.h"
+#include "yb/yql/cql/ql/ptree/pt_select.h"
+#include "yb/yql/cql/ql/ptree/pt_table_property.h"
 
 namespace yb {
 namespace ql {
@@ -39,8 +47,8 @@ class QLTestAnalyzer: public QLTestBase {
 
     TreeNode::SharedPtr root = parse_tree->root();
     CHECK_EQ(TreeNodeOpcode::kPTSelectStmt, root->opcode());
-    PTSelectStmt::SharedPtr pt_select_stmt = std::static_pointer_cast<PTSelectStmt>(root);
-    PTSelectStmt::SharedPtr pt_child_select = pt_select_stmt->child_select();
+    auto pt_select_stmt = std::static_pointer_cast<PTSelectStmt>(root);
+    auto pt_child_select = pt_select_stmt->child_select();
     EXPECT_EQ(pt_child_select != nullptr, use_index) << select_stmt;
     EXPECT_EQ(pt_child_select != nullptr && pt_child_select->covers_fully(), covers_fully)
         << select_stmt;

@@ -12,9 +12,12 @@
 // under the License.
 //
 //--------------------------------------------------------------------------------------------------
-
 #include "yb/yql/cql/ql/sem/analyzer.h"
-#include "yb/util/logging.h"
+
+#include "yb/util/status.h"
+#include "yb/yql/cql/ql/ptree/parse_tree.h"
+#include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
 
 namespace yb {
 namespace ql {
@@ -31,10 +34,10 @@ Analyzer::~Analyzer() {
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS Analyzer::Analyze(ParseTree::UniPtr parse_tree) {
+CHECKED_STATUS Analyzer::Analyze(ParseTreePtr parse_tree) {
   ParseTree *ptree = parse_tree.get();
   DCHECK(ptree != nullptr) << "Parse tree is null";
-  sem_context_ = SemContext::UniPtr(new SemContext(std::move(parse_tree), ql_env_));
+  sem_context_ = std::make_unique<SemContext>(std::move(parse_tree), ql_env_);
   Status s = ptree->Analyze(sem_context_.get());
   if (PREDICT_FALSE(!s.ok())) {
     // When a statement is parsed for the first time, semantic analysis may fail because stale
@@ -69,6 +72,10 @@ ParseTree::UniPtr Analyzer::Done() {
   ParseTree::UniPtr ptree = sem_context_->AcquireParseTree();
   sem_context_ = nullptr;
   return ptree;
+}
+
+bool Analyzer::cache_used() const {
+  return sem_context_->cache_used();
 }
 
 }  // namespace ql

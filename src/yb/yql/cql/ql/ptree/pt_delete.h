@@ -38,12 +38,12 @@ class PTDeleteStmt : public PTDmlStmt {
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
   PTDeleteStmt(MemoryContext *memctx,
-               YBLocation::SharedPtr loc,
+               YBLocationPtr loc,
                PTExprListNode::SharedPtr target,
                PTTableRef::SharedPtr relation,
-               PTDmlUsingClause::SharedPtr using_clause = nullptr,
-               PTExpr::SharedPtr where_clause = nullptr,
-               PTExpr::SharedPtr if_clause = nullptr,
+               PTDmlUsingClausePtr using_clause = nullptr,
+               PTExprPtr where_clause = nullptr,
+               PTExprPtr if_clause = nullptr,
                bool else_error = false,
                bool returns_status = false);
   virtual ~PTDeleteStmt();
@@ -75,6 +75,10 @@ class PTDeleteStmt : public PTDmlStmt {
   }
 
   CHECKED_STATUS AnalyzeTarget(TreeNode *target, SemContext *sem_context);
+
+  bool IsWriteOp() const override {
+    return true;
+  }
 
  private:
   // --- The parser will decorate this node with the following information --

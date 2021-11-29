@@ -13,10 +13,16 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/common/typedefs.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/table_properties_constants.h"
+#include "yb/common/typedefs.h"
 
+#include "yb/yql/cql/ql/exec/exec_context.h"
 #include "yb/yql/cql/ql/exec/executor.h"
+
+#include "yb/yql/cql/ql/ptree/pt_dml.h"
+#include "yb/yql/cql/ql/ptree/pt_expr.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
 
 namespace yb {
 namespace ql {
@@ -25,7 +31,7 @@ using std::shared_ptr;
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS Executor::PTExprToPBValidated(const PTExpr::SharedPtr& expr,
+CHECKED_STATUS Executor::PTExprToPBValidated(const PTExprPtr& expr,
                                              QLExpressionPB *expr_pb) {
   RETURN_NOT_OK(PTExprToPB(expr, expr_pb));
   if (expr_pb->has_value() && IsNull(expr_pb->value())) {

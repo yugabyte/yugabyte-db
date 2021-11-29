@@ -18,13 +18,10 @@
 #ifndef YB_YQL_CQL_QL_UTIL_STATEMENT_PARAMS_H_
 #define YB_YQL_CQL_QL_UTIL_STATEMENT_PARAMS_H_
 
-#include <boost/thread/shared_mutex.hpp>
-
 #include "yb/common/common_fwd.h"
 #include "yb/common/ql_protocol.pb.h"
 
-#include "yb/util/result.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
@@ -72,18 +69,14 @@ class StatementParameters {
   // Check if a bind variable is unset. To be overridden by subclasses
   // to return actual bind variables status.
   virtual Result<bool> IsBindVariableUnset(const std::string& name,
-                                           int64_t pos) const {
-    return STATUS(RuntimeError, "no bind variable available");
-  }
+                                           int64_t pos) const;
 
   // Retrieve a bind variable for the execution of the statement. To be overridden by subclasses
   // to return actual bind variables.
   virtual CHECKED_STATUS GetBindVariable(const std::string& name,
                                          int64_t pos,
                                          const std::shared_ptr<QLType>& type,
-                                         QLValue* value) const {
-    return STATUS(RuntimeError, "no bind variable available");
-  }
+                                         QLValue* value) const;
 
   YBConsistencyLevel yb_consistency_level() const {
     return yb_consistency_level_;

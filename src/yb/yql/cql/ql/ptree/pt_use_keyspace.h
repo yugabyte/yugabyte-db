@@ -36,7 +36,7 @@ class PTUseKeyspace : public TreeNode {
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
   PTUseKeyspace(MemoryContext *memctx,
-                YBLocation::SharedPtr loc,
+                YBLocationPtr loc,
                 const MCSharedPtr<MCString>& name);
   virtual ~PTUseKeyspace();
 
