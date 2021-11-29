@@ -19,6 +19,7 @@
 #ifndef YB_YQL_CQL_QL_PTREE_PT_OPTION_H_
 #define YB_YQL_CQL_QL_PTREE_PT_OPTION_H_
 
+#include <cmath> // Include cmath to get DOMAIN definition and undef it here
 #include <iosfwd>
 
 namespace yb {
