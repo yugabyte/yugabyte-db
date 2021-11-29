@@ -1,10 +1,13 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.models;
 
+import static com.yugabyte.yw.common.TestUtils.replaceFirstChar;
 import static com.yugabyte.yw.common.ThrownMatcher.thrown;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.notNullValue;
@@ -20,15 +23,20 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.models.AlertConfiguration.Severity;
+import com.yugabyte.yw.models.AlertConfiguration.SortBy;
 import com.yugabyte.yw.models.AlertConfiguration.TargetType;
 import com.yugabyte.yw.models.common.Condition;
 import com.yugabyte.yw.models.common.Unit;
 import com.yugabyte.yw.models.filters.AlertConfigurationFilter;
+import com.yugabyte.yw.models.filters.AlertConfigurationFilter.DestinationType;
 import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
+import com.yugabyte.yw.models.paging.AlertConfigurationPagedQuery;
+import com.yugabyte.yw.models.paging.PagedQuery.SortDirection;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -122,7 +130,13 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     AlertConfiguration updated =
         alertConfigurationService
-            .list(AlertConfigurationFilter.builder().targetUuid(universe.getUniverseUUID()).build())
+            .list(
+                AlertConfigurationFilter.builder()
+                    .target(
+                        new AlertConfigurationTarget()
+                            .setAll(false)
+                            .setUuids(Collections.singleton(universe.getUniverseUUID())))
+                    .build())
             .get(0);
 
     assertThat(updated.getTarget(), equalTo(target));
@@ -137,6 +151,192 @@ public class AlertConfigurationTest extends FakeDBApplication {
             AlertDefinitionFilter.builder().configurationUuid(updated.getUuid()).build());
 
     assertThat(definitions, hasSize(1));
+  }
+
+  @Test
+  public void testFilter() {
+    AlertConfiguration configuration = createTestConfiguration();
+
+    AlertConfiguration configuration2 =
+        alertConfigurationService
+            .createConfigurationTemplate(customer, AlertTemplate.HEALTH_CHECK_ERROR)
+            .getDefaultConfiguration();
+    AlertConfigurationThreshold warningThreshold =
+        new AlertConfigurationThreshold().setCondition(Condition.GREATER_THAN).setThreshold(1D);
+    configuration2.setThresholds(ImmutableMap.of(Severity.WARNING, warningThreshold));
+    AlertConfigurationTarget target =
+        new AlertConfigurationTarget()
+            .setAll(false)
+            .setUuids(ImmutableSet.of(universe.getUniverseUUID()));
+    configuration2.setTarget(target);
+    configuration2.setActive(false);
+    alertConfigurationService.save(configuration2);
+
+    AlertConfiguration platformConfiguration =
+        alertConfigurationService
+            .createConfigurationTemplate(customer, AlertTemplate.ALERT_QUERY_FAILED)
+            .getDefaultConfiguration();
+    platformConfiguration.setDefaultDestination(false);
+    alertConfigurationService.save(platformConfiguration);
+
+    // Empty filter
+    AlertConfigurationFilter filter = AlertConfigurationFilter.builder().build();
+    assertFind(filter, configuration, configuration2, platformConfiguration);
+
+    // Name filter
+    filter =
+        AlertConfigurationFilter.builder().name(AlertTemplate.MEMORY_CONSUMPTION.getName()).build();
+    assertFind(filter, configuration);
+
+    // Active filter
+    filter = AlertConfigurationFilter.builder().active(true).build();
+    assertFind(filter, configuration, platformConfiguration);
+
+    // Target type filter
+    filter = AlertConfigurationFilter.builder().targetType(TargetType.UNIVERSE).build();
+    assertFind(filter, configuration, configuration2);
+
+    // Target filter
+    filter =
+        AlertConfigurationFilter.builder()
+            .target(
+                new AlertConfigurationTarget()
+                    .setAll(false)
+                    .setUuids(ImmutableSet.of(configuration2.getUuid())))
+            .build();
+    assertFind(filter, configuration2);
+
+    filter =
+        AlertConfigurationFilter.builder()
+            .target(new AlertConfigurationTarget().setAll(true))
+            .build();
+    assertFind(filter, configuration, platformConfiguration);
+
+    // Template filter
+    filter = AlertConfigurationFilter.builder().template(AlertTemplate.MEMORY_CONSUMPTION).build();
+    assertFind(filter, configuration);
+
+    // Severity filter
+    filter = AlertConfigurationFilter.builder().severity(Severity.WARNING).build();
+    assertFind(filter, configuration2);
+
+    // Destination Type filter
+    filter =
+        AlertConfigurationFilter.builder()
+            .destinationType(DestinationType.SELECTED_DESTINATION)
+            .build();
+    assertFind(filter, configuration);
+
+    filter =
+        AlertConfigurationFilter.builder()
+            .destinationType(DestinationType.DEFAULT_DESTINATION)
+            .build();
+    assertFind(filter, configuration2);
+
+    filter =
+        AlertConfigurationFilter.builder().destinationType(DestinationType.NO_DESTINATION).build();
+    assertFind(filter, platformConfiguration);
+
+    // Destination UUID filter
+    filter = AlertConfigurationFilter.builder().destinationUuid(alertDestination.getUuid()).build();
+    assertFind(filter, configuration);
+  }
+
+  private void assertFind(AlertConfigurationFilter filter, AlertConfiguration... configurations) {
+    List<AlertConfiguration> queried = alertConfigurationService.list(filter);
+    assertThat(queried, hasSize(configurations.length));
+    assertThat(queried, containsInAnyOrder(configurations));
+  }
+
+  @Test
+  public void testSort() {
+    Date now = new Date();
+    AlertConfiguration configuration =
+        alertConfigurationService
+            .createConfigurationTemplate(customer, AlertTemplate.MEMORY_CONSUMPTION)
+            .getDefaultConfiguration();
+    configuration.setDestinationUUID(alertDestination.getUuid());
+    configuration.setDefaultDestination(false);
+    configuration.setCreateTime(Date.from(now.toInstant().minusSeconds(5)));
+    configuration.generateUUID();
+    configuration.setUuid(replaceFirstChar(configuration.getUuid(), 'a'));
+    configuration.save();
+
+    AlertConfiguration configuration2 =
+        alertConfigurationService
+            .createConfigurationTemplate(customer, AlertTemplate.HEALTH_CHECK_ERROR)
+            .getDefaultConfiguration();
+    AlertConfigurationThreshold warningThreshold =
+        new AlertConfigurationThreshold().setCondition(Condition.GREATER_THAN).setThreshold(1D);
+    configuration2.setThresholds(ImmutableMap.of(Severity.WARNING, warningThreshold));
+    AlertConfigurationTarget target =
+        new AlertConfigurationTarget()
+            .setAll(false)
+            .setUuids(ImmutableSet.of(universe.getUniverseUUID()));
+    configuration2.setTarget(target);
+    configuration2.setActive(false);
+    configuration2.setCreateTime(Date.from(now.toInstant().minusSeconds(2)));
+    configuration2.generateUUID();
+    configuration2.setUuid(replaceFirstChar(configuration2.getUuid(), 'b'));
+    configuration2.save();
+
+    AlertConfiguration platformConfiguration =
+        alertConfigurationService
+            .createConfigurationTemplate(customer, AlertTemplate.ALERT_QUERY_FAILED)
+            .getDefaultConfiguration();
+    platformConfiguration.setDefaultDestination(false);
+    platformConfiguration.setCreateTime(now);
+    platformConfiguration.generateUUID();
+    platformConfiguration.setUuid(replaceFirstChar(platformConfiguration.getUuid(), 'c'));
+    platformConfiguration.save();
+
+    AlertDefinition definition =
+        ModelFactory.createAlertDefinition(customer, universe, configuration);
+    ModelFactory.createAlert(customer, universe, definition);
+
+    assertSort(
+        SortBy.uuid, SortDirection.ASC, configuration, configuration2, platformConfiguration);
+    assertSort(
+        SortBy.name, SortDirection.DESC, configuration, configuration2, platformConfiguration);
+    assertSort(
+        SortBy.active, SortDirection.ASC, configuration2, configuration, platformConfiguration);
+    assertSort(
+        SortBy.targetType,
+        SortDirection.DESC,
+        configuration,
+        configuration2,
+        platformConfiguration);
+    assertSort(
+        SortBy.createTime,
+        SortDirection.DESC,
+        platformConfiguration,
+        configuration2,
+        configuration);
+    assertSort(
+        SortBy.template, SortDirection.ASC, platformConfiguration, configuration2, configuration);
+    assertSort(
+        SortBy.severity, SortDirection.ASC, configuration2, configuration, platformConfiguration);
+    assertSort(
+        SortBy.destination,
+        SortDirection.DESC,
+        configuration2,
+        platformConfiguration,
+        configuration);
+    assertSort(
+        SortBy.alertCount, SortDirection.ASC, configuration2, platformConfiguration, configuration);
+  }
+
+  private void assertSort(
+      SortBy sortBy, SortDirection direction, AlertConfiguration... configurations) {
+    AlertConfigurationFilter filter = AlertConfigurationFilter.builder().build();
+    AlertConfigurationPagedQuery query = new AlertConfigurationPagedQuery();
+    query.setFilter(filter);
+    query.setSortBy(sortBy);
+    query.setDirection(direction);
+    query.setLimit(3);
+    List<AlertConfiguration> queried = alertConfigurationService.pagedList(query).getEntities();
+    assertThat(queried, hasSize(configurations.length));
+    assertThat(queried, contains(configurations));
   }
 
   @Test
