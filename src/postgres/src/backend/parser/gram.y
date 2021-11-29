@@ -6251,7 +6251,6 @@ DefineStmt:
 				}
 			| CREATE TEXT_P SEARCH PARSER any_name definition
 				{
-					parser_ybc_not_support(@1, "CREATE TEXT SEARCH PARSER");
 					DefineStmt *n = makeNode(DefineStmt);
 					n->kind = OBJECT_TSPARSER;
 					n->args = NIL;
@@ -6261,7 +6260,6 @@ DefineStmt:
 				}
 			| CREATE TEXT_P SEARCH DICTIONARY any_name definition
 				{
-					parser_ybc_not_support(@1, "CREATE TEXT SEARCH DICTIONARY");
 					DefineStmt *n = makeNode(DefineStmt);
 					n->kind = OBJECT_TSDICTIONARY;
 					n->args = NIL;
@@ -6271,7 +6269,6 @@ DefineStmt:
 				}
 			| CREATE TEXT_P SEARCH TEMPLATE any_name definition
 				{
-					parser_ybc_not_support(@1, "CREATE TEXT SEARCH TEMPLATE");
 					DefineStmt *n = makeNode(DefineStmt);
 					n->kind = OBJECT_TSTEMPLATE;
 					n->args = NIL;
@@ -6281,7 +6278,6 @@ DefineStmt:
 				}
 			| CREATE TEXT_P SEARCH CONFIGURATION any_name definition
 				{
-					parser_ybc_not_support(@1, "CREATE TEXT SEARCH CONFIGURATION");
 					DefineStmt *n = makeNode(DefineStmt);
 					n->kind = OBJECT_TSCONFIGURATION;
 					n->args = NIL;
@@ -6857,22 +6853,18 @@ drop_type_any_name:
 			| STATISTICS { parser_ybc_not_support(@1, "DROP STATISTICS"); $$ = OBJECT_STATISTIC_EXT; }
 			| TEXT_P SEARCH PARSER
 				{
-					parser_ybc_not_support(@1, "DROP TEXT SEARCH PARSER");
 					$$ = OBJECT_TSPARSER;
 				}
 			| TEXT_P SEARCH DICTIONARY
 				{
-					parser_ybc_not_support(@1, "DROP TEXT SEARCH DICTIONARY");
 					$$ = OBJECT_TSDICTIONARY;
 				}
 			| TEXT_P SEARCH TEMPLATE
 				{
-					parser_ybc_not_support(@1, "DROP TEXT SEARCH TEMPLATE");
 					$$ = OBJECT_TSTEMPLATE;
 				}
 			| TEXT_P SEARCH CONFIGURATION
 				{
-					parser_ybc_not_support(@1, "DROP TEXT SEARCH CONFIGURATION");
 					$$ = OBJECT_TSCONFIGURATION;
 				}
 		;
@@ -9733,7 +9725,6 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER TEXT_P SEARCH PARSER any_name RENAME TO name
 				{
-					parser_ybc_not_support(@1, "ALTER TEXT SEARCH PARSER");
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_TSPARSER;
 					n->object = (Node *) $5;
@@ -9743,7 +9734,6 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER TEXT_P SEARCH DICTIONARY any_name RENAME TO name
 				{
-					parser_ybc_not_support(@1, "ALTER TEXT SEARCH DICTIONARY");
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_TSDICTIONARY;
 					n->object = (Node *) $5;
@@ -9753,7 +9743,6 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER TEXT_P SEARCH TEMPLATE any_name RENAME TO name
 				{
-					parser_ybc_not_support(@1, "ALTER TEXT SEARCH TEMPLATE");
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_TSTEMPLATE;
 					n->object = (Node *) $5;
@@ -9763,7 +9752,6 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER TEXT_P SEARCH CONFIGURATION any_name RENAME TO name
 				{
-					parser_ybc_not_support(@1, "ALTER TEXT SEARCH CONFIGURATION");
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_TSCONFIGURATION;
 					n->object = (Node *) $5;
@@ -10013,7 +10001,6 @@ AlterObjectSchemaStmt:
 				}
 			| ALTER TEXT_P SEARCH PARSER any_name SET SCHEMA name
 				{
-					parser_ybc_not_support(@1, "ALTER TEXT SEARCH PARSER SET SCHEMA");
 					AlterObjectSchemaStmt *n = makeNode(AlterObjectSchemaStmt);
 					n->objectType = OBJECT_TSPARSER;
 					n->object = (Node *) $5;
@@ -10023,7 +10010,6 @@ AlterObjectSchemaStmt:
 				}
 			| ALTER TEXT_P SEARCH DICTIONARY any_name SET SCHEMA name
 				{
-					parser_ybc_not_support(@1, "ALTER TEXT SEARCH DICTIONARY SET SCHEMA");
 					AlterObjectSchemaStmt *n = makeNode(AlterObjectSchemaStmt);
 					n->objectType = OBJECT_TSDICTIONARY;
 					n->object = (Node *) $5;
@@ -10033,7 +10019,6 @@ AlterObjectSchemaStmt:
 				}
 			| ALTER TEXT_P SEARCH TEMPLATE any_name SET SCHEMA name
 				{
-					parser_ybc_not_support(@1, "ALTER TEXT SEARCH TEMPLATE SET SCHEMA");
 					AlterObjectSchemaStmt *n = makeNode(AlterObjectSchemaStmt);
 					n->objectType = OBJECT_TSTEMPLATE;
 					n->object = (Node *) $5;
@@ -10043,7 +10028,6 @@ AlterObjectSchemaStmt:
 				}
 			| ALTER TEXT_P SEARCH CONFIGURATION any_name SET SCHEMA name
 				{
-					parser_ybc_not_support(@1, "ALTER TEXT SEARCH CONFIGURATION SET SCHEMA");
 					AlterObjectSchemaStmt *n = makeNode(AlterObjectSchemaStmt);
 					n->objectType = OBJECT_TSCONFIGURATION;
 					n->object = (Node *) $5;
