@@ -1212,7 +1212,6 @@ create index trgm_idx on test_trgm using gist (t gist_trgm_ops);
 ERROR:  index method "gist" not supported yet
 HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1337. Click '+' on the description to raise its priority
 create index trgm_idx on test_trgm using gin (t gin_trgm_ops);
-NOTICE:  replacing access method "gin" with "ybgin"
 set enable_seqscan=off;
 select t,similarity(t,'qwertyu0988') as sml from test_trgm where t % 'qwertyu0988' order by sml desc, t;
 ERROR:  unsupported ybgin index scan
@@ -1232,7 +1231,6 @@ insert into test2 values ('quark');
 insert into test2 values ('  z foo bar');
 insert into test2 values ('/123/-45/');
 create index test2_idx_gin on test2 using gin (t gin_trgm_ops);
-NOTICE:  replacing access method "gin" with "ybgin"
 set enable_seqscan=off;
 explain (costs off)
   select * from test2 where t like '%BCD%';

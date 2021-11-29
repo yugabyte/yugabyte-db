@@ -2896,7 +2896,6 @@ SELECT count(*) FROM testjsonb WHERE j @? '$.bar';
 (1 row)
 
 CREATE INDEX jidx ON testjsonb USING gin (j);
-NOTICE:  replacing access method "gin" with "ybgin"
 SET enable_seqscan = off;
 SELECT count(*) FROM testjsonb WHERE j @> '{"wait":null}';
  count
@@ -3129,7 +3128,6 @@ ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 -- array exists - array elements should behave as keys (for GIN index scans too)
 CREATE INDEX jidx_array ON testjsonb USING gin((j->'array'));
-NOTICE:  replacing access method "gin" with "ybgin"
 SELECT count(*) from testjsonb  WHERE j->'array' ? 'bar';
  count
 -------
@@ -3243,7 +3241,6 @@ SELECT count(*) FROM testjsonb WHERE j = '{"pos":98, "line":371, "node":"CBA", "
 DROP INDEX jidx;
 ERROR:  index "jidx" does not exist
 CREATE INDEX jidx ON testjsonb USING gin (j jsonb_path_ops);
-NOTICE:  replacing access method "gin" with "ybgin"
 SET enable_seqscan = off;
 SELECT count(*) FROM testjsonb WHERE j @> '{"wait":null}';
  count
