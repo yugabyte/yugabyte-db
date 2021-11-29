@@ -12,18 +12,17 @@ export USE_PGXS=1
 	dh $@
 
 override_dh_auto_build:
-	+pg_buildext build build-%v
+	+pg_buildext clean . build-%v
+	+pg_buildext build . build-%v
 
 override_dh_auto_test:
 	# nothing to do here
 
 override_dh_auto_install:
-	+pg_buildext install build-%v percona-pg-stat-monitor@@PG_REL@@
+	+pg_buildext install . build-%v percona-pg-stat-monitor@@PG_REL@@
 
 override_dh_installdocs:
 	dh_installdocs --all README.*
 
 override_dh_auto_clean:
-	+pg_buildext clean build-%v
-	rm -rf results regression.*
-	mkdir results
+	rm -rf results/* regression.*
