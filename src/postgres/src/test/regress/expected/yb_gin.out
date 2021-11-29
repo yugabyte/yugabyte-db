@@ -646,7 +646,6 @@ DISCARD TEMP;
 --
 CREATE TABLE vectors (i serial PRIMARY KEY, v tsvector);
 CREATE INDEX ON vectors USING gin (v);
-NOTICE:  replacing access method "gin" with "ybgin"
 -- Cleanup
 DROP TABLE vectors;
 RESET enable_seqscan;
