@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-[Yugabyte JDBC driver](https://github.com/yugabyte/pgjdbc) is a distributed JDBC driver for [YSQL](/latest/api/ysql/) built on the [PostgreSQL JDBC driver](https://github.com/pgjdbc/pgjdbc). 
+[Yugabyte JDBC driver](https://github.com/yugabyte/pgjdbc) is a distributed JDBC driver for [YSQL](/latest/api/ysql/) built on the [PostgreSQL JDBC driver](https://github.com/pgjdbc/pgjdbc).
 Although the upstream PostgreSQL JDBC driver works with YugabyteDB, the Yugabyte driver enhances YugabyteDB by eliminating the need for external load balancers.
 The driver has the following features:
 
@@ -26,7 +26,7 @@ The driver has the following features:
   The driver uses servers that are part of a set of geo-locations specified by topology keys.
 
 ## Load balancing
-  
+
 The Yugabyte JDBC driver has the following load balancing features:
 
 - Uniform load balancing
@@ -35,13 +35,13 @@ The Yugabyte JDBC driver has the following load balancing features:
    In this mode, the driver makes the best effort to uniformly distribute the connections to each YugabyteDB server. For example, if a client application creates 100 connections to a YugabyteDB cluster consisting of 10 servers, then the driver creates 10 connections to each server. If the number of connections are not exactly divisible by the number of servers, then a few may have 1 less or 1 more connection than the others. This is the client view of the load, so the servers may not be well balanced if other client applications are not using the Yugabyte JDBC driver.
 
 - Topology-aware load balancing
-  
+
    <br></br>
-   Because YugabyteDB clusters can have servers in different regions and availability zones, the YugabyteDB JDBC driver is topology-aware, and can be configured to create connections only on servers that are in specific regions and zones. This is useful for client applications that need to connect to the geographically nearest regions and availability zone for lower latency; the driver tries to uniformly load only those servers that belong to the specified regions and zone.    
+   Because YugabyteDB clusters can have servers in different regions and availability zones, the YugabyteDB JDBC driver is topology-aware, and can be configured to create connections only on servers that are in specific regions and zones. This is useful for client applications that need to connect to the geographically nearest regions and availability zone for lower latency; the driver tries to uniformly load only those servers that belong to the specified regions and zone.
 
 The Yugabyte JDBC driver can be configured with popular pooling solutions such as Hikari and Tomcat. Different pools can be configured with different load balancing policies if required. For example, an application can configure one pool with topology awareness for one region and availability zones, and it can also configure another pool to talk to a completely different region and availability zones.
 
-## Creating the driver
+## Getting the driver
 
 You have a choice of obtaining the driver from Maven or creating it yourself.
 
@@ -77,13 +77,13 @@ To build the driver locally, follow this procedure:
    ```
 
 3. Checkout the `yugabyte` branch.
-   
+
    ```sh
    git checkout yugabyte
    ```
 
 4. Build and install into your local Maven folder.
-   
+
    ```sh
    ./gradlew publishToMavenLocal -x test -x checkstyleMain
    ```
@@ -95,7 +95,7 @@ To build the driver locally, follow this procedure:
      <groupId>com.yugabyte</groupId>
      <artifactId>jdbc-yugabytedb</artifactId>
      <version>42.3.0</version>
-   </dependency> 
+   </dependency>
    ```
 
 {{< note title="Note">}}
@@ -112,6 +112,8 @@ The following connection properties need to be added to enable load balancing:
 - topology-keys - provide comma-separated geo-location values to enable topology-aware load balancing. Geo-locations can be provided as `cloud:region:zone`.
 
 ## Use the driver
+
+The YugabyteDB JDBC driver’s driver class is `com.yugabyte.Driver`.
 
 To use the Yugabyte JDBC Driver, do the following:
 
@@ -139,10 +141,10 @@ To use the Yugabyte JDBC Driver, do the following:
   ds.setUrl(jdbcUrl);
   // Set topology keys to enable topology-aware distribution
   ds.setTopologyKeys("cloud1.region1.zone1,cloud1.region2.zone2");
-  // Provide more end points to prevent first connection failure 
-  // if an initial contact point is not available 
+  // Provide more end points to prevent first connection failure
+  // if an initial contact point is not available
   ds.setAdditionalEndpoints("127.0.0.2:5433,127.0.0.3:5433");
-  
+
   Connection conn = ds.getConnection();
   ```
 
@@ -198,7 +200,7 @@ $ cd <path-to-yugabytedb-installation>
 - Download the yb-sample-apps JAR file.
 
   ```sh
-  wget https://github.com/yugabyte/yb-sample-apps/releases/download/v1.4.0/yb-sample-apps.jar 
+  wget https://github.com/yugabyte/yb-sample-apps/releases/download/v1.4.0/yb-sample-apps.jar
   ```
 
 - Run the SqlInserts workload application, which creates multiple threads that perform read and write operations on a sample table created by the app. Uniform load balancing is enabled by default in all Sql* workloads of the yb-sample-apps, including SqlInserts.
@@ -210,14 +212,14 @@ $ cd <path-to-yugabytedb-installation>
        --nodes 127.0.0.1:5433,127.0.0.2:5433,127.0.0.3:5433
   ```
 
-The application creates 30 connections, 1 for each reader and writer threads. To verify the behavior, wait for the app to create connections and then visit `http://<host>:13000/rpcz` from your browser for each node to see that the connections are equally distributed among the nodes. 
+The application creates 30 connections, 1 for each reader and writer threads. To verify the behavior, wait for the app to create connections and then visit `http://<host>:13000/rpcz` from your browser for each node to see that the connections are equally distributed among the nodes.
 This URL presents a list of connections where each element of the list has some information about the connection as shown in the following screenshot. You can count the number of connections from that list, or simply search for the occurrence count of the `host` keyword on that webpage. Each node should have 10 connections.
 
 ![Load balancing with host connections](/images/develop/ecosystem-integrations/jdbc-load-balancing.png)
 
 ### Check Topology-aware load balancing using yb-sample-apps
 
-For topology-aware load balancing, run the SqlInserts workload application with the `topology-keys1` property set to `aws.us-west.us-west-2a`; only two nodes will be used in this case.  
+For topology-aware load balancing, run the SqlInserts workload application with the `topology-keys1` property set to `aws.us-west.us-west-2a`; only two nodes will be used in this case.
 
   ```sh
   java -jar yb-sample-apps.jar \
@@ -241,9 +243,9 @@ When you're done experimenting, run the following command to destroy the local c
 
 To access sample applications that use the Yugabyte JDBC driver, visit [YugabyteDB JDBC driver](https://github.com/yugabyte/pgjdbc).
 
-To use the samples, complete the following steps: 
+To use the samples, complete the following steps:
 
-- Install YugabyteDB by following instructions provided in [Quick Start Guide](/latest/quick-start/install/). 
+- Install YugabyteDB by following instructions provided in [Quick Start Guide](/latest/quick-start/install/).
 
 - Build the examples by running `mvn package`.
 
@@ -261,7 +263,7 @@ To use the samples, complete the following steps:
 
   - *[-v] [-i]* with `-v -i` if you want to run the script in both `VERBOSE` and `INTERACTIVE` mode at the same time.
 
-  - *<path_to_yugabyte_installation>* with the path to the directory where you installed YugabyteDB. 
+  - *<path_to_yugabyte_installation>* with the path to the directory where you installed YugabyteDB.
 
   The following is an example of a shell command that runs the script:
 
