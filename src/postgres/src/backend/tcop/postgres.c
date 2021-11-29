@@ -3831,11 +3831,56 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata, bool consider_retry,
 		else
 		{
 			if (need_global_cache_refresh)
-				ereport(ERROR,
-						(errcode(ERRCODE_INTERNAL_ERROR),
-						 errmsg("%s", edata->message),
-						 errdetail("Internal error: %s", "Catalog Version Mismatch: A DDL occurred "
-								   "while processing this query. Try again.")));
+			{
+				int error_code = edata->sqlerrcode;
+
+				/*
+				 * TODO: This error occurs in tablet service when snapshot is outdated.
+				 * We should eventually translate this type of error as a retryable error
+				 * in the upper layer such as in YBCStatusPgsqlError().
+				 */
+				bool isInvalidCatalogSnapshotError = strstr(edata->message,
+						"catalog snapshot used for this transaction has been invalidated") != NULL;
+
+				/*
+				 * If we got a schema-version-mismatch error while a DDL happened,
+				 * this is likely caused by a conflict between the current
+				 * transaction and the DDL transaction.
+				 * So we map it to the retryable serialization failure error code.
+				 * TODO: consider if we should
+				 * 1. map this case to a different (retryable) error code
+				 * 2. always map schema-version-mismatch to a retryable error.
+				 */
+				if (need_table_cache_refresh || isInvalidCatalogSnapshotError)
+				{
+					error_code = ERRCODE_T_R_SERIALIZATION_FAILURE;
+				}
+
+				/*
+				 * Report the original error, but add a context mentioning that a
+				 * possibly-conflicting, concurrent DDL transaction happened.
+				 */
+				if (edata->detail == NULL && edata->hint == NULL)
+				{
+					ereport(edata->elevel,
+							(yb_txn_errcode(edata->yb_txn_errcode),
+							 errcode(error_code),
+							 errmsg("%s", edata->message),
+							 errcontext("Catalog Version Mismatch: A DDL occurred "
+										"while processing this query. Try again.")));
+				}
+				else
+				{
+					ereport(edata->elevel,
+							(yb_txn_errcode(edata->yb_txn_errcode),
+							 errcode(error_code),
+							 errmsg("%s", edata->message),
+							 errdetail("%s", edata->detail),
+							 errhint("%s", edata->hint),
+							 errcontext("Catalog Version Mismatch: A DDL occurred "
+										"while processing this query. Try again.")));
+				}
+			}
 			else
 			{
 				Assert(need_table_cache_refresh);

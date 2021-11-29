@@ -1670,8 +1670,8 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
         }
         if (pg_req.ysql_catalog_version() < last_breaking_catalog_version) {
           SetupErrorAndRespond(resp->mutable_error(),
-              STATUS_SUBSTITUTE(QLError, "Catalog Version Mismatch: A DDL occurred while "
-                                        "processing this query. Try again."),
+              STATUS_SUBSTITUTE(QLError, "The catalog snapshot used for this "
+                                         "transaction has been invalidated."),
               TabletServerErrorPB::MISMATCHED_SCHEMA, &context);
           return;
         }
@@ -2055,8 +2055,8 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
         }
         if (pg_req.ysql_catalog_version() < last_breaking_catalog_version) {
           SetupErrorAndRespond(resp->mutable_error(),
-              STATUS_SUBSTITUTE(QLError, "Catalog Version Mismatch: A DDL occurred while "
-                                        "processing this query. Try again."),
+              STATUS_SUBSTITUTE(QLError, "The catalog snapshot used for this "
+                                         "transaction has been invalidated."),
               TabletServerErrorPB::MISMATCHED_SCHEMA, &context);
           return;
         }
