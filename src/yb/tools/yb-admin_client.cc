@@ -34,37 +34,40 @@
 #include <sstream>
 #include <type_traits>
 
-#include <boost/multi_index_container.hpp>
 #include <boost/multi_index/composite_key.hpp>
 #include <boost/multi_index/global_fun.hpp>
 #include <boost/multi_index/ordered_index.hpp>
+#include <boost/multi_index_container.hpp>
 #include <boost/tti/has_member_function.hpp>
-
 #include <google/protobuf/util/json_util.h>
 #include <gtest/gtest.h>
 
+#include "yb/client/client.h"
+#include "yb/client/table.h"
+#include "yb/client/table_creator.h"
 #include "yb/common/json_util.h"
 #include "yb/common/redis_constants_common.h"
+#include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/client/client.h"
-#include "yb/client/table_alterer.h"
-#include "yb/client/table_creator.h"
-#include "yb/master/master.pb.h"
-#include "yb/master/sys_catalog.h"
-#include "yb/rpc/proxy.h"
-
-#include "yb/util/string_case.h"
-#include "yb/util/net/net_util.h"
-#include "yb/util/string_util.h"
-#include "yb/util/protobuf_util.h"
-#include "yb/util/random_util.h"
-#include "yb/util/stol_utils.h"
-#include "yb/gutil/strings/split.h"
+#include "yb/consensus/consensus.proxy.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/numbers.h"
-
-#include "yb/consensus/consensus.proxy.h"
+#include "yb/gutil/strings/split.h"
+#include "yb/master/master.pb.h"
+#include "yb/master/master_defaults.h"
+#include "yb/master/sys_catalog.h"
+#include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
 #include "yb/tserver/tserver_admin.proxy.h"
+#include "yb/tserver/tserver_service.proxy.h"
+#include "yb/util/format.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/protobuf_util.h"
+#include "yb/util/random_util.h"
+#include "yb/util/status_format.h"
+#include "yb/util/stol_utils.h"
+#include "yb/util/string_case.h"
+#include "yb/util/string_util.h"
 
 DEFINE_bool(wait_if_no_leader_master, false,
             "When yb-admin connects to the cluster and no leader master is present, "

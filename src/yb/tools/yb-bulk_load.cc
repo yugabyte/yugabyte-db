@@ -10,10 +10,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include <thread>
-#include <boost/algorithm/string.hpp>
 
+#include <boost/algorithm/string.hpp>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
@@ -29,6 +28,7 @@
 #include "yb/docdb/cql_operation.h"
 #include "yb/docdb/doc_operation.h"
 #include "yb/docdb/docdb.h"
+#include "yb/master/master.pb.h"
 #include "yb/master/master_util.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/options.h"
@@ -40,13 +40,15 @@
 #include "yb/tools/yb-generate_partitions.h"
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/util/env.h"
-#include "yb/util/status.h"
-#include "yb/util/stol_utils.h"
-#include "yb/util/size_literals.h"
-#include "yb/util/threadpool.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/stol_utils.h"
 #include "yb/util/subprocess.h"
+#include "yb/util/threadpool.h"
 
 using std::pair;
 using std::string;
@@ -308,9 +310,9 @@ Status BulkLoadTask::InsertRow(const string &row,
   // Comment from PritamD: Don't need cross shard transaction support in bulk load, but I guess
   // once we have secondary indexes we probably might need to ensure bulk load builds the indexes
   // as well.
-  docdb::QLWriteOperation op(std::shared_ptr<const Schema>(&schema, [](const Schema*){}),
-                             index_map, nullptr /* unique_index_key_schema */,
-                             TransactionOperationContext{});
+  docdb::QLWriteOperation op(
+      std::shared_ptr<const Schema>(&schema, [](const Schema*){}),
+      index_map, nullptr /* unique_index_key_schema */, TransactionOperationContext());
   RETURN_NOT_OK(op.Init(&req, &resp));
   RETURN_NOT_OK(op.Apply({
       doc_write_batch,

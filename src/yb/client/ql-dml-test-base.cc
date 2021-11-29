@@ -17,15 +17,22 @@
 
 #include "yb/client/client.h"
 #include "yb/client/error.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 
 #include "yb/common/ql_name.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/schema.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/bfql/gen_opcodes.h"
+
+#include "yb/server/clock.h"
+#include "yb/util/atomic.h"
+#include "yb/util/format.h"
+#include "yb/util/status_format.h"
 
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
@@ -35,6 +42,13 @@ DECLARE_bool(enable_ysql);
 using namespace std::literals;
 
 namespace yb {
+
+namespace ql {
+
+extern ErrorCode QLStatusToErrorCode(QLResponsePB::QLStatus status); // TODO
+
+}
+
 namespace client {
 
 const client::YBTableName kTableName(YQL_DATABASE_CQL, "my_keyspace", "ql_client_test_table");

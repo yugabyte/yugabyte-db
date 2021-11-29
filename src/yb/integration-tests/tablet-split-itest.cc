@@ -10,12 +10,10 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include <chrono>
 #include <thread>
 
 #include <boost/range/adaptors.hpp>
-
 #include <gtest/gtest.h>
 
 #include "yb/client/client-test-util.h"
@@ -23,59 +21,55 @@
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/session.h"
 #include "yb/client/snapshot_test_util.h"
+#include "yb/client/table_info.h"
 #include "yb/client/transaction.h"
 #include "yb/client/txn-test-base.h"
-
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/ql_expr.h"
+#include "yb/common/ql_rowwise_iterator_interface.h"
 #include "yb/common/ql_value.h"
-
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_util.h"
-
 #include "yb/docdb/doc_key.h"
-
 #include "yb/fs/fs_manager.h"
-
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/strings/join.h"
-
 #include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/redis_table_test_base.h"
 #include "yb/integration-tests/test_workload.h"
-
-#include "yb/master/catalog_manager-internal.h"
-#include "yb/master/catalog_manager.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.pb.h"
+#include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
-
-#include "yb/tablet/tablet_fwd.h"
+#include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
-
+#include "yb/tablet/tablet_peer.h"
 #include "yb/tools/admin-test-base.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/ts_tablet_manager.h"
+#include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_admin.pb.h"
 #include "yb/tserver/tserver_admin.proxy.h"
-#include "yb/tserver/ts_tablet_manager.h"
-
-
-#include "yb/rpc/messenger.h"
-
 #include "yb/util/atomic.h"
 #include "yb/util/format.h"
+#include "yb/util/logging.h"
 #include "yb/util/protobuf_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
-#include "yb/util/tsan_util.h"
 #include "yb/util/test_util.h"
-
+#include "yb/util/tsan_util.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
 using namespace std::literals;  // NOLINT
@@ -158,7 +152,7 @@ Result<size_t> SelectRowsCount(
 }
 
 void DumpTableLocations(
-    master::CatalogManager* catalog_mgr, const client::YBTableName& table_name) {
+    master::CatalogManagerIf* catalog_mgr, const client::YBTableName& table_name) {
   master::GetTableLocationsResponsePB resp;
   master::GetTableLocationsRequestPB req;
   table_name.SetIntoTableIdentifierPB(req.mutable_table());
@@ -180,7 +174,7 @@ void DumpWorkloadStats(const TestWorkload& workload) {
   LOG(INFO) << "Rows read try again: " << workload.rows_read_try_again();
 }
 
-CHECKED_STATUS SplitTablet(master::CatalogManager* catalog_mgr, const tablet::Tablet& tablet) {
+CHECKED_STATUS SplitTablet(master::CatalogManagerIf* catalog_mgr, const tablet::Tablet& tablet) {
   const auto& tablet_id = tablet.tablet_id();
   LOG(INFO) << "Tablet: " << tablet_id;
   LOG(INFO) << "Number of SST files: " << tablet.TEST_db()->GetCurrentVersionNumSSTFiles();
@@ -191,7 +185,7 @@ CHECKED_STATUS SplitTablet(master::CatalogManager* catalog_mgr, const tablet::Ta
   return catalog_mgr->SplitTablet(tablet_id);
 }
 
-CHECKED_STATUS DoSplitTablet(master::CatalogManager* catalog_mgr, const tablet::Tablet& tablet) {
+CHECKED_STATUS DoSplitTablet(master::CatalogManagerIf* catalog_mgr, const tablet::Tablet& tablet) {
   const auto& tablet_id = tablet.tablet_id();
   LOG(INFO) << "Tablet: " << tablet_id;
   LOG(INFO) << "Number of SST files: " << tablet.TEST_db()->GetCurrentVersionNumSSTFiles();
@@ -272,7 +266,7 @@ class TabletSplitITestBase : public client::TransactionTestBase<MiniClusterType>
   }
 
   Result<scoped_refptr<master::TabletInfo>> GetSingleTestTabletInfo(
-      master::CatalogManager* catalog_manager);
+      master::CatalogManagerIf* catalog_manager);
 
   void CreateSingleTablet() {
     this->SetNumTablets(1);
@@ -373,9 +367,8 @@ class TabletSplitITest : public TabletSplitITestBase<MiniCluster> {
     return resp;
   }
 
-  Result<master::CatalogManager*> catalog_manager() {
-    return CHECK_NOTNULL(VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->master())
-        ->catalog_manager();
+  Result<master::CatalogManagerIf*> catalog_manager() {
+    return &CHECK_NOTNULL(VERIFY_RESULT(cluster_->GetLeaderMiniMaster()))->catalog_manager();
   }
 
   Result<master::TabletInfos> GetTabletInfosForTable(const TableId& table_id) {
@@ -878,7 +871,7 @@ Status TabletSplitITest::CheckSourceTabletAfterSplit(const TabletId& source_tabl
 template <class MiniClusterType>
 Result<scoped_refptr<master::TabletInfo>>
     TabletSplitITestBase<MiniClusterType>::GetSingleTestTabletInfo(
-        master::CatalogManager* catalog_mgr) {
+        master::CatalogManagerIf* catalog_mgr) {
   auto tablet_infos = catalog_mgr->GetTableInfo(this->table_->id())->GetTablets();
 
   SCHECK_EQ(tablet_infos.size(), 1, IllegalState, "Expect test table to have only 1 tablet");
@@ -1821,8 +1814,8 @@ TEST_F(TabletSplitYedisTableTest, BlockSplittingYedisTablet) {
   }
 
   for (const auto& peer : ListTableActiveTabletLeadersPeers(mini_cluster(), table_->id())) {
-    auto catalog_manager = CHECK_NOTNULL(
-        ASSERT_RESULT(this->mini_cluster()->GetLeaderMiniMaster())->master())->catalog_manager();
+    auto catalog_manager = &CHECK_NOTNULL(
+        ASSERT_RESULT(this->mini_cluster()->GetLeaderMiniMaster()))->catalog_manager();
 
     auto s = DoSplitTablet(catalog_manager, *peer->shared_tablet());
     EXPECT_NOT_OK(s);
@@ -2360,7 +2353,7 @@ TEST_F(TabletSplitSingleServerITest, TabletServerSplitAlreadySplitTablet) {
   EXPECT_TRUE(resp.has_error());
   EXPECT_TRUE(
       StatusFromPB(resp.error().status()).IsNotFound() ||
-      resp.error().code() == TabletServerErrorPB::TABLET_NOT_FOUND)
+      resp.error().code() == tserver::TabletServerErrorPB::TABLET_NOT_FOUND)
       << resp.error().DebugString();
 }
 
@@ -2651,7 +2644,7 @@ TEST_F(TabletSplitExternalMiniClusterITest, FaultedSplitNodeRejectsRemoteBootstr
   auto s = cluster_->GetConsensusProxy(faulted_follower)->StartRemoteBootstrap(req, &resp, &rpc);
   EXPECT_OK(s);
   EXPECT_TRUE(resp.has_error());
-  EXPECT_EQ(resp.error().code(), TabletServerErrorPB::TABLET_SPLIT_PARENT_STILL_LIVE);
+  EXPECT_EQ(resp.error().code(), tserver::TabletServerErrorPB::TABLET_SPLIT_PARENT_STILL_LIVE);
 
   SleepFor(1ms * kTabletSplitInjectDelayMs);
   EXPECT_OK(WaitForTablets(2));

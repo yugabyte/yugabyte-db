@@ -14,11 +14,14 @@
 #include "yb/master/yql_local_vtable.h"
 
 #include "yb/common/ql_type.h"
-
+#include "yb/common/schema.h"
+#include "yb/master/master.h"
+#include "yb/master/master.pb.h"
 #include "yb/master/ts_descriptor.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/util/net/dns_resolver.h"
+#include "yb/util/status_log.h"
 
 namespace yb {
 namespace master {
@@ -56,7 +59,7 @@ Result<std::shared_ptr<QLRowBlock>> LocalVTable::RetrieveData(
     const QLReadRequestPB& request) const {
   vector<std::shared_ptr<TSDescriptor> > descs;
   GetSortedLiveDescriptors(&descs);
-  auto vtable = std::make_shared<QLRowBlock>(schema_);
+  auto vtable = std::make_shared<QLRowBlock>(schema());
 
   struct Entry {
     size_t index;

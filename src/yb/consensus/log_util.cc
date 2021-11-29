@@ -29,7 +29,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/consensus/log_util.h"
 
 #include <algorithm>
@@ -41,11 +40,8 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/fs/fs_manager.h"
-#include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/split.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
-
 #include "yb/util/coding-inl.h"
 #include "yb/util/coding.h"
 #include "yb/util/crc.h"
@@ -55,6 +51,8 @@
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 DEFINE_int32(log_segment_size_mb, 64,
              "The default segment size for log roll-overs, in MB");
@@ -883,6 +881,10 @@ Status WritableLogSegment::WriteEntryBatch(const Slice& data) {
   written_offset_ += data.size();
 
   return Status::OK();
+}
+
+Status WritableLogSegment::Sync() {
+  return writable_file_->Sync();
 }
 
 // Creates a LogEntryBatchPB from pre-allocated ReplicateMsgs managed using shared pointers. The

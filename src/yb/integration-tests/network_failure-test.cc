@@ -15,6 +15,7 @@
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
+#include "yb/client/yb_table_name.h"
 
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
@@ -23,6 +24,7 @@
 #include "yb/master/mini_master.h"
 
 #include "yb/util/async_util.h"
+#include "yb/util/metrics.h"
 #include "yb/util/random_util.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"

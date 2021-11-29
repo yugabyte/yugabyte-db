@@ -49,7 +49,6 @@
 #include "yb/util/monotime.h"
 #include "yb/util/mutex.h"
 #include "yb/util/countdown_latch.h"
-#include "yb/util/thread.h"
 #include "yb/util/threadpool.h"
 
 namespace yb {

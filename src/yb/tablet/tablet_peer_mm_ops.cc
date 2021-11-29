@@ -29,7 +29,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/tablet/tablet_peer_mm_ops.h"
 
 #include <algorithm>
@@ -38,7 +37,7 @@
 #include <string>
 
 #include <gflags/gflags.h>
-#include "yb/gutil/strings/substitute.h"
+
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/tablet.h"
 #include "yb/util/metrics.h"

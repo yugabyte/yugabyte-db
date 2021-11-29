@@ -10,14 +10,12 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/tablet/apply_intents_task.h"
 
 #include "yb/docdb/docdb.h"
-
 #include "yb/tablet/running_transaction.h"
-
 #include "yb/util/logging.h"
+#include "yb/util/status_log.h"
 
 using namespace std::literals;
 

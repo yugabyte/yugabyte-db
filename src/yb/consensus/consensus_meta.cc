@@ -36,9 +36,7 @@
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
-
 #include "yb/fs/fs_manager.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/util/logging.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"

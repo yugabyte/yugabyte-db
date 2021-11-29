@@ -29,19 +29,17 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
+#include <memory>
 #include <string>
 #include <unordered_map>
-#include <memory>
+
 #include <boost/optional.hpp>
-#include <gflags/gflags.h>
 #include <gtest/gtest.h>
 
 #include "yb/client/client-test-util.h"
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
 #include "yb/client/table_creator.h"
-
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/fs/fs_manager.h"
 #include "yb/gutil/stl_util.h"
@@ -58,6 +56,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/pstack_watcher.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
 
 using namespace std::literals;

@@ -29,7 +29,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/client/batcher.h"
 
 #include <algorithm>
@@ -45,25 +44,29 @@
 #include <glog/logging.h>
 
 #include "yb/client/async_rpc.h"
-#include "yb/client/client.h"
 #include "yb/client/client-internal.h"
+#include "yb/client/client.h"
 #include "yb/client/client_error.h"
-#include "yb/client/error_collector.h"
 #include "yb/client/error.h"
+#include "yb/client/error_collector.h"
 #include "yb/client/in_flight_op.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/rejection_score_source.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
-
+#include "yb/client/yb_table_name.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"
-
 #include "yb/util/debug-util.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 // When this flag is set to false and we have separate errors for operation, then batcher would
 // report IO Error status. Otherwise we will try to combine errors from separate operation to
@@ -226,7 +229,7 @@ void Batcher::FlushAsync(
   // If YBSession retries previously failed ops within the same transaction, these ops are already
   // expected by transaction.
   if (transaction && !is_within_transaction_retry) {
-    transaction->ExpectOperations(operations_count);
+    transaction->batcher_if().ExpectOperations(operations_count);
   }
 
   ops_queue_.reserve(ops_.size());
@@ -472,7 +475,7 @@ void Batcher::ExecuteOperations(Initial initial) {
     //
     // If transaction is not yet ready to do it, then it will notify as via provided when
     // it could be done.
-    if (!transaction->Prepare(
+    if (!transaction->batcher_if().Prepare(
         &ops_info_, force_consistent_read_, deadline_, initial,
         std::bind(&Batcher::TransactionReady, shared_from_this(), _1))) {
       return;
@@ -605,7 +608,7 @@ void Batcher::Flushed(
       // See comments for YBTransaction::Impl::running_requests_ and
       // YBSession::AddErrorsAndRunCallback.
       // https://github.com/yugabyte/yugabyte-db/issues/7984.
-      transaction->Flushed(ops, flush_extra_result.used_read_time, status);
+      transaction->batcher_if().Flushed(ops, flush_extra_result.used_read_time, status);
     }
   }
   if (status.ok() && read_point_) {
@@ -686,6 +689,16 @@ std::string Batcher::LogPrefix() const {
   const void* self = this;
   return Format(
       "Batcher ($0), session ($1): ", self, static_cast<void*>(weak_session_.lock().get()));
+}
+
+InFlightOpsGroup::InFlightOpsGroup(const Iterator& group_begin, const Iterator& group_end)
+    : begin(group_begin), end(group_end) {
+}
+
+std::string InFlightOpsGroup::ToString() const {
+  return Format("{items: $0 need_metadata: $1}",
+                AsString(boost::make_iterator_range(begin, end)),
+                need_metadata);
 }
 
 }  // namespace internal

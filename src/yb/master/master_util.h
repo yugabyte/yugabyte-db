@@ -16,13 +16,17 @@
 
 #include <memory>
 
+#include "yb/common/common_fwd.h"
+#include "yb/common/common.pb.h"
 #include "yb/common/entity_ids_types.h"
+
+#include "yb/master/master_fwd.h"
+
 #include "yb/rpc/rpc_fwd.h"
-#include "yb/master/master.pb.h"
 
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 // This file contains utility functions that can be shared between client and master code.
 
@@ -71,6 +75,8 @@ Result<bool> NamespaceMatchesIdentifier(
 Result<bool> TableMatchesIdentifier(const TableId& id,
                                     const SysTablesEntryPB& table,
                                     const TableIdentifierPB& table_identifier);
+
+CHECKED_STATUS SetupError(MasterErrorPB* error, const Status& s);
 
 } // namespace master
 } // namespace yb

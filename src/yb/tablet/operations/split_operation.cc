@@ -20,6 +20,8 @@
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_splitter.h"
+#include "yb/util/logging.h"
+#include "yb/util/status_format.h"
 
 using namespace std::literals;
 

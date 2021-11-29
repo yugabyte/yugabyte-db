@@ -47,6 +47,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/opid.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"

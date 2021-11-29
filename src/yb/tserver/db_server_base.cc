@@ -18,6 +18,9 @@
 
 #include "yb/tserver/tserver_shared_mem.h"
 
+#include "yb/util/shared_mem.h"
+#include "yb/util/status_log.h"
+
 namespace yb {
 namespace tserver {
 
@@ -26,7 +29,8 @@ DbServerBase::DbServerBase(
     const std::string& metrics_namespace,
     std::shared_ptr<MemTracker> mem_tracker)
     : RpcAndWebServerBase(std::move(name), options, metrics_namespace, std::move(mem_tracker)),
-      shared_object_(CHECK_RESULT(tserver::TServerSharedObject::Create())) {
+      shared_object_(new tserver::TServerSharedObject(
+          CHECK_RESULT(tserver::TServerSharedObject::Create()))) {
 }
 
 DbServerBase::~DbServerBase() {
@@ -54,7 +58,11 @@ client::TransactionPool* DbServerBase::TransactionPool() {
 }
 
 tserver::TServerSharedData& DbServerBase::shared_object() {
-  return *shared_object_;
+  return **shared_object_;
+}
+
+int DbServerBase::GetSharedMemoryFd() {
+  return shared_object_->GetFd();
 }
 
 }  // namespace tserver

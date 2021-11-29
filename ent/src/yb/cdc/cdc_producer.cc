@@ -13,12 +13,14 @@
 #include "yb/cdc/cdc_producer.h"
 
 #include "yb/cdc/cdc_service.pb.h"
+#include "yb/common/schema.h"
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/replicate_msgs_holder.h"
 
+#include "yb/docdb/doc_key.h"
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/value_type.h"

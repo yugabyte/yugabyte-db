@@ -29,21 +29,17 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/consensus/log_reader.h"
-
 
 #include <algorithm>
 #include <mutex>
 
+#include <glog/logging.h>
+
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/log_index.h"
 #include "yb/consensus/opid_util.h"
-
 #include "yb/gutil/dynamic_annotations.h"
-#include "yb/gutil/map-util.h"
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/util/env_util.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"

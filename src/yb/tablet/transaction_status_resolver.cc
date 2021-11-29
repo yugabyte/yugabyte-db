@@ -10,20 +10,19 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/tablet/transaction_status_resolver.h"
 
 #include "yb/client/transaction_rpc.h"
-
 #include "yb/common/wire_protocol.h"
-
 #include "yb/rpc/rpc.h"
-
+#include "yb/tablet/transaction_participant_context.h"
 #include "yb/tserver/tserver_service.pb.h"
-
 #include "yb/util/atomic.h"
+#include "yb/util/countdown_latch.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 DEFINE_test_flag(int32, inject_status_resolver_delay_ms, 0,
                  "Inject delay before launching transaction status resolver RPC.");

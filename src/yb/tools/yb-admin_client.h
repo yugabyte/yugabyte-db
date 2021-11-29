@@ -37,23 +37,26 @@
 
 #include <boost/optional.hpp>
 
-#include "yb/client/client.h"
 #include "yb/client/yb_table_name.h"
-#include "yb/util/status.h"
+
+#include "yb/rpc/rpc_controller.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
+#include "yb/util/status.h"
+#include "yb/util/type_traits.h"
 #include "yb/common/entity_ids.h"
 #include "yb/tools/yb-admin_cli.h"
 #include "yb/consensus/consensus.pb.h"
-#include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/master_backup.proxy.h"
 #include "yb/rpc/rpc_fwd.h"
-#include "yb/rpc/rpc_controller.h"
-#include "yb/rpc/messenger.h"
 
 namespace yb {
+
+class HybridTime;
 
 namespace consensus {
 class ConsensusServiceProxy;
@@ -206,7 +209,8 @@ class ClusterAdminClient {
 
   CHECKED_STATUS ListLeaderCounts(const client::YBTableName& table_name);
 
-  Result<std::unordered_map<string, int>> GetLeaderCounts(const client::YBTableName& table_name);
+  Result<std::unordered_map<std::string, int>> GetLeaderCounts(
+      const client::YBTableName& table_name);
 
   CHECKED_STATUS SetupRedisTable();
 

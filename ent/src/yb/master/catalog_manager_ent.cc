@@ -16,11 +16,12 @@
 #include <unordered_set>
 #include <google/protobuf/util/message_differencer.h>
 
-#include "yb/master/catalog_manager.h"
-#include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager-internal.h"
 #include "yb/master/cdc_rpc_tasks.h"
 #include "yb/master/cluster_balance.h"
+#include "yb/master/master.h"
+#include "yb/master/master_error.h"
 
 #include "yb/cdc/cdc_consumer.pb.h"
 #include "yb/cdc/cdc_service.h"
@@ -31,7 +32,10 @@
 #include "yb/client/table.h"
 #include "yb/client/table_alterer.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/table_info.h"
 #include "yb/client/yb_op.h"
+#include "yb/client/yb_table_name.h"
+
 #include "yb/common/common.pb.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/ql_name.h"
@@ -39,8 +43,10 @@
 #include "yb/consensus/consensus.h"
 
 #include "yb/docdb/consensus_frontier.h"
+#include "yb/docdb/doc_write_batch.h"
 
 #include "yb/gutil/bind.h"
+#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/master.pb.h"
@@ -64,12 +70,16 @@
 #include "yb/util/cast.h"
 #include "yb/util/date_time.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/service_util.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/tostring.h"
 #include "yb/util/string_util.h"
-#include "yb/util/random_util.h"
 #include "yb/util/trace.h"
 
 using namespace std::literals;
@@ -105,6 +115,30 @@ using pb_util::ParseFromSlice;
 
 namespace master {
 namespace enterprise {
+
+namespace {
+
+CHECKED_STATUS CheckStatus(const Status& status, const char* action) {
+  if (status.ok()) {
+    return status;
+  }
+
+  const Status s = status.CloneAndPrepend(std::string("An error occurred while ") + action);
+  LOG(WARNING) << s;
+  return s;
+}
+
+CHECKED_STATUS CheckLeaderStatus(const Status& status, const char* action) {
+  return CheckIfNoLongerLeader(CheckStatus(status, action));
+}
+
+template<class RespClass>
+CHECKED_STATUS CheckLeaderStatusAndSetupError(
+    const Status& status, const char* action, RespClass* resp) {
+  return CheckIfNoLongerLeaderAndSetupError(CheckStatus(status, action), resp);
+}
+
+} // namespace
 
 ////////////////////////////////////////////////////////////
 // Snapshot Loader
@@ -1658,7 +1692,8 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
 
 Status CatalogManager::PreprocessTabletEntry(const SysRowEntry& entry,
                                              ExternalTableSnapshotDataMap* table_map) {
-  LOG_IF(DFATAL, entry.type() != SysRowEntryType::TABLET) << "Unexpected entry type: " << entry.type();
+  LOG_IF(DFATAL, entry.type() != SysRowEntryType::TABLET)
+      << "Unexpected entry type: " << entry.type();
 
   SysTabletsEntryPB meta = VERIFY_RESULT(ParseFromSlice<SysTabletsEntryPB>(entry.data()));
 
@@ -1672,7 +1707,8 @@ Status CatalogManager::PreprocessTabletEntry(const SysRowEntry& entry,
 
 Status CatalogManager::ImportTabletEntry(const SysRowEntry& entry,
                                          ExternalTableSnapshotDataMap* table_map) {
-  LOG_IF(DFATAL, entry.type() != SysRowEntryType::TABLET) << "Unexpected entry type: " << entry.type();
+  LOG_IF(DFATAL, entry.type() != SysRowEntryType::TABLET)
+      << "Unexpected entry type: " << entry.type();
 
   SysTabletsEntryPB meta = VERIFY_RESULT(ParseFromSlice<SysTabletsEntryPB>(entry.data()));
 
@@ -1780,7 +1816,7 @@ Status CatalogManager::RestoreSysCatalog(
     // Restore the pg_catalog tables.
     const auto* meta = tablet->metadata();
     const auto& pg_yb_catalog_version_schema =
-        VERIFY_RESULT(meta->GetTableInfo(kPgYbCatalogVersionTableId))->schema;
+        *VERIFY_RESULT(meta->GetTableInfo(kPgYbCatalogVersionTableId))->schema;
     RETURN_NOT_OK(state.ProcessPgCatalogRestores(
         pg_yb_catalog_version_schema, doc_db, tablet->doc_db(), &write_batch));
   }
@@ -2020,11 +2056,8 @@ void CatalogManager::HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool
           << " Complete " << num_tablets_complete << " tablets from " << tablet_snapshots->size();
 
   const Status s = sys_catalog_->Upsert(leader_ready_term(), snapshot);
-  if (!s.ok()) {
-    return (void)CheckStatus(s, "updating snapshot in sys-catalog");
-  }
 
-  l.Commit();
+  l.CommitOrWarn(s, "updating snapshot in sys-catalog");
 }
 
 void CatalogManager::HandleRestoreTabletSnapshotResponse(TabletInfo *tablet, bool error) {
@@ -2096,11 +2129,8 @@ void CatalogManager::HandleRestoreTabletSnapshotResponse(TabletInfo *tablet, boo
           << " Complete " << num_tablets_complete << " tablets from " << tablet_snapshots->size();
 
   const Status s = sys_catalog_->Upsert(leader_ready_term(), snapshot);
-  if (!s.ok()) {
-    return (void)CheckStatus(s, "updating snapshot in sys-catalog");
-  }
 
-  l.Commit();
+  l.CommitOrWarn(s, "updating snapshot in sys-catalog");
 }
 
 void CatalogManager::HandleDeleteTabletSnapshotResponse(
@@ -2165,20 +2195,14 @@ void CatalogManager::HandleDeleteTabletSnapshotResponse(
       LOG(WARNING) << "Could not remove snapshot " << snapshot_id << " from map";
     }
 
-    if (!s.ok()) {
-      return (void)CheckStatus(s, "deleting snapshot from sys-catalog");
-    }
+    l.CommitOrWarn(s, "deleting snapshot from sys-catalog");
   } else if (error) {
     l.mutable_data()->pb.set_state(SysSnapshotEntryPB::FAILED);
     LOG(WARNING) << "Failed snapshot " << snapshot->id() << " deletion on tablet " << tablet->id();
 
     const Status s = sys_catalog_->Upsert(leader_ready_term(), snapshot);
-    if (!s.ok()) {
-      return (void)CheckStatus(s, "updating snapshot in sys-catalog");
-    }
+    l.CommitOrWarn(s, "updating snapshot in sys-catalog");
   }
-
-  l.Commit();
 
   VLOG(1) << "Deleting snapshot: " << snapshot->id()
           << " PB: " << l.mutable_data()->pb.DebugString()
@@ -2388,16 +2412,17 @@ Status CatalogManager::IsCdcStateTableCreated(IsCreateTableDoneResponsePB* resp)
 
 // Helper class to print a vector of CDCStreamInfo pointers.
 namespace {
-  template<class CDCStreamInfoPointer>
-  std::string JoinStreamsCSVLine(std::vector<CDCStreamInfoPointer> cdc_streams) {
-    std::vector<CDCStreamId> cdc_stream_ids;
-    for (const auto& cdc_stream : cdc_streams) {
-      cdc_stream_ids.push_back(cdc_stream->id());
-    }
-    return JoinCSVLine(cdc_stream_ids);
-  }
-} // namespace
 
+template<class CDCStreamInfoPointer>
+std::string JoinStreamsCSVLine(std::vector<CDCStreamInfoPointer> cdc_streams) {
+  std::vector<CDCStreamId> cdc_stream_ids;
+  for (const auto& cdc_stream : cdc_streams) {
+    cdc_stream_ids.push_back(cdc_stream->id());
+  }
+  return JoinCSVLine(cdc_stream_ids);
+}
+
+} // namespace
 
 Status CatalogManager::DeleteCDCStreamsForTable(const TableId& table_id) {
   return DeleteCDCStreamsForTables({table_id});
@@ -2999,10 +3024,8 @@ void CatalogManager::MarkUniverseReplicationFailed(
 
   // Update sys_catalog.
   const Status s = sys_catalog_->Upsert(leader_ready_term(), universe);
-  if (!s.ok()) {
-    return (void)CheckStatus(s, "updating universe replication info in sys-catalog");
-  }
-  l.Commit();
+
+  l.CommitOrWarn(s, "updating universe replication info in sys-catalog");
 }
 
 Status CatalogManager::ValidateTableSchema(
@@ -3017,7 +3040,7 @@ Status CatalogManager::ValidateTableSchema(
   table->set_table_name(info->table_name.table_name());
   table->mutable_namespace_()->set_name(info->table_name.namespace_name());
   table->mutable_namespace_()->set_database_type(
-      GetDatabaseTypeForTable(client::YBTable::ClientToPBTableType(info->table_type)));
+      GetDatabaseTypeForTable(client::ClientToPBTableType(info->table_type)));
 
   // Since YSQL tables are not present in table map, we first need to list tables to get the table
   // ID and then get table schema.
@@ -3415,17 +3438,14 @@ void CatalogManager::AddCDCStreamToUniverseAndInitConsumer(
 
     // Update sys_catalog with new producer table id info.
     Status status = sys_catalog_->Upsert(leader_ready_term(), universe);
-    if (!status.ok()) {
-      return (void)CheckStatus(status, "updating universe replication info in sys-catalog");
-    }
 
     // Before committing, run any callbacks on success.
-    if (on_success_cb &&
+    if (status.ok() && on_success_cb &&
         (l.mutable_data()->pb.state() == SysUniverseReplicationEntryPB::ACTIVE || merge_alter)) {
       on_success_cb();
     }
 
-    l.Commit();
+    l.CommitOrWarn(status, "updating universe replication info in sys-catalog");
   }
 
   if (validated_all_tables) {
@@ -3583,10 +3603,7 @@ void CatalogManager::MergeUniverseReplication(scoped_refptr<UniverseReplicationI
     }
     cl.mutable_data()->pb.set_version(cl.mutable_data()->pb.version() + 1);
     const Status s = sys_catalog_->Upsert(leader_ready_term(), cluster_config_);
-    if (!s.ok()) {
-      return (void)CheckStatus(s, "updating cluster config in sys-catalog");
-    }
-    cl.Commit();
+    cl.CommitOrWarn(s, "updating cluster config in sys-catalog");
   }
   // Merge Master Config on Consumer. (no need for Producer changes, since it uses stream_id)
   {
@@ -3606,11 +3623,10 @@ void CatalogManager::MergeUniverseReplication(scoped_refptr<UniverseReplicationI
 
     vector<UniverseReplicationInfo*> universes{original_universe.get(), universe.get()};
     const Status s = sys_catalog_->Upsert(leader_ready_term(), universes);
-    if (!s.ok()) {
-      return (void)CheckStatus(s, "updating universe replication entries in sys-catalog");
+    alter_lock.CommitOrWarn(s, "updating universe replication entries in sys-catalog");
+    if (s.ok()) {
+      original_lock.Commit();
     }
-    alter_lock.Commit();
-    original_lock.Commit();
   }
   // TODO: universe_replication_map_.erase(universe->id()) at a later time.
   //       TwoDCTest.AlterUniverseReplicationTables crashes due to undiagnosed race right now.

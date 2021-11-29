@@ -65,6 +65,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/spinlock_profiling.h"
 #include "yb/util/status.h"
+#include "yb/util/status_log.h"
 
 DECLARE_bool(enable_process_lifetime_heap_profiling);
 DECLARE_string(heap_profile_path);

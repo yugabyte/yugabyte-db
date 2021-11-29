@@ -29,23 +29,21 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
 
 #include <boost/optional.hpp>
-
-#include <gflags/gflags.h>
 #include <gtest/gtest.h>
 
-#include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol-test-util.h"
+#include "yb/common/wire_protocol.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/integration-tests/external_mini_cluster-itest-base.h"
 #include "yb/integration-tests/cluster_verifier.h"
+#include "yb/integration-tests/external_mini_cluster-itest-base.h"
 #include "yb/integration-tests/test_workload.h"
+#include "yb/rpc/rpc_controller.h"
 
 using yb::consensus::RaftPeerPB;
 using yb::itest::TServerDetails;

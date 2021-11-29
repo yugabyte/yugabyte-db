@@ -29,7 +29,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/integration-tests/cluster_verifier.h"
 
 #include <atomic>
@@ -38,18 +37,19 @@
 #include <thread>
 #include <vector>
 
+#include <boost/range/iterator_range.hpp>
+#include <gtest/gtest.h>
+
 #include "yb/client/client.h"
 #include "yb/client/table_handle.h"
-
 #include "yb/gutil/strings/substitute.h"
 #include "yb/integration-tests/mini_cluster_base.h"
 #include "yb/rpc/messenger.h"
 #include "yb/tools/ysck_remote.h"
-#include "yb/util/monotime.h"
 #include "yb/util/env.h"
+#include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"
-#include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
 
 using std::string;
