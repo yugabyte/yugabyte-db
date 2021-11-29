@@ -73,7 +73,7 @@ Install [OpenSSL](https://www.openssl.org/) 1.1.1 or later only if you have a Yu
 
 ### CA certificate
 
-In case of a Yugabyte Cloud cluster, to download the CA certificate for your cluster in Yugabyte Cloud, do the following:
+Download the CA certificate file to allow your application connect securely to the YugabyteDB cluster. In case of a Yugabyte Cloud cluster,
 
 1. On the **Clusters** tab, select a cluster.
 
@@ -84,6 +84,7 @@ In case of a Yugabyte Cloud cluster, to download the CA certificate for your clu
 ### Go PostgreSQL driver
 
 [Go-pg/pg](https://github.com/go-pg/pg) is an ORM for Golang applications working with Postgresql. The current release of `pg v10` requires Go modules.
+da8f4245112a01f478ddc5
 
 To install the package locally, run the following commands:
 

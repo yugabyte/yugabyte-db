@@ -65,6 +65,7 @@ This tutorial assumes that:
 
 ### SSL/TLS configuration
 
+
 Refer to the [SSL/TLS configuration](../../../../secure/tls-encryption/client-to-server/) page to launch your YugabyteDB cluster with SSL/TLS enabled. This is already taken care of for you in Yugabyte Cloud, as the cluster is pre-configured to do client-side authentication with SSL/TLS enabled.
 
 ### OpenSSL
