@@ -16,7 +16,8 @@
 #include "yb/client/client.h"
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/schema.h"
-#include "yb/client/yb_table_name.h"
+#include "yb/client/table.h"
+#include "yb/client/table_info.h"
 
 #include "yb/integration-tests/external_mini_cluster_ent.h"
 

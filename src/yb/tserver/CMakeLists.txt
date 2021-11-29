@@ -198,7 +198,6 @@ set(TSERVER_SRCS
   heartbeater.cc
   heartbeater_factory.cc
   metrics_snapshotter.cc
-  mini_tablet_server.cc
   pg_client_service.cc
   pg_client_session.cc
   pg_create_table.cc
@@ -263,6 +262,8 @@ target_link_libraries(yb-tserver
 #########################################
 
 add_library(tserver_test_util
+  mini_tablet_server.cc
+  remote_bootstrap_session-test.cc
   tablet_server-test-base.cc
   tablet_server_test_util.cc
   universe_key_test_util.cc)

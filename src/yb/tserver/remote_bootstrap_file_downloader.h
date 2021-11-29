@@ -25,7 +25,7 @@
 #include "yb/tserver/remote_bootstrap.pb.h"
 
 #include "yb/util/monotime.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 

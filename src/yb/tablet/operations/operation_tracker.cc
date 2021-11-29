@@ -46,7 +46,9 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
+#include "yb/util/status_log.h"
 #include "yb/util/tsan_util.h"
+#include <glog/logging.h>
 
 DEFINE_int64(tablet_operation_memory_limit_mb, 1024,
              "Maximum amount of memory that may be consumed by all in-flight "

@@ -15,7 +15,9 @@
 #include "yb/client/transaction.h"
 #include "yb/client/txn-test-base.h"
 
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/transaction_participant.h"
 
 #include "yb/util/bitmap.h"
 

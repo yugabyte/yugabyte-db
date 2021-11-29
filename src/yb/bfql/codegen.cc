@@ -12,14 +12,11 @@
 // under the License.
 //
 //--------------------------------------------------------------------------------------------------
-
 #include <fstream>
 #include <vector>
-#include <map>
-
-#include "yb/common/ql_type.h"
 
 #include "yb/bfql/directory.h"
+#include "yb/common/ql_type.h"
 #include "yb/gutil/strings/substitute.h"
 
 using std::endl;

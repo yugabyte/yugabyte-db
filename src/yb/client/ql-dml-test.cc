@@ -10,33 +10,31 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include <thread>
 
 #include <boost/circular_buffer.hpp>
 
 #include "yb/client/ql-dml-test-base.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_alterer.h"
 #include "yb/client/table_handle.h"
-
 #include "yb/common/ql_value.h"
-
 #include "yb/master/master_util.h"
-
 #include "yb/tablet/tablet.h"
-
+#include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
-
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/format.h"
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/tostring.h"
 #include "yb/util/tsan_util.h"
-
 #include "yb/yql/cql/ql/util/statement_result.h"
 
 DECLARE_bool(mini_cluster_reuse_data);

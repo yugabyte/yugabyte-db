@@ -18,8 +18,17 @@
 #include "yb/client/schema.h"
 #include "yb/client/schema-internal.h"
 
+#include "yb/common/transaction.h"
+
+#include "yb/master/master.pb.h"
+
 namespace yb {
 namespace client {
+
+struct YBTableAlterer::Step {
+  master::AlterTableRequestPB::StepType step_type;
+  std::unique_ptr<YBColumnSpec> spec;
+};
 
 YBTableAlterer::YBTableAlterer(YBClient* client, const YBTableName& name)
   : client_(client), table_name_(name) {

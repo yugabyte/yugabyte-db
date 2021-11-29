@@ -54,6 +54,7 @@
 #include "yb/tablet/tablet.h"
 #include "yb/common/common.pb.h"
 #include "yb/tablet/tablet-harness.h"
+#include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
@@ -75,7 +76,6 @@ using yb::consensus::ConsensusOptions;
 using yb::consensus::RaftPeerPB;
 using yb::consensus::RaftConfigPB;
 using yb::log::Log;
-using yb::log::LogOptions;
 using strings::Substitute;
 using yb::tablet::TabletPeer;
 

@@ -15,6 +15,7 @@
 #define YB_CLIENT_SNAPSHOT_TEST_UTIL_H
 
 #include "yb/client/txn-test-base.h"
+#include "yb/common/snapshot.h"
 
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/master/master_backup.proxy.h"

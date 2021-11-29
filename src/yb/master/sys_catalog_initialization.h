@@ -19,11 +19,13 @@
 
 #include <gflags/gflags.h>
 
-#include "yb/util/status.h"
-#include "yb/tablet/tablet_peer.h"
+#include "yb/master/master_fwd.h"
+
+#include "yb/tablet/tablet_fwd.h"
+
 #include "yb/tserver/tserver_admin.pb.h"
 
-#include "yb/master/catalog_entity_info.h"
+#include "yb/util/status_fwd.h"
 
 DECLARE_string(initial_sys_catalog_snapshot_path);
 DECLARE_bool(use_initial_sys_catalog_snapshot);
@@ -32,8 +34,6 @@ DECLARE_bool(create_initial_sys_catalog_snapshot);
 
 namespace yb {
 namespace master {
-
-class SysCatalogTable;
 
 // Used by the catalog manager to prepare an initial sys catalog snapshot.
 class InitialSysCatalogSnapshotWriter {

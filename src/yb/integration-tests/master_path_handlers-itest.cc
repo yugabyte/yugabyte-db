@@ -10,14 +10,14 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include <chrono>
+
 #include "yb/client/schema.h"
+#include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_table_name.h"
-#include "yb/common/schema.h"
-#include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/master/master-path-handlers.h"
 #include "yb/master/mini_master.h"
@@ -26,6 +26,7 @@
 #include "yb/util/curl_util.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/random_util.h"
+#include "yb/util/result.h"
 #include "yb/util/test_macros.h"
 
 DECLARE_int32(tserver_unresponsive_timeout_ms);

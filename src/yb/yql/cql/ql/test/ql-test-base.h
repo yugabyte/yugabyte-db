@@ -23,6 +23,7 @@
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/master/mini_master.h"
 
+#include "yb/util/async_util.h"
 #include "yb/util/test_util.h"
 
 namespace yb {

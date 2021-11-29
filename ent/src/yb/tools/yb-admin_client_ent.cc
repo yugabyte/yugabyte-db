@@ -29,6 +29,7 @@
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/tools/yb-admin_util.h"
 #include "yb/util/cast.h"
 #include "yb/util/env.h"
@@ -43,6 +44,8 @@
 #include "yb/util/string_util.h"
 #include "yb/util/timestamp.h"
 #include "yb/util/encryption_util.h"
+#include "yb/util/format.h"
+#include "yb/util/status_format.h"
 
 DEFINE_test_flag(int32, metadata_file_format_version, 0,
                  "Used in 'export_snapshot' metadata file format (0 means using latest format).");

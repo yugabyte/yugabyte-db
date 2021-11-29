@@ -18,10 +18,10 @@
 #include <string>
 
 #include "yb/integration-tests/external_mini_cluster.h"
-#include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/master_service.h"
 #include "yb/rpc/rpc_controller.h"
+#include "yb/util/result.h"
 #include "yb/util/test_util.h"
 #include "yb/client/yb_table_name.h"
 

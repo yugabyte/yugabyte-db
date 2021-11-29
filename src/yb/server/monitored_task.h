@@ -38,9 +38,10 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
+namespace server {
 
 YB_DEFINE_ENUM(MonitoredTaskState,
   (kWaiting)    // RPC not issued, or is waiting to be retried.
@@ -104,9 +105,7 @@ class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
     return false;
   }
 
-  std::string ToString() const {
-    return Format("{ type: $0 description: $1 }", type(), description());
-  }
+  std::string ToString() const;
 
  protected:
   static bool IsStateTerminal(MonitoredTaskState state) {
@@ -116,6 +115,7 @@ class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
   }
 };
 
+} // namespace server
 } // namespace yb
 
 #endif  // YB_SERVER_MONITORED_TASK_H

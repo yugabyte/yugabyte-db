@@ -29,20 +29,19 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/tablet/operations/change_metadata_operation.h"
 
 #include <glog/logging.h>
 
+#include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus_round.h"
-#include "yb/server/hybrid_clock.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_error.h"
-
+#include "yb/util/logging.h"
+#include "yb/util/status_format.h"
 #include "yb/util/trace.h"
 
 namespace yb {
@@ -62,6 +61,17 @@ tserver::ChangeMetadataRequestPB* RequestTraits<tserver::ChangeMetadataRequestPB
     consensus::ReplicateMsg* replicate) {
   return replicate->mutable_change_metadata_request();
 }
+
+ChangeMetadataOperation::ChangeMetadataOperation(
+    Tablet* tablet, log::Log* log, const tserver::ChangeMetadataRequestPB* request)
+    : ExclusiveSchemaOperation(tablet, request), log_(log) {
+}
+
+ChangeMetadataOperation::ChangeMetadataOperation(const tserver::ChangeMetadataRequestPB* request)
+    : ChangeMetadataOperation(nullptr, nullptr, request) {
+}
+
+ChangeMetadataOperation::~ChangeMetadataOperation() = default;
 
 void ChangeMetadataOperation::SetIndexes(const RepeatedPtrField<IndexInfoPB>& indexes) {
   index_map_.FromPB(indexes);

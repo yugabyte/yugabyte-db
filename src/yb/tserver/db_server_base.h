@@ -14,6 +14,8 @@
 #ifndef YB_TSERVER_DB_SERVER_BASE_H
 #define YB_TSERVER_DB_SERVER_BASE_H
 
+#include <future>
+
 #include "yb/client/client_fwd.h"
 
 #include "yb/server/server_base.h"
@@ -32,9 +34,7 @@ class DbServerBase : public server::RpcAndWebServerBase {
       std::shared_ptr<MemTracker> mem_tracker);
   ~DbServerBase();
 
-  int GetSharedMemoryFd() {
-    return shared_object_.GetFd();
-  }
+  int GetSharedMemoryFd();
 
   client::TransactionManager* TransactionManager();
 
@@ -48,7 +48,7 @@ class DbServerBase : public server::RpcAndWebServerBase {
 
  protected:
   // Shared memory owned by the tablet server.
-  tserver::TServerSharedObject shared_object_;
+  std::unique_ptr<tserver::TServerSharedObject> shared_object_;
 
   std::atomic<client::TransactionPool*> transaction_pool_{nullptr};
   std::mutex transaction_pool_mutex_;

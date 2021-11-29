@@ -14,9 +14,11 @@
 #ifndef YB_TSERVER_TSERVER_UTIL_FWD_H
 #define YB_TSERVER_TSERVER_UTIL_FWD_H
 
-#include "yb/util/shared_mem.h"
-
 namespace yb {
+
+template <class Object>
+class SharedMemoryObject;
+
 namespace tserver {
 
 class TServerSharedData;

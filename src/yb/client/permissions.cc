@@ -16,10 +16,13 @@
 #include "yb/client/client.h"
 #include "yb/client/permissions.h"
 
+#include "yb/master/master.pb.h"
+
+#include "yb/util/result.h"
+
 DECLARE_int32(update_permissions_cache_msecs);
 
 namespace yb {
-
 namespace client {
 
 namespace internal {

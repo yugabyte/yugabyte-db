@@ -22,9 +22,11 @@
 #include "yb/common/common_fwd.h"
 #include "yb/common/schema.h"
 
-#include "yb/util/monotime.h"
-
+#include "yb/master/master_fwd.h"
 #include "yb/master/master.pb.h"
+
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
 
 namespace yb {
 struct TransactionMetadata;
@@ -92,21 +94,17 @@ class YBTableAlterer {
   friend class YBClient;
 
   YBTableAlterer(YBClient* client, const YBTableName& name);
-  YBTableAlterer(YBClient* client, const string id);
+  YBTableAlterer(YBClient* client, const std::string id);
 
   CHECKED_STATUS ToRequest(master::AlterTableRequestPB* req);
 
   YBClient* const client_;
   const YBTableName table_name_;
-  const string table_id_;
+  const std::string table_id_;
 
   Status status_;
 
-  struct Step {
-    master::AlterTableRequestPB::StepType step_type;
-
-    std::unique_ptr<YBColumnSpec> spec;
-  };
+  struct Step;
   std::vector<Step> steps_;
 
   MonoDelta timeout_;

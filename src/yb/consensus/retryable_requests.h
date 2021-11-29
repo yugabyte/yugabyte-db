@@ -15,11 +15,10 @@
 #define YB_CONSENSUS_RETRYABLE_REQUESTS_H
 
 #include "yb/common/retryable_request.h"
-#include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus_fwd.h"
 
 #include "yb/util/restart_safe_clock.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 

@@ -34,7 +34,7 @@ using strings::Substitute;
 
 PTGrantRevokeRole::PTGrantRevokeRole(MemoryContext* memctx,
                          YBLocation::SharedPtr loc,
-                         GrantRevokeStatementType statement_type,
+                         client::GrantRevokeStatementType statement_type,
                          const MCSharedPtr<MCString>& granted_role_name,
                          const MCSharedPtr<MCString>& recipient_role_name)
     : TreeNode(memctx, loc),
@@ -81,7 +81,7 @@ const std::map<std::string, PermissionType >  PTGrantRevokePermission::kPermissi
 
 PTGrantRevokePermission::PTGrantRevokePermission(MemoryContext* memctx,
                                                  YBLocation::SharedPtr loc,
-                                                 GrantRevokeStatementType statement_type,
+                                                 client::GrantRevokeStatementType statement_type,
                                                  const MCSharedPtr<MCString>& permission_name,
                                                  const ResourceType& resource_type,
                                                  const PTQualifiedName::SharedPtr& resource_name,

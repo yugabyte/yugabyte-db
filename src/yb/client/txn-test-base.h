@@ -18,6 +18,8 @@
 
 #include "yb/client/ql-dml-test-base.h"
 
+#include "yb/client/transaction_manager.h"
+
 #include "yb/server/hybrid_clock.h"
 #include "yb/server/skewed_clock.h"
 

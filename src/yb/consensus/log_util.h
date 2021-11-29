@@ -401,9 +401,7 @@ class WritableLogSegment {
   CHECKED_STATUS WriteEntryBatch(const Slice& entry_batch_data);
 
   // Makes sure the I/O buffers in the underlying writable file are flushed.
-  CHECKED_STATUS Sync() {
-    return writable_file_->Sync();
-  }
+  CHECKED_STATUS Sync();
 
   // Returns true if the segment header has already been written to disk.
   bool IsHeaderWritten() const {

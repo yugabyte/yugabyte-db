@@ -40,7 +40,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
 #include "yb/server/webserver.h"
 
 #include <stdio.h>
@@ -50,16 +49,16 @@
 #include <map>
 #include <mutex>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include <boost/algorithm/string.hpp>
 #include <boost/lexical_cast.hpp>
-
+#include <cds/init.h>
 #include <glog/logging.h>
 #include <squeasel.h>
 
-#include <cds/init.h>
-
+#include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/stringprintf.h"
@@ -72,9 +71,10 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/status.h"
-#include "yb/util/url-coding.h"
 #include "yb/util/shared_lock.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/url-coding.h"
 #include "yb/util/zlib.h"
 
 #if defined(__APPLE__)
@@ -355,7 +355,7 @@ int Webserver::BeginRequestCallback(struct sq_connection* connection,
                                     struct sq_request_info* request_info) {
   PathHandler* handler;
   {
-    SharedLock<boost::shared_mutex> lock(lock_);
+    SharedLock<std::shared_timed_mutex> lock(lock_);
     PathHandlerMap::const_iterator it = path_handlers_.find(request_info->uri);
     if (it == path_handlers_.end()) {
       // Let Mongoose deal with this request; returning NULL will fall through
@@ -502,7 +502,7 @@ void Webserver::RegisterPathHandler(const string& path,
                                     bool is_styled,
                                     bool is_on_nav_bar,
                                     const std::string icon) {
-  std::lock_guard<boost::shared_mutex> lock(lock_);
+  std::lock_guard<std::shared_timed_mutex> lock(lock_);
   auto it = path_handlers_.find(path);
   if (it == path_handlers_.end()) {
     it = path_handlers_.insert(
@@ -563,12 +563,12 @@ bool Webserver::static_pages_available() const {
 }
 
 void Webserver::set_footer_html(const std::string& html) {
-  std::lock_guard<boost::shared_mutex> l(lock_);
+  std::lock_guard<std::shared_timed_mutex> l(lock_);
   footer_html_ = html;
 }
 
 void Webserver::BootstrapPageFooter(stringstream* output) {
-  SharedLock<boost::shared_mutex> l(lock_);
+  SharedLock<std::shared_timed_mutex> l(lock_);
   *output << "<div class='yb-bottom-spacer'></div></div>\n"; // end bootstrap 'container' div
   if (!footer_html_.empty()) {
     *output << "<footer class='footer'><div class='yb-footer container text-muted'>";

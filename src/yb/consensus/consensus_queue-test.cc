@@ -29,22 +29,19 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include <gtest/gtest.h>
-#include <gflags/gflags.h>
 
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
-#include "yb/consensus/consensus_queue.h"
 #include "yb/consensus/consensus-test-util.h"
+#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus_queue.h"
+#include "yb/consensus/log-test-base.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_anchor_registry.h"
-#include "yb/consensus/log_util.h"
 #include "yb/consensus/log_reader.h"
-#include "yb/consensus/log-test-base.h"
-#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/log_util.h"
 #include "yb/consensus/replicate_msgs_holder.h"
-
 #include "yb/fs/fs_manager.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/util/metrics.h"

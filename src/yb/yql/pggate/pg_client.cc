@@ -15,12 +15,16 @@
 
 #include "yb/client/client-internal.h"
 #include "yb/client/table.h"
+#include "yb/client/table_info.h"
 #include "yb/client/tablet_server.h"
 
 #include "yb/rpc/poller.h"
 
 #include "yb/tserver/pg_client.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
+
+#include "yb/util/result.h"
+#include "yb/util/shared_mem.h"
 
 #include "yb/yql/pggate/pg_tabledesc.h"
 

@@ -23,8 +23,9 @@
 #include "yb/master/mini_master.h"
 #include "yb/tserver/tserver_util_fwd.h"
 
-#include "yb/util/test_util.h"
 #include "yb/util/memory/mc_types.h"
+#include "yb/util/shared_mem.h"
+#include "yb/util/test_util.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"
 

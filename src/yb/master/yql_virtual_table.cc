@@ -10,15 +10,16 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/master/yql_virtual_table.h"
 
-
-#include "yb/master/catalog_manager.h"
+#include "yb/common/schema.h"
+#include "yb/master/master.h"
+#include "yb/master/scoped_leader_shared_lock.h"
+#include "yb/master/ts_manager.h"
 #include "yb/master/yql_vtable_iterator.h"
-
 #include "yb/util/metrics.h"
 #include "yb/util/shared_lock.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 namespace master {
@@ -34,7 +35,7 @@ YQLVirtualTable::YQLVirtualTable(const TableName& table_name,
                                  const Schema& schema)
     : master_(master),
       table_name_(table_name),
-      schema_(schema) {
+      schema_(std::make_unique<Schema>(schema)) {
     std::string metricDescription = kBaseMetricDescription + table_name_;
     std::string metricName = kMetricPrefixName + namespace_name + "_" + table_name;
     EscapeMetricNameForPrometheus(&metricName);
@@ -45,6 +46,8 @@ YQLVirtualTable::YQLVirtualTable(const TableName& table_name,
                 MetricLevel::kInfo, 0, 10000000, 2);
     histogram_ = master->metric_entity()->FindOrCreateHistogram(std::move(prototype));
 }
+
+YQLVirtualTable::~YQLVirtualTable() = default;
 
 CHECKED_STATUS YQLVirtualTable::GetIterator(
     const QLReadRequestPB& request,
@@ -58,7 +61,7 @@ CHECKED_STATUS YQLVirtualTable::GetIterator(
     const {
   // Acquire shared lock on catalog manager to verify it is still the leader and metadata will
   // not change.
-  SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager());
+  SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
   RETURN_NOT_OK(l.first_failed_status());
 
   MonoTime start_time = MonoTime::Now();
@@ -95,6 +98,20 @@ void YQLVirtualTable::GetSortedLiveDescriptors(std::vector<std::shared_ptr<TSDes
       [](const std::shared_ptr<TSDescriptor>& a, const std::shared_ptr<TSDescriptor>& b) -> bool {
         return a->permanent_uuid() < b->permanent_uuid();
       });
+}
+
+CatalogManagerIf& YQLVirtualTable::catalog_manager() const {
+  return *master_->catalog_manager();
+}
+
+Result<std::pair<int, DataType>> YQLVirtualTable::ColumnIndexAndType(
+    const std::string& col_name) const {
+  int column_index = schema_->find_column(col_name);
+  if (column_index == Schema::kColumnNotFound) {
+    return STATUS_SUBSTITUTE(NotFound, "Couldn't find column $0 in schema", col_name);
+  }
+  const DataType data_type = schema_->column(column_index).type_info()->type();
+  return std::make_pair(column_index, data_type);
 }
 
 const std::string kSystemTablesReleaseVersion = "3.9-SNAPSHOT";

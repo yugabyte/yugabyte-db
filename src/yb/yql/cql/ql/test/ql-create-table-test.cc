@@ -244,8 +244,7 @@ TEST_F(TestQLCreateTable, TestQLCreateTableWithTTL) {
                       "default_time_to_live = 1;");
 
   // Query the table schema.
-  master::Master *master = cluster_->mini_master()->master();
-  master::CatalogManager *catalog_manager = master->catalog_manager();
+  auto *catalog_manager = &cluster_->mini_master()->catalog_manager();
   master::GetTableSchemaRequestPB request_pb;
   master::GetTableSchemaResponsePB response_pb;
   request_pb.mutable_table()->mutable_namespace_()->set_name(kDefaultKeyspaceName);

@@ -29,28 +29,29 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/tablet/tablet_metadata.h"
 
 #include <algorithm>
 #include <mutex>
 #include <string>
 
-#include <gflags/gflags.h>
 #include <boost/optional.hpp>
-#include "yb/rocksdb/db.h"
-#include "yb/rocksdb/options.h"
+#include <gflags/gflags.h>
+
 #include "yb/common/entity_ids.h"
+#include "yb/common/index.h"
+#include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/gutil/atomicops.h"
-#include "yb/gutil/bind.h"
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/options.h"
 #include "yb/tablet/metadata.pb.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/util/debug/trace_event.h"
@@ -58,7 +59,9 @@
 #include "yb/util/logging.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/random.h"
+#include "yb/util/result.h"
 #include "yb/util/status.h"
+#include "yb/util/status_log.h"
 #include "yb/util/trace.h"
 
 DEFINE_bool(enable_tablet_orphaned_block_deletion, true,
@@ -87,6 +90,10 @@ const std::string kSnapshotsDirSuffix = ".snapshots";
 //  Raft group metadata
 // ============================================================================
 
+TableInfo::TableInfo()
+    : schema(std::make_unique<Schema>()), index_map(std::make_unique<IndexMap>()) {
+}
+
 TableInfo::TableInfo(std::string table_id,
                      std::string namespace_name,
                      std::string table_name,
@@ -100,8 +107,8 @@ TableInfo::TableInfo(std::string table_id,
       namespace_name(std::move(namespace_name)),
       table_name(std::move(table_name)),
       table_type(table_type),
-      schema(schema),
-      index_map(index_map),
+      schema(std::make_unique<Schema>(schema)),
+      index_map(std::make_unique<IndexMap>(index_map)),
       index_info(index_info ? new IndexInfo(*index_info) : nullptr),
       schema_version(schema_version),
       partition_schema(std::move(partition_schema)) {
@@ -116,8 +123,8 @@ TableInfo::TableInfo(const TableInfo& other,
       namespace_name(other.namespace_name),
       table_name(other.table_name),
       table_type(other.table_type),
-      schema(schema),
-      index_map(index_map),
+      schema(std::make_unique<Schema>(schema)),
+      index_map(std::make_unique<IndexMap>(index_map)),
       index_info(other.index_info ? new IndexInfo(*other.index_info) : nullptr),
       schema_version(schema_version),
       partition_schema(other.partition_schema),
@@ -131,14 +138,14 @@ Status TableInfo::LoadFromPB(const TableInfoPB& pb) {
   table_name = pb.table_name();
   table_type = pb.table_type();
 
-  RETURN_NOT_OK(SchemaFromPB(pb.schema(), &schema));
+  RETURN_NOT_OK(SchemaFromPB(pb.schema(), schema.get()));
   if (pb.has_index_info()) {
     index_info.reset(new IndexInfo(pb.index_info()));
   }
-  index_map.FromPB(pb.indexes());
+  index_map->FromPB(pb.indexes());
   schema_version = pb.schema_version();
 
-  RETURN_NOT_OK(PartitionSchema::FromPB(pb.partition_schema(), schema, &partition_schema));
+  RETURN_NOT_OK(PartitionSchema::FromPB(pb.partition_schema(), *schema, &partition_schema));
 
   for (const DeletedColumnPB& deleted_col : pb.deleted_cols()) {
     DeletedColumn col;
@@ -155,12 +162,12 @@ void TableInfo::ToPB(TableInfoPB* pb) const {
   pb->set_table_name(table_name);
   pb->set_table_type(table_type);
 
-  DCHECK(schema.has_column_ids());
-  SchemaToPB(schema, pb->mutable_schema());
+  DCHECK(schema->has_column_ids());
+  SchemaToPB(*schema, pb->mutable_schema());
   if (index_info) {
     index_info->ToPB(pb->mutable_index_info());
   }
-  index_map.ToPB(pb->mutable_indexes());
+  index_map->ToPB(pb->mutable_indexes());
   pb->set_schema_version(schema_version);
 
   partition_schema.ToPB(pb->mutable_partition_schema());
@@ -182,10 +189,10 @@ Status KvStoreInfo::LoadTablesFromPB(
         CHECK_OK(cotable_id.FromHexString(table_info->table_id));
         // TODO(#79): when adding for multiple KV-stores per Raft group support - check if we need
         // to set cotable ID.
-        table_info->schema.set_cotable_id(cotable_id);
+        table_info->schema->set_cotable_id(cotable_id);
       } else {
         auto pgtable_id = VERIFY_RESULT(GetPgsqlTableOid(table_info->table_id));
-        table_info->schema.set_pgtable_id(pgtable_id);
+        table_info->schema->set_pgtable_id(pgtable_id);
       }
     }
     tables[table_info->table_id] = std::move(table_info);
@@ -298,10 +305,10 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::Load(
 Result<RaftGroupMetadataPtr> RaftGroupMetadata::LoadOrCreate(const RaftGroupMetadataData& data) {
   auto metadata = Load(data.fs_manager, data.raft_group_id);
   if (metadata.ok()) {
-    if (!(**metadata).schema()->Equals(data.table_info->schema)) {
+    if (!(**metadata).schema()->Equals(*data.table_info->schema)) {
       return STATUS(Corruption, Substitute("Schema on disk ($0) does not "
         "match expected schema ($1)", (*metadata)->schema()->ToString(),
-        data.table_info->schema.ToString()));
+        data.table_info->schema->ToString()));
     }
     return *metadata;
   }
@@ -467,8 +474,8 @@ RaftGroupMetadata::RaftGroupMetadata(
       tablet_data_state_(data.tablet_data_state),
       colocated_(data.colocated),
       cdc_min_replicated_index_(std::numeric_limits<int64_t>::max()) {
-  CHECK(data.table_info->schema.has_column_ids());
-  CHECK_GT(data.table_info->schema.num_key_columns(), 0);
+  CHECK(data.table_info->schema->has_column_ids());
+  CHECK_GT(data.table_info->schema->num_key_columns(), 0);
   kv_store_.tables.emplace(primary_table_id_, data.table_info);
 }
 
@@ -687,10 +694,10 @@ void RaftGroupMetadata::SetSchema(const Schema& schema,
     if (schema.table_properties().is_ysql_catalog_table()) {
       Uuid cotable_id;
       CHECK_OK(cotable_id.FromHexString(target_table_id));
-      new_table_info->schema.set_cotable_id(cotable_id);
+      new_table_info->schema->set_cotable_id(cotable_id);
     } else {
       auto result = CHECK_RESULT(GetPgsqlTableOid(target_table_id));
-      new_table_info->schema.set_pgtable_id(result);
+      new_table_info->schema->set_pgtable_id(result);
     }
   }
   VLOG_WITH_PREFIX(1) << raft_group_id_ << " Updating table " << target_table_id
@@ -740,10 +747,10 @@ void RaftGroupMetadata::AddTable(const std::string& table_id,
     if (schema.table_properties().is_ysql_catalog_table()) {
       Uuid cotable_id;
       CHECK_OK(cotable_id.FromHexString(table_id));
-      new_table_info->schema.set_cotable_id(cotable_id);
+      new_table_info->schema->set_cotable_id(cotable_id);
     } else {
       auto result = CHECK_RESULT(GetPgsqlTableOid(table_id));
-      new_table_info->schema.set_pgtable_id(result);
+      new_table_info->schema->set_pgtable_id(result);
     }
   }
   std::lock_guard<MutexType> lock(data_mutex_);
@@ -751,7 +758,7 @@ void RaftGroupMetadata::AddTable(const std::string& table_id,
   auto existing_table_iter = tables.find(table_id);
   if (existing_table_iter != tables.end()) {
     const auto& existing_table = *existing_table_iter->second.get();
-    if (!existing_table.schema.table_properties().is_ysql_catalog_table() &&
+    if (!existing_table.schema->table_properties().is_ysql_catalog_table() &&
         schema.table_properties().is_ysql_catalog_table()) {
       // This must be the one-time migration with transactional DDL being turned on for the first
       // time on this cluster.
@@ -1056,6 +1063,99 @@ CHECKED_STATUS MigrateSuperblockForD5900(RaftGroupReplicaSuperBlockPB* superbloc
 
 Status MigrateSuperblock(RaftGroupReplicaSuperBlockPB* superblock) {
   return MigrateSuperblockForD5900(superblock);
+}
+
+std::shared_ptr<std::vector<DeletedColumn>> RaftGroupMetadata::deleted_cols(
+    const TableId& table_id) const {
+  DCHECK_NE(state_, kNotLoadedYet);
+  const TableInfoPtr table_info =
+      table_id.empty() ? primary_table_info() : CHECK_RESULT(GetTableInfo(table_id));
+  return std::shared_ptr<std::vector<DeletedColumn>>(table_info, &table_info->deleted_cols);
+}
+
+std::string RaftGroupMetadata::namespace_name(const TableId& table_id) const {
+  DCHECK_NE(state_, kNotLoadedYet);
+  if (table_id.empty()) {
+    return primary_table_info()->namespace_name;
+  }
+  const auto& table_info = CHECK_RESULT(GetTableInfo(table_id));
+  return table_info->namespace_name;
+}
+
+std::string RaftGroupMetadata::table_name(const TableId& table_id) const {
+  DCHECK_NE(state_, kNotLoadedYet);
+  if (table_id.empty()) {
+    return primary_table_info()->table_name;
+  }
+  const auto& table_info = CHECK_RESULT(GetTableInfo(table_id));
+  return table_info->table_name;
+}
+
+TableType RaftGroupMetadata::table_type(const TableId& table_id) const {
+  DCHECK_NE(state_, kNotLoadedYet);
+  if (table_id.empty()) {
+    return primary_table_info()->table_type;
+  }
+  const auto& table_info = CHECK_RESULT(GetTableInfo(table_id));
+  return table_info->table_type;
+}
+
+yb::SchemaPtr RaftGroupMetadata::schema(const TableId& table_id) const {
+  DCHECK_NE(state_, kNotLoadedYet);
+  const TableInfoPtr table_info =
+      table_id.empty() ? primary_table_info() : CHECK_RESULT(GetTableInfo(table_id));
+  return yb::SchemaPtr(table_info, table_info->schema.get());
+}
+
+std::shared_ptr<IndexMap> RaftGroupMetadata::index_map(const TableId& table_id) const {
+  DCHECK_NE(state_, kNotLoadedYet);
+  const TableInfoPtr table_info =
+      table_id.empty() ? primary_table_info() : CHECK_RESULT(GetTableInfo(table_id));
+  return std::shared_ptr<IndexMap>(table_info, table_info->index_map.get());
+}
+
+uint32_t RaftGroupMetadata::schema_version(const TableId& table_id) const {
+  DCHECK_NE(state_, kNotLoadedYet);
+  const TableInfoPtr table_info =
+      table_id.empty() ? primary_table_info() : CHECK_RESULT(GetTableInfo(table_id));
+  return table_info->schema_version;
+}
+
+const std::string& RaftGroupMetadata::indexed_table_id(const TableId& table_id) const {
+  DCHECK_NE(state_, kNotLoadedYet);
+  static const std::string kEmptyString = "";
+  std::lock_guard<MutexType> lock(data_mutex_);
+  const TableInfoPtr table_info = table_id.empty() ?
+      primary_table_info_unlocked() : CHECK_RESULT(GetTableInfoUnlocked(table_id));
+  const auto* index_info = table_info->index_info.get();
+  return index_info ? index_info->indexed_table_id() : kEmptyString;
+}
+
+bool RaftGroupMetadata::is_local_index(const TableId& table_id) const {
+  DCHECK_NE(state_, kNotLoadedYet);
+  std::lock_guard<MutexType> lock(data_mutex_);
+  const TableInfoPtr table_info = table_id.empty() ?
+      primary_table_info_unlocked() : CHECK_RESULT(GetTableInfoUnlocked(table_id));
+  const auto* index_info = table_info->index_info.get();
+  return index_info && index_info->is_local();
+}
+
+bool RaftGroupMetadata::is_unique_index(const TableId& table_id) const {
+  DCHECK_NE(state_, kNotLoadedYet);
+  std::lock_guard<MutexType> lock(data_mutex_);
+  const TableInfoPtr table_info = table_id.empty() ?
+      primary_table_info_unlocked() : CHECK_RESULT(GetTableInfoUnlocked(table_id));
+  const auto* index_info = table_info->index_info.get();
+  return index_info && index_info->is_unique();
+}
+
+std::vector<ColumnId> RaftGroupMetadata::index_key_column_ids(const TableId& table_id) const {
+  DCHECK_NE(state_, kNotLoadedYet);
+  std::lock_guard<MutexType> lock(data_mutex_);
+  const TableInfoPtr table_info = table_id.empty() ?
+      primary_table_info_unlocked() : CHECK_RESULT(GetTableInfoUnlocked(table_id));
+  const auto* index_info = table_info->index_info.get();
+  return index_info ? index_info->index_key_column_ids() : std::vector<ColumnId>();
 }
 
 } // namespace tablet

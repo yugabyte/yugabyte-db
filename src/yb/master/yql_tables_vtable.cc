@@ -13,8 +13,14 @@
 
 #include "yb/master/yql_tables_vtable.h"
 
+#include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
-#include "yb/master/catalog_manager.h"
+#include "yb/common/schema.h"
+
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager_if.h"
+
+#include "yb/util/status_log.h"
 
 namespace yb {
 namespace master {
@@ -27,12 +33,12 @@ YQLTablesVTable::YQLTablesVTable(const TableName& table_name,
 
 Result<std::shared_ptr<QLRowBlock>> YQLTablesVTable::RetrieveData(
     const QLReadRequestPB& request) const {
-  auto vtable = std::make_shared<QLRowBlock>(schema_);
+  auto vtable = std::make_shared<QLRowBlock>(schema());
 
-  auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kVisibleToClient);
+  auto tables = catalog_manager().GetTables(GetTablesMode::kVisibleToClient);
   for (const auto& table : tables) {
     // Skip non-YQL tables.
-    if (!CatalogManager::IsYcqlTable(*table)) {
+    if (!IsYcqlTable(*table)) {
       continue;
     }
 
@@ -42,8 +48,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLTablesVTable::RetrieveData(
     }
 
     // Get namespace for table.
-    auto ns_info = VERIFY_RESULT(master_->catalog_manager()->FindNamespaceById(
-        table->namespace_id()));
+    auto ns_info = VERIFY_RESULT(catalog_manager().FindNamespaceById(table->namespace_id()));
 
     // Create appropriate row for the table;
     QLRow& row = vtable->Extend();

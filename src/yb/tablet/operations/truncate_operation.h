@@ -18,7 +18,6 @@
 #include <string>
 
 #include "yb/gutil/macros.h"
-#include "yb/docdb/doc_key.h"
 #include "yb/tablet/operations/operation.h"
 #include "yb/util/locks.h"
 

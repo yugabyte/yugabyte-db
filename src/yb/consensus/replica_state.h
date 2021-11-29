@@ -53,7 +53,7 @@
 
 #include "yb/gutil/port.h"
 #include "yb/util/locks.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/enums.h"
 
 namespace yb {

@@ -16,6 +16,7 @@
 
 #include <memory>
 
+#include "yb/client/client_fwd.h"
 #include "yb/common/common.pb.h"
 #include "yb/docdb/docdb.h"
 

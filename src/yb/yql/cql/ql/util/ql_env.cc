@@ -181,7 +181,7 @@ void QLEnv::RemoveCachedUDType(const std::string& keyspace_name, const std::stri
 }
 
 //------------------------------------------------------------------------------------------------
-Status QLEnv::GrantRevokePermission(GrantRevokeStatementType statement_type,
+Status QLEnv::GrantRevokePermission(client::GrantRevokeStatementType statement_type,
                                     const PermissionType& permission,
                                     const ResourceType& resource_type,
                                     const std::string& canonical_resource,
@@ -250,7 +250,7 @@ Status QLEnv::DeleteRole(const std::string& role_name) {
   return client_->DeleteRole(role_name, CurrentRoleName());
 }
 
-Status QLEnv::GrantRevokeRole(GrantRevokeStatementType statement_type,
+Status QLEnv::GrantRevokeRole(client::GrantRevokeStatementType statement_type,
                               const std::string& granted_role_name,
                               const std::string& recipient_role_name) {
   return client_->GrantRevokeRole(statement_type, granted_role_name, recipient_role_name);
