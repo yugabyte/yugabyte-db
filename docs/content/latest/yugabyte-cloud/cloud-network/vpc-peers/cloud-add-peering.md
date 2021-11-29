@@ -35,6 +35,8 @@ Configuring a peering connection is done in two stages:
 
 If successful, the peering connection status will change to _Active_. To communicate with your cluster, you still need to add the peered VPN to the IP allow list of your cluster.
 
+### Create a peering connection
+
 Before you can create a peering connection, you must have created at least one VPC in Yugabyte Cloud that uses the cloud provider you will be peering with. In addition, you will need the following details for the application VPC you will be peering with.
 
 | Provider | VPC Details |
@@ -42,9 +44,7 @@ Before you can create a peering connection, you must have created at least one V
 | AWS | Account ID<br>VPC ID<br>VPC region<br>VPC CIDR address |
 | GCP | GCP project ID<br>VPC name<br>VPC CIDR address (optional) |
 
-### Create a peering connection
-
-To create a peering connection for AWS, do the following:
+To create a peering connection, do the following:
 
 1. On the **Network Access** page, select **VPC Network**, then **Peering Connections**.
 1. Click **Create Peering** to display the **Create Peering** sheet.

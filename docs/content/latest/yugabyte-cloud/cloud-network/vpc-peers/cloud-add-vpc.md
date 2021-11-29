@@ -20,6 +20,12 @@ To set up peering in Yugabyte Cloud, you first create a VPC to host your cluster
 
 ## Create a VPC
 
+To create a VPC in Yugabyte Cloud, you need to specify the following:
+
+- Cloud provider (AWS or GCP).
+- Region in which to deploy the VPC (AWS only). Typically, you will want this to be the same region as the application VPC you want to peer with. In GCP, the VPC is deployed in all regions.
+- Preferred CIDR to use for your database VPC.
+
 To create a VPC, do the following:
 
 1. On the **Network Access** page, select **VPC Network**, then **VPCs**.
