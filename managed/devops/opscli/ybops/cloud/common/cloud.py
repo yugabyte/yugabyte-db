@@ -467,9 +467,13 @@ class AbstractCloud(AbstractCommandParser):
         builder = builder.public_key(public_key)
         builder = builder.add_extension(x509.BasicConstraints(ca=False, path_length=None),
                                         critical=True)
-        builder = builder.add_extension(x509.SubjectAlternativeName(
-                                        [x509.IPAddress(ipaddress.ip_address(node_ip))]),
-                                        critical=False)
+        try:
+            builder = builder.add_extension(x509.SubjectAlternativeName(
+                [x509.IPAddress(ipaddress.ip_address(node_ip))]),
+                 critical=False)
+        except ValueError:
+            pass
+
         certificate = builder.sign(private_key=root_key, algorithm=hashes.SHA256(),
                                    backend=default_backend())
         # Write private key to file
