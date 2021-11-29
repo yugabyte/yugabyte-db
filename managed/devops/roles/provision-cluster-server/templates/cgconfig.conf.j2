@@ -1,0 +1,17 @@
+group ysql{
+  perm{
+    task{
+      uid=yugabyte;
+      gid=yugabyte;
+    }
+    admin{
+      uid=yugabyte;
+      gid=yugabyte;
+    }
+  }
+  memory{
+    cgroup.clone_children=1;
+    memory.limit_in_bytes={{ (ansible_memory_mb.real.total*ysql_cgroup_mem_fraction)|int }}M;
+    memory.memsw.limit_in_bytes={{ (ansible_memory_mb.real.total*ysql_cgroup_mem_fraction)|int }}M;
+  }
+}
