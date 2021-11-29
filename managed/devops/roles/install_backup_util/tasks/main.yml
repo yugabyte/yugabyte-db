@@ -29,12 +29,13 @@
   register: util_exists
   failed_when: False
 
-
 - block:
   - name: "Install {{ util.name }}"
-    include: "install-{{ util.name }}.yml"
-    become: yes
-    become_method: sudo
+    include_tasks: "install-{{ util.name }}.yml"
+    args:
+      apply:
+        become: yes
+        become_method: sudo
     when: util_exists.rc != 0
   rescue:
     - name: Ignore errors for onprem provider
