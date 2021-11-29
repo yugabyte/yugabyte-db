@@ -32,6 +32,7 @@
 
 #include <vector>
 
+#include "yb/common/ql_rowwise_iterator_interface.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/log-test-base.h"
@@ -40,6 +41,7 @@
 #include "yb/consensus/consensus-test-util.h"
 #include "yb/server/logical_clock.h"
 #include "yb/server/metadata.h"
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet-test-util.h"
 #include "yb/tablet/tablet_metadata.h"

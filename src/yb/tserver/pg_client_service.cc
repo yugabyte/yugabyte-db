@@ -33,9 +33,12 @@
 #include "yb/rpc/scheduler.h"
 
 #include "yb/tserver/pg_client_session.h"
+#include "yb/util/format.h"
 
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 using namespace std::literals;
 

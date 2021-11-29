@@ -40,7 +40,9 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/locks.h"
+#include "yb/util/metrics.h"
 #include "yb/util/random.h"
+#include "yb/util/status_log.h"
 #include "yb/util/thread.h"
 
 // TODO: Semantics of the Log and Appender thread interactions changed and now multi-threaded

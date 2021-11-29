@@ -22,7 +22,6 @@
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/hybrid_time.h"
-#include "yb/common/transaction.h"
 
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/opid_util.h"
@@ -37,10 +36,18 @@
 
 #include "yb/tserver/tserver_fwd.h"
 
+#include "yb/util/metrics_fwd.h"
 #include "yb/util/enums.h"
-#include "yb/util/metrics.h"
 #include "yb/util/opid.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
+
+namespace google {
+namespace protobuf {
+template <class T>
+class RepeatedPtrField;
+}
+}
+
 
 namespace yb {
 namespace tablet {

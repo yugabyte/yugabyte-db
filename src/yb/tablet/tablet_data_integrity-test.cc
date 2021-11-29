@@ -10,19 +10,14 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include <gtest/gtest.h>
 
-
-#include "yb/common/row.h"
 #include "yb/common/ql_expr.h"
-#include "yb/common/ql_rowwise_iterator_interface.h"
-
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/tablet/local_tablet_writer.h"
-#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet-test-base.h"
+#include "yb/tablet/tablet.h"
 #include "yb/util/path_util.h"
 #include "yb/util/slice.h"
 #include "yb/util/test_macros.h"

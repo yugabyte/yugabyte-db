@@ -16,11 +16,10 @@
 
 #include <string>
 
-#include "yb/client/client.h"
+#include "yb/client/transaction_manager.h"
 
 #include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/mini_cluster.h"
-#include "yb/master/master.h"
 
 #include "yb/util/test_util.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"

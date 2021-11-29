@@ -36,6 +36,7 @@
 #include <cstddef>
 
 #include "yb/client/client.h"
+#include "yb/client/meta_data_cache.h"
 
 #include "yb/yql/cql/ql/test/ql-test-base.h"
 

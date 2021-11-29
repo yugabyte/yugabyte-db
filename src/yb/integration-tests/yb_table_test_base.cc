@@ -10,18 +10,19 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/integration-tests/yb_table_test_base.h"
 
+#include "yb/client/client.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
-
 #include "yb/common/ql_value.h"
-
-#include "yb/util/monotime.h"
 #include "yb/util/curl_util.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status_log.h"
+#include "yb/util/string_util.h"
 
 DECLARE_bool(enable_ysql);
 
@@ -41,6 +42,9 @@ using client::YBTableName;
 using strings::Substitute;
 
 namespace integration_tests {
+
+YBTableTestBase::~YBTableTestBase() {
+}
 
 const YBTableName YBTableTestBase::kDefaultTableName(
     YQL_DATABASE_CQL, "my_keyspace", "kv-table-test");

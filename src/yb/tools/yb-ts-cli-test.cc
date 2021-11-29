@@ -30,12 +30,9 @@
 // under the License.
 //
 // Tests for the yb-admin command-line tool.
-
 #include <boost/assign/list_of.hpp>
 #include <gtest/gtest.h>
 
-#include "yb/gutil/map-util.h"
-#include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/integration-tests/cluster_itest_util.h"

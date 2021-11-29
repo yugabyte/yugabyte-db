@@ -24,6 +24,7 @@
 #include "yb/client/tablet_rpc.h"
 
 #include "yb/rpc/rpc.h"
+#include "yb/rpc/rpc_controller.h"
 
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"

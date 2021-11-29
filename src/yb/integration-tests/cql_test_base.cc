@@ -22,6 +22,8 @@
 
 #include "yb/tserver/heartbeater.h"
 #include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/tablet_server.h"
+#include "yb/util/status_log.h"
 
 namespace yb {
 

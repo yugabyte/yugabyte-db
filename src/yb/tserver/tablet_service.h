@@ -41,7 +41,6 @@
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/tablet/tablet_fwd.h"
-#include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tserver_admin.pb.h"

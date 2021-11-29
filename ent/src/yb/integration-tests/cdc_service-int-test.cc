@@ -1,7 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
 #include <gflags/gflags_declare.h>
-#include <boost/lexical_cast.hpp>
 
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol-test-util.h"
@@ -14,11 +13,12 @@
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/table_handle.h"
-#include "yb/client/yb_table_name.h"
 #include "yb/client/yb_op.h"
+#include "yb/client/yb_table_name.h"
 #include "yb/client/client-test-util.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/value_type.h"
+#include "yb/gutil/casts.h"
 
 #include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/mini_cluster.h"
@@ -29,14 +29,19 @@
 #include "yb/master/master.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+#include "yb/util/format.h"
 
+#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/slice.h"
+#include "yb/util/status_format.h"
 #include "yb/util/tsan_util.h"
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/util/statement_result.h"

@@ -20,6 +20,8 @@
 
 #include "yb/tserver/tserver_error.h"
 
+#include "yb/util/metrics.h"
+
 namespace yb {
 namespace tserver {
 

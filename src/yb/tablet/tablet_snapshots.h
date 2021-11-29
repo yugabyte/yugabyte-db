@@ -14,12 +14,16 @@
 #ifndef YB_TABLET_TABLET_SNAPSHOTS_H
 #define YB_TABLET_TABLET_SNAPSHOTS_H
 
+#include "yb/common/hybrid_time.h"
+#include "yb/common/snapshot.h"
+
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/tablet_component.h"
 
 #include "yb/docdb/docdb_fwd.h"
 
-#include "yb/util/status.h"
+#include "yb/util/opid.h"
+#include "yb/util/status_fwd.h"
 
 namespace rocksdb {
 
@@ -29,6 +33,8 @@ class DB;
 
 namespace yb {
 
+class Env;
+class FsManager;
 class RWOperationCounter;
 class rw_semaphore;
 

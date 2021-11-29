@@ -22,7 +22,7 @@
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/cdc/cdc_rpc.h"
 
-#include "yb/client/schema.h"
+#include "yb/client/client.h"
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/ql_expr.h"
@@ -34,25 +34,35 @@
 #include "yb/consensus/replicate_msgs_holder.h"
 
 #include "yb/client/meta_cache.h"
+#include "yb/client/schema.h"
+#include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/table_alterer.h"
 #include "yb/client/table_handle.h"
-#include "yb/client/session.h"
-#include "yb/client/yb_table_name.h"
 #include "yb/client/yb_op.h"
+#include "yb/client/yb_table_name.h"
+
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/strings/join.h"
+#include "yb/master/master_defaults.h"
 #include "yb/rpc/rpc_context.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/transaction_participant.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/service_util.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/trace.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
@@ -1152,8 +1162,7 @@ void CDCServiceImpl::BootstrapProducer(const BootstrapProducerRequestPB* req,
     options.emplace(cdc::kRecordFormat, CDCRecordFormat_Name(cdc::CDCRecordFormat::WAL));
 
     // Mark this stream as being bootstrapped, to help in finding dangling streams.
-    auto result = async_client_init_->client()->CreateCDCStream(
-        table_id, options, master::SysCDCStreamEntryPB::INITIATED);
+    auto result = async_client_init_->client()->CreateCDCStream(table_id, options, false);
     RPC_CHECK_AND_RETURN_ERROR(result.ok(), result.status(), resp->mutable_error(),
                                CDCErrorPB::INTERNAL_ERROR, context);
     const std::string& bootstrap_id = *result;

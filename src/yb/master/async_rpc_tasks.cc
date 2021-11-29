@@ -13,21 +13,25 @@
 #include "yb/master/async_rpc_tasks.h"
 
 #include "yb/common/wire_protocol.h"
-
 #include "yb/consensus/consensus.proxy.h"
-
-#include "yb/master/catalog_manager.h"
-
+#include "yb/consensus/consensus_meta.h"
+#include "yb/gutil/map-util.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master.h"
+#include "yb/master/tablet_split_complete_handler.h"
+#include "yb/master/ts_manager.h"
 #include "yb/rpc/messenger.h"
-
 #include "yb/tserver/tserver_admin.proxy.h"
-
 #include "yb/util/atomic.h"
 #include "yb/util/flag_tags.h"
-#include "yb/util/format.h"
 #include "yb/util/logging.h"
+#include "yb/util/metrics.h"
 #include "yb/util/source_location.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/thread_restrictions.h"
+#include "yb/util/threadpool.h"
 
 using namespace std::literals;
 
@@ -65,6 +69,7 @@ using std::shared_ptr;
 
 using strings::Substitute;
 using consensus::RaftPeerPB;
+using server::MonitoredTaskState;
 using tserver::TabletServerErrorPB;
 
 void RetryingTSRpcTask::UpdateMetrics(scoped_refptr<Histogram> metric, MonoTime start_time,
@@ -85,7 +90,7 @@ Status PickSpecificUUID::PickReplica(TSDescriptor** ts_desc) {
   return Status::OK();
 }
 
-string ReplicaMapToString(const TabletInfo::ReplicaMap& replicas) {
+string ReplicaMapToString(const TabletReplicaMap& replicas) {
   string ret = "";
   for (const auto& r : replicas) {
     if (!ret.empty()) {
@@ -102,6 +107,10 @@ string ReplicaMapToString(const TabletInfo::ReplicaMap& replicas) {
 // ============================================================================
 //  Class PickLeaderReplica.
 // ============================================================================
+PickLeaderReplica::PickLeaderReplica(const scoped_refptr<TabletInfo>& tablet)
+    : tablet_(tablet) {
+}
+
 Status PickLeaderReplica::PickReplica(TSDescriptor** ts_desc) {
   *ts_desc = VERIFY_RESULT(tablet_->GetLeader());
   return Status::OK();
@@ -128,6 +137,14 @@ RetryingTSRpcTask::~RetryingTSRpcTask() {
   LOG_IF(DFATAL, !IsStateTerminal(state))
       << "Destroying " << this << " task in a wrong state: " << AsString(state);
   VLOG_WITH_FUNC(1) << "Destroying " << this << " in " << AsString(state);
+}
+
+std::string RetryingTSRpcTask::LogPrefix() const {
+  return Format("$0 (task=$1, state=$2): ", description(), static_cast<const void*>(this), state());
+}
+
+std::string RetryingTSRpcTask::table_name() const {
+  return !table_ ? "" : table_->ToString();
 }
 
 // Send the subclass RPC request.
@@ -456,7 +473,7 @@ void RetryingTSRpcTask::TransitionToTerminalState(MonitoredTaskState expected,
   Finished(status);
 }
 
-void RetryingTSRpcTask::TransitionToFailedState(yb::MonitoredTaskState expected,
+void RetryingTSRpcTask::TransitionToFailedState(server::MonitoredTaskState expected,
                                                 const yb::Status& status) {
   TransitionToTerminalState(expected, MonitoredTaskState::kFailed, status);
 }
@@ -498,6 +515,8 @@ AsyncTabletLeaderTask::AsyncTabletLeaderTask(
           master, callback_pool, std::unique_ptr<TSPicker>(new PickLeaderReplica(tablet)), table),
       tablet_(tablet) {
 }
+
+AsyncTabletLeaderTask::~AsyncTabletLeaderTask() = default;
 
 std::string AsyncTabletLeaderTask::description() const {
   return Format("$0 RPC for tablet $1 ($2)", type_name(), tablet_, table_name());
@@ -547,6 +566,11 @@ AsyncCreateReplica::AsyncCreateReplica(Master *master,
   for (const auto& id : snapshot_schedules) {
     req_schedules.Add()->assign(id.AsSlice().cdata(), id.size());
   }
+}
+
+std::string AsyncCreateReplica::description() const {
+  return Format("CreateTablet RPC for tablet $0 ($1) on TS=$2",
+                tablet_id_, table_name(), permanent_uuid_);
 }
 
 void AsyncCreateReplica::HandleResponse(int attempt) {
@@ -608,6 +632,11 @@ void AsyncStartElection::HandleResponse(int attempt) {
   TransitionToCompleteState();
 }
 
+std::string AsyncStartElection::description() const {
+  return Format("RunLeaderElection RPC for tablet $0 ($1) on TS=$2",
+                tablet_id_, table_name(), permanent_uuid_);
+}
+
 bool AsyncStartElection::SendRequest(int attempt) {
   LOG_WITH_PREFIX(INFO) << Format(
       "Hinted Leader start election at $0 for tablet $1, attempt $2",
@@ -666,6 +695,11 @@ void AsyncDeleteReplica::HandleResponse(int attempt) {
     TransitionToCompleteState();
     VLOG_WITH_PREFIX(1) << "TS " << permanent_uuid_ << ": complete on tablet " << tablet_id_;
   }
+}
+
+std::string AsyncDeleteReplica::description() const {
+  return Format("$0Tablet RPC for tablet $1 ($2) on TS=$3",
+                hide_only_ ? "Hide" : "Delete", tablet_id_, table_name(), permanent_uuid_);
 }
 
 bool AsyncDeleteReplica::SendRequest(int attempt) {
@@ -742,6 +776,10 @@ void AsyncAlterTable::HandleResponse(int attempt) {
     VLOG_WITH_PREFIX(1) << "Task is not completed " << tablet_->ToString() << " for version "
                         << schema_version_;
   }
+}
+
+TableType AsyncAlterTable::table_type() const {
+  return tablet_->table()->GetTableType();
 }
 
 bool AsyncAlterTable::SendRequest(int attempt) {
@@ -902,6 +940,8 @@ CommonInfoForRaftTask::CommonInfoForRaftTask(
       change_config_ts_uuid_(change_config_ts_uuid) {
   deadline_ = MonoTime::Max();  // Never time out.
 }
+
+CommonInfoForRaftTask::~CommonInfoForRaftTask() = default;
 
 TabletId CommonInfoForRaftTask::tablet_id() const {
   return tablet_->tablet_id();

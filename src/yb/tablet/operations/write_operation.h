@@ -40,10 +40,7 @@
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/write_batch.h"
 
-#include "yb/common/schema.h"
-
 #include "yb/docdb/doc_operation.h"
-#include "yb/docdb/intent.h"
 #include "yb/docdb/lock_batch.h"
 #include "yb/docdb/shared_lock_manager_fwd.h"
 
@@ -66,15 +63,6 @@ namespace tablet {
 class Tablet;
 
 using docdb::LockBatch;
-
-class WriteOperationContext {
- public:
-  // When operation completes, its callback is executed.
-  virtual void Submit(std::unique_ptr<Operation> operation, int64_t term) = 0;
-  virtual Result<HybridTime> ReportReadRestart() = 0;
-
-  virtual ~WriteOperationContext() {}
-};
 
 // An operation for a batch of inserts/mutates. This class holds and
 // owns most everything related to a transaction, including the Replicate and Commit PB messages

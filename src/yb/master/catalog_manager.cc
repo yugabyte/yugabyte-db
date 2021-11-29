@@ -51,7 +51,6 @@
 //   acquire the lock on the table first. This strict ordering prevents deadlocks.
 //
 // ================================================================================================
-
 #include "yb/master/catalog_manager.h"
 
 #include <stdlib.h>
@@ -68,35 +67,30 @@
 #include <vector>
 
 #include <boost/optional.hpp>
-#include <boost/thread/shared_mutex.hpp>
-
 #include <glog/logging.h>
 
+#include "yb/client/client-internal.h"
+#include "yb/client/client.h"
 #include "yb/client/schema.h"
+#include "yb/client/universe_key_client.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/key_encoder.h"
 #include "yb/common/partial_row.h"
 #include "yb/common/partition.h"
 #include "yb/common/roles_permissions.h"
+#include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus.h"
-#include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus.pb.h"
-#include "yb/consensus/metadata.pb.h"
+#include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus_util.h"
-#include "yb/rpc/messenger.h"
-#include "yb/rpc/response_callback.h"
-#include "yb/rpc/rpc_controller.h"
-#include "yb/util/atomic.h"
-#include "yb/util/countdown_latch.h"
-#include "yb/util/locks.h"
-#include "yb/util/net/net_util.h"
-#include "yb/util/semaphore.h"
-#include "yb/util/status.h"
+#include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/quorum_util.h"
+#include "yb/docdb/doc_key.h"
 #include "yb/gutil/algorithm.h"
 #include "yb/gutil/atomicops.h"
+#include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/mathlimits.h"
 #include "yb/gutil/stl_util.h"
@@ -109,8 +103,8 @@
 #include "yb/master/backfill_index.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_loaders.h"
-#include "yb/master/catalog_manager_bg_tasks.h"
 #include "yb/master/catalog_manager-internal.h"
+#include "yb/master/catalog_manager_bg_tasks.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/cluster_balance.h"
 #include "yb/master/encryption_manager.h"
@@ -121,8 +115,8 @@
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_util.h"
 #include "yb/master/permissions_manager.h"
-#include "yb/master/sys_catalog_constants.h"
 #include "yb/master/sys_catalog.h"
+#include "yb/master/sys_catalog_constants.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/yql_aggregates_vtable.h"
@@ -142,42 +136,47 @@
 #include "yb/master/yql_triggers_vtable.h"
 #include "yb/master/yql_types_vtable.h"
 #include "yb/master/yql_views_vtable.h"
-
-#include "yb/tserver/ts_tablet_manager.h"
-
+#include "yb/master/ysql_transaction_ddl.h"
+#include "yb/rpc/messenger.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_retention_policy.h"
-
-
+#include "yb/tserver/remote_bootstrap_client.h"
+#include "yb/tserver/ts_tablet_manager.h"
+#include "yb/util/atomic.h"
+#include "yb/util/countdown_latch.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
 #include "yb/util/hash_util.h"
+#include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/math_util.h"
+#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/oid_generator.h"
 #include "yb/util/random_util.h"
 #include "yb/util/rw_mutex.h"
+#include "yb/util/semaphore.h"
+#include "yb/util/shared_lock.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/thread.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
 #include "yb/util/uuid.h"
-
-#include "yb/client/client.h"
-#include "yb/client/client-internal.h"
-#include "yb/client/universe_key_client.h"
-#include "yb/client/yb_table_name.h"
-
-#include "yb/tserver/remote_bootstrap_client.h"
-
-#include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
-#include "yb/util/shared_lock.h"
+#include "yb/yql/redis/redisserver/redis_constants.h"
 
 using namespace std::literals;
 using namespace yb::size_literals;
@@ -470,6 +469,7 @@ using consensus::GetConsensusRole;
 using consensus::RaftPeerPB;
 using consensus::StartRemoteBootstrapRequestPB;
 using rpc::RpcContext;
+using server::MonitoredTask;
 using strings::Substitute;
 using tablet::TABLET_DATA_COPYING;
 using tablet::TABLET_DATA_DELETED;
@@ -715,7 +715,6 @@ CatalogManager::CatalogManager(Master* master)
       tasks_tracker_(new TasksTracker(IsUserInitiated::kFalse)),
       jobs_tracker_(new TasksTracker(IsUserInitiated::kTrue)),
       encryption_manager_(new EncryptionManager()),
-      ysql_transaction_(this, master_),
       tablespace_manager_(std::make_shared<YsqlTablespaceManager>(nullptr, nullptr)),
       tablespace_bg_task_running_(false),
       tablet_split_manager_(this, this, this) {
@@ -724,9 +723,7 @@ CatalogManager::CatalogManager(Master* master)
            .set_max_threads(1)
            .Build(&leader_initialization_pool_));
   CHECK_OK(ThreadPoolBuilder("CatalogManagerBGTasks").Build(&background_tasks_thread_pool_));
-  ysql_transaction_.set_thread_pool(background_tasks_thread_pool_.get());
-  CHECK_OK(ThreadPoolBuilder("async-tasks")
-           .Build(&async_task_pool_));
+  CHECK_OK(ThreadPoolBuilder("async-tasks").Build(&async_task_pool_));
 
   if (master_) {
     sys_catalog_.reset(new SysCatalogTable(
@@ -746,6 +743,12 @@ Status CatalogManager::Init() {
     std::lock_guard<simple_spinlock> l(state_lock_);
     CHECK_EQ(kConstructed, state_);
     state_ = kStarting;
+  }
+
+  if (master_) {
+    ysql_transaction_ = std::make_unique<YsqlTransactionDdl>(
+        sys_catalog_.get(), master_->async_client_initializer().get_client_future(),
+        background_tasks_thread_pool_.get());
   }
 
   // Initialize the metrics emitted by the catalog manager.
@@ -1336,7 +1339,7 @@ Status CatalogManager::PrepareSysCatalogTable(int64_t term) {
     metadata.set_namespace_id(kSystemSchemaNamespaceId);
     metadata.set_name(kSysCatalogTableName);
     metadata.set_table_type(TableType::YQL_TABLE_TYPE);
-    SchemaToPB(sys_catalog_->schema_, metadata.mutable_schema());
+    SchemaToPB(*sys_catalog_->schema_, metadata.mutable_schema());
     metadata.set_version(0);
 
     auto table_ids_map_checkout = table_ids_map_.CheckOut();
@@ -1359,7 +1362,7 @@ Status CatalogManager::PrepareSysCatalogTable(int64_t term) {
     auto l = table->LockForRead();
     PartitionSchema partition_schema;
     RETURN_NOT_OK(PartitionSchema::FromPB(l->pb.partition_schema(),
-                                          sys_catalog_->schema_,
+                                          *sys_catalog_->schema_,
                                           &partition_schema));
     vector<Partition> partitions;
     RETURN_NOT_OK(partition_schema.CreatePartitions(1, &partitions));
@@ -1504,11 +1507,11 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
   return Status::OK();
 }
 
-bool CatalogManager::IsYcqlNamespace(const NamespaceInfo& ns) {
+bool IsYcqlNamespace(const NamespaceInfo& ns) {
   return ns.database_type() == YQLDatabase::YQL_DATABASE_CQL;
 }
 
-bool CatalogManager::IsYcqlTable(const TableInfo& table) {
+bool IsYcqlTable(const TableInfo& table) {
   return table.GetTableType() == TableType::YQL_TABLE_TYPE && table.id() != kSysCatalogTableId;
 }
 
@@ -1640,7 +1643,7 @@ Status CatalogManager::CheckIsLeaderAndReady() const {
   return Status::OK();
 }
 
-const std::shared_ptr<tablet::TabletPeer> CatalogManager::tablet_peer() const {
+std::shared_ptr<tablet::TabletPeer> CatalogManager::tablet_peer() const {
   return sys_catalog_->tablet_peer();
 }
 
@@ -2680,7 +2683,7 @@ Status CatalogManager::CreateYsqlSysTable(const CreateTableRequestPB* req,
     std::function<Status(bool)> when_done =
         std::bind(&CatalogManager::VerifyTablePgLayer, this, table, _1);
     WARN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
-        std::bind(&YsqlTransactionDdl::VerifyTransaction, &ysql_transaction_, txn, when_done)),
+        std::bind(&YsqlTransactionDdl::VerifyTransaction, ysql_transaction_.get(), txn, when_done)),
                 "Could not submit VerifyTransaction to thread pool");
   }
 
@@ -3150,8 +3153,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       (ns->state() == SysNamespaceEntryPB::PREPARING &&
         (ns->name() == kSystemNamespaceName || req.name() == parent_table_name));
     if (!valid_ns_state) {
-      Status s = STATUS_SUBSTITUTE(TryAgain, "Invalid Namespace State ($0).  Cannot create $1.$2",
-          SysNamespaceEntryPB::State_Name(ns->state()), ns->name(), req.name() );
+      Status s = STATUS_SUBSTITUTE(TryAgain, "Invalid Namespace State ($0). Cannot create $1.$2",
+          SysNamespaceEntryPB::State_Name(ns->state()), ns->name(), req.name());
       return SetupError(resp->mutable_error(), NamespaceMasterError(ns->state()), s);
     }
 
@@ -3322,7 +3325,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     std::function<Status(bool)> when_done =
         std::bind(&CatalogManager::VerifyTablePgLayer, this, table, _1);
     WARN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
-        std::bind(&YsqlTransactionDdl::VerifyTransaction, &ysql_transaction_, txn, when_done)),
+        std::bind(&YsqlTransactionDdl::VerifyTransaction, ysql_transaction_.get(), txn, when_done)),
         "Could not submit VerifyTransaction to thread pool");
   }
 
@@ -3356,7 +3359,7 @@ Status CatalogManager::VerifyTablePgLayer(scoped_refptr<TableInfo> table, bool r
   const uint32_t database_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTableId(table->id()));
   const auto pg_table_id = GetPgsqlTableId(database_oid, kPgClassTableOid);
   auto entry_exists = VERIFY_RESULT(
-      ysql_transaction_.PgEntryExists(pg_table_id, GetPgsqlTableOid(table->id())));
+      ysql_transaction_->PgEntryExists(pg_table_id, GetPgsqlTableOid(table->id())));
   auto l = table->LockForWrite();
   auto& metadata = table->mutable_metadata()->mutable_dirty()->pb;
 
@@ -6609,7 +6612,7 @@ void CatalogManager::ProcessPendingNamespace(
           std::function<Status(bool)> when_done =
               std::bind(&CatalogManager::VerifyNamespacePgLayer, this, ns, _1);
           WARN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
-              std::bind(&YsqlTransactionDdl::VerifyTransaction, &ysql_transaction_,
+              std::bind(&YsqlTransactionDdl::VerifyTransaction, ysql_transaction_.get(),
                         txn, when_done)),
               "Could not submit VerifyTransaction to thread pool");
         }
@@ -6640,7 +6643,7 @@ Status CatalogManager::VerifyNamespacePgLayer(
   // Upon Transaction completion, check pg system table using OID to ensure SUCCESS.
   const auto pg_table_id = GetPgsqlTableId(atoi(kSystemNamespaceId), kPgDatabaseTableOid);
   auto entry_exists = VERIFY_RESULT(
-      ysql_transaction_.PgEntryExists(pg_table_id, GetPgsqlDatabaseOid(ns->id())));
+      ysql_transaction_->PgEntryExists(pg_table_id, GetPgsqlDatabaseOid(ns->id())));
   auto l = ns->LockForWrite();
   SysNamespaceEntryPB& metadata = ns->mutable_metadata()->mutable_dirty()->pb;
 
@@ -7748,7 +7751,7 @@ void CatalogManager::ReconcileTabletReplicasInLocalMemoryWithReport(
     const std::string& sender_uuid,
     const ConsensusStatePB& consensus_state,
     const ReportedTabletPB& report) {
-  auto replica_locations = std::make_shared<TabletInfo::ReplicaMap>();
+  auto replica_locations = std::make_shared<TabletReplicaMap>();
   auto prev_rl = tablet->GetReplicaLocations();
 
   for (const consensus::RaftPeerPB& peer : consensus_state.config().peers()) {
@@ -8089,7 +8092,7 @@ CHECKED_STATUS CatalogManager::SendAlterTableRequest(const scoped_refptr<TableIn
 
       // Update sys-catalog with the transaction ID.
       TRACE("Updating table metadata on disk");
-      RETURN_NOT_OK(master_->catalog_manager()->sys_catalog_->Upsert(
+      RETURN_NOT_OK(master_->catalog_manager_impl()->sys_catalog_->Upsert(
           master_->catalog_manager()->leader_ready_term(), table.get()));
 
       // Update the in-memory state.
@@ -8137,7 +8140,7 @@ void CatalogManager::DeleteTabletReplicas(
   auto locations = tablet->GetReplicaLocations();
   LOG(INFO) << "Sending DeleteTablet for " << locations->size()
             << " replicas of tablet " << tablet->tablet_id();
-  for (const TabletInfo::ReplicaMap::value_type& r : *locations) {
+  for (const auto& r : *locations) {
     SendDeleteTabletRequest(tablet->tablet_id(), TABLET_DATA_DELETED, boost::none, tablet->table(),
                             r.second.ts_desc, msg, hide_only);
   }
@@ -9092,7 +9095,7 @@ Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& 
 
   TSRegistrationPB reg;
 
-  std::shared_ptr<const TabletInfo::ReplicaMap> locs;
+  std::shared_ptr<const TabletReplicaMap> locs;
   consensus::ConsensusStatePB cstate;
   {
     auto l_tablet = tablet->LockForRead();
@@ -9134,7 +9137,7 @@ Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& 
                    << cstate.config().peers_size();
     }
 
-    for (const TabletInfo::ReplicaMap::value_type& replica : *locs) {
+    for (const auto& replica : *locs) {
       TabletLocationsPB_ReplicaPB* replica_pb = locs_pb->add_replicas();
       replica_pb->set_role(replica.second.role);
       replica_pb->set_member_type(replica.second.member_type);
@@ -9691,7 +9694,7 @@ int64_t CatalogManager::GetNumRelevantReplicas(const BlacklistPB& blacklist, boo
     }
 
     auto locs = tablet->GetReplicaLocations();
-    for (const TabletInfo::ReplicaMap::value_type& replica : *locs) {
+    for (const auto& replica : *locs) {
       if (leaders_only && replica.second.role != RaftPeerPB::LEADER) {
         continue;
       }

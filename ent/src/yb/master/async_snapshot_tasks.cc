@@ -17,9 +17,10 @@
 #include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
 #include "yb/master/ts_descriptor.h"
-#include "yb/master/catalog_manager.h"
 
 #include "yb/rpc/messenger.h"
 
@@ -105,7 +106,7 @@ void AsyncTabletSnapshotOp::HandleResponse(int attempt) {
     VLOG_WITH_PREFIX(1) << "Complete";
   }
 
-  if (state() != MonitoredTaskState::kComplete) {
+  if (state() != server::MonitoredTaskState::kComplete) {
     VLOG_WITH_PREFIX(1) << "TabletSnapshotOp task is not completed";
     return;
   }

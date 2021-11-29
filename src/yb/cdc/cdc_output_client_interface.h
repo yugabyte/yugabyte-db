@@ -13,12 +13,12 @@
 #ifndef YB_CDC_CDC_OUTPUT_CLIENT_INTERFACE_H
 #define YB_CDC_CDC_OUTPUT_CLIENT_INTERFACE_H
 
+#include "yb/consensus/opid_util.h"
+
 #include "yb/cdc/cdc_service.pb.h"
 
 #include "yb/util/status.h"
 #include "yb/util/status_callback.h"
-#include "yb/consensus/opid_util.h"
-
 
 namespace yb {
 

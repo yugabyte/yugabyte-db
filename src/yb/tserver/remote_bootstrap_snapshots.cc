@@ -10,16 +10,15 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/tserver/remote_bootstrap_snapshots.h"
 
 #include <unordered_set>
 
 #include "yb/fs/fs_manager.h"
-
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_snapshots.h"
+#include "yb/util/result.h"
 
 namespace yb {
 namespace tserver {

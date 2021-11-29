@@ -28,6 +28,7 @@
 
 #include "yb/util/debug-util.h"
 #include "yb/util/random_util.h"
+#include "yb/util/shared_mem.h"
 #include "yb/util/status.h"
 
 DEFINE_bool(use_node_hostname_for_local_tserver, false,

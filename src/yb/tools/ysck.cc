@@ -29,11 +29,11 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/tools/ysck.h"
 
 #include <mutex>
 #include <unordered_set>
+
 #include <glog/logging.h>
 
 #include "yb/gutil/bind.h"
@@ -278,13 +278,14 @@ void TabletServerChecksumCallback(
 Status Ysck::ChecksumData(const vector<string>& tables,
                           const vector<string>& tablets,
                           const ChecksumOptions& opts) {
-  const std::unordered_set<string> tables_filter(tables.begin(), tables.end());
-  const std::unordered_set<string> tablets_filter(tablets.begin(), tablets.end());
+  const std::unordered_set<std::string> tables_filter(tables.begin(), tables.end());
+  const std::unordered_set<std::string> tablets_filter(tablets.begin(), tablets.end());
 
   // Copy options so that local modifications can be made and passed on.
   ChecksumOptions options = opts;
 
-  typedef unordered_map<shared_ptr<YsckTablet>, std::vector<shared_ptr<YsckTable>>> TabletTableMap;
+  using TabletTableMap = std::unordered_map<
+      std::shared_ptr<YsckTablet>, std::vector<std::shared_ptr<YsckTable>>>;
   TabletTableMap tablet_table_map;
 
   int num_tablet_replicas = 0;
@@ -505,6 +506,10 @@ bool Ysck::VerifyTablet(const shared_ptr<YsckTablet>& tablet, int table_num_repl
 Status Ysck::CheckAssignments() {
   // TODO
   return STATUS(NotSupported, "CheckAssignments hasn't been implemented");
+}
+
+std::string YsckTabletReplica::ToString() const {
+  return YB_CLASS_TO_STRING(is_leader, is_follower, ts_uuid);
 }
 
 } // namespace tools

@@ -10,22 +10,18 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/tserver/remote_bootstrap_file_downloader.h"
 
 #include "yb/common/wire_protocol.h"
-
 #include "yb/fs/fs_manager.h"
-
 #include "yb/rpc/rpc_controller.h"
-
 #include "yb/tserver/remote_bootstrap.proxy.h"
-
 #include "yb/util/crc.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
-#include "yb/util/size_literals.h"
 #include "yb/util/net/rate_limiter.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
 
 using namespace yb::size_literals;
 

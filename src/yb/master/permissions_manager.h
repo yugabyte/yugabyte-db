@@ -17,13 +17,12 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/roles_permissions.h"
 
-#include "yb/master/master.pb.h"
-#include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
 
 #include "yb/rpc/rpc.h"
 
-#include "yb/util/status.h"
+#include "yb/util/debug/lock_debug.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/unique_lock.h"
 
 namespace yb {
