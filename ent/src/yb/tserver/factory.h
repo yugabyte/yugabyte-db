@@ -23,6 +23,8 @@
 
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/result.h"
+
 DECLARE_string(cert_node_filename);
 
 namespace yb {

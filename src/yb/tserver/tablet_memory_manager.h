@@ -18,7 +18,6 @@
 #include <boost/optional.hpp>
 
 #include "yb/docdb/bounded_rocksdb_iterator.h"
-#include "yb/docdb/doc_key.h"
 #include "yb/docdb/value.h"
 
 #include "yb/tablet/tablet_options.h"

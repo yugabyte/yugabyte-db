@@ -93,7 +93,7 @@ class QLEnv {
   // Permission related methods.
 
   // Grant/Revoke a permission with the given arguments.
-  virtual CHECKED_STATUS GrantRevokePermission(GrantRevokeStatementType statement_type,
+  virtual CHECKED_STATUS GrantRevokePermission(client::GrantRevokeStatementType statement_type,
                                                const PermissionType& permission,
                                                const ResourceType& resource_type,
                                                const std::string& canonical_resource,
@@ -137,7 +137,7 @@ class QLEnv {
   // Delete role by name.
   virtual CHECKED_STATUS DeleteRole(const std::string& role_name);
 
-  virtual CHECKED_STATUS GrantRevokeRole(GrantRevokeStatementType statement_type,
+  virtual CHECKED_STATUS GrantRevokeRole(client::GrantRevokeStatementType statement_type,
                                          const std::string& granted_role_name,
                                          const std::string& recipient_role_name);
 

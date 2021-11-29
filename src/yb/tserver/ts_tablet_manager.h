@@ -40,7 +40,6 @@
 
 #include <boost/container/static_vector.hpp>
 #include <boost/optional/optional_fwd.hpp>
-#include <boost/thread/shared_mutex.hpp>
 #include <gtest/gtest_prod.h>
 
 #include "yb/rocksdb/cache.h"
@@ -67,10 +66,9 @@
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_admin.pb.h"
 #include "yb/util/locks.h"
-#include "yb/util/metrics.h"
 #include "yb/util/rw_mutex.h"
 #include "yb/util/shared_lock.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/threadpool.h"
 
 namespace yb {

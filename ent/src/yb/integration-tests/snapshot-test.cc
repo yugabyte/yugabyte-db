@@ -22,15 +22,20 @@
 #include "yb/integration-tests/test_workload.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/master_backup.proxy.h"
+#include "yb/master/master_types.pb.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/master-test-util.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
+#include "yb/rpc/rpc_controller.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_snapshots.h"
 
 #include "yb/tools/yb-admin_util.h"
@@ -42,6 +47,7 @@
 #include "yb/util/cast.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_util.h"
 
 using namespace std::literals;
@@ -609,14 +615,14 @@ TEST_F(SnapshotTest, ImportSnapshotMeta) {
       LOG(INFO) << "Keyspace: " << ns_pair.old_id() << " -> " << ns_pair.new_id();
       ASSERT_NE(ns_pair.old_id(), ns_pair.new_id());
 
-      const string new_namespace_name = cluster_->mini_master()->master()->catalog_manager()->
+      const string new_namespace_name = cluster_->mini_master()->catalog_manager().
           GetNamespaceName(ns_pair.new_id());
       ASSERT_EQ(old_namespace_name, new_namespace_name);
 
       const IdPairPB& table_pair = table_meta.table_ids();
       LOG(INFO) << "Table: " << table_pair.old_id() << " -> " << table_pair.new_id();
       ASSERT_NE(table_pair.old_id(), table_pair.new_id());
-      scoped_refptr<TableInfo> info = cluster_->mini_master()->master()->catalog_manager()->
+      scoped_refptr<TableInfo> info = cluster_->mini_master()->catalog_manager().
           GetTableInfo(table_pair.new_id());
       ASSERT_EQ(old_table_name, info->name());
       auto tablets = info->GetTablets();

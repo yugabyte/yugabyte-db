@@ -47,6 +47,8 @@
 #include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/tserver_forward_service.proxy.h"
 
+#include "yb/util/shared_mem.h"
+
 DECLARE_string(rpc_bind_addresses);
 DECLARE_bool(use_node_to_node_encryption);
 DECLARE_string(certs_dir);

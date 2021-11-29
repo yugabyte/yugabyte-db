@@ -34,6 +34,7 @@
 
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver_flags.h"
+#include "yb/util/result.h"
 
 using std::vector;
 

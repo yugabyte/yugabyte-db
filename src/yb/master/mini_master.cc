@@ -218,8 +218,12 @@ std::string MiniMaster::bound_rpc_addr_str() const {
   return bound_rpc_addr().ToString();
 }
 
-CatalogManager& MiniMaster::catalog_manager() const {
+CatalogManagerIf& MiniMaster::catalog_manager() const {
   return *master_->catalog_manager();
+}
+
+CatalogManager& MiniMaster::catalog_manager_impl() const {
+  return *master_->catalog_manager_impl();
 }
 
 tablet::TabletPeerPtr MiniMaster::tablet_peer() const {
@@ -236,6 +240,10 @@ master::SysCatalogTable& MiniMaster::sys_catalog() const {
 
 master::TSManager& MiniMaster::ts_manager() const {
   return *master_->ts_manager();
+}
+
+master::FlushManager& MiniMaster::flush_manager() const {
+  return *master_->flush_manager();
 }
 
 } // namespace master

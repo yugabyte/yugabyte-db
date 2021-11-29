@@ -37,7 +37,10 @@
 
 #include "yb/rocksdb/write_batch.h"
 #include "yb/tablet/tablet.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/status_format.h"
 
 using namespace std::placeholders;
 

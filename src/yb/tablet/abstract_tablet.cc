@@ -14,6 +14,7 @@
 #include "yb/common/ql_resultset.h"
 
 #include "yb/common/ql_value.h"
+#include "yb/common/schema.h"
 
 #include "yb/docdb/cql_operation.h"
 #include "yb/docdb/pgsql_operation.h"
@@ -23,6 +24,12 @@
 
 namespace yb {
 namespace tablet {
+
+Result<HybridTime> AbstractTablet::SafeTime(RequireLease require_lease,
+                                            HybridTime min_allowed,
+                                            CoarseTimePoint deadline) const {
+  return DoGetSafeTime(require_lease, min_allowed, deadline);
+}
 
 Status AbstractTablet::HandleQLReadRequest(CoarseTimePoint deadline,
                                            const ReadHybridTime& read_time,

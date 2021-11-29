@@ -15,7 +15,9 @@
 
 #include "yb/client/txn-test-base.h"
 
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
+#include "yb/client/table.h"
 #include "yb/client/table_alterer.h"
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_rpc.h"
@@ -28,6 +30,10 @@
 
 #include "yb/rpc/rpc.h"
 
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_bootstrap_if.h"
+#include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/transaction_coordinator.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"

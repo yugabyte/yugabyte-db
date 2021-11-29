@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "yb/client/table.h"
+#include "yb/client/table_info.h"
 #include "yb/common/schema.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/integration-tests/backfill-test-util.h"

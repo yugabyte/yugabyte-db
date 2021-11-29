@@ -243,6 +243,14 @@ class CowWriteLock {
     cow_ = nullptr;
   }
 
+  void CommitOrWarn(const Status& status, const char* action) {
+    if (!status.ok()) {
+      LOG(WARNING) << "An error occurred while " << action << ": " << status;
+      return;
+    }
+    Commit();
+  }
+
   void Unlock() {
     if (cow_) {
       cow_->AbortMutation();

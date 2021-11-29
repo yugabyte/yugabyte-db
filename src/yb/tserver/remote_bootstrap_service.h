@@ -42,11 +42,12 @@
 #include "yb/util/locks.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
-#include "yb/util/status.h"
-#include "yb/util/thread.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
+
 class FsManager;
+class Thread;
 
 namespace tserver {
 
@@ -57,6 +58,8 @@ class RemoteBootstrapServiceImpl : public RemoteBootstrapServiceIf {
   RemoteBootstrapServiceImpl(FsManager* fs_manager,
                              TabletPeerLookupIf* tablet_peer_lookup,
                              const scoped_refptr<MetricEntity>& metric_entity);
+
+  ~RemoteBootstrapServiceImpl();
 
   void BeginRemoteBootstrapSession(const BeginRemoteBootstrapSessionRequestPB* req,
                                    BeginRemoteBootstrapSessionResponsePB* resp,

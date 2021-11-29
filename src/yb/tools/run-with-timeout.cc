@@ -24,6 +24,7 @@
 #include "yb/util/subprocess.h"
 #include "yb/util/logging.h"
 #include "yb/util/status.h"
+#include "yb/util/status_log.h"
 #include "yb/util/result.h"
 #include "yb/util/net/net_util.h"
 

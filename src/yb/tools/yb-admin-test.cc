@@ -30,37 +30,29 @@
 // under the License.
 //
 // Tests for the yb-admin command-line tool.
-
 #include <regex>
 
 #include <boost/algorithm/string.hpp>
-
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
-#include "yb/client/table.h"
 #include "yb/client/table_creator.h"
-
 #include "yb/common/json_util.h"
-
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/cql_test_util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/test_workload.h"
-
 #include "yb/master/master_defaults.h"
-
 #include "yb/tools/admin-test-base.h"
-
+#include "yb/util/format.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/port_picker.h"
 #include "yb/util/random_util.h"
+#include "yb/util/status_format.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/string_util.h"
 #include "yb/util/subprocess.h"

@@ -46,7 +46,7 @@
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/tserver/remote_bootstrap.pb.h"
 #include "yb/tserver/remote_bootstrap_file_downloader.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
@@ -78,7 +78,7 @@ class TSTabletManager;
 
 class RemoteBootstrapComponent {
  public:
-  virtual CHECKED_STATUS CreateDirectories(const string& db_dir, FsManager* fs) = 0;
+  virtual CHECKED_STATUS CreateDirectories(const std::string& db_dir, FsManager* fs) = 0;
   virtual CHECKED_STATUS Download() = 0;
 
   virtual ~RemoteBootstrapComponent() = default;
@@ -167,7 +167,7 @@ class RemoteBootstrapClient {
   // downloaded as part of initiating the remote bootstrap session.
   CHECKED_STATUS WriteConsensusMetadata();
 
-  CHECKED_STATUS CreateTabletDirectories(const string& db_dir, FsManager* fs);
+  CHECKED_STATUS CreateTabletDirectories(const std::string& db_dir, FsManager* fs);
 
   CHECKED_STATUS DownloadRocksDBFiles();
 

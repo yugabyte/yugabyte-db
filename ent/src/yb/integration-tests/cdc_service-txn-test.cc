@@ -27,12 +27,15 @@
 #include "yb/integration-tests/cdc_test_util.h"
 
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/rpc_controller.h"
 
 #include "yb/tablet/tablet.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/util/logging.h"
 
+#include "yb/util/metrics.h"
 #include "yb/util/slice.h"
 
 DECLARE_bool(cdc_enable_replicate_intents);

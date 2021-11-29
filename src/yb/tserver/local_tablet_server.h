@@ -14,7 +14,11 @@
 #ifndef YB_TSERVER_LOCAL_TABLET_SERVER_H
 #define YB_TSERVER_LOCAL_TABLET_SERVER_H
 
+#include "yb/common/entity_ids_types.h"
+
 #include "yb/tserver/tserver_fwd.h"
+
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 namespace tserver {

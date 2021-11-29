@@ -29,13 +29,11 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/server/webui_util.h"
 
 #include <string>
 
 #include "yb/common/schema.h"
-#include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/server/monitored_task.h"
@@ -44,6 +42,7 @@
 using strings::Substitute;
 
 namespace yb {
+namespace server {
 
 void HtmlOutputSchemaTable(const Schema& schema,
                            std::stringstream* output) {
@@ -98,4 +97,5 @@ void HtmlOutputTasks(const std::unordered_set<std::shared_ptr<MonitoredTask>>& t
   *output << "</table>\n";
 }
 
+} // namespace server
 } // namespace yb

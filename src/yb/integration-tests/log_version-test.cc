@@ -10,23 +10,18 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include <fstream>
 #include <regex>
 #include <vector>
 
 #include <boost/algorithm/string/predicate.hpp>
-
 #include <glog/logging.h>
 
-
-#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/client/client.h"
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
-
+#include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/master/master.pb.h"
-
 #include "yb/rpc/rpc_controller.h"
-
 #include "yb/util/path_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/string_trim.h"

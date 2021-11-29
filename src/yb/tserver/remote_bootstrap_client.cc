@@ -29,16 +29,16 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/tserver/remote_bootstrap_client.h"
 
-#include <gflags/gflags.h>
 #include <glog/logging.h>
 
+#include "yb/common/index.h"
+#include "yb/common/schema.h"
+#include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/metadata.pb.h"
-#include "yb/common/wire_protocol.h"
 #include "yb/fs/fs_manager.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
@@ -56,8 +56,10 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_log.h"
 
 using namespace yb::size_literals;
 

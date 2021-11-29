@@ -16,6 +16,8 @@
 
 #include "yb/client/client_fwd.h"
 
+#include "yb/util/status.h"
+
 namespace yb {
 namespace client {
 

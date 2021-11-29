@@ -14,7 +14,6 @@
 #ifndef YB_MASTER_MASTER_TABLET_SERVICE_H
 #define YB_MASTER_MASTER_TABLET_SERVICE_H
 
-#include "yb/master/master.h"
 #include "yb/master/master.service.h"
 #include "yb/master/master_tserver.h"
 #include "yb/rpc/rpc_context.h"

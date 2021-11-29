@@ -14,6 +14,7 @@
 #include "yb/tablet/remove_intents_task.h"
 
 #include "yb/tablet/running_transaction.h"
+#include "yb/tablet/transaction_participant_context.h"
 #include "yb/util/logging.h"
 
 namespace yb {

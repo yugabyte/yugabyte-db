@@ -22,6 +22,7 @@
 #include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/util/countdown_latch.h"
+#include "yb/util/shared_mem.h"
 
 #include "yb/yql/pggate/pg_env.h"
 #include "yb/yql/pggate/pggate.h"

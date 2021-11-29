@@ -14,11 +14,10 @@
 #ifndef YB_TABLET_ABSTRACT_TABLET_H
 #define YB_TABLET_ABSTRACT_TABLET_H
 
+#include "yb/common/common_fwd.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/ql_protocol.pb.h"
-#include "yb/common/ql_storage_interface.h"
-#include "yb/common/redis_protocol.pb.h"
-#include "yb/common/schema.h"
 
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/util/result.h"
@@ -87,9 +86,7 @@ class AbstractTablet {
   // a timeout.
   Result<HybridTime> SafeTime(RequireLease require_lease = RequireLease::kTrue,
                               HybridTime min_allowed = HybridTime::kMin,
-                              CoarseTimePoint deadline = CoarseTimePoint::max()) const {
-    return DoGetSafeTime(require_lease, min_allowed, deadline);
-  }
+                              CoarseTimePoint deadline = CoarseTimePoint::max()) const;
 
   template <class PB>
   Result<IsolationLevel> GetIsolationLevelFromPB(const PB& pb) {

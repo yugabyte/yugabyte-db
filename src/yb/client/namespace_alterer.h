@@ -20,7 +20,10 @@
 
 #include "yb/client/client_fwd.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/common.pb.h"
+
+#include "yb/master/master_fwd.h"
 
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"

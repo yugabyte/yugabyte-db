@@ -16,7 +16,7 @@
 
 #include <gflags/gflags.h>
 
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/threadpool.h"
 
 DECLARE_int32(max_group_replicate_batch_size);

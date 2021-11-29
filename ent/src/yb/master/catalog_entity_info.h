@@ -17,8 +17,6 @@
 #include "yb/master/cdc_rpc_tasks.h"
 #include "yb/master/master_backup.pb.h"
 
-#include "yb/client/table.h"
-
 #include "yb/common/snapshot.h"
 
 namespace yb {

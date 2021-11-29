@@ -14,9 +14,10 @@
 #ifndef ENT_SRC_YB_SERVER_SECURE_H
 #define ENT_SRC_YB_SERVER_SECURE_H
 
+#include <gflags/gflags_declare.h>
+
 #include "yb/rpc/rpc_fwd.h"
 
-#include "yb/util/result.h"
 #include "yb/util/enums.h"
 
 DECLARE_string(cert_node_filename);
@@ -35,9 +36,9 @@ namespace server {
 
 YB_DEFINE_ENUM(SecureContextType, (kInternal)(kExternal));
 
-string DefaultRootDir(const FsManager& fs_manager);
+std::string DefaultRootDir(const FsManager& fs_manager);
 
-string DefaultCertsDir(const FsManager& fs_manager);
+std::string DefaultCertsDir(const FsManager& fs_manager);
 
 // Creates secure context and sets up messenger builder to use it.
 Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(

@@ -85,12 +85,12 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                  const std::string& master_addrs,
                                  const std::string& producer_universe_uuid);
 
-  void HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool error);
+  void HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool error) override;
 
-  void HandleRestoreTabletSnapshotResponse(TabletInfo *tablet, bool error);
+  void HandleRestoreTabletSnapshotResponse(TabletInfo *tablet, bool error) override;
 
   void HandleDeleteTabletSnapshotResponse(
-      const SnapshotId& snapshot_id, TabletInfo *tablet, bool error);
+      const SnapshotId& snapshot_id, TabletInfo *tablet, bool error) override;
 
   void DumpState(std::ostream* out, bool on_disk_dump = false) const override;
 
@@ -128,7 +128,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   // List CDC streams (optionally, for a given table).
   CHECKED_STATUS ListCDCStreams(const ListCDCStreamsRequestPB* req,
-                                ListCDCStreamsResponsePB* resp);
+                                ListCDCStreamsResponsePB* resp) override;
 
   // Get CDC stream.
   CHECKED_STATUS GetCDCStream(const GetCDCStreamRequestPB* req,
@@ -188,7 +188,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   bool IsCdcEnabled(const TableInfo& table_info) const override;
 
-  tablet::SnapshotCoordinator& snapshot_coordinator() {
+  tablet::SnapshotCoordinator& snapshot_coordinator() override {
     return snapshot_coordinator_;
   }
 

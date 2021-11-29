@@ -10,16 +10,14 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
+#include "yb/client/client.h"
 #include "yb/consensus/log_reader.h"
-#include "yb/tablet/tablet.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/yb_table_test_base.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
-
-#include "yb/integration-tests/mini_cluster.h"
-#include "yb/integration-tests/yb_table_test_base.h"
 
 DECLARE_bool(TEST_simulate_abrupt_server_restart);
 

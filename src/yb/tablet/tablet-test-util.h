@@ -37,7 +37,6 @@
 #include <vector>
 
 #include "yb/common/common.pb.h"
-#include "yb/common/schema.h"
 
 #include "yb/tablet/tablet-harness.h"
 

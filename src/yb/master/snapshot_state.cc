@@ -10,22 +10,19 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/master/snapshot_state.h"
 
 #include "yb/common/transaction_error.h"
-
 #include "yb/docdb/key_bytes.h"
-
+#include "yb/docdb/value_type.h"
 #include "yb/master/master_error.h"
 #include "yb/master/snapshot_coordinator_context.h"
-
+#include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tablet/tablet_snapshots.h"
-
 #include "yb/tserver/backup.pb.h"
-
 #include "yb/util/atomic.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/result.h"
 
 using namespace std::literals;
 

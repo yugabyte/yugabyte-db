@@ -16,6 +16,7 @@
 #include "yb/yql/cql/ql/test/ql-test-base.h"
 
 #include "yb/client/client.h"
+#include "yb/client/meta_data_cache.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
@@ -55,8 +56,8 @@ void QLTestBase::CreateSimulatedCluster(int num_tablet_servers) {
   builder.default_admin_operation_timeout(MonoDelta::FromSeconds(60));
   builder.set_tserver_uuid(cluster_->mini_tablet_server(0)->server()->permanent_uuid());
   client_ = ASSERT_RESULT(builder.Build());
-  metadata_cache_ = std::make_shared<client::YBMetaDataCache>(client_.get(),
-      false /* Update roles' permissions cache */);
+  metadata_cache_ = std::make_shared<client::YBMetaDataCache>(
+      client_.get(), false /* Update roles' permissions cache */);
   ASSERT_OK(client_->CreateNamespaceIfNotExists(kDefaultKeyspaceName));
 }
 

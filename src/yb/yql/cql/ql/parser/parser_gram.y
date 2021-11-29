@@ -7753,34 +7753,34 @@ opt_from_in:
 GrantStmt:
   GRANT permissions ON ALL KEYSPACES TO role_name {
     PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $7);
-    $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::GRANT,
+    $$ = MAKE_NODE(@1, PTGrantRevokePermission, client::GrantRevokeStatementType::GRANT,
                    $2, ResourceType::ALL_KEYSPACES, nullptr, role_node);
   }
   | GRANT permissions ON KEYSPACE ColId TO role_name {
     PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $7);
     PTQualifiedName::SharedPtr keyspace_node = MAKE_NODE(@1, PTQualifiedName, $5);
-    $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::GRANT,
+    $$ = MAKE_NODE(@1, PTGrantRevokePermission, client::GrantRevokeStatementType::GRANT,
                    $2, ResourceType::KEYSPACE, keyspace_node, role_node);
   }
   | GRANT permissions ON TABLE qualified_name TO role_name {
     PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $7);
-    $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::GRANT,
+    $$ = MAKE_NODE(@1, PTGrantRevokePermission, client::GrantRevokeStatementType::GRANT,
                    $2, ResourceType::TABLE, $5, role_node);
   }
   | GRANT permissions ON qualified_name TO role_name {
     PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $6);
-    $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::GRANT,
+    $$ = MAKE_NODE(@1, PTGrantRevokePermission, client::GrantRevokeStatementType::GRANT,
                    $2, ResourceType::TABLE, $4, role_node);
   }
   | GRANT permissions ON ALL ROLES TO role_name {
     PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $7);
-    $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::GRANT,
+    $$ = MAKE_NODE(@1, PTGrantRevokePermission, client::GrantRevokeStatementType::GRANT,
                    $2, ResourceType::ALL_ROLES, nullptr , role_node);
   }
   | GRANT permissions ON ROLE role_name TO role_name {
     PTQualifiedName::SharedPtr to_role_node = MAKE_NODE(@1, PTQualifiedName, $7);
     PTQualifiedName::SharedPtr on_role_node = MAKE_NODE(@1, PTQualifiedName, $5);
-    $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::GRANT,
+    $$ = MAKE_NODE(@1, PTGrantRevokePermission, client::GrantRevokeStatementType::GRANT,
                    $2, ResourceType::ROLE, on_role_node, to_role_node);
   }
 ;
@@ -7788,34 +7788,34 @@ GrantStmt:
 RevokeStmt:
   REVOKE permissions ON ALL KEYSPACES FROM role_name {
     PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $7);
-    $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::REVOKE,
+    $$ = MAKE_NODE(@1, PTGrantRevokePermission, client::GrantRevokeStatementType::REVOKE,
                    $2, ResourceType::ALL_KEYSPACES, nullptr, role_node);
   }
   | REVOKE permissions ON KEYSPACE ColId FROM role_name {
     PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $7);
     PTQualifiedName::SharedPtr keyspace_node = MAKE_NODE(@1, PTQualifiedName, $5);
-    $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::REVOKE,
+    $$ = MAKE_NODE(@1, PTGrantRevokePermission, client::GrantRevokeStatementType::REVOKE,
                    $2, ResourceType::KEYSPACE, keyspace_node, role_node);
   }
   | REVOKE permissions ON TABLE qualified_name FROM role_name {
     PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $7);
-    $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::REVOKE,
+    $$ = MAKE_NODE(@1, PTGrantRevokePermission, client::GrantRevokeStatementType::REVOKE,
                    $2, ResourceType::TABLE, $5, role_node);
   }
   | REVOKE permissions ON qualified_name FROM role_name {
     PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $6);
-    $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::REVOKE,
+    $$ = MAKE_NODE(@1, PTGrantRevokePermission, client::GrantRevokeStatementType::REVOKE,
                    $2, ResourceType::TABLE, $4, role_node);
   }
   | REVOKE permissions ON ALL ROLES FROM role_name {
     PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $7);
-    $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::REVOKE,
+    $$ = MAKE_NODE(@1, PTGrantRevokePermission, client::GrantRevokeStatementType::REVOKE,
                    $2, ResourceType::ALL_ROLES, nullptr , role_node);
   }
   | REVOKE permissions ON ROLE role_name FROM role_name {
     PTQualifiedName::SharedPtr to_role_node = MAKE_NODE(@1, PTQualifiedName, $7);
     PTQualifiedName::SharedPtr on_role_node = MAKE_NODE(@1, PTQualifiedName, $5);
-    $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::REVOKE,
+    $$ = MAKE_NODE(@1, PTGrantRevokePermission, client::GrantRevokeStatementType::REVOKE,
                    $2, ResourceType::ROLE, on_role_node, to_role_node);
   }
 ;
@@ -7986,13 +7986,13 @@ GrantRoleStmt:
 
 GrantRoleStmt:
   GRANT role_name TO role_name {
-    $$ = MAKE_NODE(@1, PTGrantRevokeRole, GrantRevokeStatementType::GRANT, $2, $4);
+    $$ = MAKE_NODE(@1, PTGrantRevokeRole, client::GrantRevokeStatementType::GRANT, $2, $4);
   }
 ;
 
 RevokeRoleStmt:
   REVOKE role_name FROM role_name {
-    $$ = MAKE_NODE(@1, PTGrantRevokeRole, GrantRevokeStatementType::REVOKE, $2, $4);
+    $$ = MAKE_NODE(@1, PTGrantRevokeRole, client::GrantRevokeStatementType::REVOKE, $2, $4);
   }
 ;
 

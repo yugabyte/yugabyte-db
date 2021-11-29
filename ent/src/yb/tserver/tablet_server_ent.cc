@@ -18,6 +18,9 @@
 #include "yb/server/secure.h"
 
 #include "yb/rpc/rpc.h"
+
+#include "yb/tablet/tablet_peer.h"
+
 #include "yb/tserver/backup_service.h"
 #include "yb/tserver/cdc_consumer.h"
 #include "yb/tserver/tablet_server.h"

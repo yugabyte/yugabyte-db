@@ -29,13 +29,10 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
-#include "yb/consensus/log_anchor_registry.h"
-
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
-#include "yb/gutil/strings/substitute.h"
+#include "yb/consensus/log_anchor_registry.h"
 #include "yb/util/test_util.h"
 
 using strings::Substitute;

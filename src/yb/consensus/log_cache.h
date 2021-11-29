@@ -45,11 +45,10 @@
 
 #include "yb/util/async_util.h"
 #include "yb/util/locks.h"
-#include "yb/util/metrics.h"
+#include "yb/util/metrics_fwd.h"
 #include "yb/util/monotime.h"
 #include "yb/util/opid.h"
 #include "yb/util/restart_safe_clock.h"
-#include "yb/util/result.h"
 
 namespace yb {
 
@@ -138,9 +137,7 @@ class LogCache {
   // Return the number of bytes of memory currently in use by the cache.
   int64_t BytesUsed() const;
 
-  int64_t num_cached_ops() const {
-    return metrics_.num_ops->value();
-  }
+  int64_t num_cached_ops() const;
 
   int64_t earliest_op_index() const;
 

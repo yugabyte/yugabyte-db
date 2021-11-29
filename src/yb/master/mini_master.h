@@ -89,13 +89,17 @@ class MiniMaster {
 
   rpc::Messenger& messenger() const;
 
-  CatalogManager& catalog_manager() const;
+  CatalogManagerIf& catalog_manager() const;
+
+  CatalogManager& catalog_manager_impl() const;
 
   tablet::TabletPeerPtr tablet_peer() const;
 
   master::SysCatalogTable& sys_catalog() const;
 
   master::TSManager& ts_manager() const;
+
+  master::FlushManager& flush_manager() const;
 
   // Return UUID of this mini master.
   std::string permanent_uuid() const;

@@ -23,6 +23,7 @@
 #include "yb/master/master_backup.pb.h"
 
 #include "yb/util/async_task_tracker.h"
+#include "yb/util/tostring.h"
 
 namespace yb {
 namespace master {

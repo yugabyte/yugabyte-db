@@ -381,23 +381,23 @@ const Type* GetAuditLogTypeOption(const TreeNode& tnode,
           break;
       }
       switch (cast_node.statement_type()) {
-        case GrantRevokeStatementType::GRANT:
+        case client::GrantRevokeStatementType::GRANT:
           return &Type::GRANT;
-        case GrantRevokeStatementType::REVOKE:
+        case client::GrantRevokeStatementType::REVOKE:
           return &Type::REVOKE;
       }
-      FATAL_INVALID_ENUM_VALUE(GrantRevokeStatementType, cast_node.statement_type());
+      FATAL_INVALID_ENUM_VALUE(client::GrantRevokeStatementType, cast_node.statement_type());
     }
     case TreeNodeOpcode::kPTGrantRevokeRole: {
       const auto& cast_node = static_cast<const PTGrantRevokeRole&>(tnode);
       // Scope is not used.
       switch (cast_node.statement_type()) {
-        case GrantRevokeStatementType::GRANT:
+        case client::GrantRevokeStatementType::GRANT:
           return &Type::GRANT;
-        case GrantRevokeStatementType::REVOKE:
+        case client::GrantRevokeStatementType::REVOKE:
           return &Type::REVOKE;
       }
-      FATAL_INVALID_ENUM_VALUE(GrantRevokeStatementType, cast_node.statement_type());
+      FATAL_INVALID_ENUM_VALUE(client::GrantRevokeStatementType, cast_node.statement_type());
     }
 
     case TreeNodeOpcode::kPTListNode: {

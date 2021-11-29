@@ -38,7 +38,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/tools/ysck.h"
 #include "yb/util/monotime.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 

@@ -16,6 +16,7 @@
 #include "yb/util/jsonreader.h"
 #include "yb/util/path_util.h"
 #include "yb/util/random_util.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
 
 DEFINE_bool(verbose_yb_backup, false, "Add --verbose flag to yb_backup.py.");

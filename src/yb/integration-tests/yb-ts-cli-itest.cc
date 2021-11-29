@@ -10,15 +10,21 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 #include <gtest/gtest.h>
 
-#include "yb/integration-tests/yb_table_test_base.h"
-
+#include "yb/gutil/stl_util.h"
 #include "yb/integration-tests/cluster_itest_util.h"
-#include "yb/integration-tests/external_mini_cluster-itest-base.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/external_mini_cluster_fs_inspector.h"
+#include "yb/integration-tests/yb_table_test_base.h"
 #include "yb/util/path_util.h"
+#include "yb/util/status_log.h"
 #include "yb/util/subprocess.h"
+#include "yb/util/test_util.h"
 
 namespace yb {
 namespace integration_tests {

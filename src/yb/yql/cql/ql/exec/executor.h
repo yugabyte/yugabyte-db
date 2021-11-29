@@ -445,11 +445,11 @@ class Executor : public QLExprExecutor {
    private:
     // Sets of write operations separated by their primary and keys.
     std::unordered_set<client::YBqlWriteOpPtr,
-                       client::YBqlWriteOp::PrimaryKeyComparator,
-                       client::YBqlWriteOp::PrimaryKeyComparator> ops_by_primary_key_;
+                       client::YBqlWritePrimaryKeyComparator,
+                       client::YBqlWritePrimaryKeyComparator> ops_by_primary_key_;
     std::unordered_set<client::YBqlWriteOpPtr,
-                       client::YBqlWriteOp::HashKeyComparator,
-                       client::YBqlWriteOp::HashKeyComparator> ops_by_hash_key_;
+                       client::YBqlWriteHashKeyComparator,
+                       client::YBqlWriteHashKeyComparator> ops_by_hash_key_;
   };
 
   //------------------------------------------------------------------------------------------------

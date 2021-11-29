@@ -28,7 +28,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include <algorithm>
 #include <memory>
 #include <sstream>
@@ -39,13 +38,18 @@
 #include <gtest/gtest.h>
 
 #include "yb/common/partial_row.h"
+#include "yb/common/schema.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/master/master-test_base.h"
-#include "yb/master/master-test-util.h"
 #include "yb/master/call_home.h"
+#include "yb/master/catalog_manager.h"
+#include "yb/master/master-test-util.h"
+#include "yb/master/master-test_base.h"
 #include "yb/master/master.h"
 #include "yb/master/master.proxy.h"
+#include "yb/master/master_error.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ts_descriptor.h"
@@ -61,6 +65,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
@@ -578,8 +583,7 @@ TEST_F(MasterTest, TestCatalogHasBlockCache) {
 
   // Check block cache metrics directly and verify
   // that the counters are greater than 0
-  const std::unordered_map<const MetricPrototype*, scoped_refptr<Metric> > metric_map =
-    mini_master_->master()->metric_entity()->UnsafeMetricsMapForTests();
+  const auto metric_map = mini_master_->master()->metric_entity()->UnsafeMetricsMapForTests();
 
   scoped_refptr<Counter> cache_misses_counter = down_cast<Counter *>(
       FindOrDie(metric_map,
@@ -688,8 +692,8 @@ TEST_F(MasterTest, TestTabletsDeletedWhenTableInDeletingState) {
   ASSERT_OK(CreateTable(kTableName, kTableSchema));
   vector<TabletId> tablet_ids;
   {
-    CatalogManager::SharedLock lock(mini_master_->master()->catalog_manager()->mutex_);
-    for (auto elem : *mini_master_->master()->catalog_manager()->tablet_map_) {
+    CatalogManager::SharedLock lock(mini_master_->catalog_manager_impl().mutex_);
+    for (auto elem : *mini_master_->catalog_manager_impl().tablet_map_) {
       auto tablet = elem.second;
       if (tablet->table()->name() == kTableName) {
         tablet_ids.push_back(elem.first);
@@ -707,10 +711,10 @@ TEST_F(MasterTest, TestTabletsDeletedWhenTableInDeletingState) {
 
   // Verify that the test table's tablets are in the DELETED state.
   {
-    CatalogManager::SharedLock lock(mini_master_->master()->catalog_manager()->mutex_);
+    CatalogManager::SharedLock lock(mini_master_->catalog_manager_impl().mutex_);
     for (const auto& tablet_id : tablet_ids) {
-      auto iter = mini_master_->master()->catalog_manager()->tablet_map_->find(tablet_id);
-      ASSERT_NE(iter, mini_master_->master()->catalog_manager()->tablet_map_->end());
+      auto iter = mini_master_->catalog_manager_impl().tablet_map_->find(tablet_id);
+      ASSERT_NE(iter, mini_master_->catalog_manager_impl().tablet_map_->end());
       auto l = iter->second->LockForRead();
       ASSERT_EQ(l->pb.state(), SysTabletsEntryPB::DELETED);
     }
@@ -1457,7 +1461,7 @@ TEST_F(MasterTest, TestNamespaceCreateFailure) {
 
     // Internal search of CatalogManager should reveal it's state (debug UI uses this function).
     std::vector<scoped_refptr<NamespaceInfo>> namespace_internal;
-    mini_master_->master()->catalog_manager()->GetAllNamespaces(&namespace_internal, false);
+    mini_master_->catalog_manager().GetAllNamespaces(&namespace_internal, false);
     auto pos = std::find_if(namespace_internal.begin(), namespace_internal.end(),
                  [&nsid](const scoped_refptr<NamespaceInfo>& ns) {
                    return ns && ns->id() == nsid;
@@ -1478,7 +1482,7 @@ TEST_F(MasterTest, TestNamespaceCreateFailure) {
 
     // Internal search of CatalogManager should reveal it's DELETING to cleanup any partial apply.
     std::vector<scoped_refptr<NamespaceInfo>> namespace_internal;
-    mini_master_->master()->catalog_manager()->GetAllNamespaces(&namespace_internal, false);
+    mini_master_->catalog_manager().GetAllNamespaces(&namespace_internal, false);
     auto pos = std::find_if(namespace_internal.begin(), namespace_internal.end(),
         [&nsid](const scoped_refptr<NamespaceInfo>& ns) {
           return ns && ns->id() == nsid;
@@ -1492,7 +1496,7 @@ TEST_F(MasterTest, TestNamespaceCreateFailure) {
 
   ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
     std::vector<scoped_refptr<NamespaceInfo>> namespace_internal;
-    mini_master_->master()->catalog_manager()->GetAllNamespaces(&namespace_internal, false);
+    mini_master_->catalog_manager().GetAllNamespaces(&namespace_internal, false);
     auto pos = std::find_if(namespace_internal.begin(), namespace_internal.end(),
         [&nsid](const scoped_refptr<NamespaceInfo>& ns) {
           return ns && ns->id() == nsid;
@@ -1506,7 +1510,7 @@ TEST_F(MasterTest, TestNamespaceCreateFailure) {
 
   ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
     std::vector<scoped_refptr<NamespaceInfo>> namespace_internal;
-    mini_master_->master()->catalog_manager()->GetAllNamespaces(&namespace_internal, false);
+    mini_master_->catalog_manager().GetAllNamespaces(&namespace_internal, false);
     auto pos = std::find_if(namespace_internal.begin(), namespace_internal.end(),
         [&nsid](const scoped_refptr<NamespaceInfo>& ns) {
           return ns && ns->id() == nsid;
@@ -1551,7 +1555,7 @@ TEST_P(LoopedMasterTest, TestNamespaceCreateSysCatalogFailure) {
 
     // Internal search of CatalogManager should reveal whether it was partially created.
     std::vector<scoped_refptr<NamespaceInfo>> namespace_internal;
-    mini_master_->master()->catalog_manager()->GetAllNamespaces(&namespace_internal, false);
+    mini_master_->catalog_manager().GetAllNamespaces(&namespace_internal, false);
     auto was_internally_created = std::any_of(namespace_internal.begin(), namespace_internal.end(),
         [&test_name](const scoped_refptr<NamespaceInfo>& ns) {
           if (ns && ns->name() == test_name && ns->state() != SysNamespaceEntryPB::DELETED) {

@@ -41,7 +41,7 @@
 #include "yb/rpc/service_pool.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/enums.h"
 
 namespace yb {
@@ -95,7 +95,7 @@ class RpcServer {
     STARTED
   };
 
-  string name_;
+  std::string name_;
 
   ServerState server_state_;
 

@@ -35,9 +35,7 @@
 #include <string>
 
 #include "yb/consensus/consensus_meta.h"
-
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/util/status.h"
 
 namespace yb {

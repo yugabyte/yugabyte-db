@@ -29,23 +29,26 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include "yb/server/rpc_server.h"
 
 #include <list>
 #include <string>
 #include <vector>
 
-#include <gflags/gflags.h>
+#include <boost/preprocessor/cat.hpp>
+#include <boost/preprocessor/stringize.hpp>
 
 #include "yb/gutil/casts.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/service_if.h"
 #include "yb/rpc/service_pool.h"
-#include "yb/rpc/thread_pool.h"
-#include "yb/server/rpc_server.h"
+#include "yb/util/atomic.h"
 #include "yb/util/flag_tags.h"
-#include "yb/util/metrics.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/metrics_fwd.h"
+#include "yb/util/monotime.h"
 #include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 using yb::rpc::Messenger;
 using yb::rpc::ServiceIf;

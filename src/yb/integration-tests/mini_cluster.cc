@@ -29,41 +29,46 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/integration-tests/mini_cluster.h"
 
 #include <algorithm>
 
 #include "yb/client/client.h"
-
+#include "yb/client/yb_table_name.h"
 #include "yb/consensus/consensus.h"
-
+#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/master/catalog_manager.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master.h"
+#include "yb/master/master.pb.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/sys_catalog.h"
-
+#include "yb/master/scoped_leader_shared_lock.h"
+#include "yb/master/ts_manager.h"
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/rate_limiter.h"
-
 #include "yb/rpc/messenger.h"
 #include "yb/server/hybrid_clock.h"
-
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
-
+#include "yb/tablet/transaction_participant.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
-
 #include "yb/util/debug/long_operation_tracker.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
 #include "yb/util/path_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
-#include "yb/util/test_util.h"
 #include "yb/util/test_thread_holder.h"
+#include "yb/util/test_util.h"
 
 using namespace std::literals;
 using strings::Substitute;
@@ -97,11 +102,10 @@ using std::string;
 using std::vector;
 using tserver::MiniTabletServer;
 using tserver::TabletServer;
-using yb::master::GetMasterClusterConfigRequestPB;
-using yb::master::GetMasterClusterConfigResponsePB;
-using yb::master::ChangeMasterClusterConfigRequestPB;
-using yb::master::ChangeMasterClusterConfigResponsePB;
-using yb::master::SysClusterConfigEntryPB;
+using master::GetMasterClusterConfigResponsePB;
+using master::ChangeMasterClusterConfigRequestPB;
+using master::ChangeMasterClusterConfigResponsePB;
+using master::SysClusterConfigEntryPB;
 
 namespace {
 
@@ -338,7 +342,8 @@ Status MiniCluster::AddTabletServer() {
 namespace {
 
 Status ChangeClusterConfig(
-    CatalogManager* catalog_manager, std::function<void(SysClusterConfigEntryPB*)> config_changer) {
+    master::CatalogManagerIf* catalog_manager,
+    std::function<void(SysClusterConfigEntryPB*)> config_changer) {
   GetMasterClusterConfigResponsePB config_resp;
   RETURN_NOT_OK(catalog_manager->GetClusterConfig(&config_resp));
 
@@ -358,7 +363,7 @@ Status MiniCluster::AddTServerToBlacklist(const MiniTabletServer& ts) {
   const auto* master = VERIFY_RESULT(GetLeaderMiniMaster());
 
   RETURN_NOT_OK(ChangeClusterConfig(
-      master->master()->catalog_manager(), [&ts](SysClusterConfigEntryPB* config) {
+      &master->catalog_manager(), [&ts](SysClusterConfigEntryPB* config) {
         // Add tserver to blacklist.
         HostPortPB* blacklist_host_pb = config->mutable_server_blacklist()->mutable_hosts()->Add();
         blacklist_host_pb->set_host(ts.bound_rpc_addr().address().to_string());
@@ -376,7 +381,7 @@ Status MiniCluster::ClearBlacklist() {
   const auto* master = VERIFY_RESULT(GetLeaderMiniMaster());
 
   RETURN_NOT_OK(
-      ChangeClusterConfig(master->master()->catalog_manager(), [](SysClusterConfigEntryPB* config) {
+      ChangeClusterConfig(&master->catalog_manager(), [](SysClusterConfigEntryPB* config) {
         config->mutable_server_blacklist()->Clear();
         config->mutable_leader_blacklist()->Clear();
       }));
@@ -406,7 +411,7 @@ int MiniCluster::LeaderMasterIdx() {
       if (master->master() == nullptr || master->master()->IsShutdown()) {
         continue;
       }
-      SCOPED_LEADER_SHARED_LOCK(l, master->master()->catalog_manager());
+      SCOPED_LEADER_SHARED_LOCK(l, master->master()->catalog_manager_impl());
       if (l.catalog_status().ok() && l.leader_status().ok()) {
         return i;
       }
@@ -568,7 +573,7 @@ Status MiniCluster::WaitForTabletServerCount(int count,
   while (sw.elapsed().wall_seconds() < kRegistrationWaitTimeSeconds) {
     auto leader = GetLeaderMiniMaster();
     if (leader.ok()) {
-      (*leader)->master()->ts_manager()->GetAllDescriptors(descs);
+      (*leader)->ts_manager().GetAllDescriptors(descs);
       if (descs->size() == count) {
         // GetAllDescriptors() may return servers that are no longer online.
         // Do a second step of verification to verify that the descs that we got
@@ -822,8 +827,8 @@ Status WaitUntilTabletHasLeader(
 CHECKED_STATUS WaitUntilMasterHasLeader(MiniCluster* cluster, MonoDelta timeout) {
   return WaitFor([cluster] {
     for (int i = 0; i != cluster->num_masters(); ++i) {
-      auto* sys_catalog = cluster->mini_master(i)->master()->catalog_manager()->sys_catalog();
-      if (sys_catalog->tablet_peer()->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY) {
+      auto tablet_peer = cluster->mini_master(i)->tablet_peer();
+      if (tablet_peer->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY) {
         return true;
       }
     }
@@ -937,11 +942,10 @@ int NumRunningFlushes(MiniCluster* cluster) {
 
 Result<scoped_refptr<master::TableInfo>> FindTable(
     MiniCluster* cluster, const client::YBTableName& table_name) {
-  auto* catalog_manager =
-      VERIFY_RESULT(cluster->GetLeaderMiniMaster())->master()->catalog_manager();
+  auto& catalog_manager = VERIFY_RESULT(cluster->GetLeaderMiniMaster())->catalog_manager();
   master::TableIdentifierPB identifier;
   table_name.SetIntoTableIdentifierPB(&identifier);
-  return catalog_manager->FindTable(identifier);
+  return catalog_manager.FindTable(identifier);
 }
 
 Status WaitForInitDb(MiniCluster* cluster) {
@@ -952,10 +956,10 @@ Status WaitForInitDb(MiniCluster* cluster) {
     if (!leader_mini_master.ok()) {
       continue;
     }
-    auto* catalog_manager = (*leader_mini_master)->master()->catalog_manager();
+    auto& catalog_manager = (*leader_mini_master)->catalog_manager();
     master::IsInitDbDoneRequestPB req;
     master::IsInitDbDoneResponsePB resp;
-    auto status = catalog_manager->IsInitDbDone(&req, &resp);
+    auto status = catalog_manager.IsInitDbDone(&req, &resp);
     if (!status.ok()) {
       LOG(INFO) << "IsInitDbDone failure: " << status;
       continue;

@@ -10,7 +10,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/tools/bulk_load_utils.h"
 
 #include <boost/algorithm/string.hpp>

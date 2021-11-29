@@ -10,14 +10,12 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/tablet/operations/truncate_operation.h"
 
 #include <glog/logging.h>
 
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus_round.h"
-#include "yb/server/hybrid_clock.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/util/trace.h"

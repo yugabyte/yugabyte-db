@@ -14,6 +14,7 @@
 #ifndef YB_UTIL_MEMORY_TRACKED_SHARED_PTR_H_
 #define YB_UTIL_MEMORY_TRACKED_SHARED_PTR_H_
 
+#include <atomic>
 #include <memory>
 
 #include "yb/util/debug-util.h"

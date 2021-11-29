@@ -34,12 +34,12 @@
 
 #include <string>
 
-#include "yb/common/schema.h"
+#include "yb/common/common_fwd.h"
 #include "yb/gutil/macros.h"
-#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_fwd.h"
 #include "yb/tserver/tablet_server_options.h"
 #include "yb/util/net/sockaddr.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
@@ -58,7 +58,7 @@ class TabletServer;
 class MiniTabletServer {
  public:
   static Result<std::unique_ptr<MiniTabletServer>> CreateMiniTabletServer(
-      const string& fs_root,
+      const std::string& fs_root,
       uint16_t rpc_port,
       int index = 0);
 

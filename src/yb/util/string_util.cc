@@ -20,13 +20,10 @@
 #include "yb/util/string_util.h"
 
 #include <regex>
-#include <string>
 
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/preprocessor/cat.hpp>
 #include <glog/logging.h>
-
-#include "yb/gutil/dynamic_annotations.h"
 
 using std::vector;
 using std::regex;

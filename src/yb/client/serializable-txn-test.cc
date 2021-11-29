@@ -10,12 +10,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
-#include "yb/client/txn-test-base.h"
-
 #include "yb/client/session.h"
 #include "yb/client/transaction.h"
-
+#include "yb/client/txn-test-base.h"
 #include "yb/util/async_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/thread.h"

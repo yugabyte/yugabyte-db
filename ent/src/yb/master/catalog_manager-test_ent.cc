@@ -11,6 +11,7 @@
 // under the License.
 
 #include "../../src/yb/master/catalog_manager-test_base.h"
+#include "yb/util/status_log.h"
 
 namespace yb {
 namespace master {
@@ -335,8 +336,8 @@ class TestLoadBalancerEnterprise : public TestLoadBalancerBase<ClusterLoadBalanc
 
   void AddRunningReplicaEnt(TabletInfo* tablet, std::shared_ptr<yb::master::TSDescriptor> ts_desc,
                             bool is_live) {
-    std::shared_ptr<TabletInfo::ReplicaMap> replicas =
-      std::const_pointer_cast<TabletInfo::ReplicaMap>(tablet->GetReplicaLocations());
+    std::shared_ptr<TabletReplicaMap> replicas =
+      std::const_pointer_cast<TabletReplicaMap>(tablet->GetReplicaLocations());
 
     TabletReplica replica;
     consensus::RaftPeerPB::Role role = is_live ?

@@ -16,10 +16,12 @@
 
 #include <atomic>
 
-#include "yb/util/shared_mem.h"
+#include <boost/asio/ip/tcp.hpp>
 
 #include "yb/tserver/tserver_util_fwd.h"
 #include "yb/util/lockfree.h"
+#include "yb/util/net/net_fwd.h"
+#include "yb/util/slice.h"
 
 namespace yb {
 namespace tserver {

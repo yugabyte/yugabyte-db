@@ -37,8 +37,6 @@
 #include <string>
 #include <vector>
 
-#include "yb/master/master.h"
-#include "yb/master/master.proxy.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/server/server_base.h"
@@ -61,7 +59,7 @@ class RemoteYsckTabletServer : public YsckTabletServer {
                                   const HostPort& address,
                                   rpc::ProxyCache* proxy_cache)
       : YsckTabletServer(id),
-        address_(yb::ToString(address)),
+        address_(address.ToString()),
         generic_proxy_(new server::GenericServiceProxy(proxy_cache, address)),
         ts_proxy_(new tserver::TabletServerServiceProxy(proxy_cache, address)) {
   }

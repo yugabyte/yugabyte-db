@@ -9,28 +9,28 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
-
 #include "yb/master/call_home.h"
 
 #include <sstream>
 #include <thread>
 
+#include <boost/algorithm/string.hpp>
+#include <boost/optional.hpp>
 #include <rapidjson/reader.h>
 #include <rapidjson/writer.h>
 
-#include <boost/algorithm/string.hpp>
-#include <boost/optional.hpp>
-#include <gflags/gflags.h>
-
-
-#include "yb/master/catalog_manager.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master.h"
 #include "yb/master/master.pb.h"
-
+#include "yb/master/ts_manager.h"
 #include "yb/tserver/ts_tablet_manager.h"
-
 #include "yb/util/flag_tags.h"
-#include "yb/util/version_info.h"
+#include "yb/util/jsonwriter.h"
+#include "yb/util/logging.h"
+#include "yb/util/metrics.h"
+#include "yb/util/result.h"
 #include "yb/util/user.h"
+#include "yb/util/version_info.h"
 
 static const char* kLowLevel = "low";
 static const char* kMediumLevel = "medium";
@@ -475,4 +475,13 @@ CollectionLevel CallHome::GetCollectionLevel() {
   }
   return CollectionLevel::LOW;
 }
+
+master::Master* CallHome::master() {
+  return down_cast<master::Master*>(server_);
+}
+
+tserver::TabletServer* CallHome::tserver() {
+  return down_cast<tserver::TabletServer*>(server_);
+}
+
 } // namespace yb

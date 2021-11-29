@@ -16,6 +16,7 @@
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/session.h"
 #include "yb/client/transaction.h"
+#include "yb/client/transaction_manager.h"
 
 #include "yb/server/hybrid_clock.h"
 #include "yb/server/random_error_clock.h"

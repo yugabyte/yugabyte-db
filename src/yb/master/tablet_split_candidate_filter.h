@@ -14,7 +14,8 @@
 #ifndef YB_MASTER_TABLET_SPLIT_CANDIDATE_FILTER_H
 #define YB_MASTER_TABLET_SPLIT_CANDIDATE_FILTER_H
 
-#include "yb/master/catalog_entity_info.h"
+#include "yb/master/master_fwd.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 namespace master {

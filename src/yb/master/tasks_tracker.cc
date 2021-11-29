@@ -10,9 +10,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
-#include "yb/gutil/strings/substitute.h"
 #include "yb/master/tasks_tracker.h"
+
 #include "yb/util/atomic.h"
 
 DEFINE_int32(tasks_tracker_num_tasks, 100,
@@ -44,14 +43,14 @@ void TasksTracker::Reset() {
   tasks_.clear();
 }
 
-void TasksTracker::AddTask(std::shared_ptr<MonitoredTask> task) {
+void TasksTracker::AddTask(std::shared_ptr<server::MonitoredTask> task) {
   std::lock_guard<decltype(lock_)> l(lock_);
   tasks_.push_back(task);
 }
 
-std::vector<std::shared_ptr<MonitoredTask>> TasksTracker::GetTasks() {
+std::vector<std::shared_ptr<server::MonitoredTask>> TasksTracker::GetTasks() {
   shared_lock<decltype(lock_)> l(lock_);
-  std::vector<std::shared_ptr<MonitoredTask>> tasks;
+  std::vector<std::shared_ptr<server::MonitoredTask>> tasks;
   for (const auto& task : tasks_) {
     tasks.push_back(task);
   }
@@ -65,8 +64,7 @@ void TasksTracker::CleanupOldTasks() {
                         ? &FLAGS_long_term_tasks_tracker_keep_time_multiplier
                         : &FLAGS_tasks_tracker_keep_time_multiplier);
   std::lock_guard<decltype(lock_)> l(lock_);
-  for (boost::circular_buffer<std::shared_ptr<MonitoredTask>>::iterator iter = tasks_.begin();
-       iter != tasks_.end(); ) {
+  for (auto iter = tasks_.begin(); iter != tasks_.end(); ) {
     if (MonoTime::Now()
             .GetDeltaSince((*iter)->start_timestamp())
             .ToMilliseconds() > timeout_ms) {

@@ -20,6 +20,7 @@
 
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
+#include "yb/util/status_log.h"
 
 namespace yb {
 

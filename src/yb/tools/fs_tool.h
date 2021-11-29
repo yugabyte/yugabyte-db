@@ -39,7 +39,7 @@
 #include <utility>
 #include <vector>
 
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 

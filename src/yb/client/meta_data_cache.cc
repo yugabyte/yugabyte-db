@@ -17,6 +17,10 @@
 #include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+
 DEFINE_int32(update_permissions_cache_msecs, 2000,
              "How often the roles' permissions cache should be updated. 0 means never update it");
 
@@ -199,7 +203,7 @@ Status YBMetaDataCache::HasResourcePermission(const std::string& canonical_resou
       object_type != ql::ObjectType::OBJECT_TABLE &&
       object_type != ql::ObjectType::OBJECT_ROLE) {
     DFATAL_OR_RETURN_NOT_OK(STATUS_SUBSTITUTE(InvalidArgument, "Invalid ObjectType $0",
-                                              object_type));
+                                              to_underlying(object_type)));
   }
 
   if (!permissions_cache_->ready()) {

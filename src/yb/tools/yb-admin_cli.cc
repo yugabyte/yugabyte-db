@@ -37,10 +37,12 @@
 #include <boost/lexical_cast.hpp>
 
 #include "yb/common/json_util.h"
+#include "yb/master/master_defaults.h"
 #include "yb/tools/yb-admin_client.h"
 #include "yb/util/flags.h"
+#include "yb/util/logging.h"
+#include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
-#include "yb/master/master_defaults.h"
 #include "yb/util/string_case.h"
 
 DEFINE_string(master_addresses, "localhost:7100",

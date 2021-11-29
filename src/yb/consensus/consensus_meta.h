@@ -33,7 +33,6 @@
 #define YB_CONSENSUS_CONSENSUS_META_H_
 
 #include <stdint.h>
-
 #include <atomic>
 #include <string>
 
@@ -41,7 +40,7 @@
 #include "yb/common/entity_ids_types.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/gutil/macros.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 

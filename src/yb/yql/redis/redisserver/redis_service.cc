@@ -33,6 +33,8 @@
 
 #include "yb/common/redis_protocol.pb.h"
 
+#include "yb/master/master.pb.h"
+
 #include "yb/yql/redis/redisserver/redis_commands.h"
 #include "yb/yql/redis/redisserver/redis_encoding.h"
 #include "yb/yql/redis/redisserver/redis_rpc.h"

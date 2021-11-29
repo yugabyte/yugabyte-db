@@ -13,10 +13,14 @@
 #ifndef ENT_SRC_YB_MASTER_UNIVERSE_KEY_REGISTRY_SERVICE_H
 #define ENT_SRC_YB_MASTER_UNIVERSE_KEY_REGISTRY_SERVICE_H
 
-#include "yb/util/status.h"
-#include "yb/util/result.h"
+#include <string>
+
+#include "yb/util/status_fwd.h"
 
 namespace yb {
+
+class Slice;
+
 namespace master {
 
 class EncryptionInfoPB;

@@ -15,12 +15,20 @@
 
 #include "yb/client/client.h"
 #include "yb/client/error.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
+#include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/common/schema.h"
+
 #include "yb/master/master.pb.h"
 
+
+#include "yb/util/format.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 using namespace std::literals; // NOLINT
 

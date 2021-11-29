@@ -13,13 +13,16 @@
 #ifndef YB_MASTER_FLUSH_MANAGER_H
 #define YB_MASTER_FLUSH_MANAGER_H
 
+#include <unordered_set>
+
 #include "yb/common/entity_ids.h"
 
 #include "yb/gutil/ref_counted.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/master/master_fwd.h"
+
 #include "yb/util/locks.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/enums.h"
 
 namespace yb {
@@ -32,7 +35,7 @@ class TableInfo;
 // Handle Flush-related operations.
 class FlushManager {
  public:
-  explicit FlushManager(Master* master, CatalogManager* catalog_manager)
+  explicit FlushManager(Master* master, CatalogManagerIf* catalog_manager)
       : master_(DCHECK_NOTNULL(master)),
         catalog_manager_(DCHECK_NOTNULL(catalog_manager)) {}
 
@@ -58,7 +61,7 @@ class FlushManager {
   void DeleteCompleteFlushRequests();
 
   Master* master_;
-  CatalogManager* catalog_manager_;
+  CatalogManagerIf* catalog_manager_;
 
   // Lock protecting the various in memory storage structures.
   typedef rw_spinlock LockType;

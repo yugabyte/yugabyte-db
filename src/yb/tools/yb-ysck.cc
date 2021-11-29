@@ -32,13 +32,12 @@
 // Command line tool to run Ysck against a cluster. Defaults to running against a local Master
 // on the default RPC port. It verifies that all the reported Tablet Servers are running and that
 // the tablets are in a consistent state.
-
-
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/master/master_defaults.h"
 #include "yb/rpc/messenger.h"
 #include "yb/tools/ysck_remote.h"
 #include "yb/util/flags.h"

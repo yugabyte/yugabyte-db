@@ -19,7 +19,7 @@
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus.pb.h"
 
-#include "yb/util/result.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 namespace consensus {

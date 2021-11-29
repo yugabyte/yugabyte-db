@@ -42,6 +42,7 @@
 #include "yb/client/session.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/table_info.h"
 #include "yb/client/transaction_pool.h"
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
@@ -58,6 +59,7 @@
 #include "yb/master/master_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random.h"
+#include "yb/util/status_log.h"
 #include "yb/util/thread.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
@@ -454,7 +456,7 @@ void TestWorkload::State::Setup(YBTableType table_type, const TestWorkloadOption
   client_ = CHECK_RESULT(cluster_->CreateClient(&client_builder));
   CHECK_OK(client_->CreateNamespaceIfNotExists(
       options.table_name.namespace_name(),
-      master::GetDatabaseTypeForTable(client::YBTable::ClientToPBTableType(table_type))));
+      master::GetDatabaseTypeForTable(client::ClientToPBTableType(table_type))));
 
   // Retry YBClient::TableExists() until we make that call retry reliably.
   // See KUDU-1074.

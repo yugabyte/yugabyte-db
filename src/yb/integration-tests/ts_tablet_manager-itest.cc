@@ -29,9 +29,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include <memory>
 #include <string>
+
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
@@ -41,7 +41,6 @@
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/quorum_util.h"
 #include "yb/fs/fs_manager.h"
-#include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
@@ -51,11 +50,12 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
 #include "yb/server/server_base.proxy.h"
+#include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
-#include "yb/tserver/ts_tablet_manager.h"
 #include "yb/util/test_util.h"
 
 DECLARE_bool(enable_leader_failure_detection);

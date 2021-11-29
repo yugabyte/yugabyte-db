@@ -30,28 +30,29 @@
 // under the License.
 //
 
+
+
+
+
+
+// Include client header so we can access YBTableType.
 #include <time.h>
 
 #include <glog/logging.h>
 
 #include "yb/client/table.h"
-
-#include "yb/common/row.h"
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_rowwise_iterator_interface.h"
-
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/tablet/local_tablet_writer.h"
-#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet-test-base.h"
-#include "yb/util/slice.h"
-#include "yb/util/test_macros.h"
-
-// Include client header so we can access YBTableType.
-#include "yb/client/client.h"
-
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/util/enums.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_log.h"
+#include "yb/util/test_macros.h"
 
 using std::shared_ptr;
 using std::unordered_set;

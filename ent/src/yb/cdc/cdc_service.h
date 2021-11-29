@@ -33,8 +33,6 @@
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/rpc/rpc_controller.h"
-#include "yb/tablet/tablet_peer.h"
-#include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/service_util.h"
 

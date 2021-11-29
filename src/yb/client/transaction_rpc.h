@@ -27,8 +27,7 @@
 #include "yb/tserver/tserver_fwd.h"
 
 #include "yb/util/monotime.h"
-#include "yb/util/result.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 

@@ -53,8 +53,7 @@
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/util/locks.h"
-#include "yb/util/status.h"
-#include "yb/util/result.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 template<class T>

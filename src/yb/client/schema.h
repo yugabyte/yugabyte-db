@@ -51,10 +51,10 @@
 
 #include "yb/client/client_fwd.h"
 #include "yb/client/value.h"
-#include "yb/common/ql_type.h"
-#include "yb/common/schema.h"
 
-#include "yb/util/status.h"
+#include "yb/common/common.pb.h"
+
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
@@ -86,74 +86,7 @@ class YBOperation;
 
 class YBColumnSchema {
  public:
-  static InternalType ToInternalDataType(const std::shared_ptr<QLType>& ql_type) {
-    switch (ql_type->main()) {
-      case INT8:
-        return InternalType::kInt8Value;
-      case INT16:
-        return InternalType::kInt16Value;
-      case INT32:
-        return InternalType::kInt32Value;
-      case INT64:
-        return InternalType::kInt64Value;
-      case UINT32:
-        return InternalType::kUint32Value;
-      case UINT64:
-        return InternalType::kUint64Value;
-      case FLOAT:
-        return InternalType::kFloatValue;
-      case DOUBLE:
-        return InternalType::kDoubleValue;
-      case DECIMAL:
-        return InternalType::kDecimalValue;
-      case STRING:
-        return InternalType::kStringValue;
-      case TIMESTAMP:
-        return InternalType::kTimestampValue;
-      case DATE:
-        return InternalType::kDateValue;
-      case TIME:
-        return InternalType::kTimeValue;
-      case INET:
-        return InternalType::kInetaddressValue;
-      case JSONB:
-        return InternalType::kJsonbValue;
-      case UUID:
-        return InternalType::kUuidValue;
-      case TIMEUUID:
-        return InternalType::kTimeuuidValue;
-      case BOOL:
-        return InternalType::kBoolValue;
-      case BINARY:
-        return InternalType::kBinaryValue;
-      case USER_DEFINED_TYPE: FALLTHROUGH_INTENDED;
-      case MAP:
-        return InternalType::kMapValue;
-      case SET:
-        return InternalType::kSetValue;
-      case LIST:
-        return InternalType::kListValue;
-      case VARINT:
-        return InternalType::kVarintValue;
-      case FROZEN:
-        return InternalType::kFrozenValue;
-      case GIN_NULL:
-        return InternalType::kGinNullValue;
-
-      case TUPLE: FALLTHROUGH_INTENDED; // TODO (mihnea) Tuple type not fully supported yet
-      case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
-      case UNKNOWN_DATA:
-        return InternalType::VALUE_NOT_SET;
-
-      case TYPEARGS: FALLTHROUGH_INTENDED;
-      case UINT8: FALLTHROUGH_INTENDED;
-      case UINT16:
-        break;
-    }
-    LOG(FATAL) << "Internal error: unsupported type " << ql_type->ToString();
-    return InternalType::VALUE_NOT_SET;
-  }
-
+  static InternalType ToInternalDataType(const std::shared_ptr<QLType>& ql_type);
   static std::string DataTypeToString(DataType type);
 
   // DEPRECATED: use YBSchemaBuilder instead.
@@ -196,8 +129,7 @@ class YBColumnSchema {
 
   YBColumnSchema();
 
-  // Owned.
-  ColumnSchema* col_;
+  std::unique_ptr<ColumnSchema> col_;
 };
 
 // Builder API for specifying or altering a column within a table schema.
@@ -245,9 +177,7 @@ class YBColumnSpec {
   YBColumnSpec* Type(const std::shared_ptr<QLType>& type);
 
   // Convenience function for setting a simple (i.e. non-parametric) data type.
-  YBColumnSpec* Type(DataType type) {
-    return Type(QLType::Create(type));
-  }
+  YBColumnSpec* Type(DataType type);
 
   // Specify the user-defined order of the column.
   YBColumnSpec* Order(int32_t order);
@@ -401,11 +331,9 @@ class YBSchema {
 
   const std::vector<ColumnSchema>& columns() const;
 
-  int FindColumn(const GStringPiece& name) const {
-    return schema_->find_column(name);
-  }
+  int FindColumn(const GStringPiece& name) const;
 
-  string ToString() const;
+  std::string ToString() const;
 
  private:
   friend YBSchema YBSchemaFromSchema(const Schema& schema);

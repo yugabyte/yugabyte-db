@@ -42,7 +42,7 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 namespace log {

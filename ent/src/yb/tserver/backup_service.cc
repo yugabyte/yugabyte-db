@@ -17,6 +17,7 @@
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_retention_policy.h"
+#include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/operations/snapshot_operation.h"
 
 #include "yb/tserver/service_util.h"
@@ -24,7 +25,9 @@
 #include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
 #include "yb/util/random_util.h"
+#include "yb/util/status_format.h"
 
 using namespace std::literals;
 

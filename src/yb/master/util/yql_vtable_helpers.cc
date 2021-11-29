@@ -10,16 +10,19 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/master/util/yql_vtable_helpers.h"
+
+#include <future>
 
 #include <boost/container/small_vector.hpp>
 
 #include "yb/common/ql_value.h"
-
-#include "yb/util/yb_partition.h"
+#include "yb/master/master.pb.h"
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
+#include "yb/util/yb_partition.h"
 
 namespace yb {
 namespace master {

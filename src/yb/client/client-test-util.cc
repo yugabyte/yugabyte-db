@@ -29,7 +29,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/client/client-test-util.h"
 
 #include <stdint.h>
@@ -43,24 +42,19 @@
 #include <boost/function.hpp>
 
 #include "yb/client/client_fwd.h"
-#include "yb/client/schema.h"
-#include "yb/common/common.pb.h"
-#include "yb/common/transaction.h"
-#include "yb/common/partition.h"
-#include "yb/util/enums.h"
-#include "yb/util/monotime.h"
-#include "yb/util/result.h"
-#include "yb/util/status.h"
-#include "yb/util/status_callback.h"
-#include "yb/util/strongly_typed_bool.h"
 #include "yb/client/error.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
-
+#include "yb/common/common.pb.h"
 #include "yb/common/ql_value.h"
-
-#include "yb/gutil/stl_util.h"
+#include "yb/util/enums.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
+#include "yb/util/status_callback.h"
+#include "yb/util/status_log.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 namespace client {

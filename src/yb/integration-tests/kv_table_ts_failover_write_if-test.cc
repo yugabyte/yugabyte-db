@@ -10,26 +10,23 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include <atomic>
 #include <memory>
 #include <vector>
 
 #include "yb/client/client-test-util.h"
+#include "yb/client/client.h"
 #include "yb/client/session.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
-
 #include "yb/common/ql_value.h"
-
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/yb_table_test_base.h"
-
-#include "yb/util/metrics.h"
+#include "yb/util/format.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_util.h"
-
 #include "yb/yql/cql/ql/util/statement_result.h"
 
 DECLARE_bool(TEST_combine_batcher_errors);

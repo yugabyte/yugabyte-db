@@ -69,15 +69,14 @@ TEST_F(TestQLStaticColumn, TestCreateTable) {
   EXEC_VALID_STMT("create table static_table (h int, r int, s int static, PRIMARY KEY((h), r));");
 
   // Query the table schema.
-  master::Master *master = cluster_->mini_master()->master();
-  master::CatalogManager *catalog_manager = master->catalog_manager();
+  auto &catalog_manager = cluster_->mini_master()->catalog_manager();
   master::GetTableSchemaRequestPB request_pb;
   master::GetTableSchemaResponsePB response_pb;
   request_pb.mutable_table()->mutable_namespace_()->set_name(kDefaultKeyspaceName);
   request_pb.mutable_table()->set_table_name("static_table");
 
   // Verify the static column.
-  CHECK_OK(catalog_manager->GetTableSchema(&request_pb, &response_pb));
+  CHECK_OK(catalog_manager.GetTableSchema(&request_pb, &response_pb));
   for (const ColumnSchemaPB& column : response_pb.schema().columns()) {
     if (column.name() == "s") {
       EXPECT_TRUE(column.is_static());

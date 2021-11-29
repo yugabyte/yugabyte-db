@@ -41,6 +41,8 @@
 
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
+#include "yb/util/status.h"
+#include "yb/util/status_log.h"
 
 DEFINE_bool(verbose, false,
             "Print additional information (e.g., log segment headers)");

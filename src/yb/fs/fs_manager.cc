@@ -29,14 +29,14 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/fs/fs_manager.h"
 
 #include <map>
+#include <set>
 #include <unordered_set>
 
 #include <boost/algorithm/string/predicate.hpp>
-
+#include <boost/preprocessor/cat.hpp>
 #include <glog/logging.h>
 #include <glog/stl_logging.h>
 #include <google/protobuf/message.h>
@@ -47,18 +47,18 @@
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/strip.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
 #include "yb/gutil/walltime.h"
 #include "yb/util/env_util.h"
 #include "yb/util/flag_tags.h"
-#include "yb/util/format.h"
-#include "yb/util/metrics.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/metrics_fwd.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/oid_generator.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
+#include "yb/util/status_fwd.h"
 
 DEFINE_bool(enable_data_block_fsync, true,
             "Whether to enable fsync() of data blocks, metadata, and their parent directories. "

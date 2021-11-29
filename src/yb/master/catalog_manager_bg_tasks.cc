@@ -28,17 +28,18 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
+#include "yb/master/catalog_manager_bg_tasks.h"
 
 #include <memory>
 
-#include "yb/util/logging.h"
-#include "yb/util/mutex.h"
-
-#include "yb/master/catalog_manager_bg_tasks.h"
-#include "yb/master/catalog_manager.h"
-#include "yb/master/ts_descriptor.h"
+#include "yb/gutil/casts.h"
 #include "yb/master/cluster_balance.h"
+#include "yb/master/master.h"
+#include "yb/master/ts_descriptor.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/mutex.h"
+#include "yb/util/status_log.h"
+#include "yb/util/thread.h"
 
 using std::shared_ptr;
 
@@ -59,6 +60,14 @@ DECLARE_bool(enable_ysql);
 
 namespace yb {
 namespace master {
+
+CatalogManagerBgTasks::CatalogManagerBgTasks(CatalogManager *catalog_manager)
+    : closing_(false),
+      pending_updates_(false),
+      cond_(&lock_),
+      thread_(nullptr),
+      catalog_manager_(down_cast<enterprise::CatalogManager*>(catalog_manager)) {
+}
 
 void CatalogManagerBgTasks::Wake() {
   MutexLock lock(lock_);

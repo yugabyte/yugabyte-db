@@ -19,6 +19,7 @@
 #include "yb/common/ybc-internal.h"
 #include "yb/util/metrics.h"
 #include "yb/util/signal_util.h"
+#include "yb/util/status_log.h"
 
 DECLARE_string(metric_node_name);
 

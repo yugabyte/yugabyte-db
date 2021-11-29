@@ -17,7 +17,10 @@
 
 #include "yb/master/mini_master.h"
 
+#include "yb/tablet/tablet_peer.h"
+
 #include "yb/util/random_util.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 

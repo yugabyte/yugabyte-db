@@ -42,6 +42,7 @@
 #include "yb/consensus/log.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/wire_protocol-test-util.h"
+#include "yb/common/schema.h"
 #include "yb/common/transaction.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/log_reader.h"

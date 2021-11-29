@@ -10,31 +10,32 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include <atomic>
 #include <thread>
 
 #include <gtest/gtest.h>
 
+#include "yb/client/yb_table_name.h"
+#include "yb/common/pgsql_error.h"
 #include "yb/integration-tests/mini_cluster.h"
-#include "yb/util/test_macros.h"
-#include "yb/util/test_util.h"
-#include "yb/yql/pgwrapper/pg_mini_test_base.h"
-
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/catalog_manager.h"
+#include "yb/master/catalog_manager_if.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog_constants.h"
-
+#include "yb/rocksdb/db.h"
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/transaction_participant.h"
 #include "yb/tools/tools_test_utils.h"
-
-#include "yb/util/logging.h"
-#include "yb/yql/pggate/pggate_flags.h"
-
-#include "yb/common/pgsql_error.h"
+#include "yb/util/atomic.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_log.h"
+#include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
+#include "yb/util/test_util.h"
+#include "yb/yql/pggate/pggate_flags.h"
+#include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 using namespace std::literals;
 
@@ -1341,16 +1342,11 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SystemTableTxnTest), PgMiniTestNoT
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBUpdateSysTablet)) {
   const std::string kDatabaseName = "testdb";
-  master::CatalogManager *catalog_manager =
-      ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager();
   PGConn conn = ASSERT_RESULT(Connect());
-  scoped_refptr<master::TabletInfo> sys_tablet;
   std::array<int, 4> num_tables;
 
-  {
-    master::CatalogManager::SharedLock catalog_lock(catalog_manager->mutex_);
-    sys_tablet = catalog_manager->tablet_map_->find(master::kSysCatalogTabletId)->second;
-  }
+  auto* catalog_manager = &ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+  auto sys_tablet = ASSERT_RESULT(catalog_manager->GetTabletInfo(master::kSysCatalogTabletId));
   {
     auto tablet_lock = sys_tablet->LockForWrite();
     num_tables[0] = tablet_lock->pb.table_ids_size();
@@ -1367,12 +1363,8 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBUpdateSysTablet)) {
   }
   // Make sure that the system catalog tablet table_ids is persisted.
   ASSERT_OK(cluster_->RestartSync());
-  {
-    // Refresh stale local variables after RestartSync.
-    catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager();
-    master::CatalogManager::SharedLock catalog_lock(catalog_manager->mutex_);
-    sys_tablet = catalog_manager->tablet_map_->find(master::kSysCatalogTabletId)->second;
-  }
+  catalog_manager = &ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+  sys_tablet = ASSERT_RESULT(catalog_manager->GetTabletInfo(master::kSysCatalogTabletId));
   {
     auto tablet_lock = sys_tablet->LockForWrite();
     num_tables[3] = tablet_lock->pb.table_ids_size();
@@ -1386,8 +1378,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBMarkDeleted)) {
   const std::string kDatabaseName = "testdb";
   constexpr auto kSleepTime = 500ms;
   constexpr int kMaxNumSleeps = 20;
-  master::CatalogManager *catalog_manager =
-      ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager();
+  auto *catalog_manager = &ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
   PGConn conn = ASSERT_RESULT(Connect());
 
   ASSERT_FALSE(catalog_manager->AreTablesDeleting());
@@ -1403,7 +1394,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBMarkDeleted)) {
   // Make sure that the table deletions are persisted.
   ASSERT_OK(cluster_->RestartSync());
   // Refresh stale local variable after RestartSync.
-  catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager();
+  catalog_manager = &ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
   ASSERT_FALSE(catalog_manager->AreTablesDeleting());
 }
 
@@ -1413,15 +1404,10 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBWithTables)) {
   constexpr auto kSleepTime = 500ms;
   constexpr int kMaxNumSleeps = 20;
   int num_tables_before, num_tables_after;
-  master::CatalogManager *catalog_manager =
-      ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager();
+  auto *catalog_manager = &ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
   PGConn conn = ASSERT_RESULT(Connect());
-  scoped_refptr<master::TabletInfo> sys_tablet;
+  auto sys_tablet = ASSERT_RESULT(catalog_manager->GetTabletInfo(master::kSysCatalogTabletId));
 
-  {
-    master::CatalogManager::SharedLock catalog_lock(catalog_manager->mutex_);
-    sys_tablet = catalog_manager->tablet_map_->find(master::kSysCatalogTabletId)->second;
-  }
   {
     auto tablet_lock = sys_tablet->LockForWrite();
     num_tables_before = tablet_lock->pb.table_ids_size();
@@ -1444,12 +1430,8 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBWithTables)) {
   ASSERT_FALSE(catalog_manager->AreTablesDeleting()) << "Tables should have finished deleting";
   // Make sure that the table deletions are persisted.
   ASSERT_OK(cluster_->RestartSync());
-  {
-    // Refresh stale local variables after RestartSync.
-    catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager();
-    master::CatalogManager::SharedLock catalog_lock(catalog_manager->mutex_);
-    sys_tablet = catalog_manager->tablet_map_->find(master::kSysCatalogTabletId)->second;
-  }
+  catalog_manager = &ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+  sys_tablet = ASSERT_RESULT(catalog_manager->GetTabletInfo(master::kSysCatalogTabletId));
   ASSERT_FALSE(catalog_manager->AreTablesDeleting());
   {
     auto tablet_lock = sys_tablet->LockForWrite();

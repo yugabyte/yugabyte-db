@@ -40,9 +40,8 @@
 #include <vector>
 
 #include <boost/atomic.hpp>
-#include <boost/thread/shared_mutex.hpp>
 
-#include "yb/common/schema.h"
+#include "yb/common/common_fwd.h"
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/opid_util.h"
@@ -55,7 +54,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/opid.h"
 #include "yb/util/promise.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/shared_lock.h"
 
@@ -420,7 +419,7 @@ class Log : public RefCountedThreadSafe<Log> {
   mutable rw_spinlock schema_lock_;
 
   // The current schema of the tablet this log is dedicated to.
-  Schema schema_;
+  std::unique_ptr<Schema> schema_;
 
   // The schema version
   uint32_t schema_version_;

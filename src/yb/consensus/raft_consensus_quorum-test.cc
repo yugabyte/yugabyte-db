@@ -48,10 +48,12 @@
 #include "yb/gutil/strings/strcat.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/consensus/log_reader.h"
+#include "yb/gutil/casts.h"
 #include "yb/rpc/messenger.h"
 #include "yb/server/logical_clock.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"
@@ -481,9 +483,7 @@ class RaftConsensusQuorumTest : public YBTest {
   }
 
   void VerifyNoCommitsBeforeReplicates(const log::LogEntries& entries) {
-    std::unordered_set<OpIdPB,
-                       OpIdHashFunctor,
-                       OpIdEqualsFunctor> replication_ops;
+    std::unordered_set<OpIdPB, OpIdHashFunctor, OpIdEqualsFunctor> replication_ops;
 
     for (const auto& entry : entries) {
       if (entry->has_replicate()) {

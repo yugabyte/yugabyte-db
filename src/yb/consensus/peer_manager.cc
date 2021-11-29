@@ -29,7 +29,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/consensus/peer_manager.h"
 
 #include <mutex>
@@ -37,10 +36,8 @@
 #include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/log.h"
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/substitute.h"
-#include "yb/util/threadpool.h"
 #include "yb/util/logging.h"
+#include "yb/util/threadpool.h"
 
 namespace yb {
 namespace consensus {
@@ -123,7 +120,7 @@ void PeerManager::Close() {
 }
 
 void PeerManager::ClosePeersNotInConfig(const RaftConfigPB& config) {
-  std::unordered_map<string, RaftPeerPB> peers_in_config;
+  std::unordered_map<std::string, RaftPeerPB> peers_in_config;
   for (const RaftPeerPB &peer_pb : config.peers()) {
     InsertOrDie(&peers_in_config, peer_pb.permanent_uuid(), peer_pb);
   }

@@ -19,9 +19,8 @@
 #include "yb/server/server_base_options.h"
 
 #include "yb/gutil/macros.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/net/net_util.h"
-#include "yb/client/client.h"
 
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/options.h"

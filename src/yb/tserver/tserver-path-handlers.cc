@@ -53,8 +53,11 @@
 #include "yb/tablet/tablet.pb.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/transaction_participant.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+#include "yb/util/jsonwriter.h"
 #include "yb/util/url-coding.h"
 #include "yb/util/version_info.h"
 #include "yb/util/version_info.pb.h"
@@ -203,7 +206,7 @@ void HandleTabletPage(
   // Output schema in tabular format.
   *output << "<h2>Schema</h2>\n";
   const SchemaPtr schema = peer->tablet_metadata()->schema();
-  HtmlOutputSchemaTable(*schema, output);
+  server::HtmlOutputSchemaTable(*schema, output);
 
   *output << "<h2>Other Tablet Info Pages</h2>" << endl;
 

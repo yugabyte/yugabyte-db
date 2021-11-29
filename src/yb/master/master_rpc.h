@@ -37,7 +37,6 @@
 #include <string>
 
 #include "yb/gutil/ref_counted.h"
-#include "yb/master/master.pb.h"
 #include "yb/rpc/rpc.h"
 
 #include "yb/server/server_base_options.h"

@@ -16,7 +16,9 @@
 #include <thread>
 
 #include "yb/util/barrier.h"
+#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
+#include "yb/util/path_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
@@ -26,8 +28,11 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 #include "yb/client/client_fwd.h"
+#include "yb/client/schema.h"
+#include "yb/client/table_info.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/common/common.pb.h"
+#include "yb/common/schema.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/tserver/tserver.pb.h"

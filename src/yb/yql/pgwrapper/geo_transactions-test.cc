@@ -9,17 +9,18 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
-
 #include <string>
 #include <vector>
 
 #include "yb/client/client_fwd.h"
-#include "yb/client/table.h"
 #include "yb/client/transaction.h"
+#include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_pool.h"
+#include "yb/client/yb_table_name.h"
 #include "yb/common/common.pb.h"
 #include "yb/gutil/strings/join.h"
-#include "yb/tserver/heartbeater.h"
+#include "yb/master/master.pb.h"
+#include "yb/master/master_defaults.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"

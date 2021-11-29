@@ -33,7 +33,10 @@
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rpc/messenger.h"
+
 #include "yb/util/countdown_latch.h"
+#include "yb/util/metrics.h"
+#include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/thread.h"
 

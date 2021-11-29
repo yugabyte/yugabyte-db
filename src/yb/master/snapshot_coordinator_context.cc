@@ -21,6 +21,8 @@
 
 #include "yb/master/sys_catalog_constants.h"
 
+#include "yb/util/result.h"
+
 namespace yb {
 namespace master {
 

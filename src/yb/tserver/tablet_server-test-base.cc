@@ -16,6 +16,7 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/ql_expr.h"
+#include "yb/common/ql_rowwise_iterator_interface.h"
 #include "yb/common/wire_protocol-test-util.h"
 
 #include "yb/consensus/consensus.h"
@@ -29,6 +30,7 @@
 
 #include "yb/tablet/local_tablet_writer.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
@@ -36,6 +38,8 @@
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_admin.proxy.h"
 
+#include "yb/util/metrics.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_graph.h"
 
 using namespace std::literals;

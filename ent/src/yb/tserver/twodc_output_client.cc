@@ -30,6 +30,7 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
 #include "yb/util/stol_utils.h"
 
 DECLARE_int32(cdc_write_rpc_timeout_ms);

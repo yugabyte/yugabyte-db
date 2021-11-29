@@ -29,46 +29,60 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/integration-tests/external_mini_cluster.h"
 
-
 #include <atomic>
+#include <chrono>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
-#include <chrono>
+#include <unordered_map>
+#include <vector>
 
+#include <glog/logging.h>
 #include <gtest/gtest.h>
 #include <rapidjson/document.h>
 
 #include "yb/client/client.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/fs/fs_manager.h"
-#include "yb/gutil/mathlimits.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/singleton.h"
+#include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
-#include "yb/gutil/singleton.h"
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/master_rpc.h"
-#include "yb/server/server_base.pb.h"
+#include "yb/master/sys_catalog.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
-#include "yb/master/sys_catalog.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/server/server_base.pb.h"
 #include "yb/util/async_util.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/env.h"
+#include "yb/util/faststring.h"
+#include "yb/util/format.h"
 #include "yb/util/jsonreader.h"
+#include "yb/util/logging.h"
 #include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_fwd.h"
 #include "yb/util/net/sockaddr.h"
-#include "yb/util/net/socket.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_fwd.h"
+#include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
@@ -1803,6 +1817,26 @@ Status ExternalMiniCluster::StartElection(ExternalMaster* master) {
   return Status::OK();
 }
 
+ExternalMaster* ExternalMiniCluster::master() const {
+  if (masters_.empty())
+    return nullptr;
+
+  CHECK_EQ(masters_.size(), 1)
+      << "master() should not be used with multiple masters, use GetLeaderMaster() instead.";
+  return master(0);
+}
+
+// Return master at 'idx' or NULL if the master at 'idx' has not been started.
+ExternalMaster* ExternalMiniCluster::master(int idx) const {
+  CHECK_LT(idx, masters_.size());
+  return masters_[idx].get();
+}
+
+ExternalTabletServer* ExternalMiniCluster::tablet_server(int idx) const {
+  CHECK_LT(idx, tablet_servers_.size());
+  return tablet_servers_[idx].get();
+}
+
 //------------------------------------------------------------
 // ExternalDaemon
 //------------------------------------------------------------
@@ -2364,6 +2398,22 @@ Result<string> ExternalDaemon::GetFlag(const std::string& flag) {
   return resp.value();
 }
 
+Result<int64_t> ExternalDaemon::GetInt64Metric(const MetricEntityPrototype* entity_proto,
+                                               const char* entity_id,
+                                               const MetricPrototype* metric_proto,
+                                               const char* value_field) const {
+  return GetInt64MetricFromHost(
+      bound_http_hostport(), entity_proto, entity_id, metric_proto, value_field);
+}
+
+Result<int64_t> ExternalDaemon::GetInt64Metric(const char* entity_proto_name,
+                                               const char* entity_id,
+                                               const char* metric_proto_name,
+                                               const char* value_field) const {
+  return GetInt64MetricFromHost(
+      bound_http_hostport(), entity_proto_name, entity_id, metric_proto_name, value_field);
+}
+
 LogWaiter::LogWaiter(ExternalDaemon* daemon, const std::string& string_to_wait) :
     daemon_(daemon), string_to_wait_(string_to_wait) {
   daemon_->SetLogListener(this);
@@ -2588,6 +2638,15 @@ Status ExternalTabletServer::Restart(
     return STATUS(IllegalState, "Tablet server cannot be restarted. Must call Shutdown() first.");
   }
   return Start(start_cql_proxy, true /* set_proxy_addrs */, flags);
+}
+
+Result<int64_t> ExternalTabletServer::GetInt64CQLMetric(const MetricEntityPrototype* entity_proto,
+                                                        const char* entity_id,
+                                                        const MetricPrototype* metric_proto,
+                                                        const char* value_field) const {
+  return GetInt64MetricFromHost(
+      HostPort(bind_host(), cql_http_port()),
+      entity_proto, entity_id, metric_proto, value_field);
 }
 
 Status ExternalTabletServer::SetNumDrives(uint16_t num_drives) {

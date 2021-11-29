@@ -29,14 +29,12 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/master/ts_manager.h"
 
 #include <mutex>
 #include <vector>
 
 #include "yb/gutil/map-util.h"
-
 #include "yb/master/master.pb.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/util/shared_lock.h"

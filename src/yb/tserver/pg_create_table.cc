@@ -24,8 +24,10 @@
 #include "yb/docdb/doc_key.h"
 
 #include "yb/tserver/pg_client.pb.h"
+#include "yb/util/format.h"
 
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 namespace tserver {

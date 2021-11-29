@@ -13,13 +13,17 @@
 
 #include "yb/integration-tests/ts_itest-base.h"
 
+#include "yb/client/client.h"
 #include "yb/client/schema.h"
+#include "yb/client/table.h"
 
 #include "yb/gutil/strings/split.h"
 
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/external_mini_cluster_fs_inspector.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/util/status_log.h"
 
 DEFINE_string(ts_flags, "", "Flags to pass through to tablet servers");
 DEFINE_string(master_flags, "", "Flags to pass through to masters");
@@ -418,6 +422,10 @@ void TabletServerIntegrationTestBase::AssertAllReplicasAgree(int expected_result
   ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
   ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(kTableName, ClusterVerifier::EXACTLY,
       expected_result_count));
+}
+
+client::YBTableType TabletServerIntegrationTestBase::table_type() {
+  return client::YBTableType::YQL_TABLE_TYPE;
 }
 
 }  // namespace tserver

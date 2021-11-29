@@ -17,9 +17,9 @@
 #include <vector>
 #include <unordered_set>
 
-#include "yb/master/catalog_entity_info.h"
-#include "yb/util/status.h"
-#include "yb/util/result.h"
+#include "yb/master/master_fwd.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/net/net_util.h"
 
 namespace yb {

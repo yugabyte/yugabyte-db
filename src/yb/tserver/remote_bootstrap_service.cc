@@ -41,14 +41,15 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/log.h"
 #include "yb/fs/fs_manager.h"
-#include "yb/gutil/strings/substitute.h"
-#include "yb/gutil/map-util.h"
 #include "yb/rpc/rpc_context.h"
-#include "yb/tserver/tablet_peer_lookup.h"
 #include "yb/tablet/tablet_peer.h"
+#include "yb/tserver/tablet_peer_lookup.h"
 #include "yb/util/crc.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/thread.h"
 
 using namespace std::literals;
 
@@ -133,6 +134,9 @@ RemoteBootstrapServiceImpl::RemoteBootstrapServiceImpl(
   CHECK_OK(Thread::Create("remote-bootstrap", "rb-session-exp",
                           &RemoteBootstrapServiceImpl::EndExpiredSessions, this,
                           &session_expiration_thread_));
+}
+
+RemoteBootstrapServiceImpl::~RemoteBootstrapServiceImpl() {
 }
 
 void RemoteBootstrapServiceImpl::BeginRemoteBootstrapSession(

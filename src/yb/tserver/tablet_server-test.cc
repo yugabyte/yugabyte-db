@@ -29,34 +29,30 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
-#include "yb/consensus/log-test-base.h"
-
+#include "yb/common/index.h"
 #include "yb/common/ql_value.h"
-
+#include "yb/consensus/log-test-base.h"
 #include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/substitute.h"
-
-#include "yb/master/master.pb.h"
-
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_test_util.h"
 #include "yb/rpc/yb_rpc.h"
-
 #include "yb/server/hybrid_clock.h"
 #include "yb/server/server_base.pb.h"
 #include "yb/server/server_base.proxy.h"
-
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
-#include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tablet_server-test-base.h"
+#include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tablet_server_test_util.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_admin.proxy.h"
-
 #include "yb/util/crc.h"
 #include "yb/util/curl_util.h"
+#include "yb/util/metrics.h"
+#include "yb/util/status_log.h"
 
 using yb::consensus::RaftConfigPB;
 using yb::consensus::RaftPeerPB;
