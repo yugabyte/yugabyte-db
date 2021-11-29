@@ -347,6 +347,10 @@
           "description" : "Is configured alerts raised or not",
           "type" : "boolean"
         },
+        "alertCount" : {
+          "format" : "double",
+          "type" : "number"
+        },
         "createTime" : {
           "description" : "Creation time",
           "format" : "date-time",
@@ -420,7 +424,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "active", "createTime", "customerUUID", "defaultDestination", "description", "durationSec", "name", "target", "targetType", "template", "thresholdUnit", "thresholds" ],
+      "required" : [ "active", "alertCount", "createTime", "customerUUID", "defaultDestination", "description", "durationSec", "name", "target", "targetType", "template", "thresholdUnit", "thresholds" ],
       "type" : "object"
     },
     "AlertConfigurationApiFilter" : {
@@ -439,6 +443,13 @@
         "name" : {
           "type" : "string"
         },
+        "severity" : {
+          "enum" : [ "SEVERE", "WARNING" ],
+          "type" : "string"
+        },
+        "target" : {
+          "$ref" : "#/definitions/AlertConfigurationTarget"
+        },
         "targetType" : {
           "enum" : [ "PLATFORM", "UNIVERSE" ],
           "type" : "string"
@@ -456,7 +467,7 @@
           "uniqueItems" : true
         }
       },
-      "required" : [ "active", "destinationType", "destinationUuid", "name", "targetType", "template", "uuids" ],
+      "required" : [ "active", "destinationType", "destinationUuid", "name", "severity", "target", "targetType", "template", "uuids" ],
       "type" : "object"
     },
     "AlertConfigurationPagedApiQuery" : {
@@ -480,7 +491,7 @@
           "type" : "integer"
         },
         "sortBy" : {
-          "enum" : [ "uuid", "name", "active", "targetType", "createTime", "template" ],
+          "enum" : [ "uuid", "name", "active", "targetType", "target", "createTime", "template", "severity", "destination", "alertCount" ],
           "type" : "string"
         }
       },
@@ -534,6 +545,10 @@
         "active" : {
           "description" : "Is configured alerts raised or not",
           "type" : "boolean"
+        },
+        "alertCount" : {
+          "format" : "double",
+          "type" : "number"
         },
         "createTime" : {
           "description" : "Creation time",
@@ -640,7 +655,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "active", "createTime", "customerUUID", "defaultDestination", "description", "durationSec", "name", "target", "targetType", "template", "thresholdUnit", "thresholds" ],
+      "required" : [ "active", "alertCount", "createTime", "customerUUID", "defaultDestination", "description", "durationSec", "name", "target", "targetType", "template", "thresholdUnit", "thresholds" ],
       "type" : "object"
     },
     "AlertConfigurationThreshold" : {
