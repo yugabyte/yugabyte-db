@@ -169,8 +169,8 @@ setup_universe_replication <source-universe_uuid> <source_master_addresses> <sou
 ```
 
 - *target-master-addresses*: a comma-separated list of the YB-Master servers. For this simulation, you have one YB-Master server for each cluster (typically, there are three).
-- *producer-universe-uuid*: a unique identifier for the producer cluster. The UUID can be found in the YB-Master UI (`<yb-master-ip>:7000`).
-- *producer-table-ids*: A comma-separated list of `table_id` values. The generated UUIDs can be found in the YB-Master UI (`<yb-master-ip>:7000`/tables).
+- *source-universe-uuid*: a unique identifier for the source cluster. The UUID can be found in the YB-Master UI (`<yb-master-ip>:7000`).
+- *source-table-ids*: A comma-separated list of `table_id` values. The generated UUIDs can be found in the YB-Master UI (`<yb-master-ip>:7000`/tables).
 
 Based on your actual values (which you got from the YB-Master UI page at `yb-master-ip>:7000`), run the `yb-admin` `setup_universe_replication` command, as per the following example:
 
@@ -194,7 +194,7 @@ Replication setup successfully
 
 Now that you've configured unidirectional replication, you can add data to the `users` table on the "Data Center - East" cluster and see the data appear in the `users` table on "Data Center - West" cluster.
 
-To add data to the "Data Center - East" cluster, open `ycqlsh` by running the following commands, making sure you are pointing to the new producer host:
+To add data to the "Data Center - East" cluster, open `ycqlsh` by running the following commands, making sure you are pointing to the new source host:
 
 ```sh
 $ ./bin/ycqlsh 127.0.0.1
@@ -251,7 +251,7 @@ Replication setup successfully
 
 Now that you've configured bidirectional replication, you can add data to the `users` table on the "Data Center - West" cluster and see the data appear in the `users` table on "Data Center - East" cluster.
 
-To add data to the "Data Center - West" cluster, open `ycqlsh` by running the following commands, making sure you are pointing to the new producer host:
+To add data to the "Data Center - West" cluster, open `ycqlsh` by running the following commands, making sure you are pointing to the new source host:
 
 ```sh
 $ ./bin/ycqlsh 127.0.0.2
