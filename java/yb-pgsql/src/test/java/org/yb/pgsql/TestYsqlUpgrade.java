@@ -1340,6 +1340,9 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     final long pgProcOid = 1255;
     final long pgClassOid = 1259;
     final long pgNamespaceOid = 2615;
+    final long pgTsDictOid = 3600;
+    final long pgTsConfigOid = 3602;
+    final long pgTsTemplateOid = 3764;
 
     Map<Long, String> flatEntityNamesMap = new HashMap<>();
     entityNamesMap.values().forEach(flatEntityNamesMap::putAll);
@@ -1447,6 +1450,13 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
         break;
       case "pg_proc":
         replace.accept(2 /* pronamespace */, entityNamesMap.get(pgNamespaceOid));
+        break;
+      case "pg_ts_dict":
+        replace.accept(4 /* dicttemplate */, entityNamesMap.get(pgTsTemplateOid));
+        break;
+      case "pg_ts_config_map":
+        replace.accept(0 /* mapcfg */, entityNamesMap.get(pgTsConfigOid));
+        replace.accept(3 /* mapdict */, entityNamesMap.get(pgTsDictOid));
         break;
       default:
         return copy;

@@ -7,7 +7,6 @@
 -- * ALTER LANGUAGE
 -- * ALTER OPERATOR CLASS
 -- * ALTER STATISTICS
--- * ALTER TEXT SEARCH DICTIONARY / CONFIGURATION / TEMPLATE / PARSER
 --
 -- Clean up in case a prior regression run failed
 SET client_min_messages TO 'warning';
@@ -420,14 +419,123 @@ ALTER OPERATOR FAMILY alt_opf18 USING btree ADD
 ALTER OPERATOR FAMILY alt_opf18 USING btree DROP FUNCTION 2 (int4, int4);
 ERROR:  function 2(integer,integer) does not exist in operator family "alt_opf18"
 DROP OPERATOR FAMILY alt_opf18 USING btree;
+-- Don't enable AlterTSDictionaryStmt and AlterTSConfigurationStmt for now.
+-- Uncommet these tests once AlterTSDictionaryStmt and AlterTSConfigurationStmt are supported.
+--
+-- Text Search Dictionary
+--
+-- SET SESSION AUTHORIZATION regress_alter_generic_user1;
+-- CREATE TEXT SEARCH DICTIONARY alt_ts_dict1 (template=simple);
+-- CREATE TEXT SEARCH DICTIONARY alt_ts_dict2 (template=simple);
+-- ALTER TEXT SEARCH DICTIONARY alt_ts_dict1 RENAME TO alt_ts_dict2;  -- failed (name conflict)
+-- ALTER TEXT SEARCH DICTIONARY alt_ts_dict1 RENAME TO alt_ts_dict3;  -- OK
+-- ALTER TEXT SEARCH DICTIONARY alt_ts_dict2 OWNER TO regress_alter_generic_user2;  -- failed (no role membership)
+-- ALTER TEXT SEARCH DICTIONARY alt_ts_dict2 OWNER TO regress_alter_generic_user3;  -- OK
+-- ALTER TEXT SEARCH DICTIONARY alt_ts_dict2 SET SCHEMA alt_nsp2;  -- OK
+-- SET SESSION AUTHORIZATION regress_alter_generic_user2;
+-- CREATE TEXT SEARCH DICTIONARY alt_ts_dict1 (template=simple);
+-- CREATE TEXT SEARCH DICTIONARY alt_ts_dict2 (template=simple);
+-- ALTER TEXT SEARCH DICTIONARY alt_ts_dict3 RENAME TO alt_ts_dict4;  -- failed (not owner)
+-- ALTER TEXT SEARCH DICTIONARY alt_ts_dict1 RENAME TO alt_ts_dict4;  -- OK
+-- ALTER TEXT SEARCH DICTIONARY alt_ts_dict3 OWNER TO regress_alter_generic_user2;  -- failed (not owner)
+-- ALTER TEXT SEARCH DICTIONARY alt_ts_dict2 OWNER TO regress_alter_generic_user3;  -- failed (no role membership)
+-- ALTER TEXT SEARCH DICTIONARY alt_ts_dict3 SET SCHEMA alt_nsp2;  -- failed (not owner)
+-- ALTER TEXT SEARCH DICTIONARY alt_ts_dict2 SET SCHEMA alt_nsp2;  -- failed (name conflict)
+-- RESET SESSION AUTHORIZATION;
+-- SELECT nspname, dictname, rolname
+--   FROM pg_ts_dict t, pg_namespace n, pg_authid a
+--   WHERE t.dictnamespace = n.oid AND t.dictowner = a.oid
+--     AND n.nspname in ('alt_nsp1', 'alt_nsp2')
+--   ORDER BY nspname, dictname;
+--
+-- Text Search Configuration
+--
+-- SET SESSION AUTHORIZATION regress_alter_generic_user1;
+-- CREATE TEXT SEARCH CONFIGURATION alt_ts_conf1 (copy=english);
+-- CREATE TEXT SEARCH CONFIGURATION alt_ts_conf2 (copy=english);
+-- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf1 RENAME TO alt_ts_conf2;  -- failed (name conflict)
+-- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf1 RENAME TO alt_ts_conf3;  -- OK
+-- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf2 OWNER TO regress_alter_generic_user2;  -- failed (no role membership)
+-- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf2 OWNER TO regress_alter_generic_user3;  -- OK
+-- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf2 SET SCHEMA alt_nsp2;  -- OK
+-- SET SESSION AUTHORIZATION regress_alter_generic_user2;
+-- CREATE TEXT SEARCH CONFIGURATION alt_ts_conf1 (copy=english);
+-- CREATE TEXT SEARCH CONFIGURATION alt_ts_conf2 (copy=english);
+-- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf3 RENAME TO alt_ts_conf4;  -- failed (not owner)
+-- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf1 RENAME TO alt_ts_conf4;  -- OK
+-- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf3 OWNER TO regress_alter_generic_user2;  -- failed (not owner)
+-- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf2 OWNER TO regress_alter_generic_user3;  -- failed (no role membership)
+-- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf3 SET SCHEMA alt_nsp2;  -- failed (not owner)
+-- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf2 SET SCHEMA alt_nsp2;  -- failed (name conflict)
+-- RESET SESSION AUTHORIZATION;
+-- SELECT nspname, cfgname, rolname
+--   FROM pg_ts_config t, pg_namespace n, pg_authid a
+--   WHERE t.cfgnamespace = n.oid AND t.cfgowner = a.oid
+--     AND n.nspname in ('alt_nsp1', 'alt_nsp2')
+--   ORDER BY nspname, cfgname;
+--
+-- Text Search Template
+--
+CREATE TEXT SEARCH TEMPLATE alt_ts_temp1 (lexize=dsimple_lexize);
+CREATE TEXT SEARCH TEMPLATE alt_ts_temp2 (lexize=dsimple_lexize);
+ALTER TEXT SEARCH TEMPLATE alt_ts_temp1 RENAME TO alt_ts_temp2; -- failed (name conflict)
+ERROR:  text search template "alt_ts_temp2" already exists in schema "alt_nsp1"
+ALTER TEXT SEARCH TEMPLATE alt_ts_temp1 RENAME TO alt_ts_temp3; -- OK
+ALTER TEXT SEARCH TEMPLATE alt_ts_temp2 SET SCHEMA alt_nsp2;    -- OK
+CREATE TEXT SEARCH TEMPLATE alt_ts_temp2 (lexize=dsimple_lexize);
+ALTER TEXT SEARCH TEMPLATE alt_ts_temp2 SET SCHEMA alt_nsp2;    -- failed (name conflict)
+ERROR:  text search template "alt_ts_temp2" already exists in schema "alt_nsp2"
+-- invalid: non-lowercase quoted identifiers
+CREATE TEXT SEARCH TEMPLATE tstemp_case ("Init" = init_function);
+ERROR:  text search template parameter "Init" not recognized
+SELECT nspname, tmplname
+  FROM pg_ts_template t, pg_namespace n
+  WHERE t.tmplnamespace = n.oid AND nspname like 'alt_nsp%'
+  ORDER BY nspname, tmplname;
+ nspname  |   tmplname
+----------+--------------
+ alt_nsp1 | alt_ts_temp2
+ alt_nsp1 | alt_ts_temp3
+ alt_nsp2 | alt_ts_temp2
+(3 rows)
+
+--
+-- Text Search Parser
+--
+CREATE TEXT SEARCH PARSER alt_ts_prs1
+    (start = prsd_start, gettoken = prsd_nexttoken, end = prsd_end, lextypes = prsd_lextype);
+CREATE TEXT SEARCH PARSER alt_ts_prs2
+    (start = prsd_start, gettoken = prsd_nexttoken, end = prsd_end, lextypes = prsd_lextype);
+ALTER TEXT SEARCH PARSER alt_ts_prs1 RENAME TO alt_ts_prs2; -- failed (name conflict)
+ERROR:  text search parser "alt_ts_prs2" already exists in schema "alt_nsp1"
+ALTER TEXT SEARCH PARSER alt_ts_prs1 RENAME TO alt_ts_prs3; -- OK
+ALTER TEXT SEARCH PARSER alt_ts_prs2 SET SCHEMA alt_nsp2;   -- OK
+CREATE TEXT SEARCH PARSER alt_ts_prs2
+    (start = prsd_start, gettoken = prsd_nexttoken, end = prsd_end, lextypes = prsd_lextype);
+ALTER TEXT SEARCH PARSER alt_ts_prs2 SET SCHEMA alt_nsp2;   -- failed (name conflict)
+ERROR:  text search parser "alt_ts_prs2" already exists in schema "alt_nsp2"
+-- invalid: non-lowercase quoted identifiers
+CREATE TEXT SEARCH PARSER tspars_case ("Start" = start_function);
+ERROR:  text search parser parameter "Start" not recognized
+SELECT nspname, prsname
+  FROM pg_ts_parser t, pg_namespace n
+  WHERE t.prsnamespace = n.oid AND nspname like 'alt_nsp%'
+  ORDER BY nspname, prsname;
+ nspname  |   prsname
+----------+-------------
+ alt_nsp1 | alt_ts_prs2
+ alt_nsp1 | alt_ts_prs3
+ alt_nsp2 | alt_ts_prs2
+(3 rows)
+
 ---
 --- Cleanup resources
 ---
 \set VERBOSITY terse \\ -- suppress cascade details
 DROP SCHEMA alt_nsp1 CASCADE;
-NOTICE:  drop cascades to 19 other objects
+NOTICE:  drop cascades to 23 other objects
 DROP SCHEMA alt_nsp2 CASCADE;
-NOTICE:  drop cascades to 3 other objects
+NOTICE:  drop cascades to 5 other objects
 DROP USER regress_alter_generic_user1;
 DROP USER regress_alter_generic_user2;
 DROP USER regress_alter_generic_user3;

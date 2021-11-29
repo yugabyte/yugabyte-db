@@ -10,6 +10,7 @@ test: yb_pg_copydml
 test: yb_pg_index_including
 test: yb_pg_create_function_3
 test: yb_pg_create_cast
+test: yb_pg_drop_if_exists
 test: yb_pg_case
 test: yb_pg_alter_generic
 test: yb_pg_alter_operator

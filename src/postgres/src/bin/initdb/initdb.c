@@ -3221,9 +3221,9 @@ initialize_data_directory(void)
 	if (!IsYugaByteGlobalClusterInitdb())
 	{
 		setup_conversion(cmdfd);
-
-		setup_dictionary(cmdfd);
 	}
+
+	setup_dictionary(cmdfd);
 
 	setup_privileges(cmdfd);
 
