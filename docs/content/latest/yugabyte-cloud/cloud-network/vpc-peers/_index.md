@@ -24,52 +24,25 @@ To use VPC peering in a cluster, your cluster must be deployed in a dedicated VP
 
 {{< /note >}}
 
-## VPC peering
+## Setting up VPC peering
 
-Setting up and peering a VPC works as follows:
+To set up VPC peering, you do the following:
 
-- [Create a VPC](#create-a-vpc)
-- [Create a Peering Connection](#create-a-peering-connection)
-- [Configure the provider](#configure-the-cloud-provider)
+1. [Create a VPC](cloud-add-vpc/) in Yugabyte Cloud. To create a VPC in Yugabyte Cloud, you need to specify the following:
+    - Cloud provider (AWS or GCP).
+    - Region in which to deploy the VPC (AWS only).
+    - Preferred CIDR to use for your database VPC.
 
-Once a VPC has been created, you can deploy clusters in the VPC. Refer to [Create clusters](../../cloud-basics/create-clusters/).
+    Once a VPC has been created, you can deploy clusters in the VPC. Refer to [Create clusters](../../cloud-basics/create-clusters/).
+1. [Create a Peering Connection](cloud-add-peering/#configure-a-peering-connection) in Yugabyte Cloud. Once you have created at least one VPC in Yugabyte Cloud, you can create a peering connection with an application VPC on the same cloud provider. You need to specify the following:
+    - The Yugabyte Cloud VPC to peer.
+    - Details of the VPC you want to peer with, including:
+      - GCP - the project ID and the network name.
+      - AWS - the AWS account ID, and the VPC ID, region, and CIDR block.
 
-Once the cluster and the peering connection are active, you must add at least one of the CIDR blocks associated with the peered application VPC to the [IP allow list](../../cloud-basics/add-connections) for your cluster.
+1. [Configure the connection in your cloud provider](cloud-add-peering/#configure-the-cloud-provider). Once the peering connection is added in Yugabyte Cloud, you need to sign in to your cloud provider and configure the connection. In the Google Cloud Console, this involves creating a peering connection using the project ID and network name of the Yugabyte Cloud VPC. For AWS, you use the VPC Dashboard to accept the peering request, enable DNS, and add a route table entry.
 
-### Create a VPC
-
-To create a VPC in Yugabyte Cloud, you need to specify the following:
-
-- Cloud provider (AWS or GCP).
-- Region in which to deploy the VPC (AWS only).
-- Preferred CIDR to use for your database VPC.
-
-Refer to [Manage VPCs](cloud-add-vpc/).
-
-### Create a peering connection
-
-Once you have created at least one VPC in Yugabyte Cloud, you can create a peering connection with an application VPC on the same cloud provider. You need to specify the following:
-
-- The Yugabyte Cloud VPC to peer.
-- Details of the VPC you want to peer with, including:
-  - GCP - the project ID and the network name.
-  - AWS - the AWS account ID, and the VPC ID, region, and CIDR block.
-
-Refer to [Manage peering connections](cloud-add-peering/).
-
-### Configure the cloud provider
-
-Once the peering connection is set up, you need to sign in to your cloud provider and configure the connection.
-
-In the Google Cloud Console, this involves creating a peering connection using the project ID and network name of the Yugabyte Cloud VPC.
-
-For AWS, you use the VPC Dashboard to do the following:
-
-- Enable DNS hostnames and DNS resolution. This ensures that the cluster's hostnames in standard connection strings automatically resolve to private instead of public IP addresses when the Yugabyte Cloud cluster is accessed from the VPC.
-- Approve the peering connection request that you received from Yugabyte.
-- Add a route table entry to the VPC peer and add the Yugabyte Cloud cluster CIDR block to the Destination column, and the Peering Connection ID to the Target column.
-
-Refer to [Configure the cloud provider](cloud-add-peering/#configure-the-cloud-provider).
+1. Once the cluster and the peering connection are active, you must add at least one of the CIDR blocks associated with the peered application VPC to the [IP allow list](../../cloud-basics/add-connections) for your cluster.
 
 <div class="row">
 

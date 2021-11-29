@@ -8,28 +8,41 @@ menu:
     identifier: cloud-add-peering
     parent: vpc-peers
     weight: 20
-isTocNested: false
+isTocNested: true
 showAsideToc: true
 ---
 
 A peering connection connects a Yugabyte Cloud VPC with a VPC on the corresponding cloud provider - typically one that hosts an application that you want to have access to your cluster. Before you can peer a VPC, you must have an [active VPC configured](../cloud-add-vpc/) for the cloud provider hosting the application VPC.
 
-**Peering Connections** on the **VPC Network** tab displays a list of peering connections configured for your cloud that includes the peering connection name, cloud provider, the network name (GCP) or VPC ID (AWS) of the peered VPC, the name of the Yugabyte VPC, and status of the connection.
+**Peering Connections** on the **VPC Network** tab displays a list of peering connections configured for your cloud that includes the peering connection name, cloud provider, the network name (GCP) or VPC ID (AWS) of the peered VPC, the name of the Yugabyte VPC, and status of the connection (Pending or Active).
 
 ![Peering connections](/images/yb-cloud/cloud-vpc-peering.png)
 
-## Create a peering connection
+{{< note title="Note" >}}
 
-Before you can create a peering connection, you will need the details for the application VPC you will be peering with. The details will depend on the cloud provider, as detailed in the following table.
+If you have an _Active_ peering connection but are unable to connect to a cluster in the VPC, ensure that you have added the CIDR block of the peered application VPN to your cluster's IP allow list. For information on adding IP allow lists, refer to [Assign IP allow lists](../../../cloud-basics/add-connections).
 
-| AWS | GCP |
+{{< /note >}}
+
+## Configure a peering connection
+
+Configuring a peering connection is done in two stages:
+
+1. [Create the peering connection in Yugabyte Cloud](#create-a-peering-connection). You must have already created a VPC in Yugabyte Cloud, and you will need the details of the application VPC you want to peer with. When this is done, the peering connection is listed in Yuagbyte Cloud with a status of _Pending_.
+2. [Configure the peering in your cloud provider](#configure-the-cloud-provider).
+    - In AWS, this requires accepting the peering request.
+    - In GCP, this requires creating a peering connection.
+
+If successful, the peering connection status will change to _Active_. To communicate with your cluster, you still need to add the peered VPN to the IP allow list of your cluster.
+
+Before you can create a peering connection, you must have created at least one VPC in Yugabyte Cloud that uses the cloud provider you will be peering with. In addition, you will need the following details for the application VPC you will be peering with.
+
+| Provider | VPC Details |
 | --- | --- |
-| AWS account ID | GCP project ID |
-| VPC ID | VPC name |
-| VPC region | |
-| VPC CIDR address | VPC CIDR address (optional) |
+| AWS | Account ID<br>VPC ID<br>VPC region<br>VPC CIDR address |
+| GCP | GCP project ID<br>VPC name<br>VPC CIDR address (optional) |
 
-You must also have created at least one VPC in Yugabyte Cloud that uses the cloud provider you will be peering with.
+### Create a peering connection
 
 To create a peering connection for AWS, do the following:
 
@@ -42,23 +55,23 @@ To create a peering connection for AWS, do the following:
 1. Select **Add application CIDR to IP allow list** to add the the CIDR range to your cloud IP allow list. You will add this IP allow list to your cluster so that the application VPC can connect to the database.
 1. Click **Initiate Peering**.
 
-The peering connection is created with a status of Pending. To complete the peering, you must accept the peering request in your cloud provider account.
+The peering connection is created with a status of _Pending_. To complete the peering, you must accept the peering request in your cloud provider account.
 
-## Configure the cloud provider
+### Configure the cloud provider
 
-Once the peering connection is set up, you need to sign in to your cloud provider and configure the connection.
+To complete a _Pending_ peering connection, you need to sign in to your cloud provider and either accept the peering request (AWS), or create a peering connection (GCP).
 
-### Accept the peering request in AWS
+#### Accept the peering request in AWS
 
-Once the peering request is made, in AWS, use the VPC Dashboard to do the following:
+To make an AWS peering connection active, in AWS, use the **VPC Dashboard** to do the following:
 
 1. Enable DNS hostnames and DNS resolution. This ensures that the cluster's hostnames in standard connection strings automatically resolve to private instead of public IP addresses when the Yugabyte Cloud cluster is accessed from the application VPC.
 1. Approve the peering connection request that you received from Yugabyte.
-1. Add a route table entry to the VPC peer and add the Yugabyte Cloud cluster CIDR block to the Destination column, and the Peering Connection ID to the Target column.
+1. Add a route table entry to the VPC peer and add the Yugabyte Cloud cluster CIDR block to the **Destination** column, and the Peering Connection ID to the **Target** column.
 
 For information on VPC network peering in AWS, refer to [VPC Peering](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-peering.html.) in the AWS documentation.
 
-### Create a peering connection in GCP
+#### Create a peering connection in GCP
 
 To make a GCP peering connection active, you must create a peering connection in GCP. You will need the the **Project ID** and **VPC network name** of the Yugabyte Cloud VPC you are peering with. You can view and copy these details in the [Peering Details](#view-peering-connection-details) sheet.
 
@@ -89,4 +102,4 @@ To terminate a peering connection, click the **Delete** icon for the peering con
 ## Next steps
 
 - Create a cluster in a VPN. You do this by selecting the VPC during cluster creation. Refer to [Create a cluster](../../../cloud-basics/create-clusters).
-- Add the peered VPN to the IP allow list of your cluster. To communicate with you cluster, the CIDR block of the application VPN must be added to your cluster's IP allow list. Refer to [Assign IP allow lists](../../../cloud-basics/add-connections).
+- Add the peered VPN to the IP allow list of your cluster. To communicate with your cluster, the CIDR block of the application VPN must be added to your cluster's IP allow list. Refer to [Assign IP allow lists](../../../cloud-basics/add-connections).
