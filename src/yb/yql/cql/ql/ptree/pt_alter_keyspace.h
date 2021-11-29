@@ -37,7 +37,7 @@ class PTAlterKeyspace : public TreeNode {
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
   PTAlterKeyspace(MemoryContext *memctx,
-                  YBLocation::SharedPtr loc,
+                  YBLocationPtr loc,
                   const MCSharedPtr<MCString>& name,
                   const PTKeyspacePropertyListNode::SharedPtr& keyspace_properties);
   virtual ~PTAlterKeyspace();

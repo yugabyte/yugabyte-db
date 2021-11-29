@@ -19,9 +19,7 @@
 #define YB_YQL_CQL_QL_PTREE_PT_GRANT_REVOKE_H_
 
 #include "yb/common/roles_permissions.h"
-#include "yb/common/schema.h"
 #include "yb/common/common.pb.h"
-#include "yb/master/master.pb.h"
 #include "yb/util/enums.h"
 #include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
@@ -45,7 +43,7 @@ class PTGrantRevokeRole : public TreeNode {
 
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
-  PTGrantRevokeRole(MemoryContext* memctx, YBLocation::SharedPtr loc,
+  PTGrantRevokeRole(MemoryContext* memctx, YBLocationPtr loc,
                     client::GrantRevokeStatementType statement_type,
                     const MCSharedPtr<MCString>& granted_role_name,
                     const MCSharedPtr<MCString>& recipient_role_name);
@@ -100,7 +98,7 @@ class PTGrantRevokePermission : public TreeNode {
 
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
-  PTGrantRevokePermission(MemoryContext* memctx, YBLocation::SharedPtr loc,
+  PTGrantRevokePermission(MemoryContext* memctx, YBLocationPtr loc,
                           client::GrantRevokeStatementType statement_type,
                           const MCSharedPtr<MCString>& permission_name,
                           const ResourceType& resource_type,

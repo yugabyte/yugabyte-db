@@ -13,9 +13,14 @@
 
 #include "yb/yql/cql/ql/ptree/pt_property.h"
 
+#include "yb/common/ql_type.h"
+
 #include "yb/util/logging.h"
+#include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_case.h"
+
+#include "yb/yql/cql/ql/ptree/pt_expr.h"
 
 namespace yb {
 namespace ql {
@@ -23,7 +28,7 @@ namespace ql {
 using strings::Substitute;
 
 PTProperty::PTProperty(MemoryContext *memctx,
-                      YBLocation::SharedPtr loc,
+                      YBLocationPtr loc,
                       const MCSharedPtr<MCString>& lhs,
                       const PTExpr::SharedPtr& rhs)
     : TreeNode(memctx, loc),
@@ -32,7 +37,7 @@ PTProperty::PTProperty(MemoryContext *memctx,
 }
 
 PTProperty::PTProperty(MemoryContext *memctx,
-                       YBLocation::SharedPtr loc)
+                       YBLocationPtr loc)
     : TreeNode(memctx, loc) {
 }
 

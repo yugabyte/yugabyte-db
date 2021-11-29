@@ -15,6 +15,7 @@
 
 #include "yb/yql/pggate/test/pggate_test.h"
 #include "yb/common/ybc-internal.h"
+#include "yb/util/status_log.h"
 
 namespace yb {
 namespace pggate {

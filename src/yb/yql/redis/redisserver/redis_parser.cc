@@ -10,28 +10,21 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include "yb/yql/redis/redisserver/redis_parser.h"
 
 #include <memory>
 #include <string>
 
 #include <boost/algorithm/string.hpp>
 
-#include <boost/optional/optional.hpp>
-
-#include "yb/client/client.h"
 #include "yb/client/yb_op.h"
-
 #include "yb/common/redis_protocol.pb.h"
-
-#include "yb/gutil/strings/substitute.h"
-
-#include "yb/yql/redis/redisserver/redis_constants.h"
-#include "yb/yql/redis/redisserver/redis_parser.h"
-
 #include "yb/util/split.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_case.h"
+#include "yb/yql/redis/redisserver/redis_constants.h"
 
 namespace yb {
 namespace redisserver {
@@ -1214,6 +1207,11 @@ Result<ptrdiff_t> RedisParser::ParseNumber(char prefix,
                 yb::Format("$0 out of expected range [$1, $2] : $3",
                            name, min, max, parsed_number));
   return static_cast<ptrdiff_t>(parsed_number);
+}
+
+void RedisParser::SetArgs(boost::container::small_vector_base<Slice>* args) {
+  DCHECK_EQ(source_.size(), 1);
+  args_ = args;
 }
 
 }  // namespace redisserver

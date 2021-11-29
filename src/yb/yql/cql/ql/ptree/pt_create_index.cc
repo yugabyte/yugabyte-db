@@ -3,15 +3,17 @@
 //
 // Treenode definitions for CREATE INDEX statements.
 //--------------------------------------------------------------------------------------------------
-
 #include "yb/yql/cql/ql/ptree/pt_create_index.h"
 
-#include "yb/client/client.h"
+#include "yb/client/schema.h"
 #include "yb/client/table.h"
-
-#include "yb/yql/cql/ql/ptree/pt_expr.h"
-#include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/common/schema.h"
 #include "yb/gutil/strings/ascii_ctype.h"
+#include "yb/yql/cql/ql/ptree/column_desc.h"
+#include "yb/yql/cql/ql/ptree/pt_column_definition.h"
+#include "yb/yql/cql/ql/ptree/pt_expr.h"
+#include "yb/yql/cql/ql/ptree/pt_option.h"
+#include "yb/yql/cql/ql/ptree/sem_context.h"
 
 DEFINE_bool(cql_raise_index_where_clause_error, false,
             "Raise unsupported error if where clause is specified for create index");
@@ -28,15 +30,15 @@ using client::YBTableName;
 //--------------------------------------------------------------------------------------------------
 
 PTCreateIndex::PTCreateIndex(MemoryContext *memctx,
-                             YBLocation::SharedPtr loc,
+                             YBLocationPtr loc,
                              bool is_backfill_deferred,
                              bool is_unique,
                              const MCSharedPtr<MCString>& name,
-                             const PTQualifiedName::SharedPtr& table_name,
-                             const PTListNode::SharedPtr& columns,
+                             const PTQualifiedNamePtr& table_name,
+                             const PTListNodePtr& columns,
                              const bool create_if_not_exists,
-                             const PTTablePropertyListNode::SharedPtr& ordering_list,
-                             const PTListNode::SharedPtr& covering,
+                             const PTTablePropertyListNodePtr& ordering_list,
+                             const PTListNodePtr& covering,
                              const PTExpr::SharedPtr& where_clause)
     : PTCreateTable(memctx, loc, table_name, columns, create_if_not_exists, ordering_list),
       is_unique_(is_unique),
@@ -65,7 +67,7 @@ CHECKED_STATUS SetupCoveringColumn(PTIndexColumn *node, SemContext *sem_context)
 CHECKED_STATUS PTCreateIndex::Analyze(SemContext *sem_context) {
   // Look up indexed table.
   bool is_system_ignored;
-  RETURN_NOT_OK(relation_->AnalyzeName(sem_context, OBJECT_TABLE));
+  RETURN_NOT_OK(relation_->AnalyzeName(sem_context, ObjectType::TABLE));
 
   RETURN_NOT_OK(sem_context->LookupTable(relation_->ToTableName(), relation_->loc(),
                                          true /* write_table */,
@@ -233,6 +235,16 @@ Status PTCreateIndex::ToTableProperties(TableProperties *table_properties) const
 
 const std::string& PTCreateIndex::indexed_table_id() const {
   return table_->id();
+}
+
+client::YBTableName PTCreateIndex::yb_table_name() const {
+  return client::YBTableName(YQL_DATABASE_CQL,
+                             PTCreateTable::yb_table_name().namespace_name().c_str(),
+                             name_->c_str());
+}
+
+client::YBTableName PTCreateIndex::indexed_table_name() const {
+  return PTCreateTable::yb_table_name();
 }
 
 }  // namespace ql

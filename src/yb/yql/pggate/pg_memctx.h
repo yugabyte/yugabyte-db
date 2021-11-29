@@ -22,7 +22,7 @@
 
 #include "yb/yql/pggate/pg_gate_fwd.h"
 
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 namespace pggate {

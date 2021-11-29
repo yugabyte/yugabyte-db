@@ -12,6 +12,8 @@
 #
 
 add_library(ql_ptree
+            column_arg.cc
+            column_desc.cc
             parse_tree.cc
             tree_node.cc
             list_node.cc

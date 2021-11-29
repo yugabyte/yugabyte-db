@@ -26,7 +26,6 @@
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/pg_types.h"
-#include "yb/client/client.h"
 
 namespace yb {
 namespace pggate {

@@ -19,9 +19,8 @@
 #define YB_YQL_CQL_QL_PTREE_COLUMN_ARG_H_
 
 #include "yb/common/types.h"
-#include "yb/yql/cql/ql/ptree/pt_expr.h"
-#include "yb/yql/cql/ql/ptree/pt_bcall.h"
 #include "yb/util/memory/mc_types.h"
+#include "yb/yql/cql/ql/ptree/ptree_fwd.h"
 
 namespace yb {
 namespace ql {
@@ -36,7 +35,7 @@ class ColumnArg {
   typedef std::shared_ptr<const ColumnArg> SharedPtrConst;
 
   ColumnArg(const ColumnDesc *desc = nullptr,
-            const PTExpr::SharedPtr& expr = nullptr)
+            const PTExprPtr& expr = nullptr)
       : desc_(desc), expr_(expr) {
   }
   ColumnArg(const ColumnArg &arg) : ColumnArg(arg.desc_, arg.expr_) {
@@ -44,7 +43,7 @@ class ColumnArg {
   virtual ~ColumnArg() {
   }
 
-  void Init(const ColumnDesc *desc, const PTExpr::SharedPtr& expr) {
+  void Init(const ColumnDesc *desc, const PTExprPtr& expr) {
     desc_ = desc;
     expr_ = expr;
   }
@@ -57,13 +56,13 @@ class ColumnArg {
     return desc_;
   }
 
-  const PTExpr::SharedPtr& expr() const {
+  const PTExprPtr& expr() const {
     return expr_;
   }
 
  protected:
   const ColumnDesc *desc_;
-  PTExpr::SharedPtr expr_;
+  PTExprPtr expr_;
 };
 
 // This class represents an operation on a column.
@@ -75,7 +74,7 @@ class ColumnOp : public ColumnArg {
   typedef std::shared_ptr<const ColumnOp> SharedPtrConst;
 
   ColumnOp(const ColumnDesc *desc = nullptr,
-           const PTExpr::SharedPtr& expr = nullptr,
+           const PTExprPtr& expr = nullptr,
            yb::QLOperator yb_op = yb::QLOperator::QL_OP_NOOP)
       : ColumnArg(desc, expr), yb_op_(yb_op) {
   }
@@ -85,7 +84,7 @@ class ColumnOp : public ColumnArg {
   virtual ~ColumnOp() {
   }
 
-  void Init(const ColumnDesc *desc, const PTExpr::SharedPtr& expr, yb::QLOperator yb_op) {
+  void Init(const ColumnDesc *desc, const PTExprPtr& expr, yb::QLOperator yb_op) {
     desc_ = desc;
     expr_ = expr;
     yb_op_ = yb_op;
@@ -94,6 +93,8 @@ class ColumnOp : public ColumnArg {
   yb::QLOperator yb_op() const {
     return yb_op_;
   }
+
+  void OutputTo(std::ostream* out) const;
 
  private:
   yb::QLOperator yb_op_;
@@ -104,35 +105,31 @@ class FuncOp {
   typedef std::shared_ptr<FuncOp> SharedPtr;
   typedef std::shared_ptr<const FuncOp> SharedPtrConst;
 
-  FuncOp(const PTExpr::SharedPtr& value_expr,
-         const PTBcall::SharedPtr& func_expr,
+  FuncOp(const PTExprPtr& value_expr,
+         const PTBcallPtr& func_expr,
          yb::QLOperator yb_op = yb::QLOperator::QL_OP_NOOP)
     : value_expr_(value_expr), func_expr_(func_expr), yb_op_(yb_op) {
   }
 
-  void Init(const PTExpr::SharedPtr& value_expr,
-            const PTExpr::SharedPtr& func_expr,
-            yb::QLOperator yb_op) {
-    value_expr_ = value_expr;
-    func_expr_ = std::dynamic_pointer_cast<PTBcall>(func_expr);
-    yb_op_ = yb_op;
-  }
+  void Init(const PTExprPtr& value_expr,
+            const PTExprPtr& func_expr,
+            yb::QLOperator yb_op);
 
   yb::QLOperator yb_op() const {
     return yb_op_;
   }
 
-  PTExpr::SharedPtr value_expr() const {
+  PTExprPtr value_expr() const {
     return value_expr_;
   }
 
-  PTBcall::SharedPtr func_expr() const {
+  PTBcallPtr func_expr() const {
     return func_expr_;
   }
 
  private:
-  PTExpr::SharedPtr value_expr_;
-  PTBcall::SharedPtr func_expr_;
+  PTExprPtr value_expr_;
+  PTBcallPtr func_expr_;
   yb::QLOperator yb_op_;
 };
 
@@ -145,8 +142,8 @@ class JsonColumnArg : public ColumnArg {
   typedef std::shared_ptr<const JsonColumnArg> SharedPtrConst;
 
   JsonColumnArg(const ColumnDesc *desc = nullptr,
-                const PTExprListNode::SharedPtr& args = nullptr,
-                const PTExpr::SharedPtr& expr = nullptr)
+                const PTExprListNodePtr& args = nullptr,
+                const PTExprPtr& expr = nullptr)
       : ColumnArg(desc, expr), args_(args) {
   }
 
@@ -156,12 +153,12 @@ class JsonColumnArg : public ColumnArg {
   virtual ~JsonColumnArg() {
   }
 
-  const PTExprListNode::SharedPtr& args() const {
+  const PTExprListNodePtr& args() const {
     return args_;
   }
 
  protected:
-  PTExprListNode::SharedPtr args_;
+  PTExprListNodePtr args_;
 };
 
 // This class represents a sub-column argument (e.g. "SET l[1] = 'b'")
@@ -173,8 +170,8 @@ class SubscriptedColumnArg : public ColumnArg {
   typedef std::shared_ptr<const SubscriptedColumnArg> SharedPtrConst;
 
   SubscriptedColumnArg(const ColumnDesc *desc = nullptr,
-                       const PTExprListNode::SharedPtr& args = nullptr,
-                       const PTExpr::SharedPtr& expr = nullptr)
+                       const PTExprListNodePtr& args = nullptr,
+                       const PTExprPtr& expr = nullptr)
       : ColumnArg(desc, expr), args_(args) {
   }
 
@@ -184,12 +181,12 @@ class SubscriptedColumnArg : public ColumnArg {
   virtual ~SubscriptedColumnArg() {
   }
 
-  const PTExprListNode::SharedPtr& args() const {
+  const PTExprListNodePtr& args() const {
     return args_;
   }
 
  protected:
-  PTExprListNode::SharedPtr args_;
+  PTExprListNodePtr args_;
 };
 
 // This class represents an operation on a json column (e.g. "WHERE c1->'a'->'b'->>'c' = 'b'").
@@ -201,8 +198,8 @@ class JsonColumnOp : public JsonColumnArg {
   typedef std::shared_ptr<const JsonColumnOp> SharedPtrConst;
 
   JsonColumnOp(const ColumnDesc *desc = nullptr,
-                      const PTExprListNode::SharedPtr& args = nullptr,
-                      const PTExpr::SharedPtr& expr = nullptr,
+                      const PTExprListNodePtr& args = nullptr,
+                      const PTExprPtr& expr = nullptr,
                       yb::QLOperator yb_op = yb::QLOperator::QL_OP_NOOP)
       : JsonColumnArg(desc, args, expr), yb_op_(yb_op) {
   }
@@ -212,8 +209,8 @@ class JsonColumnOp : public JsonColumnArg {
   virtual ~JsonColumnOp() {
   }
 
-  void Init(const ColumnDesc *desc, const PTExprListNode::SharedPtr& args,
-            const PTExpr::SharedPtr& expr, yb::QLOperator yb_op) {
+  void Init(const ColumnDesc *desc, const PTExprListNodePtr& args,
+            const PTExprPtr& expr, yb::QLOperator yb_op) {
     desc_ = desc;
     args_ = args;
     expr_ = expr;
@@ -225,13 +222,7 @@ class JsonColumnOp : public JsonColumnArg {
   }
 
   // Name of a Catalog::IndexTable::ExprColumn is created by mangling original name from users.
-  string IndexExprToColumnName() const {
-    string index_column_name = desc_->MangledName();
-    for (const PTExpr::SharedPtr &arg : args_->node_list()) {
-      index_column_name += arg->MangledName();
-    }
-    return index_column_name;
-  }
+  string IndexExprToColumnName() const;
 
  private:
   yb::QLOperator yb_op_;
@@ -246,8 +237,8 @@ class SubscriptedColumnOp : public SubscriptedColumnArg {
   typedef std::shared_ptr<const SubscriptedColumnOp> SharedPtrConst;
 
   SubscriptedColumnOp(const ColumnDesc *desc = nullptr,
-                      const PTExprListNode::SharedPtr& args = nullptr,
-                      const PTExpr::SharedPtr& expr = nullptr,
+                      const PTExprListNodePtr& args = nullptr,
+                      const PTExprPtr& expr = nullptr,
                       yb::QLOperator yb_op = yb::QLOperator::QL_OP_NOOP)
       : SubscriptedColumnArg(desc, args, expr), yb_op_(yb_op) {
   }
@@ -257,8 +248,8 @@ class SubscriptedColumnOp : public SubscriptedColumnArg {
   virtual ~SubscriptedColumnOp() {
   }
 
-  void Init(const ColumnDesc *desc, const PTExprListNode::SharedPtr& args,
-            const PTExpr::SharedPtr& expr, yb::QLOperator yb_op) {
+  void Init(const ColumnDesc *desc, const PTExprListNodePtr& args,
+            const PTExprPtr& expr, yb::QLOperator yb_op) {
     desc_ = desc;
     args_ = args;
     expr_ = expr;
@@ -280,21 +271,23 @@ class SubscriptedColumnOp : public SubscriptedColumnArg {
 
 class PartitionKeyOp {
  public:
-  PartitionKeyOp(yb::QLOperator yb_op, PTExpr::SharedPtr expr)
+  PartitionKeyOp(yb::QLOperator yb_op, PTExprPtr expr)
       : yb_op_(yb_op), expr_(expr) {}
 
   QLOperator yb_op() const {
     return yb_op_;
   }
 
-  PTExpr::SharedPtr expr() const {
+  PTExprPtr expr() const {
     return expr_;
   }
 
  private:
   QLOperator yb_op_;
-  PTExpr::SharedPtr expr_;
+  PTExprPtr expr_;
 };
+
+const char* QLOperatorAsString(QLOperator ql_op);
 
 }  // namespace ql
 }  // namespace yb

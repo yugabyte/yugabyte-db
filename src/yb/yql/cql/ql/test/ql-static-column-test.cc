@@ -18,7 +18,10 @@
 #include "yb/yql/cql/ql/test/ql-test-base.h"
 
 #include "yb/gutil/strings/substitute.h"
-#include "yb/master/catalog_manager.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master.h"
+#include "yb/master/master.pb.h"
+#include "yb/util/status_log.h"
 
 using std::string;
 using std::unique_ptr;

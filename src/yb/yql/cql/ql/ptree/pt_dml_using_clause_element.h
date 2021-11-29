@@ -15,7 +15,6 @@
 #define YB_YQL_CQL_QL_PTREE_PT_DML_USING_CLAUSE_ELEMENT_H
 
 #include "yb/yql/cql/ql/ptree/tree_node.h"
-#include "yb/yql/cql/ql/ptree/pt_expr.h"
 
 namespace yb {
 namespace ql {
@@ -31,9 +30,9 @@ class PTDmlUsingClauseElement : public TreeNode {
   //------------------------------------------------------------------------------------------------
   // Constructors and destructor.
   PTDmlUsingClauseElement(MemoryContext *memctx,
-                          YBLocation::SharedPtr loc,
+                          YBLocationPtr loc,
                           const MCSharedPtr<MCString>& name,
-                          const PTExpr::SharedPtr& value);
+                          const PTExprPtr& value);
 
   virtual ~PTDmlUsingClauseElement();
 
@@ -51,7 +50,7 @@ class PTDmlUsingClauseElement : public TreeNode {
   // Node semantics analysis.
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
 
-  const PTExpr::SharedPtr value() {
+  const PTExprPtr value() {
     return value_;
   }
 
@@ -68,7 +67,7 @@ class PTDmlUsingClauseElement : public TreeNode {
   constexpr static const char* const kTimestamp = "timestamp";
 
   const MCSharedPtr<MCString> name_;
-  const PTExpr::SharedPtr value_;
+  const PTExprPtr value_;
 };
 
 } // namespace ql

@@ -23,8 +23,6 @@
 
 #include "yb/client/client_fwd.h"
 #include "yb/client/callbacks.h"
-#include "yb/client/client.h"
-#include "yb/client/transaction.h"
 #include "yb/client/transaction_manager.h"
 #include "yb/common/common.pb.h"
 #include "yb/gutil/callback.h"

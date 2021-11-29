@@ -14,22 +14,28 @@
 //
 // Treenode definitions for SELECT statements.
 //--------------------------------------------------------------------------------------------------
-
 #include "yb/yql/cql/ql/ptree/pt_select.h"
 
 #include <functional>
 
-#include "yb/client/client.h"
+#include "yb/client/schema.h"
 #include "yb/client/table.h"
-
 #include "yb/common/common.pb.h"
 #include "yb/common/index.h"
-#include "yb/util/status.h"
-#include "yb/yql/cql/ql/ptree/column_arg.h"
-#include "yb/yql/cql/ql/ptree/ycql_predtest.h"
-#include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/common/schema.h"
+#include "yb/master/master_defaults.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/memory/mc_types.h"
 #include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/yql/cql/ql/ptree/column_arg.h"
+#include "yb/yql/cql/ql/ptree/column_desc.h"
+#include "yb/yql/cql/ql/ptree/pt_expr.h"
+#include "yb/yql/cql/ql/ptree/pt_option.h"
+#include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/yql/cql/ql/ptree/yb_location.h"
+#include "yb/yql/cql/ql/ptree/ycql_predtest.h"
 
 DEFINE_bool(enable_uncovered_index_select, true,
             "Enable executing select statements using uncovered index");
@@ -321,7 +327,7 @@ class Selectivity {
 //--------------------------------------------------------------------------------------------------
 
 PTSelectStmt::PTSelectStmt(MemoryContext *memctx,
-                           YBLocation::SharedPtr loc,
+                           YBLocationPtr loc,
                            const bool distinct,
                            PTExprListNode::SharedPtr selected_exprs,
                            PTTableRefListNode::SharedPtr from_clause,
@@ -577,10 +583,10 @@ ExplainPlanPB PTSelectStmt::AnalysisResultToPB() {
   const auto& keys = child_select_ ? child_select_->key_where_ops() : key_where_ops();
   const auto& filters = child_select_ ? child_select_->where_ops() : where_ops();
   // Rebuild the conditions and filter into strings from internal format.
-  string filled_key_conds = conditionsToString<MCVector<ColumnOp>>(keys);
-  string filled_filter = conditionsToString<MCList<ColumnOp>>(filters);
+  string filled_key_conds = ConditionsToString<MCVector<ColumnOp>>(keys);
+  string filled_filter = ConditionsToString<MCList<ColumnOp>>(filters);
 
-  filled_key_conds += partitionkeyToString(partition_key_ops());
+  filled_key_conds += PartitionKeyToString(partition_key_ops());
 
   // If the query has key conditions or filters on either the index or the main table, then output
   // to query plan.
@@ -1088,6 +1094,10 @@ CHECKED_STATUS PTSelectStmt::ConstructSelectedSchema() {
   return Status::OK();
 }
 
+const std::shared_ptr<client::YBTable>& PTSelectStmt::bind_table() const {
+  return child_select_ ? child_select_->bind_table() : PTDmlStmt::bind_table();
+}
+
 //--------------------------------------------------------------------------------------------------
 
 PTOrderBy::PTOrderBy(MemoryContext *memctx,
@@ -1149,7 +1159,7 @@ CHECKED_STATUS PTTableRef::Analyze(SemContext *sem_context) {
   if (alias_ != nullptr) {
     return sem_context->Error(this, "Alias is not allowed", ErrorCode::CQL_STATEMENT_INVALID);
   }
-  return name_->AnalyzeName(sem_context, OBJECT_TABLE);
+  return name_->AnalyzeName(sem_context, ObjectType::TABLE);
 }
 
 //--------------------------------------------------------------------------------------------------

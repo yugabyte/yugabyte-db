@@ -38,7 +38,7 @@ class PTBaseType : public TreeNode {
 
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
-  explicit PTBaseType(MemoryContext *memctx = nullptr, YBLocation::SharedPtr loc = nullptr)
+  explicit PTBaseType(MemoryContext *memctx = nullptr, YBLocationPtr loc = nullptr)
       : TreeNode(memctx, loc) {
   }
   virtual ~PTBaseType() {
@@ -75,7 +75,7 @@ class PTPrimitiveType : public PTBaseType {
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
   explicit PTPrimitiveType(MemoryContext *memctx = nullptr,
-                           YBLocation::SharedPtr loc = nullptr)
+                           YBLocationPtr loc = nullptr)
       : PTBaseType(memctx, loc) {
   }
   virtual ~PTPrimitiveType() {
@@ -122,7 +122,7 @@ class PTSimpleType : public PTPrimitiveType<itype_, data_type_, applicable_for_p
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
   explicit PTSimpleType(MemoryContext *memctx = nullptr,
-                        YBLocation::SharedPtr loc = nullptr)
+                        YBLocationPtr loc = nullptr)
       : PTPrimitiveType<itype_, data_type_, applicable_for_primary_key_>(memctx, loc) {
   }
   virtual ~PTSimpleType() {
@@ -146,7 +146,7 @@ class PTFloat : public PTSimpleType<InternalType::kFloatValue, DataType::FLOAT> 
   typedef MCSharedPtr<const PTFloat> SharedPtrConst;
 
   explicit PTFloat(MemoryContext *memctx,
-                   YBLocation::SharedPtr loc = nullptr,
+                   YBLocationPtr loc = nullptr,
                    int8_t precision = 24);
   virtual ~PTFloat();
 
@@ -169,7 +169,7 @@ class PTDouble : public PTSimpleType<InternalType::kDoubleValue, DataType::DOUBL
   typedef MCSharedPtr<const PTDouble> SharedPtrConst;
 
   explicit PTDouble(MemoryContext *memctx,
-                    YBLocation::SharedPtr loc = nullptr,
+                    YBLocationPtr loc = nullptr,
                     int8_t precision = 24);
   virtual ~PTDouble();
 
@@ -193,7 +193,7 @@ class PTCounter : public PTSimpleType<InternalType::kInt64Value, DataType::INT64
   typedef MCSharedPtr<PTCounter> SharedPtr;
   typedef MCSharedPtr<const PTCounter> SharedPtrConst;
 
-  explicit PTCounter(MemoryContext *memctx, YBLocation::SharedPtr loc);
+  explicit PTCounter(MemoryContext *memctx, YBLocationPtr loc);
   virtual ~PTCounter();
 
   template<typename... TypeArgs>
@@ -215,7 +215,7 @@ class PTCharBaseType : public PTSimpleType<InternalType::kStringValue, DataType:
   typedef MCSharedPtr<const PTCharBaseType> SharedPtrConst;
 
   explicit PTCharBaseType(MemoryContext *memctx = nullptr,
-                          YBLocation::SharedPtr loc = nullptr,
+                          YBLocationPtr loc = nullptr,
                           int32_t max_length = -1);
   virtual ~PTCharBaseType();
 
@@ -236,7 +236,7 @@ class PTChar : public PTCharBaseType {
   typedef MCSharedPtr<const PTChar> SharedPtrConst;
 
   explicit PTChar(MemoryContext *memctx = nullptr,
-                  YBLocation::SharedPtr loc = nullptr,
+                  YBLocationPtr loc = nullptr,
                   int32_t max_length = 1);
   virtual ~PTChar();
 
@@ -256,7 +256,7 @@ class PTVarchar : public PTCharBaseType {
   typedef MCSharedPtr<const PTVarchar> SharedPtrConst;
 
   explicit PTVarchar(MemoryContext *memctx = nullptr,
-                     YBLocation::SharedPtr loc = nullptr,
+                     YBLocationPtr loc = nullptr,
                      int32_t max_length = 64*1024);
   virtual ~PTVarchar();
 
@@ -294,7 +294,7 @@ class PTMap : public PTPrimitiveType<InternalType::kMapValue, DataType::MAP, fal
   typedef MCSharedPtr<const PTMap> SharedPtrConst;
 
   PTMap(MemoryContext *memctx,
-        YBLocation::SharedPtr loc,
+        YBLocationPtr loc,
         const PTBaseType::SharedPtr& keys_type,
         const PTBaseType::SharedPtr& values_type);
 
@@ -323,7 +323,7 @@ class PTSet : public PTPrimitiveType<InternalType::kSetValue, DataType::SET, fal
   typedef MCSharedPtr<const PTSet> SharedPtrConst;
 
   PTSet(MemoryContext *memctx,
-        YBLocation::SharedPtr loc,
+        YBLocationPtr loc,
         const PTBaseType::SharedPtr& elems_type);
 
   virtual ~PTSet();
@@ -350,7 +350,7 @@ class PTList : public PTPrimitiveType<InternalType::kListValue, DataType::LIST, 
   typedef MCSharedPtr<const PTList> SharedPtrConst;
 
   PTList(MemoryContext *memctx,
-         YBLocation::SharedPtr loc,
+         YBLocationPtr loc,
          const PTBaseType::SharedPtr& elems_type);
 
   virtual ~PTList();
@@ -379,7 +379,7 @@ class PTUserDefinedType : public PTPrimitiveType<InternalType::kMapValue,
   typedef MCSharedPtr<const PTUserDefinedType> SharedPtrConst;
 
   PTUserDefinedType(MemoryContext *memctx,
-                    YBLocation::SharedPtr loc,
+                    YBLocationPtr loc,
                     const PTQualifiedName::SharedPtr& name);
 
   virtual ~PTUserDefinedType();
@@ -408,7 +408,7 @@ class PTFrozen : public PTPrimitiveType<InternalType::kFrozenValue, DataType::FR
   typedef MCSharedPtr<const PTFrozen> SharedPtrConst;
 
   PTFrozen(MemoryContext *memctx,
-           YBLocation::SharedPtr loc,
+           YBLocationPtr loc,
            const PTBaseType::SharedPtr& elems_type);
 
   virtual ~PTFrozen();

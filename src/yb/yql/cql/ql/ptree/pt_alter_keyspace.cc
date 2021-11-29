@@ -17,6 +17,7 @@
 
 #include "yb/yql/cql/ql/ptree/pt_alter_keyspace.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/yql/cql/ql/ptree/yb_location.h"
 
 #include "yb/common/redis_constants_common.h"
 

@@ -17,8 +17,11 @@
 #include "yb/client/table.h"
 #include "yb/client/table_info.h"
 #include "yb/client/tablet_server.h"
+#include "yb/client/yb_table_name.h"
 
 #include "yb/rpc/poller.h"
+#include "yb/rpc/proxy.h"
+#include "yb/rpc/rpc_controller.h"
 
 #include "yb/tserver/pg_client.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"

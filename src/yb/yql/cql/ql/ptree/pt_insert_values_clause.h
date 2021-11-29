@@ -19,7 +19,6 @@
 #define YB_YQL_CQL_QL_PTREE_PT_INSERT_VALUES_CLAUSE_H_
 
 #include "yb/yql/cql/ql/ptree/list_node.h"
-#include "yb/yql/cql/ql/ptree/pt_expr.h"
 #include "yb/yql/cql/ql/ptree/pt_dml.h"
 
 namespace yb {
@@ -35,7 +34,7 @@ class PTInsertValuesClause : public PTCollection {
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
   PTInsertValuesClause(MemoryContext* memctx,
-                       YBLocation::SharedPtr loc,
+                       YBLocationPtr loc,
                        PTExprListNode::SharedPtr tuple);
   virtual ~PTInsertValuesClause();
 

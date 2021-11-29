@@ -12,11 +12,7 @@
 // under the License.
 //
 //--------------------------------------------------------------------------------------------------
-
-#include "yb/common/schema.h"
-#include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/exec/executor.h"
-#include "yb/yql/cql/ql/ql_processor.h"
 
 #include "yb/client/callbacks.h"
 #include "yb/client/client.h"
@@ -26,18 +22,43 @@
 #include "yb/client/table_alterer.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
-
 #include "yb/common/common.pb.h"
+#include "yb/common/consistent_read_point.h"
 #include "yb/common/index.h"
 #include "yb/common/ql_protocol_util.h"
+#include "yb/common/ql_rowblock.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/wire_protocol.h"
-
+#include "yb/gutil/casts.h"
 #include "yb/rpc/thread_pool.h"
 #include "yb/util/decimal.h"
-#include "yb/util/logging.h"
+#include "yb/util/metrics.h"
 #include "yb/util/random_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 #include "yb/util/trace.h"
+#include "yb/yql/cql/ql/exec/exec_context.h"
+#include "yb/yql/cql/ql/ptree/parse_tree.h"
+#include "yb/yql/cql/ql/ptree/pt_alter_keyspace.h"
+#include "yb/yql/cql/ql/ptree/pt_alter_role.h"
+#include "yb/yql/cql/ql/ptree/pt_alter_table.h"
+#include "yb/yql/cql/ql/ptree/pt_column_definition.h"
+#include "yb/yql/cql/ql/ptree/pt_create_index.h"
+#include "yb/yql/cql/ql/ptree/pt_create_keyspace.h"
+#include "yb/yql/cql/ql/ptree/pt_create_role.h"
+#include "yb/yql/cql/ql/ptree/pt_create_table.h"
+#include "yb/yql/cql/ql/ptree/pt_create_type.h"
+#include "yb/yql/cql/ql/ptree/pt_delete.h"
+#include "yb/yql/cql/ql/ptree/pt_drop.h"
+#include "yb/yql/cql/ql/ptree/pt_explain.h"
+#include "yb/yql/cql/ql/ptree/pt_expr.h"
+#include "yb/yql/cql/ql/ptree/pt_grant_revoke.h"
+#include "yb/yql/cql/ql/ptree/pt_insert.h"
+#include "yb/yql/cql/ql/ptree/pt_transaction.h"
+#include "yb/yql/cql/ql/ptree/pt_truncate.h"
+#include "yb/yql/cql/ql/ptree/pt_use_keyspace.h"
+#include "yb/yql/cql/ql/ql_processor.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -77,6 +98,8 @@ using strings::Substitute;
 DEFINE_bool(ycql_serial_operation_in_transaction_block, true,
             "If true, operations within a transaction block must be executed in order, "
             "at least semantically speaking.");
+
+extern ErrorCode QLStatusToErrorCode(QLResponsePB::QLStatus status);
 
 Executor::Executor(QLEnv* ql_env, AuditLogger* audit_logger, Rescheduler* rescheduler,
                    const QLMetrics* ql_metrics)
@@ -702,7 +725,7 @@ Status Executor::ExecPTNode(const PTDropStmt *tnode) {
   ErrorCode error_not_found = ErrorCode::SERVER_ERROR;
 
   switch (tnode->drop_type()) {
-    case OBJECT_TABLE: {
+    case ObjectType::TABLE: {
       // Drop the table.
       const YBTableName table_name = tnode->yb_table_name();
       // Clean-up table cache BEFORE op (the cache is used by other processor threads).
@@ -718,7 +741,7 @@ Status Executor::ExecPTNode(const PTDropStmt *tnode) {
       break;
     }
 
-    case OBJECT_INDEX: {
+    case ObjectType::INDEX: {
       // Drop the index.
       const YBTableName table_name = tnode->yb_table_name();
       // Clean-up table cache BEFORE op (the cache is used by other processor threads).
@@ -736,7 +759,7 @@ Status Executor::ExecPTNode(const PTDropStmt *tnode) {
       break;
     }
 
-    case OBJECT_SCHEMA: {
+    case ObjectType::SCHEMA: {
       // Drop the keyspace.
       const string keyspace_name(tnode->name()->last_name().c_str());
       s = ql_env_->DeleteKeyspace(keyspace_name);
@@ -745,7 +768,7 @@ Status Executor::ExecPTNode(const PTDropStmt *tnode) {
       break;
     }
 
-    case OBJECT_TYPE: {
+    case ObjectType::TYPE: {
       // Drop the type.
       const string type_name(tnode->name()->last_name().c_str());
       const string namespace_name(tnode->name()->first_name().c_str());
@@ -756,7 +779,7 @@ Status Executor::ExecPTNode(const PTDropStmt *tnode) {
       break;
     }
 
-    case OBJECT_ROLE: {
+    case ObjectType::ROLE: {
       // Drop the role.
       const string role_name(tnode->name()->QLName());
       s = ql_env_->DeleteRole(role_name);
@@ -820,7 +843,7 @@ Status Executor::ExecPTNode(const PTGrantRevokePermission* tnode) {
 
 Status Executor::GetOffsetOrLimit(
     const PTSelectStmt* tnode,
-    const std::function<PTExpr::SharedPtr(const PTSelectStmt* tnode)>& get_val,
+    const std::function<PTExprPtr(const PTSelectStmt* tnode)>& get_val,
     const string& clause_type,
     int32_t* value) {
   QLExpressionPB expr_pb;
@@ -1669,6 +1692,10 @@ bool NeedsFlush(const client::YBSessionPtr& session) {
 }
 
 } // namespace
+
+client::YBSessionPtr Executor::GetSession(ExecContext* exec_context) {
+  return exec_context->HasTransaction() ? exec_context->transactional_session() : session_;
+}
 
 void Executor::FlushAsync(ResetAsyncCalls* reset_async_calls) {
   if (num_async_calls() != 0) {

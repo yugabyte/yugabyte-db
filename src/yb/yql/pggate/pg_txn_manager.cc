@@ -27,9 +27,11 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/debug-util.h"
+#include "yb/util/format.h"
 #include "yb/util/random_util.h"
 #include "yb/util/shared_mem.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 
 DEFINE_bool(use_node_hostname_for_local_tserver, false,
     "Connect to local t-server by using host name instead of local IP");

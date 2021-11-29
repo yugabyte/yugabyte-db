@@ -10,17 +10,22 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/yql/cql/ql/ptree/pt_dml_using_clause_element.h"
+
+#include "yb/common/ql_type.h"
+#include "yb/util/status.h"
+#include "yb/yql/cql/ql/ptree/pt_expr.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/yql/cql/ql/ptree/sem_state.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
 
 namespace yb {
 namespace ql {
 
 PTDmlUsingClauseElement::PTDmlUsingClauseElement(MemoryContext *memctx,
-                                                 YBLocation::SharedPtr loc,
+                                                 YBLocationPtr loc,
                                                  const MCSharedPtr<MCString>& name,
-                                                 const PTExpr::SharedPtr& value)
+                                                 const PTExprPtr& value)
     : TreeNode(memctx, loc),
       name_(name),
       value_(value) {

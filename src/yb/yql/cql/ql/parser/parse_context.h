@@ -20,7 +20,8 @@
 
 #include "yb/yql/cql/ql/parser/location.h"
 #include "yb/yql/cql/ql/ptree/process_context.h"
-#include "yb/yql/cql/ql/ptree/pt_expr.h"
+
+#include "yb/util/mem_tracker.h"
 
 namespace yb {
 namespace ql {
@@ -54,23 +55,15 @@ class ParseContext : public ProcessContext {
   void GetBindVariables(MCVector<PTBindVar*> *vars);
 
   // Handling parsing warning.
-  void Warn(const location& loc, const char *msg, ErrorCode error_code) {
-    ProcessContext::Warn(Location(loc), msg, error_code);
-  }
+  void Warn(const location& loc, const char *msg, ErrorCode error_code);
 
   // Handling parsing error.
   CHECKED_STATUS Error(const location& loc,
                        const char *msg,
                        ErrorCode error_code,
-                       const char* token = nullptr) {
-    return ProcessContext::Error(Location(loc), msg, error_code, token);
-  }
-  CHECKED_STATUS Error(const location& loc, const char *msg, const char* token = nullptr) {
-    return ProcessContext::Error(Location(loc), msg, token);
-  }
-  CHECKED_STATUS Error(const location& loc, ErrorCode error_code, const char* token = nullptr) {
-    return ProcessContext::Error(Location(loc), error_code, token);
-  }
+                       const char* token = nullptr);
+  CHECKED_STATUS Error(const location& loc, const char *msg, const char* token = nullptr);
+  CHECKED_STATUS Error(const location& loc, ErrorCode error_code, const char* token = nullptr);
 
   // Access function for ql_file_.
   std::istream *ql_file() {
@@ -90,7 +83,11 @@ class ParseContext : public ProcessContext {
  private:
   // List of bind variables in the statement being parsed ordered by the ordinal position in the
   // statement.
-  MCSet<PTBindVar*, PTBindVar::SetCmp> bind_variables_;
+  struct SetCmp {
+    bool operator() (const PTBindVar* v1, const PTBindVar* v2) const;
+  };
+
+  MCSet<PTBindVar*, SetCmp> bind_variables_;
 
   // Ordinal position for the next bind variable for the statement to be parsed.
   int64_t bind_pos_ = 0;

@@ -23,6 +23,7 @@
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/util/decimal.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/status_format.h"
 
 
 DEFINE_test_flag(bool, do_not_add_enum_sort_order, false,
@@ -321,6 +322,25 @@ void PgExpr::TranslateSysCol(Slice *yb_cursor, const PgWireDataHeader& header, P
 
   pg_tuple->Write(pgbuf, header, yb_cursor->data(), data_size);
   yb_cursor->remove_prefix(data_size);
+}
+
+void PgExpr::TranslateData(Slice *yb_cursor, const PgWireDataHeader& header, int index,
+                           PgTuple *pg_tuple) const {
+  CHECK(translate_data_) << "Data format translation is not provided";
+  translate_data_(yb_cursor, header, index, type_entity_, &type_attrs_, pg_tuple);
+}
+
+bool PgExpr::TranslateNumberHelper(
+    const PgWireDataHeader& header, int index, const YBCPgTypeEntity *type_entity,
+    PgTuple *pg_tuple) {
+  if (header.is_null()) {
+    pg_tuple->WriteNull(index, header);
+    return true;
+  }
+
+  DCHECK(type_entity) << "Type entity not provided";
+  DCHECK(type_entity->yb_to_datum) << "Type entity converter not provided";
+  return false;
 }
 
 void PgExpr::TranslateCtid(Slice *yb_cursor, const PgWireDataHeader& header, int index,

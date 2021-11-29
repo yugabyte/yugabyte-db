@@ -12,9 +12,8 @@
 // under the License.
 //
 //--------------------------------------------------------------------------------------------------
-
+#include "yb/yql/cql/ql/ptree/pt_create_index.h"
 #include "yb/yql/cql/ql/test/ql-test-base.h"
-
 
 namespace yb {
 namespace master {
@@ -217,7 +216,7 @@ TEST_F(TestQLCreateIndex, TestQLCreateIndexExpr) {
                                   "  with transactions = {'enabled':true};"));
   EXEC_VALID_STMT(CreateIndexStmt("jdx8 ON tab_escape"
                                   "  (\"C$_col->>'$J_attr'\"->>'\"J$_attr->>C$_col\"');"));
-}
+} // v1
 
 } // namespace ql
 } // namespace yb

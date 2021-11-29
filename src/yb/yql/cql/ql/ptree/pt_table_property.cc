@@ -10,20 +10,38 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include "yb/yql/cql/ql/ptree/pt_table_property.h"
 
 #include <set>
 
+#include <boost/algorithm/string/predicate.hpp>
+
 #include "yb/client/schema.h"
 #include "yb/client/table.h"
+#include "yb/common/schema.h"
+#include "yb/common/table_properties_constants.h"
 
-#include "yb/yql/cql/ql/ptree/pt_table_property.h"
-#include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_case.h"
 #include "yb/util/string_util.h"
 
+#include "yb/yql/cql/ql/ptree/column_desc.h"
+#include "yb/yql/cql/ql/ptree/pt_alter_table.h"
+#include "yb/yql/cql/ql/ptree/pt_column_definition.h"
+#include "yb/yql/cql/ql/ptree/pt_create_table.h"
+#include "yb/yql/cql/ql/ptree/pt_expr.h"
+#include "yb/yql/cql/ql/ptree/pt_option.h"
+#include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/yql/cql/ql/ptree/yb_location.h"
+
 namespace yb {
 namespace ql {
+
+namespace {
+
+const std::string kCompactionClassPrefix = "org.apache.cassandra.db.compaction.";
+
+}
 
 using strings::Substitute;
 using client::YBColumnSchema;
@@ -52,15 +70,15 @@ const std::map<std::string, PTTableProperty::KVProperty> PTTableProperty::kPrope
 };
 
 PTTableProperty::PTTableProperty(MemoryContext *memctx,
-                                 YBLocation::SharedPtr loc,
+                                 YBLocationPtr loc,
                                  const MCSharedPtr<MCString>& lhs,
-                                 const PTExpr::SharedPtr& rhs)
+                                 const PTExprPtr& rhs)
     : PTProperty(memctx, loc, lhs, rhs),
       property_type_(PropertyType::kTableProperty) {}
 
 PTTableProperty::PTTableProperty(MemoryContext *memctx,
-                                 YBLocation::SharedPtr loc,
-                                 const PTExpr::SharedPtr& expr,
+                                 YBLocationPtr loc,
+                                 const PTExprPtr& expr,
                                  const PTOrderBy::Direction direction)
     : PTProperty(memctx, loc), order_expr_(expr), direction_(direction),
       property_type_(PropertyType::kClusteringOrder) {}
@@ -110,10 +128,15 @@ Status PTTableProperty::AnalyzeSpeculativeRetry(const string &val) {
   return STATUS(InvalidArgument, generic_error);
 }
 
+string PTTableProperty::name() const {
+  DCHECK_EQ(property_type_, PropertyType::kClusteringOrder);
+  return order_expr_->QLName();
+}
+
 CHECKED_STATUS PTTableProperty::Analyze(SemContext *sem_context) {
 
   if (property_type_ == PropertyType::kCoPartitionTable) {
-    RETURN_NOT_OK(copartition_table_name_->AnalyzeName(sem_context, OBJECT_TABLE));
+    RETURN_NOT_OK(copartition_table_name_->AnalyzeName(sem_context, ObjectType::TABLE));
 
     bool is_system; // ignored
     MCVector<ColumnDesc> copartition_table_columns(sem_context->PTempMem());
@@ -437,7 +460,7 @@ const std::map<string, PTTablePropertyMap::PropertyMapType> PTTablePropertyMap::
 };
 
 PTTablePropertyMap::PTTablePropertyMap(MemoryContext *memctx,
-                                       YBLocation::SharedPtr loc)
+                                       YBLocationPtr loc)
     : PTTableProperty(memctx, loc) {
   property_type_ = PropertyType::kTablePropertyMap;
   map_elements_ = TreeListNode<PTTableProperty>::MakeShared(memctx, loc);
@@ -541,11 +564,9 @@ Status PTTablePropertyMap::AnalyzeCompaction() {
       }
       class_name = std::dynamic_pointer_cast<PTConstText>(tnode->rhs())->Eval()->c_str();
       if (class_name.find('.') == string::npos) {
-        if (class_name.length() < Compaction::kClassPrefixLen ||
-            class_name.substr(Compaction::kClassPrefixLen) !=
-            Compaction::kClassPrefix) {
+        if (!boost::starts_with(class_name, kCompactionClassPrefix)) {
           LOG(INFO) << "Inserting prefix into class name";
-          class_name.insert(0, Compaction::kClassPrefix);
+          class_name.insert(0, kCompactionClassPrefix);
         }
       }
       class_subproperties_iter = Compaction::kClassSubproperties.find(class_name);

@@ -18,13 +18,15 @@
 
 #include <boost/optional.hpp>
 
+#include "yb/gutil/ref_counted.h"
 #include "yb/util/subprocess.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/enums.h"
-#include "yb/util/result.h"
-#include "yb/util/thread.h"
 
 namespace yb {
+
+class Thread;
+
 namespace pgwrapper {
 
 // Returns the root directory of our PostgreSQL installation.
@@ -87,7 +89,7 @@ class PgWrapper {
   // only once after the cluster has started up. tmp_dir_base is used as a base directory to
   // create a temporary PostgreSQL directory that is later deleted.
   static Status InitDbForYSQL(
-      const string& master_addresses, const string& tmp_dir_base, int tserver_shm_fd);
+      const std::string& master_addresses, const std::string& tmp_dir_base, int tserver_shm_fd);
 
  private:
   static std::string GetPostgresExecutablePath();
@@ -114,6 +116,7 @@ YB_DEFINE_ENUM(PgProcessState,
 class PgSupervisor {
  public:
   explicit PgSupervisor(PgProcessConf conf);
+  ~PgSupervisor();
 
   CHECKED_STATUS Start();
   void Stop();

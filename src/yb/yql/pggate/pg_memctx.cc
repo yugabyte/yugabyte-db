@@ -17,6 +17,8 @@
 
 #include "yb/yql/pggate/pg_tabledesc.h"
 
+#include "yb/util/status.h"
+
 namespace yb {
 namespace pggate {
 

@@ -38,7 +38,7 @@ class PTStartTransaction : public TreeNode {
 
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
-  PTStartTransaction(MemoryContext *memctx, YBLocation::SharedPtr loc);
+  PTStartTransaction(MemoryContext *memctx, YBLocationPtr loc);
   virtual ~PTStartTransaction();
 
   template<typename... TypeArgs>
@@ -75,7 +75,7 @@ class PTCommit : public TreeNode {
 
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
-  PTCommit(MemoryContext *memctx, YBLocation::SharedPtr loc);
+  PTCommit(MemoryContext *memctx, YBLocationPtr loc);
   virtual ~PTCommit();
 
   template<typename... TypeArgs>

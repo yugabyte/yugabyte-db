@@ -26,6 +26,7 @@
 #include "yb/gutil/strings/join.h"
 #include "yb/util/cast.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
 
 DECLARE_bool(cql_server_always_send_events);

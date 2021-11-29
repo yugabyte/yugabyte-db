@@ -17,6 +17,7 @@
 
 #include <list>
 
+#include "yb/docdb/docdb_fwd.h"
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/yql/pggate/pg_dml.h"

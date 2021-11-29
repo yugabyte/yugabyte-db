@@ -12,12 +12,11 @@
 // under the License.
 //
 //--------------------------------------------------------------------------------------------------
-
 #include "yb/yql/cql/ql/util/statement_params.h"
 
-#include <glog/logging.h>
-
 #include "yb/common/read_hybrid_time.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace ql {
@@ -62,6 +61,20 @@ Status StatementParameters::SetPagingState(const std::string& paging_state) {
   }
 
   return Status::OK();
+}
+
+Result<bool> StatementParameters::IsBindVariableUnset(const std::string& name,
+                                         int64_t pos) const {
+  return STATUS(RuntimeError, "no bind variable available");
+}
+
+// Retrieve a bind variable for the execution of the statement. To be overridden by subclasses
+// to return actual bind variables.
+Status StatementParameters::GetBindVariable(const std::string& name,
+                                            int64_t pos,
+                                            const std::shared_ptr<QLType>& type,
+                                            QLValue* value) const {
+  return STATUS(RuntimeError, "no bind variable available");
 }
 
 } // namespace ql
