@@ -115,7 +115,7 @@ The following connection properties need to be added to enable load balancing:
 
 The YugabyteDB JDBC driver’s driver class is `com.yugabyte.Driver`.
 
-To use the Yugabyte JDBC Driver, do the following:
+To use the driver, do the following:
 
 - Pass new connection properties for load balancing in the connection URL or properties pool.
 
