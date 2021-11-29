@@ -189,6 +189,7 @@ typedef struct PlanInfo
 {
 	uint64		planid;						/* plan identifier */
 	char 		plan_text[PLAN_TEXT_LEN];	/* plan text */
+	size_t		plan_len;                   /* strlen(plan_text) */
 } PlanInfo;
 
 typedef struct pgssHashKey

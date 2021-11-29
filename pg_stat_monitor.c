@@ -656,14 +656,15 @@ pgss_ExecutorEnd(QueryDesc *queryDesc)
 	uint64             queryId       = queryDesc->plannedstmt->queryId;
     SysInfo            sys_info;
 	PlanInfo           plan_info;
+	PlanInfo		   *plan_ptr = NULL;
 
-	/* Extract the plan information in case of SELECT statment */
-	memset(&plan_info, 0, sizeof(PlanInfo));
+	/* Extract the plan information in case of SELECT statement */	
 	if (queryDesc->operation == CMD_SELECT && PGSM_QUERY_PLAN)
-	{
+	{		
 		MemoryContext mct = MemoryContextSwitchTo(TopMemoryContext);
-		snprintf(plan_info.plan_text, PLAN_TEXT_LEN, "%s", pgss_explain(queryDesc));
-		plan_info.planid = DatumGetUInt64(hash_any_extended((const unsigned char*)plan_info.plan_text, strlen(plan_info.plan_text), 0));
+		plan_info.plan_len = snprintf(plan_info.plan_text, PLAN_TEXT_LEN, "%s", pgss_explain(queryDesc));
+		plan_info.planid = DatumGetUInt64(hash_any_extended((const unsigned char*)plan_info.plan_text, plan_info.plan_len, 0));
+		plan_ptr = &plan_info;
 		MemoryContextSwitchTo(mct);
 	}
 
@@ -682,7 +683,7 @@ pgss_ExecutorEnd(QueryDesc *queryDesc)
 
 		pgss_store(queryId,                                 /* query id */
 					queryDesc->sourceText,					/* query text */
-					&plan_info,								/* PlanInfo */
+					plan_ptr,								/* PlanInfo */
 					queryDesc->operation,					/* CmdType */
 					&sys_info,								/* SysInfo */
 					NULL,									/* ErrorInfo */
@@ -784,7 +785,6 @@ pgss_planner_hook(Query *parse, const char *query_string, int cursorOptions, Par
 
 	if (PGSM_TRACK_PLANNING && query_string && parse->queryId != UINT64CONST(0) && !IsParallelWorker())
 	{
-		PlanInfo	plan_info;
 		instr_time	start;
 		instr_time	duration;
 		BufferUsage bufusage_start;
@@ -792,7 +792,6 @@ pgss_planner_hook(Query *parse, const char *query_string, int cursorOptions, Par
 		WalUsage	walusage_start;
 		WalUsage    walusage;
 
-		memset(&plan_info, 0, sizeof(PlanInfo));
 		/* We need to track buffer usage as the planner can access them. */
 		bufusage_start = pgBufferUsage;
 
@@ -836,7 +835,7 @@ pgss_planner_hook(Query *parse, const char *query_string, int cursorOptions, Par
 		WalUsageAccumDiff(&walusage, &pgWalUsage, &walusage_start);
 		pgss_store(parse->queryId,          		/* query id */
 				query_string,						/* query */
-				&plan_info,							/* PlanInfo */
+				NULL,								/* PlanInfo */
 				parse->commandType,					/* CmdType */
 				NULL,								/* SysInfo */
 				NULL,								/* ErrorInfo */
@@ -1142,19 +1141,8 @@ pg_get_application_name(char *application_name)
 	if (!beentry)
 		return snprintf(application_name, APPLICATIONNAME_LEN, "%s", "postmaster");
 
-	snprintf(application_name, APPLICATIONNAME_LEN, "%s", beentry->st_appname);
-	return strlen(application_name);
+	return snprintf(application_name, APPLICATIONNAME_LEN, "%s", beentry->st_appname);	
 }
-
-/*
- * Store some statistics for a statement.
- *
- * If queryId is 0 then this is a utility statement and we should compute
- * a suitable queryId internally.
- *
- * If jstate is not NULL then we're trying to create an entry for which
- * we have no statistics as yet; we just want to record the normalized
- */
 
 static uint
 pg_get_client_addr(void)
@@ -1162,21 +1150,32 @@ pg_get_client_addr(void)
 	PgBackendStatus *beentry = pg_get_backend_status();
 	char	remote_host[NI_MAXHOST];
 	int		ret;
+	static uint localhost = 0;
+
+	remote_host[0] = '\0';
 
 	if (!beentry)
 		return ntohl(inet_addr("127.0.0.1"));
-
-	memset(remote_host, 0x0, NI_MAXHOST);
+	
 	ret = pg_getnameinfo_all(&beentry->st_clientaddr.addr,
 							 beentry->st_clientaddr.salen,
 							 remote_host, sizeof(remote_host),
 							 NULL, 0,
 							 NI_NUMERICHOST | NI_NUMERICSERV);
 	if (ret != 0)
-		return ntohl(inet_addr("127.0.0.1"));
+	{
+		if (localhost == 0)
+			localhost = ntohl(inet_addr("127.0.0.1"));
+		return localhost;
+	}
 
 	if (strcmp(remote_host, "[local]") == 0)
-		return ntohl(inet_addr("127.0.0.1"));
+	{
+		if (localhost == 0)
+			localhost = ntohl(inet_addr("127.0.0.1"));
+		return localhost;
+	}
+
 	return ntohl(inet_addr(remote_host));
 }
 
@@ -1204,7 +1203,7 @@ pgss_update_entry(pgssEntry *entry,
 	int             	message_len = error_info ? strlen (error_info->message) : 0;
 	int             	comments_len = comments ? strlen (comments) : 0;
 	int             	sqlcode_len = error_info ? strlen (error_info->sqlcode) : 0;
-	int             	plan_text_len = plan_info ? strlen (plan_info->plan_text) : 0;
+	int             	plan_text_len = plan_info ? plan_info->plan_len : 0;
 
 
 	/* volatile block */
@@ -3018,18 +3017,16 @@ intarray_get_datum(int32 arr[], int len)
 	int     j;
 	char    str[1024];
 	char    tmp[10];
-	bool    first = true;
 
-	memset(str, 0, sizeof(str));
+	str[0] = '\0';
 
 	/* Need to calculate the actual size, and avoid unnessary memory usage */
 	for (j = 0; j < len; j++)
 	{
-		if (first)
+		if (!str[0])
 		{
 			snprintf(tmp, 10, "%d", arr[j]);
 			strcat(str,tmp);
-			first = false;
 			continue;
 		}
 		snprintf(tmp, 10, ",%d", arr[j]);
