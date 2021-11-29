@@ -306,6 +306,21 @@ typedef struct pgssSharedState
 	pg_atomic_uint64	prev_bucket_usec;
 	uint64				bucket_entry[MAX_BUCKETS];
 	char				bucket_start_time[MAX_BUCKETS][60];   	/* start time of the bucket */
+	LWLock				*errors_lock;		/* protects errors hashtable search/modification */
+	/*
+	 * These variables are used when pgsm_overflow_target is ON.
+	 *
+	 * overflow is set to true when the query buffer overflows.
+	 *
+	 * n_bucket_cycles counts the number of times we changed bucket
+	 * since the query buffer overflowed. When it reaches pgsm_max_buckets
+	 * we remove the dump file, also reset the counter.
+	 *
+	 * This allows us to avoid having a large file on disk that would also
+	 * slowdown queries to the pg_stat_monitor view.
+	 */
+	bool				overflow;
+	size_t				n_bucket_cycles;
 } pgssSharedState;
 
 #define ResetSharedState(x) \
