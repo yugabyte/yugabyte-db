@@ -1,7 +1,7 @@
 ---
 title: Connect via client shells
-linkTitle: Connect via client shell
-description: Connect to Yugabyte Cloud clusters using a client shell
+linkTitle: From your desktop
+description: Connect to Yugabyte Cloud clusters from your desktop using a client shell
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-You can connect to your YugabyteDB cluster using the YugabyteDB [ysqlsh](../../../admin/ysqlsh) and [ycqlsh](../../../admin/ycqlsh) client shells installed on your computer.
+Connect to your YugabyteDB cluster from your desktop using the YugabyteDB [ysqlsh](../../../admin/ysqlsh) and [ycqlsh](../../../admin/ycqlsh) client shells installed on your computer.
 
 You can download and install the YugabyteDB Client Shell and connect to your database by following the steps below for either YSQL or YCQL.
 

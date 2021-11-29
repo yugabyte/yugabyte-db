@@ -1,7 +1,7 @@
 ---
 title: Connect using cloud shell
-linkTitle: Connect via cloud shell
-description: Connect to Yugabyte Cloud clusters using the cloud shell
+linkTitle: From a browser
+description: Connect to Yugabyte Cloud clusters from any browser using the cloud shell
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
@@ -13,7 +13,12 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Using cloud shell you can connect to Yugabyte Cloud clusters using any browser. Cloud shell does not require a CA certificate or any special network access configured.
+Use any browser to connect to Yugabyte Cloud by using the cloud shell. Cloud shell does not require a CA certificate or any special network access configured.
+
+You have the option of using the following command line interfaces (CLIs) in the cloud shell:
+
+- [ysqlsh](../../../admin/ysqlsh/) - YSQL shell for interacting with YugabyteDB using the [YSQL API](../../../api/ysql)
+- [ycqlsh](../../../admin/ycqlsh/) - YCQL shell, which uses the [YCQL API](../../../api/ycql)
 
 ## Connect via Cloud Shell
 
@@ -64,8 +69,8 @@ Cloud shell is updated regularly. Check the [known issues list](../../release-no
 
 - [YSQL API](../../../api/ysql/) — Reference for supported YSQL statements, data types, functions, and operators.
 - [YCQL API](../../../api/ycql/) — Reference for supported YCQL statements, data types, functions, and operators.
-- [ysqlsh](../../../admin/ysqlsh/) — Overview of the command line interface (CLI), syntax, and commands.
-- [ycqlsh](../../../admin/ycqlsh/) — Overview of the command line interface (CLI), syntax, and commands.
+- [ysqlsh](../../../admin/ysqlsh/) — Overview of the CLI, syntax, and commands.
+- [ycqlsh](../../../admin/ycqlsh/) — Overview of the CLI, syntax, and commands.
 
 ## Next steps
 
