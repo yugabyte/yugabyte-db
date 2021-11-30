@@ -4,12 +4,12 @@ Priority: optional
 Maintainer: Percona Development Team <info@percona.com>
 Build-Depends:
  debhelper (>= 9),
- percona-postgresql-server-dev-all (>= 153~),
+ postgresql-server-dev-all (>= 153~),
 
 Package: percona-pg-stat-monitor@@PG_REL@@
 Architecture: any
 Depends:
- percona-postgresql-@@PG_REL@@ | postgresql-@@PG_REL@@,
+ postgresql-@@PG_REL@@,
  ${misc:Depends},
  ${shlibs:Depends},
 Description: The pg_stat_monitor is statistics collector tool
