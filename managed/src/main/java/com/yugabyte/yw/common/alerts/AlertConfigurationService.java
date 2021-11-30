@@ -70,6 +70,7 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 
 @Singleton
 @Slf4j
@@ -662,17 +663,24 @@ public class AlertConfigurationService {
             .collect(Collectors.toList());
     labels.add(new AlertLabel(KnownAlertLabels.ALERTNAME.labelName(), configuration.getName()));
     labels.addAll(configuration.getTemplate().getTestAlertSettings().getAdditionalLabels());
+    Map<String, String> alertLabels =
+        labels.stream().collect(Collectors.toMap(AlertLabel::getName, AlertLabel::getValue));
     Alert alert =
         new Alert()
+            .generateUUID()
             .setCreateTime(new Date())
             .setCustomerUUID(configuration.getCustomerUUID())
             .setDefinitionUuid(definition.getUuid())
             .setConfigurationUuid(configuration.getUuid())
-            .setName(definition.getLabelValue(KnownAlertLabels.DEFINITION_NAME.labelName()))
-            .setSourceName(definition.getLabelValue(KnownAlertLabels.SOURCE_NAME.labelName()))
+            .setName(configuration.getName())
+            .setSourceName(alertLabels.get(KnownAlertLabels.SOURCE_NAME.labelName()))
             .setSeverity(severity)
             .setConfigurationType(configuration.getTargetType())
             .setLabels(labels);
+    String sourceUuid = alertLabels.get(KnownAlertLabels.SOURCE_UUID.labelName());
+    if (StringUtils.isNotEmpty(sourceUuid)) {
+      alert.setSourceUUID(UUID.fromString(sourceUuid));
+    }
     alert.setMessage(buildTestAlertMessage(configuration, alert));
     return alert;
   }
