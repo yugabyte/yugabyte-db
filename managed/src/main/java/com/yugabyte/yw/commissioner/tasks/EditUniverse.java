@@ -264,11 +264,9 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
     Collection<NodeDetails> tserversToBeRemoved = PlacementInfoUtil.getTserversToBeRemoved(nodes);
 
-    if (!tserversToBeRemoved.isEmpty()) {
-      // Swap the blacklisted tservers
-      createModifyBlackListTask(tserversToBeRemoved, newTservers)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-    }
+    // Swap the blacklisted tservers
+    createModifyBlackListTask(tserversToBeRemoved, newTservers)
+        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
     // Update placement info on master leader.
     createPlacementInfoTask(null /* additional blacklist */)
