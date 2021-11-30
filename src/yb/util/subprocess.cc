@@ -159,6 +159,24 @@ void Subprocess::SetEnv(const std::string& key, const std::string& value) {
   env_[key] = value;
 }
 
+void Subprocess::AddPIDToCGroup(const string& path, pid_t pid) {
+#if defined(__APPLE__)
+  LOG(WARNING) << "Writing to cgroup.procs is not supported";
+#else
+  const char* filename = path.c_str();
+  FILE *fptr = fopen(const_cast<char *>(filename), "w");
+  if (fptr == NULL) {
+    LOG(WARNING) << "Couldn't open " << path;
+  } else {
+    int ret = fprintf(fptr, "%d\n", pid);
+    if (ret < 0) {
+      LOG(WARNING) << "Cannot write to " << path  << ". Return = " << ret;
+    }
+    fclose(fptr);
+  }
+#endif
+}
+
 void Subprocess::SetFdShared(int stdfd, SubprocessStreamMode mode) {
   CHECK_NE(mode, SubprocessStreamMode::kDisabled);
   unique_lock<mutex> l(state_lock_);

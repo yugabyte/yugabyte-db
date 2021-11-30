@@ -37,6 +37,7 @@
 #include "yb/util/thread.h"
 
 DEFINE_string(pg_proxy_bind_address, "", "Address for the PostgreSQL proxy to bind to");
+DEFINE_string(postmaster_cgroup, "", "cgroup to add postmaster process to");
 DEFINE_bool(pg_transactions_enabled, true,
             "True to enable transactions in YugaByte PostgreSQL API.");
 DEFINE_bool(pg_verbose_error_log, false,
@@ -430,6 +431,10 @@ Status PgWrapper::Start() {
   pg_proc_->InheritNonstandardFd(conf_.tserver_shm_fd);
   SetCommonEnv(&pg_proc_.get(), /* yb_enabled */ true);
   RETURN_NOT_OK(pg_proc_->Start());
+  if (!FLAGS_postmaster_cgroup.empty()) {
+    std::string path = FLAGS_postmaster_cgroup + "/cgroup.procs";
+    pg_proc_->AddPIDToCGroup(path, pg_proc_->pid());
+  }
   LOG(INFO) << "PostgreSQL server running as pid " << pg_proc_->pid();
   return Status::OK();
 }
