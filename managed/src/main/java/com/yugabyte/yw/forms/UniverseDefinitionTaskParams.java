@@ -169,7 +169,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   public static class Cluster {
 
     private static final Set<String> AWS_INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY =
-        ImmutableSet.of("i3.", "c5d.");
+        ImmutableSet.of("i3.", "c5d.", "c6gd.");
 
     public UUID uuid = UUID.randomUUID();
 
