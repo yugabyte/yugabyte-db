@@ -23,6 +23,7 @@ import json
 import subprocess
 import shlex
 import io
+import platform
 
 import typing
 from typing import (
@@ -230,7 +231,7 @@ def get_yb_src_root_from_build_root(
 
 
 def is_macos() -> bool:
-    return sys.platform == 'darwin'
+    return platform.system() == 'Darwin'
 
 
 def write_json_file(
@@ -383,3 +384,22 @@ def to_yaml_str(content: Any) -> str:
     yaml = get_ruamel_yaml_instance()
     yaml.dump(content, out)
     return out.getvalue()
+
+
+def get_target_arch() -> str:
+    return os.environ['YB_TARGET_ARCH']
+
+
+def check_arch() -> None:
+    if not is_macos():
+        return
+    target_arch = get_target_arch()
+    actual_arch = platform.machine()
+    if target_arch and actual_arch != target_arch:
+        raise ValueError(
+                f"YB_TARGET_ARCH is set to {target_arch} but we are running on the "
+                f"{actual_arch} architecture.")
+
+
+def is_macos_arm64() -> bool:
+    return is_macos() and get_target_arch() == 'arm64'

@@ -93,6 +93,7 @@ is_run_test_script=true
 
 yb_readonly_virtualenv=true
 
+detect_architecture
 activate_virtualenv
 
 if [[ -n ${YB_LIST_CTEST_TESTS_ONLY:-} ]]; then

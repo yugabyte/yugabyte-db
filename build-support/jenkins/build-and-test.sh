@@ -177,6 +177,8 @@ MAX_NUM_PARALLEL_TESTS=3
 # gather core dumps
 ulimit -c unlimited
 
+detect_architecture
+
 BUILD_TYPE=${BUILD_TYPE:-debug}
 build_type=$BUILD_TYPE
 normalize_build_type

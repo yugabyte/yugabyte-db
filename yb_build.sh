@@ -204,6 +204,9 @@ Options:
     A shorter way to achieve the same thing as --compiler-type.
   --export-compile-commands, --ccmds
     Export the C/C++ compilation database. Equivalent to setting YB_EXPORT_COMPILE_COMMANDS to 1.
+  --arch <architecture>
+    Build for the given architecture. Currently only relevant for Apple Silicon where we can build
+    for x86_64 and arm64 (no cross-compilation support yet).
   --
     Pass all arguments after -- to repeat_unit_test.
 
@@ -220,9 +223,12 @@ Supported target keywords:
   initdb             - Initialize the initial system catalog snapshot for fast cluster startup
   reinitdb           - Reinitialize the initial system catalog snapshot for fast cluster startup
 
-Setting YB environment variables on the command line (for environment variables starting with YB_):
+Setting YB_... environment variables on the command line:
   YB_SOME_VARIABLE1=some_value1 YB_SOME_VARIABLE2=some_value2
 The same also works for postgres_FLAGS_... variables.
+
+---------------------------------------------------------------------------------------------------
+
 EOT
 }
 
@@ -296,7 +302,7 @@ print_report() {
       if [[ -n ${YB_COMPILER_TYPE:-} ]]; then
         print_report_line "%s" "C/C++ compiler" "$YB_COMPILER_TYPE"
       fi
-      print_report_line "%s" "Build architecture" "$(uname -m)"
+      print_report_line "%s" "Build architecture" "${YB_TARGET_ARCH}"
       print_report_line "%s" "Build directory" "${BUILD_ROOT:-undefined}"
       print_report_line "%s" "Third-party dir" "${YB_THIRDPARTY_DIR:-undefined}"
       if using_linuxbrew; then
@@ -382,7 +388,13 @@ run_cxx_build() {
     if [[ -z ${NO_REBUILD_THIRDPARTY:-} ]]; then
       build_compiler_if_necessary
     fi
-    log "Using cmake binary: $( which cmake )"
+    local cmake_binary
+    if is_mac && [[ "${YB_TARGET_ARCH:-}" == "arm64" ]]; then
+      cmake_binary=/opt/homebrew/bin/cmake
+    else
+      cmake_binary=$( which cmake )
+    fi
+    log "Using cmake binary: $cmake_binary"
     log "Running cmake in $PWD"
     capture_sec_timestamp "cmake_start"
     (
@@ -390,12 +402,13 @@ run_cxx_build() {
       # CMake step.
       #
       # We are modifying YB_REMOTE_COMPILATION inside a subshell on purpose.
-      set -x
       # shellcheck disable=SC2030
       export YB_REMOTE_COMPILATION=0
+
+      set -x
       # We are not double-quoting $cmake_extra_args on purpose to allow multiple arguments.
       # shellcheck disable=SC2086
-      cmake "${cmake_opts[@]}" $cmake_extra_args "$YB_SRC_ROOT"
+      "${cmake_binary}" "${cmake_opts[@]}" $cmake_extra_args "$YB_SRC_ROOT"
     )
     capture_sec_timestamp "cmake_end"
   fi
@@ -679,6 +692,8 @@ if [[ ${YB_RECREATE_INITIAL_SYS_CATALOG_SNAPSHOT:-} == "1" ]]; then
 fi
 
 export YB_RECREATE_INITIAL_SYS_CATALOG_SNAPSHOT=0
+
+yb_build_args=( "$@" )
 
 while [[ $# -gt 0 ]]; do
   if is_valid_build_type "$1"; then
@@ -1063,6 +1078,13 @@ while [[ $# -gt 0 ]]; do
     --export-compile-commands|--ccmds)
       export YB_EXPORT_COMPILE_COMMANDS=1
     ;;
+    --arch)
+      if [[ -n ${YB_TARGET_ARCH:-} && "${YB_TARGET_ARCH}" != "$2" ]]; then
+        log "Warning: YB_TARGET_ARCH is already set to ${YB_TARGET_ARCH}, setting to $2."
+      fi
+      export YB_TARGET_ARCH=$2
+      shift
+    ;;
     *)
 
       if [[ $1 =~ ^(YB_[A-Z0-9_]+|postgres_FLAGS_[a-zA-Z0-9_]+)=(.*)$ ]]; then
@@ -1089,6 +1111,17 @@ done
 # Finished parsing command-line arguments, post-processing them.
 # -------------------------------------------------------------------------------------------------
 
+if is_apple_silicon && [[ -z ${YB_TARGET_ARCH:-} ]]; then
+  # Use arm64 by default on an Apple Silicon machine.
+  YB_TARGET_ARCH=arm64
+fi
+
+detect_architecture
+
+set +u  # because yb_build_args might be empty
+rerun_script_with_arch_if_necessary "$0" "${yb_build_args[@]}"
+set -u
+
 if "$run_cmake_unit_tests"; then
   # We don't even need the build root for these kinds of tests.
   log "--cmake-unit-tests specified, only running CMake tests"
@@ -1096,8 +1129,6 @@ if "$run_cmake_unit_tests"; then
 
   exit
 fi
-
-update_submodules
 
 if [[ -n $YB_GTEST_FILTER && -z $cxx_test_name ]]; then
   test_name=${YB_GTEST_FILTER%%.*}
@@ -1291,7 +1322,8 @@ fi
 
 if tty -s && ( $clean_before_build || $clean_thirdparty ); then
   build_root_basename=${BUILD_ROOT##*/}
-  last_clean_timestamp_path="$YB_SRC_ROOT/build/last_clean_timestamp__$build_root_basename"
+  last_clean_timestamp_path="$YB_SRC_ROOT/build/last_clean_timestamps/"
+  last_clean_timestamp_path+="last_clean_timestamp__$build_root_basename"
   current_timestamp_sec=$( date +%s )
   if [ -f "$last_clean_timestamp_path" ]; then
     last_clean_timestamp_sec=$( cat "$last_clean_timestamp_path" )
@@ -1306,7 +1338,7 @@ if tty -s && ( $clean_before_build || $clean_thirdparty ); then
       fi
     fi
   fi
-  mkdir -p "$YB_SRC_ROOT/build"
+  mkdir -p "${last_clean_timestamp_path%/*}"
   echo "$current_timestamp_sec" >"$last_clean_timestamp_path"
 fi
 

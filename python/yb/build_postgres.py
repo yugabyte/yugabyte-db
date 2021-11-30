@@ -52,6 +52,8 @@ from yb.common_util import (
     get_absolute_path_aliases,
     EnvVarContext,
     shlex_join,
+    check_arch,
+    is_macos_arm64,
 )
 from yb import compile_commands
 from yb.compile_commands import (
@@ -453,6 +455,9 @@ class PostgresBuilder(YbBuildToolBase):
                 '--with-libraries=' + self.openssl_lib_dir,
                 # We're enabling debug symbols for all types of builds.
                 '--enable-debug']
+        if is_macos_arm64():
+            configure_cmd_line.insert(0, '/opt/homebrew/bin/bash')
+
         if not get_bool_env_var('YB_NO_PG_CONFIG_CACHE'):
             configure_cmd_line.append('--config-cache')
 
@@ -579,6 +584,8 @@ class PostgresBuilder(YbBuildToolBase):
         # Postgresql requires MAKELEVEL to be 0 or non-set when calling its make.
         # But in case YB project is built with make, MAKELEVEL is not 0 at this point.
         make_cmd = ['make', 'MAKELEVEL=0']
+        if is_macos_arm64():
+            make_cmd = ['arch', '-arm64'] + make_cmd
 
         make_parallelism_str: Optional[str] = os.environ.get('YB_MAKE_PARALLELISM')
         make_parallelism: Optional[int] = None
@@ -846,6 +853,7 @@ class PostgresBuilder(YbBuildToolBase):
 
 def main() -> None:
     init_logging()
+    check_arch()
     if get_bool_env_var('YB_SKIP_POSTGRES_BUILD'):
         logging.info("Skipping PostgreSQL build (YB_SKIP_POSTGRES_BUILD is set)")
         return
