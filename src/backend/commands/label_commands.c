@@ -112,6 +112,10 @@ Datum create_vlabel(PG_FUNCTION_ARGS)
     char *graph;
     Name graph_name;
     char *graph_name_str;
+    Oid graph_oid;
+    List *parent;
+
+    RangeVar *rv;
 
     char *label;
     Name label_name;
@@ -145,8 +149,10 @@ Datum create_vlabel(PG_FUNCTION_ARGS)
                         errmsg("graph \"%s\" does not exist.", graph_name_str)));
     }
 
+    graph_oid = get_graph_oid(graph_name_str);
+
     // Check if label with the input name already exists
-    if (label_exists(label_name_str, get_graph_oid(graph_name_str)))
+    if (label_exists(label_name_str, graph_oid))
     {
         ereport(ERROR,
                 (errcode(ERRCODE_UNDEFINED_SCHEMA),
@@ -156,7 +162,12 @@ Datum create_vlabel(PG_FUNCTION_ARGS)
     //Create the default label tables
     graph = graph_name->data;
     label = label_name->data;
-    create_label(graph, label, LABEL_TYPE_VERTEX, NIL);
+
+    rv = get_label_range_var(graph, graph_oid, AG_DEFAULT_LABEL_VERTEX);
+
+    parent = list_make1(rv);
+
+    create_label(graph, label, LABEL_TYPE_VERTEX, parent);
 
     ereport(NOTICE,
             (errmsg("VLabel \"%s\" has been created", NameStr(*label_name))));
@@ -181,6 +192,10 @@ Datum create_elabel(PG_FUNCTION_ARGS)
     char *graph;
     Name graph_name;
     char *graph_name_str;
+    Oid graph_oid;
+    List *parent;
+
+    RangeVar *rv;
 
     char *label;
     Name label_name;
@@ -214,8 +229,10 @@ Datum create_elabel(PG_FUNCTION_ARGS)
                         errmsg("graph \"%s\" does not exist.", graph_name_str)));
     }
 
+    graph_oid = get_graph_oid(graph_name_str);
+
     // Check if label with the input name already exists
-    if (label_exists(label_name_str, get_graph_oid(graph_name_str)))
+    if (label_exists(label_name_str, graph_oid))
     {
         ereport(ERROR,
                 (errcode(ERRCODE_UNDEFINED_SCHEMA),
@@ -225,7 +242,11 @@ Datum create_elabel(PG_FUNCTION_ARGS)
     //Create the default label tables
     graph = graph_name->data;
     label = label_name->data;
-    create_label(graph, label, LABEL_TYPE_EDGE, NIL);
+
+    rv = get_label_range_var(graph, graph_oid, AG_DEFAULT_LABEL_EDGE);
+
+    parent = list_make1(rv);
+    create_label(graph, label, LABEL_TYPE_EDGE, parent);
 
     ereport(NOTICE,
             (errmsg("ELabel \"%s\" has been created", NameStr(*label_name))));
