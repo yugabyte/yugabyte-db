@@ -54,7 +54,7 @@ const prepareInitialValues = (values) => {
       initialValues['routingKey'] = values.params.routingKey;
       break;
     case 'WebHook':
-      initialValues['webhookURL'] = values.params.routingKey;
+      initialValues['webhookURL'] = values.params.webhookUrl;
       break;
     default:
       throw new Error(`Unknown Channel type ${values.params.channelType}`);
