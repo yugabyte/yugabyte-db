@@ -128,9 +128,6 @@ get_sources(){
     fi
     REVISION=$(git rev-parse --short HEAD)
     echo "REVISION=${REVISION}" >> ${WORKDIR}/pg-stat-monitor.properties
-    rm -rf rpm debian
-    cp -r percona-packaging/rpm ./
-    cp -r percona-packaging/debian ./
 
     EDITFILES="debian/control debian/control.in debian/rules rpm/pg-stat-monitor.spec"
     for file in $EDITFILES; do
