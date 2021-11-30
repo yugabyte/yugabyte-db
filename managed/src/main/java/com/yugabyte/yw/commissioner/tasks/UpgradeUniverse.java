@@ -432,6 +432,8 @@ public class UpgradeUniverse extends UniverseTaskBase {
         return SubTaskGroupType.UpdatingGFlags;
       case Restart:
         return SubTaskGroupType.StoppingNodeProcesses;
+      case Certs:
+        return SubTaskGroupType.RotatingCert;
       default:
         return SubTaskGroupType.Invalid;
     }
