@@ -6,11 +6,14 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import java.util.List;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 
@@ -32,6 +35,12 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
   // flexibility to manipulate subTaskGroupQueue through the lambda passed in parameter
   public void runUpgrade(IUpgradeTaskWrapper upgradeLambda) {
     try {
+      isBlacklistLeaders =
+          runtimeConfigFactory.forUniverse(getUniverse()).getBoolean(Util.BLACKLIST_LEADERS);
+      leaderBacklistWaitTimeMs =
+          runtimeConfigFactory
+              .forUniverse(getUniverse())
+              .getInt(Util.BLACKLIST_LEADER_WAIT_TIME_MS);
       checkUniverseVersion();
       // Create the task list sequence.
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
@@ -61,6 +70,13 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
 
       throw t;
     } finally {
+      if (isBlacklistLeaders) {
+        subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
+        List<NodeDetails> tServerNodes = getUniverse().getTServers();
+        createModifyBlackListTask(tServerNodes, false /* isAdd */, true /* isLeaderBlacklist */)
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+        subTaskGroupQueue.run();
+      }
       unlockUniverseForUpdate();
     }
 
@@ -102,7 +118,9 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
     }
 
     if (isTServerChanged) {
-      createLoadBalancerStateChangeTask(false).setSubTaskGroupType(getTaskSubGroupType());
+      if (!isBlacklistLeaders) {
+        createLoadBalancerStateChangeTask(false).setSubTaskGroupType(getTaskSubGroupType());
+      }
 
       upgradePodsTask(
           placement,

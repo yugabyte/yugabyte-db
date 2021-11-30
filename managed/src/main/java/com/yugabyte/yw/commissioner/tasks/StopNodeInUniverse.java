@@ -16,6 +16,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -32,10 +33,6 @@ public class StopNodeInUniverse extends UniverseTaskBase {
   protected boolean isBlacklistLeaders;
   protected int leaderBacklistWaitTimeMs;
 
-  private static final String BLACKLIST_LEADERS = "yb.upgrade.blacklist_leaders";
-  private static final String BLACKLIST_LEADER_WAIT_TIME_MS =
-      "yb.upgrade.blacklist_leader_wait_time_ms";
-
   @Inject
   protected StopNodeInUniverse(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
@@ -51,9 +48,9 @@ public class StopNodeInUniverse extends UniverseTaskBase {
     NodeDetails currentNode = null;
     boolean hitException = false;
     isBlacklistLeaders =
-        runtimeConfigFactory.forUniverse(getUniverse()).getBoolean(BLACKLIST_LEADERS);
+        runtimeConfigFactory.forUniverse(getUniverse()).getBoolean(Util.BLACKLIST_LEADERS);
     leaderBacklistWaitTimeMs =
-        runtimeConfigFactory.forUniverse(getUniverse()).getInt(BLACKLIST_LEADER_WAIT_TIME_MS);
+        runtimeConfigFactory.forUniverse(getUniverse()).getInt(Util.BLACKLIST_LEADER_WAIT_TIME_MS);
 
     try {
       checkUniverseVersion();
