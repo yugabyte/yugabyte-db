@@ -222,6 +222,10 @@ install_deps() {
         elif [[ "${PG_RELEASE}" == "12" ]]; then
             percona-release enable ppg-12 release
         fi
+
+        wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+        echo "deb http://apt.postgresql.org/pub/repos/apt/ ${PG_RELEASE}"-pgdg main | sudo tee  /etc/apt/sources.list.d/pgdg.list
+
         apt-get update
 
         if [[ "${OS_NAME}" != "focal" ]]; then
@@ -234,7 +238,7 @@ install_deps() {
             fi
         fi
 
-        PKGLIST+=" percona-postgresql-${PG_RELEASE} debconf debhelper clang-7 devscripts dh-exec dh-systemd git wget libkrb5-dev libssl-dev percona-postgresql-common percona-postgresql-server-dev-all"
+        PKGLIST+=" postgresql-${PG_RELEASE} debconf debhelper clang-7 devscripts dh-exec dh-systemd git wget libkrb5-dev libssl-dev postgresql-common postgresql-server-dev-all"
         PKGLIST+=" build-essential debconf debhelper devscripts dh-exec dh-systemd git wget libxml-checker-perl libxml-libxml-perl libio-socket-ssl-perl libperl-dev libssl-dev libxml2-dev txt2man zlib1g-dev libpq-dev"
 
         until DEBIAN_FRONTEND=noninteractive apt-get -y install ${PKGLIST}; do
@@ -399,6 +403,7 @@ build_source_deb(){
     cd ${BUILDDIR}
 
     dch -D unstable --force-distribution -v "${VERSION}-${DEB_RELEASE}" "Update to new percona-pg-stat-monitor${PG_RELEASE} version ${VERSION}"
+    pg_buildext updatecontrol
     dpkg-buildpackage -S
     cd ../
     mkdir -p $WORKDIR/source_deb
