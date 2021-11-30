@@ -125,23 +125,23 @@ Each of the three domains, _interval_months_t_, _interval_days_t_, and _interval
 The _interval_months_t_ domain has these procedures and functions:
 
 - [procedure assert_interval_months_in_range (months in bigint)](#procedure-assert-interval-months-in-range-months-in-bigint)
-- [function interval_months (years in int default 0, months in int default 0) returns interval_months-t;](#function-interval-months-years-in-int-default-0-months-in-int-default-0-returns-interval-months-t)
-- [function interval_months (t_finish in timestamptz, t_start in timestamptz) returns interval_months_t;](#function-interval-months-t-finish-in-timestamptz-t-start-in-timestamptz-returns-interval-months-t)
-- [function interval_months (i in interval_months_t, f in double precision)](#function-interval-months-i-in-interval-months-t-f-in-double-precision)
+- [function interval_months (years in int default 0, months in int default 0) returns interval_months_t](#function-interval-months-years-in-int-default-0-months-in-int-default-0-returns-interval-months-t)
+- [function interval_months (t_finish in timestamptz, t_start in timestamptz) returns interval_months_t](#function-interval-months-t-finish-in-timestamptz-t-start-in-timestamptz-returns-interval-months-t)
+- [function interval_months (i in interval_months_t, f in double precision) returns interval_months_t](#function-interval-months-i-in-interval-months-t-f-in-double-precision-returns-interval-months-t)
 
 The _interval_days_t_ domain has these procedures and functions:
 
 - [procedure assert_interval_days_in_range (days in bigint)](#procedure-assert-interval-days-in-range-days-in-bigint)
 - [function interval_days (days in int default 0) returns interval_days_t](#function-interval-days-days-in-int-default-0-returns-interval-days-t)
 - [function interval_days (t_finish in timestamptz, t_start in timestamptz) returns interval_days_t](#function-interval-days-t-finish-in-timestamptz-t-start-in-timestamptz-returns-interval-days-t)
-- [function interval_days (i in interval_days_t, f in double precision)](#function-interval-days-i-in-interval-days-t-f-in-double-precision)
+- [function interval_days (i in interval_days_t, f in double precision) returns interval_days_t](#function-interval-days-i-in-interval-days-t-f-in-double-precision-returns-interval-days-t)
 
 The _interval_seconds_t_ domain has these procedures and functions:
 
 - [procedure assert_interval_seconds_in_range (secs in bigint)](#procedure-assert-interval-seconds-in-range-secs-in-bigint)
 - [function interval_seconds (hours in int default 0, mins in int default 0, secs in double precision default 0.0) returns interval_seconds_t](#function-interval-seconds-hours-in-int-default-0-mins-in-int-default-0-secs-in-double-precision-default-0-0-returns-interval-seconds-t)
 - [function interval_seconds (t_finish in timestamptz, t_start in timestamptz) returns interval_seconds_t](#function-interval-seconds-t-finish-in-timestamptz-t-start-in-timestamptz-returns-interval-seconds-t)
-- [function interval_seconds (i in interval_seconds_t, f in double precision)](#function-interval-seconds-i-in-interval-seconds-t-f-in-double-precision)
+- [function interval_seconds (i in interval_seconds_t, f in double precision) returns interval_seconds_t](#function-interval-seconds-i-in-interval-seconds-t-f-in-double-precision-returns-interval-seconds-t)
 
 ### The "interval_months_t" domain's functionality
 
@@ -265,7 +265,7 @@ This is the result:
  6 years 8 mons
 ```
 
-##### function interval_months (i in interval_months_t, f in double precision)
+##### function interval_months (i in interval_months_t, f in double precision) returns interval_months_t
 
 The logic of this function is trivial. But it's essential in order to maintain the status of the _interval_months_t_ value as _"pure months"_ under multiplication or division. See the section [Multiplying or dividing an _interval_ value by a number](../interval-arithmetic/interval-number-multiplication/). If you multiply a native _interval_ value by a real number (or divide it), then it's more than likely that fractional months will spill down to days and beyond. Try this:
 
@@ -427,7 +427,7 @@ This is the result:
 
 Notice that the two _timestamptz_ actual arguments for this test are the same as those that were used for the _interval_months(timestamptz, timestamptz)_ test. That produced the result _6 years 8 mons_. But _(6\*12 + 8)\*30_ is _2400_. The disagreement between _2419 days_ for the _interval_days()_ test and the effective _2400_ for the _interval_months()_ test reflects the critical difference between _"days interval"_ arithmetic semantics and _"months interval"_ arithmetic semantics.
 
-##### function interval_days (i in interval_days_t, f in double precision)
+##### function interval_days (i in interval_days_t, f in double precision) returns interval_days_t
 
 The logic of this function is trivial. But it's essential in order to maintain the status of the _interval_days_t value_ as _"pure days"_ under multiplication or division. See the section [Multiplying or dividing an _interval_ value by a number](../interval-arithmetic/interval-number-multiplication/). If you multiply a native _interval_ value by a real number (or divide it), then it's more than likely that fractional days will spill down to hours and beyond. Try this:
 
@@ -624,7 +624,7 @@ This is the result:
 240271
 ```
 
-##### function interval_seconds (i in interval_seconds_t, f in double precision)
+##### function interval_seconds (i in interval_seconds_t, f in double precision) returns interval_seconds_t
 
 The logic of this function is trivial. Moreover, it isn't essential because the _ss_ field of the internal _[\[mm, dd, ss\]](../interval-representation/)_ tuple is a real number with microseconds precision and there is no "spill up" possibility from the _ss_ field to the _dd_, or _mm_, fields. Try this:
 
