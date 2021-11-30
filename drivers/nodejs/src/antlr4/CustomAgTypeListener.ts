@@ -30,102 +30,159 @@ import { ParseTreeListener } from 'antlr4ts/tree/ParseTreeListener'
 type MapOrArray = Map<string, any> | any[];
 
 class CustomAgTypeListener implements AgtypeListener, ParseTreeListener {
-    rootObject?: MapOrArray;
-    objectInsider: MapOrArray[] = [];
-    lastValue: any = null;
+  rootObject?: MapOrArray;
+  objectInsider: MapOrArray[] = [];
+  prevObject?: MapOrArray;
+  lastObject?: MapOrArray;
+  lastValue: any = undefined;
 
-    exitStringValue (ctx: StringValueContext): void {
-      this.lastValue = this.stripQuotes(ctx.text)
+  mergeArrayOrObject (key: string) {
+    if (this.prevObject instanceof Array) {
+      this.mergeArray()
+    } else {
+      this.mergeObject(key)
     }
+  }
 
-    exitIntegerValue (ctx: IntegerValueContext): void {
-      this.lastValue = parseInt(ctx.text)
+  mergeArray () {
+    if (this.prevObject !== undefined && this.lastObject !== undefined && this.prevObject instanceof Array) {
+      this.prevObject.push(this.lastObject)
+      this.lastObject = this.prevObject
+      this.objectInsider.shift()
+      this.prevObject = this.objectInsider[1]
     }
+  }
 
-    exitFloatValue (ctx: FloatValueContext): void {
-      this.lastValue = parseFloat(ctx.text)
+  mergeObject (key: string) {
+    if (this.prevObject !== undefined && this.lastObject !== undefined && this.prevObject instanceof Map) {
+      this.prevObject.set(key, this.lastObject)
+      this.lastObject = this.prevObject
+      this.objectInsider.shift()
+      this.prevObject = this.objectInsider[1]
     }
+  }
 
-    exitTrueBoolean (): void {
-      this.lastValue = true
+  createNewObject () {
+    const newObject = new Map()
+    this.objectInsider.unshift(newObject)
+    this.prevObject = this.lastObject
+    this.lastObject = newObject
+  }
+
+  createNewArray () {
+    const newObject: any[] = []
+    this.objectInsider.unshift(newObject)
+    this.prevObject = this.lastObject
+    this.lastObject = newObject
+  }
+
+  pushIfArray (value: any) {
+    if (this.lastObject instanceof Array) {
+      this.lastObject.push(value)
+      return true
     }
+    return false
+  }
 
-    exitFalseBoolean (): void {
-      this.lastValue = false
+  exitStringValue (ctx: StringValueContext): void {
+    const value = this.stripQuotes(ctx.text)
+    if (!this.pushIfArray(value)) {
+      this.lastValue = value
     }
+  }
 
-    exitNullValue (): void {
-      this.lastValue = null
+  exitIntegerValue (ctx: IntegerValueContext): void {
+    const value = parseInt(ctx.text)
+    if (!this.pushIfArray(value)) {
+      this.lastValue = value
     }
+  }
 
-    enterObjectValue (): void {
-      this.objectInsider.unshift(new Map())
-      this.lastValue = this.objectInsider[0]
+  exitFloatValue (ctx: FloatValueContext): void {
+    const value = parseFloat(ctx.text)
+    if (!this.pushIfArray(value)) {
+      this.lastValue = value
     }
+  }
 
-    exitObjectValue (): void {
-      if (this.objectInsider.length >= 2 && this.objectInsider[1] instanceof Array) {
-        const currentObject = this.objectInsider.shift()!;
-        (this.objectInsider[0]! as any[]).push(currentObject)
-      }
+  exitTrueBoolean (): void {
+    const value = true
+    if (!this.pushIfArray(value)) {
+      this.lastValue = value
     }
+  }
 
-    enterArrayValue (): void {
-      this.objectInsider.unshift([])
-      this.lastValue = this.objectInsider[0]
+  exitFalseBoolean (): void {
+    const value = false
+    if (!this.pushIfArray(value)) {
+      this.lastValue = value
     }
+  }
 
-    exitArrayValue (): void {
-      if (this.objectInsider.length >= 2 && this.objectInsider[1] instanceof Array) {
-        // if objectInsider == Object then is pair or root
-        const currentObject = this.objectInsider.shift();
-        (this.objectInsider[0]! as any[]).push(currentObject)
-      }
+  exitNullValue (): void {
+    const value = null
+    if (!this.pushIfArray(value)) {
+      this.lastValue = value
     }
+  }
 
-    exitPair (ctx: PairContext): void {
-      const name = this.stripQuotes(ctx.STRING().text)
-
-      if (this.lastValue !== undefined) {
-        (this.objectInsider[0] as Map<string, any>).set(name, this.lastValue)
-        this.lastValue = undefined
-      } else {
-        const lastValue = this.objectInsider.shift()
-        if (this.objectInsider[0] instanceof Array) {
-          this.objectInsider[0].push(lastValue)
-        } else {
-          (this.objectInsider[0] as Map<string, any>).set(name, lastValue)
-        }
-      }
+  exitFloatLiteral (ctx: FloatLiteralContext): void {
+    const value = ctx.text
+    if (!this.pushIfArray(value)) {
+      this.lastValue = value
     }
+  }
 
-    exitFloatLiteral (ctx: FloatLiteralContext): void {
-      this.lastValue = ctx.text
-    }
+  enterObjectValue (): void {
+    this.createNewObject()
+  }
 
-    exitAgType (): void {
-      this.rootObject = this.objectInsider.shift()
-    }
+  enterArrayValue (): void {
+    this.createNewArray()
+  }
 
-    stripQuotes (quotesString: string) {
-      return JSON.parse(quotesString)
-    }
+  exitObjectValue (): void {
+    this.mergeArray()
+  }
 
-    getResult () {
-      return this.rootObject
-    }
+  exitPair (ctx: PairContext): void {
+    const name = this.stripQuotes(ctx.STRING().text)
 
-    enterEveryRule (): void {
+    if (this.lastValue !== undefined) {
+      (this.lastObject as Map<string, any>).set(name, this.lastValue)
+      this.lastValue = undefined
+    } else {
+      this.mergeArrayOrObject(name)
     }
+  }
 
-    exitEveryRule (): void {
-    }
+  exitAgType (): void {
+    this.rootObject = this.objectInsider.shift()
+  }
 
-    visitErrorNode (): void {
-    }
+  stripQuotes (quotesString: string) {
+    return JSON.parse(quotesString)
+  }
 
-    visitTerminal (): void {
-    }
+  getResult () {
+    this.objectInsider = []
+    this.prevObject = undefined
+    this.lastObject = undefined
+    this.lastValue = undefined
+    return this.rootObject
+  }
+
+  enterEveryRule (): void {
+  }
+
+  exitEveryRule (): void {
+  }
+
+  visitErrorNode (): void {
+  }
+
+  visitTerminal (): void {
+  }
 }
 
 export default CustomAgTypeListener
