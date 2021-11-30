@@ -159,6 +159,9 @@ static int64 get_int64_from_int_datums(Datum d, Oid type, char *funcname,
 static agtype_iterator *get_next_object_key(agtype_iterator *it,
                                              agtype_container *agtc,
                                              agtype_value *key);
+static agtype_iterator *get_next_list_element(agtype_iterator *it,
+                                             agtype_container *agtc,
+                                             agtype_value *elem);
 
 PG_FUNCTION_INFO_V1(agtype_in);
 
@@ -4860,6 +4863,50 @@ Datum age_tostring(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
 }
 
+static agtype_iterator *get_next_list_element(agtype_iterator *it,
+                           agtype_container *agtc, agtype_value *elem)
+{
+    agtype_iterator_token itok;
+    agtype_value tmp;
+
+    /* verify input params */
+    Assert(agtc != NULL);
+    Assert(elem != NULL);
+
+    /* check to see if the container is empty */
+    if (AGTYPE_CONTAINER_SIZE(agtc) == 0)
+    {
+       return NULL;
+    }
+
+    /* if the passed iterator is NULL, this is the first time, create it */
+    if (it == NULL)
+    {
+        /* initial the iterator */
+        it = agtype_iterator_init(agtc);
+        /* get the first token */
+        itok = agtype_iterator_next(&it, &tmp, true);
+        /* it should be WAGT_BEGIN_ARRAY */
+        Assert(itok == WAGT_BEGIN_ARRAY);
+    }
+
+    /* the next token should be an element or the end of the array */
+    itok = agtype_iterator_next(&it, &tmp, true);
+    Assert(itok == WAGT_ELEM || WAGT_END_ARRAY);
+
+    /* if this is the end of the array return NULL */
+    if (itok == WAGT_END_ARRAY) {
+        return NULL;
+    }
+
+    /* this should be the element, copy it */
+    if (itok == WAGT_ELEM) {
+        memcpy(elem, &tmp, sizeof(agtype_value));
+    }
+
+    return it;
+}
+
 PG_FUNCTION_INFO_V1(age_reverse);
 
 Datum age_reverse(PG_FUNCTION_ARGS)
@@ -4904,15 +4951,50 @@ Datum age_reverse(PG_FUNCTION_ARGS)
     }
     else
     {
-        agtype *agt_arg;
-        agtype_value *agtv_value;
+        agtype *agt_arg = NULL;
+        agtype_value *agtv_value = NULL;
+        agtype_parse_state *parse_state = NULL;
+        agtype_value elem = {0};
+        agtype_iterator *it = NULL;
+        agtype_value tmp;
+        agtype_value *elems = NULL;
+        int num_elems;
+        int i;
 
         /* get the agtype argument */
         agt_arg = DATUM_GET_AGTYPE_P(arg);
 
         if (!AGT_ROOT_IS_SCALAR(agt_arg))
-            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                            errmsg("reverse() only supports scalar arguments")));
+        {
+            agtv_value = push_agtype_value(&parse_state, WAGT_BEGIN_ARRAY, NULL);
+
+            while ((it = get_next_list_element(it, &agt_arg->root, &elem)))
+            {
+                agtv_value = push_agtype_value(&parse_state, WAGT_ELEM, &elem);
+            }
+
+            /* now reverse the list */
+            elems = parse_state->cont_val.val.array.elems;
+            num_elems = parse_state->cont_val.val.array.num_elems;
+
+            for(i = 0; i < num_elems/2; i++)
+            {
+                tmp = elems[i];
+                elems[i] = elems[num_elems - 1 - i];
+                elems[num_elems - 1 - i] = tmp;
+            }
+            /* reverse done*/
+
+            elems = NULL;
+
+            agtv_value = push_agtype_value(&parse_state, WAGT_END_ARRAY, NULL);
+
+            Assert(agtv_value != NULL);
+            Assert(agtv_value->type = AGTV_ARRAY);
+
+            PG_RETURN_POINTER(agtype_value_to_agtype(agtv_value));
+
+        }
 
         agtv_value = get_ith_agtype_value_from_container(&agt_arg->root, 0);
 

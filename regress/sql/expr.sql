@@ -1160,6 +1160,40 @@ SELECT * FROM cypher('expr', $$
     RETURN reverse(null)
 $$) AS (results agtype);
 SELECT * FROM age_reverse(null);
+-- should return error
+SELECT * FROM age_reverse([4923, 'abc', 521, NULL, 487]);
+-- Should return the reversed list
+SELECT * FROM cypher('expr', $$
+    RETURN reverse([4923, 'abc', 521, NULL, 487])
+$$) AS (u agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN reverse([4923])
+$$) AS (u agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN reverse([4923, 257])
+$$) as (u agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN reverse([4923, 257, null])
+$$) as (u agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN reverse([4923, 257, 'tea'])
+$$) as (u agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN reverse([[1, 4, 7], 4923, [1, 2, 3], 'abc', 521, NULL, 487, ['fgt', 7, 10]])
+$$) as (u agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN reverse([4923, 257, {test1: "key"}])
+$$) as (u agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN reverse([4923, 257, {test2: [1, 2, 3]}])
+$$) as (u agtype);
+SELECT * FROM cypher('expr', $$
+    CREATE ({test: [1, 2, 3]})
+$$) as (u agtype);
+SELECT * FROM cypher('expr', $$
+    MATCH (v) WHERE exists(v.test) RETURN reverse(v.test)
+$$) as (u agtype);
+
 -- should fail
 SELECT * FROM cypher('expr', $$
     RETURN reverse(true)

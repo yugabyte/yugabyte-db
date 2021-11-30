@@ -2597,6 +2597,91 @@ SELECT * FROM age_reverse(null);
  
 (1 row)
 
+-- should return error
+SELECT * FROM age_reverse([4923, 'abc', 521, NULL, 487]);
+ERROR:  syntax error at or near "["
+LINE 1: SELECT * FROM age_reverse([4923, 'abc', 521, NULL, 487]);
+                                  ^
+-- Should return the reversed list
+SELECT * FROM cypher('expr', $$
+    RETURN reverse([4923, 'abc', 521, NULL, 487])
+$$) AS (u agtype);
+               u               
+-------------------------------
+ [487, null, 521, "abc", 4923]
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN reverse([4923])
+$$) AS (u agtype);
+   u    
+--------
+ [4923]
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN reverse([4923, 257])
+$$) as (u agtype);
+      u      
+-------------
+ [257, 4923]
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN reverse([4923, 257, null])
+$$) as (u agtype);
+         u         
+-------------------
+ [null, 257, 4923]
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN reverse([4923, 257, 'tea'])
+$$) as (u agtype);
+         u          
+--------------------
+ ["tea", 257, 4923]
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN reverse([[1, 4, 7], 4923, [1, 2, 3], 'abc', 521, NULL, 487, ['fgt', 7, 10]])
+$$) as (u agtype);
+                                  u                                  
+---------------------------------------------------------------------
+ [["fgt", 7, 10], 487, null, 521, "abc", [1, 2, 3], 4923, [1, 4, 7]]
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN reverse([4923, 257, {test1: "key"}])
+$$) as (u agtype);
+               u               
+-------------------------------
+ [{"test1": "key"}, 257, 4923]
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN reverse([4923, 257, {test2: [1, 2, 3]}])
+$$) as (u agtype);
+                 u                 
+-----------------------------------
+ [{"test2": [1, 2, 3]}, 257, 4923]
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    CREATE ({test: [1, 2, 3]})
+$$) as (u agtype);
+ u 
+---
+(0 rows)
+
+SELECT * FROM cypher('expr', $$
+    MATCH (v) WHERE exists(v.test) RETURN reverse(v.test)
+$$) as (u agtype);
+     u     
+-----------
+ [3, 2, 1]
+(1 row)
+
 -- should fail
 SELECT * FROM cypher('expr', $$
     RETURN reverse(true)
