@@ -52,12 +52,9 @@ The table describes what the expected behavior is when a read happens from a fol
 
 ### Read from follower conditions
 
-- If the follower’s safe-time is larger than the read-time thus chosen, the follower may serve the read without any delay.
+- If the follower’s safe-time is at least `<current_time> - <staleness>`, then the follower may serve the read without any delay.
 
-- If the follower is not yet caught up to the specified timestamp, the read will be redirected to a different replica transparently from the end-user. The end user may see a slight increase in latency depending on the location of the replica which satisfies the read.
-  - The current behavior is that a follower/replica would wait for the requested timestamp to become safe. This behavior shall be changed to respond back to the `ybclient/pggate` immediately, so that the request may be routed to a different server that has the data.
-  - The current redirection policy is to directly go to the leader if the follower read is rejected by a follower. This behavior could be also be changed going forward, to explore other replicas before going to the leader.
-  - If the request reaches the leader, it will no longer reject/redirect the request.
+- If the follower is not yet caught up to `<current_time> - <staleness>`, then the read will be redirected to a different replica transparently from the end-user. The end user may see a slight increase in latency depending on the location of the replica which satisfies the read.
 
 ### Read-only transaction conditions
 
@@ -66,6 +63,7 @@ Regarding marking the transaction as read only, a user can do one of the followi
 - `SET TRANSACTION READ ONLY` applies only to the current transaction block.
 - `SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY` applies the read-only setting to all statements and transaction blocks that follow.
 - `SET default_transaction_read_only = TRUE` applies the read-only setting to all statements and transaction blocks that follow.
+- `/*+ Set(transaction_read_only true) */ SELECT` applies only to the current transaction/select statement.
 
 ## Examples
 
@@ -99,7 +97,11 @@ SELECT * from t WHERE k='k1';
 (1 row)
 ```
 
-This following examples use follower reads since **pg_hint** can be used during PREPARE, CREATE FUNCTION, and SELECT to do follower reads.
+The following examples use follower reads since **pg_hint** can be used during PREPARE, CREATE FUNCTION, and SELECT to do follower reads.
+
+{{< note title="Note" >}}
+The pg_hint needs to be applied at the prepare/function-definition stage and not at the `execute` stage.
+{{< /note >}}
 
 ```sql
 set session characteristics as transaction read write;
@@ -150,18 +152,23 @@ SELECT * from t WHERE k='k1';
 (1 row)
 ```
 
-A join example that uses follower reads.
+A **join** example that uses follower reads.
 
 ```sql
+create table table1(k int primary key, v int);
+create table table2(k int primary key, v int);
+insert into table1 values (1, 2), (2, 4), (3, 6), (4,8);
+insert into table2 values (1, 3), (2, 6), (3, 9), (4,12);
 set yb_read_from_followers = true;
 set session characteristics as transaction read only;
-SELECT * from t1, t2 WHERE t1.k='k3' AND t1.v = t2.v;
+select * from table1, table2 where table1.k = 3 and table2.v = table3.v;
 ```
 
 ```output
- k | v
----+---
-(0 rows)
+ k | v | k | v
+---+---+---+---
+ 3 | 6 | 2 | 6
+(1 row)
 ```
 
 The following examples demonstrate **staleness** after enabling the `yb_follower_read_staleness_ms` property.
@@ -245,17 +252,4 @@ postgres=# select * from t where k = 'k1';   /* up to 25s old value */
 ----+------
  k1 | v1
 (1 row)
-```
-
-The final example demonstrates that SELECTS error out in read-only transactions.
-
-```sql
-set yb_read_from_followers = true;
-set session characteristics as transaction read only;
-
-SELECT * INTO bar2 from t WHERE k='k2';
-```
-
-```output
-ERROR:  cannot execute SELECT INTO in a read-only transaction
 ```
