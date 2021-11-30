@@ -9,7 +9,7 @@ Build-Depends:
 Package: percona-pg-stat-monitor@@PG_REL@@
 Architecture: any
 Depends:
- postgresql-@@PG_REL@@ | postgresql-@@PG_REL@@,
+ postgresql-@@PG_REL@@,
  ${misc:Depends},
  ${shlibs:Depends},
 Description: enhancement query planning and execution statistics collector
