@@ -68,6 +68,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServerReady;
 import com.yugabyte.yw.commissioner.tasks.subtasks.nodes.UpdateNodeProcess;
+import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellResponse;
@@ -110,6 +111,7 @@ import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.MapUtils;
@@ -1707,7 +1709,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   // Perform preflight checks on the given node.
-  public String performPreflightCheck(Cluster cluster, NodeDetails currentNode) {
+  public String performPreflightCheck(
+      Cluster cluster,
+      NodeDetails currentNode,
+      @Nullable UUID rootCA,
+      @Nullable UUID clientRootCA) {
     if (cluster.userIntent.providerType != com.yugabyte.yw.commissioner.Common.CloudType.onprem) {
       return null;
     }
@@ -1717,6 +1723,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     preflightTaskParams.deviceInfo = userIntent.deviceInfo;
     preflightTaskParams.azUuid = currentNode.azUuid;
     preflightTaskParams.universeUUID = taskParams().universeUUID;
+    preflightTaskParams.rootCA = rootCA;
+    preflightTaskParams.clientRootCA = clientRootCA;
     UniverseTaskParams.CommunicationPorts.exportToCommunicationPorts(
         preflightTaskParams.communicationPorts, currentNode);
     preflightTaskParams.extraDependencies.installNodeExporter =
