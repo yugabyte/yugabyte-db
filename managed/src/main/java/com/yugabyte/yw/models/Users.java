@@ -67,6 +67,14 @@ public class Users extends Model {
     }
   }
 
+  public enum UserType {
+    @EnumValue("local")
+    local,
+
+    @EnumValue("ldap")
+    ldap;
+  }
+
   @Id
   @Column(nullable = false, unique = true)
   @ApiModelProperty(value = "User UUID", accessMode = READ_ONLY)
@@ -156,6 +164,30 @@ public class Users extends Model {
     this.isPrimary = isPrimary;
   }
 
+  @Column(nullable = false)
+  @ApiModelProperty(value = "User Type")
+  public UserType userType;
+
+  public void setUserType(UserType userType) {
+    this.userType = userType;
+  }
+
+  public UserType getUserType() {
+    return this.userType;
+  }
+
+  @Column(nullable = false)
+  @ApiModelProperty(value = "LDAP Specified Role")
+  public boolean ldapSpecifiedRole;
+
+  public void setLdapSpecifiedRole(boolean ldapSpecifiedRole) {
+    this.ldapSpecifiedRole = ldapSpecifiedRole;
+  }
+
+  public boolean getLdapSpecifiedRole() {
+    return this.ldapSpecifiedRole;
+  }
+
   public Date getAuthTokenIssueDate() {
     return this.authTokenIssueDate;
   }
@@ -230,6 +262,8 @@ public class Users extends Model {
     users.creationDate = new Date();
     users.role = role;
     users.isPrimary = isPrimary;
+    users.setUserType(UserType.local);
+    users.setLdapSpecifiedRole(false);
     users.save();
     return users;
   }
