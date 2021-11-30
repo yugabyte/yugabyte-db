@@ -4643,6 +4643,10 @@
           "description" : "True if the user is the primary user",
           "type" : "boolean"
         },
+        "ldapSpecifiedRole" : {
+          "description" : "LDAP Specified Role",
+          "type" : "boolean"
+        },
         "role" : {
           "description" : "User role",
           "enum" : [ "Admin", "ReadOnly", "SuperAdmin", "BackupAdmin" ],
@@ -4650,6 +4654,11 @@
         },
         "timezone" : {
           "description" : "User timezone",
+          "type" : "string"
+        },
+        "userType" : {
+          "description" : "User Type",
+          "enum" : [ "local", "ldap" ],
           "type" : "string"
         },
         "uuid" : {
@@ -4694,6 +4703,10 @@
           "description" : "True if the user is the primary user",
           "type" : "boolean"
         },
+        "ldapSpecifiedRole" : {
+          "description" : "LDAP Specified Role",
+          "type" : "boolean"
+        },
         "role" : {
           "description" : "User role",
           "enum" : [ "Admin", "ReadOnly", "SuperAdmin", "BackupAdmin" ],
@@ -4701,6 +4714,11 @@
         },
         "timezone" : {
           "description" : "User timezone",
+          "type" : "string"
+        },
+        "userType" : {
+          "description" : "User Type",
+          "enum" : [ "local", "ldap" ],
           "type" : "string"
         },
         "uuid" : {
