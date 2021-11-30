@@ -20,6 +20,7 @@ from ybops.utils import get_ssh_host_port, validate_instance, get_datafile_path,
                         SSH_RETRY_LIMIT_PRECHECK, DEFAULT_MASTER_HTTP_PORT, \
                         DEFAULT_MASTER_RPC_PORT, DEFAULT_TSERVER_HTTP_PORT, \
                         DEFAULT_TSERVER_RPC_PORT, DEFAULT_NODE_EXPORTER_HTTP_PORT
+from ybops.utils.remote_shell import RemoteShell
 
 import json
 import logging
@@ -208,6 +209,17 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
         self.parser.add_argument('--redis_proxy_http_port', default=None)
         self.parser.add_argument('--redis_proxy_rpc_port', default=None)
         self.parser.add_argument('--node_exporter_http_port', default=None)
+        self.parser.add_argument('--root_cert_path', default=None)
+        self.parser.add_argument('--server_cert_path', default=None)
+        self.parser.add_argument('--server_key_path', default=None)
+        self.parser.add_argument('--root_cert_path_client_to_server', default=None)
+        self.parser.add_argument('--server_cert_path_client_to_server', default=None)
+        self.parser.add_argument('--server_key_path_client_to_server', default=None)
+        self.parser.add_argument('--certs_location_client_to_server', default=None)
+        self.parser.add_argument('--client_cert_path', default=None)
+        self.parser.add_argument('--client_key_path', default=None)
+        self.parser.add_argument('--skip_cert_validation', default=None)
+
         self.parser.add_argument("--precheck_type", required=True,
                                  choices=['provision', 'configure'],
                                  help="Preflight check to determine if instance is ready.")
@@ -215,6 +227,35 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
                                  help='If instances are air gapped or not.')
         self.parser.add_argument("--install_node_exporter", action="store_true",
                                  help='Check if node exporter can be installed properly.')
+
+    def verify_certificates(self, cert_type, root_cert_path, cert_path, key_path, ssh_options,
+                            skip_cert_validation, results):
+        result_var = True
+        remote_shell = RemoteShell(ssh_options)
+        if not self.test_file_readable(remote_shell, root_cert_path):
+            results["File {} is present and readable".format(root_cert_path)] = False
+            result_var = False
+        if not self.test_file_readable(remote_shell, cert_path):
+            results["File {} is present and readable".format(cert_path)] = False
+            result_var = False
+        if not self.test_file_readable(remote_shell, key_path):
+            results["File {} is present and readable".format(key_path)] = False
+            result_var = False
+        if result_var and skip_cert_validation != 'ALL':
+            try:
+                self.cloud.verify_certs(root_cert_path, cert_path, ssh_options,
+                                        skip_cert_validation != 'HOSTNAME')
+            except YBOpsRuntimeError as e:
+                result_var = False
+                results["Check {} certificate".format(cert_type)] = str(e)
+
+        if result_var:
+            results["Check {} certificate".format(cert_type)] = True
+        return result_var
+
+    def test_file_readable(self, remote_shell, path):
+        node_file_verify = remote_shell.run_command_raw("test -r {}".format(path))
+        return node_file_verify.exited == 0
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -243,6 +284,39 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
             self.extra_vars["ssh_user"], self.extra_vars["ssh_port"], args.private_key_file)
 
         results["SSH Connection"] = scp_result == 0
+
+        ssh_options = {
+            "ssh_user": "yugabyte",
+            "ssh_host": self.extra_vars["private_ip"],
+            "ssh_port": self.extra_vars["ssh_port"],
+            "private_key_file": args.private_key_file
+        }
+
+        if args.root_cert_path is not None:
+            self.verify_certificates("Server", args.root_cert_path,
+                                     args.server_cert_path,
+                                     args.server_key_path,
+                                     ssh_options,
+                                     args.skip_cert_validation,
+                                     results)
+
+        if args.root_cert_path_client_to_server is not None:
+            self.verify_certificates("Server clientRootCA", args.root_cert_path_client_to_server,
+                                     args.server_cert_path_client_to_server,
+                                     args.server_key_path_client_to_server,
+                                     ssh_options,
+                                     args.skip_cert_validation,
+                                     results)
+
+        if args.client_cert_path is not None:
+            root_cert_path = args.root_cert_path_client_to_server \
+                if args.root_cert_path_client_to_server is not None else args.root_cert_path
+            self.verify_certificates("Client", root_cert_path,
+                                     args.client_cert_path,
+                                     args.client_key_path,
+                                     ssh_options,
+                                     'HOSTNAME',  # not checking hostname for that serts
+                                     results)
 
         sudo_pass_file = '/tmp/.yb_sudo_pass.sh'
         self.extra_vars['sudo_pass_file'] = sudo_pass_file

@@ -1077,8 +1077,20 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
     Set<NodeDetails> nodes = taskParams().getNodesInCluster(cluster.uuid);
     Collection<NodeDetails> nodesToProvision = PlacementInfoUtil.getNodesToProvision(nodes);
+    UserIntent userIntent = cluster.userIntent;
+    Boolean rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
+    Boolean rootCARequired =
+        CertificateHelper.isRootCARequired(userIntent, rootAndClientRootCASame);
+    Boolean clientRootCARequired =
+        CertificateHelper.isClientRootCARequired(userIntent, rootAndClientRootCASame);
+
     for (NodeDetails currentNode : nodesToProvision) {
-      String preflightStatus = performPreflightCheck(cluster, currentNode);
+      String preflightStatus =
+          performPreflightCheck(
+              cluster,
+              currentNode,
+              rootCARequired ? taskParams().rootCA : null,
+              clientRootCARequired ? taskParams().clientRootCA : null);
       if (preflightStatus != null) {
         failedNodes.put(currentNode.nodeName, preflightStatus);
       }

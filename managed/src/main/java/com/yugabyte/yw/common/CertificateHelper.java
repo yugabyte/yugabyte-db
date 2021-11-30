@@ -606,12 +606,16 @@ public class CertificateHelper {
     }
   }
 
-  public static boolean isRootCARequired(UniverseDefinitionTaskParams taskParams) {
-    UserIntent userIntent = taskParams.getPrimaryCluster().userIntent;
+  public static boolean isRootCARequired(UserIntent userIntent, boolean rootAndClientRootCASame) {
     return isRootCARequired(
         userIntent.enableNodeToNodeEncrypt,
         userIntent.enableClientToNodeEncrypt,
-        taskParams.rootAndClientRootCASame);
+        rootAndClientRootCASame);
+  }
+
+  public static boolean isRootCARequired(UniverseDefinitionTaskParams taskParams) {
+    UserIntent userIntent = taskParams.getPrimaryCluster().userIntent;
+    return isRootCARequired(userIntent, taskParams.rootAndClientRootCASame);
   }
 
   public static boolean isRootCARequired(AnsibleConfigureServers.Params taskParams) {
@@ -642,12 +646,17 @@ public class CertificateHelper {
     return enableNodeToNodeEncrypt || (rootAndClientRootCASame && enableClientToNodeEncrypt);
   }
 
-  public static boolean isClientRootCARequired(UniverseDefinitionTaskParams taskParams) {
-    UserIntent userIntent = taskParams.getPrimaryCluster().userIntent;
+  public static boolean isClientRootCARequired(
+      UserIntent userIntent, boolean rootAndClientRootCASame) {
     return isClientRootCARequired(
         userIntent.enableNodeToNodeEncrypt,
         userIntent.enableClientToNodeEncrypt,
-        taskParams.rootAndClientRootCASame);
+        rootAndClientRootCASame);
+  }
+
+  public static boolean isClientRootCARequired(UniverseDefinitionTaskParams taskParams) {
+    UserIntent userIntent = taskParams.getPrimaryCluster().userIntent;
+    return isClientRootCARequired(userIntent, taskParams.rootAndClientRootCASame);
   }
 
   public static boolean isClientRootCARequired(AnsibleConfigureServers.Params taskParams) {
