@@ -9,6 +9,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
@@ -38,10 +39,6 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
   protected boolean isBlacklistLeaders;
   protected int leaderBacklistWaitTimeMs;
 
-  private static final String BLACKLIST_LEADERS = "yb.upgrade.blacklist_leaders";
-  private static final String BLACKLIST_LEADER_WAIT_TIME_MS =
-      "yb.upgrade.blacklist_leader_wait_time_ms";
-
   protected UpgradeTaskBase(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
   }
@@ -61,9 +58,11 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
   public void runUpgrade(IUpgradeTaskWrapper upgradeLambda) {
     try {
       isBlacklistLeaders =
-          runtimeConfigFactory.forUniverse(getUniverse()).getBoolean(BLACKLIST_LEADERS);
+          runtimeConfigFactory.forUniverse(getUniverse()).getBoolean(Util.BLACKLIST_LEADERS);
       leaderBacklistWaitTimeMs =
-          runtimeConfigFactory.forUniverse(getUniverse()).getInt(BLACKLIST_LEADER_WAIT_TIME_MS);
+          runtimeConfigFactory
+              .forUniverse(getUniverse())
+              .getInt(Util.BLACKLIST_LEADER_WAIT_TIME_MS);
       checkUniverseVersion();
       // Create the task list sequence.
       subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
