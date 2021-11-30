@@ -78,6 +78,10 @@ public class Util {
   public static final String S3 = "S3";
   public static final String NFS = "NFS";
 
+  public static final String BLACKLIST_LEADERS = "yb.upgrade.blacklist_leaders";
+  public static final String BLACKLIST_LEADER_WAIT_TIME_MS =
+      "yb.upgrade.blacklist_leader_wait_time_ms";
+
   /**
    * Returns a list of Inet address objects in the proxy tier. This is needed by Cassandra clients.
    */
