@@ -36,6 +36,7 @@ fabric==2.2.1
 google-api-python-client==1.10.0
 google-api-core==1.22.0
 google-auth==1.19.2
+lxml
 mitogen==0.2.9
 oauth2client<4.0.0  # GCP SDK seems to require version <4 of oauth2client: https://goo.gl/7uC34W
 paramiko==2.4.2
