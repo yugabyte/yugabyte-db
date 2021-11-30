@@ -1123,6 +1123,9 @@ pg_get_backend_status(void)
 		PgBackendStatus *beentry;
 
 		local_beentry = pgstat_fetch_stat_local_beentry(i);
+		if (!local_beentry)
+			continue;
+
 		beentry = &local_beentry->backendStatus;
 
 		if (beentry->st_procpid == MyProcPid)
@@ -1135,6 +1138,8 @@ static int
 pg_get_application_name(char *application_name)
 {
 	PgBackendStatus *beentry = pg_get_backend_status();
+	if (!beentry)
+		return snprintf(application_name, APPLICATIONNAME_LEN, "%s", "postmaster");
 
 	snprintf(application_name, APPLICATIONNAME_LEN, "%s", beentry->st_appname);
 	return strlen(application_name);
@@ -1156,6 +1161,9 @@ pg_get_client_addr(void)
 	PgBackendStatus *beentry = pg_get_backend_status();
 	char	remote_host[NI_MAXHOST];
 	int		ret;
+
+	if (!beentry)
+		return ntohl(inet_addr("127.0.0.1"));
 
 	memset(remote_host, 0x0, NI_MAXHOST);
 	ret = pg_getnameinfo_all(&beentry->st_clientaddr.addr,
@@ -1481,7 +1489,13 @@ pgss_store(uint64 queryid,
 		return;
 
 	Assert(query != NULL);
-	userid =  GetUserId();
+	if (kind == PGSS_ERROR)
+	{
+		int sec_ctx;
+		GetUserIdAndSecContext((Oid *)&userid, &sec_ctx);
+	}
+	else
+		userid =  GetUserId();
 
 	application_name_len = pg_get_application_name(application_name);
 	planid = plan_info ? plan_info->planid: 0;
@@ -3301,6 +3315,10 @@ pgsm_emit_log_hook(ErrorData *edata)
 		goto exit;
 
 	if (IsParallelWorker())
+		return;
+
+	/* Check if PostgreSQL has finished its own bootstraping code. */
+	if (MyProc == NULL)
 		return;
 
 	if ((edata->elevel == ERROR || edata->elevel == WARNING || edata->elevel == INFO || edata->elevel == DEBUG1))
