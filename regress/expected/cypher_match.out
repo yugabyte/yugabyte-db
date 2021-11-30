@@ -890,6 +890,94 @@ $$) AS (i agtype);
 (3 rows)
 
 --
+-- JIRA: AGE2-544
+--
+-- Clean up
+SELECT DISTINCT * FROM cypher('cypher_match', $$
+    MATCH (u) DETACH DELETE (u)
+$$) AS (i agtype);
+ i 
+---
+(0 rows)
+
+-- Prepare
+SELECT * FROM cypher('cypher_match', $$
+    CREATE (u {name: "orphan"})
+    CREATE (u1 {name: "F"})-[u2:e1]->(u3 {name: "T"})
+    RETURN u1, u2, u3
+$$) as (u1 agtype, u2 agtype, u3 agtype);
+                                    u1                                     |                                                           u2                                                            |                                    u3                                     
+---------------------------------------------------------------------------+-------------------------------------------------------------------------------------------------------------------------+---------------------------------------------------------------------------
+ {"id": 281474976710660, "label": "", "properties": {"name": "F"}}::vertex | {"id": 1407374883553283, "label": "e1", "end_id": 281474976710661, "start_id": 281474976710660, "properties": {}}::edge | {"id": 281474976710661, "label": "", "properties": {"name": "T"}}::vertex
+(1 row)
+
+-- Querying NOT EXISTS syntax
+SELECT * FROM cypher('cypher_match', $$
+     MATCH (f),(t)
+     WHERE NOT EXISTS((f)-[]->(t))
+     RETURN f.name, t.name
+ $$) as (f agtype, t agtype);
+    f     |    t     
+----------+----------
+ "orphan" | "orphan"
+ "orphan" | "F"
+ "orphan" | "T"
+ "F"      | "orphan"
+ "F"      | "F"
+ "T"      | "orphan"
+ "T"      | "F"
+ "T"      | "T"
+(8 rows)
+
+-- Querying EXISTS syntax
+SELECT * FROM cypher('cypher_match', $$
+    MATCH (f),(t)
+    WHERE EXISTS((f)-[]->(t))
+    RETURN f.name, t.name
+ $$) as (f agtype, t agtype);
+  f  |  t  
+-----+-----
+ "F" | "T"
+(1 row)
+
+-- Querying ALL
+SELECT * FROM cypher('cypher_match', $$
+    MATCH (f),(t)
+    WHERE NOT EXISTS((f)-[]->(t)) or true
+    RETURN f.name, t.name
+$$) as (f agtype, t agtype);
+    f     |    t     
+----------+----------
+ "orphan" | "orphan"
+ "orphan" | "F"
+ "orphan" | "T"
+ "F"      | "orphan"
+ "F"      | "F"
+ "F"      | "T"
+ "T"      | "orphan"
+ "T"      | "F"
+ "T"      | "T"
+(9 rows)
+
+-- Querying ALL
+SELECT * FROM cypher('cypher_match', $$
+    MATCH (f),(t)
+    RETURN f.name, t.name
+$$) as (f agtype, t agtype);
+    f     |    t     
+----------+----------
+ "orphan" | "orphan"
+ "orphan" | "F"
+ "orphan" | "T"
+ "F"      | "orphan"
+ "F"      | "F"
+ "F"      | "T"
+ "T"      | "orphan"
+ "T"      | "F"
+ "T"      | "T"
+(9 rows)
+
+--
 -- Clean up
 --
 SELECT drop_graph('cypher_match', true);

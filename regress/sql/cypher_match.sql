@@ -457,6 +457,49 @@ SELECT * FROM cypher('cypher_match', $$
 $$) AS (i agtype);
 
 --
+-- JIRA: AGE2-544
+--
+
+-- Clean up
+SELECT DISTINCT * FROM cypher('cypher_match', $$
+    MATCH (u) DETACH DELETE (u)
+$$) AS (i agtype);
+
+-- Prepare
+SELECT * FROM cypher('cypher_match', $$
+    CREATE (u {name: "orphan"})
+    CREATE (u1 {name: "F"})-[u2:e1]->(u3 {name: "T"})
+    RETURN u1, u2, u3
+$$) as (u1 agtype, u2 agtype, u3 agtype);
+
+-- Querying NOT EXISTS syntax
+SELECT * FROM cypher('cypher_match', $$
+     MATCH (f),(t)
+     WHERE NOT EXISTS((f)-[]->(t))
+     RETURN f.name, t.name
+ $$) as (f agtype, t agtype);
+
+-- Querying EXISTS syntax
+SELECT * FROM cypher('cypher_match', $$
+    MATCH (f),(t)
+    WHERE EXISTS((f)-[]->(t))
+    RETURN f.name, t.name
+ $$) as (f agtype, t agtype);
+
+-- Querying ALL
+SELECT * FROM cypher('cypher_match', $$
+    MATCH (f),(t)
+    WHERE NOT EXISTS((f)-[]->(t)) or true
+    RETURN f.name, t.name
+$$) as (f agtype, t agtype);
+
+-- Querying ALL
+SELECT * FROM cypher('cypher_match', $$
+    MATCH (f),(t)
+    RETURN f.name, t.name
+$$) as (f agtype, t agtype);
+
+--
 -- Clean up
 --
 SELECT drop_graph('cypher_match', true);
