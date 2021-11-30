@@ -63,7 +63,9 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
@@ -1112,6 +1114,15 @@ public class NodeManager extends DevopsBase {
   @VisibleForTesting
   static SkipCertValidationType getSkipCertValidationType(
       Config config, UserIntent userIntent, AnsibleConfigureServers.Params taskParam) {
+    return getSkipCertValidationType(
+        config, userIntent, taskParam.gflags, taskParam.gflagsToRemove);
+  }
+
+  private static SkipCertValidationType getSkipCertValidationType(
+      Config config,
+      UserIntent userIntent,
+      Map<String, String> gflagsToAdd,
+      Set<String> gflagsToRemove) {
     String configValue = config.getString(SKIP_CERT_VALIDATION);
     if (!configValue.isEmpty()) {
       try {
@@ -1120,13 +1131,13 @@ public class NodeManager extends DevopsBase {
         log.error("Incorrect config value {} for {} ", configValue, SKIP_CERT_VALIDATION);
       }
     }
-    if (taskParam.gflagsToRemove.contains(VERIFY_SERVER_ENDPOINT_GFLAG)) {
+    if (gflagsToRemove.contains(VERIFY_SERVER_ENDPOINT_GFLAG)) {
       return SkipCertValidationType.NONE;
     }
 
     boolean skipHostValidation;
-    if (taskParam.gflags.containsKey(VERIFY_SERVER_ENDPOINT_GFLAG)) {
-      skipHostValidation = shouldSkipServerEndpointVerification(taskParam.gflags);
+    if (gflagsToAdd.containsKey(VERIFY_SERVER_ENDPOINT_GFLAG)) {
+      skipHostValidation = shouldSkipServerEndpointVerification(gflagsToAdd);
     } else {
       skipHostValidation =
           shouldSkipServerEndpointVerification(userIntent.masterGFlags)
@@ -1615,6 +1626,30 @@ public class NodeManager extends DevopsBase {
               AccessKey.getOrBadRequest(nodeTaskParam.getProvider().uuid, userIntent.accessKeyCode);
           commandArgs.addAll(
               getCommunicationPortsParams(userIntent, accessKey, nodeTaskParam.communicationPorts));
+
+          boolean rootAndClientAreTheSame =
+              nodeTaskParam.clientRootCA == null
+                  || Objects.equals(nodeTaskParam.rootCA, nodeTaskParam.clientRootCA);
+          appendCertPathsToCheck(
+              commandArgs,
+              nodeTaskParam.rootCA,
+              false,
+              rootAndClientAreTheSame && userIntent.enableNodeToNodeEncrypt);
+
+          if (!rootAndClientAreTheSame) {
+            appendCertPathsToCheck(commandArgs, nodeTaskParam.clientRootCA, true, false);
+          }
+
+          Config config = runtimeConfigFactory.forUniverse(universe);
+
+          SkipCertValidationType skipType =
+              getSkipCertValidationType(
+                  config, userIntent, Collections.emptyMap(), Collections.emptySet());
+          if (skipType != SkipCertValidationType.NONE) {
+            commandArgs.add("--skip_cert_validation");
+            commandArgs.add(skipType.name());
+          }
+
           break;
         }
     }
@@ -1637,6 +1672,36 @@ public class NodeManager extends DevopsBase {
           LOG.error(e.getMessage(), e);
         }
       }
+    }
+  }
+
+  private void appendCertPathsToCheck(
+      List<String> commandArgs, UUID rootCA, boolean isClient, boolean appendClientPaths) {
+    if (rootCA == null) {
+      return;
+    }
+    CertificateInfo rootCert = CertificateInfo.get(rootCA);
+    // checking only certs with CustomCertHostPath type, CustomServerCert is not used for onprem
+    if (rootCert.certType != CertificateInfo.Type.CustomCertHostPath) {
+      return;
+    }
+    String suffix = isClient ? "_client_to_server" : "";
+
+    CertificateParams.CustomCertInfo customCertInfo = rootCert.getCustomCertInfo();
+
+    commandArgs.add(String.format("--root_cert_path%s", suffix));
+    commandArgs.add(customCertInfo.rootCertPath);
+    commandArgs.add(String.format("--server_cert_path%s", suffix));
+    commandArgs.add(customCertInfo.nodeCertPath);
+    commandArgs.add(String.format("--server_key_path%s", suffix));
+    commandArgs.add(customCertInfo.nodeKeyPath);
+    if (appendClientPaths
+        && !Strings.isNullOrEmpty(customCertInfo.clientCertPath)
+        && !Strings.isNullOrEmpty(customCertInfo.clientKeyPath)) {
+      commandArgs.add("--client_cert_path");
+      commandArgs.add(customCertInfo.clientCertPath);
+      commandArgs.add("--client_key_path");
+      commandArgs.add(customCertInfo.clientKeyPath);
     }
   }
 
