@@ -3,6 +3,7 @@
 package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.models.Users.Role;
+import static com.yugabyte.yw.models.Users.UserType;
 
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
@@ -162,6 +163,9 @@ public class UsersController extends AuthenticatedController {
   public Result changeRole(UUID customerUUID, UUID userUUID, String role) {
     Users user = Users.getOrBadRequest(userUUID);
     checkUserOwnership(customerUUID, userUUID, user);
+    if (UserType.ldap == user.getUserType() && user.getLdapSpecifiedRole()) {
+      throw new PlatformServiceException(BAD_REQUEST, "Can't change role for LDAP user.");
+    }
     if (Role.SuperAdmin == user.getRole()) {
       throw new PlatformServiceException(BAD_REQUEST, "Can't change super admin role.");
     }
@@ -196,6 +200,9 @@ public class UsersController extends AuthenticatedController {
 
     UserRegisterFormData formData = form.get();
     passwordPolicyService.checkPasswordPolicy(customerUUID, formData.getPassword());
+    if (UserType.ldap == user.getUserType()) {
+      throw new PlatformServiceException(BAD_REQUEST, "Can't change password for LDAP user.");
+    }
     if (formData.getEmail().equals(user.email)) {
       if (formData.getPassword().equals(formData.getConfirmPassword())) {
         user.setPassword(formData.getPassword());
