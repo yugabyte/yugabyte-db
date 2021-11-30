@@ -3,8 +3,10 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType.EDIT;
+import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -13,6 +15,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo.ModifyUniverseConfig;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -23,7 +26,10 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -41,6 +47,50 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   ModifyUniverseConfig modifyUC;
   AbstractModifyMasterClusterConfig amuc;
 
+  private static final List<TaskType> UNIVERSE_EXPAND_TASK_SEQUENCE =
+      ImmutableList.of(
+          TaskType.AnsibleCreateServer,
+          TaskType.AnsibleUpdateNodeInfo,
+          TaskType.AnsibleSetupServer,
+          TaskType.AnsibleConfigureServers,
+          TaskType.AnsibleConfigureServers, // GFlags
+          TaskType.AnsibleConfigureServers, // GFlags
+          TaskType.SetNodeState,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.WaitForServer,
+          TaskType.ModifyBlackList,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.WaitForServer,
+          TaskType.SetNodeState,
+          TaskType.ModifyBlackList,
+          TaskType.UpdatePlacementInfo,
+          TaskType.SwamperTargetsFileUpdate,
+          TaskType.WaitForLoadBalance,
+          TaskType.ChangeMasterConfig, // Add
+          TaskType.ChangeMasterConfig, // Remove
+          TaskType.AnsibleClusterServerCtl, // Stop master
+          TaskType.WaitForMasterLeader,
+          TaskType.UpdateNodeProcess,
+          TaskType.AnsibleConfigureServers, // Tservers
+          TaskType.SetFlagInMemory,
+          TaskType.AnsibleConfigureServers, // Masters
+          TaskType.SetFlagInMemory,
+          TaskType.WaitForTServerHeartBeats,
+          TaskType.UniverseUpdateSucceeded);
+
+  private void assertTaskSequence(
+      List<TaskType> sequence, Map<Integer, List<TaskInfo>> subTasksByPosition) {
+    int position = 0;
+    assertEquals(sequence.size(), subTasksByPosition.size());
+    for (TaskType taskType : sequence) {
+      List<TaskInfo> tasks = subTasksByPosition.get(position);
+      assertTrue(tasks.size() > 0);
+      assertEquals(taskType, tasks.get(0).getTaskType());
+      position++;
+    }
+  }
+
+  @Override
   @Before
   public void setUp() {
     super.setUp();
@@ -92,7 +142,11 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     Universe universe = defaultUniverse;
     UniverseDefinitionTaskParams taskParams = performExpand(universe);
     TaskInfo taskInfo = submitTask(taskParams);
-    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    assertEquals(Success, taskInfo.getTaskState());
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+    assertTaskSequence(UNIVERSE_EXPAND_TASK_SEQUENCE, subTasksByPosition);
     universe = Universe.getOrBadRequest(universe.universeUUID);
     assertEquals(5, universe.getUniverseDetails().nodeDetailsSet.size());
   }
@@ -106,7 +160,11 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     Universe universe = onPremUniverse;
     UniverseDefinitionTaskParams taskParams = performExpand(universe);
     TaskInfo taskInfo = submitTask(taskParams);
-    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    assertEquals(Success, taskInfo.getTaskState());
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+    assertTaskSequence(UNIVERSE_EXPAND_TASK_SEQUENCE, subTasksByPosition);
     universe = Universe.getOrBadRequest(universe.universeUUID);
     assertEquals(5, universe.getUniverseDetails().nodeDetailsSet.size());
   }
