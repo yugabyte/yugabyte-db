@@ -11,6 +11,9 @@ import com.yugabyte.yw.cloud.GCPInitializer;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.DefaultExecutorServiceProvider;
+import com.yugabyte.yw.commissioner.ExecutorServiceProvider;
+import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.CloudQueryHelper;
@@ -30,6 +33,7 @@ import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Customer;
@@ -76,6 +80,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected AlertConfigurationService alertConfigurationService;
   protected YcqlQueryExecutor mockYcqlQueryExecutor;
   protected YsqlQueryExecutor mockYsqlQueryExecutor;
+  protected TaskExecutor taskExecutor;
 
   @Mock protected BaseTaskDependencies mockBaseTaskDependencies;
 
@@ -98,6 +103,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     alertDefinitionService = app.injector().instanceOf(AlertDefinitionService.class);
     RuntimeConfigFactory configFactory = app.injector().instanceOf(RuntimeConfigFactory.class);
     alertConfigurationService = app.injector().instanceOf(AlertConfigurationService.class);
+    taskExecutor = app.injector().instanceOf(TaskExecutor.class);
 
     when(mockBaseTaskDependencies.getApplication()).thenReturn(app);
     when(mockBaseTaskDependencies.getConfig()).thenReturn(app.config());
@@ -112,6 +118,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
         .thenReturn(alertConfigurationService);
     when(mockBaseTaskDependencies.getExecutorFactory())
         .thenReturn(app.injector().instanceOf(PlatformExecutorFactory.class));
+    when(mockBaseTaskDependencies.getTaskExecutor()).thenReturn(taskExecutor);
   }
 
   @Override
@@ -158,7 +165,9 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
                 .overrides(bind(BaseTaskDependencies.class).toInstance(mockBaseTaskDependencies))
                 .overrides(bind(YcqlQueryExecutor.class).toInstance(mockYcqlQueryExecutor))
-                .overrides(bind(YsqlQueryExecutor.class).toInstance(mockYsqlQueryExecutor)))
+                .overrides(bind(YsqlQueryExecutor.class).toInstance(mockYsqlQueryExecutor))
+                .overrides(
+                    bind(ExecutorServiceProvider.class).to(DefaultExecutorServiceProvider.class)))
         .build();
   }
 

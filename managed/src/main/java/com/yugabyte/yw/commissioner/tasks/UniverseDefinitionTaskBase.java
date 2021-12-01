@@ -31,7 +31,6 @@ import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.NodeInstance;
-import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
@@ -1190,10 +1189,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param taskParams the given task params(details).
    */
   public void updateTaskDetailsInDB(UniverseDefinitionTaskParams taskParams) {
-    TaskInfo taskInfo = TaskInfo.getOrBadRequest(userTaskUUID);
-    taskInfo.setTaskDetails(RedactingService.filterSecretFields(Json.toJson(taskParams)));
-    log.debug("Saving task({}) details: {}", taskInfo.getTaskUUID(), taskInfo.getTaskDetails());
-    taskInfo.save();
+    getRunnableTask().setTaskDetails(RedactingService.filterSecretFields(Json.toJson(taskParams)));
   }
 
   /**

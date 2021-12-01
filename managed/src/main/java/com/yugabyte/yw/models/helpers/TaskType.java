@@ -260,7 +260,17 @@ public enum TaskType {
 
   DeleteCertificate("subtasks.DeleteCertificate"),
 
-  SetNodeStatus("subtasks.SetNodeStatus");
+  SetNodeStatus("subtasks.SetNodeStatus"),
+
+  CheckMasterLeader("subtasks.check.CheckMasterLeader"),
+
+  CheckMasters("subtasks.check.CheckMasters"),
+
+  CheckTServers("subtasks.check.CheckTServers"),
+
+  WaitForTServerHBs("subtasks.check.WaitForTServerHBs"),
+
+  CreatePrometheusSwamperConfig("subtasks.CreatePrometheusSwamperConfig");
 
   private String relativeClassPath;
 
