@@ -16,7 +16,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import play.data.validation.Constraints;
 
 public class UniverseTaskParams extends AbstractTaskParams {
 
@@ -233,4 +232,8 @@ public class UniverseTaskParams extends AbstractTaskParams {
   // `isRetry` due to play reading the "is" prefix differently.
   @ApiModelProperty(value = "Whether this task has been tried before")
   public boolean firstTry = true;
+
+  // Previous task UUID for a retry.
+  @ApiModelProperty(value = "Previous task UUID only if this task is a retry")
+  public UUID previousTaskUUID;
 }

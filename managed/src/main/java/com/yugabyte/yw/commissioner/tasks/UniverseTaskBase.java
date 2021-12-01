@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Strings;
 import com.google.common.collect.Streams;
 import com.google.common.net.HostAndPort;
+import com.google.api.client.util.Objects;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.HealthChecker;
@@ -41,6 +42,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseKeys;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetFlagInMemory;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeState;
+import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeStatus;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SwamperTargetsFileUpdate;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UnivSetCertificate;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateSucceeded;
@@ -78,6 +80,7 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.TableDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.Duration;
@@ -85,16 +88,14 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Consumer;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.MDC;
@@ -178,6 +179,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       boolean checkSuccess,
       boolean isForceUpdate,
       boolean isResumeOrDelete) {
+    return getLockingUniverseUpdater(
+        expectedUniverseVersion, checkSuccess, isForceUpdate, isResumeOrDelete, null);
+  }
+
+  private UniverseUpdater getLockingUniverseUpdater(
+      int expectedUniverseVersion,
+      boolean checkSuccess,
+      boolean isForceUpdate,
+      boolean isResumeOrDelete,
+      Consumer<Universe> callback) {
     TaskType owner = taskClassnameToTaskTypeMap.get(this.getClass().getCanonicalName());
     if (owner == null) {
       log.trace("TaskType not found for class " + this.getClass().getCanonicalName());
@@ -198,7 +209,19 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           log.error(msg);
           throw new RuntimeException(msg);
         }
+        // If the task is retried, check if the task UUID is same as the one in the universe.
+        if (!isForceUpdate
+            && UniverseTaskBase.this.isRetryable()
+            && StringUtils.isNotBlank(universeDetails.errorString)
+            && !Objects.equal(taskParams().previousTaskUUID, universeDetails.updatingTaskUUID)) {
+          String msg = "Universe " + taskParams().universeUUID + " is already in error state.";
+          log.error(msg);
+          throw new RuntimeException(msg);
+        }
         markUniverseUpdateInProgress(owner, universe, checkSuccess);
+        if (callback != null) {
+          callback.accept(universe);
+        }
       }
     };
   }
@@ -209,6 +232,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // Persist the updated information about the universe. Mark it as being edited.
     universeDetails.updateInProgress = true;
     universeDetails.updatingTask = owner;
+    universeDetails.updatingTaskUUID = userTaskUUID;
     if (checkSuccess) {
       universeDetails.updateSucceeded = false;
     }
@@ -349,6 +373,22 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *
    * @param expectedUniverseVersion Lock only if the current version of the universe is at this
    *     version. -1 implies always lock the universe.
+   * @param callback Callback is invoked for any pre-processing to be done on the Universe before it
+   *     is saved in transaction with 'updateInProgress' flag.
+   * @return
+   */
+  public Universe lockUniverseForUpdate(int expectedUniverseVersion, Consumer<Universe> callback) {
+    UniverseUpdater updater =
+        getLockingUniverseUpdater(expectedUniverseVersion, true, false, false, callback);
+    return lockUniverseForUpdate(expectedUniverseVersion, updater);
+  }
+
+  /**
+   * Locks the universe for updates by setting the 'updateInProgress' flag. If the universe is
+   * already being modified, then throws an exception.
+   *
+   * @param expectedUniverseVersion Lock only if the current version of the universe is at this
+   *     version. -1 implies always lock the universe.
    */
   public Universe lockUniverseForUpdate(int expectedUniverseVersion) {
     UniverseUpdater updater =
@@ -422,6 +462,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             universeDetails.updateInProgress = false;
             universeDetails.updatingTask = null;
             universeDetails.errorString = err;
+            if (universeDetails.updateSucceeded) {
+              // Clear the task UUID only if the update succeeded.
+              universeDetails.updatingTaskUUID = null;
+            }
             universe.setUniverseDetails(universeDetails);
           }
         };
@@ -818,6 +862,31 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     task.initialize(params);
     task.setUserTaskUUID(userTaskUUID);
     subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
+   * Create tasks to update the status of the nodes.
+   *
+   * @param nodes the set if nodes to be updated.
+   * @param nodeStatus the status into which these nodes will be transitioned.
+   * @return
+   */
+  public SubTaskGroup createSetNodeStatusTasks(
+      Collection<NodeDetails> nodes, NodeStatus nodeStatus) {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("SetNodeStatus", executor);
+    for (NodeDetails node : nodes) {
+      SetNodeStatus.Params params = new SetNodeStatus.Params();
+      params.universeUUID = taskParams().universeUUID;
+      params.azUuid = node.azUuid;
+      params.nodeName = node.nodeName;
+      params.nodeStatus = nodeStatus;
+      SetNodeStatus task = createTask(SetNodeStatus.class);
+      task.initialize(params);
+      task.setUserTaskUUID(userTaskUUID);
+      subTaskGroup.addTask(task);
+    }
     subTaskGroupQueue.add(subTaskGroup);
     return subTaskGroup;
   }
@@ -1544,7 +1613,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   // Helper API to update the db for the node with the given state.
   public void setNodeState(String nodeName, NodeDetails.NodeState state) {
     // Persist the desired node information into the DB.
-    UniverseUpdater updater = nodeStateUpdater(taskParams().universeUUID, nodeName, state);
+    UniverseUpdater updater =
+        nodeStateUpdater(
+            taskParams().universeUUID, nodeName, NodeStatus.builder().nodeState(state).build());
     saveUniverseDetails(updater);
   }
 
