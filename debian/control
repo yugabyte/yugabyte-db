@@ -20,4 +20,3 @@ Description: enhancement query planning and execution statistics collector
  pg_stat_monitor is developed on the basis of pg_stat_statments
  as more advanced replacement for pg_stat_statment.
  It provides all the features of pg_stat_statment plus its own feature set.
-

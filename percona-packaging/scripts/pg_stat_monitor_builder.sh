@@ -446,6 +446,7 @@ build_deb(){
     dpkg-source -x ${DSC}
     #
     cd percona-pg-stat-monitor-${VERSION}
+    sed -i "s:\. :${WORKDIR}/percona-pg-stat-monitor-${VERSION} :g" debian/rules
     dch -m -D "${OS_NAME}" --force-distribution -v "1:${VERSION}-${DEB_RELEASE}.${OS_NAME}" 'Update distribution'
     unset $(locale|cut -d= -f1)
     dpkg-buildpackage -rfakeroot -us -uc -b
