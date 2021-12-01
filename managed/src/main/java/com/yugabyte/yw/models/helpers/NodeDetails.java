@@ -288,4 +288,8 @@ public class NodeDetails {
   public String getNodeName() {
     return nodeName;
   }
+
+  public UUID getNodeUUID() {
+    return nodeUuid;
+  }
 }

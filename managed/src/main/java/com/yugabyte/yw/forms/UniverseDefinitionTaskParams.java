@@ -101,6 +101,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // Type of task which set updateInProgress flag.
   @ApiModelProperty public TaskType updatingTask = null;
 
+  // UUID of task which set updateInProgress flag.
+  @ApiModelProperty public UUID updatingTaskUUID = null;
+
   @ApiModelProperty public boolean backupInProgress = false;
 
   // This tracks the if latest operation on this universe has successfully completed. This flag is
