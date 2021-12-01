@@ -177,14 +177,14 @@ func main() {
 }
 ```
 
-The `const` values are set to the defaults for a local installation of YugabyteDB. If you are using Yugabyte Cloud, replace the `const` values in the file as follows:
+The **const** values are set to the defaults for a local installation of YugabyteDB. If you are using Yugabyte Cloud, replace the **const** values in the file as follows:
 
-- `host` - The host address of your cluster. The host address is displayed on the cluster Settings tab.
-- `user` - Your Yugabyte database username. In Yugabyte Cloud, the default user is `admin`.
-- `password` - Your Yugabyte database password.
-- `dbname` - The name of the Yugabyte database. The default Yugabyte database name is `yugabyte`.
+- **host** - The host address of your cluster. The host address is displayed on the cluster Settings tab.
+- **user** - Your Yugabyte database username. In Yugabyte Cloud, the default user is **admin**.
+- **password** - Your Yugabyte database password.
+- **dbname** - The name of the Yugabyte database. The default Yugabyte database name is **yugabyte**.
 
-`port` is set to 5433, which is the default port for the YSQL API.
+**port** is set to 5433, which is the default port for the YSQL API.
 
 ## Enable SSL/TLS
 
@@ -197,14 +197,14 @@ For a Yugabyte Cloud cluster or a YugabyteDB cluster with SSL/TLS enabled, set t
 
 ## Run the application
 
-   ```sh
-    $ go run ybsql_hello_world.go
-   ```
+```sh
+$ go run ybsql_hello_world.go
+```
 
-   You should see the following output.
+You should see the following output.
 
-   ```output
-    Created table employee
-    Inserted data: INSERT INTO employee(id, name, age, language) VALUES (1, 'John', 35, 'Go')
-    Query for id=1 returned: Row[John, 35, Go]
-   ```
+```output
+Created table employee
+Inserted data: INSERT INTO employee(id, name, age, language) VALUES (1, 'John', 35, 'Go')
+Query for id=1 returned: Row[John, 35, Go]
+```

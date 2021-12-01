@@ -217,18 +217,28 @@ func main() {
 }
 ```
 
-The `const` values are set to the defaults for a local installation of YugabyteDB. If you are using Yugabyte Cloud, replace the `const` values in the file as follows:
+The **const** values are set to the defaults for a local installation of YugabyteDB. If you are using Yugabyte Cloud, replace the **const** values in the file as follows:
 
-- `host` - The host address of your cluster. The host address is displayed on the cluster Settings tab.
-- `user` - Your Yugabyte database username. In Yugabyte Cloud, the default user is `admin`.
-- `password` - Your Yugabyte database password.
-- `dbname` - The name of the Yugabyte database. The default Yugabyte database name is `yugabyte`.
+- **host** - The host address of your cluster. The host address is displayed on the cluster Settings tab.
+- **user** - Your Yugabyte database username. In Yugabyte Cloud, the default user is **admin**.
+- **password** - Your Yugabyte database password.
+- **dbname** - The name of the Yugabyte database. The default Yugabyte database name is **yugabyte**.
 
-`port` is set to 5433, which is the default port for the YSQL API.
+**port** is set to 5433, which is the default port for the YSQL API.
 
-{{< note title="Note">}}
-If the `password` contains these special characters (#, %, ^), the driver may fail to parse the url. In such a case, use pg.Options() instead of pg.ParseURL() to initialize the Options in `ybsql_hello_world.go`. The standard PG environment variables except `PGPASSWORD` and `PGSSLROOTCERT` are implicitly read by the driver.
-{{< /note >}}
+### Using pg.Options()
+
+If the password contains these special characters (#, %, ^), the driver may fail to parse the url. In such a case, use pg.Options() instead of pg.ParseURL() to initialize the Options in `ybsql_hello_world.go`. The standard PG environment variables except PGPASSWORD and PGSSLROOTCERT are implicitly read by the driver. Set the PG variables as below:
+
+```sh
+$ export PGHOST=127.0.0.1
+$ export PGPORT=5433
+$ export PGUSER=yugabyte
+$ export PGPASSWORD=password#with%special^chars
+$ export PGDATABASE=yugabyte
+```
+
+To use pg.Options(), replace the main function in your file with the following:
 
 ```sh
 /* Modify the main() from the ybsql_hello_world.go script by replacing the first few lines and enabling pg.Options() */
@@ -314,21 +324,21 @@ func main() {
 
 For a Yugabyte Cloud cluster or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as below.
 
-   ```sh
-    $ export PGSSLMODE=verify-ca
-    $ export PGSSLROOTCERT=~/root.crt  # Here, the CA certificate file is downloaded as `root.crt` under home directory. Modify your path accordingly.
-   ```
+```sh
+$ export PGSSLMODE=verify-ca
+$ export PGSSLROOTCERT=~/root.crt  # Here, the CA certificate file is downloaded as `root.crt` under home directory. Modify your path accordingly.
+```
 
 ## Run the application
 
-   ```sh
-    $ go run ybsql_hello_world.go
-   ```
+```sh
+$ go run ybsql_hello_world.go
+```
 
-   You should see the following output.
+You should see the following output.
 
-   ```output
-    Created table
-    Inserted data
-    Query for id=1 returned: Employee<1 John 35 [%!l(string=Go)]>
-   ```
+```output
+Created table
+Inserted data
+Query for id=1 returned: Employee<1 John 35 [%!l(string=Go)]>
+```
