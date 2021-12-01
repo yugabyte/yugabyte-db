@@ -51,6 +51,7 @@ class DbServerBase : public server::RpcAndWebServerBase {
   std::unique_ptr<tserver::TServerSharedObject> shared_object_;
 
   std::atomic<client::TransactionPool*> transaction_pool_{nullptr};
+  std::atomic<client::TransactionManager*> transaction_manager_{nullptr};
   std::mutex transaction_pool_mutex_;
   std::unique_ptr<client::TransactionManager> transaction_manager_holder_;
   std::unique_ptr<client::TransactionPool> transaction_pool_holder_;
