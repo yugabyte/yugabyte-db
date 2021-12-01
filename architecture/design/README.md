@@ -3,7 +3,7 @@ This directory contains design documents with details of how various features wo
 You can find the user-facing [YugabyteDB docs here](https://docs.yugabyte.com/). If you want to understand the architecture of YugabyteDB, the [architecture section in the docs](https://docs.yugabyte.com/latest/architecture/) is a good place to start.
 
 
-Below you can find a table of high level features, relevant design documents for them, as well as the main reference engineers.
+Below you can find a table of high level and non-trivial features, relevant design documents for them, as well as the main reference engineers.
 
 | Feature | Main reference |
 | -------- | ------------ |
@@ -24,7 +24,8 @@ Below you can find a table of high level features, relevant design documents for
 |Read from followers|TBD|
 |DocDB encoding|TBD|
 |Distributed transactions|Sergei|
-|Rocksdb|Timur, Sergei|
+|RocksDB|Timur, Sergei|
+|[RocksDB: Advanced delta-encoding](advanced-delta-encoding.md)|Timur|
 |TLS|Sergei|
 |Yugabyted|Sanket|
 |Command line tools|TBD|
