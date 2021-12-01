@@ -172,8 +172,7 @@ class UniverseDetail extends Component {
     this.props.router.push(currentLocation);
   };
 
-  handleSubmitManageKey = (response) => {
-    response.then((res) => {
+  handleSubmitManageKey = (res) => {
       if (res.payload.isAxiosError) {
         this.setState({
           showAlert: true,
@@ -191,7 +190,6 @@ class UniverseDetail extends Component {
         });
       }
       setTimeout(() => this.setState({ showAlert: false }), 3000);
-    });
 
     this.props.closeModal();
   };
