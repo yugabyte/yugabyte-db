@@ -120,3 +120,37 @@ EXPLAIN SELECT j FROM test_scan;
 --------------------------------------------------------------------------------
  Seq Scan on test_scan  (cost=10000000000.00..10000000100.00 rows=1000 width=4)
 (1 row)
+
+-- SET LOCAL is restricted by a function SET option
+create or replace function myfunc(int) returns text as $$
+begin
+  set local work_mem = '2MB';
+  return current_setting('work_mem');
+end $$
+language plpgsql
+set work_mem = '1MB';
+select myfunc(0), current_setting('work_mem');
+ myfunc | current_setting
+--------+-----------------
+ 2MB    | 4MB
+(1 row)
+
+-- test SET unrecognized parameter
+SET foo = false;  -- no such setting
+ERROR:  unrecognized configuration parameter "foo"
+-- test setting a parameter with a registered prefix (plpgsql)
+SET plpgsql.extra_foo_warnings = false;  -- no such setting
+WARNING:  unrecognized configuration parameter "plpgsql.extra_foo_warnings"
+DETAIL:  "plpgsql" is a reserved prefix.
+SHOW plpgsql.extra_foo_warnings;  -- but the parameter is set
+ plpgsql.extra_foo_warnings
+----------------------------
+ false
+(1 row)
+
+-- cleanup
+RESET foo;
+ERROR:  unrecognized configuration parameter "foo"
+RESET plpgsql.extra_foo_warnings;
+WARNING:  unrecognized configuration parameter "plpgsql.extra_foo_warnings"
+DETAIL:  "plpgsql" is a reserved prefix.
