@@ -2,7 +2,10 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.CoreMatchers.containsString;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.any;
@@ -14,6 +17,7 @@ import static org.mockito.Mockito.when;
 import com.google.protobuf.ByteString;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -114,16 +118,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
     when(mockSchemaResponse3.getTableType()).thenReturn(TableType.PGSQL_TABLE_TYPE);
   }
 
-  private TaskInfo submitTask(
-      String keyspace, List<UUID> tableUUIDs, boolean transactional, TableType backupType) {
-    MultiTableBackup.Params backupTableParams = new MultiTableBackup.Params();
-    backupTableParams.universeUUID = defaultUniverse.universeUUID;
-    backupTableParams.customerUUID = defaultCustomer.uuid;
-    backupTableParams.setKeyspace(keyspace);
-    backupTableParams.backupType = backupType;
-    backupTableParams.storageConfigUUID = UUID.randomUUID();
-    backupTableParams.tableUUIDList = tableUUIDs;
-    backupTableParams.transactionalBackup = transactional;
+  private TaskInfo submitTask(ITaskParams backupTableParams) {
     try {
       UUID taskUUID = commissioner.submit(TaskType.MultiTableBackup, backupTableParams);
       CustomerTask.create(
@@ -138,6 +133,19 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
       assertNull(e.getMessage());
     }
     return null;
+  }
+
+  private TaskInfo submitTask(
+      String keyspace, List<UUID> tableUUIDs, boolean transactional, TableType backupType) {
+    MultiTableBackup.Params backupTableParams = new MultiTableBackup.Params();
+    backupTableParams.universeUUID = defaultUniverse.universeUUID;
+    backupTableParams.customerUUID = defaultCustomer.uuid;
+    backupTableParams.setKeyspace(keyspace);
+    backupTableParams.backupType = backupType;
+    backupTableParams.storageConfigUUID = UUID.randomUUID();
+    backupTableParams.tableUUIDList = tableUUIDs;
+    backupTableParams.transactionalBackup = transactional;
+    return submitTask(backupTableParams);
   }
 
   private TaskInfo submitTask(String keyspace, List<UUID> tableUUIDs) {
@@ -188,13 +196,10 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
     backupTableParams.storageConfigUUID = UUID.randomUUID();
     backupTableParams.tableUUIDList = new ArrayList<>();
     backupTableParams.transactionalBackup = false;
-    MultiTableBackup multiTableBackupTask = UniverseTaskBase.createTask(MultiTableBackup.class);
-    multiTableBackupTask.initialize(backupTableParams);
-    try {
-      multiTableBackupTask.run();
-    } catch (RuntimeException e) {
-      assertEquals(e.getMessage(), "Invalid Keyspace or no tables to backup");
-    }
+    TaskInfo taskInfo = submitTask(backupTableParams);
+    assertEquals(Failure, taskInfo.getTaskState());
+    String errMsg = taskInfo.getTaskDetails().get("errorString").asText();
+    assertThat(errMsg, containsString("Invalid Keyspace or no tables to backup"));
     verify(mockTableManager, times(0)).createBackup(any());
   }
 

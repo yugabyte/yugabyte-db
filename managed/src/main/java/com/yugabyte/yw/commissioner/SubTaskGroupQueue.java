@@ -2,68 +2,43 @@
 
 package com.yugabyte.yw.commissioner;
 
-import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
 import java.util.UUID;
-import java.util.concurrent.CopyOnWriteArrayList;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import play.api.Play;
 
+/**
+ * This is deprecated because it is adapted to make existing subtasks work.
+ *
+ * @deprecated Get RunnableTask of to add subtask groups.
+ */
+@Deprecated
 public class SubTaskGroupQueue {
 
-  public static final Logger LOG = LoggerFactory.getLogger(SubTaskGroupQueue.class);
-
-  // The list of tasks lists in this task list sequence.
-  CopyOnWriteArrayList<SubTaskGroup> subTaskGroups = new CopyOnWriteArrayList<SubTaskGroup>();
-
-  private UUID userTaskUUID;
+  private final TaskExecutor taskExecutor;
+  private final RunnableTask runnableTask;
 
   public SubTaskGroupQueue(UUID userTaskUUID) {
-    this.userTaskUUID = userTaskUUID;
+    taskExecutor = Play.current().injector().instanceOf(TaskExecutor.class);
+    runnableTask = taskExecutor.getRunnableTask(userTaskUUID);
+  }
+
+  public SubTaskGroupQueue(RunnableTask runnableTask) {
+    taskExecutor = Play.current().injector().instanceOf(TaskExecutor.class);
+    this.runnableTask = runnableTask;
+  }
+
+  public TaskExecutor getTaskExecutor() {
+    return taskExecutor;
   }
 
   /** Add a task list to this sequence. */
   public boolean add(SubTaskGroup subTaskGroup) {
-    subTaskGroup.setTaskContext(subTaskGroups.size(), userTaskUUID);
-    return subTaskGroups.add(subTaskGroup);
+    runnableTask.addSubTaskGroup(subTaskGroup.getSubTaskGroup());
+    return true;
   }
 
   /** Execute the sequence of task lists in a sequential manner. */
   public void run() {
-    boolean runSuccess = true;
-    for (SubTaskGroup subTaskGroup : subTaskGroups) {
-      boolean subTaskGroupSuccess = false;
-      subTaskGroup.setUserSubTaskState(TaskInfo.State.Running);
-      try {
-        subTaskGroup.run();
-        subTaskGroupSuccess = subTaskGroup.waitFor();
-      } catch (Throwable t) {
-        // Update task state to failure
-        subTaskGroup.setUserSubTaskState(TaskInfo.State.Failure);
-        if (!subTaskGroup.ignoreErrors) {
-          throw t;
-        }
-      }
-
-      if (!subTaskGroupSuccess) {
-        LOG.error("SubTaskGroup '{}' waitFor() returned failed status.", subTaskGroup.toString());
-        subTaskGroup.setUserSubTaskState(TaskInfo.State.Failure);
-        if (!subTaskGroup.ignoreErrors) {
-          throw new RuntimeException(subTaskGroup.toString() + " failed.");
-        }
-      }
-
-      runSuccess = runSuccess && subTaskGroupSuccess;
-
-      if (subTaskGroupSuccess) subTaskGroup.setUserSubTaskState(TaskInfo.State.Success);
-    }
-
-    if (!runSuccess) throw new RuntimeException("One or more subTaskGroups failed while running.");
-  }
-
-  /** Cleans up the resources held by the subtasks in the groups */
-  public void cleanup() {
-    for (SubTaskGroup subTaskGroup : subTaskGroups) {
-      subTaskGroup.cleanup();
-    }
+    runnableTask.runSubTasks();
   }
 }

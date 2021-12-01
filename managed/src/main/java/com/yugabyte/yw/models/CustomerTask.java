@@ -204,7 +204,10 @@ public class CustomerTask extends Model {
     EditXClusterConfig,
 
     @EnumValue("PrecheckNode")
-    PrecheckNode;
+    PrecheckNode,
+
+    @EnumValue("Abort")
+    Abort;
 
     public String toString(boolean completed) {
       switch (this) {
@@ -289,6 +292,8 @@ public class CustomerTask extends Model {
           return completed ? "Edited xcluster config " : "Editing xcluster config ";
         case PrecheckNode:
           return completed ? "Performed preflight check on " : "Performing preflight check on ";
+        case Abort:
+          return completed ? "Task aborted " : "Aborting task ";
         default:
           return null;
       }

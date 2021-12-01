@@ -419,7 +419,11 @@ public class CommonUtils {
   }
 
   public static long getDurationSeconds(Date startTime, Date endTime) {
-    Duration duration = Duration.between(startTime.toInstant(), endTime.toInstant());
+    return getDurationSeconds(startTime.toInstant(), endTime.toInstant());
+  }
+
+  public static long getDurationSeconds(Instant startTime, Instant endTime) {
+    Duration duration = Duration.between(startTime, endTime);
     return duration.getSeconds();
   }
 
