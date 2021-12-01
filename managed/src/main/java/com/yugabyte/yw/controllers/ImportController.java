@@ -19,6 +19,7 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.ITask;
+import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreatePrometheusSwamperConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMasters;
@@ -86,6 +87,8 @@ public class ImportController extends AuthenticatedController {
   // Threadpool to run user submitted tasks.
   private final ExecutorService executor;
 
+  private final TaskExecutor taskExecutor;
+
   // Expected string for node exporter http request.
   private static final String NODE_EXPORTER_RESP = "Node Exporter";
 
@@ -98,12 +101,14 @@ public class ImportController extends AuthenticatedController {
   @Inject ConfigHelper configHelper;
 
   @Inject
-  public ImportController(PlatformExecutorFactory platformExecutorFactory) {
+  public ImportController(
+      PlatformExecutorFactory platformExecutorFactory, TaskExecutor taskExecutor) {
     // Initialize the tasks threadpool.
     ThreadFactory namedThreadFactory =
         new ThreadFactoryBuilder().setNameFormat("Import-Pool-%d").build();
     log.trace("Starting Import Thread Pool.");
     executor = platformExecutorFactory.createExecutor("import", namedThreadFactory);
+    this.taskExecutor = taskExecutor;
   }
 
   @ApiOperation(value = "Import a universe", response = ImportUniverseFormData.class)
@@ -590,10 +595,10 @@ public class ImportController extends AuthenticatedController {
    */
   private boolean executeITask(ITask task, String taskName, ImportUniverseResponseData results) {
     // Submit the task, and get a future object.
-    Future<?> future = executor.submit(task);
     try {
+      UUID taskUUID = taskExecutor.submit(taskExecutor.createRunnableTask(task), executor);
       // Wait for the task to complete.
-      future.get();
+      taskExecutor.waitForTask(taskUUID);
       // Indicate that this task executed successfully.
       results.checks.put(taskName, "OK");
     } catch (Exception e) {
