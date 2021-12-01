@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Yugabyte Platform can check universes for issues that may affect deployment. Should problems arise, Yugabyte Platform can automatically issue alert notifications.
+Yugabyte Platform can check universes for issues that may affect deployment. Should problems arise, Yugabyte Platform can automatically issue alert notifications
 
 For additional information, see the following: 
 
@@ -106,7 +106,7 @@ In Yugabyte Platform, a notification channel defines how an alert is issued (via
 
 ## Define alert destinations
 
-You can define a new destination for your alerts, view details of an existing destination, edit or delete an existing destination as follows:
+When an alert is triggered, alert data is sent to a specific alert destination that consists of one or more channels. You can define a new destination for your alerts, view details of an existing destination, edit or delete an existing destination as follows:
 
 - Navigate to **Alert Configurations > Alert Destinations**, as per the following illustration: <br><br>
 
