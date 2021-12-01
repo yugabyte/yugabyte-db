@@ -20,6 +20,8 @@ For additional information, see the following:
 - [Metrics](../../troubleshoot/universe-issues/#use-metrics/)
 - [Alerts and Notifications in Yugabyte Platform](https://blog.yugabyte.com/yugabytedb-2-8-alerts-and-notifications/)
 
+You can use preconfigured alerts provided by Yugabyte Platform, or create and configure your own alerts based on the metrics' conditions.
+
 You can access Yugabyte Platform health monitor and configure alerts by navigating to **Admin > Alert Configurations**, as per the following illustration:
 
 ![Configure alerts](/images/yp/config-alerts1.png)
@@ -45,11 +47,13 @@ Regardless of the alert level, you create an alert as follows:
 
   Templates are available for alerts related to Yugabyte Platform operations, YugabyteDB operations, as well as YSQL and YCQL performance.<br>
 
-  The **Active** field allows you to define the alert as initially active or inactive.<br>
+  Most of the template fields are self-explanatory. The following fields are of note:
 
-  The **Threshold** field allows you to define the value (for example, number of milliseconds, resets, errors, nodes) that must be reached in order to trigger the alert.<br>
+  - The **Active** field allows you to define the alert as initially active or inactive.<br>
 
-  The **Destination** field allows you to select one of the previously defined recipients of the alert. 
+  - The **Threshold** field allows you to define the value (for example, number of milliseconds, resets, errors, nodes) that must be reached by the metric in order to trigger the alert.<br>
+
+  - The **Destination** field allows you to select one of the previously defined recipients of the alert. For more information, see [Define alert destinations](#define-alert-destinations).
 
 - Click **Save**.
 
