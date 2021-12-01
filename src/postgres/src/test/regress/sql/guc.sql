@@ -288,3 +288,14 @@ set default_text_search_config = no_such_config;
 select func_with_bad_set();
 
 reset check_function_bodies;
+
+-- test SET unrecognized parameter
+SET foo = false;  -- no such setting
+
+-- test setting a parameter with a registered prefix (plpgsql)
+SET plpgsql.extra_foo_warnings = false;  -- no such setting
+SHOW plpgsql.extra_foo_warnings;  -- but the parameter is set
+
+-- cleanup
+RESET foo;
+RESET plpgsql.extra_foo_warnings;

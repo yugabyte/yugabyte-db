@@ -52,3 +52,25 @@ EXPLAIN SELECT * FROM test_scan WHERE j = 1;
 EXPLAIN SELECT j FROM test_scan;
 set enable_indexonlyscan = off;
 EXPLAIN SELECT j FROM test_scan;
+
+-- SET LOCAL is restricted by a function SET option
+create or replace function myfunc(int) returns text as $$
+begin
+  set local work_mem = '2MB';
+  return current_setting('work_mem');
+end $$
+language plpgsql
+set work_mem = '1MB';
+
+select myfunc(0), current_setting('work_mem');
+
+-- test SET unrecognized parameter
+SET foo = false;  -- no such setting
+
+-- test setting a parameter with a registered prefix (plpgsql)
+SET plpgsql.extra_foo_warnings = false;  -- no such setting
+SHOW plpgsql.extra_foo_warnings;  -- but the parameter is set
+
+-- cleanup
+RESET foo;
+RESET plpgsql.extra_foo_warnings;
