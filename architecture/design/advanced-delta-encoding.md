@@ -25,7 +25,7 @@ Standard rocksdb key delta encoding saves some space by extracting common shared
 471210488000000121488000000121 4B8D 23800185F0027D73BA803F8B 0116000000000004 -> 24 => <16><31><4><0x8D23800185F0027D73BA803FAB0115000000000004><24>
 ```
 
-But the only difference between keys of each of these docdb records and the next one is only `ColumnId` and `w` (write_id) component of hybrid time. In the binary form, we also have the last internal rocksdb component which is usually just got incremented for the next record. So if we can only store this difference, but not the whole key part after shared_prefix - we can save more space.
+But the only difference between keys of each of these docdb records and the next one is only `ColumnId` and `w` (write_id) component of hybrid time. In the binary form, we also have the last internal rocksdb component which is usually just gets incremented for the next record. So if we can only store this difference, but not the whole key part after shared_prefix - we can save more space.
 
 Difference between 1st and 2nd encoded docdb keys:
 ```
