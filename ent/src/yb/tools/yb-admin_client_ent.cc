@@ -1312,7 +1312,8 @@ Status ClusterAdminClient::DeleteUniverseReplication(const std::string& producer
 Status ClusterAdminClient::AlterUniverseReplication(const std::string& producer_uuid,
     const std::vector<std::string>& producer_addresses,
     const std::vector<TableId>& add_tables,
-    const std::vector<TableId>& remove_tables) {
+    const std::vector<TableId>& remove_tables,
+    const std::vector<std::string>& producer_bootstrap_ids_to_add) {
   master::AlterUniverseReplicationRequestPB req;
   master::AlterUniverseReplicationResponsePB resp;
   req.set_producer_id(producer_uuid);
@@ -1330,6 +1331,20 @@ Status ClusterAdminClient::AlterUniverseReplication(const std::string& producer_
     req.mutable_producer_table_ids_to_add()->Reserve(add_tables.size());
     for (const auto& table : add_tables) {
       req.add_producer_table_ids_to_add(table);
+    }
+
+    if (!producer_bootstrap_ids_to_add.empty()) {
+      // There msut be a bootstrap id for every table id.
+      if (producer_bootstrap_ids_to_add.size() != add_tables.size()) {
+        cout << "The number of bootstrap ids must equal the number of table ids. "
+             << "Use separate alter commands if only some tables are being bootstrapped." << endl;
+        return STATUS(InternalError, "Invalid number of bootstrap ids");
+      }
+
+      req.mutable_producer_bootstrap_ids_to_add()->Reserve(producer_bootstrap_ids_to_add.size());
+      for (const auto& bootstrap_id : producer_bootstrap_ids_to_add) {
+        req.add_producer_bootstrap_ids_to_add(bootstrap_id);
+      }
     }
   }
 

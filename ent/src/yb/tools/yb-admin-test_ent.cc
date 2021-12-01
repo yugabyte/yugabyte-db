@@ -18,6 +18,7 @@
 
 #include "yb/integration-tests/external_mini_cluster_ent.h"
 
+#include "yb/master/master.pb.h"
 #include "yb/master/master_backup.proxy.h"
 
 #include "yb/rpc/secure_stream.h"
@@ -656,12 +657,43 @@ class XClusterAdminCliTest : public AdminCliTest {
   }
 
  protected:
-  Status CheckTableIsBeingReplicated(const std::vector<TableId>& tables) {
+  Status CheckTableIsBeingReplicated(
+    const std::vector<TableId>& tables,
+    SysCDCStreamEntryPB::State target_state = SysCDCStreamEntryPB::ACTIVE) {
     string output = VERIFY_RESULT(RunAdminToolCommandWithMasterAddresses(
-        producer_cluster_->GetMasterAddresses(), "list_cdc_streams"));
+      producer_cluster_->GetMasterAddresses(),
+      "list_cdc_streams"));
+    string state_search_str = Format(
+      "value: \"$0\"",
+      SysCDCStreamEntryPB::State_Name(target_state));
+
     for (const auto& table_id : tables) {
-      if (output.find(table_id) == string::npos) {
-        return STATUS_FORMAT(NotFound, "Table id '$0' not found in output: $1", table_id, output);
+      // Ensure a stream object with table_id exists.
+      size_t table_id_pos = output.find(table_id);
+      if (table_id_pos == string::npos) {
+        return STATUS_FORMAT(
+          NotFound,
+          "Table id '$0' not found in output: $1",
+          table_id, output);
+      }
+
+      // Ensure that the stream object has the expected state value.
+      size_t state_pos = output.find(state_search_str, table_id_pos);
+      if (state_pos == string::npos) {
+        return STATUS_FORMAT(
+          NotFound,
+          "Table id '$0' has the incorrect state value in output: $1",
+          table_id, output);
+      }
+
+      // Ensure that the state value we captured earlier did not belong
+      // to different stream object.
+      size_t next_stream_obj_pos = output.find("streams {", table_id_pos);
+      if (next_stream_obj_pos != string::npos && next_stream_obj_pos <= state_pos) {
+        return STATUS_FORMAT(
+          NotFound,
+          "Table id '$0' has no state value in output: $1",
+          table_id, output);
       }
     }
     return Status::OK();
@@ -775,15 +807,7 @@ TEST_F(XClusterAdminCliTest, TestListCdcStreamsWithBootstrappedStreams) {
   string bootstrap_id = output.substr(output.find_last_of(' ') + 1, kStreamUuidLength);
 
   // Check list_cdc_streams again for the table and the status INITIATED.
-  auto VerifyListCdcStreams = [&] (const string& table_id,
-                                   SysCDCStreamEntryPB::State status) -> Status {
-    string output = VERIFY_RESULT(RunAdminToolCommandWithMasterAddresses(
-        producer_cluster_->GetMasterAddresses(), "list_cdc_streams"));
-    EXPECT_NE(output.find(table_id), string::npos);
-    EXPECT_NE(output.find(SysCDCStreamEntryPB::State_Name(status)), string::npos);
-    return Status::OK();
-  };
-  VerifyListCdcStreams(producer_cluster_table->id(), SysCDCStreamEntryPB::INITIATED);
+  CheckTableIsBeingReplicated({producer_cluster_table->id()}, SysCDCStreamEntryPB::INITIATED);
 
   // Setup universe replication using the bootstrap_id
   ASSERT_OK(RunAdminToolCommand("setup_universe_replication",
@@ -794,11 +818,11 @@ TEST_F(XClusterAdminCliTest, TestListCdcStreamsWithBootstrappedStreams) {
 
 
   // Check list_cdc_streams again for the table and the status ACTIVE.
-  VerifyListCdcStreams(producer_cluster_table->id(), SysCDCStreamEntryPB::ACTIVE);
+  CheckTableIsBeingReplicated({producer_cluster_table->id()});
 
   // Try restarting the producer to ensure that the status persists.
   ASSERT_OK(producer_cluster_->RestartSync());
-  VerifyListCdcStreams(producer_cluster_table->id(), SysCDCStreamEntryPB::ACTIVE);
+  CheckTableIsBeingReplicated({producer_cluster_table->id()});
 
   // Delete this universe so shutdown can proceed.
   ASSERT_OK(RunAdminToolCommand("delete_universe_replication", kProducerClusterId));
@@ -860,6 +884,64 @@ TEST_F(XClusterAlterUniverseAdminCliTest, TestAlterUniverseReplication) {
                                 kProducerClusterId,
                                 "add_table",
                                 producer_table->id()));
+  ASSERT_OK(CheckTableIsBeingReplicated({producer_table->id(), producer_table2->id()}));
+
+  ASSERT_OK(RunAdminToolCommand("delete_universe_replication", kProducerClusterId));
+}
+
+TEST_F(XClusterAlterUniverseAdminCliTest, TestAlterUniverseReplicationWithBootstrapId) {
+  YB_SKIP_TEST_IN_TSAN();
+  const int kStreamUuidLength = 32;
+  client::TableHandle producer_table;
+
+  // Create an identical table on the producer.
+  client::kv_table_test::CreateTable(
+      Transactional::kTrue, NumTablets(), producer_cluster_client_.get(), &producer_table);
+
+  // Create an additional table to test with as well.
+  const YBTableName kTableName2(YQL_DATABASE_CQL, "my_keyspace", "ql_client_test_table2");
+  client::TableHandle consumer_table2;
+  client::TableHandle producer_table2;
+  client::kv_table_test::CreateTable(
+      Transactional::kTrue, NumTablets(), client_.get(), &consumer_table2, kTableName2);
+  client::kv_table_test::CreateTable(
+      Transactional::kTrue, NumTablets(), producer_cluster_client_.get(), &producer_table2,
+      kTableName2);
+
+  // Get bootstrap ids for both producer tables and get bootstrap ids.
+  string output = ASSERT_RESULT(RunAdminToolCommandWithMasterAddresses(
+    producer_cluster_->GetMasterAddresses(),
+    "bootstrap_cdc_producer",
+    producer_table->id()));
+  string bootstrap_id1 = output.substr(output.find_last_of(' ') + 1, kStreamUuidLength);
+  ASSERT_OK(CheckTableIsBeingReplicated(
+    {producer_table->id()},
+    master::SysCDCStreamEntryPB_State_INITIATED));
+
+  output = ASSERT_RESULT(RunAdminToolCommandWithMasterAddresses(
+    producer_cluster_->GetMasterAddresses(),
+    "bootstrap_cdc_producer",
+    producer_table2->id()));
+  string bootstrap_id2 = output.substr(output.find_last_of(' ') + 1, kStreamUuidLength);
+  ASSERT_OK(CheckTableIsBeingReplicated(
+    {producer_table2->id()},
+    master::SysCDCStreamEntryPB_State_INITIATED));
+
+  // Setup replication with first table, this should only return once complete.
+  // Only use the leader master address initially.
+  ASSERT_OK(RunAdminToolCommand(
+      "setup_universe_replication",
+      kProducerClusterId,
+      producer_cluster_->GetLeaderMasterBoundRpcAddr(),
+      producer_table->id(),
+      bootstrap_id1));
+
+  // Test adding the second table with bootstrap id
+  ASSERT_OK(RunAdminToolCommand("alter_universe_replication",
+                                kProducerClusterId,
+                                "add_table",
+                                producer_table2->id(),
+                                bootstrap_id2));
   ASSERT_OK(CheckTableIsBeingReplicated({producer_table->id(), producer_table2->id()}));
 
   ASSERT_OK(RunAdminToolCommand("delete_universe_replication", kProducerClusterId));
