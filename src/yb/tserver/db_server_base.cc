@@ -54,6 +54,7 @@ client::TransactionPool* DbServerBase::TransactionPool() {
   }
   transaction_manager_holder_ = std::make_unique<client::TransactionManager>(
       client_future().get(), clock(), CreateLocalTabletFilter());
+  transaction_manager_.store(transaction_manager_holder_.get(), std::memory_order_release);
   transaction_pool_holder_ = std::make_unique<client::TransactionPool>(
       transaction_manager_holder_.get(), metric_entity().get());
   transaction_pool_.store(transaction_pool_holder_.get(), std::memory_order_release);
