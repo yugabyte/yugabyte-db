@@ -149,9 +149,9 @@
   for = "/*"
   [headers.values]
     Strict-Transport-Security = "max-age=31536000; includeSubDomains"
-    Content-Security-Policy = ""
+    Content-Security-Policy = "script-src 'self'"
     X-Frame-Options = "SAMEORIGIN"
     X-Content-Type-Options = "nosniff"
-    Referrer-Policy = ""
-    Permissions-Policy = ""
+    Referrer-Policy = "strict-origin"
+    Permissions-Policy = "disabled"
     X-XSS-Protection = "1"
