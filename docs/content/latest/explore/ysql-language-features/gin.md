@@ -47,14 +47,12 @@ However, extension support is still in progress:
 
 ### CREATE INDEX
 
-Create the index using `USING ybgin` to specify the index access method:
+Create the index using `USING gin` to specify the index access method:
 
 ```sql
-CREATE INDEX ON mytable USING ybgin (mycol);
-```
+CREATE INDEX <optional name> ON <table> USING GIN (<column>);
 
-The `gin` access method is reserved for temporary relations while `ybgin` is for Yugabyte-backed relations.
-You can still specify `USING gin`, and, if `mytable` is not a temporary table, it will be automatically substituted for `ybgin`.
+```
 
 GIN indexes can't be unique, so `CREATE UNIQUE INDEX` is not allowed.
 
@@ -98,9 +96,9 @@ YugabyteDB GIN indexes are somewhat different from PostgreSQL GIN indexes:
     CREATE TABLE jsonbs (j jsonb, k serial PRIMARY KEY);
 
     -- Use NONCONCURRENTLY since there is no risk of online ops.
-    CREATE INDEX NONCONCURRENTLY ON vectors USING ybgin (v);
-    CREATE INDEX NONCONCURRENTLY ON arrays USING ybgin (a);
-    CREATE INDEX NONCONCURRENTLY ON jsonbs USING ybgin (j);
+    CREATE INDEX NONCONCURRENTLY ON vectors USING gin (v);
+    CREATE INDEX NONCONCURRENTLY ON arrays USING gin (a);
+    CREATE INDEX NONCONCURRENTLY ON jsonbs USING gin (j);
 
     INSERT INTO vectors VALUES
         (to_tsvector('simple', 'the quick brown fox')),
@@ -262,17 +260,17 @@ If write performance and storage aren't an issue, it may be worth creating a GIN
 
 ### Presplitting
 
-By default, `ybgin` indexes use a single range-partitioned tablet.
-Like regular tables and indexes, it is possible to presplit a `ybgin` index to multiple tablets at specified split points.
+By default, `gin` indexes use a single range-partitioned tablet.
+Like regular tables and indexes, it is possible to presplit a `gin` index to multiple tablets at specified split points.
 These split points are for the index, so they need to be represented in the index key format.
 This is simple for tsvector and array types, but it gets complicated for jsonb and text (`pg_trgm`).
-`jsonb_path_ops` especially should use hash partitioning since the index key is itself a hash, but hash partitioning `ybgin` indexes is currently unsupported.
+`jsonb_path_ops` especially should use hash partitioning since the index key is itself a hash, but hash partitioning `gin` indexes is currently unsupported.
 
 ```sql
-CREATE INDEX NONCONCURRENTLY vectors_split_idx ON vectors USING ybgin (v) SPLIT AT VALUES (('j'), ('o'));
-CREATE INDEX NONCONCURRENTLY arrays_split_idx ON arrays USING ybgin (a) SPLIT AT VALUES ((2), (3), (5));
-CREATE INDEX NONCONCURRENTLY jsonbs_split_idx1 ON jsonbs USING ybgin (j) SPLIT AT VALUES ((E'\001some'), (E'\005jsonb'));
-CREATE INDEX NONCONCURRENTLY jsonbs_split_idx2 ON jsonbs USING ybgin (j jsonb_path_ops) SPLIT AT VALUES ((-1000000000), (0), (1000000000));
+CREATE INDEX NONCONCURRENTLY vectors_split_idx ON vectors USING gin (v) SPLIT AT VALUES (('j'), ('o'));
+CREATE INDEX NONCONCURRENTLY arrays_split_idx ON arrays USING gin (a) SPLIT AT VALUES ((2), (3), (5));
+CREATE INDEX NONCONCURRENTLY jsonbs_split_idx1 ON jsonbs USING gin (j) SPLIT AT VALUES ((E'\001some'), (E'\005jsonb'));
+CREATE INDEX NONCONCURRENTLY jsonbs_split_idx2 ON jsonbs USING gin (j jsonb_path_ops) SPLIT AT VALUES ((-1000000000), (0), (1000000000));
 ```
 
 Let's focus on just one index for the remainder of this example: `jsonbs_split_idx1`.
@@ -347,11 +345,6 @@ SubDocKey(DocKey([], ["\x05one", EncodedSubDocKey(DocKey(0xfca0, [3], []), [])])
 SubDocKey(DocKey([], ["\x05thing", EncodedSubDocKey(DocKey(0x9eaf, [4], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 1 }]) -> null; intent doc ht: HT{ physical: 1636678107961628 }
 ```
 
-## Roadmap
-
-GIN indexes are still in progress: see the GIN roadmap tracking [GitHub issue][github-roadmap] for more details.
-
-[github-roadmap]: https://github.com/yugabyte/yugabyte-db/issues/7850
 
 ## Limitations
 
