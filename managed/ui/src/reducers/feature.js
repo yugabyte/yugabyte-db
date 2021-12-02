@@ -3,21 +3,23 @@ import { TOGGLE_FEATURE } from '../actions/feature';
 const initialStateFeatureInTest = {
   pausedUniverse: false,
   addListMultiProvider: false,
-  adminAlertsConfig:true,
+  adminAlertsConfig: true,
   enableNewEncryptionInTransitModal: true,
   addRestoreTimeStamp: false,
   enableXCluster: false,
   enableGeoPartitioning: false,
+  enableHCVault: false
 };
 
 const initialStateFeatureReleased = {
   pausedUniverse: true,
   addListMultiProvider: true,
-  adminAlertsConfig:true,
+  adminAlertsConfig: true,
   enableNewEncryptionInTransitModal: true,
   addRestoreTimeStamp: false,
   enableXCluster: false,
   enableGeoPartitioning: false,
+  enableHCVault: false
 };
 
 export const FeatureFlag = (
