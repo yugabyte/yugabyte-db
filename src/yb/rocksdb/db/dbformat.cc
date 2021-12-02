@@ -34,6 +34,7 @@
 
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/util/coding.h"
+#include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
 
 namespace rocksdb {

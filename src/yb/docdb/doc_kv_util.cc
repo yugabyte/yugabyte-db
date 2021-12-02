@@ -10,12 +10,15 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/docdb/doc_kv_util.h"
 
+#include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb-internal.h"
-#include "yb/docdb/value.h"
-#include "yb/server/hybrid_clock.h"
+#include "yb/docdb/value_type.h"
+
 #include "yb/util/bytes_formatter.h"
+#include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
 using std::string;

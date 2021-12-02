@@ -38,11 +38,14 @@
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
+
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/integration-tests/mini_cluster.h"
-#include "yb/rpc/messenger.h"
+
 #include "yb/tools/data_gen_util.h"
 #include "yb/tools/ysck_remote.h"
+
 #include "yb/util/monotime.h"
 #include "yb/util/promise.h"
 #include "yb/util/random.h"

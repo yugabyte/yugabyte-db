@@ -31,14 +31,15 @@
 #include <vector>
 
 #include <boost/optional.hpp>
+#include <gtest/gtest.h>
 
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/memtable.h"
 #include "yb/rocksdb/db/write_batch_internal.h"
 #include "yb/rocksdb/db/writebuffer.h"
-#include "yb/rocksdb/cache.h"
-#include "yb/rocksdb/db.h"
 #include "yb/rocksdb/env.h"
+#include "yb/rocksdb/filter_policy.h"
+#include "yb/rocksdb/flush_block_policy.h"
 #include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/memtablerep.h"
 #include "yb/rocksdb/perf_context.h"
@@ -57,12 +58,16 @@
 #include "yb/rocksdb/table/plain_table_factory.h"
 #include "yb/rocksdb/table/scoped_arena_iterator.h"
 #include "yb/rocksdb/util/compression.h"
+#include "yb/rocksdb/util/file_reader_writer.h"
+#include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/random.h"
 #include "yb/rocksdb/util/statistics.h"
-#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
+
 #include "yb/util/enums.h"
+#include "yb/util/string_util.h"
+#include "yb/util/test_macros.h"
 
 DECLARE_double(cache_single_touch_ratio);
 

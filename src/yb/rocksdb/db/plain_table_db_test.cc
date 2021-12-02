@@ -48,10 +48,12 @@
 #include "yb/rocksdb/util/hash.h"
 #include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/mutexlock.h"
-#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/utilities/merge_operators.h"
+
+#include "yb/util/string_util.h"
+#include "yb/util/test_util.h"
 
 using std::unique_ptr;
 

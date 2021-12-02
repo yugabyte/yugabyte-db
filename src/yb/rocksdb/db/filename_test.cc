@@ -26,8 +26,6 @@
 #include <gtest/gtest.h>
 
 #include "yb/rocksdb/db/filename.h"
-
-#include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/env.h"
 
 namespace rocksdb {

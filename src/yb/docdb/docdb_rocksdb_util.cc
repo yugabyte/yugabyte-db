@@ -10,19 +10,23 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/docdb/docdb_rocksdb_util.h"
 
 #include <memory>
 #include <thread>
 
 #include "yb/common/transaction.h"
+
 #include "yb/docdb/bounded_rocksdb_iterator.h"
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/key_bounds.h"
+
 #include "yb/gutil/casts.h"
 #include "yb/gutil/sysinfo.h"
+
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/version_edit.h"
 #include "yb/rocksdb/db/version_set.h"
@@ -34,10 +38,12 @@
 #include "yb/rocksdb/table/filtering_iterator.h"
 #include "yb/rocksdb/types.h"
 #include "yb/rocksdb/util/compression.h"
+
 #include "yb/rocksutil/yb_rocksdb_logger.h"
+
 #include "yb/util/bytes_formatter.h"
-#include "yb/util/mem_tracker.h"
 #include "yb/util/priority_thread_pool.h"
+#include "yb/util/result.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"

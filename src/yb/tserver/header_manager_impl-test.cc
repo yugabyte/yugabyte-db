@@ -10,13 +10,16 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <string>
 
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
 #include "yb/gutil/endian.h"
+
 #include "yb/tserver/universe_key_test_util.h"
+
 #include "yb/util/encryption_util.h"
 #include "yb/util/header_manager_impl.h"
 #include "yb/util/status.h"

@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/client/client-test-util.h"
 
 #include <stdint.h>
@@ -47,8 +48,11 @@
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
+
 #include "yb/common/common.pb.h"
+#include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
+
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"

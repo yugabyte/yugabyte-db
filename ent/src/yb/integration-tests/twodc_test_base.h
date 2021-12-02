@@ -22,6 +22,8 @@
 #include "yb/integration-tests/mini_cluster.h"
 
 #include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
+
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 

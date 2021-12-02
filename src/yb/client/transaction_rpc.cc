@@ -28,6 +28,8 @@
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/trace.h"
+
 using namespace std::literals;
 
 namespace yb {

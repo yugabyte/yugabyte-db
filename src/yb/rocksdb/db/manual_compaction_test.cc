@@ -18,15 +18,16 @@
 // under the License.
 //
 // Test for issue 178: a manual compaction causes deleted data to reappear.
+
 #include <sstream>
 
-#include "yb/rocksdb/db.h"
-#include "yb/rocksdb/compaction_filter.h"
-#include "yb/util/slice.h"
-#include "yb/rocksdb/write_batch.h"
-#include "yb/rocksdb/util/testharness.h"
-#include "yb/rocksdb/port/port.h"
+#include <gtest/gtest.h>
 
+#include "yb/rocksdb/compaction_filter.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/util/testharness.h"
+
+#include "yb/util/test_macros.h"
 #include "yb/util/tsan_util.h"
 
 using namespace rocksdb;  // NOLINT

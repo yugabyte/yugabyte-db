@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <cstddef>
 #include <memory>
 #include <random>
@@ -20,13 +21,16 @@
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/schema.h"
+
 #include "yb/docdb/compaction_file_filter.h"
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_ttl_util.h"
 #include "yb/docdb/docdb_compaction_filter.h"
 #include "yb/docdb/primitive_value.h"
+
 #include "yb/rocksdb/compaction_filter.h"
-#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/db/version_edit.h"
+
 #include "yb/util/monotime.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/test_macros.h"

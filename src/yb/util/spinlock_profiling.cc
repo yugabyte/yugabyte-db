@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/util/spinlock_profiling.h"
 
 #include <functional>
@@ -39,7 +40,6 @@
 #include <glog/logging.h>
 
 #include "yb/gutil/atomicops.h"
-#include "yb/gutil/basictypes.h"
 #include "yb/gutil/bind.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/once.h"
@@ -47,6 +47,7 @@
 #include "yb/gutil/strings/fastmem.h"
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/sysinfo.h"
+
 #include "yb/util/enums.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/metrics.h"

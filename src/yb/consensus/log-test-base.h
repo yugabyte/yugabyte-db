@@ -54,7 +54,6 @@
 #include "yb/gutil/strings/util.h"
 #include "yb/server/clock.h"
 #include "yb/server/hybrid_clock.h"
-#include "yb/server/metadata.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/util/env_util.h"
 #include "yb/util/metrics.h"

@@ -34,6 +34,8 @@
 #include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/testharness.h"
 
+#include "yb/util/test_util.h"
+
 using std::atomic;
 using std::string;
 

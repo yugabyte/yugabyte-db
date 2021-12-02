@@ -15,6 +15,7 @@
 
 #include "yb/rocksdb/table/block_based_table_factory.h"
 #include "yb/rocksdb/table/block_based_table_internal.h"
+#include "yb/rocksdb/table/iterator_wrapper.h"
 #include "yb/rocksdb/table/meta_blocks.h"
 #include "yb/util/slice.h"
 

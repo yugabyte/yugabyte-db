@@ -28,13 +28,9 @@
 
 #include "yb/rocksdb/db/column_family.h"
 #include "yb/rocksdb/db/db_impl.h"
-#include "yb/rocksdb/db/db_iter.h"
 #include "yb/rocksdb/db/dbformat.h"
-#include "yb/rocksdb/db/xfunc_test_points.h"
 #include "yb/rocksdb/env.h"
-#include "yb/util/slice.h"
 #include "yb/rocksdb/slice_transform.h"
-#include "yb/rocksdb/table/merger.h"
 #include "yb/rocksdb/util/xfunc.h"
 
 namespace rocksdb {

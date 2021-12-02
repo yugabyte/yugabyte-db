@@ -17,19 +17,24 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <assert.h>
+
 #include <memory>
 
-#include "yb/rocksdb/port/stack_trace.h"
+#include <gtest/gtest.h>
+
 #include "yb/rocksdb/cache.h"
-#include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/merge_operator.h"
-#include "yb/rocksdb/utilities/db_ttl.h"
-#include "yb/rocksdb/db/dbformat.h"
-#include "yb/rocksdb/utilities/merge_operators.h"
+#include "yb/rocksdb/port/stack_trace.h"
+#include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/testharness.h"
+#include "yb/rocksdb/utilities/db_ttl.h"
+#include "yb/rocksdb/utilities/merge_operators.h"
+
+#include "yb/util/test_macros.h"
 
 namespace rocksdb {
 

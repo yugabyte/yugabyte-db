@@ -12,6 +12,7 @@
 // under the License.
 //
 //
+
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -20,10 +21,10 @@
 #include <gtest/gtest.h>
 
 #include "yb/gutil/macros.h"
+
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
 #include "yb/util/test_macros.h"
-#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 

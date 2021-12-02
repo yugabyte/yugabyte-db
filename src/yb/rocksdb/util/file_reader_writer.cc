@@ -24,17 +24,15 @@
 #include "yb/rocksdb/util/file_reader_writer.h"
 
 #include <algorithm>
-#include <mutex>
 
 #include "yb/rocksdb/port/port.h"
+#include "yb/rocksdb/rate_limiter.h"
 #include "yb/rocksdb/util/histogram.h"
-#include "yb/rocksdb/util/random.h"
-#include "yb/rocksdb/util/rate_limiter.h"
-#include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/stop_watch.h"
-#include "yb/util/stats/iostats_context_imp.h"
+#include "yb/rocksdb/util/sync_point.h"
 
 #include "yb/util/priority_thread_pool.h"
+#include "yb/util/stats/iostats_context_imp.h"
 #include "yb/util/status_log.h"
 
 DEFINE_bool(allow_preempting_compactions, true,

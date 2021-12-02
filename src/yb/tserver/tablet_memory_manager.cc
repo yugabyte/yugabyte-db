@@ -15,8 +15,8 @@
 
 #include "yb/consensus/log_cache.h"
 #include "yb/consensus/raft_consensus.h"
-#include "yb/gutil/casts.h"
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/human_readable.h"
 
 #include "yb/rocksdb/cache.h"

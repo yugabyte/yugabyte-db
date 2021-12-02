@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/util/net/socket.h"
 
 #include <netinet/in.h>
@@ -39,8 +40,8 @@
 
 #include <glog/logging.h>
 
-#include "yb/gutil/basictypes.h"
 #include "yb/gutil/stringprintf.h"
+
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/errno.h"
 #include "yb/util/flag_tags.h"
@@ -116,7 +117,7 @@ Socket::Socket(int fd)
 }
 
 void Socket::Reset(int fd) {
-  ignore_result(Close());
+  WARN_NOT_OK(Close(), "Close failed");
   fd_ = fd;
 }
 

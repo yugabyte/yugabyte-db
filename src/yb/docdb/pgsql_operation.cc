@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/docdb/pgsql_operation.h"
 
 #include <limits>
@@ -23,17 +24,24 @@
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/ql_storage_interface.h"
 #include "yb/common/ql_value.h"
+
+#include "yb/docdb/doc_path.h"
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
+#include "yb/docdb/doc_write_batch.h"
+#include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_pgapi.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/primitive_value_util.h"
+
 #include "yb/util/flag_tags.h"
+#include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"
+
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
 DECLARE_bool(ysql_disable_index_backfill);

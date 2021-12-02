@@ -16,7 +16,9 @@
 #include <map>
 #include <vector>
 
+#include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
+
 #include "yb/util/status.h"
 
 using std::endl;

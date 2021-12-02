@@ -11,15 +11,15 @@
 // under the License.
 //
 
-#include "yb/common/ql_resultset.h"
+#include "yb/tablet/abstract_tablet.h"
 
+#include "yb/common/ql_resultset.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
 #include "yb/docdb/cql_operation.h"
 #include "yb/docdb/pgsql_operation.h"
 
-#include "yb/tablet/abstract_tablet.h"
 #include "yb/util/trace.h"
 
 namespace yb {

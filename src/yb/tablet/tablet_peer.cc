@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/tablet/tablet_peer.h"
 
 #include <algorithm>
@@ -47,14 +48,19 @@
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/retryable_requests.h"
+
 #include "yb/docdb/consensus_frontier.h"
+
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/sysinfo.h"
+
 #include "yb/rocksdb/db/memtable.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/strand.h"
 #include "yb/rpc/thread_pool.h"
+
 #include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/operations/history_cutoff_operation.h"
 #include "yb/tablet/operations/operation_driver.h"
@@ -71,6 +77,7 @@
 #include "yb/tablet/tablet_peer_mm_ops.h"
 #include "yb/tablet/tablet_retention_policy.h"
 #include "yb/tablet/transaction_participant.h"
+
 #include "yb/util/debug-util.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"

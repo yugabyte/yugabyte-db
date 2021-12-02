@@ -551,7 +551,7 @@ std::once_flag init_threading_internal_once_flag;
 void InitThreadingInternal() {
   // Warm up the stack trace library. This avoids a race in libunwind initialization
   // by making sure we initialize it before we start any other threads.
-  ignore_result(GetStackTraceHex());
+  GetStackTraceHex();
   thread_manager = std::make_shared<ThreadMgr>();
 }
 

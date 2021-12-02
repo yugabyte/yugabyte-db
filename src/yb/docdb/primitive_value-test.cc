@@ -10,15 +10,22 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <limits>
 #include <string>
 
+#include <gtest/gtest.h>
+
+#include "yb/docdb/key_bytes.h"
 #include "yb/docdb/primitive_value.h"
+
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/net/net_util.h"
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
+#include "yb/util/string_trim.h"
 #include "yb/util/test_macros.h"
 
 using std::map;

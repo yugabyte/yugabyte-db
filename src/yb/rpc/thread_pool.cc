@@ -12,9 +12,11 @@
 // under the License.
 //
 //
+
 #include "yb/rpc/thread_pool.h"
 
 #include <condition_variable>
+#include <mutex>
 
 #include <cds/container/basket_queue.h>
 #include <cds/gc/dhp.h>

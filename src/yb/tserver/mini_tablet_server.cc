@@ -35,30 +35,27 @@
 #include <functional>
 #include <memory>
 #include <string>
-#include <vector>
 #include <utility>
 
 #include <glog/logging.h>
 
-#include "yb/gutil/macros.h"
-#include "yb/gutil/strings/substitute.h"
+#include "yb/common/index.h"
 #include "yb/common/schema.h"
-#include "yb/consensus/log.pb.h"
+
 #include "yb/consensus/consensus.pb.h"
+
+#include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
 
 #include "yb/rpc/messenger.h"
 
-#include "yb/server/metadata.h"
 #include "yb/server/rpc_server.h"
 
-#include "yb/tablet/tablet.h"
-#include "yb/common/common.pb.h"
 #include "yb/tablet/tablet-harness.h"
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
+
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
-
-#include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
 
 #include "yb/util/encrypted_file_factory.h"
 #include "yb/util/flag_tags.h"

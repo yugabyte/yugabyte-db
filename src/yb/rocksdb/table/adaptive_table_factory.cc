@@ -18,11 +18,10 @@
 //
 
 #ifndef ROCKSDB_LITE
+
 #include "yb/rocksdb/table/adaptive_table_factory.h"
 
-#include "yb/rocksdb/table/table_builder.h"
 #include "yb/rocksdb/table/format.h"
-#include "yb/rocksdb/port/port.h"
 
 namespace rocksdb {
 

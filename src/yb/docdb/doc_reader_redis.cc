@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/docdb/doc_reader_redis.h"
 
 #include <string>
@@ -17,6 +18,7 @@
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/transaction.h"
+
 #include "yb/docdb/deadline_info.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_ttl_util.h"
@@ -27,7 +29,8 @@
 #include "yb/docdb/subdocument.h"
 #include "yb/docdb/value.h"
 #include "yb/docdb/value_type.h"
-#include "yb/server/hybrid_clock.h"
+
+#include "yb/util/result.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 

@@ -11,12 +11,15 @@
 // under the License.
 //
 
+#include "yb/client/permissions.h"
+
 #include <atomic>
 
 #include "yb/client/client.h"
-#include "yb/client/permissions.h"
 
 #include "yb/master/master.pb.h"
+
+#include "yb/rpc/scheduler.h"
 
 #include "yb/util/result.h"
 

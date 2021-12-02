@@ -29,26 +29,22 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/gutil/hash/city.h"
 
 #include <sys/types.h>
-#include <algorithm>
+
+#include <glog/logging.h>
+
+#include "yb/gutil/endian.h"
+#include "yb/gutil/hash/hash128to64.h"
+
 using std::copy;
 using std::max;
 using std::min;
-using std::reverse;
-using std::sort;
 using std::swap;
-#include <utility>
 using std::make_pair;
 using std::pair;
-
-#include "yb/gutil/int128.h"
-#include "yb/gutil/integral_types.h"
-#include <glog/logging.h>
-#include "yb/gutil/logging-inl.h"
-#include "yb/gutil/hash/hash128to64.h"
-#include "yb/gutil/endian.h"
 
 namespace util_hash {
 

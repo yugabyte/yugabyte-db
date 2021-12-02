@@ -12,11 +12,13 @@
 //
 
 #include <signal.h>
+
 #include <thread>
+
 #include <gtest/gtest.h>
 
-#include "yb/util/test_util.h"
 #include "yb/util/shared_mem.h"
+#include "yb/util/test_util.h"
 
 using namespace std::literals;
 

@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/tablet/tablet_bootstrap.h"
 
 #include <map>
@@ -39,25 +40,30 @@
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/schema.h"
+#include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
-#include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus_meta.h"
-#include "yb/consensus/consensus_types.h"
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/log_index.h"
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/log_util.h"
+#include "yb/consensus/opid_util.h"
 #include "yb/consensus/retryable_requests.h"
+
 #include "yb/docdb/consensus_frontier.h"
-#include "yb/gutil/callback.h"
+
 #include "yb/gutil/casts.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/thread_annotations.h"
+
 #include "yb/rpc/rpc_fwd.h"
+
+#include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/mvcc.h"
 #include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/operations/history_cutoff_operation.h"
@@ -68,13 +74,14 @@
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/snapshot_coordinator.h"
 #include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_snapshots.h"
 #include "yb/tablet/tablet_splitter.h"
 #include "yb/tablet/transaction_coordinator.h"
 #include "yb/tablet/transaction_participant.h"
+
 #include "yb/tserver/backup.pb.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/env_util.h"
 #include "yb/util/fault_injection.h"
@@ -82,13 +89,11 @@
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metric_entity.h"
-#include "yb/util/metrics_fwd.h"
 #include "yb/util/monotime.h"
 #include "yb/util/opid.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/stopwatch.h"
 
 DEFINE_bool(skip_remove_old_recovery_dir, false,

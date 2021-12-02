@@ -20,9 +20,12 @@
 #include <memory>
 #include <string>
 #include <vector>
-#include "yb/rocksdb/util/mock_env.h"
-#include "yb/rocksdb/env.h"
+
 #include <gtest/gtest.h>
+
+#include "yb/rocksdb/util/mock_env.h"
+
+#include "yb/util/status.h"
 #include "yb/util/test_macros.h"
 
 namespace rocksdb {

@@ -12,6 +12,7 @@
 // under the License.
 //
 //
+
 #include "yb/util/opid.h"
 
 #include <algorithm>

@@ -22,6 +22,7 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "yb/rocksdb/db/db_test_util.h"
+#include "yb/rocksdb/db/job_context.h"
 #include "yb/rocksdb/port/stack_trace.h"
 #if !defined(ROCKSDB_LITE)
 #include "yb/rocksdb/util/sync_point.h"

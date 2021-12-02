@@ -58,9 +58,9 @@
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
-
 #include "yb/util/async_util.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
 using namespace std::literals;

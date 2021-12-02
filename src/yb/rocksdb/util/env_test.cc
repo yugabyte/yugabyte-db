@@ -46,9 +46,11 @@
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/log_buffer.h"
 #include "yb/rocksdb/util/mutexlock.h"
-#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
+
+#include "yb/util/string_util.h"
+#include "yb/util/test_util.h"
 
 namespace rocksdb {
 

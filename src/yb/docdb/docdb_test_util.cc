@@ -17,28 +17,30 @@
 #include <memory>
 #include <sstream>
 
-#include "yb/rocksdb/table.h"
-
 #include "yb/common/hybrid_time.h"
+
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_reader.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_compaction_filter.h"
+#include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/in_mem_docdb.h"
+
 #include "yb/gutil/strings/substitute.h"
+
+#include "yb/rocksdb/db/filename.h"
+
 #include "yb/rocksutil/write_batch_formatter.h"
+
 #include "yb/util/bytes_formatter.h"
+#include "yb/util/env.h"
 #include "yb/util/path_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/test_macros.h"
-#include "yb/util/test_util.h"
 #include "yb/util/tostring.h"
-#include "yb/util/algorithm_util.h"
-#include "yb/util/string_util.h"
-#include "yb/rocksdb/db/filename.h"
 
 using std::endl;
 using std::make_shared;

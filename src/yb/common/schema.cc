@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/common/schema.h"
 
 #include <algorithm>
@@ -37,9 +38,11 @@
 #include "yb/common/key_encoder.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/row.h"
+
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/join.h"
+
 #include "yb/util/malloc.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"

@@ -17,7 +17,6 @@
 
 #include "yb/tserver/remote_bootstrap_client-test.h"
 
-
 using std::shared_ptr;
 
 namespace yb {

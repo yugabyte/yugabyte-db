@@ -29,6 +29,8 @@
 #include <map>
 #include <string>
 
+#include <boost/function.hpp>
+
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/db_test_util.h"

@@ -10,13 +10,17 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/docdb/value.h"
 
 #include <string>
 
 #include "yb/common/table_properties_constants.h"
+
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/fast_varint.h"
+#include "yb/util/kv_util.h"
 #include "yb/util/result.h"
 
 namespace yb {

@@ -17,8 +17,8 @@
 // A collection of methods to convert back and forth between a number
 // and a human-readable string representing the number.
 
-#ifndef STRINGS_HUMAN_READABLE_H__
-#define STRINGS_HUMAN_READABLE_H__
+#ifndef YB_GUTIL_STRINGS_HUMAN_READABLE_H
+#define YB_GUTIL_STRINGS_HUMAN_READABLE_H
 
 #include <functional>
 using std::binary_function;
@@ -26,7 +26,6 @@ using std::less;
 #include <string>
 using std::string;
 
-#include "yb/gutil/basictypes.h"
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/macros.h"
 
@@ -173,4 +172,4 @@ class HumanReadableElapsedTime {
   DISALLOW_IMPLICIT_CONSTRUCTORS(HumanReadableElapsedTime);
 };
 
-#endif  // STRINGS_HUMAN_READABLE_H__
+#endif  // YB_GUTIL_STRINGS_HUMAN_READABLE_H

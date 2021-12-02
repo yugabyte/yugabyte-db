@@ -17,7 +17,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/rocksdb/db/auto_roll_logger.h"
+
 #include "yb/rocksdb/util/mutexlock.h"
 
 #include "yb/util/path_util.h"

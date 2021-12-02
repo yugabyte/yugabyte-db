@@ -29,17 +29,23 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/tools/ysck_remote.h"
 
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
+
+#include "yb/gutil/callback.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/master/master.proxy.h"
 #include "yb/master/master_util.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
+
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/result.h"
@@ -155,7 +161,7 @@ class ChecksumStepper {
     auto handler = std::make_unique<ChecksumCallbackHandler>(this);
     rpc::ResponseCallback cb = std::bind(&ChecksumCallbackHandler::Run, handler.get());
     proxy_->ChecksumAsync(req_, &resp_, &rpc_, cb);
-    ignore_result(handler.release());
+    handler.release();
   }
 
   const Schema schema_;
@@ -185,7 +191,7 @@ void RemoteYsckTabletServer::RunTabletChecksumScanAsync(
   std::unique_ptr<ChecksumStepper> stepper(
       new ChecksumStepper(tablet_id, schema, uuid(), options, callback, ts_proxy_));
   stepper->Start();
-  ignore_result(stepper.release()); // Deletes self on callback.
+  stepper.release(); // Deletes self on callback.
 }
 
 Status RemoteYsckMaster::Connect() const {

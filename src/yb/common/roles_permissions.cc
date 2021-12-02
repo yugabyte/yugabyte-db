@@ -12,6 +12,9 @@
 //
 
 #include "yb/common/roles_permissions.h"
+
+#include <glog/logging.h>
+
 #include "yb/gutil/strings/substitute.h"
 
 namespace yb {

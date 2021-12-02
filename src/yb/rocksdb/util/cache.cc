@@ -20,6 +20,7 @@
 // Copyright (c) 2011 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
+
 #include <assert.h>
 #include <stdio.h>
 
@@ -30,6 +31,8 @@
 #include "yb/rocksdb/util/hash.h"
 #include "yb/rocksdb/util/mutexlock.h"
 #include "yb/rocksdb/util/statistics.h"
+
+#include "yb/util/cache_metrics.h"
 #include "yb/util/enums.h"
 #include "yb/util/metrics.h"
 #include "yb/util/random_util.h"

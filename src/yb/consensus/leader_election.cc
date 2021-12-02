@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/consensus/leader_election.h"
 
 #include <functional>
@@ -37,13 +38,16 @@
 #include <glog/logging.h>
 
 #include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/metadata.pb.h"
-#include "yb/consensus/opid_util.h"
+
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/port.h"
 #include "yb/gutil/strings/join.h"
+
 #include "yb/rpc/rpc_controller.h"
+
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"

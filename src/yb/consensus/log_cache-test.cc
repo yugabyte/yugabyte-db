@@ -40,13 +40,18 @@
 #include <gtest/gtest.h>
 
 #include "yb/common/wire_protocol-test-util.h"
+
 #include "yb/consensus/consensus-test-util.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_cache.h"
+
 #include "yb/fs/fs_manager.h"
-#include "yb/gutil/bind_helpers.h"
+
+#include "yb/gutil/bind.h"
 #include "yb/gutil/stl_util.h"
+
 #include "yb/server/hybrid_clock.h"
+
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"

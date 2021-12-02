@@ -10,16 +10,20 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/client/table_creator.h"
 
 #include "yb/client/client-internal.h"
 #include "yb/client/client.h"
 #include "yb/client/table_info.h"
+
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+
 #include "yb/yql/redis/redisserver/redis_constants.h"
 
 DECLARE_bool(client_suppress_created_logs);

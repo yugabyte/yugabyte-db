@@ -19,10 +19,12 @@
 //
 
 #include "yb/rocksdb/db/write_thread.h"
+#include <thread>
+
 #include <chrono>
 #include <limits>
-#include <thread>
-#include "yb/rocksdb/db/column_family.h"
+
+#include "yb/rocksdb/db/write_batch_internal.h"
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/util/random.h"
 #include "yb/rocksdb/util/sync_point.h"

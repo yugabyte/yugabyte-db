@@ -20,12 +20,14 @@
 // Copyright (c) 2011 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
+
 #include "yb/rocksdb/table/block_based_table_reader.h"
 
 #include <string>
 #include <utility>
 
 #include "yb/gutil/macros.h"
+
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/db/dbformat.h"
@@ -49,16 +51,20 @@
 #include "yb/rocksdb/table/index_reader.h"
 #include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/rocksdb/table/meta_blocks.h"
+#include "yb/rocksdb/table/table_properties_internal.h"
 #include "yb/rocksdb/table/two_level_iterator.h"
 #include "yb/rocksdb/table_properties.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
+#include "yb/rocksdb/util/statistics.h"
 #include "yb/rocksdb/util/stop_watch.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/stats/perf_step_timer.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 

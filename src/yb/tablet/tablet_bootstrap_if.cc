@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/tablet/tablet_bootstrap_if.h"
 
 #include <atomic>
@@ -41,13 +42,16 @@
 
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/log.h"
+
 #include "yb/gutil/callback.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/thread_annotations.h"
-#include "yb/tablet/tablet_bootstrap.h"
+
 #include "yb/tablet/tablet_fwd.h"
+#include "yb/tablet/tablet_bootstrap.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_options.h"
+
 #include "yb/util/debug/trace_event.h"
 
 namespace yb {

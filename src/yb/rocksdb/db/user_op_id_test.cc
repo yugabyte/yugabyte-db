@@ -17,13 +17,11 @@
 
 #include <gtest/gtest.h>
 
-#include "yb/rocksdb/db.h"
-
 #include "yb/rocksdb/db/write_batch_internal.h"
 #include "yb/rocksdb/env.h"
-#include "yb/rocksdb/util/logging.h"
-#include "yb/util/test_macros.h"
 #include "yb/rocksdb/util/testutil.h"
+
+#include "yb/util/test_macros.h"
 
 using std::string;
 

@@ -34,6 +34,7 @@
 // Utilities for working with protobufs.
 // Some of this code is cribbed from the protobuf source,
 // but modified to work with yb's 'faststring' instead of STL strings.
+
 #include "yb/util/pb_util.h"
 
 #include <memory>
@@ -55,6 +56,7 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/fastmem.h"
+
 #include "yb/util/coding-inl.h"
 #include "yb/util/coding.h"
 #include "yb/util/crc.h"

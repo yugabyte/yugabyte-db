@@ -22,18 +22,14 @@
 
 #include <assert.h>
 #include <string.h>
+
 #include <algorithm>
+
 using std::copy;
 using std::max;
 using std::min;
-using std::reverse;
-using std::sort;
 using std::swap;
-#include <string>
 using std::string;
-
-#include "yb/gutil/strings/ascii_ctype.h"
-#include "yb/gutil/strings/stringpiece.h"
 
 string StripPrefixString(GStringPiece str, const GStringPiece& prefix) {
   if (str.starts_with(prefix))

@@ -1346,7 +1346,8 @@ TEST_P(DeleteTableTombstonedParamTest, TestTabletTombstone) {
   ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(kTsIndex), fault_flag, "1.0"));
   tablet_id = tablets[1].tablet_status().tablet_id();
   LOG(INFO) << "Tombstoning second tablet " << tablet_id << "...";
-  ignore_result(itest::DeleteTablet(ts, tablet_id, TABLET_DATA_TOMBSTONED, boost::none, timeout));
+  WARN_NOT_OK(itest::DeleteTablet(ts, tablet_id, TABLET_DATA_TOMBSTONED, boost::none, timeout),
+              "Delete tablet failed");
   ASSERT_OK(cluster_->WaitForTSToCrash(kTsIndex));
 
   // Restart the tablet server and wait for the WALs to be deleted and for the

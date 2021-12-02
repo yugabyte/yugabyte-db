@@ -26,25 +26,25 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>           // for FastTimeToBuffer()
+
 #include <algorithm>
+
+#include <glog/logging.h>
+
+#include "yb/gutil/stl_util.h"  // for string_as_array, STLAppendToString
+#include "yb/gutil/strings/ascii_ctype.h"
+#include "yb/gutil/strings/numbers.h"
+#include "yb/gutil/utf/utf.h"
+
 using std::copy;
 using std::max;
 using std::min;
 using std::reverse;
 using std::sort;
 using std::swap;
-#include <string>
 using std::string;
-#include <vector>
 using std::vector;
 
-#include <glog/logging.h>
-#include "yb/gutil/logging-inl.h"
-#include "yb/gutil/strings/ascii_ctype.h"
-#include "yb/gutil/strings/numbers.h"
-#include "yb/gutil/strings/stringpiece.h"
-#include "yb/gutil/stl_util.h"  // for string_as_array, STLAppendToString
-#include "yb/gutil/utf/utf.h"
 
 #ifdef OS_WINDOWS
 #ifdef min  // windows.h defines this to something silly

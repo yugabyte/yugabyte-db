@@ -12,13 +12,17 @@
 //
 //
 // This file contains the QLValue class that represents QL values.
+
 #include "yb/common/ql_value.h"
 
 #include <glog/logging.h>
 
 #include "yb/common/jsonb.h"
 #include "yb/common/ql_protocol_util.h"
+#include "yb/common/ql_type.h"
+
 #include "yb/gutil/strings/escaping.h"
+
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/date_time.h"
 #include "yb/util/decimal.h"

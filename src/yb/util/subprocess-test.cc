@@ -32,10 +32,10 @@
 
 #include <stdlib.h>
 
-#include <vector>
 #include <string>
 
 #include <gtest/gtest.h>
+
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
 

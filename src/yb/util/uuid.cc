@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/util/uuid.h"
 
 #include <boost/lexical_cast.hpp>
@@ -19,6 +20,7 @@
 #include <boost/uuid/uuid_io.hpp>
 
 #include "yb/gutil/endian.h"
+
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"

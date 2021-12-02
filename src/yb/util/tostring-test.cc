@@ -12,8 +12,10 @@
 // under the License.
 //
 //
+
 #include <deque>
 #include <list>
+#include <memory>
 #include <unordered_map>
 #include <vector>
 

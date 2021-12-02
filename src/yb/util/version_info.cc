@@ -29,9 +29,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/util/version_info.h"
 
-#include <atomic>
 #include <fstream>
 #include <string>
 

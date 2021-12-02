@@ -48,11 +48,11 @@
 #include "yb/rpc/rpc_header.pb.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/metrics.h"
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/socket.h"
-#include "yb/util/countdown_latch.h"
-#include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 

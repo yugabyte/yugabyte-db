@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/client/meta_cache.h"
 
 #include <stdint.h>
@@ -53,23 +54,27 @@
 #include "yb/client/schema.h"
 #include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
+
 #include "yb/common/wire_protocol.h"
+
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
-#include "yb/rpc/rpc.h"
+
 #include "yb/rpc/rpc_fwd.h"
+
 #include "yb/tserver/local_tablet_server.h"
 #include "yb/tserver/tserver_service.proxy.h"
+
 #include "yb/util/async_util.h"
 #include "yb/util/atomic.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
-#include "yb/util/metrics_fwd.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/net/net_util.h"
@@ -79,7 +84,6 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/unique_lock.h"
 
 using std::map;

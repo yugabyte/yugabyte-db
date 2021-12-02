@@ -22,6 +22,7 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "yb/rocksdb/db/db_impl.h"
+#include "yb/rocksdb/db/version_set.h"
 
 namespace rocksdb {
 

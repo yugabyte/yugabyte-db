@@ -10,10 +10,11 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/docdb/lock_batch.h"
 
 #include "yb/docdb/shared_lock_manager.h"
-#include "yb/util/shared_lock.h"
+
 #include "yb/util/status_format.h"
 
 DEFINE_bool(dump_lock_keys, true,

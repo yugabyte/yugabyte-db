@@ -23,7 +23,6 @@
 #include "yb/rpc/rpc_introspection.pb.h"
 
 #include "yb/util/string_util.h"
-#include <glog/logging.h>
 
 namespace yb {
 namespace rpc {

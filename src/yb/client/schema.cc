@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/client/schema.h"
 
 #include <unordered_map>
@@ -36,12 +37,15 @@
 #include <glog/logging.h>
 
 #include "yb/client/schema-internal.h"
+
 #include "yb/common/partial_row.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 

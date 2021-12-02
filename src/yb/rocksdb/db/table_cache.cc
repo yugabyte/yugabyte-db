@@ -26,20 +26,20 @@
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/version_edit.h"
-
 #include "yb/rocksdb/statistics.h"
+#include "yb/rocksdb/table.h"
+#include "yb/rocksdb/table/get_context.h"
 #include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/rocksdb/table/iterator_wrapper.h"
 #include "yb/rocksdb/table/table_builder.h"
 #include "yb/rocksdb/table/table_reader.h"
-#include "yb/rocksdb/table/get_context.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
-#include "yb/rocksdb/util/stop_watch.h"
 #include "yb/rocksdb/util/sync_point.h"
 
 #include "yb/util/logging.h"
+#include "yb/util/stats/perf_step_timer.h"
 
 namespace rocksdb {
 

@@ -21,16 +21,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-
 #include "yb/rocksdb/table/block_based_table_factory.h"
 
 #include <stdint.h>
+
 #include <memory>
 #include <string>
 
-#include "yb/rocksdb/port/port.h"
-#include "yb/rocksdb/flush_block_policy.h"
 #include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/filter_policy.h"
+#include "yb/rocksdb/flush_block_policy.h"
+#include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/table/block_based_table_builder.h"
 #include "yb/rocksdb/table/block_based_table_reader.h"
 #include "yb/rocksdb/table/format.h"

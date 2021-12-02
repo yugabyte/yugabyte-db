@@ -37,11 +37,11 @@
  */
 
 #ifndef ROCKSDB_LITE
+
 #include "yb/rocksdb/utilities/redis/redis_lists.h"
 
 #include <iostream>
 #include <memory>
-#include <cmath>
 
 #include "yb/rocksdb/util/coding.h"
 

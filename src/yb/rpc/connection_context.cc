@@ -10,11 +10,12 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/rpc/connection_context.h"
 
 #include "yb/rpc/connection.h"
+
 #include "yb/util/mem_tracker.h"
-#include "yb/util/size_literals.h"
 
 DEFINE_int64(read_buffer_memory_limit, -5,
              "Overall limit for read buffers. "

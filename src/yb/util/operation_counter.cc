@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/util/operation_counter.h"
 
 #include <thread>
@@ -17,6 +18,7 @@
 #include <glog/logging.h>
 
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/logging.h"
 #include "yb/util/status_format.h"

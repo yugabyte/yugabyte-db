@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <thread>
 
 #include <boost/algorithm/string.hpp>
@@ -18,6 +19,7 @@
 
 #include "yb/client/client.h"
 #include "yb/client/table.h"
+
 #include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/jsonb.h"
@@ -25,20 +27,26 @@
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/docdb/cql_operation.h"
 #include "yb/docdb/doc_operation.h"
-#include "yb/docdb/docdb.h"
+
 #include "yb/master/master.pb.h"
 #include "yb/master/master_util.h"
+
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/options.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
+
 #include "yb/tools/bulk_load_docdb_util.h"
 #include "yb/tools/bulk_load_utils.h"
 #include "yb/tools/yb-generate_partitions.h"
+
 #include "yb/tserver/tserver_service.proxy.h"
+
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"

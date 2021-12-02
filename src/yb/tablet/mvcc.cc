@@ -29,12 +29,14 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/tablet/mvcc.h"
 
 #include <boost/circular_buffer.hpp>
 #include <boost/variant.hpp>
 
 #include "yb/gutil/macros.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/compare_util.h"
 #include "yb/util/enums.h"

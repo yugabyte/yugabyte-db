@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/tools/fs_tool.h"
 
 #include <algorithm>
@@ -36,19 +37,24 @@
 #include <memory>
 #include <vector>
 
-#include <boost/function.hpp>
 #include <glog/logging.h>
 
 #include "yb/common/schema.h"
+
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/log_util.h"
+
 #include "yb/fs/fs_manager.h"
+
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
+
 #include "yb/master/sys_catalog_constants.h"
+
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_options.h"
+
 #include "yb/util/env.h"
 #include "yb/util/status.h"
 

@@ -27,6 +27,8 @@
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/util/testharness.h"
 
+#include "yb/util/test_util.h"
+
 namespace rocksdb {
 
 class MemEnvTest : public testing::Test {

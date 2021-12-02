@@ -10,12 +10,14 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <string>
 
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
 #include "yb/gutil/casts.h"
+
 #include "yb/util/encrypted_file_factory.h"
 #include "yb/util/encryption_test_util.h"
 #include "yb/util/encryption_util.h"

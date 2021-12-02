@@ -59,10 +59,12 @@
 #include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/mutexlock.h"
 #include "yb/rocksdb/util/statistics.h"
-#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
+
+#include "yb/util/string_util.h"
+#include "yb/util/test_util.h"
 
 #if !defined(IOS_CROSS_COMPILE)
 #ifndef ROCKSDB_LITE

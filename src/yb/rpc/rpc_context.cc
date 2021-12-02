@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/rpc/rpc_context.h"
 
 #include <sstream>
@@ -42,6 +43,7 @@
 #include "yb/rpc/reactor.h"
 #include "yb/rpc/service_if.h"
 #include "yb/rpc/yb_rpc.h"
+
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/format.h"
 #include "yb/util/jsonwriter.h"

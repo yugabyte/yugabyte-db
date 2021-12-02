@@ -29,14 +29,19 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/consensus/consensus_meta.h"
 
 #include "yb/common/entity_ids_types.h"
+#include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
+
 #include "yb/fs/fs_manager.h"
+
 #include "yb/util/logging.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"

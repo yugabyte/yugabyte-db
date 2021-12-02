@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/tablet/tablet_retention_policy.h"
 
 #include <iosfwd>
@@ -23,19 +24,22 @@
 #include "yb/common/schema.h"
 #include "yb/common/snapshot.h"
 #include "yb/common/transaction_error.h"
+
 #include "yb/docdb/doc_ttl_util.h"
 #include "yb/docdb/docdb_compaction_filter.h"
-#include "yb/docdb/docdb_fwd.h"
+
 #include "yb/gutil/ref_counted.h"
+
 #include "yb/rocksdb/options.h"
-#include "yb/rocksdb/table.h"
 #include "yb/rocksdb/types.h"
+
 #include "yb/server/hybrid_clock.h"
+
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/tablet_metadata.h"
+
 #include "yb/util/enums.h"
 #include "yb/util/logging.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/strongly_typed_bool.h"
 
 using namespace std::literals;

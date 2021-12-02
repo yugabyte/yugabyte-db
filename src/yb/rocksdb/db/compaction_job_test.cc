@@ -28,6 +28,7 @@
 #include "yb/rocksdb/db/compaction_job.h"
 #include "yb/rocksdb/db/column_family.h"
 #include "yb/rocksdb/db/file_numbers.h"
+#include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/db/writebuffer.h"
 #include "yb/rocksdb/cache.h"
@@ -38,7 +39,9 @@
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/utilities/merge_operators.h"
+
 #include "yb/util/string_util.h"
+#include "yb/util/test_util.h"
 
 namespace rocksdb {
 

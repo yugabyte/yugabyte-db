@@ -13,7 +13,16 @@
 
 #include "yb/tserver/remote_bootstrap_session-test.h"
 
+#include "yb/common/wire_protocol.h"
+
+#include "yb/consensus/consensus.h"
+#include "yb/consensus/log.h"
+
+#include "yb/gutil/bind.h"
+
+#include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
 
 namespace yb {
 namespace tserver {

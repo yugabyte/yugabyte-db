@@ -29,13 +29,16 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/consensus/peer_manager.h"
 
 #include <mutex>
 
 #include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/log.h"
+
 #include "yb/gutil/map-util.h"
+
 #include "yb/util/logging.h"
 #include "yb/util/threadpool.h"
 

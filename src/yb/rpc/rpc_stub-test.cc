@@ -38,12 +38,13 @@
 #include <gtest/gtest.h>
 
 #include "yb/gutil/stl_util.h"
+
 #include "yb/rpc/proxy.h"
+#include "yb/rpc/rpc-test-base.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/rtest.proxy.h"
 #include "yb/rpc/rtest.service.h"
-#include "yb/rpc/rpc-test-base.h"
-#include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/yb_rpc.h"
 
 #include "yb/util/countdown_latch.h"
@@ -54,9 +55,9 @@
 #include "yb/util/subprocess.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
 #include "yb/util/tostring.h"
 #include "yb/util/user.h"
-#include "yb/util/net/net_util.h"
 
 DEFINE_bool(is_panic_test_child, false, "Used by TestRpcPanic");
 DECLARE_bool(socket_inject_short_recvs);

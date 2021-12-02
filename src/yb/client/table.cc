@@ -10,14 +10,18 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/client/table.h"
 
 #include "yb/client/client.h"
 #include "yb/client/table_info.h"
 #include "yb/client/yb_op.h"
+
 #include "yb/master/master.pb.h"
+
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
+#include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
 #include "yb/util/unique_lock.h"
 

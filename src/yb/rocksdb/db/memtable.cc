@@ -23,13 +23,11 @@
 
 #include "yb/rocksdb/db/memtable.h"
 
-#include <memory>
 #include <algorithm>
 #include <limits>
 
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/merge_context.h"
-#include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/merge_operator.h"
@@ -43,9 +41,8 @@
 #include "yb/rocksdb/util/statistics.h"
 #include "yb/rocksdb/util/stop_watch.h"
 
-#include "yb/gutil/macros.h"
-
 #include "yb/util/mem_tracker.h"
+#include "yb/util/stats/perf_step_timer.h"
 
 using std::ostringstream;
 

@@ -20,6 +20,8 @@
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/primitive_value_util.h"
 
+#include "yb/util/result.h"
+
 namespace yb {
 namespace docdb {
 

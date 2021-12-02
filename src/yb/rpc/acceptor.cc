@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/rpc/acceptor.h"
 
 #include <inttypes.h>
@@ -49,7 +50,9 @@
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/rpc/reactor.h"
+
 #include "yb/util/flag_tags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"

@@ -44,7 +44,6 @@
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/fs/fs_manager.h"
 #include "yb/server/logical_clock.h"
-#include "yb/server/metadata.h"
 
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/tablet_metadata.h"

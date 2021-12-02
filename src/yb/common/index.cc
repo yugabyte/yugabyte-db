@@ -13,10 +13,12 @@
 //
 // Classes that implement secondary index.
 //--------------------------------------------------------------------------------------------------
+
 #include "yb/common/index.h"
 
 #include "yb/common/common.pb.h"
 #include "yb/common/schema.h"
+
 #include "yb/util/result.h"
 
 using std::vector;

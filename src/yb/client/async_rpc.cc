@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/client/async_rpc.h"
 
 #include "yb/client/batcher.h"
@@ -19,20 +20,25 @@
 #include "yb/client/table.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
+
 #include "yb/common/pgsql_error.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
 #include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/rpc/rpc_controller.h"
+
 #include "yb/util/cast.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
+#include "yb/util/trace.h"
 #include "yb/util/yb_pg_errcodes.h"
 
 // TODO: do we need word Redis in following two metrics? ReadRpc and WriteRpc objects emitting

@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/docdb/docdb.h"
 
 #include <algorithm>
@@ -23,9 +24,9 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/transaction.h"
+
 #include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/cql_operation.h"
-#include "yb/docdb/deadline_info.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/docdb_debug.h"
@@ -38,10 +39,14 @@
 #include "yb/docdb/transaction_dump.h"
 #include "yb/docdb/value.h"
 #include "yb/docdb/value_type.h"
+
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/rocksutil/write_batch_formatter.h"
+
 #include "yb/server/hybrid_clock.h"
+
 #include "yb/util/bitmap.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/enums.h"
@@ -53,6 +58,7 @@
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+
 #include "yb/yql/cql/ql/util/errcodes.h"
 
 using std::endl;

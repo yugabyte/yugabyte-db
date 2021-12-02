@@ -475,10 +475,11 @@ void RemoteBootstrapITest::RejectRogueLeader(YBTableType table_type) {
   // It's not necessarily part of the API but this could return faliure due to
   // rejecting the remote. We intend to make that part async though, so ignoring
   // this return value in this test.
-  ignore_result(itest::StartRemoteBootstrap(ts, tablet_id, zombie_leader_uuid,
-                                            HostPort(zombie_ets->bound_rpc_addr()),
-                                            2, // Say I'm from term 2.
-                                            timeout));
+  WARN_NOT_OK(itest::StartRemoteBootstrap(ts, tablet_id, zombie_leader_uuid,
+                                          HostPort(zombie_ets->bound_rpc_addr()),
+                                          2, // Say I'm from term 2.
+                                          timeout),
+              "Start remote bootstrap failed");
 
   // Wait another few seconds to be sure the remote bootstrap is rejected.
   deadline = MonoTime::Now();

@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/common/doc_hybrid_time.h"
 
 #include "yb/util/bytes_formatter.h"

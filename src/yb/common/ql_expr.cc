@@ -1,12 +1,15 @@
 //--------------------------------------------------------------------------------------------------
 // Copyright (c) YugaByte, Inc.
 //--------------------------------------------------------------------------------------------------
+
 #include "yb/common/ql_expr.h"
 
 #include "yb/common/jsonb.h"
+#include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/ql_bfunc.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
+
 #include "yb/util/result.h"
 
 namespace yb {

@@ -29,6 +29,8 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
+#include <gtest/gtest.h>
+
 #include "yb/rocksdb/db.h"
 
 #include "yb/rocksdb/cache.h"
@@ -42,6 +44,8 @@
 #include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
+
+#include "yb/util/test_macros.h"
 
 namespace rocksdb {
 

@@ -33,7 +33,6 @@
 #define YB_MASTER_CATALOG_MANAGER_INTERNAL_H
 
 #include "yb/common/wire_protocol.h"
-#include "yb/gutil/basictypes.h"
 #include "yb/master/master_error.h"
 #include "yb/master/scoped_leader_shared_lock-internal.h"
 #include "yb/rpc/rpc_context.h"

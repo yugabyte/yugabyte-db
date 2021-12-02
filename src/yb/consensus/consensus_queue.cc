@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/consensus/consensus_queue.h"
 
 #include <algorithm>
@@ -40,17 +41,19 @@
 #include <boost/container/small_vector.hpp>
 #include <glog/logging.h>
 
-#include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus_context.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/replicate_msgs_holder.h"
+
+#include "yb/gutil/bind.h"
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/enums.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/flag_tags.h"

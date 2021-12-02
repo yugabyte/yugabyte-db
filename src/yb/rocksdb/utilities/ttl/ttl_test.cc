@@ -31,6 +31,8 @@
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/logging.h"
 
+#include "yb/util/test_util.h"
+
 namespace rocksdb {
 
 namespace {

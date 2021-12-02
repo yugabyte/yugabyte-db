@@ -11,9 +11,10 @@
 // under the License.
 //
 
-#include <gtest/gtest.h>
 #include <gflags/gflags.h>
+
 #include "yb/util/flags.h"
+#include "yb/util/status.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
 

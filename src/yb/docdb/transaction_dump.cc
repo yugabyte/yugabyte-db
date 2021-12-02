@@ -10,9 +10,11 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/docdb/transaction_dump.h"
 
 #include <condition_variable>
+#include <mutex>
 
 #include <glog/logging.h>
 

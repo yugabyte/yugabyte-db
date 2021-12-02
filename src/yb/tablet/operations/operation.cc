@@ -37,9 +37,9 @@
 #include "yb/tablet/tablet.h"
 
 #include "yb/tserver/tserver_error.h"
-#include "yb/util/logging.h"
 
 #include "yb/util/async_util.h"
+#include "yb/util/logging.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/trace.h"
 

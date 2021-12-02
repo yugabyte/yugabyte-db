@@ -23,9 +23,10 @@
 
 #include <set>
 
+#include <gtest/gtest.h>
+
 #include "yb/rocksdb/db/inlineskiplist.h"
 #include "yb/rocksdb/db/skiplist.h"
-
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/util/concurrent_arena.h"
 #include "yb/rocksdb/util/hash.h"

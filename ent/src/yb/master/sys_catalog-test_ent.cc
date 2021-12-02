@@ -11,6 +11,7 @@
 // under the License.
 
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/sys_catalog-internal.h"
 #include "yb/master/sys_catalog-test_base.h"
 
 namespace yb {

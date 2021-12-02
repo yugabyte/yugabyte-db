@@ -22,10 +22,10 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include <string>
+
 #include <gtest/gtest.h>
 
 #include "yb/rocksdb/db/version_set.h"
-#include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/env.h"
 
 namespace rocksdb {

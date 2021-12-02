@@ -17,6 +17,7 @@
 
 #include <fstream>
 #include <chrono>
+#include <thread>
 
 #include "yb/server/total_mem_watcher.h"
 #include "yb/util/format.h"

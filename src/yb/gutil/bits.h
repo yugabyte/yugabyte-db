@@ -18,13 +18,12 @@
 
 #include <glog/logging.h>
 
-#include "yb/gutil/basictypes.h"
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/logging-inl.h"
 #include "yb/gutil/macros.h"
 
-#ifndef _BITS_H_
-#define _BITS_H_
+#ifndef YB_GUTIL_BITS_H
+#define YB_GUTIL_BITS_H
 
 class Bits {
  public:
@@ -278,4 +277,4 @@ inline bool Bits::BytesAllInRange(T bytes, uint8 lo, uint8 hi) {
                                          lo + (255 - hi));
 }
 
-#endif // _BITS_H_
+#endif // YB_GUTIL_BITS_H

@@ -13,9 +13,7 @@
 
 #include "yb/client/table_alterer.h"
 
-#include "yb/client/client.h"
 #include "yb/client/client-internal.h"
-#include "yb/client/schema.h"
 #include "yb/client/schema-internal.h"
 
 #include "yb/common/transaction.h"

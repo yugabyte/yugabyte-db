@@ -20,12 +20,14 @@
 // Copyright (c) 2011 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
+
 #include "yb/rocksdb/db/version_edit.h"
 
 #include "yb/rocksdb/db/version_edit.pb.h"
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/metadata.h"
 #include "yb/rocksdb/util/coding.h"
+
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/slice.h"

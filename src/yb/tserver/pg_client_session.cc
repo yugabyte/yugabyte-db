@@ -19,10 +19,9 @@
 
 #include "yb/common/ql_type.h"
 
-#include "yb/tserver/pg_create_table.h"
-
 #include "yb/rpc/rpc_context.h"
-#include "yb/util/format.h"
+
+#include "yb/tserver/pg_create_table.h"
 
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"

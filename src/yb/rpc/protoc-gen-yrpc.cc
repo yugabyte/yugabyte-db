@@ -34,6 +34,7 @@
 // Example usage:
 // protoc --plugin=protoc-gen-yrpc --yrpc_out . --proto_path . <file>.proto
 ////////////////////////////////////////////////////////////////////////////////
+
 #include <map>
 #include <memory>
 #include <string>
@@ -51,6 +52,7 @@
 #include "yb/gutil/strings/stringpiece.h"
 #include "yb/gutil/strings/strip.h"
 #include "yb/gutil/strings/util.h"
+
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_case.h"

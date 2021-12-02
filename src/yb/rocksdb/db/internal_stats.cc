@@ -31,9 +31,14 @@
 #include <algorithm>
 #include <utility>
 #include <vector>
-#include "yb/rocksdb/db/column_family.h"
 
+#include "yb/rocksdb/db/column_family.h"
+#include "yb/rocksdb/db/compaction_picker.h"
 #include "yb/rocksdb/db/db_impl.h"
+#include "yb/rocksdb/db/version_set.h"
+#include "yb/rocksdb/util/histogram.h"
+#include "yb/rocksdb/util/logging.h"
+
 #include "yb/util/string_util.h"
 
 namespace rocksdb {

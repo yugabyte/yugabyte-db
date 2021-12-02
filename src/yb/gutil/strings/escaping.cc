@@ -23,16 +23,19 @@
 #include <string.h>
 
 #include <limits>
-using std::numeric_limits;
+#include <memory>
 #include <vector>
-using std::vector;
 
+#include "yb/gutil/charmap.h"
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/port.h"
+#include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/utf/utf.h"  // for runetochar
-#include "yb/gutil/charmap.h"
-#include "yb/gutil/stl_util.h"
+
+using std::numeric_limits;
+using std::vector;
+
 
 namespace strings {
 

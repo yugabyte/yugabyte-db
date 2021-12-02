@@ -46,18 +46,17 @@
 #include <signal.h>
 #include <stdio.h>
 
-#include <iostream>
 #include <fstream>
+#include <iostream>
 #include <regex>
 
-#include <boost/uuid/uuid_io.hpp>
 #include <boost/uuid/uuid_generators.hpp>
-
+#include <boost/uuid/uuid_io.hpp>
 #include <glog/logging.h>
 
 #include "yb/gutil/callback.h"
-#include "yb/gutil/spinlock.h"
 #include "yb/gutil/ref_counted.h"
+#include "yb/gutil/spinlock.h"
 
 #include "yb/util/debug-util.h"
 #include "yb/util/flag_tags.h"

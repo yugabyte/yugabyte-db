@@ -51,12 +51,10 @@
 
 #include <algorithm>
 
-#include "yb/rocksdb/table/block_builder_internal.h"
-
 #include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/table/block_builder_internal.h"
 #include "yb/rocksdb/util/coding.h"
-#include "yb/util/logging.h"
 
 #include "yb/util/string_util.h"
 

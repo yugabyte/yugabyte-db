@@ -12,7 +12,10 @@
 
 #include "yb/tserver/remote_bootstrap_session-test.h"
 
+#include "yb/consensus/log.h"
+
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_snapshots.h"
 #include "yb/tablet/operations/snapshot_operation.h"
 

@@ -26,8 +26,6 @@
 #include <gtest/gtest.h>
 
 #include "yb/rocksdb/db/dbformat.h"
-#include "yb/rocksdb/util/logging.h"
-#include "yb/rocksdb/env.h"
 
 namespace rocksdb {
 

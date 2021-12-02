@@ -37,6 +37,7 @@
 #include <algorithm>
 #include <mutex>
 
+#include "yb/util/alignment.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/flag_tags.h"
 

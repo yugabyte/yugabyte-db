@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/util/decimal.h"
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"

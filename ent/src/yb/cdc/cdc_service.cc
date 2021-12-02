@@ -30,6 +30,7 @@
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/consensus/log.h"
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/replicate_msgs_holder.h"
 

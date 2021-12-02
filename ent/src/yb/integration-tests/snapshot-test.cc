@@ -17,6 +17,8 @@
 
 #include "yb/common/ql_value.h"
 
+#include "yb/consensus/consensus.h"
+
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/test_workload.h"

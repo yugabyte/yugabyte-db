@@ -18,8 +18,6 @@
 #include <functional>
 #include <unordered_map>
 
-#include "yb/bfql/directory.h"
-
 using std::function;
 using std::vector;
 using std::unordered_map;

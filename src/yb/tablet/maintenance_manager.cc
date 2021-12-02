@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/tablet/maintenance_manager.h"
 
 #include <stdint.h>
@@ -38,6 +39,7 @@
 #include <utility>
 
 #include "yb/gutil/stringprintf.h"
+
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/debug/trace_logging.h"
 #include "yb/util/flag_tags.h"

@@ -30,6 +30,7 @@
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver.pb.h"
 
+#include "yb/util/trace.h"
 
 using namespace std::literals;
 

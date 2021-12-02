@@ -38,13 +38,15 @@ int main() {
 #include <vector>
 #include <gflags/gflags.h>
 
-#include "dynamic_bloom.h"
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/util/arena.h"
+#include "yb/rocksdb/util/dynamic_bloom.h"
 #include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/util/stop_watch.h"
+
+#include "yb/util/test_util.h"
 
 using GFLAGS::ParseCommandLineFlags;
 

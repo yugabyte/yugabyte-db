@@ -15,6 +15,8 @@
 #include <fstream>
 #include <vector>
 
+#include <glog/logging.h>
+
 #include "yb/bfql/directory.h"
 #include "yb/common/ql_type.h"
 #include "yb/gutil/strings/substitute.h"
@@ -318,6 +320,7 @@ class BFCodegen {
 
     ftable << kFileStart
            << "#include \"yb/bfql/base_operator.h\"" << endl
+           << "#include \"yb/bfql/directory.h\"" << endl
            << "#include \"yb/bfql/gen_operator.h\"" << endl
            << endl
            << "#include <iostream>" << endl

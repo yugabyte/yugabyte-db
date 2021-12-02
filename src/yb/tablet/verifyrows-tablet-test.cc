@@ -40,9 +40,11 @@
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/tablet/local_tablet_writer.h"
-#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet-test-base.h"
+#include "yb/tablet/tablet.h"
+
 #include "yb/util/countdown_latch.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_graph.h"

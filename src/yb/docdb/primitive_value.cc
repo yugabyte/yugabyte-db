@@ -10,19 +10,24 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/docdb/primitive_value.h"
 
 #include <string>
 
 #include <glog/logging.h>
 
+#include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
+
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/intent.h"
+
 #include "yb/gutil/macros.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/compare_util.h"
 #include "yb/util/decimal.h"

@@ -28,20 +28,22 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
 #include <iomanip>
 #include <limits>
-using std::numeric_limits;
-#include <string>
 #include <sstream>
-using std::string;
+
+#include <glog/logging.h>
 
 #include "yb/gutil/int128.h"
 #include "yb/gutil/integral_types.h"
-#include <glog/logging.h>
-#include "yb/gutil/logging-inl.h"
 #include "yb/gutil/stringprintf.h"
-#include "yb/gutil/strtoint.h"
 #include "yb/gutil/strings/ascii_ctype.h"
+#include "yb/gutil/strtoint.h"
+
+using std::numeric_limits;
+using std::string;
+
 
 // Reads a <double> in *text, which may not be whitespace-initiated.
 // *len is the length, or -1 if text is '\0'-terminated, which is more

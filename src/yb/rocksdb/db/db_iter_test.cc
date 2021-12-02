@@ -18,18 +18,14 @@
 // under the License.
 //
 
-#include <string>
-#include <vector>
 #include <algorithm>
 #include <utility>
 
 #include "yb/rocksdb/db/db_iter.h"
-#include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/db_test_util.h"
-#include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/perf_context.h"
-#include "yb/util/slice.h"
+#include "yb/rocksdb/perf_level.h"
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/table/iterator_wrapper.h"
 #include "yb/rocksdb/table/merger.h"

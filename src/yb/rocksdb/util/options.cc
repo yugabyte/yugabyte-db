@@ -35,6 +35,7 @@
 #include "yb/rocksdb/compaction_filter.h"
 #include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/env.h"
+#include "yb/rocksdb/filter_policy.h"
 #include "yb/rocksdb/sst_file_manager.h"
 #include "yb/rocksdb/memtablerep.h"
 #include "yb/rocksdb/merge_operator.h"

@@ -23,9 +23,8 @@
   All code is released to the public domain. For business purposes, Murmurhash is
   under the MIT license.
 */
-#include "murmurhash.h"
 
-#include "yb/gutil/macros.h"
+#include "murmurhash.h"
 
 #if defined(__x86_64__)
 

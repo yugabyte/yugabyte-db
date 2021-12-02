@@ -42,8 +42,10 @@ int main() {
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/util/histogram.h"
 #include "yb/rocksdb/util/stop_watch.h"
-#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/testharness.h"
+
+#include "yb/util/string_util.h"
+#include "yb/util/test_util.h"
 
 using GFLAGS::ParseCommandLineFlags;
 

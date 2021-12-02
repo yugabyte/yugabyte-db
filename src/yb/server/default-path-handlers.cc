@@ -43,6 +43,7 @@
 
 #include "yb/server/default-path-handlers.h"
 
+#include <sys/stat.h>
 
 #include <fstream>
 #include <functional>

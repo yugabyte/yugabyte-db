@@ -29,9 +29,11 @@
 
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/util/delete_scheduler.h"
-#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/testharness.h"
+
+#include "yb/util/string_util.h"
+#include "yb/util/test_util.h"
 
 namespace rocksdb {
 

@@ -23,7 +23,9 @@
 
 #include "yb/rocksdb/db/db_test_util.h"
 #include "yb/rocksdb/port/stack_trace.h"
+
 #include "yb/util/stopwatch.h"
+#include "yb/util/tsan_util.h"
 
 namespace rocksdb {
 

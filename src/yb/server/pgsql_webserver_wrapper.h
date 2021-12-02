@@ -16,6 +16,8 @@
 #ifdef __cplusplus
 #include <atomic>
 using std::atomic_ullong;
+using int64 = int64_t;
+using uint8 = uint8_t;
 #else
 #include <stdatomic.h>
 #endif

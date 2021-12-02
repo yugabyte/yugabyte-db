@@ -29,17 +29,24 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/tablet/operations/change_metadata_operation.h"
 
 #include <glog/logging.h>
 
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus_round.h"
+#include "yb/consensus/log.h"
+
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
+
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_error.h"
+
+#include "yb/util/async_util.h"
 #include "yb/util/logging.h"
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"

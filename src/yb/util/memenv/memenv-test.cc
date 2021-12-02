@@ -19,14 +19,15 @@
 // Modified for yb:
 // - use gtest
 
-#include <string>
 #include <memory>
 #include <unordered_set>
 #include <vector>
 
+#include <glog/logging.h>
 #include <gtest/gtest.h>
 
 #include "yb/gutil/map-util.h"
+
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
 #include "yb/util/memenv/memenv.h"

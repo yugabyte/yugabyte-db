@@ -18,17 +18,20 @@
 // under the License.
 //
 
+#include <fstream>
 #include <string>
 #include <thread>
 #include <vector>
-#include <fstream>
-#include <algorithm>
 
+#include <gtest/gtest.h>
+
+#include "yb/rocksdb/db.h"
 #include "yb/rocksdb/db/auto_roll_logger.h"
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/testharness.h"
-#include "yb/rocksdb/db.h"
+
+#include "yb/util/test_macros.h"
 
 namespace rocksdb {
 

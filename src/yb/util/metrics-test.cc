@@ -35,11 +35,13 @@
 #include <unordered_set>
 #include <vector>
 
+#include <glog/logging.h>
 #include <gtest/gtest.h>
 #include <rapidjson/document.h>
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/map-util.h"
+
 #include "yb/util/hdr_histogram.h"
 #include "yb/util/histogram.pb.h"
 #include "yb/util/jsonreader.h"

@@ -30,6 +30,7 @@
 // under the License.
 //
 // Tool to query tablet server operational data
+
 #include <memory>
 
 #include <gflags/gflags.h>
@@ -39,16 +40,21 @@
 #include "yb/common/ql_rowblock.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus.proxy.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/secure_stream.h"
+
 #include "yb/server/secure.h"
 #include "yb/server/server_base.proxy.h"
+
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_admin.proxy.h"
+
 #include "yb/util/faststring.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"

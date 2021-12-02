@@ -34,10 +34,8 @@
 
 #include <gtest/gtest.h>
 #include <rapidjson/document.h>
-// Need to add rapidjson.h to the list of recognized third-party libraries in our linter.
 #include <rapidjson/rapidjson.h>  // NOLINT
 
-#include "yb/util/trace.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/debug/trace_event_synthetic_delay.h"
 #include "yb/util/debug/trace_logging.h"
@@ -46,6 +44,10 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
+#include "yb/util/trace.h"
+
+// Need to add rapidjson.h to the list of recognized third-party libraries in our linter.
+
 
 using yb::debug::TraceLog;
 using yb::debug::TraceResultBuffer;

@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/rpc/serialization.h"
 
 #include <google/protobuf/io/coded_stream.h>
@@ -36,8 +37,10 @@
 
 #include "yb/gutil/endian.h"
 #include "yb/gutil/stringprintf.h"
+
 #include "yb/rpc/constants.h"
 #include "yb/rpc/rpc_header.pb.h"
+
 #include "yb/util/faststring.h"
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/result.h"

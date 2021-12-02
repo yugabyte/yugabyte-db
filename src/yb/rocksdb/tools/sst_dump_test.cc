@@ -24,15 +24,16 @@
 #ifndef ROCKSDB_LITE
 
 #include <stdint.h>
-#include "yb/rocksdb/sst_dump_tool.h"
 
+#include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/filter_policy.h"
+#include "yb/rocksdb/sst_dump_tool.h"
 #include "yb/rocksdb/table/block_based_table_factory.h"
 #include "yb/rocksdb/table/table_builder.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
-#include "yb/rocksdb/util/testharness.h"
-#include "yb/rocksdb/util/testutil.h"
+
+#include "yb/util/test_util.h"
 
 namespace rocksdb {
 
@@ -235,7 +236,6 @@ int main(int argc, char** argv) {
 }
 
 #else
-#include <stdio.h>
 
 int main(int argc, char** argv) {
   fprintf(stderr, "SKIPPED as SSTDumpTool is not supported in ROCKSDB_LITE\n");

@@ -10,12 +10,17 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <string>
 
 #include "yb/common/doc_hybrid_time.h"
+
 #include "yb/gutil/ref_counted.h"
+
 #include "yb/server/hybrid_clock.h"
+
 #include "yb/util/bytes_formatter.h"
+#include "yb/util/string_trim.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 

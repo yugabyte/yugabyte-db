@@ -27,21 +27,21 @@
 
 #include <map>
 #include <set>
-#include "yb/rocksdb/db/db_impl.h"
-#include "yb/rocksdb/db/filename.h"
-#include "yb/rocksdb/db/log_format.h"
-#include "yb/rocksdb/db/version_set.h"
+
+#include <gtest/gtest.h>
+
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/db.h"
+#include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/table.h"
-#include "yb/rocksdb/write_batch.h"
-#include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/mock_env.h"
 #include "yb/rocksdb/util/mutexlock.h"
 #include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
+
+#include "yb/util/test_macros.h"
 
 namespace rocksdb {
 

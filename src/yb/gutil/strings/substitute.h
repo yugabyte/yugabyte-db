@@ -19,7 +19,6 @@
 #include <string>
 using std::string;
 
-#include "yb/gutil/basictypes.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/stringpiece.h"
 
