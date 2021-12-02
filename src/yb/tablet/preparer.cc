@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/tablet/preparer.h"
 
 #include <atomic>
@@ -23,8 +24,11 @@
 #include <gflags/gflags.h>
 
 #include "yb/consensus/consensus.h"
+
 #include "yb/gutil/macros.h"
+
 #include "yb/tablet/operations/operation_driver.h"
+
 #include "yb/util/flag_tags.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/logging.h"

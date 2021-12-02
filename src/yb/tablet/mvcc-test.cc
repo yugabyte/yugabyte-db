@@ -30,19 +30,21 @@
 // under the License.
 //
 
-#include <vector>
 #include <sstream>
 
-#include <gtest/gtest.h>
 #include <glog/logging.h>
 
 #include "yb/gutil/casts.h"
+
 #include "yb/server/logical_clock.h"
+
 #include "yb/tablet/mvcc.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/enums.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status.h"
 #include "yb/util/test_util.h"
 
 using namespace std::literals;

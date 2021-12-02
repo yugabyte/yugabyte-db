@@ -29,8 +29,10 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <gtest/gtest.h>
 
+#include "yb/util/env.h"
 #include "yb/util/path_util.h"
 #include "yb/util/status.h"
 #include "yb/util/test_macros.h"

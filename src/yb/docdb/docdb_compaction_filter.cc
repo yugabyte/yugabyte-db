@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/docdb/docdb_compaction_filter.h"
 
 #include <memory>
@@ -21,7 +22,10 @@
 #include "yb/docdb/doc_ttl_util.h"
 #include "yb/docdb/key_bounds.h"
 #include "yb/docdb/value.h"
+
 #include "yb/rocksdb/compaction_filter.h"
+
+#include "yb/util/fast_varint.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"

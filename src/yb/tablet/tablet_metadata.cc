@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/tablet/tablet_metadata.h"
 
 #include <algorithm>
@@ -41,19 +42,26 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
 #include "yb/common/schema.h"
+#include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/opid_util.h"
+
 #include "yb/docdb/docdb_rocksdb_util.h"
+
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/options.h"
+
 #include "yb/tablet/metadata.pb.h"
 #include "yb/tablet/tablet_options.h"
+
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"

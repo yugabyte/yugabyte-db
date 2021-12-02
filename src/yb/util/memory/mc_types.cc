@@ -15,6 +15,8 @@
 
 #include "yb/util/memory/mc_types.h"
 
+#include "yb/util/memory/arena.h"
+
 namespace yb {
 
 //--------------------------------------------------------------------------------------------------

@@ -20,18 +20,13 @@
 
 #ifndef ROCKSDB_LITE
 
-#include "yb/rocksdb/utilities/document_db.h"
-
 #include "yb/rocksdb/cache.h"
-#include "yb/rocksdb/table.h"
-#include "yb/rocksdb/filter_policy.h"
 #include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/db.h"
-#include "yb/util/slice.h"
-#include "yb/rocksdb/utilities/json_document.h"
+#include "yb/rocksdb/table.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/mutexlock.h"
-#include "yb/rocksdb/port/port.h"
+#include "yb/rocksdb/utilities/document_db.h"
 
 namespace rocksdb {
 

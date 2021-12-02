@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/tserver/remote_bootstrap_client.h"
 
 #include <glog/logging.h>
@@ -36,20 +37,27 @@
 #include "yb/common/index.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/metadata.pb.h"
+
 #include "yb/fs/fs_manager.h"
+
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
+
 #include "yb/rpc/rpc_controller.h"
+
 #include "yb/tablet/tablet.pb.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
+
 #include "yb/tserver/remote_bootstrap.pb.h"
 #include "yb/tserver/remote_bootstrap.proxy.h"
 #include "yb/tserver/remote_bootstrap_snapshots.h"
 #include "yb/tserver/ts_tablet_manager.h"
+
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
 #include "yb/util/fault_injection.h"

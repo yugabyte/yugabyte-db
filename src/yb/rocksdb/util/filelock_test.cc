@@ -17,12 +17,17 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <string>
 #include <vector>
 
+#include <gtest/gtest.h>
+
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/util/testharness.h"
+
 #include "yb/util/status.h"
+#include "yb/util/test_macros.h"
 
 namespace rocksdb {
 

@@ -36,7 +36,7 @@
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
 
-#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
 
 #ifndef GFLAGS
 bool FLAGS_enable_print = false;

@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/rpc/outbound_call.h"
 
 #include <algorithm>
@@ -41,6 +42,7 @@
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
+
 #include "yb/rpc/connection.h"
 #include "yb/rpc/constants.h"
 #include "yb/rpc/proxy_base.h"
@@ -48,6 +50,7 @@
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/rpc_metrics.h"
 #include "yb/rpc/serialization.h"
+
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"

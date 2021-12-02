@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <map>
 #include <set>
 #include <vector>
@@ -40,25 +41,27 @@
 
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_index.h"
 #include "yb/consensus/log_reader.h"
+
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/numbers.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/memory/arena.h"
 #include "yb/util/metric_entity.h"
-#include "yb/util/metrics_fwd.h"
 #include "yb/util/monotime.h"
 #include "yb/util/opid.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
-#include "yb/util/status_fwd.h"
 
 DEFINE_bool(print_headers, true, "print the log segment headers/footers");
 DEFINE_bool(filter_log_segment, false, "filter the input log segment");

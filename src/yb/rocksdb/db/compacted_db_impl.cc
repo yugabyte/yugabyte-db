@@ -22,7 +22,9 @@
 #include "yb/rocksdb/db/compacted_db_impl.h"
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/version_set.h"
+
 #include "yb/rocksdb/table/get_context.h"
+#include "yb/rocksdb/table/table_reader.h"
 
 namespace rocksdb {
 

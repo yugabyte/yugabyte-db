@@ -36,12 +36,12 @@
 #include <gtest/gtest.h>
 
 #include "yb/gutil/ref_counted.h"
+
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/thread.h"
-#include "yb/util/tsan_util.h"
 
 using std::string;
 using std::vector;

@@ -22,6 +22,8 @@
 
 #include "../../src/yb/master/master-test_base.h"
 
+#include "yb/util/result.h"
+
 DECLARE_uint64(cdc_state_table_num_tablets);
 
 namespace yb {

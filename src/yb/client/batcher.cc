@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/client/batcher.h"
 
 #include <algorithm>
@@ -58,15 +59,19 @@
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
+
 #include "yb/common/wire_protocol.h"
+
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"
+
 #include "yb/util/debug-util.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/util/trace.h"
 
 // When this flag is set to false and we have separate errors for operation, then batcher would
 // report IO Error status. Otherwise we will try to combine errors from separate operation to

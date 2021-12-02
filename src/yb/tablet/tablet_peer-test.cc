@@ -33,17 +33,20 @@
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
-#include "yb/common/partial_row.h"
 #include "yb/common/hybrid_time.h"
-#include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol-test-util.h"
+#include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/log.h"
+#include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
+
+#include "yb/gutil/bind.h"
 #include "yb/gutil/macros.h"
 
 #include "yb/rpc/messenger.h"
@@ -51,16 +54,18 @@
 
 #include "yb/server/clock.h"
 #include "yb/server/logical_clock.h"
+
 #include "yb/tablet/operations/operation.h"
 #include "yb/tablet/operations/write_operation.h"
+#include "yb/tablet/tablet-test-util.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
-#include "yb/tablet/tablet-test-util.h"
+
 #include "yb/tserver/tserver.pb.h"
+
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
-#include "yb/util/test_util.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/threadpool.h"
 

@@ -17,14 +17,13 @@
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 
-#include "yb/common/ql_type.h"
 #include "yb/common/pg_system_attr.h"
+#include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 
 #include "yb/docdb/doc_key.h"
 
 #include "yb/tserver/pg_client.pb.h"
-#include "yb/util/format.h"
 
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"

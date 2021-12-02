@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/docdb/docdb_compaction_filter_intents.h"
 
 #include <memory>
@@ -20,8 +21,12 @@
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/intent.h"
 #include "yb/docdb/value.h"
+
 #include "yb/rocksdb/compaction_filter.h"
+
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/transaction_participant.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/logging.h"
 #include "yb/util/string_util.h"
@@ -173,8 +178,8 @@ DocDBIntentsCompactionFilter::FilterExternalIntent(const Slice& key) {
   RETURN_NOT_OK_PREPEND(key_slice.consume_byte(ValueTypeAsChar::kExternalTransactionId),
                         "Could not decode external transaction byte");
   // Ignoring transaction id result since function just returns kKeep or kDiscard.
-  ignore_result(VERIFY_RESULT_PREPEND(
-      DecodeTransactionId(&key_slice), "Could not decode external transaction id"));
+  RETURN_NOT_OK_PREPEND(
+      DecodeTransactionId(&key_slice), "Could not decode external transaction id");
   auto doc_hybrid_time = VERIFY_RESULT_PREPEND(
       DecodeInvertedDocHt(key_slice), "Could not decode hybrid time");
   auto write_time_micros = doc_hybrid_time.hybrid_time().GetPhysicalValueMicros();

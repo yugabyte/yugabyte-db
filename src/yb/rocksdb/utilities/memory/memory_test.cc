@@ -30,7 +30,7 @@
 #include "yb/rocksdb/util/testutil.h"
 
 #include "yb/util/string_util.h"
-#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
 
 namespace rocksdb {
 

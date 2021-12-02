@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/util/net/dns_resolver.h"
 
 #include <mutex>
@@ -40,6 +41,7 @@
 
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_fwd.h"
+#include "yb/util/net/inetaddress.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/result.h"

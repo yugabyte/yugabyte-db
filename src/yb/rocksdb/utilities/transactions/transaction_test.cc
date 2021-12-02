@@ -36,7 +36,7 @@
 #include "yb/rocksdb/utilities/merge_operators/string_append/stringappend.h"
 
 #include "yb/util/status_log.h"
-#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
 
 using std::string;
 

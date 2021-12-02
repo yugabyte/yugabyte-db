@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/server/hybrid_clock.h"
 
 #include <algorithm>
@@ -38,6 +39,7 @@
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/walltime.h"
+
 #include "yb/util/errno.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/locks.h"

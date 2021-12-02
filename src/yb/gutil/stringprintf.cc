@@ -20,11 +20,11 @@
 #include <errno.h>
 #include <stdarg.h> // For va_list and related operations
 #include <stdio.h> // MSVC requires this for _vsnprintf
+
 #include <vector>
 
 #include <glog/logging.h>
 
-#include "yb/gutil/logging-inl.h"
 #include "yb/gutil/macros.h"
 
 using std::vector;

@@ -12,12 +12,15 @@
 //
 
 #include "yb/client/snapshot_test_util.h"
-#include "yb/client/table.h"
+
 #include "yb/client/client_fwd.h"
+#include "yb/client/table.h"
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/rpc/rpc_controller.h"
+
 #include "yb/util/format.h"
 #include "yb/util/status_format.h"
 
