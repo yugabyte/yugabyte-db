@@ -23,7 +23,7 @@ Connect to clusters in Yugabyte Cloud in the following ways:
 - From your desktop - Install the ysqlsh or ycqlsh client shells to connect to your database from your desktop. Your computer must be added to the cluster IP allow list and an SSL connection is required.
 - Applications - Connect your applications to your cluster database.
 
-Once you have connected to the database, you can add database users so that other team members can access the database.
+Once you have connected to the database, you can add database users for other team members to access the database.
 
 <div class="row">
 
