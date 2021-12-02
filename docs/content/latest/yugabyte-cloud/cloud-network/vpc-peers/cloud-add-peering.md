@@ -1,13 +1,13 @@
 ---
 title: Manage peering connections
 headerTitle: 
-linkTitle: Manage peering connections
+linkTitle: Peering Connections
 description: Manage peering connections to your cloud VPCs.
 menu:
   latest:
     identifier: cloud-add-peering
     parent: vpc-peers
-    weight: 20
+    weight: 40
 isTocNested: true
 showAsideToc: true
 ---
@@ -17,6 +17,8 @@ A peering connection connects a Yugabyte Cloud VPC with a VPC on the correspondi
 **Peering Connections** on the **VPC Network** tab displays a list of peering connections configured for your cloud that includes the peering connection name, cloud provider, the network name (GCP) or VPC ID (AWS) of the peered VPC, the name of the Yugabyte VPC, and status of the connection (Pending or Active).
 
 ![Peering connections](/images/yb-cloud/cloud-vpc-peering.png)
+
+To view the peering connection details, select a peering connection in the list to display the **Peering Details** sheet.
 
 {{< note title="Note" >}}
 
@@ -86,20 +88,11 @@ In the Google Cloud Console, do the following:
 
 For information on VPC network peering in GCP, refer to [VPC Network Peering overview](https://cloud.google.com/vpc/docs/vpc-peering.) in the Google VPC documentation.
 
-## View peering connection details
-
-The **Peering Details** displays information about the peering connection, including both the Yugabyte Cloud VPC details and the peered VPC details.
-
-To view peering connection details:
-
-1. On the **Network Access** page, select **VPC Network**, then **Peering Connections**.
-1. Select a peering connection in the list to display the **Peering Details** sheet.
-
 ## Terminate a peering connection
 
 To terminate a peering connection, click the **Delete** icon for the peering connection in the list you want to terminate, then click **Terminate**. You can also terminate a peering connection by clicking **Terminate Peering** in the **Peering Details** sheet.
 
-## Next steps
+## Related topics
 
 - Create a cluster in a VPN. You do this by selecting the VPC during cluster creation. Refer to [Create a cluster](../../../cloud-basics/create-clusters).
 - Add the peered VPN to the IP allow list of your cluster. To communicate with your cluster, the CIDR block of the application VPN must be added to your cluster's IP allow list. Refer to [Assign IP allow lists](../../../cloud-basics/add-connections).

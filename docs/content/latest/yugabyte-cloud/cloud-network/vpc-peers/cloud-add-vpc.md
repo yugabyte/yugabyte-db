@@ -1,22 +1,24 @@
 ---
 title: Manage VPCs
 headerTitle: 
-linkTitle: Manage VPCs
+linkTitle: VPCs
 description: Manage your cloud VPCs.
 menu:
   latest:
     identifier: cloud-add-vpc
     parent: vpc-peers
-    weight: 10
+    weight: 30
 isTocNested: true
 showAsideToc: true
 ---
 
-To set up peering in Yugabyte Cloud, you first create a VPC to host your clusters. The VPC reserves a range of IP addresses with the cloud provider you select. A VPC must be created before you can configure a peering connection. You must set up a dedicated VPC before deploying your cluster.
+To set up a VPC network in Yugabyte Cloud, you first create a VPC to host your clusters. The VPC reserves a range of IP addresses with the cloud provider you select. A VPC must be created before you can configure a peering connection. You must set up a dedicated VPC before deploying your cluster.
 
 **VPCs** on the **VPC Network** tab displays a list of VPCs configured for your cloud that includes the VPC name, provider, region, ID, CIDR, local VPC IP address, and cluster to which the VPC is assigned.
 
 ![VPCs](/images/yb-cloud/cloud-vpc.png)
+
+To view VPC details, select a VPC in the list to display the **VPC Details** sheet.
 
 ## Create a VPC
 
@@ -33,35 +35,20 @@ To create a VPC, do the following:
 1. Enter a name for the VPC.
 1. Choose the provider (AWS or GCP).
 1. If you selected AWS, select the region. VPCs for GCP are created globally and assigned to all regions supported by Yugabyte Cloud.
-1. Specify the VPC CIDR address. You can use the range suggested by Yugabyte Cloud, or enter a custom IP range. The IP range cannot overlap with another VPC in your cloud.
+1. Specify the VPC CIDR address. You can use the range suggested by Yugabyte Cloud, or enter a custom IP range. The IP range cannot overlap with another VPC in your cloud. Refer to [Sizing your VPC](../cloud-vpc-intro/#sizing-your-vpc/).
 1. Click **Save**.
 
 Yugabyte Cloud adds the VPC to the VPCs list with a status of Creating. If successful, after a minute or two, the status will change to Active.
 
 The VPC's network name and project ID are automatically assigned. You will need these details when configuring the peering in GCP.
 
-## View VPC details
-
-The VPC details include the following:
-
-- Provider hosting the VPC
-- Status
-- Name
-- CIDR
-- Network Name
-- Region
-- Project ID
-
-To view the VPC details:
-
-1. On the **Network Access** page, select **VPCs**.
-1. Select a VPC in the list to display the **VPC Details** sheet.
-
 ## Terminate a VPC
+
+You cannot terminate a VPC with active peering connections or clusters.
 
 To terminate a VPC, click the **Delete** icon for the VPC in the list you want to terminate, then click **Terminate**. You can also terminate a VPC by clicking **Terminate VPC** in the **VPC Details** sheet.
 
-## Next steps
+## Related topics
 
 - Create a cluster in a VPN. You do this by selecting the VPC during cluster creation. Refer to [Create a cluster](../../../cloud-basics/create-clusters).
 - Connect a Yugabyte Cloud VPN to an application VPN. Refer to [Configure a peering connection](../cloud-add-peering/#configure-a-peering-connection).

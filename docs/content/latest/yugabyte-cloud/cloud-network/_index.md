@@ -19,7 +19,7 @@ Set up network security for your cluster using the **Network Access** page.
 
 To prevent distributed denial-of-service (DDoS) and brute force password attacks, Yugabyte Cloud restricts access to your clusters to specific networks that you authorize. To authorize your application server’s network and your local machine’s network, you add their public IP addresses to IP allow lists. An IP allow list is simply a set of IP addresses and ranges that, when assigned to a cluster, grant access to connections made from those addresses.
 
-You can also set up dedicated Virtual Private Cloud (VPC) peers for your cluster for network isolation and lower latency.
+For network isolation and lower latency, set up a dedicated Virtual Private Cloud (VPC) for your cluster and peer it with application VPCs.
 
 <div class="row">
 
@@ -39,10 +39,10 @@ You can also set up dedicated Virtual Private Cloud (VPC) peers for your cluster
     <a class="section-link icon-offset" href="vpc-peers/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/create_cluster.png" aria-hidden="true" />
-        <div class="title">VPC peering</div>
+        <div class="title">VPC network</div>
       </div>
       <div class="body">
-        Add VPC peers to allow applications running on other cloud instances to communicate with your YugabyteDB clusters.
+        Peer VPCs to connect client applications with your YugabyteDB clusters.
       </div>
     </a>
   </div>
