@@ -19,8 +19,8 @@ Yugabyte Platform first needs to be installed on a host computer, and then you c
 You can install Yugabyte Platform on the following Linux distributions:
 
 - Ubuntu 16.04 or 18.04 LTS.
-- Red Hat Enterprise Linux (RHEL) 7.X
-- CentOS 7.X
+- Red Hat Enterprise Linux (RHEL) 7.x
+- CentOS 7.x
 - Amazon Linux (AMI) 2014.03, 2014.09, 2015.03, 2015.09, 2016.03, 2016.09, 2017.03, 2017.09, 2018.03, 2.0
 - Other [operating systems supported by Replicated](https://www.replicated.com/docs/distributing-an-application/supported-operating-systems/)
 
