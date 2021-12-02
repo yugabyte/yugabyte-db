@@ -1,6 +1,6 @@
 ---
 title: Connect using cloud shell
-linkTitle: From a browser
+linkTitle: Cloud shell
 description: Connect to Yugabyte Cloud clusters from any browser using the cloud shell
 headcontent:
 image: /images/section_icons/deploy/enterprise.png

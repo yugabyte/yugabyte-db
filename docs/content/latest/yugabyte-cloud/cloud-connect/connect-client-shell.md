@@ -1,6 +1,6 @@
 ---
 title: Connect via client shells
-linkTitle: From your desktop
+linkTitle: Client shell
 description: Connect to Yugabyte Cloud clusters from your desktop using a client shell
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
