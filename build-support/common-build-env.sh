@@ -1569,13 +1569,14 @@ add_brew_bin_to_path() {
   # When building for arm64 on macOS, we need to make sure we find arm64 versions of various tools
   # such as automake. This is especially relevant for Postgres build.
   if is_mac; then
-    local homebrew_path
+    local homebrew_path=""
     case "${YB_TARGET_ARCH:-}" in
       x86_64) homebrew_path="/usr/local" ;;
       arm64) homebrew_path="/opt/homebrew" ;;
-      *) fatal "Cannot determine Homebrew path for architecture '${YB_TARGET_ARCH:-}' on macOS"
     esac
-    put_path_entry_first "$homebrew_path/bin"
+    if [[ -n ${homebrew_path} ]]; then
+      put_path_entry_first "$homebrew_path/bin"
+    fi
   fi
 }
 
