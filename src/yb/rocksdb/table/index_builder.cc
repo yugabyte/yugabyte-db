@@ -14,8 +14,11 @@
 #include "yb/rocksdb/table/index_builder.h"
 
 #include "yb/rocksdb/comparator.h"
+#include "yb/rocksdb/port/likely.h"
 #include "yb/rocksdb/slice_transform.h"
 #include "yb/rocksdb/table/block_based_table_factory.h"
+#include "yb/rocksdb/util/coding.h"
+
 #include "yb/util/logging.h"
 
 namespace rocksdb {

@@ -47,7 +47,6 @@
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/trace.h"
-#include "yb/util/memory/memory.h"
 
 using std::shared_ptr;
 using std::vector;

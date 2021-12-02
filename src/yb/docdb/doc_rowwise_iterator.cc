@@ -10,7 +10,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/docdb/doc_rowwise_iterator.h"
+#include <iterator>
 
 #include <cstdint>
 #include <ostream>
@@ -25,21 +27,26 @@
 #include "yb/common/ql_value.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
+
+#include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_path.h"
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/doc_reader.h"
 #include "yb/docdb/doc_scanspec_util.h"
-#include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_types.h"
 #include "yb/docdb/expiration.h"
+#include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/subdocument.h"
 #include "yb/docdb/value.h"
 #include "yb/docdb/value_type.h"
+
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/rocksdb/db.h"
+
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"

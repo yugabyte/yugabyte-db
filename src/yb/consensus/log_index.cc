@@ -40,6 +40,7 @@
 //
 // When the log is GCed, we remove any index chunks which are no longer needed, and
 // unmap them.
+
 #include "yb/consensus/log_index.h"
 
 #include <fcntl.h>
@@ -49,8 +50,8 @@
 #include <string>
 #include <vector>
 
-#include "yb/consensus/opid_util.h"
 #include "yb/gutil/map-util.h"
+
 #include "yb/util/locks.h"
 
 using std::string;

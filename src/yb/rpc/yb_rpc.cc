@@ -26,8 +26,8 @@
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/serialization.h"
 
-#include "yb/util/flag_tags.h"
 #include "yb/util/debug/trace_event.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/result.h"

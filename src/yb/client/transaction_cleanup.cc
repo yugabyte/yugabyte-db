@@ -15,11 +15,12 @@
 
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
+
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/tserver/tserver_service.proxy.h"
-#include "yb/util/logging.h"
 
+#include "yb/util/logging.h"
 #include "yb/util/result.h"
 
 DEFINE_CAPABILITY(GracefulCleanup, 0x5512d2a9);

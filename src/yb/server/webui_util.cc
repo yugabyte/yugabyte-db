@@ -29,14 +29,18 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/server/webui_util.h"
 
 #include <string>
 
 #include "yb/common/schema.h"
+
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/server/monitored_task.h"
+
 #include "yb/util/url-coding.h"
 
 using strings::Substitute;

@@ -28,6 +28,8 @@
 #include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/testharness.h"
 
+#include "yb/util/test_util.h"
+
 using std::string;
 
 namespace rocksdb {

@@ -29,9 +29,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#include "yb/consensus/replica_state.h"
 
-#include <algorithm>
+#include "yb/consensus/replica_state.h"
 
 #include <gflags/gflags.h>
 
@@ -40,7 +39,9 @@
 #include "yb/consensus/consensus_round.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/quorum_util.h"
+
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/enums.h"

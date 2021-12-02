@@ -36,7 +36,9 @@
 
 #include "yb/gutil/singleton.h"
 
+#include "yb/util/net/inetaddress.h"
 #include "yb/util/status.h"
+#include "yb/util/uuid.h"
 
 using std::shared_ptr;
 using std::unordered_map;

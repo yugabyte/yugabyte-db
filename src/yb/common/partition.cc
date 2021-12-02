@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/common/partition.h"
 
 #include <algorithm>
@@ -42,12 +43,17 @@
 #include "yb/common/ql_value.h"
 #include "yb/common/row.h"
 #include "yb/common/schema.h"
+
 #include "yb/docdb/doc_key.h"
+
 #include "yb/gutil/hash/hash.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/status_format.h"
+#include "yb/util/yb_partition.h"
+
 #include "yb/yql/redis/redisserver/redis_constants.h"
 
 namespace yb {

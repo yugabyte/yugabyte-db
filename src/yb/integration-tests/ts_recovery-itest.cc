@@ -97,7 +97,7 @@ TEST_F(TsRecoveryITest, TestCrashDuringLogReplay) {
 
   // Restart might crash very quickly and actually return a bad status, so we
   // ignore the result.
-  ignore_result(cluster_->tablet_server(0)->Restart());
+  WARN_NOT_OK(cluster_->tablet_server(0)->Restart(), "Restart failed");
 
   // Wait for the process to crash during log replay.
   for (int i = 0; i < 3000 && cluster_->tablet_server(0)->IsProcessAlive(); i++) {

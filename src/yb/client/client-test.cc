@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <algorithm>
 #include <functional>
 #include <regex>
@@ -56,28 +57,39 @@
 #include "yb/client/tablet_server.h"
 #include "yb/client/value.h"
 #include "yb/client/yb_op.h"
+
 #include "yb/common/partial_row.h"
+#include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus.proxy.h"
+
+#include "yb/gutil/algorithm.h"
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
+
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
 #include "yb/master/master_error.h"
 #include "yb/master/mini_master.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_test_util.h"
+
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+
 #include "yb/util/capabilities.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/dns_resolver.h"
@@ -90,6 +102,8 @@
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
 #include "yb/util/tostring.h"
+#include "yb/util/tsan_util.h"
+
 #include "yb/yql/cql/ql/util/statement_result.h"
 
 DECLARE_bool(enable_data_block_fsync);

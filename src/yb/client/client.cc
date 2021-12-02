@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/client/client.h"
 
 #include <algorithm>
@@ -46,10 +47,10 @@
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
 
+#include "yb/client/client_fwd.h"
 #include "yb/client/callbacks.h"
 #include "yb/client/client-internal.h"
 #include "yb/client/client_builder-internal.h"
-#include "yb/client/client_fwd.h"
 #include "yb/client/client_utils.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/namespace_alterer.h"
@@ -61,6 +62,7 @@
 #include "yb/client/table_info.h"
 #include "yb/client/tablet_server.h"
 #include "yb/client/yb_table_name.h"
+
 #include "yb/common/common.pb.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/entity_ids.h"
@@ -68,24 +70,26 @@
 #include "yb/common/ql_type.h"
 #include "yb/common/roles_permissions.h"
 #include "yb/common/wire_protocol.h"
+
+#include "yb/gutil/bind.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_util.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc.h"
-#include "yb/rpc/rpc_fwd.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
 #include "yb/util/init.h"
-#include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metric_entity.h"
-#include "yb/util/metrics_fwd.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/scope_exit.h"
@@ -93,9 +97,9 @@
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/status_log.h"
 #include "yb/util/strongly_typed_bool.h"
+
 #include "yb/yql/cql/ql/ptree/pt_option.h"
 
 using yb::master::AlterTableRequestPB;

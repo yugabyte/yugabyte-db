@@ -17,8 +17,10 @@
 
 #include "yb/client/session.h"
 #include "yb/client/transaction.h"
+#include "yb/client/yb_op.h"
 
 #include "yb/common/ql_value.h"
+
 #include "yb/consensus/consensus.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"
@@ -30,6 +32,8 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+
+#include "yb/util/tsan_util.h"
 
 #include "yb/yql/cql/ql/util/statement_result.h"
 

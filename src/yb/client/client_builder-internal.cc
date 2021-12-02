@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/client/client_builder-internal.h"
 
 #include <map>
@@ -37,10 +38,9 @@
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
 
-#include "yb/util/metric_entity.h"
 #include "yb/util/metrics_fwd.h"
-#include "yb/util/monotime.h"
 #include "yb/util/status_fwd.h"
+#include "yb/util/metric_entity.h"
 
 DEFINE_int32(
     yb_client_num_reactors, 16,

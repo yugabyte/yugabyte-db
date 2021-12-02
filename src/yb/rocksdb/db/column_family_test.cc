@@ -23,12 +23,14 @@
 
 #include <algorithm>
 #include <atomic>
-#include <vector>
 #include <string>
 #include <thread>
 
-#include "yb/rocksdb/db/db_impl.h"
+#include <gtest/gtest.h>
+
 #include "yb/rocksdb/db.h"
+#include "yb/rocksdb/db/db_impl.h"
+#include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/util/coding.h"

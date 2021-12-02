@@ -19,6 +19,8 @@
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb_types.h"
 #include "yb/docdb/intent.h"
+
+#include "yb/util/bytes_formatter.h"
 #include "yb/util/fast_varint.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"

@@ -39,6 +39,7 @@
 #include "yb/common/common.pb.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/ql_name.h"
+#include "yb/common/ql_type.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus.h"
 
@@ -58,6 +59,8 @@
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/encryption_manager.h"
 #include "yb/master/restore_sys_catalog_state.h"
+#include "yb/master/scoped_leader_shared_lock.h"
+#include "yb/master/scoped_leader_shared_lock-internal.h"
 
 #include "yb/rpc/messenger.h"
 

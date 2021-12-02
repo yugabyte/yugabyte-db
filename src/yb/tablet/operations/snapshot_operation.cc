@@ -1,17 +1,22 @@
 // Copyright (c) YugaByte, Inc.
+
 #include "yb/tablet/operations/snapshot_operation.h"
 
 #include <glog/logging.h>
 
 #include "yb/common/snapshot.h"
-#include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus_round.h"
+
 #include "yb/docdb/consensus_frontier.h"
+
 #include "yb/tablet/snapshot_coordinator.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_snapshots.h"
+
 #include "yb/tserver/backup.pb.h"
 #include "yb/tserver/tserver_error.h"
+
 #include "yb/util/logging.h"
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"

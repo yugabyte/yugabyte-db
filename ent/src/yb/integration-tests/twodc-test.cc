@@ -20,8 +20,9 @@
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
 
-#include "yb/common/wire_protocol.h"
+#include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.pb.h"

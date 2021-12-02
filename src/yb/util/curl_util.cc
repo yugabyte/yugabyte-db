@@ -29,7 +29,10 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/util/curl_util.h"
+
+#include <curl/curl.h>
 
 #include <vector>
 

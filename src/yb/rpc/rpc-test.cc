@@ -69,6 +69,7 @@
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
 #include "yb/util/thread.h"
 
 #include "yb/util/memory/memory_usage_test_util.h"

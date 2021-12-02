@@ -21,12 +21,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-
 #include <string>
 
 #include "yb/rocksdb/db/db_test_util.h"
-#include "yb/rocksdb/port/stack_trace.h"
 #include "yb/rocksdb/perf_context.h"
+#include "yb/rocksdb/perf_level.h"
+#include "yb/rocksdb/port/stack_trace.h"
 
 namespace rocksdb {
 

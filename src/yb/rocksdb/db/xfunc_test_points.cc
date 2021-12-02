@@ -19,7 +19,6 @@
 //
 
 #include "yb/rocksdb/db/xfunc_test_points.h"
-#include "yb/rocksdb/util/xfunc.h"
 
 namespace rocksdb {
 

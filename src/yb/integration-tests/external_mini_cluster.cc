@@ -2141,7 +2141,7 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
   }
 
   if (!success) {
-    ignore_result(p->Kill(SIGKILL));
+    WARN_NOT_OK(p->Kill(SIGKILL), "Killing process failed");
     return STATUS(TimedOut,
         Substitute("Timed out after $0s waiting for process ($1) to write info file ($2)",
                    kProcessStartTimeoutSeconds, exe_, info_path));
@@ -2215,7 +2215,7 @@ void ExternalDaemon::Shutdown() {
       static const int kWaitMs = 100;
       LOG(INFO) << "Sending signal " << kHeapProfileSignal << " to " << ProcessNameAndPidStr()
                 << " to capture a heap profile. Waiting for " << kWaitMs << " ms afterwards.";
-      ignore_result(process_->Kill(kHeapProfileSignal));
+      WARN_NOT_OK(process_->Kill(kHeapProfileSignal), "Killing process failed");
       std::this_thread::sleep_for(std::chrono::milliseconds(kWaitMs));
     }
 
@@ -2223,7 +2223,7 @@ void ExternalDaemon::Shutdown() {
       // We put 'SIGTERM' in quotes because an unquoted one would be treated as a test failure
       // by our regular expressions in common-test-env.sh.
       LOG(INFO) << "Terminating " << ProcessNameAndPidStr() << " using 'SIGTERM' signal";
-      ignore_result(process_->Kill(SIGTERM));
+      WARN_NOT_OK(process_->Kill(SIGTERM), "Killing process failed");
       int total_delay_ms = 0;
       int current_delay_ms = 10;
       for (int i = 0; i < 10 && IsProcessAlive(); ++i) {
@@ -2240,7 +2240,7 @@ void ExternalDaemon::Shutdown() {
 
     if (IsProcessAlive()) {
       LOG(INFO) << "Killing " << ProcessNameAndPidStr() << " with SIGKILL";
-      ignore_result(process_->Kill(SIGKILL));
+      WARN_NOT_OK(process_->Kill(SIGKILL), "Killing process failed");
     }
   }
   int ret = 0;

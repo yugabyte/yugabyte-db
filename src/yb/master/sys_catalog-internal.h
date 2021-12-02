@@ -16,6 +16,7 @@
 
 #include "yb/common/ql_expr.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_writer.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/util/pb_util.h"

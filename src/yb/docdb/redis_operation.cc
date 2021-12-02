@@ -10,15 +10,20 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/docdb/redis_operation.h"
 
 #include "yb/docdb/doc_key.h"
+#include "yb/docdb/doc_path.h"
 #include "yb/docdb/doc_reader_redis.h"
 #include "yb/docdb/doc_ttl_util.h"
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/doc_write_batch_cache.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/subdocument.h"
+
+#include "yb/server/hybrid_clock.h"
+
 #include "yb/util/redis_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"

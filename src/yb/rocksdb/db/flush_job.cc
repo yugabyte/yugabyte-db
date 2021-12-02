@@ -38,6 +38,7 @@
 #include "yb/rocksdb/db/event_helpers.h"
 #include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/file_numbers.h"
+#include "yb/rocksdb/db/internal_stats.h"
 #include "yb/rocksdb/db/log_reader.h"
 #include "yb/rocksdb/db/log_writer.h"
 #include "yb/rocksdb/db/memtable.h"
@@ -51,17 +52,20 @@
 #include "yb/rocksdb/status.h"
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/table/merger.h"
+#include "yb/rocksdb/table/scoped_arena_iterator.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/event_logger.h"
 #include "yb/rocksdb/util/log_buffer.h"
 #include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/mutexlock.h"
+#include "yb/rocksdb/util/statistics.h"
 #include "yb/rocksdb/util/stop_watch.h"
 #include "yb/rocksdb/util/sync_point.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
+#include "yb/util/result.h"
 #include "yb/util/stats/iostats_context_imp.h"
 
 DEFINE_int32(rocksdb_nothing_in_memtable_to_flush_sleep_ms, 10,
