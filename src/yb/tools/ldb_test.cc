@@ -10,22 +10,24 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#include <string>
 
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
-#include "yb/client/error.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
+
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
+
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
+
 #include "yb/tools/data_gen_util.h"
+
 #include "yb/util/path_util.h"
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"

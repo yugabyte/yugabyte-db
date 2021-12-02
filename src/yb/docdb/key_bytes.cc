@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/docdb/key_bytes.h"
 
 #include <cstdint>
@@ -21,10 +22,11 @@
 #include "yb/common/column_id.h"
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/hybrid_time.h"
+
 #include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/value_type.h"
+
 #include "yb/util/bytes_formatter.h"
-#include "yb/util/decimal.h"
 #include "yb/util/enums.h"
 #include "yb/util/fast_varint.h"
 #include "yb/util/monotime.h"

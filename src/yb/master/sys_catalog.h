@@ -37,12 +37,12 @@
 #include <unordered_map>
 
 #include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/metadata.pb.h"
 
 #include "yb/gutil/callback.h"
 
 #include "yb/master/master_fwd.h"
 #include "yb/master/sys_catalog_constants.h"
-#include "yb/server/metadata.h"
 
 #include "yb/tablet/snapshot_coordinator.h"
 

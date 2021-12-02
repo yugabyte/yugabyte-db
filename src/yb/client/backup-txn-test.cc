@@ -10,19 +10,28 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
+#include "yb/client/error.h"
 #include "yb/client/session.h"
 #include "yb/client/snapshot_test_util.h"
 #include "yb/client/table.h"
 #include "yb/client/transaction.h"
 #include "yb/client/yb_table_name.h"
+
 #include "yb/common/transaction_error.h"
+
 #include "yb/master/master_backup.proxy.h"
+
+#include "yb/rocksdb/db.h"
+
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_retention_policy.h"
 #include "yb/tablet/tablet_snapshots.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+
 #include "yb/util/test_thread_holder.h"
 
 using namespace std::literals;

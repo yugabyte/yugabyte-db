@@ -16,6 +16,9 @@
 #include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_pool.h"
 
+#include "yb/server/clock.h"
+
+#include "yb/tserver/tserver_util_fwd.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/util/shared_mem.h"

@@ -671,7 +671,8 @@ CHECKED_STATUS PgSupervisor::CleanupOldServerUnlocked() {
         LOG(WARNING) << "Didn't find postgres in " << cmdline;
       }
     }
-    ignore_result(Env::Default()->DeleteFile(postmaster_pid_filename));
+    WARN_NOT_OK(Env::Default()->DeleteFile(postmaster_pid_filename),
+                "Failed to remove postmaster pid file");
   }
   return Status::OK();
 }

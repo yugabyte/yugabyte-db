@@ -23,6 +23,8 @@
 
 #include <set>
 
+#include <gtest/gtest.h>
+
 #include "yb/rocksdb/db/skiplist.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/util/arena.h"

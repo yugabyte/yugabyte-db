@@ -10,12 +10,15 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <memory>
 #include <string>
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/hybrid_time.h"
+#include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
+
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_reader.h"
@@ -24,23 +27,26 @@
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/docdb_compaction_filter.h"
-#include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_test_base.h"
 #include "yb/docdb/docdb_test_util.h"
 #include "yb/docdb/in_mem_docdb.h"
 #include "yb/docdb/primitive_value.h"
+
 #include "yb/gutil/casts.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/walltime.h"
+
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/db.h"
+
 #include "yb/server/hybrid_clock.h"
+
 #include "yb/tablet/tablet_options.h"
+
 #include "yb/util/debug-util.h"
 #include "yb/util/minmax.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/path_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
@@ -48,6 +54,7 @@
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
 #include "yb/util/yb_partition.h"
 
 using std::cout;

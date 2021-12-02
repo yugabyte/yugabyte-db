@@ -19,8 +19,8 @@
 
 #include "yb/gutil/ref_counted.h"
 
-#include <regex>
 #include <atomic>
+#include <regex>
 
 #include <glog/logging.h>
 

@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <atomic>
 #include <string>
 
@@ -38,7 +39,6 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/thread.h"
 #include "yb/util/threadpool.h"
-#include "yb/util/tsan_util.h"
 
 namespace yb {
 

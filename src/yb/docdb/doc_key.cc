@@ -10,17 +10,21 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/docdb/doc_key.h"
 
 #include <memory>
 #include <sstream>
 
 #include "yb/common/schema.h"
+
 #include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/doc_path.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/value_type.h"
+
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/compare_util.h"
 #include "yb/util/enums.h"
 #include "yb/util/result.h"

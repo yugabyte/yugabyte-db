@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/util/encryption_util.h"
 
 #include <openssl/err.h>
@@ -21,6 +22,7 @@
 #include <boost/pointer_cast.hpp>
 
 #include "yb/gutil/endian.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/cipher_stream.h"
 #include "yb/util/encryption.pb.h"

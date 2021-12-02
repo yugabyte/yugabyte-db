@@ -13,6 +13,7 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/master/master_backup.pb.h"
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/restore_sys_catalog_state.h"
 

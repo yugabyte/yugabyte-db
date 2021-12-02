@@ -36,10 +36,12 @@
 
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/rpc/proxy.h"
-#include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc-test-base.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/yb_rpc.h"
+
 #include "yb/util/countdown_latch.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"

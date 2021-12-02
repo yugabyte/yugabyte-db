@@ -21,6 +21,8 @@
 //
 
 #include "yb/rocksdb/db/compaction_iterator.h"
+#include <iterator>
+
 #include "yb/rocksdb/table/internal_iterator.h"
 
 #include "yb/util/status_log.h"

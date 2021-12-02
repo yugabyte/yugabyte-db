@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/tserver/remote_bootstrap_service.h"
 
 #include <algorithm>
@@ -39,11 +40,13 @@
 #include <glog/logging.h>
 
 #include "yb/common/wire_protocol.h"
-#include "yb/consensus/log.h"
-#include "yb/fs/fs_manager.h"
+
 #include "yb/rpc/rpc_context.h"
+
 #include "yb/tablet/tablet_peer.h"
+
 #include "yb/tserver/tablet_peer_lookup.h"
+
 #include "yb/util/crc.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/flag_tags.h"

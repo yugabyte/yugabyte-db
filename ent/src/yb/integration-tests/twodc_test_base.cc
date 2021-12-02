@@ -26,6 +26,7 @@
 #include "yb/master/mini_master.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/tserver/cdc_consumer.h"
+#include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/test_util.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"

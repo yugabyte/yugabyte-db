@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/util/metrics.h"
 
 #include <map>
@@ -37,6 +38,7 @@
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
+
 #include "yb/util/hdr_histogram.h"
 #include "yb/util/histogram.pb.h"
 #include "yb/util/jsonwriter.h"

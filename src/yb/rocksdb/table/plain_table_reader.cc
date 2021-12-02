@@ -24,26 +24,19 @@
 #include <string>
 #include <vector>
 
-#include "yb/rocksdb/db/dbformat.h"
-
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/env.h"
-#include "yb/rocksdb/filter_policy.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/statistics.h"
-
-#include "yb/rocksdb/table/block.h"
 #include "yb/rocksdb/table/bloom_block.h"
-#include "yb/rocksdb/table/filter_block.h"
 #include "yb/rocksdb/table/format.h"
+#include "yb/rocksdb/table/get_context.h"
 #include "yb/rocksdb/table/internal_iterator.h"
+#include "yb/rocksdb/table/iterator_wrapper.h"
 #include "yb/rocksdb/table/meta_blocks.h"
-#include "yb/rocksdb/table/two_level_iterator.h"
 #include "yb/rocksdb/table/plain_table_factory.h"
 #include "yb/rocksdb/table/plain_table_key_coding.h"
-#include "yb/rocksdb/table/get_context.h"
-
 #include "yb/rocksdb/util/arena.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/dynamic_bloom.h"
@@ -51,11 +44,9 @@
 #include "yb/rocksdb/util/histogram.h"
 #include "yb/rocksdb/util/murmurhash.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
-#include "yb/rocksdb/util/stop_watch.h"
 
 #include "yb/util/mem_tracker.h"
 #include "yb/util/string_util.h"
-
 
 namespace rocksdb {
 
