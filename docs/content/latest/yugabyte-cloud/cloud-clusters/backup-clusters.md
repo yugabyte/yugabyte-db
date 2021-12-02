@@ -13,15 +13,17 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Back up and restore your clusters, configure the automatic backup policy, and review previous backups and restores using the **Backups** tab.
+Back up and restore your clusters, configure the automatic backup policy, and review previous backups and restores using the cluster **Backups** tab.
 
 Yugabyte Cloud performs full cluster (all namespaces) level backups, and the backups are stored in the same region as your cluster. 100GB/month of basic backup storage is provided for every vCPU; more than that and overage charges apply. Refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
 
-By default, every paid cluster is backed up automatically every 24 hours, and these automatic backups are retained for 8 days. The first automatic backup is triggered after 24 hours of creating a table, and is scheduled every 24 hours thereafter.
+By default, clusters are backed up automatically every 24 hours, and these automatic backups are retained for 8 days. The first automatic backup is triggered after 24 hours of creating a table, and is scheduled every 24 hours thereafter.
 
 To change the backup schedule, [create your own schedule](#schedule-backups). To enable or disable scheduled backups, click the **Scheduled backup** option.
 
 You can also perform backups [on demand](#on-demand-backups) and manually [restore backups](#restore-a-backup).
+
+Backups are not supported for Free clusters.
 
 ![Cloud Cluster Backups page](/images/yb-cloud/cloud-clusters-backups.png)
 
@@ -33,7 +35,7 @@ To review previous backups, click **Backup**. To review previous restores, click
 
 Typically, you perform on-demand backups before making critical planned changes to the database.
 
-To back up a paid cluster:
+To back up a cluster:
 
 1. On the **Backups** tab, click **Backup Now** to display the **Create Backup** dialog.
 1. Set the retention period for the backup.
@@ -48,7 +50,7 @@ Use scheduled backups to override the default 24 hour/8-day retention policy wit
 
 Any changes to the retention policy are applied to new backups only.
 
-To schedule backups for a paid cluster:
+To schedule backups for a cluster:
 
 1. On the **Backups** tab, click **Policy Settings** to display the **Backup Policy Settings** dialog.
 1. Set the retention period for the backup. The maximum retention is 31 days.
@@ -64,7 +66,7 @@ Before performing a restore, ensure the following:
 
 To review previous restores, click **Restore**.
 
-To restore a backup of a paid cluster:
+To restore a backup of a cluster:
 
 1. On the **Backups** tab, select a backup in the list and click the **Restore** icon to display the **Restore Backup** dialog.
 1. Select the target cluster.

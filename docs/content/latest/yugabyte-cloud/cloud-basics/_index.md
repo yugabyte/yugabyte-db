@@ -37,16 +37,16 @@ Follow these steps to learn how to add, configure, and connect to clusters:
     \
     Connect a Spring Data YugabyteDB application to a Yugabyte Cloud cluster.
 
-## Monitor and back up clusters
+## Monitor and manage clusters
 
-Yugabyte Cloud also provides tools to monitor cluster performance and activity, and back up clusters. 
+Yugabyte Cloud also provides tools to monitor cluster performance and activity, and manage clusters, including scaling and backing up clusters. 
 
-- [Monitor performance](../cloud-clusters/overview)
+- [Monitor clusters](../cloud-monitor/)
     \
-    View performance metrics.
-- [Back up clusters](../cloud-clusters/backup-clusters/)
+    View performance metrics, live and slow queries, cluster activity, node status, and tables.
+- [Manage clusters](../cloud-clusters/)
     \
-    Backup and restore clusters.
+    Scale and back up and restore clusters.
 
 <!-- 
 - [Monitor activity](../cloud-clusters/monitor-activity)
