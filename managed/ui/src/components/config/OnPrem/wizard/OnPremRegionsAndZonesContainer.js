@@ -14,6 +14,7 @@ const mapDispatchToProps = (dispatch, ownProps) => {
       payloadData.regions = formData.regionsZonesList.map((regionItem) => {
         const regionLocation = regionItem.location.split(',');
         return {
+          uuid: regionItem.uuid,
           code: regionItem.code,
           zones: regionItem.zones.split(',').map((zoneItem) => zoneItem.trim()),
           latitude: regionLocation[0],

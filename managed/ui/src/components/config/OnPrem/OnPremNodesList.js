@@ -111,9 +111,11 @@ class OnPremNodesList extends Component {
           return isNonEmptyObject(instanceListByZone) ? instanceListByZone : null;
         })
         .filter(Boolean);
-      const existingNodeIps = new Set(nodeInstanceList.data.map(instance => instance.details.ip.trim()));
-      const errors = { instances: {}};
-      Object.keys(vals.instances).forEach(region => {
+      const existingNodeIps = new Set(
+        nodeInstanceList.data.map((instance) => instance.details.ip.trim())
+      );
+      const errors = { instances: {} };
+      Object.keys(vals.instances).forEach((region) => {
         vals.instances[region].forEach((az, index) => {
           // Check if IP address is already in use by other node instance
           if (az.instanceTypeIP) {
@@ -252,47 +254,51 @@ class OnPremNodesList extends Component {
       (region) => region.provider.code === 'onprem'
     );
     const regionFormTemplate = isNonEmptyArray(currentCloudRegions)
-      ? currentCloudRegions.map(function (regionItem, idx) {
-          const zoneOptions = regionItem.zones.map(function (zoneItem, zoneIdx) {
-            return (
-              <option key={zoneItem + zoneIdx} value={zoneItem.code}>
-                {zoneItem.code}
+      ? currentCloudRegions
+          .filter((regionItem) => regionItem.active)
+          .map(function (regionItem, idx) {
+            const zoneOptions = regionItem.zones
+              .filter((zoneItem) => zoneItem.active)
+              .map(function (zoneItem, zoneIdx) {
+                return (
+                  <option key={zoneItem + zoneIdx} value={zoneItem.code}>
+                    {zoneItem.code}
+                  </option>
+                );
+              });
+            const machineTypeOptions = instanceTypes.data.map(function (machineTypeItem, mcIdx) {
+              return (
+                <option key={machineTypeItem + mcIdx} value={machineTypeItem.instanceTypeCode}>
+                  {machineTypeItem.instanceTypeCode}
+                </option>
+              );
+            });
+            zoneOptions.unshift(
+              <option key={-1} value={''}>
+                Select
               </option>
             );
-          });
-          const machineTypeOptions = instanceTypes.data.map(function (machineTypeItem, mcIdx) {
-            return (
-              <option key={machineTypeItem + mcIdx} value={machineTypeItem.instanceTypeCode}>
-                {machineTypeItem.instanceTypeCode}
+            machineTypeOptions.unshift(
+              <option key={-1} value={''}>
+                Select
               </option>
             );
-          });
-          zoneOptions.unshift(
-            <option key={-1} value={''}>
-              Select
-            </option>
-          );
-          machineTypeOptions.unshift(
-            <option key={-1} value={''}>
-              Select
-            </option>
-          );
-          return (
-            <div key={`instance${idx}`}>
-              <div className="instance-region-type">{regionItem.code}</div>
-              <div className="form-field-grid">
-                <FieldArray
-                  name={`instances.${regionItem.code}`}
-                  component={InstanceTypeForRegion}
-                  zoneOptions={zoneOptions}
-                  machineTypeOptions={machineTypeOptions}
-                  useHostname={useHostname}
-                  formType={'modal'}
-                />
+            return (
+              <div key={`instance${idx}`}>
+                <div className="instance-region-type">{regionItem.code}</div>
+                <div className="form-field-grid">
+                  <FieldArray
+                    name={`instances.${regionItem.code}`}
+                    component={InstanceTypeForRegion}
+                    zoneOptions={zoneOptions}
+                    machineTypeOptions={machineTypeOptions}
+                    useHostname={useHostname}
+                    formType={'modal'}
+                  />
+                </div>
               </div>
-            </div>
-          );
-        })
+            );
+          })
       : null;
     const deleteConfirmationText = `Are you sure you want to delete node${
       isNonEmptyObject(this.state.nodeToBeDeleted) && this.state.nodeToBeDeleted.nodeName

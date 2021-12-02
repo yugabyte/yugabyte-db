@@ -1,6 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 
 import { connect } from 'react-redux';
+import { destroy } from 'redux-form';
+import { toast } from 'react-toastify';
 import { isObject } from 'lodash';
 import { OnPremConfiguration } from '../../config';
 import {
@@ -8,6 +10,8 @@ import {
   createInstanceTypeResponse,
   createRegion,
   createRegionResponse,
+  deleteRegion,
+  deleteRegionResponse,
   createZones,
   createZonesResponse,
   createNodeInstances,
@@ -25,8 +29,6 @@ import {
   createOnPremProviderResponse
 } from '../../../actions/cloud';
 import { isNonEmptyArray } from '../../../utils/ObjectUtils';
-import { destroy } from 'redux-form';
-import { toast } from 'react-toastify';
 
 const mapStateToProps = (state) => {
   return {
@@ -93,12 +95,28 @@ const mapDispatchToProps = (dispatch) => {
           if ((isEdit && region.isBeingEdited) || !isEdit) {
             dispatch(createRegion(providerUUID, formValues)).then((response) => {
               if (response.error) {
-                const errorMessage = response.payload?.response?.data?.error || response.payload.message;
+                const errorMessage =
+                  response.payload?.response?.data?.error || response.payload.message;
                 toast.error(errorMessage);
               }
               dispatch(createRegionResponse(response.payload));
             });
           }
+        });
+      }
+    },
+
+    deleteOnPremRegions: (providerUUID, regions) => {
+      if (isNonEmptyArray(regions)) {
+        regions.forEach((region) => {
+          dispatch(deleteRegion(providerUUID, region.uuid)).then((response) => {
+            if (response.error) {
+              const errorMessage =
+                response.payload?.response?.data?.error || response.payload.message;
+              toast.error(errorMessage);
+            }
+            dispatch(deleteRegionResponse(response.payload));
+          });
         });
       }
     },
