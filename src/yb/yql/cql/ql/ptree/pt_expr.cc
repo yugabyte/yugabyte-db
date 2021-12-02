@@ -71,6 +71,7 @@ PTExpr::PTExpr(
       internal_type_(internal_type),
       ql_type_(ql_type),
       expected_internal_type_(InternalType::VALUE_NOT_SET),
+      is_in_operand_(false),
       index_name_(MCMakeShared<MCString>(memctx)) {
 }
 
@@ -553,9 +554,10 @@ CHECKED_STATUS PTCollectionExpr::Analyze(SemContext *sem_context) {
       sem_state.set_allowing_column_refs(false);
 
       const shared_ptr<QLType>& val_type = expected_type->param_type(0);
+      // NULL value in the LIST is allowed for right operand of IN/NOT IN operators only.
       sem_state.SetExprState(
           val_type, YBColumnSchema::ToInternalDataType(val_type),
-          bindvar_name, nullptr, NullIsAllowed::kFalse);
+          bindvar_name, nullptr, NullIsAllowed(is_in_operand()));
       for (auto& elem : values_) {
         RETURN_NOT_OK(elem->Analyze(sem_context));
         RETURN_NOT_OK(elem->CheckRhsExpr(sem_context));

@@ -161,6 +161,14 @@ class PTExpr : public TreeNode {
 
   bool has_valid_ql_type_id();
 
+  virtual void set_is_in_operand(bool in_operand = true) {
+    is_in_operand_ = in_operand;
+  }
+
+  bool is_in_operand() const {
+    return is_in_operand_;
+  }
+
   // Seeks index-columns that referenced by this expression and output mangled colum names.
   // NOTE:
   // - index-column can be either a column or an expression of the column.
@@ -360,6 +368,7 @@ class PTExpr : public TreeNode {
   InternalType internal_type_;
   QLTypePtr ql_type_;
   InternalType expected_internal_type_;
+  bool is_in_operand_; // Is it right operand of IN / NOT IN operator.
 
   // Fields that should be resolved by semantic analysis.
   // An expression might be a reference to a column in an INDEX.

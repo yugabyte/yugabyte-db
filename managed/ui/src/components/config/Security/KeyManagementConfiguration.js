@@ -21,19 +21,19 @@ import { readUploadedFile } from '../../../utils/UniverseUtils';
 import { change } from 'redux-form';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
 
-// TODO: (Daniel) - Replace this hard-coding with an API that returns
-//  a list of supported KMS Configurations
-const kmsConfigTypes = [
-  { value: 'SMARTKEY', label: 'Equinix SmartKey' },
-  { value: 'AWS', label: 'AWS KMS' }
-];
-
 const awsRegionList = regionsData.map((region, index) => {
   return {
     value: region.destVpcRegion,
     label: region.destVpcRegion
   };
 });
+
+// TODO: (Daniel) - Replace this hard-coding with an API that returns a list of supported KMS Configurations
+let kmsConfigTypes = [
+  { value: 'SMARTKEY', label: 'Equinix SmartKey' },
+  { value: 'AWS', label: 'AWS KMS' },
+  { value: 'HASHICORP', label: 'Hashicorp' }
+];
 
 class KeyManagementConfiguration extends Component {
   state = {
@@ -114,6 +114,12 @@ class KeyManagementConfiguration extends Component {
           } else if (values.cmkId) {
             data['cmk_id'] = values.cmkId;
           }
+          break;
+        case 'HASHICORP':
+          data['HC_VAULT_ADDRESS'] = values.v_address;
+          data['HC_VAULT_TOKEN'] = values.v_token;
+          data['HC_VAULT_ENGINE'] = 'transit';
+          data['HC_VAULT_MOUNT_PATH'] = values.v_mount_path ? values.v_mount_path : 'transit/';
           break;
         default:
         case 'SMARTKEY':
@@ -282,6 +288,71 @@ class KeyManagementConfiguration extends Component {
     );
   };
 
+  getHCVaultForm = () => {
+    return (
+      <Fragment>
+        <Row className="config-provider-row" key={'v-url-field'}>
+          <Col lg={3}>
+            <div className="form-item-custom-label">Vault Address</div>
+          </Col>
+          <Col lg={7}>
+            <Field
+              name={'v_address'}
+              component={YBFormInput}
+              placeholder={''}
+              className={'kube-provider-input-field'}
+            />
+          </Col>
+        </Row>
+        <Row className="config-provider-row" key={'v-token-field'}>
+          <Col lg={3}>
+            <div className="form-item-custom-label">Secret Token</div>
+          </Col>
+          <Col lg={7}>
+            <Field
+              name={'v_token'}
+              component={YBFormInput}
+              className={'kube-provider-input-field'}
+            />
+          </Col>
+        </Row>
+        <Row className="config-provider-row" key={'v-secret-engine-field'}>
+          <Col lg={3}>
+            <div className="form-item-custom-label">Secret Engine</div>
+          </Col>
+          <Col lg={7}>
+            <Field
+              name={'v_secret_engine'}
+              value="transit"
+              disabled={true}
+              component={YBFormInput}
+              className={'kube-provider-input-field'}
+            />
+          </Col>
+        </Row>
+        <Row className="config-provider-row" key={'v-mount-path-field'}>
+          <Col lg={3}>
+            <div className="form-item-custom-label">Mount Path</div>
+          </Col>
+          <Col lg={7}>
+            <Field
+              name={'v_mount_path'}
+              placeholder={'transit/'}
+              component={YBFormInput}
+              className={'kube-provider-input-field'}
+            />
+          </Col>
+          <Col lg={1} className="config-zone-tooltip">
+            <YBInfoTip
+              title="Mount Path"
+              content="Enter the mount path. If mount path is not specified, path will be auto set to 'transit/'"
+            />
+          </Col>
+        </Row>
+      </Fragment>
+    );
+  };
+
   displayFormContent = (provider) => {
     if (!provider) {
       return this.getSmartKeyForm();
@@ -291,6 +362,8 @@ class KeyManagementConfiguration extends Component {
         return this.getSmartKeyForm();
       case 'AWS':
         return this.getAWSForm();
+      case 'HASHICORP':
+        return this.getHCVaultForm();
       default:
         return this.getSmartKeyForm();
     }
@@ -316,8 +389,11 @@ class KeyManagementConfiguration extends Component {
   };
 
   render() {
-    const { configList } = this.props;
+    const { configList, featureFlags } = this.props;
     const { listView, enabledIAMProfile } = this.state;
+    const isHCVaultEnabled = featureFlags.test.enableHCVault || featureFlags.released.enableHCVault;
+    if (!isHCVaultEnabled)
+      kmsConfigTypes = kmsConfigTypes.filter((config) => config.value !== 'HASHICORP');
 
     if (getPromiseState(configList).isInit() || getPromiseState(configList).isLoading()) {
       return <YBLoadingCircleIcon />;
@@ -350,10 +426,22 @@ class KeyManagementConfiguration extends Component {
         is: (provider) => provider?.value === 'AWS' && !enabledIAMProfile,
         then: Yup.string().required('Secret Key ID is Required')
       }),
+
       region: Yup.mixed().when('kmsProvider', {
         is: (provider) => provider?.value === 'AWS',
         then: Yup.mixed().required('AWS Region is Required')
       }),
+
+      v_address: Yup.mixed().when('kmsProvider', {
+        is: (provider) => provider?.value === 'HASHICORP',
+        then: Yup.mixed().required('Vault Address is Required')
+      }),
+
+      v_token: Yup.mixed().when('kmsProvider', {
+        is: (provider) => provider?.value === 'HASHICORP',
+        then: Yup.mixed().required('Secret Token is Required')
+      }),
+
       cmkPolicyContent: Yup.string(),
       cmkId: Yup.string()
     });

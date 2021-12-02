@@ -762,8 +762,8 @@ DefineIndex(Oid relationId,
 			{
 				char	   *new_name = "ybgin";
 
-				ereport(NOTICE,
-						(errmsg("replacing access method \"%s\" with \"%s\"",
+				ereport(LOG,
+						(errmsg("substituting access method \"%s\" for \"%s\"",
 								accessMethodName, new_name)));
 				accessMethodName = new_name;
 			}

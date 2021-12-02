@@ -20,7 +20,8 @@ const mapStateToProps = (state) => {
     configList: state.cloud.authConfig,
     visibleModal: state.modal.visibleModal,
     deleteConfig: state.customer.deleteConfig,
-    modal: state.modal
+    modal: state.modal,
+    featureFlags: state.featureFlags
   };
 };
 

@@ -1025,7 +1025,9 @@ class YBBackup:
         local_binary = None if self.args.ysql_enable_auth else self.args.local_ysql_dump_binary
 
         return self.run_tool(local_binary, self.args.remote_ysql_dump_binary,
-                             self.get_ysql_dump_std_args(),
+                             # Latest tools do not need '--masters', but keep it for backward
+                             # compatibility with older YB releases.
+                             self.get_ysql_dump_std_args() + ['--masters=' + self.args.masters],
                              cmd_line_args, run_ip=run_at_ip, env_vars=certs_env)
 
     def run_ysql_shell(self, cmd_line_args):
