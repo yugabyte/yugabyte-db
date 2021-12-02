@@ -2,7 +2,7 @@
 title: Deploy clusters in Yugabyte Cloud
 linkTitle: Deploy clusters
 description: Deploy clusters in Yugabyte Cloud.
-headcontent: Deploy production-ready clusters
+headcontent: Deploy production-ready clusters.
 image: /images/section_icons/index/quick_start.png
 menu:
   latest:

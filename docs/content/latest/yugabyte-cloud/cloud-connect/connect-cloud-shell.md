@@ -13,12 +13,12 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Use any browser to connect to Yugabyte Cloud by using the cloud shell. Cloud shell does not require a CA certificate or any special network access configured.
+Use any browser to connect to Yugabyte Cloud by using the cloud shell. Cloud shell doesn't require a CA certificate or any special network access configured.
 
 You have the option of using the following command line interfaces (CLIs) in the cloud shell:
 
-- [ysqlsh](../../../admin/ysqlsh/) - YSQL shell for interacting with YugabyteDB using the [YSQL API](../../../api/ysql)
-- [ycqlsh](../../../admin/ycqlsh/) - YCQL shell, which uses the [YCQL API](../../../api/ycql)
+- [ysqlsh](../../../admin/ysqlsh/) - YSQL shell for interacting with YugabyteDB using the [YSQL API](../../../api/ysql).
+- [ycqlsh](../../../admin/ycqlsh/) - YCQL shell, which uses the [YCQL API](../../../api/ycql).
 
 ## Connect via Cloud Shell
 

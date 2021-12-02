@@ -67,7 +67,7 @@ Yugabyte Cloud requires SSL connections. The generated `ysqlsh` shell command an
 | verify-ca | Yes | Uses the SSL connection and verifies that the server certificate is issued by a trusted certificate authority (CA). Requires the _sslrootcert_ parameter with the path to the cluster certificate. |
 | verify-full | Yes | Uses the SSL connection and verifies that the server certificate is issued by a trusted CA and that the requested server host name matches that in the certificate. Requires the _sslrootcert_ parameter with the path to the cluster certificate. |
 
-If you do not provide an `sslmode`, the connection defaults to `prefer`.
+If you don't provide an `sslmode`, the connection defaults to `prefer`.
 
 For information on SSL modes, refer to [Protection Provided in Different Modes](https://www.postgresql.org/docs/11/libpq-ssl.html#LIBPQ-SSL-PROTECTION) in the PostgreSQL documentation.
 

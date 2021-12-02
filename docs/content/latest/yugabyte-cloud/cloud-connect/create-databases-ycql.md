@@ -1,7 +1,7 @@
 ---
 title: Create and explore a database
 linkTitle: Create a database
-description: Use distributed CQL to explore core features of YugabteDB.
+description: Use distributed CQL to explore core features of YugabyteDB.
 headcontent:
 image: /images/section_icons/quick_start/explore_ycql.png
 menu:
