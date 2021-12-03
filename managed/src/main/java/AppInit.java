@@ -2,6 +2,7 @@
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.commissioner.TaskGarbageCollector;
 import com.yugabyte.yw.common.CertificateHelper;
@@ -52,7 +53,8 @@ public class AppInit {
       AlertConfigurationService alertConfigurationService,
       AlertDestinationService alertDestinationService,
       PlatformMetricsProcessor platformMetricsProcessor,
-      SettableRuntimeConfigFactory sConfigFactory)
+      SettableRuntimeConfigFactory sConfigFactory,
+      Config config)
       throws ReflectiveOperationException {
     Logger.info("Yugaware Application has started");
     Configuration appConfig = application.configuration();
@@ -82,9 +84,8 @@ public class AppInit {
         if (storagePath == null || storagePath.length() == 0) {
           throw new RuntimeException(("yb.storage.path is not set in application.conf"));
         }
-
-        LogUtil.updateLoggingFromConfig(sConfigFactory);
       }
+      LogUtil.updateLoggingFromConfig(sConfigFactory, config);
 
       // Initialize AWS if any of its instance types have an empty volumeDetailsList
       List<Provider> providerList = Provider.find.query().where().findList();
