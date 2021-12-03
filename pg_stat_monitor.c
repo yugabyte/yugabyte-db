@@ -104,11 +104,10 @@ PG_FUNCTION_INFO_V1(pg_stat_monitor_settings);
 PG_FUNCTION_INFO_V1(get_histogram_timings);
 PG_FUNCTION_INFO_V1(pg_stat_monitor_hook_stats);
 
-static uint pg_get_client_addr(void);
-static int pg_get_application_name(char* application_name);
+static uint pg_get_client_addr(bool *ok);
+static int pg_get_application_name(char *application_name, bool *ok);
 static PgBackendStatus *pg_get_backend_status(void);
 static Datum intarray_get_datum(int32 arr[], int len);
-
 
 #if PG_VERSION_NUM < 140000
 DECLARE_HOOK(void pgss_post_parse_analyze, ParseState *pstate, Query *query);
@@ -1112,8 +1111,8 @@ static PgBackendStatus*
 pg_get_backend_status(void)
 {
 	LocalPgBackendStatus *local_beentry;
-	int		             num_backends = pgstat_fetch_stat_numbackends();
-	int                  i;
+	int num_backends = pgstat_fetch_stat_numbackends();
+	int i;
 
 	for (i = 1; i <= num_backends; i++)
 	{
@@ -1132,46 +1131,44 @@ pg_get_backend_status(void)
 }
 
 static int
-pg_get_application_name(char *application_name)
+pg_get_application_name(char *application_name, bool *ok)
 {
 	PgBackendStatus *beentry = pg_get_backend_status();
 	if (!beentry)
 		return snprintf(application_name, APPLICATIONNAME_LEN, "%s", "postmaster");
 
-	return snprintf(application_name, APPLICATIONNAME_LEN, "%s", beentry->st_appname);	
+	if (!beentry)
+		return snprintf(application_name, APPLICATIONNAME_LEN, "%s", "unknown");
+
+	*ok = true;
+
+	return snprintf(application_name, APPLICATIONNAME_LEN, "%s", beentry->st_appname);
 }
 
 static uint
-pg_get_client_addr(void)
+pg_get_client_addr(bool *ok)
 {
 	PgBackendStatus *beentry = pg_get_backend_status();
-	char	remote_host[NI_MAXHOST];
-	int		ret;
-	static uint localhost = 0;
+	char remote_host[NI_MAXHOST];
+	int ret;
 
 	remote_host[0] = '\0';
 
 	if (!beentry)
 		return ntohl(inet_addr("127.0.0.1"));
-	
+
+	*ok = true;
+
 	ret = pg_getnameinfo_all(&beentry->st_clientaddr.addr,
 							 beentry->st_clientaddr.salen,
 							 remote_host, sizeof(remote_host),
 							 NULL, 0,
 							 NI_NUMERICHOST | NI_NUMERICSERV);
 	if (ret != 0)
-	{
-		if (localhost == 0)
-			localhost = ntohl(inet_addr("127.0.0.1"));
-		return localhost;
-	}
+		return ntohl(inet_addr("127.0.0.1"));
 
 	if (strcmp(remote_host, "[local]") == 0)
-	{
-		if (localhost == 0)
-			localhost = ntohl(inet_addr("127.0.0.1"));
-		return localhost;
-	}
+		return ntohl(inet_addr("127.0.0.1"));
 
 	return ntohl(inet_addr(remote_host));
 }
@@ -1191,11 +1188,11 @@ pgss_update_entry(pgssEntry *entry,
 						BufferUsage *bufusage,
 						WalUsage *walusage,
 						bool reset,
-						pgssStoreKind kind)
+						pgssStoreKind kind,
+						const char *app_name,
+						size_t app_name_len)
 {
 	int                 index;
-	char			    application_name[APPLICATIONNAME_LEN];
-	int				    application_name_len = pg_get_application_name(application_name);
 	double              old_mean;
 	int             	message_len = error_info ? strlen (error_info->message) : 0;
 	int             	comments_len = comments ? strlen (comments) : 0;
@@ -1264,11 +1261,11 @@ pgss_update_entry(pgssEntry *entry,
 			e->counters.resp_calls[index]++;
 		}
 
-		if (plan_text_len > 0)
+		if (plan_text_len > 0 && !e->counters.planinfo.plan_text[0])
 			_snprintf(e->counters.planinfo.plan_text, plan_info->plan_text, plan_text_len + 1, PLAN_TEXT_LEN);
 
-		if (application_name_len > 0)
-			_snprintf(e->counters.info.application_name, application_name, application_name_len + 1, APPLICATIONNAME_LEN);
+		if (app_name_len > 0 && !e->counters.info.application_name[0])
+			_snprintf(e->counters.info.application_name, app_name, app_name_len + 1, APPLICATIONNAME_LEN);
 
 		e->counters.info.num_relations = num_relations;
 		_snprintf2(e->counters.info.relations, relations, num_relations,  REL_LEN);
@@ -1465,8 +1462,8 @@ pgss_store(uint64 queryid,
 	pgssHashKey     key;
 	pgssEntry       *entry;
 	pgssSharedState *pgss = pgsm_get_ss();
-	char            application_name[APPLICATIONNAME_LEN];
-	int             application_name_len;
+	static char     application_name[APPLICATIONNAME_LEN] = "";
+	static int      application_name_len = 0;
 	bool            reset = false;
 	uint64          bucketid;
 	uint64          prev_bucket_id;
@@ -1474,6 +1471,9 @@ pgss_store(uint64 queryid,
 	uint64          planid;
 	uint64          appid;
 	char            comments[512] = "";
+	static bool found_app_name = false;
+	static bool found_client_addr = false;
+	static uint client_addr = 0;
 
 	/*  Monitoring is disabled */
 	if (!PGSM_ENABLED)
@@ -1492,8 +1492,13 @@ pgss_store(uint64 queryid,
 	else
 		userid =  GetUserId();
 
-	application_name_len = pg_get_application_name(application_name);
-	planid = plan_info ? plan_info->planid: 0;
+	if (!found_app_name)
+		application_name_len = pg_get_application_name(application_name, &found_app_name);
+
+	if (!found_client_addr)
+		client_addr = pg_get_client_addr(&found_client_addr);
+
+	planid = plan_info ? plan_info->planid : 0;
 	appid = djb2_hash((unsigned char *)application_name, application_name_len);
 
 	extract_query_comments(query, comments, sizeof(comments));
@@ -1508,7 +1513,7 @@ pgss_store(uint64 queryid,
 	key.userid = userid;
 	key.dbid = MyDatabaseId;
 	key.queryid = queryid;
-	key.ip = pg_get_client_addr();
+	key.ip = client_addr;
 	key.planid = planid;
 	key.appid = appid;
 #if PG_VERSION_NUM < 140000
@@ -1597,7 +1602,9 @@ pgss_store(uint64 queryid,
 					bufusage,			/* bufusage */
 					walusage,			/* walusage */
 					reset,				/* reset */
-					kind);				/* kind */
+					kind,				/* kind */
+					application_name,
+					application_name_len);
 
 	LWLockRelease(pgss->lock);
 }
