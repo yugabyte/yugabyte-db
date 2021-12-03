@@ -106,4 +106,7 @@
     - name: install latest version of selinux-policy
       shell:
         cmd: sudo dnf reinstall --refresh -y selinux-policy
+      register: result
+      until: result.rc == 0
+      retries: 10
       when: ansible_distribution == 'OracleLinux' and ansible_distribution_major_version == '8'
