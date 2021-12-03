@@ -800,7 +800,12 @@ TEST_P(TwoDCTest, PollAndObserveIdleDampening) {
   {
     ASSERT_OK(WaitFor([this, &tablet_id, &table = tables[0], &ts_uuid, &data_mutex] {
         producer_client()->LookupTabletById(
-            tablet_id, table, CoarseMonoClock::Now() + MonoDelta::FromSeconds(3),
+            tablet_id,
+            table,
+            // TODO(tablet splitting + xCluster): After splitting integration is working (+ metrics
+            // support), then set this to kTrue.
+            master::IncludeInactive::kFalse,
+            CoarseMonoClock::Now() + MonoDelta::FromSeconds(3),
             [&ts_uuid, &data_mutex](const Result<client::internal::RemoteTabletPtr>& result) {
               if (result.ok()) {
                 std::lock_guard<std::mutex> l(data_mutex);

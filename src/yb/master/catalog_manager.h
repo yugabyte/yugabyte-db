@@ -308,7 +308,10 @@ class CatalogManager :
                                    GetTableLocationsResponsePB* resp) override;
 
   // Lookup tablet by ID, then call GetTabletLocations below.
-  CHECKED_STATUS GetTabletLocations(const TabletId& tablet_id, TabletLocationsPB* locs_pb) override;
+  CHECKED_STATUS GetTabletLocations(
+      const TabletId& tablet_id,
+      TabletLocationsPB* locs_pb,
+      IncludeInactive include_inactive) override;
 
   // Look up the locations of the given tablet. The locations
   // vector is overwritten (not appended to).
@@ -316,8 +319,10 @@ class CatalogManager :
   // If the tablet is not running, returns Status::ServiceUnavailable.
   // Otherwise, returns Status::OK and puts the result in 'locs_pb'.
   // This only returns tablets which are in RUNNING state.
-  CHECKED_STATUS GetTabletLocations(scoped_refptr<TabletInfo> tablet_info,
-                                    TabletLocationsPB* locs_pb) override;
+  CHECKED_STATUS GetTabletLocations(
+      scoped_refptr<TabletInfo> tablet_info,
+      TabletLocationsPB* locs_pb,
+      IncludeInactive include_inactive) override;
 
   // Returns the system tablet in catalog manager by the id.
   Result<std::shared_ptr<tablet::AbstractTablet>> GetSystemTablet(const TabletId& id) override;
@@ -1006,8 +1011,11 @@ class CatalogManager :
   // Builds the TabletLocationsPB for a tablet based on the provided TabletInfo.
   // Populates locs_pb and returns true on success.
   // Returns Status::ServiceUnavailable if tablet is not running.
-  CHECKED_STATUS BuildLocationsForTablet(const scoped_refptr<TabletInfo>& tablet,
-                                         TabletLocationsPB* locs_pb);
+  // Set include_inactive to true in order to also get information about hidden tablets.
+  CHECKED_STATUS BuildLocationsForTablet(
+      const scoped_refptr<TabletInfo>& tablet,
+      TabletLocationsPB* locs_pb,
+      IncludeInactive include_inactive = IncludeInactive::kFalse);
 
   // Check whether the tservers in the current replica map differs from those in the cstate when
   // processing a tablet report. Ignore the roles reported by the cstate, just compare the
@@ -1307,6 +1315,12 @@ class CatalogManager :
   }
 
   virtual bool IsCdcEnabled(const TableInfo& table_info) const {
+    // Default value.
+    return false;
+  }
+
+  virtual bool IsTableCdcProducer(const TableInfo& table_info) const REQUIRES_SHARED(mutex_) {
+    // Default value.
     return false;
   }
 

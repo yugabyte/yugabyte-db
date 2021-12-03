@@ -21,6 +21,8 @@
 #include "yb/client/client_fwd.h"
 #include "yb/common/hybrid_time.h"
 
+#include "yb/master/master_fwd.h"
+
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/rpc.h"
 
@@ -72,7 +74,9 @@ class TabletInvoker {
                          RemoteTablet* tablet,
                          const std::shared_ptr<const YBTable>& table,
                          rpc::RpcRetrier* retrier,
-                         Trace* trace);
+                         Trace* trace,
+                         master::IncludeInactive include_inactive =
+                            master::IncludeInactive::kFalse);
 
   virtual ~TabletInvoker();
 
@@ -152,6 +156,9 @@ class TabletInvoker {
   // Trace is provided externally and owner of this object should guarantee that it will be alive
   // while this object is alive.
   Trace* const trace_;
+
+  // Whether or not to allow lookups of inactive (hidden) tablets.
+  master::IncludeInactive const include_inactive_;
 
   // Used to retry some failed RPCs.
   // Tablet servers that refused the write because they were followers at the time.

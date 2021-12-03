@@ -391,7 +391,7 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                      const Status& failure_status);
 
   // Checks if table has at least one cdc stream (includes producers for xCluster replication).
-  bool IsTableCdcProducer(const TableInfo& table_info) const REQUIRES_SHARED(mutex_);
+  bool IsTableCdcProducer(const TableInfo& table_info) const override REQUIRES_SHARED(mutex_);
 
   // Checks if the table is a consumer in an xCluster replication universe.
   bool IsTableCdcConsumer(const TableInfo& table_info) const REQUIRES_SHARED(mutex_);

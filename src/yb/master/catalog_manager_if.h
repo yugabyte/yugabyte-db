@@ -156,10 +156,14 @@ class CatalogManagerIf {
   virtual void GetAllUDTypes(std::vector<scoped_refptr<UDTypeInfo>>* types) = 0;
 
   virtual CHECKED_STATUS GetTabletLocations(
-      const TabletId& tablet_id, TabletLocationsPB* locs_pb) = 0;
+      const TabletId& tablet_id,
+      TabletLocationsPB* locs_pb,
+      IncludeInactive include_inactive = IncludeInactive::kFalse) = 0;
 
   virtual CHECKED_STATUS GetTabletLocations(
-      scoped_refptr<TabletInfo> tablet_info, TabletLocationsPB* locs_pb) = 0;
+      scoped_refptr<TabletInfo> tablet_info,
+      TabletLocationsPB* locs_pb,
+      IncludeInactive include_inactive = IncludeInactive::kFalse) = 0;
 
   virtual void HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool error) = 0;
 

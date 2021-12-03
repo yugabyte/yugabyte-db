@@ -316,7 +316,9 @@ Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> CDCService
   table_name.set_table_id(stream_metadata->table_id);
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   RETURN_NOT_OK(async_client_init_->client()->GetTablets(
-      table_name, 0, &tablets, /* partition_list_version =*/ nullptr));
+      table_name, 0,
+      &tablets, /* partition_list_version =*/ nullptr,
+      RequireTabletsRunning::kFalse, master::IncludeInactive::kTrue));
   return tablets;
 }
 
@@ -831,8 +833,9 @@ Result<client::internal::RemoteTabletPtr> CDCServiceImpl::GetRemoteTablet(
   auto start = CoarseMonoClock::Now();
   async_client_init_->client()->LookupTabletById(
       tablet_id,
-      // TODO(tsplit): decide whether we need to get info about stale table partitions here.
       /* table =*/ nullptr,
+      // In case this is a split parent tablet, it will be hidden so we need this flag to access it.
+      master::IncludeInactive::kTrue,
       CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms),
       callback, client::UseCache::kFalse);
   future.wait();

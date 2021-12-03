@@ -250,7 +250,7 @@ void VerifyCdcStateMatches(client::YBClient* client,
 void VerifyStreamDeletedFromCdcState(client::YBClient* client,
                                      const CDCStreamId& stream_id,
                                      const TabletId& tablet_id,
-                                     int timeout_secs) {
+                                     int timeout_secs = 10) {
   client::TableHandle table;
   const client::YBTableName cdc_state_table(
       YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
@@ -284,7 +284,9 @@ void VerifyStreamDeletedFromCdcState(client::YBClient* client,
 void CDCServiceTest::GetTablets(std::vector<TabletId>* tablet_ids,
                                 const client::YBTableName& table_name) {
   std::vector<std::string> ranges;
-  ASSERT_OK(client_->GetTablets(table_name, 0 /* max_tablets */, tablet_ids, &ranges));
+  ASSERT_OK(client_->GetTablets(
+      table_name, 0 /* max_tablets */, tablet_ids, &ranges, nullptr /* locations */,
+      RequireTabletsRunning::kFalse, master::IncludeInactive::kTrue));
   ASSERT_EQ(tablet_ids->size(), tablet_count());
 }
 
@@ -527,7 +529,7 @@ TEST_P(CDCServiceTest, TestDeleteCDCStream) {
   ASSERT_TRUE(s.IsNotFound());
 
   for (const auto& tablet_id : tablet_ids) {
-    VerifyStreamDeletedFromCdcState(client_.get(), stream_id, tablet_id, 20);
+    VerifyStreamDeletedFromCdcState(client_.get(), stream_id, tablet_id);
   }
 }
 
@@ -714,6 +716,10 @@ TEST_P(CDCServiceTest, TestGetChanges) {
     // Check the key deleted.
     ASSERT_NO_FATALS(AssertIntKey(change_resp.records(0).key(), 1));
   }
+
+  // Cleanup stream before shutdown.
+  ASSERT_OK(client_->DeleteCDCStream(stream_id));
+  VerifyStreamDeletedFromCdcState(client_.get(), stream_id, tablet_id);
 }
 
 TEST_P(CDCServiceTest, TestGetChangesWithDeadline) {
@@ -772,6 +778,10 @@ TEST_P(CDCServiceTest, TestGetChangesWithDeadline) {
 
   // This time, we expect all records to be read.
   ASSERT_EQ(change_resp.records_size(), num_records);
+
+  // Cleanup stream before shutdown.
+  ASSERT_OK(client_->DeleteCDCStream(stream_id));
+  VerifyStreamDeletedFromCdcState(client_.get(), stream_id, tablet_id);
 }
 
 TEST_P(CDCServiceTest, TestGetChangesInvalidStream) {
@@ -1277,6 +1287,9 @@ TEST_P(CDCServiceTest, TestOnlyGetLocalChanges) {
 
   ASSERT_NO_FATALS(CheckChangesAndTable());
 
+  // Cleanup stream before shutdown.
+  ASSERT_OK(client_->DeleteCDCStream(stream_id));
+  VerifyStreamDeletedFromCdcState(client_.get(), stream_id, tablet_id);
 }
 
 TEST_P(CDCServiceTest, TestCheckpointUpdatedForRemoteRows) {
@@ -1329,6 +1342,10 @@ TEST_P(CDCServiceTest, TestCheckpointUpdatedForRemoteRows) {
   };
 
   ASSERT_NO_FATALS(CheckChanges());
+
+  // Cleanup stream before shutdown.
+  ASSERT_OK(client_->DeleteCDCStream(stream_id));
+  VerifyStreamDeletedFromCdcState(client_.get(), stream_id, tablet_id);
 }
 
 // Test to ensure that cdc_state table's checkpoint is updated as expected.
@@ -1412,6 +1429,10 @@ TEST_P(CDCServiceTest, TestCheckpointUpdate) {
 
   // Verify that cdc_state table's checkpoint is unaffected.
   ASSERT_NO_FATALS(VerifyCdcStateNotEmpty(client_.get()));
+
+  // Cleanup stream before shutdown.
+  ASSERT_OK(client_->DeleteCDCStream(stream_id));
+  VerifyStreamDeletedFromCdcState(client_.get(), stream_id, tablet_id);
 }
 
 namespace {

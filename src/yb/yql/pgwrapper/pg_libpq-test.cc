@@ -1203,6 +1203,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocation)) {
           client->LookupTabletById(
               tablets_bar_index[i].tablet_id(),
               table_bar_index,
+              master::IncludeInactive::kFalse,
               CoarseMonoClock::Now() + 30s,
               [&, i](const Result<client::internal::RemoteTabletPtr>& result) {
                 tablet_founds[i] = result.ok();
@@ -1236,6 +1237,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocation)) {
         client->LookupTabletById(
             colocated_tablet_id,
             colocated_table,
+              master::IncludeInactive::kFalse,
             CoarseMonoClock::Now() + 30s,
             [&](const Result<client::internal::RemoteTabletPtr>& result) {
               tablet_found = result.ok();
@@ -1488,6 +1490,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
           client->LookupTabletById(
               tablets_bar_index[i].tablet_id(),
               table_bar_index,
+              master::IncludeInactive::kFalse,
               CoarseMonoClock::Now() + 30s,
               [&, i](const Result<client::internal::RemoteTabletPtr>& result) {
                 tablet_founds[i] = result.ok();
@@ -1516,6 +1519,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
         client->LookupTabletById(
             tablegroup_alt.tablet_id,
             tablegroup_alt.table,
+            master::IncludeInactive::kFalse,
             CoarseMonoClock::Now() + 30s,
             [&](const Result<client::internal::RemoteTabletPtr>& result) {
               alt_tablet_found = result.ok();
@@ -1559,6 +1563,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
         client->LookupTabletById(
             tablegroup.tablet_id,
             tablegroup.table,
+            master::IncludeInactive::kFalse,
             CoarseMonoClock::Now() + 30s,
             [&](const Result<client::internal::RemoteTabletPtr>& result) {
               orig_tablet_found = result.ok();
@@ -1577,6 +1582,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
         client->LookupTabletById(
             tablegroup_alt.tablet_id,
             tablegroup_alt.table,
+            master::IncludeInactive::kFalse,
             CoarseMonoClock::Now() + 30s,
             [&](const Result<client::internal::RemoteTabletPtr>& result) {
               second_tablet_found = result.ok();

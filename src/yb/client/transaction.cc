@@ -952,6 +952,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     manager_->client()->LookupTabletById(
         tablet_id,
         /* table =*/ nullptr,
+        master::IncludeInactive::kFalse,
         deadline,
         std::bind(&Impl::LookupTabletDone, this, _1, transaction),
         client::UseCache::kTrue);

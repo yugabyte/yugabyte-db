@@ -52,7 +52,6 @@
 namespace yb {
 namespace master {
 
-YB_STRONGLY_TYPED_BOOL(IncludeInactive);
 YB_STRONGLY_TYPED_BOOL(DeactivateOnly);
 
 // Drive usage information on a current replica of a tablet.
@@ -451,7 +450,12 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   void GetTabletsInRange(
       const std::string& partition_key_start, const std::string& partition_key_end,
       TabletInfos* ret,
-      int32_t max_returned_locations = std::numeric_limits<int32_t>::max()) const;
+      int32_t max_returned_locations = std::numeric_limits<int32_t>::max()) const EXCLUDES(lock_);
+  // Iterates through tablets_ and not partitions_, so there may be duplicates of key ranges.
+  void GetInactiveTabletsInRange(
+      const std::string& partition_key_start, const std::string& partition_key_end,
+      TabletInfos* ret,
+      int32_t max_returned_locations = std::numeric_limits<int32_t>::max()) const EXCLUDES(lock_);
 
   std::size_t NumPartitions() const;
   // Return whether given partition start keys match partitions_.
