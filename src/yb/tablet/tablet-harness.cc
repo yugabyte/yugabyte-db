@@ -13,6 +13,12 @@
 
 #include "yb/tablet/tablet-harness.h"
 
+#include "yb/common/index.h"
+
+#include "yb/consensus/log_anchor_registry.h"
+
+#include "yb/server/logical_clock.h"
+
 #include "yb/tablet/tablet.h"
 
 #include "yb/util/result.h"

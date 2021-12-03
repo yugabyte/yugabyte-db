@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/util/test_util.h"
 
 #include <glog/logging.h>
@@ -37,6 +38,7 @@
 #include "yb/gutil/strings/strcat.h"
 #include "yb/gutil/strings/util.h"
 #include "yb/gutil/walltime.h"
+
 #include "yb/util/env.h"
 #include "yb/util/logging.h"
 #include "yb/util/path_util.h"

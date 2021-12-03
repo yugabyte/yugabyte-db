@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <functional>
 #include <memory>
 #include <string>
@@ -38,9 +39,11 @@
 #include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/leader_election.h"
 #include "yb/consensus/metadata.pb.h"
+
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"

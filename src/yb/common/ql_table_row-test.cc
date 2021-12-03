@@ -12,7 +12,6 @@
 //
 
 #include <boost/functional/hash.hpp>
-
 #include <gtest/gtest.h>
 
 #include "yb/common/ql_expr.h"

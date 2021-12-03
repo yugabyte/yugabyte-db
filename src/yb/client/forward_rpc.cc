@@ -10,13 +10,19 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/client/forward_rpc.h"
 
 #include "yb/client/client.h"
+
 #include "yb/common/wire_protocol.h"
+
+#include "yb/tserver/tserver_service.proxy.h"
+
 #include "yb/util/cast.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
+#include "yb/util/trace.h"
 
 using namespace std::placeholders;
 

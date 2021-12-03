@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/consensus/log_util.h"
 
 #include <algorithm>
@@ -38,10 +39,14 @@
 #include <glog/logging.h>
 
 #include "yb/common/hybrid_time.h"
+
 #include "yb/consensus/opid_util.h"
+
 #include "yb/fs/fs_manager.h"
+
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/util.h"
+
 #include "yb/util/coding-inl.h"
 #include "yb/util/coding.h"
 #include "yb/util/crc.h"

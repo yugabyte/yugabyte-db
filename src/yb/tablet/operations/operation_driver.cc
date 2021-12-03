@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/tablet/operations/operation_driver.h"
 
 #include <atomic>
@@ -39,21 +40,24 @@
 #include <string>
 #include <vector>
 
-#include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_fwd.h"
-#include "yb/consensus/consensus_types.h"
+#include "yb/consensus/consensus.h"
+
 #include "yb/gutil/callback.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/thread_annotations.h"
+
 #include "yb/master/sys_catalog_constants.h"
+
 #include "yb/rpc/rpc_fwd.h"
+
 #include "yb/tablet/mvcc.h"
 #include "yb/tablet/operations/operation_tracker.h"
 #include "yb/tablet/preparer.h"
 #include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/tablet_options.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"

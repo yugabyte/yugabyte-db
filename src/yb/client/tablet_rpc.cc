@@ -12,21 +12,27 @@
 // under the License.
 //
 //
+
 #include "yb/client/tablet_rpc.h"
 
 #include "yb/client/client-internal.h"
 #include "yb/client/client.h"
 #include "yb/client/client_error.h"
 #include "yb/client/meta_cache.h"
+
 #include "yb/common/wire_protocol.h"
+
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_header.pb.h"
+
 #include "yb/tserver/tserver_error.h"
 #include "yb/tserver/tserver_forward_service.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
+
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
+#include "yb/util/trace.h"
 
 DEFINE_test_flag(bool, assert_local_op, false,
                  "When set, we crash if we received an operation that cannot be served locally.");

@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/consensus/consensus_peers.h"
 
 #include <algorithm>
@@ -41,17 +42,23 @@
 #include <glog/logging.h>
 
 #include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_queue.h"
 #include "yb/consensus/replicate_msgs_holder.h"
+
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/rpc/periodic.h"
 #include "yb/rpc/rpc_controller.h"
+
 #include "yb/tablet/tablet_error.h"
+
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_error.h"
+
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/flag_tags.h"

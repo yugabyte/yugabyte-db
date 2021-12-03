@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/tools/ysck.h"
 
 #include <mutex>
@@ -41,7 +42,9 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/blocking_queue.h"
+#include "yb/util/countdown_latch.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 

@@ -29,13 +29,15 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <string>
 
 #include <gtest/gtest.h>
 
 #include "yb/consensus/quorum_util.h"
+
+#include "yb/util/status.h"
 #include "yb/util/test_macros.h"
-#include "yb/util/tsan_util.h"
 
 namespace yb {
 namespace consensus {

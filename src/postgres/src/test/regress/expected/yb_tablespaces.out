@@ -59,6 +59,14 @@ CREATE TABLESPACE z WITH (replica_placement='{"num_replicas":3, "placement_block
  z          | yugabyte |
 (5 rows)
 
+CREATE TABLEGROUP grp TABLESPACE x;
+-- Fail, not empty
+\set VERBOSITY terse \\ -- suppress dependency details.
+DROP TABLESPACE x;
+ERROR:  tablespace "x" cannot be dropped because some objects depend on it
+\set VERBOSITY default
+DROP TABLEGROUP grp;
+-- Should succeed, empty now
 DROP TABLESPACE x;
 DROP TABLESPACE y;
 -- create a tablespace using WITH clause

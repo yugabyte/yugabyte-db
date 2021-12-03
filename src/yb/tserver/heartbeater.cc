@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/tserver/heartbeater.h"
 
 #include <cstdint>
@@ -43,34 +44,38 @@
 #include <boost/function.hpp>
 #include <glog/logging.h>
 
-#include "yb/common/doc_hybrid_time.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/log_fwd.h"
+
 #include "yb/docdb/docdb.pb.h"
-#include "yb/docdb/docdb_fwd.h"
-#include "yb/docdb/primitive_value.h"
-#include "yb/docdb/value.h"
+
 #include "yb/gutil/atomicops.h"
+#include "yb/gutil/bind.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/thread_annotations.h"
+
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/master_rpc.h"
+
 #include "yb/rocksdb/cache.h"
-#include "yb/rocksdb/db.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/statistics.h"
-#include "yb/rocksdb/write_batch.h"
-#include "yb/rpc/rpc_controller.h"
+
 #include "yb/rpc/rpc_fwd.h"
+
 #include "yb/server/hybrid_clock.h"
 #include "yb/server/server_base.proxy.h"
+
 #include "yb/tablet/tablet_options.h"
+
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+
 #include "yb/util/async_util.h"
 #include "yb/util/capabilities.h"
 #include "yb/util/countdown_latch.h"

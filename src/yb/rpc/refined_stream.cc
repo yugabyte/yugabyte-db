@@ -10,9 +10,11 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/rpc/refined_stream.h"
 
 #include "yb/rpc/rpc_util.h"
+
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"

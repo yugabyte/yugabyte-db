@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/consensus/retryable_requests.h"
 
 #include <boost/multi_index/hashed_index.hpp>
@@ -19,7 +20,9 @@
 
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_round.h"
+
 #include "yb/tserver/tserver.pb.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"

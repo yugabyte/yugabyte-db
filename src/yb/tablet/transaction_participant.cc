@@ -17,15 +17,15 @@
 
 #include <queue>
 
-#include <boost/multi_index_container.hpp>
 #include <boost/multi_index/hashed_index.hpp>
-#include <boost/multi_index/ordered_index.hpp>
 #include <boost/multi_index/mem_fun.hpp>
+#include <boost/multi_index/ordered_index.hpp>
 
 #include "yb/client/transaction_rpc.h"
 
-#include "yb/consensus/consensus_util.h"
 #include "yb/common/pgsql_error.h"
+
+#include "yb/consensus/consensus_util.h"
 
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/transaction_dump.h"
@@ -34,15 +34,14 @@
 
 #include "yb/server/clock.h"
 
-#include "yb/tablet/operations/update_txn_operation.h"
-#include "yb/tablet/transaction_participant_context.h"
-
 #include "yb/tablet/cleanup_aborts_task.h"
 #include "yb/tablet/cleanup_intents_task.h"
+#include "yb/tablet/operations/update_txn_operation.h"
 #include "yb/tablet/remove_intents_task.h"
 #include "yb/tablet/running_transaction.h"
 #include "yb/tablet/running_transaction_context.h"
 #include "yb/tablet/transaction_loader.h"
+#include "yb/tablet/transaction_participant_context.h"
 #include "yb/tablet/transaction_status_resolver.h"
 
 #include "yb/util/countdown_latch.h"
@@ -55,7 +54,6 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
-#include "yb/util/yb_pg_errcodes.h"
 #include "yb/util/tsan_util.h"
 
 using namespace std::literals;

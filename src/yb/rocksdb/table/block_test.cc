@@ -17,29 +17,29 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <stdio.h>
+
 #include <string>
 #include <vector>
 
-#include "yb/rocksdb/db/dbformat.h"
+#include <gtest/gtest.h>
+
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/iterator.h"
-#include "yb/rocksdb/table.h"
 #include "yb/rocksdb/slice_transform.h"
 #include "yb/rocksdb/table/block.h"
-#include "yb/rocksdb/table/block_internal.h"
 #include "yb/rocksdb/table/block_builder.h"
 #include "yb/rocksdb/table/block_builder_internal.h"
-#include "yb/rocksdb/table/format.h"
 #include "yb/rocksdb/table/block_hash_index.h"
+#include "yb/rocksdb/table/block_internal.h"
 #include "yb/rocksdb/util/random.h"
-#include <gtest/gtest.h>
-#include "yb/util/test_macros.h"
 #include "yb/rocksdb/util/testutil.h"
-#include "yb/util/logging.h"
 
+#include "yb/util/logging.h"
 #include "yb/util/random_util.h"
+#include "yb/util/test_macros.h"
 
 DECLARE_int32(v);
 

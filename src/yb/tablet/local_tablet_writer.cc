@@ -10,13 +10,18 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/tablet/local_tablet_writer.h"
 
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_value.h"
+
 #include "yb/gutil/casts.h"
+#include "yb/gutil/singleton.h"
+
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/tablet.h"
+
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 

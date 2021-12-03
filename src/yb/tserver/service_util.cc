@@ -13,7 +13,10 @@
 
 #include "yb/tserver/service_util.h"
 
+#include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus_error.h"
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metrics.h"

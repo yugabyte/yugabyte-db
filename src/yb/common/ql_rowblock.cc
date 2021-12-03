@@ -12,13 +12,15 @@
 //
 //
 // This file contains the classes that represent a QL row and a row block.
+
 #include "yb/common/ql_rowblock.h"
 
 #include "yb/bfql/bfql.h"
-#include "yb/bfql/directory.h"
+
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
+
 #include "yb/util/status_log.h"
 
 namespace yb {

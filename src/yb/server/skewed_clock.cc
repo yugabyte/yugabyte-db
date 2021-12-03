@@ -14,7 +14,6 @@
 #include "yb/server/skewed_clock.h"
 
 #include "yb/server/hybrid_clock.h"
-#include "yb/util/status_log.h"
 
 #include "yb/util/stol_utils.h"
 

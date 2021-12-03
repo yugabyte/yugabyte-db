@@ -12,9 +12,8 @@
 // under the License.
 //
 //
-#include "yb/tablet/transaction_coordinator.h"
 
-#include <condition_variable>
+#include "yb/tablet/transaction_coordinator.h"
 
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/mem_fun.hpp>
@@ -23,23 +22,31 @@
 
 #include "yb/client/client.h"
 #include "yb/client/transaction_rpc.h"
+
 #include "yb/common/common.pb.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/transaction.h"
 #include "yb/common/transaction_error.h"
+
 #include "yb/consensus/consensus_round.h"
 #include "yb/consensus/consensus_util.h"
-#include "yb/consensus/opid_util.h"
+
 #include "yb/docdb/transaction_dump.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/poller.h"
 #include "yb/rpc/rpc.h"
+
 #include "yb/server/clock.h"
+
 #include "yb/tablet/operations/update_txn_operation.h"
+
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_service.pb.h"
+
 #include "yb/util/atomic.h"
+#include "yb/util/countdown_latch.h"
 #include "yb/util/enums.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"

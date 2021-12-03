@@ -55,13 +55,15 @@ int main() {
 #include <thread>
 
 #include <gflags/gflags.h>
+
 #include "yb/rocksdb/db/db_impl.h"
+#include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/hdfs/env_hdfs.h"
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/env.h"
-#include "yb/util/slice.h"
+#include "yb/rocksdb/filter_policy.h"
 #include "yb/rocksdb/slice_transform.h"
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/utilities/db_ttl.h"
@@ -73,9 +75,11 @@ int main() {
 #include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/mutexlock.h"
 #include "yb/rocksdb/util/random.h"
-#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/utilities/merge_operators.h"
+
+#include "yb/util/slice.h"
+#include "yb/util/string_util.h"
 
 using GFLAGS::ParseCommandLineFlags;
 using GFLAGS::RegisterFlagValidator;
@@ -993,9 +997,7 @@ class StressTest {
                               ? NewLRUCache(FLAGS_compressed_cache_size)
                               : nullptr),
         filter_policy_(FLAGS_bloom_bits >= 0
-                   ? FLAGS_use_block_based_filter
-                     ? NewBloomFilterPolicy(FLAGS_bloom_bits, true)
-                     : NewBloomFilterPolicy(FLAGS_bloom_bits, false)
+                   ? NewBloomFilterPolicy(FLAGS_bloom_bits, FLAGS_use_block_based_filter)
                    : nullptr),
         db_(nullptr),
         new_column_family_name_(1),

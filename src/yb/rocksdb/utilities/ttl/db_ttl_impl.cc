@@ -20,12 +20,9 @@
 
 #include "yb/rocksdb/utilities/ttl/db_ttl_impl.h"
 
-#include "yb/rocksdb/db/filename.h"
-#include "yb/rocksdb/db/write_batch_internal.h"
 #include "yb/rocksdb/convenience.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/iterator.h"
-#include "yb/rocksdb/utilities/db_ttl.h"
 #include "yb/rocksdb/util/coding.h"
 
 namespace rocksdb {

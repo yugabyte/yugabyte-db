@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/consensus/raft_consensus.h"
 
 #include <algorithm>
@@ -39,6 +40,7 @@
 #include <gflags/gflags.h>
 
 #include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_context.h"
 #include "yb/consensus/consensus_peers.h"
@@ -48,14 +50,19 @@
 #include "yb/consensus/peer_manager.h"
 #include "yb/consensus/quorum_util.h"
 #include "yb/consensus/replica_state.h"
+
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stringprintf.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/periodic.h"
 #include "yb/rpc/rpc_controller.h"
+
 #include "yb/server/clock.h"
+
 #include "yb/tserver/tserver.pb.h"
+
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"

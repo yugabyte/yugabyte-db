@@ -10,18 +10,22 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#include <string>
 
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
 #include "yb/gutil/stringprintf.h"
+
+#include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/table/block_based_table_factory.h"
 #include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/rocksdb/table/table_builder.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
+
 #include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
+
 #include "yb/tserver/universe_key_test_util.h"
+
 #include "yb/util/encrypted_file.h"
 #include "yb/util/encryption_util.h"
 #include "yb/util/header_manager.h"

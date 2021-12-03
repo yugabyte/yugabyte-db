@@ -10,16 +10,22 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/docdb/compaction_file_filter.h"
 
 #include <algorithm>
 
 #include "yb/common/hybrid_time.h"
+
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_ttl_util.h"
 #include "yb/docdb/docdb_compaction_filter.h"
+
 #include "yb/gutil/casts.h"
+
 #include "yb/rocksdb/compaction_filter.h"
+#include "yb/rocksdb/db/version_edit.h"
+
 #include "yb/util/flag_tags.h"
 
 DEFINE_bool(file_expiration_ignore_value_ttl, false,

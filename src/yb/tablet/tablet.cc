@@ -35,18 +35,21 @@
 #include <boost/container/static_vector.hpp>
 
 #include "yb/client/client.h"
+#include "yb/client/error.h"
 #include "yb/client/meta_data_cache.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/consensus/log_anchor_registry.h"
-
 #include "yb/common/pgsql_error.h"
+#include "yb/common/ql_rowblock.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction_error.h"
+
+#include "yb/consensus/log_anchor_registry.h"
+#include "yb/consensus/opid_util.h"
 
 #include "yb/docdb/compaction_file_filter.h"
 #include "yb/docdb/conflict_resolution.h"
@@ -55,13 +58,14 @@
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/docdb.h"
-#include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_compaction_filter.h"
 #include "yb/docdb/docdb_compaction_filter_intents.h"
+#include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/ql_rocksdb_storage.h"
 #include "yb/docdb/redis_operation.h"
+
 #include "yb/gutil/casts.h"
 
 #include "yb/rocksdb/db/memtable.h"
@@ -77,7 +81,6 @@
 #include "yb/tablet/operations/split_operation.h"
 #include "yb/tablet/operations/truncate_operation.h"
 #include "yb/tablet/operations/write_operation.h"
-
 #include "yb/tablet/snapshot_coordinator.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metrics.h"
@@ -86,8 +89,8 @@
 #include "yb/tablet/transaction_coordinator.h"
 #include "yb/tablet/transaction_participant.h"
 
-#include "yb/util/debug/trace_event.h"
 #include "yb/util/debug-util.h"
+#include "yb/util/debug/trace_event.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -1746,7 +1749,8 @@ Status Tablet::HandlePgsqlReadRequest(
 Result<bool> Tablet::IsQueryOnlyForTablet(const PgsqlReadRequestPB& pgsql_read_request,
     size_t row_count) const {
   if ((!pgsql_read_request.ybctid_column_value().value().binary_value().empty() &&
-        pgsql_read_request.batch_arguments_size() == row_count) ||
+       (pgsql_read_request.batch_arguments_size() == row_count ||
+        pgsql_read_request.batch_arguments_size() == 0)) ||
        !pgsql_read_request.partition_column_values().empty() ) {
     return true;
   }
@@ -3548,6 +3552,7 @@ class DocWriteOperation : public std::enable_shared_from_this<DocWriteOperation>
           // Empty values are disallowed by docdb.
           // https://github.com/YugaByte/yugabyte-db/issues/736
           pair->set_value(std::string(1, docdb::ValueTypeAsChar::kNullLow));
+          write_batch->set_wait_policy(WAIT_ERROR);
         }
       }
     }

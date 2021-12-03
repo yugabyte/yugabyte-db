@@ -34,6 +34,8 @@
 #include "yb/util/random_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/subprocess.h"
+#include "yb/util/tsan_util.h"
+
 #include "yb/yql/redis/redisserver/redis_parser.h"
 
 using namespace std::chrono_literals;

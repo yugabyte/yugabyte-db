@@ -42,34 +42,36 @@
 #include <vector>
 
 #include <boost/algorithm/string/predicate.hpp>
-
 #include <gflags/gflags.h>
 
-#include "yb/common/wire_protocol.h"
 #include "yb/common/schema.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/log_index.h"
 #include "yb/consensus/log_metrics.h"
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/log_util.h"
-#include "yb/consensus/opid_util.h"
 
 #include "yb/fs/fs_manager.h"
+
+#include "yb/gutil/bind.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
+
+#include "yb/util/async_util.h"
 #include "yb/util/countdown_latch.h"
+#include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/env_util.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/file_util.h"
 #include "yb/util/flag_tags.h"
-#include "yb/util/logging.h"
-#include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/format.h"
+#include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/opid.h"
 #include "yb/util/path_util.h"
@@ -82,9 +84,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
-#include "yb/util/blocking_queue.h"
 #include "yb/util/taskstream.h"
-#include "yb/util/threadpool.h"
 #include "yb/util/thread.h"
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"

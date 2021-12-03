@@ -5,7 +5,10 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/common/ql_value.h"
+
+#include "yb/consensus/log.h"
 #include "yb/consensus/log_reader.h"
+
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/client/error.h"
@@ -18,7 +21,9 @@
 #include "yb/client/client-test-util.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/value_type.h"
+
 #include "yb/gutil/casts.h"
+#include "yb/gutil/walltime.h"
 
 #include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/mini_cluster.h"

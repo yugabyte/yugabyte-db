@@ -20,8 +20,6 @@
 
 #include "yb/common/ql_type.h"
 
-#include "yb/bfpg/directory.h"
-
 using std::function;
 using std::vector;
 using std::unordered_map;

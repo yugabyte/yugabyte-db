@@ -23,6 +23,8 @@
 #include <cctype>
 #include "yb/rocksdb/util/testharness.h"
 
+#include "yb/util/test_util.h"
+
 namespace rocksdb {
 
 class GeoDBTest : public testing::Test {

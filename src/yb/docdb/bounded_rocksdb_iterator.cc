@@ -10,9 +10,12 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/docdb/bounded_rocksdb_iterator.h"
 
 #include "yb/docdb/key_bounds.h"
+
+#include "yb/rocksdb/db.h"
 
 namespace yb {
 namespace docdb {

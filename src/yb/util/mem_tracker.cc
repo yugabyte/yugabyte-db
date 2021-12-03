@@ -56,6 +56,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/mutex.h"
 #include "yb/util/random_util.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
 #include "yb/util/logging.h"

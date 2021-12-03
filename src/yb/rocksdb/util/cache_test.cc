@@ -20,12 +20,16 @@
 // Copyright (c) 2011 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
+
 #include <forward_list>
 #include <string>
 #include <vector>
 
+#include <gtest/gtest.h>
+
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/util/coding.h"
+
 #include "yb/util/string_util.h"
 #include "yb/util/test_macros.h"
 

@@ -17,6 +17,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/util/debug/trace_event_impl.h"
 
 #include <algorithm>
@@ -35,7 +36,9 @@
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/util.h"
+#include "yb/gutil/sysinfo.h"
 #include "yb/gutil/walltime.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/debug/trace_event_synthetic_delay.h"

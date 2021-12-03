@@ -1730,7 +1730,7 @@ void RaftConsensusITest::StubbornlyWriteSameRowThread(int replica_idx, const Ato
     resp.Clear();
     rpc.Reset();
     rpc.set_timeout(MonoDelta::FromSeconds(10));
-    ignore_result(ts->tserver_proxy->Write(req, &resp, &rpc));
+    WARN_NOT_OK(ts->tserver_proxy->Write(req, &resp, &rpc), "Write failed");
     VLOG(1) << "Response from server " << replica_idx << ": "
             << resp.ShortDebugString();
   }

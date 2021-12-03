@@ -16,8 +16,10 @@
 #include <vector>
 
 #include "yb/bfpg/bfpg.h"
-#include "yb/util/test_util.h"
+
 #include "yb/common/ql_value.h"
+
+#include "yb/util/test_util.h"
 
 namespace yb {
 namespace bfpg {

@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/client/client_utils.h"
 
 #include <functional>
@@ -20,12 +21,15 @@
 
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
+
 #include "yb/common/entity_ids.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc.h"
-#include "yb/rpc/rpc_fwd.h"
+
 #include "yb/server/secure.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"

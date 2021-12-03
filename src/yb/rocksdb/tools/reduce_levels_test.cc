@@ -28,7 +28,7 @@
 #include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/util/testharness.h"
 
-#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
 
 namespace rocksdb {
 

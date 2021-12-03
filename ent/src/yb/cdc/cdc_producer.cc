@@ -23,6 +23,7 @@
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/primitive_value.h"
+#include "yb/docdb/value.h"
 #include "yb/docdb/value_type.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"

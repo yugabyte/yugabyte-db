@@ -10,14 +10,18 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/docdb/doc_ql_scanspec.h"
 
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
+
 #include "yb/docdb/doc_expr.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_scanspec_util.h"
+
 #include "yb/rocksdb/db/compaction.h"
+
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 

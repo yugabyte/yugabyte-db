@@ -10,25 +10,30 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/docdb/intent_aware_iterator.h"
 
 #include <future>
-#include <thread>
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/transaction.h"
+
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/shared_lock_manager_fwd.h"
 #include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/doc_key.h"
+#include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/docdb-internal.h"
-#include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent.h"
+#include "yb/docdb/key_bounds.h"
 #include "yb/docdb/transaction_dump.h"
 #include "yb/docdb/value.h"
-#include "yb/server/hybrid_clock.h"
+
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/debug-util.h"
+#include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
 using namespace std::literals;

@@ -17,20 +17,25 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <algorithm>
 #include <thread>
 #include <vector>
 
+#include <gtest/gtest.h>
+
 #include "yb/rocksdb/db.h"
-#include "yb/rocksdb/perf_context.h"
-#include "yb/rocksdb/slice_transform.h"
 #include "yb/rocksdb/memtablerep.h"
+#include "yb/rocksdb/perf_context.h"
+#include "yb/rocksdb/perf_level.h"
+#include "yb/rocksdb/slice_transform.h"
 #include "yb/rocksdb/util/histogram.h"
 #include "yb/rocksdb/util/instrumented_mutex.h"
 #include "yb/rocksdb/util/stop_watch.h"
 #include "yb/rocksdb/util/testharness.h"
-#include "yb/util/string_util.h"
 
+#include "yb/util/string_util.h"
+#include "yb/util/test_macros.h"
 
 bool FLAGS_random_key = false;
 bool FLAGS_use_set_based_memetable = false;
