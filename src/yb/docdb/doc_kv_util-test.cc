@@ -11,24 +11,21 @@
 // under the License.
 //
 
-#include <atomic>
 #include <string>
 
 #include <gtest/gtest.h>
 
+#include "yb/common/schema.h"
+
 #include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/doc_ttl_util.h"
-
 #include "yb/docdb/value.h"
-#include "yb/util/monotime.h"
-#include "yb/util/test_macros.h"
-#include "yb/util/result.h"
-#include "yb/util/thread.h"
-#include "yb/util/tsan_util.h"
-#include "yb/util/bytes_formatter.h"
 
-#include "yb/util/slice.h"
 #include "yb/rocksdb/util/random.h"
+
+#include "yb/util/monotime.h"
+#include "yb/util/slice.h"
+#include "yb/util/test_macros.h"
 
 using namespace std::literals;
 using std::string;

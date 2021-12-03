@@ -13,16 +13,18 @@
 
 #include "yb/tablet/tablet-test-util.h"
 
-
 #include "yb/common/ql_expr.h"
+#include "yb/common/ql_rowwise_iterator_interface.h"
 #include "yb/common/ql_value.h"
-
 
 #include "yb/gutil/strings/join.h"
 
 #include "yb/tablet/operations/change_metadata_operation.h"
+#include "yb/tablet/tablet.h"
 
 #include "yb/tserver/tserver_admin.pb.h"
+
+#include "yb/util/status_log.h"
 
 DECLARE_bool(enable_data_block_fsync);
 
@@ -72,7 +74,7 @@ void YBTabletTest::AlterSchema(const Schema& schema) {
 }
 
 Status IterateToStringList(
-    common::YQLRowwiseIteratorIf* iter, std::vector<std::string> *out, int limit) {
+    YQLRowwiseIteratorIf* iter, std::vector<std::string> *out, int limit) {
   out->clear();
   Schema schema = iter->schema();
   int fetched = 0;

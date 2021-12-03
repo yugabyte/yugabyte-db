@@ -40,23 +40,31 @@
 #include "yb/rocksdb/port/stack_trace.h"
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/db.h"
+#include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/experimental.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/perf_context.h"
+#include "yb/rocksdb/perf_level.h"
 #include "yb/rocksdb/snapshot.h"
 #include "yb/rocksdb/sst_file_writer.h"
 #include "yb/rocksdb/table_properties.h"
 #include "yb/rocksdb/wal_filter.h"
 #include "yb/rocksdb/utilities/write_batch_with_index.h"
+#include "yb/rocksdb/util/file_reader_writer.h"
+#include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/mutexlock.h"
 #include "yb/rocksdb/util/rate_limiter.h"
 #include "yb/rocksdb/util/sync_point.h"
 
 #include "yb/rocksutil/yb_rocksdb_logger.h"
 
+#include "yb/util/format.h"
 #include "yb/util/priority_thread_pool.h"
 #include "yb/util/slice.h"
+#include "yb/util/string_util.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tsan_util.h"
 
 DECLARE_bool(use_priority_thread_pool_for_compactions);
 DECLARE_bool(use_priority_thread_pool_for_flushes);

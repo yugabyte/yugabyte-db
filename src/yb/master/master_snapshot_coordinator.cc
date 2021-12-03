@@ -10,7 +10,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/master/master_snapshot_coordinator.h"
 
 #include <unordered_map>
@@ -19,28 +18,27 @@
 #include <boost/multi_index/mem_fun.hpp>
 
 #include "yb/common/snapshot.h"
-
 #include "yb/docdb/doc_key.h"
-
+#include "yb/docdb/value.h"
 #include "yb/master/async_snapshot_tasks.h"
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/master_error.h"
 #include "yb/master/master_util.h"
 #include "yb/master/restoration_state.h"
 #include "yb/master/snapshot_coordinator_context.h"
 #include "yb/master/snapshot_schedule_state.h"
 #include "yb/master/snapshot_state.h"
 #include "yb/master/sys_catalog_writer.h"
-
 #include "yb/rpc/poller.h"
-
-#include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_snapshots.h"
 #include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tablet/operations/write_operation.h"
-
-
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_snapshots.h"
+#include "yb/util/async_util.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -223,11 +221,11 @@ class MasterSnapshotCoordinator::Impl {
 
   CHECKED_STATUS Load(tablet::Tablet* tablet) {
     std::lock_guard<std::mutex> lock(mutex_);
-    RETURN_NOT_OK(EnumerateSysCatalog(tablet, context_.schema(), SysRowEntry::SNAPSHOT,
+    RETURN_NOT_OK(EnumerateSysCatalog(tablet, context_.schema(), SysRowEntryType::SNAPSHOT,
         [this](const Slice& id, const Slice& data) NO_THREAD_SAFETY_ANALYSIS -> Status {
       return LoadEntry<SysSnapshotEntryPB>(id, data, &snapshots_);
     }));
-    return EnumerateSysCatalog(tablet, context_.schema(), SysRowEntry::SNAPSHOT_SCHEDULE,
+    return EnumerateSysCatalog(tablet, context_.schema(), SysRowEntryType::SNAPSHOT_SCHEDULE,
         [this](const Slice& id, const Slice& data) NO_THREAD_SAFETY_ANALYSIS -> Status {
       return LoadEntry<SnapshotScheduleOptionsPB>(id, data, &schedules_);
     });
@@ -255,12 +253,12 @@ class MasterSnapshotCoordinator::Impl {
                   << AsString(sub_doc_key.doc_key().range_group());;
     }
 
-    if (first_key.GetInt32() == SysRowEntry::SNAPSHOT) {
+    if (first_key.GetInt32() == SysRowEntryType::SNAPSHOT) {
       return DoApplyWrite<SysSnapshotEntryPB>(
           sub_doc_key.doc_key().range_group()[1].GetString(), value, &snapshots_);
     }
 
-    if (first_key.GetInt32() == SysRowEntry::SNAPSHOT_SCHEDULE) {
+    if (first_key.GetInt32() == SysRowEntryType::SNAPSHOT_SCHEDULE) {
       return DoApplyWrite<SnapshotScheduleOptionsPB>(
           sub_doc_key.doc_key().range_group()[1].GetString(), value, &schedules_);
     }
@@ -277,13 +275,13 @@ class MasterSnapshotCoordinator::Impl {
 
     if (value_type == docdb::ValueType::kTombstone) {
       std::lock_guard<std::mutex> lock(mutex_);
-      auto id = TryFullyDecodeUuid(id_str);
-      if (id.is_nil()) {
+      auto id = Uuid::TryFullyDecode(id_str);
+      if (id.IsNil()) {
         LOG(WARNING) << "Unable to decode id: " << id_str;
         return Status::OK();
       }
       bool erased = map->erase(typename Map::key_type(id)) != 0;
-      LOG_IF(DFATAL, !erased) << "Unknown entry tombstoned: " << id;
+      LOG_IF(DFATAL, !erased) << "Unknown entry tombstoned: " << id.ToString();
       return Status::OK();
     }
 
@@ -531,7 +529,7 @@ class MasterSnapshotCoordinator::Impl {
       LOG_IF(DFATAL, !status.ok()) << "Verify restoration failed: " << status;
       std::vector<TabletId> restore_tablets;
       for (const auto& id_and_type : restoration->non_system_objects_to_restore) {
-        if (id_and_type.second == SysRowEntry::TABLET) {
+        if (id_and_type.second == SysRowEntryType::TABLET) {
           restore_tablets.push_back(id_and_type.first);
         }
       }
@@ -545,7 +543,7 @@ class MasterSnapshotCoordinator::Impl {
   }
 
   Result<SnapshotSchedulesToObjectIdsMap> MakeSnapshotSchedulesToObjectIdsMap(
-      SysRowEntry::Type type) {
+      SysRowEntryType type) {
     std::vector<std::pair<SnapshotScheduleId, SnapshotScheduleFilterPB>> schedules;
     {
       std::lock_guard<std::mutex> lock(mutex_);
@@ -603,8 +601,8 @@ class MasterSnapshotCoordinator::Impl {
   CHECKED_STATUS LoadEntry(const Slice& id_slice, const Slice& data, Map* map) REQUIRES(mutex_) {
     VLOG(2) << __func__ << "(" << id_slice.ToDebugString() << ", " << data.ToDebugString() << ")";
 
-    auto id = TryFullyDecodeUuid(id_slice);
-    if (id.is_nil()) {
+    auto id = Uuid::TryFullyDecode(id_slice);
+    if (id.IsNil()) {
       return Status::OK();
     }
     auto metadata = VERIFY_RESULT(pb_util::ParseFromSlice<Pb>(data));
@@ -929,7 +927,7 @@ class MasterSnapshotCoordinator::Impl {
     VLOG(1) << __func__ << "(" << AsString(entries) << ", " << imported << ", " << schedule_id
             << ", " << snapshot_id << ")";
     for (const auto& entry : entries.entries()) {
-      if (entry.type() == SysRowEntry::TABLET) {
+      if (entry.type() == SysRowEntryType::TABLET) {
         request->add_tablet_id(entry.id());
       }
     }
@@ -1308,7 +1306,7 @@ Status MasterSnapshotCoordinator::FillHeartbeatResponse(TSHeartbeatResponsePB* r
 }
 
 Result<SnapshotSchedulesToObjectIdsMap>
-    MasterSnapshotCoordinator::MakeSnapshotSchedulesToObjectIdsMap(SysRowEntry::Type type) {
+    MasterSnapshotCoordinator::MakeSnapshotSchedulesToObjectIdsMap(SysRowEntryType type) {
   return impl_->MakeSnapshotSchedulesToObjectIdsMap(type);
 }
 

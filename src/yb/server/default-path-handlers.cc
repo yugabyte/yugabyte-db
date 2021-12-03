@@ -43,6 +43,7 @@
 
 #include "yb/server/default-path-handlers.h"
 
+#include <sys/stat.h>
 
 #include <fstream>
 #include <functional>
@@ -67,11 +68,15 @@
 #include "yb/server/pprof-path-handlers.h"
 #include "yb/server/webserver.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/histogram.pb.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/metrics.h"
 #include "yb/util/jsonwriter.h"
+#include "yb/util/result.h"
+#include "yb/util/status_log.h"
 #include "yb/util/version_info.h"
 #include "yb/util/version_info.pb.h"
 

@@ -30,6 +30,8 @@
 #include <string>
 #include <vector>
 
+#include "yb/gutil/casts.h"
+
 #include "yb/rocksdb/compaction_filter.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/iterator.h"
@@ -697,9 +699,7 @@ class TestUserFrontier : public UserFrontier {
     return value_;
   }
 
-  std::string ToString() const override {
-    return yb::Format("{ value: $0 }", value_);
-  }
+  std::string ToString() const override;
 
   void ToPB(google::protobuf::Any* pb) const override {
     UserBoundaryValuePB value;

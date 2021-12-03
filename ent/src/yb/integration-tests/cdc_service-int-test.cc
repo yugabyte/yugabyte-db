@@ -1,23 +1,29 @@
 // Copyright (c) YugaByte, Inc.
 
 #include <gflags/gflags_declare.h>
-#include <boost/lexical_cast.hpp>
 
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/common/ql_value.h"
+
+#include "yb/consensus/log.h"
 #include "yb/consensus/log_reader.h"
+
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/client/error.h"
+#include "yb/client/schema.h"
+#include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/table_handle.h"
-#include "yb/client/session.h"
-#include "yb/client/yb_table_name.h"
 #include "yb/client/yb_op.h"
+#include "yb/client/yb_table_name.h"
 #include "yb/client/client-test-util.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/value_type.h"
+
+#include "yb/gutil/casts.h"
+#include "yb/gutil/walltime.h"
 
 #include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/mini_cluster.h"
@@ -28,14 +34,19 @@
 #include "yb/master/master.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+#include "yb/util/format.h"
 
+#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/slice.h"
+#include "yb/util/status_format.h"
 #include "yb/util/tsan_util.h"
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
@@ -239,7 +250,7 @@ void VerifyCdcStateMatches(client::YBClient* client,
 void VerifyStreamDeletedFromCdcState(client::YBClient* client,
                                      const CDCStreamId& stream_id,
                                      const TabletId& tablet_id,
-                                     int timeout_secs) {
+                                     int timeout_secs = 10) {
   client::TableHandle table;
   const client::YBTableName cdc_state_table(
       YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
@@ -273,7 +284,9 @@ void VerifyStreamDeletedFromCdcState(client::YBClient* client,
 void CDCServiceTest::GetTablets(std::vector<TabletId>* tablet_ids,
                                 const client::YBTableName& table_name) {
   std::vector<std::string> ranges;
-  ASSERT_OK(client_->GetTablets(table_name, 0 /* max_tablets */, tablet_ids, &ranges));
+  ASSERT_OK(client_->GetTablets(
+      table_name, 0 /* max_tablets */, tablet_ids, &ranges, nullptr /* locations */,
+      RequireTabletsRunning::kFalse, master::IncludeInactive::kTrue));
   ASSERT_EQ(tablet_ids->size(), tablet_count());
 }
 
@@ -516,7 +529,7 @@ TEST_P(CDCServiceTest, TestDeleteCDCStream) {
   ASSERT_TRUE(s.IsNotFound());
 
   for (const auto& tablet_id : tablet_ids) {
-    VerifyStreamDeletedFromCdcState(client_.get(), stream_id, tablet_id, 20);
+    VerifyStreamDeletedFromCdcState(client_.get(), stream_id, tablet_id);
   }
 }
 
@@ -703,6 +716,10 @@ TEST_P(CDCServiceTest, TestGetChanges) {
     // Check the key deleted.
     ASSERT_NO_FATALS(AssertIntKey(change_resp.records(0).key(), 1));
   }
+
+  // Cleanup stream before shutdown.
+  ASSERT_OK(client_->DeleteCDCStream(stream_id));
+  VerifyStreamDeletedFromCdcState(client_.get(), stream_id, tablet_id);
 }
 
 TEST_P(CDCServiceTest, TestGetChangesWithDeadline) {
@@ -761,6 +778,10 @@ TEST_P(CDCServiceTest, TestGetChangesWithDeadline) {
 
   // This time, we expect all records to be read.
   ASSERT_EQ(change_resp.records_size(), num_records);
+
+  // Cleanup stream before shutdown.
+  ASSERT_OK(client_->DeleteCDCStream(stream_id));
+  VerifyStreamDeletedFromCdcState(client_.get(), stream_id, tablet_id);
 }
 
 TEST_P(CDCServiceTest, TestGetChangesInvalidStream) {
@@ -1266,6 +1287,9 @@ TEST_P(CDCServiceTest, TestOnlyGetLocalChanges) {
 
   ASSERT_NO_FATALS(CheckChangesAndTable());
 
+  // Cleanup stream before shutdown.
+  ASSERT_OK(client_->DeleteCDCStream(stream_id));
+  VerifyStreamDeletedFromCdcState(client_.get(), stream_id, tablet_id);
 }
 
 TEST_P(CDCServiceTest, TestCheckpointUpdatedForRemoteRows) {
@@ -1318,6 +1342,10 @@ TEST_P(CDCServiceTest, TestCheckpointUpdatedForRemoteRows) {
   };
 
   ASSERT_NO_FATALS(CheckChanges());
+
+  // Cleanup stream before shutdown.
+  ASSERT_OK(client_->DeleteCDCStream(stream_id));
+  VerifyStreamDeletedFromCdcState(client_.get(), stream_id, tablet_id);
 }
 
 // Test to ensure that cdc_state table's checkpoint is updated as expected.
@@ -1401,6 +1429,10 @@ TEST_P(CDCServiceTest, TestCheckpointUpdate) {
 
   // Verify that cdc_state table's checkpoint is unaffected.
   ASSERT_NO_FATALS(VerifyCdcStateNotEmpty(client_.get()));
+
+  // Cleanup stream before shutdown.
+  ASSERT_OK(client_->DeleteCDCStream(stream_id));
+  VerifyStreamDeletedFromCdcState(client_.get(), stream_id, tablet_id);
 }
 
 namespace {

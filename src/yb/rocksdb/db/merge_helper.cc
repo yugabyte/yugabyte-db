@@ -21,15 +21,17 @@
 #include "yb/rocksdb/db/merge_helper.h"
 
 #include <stdio.h>
+
 #include <string>
 
-#include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/compaction_filter.h"
 #include "yb/rocksdb/comparator.h"
-#include "yb/rocksdb/db.h"
 #include "yb/rocksdb/merge_operator.h"
 #include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
 #include "yb/rocksdb/util/statistics.h"
+
+#include "yb/util/stats/perf_step_timer.h"
 
 namespace rocksdb {
 

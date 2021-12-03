@@ -42,53 +42,56 @@
 #include <vector>
 
 #include <boost/function.hpp>
-
-#include <gflags/gflags.h>
 #include <glog/logging.h>
 
+#include "yb/common/hybrid_time.h"
 #include "yb/common/wire_protocol.h"
+
+#include "yb/consensus/log_fwd.h"
+
+#include "yb/docdb/docdb.pb.h"
+
+#include "yb/gutil/atomicops.h"
+#include "yb/gutil/bind.h"
+#include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/master/master_rpc.h"
-#include "yb/server/server_base.proxy.h"
-#include "yb/client/client.h"
-#include "yb/common/schema.h"
-#include "yb/common/transaction.h"
-#include "yb/consensus/log_fwd.h"
-#include "yb/docdb/docdb.pb.h"
-#include "yb/docdb/docdb_fwd.h"
-#include "yb/rocksdb/db.h"
-#include "yb/common/doc_hybrid_time.h"
-#include "yb/common/hybrid_time.h"
-#include "yb/docdb/doc_key.h"
-#include "yb/docdb/doc_kv_util.h"
-#include "yb/server/hybrid_clock.h"
-#include "yb/docdb/value.h"
-#include "yb/docdb/primitive_value.h"
-#include "yb/util/status.h"
-#include "yb/util/strongly_typed_bool.h"
-#include "yb/gutil/atomicops.h"
-#include "yb/gutil/macros.h"
 #include "yb/gutil/thread_annotations.h"
+
+#include "yb/master/master.pb.h"
+#include "yb/master/master.proxy.h"
+#include "yb/master/master_rpc.h"
+
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/statistics.h"
-#include "yb/rocksdb/write_batch.h"
+
 #include "yb/rpc/rpc_fwd.h"
+
+#include "yb/server/hybrid_clock.h"
+#include "yb/server/server_base.proxy.h"
+
 #include "yb/tablet/tablet_options.h"
-#include "yb/util/countdown_latch.h"
-#include "yb/util/enums.h"
-#include "yb/util/locks.h"
-#include "yb/util/metrics.h"
-#include "yb/util/slice.h"
-#include "yb/util/threadpool.h"
+
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+
+#include "yb/util/async_util.h"
 #include "yb/util/capabilities.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/enums.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/locks.h"
+#include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/strongly_typed_bool.h"
 #include "yb/util/thread.h"
+#include "yb/util/threadpool.h"
 
 using namespace std::literals;
 
@@ -119,8 +122,6 @@ using google::protobuf::RepeatedPtrField;
 using yb::HostPortPB;
 using yb::consensus::RaftPeerPB;
 using yb::master::GetLeaderMasterRpc;
-using yb::master::ListMastersResponsePB;
-using yb::master::Master;
 using yb::master::MasterServiceProxy;
 using yb::rpc::RpcController;
 using std::shared_ptr;

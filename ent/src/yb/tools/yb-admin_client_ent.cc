@@ -29,6 +29,7 @@
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/tools/yb-admin_util.h"
 #include "yb/util/cast.h"
 #include "yb/util/env.h"
@@ -43,6 +44,8 @@
 #include "yb/util/string_util.h"
 #include "yb/util/timestamp.h"
 #include "yb/util/encryption_util.h"
+#include "yb/util/format.h"
+#include "yb/util/status_format.h"
 
 DEFINE_test_flag(int32, metadata_file_format_version, 0,
                  "Used in 'export_snapshot' metadata file format (0 means using latest format).");
@@ -92,6 +95,7 @@ using master::RestoreSnapshotResponsePB;
 using master::SnapshotInfoPB;
 using master::SysNamespaceEntryPB;
 using master::SysRowEntry;
+using master::SysRowEntryType;
 using master::BackupRowEntryPB;
 using master::SysTablesEntryPB;
 using master::SysSnapshotEntryPB;
@@ -153,13 +157,13 @@ Status ClusterAdminClient::ListSnapshots(const ListSnapshotsFlags& flags) {
       for (SysRowEntry& entry : *snapshot.mutable_entry()->mutable_entries()) {
         string decoded_data;
         switch (entry.type()) {
-          case SysRowEntry::NAMESPACE: {
+          case SysRowEntryType::NAMESPACE: {
             auto meta = VERIFY_RESULT(ParseFromSlice<SysNamespaceEntryPB>(entry.data()));
             meta.clear_transaction();
             decoded_data = JsonWriter::ToJson(meta, JsonWriter::COMPACT);
             break;
           }
-          case SysRowEntry::TABLE: {
+          case SysRowEntryType::TABLE: {
             auto meta = VERIFY_RESULT(ParseFromSlice<SysTablesEntryPB>(entry.data()));
             meta.clear_schema();
             meta.clear_partition_schema();
@@ -637,7 +641,7 @@ Status ClusterAdminClient::CreateSnapshotMetaFile(const string& snapshot_id,
     // Remove 'namespace_name' from SysTablesEntryPB.
     SysSnapshotEntryPB& sys_entry = *snapshot->mutable_entry();
     for (SysRowEntry& entry : *sys_entry.mutable_entries()) {
-      if (entry.type() == SysRowEntry::TABLE) {
+      if (entry.type() == SysRowEntryType::TABLE) {
         auto meta = VERIFY_RESULT(ParseFromSlice<SysTablesEntryPB>(entry.data()));
         meta.clear_namespace_name();
         entry.set_data(meta.SerializeAsString());
@@ -697,7 +701,7 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
         ? tables[table_index] : YBTableName();
 
     switch (entry.type()) {
-      case SysRowEntry::NAMESPACE: {
+      case SysRowEntryType::NAMESPACE: {
         auto meta = VERIFY_RESULT(ParseFromSlice<SysNamespaceEntryPB>(entry.data()));
 
         if (!keyspace.name.empty() && keyspace.name != meta.name()) {
@@ -706,7 +710,7 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
         }
         break;
       }
-      case SysRowEntry::TABLE: {
+      case SysRowEntryType::TABLE: {
         if (was_table_renamed && table_name.empty()) {
           // Renaming is allowed for all tables OR for no one table.
           return STATUS_FORMAT(InvalidArgument,

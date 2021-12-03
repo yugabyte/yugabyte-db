@@ -18,6 +18,8 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/enums.h"
+#include "yb/util/format.h"
+#include "yb/util/status_format.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/master/master.pb.h"

@@ -20,6 +20,7 @@
 #include "yb/client/client_error.h"
 #include "yb/client/client_utils.h"
 #include "yb/client/meta_cache.h"
+#include "yb/client/table.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_fwd.h"
@@ -29,6 +30,8 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/stol_utils.h"
 
 DECLARE_int32(cdc_write_rpc_timeout_ms);
 
@@ -195,7 +198,7 @@ Status TwoDCOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* poller_r
                                   record.partition().partition_key_end(), all_tablets_result);
       } else {
         auto partition_hash_key = PartitionSchema::EncodeMultiColumnHashValue(
-            boost::lexical_cast<uint16_t>(record.key(0).key()));
+            VERIFY_RESULT(CheckedStoInt<uint16_t>(record.key(0).key())));
         auto tablet_result = local_client_->client->LookupTabletByKeyFuture(
             table_, partition_hash_key, CoarseMonoClock::now() + timeout_ms).get();
         TabletLookupCallback(i, tablet_result);

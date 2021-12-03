@@ -19,7 +19,12 @@
 //
 
 #include "yb/rocksdb/util/instrumented_mutex.h"
+
 #include "yb/rocksdb/util/perf_context_imp.h"
+#include "yb/rocksdb/util/statistics.h"
+#include "yb/rocksdb/util/stop_watch.h"
+
+#include "yb/util/stats/perf_step_timer.h"
 
 namespace rocksdb {
 namespace {

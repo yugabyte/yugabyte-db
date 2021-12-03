@@ -11,7 +11,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //--------------------------------------------------------------------------------------------------
-
 #include "yb/yql/pggate/pg_doc_op.h"
 
 #include <algorithm>
@@ -20,9 +19,10 @@
 #include <utility>
 #include <vector>
 
-
 #include "yb/common/row_mark.h"
-#include "yb/docdb/doc_key.h"
+#include "yb/gutil/strings/escaping.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pggate_flags.h"
@@ -370,6 +370,12 @@ Status PgDocReadOp::ExecuteInit(const PgExecParameters *exec_params) {
   RETURN_NOT_OK(PgDocOp::ExecuteInit(exec_params));
 
   template_op_->mutable_request()->set_return_paging_state(true);
+  // TODO(10696): This is probably the only place in pg_doc_op where pg_session is being
+  // used as a source of truth. All other uses treat it as stateless. Refactor to move this
+  // state elsewhere.
+  if (pg_session_->ShouldUseFollowerReads()) {
+    template_op_->set_yb_consistency_level(YBConsistencyLevel::CONSISTENT_PREFIX);
+  }
   SetRequestPrefetchLimit();
   SetBackfillSpec();
   SetRowMark();
@@ -389,10 +395,6 @@ Result<std::list<PgDocResult>> PgDocReadOp::ProcessResponseImpl() {
 Status PgDocReadOp::CreateRequests() {
   if (request_population_completed_) {
     return Status::OK();
-  }
-
-  if (exec_params_.read_from_followers) {
-    template_op_->set_yb_consistency_level(YBConsistencyLevel::CONSISTENT_PREFIX);
   }
 
   // All information from the SQL request has been collected and setup. This code populate
@@ -917,6 +919,7 @@ void PgDocReadOp::SetRowMark() {
   const auto row_mark_type = GetRowMarkType(&exec_params_);
   if (IsValidRowMarkType(row_mark_type)) {
     req->set_row_mark_type(row_mark_type);
+    req->set_wait_policy(static_cast<yb::WaitPolicy>(exec_params_.wait_policy));
   } else {
     req->clear_row_mark_type();
   }

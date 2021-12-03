@@ -2,21 +2,34 @@
 // Copyright (c) YugaByte, Inc.
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/docdb/doc_expr.h"
+
 #include <iostream>
 #include <string>
 
-#include "yb/docdb/doc_expr.h"
+#include "yb/bfql/bfunc_standard.h"
 
 #include "yb/common/jsonb.h"
-#include "yb/common/ql_value.h"
 #include "yb/common/pg_system_attr.h"
-
-#include "yb/util/decimal.h"
-#include "yb/util/status.h"
-#include "yb/util/logging.h"
-#include "yb/util/bfql/bfunc_standard.h"
+#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/ql_datatype.h"
+#include "yb/common/ql_type.h"
+#include "yb/common/ql_value.h"
+#include "yb/common/schema.h"
 
 #include "yb/docdb/docdb_pgapi.h"
+
+#include "yb/gutil/endian.h"
+#include "yb/gutil/strings/escaping.h"
+
+#include "yb/util/date_time.h"
+#include "yb/util/decimal.h"
+#include "yb/util/enums.h"
+#include "yb/util/logging.h"
+#include "yb/util/net/inetaddress.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
+#include "yb/util/uuid.h"
 
 namespace yb {
 namespace docdb {

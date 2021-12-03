@@ -16,6 +16,7 @@
 #include "yb/consensus/log_cache.h"
 #include "yb/consensus/raft_consensus.h"
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/human_readable.h"
 
 #include "yb/rocksdb/cache.h"
@@ -27,7 +28,9 @@
 
 #include "yb/util/background_task.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
+#include "yb/util/status_log.h"
 
 using namespace std::literals;
 using namespace std::placeholders;

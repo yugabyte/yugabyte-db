@@ -32,8 +32,10 @@
 #ifndef YB_INTEGRATION_TESTS_TEST_WORKLOAD_H_
 #define YB_INTEGRATION_TESTS_TEST_WORKLOAD_H_
 
-#include "yb/client/client.h"
+#include "yb/client/client_fwd.h"
 #include "yb/client/table.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/util/monotime.h"
 
 namespace yb {
 

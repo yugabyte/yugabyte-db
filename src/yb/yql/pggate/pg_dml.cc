@@ -12,14 +12,14 @@
 // under the License.
 //
 //--------------------------------------------------------------------------------------------------
+#include "yb/yql/pggate/pg_dml.h"
 
 #include "yb/client/yb_op.h"
 #include "yb/common/pg_system_attr.h"
-#include "yb/docdb/doc_key.h"
-#include "yb/util/debug-util.h"
-#include "yb/yql/pggate/pg_dml.h"
-#include "yb/yql/pggate/pggate_flags.h"
+#include "yb/util/atomic.h"
+#include "yb/util/status_format.h"
 #include "yb/yql/pggate/pg_select_index.h"
+#include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/util/pg_doc_data.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 

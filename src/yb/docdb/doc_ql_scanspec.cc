@@ -13,11 +13,17 @@
 
 #include "yb/docdb/doc_ql_scanspec.h"
 
-#include "yb/docdb/doc_scanspec_util.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/schema.h"
 
 #include "yb/docdb/doc_expr.h"
+#include "yb/docdb/doc_key.h"
+#include "yb/docdb/doc_scanspec_util.h"
+
 #include "yb/rocksdb/db/compaction.h"
+
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 using std::vector;
 
@@ -49,7 +55,7 @@ DocQLScanSpec::DocQLScanSpec(
     const bool include_static_columns,
     const DocKey& start_doc_key)
     : QLScanSpec(condition, if_condition, is_forward_scan, std::make_shared<DocExprExecutor>()),
-      range_bounds_(condition ? new common::QLScanRange(schema, *condition) : nullptr),
+      range_bounds_(condition ? new QLScanRange(schema, *condition) : nullptr),
       schema_(schema),
       hash_code_(hash_code),
       max_hash_code_(max_hash_code),
@@ -110,7 +116,7 @@ void DocQLScanSpec::InitRangeOptions(const QLConditionPB& condition) {
         return;
       }
 
-      ColumnSchema::SortingType sortingType = schema_.column(col_idx).sorting_type();
+      SortingType sortingType = schema_.column(col_idx).sorting_type();
 
       if (condition.op() == QL_OP_EQUAL) {
         auto pv = PrimitiveValue::FromQLValuePB(condition.operands(1).value(), sortingType);
@@ -123,7 +129,7 @@ void DocQLScanSpec::InitRangeOptions(const QLConditionPB& condition) {
         (*range_options_)[col_idx - num_hash_cols].reserve(opt_size);
 
         // IN arguments should have been de-duplicated and ordered ascendingly by the executor.
-        bool is_reverse_order = is_forward_scan_ ^ (sortingType == ColumnSchema::kAscending);
+        bool is_reverse_order = is_forward_scan_ ^ (sortingType == SortingType::kAscending);
         for (int i = 0; i < opt_size; i++) {
           int elem_idx = is_reverse_order ? opt_size - i - 1 : i;
           const auto &elem = options.elems(elem_idx);
@@ -143,7 +149,7 @@ void DocQLScanSpec::InitRangeOptions(const QLConditionPB& condition) {
 
 KeyBytes DocQLScanSpec::bound_key(const bool lower_bound) const {
   KeyBytes result;
-  auto encoder = DocKeyEncoder(&result).CotableId(Uuid(boost::uuids::nil_uuid()));
+  auto encoder = DocKeyEncoder(&result).CotableId(Uuid::Nil());
 
   // If no hashed_component use hash lower/upper bounds if set.
   if (hashed_components_->empty()) {
@@ -319,6 +325,19 @@ std::shared_ptr<rocksdb::ReadFileFilter> DocQLScanSpec::CreateFileFilter() const
   } else {
     return std::make_shared<RangeBasedFileFilter>(std::move(lower_bound), std::move(upper_bound));
   }
+}
+
+Result<KeyBytes> DocQLScanSpec::LowerBound() const {
+  return Bound(true /* lower_bound */);
+}
+
+Result<KeyBytes> DocQLScanSpec::UpperBound() const {
+  return Bound(false /* upper_bound */);
+}
+
+const DocKey& DocQLScanSpec::DefaultStartDocKey() {
+  static const DocKey result;
+  return result;
 }
 
 }  // namespace docdb

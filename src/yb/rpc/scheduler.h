@@ -118,7 +118,7 @@ class ScheduledTaskTracker {
  public:
   ScheduledTaskTracker() = default;
 
-  explicit ScheduledTaskTracker(Scheduler* scheduler) : scheduler_(DCHECK_NOTNULL(scheduler)) {}
+  explicit ScheduledTaskTracker(Scheduler* scheduler);
 
   void Bind(Scheduler* scheduler) {
     scheduler_ = scheduler;

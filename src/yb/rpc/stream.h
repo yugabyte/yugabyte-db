@@ -18,8 +18,7 @@
 
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/net/socket.h"
-#include "yb/util/result.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace ev {
 
@@ -120,9 +119,7 @@ class Stream {
   // The address of the local end of the connection.
   virtual const Endpoint& Local() const = 0;
 
-  virtual std::string ToString() const {
-    return Format("{ local: $0 remote: $1 }", Local(), Remote());
-  }
+  virtual std::string ToString() const;
 
   const std::string& LogPrefix() {
     if (log_prefix_.empty()) {

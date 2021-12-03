@@ -19,6 +19,7 @@
 #include "yb/master/master_util.h"
 #include "yb/tools/yb-generate_partitions.h"
 #include "yb/util/flags.h"
+#include "yb/util/logging.h"
 
 DEFINE_string(master_addresses, "", "Comma-separated list of YB Master server addresses");
 DEFINE_string(table_name, "", "Name of the table to generate partitions for");

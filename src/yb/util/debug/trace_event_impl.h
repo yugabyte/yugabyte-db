@@ -36,7 +36,6 @@
 #include "yb/util/atomic.h"
 #include "yb/util/condition_variable.h"
 #include "yb/util/locks.h"
-#include "yb/util/thread.h"
 #include "yb/util/threadlocal.h"
 
 // Older style trace macros with explicit id and extra data
@@ -71,6 +70,9 @@ struct hash<yb::Thread*> {
 #endif
 
 namespace yb {
+
+class Thread;
+
 namespace debug {
 
 // For any argument of type TRACE_VALUE_TYPE_CONVERTABLE the provided
@@ -693,7 +695,7 @@ class BASE_EXPORT TraceLog {
 
   // Sampling thread handles.
   std::unique_ptr<TraceSamplingThread> sampling_thread_;
-  scoped_refptr<yb::Thread> sampling_thread_handle_;
+  scoped_refptr<Thread> sampling_thread_handle_;
 
   CategoryFilter category_filter_;
   CategoryFilter event_callback_category_filter_;

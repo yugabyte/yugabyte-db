@@ -16,14 +16,18 @@
 #include "yb/docdb/bounded_rocksdb_iterator.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/intent.h"
 
 #include "yb/tablet/transaction_status_resolver.h"
 
 #include "yb/util/bitmap.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/metrics.h"
 #include "yb/util/operation_counter.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/thread.h"
 
 using namespace std::literals;
 

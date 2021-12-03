@@ -44,31 +44,41 @@
 #include "yb/client/transaction_manager.h"
 #include "yb/client/universe_key_client.h"
 
+#include "yb/common/wire_protocol.h"
+
 #include "yb/fs/fs_manager.h"
+
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/master/master.pb.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/service_if.h"
 #include "yb/rpc/yb_rpc.h"
+
 #include "yb/server/rpc_server.h"
 #include "yb/server/webserver.h"
+
 #include "yb/tablet/maintenance_manager.h"
+#include "yb/tablet/tablet_peer.h"
+
+#include "yb/tserver/heartbeater.h"
 #include "yb/tserver/heartbeater_factory.h"
 #include "yb/tserver/metrics_snapshotter.h"
 #include "yb/tserver/pg_client_service.h"
+#include "yb/tserver/remote_bootstrap_service.h"
+#include "yb/tserver/tablet_service.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver-path-handlers.h"
-#include "yb/tserver/remote_bootstrap_service.h"
+
 #include "yb/util/flag_tags.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
-#include "yb/util/env.h"
+#include "yb/util/status_log.h"
 #include "yb/util/universe_key_manager.h"
-#include "yb/gutil/sysinfo.h"
-#include "yb/rocksdb/env.h"
 
 using std::make_shared;
 using std::shared_ptr;
@@ -437,6 +447,13 @@ Status TabletServer::PopulateLiveTServers(const master::TSHeartbeatResponsePB& h
   return Status::OK();
 }
 
+Status TabletServer::GetLiveTServers(
+    std::vector<master::TSInformationPB> *live_tservers) const {
+  std::lock_guard<simple_spinlock> l(lock_);
+  *live_tservers = live_tservers_;
+  return Status::OK();
+}
+
 Status TabletServer::GetTabletStatus(const GetTabletStatusRequestPB* req,
                                      GetTabletStatusResponsePB* resp) const {
   VLOG(3) << "GetTabletStatus called for tablet " << req->tablet_id();
@@ -556,8 +573,9 @@ void TabletServer::SetYSQLCatalogVersion(uint64_t new_version, uint64_t new_brea
 }
 
 void TabletServer::UpdateTxnTableVersionsHash(uint64_t new_hash) {
-  if (transaction_manager_holder_) {
-    transaction_manager_holder_->UpdateTxnTableVersionsHash(new_hash);
+  const auto transaction_manager = transaction_manager_.load(std::memory_order_acquire);
+  if (transaction_manager) {
+    transaction_manager->UpdateTxnTableVersionsHash(new_hash);
   }
 }
 
@@ -575,6 +593,14 @@ client::TransactionPool* TabletServer::TransactionPool() {
 
 client::LocalTabletFilter TabletServer::CreateLocalTabletFilter() {
   return std::bind(&TSTabletManager::PreserveLocalLeadersOnly, tablet_manager(), _1);
+}
+
+const std::shared_ptr<MemTracker>& TabletServer::mem_tracker() const {
+  return RpcServerBase::mem_tracker();
+}
+
+void TabletServer::SetPublisher(rpc::Publisher service) {
+  publish_service_ptr_.reset(new rpc::Publisher(std::move(service)));
 }
 
 }  // namespace tserver

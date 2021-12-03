@@ -125,7 +125,11 @@ public class UniverseCRUDHandler {
       primaryIntent.accessKeyCode = appConfig.getString("yb.security.default.access.key");
     }
     if (PlacementInfoUtil.checkIfNodeParamsValid(taskParams, c)) {
-      PlacementInfoUtil.updateUniverseDefinition(taskParams, customer.getCustomerId(), c.uuid);
+      try {
+        PlacementInfoUtil.updateUniverseDefinition(taskParams, customer.getCustomerId(), c.uuid);
+      } catch (IllegalStateException e) {
+        throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
+      }
     } else {
       throw new PlatformServiceException(
           BAD_REQUEST,
@@ -196,12 +200,6 @@ public class UniverseCRUDHandler {
           == UniverseDefinitionTaskParams.ExposingServiceState.NONE) {
         c.userIntent.enableExposingService =
             UniverseDefinitionTaskParams.ExposingServiceState.UNEXPOSED;
-      }
-      if (c.userIntent.providerType.equals(Common.CloudType.onprem)) {
-        if (provider.getUnmaskedConfig().containsKey("USE_HOSTNAME")) {
-          c.userIntent.useHostname =
-              Boolean.parseBoolean(provider.getUnmaskedConfig().get("USE_HOSTNAME"));
-        }
       }
 
       if (c.userIntent.providerType.equals(Common.CloudType.kubernetes)) {

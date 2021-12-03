@@ -10,45 +10,41 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/yql/redis/redisserver/redis_service.h"
 
 #include <thread>
 
 #include <boost/algorithm/string/case_conv.hpp>
-
-
-
+#include <boost/lockfree/queue.hpp>
 #include <gflags/gflags.h>
-
-#include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/client/client.h"
 #include "yb/client/error.h"
-#include "yb/client/meta_data_cache.h"
 #include "yb/client/meta_cache.h"
+#include "yb/client/meta_data_cache.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/yb_op.h"
-
 #include "yb/common/redis_protocol.pb.h"
-
-#include "yb/yql/redis/redisserver/redis_commands.h"
-#include "yb/yql/redis/redisserver/redis_encoding.h"
-#include "yb/yql/redis/redisserver/redis_rpc.h"
-
+#include "yb/gutil/casts.h"
+#include "yb/gutil/strings/join.h"
+#include "yb/master/master.pb.h"
 #include "yb/rpc/connection.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_introspection.pb.h"
-
-#include "yb/tserver/tablet_server.h"
-
+#include "yb/tserver/tablet_server_interface.h"
+#include "yb/tserver/tserver_service.proxy.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/memory/mc_types.h"
+#include "yb/util/metrics.h"
 #include "yb/util/redis_util.h"
-#include "yb/util/size_literals.h"
+#include "yb/util/result.h"
 #include "yb/util/shared_lock.h"
+#include "yb/util/size_literals.h"
+#include "yb/yql/redis/redisserver/redis_commands.h"
+#include "yb/yql/redis/redisserver/redis_encoding.h"
+#include "yb/yql/redis/redisserver/redis_rpc.h"
 
 using yb::operator"" _MB;
 using namespace std::literals;
@@ -1130,7 +1126,7 @@ std::unordered_set<string> RedisServiceImplData::GetSubscriptions(
 
 // ENG-4199: Consider getting all the cluster-wide subscriptions?
 std::unordered_set<string> RedisServiceImplData::GetAllSubscriptions(AsPattern type) {
-  unordered_set<string> ret;
+  std::unordered_set<string> ret;
   SharedLock<decltype(pubsub_mutex_)> lock(pubsub_mutex_);
   for (const auto& element :
        (type == AsPattern::kTrue ? patterns_to_clients_ : channels_to_clients_)) {

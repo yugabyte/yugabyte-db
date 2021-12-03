@@ -24,6 +24,7 @@
 
 #include "yb/client/callbacks.h"
 #include "yb/client/client-test-util.h"
+#include "yb/client/schema.h"
 #include "yb/client/table_handle.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/split.h"
@@ -35,7 +36,6 @@
 #include "yb/master/mini_master.h"
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/tablet_metrics.h"
-#include "yb/tablet/tablet_peer.h"
 #include "yb/tools/yb-admin_client.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
@@ -56,8 +56,11 @@ namespace integration_tests {
 class YBTableTestBase : public YBTest {
  protected:
   YBTableTestBase();
-  virtual void SetUp() override;
-  virtual void TearDown() override;
+  ~YBTableTestBase();
+
+  void SetUp() override;
+  void TearDown() override;
+
   virtual void BeforeCreateTable();
   virtual void BeforeStartCluster();
 

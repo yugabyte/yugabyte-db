@@ -27,6 +27,7 @@
 #include <algorithm>
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/port/likely.h"
+#include "yb/util/format.h"
 #include "yb/util/hdr_histogram.h"
 #include "yb/util/metrics.h"
 

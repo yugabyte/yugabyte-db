@@ -14,18 +14,26 @@
 //
 // Treenode implementation for DML including SELECT statements.
 //--------------------------------------------------------------------------------------------------
+#include "yb/yql/cql/ql/ptree/pt_dml.h"
 
 #include <unordered_map>
 
-#include "yb/yql/cql/ql/ptree/pt_dml.h"
-#include "yb/yql/cql/ql/ptree/pt_expr.h"
-#include "yb/yql/cql/ql/ptree/ycql_predtest.h"
-
+#include "yb/client/schema.h"
 #include "yb/client/table.h"
-
 #include "yb/common/common.pb.h"
+#include "yb/common/index.h"
+#include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
+#include "yb/gutil/casts.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/yql/cql/ql/ptree/column_desc.h"
+#include "yb/yql/cql/ql/ptree/pt_dml_using_clause.h"
+#include "yb/yql/cql/ql/ptree/pt_expr.h"
+#include "yb/yql/cql/ql/ptree/pt_select.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/yql/cql/ql/ptree/ycql_predtest.h"
 
 DECLARE_bool(allow_index_table_read_write);
 DECLARE_bool(use_cassandra_authentication);
@@ -36,11 +44,11 @@ namespace ql {
 using strings::Substitute;
 
 PTDmlStmt::PTDmlStmt(MemoryContext *memctx,
-                     YBLocation::SharedPtr loc,
+                     YBLocationPtr loc,
                      PTExpr::SharedPtr where_clause,
                      PTExpr::SharedPtr if_clause,
                      const bool else_error,
-                     PTDmlUsingClause::SharedPtr using_clause,
+                     PTDmlUsingClausePtr using_clause,
                      const bool returns_status)
     : PTCollection(memctx, loc),
       where_clause_(where_clause),
@@ -588,7 +596,7 @@ Status WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
   switch (expr->ql_op()) {
     case QL_OP_EQUAL: {
       counter.increase_eq(col_args != nullptr);
-      if (!counter.isValid()) {
+      if (!counter.is_valid()) {
         return sem_context->Error(expr, "Illogical condition for where clause",
             ErrorCode::CQL_STATEMENT_INVALID);
       }
@@ -646,7 +654,7 @@ Status WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
           counter.increase_gt(col_args != nullptr);
         }
 
-        if (!counter.isValid()) {
+        if (!counter.is_valid()) {
           return sem_context->Error(expr, "Illogical condition for where clause",
               ErrorCode::CQL_STATEMENT_INVALID);
         }
@@ -711,7 +719,7 @@ Status WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
       }
 
       counter.increase_in(col_args != nullptr);
-      if (!counter.isValid()) {
+      if (!counter.is_valid()) {
         return sem_context->Error(expr, "Illogical condition for where clause",
                                   ErrorCode::CQL_STATEMENT_INVALID);
       }
@@ -735,7 +743,7 @@ Status WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
 Status WhereExprState::AnalyzeColumnFunction(SemContext *sem_context,
                                              const PTRelationExpr *expr,
                                              PTExpr::SharedPtr value,
-                                             PTBcall::SharedPtr call) {
+                                             PTBcallPtr call) {
   switch (expr->ql_op()) {
     case QL_OP_LESS_THAN:
     case QL_OP_LESS_THAN_EQUAL:
@@ -787,13 +795,77 @@ Status WhereExprState::AnalyzePartitionKeyOp(SemContext *sem_context,
                                 ErrorCode::CQL_STATEMENT_INVALID);
   }
 
-  if (!partition_key_counter_->isValid()) {
+  if (!partition_key_counter_->is_valid()) {
     return sem_context->Error(expr, "Illogical where condition for token in where clause",
                               ErrorCode::CQL_STATEMENT_INVALID);
   }
 
   partition_key_ops_->emplace_back(expr->ql_op(), value);
   return Status::OK();
+}
+
+std::vector<int64_t> PTDmlStmt::hash_col_indices() const {
+  std::vector<int64_t> indices;
+  indices.reserve(hash_col_bindvars_.size());
+  for (const PTBindVar* bindvar : hash_col_bindvars_) {
+    indices.emplace_back(bindvar->pos());
+  }
+  return indices;
+}
+
+void PTDmlStmt::AddColumnRef(const ColumnDesc& col_desc) {
+  if (col_desc.is_static()) {
+    static_column_refs_.insert(col_desc.id());
+  } else {
+    column_refs_.insert(col_desc.id());
+  }
+
+  if (column_ref_cnts_.find(col_desc.id()) == column_ref_cnts_.end())
+    column_ref_cnts_[col_desc.id()] = 0;
+  column_ref_cnts_[col_desc.id()]++;
+}
+
+std::string PTDmlStmt::PartitionKeyToString(const MCList<PartitionKeyOp>& conds) {
+  std::string str;
+  for (auto col_op = conds.begin(); col_op != conds.end(); ++col_op) {
+    std::stringstream s;
+    if (col_op != conds.begin()) {
+      s << " AND ";
+    }
+    // Partition_hash is stored as INT32, token is stored as INT64, unless you specify the
+    // rhs expression e.g partition_hash(h1, h2) >= 3 in which case it's stored as an VARINT.
+    // So setting the default to the yql partition_hash in that case seems reasonable.
+    string label = (col_op->expr()->expected_internal_type() == InternalType::kInt64Value) ?
+        "token" : "partition_hash";
+    s << "(" << label << "(" << hash_key_columns() <<  ") " << QLOperatorAsString(col_op->yb_op())
+      << " " << col_op->expr()->QLName() << ")";
+    str += s.str();
+  }
+  return str;
+}
+
+PTExprPtr PTDmlStmt::ttl_seconds() const {
+  return using_clause_ ? using_clause_->ttl_seconds() : nullptr;
+}
+
+PTExprPtr PTDmlStmt::user_timestamp_usec() const {
+  return using_clause_ ? using_clause_->user_timestamp_usec() : nullptr;
+}
+
+void PTDmlStmt::AddRefForAllColumns() {
+  for (const auto& pair : column_map_) {
+    AddColumnRef(pair.second);
+  }
+}
+
+void PTDmlStmt::AddHashColumnBindVar(PTBindVar* bindvar) {
+  hash_col_bindvars_.insert(bindvar);
+}
+
+bool PTDmlStmt::HashColCmp::operator()(const PTBindVar* v1, const PTBindVar* v2) const {
+  DCHECK(v1->hash_col() != nullptr) << "bindvar pos " << v1->pos() << " is not a hash column";
+  DCHECK(v2->hash_col() != nullptr) << "bindvar pos " << v2->pos() << " is not a hash column";
+  return v1->hash_col()->id() < v2->hash_col()->id();
 }
 
 }  // namespace ql

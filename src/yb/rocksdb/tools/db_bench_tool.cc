@@ -57,11 +57,11 @@
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/memtablerep.h"
 #include "yb/rocksdb/write_batch.h"
-#include "yb/util/slice.h"
 #include "yb/rocksdb/filter_policy.h"
 #include "yb/rocksdb/rate_limiter.h"
 #include "yb/rocksdb/slice_transform.h"
 #include "yb/rocksdb/perf_context.h"
+#include "yb/rocksdb/perf_level.h"
 #include "yb/rocksdb/utilities/transaction.h"
 #include "yb/rocksdb/utilities/transaction_db.h"
 #include "yb/rocksdb/utilities/optimistic_transaction_db.h"
@@ -78,6 +78,9 @@
 #include "yb/rocksdb/util/xxhash.h"
 #include "yb/rocksdb/hdfs/env_hdfs.h"
 #include "yb/rocksdb/utilities/merge_operators.h"
+
+#include "yb/util/slice.h"
+#include "yb/util/status_log.h"
 
 #ifdef OS_WIN
 #include <io.h>  // open/close

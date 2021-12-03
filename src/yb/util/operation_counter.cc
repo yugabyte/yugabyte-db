@@ -21,6 +21,8 @@
 
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/logging.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/trace.h"
 
 using namespace std::literals;
@@ -236,6 +238,11 @@ void ScopedRWOperationPause::ReleaseMutexButKeepDisabled() {
   data_.counter_->UnlockExclusiveOpMutex();
   // Make sure the destructor has no effect when it runs.
   data_.counter_ = nullptr;
+}
+
+Status MoveStatus(const ScopedRWOperation& scoped) {
+  return scoped.ok() ? Status::OK()
+                     : STATUS_FORMAT(TryAgain, "Resource unavailable: $0", scoped.resource_name());
 }
 
 }  // namespace yb

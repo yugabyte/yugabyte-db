@@ -13,11 +13,16 @@
 
 #include "yb/docdb/transaction_dump.h"
 
+#include <condition_variable>
+#include <mutex>
+
 #include <glog/logging.h>
 
 #include "yb/util/env.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/path_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status_log.h"
 
 DEFINE_bool(dump_transactions, false, "Dump transactions data in debug binary format");
 // The output dir is tried in the following order (first existing and non empty is taken):

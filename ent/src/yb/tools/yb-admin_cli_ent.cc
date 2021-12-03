@@ -17,12 +17,15 @@
 
 #include <boost/algorithm/string.hpp>
 
+#include "yb/common/hybrid_time.h"
 #include "yb/common/snapshot.h"
 #include "yb/tools/yb-admin_client.h"
 #include "yb/util/date_time.h"
+#include "yb/util/format.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_case.h"
-#include "yb/util/tostring.h"
 
 namespace yb {
 namespace tools {
@@ -37,28 +40,6 @@ using client::YBTableName;
 using strings::Substitute;
 
 namespace {
-
-Result<HybridTime> ParseHybridTime(string input) {
-  // Acceptable system time formats:
-  //  1. HybridTime Timestamp (in Microseconds)
-  //  2. -Interval
-  //  3. Human readable string
-  boost::trim(input);
-
-  HybridTime ht;
-  // The HybridTime is given in microseconds and will contain 16 chars.
-  static const std::regex int_regex("[0-9]{16}");
-  if (std::regex_match(input, int_regex)) {
-    return HybridTime::FromMicros(std::stoul(input));
-  }
-  if (!input.empty() && input[0] == '-') {
-    return HybridTime::FromMicros(
-        VERIFY_RESULT(WallClock()->Now()).time_point -
-        VERIFY_RESULT(DateTime::IntervalFromString(input.substr(1))).ToMicroseconds());
-  }
-  auto ts = VERIFY_RESULT(DateTime::TimestampFromString(input, DateTime::HumanReadableInputFormat));
-  return HybridTime::FromMicros(ts.ToInt64());
-}
 
 const string kMinus = "minus";
 
@@ -193,12 +174,12 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         auto schedule_id = VERIFY_RESULT(SnapshotScheduleId::FromString(args[0]));
         HybridTime restore_at;
         if (args.size() == 2) {
-          restore_at = VERIFY_RESULT(ParseHybridTime(args[1]));
+          restore_at = VERIFY_RESULT(HybridTime::ParseHybridTime(args[1]));
         } else {
           if (args[1] != kMinus) {
             return ClusterAdminCli::kInvalidArguments;
           }
-          restore_at = VERIFY_RESULT(ParseHybridTime("-" + args[2]));
+          restore_at = VERIFY_RESULT(HybridTime::ParseHybridTime("-" + args[2]));
         }
 
         return client->RestoreSnapshotSchedule(schedule_id, restore_at);
@@ -252,9 +233,9 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         const string snapshot_id = args[0];
         HybridTime timestamp;
         if (args.size() == 2) {
-          timestamp = VERIFY_RESULT(ParseHybridTime(args[1]));
+          timestamp = VERIFY_RESULT(HybridTime::ParseHybridTime(args[1]));
         } else if (args.size() == 3) {
-          timestamp = VERIFY_RESULT(ParseHybridTime("-" + args[2]));
+          timestamp = VERIFY_RESULT(HybridTime::ParseHybridTime("-" + args[2]));
         }
 
         RETURN_NOT_OK_PREPEND(client->RestoreSnapshot(snapshot_id, timestamp),

@@ -29,7 +29,7 @@ GET     /logs                                                                  c
 
 # --
 
-POST    /logging_config                                                         com.yugabyte.yw.controllers.LoggingConfigController.setLoggingLevel()
+POST    /logging_config                                                         com.yugabyte.yw.controllers.LoggingConfigController.setLoggingSettings()
 
 GET     /customers/:cUUID/host_info                                            com.yugabyte.yw.controllers.CustomerController.getHostInfo(cUUID: java.util.UUID)
 
@@ -139,6 +139,7 @@ POST    /customers/:cUUID/certificates/:rUUID/update_empty_cert                c
 GET     /customers/:cUUID/alerts                                               com.yugabyte.yw.controllers.AlertController.list(cUUID: java.util.UUID)
 GET     /customers/:cUUID/alerts/active                                        com.yugabyte.yw.controllers.AlertController.listActive(cUUID: java.util.UUID)
 GET     /customers/:cUUID/alerts/:alertUUID                                    com.yugabyte.yw.controllers.AlertController.get(cUUID: java.util.UUID, alertUUID: java.util.UUID)
+POST    /customers/:cUUID/alerts/count                                         com.yugabyte.yw.controllers.AlertController.countAlerts(cUUID: java.util.UUID)
 POST    /customers/:cUUID/alerts/page                                          com.yugabyte.yw.controllers.AlertController.pageAlerts(cUUID: java.util.UUID)
 POST    /customers/:cUUID/alerts/acknowledge                                   com.yugabyte.yw.controllers.AlertController.acknowledgeByFilter(cUUID: java.util.UUID)
 POST    /customers/:cUUID/alerts/:alertUUID/acknowledge                        com.yugabyte.yw.controllers.AlertController.acknowledge(cUUID: java.util.UUID, alertUUID: java.util.UUID)
@@ -280,6 +281,7 @@ GET    /customers/:cUUID/tasks                                                 c
 GET    /customers/:cUUID/tasks_list                                            com.yugabyte.yw.controllers.CustomerTaskController.tasksList(cUUID: java.util.UUID, uUUID: java.util.UUID ?= null)
 GET    /customers/:cUUID/tasks/:tUUID                                          com.yugabyte.yw.controllers.CustomerTaskController.taskStatus(cUUID: java.util.UUID, tUUID: java.util.UUID)
 POST   /customers/:cUUID/tasks/:tUUID                                          com.yugabyte.yw.controllers.CustomerTaskController.retryTask(cUUID: java.util.UUID, tUUID: java.util.UUID)
+POST   /customers/:cUUID/tasks/:tUUID/retry                                    com.yugabyte.yw.controllers.CustomerTaskController.retryTask(cUUID: java.util.UUID, tUUID: java.util.UUID)
 GET    /customers/:cUUID/universes/:uniUUID/tasks                              com.yugabyte.yw.controllers.CustomerTaskController.universeTasks(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET    /customers/:cUUID/tasks/:tUUID/failed                                   com.yugabyte.yw.controllers.CustomerTaskController.failedSubtasks(cUUID: java.util.UUID, tUUID: java.util.UUID)
 

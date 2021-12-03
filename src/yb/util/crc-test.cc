@@ -30,8 +30,8 @@
 // under the License.
 //
 
-#include "yb/gutil/strings/substitute.h"
 #include "yb/util/crc.h"
+#include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
 

@@ -547,9 +547,10 @@ class UpdateDiskMethod(AbstractInstancesMethod):
     def callback(self, args):
         self.cloud.update_disk(args)
         host_info = self.cloud.get_host_info(args)
+        self.update_ansible_vars_with_args(args)
         ssh_options = {
             # TODO: replace with args.ssh_user when it's setup in the flow
-            "ssh_user": self.SSH_USER,
+            "ssh_user": self.extra_vars["ssh_user"],
             "private_key_file": args.private_key_file
         }
         ssh_options.update(get_ssh_host_port(host_info, args.custom_ssh_port))

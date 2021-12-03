@@ -284,7 +284,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   // Generate a new random and unique rowid. It is a v4 UUID.
   string GenerateNewRowid() {
-    return rowid_generator_.Next(true /* binary_id */);
+    return GenerateObjectId(true /* binary_id */);
   }
 
   void InvalidateCache() {
@@ -323,13 +323,11 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Sets the specified timeout in the rpc service.
   void SetTimeout(int timeout_ms);
 
-  CHECKED_STATUS SetActiveSubTransaction(SubTransactionId id);
-
-  CHECKED_STATUS RollbackSubTransaction(SubTransactionId id);
-
   PgClient& pg_client() const {
     return pg_client_;
   }
+
+  bool ShouldUseFollowerReads() const;
 
  private:
   using Flusher = std::function<Status(PgsqlOpBuffer, IsTransactionalSession)>;
@@ -406,9 +404,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Execution status.
   Status status_;
   string errmsg_;
-
-  // Rowid generator.
-  ObjectIdGenerator rowid_generator_;
 
   std::unordered_map<PgObjectId, PgTableDescPtr, PgObjectIdHash> table_cache_;
   boost::unordered_set<PgForeignKeyReference> fk_reference_cache_;

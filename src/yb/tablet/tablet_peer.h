@@ -48,20 +48,18 @@
 #include "yb/consensus/log.h"
 #include "yb/gutil/callback.h"
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/thread_annotations.h"
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/tablet/mvcc.h"
 #include "yb/tablet/transaction_coordinator.h"
-#include "yb/tablet/transaction_participant.h"
+#include "yb/tablet/transaction_participant_context.h"
 #include "yb/tablet/operations/operation_tracker.h"
-#include "yb/tablet/operations/write_operation.h"
+#include "yb/tablet/operations/write_operation_context.h"
 #include "yb/tablet/preparer.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_fwd.h"
 
-#include "yb/util/metrics.h"
 #include "yb/util/semaphore.h"
 
 using yb::consensus::StateChangeContext;

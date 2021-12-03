@@ -20,7 +20,7 @@
 #include <initializer_list>
 
 #include "yb/docdb/primitive_value.h"
-#include "yb/util/bfql/tserver_opcodes.h"
+#include "yb/bfql/tserver_opcodes.h"
 
 namespace yb {
 namespace docdb {
@@ -173,7 +173,7 @@ class SubDocument : public PrimitiveValue {
 
   // Construct a SubDocument from a QLValuePB.
   static SubDocument FromQLValuePB(const QLValuePB& value,
-                                   ColumnSchema::SortingType sorting_type,
+                                   SortingType sorting_type,
                                    yb::bfql::TSOpcode write_instr = bfql::TSOpcode::kScalarInsert);
 
   // Construct a QLValuePB from a SubDocument.

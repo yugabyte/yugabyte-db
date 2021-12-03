@@ -11,11 +11,21 @@
 // under the License.
 //
 
-#include <boost/uuid/random_generator.hpp>
-#include <boost/uuid/detail/sha1.hpp>
 #include "yb/util/uuid.h"
-#include "yb/util/random_util.h"
+
+#include <boost/lexical_cast.hpp>
+#include <boost/uuid/detail/sha1.hpp>
+#include <boost/uuid/nil_generator.hpp>
+#include <boost/uuid/random_generator.hpp>
+#include <boost/uuid/uuid_io.hpp>
+
 #include "yb/gutil/endian.h"
+
+#include "yb/util/random_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 namespace yb {
 
@@ -33,18 +43,16 @@ Uuid::Uuid(const uuid_t copy) {
   }
 }
 
-boost::uuids::uuid Uuid::Generate() {
-  boost::uuids::basic_random_generator<std::mt19937_64> generator(&ThreadLocalRandom());
-  return generator();
+Uuid Uuid::Nil() {
+  return Uuid(boost::uuids::nil_uuid());
 }
 
-CHECKED_STATUS Uuid::FromString(const std::string& strval) {
-  try {
-    boost_uuid_ = boost::lexical_cast<boost::uuids::uuid>(strval);
-  } catch (std::exception& e) {
-    return STATUS(Corruption, "Couldn't read Uuid from string!");
-  }
-  return Status::OK();
+Uuid Uuid::Generate() {
+  return Uuid::Generate(&ThreadLocalRandom());
+}
+
+Uuid Uuid::Generate(std::mt19937_64* rng) {
+  return Uuid(boost::uuids::basic_random_generator<std::mt19937_64>(rng)());
 }
 
 std::string Uuid::ToString() const {
@@ -226,6 +234,122 @@ CHECKED_STATUS Uuid::ToUnixTimestamp(int64_t* timestamp_ms) const {
   // Convert from nano seconds since Gregorian calendar start to millis since unix epoch.
   *timestamp_ms = (*timestamp_ms / kMillisPerHundredNanos) + kGregorianOffsetMillis;
   return Status::OK();
+}
+
+Status Uuid::IsTimeUuid() const {
+  if (boost_uuid_.version() == boost::uuids::uuid::version_time_based) {
+    return Status::OK();
+  }
+
+  return STATUS_SUBSTITUTE(InvalidArgument,
+                           "Not a type 1 UUID. Current type: $0", boost_uuid_.version());
+}
+
+bool Uuid::operator<(const Uuid& other) const {
+  // First compare the version, variant and then the timestamp bytes.
+  if (boost_uuid_.version() < other.boost_uuid_.version()) {
+    return true;
+  } else if (boost_uuid_.version() > other.boost_uuid_.version()) {
+    return false;
+  }
+  if (boost_uuid_.version() == boost::uuids::uuid::version_time_based) {
+    // Compare the hi timestamp bits.
+    for (size_t i = 6; i < kUuidMsbSize; i++) {
+      if (boost_uuid_.data[i] < other.boost_uuid_.data[i]) {
+        return true;
+      } else if (boost_uuid_.data[i] > other.boost_uuid_.data[i]) {
+        return false;
+      }
+    }
+    // Compare the mid timestamp bits.
+    for (int i = 4; i < 6; i++) {
+      if (boost_uuid_.data[i] < other.boost_uuid_.data[i]) {
+        return true;
+      } else if (boost_uuid_.data[i] > other.boost_uuid_.data[i]) {
+        return false;
+      }
+    }
+    // Compare the low timestamp bits.
+    for (int i = 0; i < 4; i++) {
+      if (boost_uuid_.data[i] < other.boost_uuid_.data[i]) {
+        return true;
+      } else if (boost_uuid_.data[i] > other.boost_uuid_.data[i]) {
+        return false;
+      }
+    }
+  } else {
+    // Compare all the other bits
+    for (size_t i = 0; i < kUuidMsbSize; i++) {
+      if (boost_uuid_.data[i] < other.boost_uuid_.data[i]) {
+        return true;
+      } else if (boost_uuid_.data[i] > other.boost_uuid_.data[i]) {
+        return false;
+      }
+    }
+  }
+
+  // Then compare the remaining bytes.
+  for (size_t i = kUuidMsbSize; i < kUuidSize; i++) {
+    if (boost_uuid_.data[i] < other.boost_uuid_.data[i]) {
+      return true;
+    } else if (boost_uuid_.data[i] > other.boost_uuid_.data[i]) {
+      return false;
+    }
+  }
+  return false;
+}
+
+namespace {
+
+// Makes transaction id from its binary representation.
+// If check_exact_size is true, checks that slice contains only TransactionId.
+Result<Uuid> DoDecodeUuid(
+    const Slice &slice, const bool check_exact_size, const char* name) {
+  if (check_exact_size ? slice.size() != boost::uuids::uuid::static_size()
+                       : slice.size() < boost::uuids::uuid::static_size()) {
+    if (!name) {
+      name = "UUID";
+    }
+    return STATUS_FORMAT(
+        Corruption, "Invalid length of binary data with $4 '$0': $1 (expected $2$3)",
+        slice.ToDebugHexString(), slice.size(), check_exact_size ? "" : "at least ",
+        boost::uuids::uuid::static_size(), name);
+  }
+  Uuid id;
+  memcpy(id.data(), slice.data(), boost::uuids::uuid::static_size());
+  return id;
+}
+
+} // namespace
+
+Result<Uuid> Uuid::FullyDecode(const Slice& slice, const char* name) {
+  return DoDecodeUuid(slice, /* check_exact_size= */ true, name);
+}
+
+Uuid Uuid::TryFullyDecode(const Slice& slice) {
+  if (slice.size() != boost::uuids::uuid::static_size()) {
+    return Uuid::Nil();
+  }
+  Uuid id;
+  memcpy(id.data(), slice.data(), boost::uuids::uuid::static_size());
+  return id;
+}
+
+Result<Uuid> Uuid::Decode(Slice* slice, const char* name) {
+  auto id = VERIFY_RESULT(DoDecodeUuid(*slice, /* check_exact_size= */ false, name));
+  slice->remove_prefix(boost::uuids::uuid::static_size());
+  return id;
+}
+
+Result<Uuid> Uuid::FromString(const std::string& strval) {
+  if (strval.empty()) {
+    return Uuid::Nil();
+  }
+  try {
+    return Uuid(boost::lexical_cast<boost::uuids::uuid>(strval));
+  } catch (std::exception& e) {
+    return STATUS(Corruption, "Couldn't read Uuid from string!");
+  }
 }
 
 } // namespace yb

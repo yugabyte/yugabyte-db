@@ -47,13 +47,17 @@
 
 #include "yb/tablet/tablet_fwd.h"
 
+#include "yb/util/async_util.h"
 #include "yb/util/auto_release_pool.h"
 #include "yb/util/locks.h"
 #include "yb/util/operation_counter.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/memory/arena.h"
 
 namespace yb {
+
+class Synchronizer;
+
 namespace tablet {
 
 using OperationCompletionCallback = std::function<void(const Status&)>;
@@ -350,15 +354,8 @@ auto MakeLatchOperationCompletionCallback(LatchPtr latch, ResponsePBPtr response
   };
 }
 
-inline auto MakeWeakSynchronizerOperationCompletionCallback(
-    std::weak_ptr<Synchronizer> synchronizer) {
-  return [synchronizer = std::move(synchronizer)](const Status& status) {
-    auto shared_synchronizer = synchronizer.lock();
-    if (shared_synchronizer) {
-      shared_synchronizer->StatusCB(status);
-    }
-  };
-}
+OperationCompletionCallback MakeWeakSynchronizerOperationCompletionCallback(
+    std::weak_ptr<Synchronizer> synchronizer);
 
 }  // namespace tablet
 }  // namespace yb

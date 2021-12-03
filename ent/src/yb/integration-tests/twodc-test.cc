@@ -20,8 +20,9 @@
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
 
-#include "yb/common/wire_protocol.h"
+#include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.pb.h"
@@ -45,12 +46,15 @@
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/twodc_test_base.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master_defaults.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/master.h"
 #include "yb/master/master.pb.h"
+#include "yb/master/master.proxy.h"
 #include "yb/master/master-test-util.h"
 
 #include "yb/master/cdc_consumer_registry_service.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
@@ -61,13 +65,16 @@
 #include "yb/tserver/cdc_consumer.h"
 #include "yb/util/atomic.h"
 #include "yb/util/faststring.h"
+#include "yb/util/metrics.h"
 #include "yb/util/random.h"
+#include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
 
 using namespace std::literals;
 
 DECLARE_int32(replication_factor);
+DECLARE_bool(enable_ysql);
 DECLARE_bool(TEST_twodc_write_hybrid_time);
 DECLARE_int32(cdc_wal_retention_time_secs);
 DECLARE_int32(replication_failure_delay_exponent);
@@ -413,8 +420,8 @@ TEST_P(TwoDCTest, SetupUniverseReplicationErrorChecking) {
     master::SetupUniverseReplicationRequestPB setup_universe_req;
     master::SetupUniverseReplicationResponsePB setup_universe_resp;
     master::SysClusterConfigEntryPB cluster_info;
-    auto cm = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->master()->catalog_manager();
-    CHECK_OK(cm->GetClusterConfig(&cluster_info));
+    auto& cm = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->catalog_manager();
+    CHECK_OK(cm.GetClusterConfig(&cluster_info));
     setup_universe_req.set_producer_id(cluster_info.cluster_uuid());
 
     string master_addr = producer_cluster()->GetMasterAddresses();
@@ -793,7 +800,12 @@ TEST_P(TwoDCTest, PollAndObserveIdleDampening) {
   {
     ASSERT_OK(WaitFor([this, &tablet_id, &table = tables[0], &ts_uuid, &data_mutex] {
         producer_client()->LookupTabletById(
-            tablet_id, table, CoarseMonoClock::Now() + MonoDelta::FromSeconds(3),
+            tablet_id,
+            table,
+            // TODO(tablet splitting + xCluster): After splitting integration is working (+ metrics
+            // support), then set this to kTrue.
+            master::IncludeInactive::kFalse,
+            CoarseMonoClock::Now() + MonoDelta::FromSeconds(3),
             [&ts_uuid, &data_mutex](const Result<client::internal::RemoteTabletPtr>& result) {
               if (result.ok()) {
                 std::lock_guard<std::mutex> l(data_mutex);

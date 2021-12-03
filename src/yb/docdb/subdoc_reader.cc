@@ -23,8 +23,10 @@
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/transaction.h"
-
 #include "yb/common/typedefs.h"
+
+#include "yb/docdb/deadline_info.h"
+#include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_ttl_util.h"
 #include "yb/docdb/expiration.h"
 #include "yb/docdb/intent_aware_iterator.h"
@@ -33,16 +35,16 @@
 #include "yb/docdb/subdocument.h"
 #include "yb/docdb/value.h"
 #include "yb/docdb/value_type.h"
-#include "yb/docdb/deadline_info.h"
-#include "yb/docdb/docdb_types.h"
 
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/macros.h"
+
 #include "yb/server/hybrid_clock.h"
 
-#include "yb/util/format.h"
 #include "yb/util/monotime.h"
+#include "yb/util/result.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 
 using std::vector;
 

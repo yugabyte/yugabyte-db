@@ -13,7 +13,11 @@
 
 #include "yb/tablet/cleanup_intents_task.h"
 
+#include "yb/tablet/transaction_intent_applier.h"
 #include "yb/tablet/transaction_participant.h"
+#include "yb/tablet/transaction_participant_context.h"
+
+#include "yb/util/status_log.h"
 
 namespace yb {
 namespace tablet {

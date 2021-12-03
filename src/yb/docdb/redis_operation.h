@@ -17,9 +17,9 @@
 #include "yb/common/redis_protocol.pb.h"
 
 #include "yb/docdb/deadline_info.h"
-#include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_operation.h"
 #include "yb/docdb/expiration.h"
+#include "yb/docdb/key_bounds.h"
 
 #include "yb/rocksdb/cache.h"
 

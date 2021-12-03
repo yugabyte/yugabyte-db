@@ -20,6 +20,8 @@
 
 #include "yb/rocksdb/util/options_parser.h"
 
+#include <math.h>
+
 #include <map>
 #include <string>
 #include <utility>
@@ -28,9 +30,10 @@
 #include "yb/rocksdb/convenience.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/util/options_helper.h"
-#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/sync_point.h"
-#include "yb/rocksdb/port/port.h"
+
+#include "yb/util/status_log.h"
+#include "yb/util/string_util.h"
 #include "yb/util/version_info.h"
 
 namespace rocksdb {

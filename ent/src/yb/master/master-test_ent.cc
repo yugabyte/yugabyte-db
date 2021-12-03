@@ -13,7 +13,16 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/lexical_cast.hpp>
 
+#include "yb/common/schema.h"
+#include "yb/common/wire_protocol.h"
+
+#include "yb/master/master.pb.h"
+#include "yb/master/master.proxy.h"
+#include "yb/master/master_defaults.h"
+
 #include "../../src/yb/master/master-test_base.h"
+
+#include "yb/util/result.h"
 
 DECLARE_uint64(cdc_state_table_num_tablets);
 

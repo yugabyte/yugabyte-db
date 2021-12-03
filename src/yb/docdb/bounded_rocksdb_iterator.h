@@ -14,15 +14,11 @@
 #ifndef YB_DOCDB_BOUNDED_ROCKSDB_ITERATOR_H_
 #define YB_DOCDB_BOUNDED_ROCKSDB_ITERATOR_H_
 
-#include <boost/optional/optional.hpp>
-
-#include "yb/docdb/doc_key.h"
-#include "yb/docdb/key_bytes.h"
+#include "yb/docdb/docdb_fwd.h"
 
 #include "yb/rocksdb/db.h"
 
 namespace yb {
-
 namespace docdb {
 
 class BoundedRocksDbIterator : public rocksdb::Iterator {

@@ -1682,7 +1682,7 @@ typedef enum ObjectType
 	OBJECT_STATISTIC_EXT,
 	OBJECT_TABCONSTRAINT,
 	OBJECT_TABLE,
-	OBJECT_TABLEGROUP,
+	OBJECT_YBTABLEGROUP,
 	OBJECT_TABLESPACE,
 	OBJECT_TRANSFORM,
 	OBJECT_TRIGGER,
@@ -2191,9 +2191,10 @@ typedef struct OptSplit
 typedef struct CreateTableGroupStmt
 {
 	NodeTag		type;
-	char 		 *tablegroupname;
-	RoleSpec *owner;
+	char 	   *tablegroupname;
+	RoleSpec   *owner;
 	List 	   *options;
+	char 	   *tablespacename;
 } CreateTableGroupStmt;
 
 typedef struct DropTableGroupStmt

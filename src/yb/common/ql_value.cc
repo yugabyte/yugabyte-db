@@ -15,20 +15,22 @@
 
 #include "yb/common/ql_value.h"
 
-#include <cfloat>
-
 #include <glog/logging.h>
 
 #include "yb/common/jsonb.h"
-#include "yb/common/wire_protocol.h"
+#include "yb/common/ql_protocol_util.h"
+#include "yb/common/ql_type.h"
+
 #include "yb/gutil/strings/escaping.h"
+
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/date_time.h"
 #include "yb/util/decimal.h"
-#include "yb/util/varint.h"
 #include "yb/util/enums.h"
-
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/varint.h"
 
 using yb::operator"" _MB;
 
@@ -887,6 +889,62 @@ string QLValue::ToString() const {
       return "unknown";
   }
   return res + ToValueString();
+}
+
+InetAddress QLValue::inetaddress_value(const QLValuePB& pb) {
+  InetAddress addr;
+  CHECK_OK(addr.FromBytes(inetaddress_value_pb(pb)));
+  return addr;
+}
+
+Uuid QLValue::timeuuid_value(const QLValuePB& pb) {
+  Uuid timeuuid;
+  CHECK_OK(timeuuid.FromBytes(timeuuid_value_pb(pb)));
+  CHECK_OK(timeuuid.IsTimeUuid());
+  return timeuuid;
+}
+
+Uuid QLValue::uuid_value(const QLValuePB& pb) {
+  Uuid uuid;
+  CHECK_OK(uuid.FromBytes(uuid_value_pb(pb)));
+  return uuid;
+}
+
+util::VarInt QLValue::varint_value(const QLValuePB& pb) {
+  CHECK(pb.has_varint_value()) << "Value: " << pb.ShortDebugString();
+  util::VarInt varint;
+  size_t num_decoded_bytes;
+  CHECK_OK(varint.DecodeFromComparable(pb.varint_value(), &num_decoded_bytes));
+  return varint;
+}
+
+void QLValue::set_inetaddress_value(const InetAddress& val, QLValuePB* pb) {
+  CHECK_OK(val.ToBytes(pb->mutable_inetaddress_value()));
+}
+
+void QLValue::set_timeuuid_value(const Uuid& val) {
+  CHECK_OK(val.IsTimeUuid());
+  val.ToBytes(pb_.mutable_timeuuid_value());
+}
+
+template<typename num_type, typename data_type>
+CHECKED_STATUS QLValue::CQLDeserializeNum(
+    size_t len, data_type (*converter)(const void*), void (QLValue::*setter)(num_type),
+    Slice* data) {
+  num_type value = 0;
+  RETURN_NOT_OK(CQLDecodeNum(len, converter, data, &value));
+  (this->*setter)(value);
+  return Status::OK();
+}
+
+template<typename float_type, typename data_type>
+CHECKED_STATUS QLValue::CQLDeserializeFloat(
+    size_t len, data_type (*converter)(const void*), void (QLValue::*setter)(float_type),
+    Slice* data) {
+  float_type value = 0.0;
+  RETURN_NOT_OK(CQLDecodeFloat(len, converter, data, &value));
+  (this->*setter)(value);
+  return Status::OK();
 }
 
 //----------------------------------- QLValuePB operators --------------------------------

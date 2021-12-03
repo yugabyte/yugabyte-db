@@ -30,7 +30,8 @@
 // under the License.
 //
 
-#include <algorithm>
+#include "yb/consensus/replica_state.h"
+
 #include <gflags/gflags.h>
 
 #include "yb/consensus/consensus.h"
@@ -38,21 +39,23 @@
 #include "yb/consensus/consensus_round.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/quorum_util.h"
-#include "yb/consensus/replica_state.h"
-#include "yb/gutil/map-util.h"
-#include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/strcat.h"
+
 #include "yb/gutil/strings/substitute.h"
+
+#include "yb/util/atomic.h"
 #include "yb/util/debug/trace_event.h"
+#include "yb/util/enums.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/opid.h"
+#include "yb/util/result.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/thread_restrictions.h"
 #include "yb/util/tostring.h"
 #include "yb/util/trace.h"
-#include "yb/util/thread_restrictions.h"
-#include "yb/util/enums.h"
-#include "yb/util/atomic.h"
 
 using namespace std::literals;
 

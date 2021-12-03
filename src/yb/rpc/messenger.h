@@ -48,24 +48,25 @@
 
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/io_thread_pool.h"
-#include "yb/rpc/proxy.h"
-#include "yb/rpc/reactor.h"
-#include "yb/rpc/response_callback.h"
+#include "yb/rpc/proxy_context.h"
 #include "yb/rpc/scheduler.h"
 
+#include "yb/util/async_util.h"
+#include "yb/util/atomic.h"
 #include "yb/util/concurrent_value.h"
-#include "yb/util/debug-util.h"
 #include "yb/util/locks.h"
-#include "yb/util/metrics.h"
+#include "yb/util/metrics_fwd.h"
 #include "yb/util/monotime.h"
 #include "yb/util/operation_counter.h"
 #include "yb/util/net/sockaddr.h"
-#include "yb/util/status.h"
+#include "yb/util/stack_trace.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
 class MemTracker;
 class Socket;
+struct SourceLocation;
 
 namespace rpc {
 
@@ -80,6 +81,9 @@ class MessengerBuilder {
   friend class Messenger;
 
   explicit MessengerBuilder(std::string name);
+  ~MessengerBuilder();
+
+  MessengerBuilder(const MessengerBuilder&);
 
   // Set the length of time we will keep a TCP connection will alive with no traffic.
   MessengerBuilder &set_connection_keepalive_time(CoarseMonoClock::Duration keepalive);
@@ -247,7 +251,7 @@ class Messenger : public ProxyContext {
     return name_;
   }
 
-  scoped_refptr<MetricEntity> metric_entity() const override { return metric_entity_; }
+  scoped_refptr<MetricEntity> metric_entity() const override;
 
   RpcServicePtr TEST_rpc_service(const std::string& service_name) const;
 

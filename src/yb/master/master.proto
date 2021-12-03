@@ -39,6 +39,7 @@ option cc_enable_arenas = true;
 import "yb/common/common.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/consensus/metadata.proto";
+import "yb/master/master_types.proto";
 import "yb/tablet/metadata.proto";
 import "yb/util/encryption.proto";
 import "yb/cdc/cdc_consumer.proto";
@@ -249,27 +250,10 @@ message BlacklistPB {
 // This has to respect the fixed schema of the catalog. In case of changes to
 // the schema, this proto must reflect them.
 message SysRowEntry {
-  enum Type {
-    UNKNOWN = 0;
-    TABLE = 1;
-    TABLET = 2;
-    CLUSTER_CONFIG = 3;
-    NAMESPACE = 4;
-    UDTYPE = 5;
-    ROLE = 6;
-    SNAPSHOT = 7;
-    REDIS_CONFIG = 8;
-    SYS_CONFIG = 9;
-    CDC_STREAM = 10;
-    UNIVERSE_REPLICATION = 11;
-    SNAPSHOT_SCHEDULE = 12;
-    DDL_LOG_ENTRY = 13;
-  }
-
   // The type of entry we are storing. Since the data is serialized, we cannot
   // just store it with
   // the data, as we are not able to read into the appropriate type.
-  optional Type type = 1;
+  optional SysRowEntryType type = 1;
 
   // The optional ID of the data that we are storing. This can be useful to only
   // read information
@@ -987,6 +971,9 @@ message GetTabletLocationsRequestPB {
 
   // If table ID is specified, table's partition_list_version will be included into response.
   optional bytes table_id = 2;
+
+  // If true, then return any hidden tablets as well. Does not work with partition key ranges.
+  optional bool include_inactive = 3;
 }
 
 message GetTabletLocationsResponsePB {
@@ -1164,12 +1151,6 @@ message IsDeleteTableDoneResponsePB {
   optional bool done = 2;
 }
 
-enum RelationType {
-  SYSTEM_TABLE_RELATION = 1;
-  USER_TABLE_RELATION = 2;
-  INDEX_TABLE_RELATION = 3;
-}
-
 message ListTablesRequestPB {
   // When used, only returns tables that satisfy a substring match on name_filter.
   optional string name_filter = 1;
@@ -1212,6 +1193,9 @@ message GetTableLocationsRequestPB {
   optional uint32 max_returned_locations = 5 [ default = 10 ];
 
   optional bool require_tablets_running = 6;
+
+  // If true, then return any hidden tablets as well. Does not work with partition key ranges.
+  optional bool include_inactive = 7;
 }
 
 message GetTableLocationsResponsePB {

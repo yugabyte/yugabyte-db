@@ -34,56 +34,73 @@
 
 #include <algorithm>
 #include <limits>
+#include <map>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
 #include <boost/container/small_vector.hpp>
+#include <boost/preprocessor/cat.hpp>
+#include <boost/preprocessor/stringize.hpp>
 
-#include "yb/gutil/map-util.h"
-#include "yb/gutil/strings/substitute.h"
-
+#include "yb/client/client_fwd.h"
+#include "yb/client/callbacks.h"
+#include "yb/client/client-internal.h"
+#include "yb/client/client_builder-internal.h"
 #include "yb/client/client_utils.h"
 #include "yb/client/meta_cache.h"
-#include "yb/client/session.h"
-#include "yb/client/table_alterer.h"
 #include "yb/client/namespace_alterer.h"
+#include "yb/client/permissions.h"
+#include "yb/client/session.h"
+#include "yb/client/table.h"
+#include "yb/client/table_alterer.h"
 #include "yb/client/table_creator.h"
+#include "yb/client/table_info.h"
 #include "yb/client/tablet_server.h"
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/common.pb.h"
-#include "yb/common/entity_ids.h"
 #include "yb/common/common_flags.h"
+#include "yb/common/entity_ids.h"
 #include "yb/common/partition.h"
+#include "yb/common/ql_type.h"
 #include "yb/common/roles_permissions.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/gutil/bind.h"
+#include "yb/gutil/map-util.h"
+#include "yb/gutil/strings/substitute.h"
+
+#include "yb/master/catalog_manager.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_util.h"
-#include "yb/master/catalog_manager.h"
-#include "yb/util/monotime.h"
-#include "yb/client/client-internal.h"
-#include "yb/client/client_fwd.h"
-#include "yb/rpc/rpc_fwd.h"
-#include "yb/rpc/rpc.h"
-#include "yb/util/result.h"
-#include "yb/util/status.h"
-#include "yb/util/trace.h"
-#include "yb/util/net/net_util.h"
-#include "yb/client/callbacks.h"
-#include "yb/client/client_builder-internal.h"
-#include "yb/util/slice.h"
-#include "yb/util/size_literals.h"
+
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
+#include "yb/rpc/rpc.h"
+
+#include "yb/util/atomic.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
 #include "yb/util/init.h"
-#include "yb/util/logging.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/strongly_typed_bool.h"
+
+#include "yb/yql/cql/ql/ptree/pt_option.h"
 
 using yb::master::AlterTableRequestPB;
 using yb::master::CreateTablegroupRequestPB;
@@ -1350,7 +1367,7 @@ Status YBClient::DeleteUDType(const std::string& namespace_name,
 Result<CDCStreamId> YBClient::CreateCDCStream(
     const TableId& table_id,
     const std::unordered_map<std::string, std::string>& options,
-    const master::SysCDCStreamEntryPB::State& initial_state) {
+    bool active) {
   // Setting up request.
   CreateCDCStreamRequestPB req;
   req.set_table_id(table_id);
@@ -1360,7 +1377,8 @@ Result<CDCStreamId> YBClient::CreateCDCStream(
     new_option->set_key(option.first);
     new_option->set_value(option.second);
   }
-  req.set_initial_state(initial_state);
+  req.set_initial_state(active ? master::SysCDCStreamEntryPB::ACTIVE
+                               : master::SysCDCStreamEntryPB::INITIATED);
 
   CreateCDCStreamResponsePB resp;
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, CreateCDCStream);
@@ -1635,10 +1653,10 @@ Status YBClient::ModifyTablePlacementInfo(const YBTableName& table_name,
 }
 
 Status YBClient::CreateTransactionsStatusTable(const string& table_name) {
-  if (table_name.rfind(yb::master::kTransactionTablePrefix, 0) != 0) {
+  if (table_name.rfind(kTransactionTablePrefix, 0) != 0) {
     return STATUS_FORMAT(
         InvalidArgument, "Name '$0' for transaction table does not start with '$1'", table_name,
-        yb::master::kTransactionTablePrefix);
+        kTransactionTablePrefix);
   }
   master::CreateTransactionStatusTableRequestPB req;
   master::CreateTransactionStatusTableResponsePB resp;
@@ -1668,7 +1686,8 @@ Status YBClient::GetTablets(const YBTableName& table_name,
                             const int32_t max_tablets,
                             RepeatedPtrField<TabletLocationsPB>* tablets,
                             PartitionListVersion* partition_list_version,
-                            const RequireTabletsRunning require_tablets_running) {
+                            const RequireTabletsRunning require_tablets_running,
+                            const master::IncludeInactive include_inactive) {
   GetTableLocationsRequestPB req;
   GetTableLocationsResponsePB resp;
   if (table_name.has_table()) {
@@ -1683,6 +1702,7 @@ Status YBClient::GetTablets(const YBTableName& table_name,
     req.set_max_returned_locations(max_tablets);
   }
   req.set_require_tablets_running(require_tablets_running);
+  req.set_include_inactive(include_inactive);
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, GetTableLocations);
   *tablets = resp.tablet_locations();
   if (partition_list_version) {
@@ -1737,11 +1757,12 @@ Status YBClient::GetTablets(const YBTableName& table_name,
                             vector<TabletId>* tablet_uuids,
                             vector<string>* ranges,
                             std::vector<master::TabletLocationsPB>* locations,
-                            const RequireTabletsRunning require_tablets_running) {
+                            const RequireTabletsRunning require_tablets_running,
+                            master::IncludeInactive include_inactive) {
   RepeatedPtrField<TabletLocationsPB> tablets;
   RETURN_NOT_OK(GetTablets(
       table_name, max_tablets, &tablets, /* partition_list_version =*/ nullptr,
-      require_tablets_running));
+      require_tablets_running, include_inactive));
   FillFromRepeatedTabletLocations(tablets, tablet_uuids, ranges, locations);
   return Status::OK();
 }
@@ -1838,11 +1859,12 @@ void YBClient::LookupTabletByKey(const std::shared_ptr<YBTable>& table,
 
 void YBClient::LookupTabletById(const std::string& tablet_id,
                                 const std::shared_ptr<const YBTable>& table,
+                                master::IncludeInactive include_inactive,
                                 CoarseTimePoint deadline,
                                 LookupTabletCallback callback,
                                 UseCache use_cache) {
   data_->meta_cache_->LookupTabletById(
-      tablet_id, table, deadline, std::move(callback), use_cache);
+      tablet_id, table, include_inactive, deadline, std::move(callback), use_cache);
 }
 
 void YBClient::LookupAllTablets(const std::shared_ptr<const YBTable>& table,
@@ -2071,6 +2093,22 @@ CoarseTimePoint YBClient::PatchAdminDeadline(CoarseTimePoint deadline) const {
     return deadline;
   }
   return CoarseMonoClock::Now() + default_admin_operation_timeout();
+}
+
+Result<vector<master::NamespaceIdentifierPB>> YBClient::ListNamespaces() {
+  return ListNamespaces(boost::none);
+}
+
+Result<YBTablePtr> YBClient::OpenTable(const TableId& table_id) {
+  YBTablePtr result;
+  RETURN_NOT_OK(OpenTable(table_id, &result));
+  return result;
+}
+
+Result<YBTablePtr> YBClient::OpenTable(const YBTableName& name) {
+  YBTablePtr result;
+  RETURN_NOT_OK(OpenTable(name, &result));
+  return result;
 }
 
 }  // namespace client

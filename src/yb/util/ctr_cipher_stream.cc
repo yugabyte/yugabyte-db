@@ -13,9 +13,11 @@
 
 #include <openssl/evp.h>
 
+#include "yb/gutil/endian.h"
+
 #include "yb/util/cipher_stream.h"
 #include "yb/util/encryption_util.h"
-#include "yb/gutil/endian.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 

@@ -24,6 +24,7 @@ namespace consensus {
 class Consensus;
 class ConsensusContext;
 class ConsensusRoundCallback;
+class ConsensusStatePB;
 class PeerProxyFactory;
 class PeerMessageQueue;
 class RaftConfigPB;

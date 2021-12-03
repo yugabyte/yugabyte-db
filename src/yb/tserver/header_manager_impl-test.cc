@@ -11,22 +11,20 @@
 // under the License.
 //
 
-#include <sys/types.h>
-
 #include <string>
-
-#include "yb/util/header_manager_impl.h"
-#include "yb/tserver/universe_key_test_util.h"
-
-#include "yb/util/encryption_util.h"
-#include "yb/util/status.h"
-#include "yb/util/test_util.h"
-#include "yb/util/universe_key_manager.h"
-
-#include "yb/gutil/endian.h"
 
 #include <glog/logging.h>
 #include <gtest/gtest.h>
+
+#include "yb/gutil/endian.h"
+
+#include "yb/tserver/universe_key_test_util.h"
+
+#include "yb/util/encryption_util.h"
+#include "yb/util/header_manager_impl.h"
+#include "yb/util/status.h"
+#include "yb/util/test_util.h"
+#include "yb/util/universe_key_manager.h"
 
 using yb::tserver::GenerateTestUniverseKeyManager;
 

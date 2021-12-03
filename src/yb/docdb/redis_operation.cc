@@ -13,6 +13,8 @@
 
 #include "yb/docdb/redis_operation.h"
 
+#include "yb/docdb/doc_key.h"
+#include "yb/docdb/doc_path.h"
 #include "yb/docdb/doc_reader_redis.h"
 #include "yb/docdb/doc_ttl_util.h"
 #include "yb/docdb/doc_write_batch.h"
@@ -20,8 +22,11 @@
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/subdocument.h"
 
-#include "yb/util/stol_utils.h"
+#include "yb/server/hybrid_clock.h"
+
 #include "yb/util/redis_util.h"
+#include "yb/util/status_format.h"
+#include "yb/util/stol_utils.h"
 
 DEFINE_bool(emulate_redis_responses,
     true,
@@ -494,7 +499,7 @@ void RedisWriteOperation::InitializeIterator(const DocOperationApplyData& data) 
   auto iter = CreateIntentAwareIterator(
       data.doc_write_batch->doc_db(),
       BloomFilterMode::USE_BLOOM_FILTER, subdoc_key.Encode().AsSlice(),
-      redis_query_id(), /* txn_op_context */ boost::none, data.deadline, data.read_time);
+      redis_query_id(), TransactionOperationContext(), data.deadline, data.read_time);
 
   iterator_ = std::move(iter);
 }
@@ -626,7 +631,7 @@ Status RedisWriteOperation::ApplySet(const DocOperationApplyData& data) {
                                                &subdoc_reverse_found };
           RETURN_NOT_OK(GetRedisSubDocument(
               data.doc_write_batch->doc_db(),
-              get_data, redis_query_id(), boost::none /* txn_op_context */, data.deadline,
+              get_data, redis_query_id(), TransactionOperationContext(), data.deadline,
               data.read_time));
 
           // Flag indicating whether we should add the given entry to the sorted set.
@@ -961,7 +966,7 @@ Status RedisWriteOperation::ApplyDel(const DocOperationApplyData& data) {
                                              &doc_reverse_found };
         RETURN_NOT_OK(GetRedisSubDocument(
             data.doc_write_batch->doc_db(),
-            get_data, redis_query_id(), boost::none /* txn_op_context */, data.deadline,
+            get_data, redis_query_id(), TransactionOperationContext(), data.deadline,
             data.read_time));
         if (doc_reverse_found && doc_reverse.value_type() != ValueType::kTombstone) {
           // The value is already in the doc, needs to be removed.
@@ -1277,7 +1282,7 @@ Status RedisReadOperation::Execute() {
   auto iter = yb::docdb::CreateIntentAwareIterator(
       doc_db_, bloom_filter_mode,
       doc_key.Encode().AsSlice(),
-      redis_query_id(), /* txn_op_context */ boost::none, deadline_, read_time_);
+      redis_query_id(), TransactionOperationContext(), deadline_, read_time_);
   iterator_ = std::move(iter);
   deadline_info_.emplace(deadline_);
 
@@ -1765,7 +1770,7 @@ Status RedisReadOperation::ExecuteGet(const RedisGetRequestPB& get_request) {
       GetRedisSubDocumentData get_data = {
           encoded_key_reverse, &subdoc_reverse, &subdoc_reverse_found };
       RETURN_NOT_OK(GetRedisSubDocument(doc_db_, get_data, redis_query_id(),
-                                        boost::none /* txn_op_context */, deadline_, read_time_));
+                                        TransactionOperationContext(), deadline_, read_time_));
       if (subdoc_reverse_found) {
         double score = subdoc_reverse.GetDouble();
         response_.set_string_response(std::to_string(score));

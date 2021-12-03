@@ -29,15 +29,15 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include <map>
 #include <string>
 #include <utility>
+
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
 
-#include "yb/client/client.h"
 #include "yb/client/client-test-util.h"
+#include "yb/client/client.h"
 #include "yb/client/error.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
@@ -46,18 +46,15 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
-
 #include "yb/common/ql_value.h"
-
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-#include "yb/master/mini_master.h"
 #include "yb/master/master.pb.h"
+#include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog.h"
-#include "yb/server/hybrid_clock.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
@@ -68,12 +65,15 @@
 #include "yb/util/metrics.h"
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
+#include "yb/util/thread.h"
 
 using namespace std::literals;
 
 DECLARE_bool(enable_data_block_fsync);
 DECLARE_bool(enable_maintenance_manager);
+DECLARE_bool(enable_ysql);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_bool(use_hybrid_clock);
@@ -262,8 +262,7 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster>,
 
   int GetSysCatalogWrites() {
     auto GetSysCatalogMetric = [&](CounterPrototype& prototype) -> int64_t {
-      auto metrics = cluster_->mini_master()->master()->catalog_manager()->sys_catalog()
-          ->GetMetricEntity();
+      auto metrics = cluster_->mini_master()->sys_catalog().GetMetricEntity();
       return prototype.Instantiate(metrics)->value();
     };
     return GetSysCatalogMetric(METRIC_sys_catalog_peer_write_count);

@@ -12,6 +12,7 @@
 
 #include "yb/util/logging_test_util.h"
 
+#include "yb/util/result.h"
 #include "yb/util/test_util.h"
 
 namespace yb {

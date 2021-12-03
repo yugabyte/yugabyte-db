@@ -17,28 +17,30 @@
 #include <memory>
 #include <sstream>
 
-#include "yb/rocksdb/table.h"
-
 #include "yb/common/hybrid_time.h"
+
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_reader.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_compaction_filter.h"
+#include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/in_mem_docdb.h"
+
 #include "yb/gutil/strings/substitute.h"
+
+#include "yb/rocksdb/db/filename.h"
+
 #include "yb/rocksutil/write_batch_formatter.h"
+
 #include "yb/util/bytes_formatter.h"
+#include "yb/util/env.h"
 #include "yb/util/path_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/test_macros.h"
-#include "yb/util/test_util.h"
 #include "yb/util/tostring.h"
-#include "yb/util/algorithm_util.h"
-#include "yb/util/string_util.h"
-#include "yb/rocksdb/db/filename.h"
 
 using std::endl;
 using std::make_shared;
@@ -351,6 +353,8 @@ DocDBLoadGenerator::DocDBLoadGenerator(DocDBRocksDBFixture* fixture,
   in_mem_docdb_.SetCaptureHybridTime(HybridTime::kMax);
 }
 
+DocDBLoadGenerator::~DocDBLoadGenerator() = default;
+
 void DocDBLoadGenerator::PerformOperation(bool compact_history) {
   // Increment the iteration right away so we can return from the function at any time.
   const int current_iteration = iteration_;
@@ -420,7 +424,7 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
   ASSERT_OK(fixture_->WriteToRocksDB(dwb, hybrid_time));
   const SubDocument* const subdoc_from_mem = in_mem_docdb_.GetDocument(doc_key);
 
-  TransactionOperationContextOpt txn_op_context = GetReadOperationTransactionContext();
+  TransactionOperationContext txn_op_context = GetReadOperationTransactionContext();
 
   // In case we are asked to compact history, we read the document from RocksDB before and after the
   // compaction, and expect to get the same result in both cases.
@@ -583,11 +587,11 @@ void DocDBLoadGenerator::RecordSnapshotDivergence(const InMemDocDbState &snapsho
   }
 }
 
-TransactionOperationContextOpt DocDBLoadGenerator::GetReadOperationTransactionContext() {
+TransactionOperationContext DocDBLoadGenerator::GetReadOperationTransactionContext() {
   if (resolve_intents_) {
     return kNonTransactionalOperationContext;
   }
-  return boost::none;
+  return TransactionOperationContext();
 }
 
 // ------------------------------------------------------------------------------------------------

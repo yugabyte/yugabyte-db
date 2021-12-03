@@ -33,6 +33,7 @@
 #define YB_RPC_RPC_H
 
 #include <atomic>
+#include <future>
 #include <memory>
 #include <string>
 
@@ -45,7 +46,6 @@
 
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
-#include "yb/util/result.h"
 #include "yb/util/status_callback.h"
 
 namespace yb {

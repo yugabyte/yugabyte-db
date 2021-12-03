@@ -21,14 +21,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#include "yb/rocksdb/cache.h"
-
 #include <forward_list>
-#include <vector>
 #include <string>
-#include "yb/rocksdb/util/coding.h"
-#include "yb/util/string_util.h"
+#include <vector>
+
 #include <gtest/gtest.h>
+
+#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/util/coding.h"
+
+#include "yb/util/string_util.h"
 #include "yb/util/test_macros.h"
 
 DECLARE_double(cache_single_touch_ratio);
@@ -657,7 +659,7 @@ TEST_F(CacheTest, ApplyToAllCacheEntiresTest) {
 }
 
 void AssertCacheSizes(Cache *cache, size_t single_touch_count, size_t multi_touch_count) {
-  std::vector<pair<size_t, size_t>> usages = cache->TEST_GetIndividualUsages();
+  std::vector<std::pair<size_t, size_t>> usages = cache->TEST_GetIndividualUsages();
   ASSERT_EQ(usages.size(), 1);
   ASSERT_EQ(usages[0].first, single_touch_count);
   ASSERT_EQ(usages[0].second, multi_touch_count);

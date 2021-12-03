@@ -1,17 +1,21 @@
 ---
-title: Tutorials and examples
-linkTitle: Tutorials and examples
-description: Get started deploying applications with Yugabyte Cloud.
-headcontent: Get started deploying applications for Yugabyte Cloud
+title: Develop
+linkTitle: Develop
+description: Get started developing applications for Yugabyte Cloud.
+headcontent: Get started developing applications for Yugabyte Cloud
 image: /images/section_icons/index/develop.png
 menu:
   latest:
     identifier: cloud-develop
     parent: yugabyte-cloud
-    weight: 700
+    weight: 25
 isTocNested: true
 showAsideToc: true
 ---
+
+Applications connect to and interact with YugabyteDB using API client libraries, also called client drivers. Before you can connect an application, you need to install the correct driver. Yugabyte Cloud clusters have SSL (encryption in-transit) enabled so make sure your driver details include SSL parameters. For information on available drivers, refer to [Build an application](../../quick-start/build-apps).
+
+Use the examples in this section to learn how to connect your applications to Yugabyte Cloud.
 
 <div class="row">
 

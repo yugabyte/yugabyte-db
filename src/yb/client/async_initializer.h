@@ -15,9 +15,11 @@
 
 #include <future>
 
-#include "yb/client/client.h"
+#include "yb/client/client_fwd.h"
 
 #include "yb/server/server_base_options.h"
+
+#include "yb/util/atomic.h"
 
 namespace yb {
 namespace client {
@@ -42,7 +44,7 @@ class AsyncClientInitialiser {
   YBClient* client() const;
 
   YBClientBuilder& builder() {
-    return client_builder_;
+    return *client_builder_;
   }
 
   const std::shared_future<client::YBClient*>& get_client_future() const {
@@ -56,7 +58,7 @@ class AsyncClientInitialiser {
  private:
   void InitClient();
 
-  YBClientBuilder client_builder_;
+  std::unique_ptr<YBClientBuilder> client_builder_;
   rpc::Messenger* messenger_ = nullptr;
   std::promise<client::YBClient*> client_promise_;
   mutable std::shared_future<client::YBClient*> client_future_;

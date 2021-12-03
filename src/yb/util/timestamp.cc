@@ -13,9 +13,7 @@
 
 #include "yb/util/timestamp.h"
 #include "yb/util/date_time.h"
-#include "yb/gutil/strings/substitute.h"
-
-using strings::Substitute;
+#include "yb/util/status.h"
 
 namespace yb {
 
@@ -28,16 +26,15 @@ Status Timestamp::FromInt64(int64_t value) {
   return Status::OK();
 }
 
-string Timestamp::ToString() const {
-  return strings::Substitute("$0", value_);
+std::string Timestamp::ToString() const {
+  return std::to_string(value_);
 }
 
-
-string Timestamp::ToFormattedString() const {
+std::string Timestamp::ToFormattedString() const {
   return DateTime::TimestampToString(*this, DateTime::CqlOutputFormat);
 }
 
-string Timestamp::ToHumanReadableTime() const {
+std::string Timestamp::ToHumanReadableTime() const {
   return DateTime::TimestampToString(*this, DateTime::HumanReadableOutputFormat);
 }
 

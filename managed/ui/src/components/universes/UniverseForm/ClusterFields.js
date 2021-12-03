@@ -177,6 +177,7 @@ export default class ClusterFields extends Component {
     this.validateUserTags = this.validateUserTags.bind(this);
     this.validatePassword = this.validatePassword.bind(this);
     this.validateConfirmPassword = this.validateConfirmPassword.bind(this);
+    this.tlsCertChanged = this.tlsCertChanged.bind(this);
 
     this.currentInstanceType = _.get(
       this.props.universe,
@@ -197,9 +198,16 @@ export default class ClusterFields extends Component {
           gcpInstanceWithEphemeralStorage: false
         };
       } else {
-        const { userIntent } = getPrimaryCluster(
-          this.props.universe.currentUniverse.data.universeDetails.clusters
-        );
+        const {
+          universe: {
+            currentUniverse: {
+              data: { universeDetails }
+            }
+          }
+        } = this.props;
+
+        const { userIntent } = getPrimaryCluster(universeDetails.clusters);
+
         this.state = {
           ...initialState,
           enableYSQL: userIntent.enableYSQL,
@@ -208,7 +216,10 @@ export default class ClusterFields extends Component {
           enableYCQLAuth: userIntent.enableYCQLAuth,
           isReadOnlyExists: false,
           editNotAllowed: false,
-          useSystemd: userIntent.useSystemd
+          useSystemd: userIntent.useSystemd,
+          enableEncryptionAtRest:
+            universeDetails.encryptionAtRestConfig &&
+            universeDetails.encryptionAtRestConfig.encryptionAtRestEnabled
         };
       }
     } else {
@@ -224,7 +235,8 @@ export default class ClusterFields extends Component {
             tempState.provider &&
             this.props.type === 'Create' &&
             this.props.clusterType === 'async',
-          useSystemd: tempState.useSystemd
+          useSystemd: tempState.useSystemd,
+          enableEncryptionAtRest: tempState.enableEncryptionAtRest
         };
       }
       this.state = tempState ? tempState : initialState;
@@ -346,8 +358,9 @@ export default class ClusterFields extends Component {
           'async.enableYEDIS': userIntent.enableYEDIS,
           'async.enableNodeToNodeEncrypt': userIntent.enableNodeToNodeEncrypt,
           'async.enableClientToNodeEncrypt': userIntent.enableClientToNodeEncrypt,
-          'async.enableEncryptionAtRest': userIntent.enableEncryptionAtRest,
-          'async.useSystemd': userIntent.useSystemd
+          'async.enableEncryptionAtRest': encryptionAtRestEnabled,
+          'async.useSystemd': userIntent.useSystemd,
+          'async.tlsCertificateId': universeDetails.rootCA
         });
       }
       if (userIntent && providerUUID) {
@@ -371,7 +384,9 @@ export default class ClusterFields extends Component {
           enableYEDIS: userIntent.enableYEDIS,
           enableNodeToNodeEncrypt: userIntent.enableNodeToNodeEncrypt,
           enableClientToNodeEncrypt: userIntent.enableClientToNodeEncrypt,
-          enableEncryptionAtRest: encryptionAtRestEnabled,
+          enableEncryptionAtRest:
+            universeDetails.encryptionAtRestConfig &&
+            universeDetails.encryptionAtRestConfig.encryptionAtRestEnabled,
           accessKeyCode: userIntent.accessKeyCode,
           deviceInfo: userIntent.deviceInfo,
           storageType: storageType,
@@ -461,6 +476,9 @@ export default class ClusterFields extends Component {
           }
           if (formValues[clusterType].useSystemd) {
             this.setState({ useSystemd: formValues['primary'].useSystemd });
+          }
+          if (formValues[clusterType].enableEncryptionAtRest) {
+            this.setState({ enableEncryptionAtRest: formValues['primary'].enableEncryptionAtRest });
           }
         }
       } else {
@@ -618,10 +636,14 @@ export default class ClusterFields extends Component {
     if (!formValues[clusterType] && isNonEmptyArray(cloud.providers?.data)) {
       // AC: Editing Read-Replica is type 'Async'. We should change this at some point
       if (type === 'Edit' || type === 'Async') {
-        const currentCluster =
+        let currentCluster =
           type === 'Edit'
             ? getPrimaryCluster(currentUniverse.data.universeDetails.clusters)
             : getReadOnlyCluster(currentUniverse.data.universeDetails.clusters);
+        if (!currentCluster)
+          //init primary cluster as current cluster (creation of first read replica) -
+          currentCluster = getPrimaryCluster(currentUniverse.data.universeDetails.clusters);
+
         const currentProviderUuid = currentCluster.userIntent.provider;
         updateFormField(`${clusterType}.provider`, currentProviderUuid);
       } else {
@@ -1057,10 +1079,14 @@ export default class ClusterFields extends Component {
   }
 
   toggleEnableEncryptionAtRest(event) {
-    const { updateFormField, clusterType, getKMSConfigs, cloud } = this.props;
+    const { clusterType, getKMSConfigs, cloud } = this.props;
     const toggleValue = event.target.checked;
+
     if (clusterType === 'primary') {
-      updateFormField('primary.enableEncryptionAtRest', toggleValue);
+      this.updateFormFields({
+        'primary.enableEncryptionAtRest': toggleValue,
+        'async.enableEncryptionAtRest': toggleValue
+      });
       this.setState({ enableEncryptionAtRest: toggleValue });
       /*
        * Check if toggle is set to true and fetch list of KMS configs if
@@ -1248,8 +1274,7 @@ export default class ClusterFields extends Component {
     if (
       isNonEmptyObject(formValues[clusterType].instanceTags) &&
       currentProviderUUID &&
-      (this.getCurrentProvider(currentProviderUUID).code === 'aws' ||
-        this.getCurrentProvider(currentProviderUUID).code === 'azu')
+      ['aws', 'azu', 'gcp'].includes(this.getCurrentProvider(currentProviderUUID).code)
     ) {
       userIntent['instanceTags'] = formValues[clusterType].instanceTags;
     }
@@ -1368,6 +1393,16 @@ export default class ClusterFields extends Component {
     updateFormField(`${clusterType}.instanceType`, instanceTypeValue);
     this.setState({ instanceTypeSelected: instanceTypeValue, nodeSetViaAZList: false });
     this.setDeviceInfo(instanceTypeValue, this.props.cloud.instanceTypes.data);
+  }
+
+  tlsCertChanged(value) {
+    this.updateFormFields({
+      'primary.tlsCertificateId': value,
+      'async.tlsCertificateId': value
+    });
+    this.setState({
+      tlsCertificateId: value
+    });
   }
 
   regionListChanged(value) {
@@ -1980,12 +2015,15 @@ export default class ClusterFields extends Component {
           });
         }
 
-        const isSelectReadOnly = this.props.type === 'Edit' && currentProvider.code !== 'onprem';
+        const isSelectReadOnly =
+          (this.props.type === 'Edit' && currentProvider.code !== 'onprem') ||
+          clusterType === 'async';
         selectTlsCert = (
           <Field
             name={`${clusterType}.tlsCertificateId`}
             component={YBSelectWithLabel}
             options={tlsCertOptions}
+            onInputChanged={this.tlsCertChanged}
             readOnlySelect={isSelectReadOnly}
             label="Root Certificate"
           />
@@ -2245,7 +2283,7 @@ export default class ClusterFields extends Component {
           </Col>
         </Row>
       );
-      if (currentProviderCode === 'azu' || currentProviderCode === 'aws') {
+      if (['azu', 'aws', 'gcp'].includes(currentProviderCode)) {
         tagsArray = (
           <Row>
             <Col md={12}>

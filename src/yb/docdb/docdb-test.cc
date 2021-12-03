@@ -11,46 +11,50 @@
 // under the License.
 //
 
-#include "yb/docdb/docdb.h"
-
 #include <memory>
 #include <string>
 
 #include "yb/common/doc_hybrid_time.h"
-#include "yb/common/ql_value.h"
-#include "yb/docdb/doc_key.h"
-#include "yb/docdb/docdb.pb.h"
-#include "yb/docdb/primitive_value.h"
-#include "yb/rocksdb/cache.h"
-#include "yb/rocksdb/db.h"
-
 #include "yb/common/hybrid_time.h"
+#include "yb/common/ql_type.h"
+#include "yb/common/ql_value.h"
+
+#include "yb/docdb/consensus_frontier.h"
+#include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_reader.h"
 #include "yb/docdb/doc_reader_redis.h"
-#include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb-internal.h"
+#include "yb/docdb/docdb.h"
+#include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/docdb_compaction_filter.h"
+#include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_test_base.h"
 #include "yb/docdb/docdb_test_util.h"
 #include "yb/docdb/in_mem_docdb.h"
-#include "yb/docdb/intent.h"
+#include "yb/docdb/primitive_value.h"
+
+#include "yb/gutil/casts.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/walltime.h"
-#include "yb/tablet/tablet_options.h"
-#include "yb/server/hybrid_clock.h"
-#include "yb/docdb/consensus_frontier.h"
-#include "yb/docdb/docdb_rocksdb_util.h"
 
+#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/db.h"
+
+#include "yb/server/hybrid_clock.h"
+
+#include "yb/tablet/tablet_options.h"
+
+#include "yb/util/debug-util.h"
 #include "yb/util/minmax.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/path_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
-#include "yb/util/status.h"
+#include "yb/util/status_log.h"
 #include "yb/util/string_trim.h"
+#include "yb/util/strongly_typed_bool.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
-#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/tsan_util.h"
 #include "yb/util/yb_partition.h"
 
 using std::cout;
@@ -71,7 +75,7 @@ using namespace std::chrono_literals;
 
 DECLARE_bool(use_docdb_aware_bloom_filter);
 DECLARE_int32(max_nexts_to_avoid_seek);
-DECLARE_bool(TEST_docdb_sort_weak_intents_in_tests);
+DECLARE_bool(TEST_docdb_sort_weak_intents);
 
 #define ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(str) ASSERT_NO_FATALS(AssertDocDbDebugDumpStrEq(str))
 
@@ -97,7 +101,7 @@ class DocDBTest : public DocDBTestBase {
 
   virtual void GetSubDoc(
       const KeyBytes& subdoc_key, SubDocument* result, bool* found_result,
-      const TransactionOperationContextOpt& txn_op_context = boost::none,
+      const TransactionOperationContext& txn_op_context = TransactionOperationContext(),
       const ReadHybridTime& read_time = ReadHybridTime::Max()) = 0;
 
   // This is the baseline state of the database that we set up and come back to as we test various
@@ -418,7 +422,7 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; HT{ physica
 
 void GetSubDocQl(
       const DocDB& doc_db, const KeyBytes& subdoc_key, SubDocument* result, bool* found_result,
-      const TransactionOperationContextOpt& txn_op_context, const ReadHybridTime& read_time,
+      const TransactionOperationContext& txn_op_context, const ReadHybridTime& read_time,
       const vector<PrimitiveValue>* projection = nullptr) {
   auto doc_from_rocksdb_opt = ASSERT_RESULT(TEST_GetSubDocument(
     subdoc_key, doc_db, rocksdb::kDefaultQueryId, txn_op_context,
@@ -434,7 +438,7 @@ void GetSubDocQl(
 
 void GetSubDocRedis(
       const DocDB& doc_db, const KeyBytes& subdoc_key, SubDocument* result, bool* found_result,
-      const TransactionOperationContextOpt& txn_op_context, const ReadHybridTime& read_time) {
+      const TransactionOperationContext& txn_op_context, const ReadHybridTime& read_time) {
   GetRedisSubDocumentData data = { subdoc_key, result, found_result };
   ASSERT_OK(GetRedisSubDocument(
       doc_db, data, rocksdb::kDefaultQueryId,
@@ -449,7 +453,7 @@ class DocDBTestWrapper : public DocDBTest, public testing::WithParamInterface<Te
  public:
   void GetSubDoc(
       const KeyBytes& subdoc_key, SubDocument* result, bool* found_result,
-      const TransactionOperationContextOpt& txn_op_context = boost::none,
+      const TransactionOperationContext& txn_op_context = TransactionOperationContext(),
       const ReadHybridTime& read_time = ReadHybridTime::Max()) override {
     switch (GetParam()) {
       case TestDocDb::kQlReader: {
@@ -473,7 +477,7 @@ class DocDBTestQl : public DocDBTest {
  public:
   void GetSubDoc(
       const KeyBytes& subdoc_key, SubDocument* result, bool* found_result,
-      const TransactionOperationContextOpt& txn_op_context = boost::none,
+      const TransactionOperationContext& txn_op_context = TransactionOperationContext(),
       const ReadHybridTime& read_time = ReadHybridTime::Max()) override {
     GetSubDocQl(doc_db(), subdoc_key, result, found_result, txn_op_context, read_time);
   }
@@ -483,7 +487,7 @@ class DocDBTestRedis : public DocDBTest {
  public:
   void GetSubDoc(
       const KeyBytes& subdoc_key, SubDocument* result, bool* found_result,
-      const TransactionOperationContextOpt& txn_op_context = boost::none,
+      const TransactionOperationContext& txn_op_context = TransactionOperationContext(),
       const ReadHybridTime& read_time = ReadHybridTime::Max()) override {
     GetSubDocRedis(
         doc_db(), subdoc_key, result, found_result, txn_op_context, read_time);
@@ -3603,7 +3607,7 @@ SubDocKey(DocKey([], ["c"]), ["k5"; HT{ physical: 1100 }]) -> "vv5"; ttl: 25.000
 }
 
 TEST_P(DocDBTestWrapper, CompactionWithTransactions) {
-  FLAGS_TEST_docdb_sort_weak_intents_in_tests = true;
+  FLAGS_TEST_docdb_sort_weak_intents = true;
 
   const DocKey doc_key(PrimitiveValues("mydockey", 123456));
   KeyBytes encoded_doc_key(doc_key.Encode());
@@ -3645,8 +3649,7 @@ TEST_P(DocDBTestWrapper, CompactionWithTransactions) {
     { DocPath(encoded_doc_key, "subkey3"), Value(PrimitiveValue("value6")) },
     { DocPath(encoded_doc_key, "subkey4"), Value(PrimitiveValue("value7")) }
   };
-  Uuid status_tablet;
-  ASSERT_OK(status_tablet.FromString("4c3e1d91-5ea7-4449-8bb3-8b0a3f9ae903"));
+  Uuid status_tablet = ASSERT_RESULT(Uuid::FromString("4c3e1d91-5ea7-4449-8bb3-8b0a3f9ae903"));
   ASSERT_OK(AddExternalIntents(txn3, intents, status_tablet, kTxn3HT));
 
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(

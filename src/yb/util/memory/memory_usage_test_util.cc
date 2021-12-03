@@ -15,7 +15,10 @@
 
 #include "yb/util/memory/memory_usage_test_util.h"
 
+#include <map>
+
 #include "yb/util/memory/arena.h"
+#include "yb/util/size_literals.h"
 
 #if defined(TCMALLOC_ENABLED)
 #include <gperftools/malloc_hook.h>

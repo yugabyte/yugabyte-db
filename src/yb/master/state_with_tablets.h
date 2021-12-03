@@ -14,6 +14,7 @@
 #ifndef YB_MASTER_STATE_WITH_TABLETS_H
 #define YB_MASTER_STATE_WITH_TABLETS_H
 
+#include <boost/range/iterator_range_core.hpp>
 #include <boost/iterator/transform_iterator.hpp>
 
 #include <boost/multi_index_container.hpp>
@@ -21,13 +22,16 @@
 #include <boost/multi_index/member.hpp>
 #include <boost/multi_index/ordered_index.hpp>
 
+#include <glog/logging.h>
+
 #include "yb/common/entity_ids.h"
 
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_backup.pb.h"
 
 #include "yb/util/monotime.h"
-#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
 
 namespace yb {
 namespace master {

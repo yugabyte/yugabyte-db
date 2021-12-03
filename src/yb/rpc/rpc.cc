@@ -36,16 +36,18 @@
 #include <string>
 #include <thread>
 
-#include "yb/gutil/basictypes.h"
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_header.pb.h"
 
 #include "yb/util/flag_tags.h"
+#include "yb/util/logging.h"
 #include "yb/util/random_util.h"
-#include "yb/util/tsan_util.h"
+#include "yb/util/source_location.h"
+#include "yb/util/status_format.h"
 #include "yb/util/trace.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -96,8 +98,8 @@ RpcRetrier::RpcRetrier(CoarseTimePoint deadline, Messenger* messenger, ProxyCach
 
 bool RpcRetrier::HandleResponse(
     RpcCommand* rpc, Status* out_status, RetryWhenBusy retry_when_busy) {
-  ignore_result(DCHECK_NOTNULL(rpc));
-  ignore_result(DCHECK_NOTNULL(out_status));
+  DCHECK_ONLY_NOTNULL(rpc);
+  DCHECK_ONLY_NOTNULL(out_status);
 
   // Always retry a TOO_BUSY error.
   Status controller_status = controller_.status();

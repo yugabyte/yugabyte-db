@@ -14,6 +14,8 @@
 #ifndef YB_CLIENT_ASYNC_RPC_H_
 #define YB_CLIENT_ASYNC_RPC_H_
 
+#include <boost/range/iterator_range_core.hpp>
+
 #include "yb/client/in_flight_op.h"
 #include "yb/client/tablet_rpc.h"
 
@@ -48,6 +50,8 @@ struct AsyncRpcMetrics {
   scoped_refptr<Counter> consistent_prefix_successful_reads;
   scoped_refptr<Counter> consistent_prefix_failed_reads;
 };
+
+using InFlightOps = boost::iterator_range<std::vector<InFlightOp>::iterator>;
 
 struct AsyncRpcData {
   BatcherPtr batcher;

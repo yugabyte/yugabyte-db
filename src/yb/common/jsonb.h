@@ -14,11 +14,14 @@
 #ifndef YB_COMMON_JSONB_H
 #define YB_COMMON_JSONB_H
 
+#include <string>
+
 #include <rapidjson/document.h>
 
 #include "yb/common/common_fwd.h"
 
-#include "yb/util/status.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 namespace common {
@@ -136,9 +139,9 @@ class Jsonb {
                                               const JsonbHeader& jsonb_header,
                                               rapidjson::Document* document);
 
-  static pair<size_t, size_t> ComputeOffsetsAndJsonbHeader(size_t num_entries,
-                                                           uint32_t container_type,
-                                                           std::string* jsonb);
+  static std::pair<size_t, size_t> ComputeOffsetsAndJsonbHeader(size_t num_entries,
+                                                                uint32_t container_type,
+                                                                std::string* jsonb);
   // Retrieves an element in serialized jsonb array with the provided index. The result is a
   // slice pointing to a section of the serialized jsonb string provided. The parameters
   // metdata_begin_offset and data_begin_offset indicate the starting positions of metadata and
@@ -170,11 +173,11 @@ class Jsonb {
   // element_end_offset denotes the end of data portion of the key/value, data_begin_offset
   // denotes the offset from which the data portion of jsonb starts, metadata_begin_offset is the
   // offset from which all the JEntry fields begin.
-  static pair<size_t, size_t> GetOffsetAndLength(size_t element_metadata_offset,
-                                                 const Slice& jsonb,
-                                                 size_t element_end_offset,
-                                                 size_t data_begin_offset,
-                                                 size_t metadata_begin_offset);
+  static std::pair<size_t, size_t> GetOffsetAndLength(size_t element_metadata_offset,
+                                                      const Slice& jsonb,
+                                                      size_t element_end_offset,
+                                                      size_t data_begin_offset,
+                                                      size_t metadata_begin_offset);
 
   static CHECKED_STATUS ApplyJsonbOperatorToArray(const Slice& jsonb,
                                                   const QLJsonOperationPB& json_op,

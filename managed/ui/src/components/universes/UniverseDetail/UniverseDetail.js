@@ -172,8 +172,7 @@ class UniverseDetail extends Component {
     this.props.router.push(currentLocation);
   };
 
-  handleSubmitManageKey = (response) => {
-    response.then((res) => {
+  handleSubmitManageKey = (res) => {
       if (res.payload.isAxiosError) {
         this.setState({
           showAlert: true,
@@ -191,7 +190,6 @@ class UniverseDetail extends Component {
         });
       }
       setTimeout(() => this.setState({ showAlert: false }), 3000);
-    });
 
     this.props.closeModal();
   };
@@ -225,7 +223,9 @@ class UniverseDetail extends Component {
       customer,
       customer: { currentCustomer },
       params: { tab },
-      featureFlags
+      featureFlags,
+      providers,
+      accessKeys
     } = this.props;
     const { showAlert, alertType, alertMessage } = this.state;
     const universePaused = universe?.currentUniverse?.data?.universeDetails?.universePaused;
@@ -241,6 +241,17 @@ class UniverseDetail extends Component {
     const isProviderK8S =
       getPromiseState(currentUniverse).isSuccess() &&
       isUniverseType(currentUniverse.data, 'kubernetes');
+
+    const providerUUID = primaryCluster?.userIntent?.provider;
+    const provider = providers.data.find((provider) => provider.uuid === providerUUID);
+
+    var onPremSkipProvisioning = false;
+    if (provider && provider.code === 'onprem') {
+      const onPremKey = accessKeys.data.find(
+        (accessKey) => accessKey.idKey.providerUUID === provider.uuid
+      );
+      onPremSkipProvisioning = onPremKey?.keyInfo.skipProvisioning;
+    }
 
     const type =
       pathname.indexOf('edit') < 0
@@ -558,10 +569,9 @@ class UniverseDetail extends Component {
                           )}
                         </YBMenuItem>
                       )}
-
                       {!universePaused && !useSystemd && (
                         <YBMenuItem
-                          disabled={updateInProgress}
+                          disabled={updateInProgress || onPremSkipProvisioning}
                           onClick={showUpgradeSystemdModal}
                           availability={getFeatureState(
                             currentCustomer.data.features,
@@ -746,6 +756,7 @@ class UniverseDetail extends Component {
                           editTLSAvailability={editTLSAvailability}
                           showManageKeyModal={showManageKeyModal}
                           manageKeyAvailability={manageKeyAvailability}
+                          isItKubernetesUniverse={isItKubernetesUniverse}
                         />
                       </>
                     )

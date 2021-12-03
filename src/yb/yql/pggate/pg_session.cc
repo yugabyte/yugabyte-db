@@ -12,41 +12,43 @@
 // under the License.
 //
 //--------------------------------------------------------------------------------------------------
+#include "yb/yql/pggate/pg_session.h"
 
 #include <memory>
-#include <boost/optional.hpp>
 
-#include "yb/yql/pggate/pg_client.h"
-#include "yb/yql/pggate/pg_expr.h"
-#include "yb/yql/pggate/pg_session.h"
-#include "yb/yql/pggate/pggate_flags.h"
-#include "yb/yql/pggate/pg_txn_manager.h"
-#include "yb/yql/pggate/ybc_pggate.h"
+#include <boost/optional.hpp>
 
 #include "yb/client/batcher.h"
 #include "yb/client/error.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/tablet_server.h"
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
-
-#include "yb/common/pgsql_error.h"
+#include "yb/client/yb_table_name.h"
 #include "yb/common/pg_types.h"
+#include "yb/common/pgsql_error.h"
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/row_mark.h"
+#include "yb/common/schema.h"
 #include "yb/common/transaction_error.h"
-
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/primitive_value.h"
-
+#include "yb/gutil/casts.h"
 #include "yb/tserver/tserver_shared_mem.h"
-
 #include "yb/util/flag_tags.h"
-#include "yb/util/logging.h"
+#include "yb/util/format.h"
+#include "yb/util/result.h"
+#include "yb/util/shared_mem.h"
+#include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
-
+#include "yb/yql/pggate/pg_client.h"
+#include "yb/yql/pggate/pg_expr.h"
+#include "yb/yql/pggate/pg_txn_manager.h"
+#include "yb/yql/pggate/pggate_flags.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 using namespace std::literals;
 
@@ -200,8 +202,8 @@ CHECKED_STATUS CombineErrorsToStatus(const client::CollectedErrors& errors, cons
   return AppendTxnErrorCode(AppendPsqlErrorCode(result, errors), errors);
 }
 
-docdb::PrimitiveValue NullValue(ColumnSchema::SortingType sorting) {
-  using SortingType = ColumnSchema::SortingType;
+docdb::PrimitiveValue NullValue(SortingType sorting) {
+  using SortingType = SortingType;
 
   return docdb::PrimitiveValue(
       sorting == SortingType::kAscendingNullsLast || sorting == SortingType::kDescendingNullsLast
@@ -1097,6 +1099,10 @@ Result<client::TabletServersInfo> PgSession::ListTabletServers() {
   return pg_client_.ListLiveTabletServers(false);
 }
 
+bool PgSession::ShouldUseFollowerReads() const {
+  return pg_txn_manager_->ShouldUseFollowerReads();
+}
+
 void PgSession::SetTimeout(const int timeout_ms) {
   session_->SetTimeout(MonoDelta::FromMilliseconds(timeout_ms));
 }
@@ -1107,28 +1113,6 @@ void PgSession::ResetCatalogReadPoint() {
 
 void PgSession::SetCatalogReadPoint(const ReadHybridTime& read_ht) {
   catalog_session_->SetReadPoint(read_ht);
-}
-
-Status PgSession::SetActiveSubTransaction(SubTransactionId id) {
-  // It's required that we flush all buffered operations before changing the SubTransactionMetadata
-  // used by the underlying batcher and RPC logic, as this will snapshot the current
-  // SubTransactionMetadata for use in construction of RPCs for already-queued operations, thereby
-  // ensuring that previous operations use previous SubTransactionMetadata. If we do not flush here,
-  // already queued operations may incorrectly use this newly modified SubTransactionMetadata when
-  // they are eventually sent to DocDB.
-  RETURN_NOT_OK(FlushBufferedOperations());
-  RETURN_NOT_OK(pg_txn_manager_->BeginWriteTransactionIfNecessary(
-      IsReadOnlyOperation::kFalse, IsPessimisticLockRequired::kFalse));
-  return pg_txn_manager_->SetActiveSubTransaction(id);
-}
-
-Status PgSession::RollbackSubTransaction(SubTransactionId id) {
-  // TODO(savepoints) -- send async RPC to transaction status tablet, or rely on heartbeater to
-  // eventually send this metadata.
-  // See comment in SetActiveSubTransaction -- we must flush buffered operations before updating any
-  // SubTransactionMetadata.
-  RETURN_NOT_OK(FlushBufferedOperations());
-  return pg_txn_manager_->RollbackSubTransaction(id);
 }
 
 }  // namespace pggate

@@ -19,10 +19,8 @@
 
 #include "yb/common/entity_ids.h"
 #include "yb/gutil/thread_annotations.h"
-#include "yb/master/catalog_entity_info.h"
-#include "yb/master/cdc_consumer_split_driver.h"
-#include "yb/master/tablet_split_complete_handler.h"
 #include "yb/master/tablet_split_candidate_filter.h"
+#include "yb/master/tablet_split_complete_handler.h"
 #include "yb/master/tablet_split_driver.h"
 #include "yb/master/ts_manager.h"
 #include "yb/util/background_task.h"

@@ -39,7 +39,11 @@ message KeyValueWriteBatchPB {
   // Used by serializable isolation transactions and row locking statements to store read intents.
   // In case of read-modify-write operation both read_pairs and write_pairs could present.
   repeated KeyValuePairPB read_pairs = 5;
+  // Even though there can be multiple write_pairs we have only one row_mark_type/ wait_policy since
+  // currently we don't batch read RPCs from YSQL (which are the only ones that can set these 2
+  // fields). And hence, only a singular value is sufficient.
   optional RowMarkType row_mark_type = 6;
+  optional WaitPolicy wait_policy = 10;
   repeated ApplyExternalTransactionPB apply_external_transactions = 7;
 
   optional int64 ttl = 9;

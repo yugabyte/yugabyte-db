@@ -18,16 +18,17 @@
 
 #include <unordered_set>
 
-#include "yb/client/client-internal.h"
 #include "yb/client/client_fwd.h"
+#include "yb/common/hybrid_time.h"
+
+#include "yb/master/master_fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/rpc.h"
 
 #include "yb/tserver/tserver.pb.h"
 
-#include "yb/util/result.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/trace.h"
 #include "yb/util/net/net_util.h"
 
@@ -39,7 +40,7 @@ class TabletServerForwardServiceProxy;
 }
 
 namespace rpc {
-  class RpcController;
+class RpcController;
 }
 
 namespace client {
@@ -73,7 +74,9 @@ class TabletInvoker {
                          RemoteTablet* tablet,
                          const std::shared_ptr<const YBTable>& table,
                          rpc::RpcRetrier* retrier,
-                         Trace* trace);
+                         Trace* trace,
+                         master::IncludeInactive include_inactive =
+                            master::IncludeInactive::kFalse);
 
   virtual ~TabletInvoker();
 
@@ -154,6 +157,9 @@ class TabletInvoker {
   // while this object is alive.
   Trace* const trace_;
 
+  // Whether or not to allow lookups of inactive (hidden) tablets.
+  master::IncludeInactive const include_inactive_;
+
   // Used to retry some failed RPCs.
   // Tablet servers that refused the write because they were followers at the time.
   // Cleared when new consensus configuration information arrives from the master.
@@ -163,9 +169,7 @@ class TabletInvoker {
     // Error time.
     CoarseTimePoint time;
 
-    std::string ToString() const {
-      return Format("{ status: $0 time: $1 }", status, CoarseMonoClock::now() - time);
-    }
+    std::string ToString() const;
   };
 
   std::unordered_map<RemoteTabletServer*, FollowerData> followers_;

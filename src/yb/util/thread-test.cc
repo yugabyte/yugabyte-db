@@ -36,8 +36,11 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/gutil/bind.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/env.h"
+#include "yb/util/status_log.h"
+#include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread_restrictions.h"
 
@@ -153,7 +156,7 @@ TEST_F(ThreadTest, TestThreadRestrictions_IO) {
   // Disallow IO - doing IO should crash the process.
   ASSERT_DEATH({
       ThreadRestrictions::SetIOAllowed(false);
-      ignore_result(Env::Default()->FileExists("/"));
+      Env::Default()->FileExists("/");
     },
     "Function marked as IO-only was called from a thread that disallows IO");
 }

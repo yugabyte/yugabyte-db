@@ -30,8 +30,8 @@
 // under the License.
 //
 
-#include <mutex>
-#include <vector>
+#include <functional>
+#include <thread>
 
 #include <gtest/gtest.h>
 

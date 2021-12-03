@@ -23,9 +23,12 @@
 #ifndef ROCKSDB_LITE
 #pragma once
 
+#include <glog/logging.h>
+
 #include "yb/docdb/docdb_types.h"
 #include "yb/util/enums.h"
 #include "yb/util/slice.h"
+
 namespace rocksdb {
 
 YB_DEFINE_ENUM(OutputFormat, (kRaw)(kHex)(kDecodedRegularDB)(kDecodedIntentsDB));
@@ -34,10 +37,7 @@ class DocDBKVFormatter {
  public:
   DocDBKVFormatter() {}
   virtual ~DocDBKVFormatter() {}
-  virtual std::string Format(const yb::Slice&, const yb::Slice&, yb::docdb::StorageDbType) const {
-    CHECK(false) << "unimplemented";
-    return "";
-  }
+  virtual std::string Format(const yb::Slice&, const yb::Slice&, yb::docdb::StorageDbType) const;
 };
 
 class SSTDumpTool {

@@ -35,13 +35,16 @@
 #include <string>
 #include <vector>
 
+#include "yb/gutil/ref_counted.h"
+
 #include "yb/util/condition_variable.h"
 #include "yb/util/monotime.h"
 #include "yb/util/mutex.h"
-#include "yb/util/status.h"
-#include "yb/util/thread.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
+
+class Thread;
 
 // PstackWatcher is an object which will pstack the current process and print
 // the results to stdout.  It does this after a certain timeout has occurred.

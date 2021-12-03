@@ -10,15 +10,16 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/master/yql_peers_vtable.h"
 
-
+#include "yb/common/ql_type.h"
+#include "yb/common/schema.h"
+#include "yb/master/master.h"
+#include "yb/master/master.pb.h"
 #include "yb/master/ts_descriptor.h"
-
 #include "yb/rpc/messenger.h"
-
 #include "yb/util/net/dns_resolver.h"
+#include "yb/util/status_log.h"
 
 namespace yb {
 namespace master {
@@ -67,7 +68,7 @@ Result<std::shared_ptr<QLRowBlock>> PeersVTable::RetrieveData(
   const auto& proxy_uuid = request.proxy_uuid();
 
   // Populate the YQL rows.
-  auto vtable = std::make_shared<QLRowBlock>(schema_);
+  auto vtable = std::make_shared<QLRowBlock>(schema());
 
   struct Entry {
     size_t index;
@@ -140,8 +141,7 @@ Result<std::shared_ptr<QLRowBlock>> PeersVTable::RetrieveData(
         yb::master::kSystemTablesReleaseVersion, &row));
 
     // schema_version.
-    Uuid schema_version;
-    RETURN_NOT_OK(schema_version.FromString(master::kDefaultSchemaVersion));
+    Uuid schema_version = VERIFY_RESULT(Uuid::FromString(master::kDefaultSchemaVersion));
     RETURN_NOT_OK(SetColumnValue(kSchemaVersion, schema_version, &row));
 
     // Tokens.

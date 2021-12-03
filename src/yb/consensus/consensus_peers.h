@@ -43,15 +43,15 @@
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/consensus_util.h"
 
-#include "yb/rpc/response_callback.h"
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/locks.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
 #include "yb/util/semaphore.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 class HostPort;

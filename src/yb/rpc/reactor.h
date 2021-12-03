@@ -50,11 +50,12 @@
 
 #include "yb/rpc/outbound_call.h"
 
-#include "yb/util/thread.h"
+#include "yb/util/async_util.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/socket.h"
-#include "yb/util/status.h"
+#include "yb/util/source_location.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 namespace rpc {

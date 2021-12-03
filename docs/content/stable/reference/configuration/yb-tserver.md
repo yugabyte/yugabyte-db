@@ -151,7 +151,7 @@ Specifies the policy that determines when to use private IP addresses for inter-
 Valid values for the policy are:
 
 - `never` — Always use the [`--server_broadcast_addresses`](#server-broadcast-addresses).
-- `zone` — Use the private IP inside a zone; use the [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the zone. 
+- `zone` — Use the private IP inside a zone; use the [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the zone.
 - `region` — Use the private IP address across all zone in a region; use [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the region.
 
 Default: `never`
@@ -450,20 +450,20 @@ Specifies a comma-separated list of PostgreSQL client authentication settings th
 1. in case text has `,` or `"` it should be quoted with `"`
 2. the `"` symbol inside quoted text should be doubled (i.e. `""`)
 
-Example: 
+Example:
 
 Suppose we have two fields: `host all all 127.0.0.1/0 password` and `host all all 0.0.0.0/0 ldap ldapserver=***** ldapsearchattribute=cn ldapport=3268 ldapbinddn=***** ldapbindpasswd="*****"`.
 The second field has the `"` symbol, so we should quote this field and double the quotes. The result will be:
 
-```
+```sh
 "host all all 0.0.0.0/0 ldap ldapserver=***** ldapsearchattribute=cn ldapport=3268 ldapbinddn=***** ldapbindpasswd=""*****"""
 ```
 
 Now the fields can be joined with the `,` and the final flag value is set inside `'` single quotes:
 
-```
+```sh
 --ysql_hba_conf_csv='host all all 127.0.0.1/0 password,"host all all 0.0.0.0/0 ldap ldapserver=***** ldapsearchattribute=cn ldapport=3268 ldapbinddn=***** ldapbindpasswd=""*****"""'
-``` 
+```
 
 For details on using `--ysql_hba_conf_csv` to specify client authentication, see [Host-based authentication](../../../secure/authentication/host-based-authentication).
 
@@ -527,13 +527,13 @@ Default: `100`
 
 ##### --ysql_log_statement
 
-Specifies the types of YSQL statements that should be logged. 
+Specifies the types of YSQL statements that should be logged.
 
 Valid values: `none` (off), `ddl` (only data definition queries, such as create/alter/drop), `mod` (all modifying/write statements, includes DDLs plus insert/update/delete/trunctate, etc), and `all` (all statements).
 
 Default: `none`
 
-#### --ysql_log_min_duration_statement
+##### --ysql_log_min_duration_statement
 
 Logs the duration of each completed SQL statement that runs the specified duration (in milliseconds) or longer. Setting the value to `0` prints all statement durations. You can use this flag to help track down unoptimized (or "slow") queries.
 
@@ -633,7 +633,6 @@ Only change this flag to `three_shared_parts` after you migrate the whole cluste
 
 {{< /note >}}
 
-
 ##### --rocksdb_compact_flush_rate_limit_bytes_per_sec
 
 Used to control rate of memstore flush and SSTable file compaction.
@@ -642,27 +641,21 @@ Default: `256MB`
 
 ##### --rocksdb_universal_compaction_min_merge_width
 
-Compactions run only if there are at least `rocksdb_universal_compaction_min_merge_width` eligible files and 
-their running total (summation of size of files considered so far) is 
-within `rocksdb_universal_compaction_size_ratio` of the next file in consideration to be included into the same compaction.
+Compactions run only if there are at least `rocksdb_universal_compaction_min_merge_width` eligible files and their running total (summation of size of files considered so far) is within `rocksdb_universal_compaction_size_ratio` of the next file in consideration to be included into the same compaction.
 
 Default: `4`
 
 ##### --rocksdb_universal_compaction_size_ratio
 
-Compactions run only if there are at least `rocksdb_universal_compaction_min_merge_width` eligible files and 
-their running total (summation of size of files considered so far) is 
-within `rocksdb_universal_compaction_size_ratio` of the next file in consideration to be included into the same compaction.
+Compactions run only if there are at least `rocksdb_universal_compaction_min_merge_width` eligible files and their running total (summation of size of files considered so far) is within `rocksdb_universal_compaction_size_ratio` of the next file in consideration to be included into the same compaction.
 
 Default: `20`
 
 ##### --timestamp_history_retention_interval_sec
 
-The time interval, in seconds, to retain history/older versions of data. Point-in-time reads at a hybrid time prior to this interval 
-might not be allowed after a compaction and return a `Snapshot too old` error. 
-Set this to be greater than the expected maximum duration of any single transaction in your application.
+The time interval, in seconds, to retain history/older versions of data. Point-in-time reads at a hybrid time prior to this interval might not be allowed after a compaction and return a `Snapshot too old` error. Set this to be greater than the expected maximum duration of any single transaction in your application.
 
-Default: `120`
+Default: `900`
 
 ##### --remote_bootstrap_rate_limit_bytes_per_sec
 
@@ -732,12 +725,11 @@ Default: `""` (Use the same directory as for server-to-server communications.)
 
 Adds certificate entries, including IP addresses and hostnames, to log for handshake error messages.  Enabling this flag is useful for debugging certificate issues.
 
-
 Default: `false`
 
 ##### --use_client_to_server_encryption
 
-Use client-to-server, or client-server, encryption with YCQL. 
+Use client-to-server, or client-server, encryption with YCQL.
 
 Default: `false`
 
@@ -746,6 +738,40 @@ Default: `false`
 Enable server-server, or node-to-node, encryption between YugabyteDB YB-Master and YB-TServer servers in a cluster or universe. To work properly, all YB-Master servers must also have their [`--use_node_to_node_encryption`](../yb-master/#use-node-to-node-encryption) setting enabled. When enabled, then [`--allow_insecure_connections`](#allow-insecure-connections) must be disabled.
 
 Default: `false`
+
+##### --cipher_list
+
+Specify cipher lists for TLS 1.2 and below. (For TLS 1.3, use [--ciphersuite](#ciphersuite).) Use a colon (":") separated list of TLSv1.2 cipher names in order of preference. Use an exclamation mark ("!") to exclude ciphers. For example:
+
+```sh
+--cipher_list DEFAULTS:!DES:!IDEA:!3DES:!RC2
+```
+
+This allows all ciphers for TLS 1.2 to be accepted, except those matching the category of ciphers omitted.
+
+This flag requires a restart or rolling restart.
+
+Default: `DEFAULTS`
+
+For more information, refer to [SSL_CTX_set_cipher_list](https://www.openssl.org/docs/man1.1.1/man3/SSL_CTX_set_cipher_list.html) in the OpenSSL documentation.
+
+##### --ciphersuite
+
+Specify cipher lists for TLS 1.3. (For TLS 1.2 and below, use [--cipher_list](#cipher-list).)
+
+Use a colon (":") separated list of TLSv1.3 ciphersuite names in order of preference. Use an exclamation mark ("!") to exclude ciphers. For example:
+
+```sh
+--ciphersuite DEFAULTS:!CHACHA20
+```
+
+This allows all ciphersuites for TLS 1.3 to be accepted, except CHACHA20 ciphers.
+
+This flag requires a restart or rolling restart.
+
+Default: `DEFAULTS`
+
+For more information, refer to [SSL_CTX_set_cipher_list](https://www.openssl.org/docs/man1.1.1/man3/SSL_CTX_set_cipher_list.html) in the OpenSSL documentation.
 
 ---
 

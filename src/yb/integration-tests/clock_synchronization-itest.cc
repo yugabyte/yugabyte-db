@@ -12,7 +12,9 @@
 //
 
 #include "yb/client/client.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
+#include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
 
@@ -21,6 +23,8 @@
 #include "yb/rpc/messenger.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/util/random.h"
+#include "yb/util/result.h"
+#include "yb/util/status_log.h"
 
 DECLARE_uint64(max_clock_sync_error_usec);
 DECLARE_bool(disable_clock_sync_error);

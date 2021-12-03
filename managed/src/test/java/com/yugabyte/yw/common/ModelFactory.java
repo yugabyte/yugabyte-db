@@ -385,6 +385,10 @@ public class ModelFactory {
             .setCustomerUUID(customer.getUuid())
             .setName("Alert 1")
             .setSourceName("Source 1")
+            .setSourceUUID(
+                universe == null
+                    ? UUID.fromString("3ea389e6-07e7-487e-8592-c1b2a7339590")
+                    : universe.getUniverseUUID())
             .setSeverity(AlertConfiguration.Severity.SEVERE)
             .setMessage("Universe on fire!")
             .generateUUID();
@@ -462,9 +466,14 @@ public class ModelFactory {
    */
   public static KmsConfig createKMSConfig(
       UUID customerUUID, String keyProvider, ObjectNode authConfig) {
+    return createKMSConfig(customerUUID, keyProvider, authConfig, "Test KMS Configuration");
+  }
+
+  public static KmsConfig createKMSConfig(
+      UUID customerUUID, String keyProvider, ObjectNode authConfig, String configName) {
     EncryptionAtRestManager keyManager = new EncryptionAtRestManager();
     EncryptionAtRestService keyService = keyManager.getServiceInstance(keyProvider);
-    return keyService.createAuthConfig(customerUUID, "Test KMS Configuration", authConfig);
+    return keyService.createAuthConfig(customerUUID, configName, authConfig);
   }
 
   /*

@@ -21,6 +21,7 @@
 
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_backup.pb.h"
+#include "yb/master/master_types.pb.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -29,7 +30,7 @@
 
 #include "yb/tserver/backup.pb.h"
 
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 namespace master {
@@ -44,7 +45,7 @@ struct SnapshotScheduleRestoration {
   std::vector<std::pair<SnapshotScheduleId, SnapshotScheduleFilterPB>> schedules;
   std::vector<std::pair<TabletId, SysTabletsEntryPB>> non_system_obsolete_tablets;
   std::vector<std::pair<TableId, SysTablesEntryPB>> non_system_obsolete_tables;
-  std::unordered_map<std::string, SysRowEntry::Type> non_system_objects_to_restore;
+  std::unordered_map<std::string, SysRowEntryType> non_system_objects_to_restore;
   // pg_catalog_tables to restore for YSQL tables.
   std::unordered_map<TableId, TableName> system_tables_to_restore;
 };
@@ -110,7 +111,7 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
 
   // For each returns map from schedule id to sorted vectors of tablets id in this schedule.
   Result<SnapshotSchedulesToObjectIdsMap> MakeSnapshotSchedulesToObjectIdsMap(
-      SysRowEntry::Type type);
+      SysRowEntryType type);
 
   Result<bool> IsTableCoveredBySomeSnapshotSchedule(const TableInfo& table_info);
 

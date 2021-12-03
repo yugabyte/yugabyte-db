@@ -155,6 +155,7 @@ public class QueryAlerts {
             .filter(alertData -> getCustomerUuid(alertData) != null)
             .filter(alertData -> getConfigurationUuid(alertData) != null)
             .filter(alertData -> getDefinitionUuid(alertData) != null)
+            .filter(alertData -> getSourceUuid(alertData) != null)
             .collect(Collectors.toList());
     if (alerts.size() > validAlerts.size()) {
       log.warn(
@@ -374,7 +375,8 @@ public class QueryAlerts {
               .setDefinitionUuid(definitionUuid)
               .setConfigurationUuid(configurationUuid)
               .setName(alertData.getLabels().get(KnownAlertLabels.DEFINITION_NAME.labelName()))
-              .setSourceName(alertData.getLabels().get(KnownAlertLabels.SOURCE_NAME.labelName()));
+              .setSourceName(alertData.getLabels().get(KnownAlertLabels.SOURCE_NAME.labelName()))
+              .setSourceUUID(UUID.fromString(alertKey.getSourceUuid()));
     }
     AlertConfiguration.Severity severity = getSeverity(alertData);
     AlertConfiguration.TargetType configurationType = getConfigurationType(alertData);

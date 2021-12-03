@@ -92,38 +92,58 @@ ADD_YB_LIBRARY(pgsql_protocol_proto
                DEPS ${PGSQL_PROTOCOL_PROTO_LIBS}
                NONLINK_DEPS ${PGSQL_PROTOCOL_PROTO_TGTS})
 
+set(COMMON_BASE_SRCS
+  ql_type.cc
+  types.cc
+  )
+
+set(COMMON_BASE_LIBS
+  yb_util
+  yb_common_proto
+  )
+
+ADD_YB_LIBRARY(yb_common_base
+  SRCS ${COMMON_BASE_SRCS}
+  DEPS ${COMMON_BASE_LIBS})
+
 set(COMMON_SRCS
   clock.cc
-  id_mapping.cc
+  common_flags.cc
+  column_id.cc
+  consistent_read_point.cc
   entity_ids.cc
+  hybrid_time.cc
+  doc_hybrid_time.cc # must be after hybrid_time.cc
+  id_mapping.cc
+  index.cc
+  json_util.cc
+  jsonb.cc
   key_encoder.cc
   partial_row.cc
+  pgsql_error.cc
+  ql_bfunc.cc
+  ql_datatype.cc
+  ql_expr.cc
+  ql_name.cc
+  ql_protocol_util.cc
+  ql_resultset.cc
+  ql_rowblock.cc
+  ql_rowwise_iterator_interface.cc
+  ql_scanspec.cc
+  ql_type.cc
+  ql_value.cc
+  pg_types.cc
+  retryable_request.cc
+  roles_permissions.cc
+  row.cc
   row_key-util.cc
   row_mark.cc
   schema.cc
-  index.cc
-  jsonb.cc
-  json_util.cc
-  hybrid_time.cc
-  doc_hybrid_time.cc
-  consistent_read_point.cc
+  snapshot.cc
   transaction.cc
   transaction_error.cc
   types.cc
   wire_protocol.cc
-  ql_bfunc.cc
-  ql_datatype.cc
-  ql_name.cc
-  ql_type.cc
-  ql_value.cc
-  ql_protocol_util.cc
-  ql_scanspec.cc
-  ql_rowblock.cc
-  ql_resultset.cc
-  ql_expr.cc
-  common_flags.cc
-  pgsql_error.cc
-  roles_permissions.cc
   ybc_util.cc
   ybc-internal.cc
   )
@@ -136,6 +156,7 @@ endif()
 
 set(COMMON_LIBS
   yb_common_proto
+  yb_common_base
   consensus_metadata_proto
   wire_protocol_proto
   redis_protocol_proto
@@ -171,11 +192,13 @@ ADD_YB_LIBRARY(yb_partition
   )
 
 add_library(yb_common_test_util
-            transaction-test-util.cc)
+            transaction-test-util.cc
+            wire_protocol-test-util.cc)
 target_link_libraries(yb_common_test_util
-                      yb_common)
+                      yb_common
+                      yb_docdb)
 
-set(YB_TEST_LINK_LIBS yb_common yb_partition ${YB_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS yb_common yb_partition yb_common_test_util ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(id_mapping-test)
 ADD_YB_TEST(jsonb-test)
 ADD_YB_TEST(ql_table_row-test)

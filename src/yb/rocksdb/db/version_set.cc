@@ -44,6 +44,7 @@
 #include "yb/gutil/casts.h"
 
 #include "yb/util/format.h"
+#include "yb/util/status_format.h"
 
 #include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/file_numbers.h"
@@ -59,6 +60,7 @@
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/merge_operator.h"
 #include "yb/rocksdb/table/internal_iterator.h"
+#include "yb/rocksdb/table/iterator_wrapper.h"
 #include "yb/rocksdb/table/table_reader.h"
 #include "yb/rocksdb/table/merger.h"
 #include "yb/rocksdb/table/two_level_iterator.h"
@@ -69,6 +71,7 @@
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/logging.h"
+#include "yb/rocksdb/util/statistics.h"
 #include "yb/rocksdb/util/stop_watch.h"
 #include "yb/rocksdb/util/sync_point.h"
 

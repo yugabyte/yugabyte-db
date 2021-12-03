@@ -684,6 +684,7 @@ public class HealthChecker {
             info.ysqlPort = nd.ysqlServerRpcPort;
             info.masterHttpPort = nd.masterHttpPort;
             info.tserverHttpPort = nd.tserverHttpPort;
+            info.ysqlServerHttpPort = nd.ysqlServerHttpPort;
             break;
           }
         }

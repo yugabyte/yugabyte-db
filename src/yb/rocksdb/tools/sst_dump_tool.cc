@@ -30,6 +30,7 @@
 #include <sstream>
 #include <vector>
 
+#include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/memtable.h"
 #include "yb/rocksdb/db/write_batch_internal.h"
 #include "yb/rocksdb/db.h"
@@ -53,11 +54,20 @@
 
 #include "yb/docdb/docdb_debug.h"
 
+#include "yb/util/status_log.h"
+
 using yb::docdb::EntryToString;
 using yb::docdb::StorageDbType;
+
 namespace rocksdb {
 
 using std::dynamic_pointer_cast;
+
+std::string DocDBKVFormatter::Format(
+    const yb::Slice&, const yb::Slice&, yb::docdb::StorageDbType) const {
+  CHECK(false) << "unimplemented";
+  return "";
+}
 
 SstFileReader::SstFileReader(
     const std::string& file_path, bool verify_checksum, OutputFormat output_format,

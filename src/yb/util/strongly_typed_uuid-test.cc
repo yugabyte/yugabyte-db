@@ -10,9 +10,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include <gtest/gtest.h>
 
+#include "yb/util/result.h"
 #include "yb/util/strongly_typed_uuid.h"
 #include "yb/util/test_macros.h"
 
@@ -20,6 +20,7 @@ namespace yb {
 namespace util {
 
 YB_STRONGLY_TYPED_UUID(TestUuid);
+YB_STRONGLY_TYPED_UUID_IMPL(TestUuid);
 
 TEST(TestStronglyTypedUuid, TestBasic) {
   // Assert that constant kUndefined.IsValid() is false and that undefined == undefined.
@@ -41,16 +42,16 @@ TEST(TestStronglyTypedUuid, TestBasic) {
 
   // Assert that GenerateUuidFromString and ToString are inverses.
   auto strong_typed_uuid_0_from_string =
-      TestUuid::FromString(strongly_typed_uuid_0.ToString());
+      TestUuidFromString(strongly_typed_uuid_0.ToString());
   ASSERT_TRUE(strong_typed_uuid_0_from_string.ok());
   ASSERT_EQ(strongly_typed_uuid_0, *strong_typed_uuid_0_from_string);
 
   // Assert that generating a uuid from "" is undefined.
-  auto uuid_from_string_empty = ASSERT_RESULT(TestUuid::FromString(""));
+  auto uuid_from_string_empty = ASSERT_RESULT(TestUuidFromString(""));
   ASSERT_TRUE(uuid_from_string_empty.IsNil());
 
   // Assert that uuid from invalid string returns result not okay.
-  auto uuid_from_string_invalid = TestUuid::FromString("invalid_string");
+  auto uuid_from_string_invalid = TestUuidFromString("invalid_string");
   LOG(INFO) << "uuid_from_string_invalid: " << uuid_from_string_invalid;
   ASSERT_FALSE(uuid_from_string_invalid.ok());
 
@@ -58,7 +59,7 @@ TEST(TestStronglyTypedUuid, TestBasic) {
   ASSERT_EQ(TestUuid::Nil().ToString(), "00000000-0000-0000-0000-000000000000");
 
   // Assert that * operator and constructor are inverses.
-  ASSERT_EQ(strongly_typed_uuid_0, TestUuid(*strongly_typed_uuid_0));
+  ASSERT_EQ(strongly_typed_uuid_0, TestUuid(Uuid(*strongly_typed_uuid_0)));
 
   // Assert that a defined uuid is valid.
   ASSERT_FALSE(strongly_typed_uuid_0.IsNil());

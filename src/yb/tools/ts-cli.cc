@@ -36,24 +36,31 @@
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
-
 #include "yb/common/partition.h"
+#include "yb/common/ql_rowblock.h"
 #include "yb/common/schema.h"
-#include "yb/server/server_base.proxy.h"
+#include "yb/common/wire_protocol.h"
+
+#include "yb/consensus/consensus.proxy.h"
+
+#include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/rpc/secure_stream.h"
+
 #include "yb/server/secure.h"
+#include "yb/server/server_base.proxy.h"
+
+#include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_admin.proxy.h"
-#include "yb/consensus/consensus.proxy.h"
-#include "yb/tserver/tablet_server.h"
-#include "yb/util/env.h"
+
 #include "yb/util/faststring.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
-#include "yb/util/protobuf_util.h"
 #include "yb/util/net/net_util.h"
-#include "yb/rpc/messenger.h"
-#include "yb/rpc/rpc_controller.h"
-#include "yb/rpc/secure_stream.h"
+#include "yb/util/protobuf_util.h"
+#include "yb/util/result.h"
 
 using std::ostringstream;
 using std::shared_ptr;

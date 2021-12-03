@@ -20,13 +20,12 @@
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction-test-util.h"
 
+#include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb.h"
-#include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_test_base.h"
 #include "yb/docdb/docdb_test_util.h"
-#include "yb/docdb/intent.h"
 
 #include "yb/server/hybrid_clock.h"
 
@@ -34,7 +33,7 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
-DECLARE_bool(TEST_docdb_sort_weak_intents_in_tests);
+DECLARE_bool(TEST_docdb_sort_weak_intents);
 
 namespace yb {
 namespace docdb {
@@ -53,7 +52,7 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
   static Schema kProjectionForIteratorTests;
 
   void SetUp() override {
-    FLAGS_TEST_docdb_sort_weak_intents_in_tests = true;
+    FLAGS_TEST_docdb_sort_weak_intents = true;
     DocDBTestBase::SetUp();
   }
 
@@ -1153,7 +1152,7 @@ TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 3 } -> \
   // first non-intent key.
   IntentAwareIterator iter(
       doc_db(), rocksdb::ReadOptions(), CoarseTimePoint::max() /* deadline */,
-      ReadHybridTime::FromMicros(1000), boost::none);
+      ReadHybridTime::FromMicros(1000), TransactionOperationContext());
   iter.Seek(DocKey());
   ASSERT_TRUE(iter.valid());
   auto key_data = ASSERT_RESULT(iter.FetchKey());

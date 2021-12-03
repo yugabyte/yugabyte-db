@@ -29,6 +29,7 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertConfiguration;
+import com.yugabyte.yw.models.AlertConfiguration.QuerySettings;
 import com.yugabyte.yw.models.AlertConfiguration.Severity;
 import com.yugabyte.yw.models.AlertConfiguration.SortBy;
 import com.yugabyte.yw.models.AlertConfiguration.TargetType;
@@ -69,6 +70,7 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 
 @Singleton
 @Slf4j
@@ -187,7 +189,13 @@ public class AlertConfigurationService {
       pagedQuery.setSortBy(SortBy.createTime);
       pagedQuery.setDirection(SortDirection.DESC);
     }
-    Query<AlertConfiguration> query = createQueryByFilter(pagedQuery.getFilter()).query();
+    QuerySettings settings =
+        QuerySettings.builder()
+            .queryTargetIndex(pagedQuery.getSortBy() == SortBy.target)
+            .queryDestinationIndex(pagedQuery.getSortBy() == SortBy.destination)
+            .queryCount(true)
+            .build();
+    Query<AlertConfiguration> query = createQueryByFilter(pagedQuery.getFilter(), settings).query();
     return performPagedQuery(query, pagedQuery, AlertConfigurationPagedResponse.class);
   }
 
@@ -655,17 +663,24 @@ public class AlertConfigurationService {
             .collect(Collectors.toList());
     labels.add(new AlertLabel(KnownAlertLabels.ALERTNAME.labelName(), configuration.getName()));
     labels.addAll(configuration.getTemplate().getTestAlertSettings().getAdditionalLabels());
+    Map<String, String> alertLabels =
+        labels.stream().collect(Collectors.toMap(AlertLabel::getName, AlertLabel::getValue));
     Alert alert =
         new Alert()
+            .generateUUID()
             .setCreateTime(new Date())
             .setCustomerUUID(configuration.getCustomerUUID())
             .setDefinitionUuid(definition.getUuid())
             .setConfigurationUuid(configuration.getUuid())
-            .setName(definition.getLabelValue(KnownAlertLabels.DEFINITION_NAME.labelName()))
-            .setSourceName(definition.getLabelValue(KnownAlertLabels.SOURCE_NAME.labelName()))
+            .setName(configuration.getName())
+            .setSourceName(alertLabels.get(KnownAlertLabels.SOURCE_NAME.labelName()))
             .setSeverity(severity)
             .setConfigurationType(configuration.getTargetType())
             .setLabels(labels);
+    String sourceUuid = alertLabels.get(KnownAlertLabels.SOURCE_UUID.labelName());
+    if (StringUtils.isNotEmpty(sourceUuid)) {
+      alert.setSourceUUID(UUID.fromString(sourceUuid));
+    }
     alert.setMessage(buildTestAlertMessage(configuration, alert));
     return alert;
   }

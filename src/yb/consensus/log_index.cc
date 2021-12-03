@@ -45,16 +45,13 @@
 
 #include <fcntl.h>
 #include <sys/mman.h>
-#include <sys/types.h>
 
 #include <mutex>
 #include <string>
 #include <vector>
 
-#include "yb/consensus/opid_util.h"
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/stringprintf.h"
-#include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/locks.h"
 
 using std::string;

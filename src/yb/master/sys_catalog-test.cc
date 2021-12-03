@@ -29,14 +29,14 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
-#include "yb/master/sys_catalog-test_base.h"
-
 #include <algorithm>
 #include <memory>
 #include <vector>
 
+#include "yb/common/schema.h"
 #include "yb/gutil/stl_util.h"
+#include "yb/master/catalog_manager.h"
+#include "yb/master/sys_catalog-test_base.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
 
@@ -83,7 +83,7 @@ TEST_F(SysCatalogTest, TestPrepareDefaultClusterConfig) {
 
   FLAGS_cluster_uuid = "invalid_uuid";
 
-  CatalogManager catalog_manager(nullptr);
+  enterprise::CatalogManager catalog_manager(nullptr);
   {
     CatalogManager::LockGuard lock(catalog_manager.mutex_);
     ASSERT_NOK(catalog_manager.PrepareDefaultClusterConfig(0));
@@ -96,7 +96,7 @@ TEST_F(SysCatalogTest, TestPrepareDefaultClusterConfig) {
 
 
   // Test that config.cluster_uuid gets set to the value that we specify through flag cluster_uuid.
-  FLAGS_cluster_uuid = to_string(Uuid::Generate());
+  FLAGS_cluster_uuid = Uuid::Generate().ToString();
   ASSERT_OK(mini_master->Start());
   auto master = mini_master->master();
   ASSERT_OK(master->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
@@ -125,8 +125,7 @@ TEST_F(SysCatalogTest, TestPrepareDefaultClusterConfig) {
   ASSERT_FALSE(config.cluster_uuid().empty());
 
   // Check that the cluster uuid is valid.
-  Uuid uuid;
-  ASSERT_OK(uuid.FromString(config.cluster_uuid()));
+  ASSERT_OK(Uuid::FromString(config.cluster_uuid()));
 
   mini_master->Shutdown();
 }

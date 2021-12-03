@@ -37,43 +37,55 @@
 #include <thread>
 #include <vector>
 
-#include <gtest/gtest.h>
 #include <gflags/gflags.h>
+#include <gtest/gtest.h>
 
 #include "yb/client/async_initializer.h"
-#include "yb/client/client.h"
 #include "yb/client/client-internal.h"
 #include "yb/client/client-test-util.h"
+#include "yb/client/client.h"
 #include "yb/client/client_utils.h"
 #include "yb/client/error.h"
 #include "yb/client/meta_cache.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/table_alterer.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/table_info.h"
 #include "yb/client/tablet_server.h"
 #include "yb/client/value.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/common/partial_row.h"
+#include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.proxy.h"
+
+#include "yb/gutil/algorithm.h"
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-#include "yb/master/catalog_manager.h"
-#include "yb/master/master.proxy.h"
+
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master.h"
+#include "yb/master/master_error.h"
 #include "yb/master/mini_master.h"
+
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_test_util.h"
-#include "yb/server/hybrid_clock.h"
-#include "yb/yql/cql/ql/util/statement_result.h"
+
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
@@ -84,10 +96,15 @@
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status.h"
+#include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
 #include "yb/util/tostring.h"
+#include "yb/util/tsan_util.h"
+
+#include "yb/yql/cql/ql/util/statement_result.h"
 
 DECLARE_bool(enable_data_block_fsync);
 DECLARE_bool(log_inject_latency);
@@ -215,8 +232,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     GetTableLocationsRequestPB req;
     GetTableLocationsResponsePB resp;
     table->name().SetIntoTableIdentifierPB(req.mutable_table());
-    CHECK_OK(cluster_->mini_master()->master()->catalog_manager()->GetTableLocations(
-        &req, &resp));
+    CHECK_OK(cluster_->mini_master()->catalog_manager().GetTableLocations(&req, &resp));
     CHECK_GT(resp.tablet_locations_size(), 0);
     return resp.tablet_locations(0).tablet_id();
   }
@@ -1568,7 +1584,7 @@ TEST_F(ClientTest, TestStaleLocations) {
 
   // The Tablet is up and running the location should not be stale
   master::TabletLocationsPB locs_pb;
-  ASSERT_OK(cluster_->mini_master()->master()->catalog_manager()->GetTabletLocations(
+  ASSERT_OK(cluster_->mini_master()->catalog_manager().GetTabletLocations(
                   tablet_id, &locs_pb));
   ASSERT_FALSE(locs_pb.stale());
 
@@ -1579,8 +1595,7 @@ TEST_F(ClientTest, TestStaleLocations) {
   ASSERT_OK(cluster_->mini_master()->Restart());
   ASSERT_OK(cluster_->mini_master()->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
   locs_pb.Clear();
-  ASSERT_OK(cluster_->mini_master()->master()->catalog_manager()->GetTabletLocations(
-                  tablet_id, &locs_pb));
+  ASSERT_OK(cluster_->mini_master()->catalog_manager().GetTabletLocations(tablet_id, &locs_pb));
   ASSERT_TRUE(locs_pb.stale());
 
   // Restart the TS and Wait for the tablets to be reported to the master.
@@ -1589,16 +1604,14 @@ TEST_F(ClientTest, TestStaleLocations) {
   }
   ASSERT_OK(cluster_->WaitForTabletServerCount(cluster_->num_tablet_servers()));
   locs_pb.Clear();
-  ASSERT_OK(cluster_->mini_master()->master()->catalog_manager()->GetTabletLocations(
-                  tablet_id, &locs_pb));
+  ASSERT_OK(cluster_->mini_master()->catalog_manager().GetTabletLocations(tablet_id, &locs_pb));
 
   // It may take a while to bootstrap the tablet and send the location report
   // so spin until we get a non-stale location.
   int wait_time = 1000;
   for (int i = 0; i < 80; ++i) {
     locs_pb.Clear();
-    ASSERT_OK(cluster_->mini_master()->master()->catalog_manager()->GetTabletLocations(
-                    tablet_id, &locs_pb));
+    ASSERT_OK(cluster_->mini_master()->catalog_manager().GetTabletLocations(tablet_id, &locs_pb));
     if (!locs_pb.stale()) {
       break;
     }
@@ -2197,7 +2210,7 @@ TEST_F(ClientTest, TestReadFromFollower) {
   GetTableLocationsRequestPB req;
   GetTableLocationsResponsePB resp;
   table->name().SetIntoTableIdentifierPB(req.mutable_table());
-  CHECK_OK(cluster_->mini_master()->master()->catalog_manager()->GetTableLocations(&req, &resp));
+  CHECK_OK(cluster_->mini_master()->catalog_manager().GetTableLocations(&req, &resp));
   ASSERT_EQ(1, resp.tablet_locations_size());
   ASSERT_EQ(3, resp.tablet_locations(0).replicas_size());
   const string& tablet_id = resp.tablet_locations(0).tablet_id();
@@ -2315,7 +2328,7 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
       .table_id(kPgsqlTableId)
       .schema(&schema)
       .set_range_partition_columns({"key"})
-      .table_type(PGSQL_TABLE_TYPE)
+      .table_type(YBTableType::PGSQL_TABLE_TYPE)
       .num_tablets(1)
       .Create();
   EXPECT_OK(s);
@@ -2339,7 +2352,7 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
   s = table_creator->table_name(yql_table_name)
       .schema(&schema)
       .set_range_partition_columns({"key"})
-      .table_type(YQL_TABLE_TYPE)
+      .table_type(YBTableType::YQL_TABLE_TYPE)
       .num_tablets(1)
       .Create();
   EXPECT_OK(s);
@@ -2586,7 +2599,7 @@ TEST_F(ClientTest, ColocatedTablesLookupTablet) {
                   .table_id(table_name.table_id())
                   .schema(&schema)
                   .set_range_partition_columns({"key"})
-                  .table_type(PGSQL_TABLE_TYPE)
+                  .table_type(YBTableType::PGSQL_TABLE_TYPE)
                   .num_tablets(1)
                   .Create());
     table_names.push_back(table_name);
@@ -2683,10 +2696,8 @@ TEST_F_EX(ClientTest, EmptiedBatcherFlush, ClientTestWithHashAndRangePk) {
     const auto table = client_table_.table();
 
     while (!stop.load(std::memory_order_acquire)) {
-      ASSERT_OK(cluster_->mini_master()
-                    ->master()
-                    ->catalog_manager()
-                    ->TEST_IncrementTablePartitionListVersion(table->id()));
+      ASSERT_OK(cluster_->mini_master()->catalog_manager()
+          .TEST_IncrementTablePartitionListVersion(table->id()));
       table->MarkPartitionsAsStale();
       SleepFor(10ms);
     }

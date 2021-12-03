@@ -14,11 +14,13 @@
 //
 // Treenode definitions for USE KEYSPACE statements.
 //--------------------------------------------------------------------------------------------------
-
+#include "yb/yql/cql/ql/ptree/pt_use_keyspace.h"
 
 #include "yb/common/redis_constants_common.h"
-#include "yb/yql/cql/ql/ptree/pt_use_keyspace.h"
+#include "yb/util/status.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/yql/cql/ql/ptree/yb_location.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
 
 namespace yb {
 namespace ql {

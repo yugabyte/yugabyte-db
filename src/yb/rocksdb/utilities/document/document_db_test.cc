@@ -28,6 +28,8 @@
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
 
+#include "yb/util/test_util.h"
+
 namespace rocksdb {
 
 class DocumentDBTest : public testing::Test {

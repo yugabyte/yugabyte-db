@@ -23,6 +23,8 @@
 
 #include <set>
 
+#include <gtest/gtest.h>
+
 #include "yb/rocksdb/db/skiplist.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/util/arena.h"
@@ -30,8 +32,8 @@
 #include "yb/rocksdb/util/random.h"
 #include "yb/rocksdb/util/testharness.h"
 
+#include "yb/util/format.h"
 #include "yb/util/random_util.h"
-
 
 namespace rocksdb {
 

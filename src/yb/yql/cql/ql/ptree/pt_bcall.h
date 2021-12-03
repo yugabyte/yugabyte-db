@@ -19,8 +19,7 @@
 #define YB_YQL_CQL_QL_PTREE_PT_BCALL_H_
 
 #include "yb/yql/cql/ql/ptree/pt_expr.h"
-#include "yb/util/bfql/gen_opcodes.h"
-#include "yb/util/bfql/bfunc_names.h"
+#include "yb/bfql/gen_opcodes.h"
 
 namespace yb {
 namespace ql {
@@ -36,7 +35,7 @@ class PTBcall : public PTExpr {
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
   PTBcall(MemoryContext *memctx,
-          YBLocation::SharedPtr loc,
+          YBLocationPtr loc,
           const MCSharedPtr<MCString>& name,
           PTExprListNode::SharedPtr args);
   virtual ~PTBcall();
@@ -51,7 +50,7 @@ class PTBcall : public PTExpr {
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
 
   // Access API for arguments.
-  const MCList<PTExpr::SharedPtr>& args() const {
+  const MCList<PTExprPtr>& args() const {
     return args_->node_list();
   }
 
@@ -77,16 +76,7 @@ class PTBcall : public PTExpr {
   }
 
   // BCall result set column type in QL format.
-  virtual void rscol_type_PB(QLTypePB *pb_type) const override {
-    if (aggregate_opcode() == bfql::TSOpcode::kAvg) {
-      // Tablets return a map of (count, sum),
-      // so that the average can be calculated across all tablets.
-      QLType::CreateTypeMap(INT64, args_->node_list().front()->ql_type()->main())
-          ->ToQLTypePB(pb_type);
-      return;
-    }
-    ql_type()->ToQLTypePB(pb_type);
-  }
+  void rscol_type_PB(QLTypePB *pb_type) const override;
 
   virtual CHECKED_STATUS CheckOperator(SemContext *sem_context) override;
 
@@ -94,14 +84,11 @@ class PTBcall : public PTExpr {
 
   CHECKED_STATUS CheckOperatorAfterArgAnalyze(SemContext *sem_context);
 
-  void CollectReferencedIndexColnames(MCSet<string> *col_names) const override;
+  void CollectReferencedIndexColnames(MCSet<std::string> *col_names) const override;
 
-  virtual string QLName(QLNameOption option = QLNameOption::kUserOriginalName) const override;
-  virtual bool IsAggregateCall() const override;
-  virtual yb::bfql::TSOpcode aggregate_opcode() const override {
-    return is_server_operator_ ? static_cast<yb::bfql::TSOpcode>(bfopcode_)
-                               : yb::bfql::TSOpcode::kNoOp;
-  }
+  std::string QLName(QLNameOption option = QLNameOption::kUserOriginalName) const override;
+  bool IsAggregateCall() const override;
+  yb::bfql::TSOpcode aggregate_opcode() const override;
 
   virtual bool HaveColumnRef() const override;
 
@@ -134,7 +121,7 @@ class PTToken : public PTBcall {
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
   PTToken(MemoryContext *memctx,
-          YBLocation::SharedPtr loc,
+          YBLocationPtr loc,
           const MCSharedPtr<MCString>& name,
           PTExprListNode::SharedPtr args) : PTBcall(memctx, loc, name, args) { }
 
@@ -178,7 +165,7 @@ class PTPartitionHash : public PTToken {
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
   PTPartitionHash(MemoryContext *memctx,
-                  YBLocation::SharedPtr loc,
+                  YBLocationPtr loc,
                   const MCSharedPtr<MCString>& name,
                   PTExprListNode::SharedPtr args) : PTToken(memctx, loc, name, args) { }
 

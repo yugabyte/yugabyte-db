@@ -60,6 +60,7 @@
 #include "yb/rocksdb/db/auto_roll_logger.h"
 #include "yb/rocksdb/db/builder.h"
 #include "yb/rocksdb/db/compaction_job.h"
+#include "yb/rocksdb/db/compaction_picker.h"
 #include "yb/rocksdb/db/db_info_dumper.h"
 #include "yb/rocksdb/db/db_iter.h"
 #include "yb/rocksdb/db/dbformat.h"
@@ -95,6 +96,7 @@
 #include "yb/rocksdb/wal_filter.h"
 #include "yb/rocksdb/table/block_based_table_factory.h"
 #include "yb/rocksdb/table/merger.h"
+#include "yb/rocksdb/table/scoped_arena_iterator.h"
 #include "yb/rocksdb/table/table_builder.h"
 #include "yb/rocksdb/util/autovector.h"
 #include "yb/rocksdb/util/coding.h"
@@ -114,6 +116,8 @@
 #include "yb/rocksdb/util/xfunc.h"
 #include "yb/rocksdb/db/db_iterator_wrapper.h"
 
+#include "yb/util/status_log.h"
+#include "yb/util/stats/iostats_context_imp.h"
 
 using namespace std::literals;
 

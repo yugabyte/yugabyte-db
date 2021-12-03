@@ -32,11 +32,9 @@
 
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
 #include <functional>
 #include <limits>
 #include <memory>
-#include <mutex>
 #include <thread>
 #include <vector>
 
@@ -45,20 +43,14 @@
 #include <gtest/gtest.h>
 
 #include "yb/gutil/atomicops.h"
-#include "yb/gutil/bind.h"
-#include "yb/util/countdown_latch.h"
-#include "yb/util/metrics.h"
-#include "yb/gutil/sysinfo.h"
 
 #include "yb/util/blocking_queue.h"
-#include "yb/util/logging.h"
+#include "yb/util/countdown_latch.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/taskstream.h"
-#include "yb/util/threadpool.h"
 #include "yb/util/test_macros.h"
-
-#include "yb/util/locks.h"
+#include "yb/util/threadpool.h"
 
 using std::atomic;
 using std::shared_ptr;

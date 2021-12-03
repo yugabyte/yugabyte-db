@@ -38,11 +38,11 @@
 #include <utility>
 #include <vector>
 
-#include <gflags/gflags.h>
-#include <glog/logging.h>
 #include <boost/optional.hpp>
+#include <glog/logging.h>
 
 #include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/consensus_meta.h"
@@ -50,19 +50,25 @@
 #include "yb/consensus/replicate_msgs_holder.h"
 
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/rpc/periodic.h"
+#include "yb/rpc/rpc_controller.h"
+
 #include "yb/tablet/tablet_error.h"
+
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_error.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_callback.h"
+#include "yb/util/status_format.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/tsan_util.h"
 

@@ -14,6 +14,8 @@
 #include "yb/util/file_system_mem.h"
 
 #include "yb/util/malloc.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 
@@ -131,6 +133,19 @@ Status InMemorySequentialFile::Skip(uint64_t n) {
   }
   pos_ += n;
   return Status::OK();
+}
+
+Status InMemoryRandomAccessFile::Read(
+    uint64_t offset, size_t n, Slice* result, uint8_t* scratch) const {
+  return file_->Read(offset, n, result, scratch);
+}
+
+Result<uint64_t> InMemoryRandomAccessFile::Size() const {
+  return file_->Size();
+}
+
+Result<uint64_t> InMemoryRandomAccessFile::INode() const {
+  return 0;
 }
 
 } // namespace yb

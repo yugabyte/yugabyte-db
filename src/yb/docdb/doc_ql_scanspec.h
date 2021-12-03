@@ -19,14 +19,15 @@
 #include "yb/rocksdb/options.h"
 
 #include "yb/common/ql_scanspec.h"
-#include "yb/docdb/doc_key.h"
-#include "yb/docdb/primitive_value.h"
+
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/key_bytes.h"
 
 namespace yb {
 namespace docdb {
 
 // DocDB variant of QL scanspec.
-class DocQLScanSpec : public common::QLScanSpec {
+class DocQLScanSpec : public QLScanSpec {
  public:
 
   // Scan for the specified doc_key. If the doc_key specify a full primary key, the scan spec will
@@ -45,20 +46,16 @@ class DocQLScanSpec : public common::QLScanSpec {
   // DocQLScanSpec spec(...{} /* hashed_components */,...);
 
   DocQLScanSpec(const Schema& schema, boost::optional<int32_t> hash_code,
-      boost::optional<int32_t> max_hash_code,
-      std::reference_wrapper<const std::vector<PrimitiveValue>> hashed_components,
-      const QLConditionPB* req, const QLConditionPB* if_req,
-      rocksdb::QueryId query_id, bool is_forward_scan = true,
-      bool include_static_columns = false, const DocKey& start_doc_key = DocKey());
+                boost::optional<int32_t> max_hash_code,
+                std::reference_wrapper<const std::vector<PrimitiveValue>> hashed_components,
+                const QLConditionPB* req, const QLConditionPB* if_req,
+                rocksdb::QueryId query_id, bool is_forward_scan = true,
+                bool include_static_columns = false,
+                const DocKey& start_doc_key = DefaultStartDocKey());
 
   // Return the inclusive lower and upper bounds of the scan.
-  Result<KeyBytes> LowerBound() const {
-    return Bound(true /* lower_bound */);
-  }
-
-  Result<KeyBytes> UpperBound() const {
-    return Bound(false /* upper_bound */);
-  }
+  Result<KeyBytes> LowerBound() const;
+  Result<KeyBytes> UpperBound() const;
 
   // Create file filter based on range components.
   std::shared_ptr<rocksdb::ReadFileFilter> CreateFileFilter() const;
@@ -76,13 +73,15 @@ class DocQLScanSpec : public common::QLScanSpec {
     return include_static_columns_;
   }
 
-  const common::QLScanRange* range_bounds() const {
+  const QLScanRange* range_bounds() const {
     return range_bounds_.get();
   }
 
   const Schema* schema() const override { return &schema_; }
 
  private:
+  static const DocKey& DefaultStartDocKey();
+
   // Return inclusive lower/upper range doc key considering the start_doc_key.
   Result<KeyBytes> Bound(const bool lower_bound) const;
 
@@ -98,7 +97,7 @@ class DocQLScanSpec : public common::QLScanSpec {
   std::vector<PrimitiveValue> range_components(const bool lower_bound) const;
 
   // The scan range within the hash key when a WHERE condition is specified.
-  const std::unique_ptr<const common::QLScanRange> range_bounds_;
+  const std::unique_ptr<const QLScanRange> range_bounds_;
 
   // Schema of the columns to scan.
   const Schema& schema_;

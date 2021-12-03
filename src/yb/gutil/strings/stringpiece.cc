@@ -15,7 +15,6 @@
 // under the License.
 //
 //
-
 #include "yb/gutil/strings/stringpiece.h"
 
 #include <string.h>
@@ -236,3 +235,7 @@ GStringPiece GStringPiece::substr(size_type pos, size_type n) const {
 }
 
 const GStringPiece::size_type GStringPiece::npos = size_type(-1);
+
+size_t GStringPiece::hash() const {
+  return HashStringThoroughly(data(), size());
+}

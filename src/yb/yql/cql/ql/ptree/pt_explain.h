@@ -39,7 +39,7 @@ class PTExplainStmt : public TreeNode {
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
   PTExplainStmt(MemoryContext *memctx,
-                YBLocation::SharedPtr loc,
+                YBLocationPtr loc,
                 TreeNode::SharedPtr stmt);
   virtual ~PTExplainStmt();
 

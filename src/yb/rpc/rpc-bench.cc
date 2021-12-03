@@ -35,10 +35,16 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc-test-base.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rtest.proxy.h"
+
 #include "yb/util/countdown_latch.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
+#include "yb/util/thread.h"
 
 using namespace std::literals; // NOLINT
 

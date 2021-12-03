@@ -29,6 +29,8 @@
 #include <map>
 #include <string>
 
+#include <boost/function.hpp>
+
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/db_test_util.h"
@@ -41,7 +43,9 @@
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/transaction_log.h"
 
+#include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
+#include "yb/util/test_macros.h"
 
 using namespace std::chrono_literals;
 

@@ -18,6 +18,7 @@
 #include "yb/common/jsonb.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/table_properties_constants.h"
+#include "yb/util/status_log.h"
 
 namespace yb {
 namespace ql {

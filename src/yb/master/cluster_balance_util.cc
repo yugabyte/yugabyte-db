@@ -10,11 +10,10 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/master/cluster_balance_util.h"
 
-
-#include "yb/util/flag_tags.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/util/atomic.h"
 
 DECLARE_int32(min_leader_stepdown_retry_interval_ms);
 
@@ -40,6 +39,14 @@ bool CBTabletMetadata::CanAddTSToMissingPlacements(
   return false;
 }
 
+std::string CBTabletMetadata::ToString() const {
+  return YB_STRUCT_TO_STRING(
+      running, starting, is_under_replicated, under_replicated_placements,
+      is_over_replicated, over_replicated_tablet_servers,
+      wrong_placement_tablet_servers, blacklisted_tablet_servers,
+      leader_uuid, leader_stepdown_failures, leader_blacklisted_tablet_servers);
+}
+
 int GlobalLoadState::GetGlobalLoad(const TabletServerId& ts_uuid) const {
   const auto& ts_meta = per_ts_global_meta_.at(ts_uuid);
   return ts_meta.starting_tablets_count + ts_meta.running_tablets_count;
@@ -49,6 +56,13 @@ int GlobalLoadState::GetGlobalLeaderLoad(const TabletServerId& ts_uuid) const {
   const auto& ts_meta = per_ts_global_meta_.at(ts_uuid);
   return ts_meta.leaders_count;
 }
+
+PerTableLoadState::PerTableLoadState(GlobalLoadState* global_state)
+    : leader_balance_threshold_(FLAGS_leader_balance_threshold),
+      current_time_(MonoTime::Now()),
+      global_state_(global_state) {}
+
+PerTableLoadState::~PerTableLoadState() {}
 
 bool PerTableLoadState::LeaderLoadComparator::operator()(
     const TabletServerId& a, const TabletServerId& b) {
@@ -205,9 +219,9 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
   } else {
     // If we do have placement information, figure out how the load is distributed based on
     // placement blocks, for this tablet.
-    unordered_map<CloudInfoPB, vector<TabletReplica>, cloud_hash, cloud_equal_to>
+    std::unordered_map<CloudInfoPB, vector<TabletReplica>, cloud_hash, cloud_equal_to>
                                                                     placement_to_replicas;
-    unordered_map<CloudInfoPB, int, cloud_hash, cloud_equal_to> placement_to_min_replicas;
+    std::unordered_map<CloudInfoPB, int, cloud_hash, cloud_equal_to> placement_to_min_replicas;
     // Preset the min_replicas, so we know if we're missing replicas somewhere as well.
     for (const auto& pb : placement.placement_blocks()) {
       // Default empty vector.
@@ -614,19 +628,19 @@ void PerTableLoadState::AdjustLeaderBalanceThreshold() {
   }
 }
 
-std::shared_ptr<const TabletInfo::ReplicaMap> PerTableLoadState::GetReplicaLocations(
+std::shared_ptr<const TabletReplicaMap> PerTableLoadState::GetReplicaLocations(
     TabletInfo* tablet) {
-  auto replica_locations = std::make_shared<TabletInfo::ReplicaMap>();
+  auto replica_locations = std::make_shared<TabletReplicaMap>();
   auto replica_map = tablet->GetReplicaLocations();
   for (const auto& it : *replica_map) {
     const TabletReplica& replica = it.second;
     bool is_replica_live =  IsTsInLivePlacement(replica.ts_desc);
     if (is_replica_live && options_->type == LIVE) {
-      InsertIfNotPresent(replica_locations.get(), it.first, replica);
+      replica_locations->emplace(it.first, replica);
     } else if (!is_replica_live && options_->type  == READ_ONLY) {
       const string& placement_uuid = replica.ts_desc->placement_uuid();
       if (placement_uuid == options_->placement_uuid) {
-        InsertIfNotPresent(replica_locations.get(), it.first, replica);
+        replica_locations->emplace(it.first, replica);
       }
     }
   }
@@ -731,6 +745,10 @@ Status PerTableLoadState::RemoveTabletOnTSPath(
   }
   VLOG_IF(1, !found) << "Updated replica doesn't have relevant data, tablet id: " << tablet_id;
   return Status::OK();
+}
+
+bool PerTableLoadState::CompareByReplica(const TabletReplica& a, const TabletReplica& b) {
+  return CompareByUuid(a.ts_desc->permanent_uuid(), b.ts_desc->permanent_uuid());
 }
 
 } // namespace master

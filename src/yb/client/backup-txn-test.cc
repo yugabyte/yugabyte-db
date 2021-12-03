@@ -11,22 +11,28 @@
 // under the License.
 //
 
+#include "yb/client/error.h"
 #include "yb/client/session.h"
 #include "yb/client/snapshot_test_util.h"
+#include "yb/client/table.h"
 #include "yb/client/transaction.h"
+#include "yb/client/yb_table_name.h"
 
 #include "yb/common/transaction_error.h"
 
-#include "yb/master/catalog_manager.h"
 #include "yb/master/master_backup.proxy.h"
-#include "yb/master/sys_catalog.h"
-#include "yb/master/sys_catalog_constants.h"
 
+#include "yb/rocksdb/db.h"
+
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_retention_policy.h"
 #include "yb/tablet/tablet_snapshots.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+
+#include "yb/util/test_thread_holder.h"
 
 using namespace std::literals;
 using yb::master::SysSnapshotEntryPB;
@@ -250,10 +256,7 @@ TEST_F(BackupTxnTest, Persistence) {
 
   LOG(INFO) << "Flush";
 
-  auto catalog_manager =
-      ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager();
-  tablet::TabletPeerPtr tablet_peer;
-  ASSERT_OK(catalog_manager->GetTabletPeer(master::kSysCatalogTabletId, &tablet_peer));
+  auto tablet_peer = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->tablet_peer();
   ASSERT_OK(tablet_peer->tablet()->Flush(tablet::FlushMode::kSync));
 
   LOG(INFO) << "Second restart";
@@ -416,8 +419,8 @@ TEST_F(BackupTxnTest, FlushSysCatalogAndDelete) {
   auto snapshot_id = ASSERT_RESULT(snapshot_util_->CreateSnapshot(table_));
 
   for (int i = 0; i != cluster_->num_masters(); ++i) {
-    auto sys_catalog = cluster_->mini_master(i)->master()->catalog_manager()->sys_catalog();
-    ASSERT_OK(sys_catalog->tablet_peer()->tablet()->Flush(tablet::FlushMode::kSync));
+    auto tablet_peer = cluster_->mini_master(i)->tablet_peer();
+    ASSERT_OK(tablet_peer->tablet()->Flush(tablet::FlushMode::kSync));
   }
 
   ShutdownAllTServers(cluster_.get());

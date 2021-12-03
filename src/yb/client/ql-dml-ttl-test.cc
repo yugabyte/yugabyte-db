@@ -11,13 +11,16 @@
 // under the License.
 //
 
-#include "yb/client/ql-dml-test-base.h"
-
 #include "yb/client/client.h"
+#include "yb/client/ql-dml-test-base.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/yb_op.h"
 
 #include "yb/common/ql_value.h"
+
+#include "yb/util/status_log.h"
 
 #include "yb/yql/cql/ql/util/statement_result.h"
 

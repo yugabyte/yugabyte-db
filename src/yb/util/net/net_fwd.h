@@ -16,6 +16,8 @@
 #ifndef YB_UTIL_NET_NET_FWD_H
 #define YB_UTIL_NET_NET_FWD_H
 
+#include <boost/version.hpp>
+
 namespace boost {
 namespace asio {
 

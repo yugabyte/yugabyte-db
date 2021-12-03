@@ -12,10 +12,7 @@
 // under the License.
 //
 //--------------------------------------------------------------------------------------------------
-
-
 #include "yb/yql/cql/ql/parser/parser.h"
-#include "yb/util/logging.h"
 
 namespace yb {
 namespace ql {

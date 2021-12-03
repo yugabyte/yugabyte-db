@@ -18,6 +18,8 @@
 
 #include <boost/preprocessor/seq/for_each.hpp>
 
+#include "yb/client/client_fwd.h"
+
 #include "yb/rpc/proxy.h"
 
 #include "yb/tserver/tserver_util_fwd.h"
@@ -30,7 +32,7 @@ namespace yb {
 namespace pggate {
 
 #define YB_PG_CLIENT_SIMPLE_METHODS \
-    (AlterDatabase)(AlterTable)(BackfillIndex)(CreateDatabase)(CreateTable)(CreateTablegroup) \
+    (AlterDatabase)(AlterTable)(CreateDatabase)(CreateTable)(CreateTablegroup) \
     (DropDatabase)(DropTablegroup)(TruncateTable)
 
 class PgClient {
@@ -57,6 +59,8 @@ class PgClient {
 
   Result<client::YBTableName> DropTable(
       tserver::PgDropTableRequestPB* req, CoarseTimePoint deadline);
+
+  CHECKED_STATUS BackfillIndex(tserver::PgBackfillIndexRequestPB* req, CoarseTimePoint deadline);
 
   Result<int32> TabletServerCount(bool primary_only);
 

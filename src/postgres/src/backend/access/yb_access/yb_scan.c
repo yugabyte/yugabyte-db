@@ -458,7 +458,7 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 	else if (!ybScan->prepare_params.querying_colocated_table)
 	{
 		Oid tablegroupId = InvalidOid;
-		if (TablegroupCatalogExists)
+		if (YbTablegroupCatalogExists)
 			tablegroupId = get_tablegroup_oid_by_table_oid(RelationGetRelid(relation));
 		ybScan->prepare_params.querying_colocated_table |= (tablegroupId != InvalidOid);
 	}
@@ -1846,9 +1846,9 @@ HeapTuple YBCFetchTuple(Relation relation, Datum ybctid)
 	TupleDesc      tupdesc = RelationGetDescr(relation);
 
 	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(relation),
-								  RelationGetRelid(relation),
-								  NULL /* prepare_params */,
-								  &ybc_stmt));
+																RelationGetRelid(relation),
+																NULL /* prepare_params */,
+																&ybc_stmt));
 
 	/* Bind ybctid to identify the current row. */
 	YBCPgExpr ybctid_expr = YBCNewConstant(ybc_stmt,
@@ -1920,6 +1920,87 @@ HeapTuple YBCFetchTuple(Relation relation, Datum ybctid)
 	pfree(nulls);
 	YBCPgDeleteStatement(ybc_stmt);
 	return tuple;
+}
+
+HTSU_Result
+YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode, LockWaitPolicy wait_policy,
+						 EState* estate)
+{
+	if (wait_policy == LockWaitBlock) {
+		/*
+		 * Right now we don't support LockWaitBlock and default to LockWaitError. This will be resolved
+		 * once we support pessimistic locking.
+		 */
+		wait_policy = LockWaitError;
+	}
+
+	YBCPgStatement ybc_stmt;
+	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(relation),
+																RelationGetRelid(relation),
+																NULL /* prepare_params */,
+																&ybc_stmt));
+
+	/* Bind ybctid to identify the current row. */
+	YBCPgExpr ybctid_expr = YBCNewConstant(ybc_stmt, BYTEAOID, InvalidOid, ybctid, false);
+	HandleYBStatus(YBCPgDmlBindColumn(ybc_stmt, YBTupleIdAttributeNumber, ybctid_expr));
+
+	YBCPgExecParameters exec_params = {0};
+	exec_params.limit_count = 1;
+	exec_params.rowmark = mode;
+	exec_params.wait_policy = wait_policy;
+  exec_params.statement_read_time = estate->yb_exec_params.statement_read_time;
+
+	HTSU_Result res = HeapTupleMayBeUpdated;
+	MemoryContext exec_context = GetCurrentMemoryContext();
+
+	PG_TRY();
+	{
+		/*
+		 * Execute the select statement to lock the tuple with given ybctid.
+		 */
+		HandleYBStatus(YBCPgExecSelect(ybc_stmt, &exec_params /* exec_params */));
+
+		bool has_data = false;
+		Datum *values = NULL;
+		bool *nulls  = NULL;
+		YBCPgSysColumns syscols;
+
+		/*
+		 * Below is done to ensure the read request is flushed to tserver.
+		 */
+		HandleYBStatus(
+				YBCPgDmlFetch(
+						ybc_stmt,
+						0,
+						(uint64_t *) values,
+						nulls,
+						&syscols,
+						&has_data));
+		YBCPgAddIntoForeignKeyReferenceCache(RelationGetRelid(relation), ybctid);
+	}
+	PG_CATCH();
+	{
+		MemoryContext error_context = MemoryContextSwitchTo(exec_context);
+		ErrorData* edata = CopyErrorData();
+		FlushErrorState();
+
+		elog(DEBUG2, "Error when trying to lock row. wait_policy=%d message=%s", wait_policy,
+				 edata->message);
+
+		if (YBCIsTxnConflictError(edata->yb_txn_errcode))
+			res = HeapTupleUpdated;
+		else if (YBCIsTxnSkipLockingError(edata->yb_txn_errcode))
+			res = HeapTupleWouldBlock;
+		else {
+			YBCPgDeleteStatement(ybc_stmt);
+			MemoryContextSwitchTo(error_context);
+			PG_RE_THROW();
+		}
+	}
+	PG_END_TRY();
+
+	YBCPgDeleteStatement(ybc_stmt);
+	return res;
 }
 
 /*

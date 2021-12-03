@@ -20,13 +20,13 @@
 #ifndef YB_YQL_CQL_QL_EXEC_EXEC_CONTEXT_H_
 #define YB_YQL_CQL_QL_EXEC_EXEC_CONTEXT_H_
 
+#include "yb/yql/cql/ql/exec/exec_fwd.h"
 #include "yb/yql/cql/ql/ptree/process_context.h"
 #include "yb/yql/cql/ql/util/ql_env.h"
 #include "yb/yql/cql/ql/util/statement_params.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/ql_protocol_util.h"
-#include "yb/client/client.h"
 #include "yb/client/session.h"
 
 namespace yb {
@@ -244,6 +244,8 @@ class TnodeContext {
  public:
   explicit TnodeContext(const TreeNode* tnode);
 
+  ~TnodeContext();
+
   // Returns the tree node of the statement being executed.
   const TreeNode* tnode() const {
     return tnode_;
@@ -345,11 +347,8 @@ class TnodeContext {
   }
 
   // Access functions for child tnode context.
-  TnodeContext* AddChildTnode(const TreeNode* tnode) {
-    DCHECK(!child_context_);
-    child_context_ = std::make_unique<TnodeContext>(tnode);
-    return child_context_.get();
-  }
+  TnodeContext* AddChildTnode(const TreeNode* tnode);
+
   TnodeContext* child_context() {
     return child_context_.get();
   }
@@ -453,18 +452,6 @@ class TnodeContext {
   boost::optional<uint32_t> max_hash_code_from_partition_key_ops_;
 };
 
-// Processing could take a while, we are rescheduling it to our thread pool, if not yet
-// running in it.
-class Rescheduler {
- public:
-  virtual bool NeedReschedule() = 0;
-  virtual void Reschedule(rpc::ThreadPoolTask* task) = 0;
-  virtual CoarseTimePoint GetDeadline() const = 0;
-
- protected:
-  ~Rescheduler() {}
-};
-
 // The context for execution of a statement. Inside the statement parse tree, there may be one or
 // more statement tnodes to be executed.
 class ExecContext : public ProcessContextBase {
@@ -483,9 +470,7 @@ class ExecContext : public ProcessContextBase {
   virtual ~ExecContext();
 
   // Returns the statement string being executed.
-  const std::string& stmt() const override {
-    return parse_tree_.stmt();
-  }
+  const std::string& stmt() const override;
 
   // Access function for parse_tree and params.
   const ParseTree& parse_tree() const {

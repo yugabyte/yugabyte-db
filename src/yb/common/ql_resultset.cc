@@ -1,12 +1,11 @@
 //--------------------------------------------------------------------------------------------------
 // Copyright (c) YugaByte, Inc.
 //--------------------------------------------------------------------------------------------------
-
 #include "yb/common/ql_resultset.h"
 
 #include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_value.h"
-#include "yb/common/wire_protocol.h"
 
 namespace yb {
 // TODO(neil) All QL classes in "yb/common" needs to be group under a namespace. Doing that would

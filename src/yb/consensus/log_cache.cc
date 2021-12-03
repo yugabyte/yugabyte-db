@@ -37,24 +37,25 @@
 #include <mutex>
 #include <vector>
 
-
+#include "yb/consensus/consensus_util.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_reader.h"
-#include "yb/consensus/consensus_util.h"
+#include "yb/consensus/opid_util.h"
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/human_readable.h"
-#include "yb/gutil/strings/substitute.h"
-#include "yb/util/debug-util.h"
+
 #include "yb/util/flag_tags.h"
-#include "yb/util/mem_tracker.h"
-#include "yb/util/metrics.h"
+#include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
+#include "yb/util/result.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
 
 using namespace std::literals;
 
@@ -573,6 +574,10 @@ void LogCache::TrackOperationsMemory(const OpIds& op_ids) {
     // ops from another tablet than evict recent ops from this one.
     EvictSomeUnlocked(min_pinned_op_index_, need_to_free);
   }
+}
+
+int64_t LogCache::num_cached_ops() const {
+  return metrics_.num_ops->value();
 }
 
 #define INSTANTIATE_METRIC(x, ...) \

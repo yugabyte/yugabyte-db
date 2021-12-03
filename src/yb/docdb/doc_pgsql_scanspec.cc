@@ -14,9 +14,15 @@
 #include "yb/docdb/doc_pgsql_scanspec.h"
 
 #include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/schema.h"
 
+#include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_scanspec_util.h"
+
 #include "yb/rocksdb/db/compaction.h"
+
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 namespace docdb {
@@ -138,7 +144,7 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
     const DocKey& start_doc_key,
     bool is_forward_scan)
     : PgsqlScanSpec(where_expr),
-      range_bounds_(condition ? new common::QLScanRange(schema, *condition) : nullptr),
+      range_bounds_(condition ? new QLScanRange(schema, *condition) : nullptr),
       schema_(schema),
       query_id_(query_id),
       hashed_components_(&hashed_components.get()),
@@ -204,7 +210,7 @@ void DocPgsqlScanSpec::InitRangeOptions(const PgsqlConditionPB& condition) {
         return;
       }
 
-      ColumnSchema::SortingType sortingType = schema_.column(col_idx).sorting_type();
+      SortingType sortingType = schema_.column(col_idx).sorting_type();
 
       if (condition.op() == QL_OP_EQUAL) {
         auto pv = PrimitiveValue::FromQLValuePB(condition.operands(1).value(), sortingType);
@@ -217,8 +223,8 @@ void DocPgsqlScanSpec::InitRangeOptions(const PgsqlConditionPB& condition) {
         (*range_options_)[col_idx - num_hash_cols].reserve(opt_size);
 
         // IN arguments should have been de-duplicated and ordered ascendingly by the executor.
-        bool is_reverse_order = is_forward_scan_ ^ (sortingType == ColumnSchema::kAscending ||
-            sortingType == ColumnSchema::kAscendingNullsLast);
+        bool is_reverse_order = is_forward_scan_ ^ (sortingType == SortingType::kAscending ||
+            sortingType == SortingType::kAscendingNullsLast);
         for (int i = 0; i < opt_size; i++) {
           int elem_idx = is_reverse_order ? opt_size - i - 1 : i;
           const auto &elem = options.elems(elem_idx);
@@ -322,6 +328,19 @@ std::shared_ptr<rocksdb::ReadFileFilter> DocPgsqlScanSpec::CreateFileFilter() co
     return std::make_shared<PgsqlRangeBasedFileFilter>(std::move(lower_bound),
                                                        std::move(upper_bound));
   }
+}
+
+Result<KeyBytes> DocPgsqlScanSpec::LowerBound() const {
+  return Bound(true /* lower_bound */);
+}
+
+Result<KeyBytes> DocPgsqlScanSpec::UpperBound() const {
+  return Bound(false /* upper_bound */);
+}
+
+const DocKey& DocPgsqlScanSpec::DefaultStartDocKey() {
+  static const DocKey result;
+  return result;
 }
 
 }  // namespace docdb

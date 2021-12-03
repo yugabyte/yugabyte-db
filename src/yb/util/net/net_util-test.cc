@@ -30,7 +30,6 @@
 // under the License.
 //
 
-#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -38,11 +37,12 @@
 
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/util.h"
-#include "yb/util/format.h"
+
 #include "yb/util/net/net_util.h"
-#include "yb/util/net/socket.h"
 #include "yb/util/net/sockaddr.h"
+#include "yb/util/net/socket.h"
 #include "yb/util/status.h"
+#include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tostring.h"
 

@@ -36,6 +36,8 @@
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/log_buffer.h"
 
+#include "yb/util/result.h"
+
 using yb::Result;
 using std::ostringstream;
 

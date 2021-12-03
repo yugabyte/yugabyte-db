@@ -27,7 +27,6 @@
 #include <regex>
 
 #include "yb/util/monotime.h"
-#include "yb/util/result.h"
 #include "yb/util/timestamp.h"
 
 namespace yb {

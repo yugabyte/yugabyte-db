@@ -40,15 +40,16 @@
 #include "yb/rpc/inbound_call.h"
 #include "yb/rpc/local_call.h"
 #include "yb/rpc/outbound_call.h"
-#include "yb/rpc/service_if.h"
 #include "yb/rpc/reactor.h"
+#include "yb/rpc/service_if.h"
 #include "yb/rpc/yb_rpc.h"
 
-#include "yb/util/metrics.h"
-#include "yb/util/trace.h"
 #include "yb/util/debug/trace_event.h"
+#include "yb/util/format.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/status_format.h"
+#include "yb/util/trace.h"
 
 using google::protobuf::Message;
 DECLARE_int32(rpc_max_message_size);

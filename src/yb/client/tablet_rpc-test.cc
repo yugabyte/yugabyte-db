@@ -13,10 +13,13 @@
 //
 //
 
-#include "yb/client/tablet_rpc.h"
 #include "yb/client/meta_cache.h"
+#include "yb/client/tablet_rpc.h"
+
+#include "yb/master/master.pb.h"
 
 #include "yb/util/test_util.h"
+#include "yb/util/trace.h"
 
 namespace yb {
 namespace client {

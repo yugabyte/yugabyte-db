@@ -19,18 +19,23 @@
 #include "yb/common/wire_protocol-test-util.h"
 
 #include "yb/client/client-test-util.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/yb_op.h"
 #include "yb/gutil/strings/split.h"
-
+#include "yb/master/master.proxy.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/tools/tools_test_utils.h"
-
+#include "yb/util/format.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/random_util.h"
+#include "yb/util/status_format.h"
 #include "yb/util/subprocess.h"
+#include "yb/util/tsan_util.h"
+
 #include "yb/yql/redis/redisserver/redis_parser.h"
 
 using namespace std::chrono_literals;

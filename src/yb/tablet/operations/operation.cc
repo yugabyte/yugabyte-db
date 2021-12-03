@@ -38,6 +38,8 @@
 
 #include "yb/tserver/tserver_error.h"
 
+#include "yb/util/async_util.h"
+#include "yb/util/logging.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/trace.h"
 
@@ -164,6 +166,16 @@ void Operation::Release() {
 void ExclusiveSchemaOperationBase::ReleasePermitToken() {
   permit_token_.Reset();
   TRACE("Released permit token");
+}
+
+OperationCompletionCallback MakeWeakSynchronizerOperationCompletionCallback(
+    std::weak_ptr<Synchronizer> synchronizer) {
+  return [synchronizer = std::move(synchronizer)](const Status& status) {
+    auto shared_synchronizer = synchronizer.lock();
+    if (shared_synchronizer) {
+      shared_synchronizer->StatusCB(status);
+    }
+  };
 }
 
 }  // namespace tablet

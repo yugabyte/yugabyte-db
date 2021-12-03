@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/server/server_base.h"
 
 #include <algorithm>
@@ -37,14 +38,18 @@
 #include <vector>
 
 #include <boost/algorithm/string/predicate.hpp>
-#include <gflags/gflags.h>
 
 #include "yb/common/wire_protocol.h"
+
 #include "yb/fs/fs_manager.h"
+
 #include "yb/gutil/strings/strcat.h"
-#include "yb/gutil/strings/substitute.h"
+#include "yb/gutil/sysinfo.h"
 #include "yb/gutil/walltime.h"
+
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
+
 #include "yb/server/default-path-handlers.h"
 #include "yb/server/generic_service.h"
 #include "yb/server/glog_metrics.h"
@@ -57,23 +62,25 @@
 #include "yb/server/tcmalloc_metrics.h"
 #include "yb/server/tracing-path-handlers.h"
 #include "yb/server/webserver.h"
+
 #include "yb/util/atomic.h"
+#include "yb/util/concurrent_value.h"
+#include "yb/util/encryption_util.h"
 #include "yb/util/env.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
-#include "yb/util/net/sockaddr.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/status.h"
+#include "yb/util/net/sockaddr.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/rolling_log.h"
 #include "yb/util/spinlock_profiling.h"
+#include "yb/util/status.h"
+#include "yb/util/status_log.h"
 #include "yb/util/thread.h"
 #include "yb/util/version_info.h"
-#include "yb/util/encryption_util.h"
-#include "yb/gutil/sysinfo.h"
 
 DEFINE_int32(num_reactor_threads, -1,
              "Number of libev reactor threads to start. If -1, the value is automatically set.");

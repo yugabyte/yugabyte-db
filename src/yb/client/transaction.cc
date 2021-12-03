@@ -17,6 +17,7 @@
 
 #include <unordered_set>
 
+#include "yb/client/batcher.h"
 #include "yb/client/client.h"
 #include "yb/client/in_flight_op.h"
 #include "yb/client/meta_cache.h"
@@ -27,16 +28,22 @@
 
 #include "yb/common/common.pb.h"
 #include "yb/common/transaction.h"
+#include "yb/common/transaction_error.h"
+#include "yb/common/ybc_util.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/scheduler.h"
 
+#include "yb/util/countdown_latch.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
@@ -81,16 +88,6 @@ YB_DEFINE_ENUM(TransactionState, (kRunning)(kAborted)(kCommitted)(kReleased)(kSe
 
 } // namespace
 
-InFlightOpsGroup::InFlightOpsGroup(const Iterator& group_begin, const Iterator& group_end)
-    : begin(group_begin), end(group_end) {
-}
-
-std::string InFlightOpsGroup::ToString() const {
-  return Format("{items: $0 need_metadata: $1}",
-                AsString(boost::make_iterator_range(begin, end)),
-                need_metadata);
-}
-
 Result<ChildTransactionData> ChildTransactionData::FromPB(const ChildTransactionDataPB& data) {
   ChildTransactionData result;
   auto metadata = TransactionMetadata::FromPB(data.metadata());
@@ -126,7 +123,7 @@ CHECKED_STATUS YBSubTransaction::RollbackSubTransaction(SubTransactionId id) {
 
 const SubTransactionMetadata& YBSubTransaction::get() { return sub_txn_; }
 
-class YBTransaction::Impl final {
+class YBTransaction::Impl final : public internal::TxnBatcherIf {
  public:
   Impl(TransactionManager* manager, YBTransaction* transaction, TransactionLocality locality)
       : trace_(new Trace),
@@ -267,7 +264,7 @@ class YBTransaction::Impl final {
     return trace_.get();
   }
 
-  CHECKED_STATUS CheckTransactionLocality(InFlightOpsGroupsWithMetadata* ops_info)
+  CHECKED_STATUS CheckTransactionLocality(internal::InFlightOpsGroupsWithMetadata* ops_info)
       REQUIRES(mutex_) {
     if (metadata_.locality != TransactionLocality::LOCAL) {
       return Status::OK();
@@ -291,11 +288,11 @@ class YBTransaction::Impl final {
     return Status::OK();
   }
 
-  bool Prepare(InFlightOpsGroupsWithMetadata* ops_info,
+  bool Prepare(internal::InFlightOpsGroupsWithMetadata* ops_info,
                ForceConsistentRead force_consistent_read,
                CoarseTimePoint deadline,
                Initial initial,
-               Waiter waiter) EXCLUDES(mutex_) {
+               Waiter waiter) override EXCLUDES(mutex_) {
     VLOG_WITH_PREFIX(2) << "Prepare(" << AsString(ops_info->groups) << ", "
                         << force_consistent_read << ", " << initial << ")";
     TRACE_TO(trace_, "Perparing $0 ops", AsString(ops_info->groups.size()));
@@ -372,14 +369,14 @@ class YBTransaction::Impl final {
     return true;
   }
 
-  void ExpectOperations(size_t count) EXCLUDES(mutex_) {
+  void ExpectOperations(size_t count) EXCLUDES(mutex_) override {
     std::lock_guard<std::mutex> lock(mutex_);
     running_requests_ += count;
   }
 
   void Flushed(
       const internal::InFlightOps& ops, const ReadHybridTime& used_read_time,
-            const Status& status) EXCLUDES(mutex_) {
+      const Status& status) EXCLUDES(mutex_) override {
     TRACE_TO(trace_, "Flushed $0 ops. with Status $1", ops.size(), status.ToString());
     VLOG_WITH_PREFIX(5)
         << "Flushed: " << yb::ToString(ops) << ", used_read_time: " << used_read_time
@@ -433,7 +430,10 @@ class YBTransaction::Impl final {
             // State will be changed to aborted in SetError
           }
         }
-        SetErrorUnlocked(status);
+        const TransactionError txn_err(status);
+        if (txn_err.value() != TransactionErrorCode::kSkipLocking) {
+          SetErrorUnlocked(status);
+        }
       }
 
       if (running_requests_ == 0 && commit_replicated_) {
@@ -952,6 +952,7 @@ class YBTransaction::Impl final {
     manager_->client()->LookupTabletById(
         tablet_id,
         /* table =*/ nullptr,
+        master::IncludeInactive::kFalse,
         deadline,
         std::bind(&Impl::LookupTabletDone, this, _1, transaction),
         client::UseCache::kTrue);
@@ -1300,26 +1301,21 @@ void YBTransaction::InitWithReadPoint(
   return impl_->InitWithReadPoint(isolation, std::move(read_point));
 }
 
-bool YBTransaction::Prepare(InFlightOpsGroupsWithMetadata* ops_info,
-                            ForceConsistentRead force_consistent_read,
-                            CoarseTimePoint deadline,
-                            Initial initial,
-                            Waiter waiter) {
-  return impl_->Prepare(ops_info, force_consistent_read, deadline, initial, std::move(waiter));
-}
-
-void YBTransaction::ExpectOperations(size_t count) {
-  impl_->ExpectOperations(count);
-}
-
-void YBTransaction::Flushed(
-    const internal::InFlightOps& ops, const ReadHybridTime& used_read_time, const Status& status) {
-  impl_->Flushed(ops, used_read_time, status);
+internal::TxnBatcherIf& YBTransaction::batcher_if() {
+  return *impl_;
 }
 
 void YBTransaction::Commit(
     CoarseTimePoint deadline, SealOnly seal_only, CommitCallback callback) {
   impl_->Commit(AdjustDeadline(deadline), seal_only, std::move(callback));
+}
+
+void YBTransaction::Commit(CoarseTimePoint deadline, CommitCallback callback) {
+  Commit(deadline, SealOnly::kFalse, callback);
+}
+
+void YBTransaction::Commit(CommitCallback callback) {
+  Commit(CoarseTimePoint(), SealOnly::kFalse, std::move(callback));
 }
 
 const TransactionId& YBTransaction::id() const {

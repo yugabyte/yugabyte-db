@@ -14,11 +14,8 @@
 #ifndef YB_YQL_CQL_QL_PTREE_PT_KEYSPACE_PROPERTY_H_
 #define YB_YQL_CQL_QL_PTREE_PT_KEYSPACE_PROPERTY_H_
 
-#include "yb/common/schema.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/master/master.pb.h"
 #include "yb/yql/cql/ql/ptree/list_node.h"
-#include "yb/yql/cql/ql/ptree/pt_expr.h"
 #include "yb/yql/cql/ql/ptree/pt_property.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
 
@@ -40,12 +37,12 @@ class PTKeyspaceProperty : public PTProperty {
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
   PTKeyspaceProperty(MemoryContext *memctx,
-                     YBLocation::SharedPtr loc,
+                     YBLocationPtr loc,
                      const MCSharedPtr<MCString>& lhs_,
-                     const PTExpr::SharedPtr& rhs_);
+                     const PTExprPtr& rhs_);
 
   PTKeyspaceProperty(MemoryContext *memctx,
-                     YBLocation::SharedPtr loc);
+                     YBLocationPtr loc);
 
   virtual ~PTKeyspaceProperty();
 
@@ -84,7 +81,7 @@ class PTKeyspacePropertyListNode : public TreeListNode<PTKeyspaceProperty> {
   typedef MCSharedPtr<const PTKeyspacePropertyListNode> SharedPtrConst;
 
   explicit PTKeyspacePropertyListNode(MemoryContext *memory_context,
-                                      YBLocation::SharedPtr loc,
+                                      YBLocationPtr loc,
                                       const MCSharedPtr<PTKeyspaceProperty>& tnode = nullptr)
       : TreeListNode<PTKeyspaceProperty>(memory_context, loc, tnode) {
   }
@@ -118,7 +115,7 @@ class PTKeyspacePropertyMap : public PTKeyspaceProperty {
   typedef MCSharedPtr<PTKeyspacePropertyMap> SharedPtr;
   typedef MCSharedPtr<const PTKeyspacePropertyMap> SharedPtrConst;
 
-  PTKeyspacePropertyMap(MemoryContext *memctx, YBLocation::SharedPtr loc);
+  PTKeyspacePropertyMap(MemoryContext *memctx, YBLocationPtr loc);
 
   virtual ~PTKeyspacePropertyMap();
 

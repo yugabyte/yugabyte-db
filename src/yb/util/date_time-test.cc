@@ -13,6 +13,7 @@
 
 #include "yb/util/date_time.h"
 
+#include "yb/util/result.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 

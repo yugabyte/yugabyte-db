@@ -39,8 +39,8 @@
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
-#include "yb/util/countdown_latch.h"
 #include "yb/util/blocking_queue.h"
+#include "yb/util/countdown_latch.h"
 
 using std::shared_ptr;
 using std::string;

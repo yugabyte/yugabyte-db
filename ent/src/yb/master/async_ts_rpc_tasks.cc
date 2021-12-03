@@ -14,7 +14,6 @@
 
 #include "yb/util/logging.h"
 #include "yb/master/master.h"
-#include "yb/master/catalog_manager.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/tserver/backup.proxy.h"
 

@@ -27,6 +27,8 @@
 #include "yb/rocksdb/util/mutexlock.h"
 #include "yb/rocksdb/util/sync_point.h"
 
+#include "yb/util/result.h"
+
 namespace rocksdb {
 
 SstFileManagerImpl::SstFileManagerImpl(Env* env, std::shared_ptr<Logger> logger,

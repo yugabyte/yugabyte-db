@@ -30,7 +30,11 @@
 #include <signal.h>
 #include <stdio.h>
 #include <string.h>
+
+#include <glog/logging.h>
+
 #include "yb/rocksdb/util/logging.h"
+#include "yb/util/status_log.h"
 
 #if defined(RLIMIT_NOFILE)
 #include "yb/util/std_util.h"

@@ -35,6 +35,7 @@
 #include "yb/gutil/strings/util.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
 #include "yb/util/test_util.h"
 
 METRIC_DECLARE_entity(server);

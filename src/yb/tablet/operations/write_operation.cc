@@ -37,21 +37,27 @@
 
 #include <boost/optional.hpp>
 
-#include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus_round.h"
+
 #include "yb/docdb/cql_operation.h"
 #include "yb/docdb/pgsql_operation.h"
-#include "yb/gutil/stl_util.h"
+
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/walltime.h"
+
 #include "yb/server/hybrid_clock.h"
+
+#include "yb/tablet/operations/write_operation_context.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metrics.h"
+
 #include "yb/tserver/tserver.pb.h"
-#include "yb/util/debug/trace_event.h"
+
 #include "yb/util/debug-util.h"
+#include "yb/util/debug/trace_event.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/locks.h"
+#include "yb/util/metrics.h"
 #include "yb/util/trace.h"
 
 DEFINE_test_flag(int32, tablet_inject_latency_on_apply_write_txn_ms, 0,

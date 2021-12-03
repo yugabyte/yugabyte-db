@@ -17,10 +17,17 @@
 
 #include <thread>
 
+#include "yb/rpc/proxy.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/yb_rpc.h"
 
+#include "yb/util/debug-util.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/net/net_util.h"
 #include "yb/util/random_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status_log.h"
+#include "yb/util/test_macros.h"
 
 using namespace std::chrono_literals;
 

@@ -33,6 +33,7 @@
 #ifndef YB_UTIL_LOGGING_TEST_UTIL_H
 #define YB_UTIL_LOGGING_TEST_UTIL_H
 
+#include <atomic>
 #include <chrono>
 #include <string>
 #include <vector>
@@ -40,7 +41,7 @@
 #include <glog/logging.h>
 
 #include "yb/util/monotime.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 

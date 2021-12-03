@@ -7,11 +7,17 @@
 #ifndef YB_COMMON_QL_EXPR_H_
 #define YB_COMMON_QL_EXPR_H_
 
+#include <boost/container/small_vector.hpp>
+
+#include <boost/optional/optional.hpp>
+
 #include "yb/common/common_fwd.h"
+#include "yb/common/column_id.h"
 #include "yb/common/ql_value.h"
-#include "yb/common/schema.h"
-#include "yb/util/bfql/tserver_opcodes.h"
-#include "yb/util/bfpg/tserver_opcodes.h"
+#include "yb/bfql/tserver_opcodes.h"
+#include "yb/bfpg/tserver_opcodes.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 
@@ -34,11 +40,7 @@ struct QLTableColumn {
   int64_t ttl_seconds = 0;
   int64_t write_time = kUninitializedWriteTime;
 
-  std::string ToString() const {
-    return Format("{ value: $0 ttl_seconds: $1 write_time: $2 }", value, ttl_seconds,
-                  write_time == kUninitializedWriteTime ? "kUninitializedWriteTime":
-                                                          std::to_string(write_time));
-  }
+  std::string ToString() const;
 };
 
 class QLExprResultWriter;
@@ -134,9 +136,7 @@ class QLTableRow {
 
   // Copy the column value of the given ID to output parameter "column".
   CHECKED_STATUS GetValue(ColumnIdRep col_id, QLValue *column) const;
-  CHECKED_STATUS GetValue(const ColumnId& col, QLValue *column) const {
-    return GetValue(col.rep(), column);
-  }
+  CHECKED_STATUS GetValue(const ColumnId& col, QLValue *column) const;
   boost::optional<const QLValuePB&> GetValue(ColumnIdRep col_id) const;
   boost::optional<const QLValuePB&> GetValue(const ColumnId& col) const {
     return GetValue(col.rep());
@@ -277,9 +277,7 @@ class QLExprExecutor {
   CHECKED_STATUS EvalExpr(const PgsqlExpressionPB& ql_expr,
                           const QLTableRow& table_row,
                           QLExprResultWriter result_writer,
-                          const Schema *schema = nullptr) {
-    return EvalExpr(ql_expr, &table_row, result_writer, schema);
-  }
+                          const Schema *schema = nullptr);
 
   CHECKED_STATUS EvalExpr(const PgsqlExpressionPB& ql_expr,
                           const QLTableRow& table_row,

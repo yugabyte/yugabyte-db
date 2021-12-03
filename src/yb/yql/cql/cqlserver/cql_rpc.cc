@@ -17,13 +17,18 @@
 #include "yb/yql/cql/cqlserver/cql_service.h"
 #include "yb/yql/cql/cqlserver/cql_statement.h"
 
+#include "yb/gutil/casts.h"
+#include "yb/gutil/strings/escaping.h"
+
 #include "yb/rpc/connection.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/reactor.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 
 #include "yb/util/debug/trace_event.h"
+#include "yb/util/result.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
 
 using namespace std::literals;
 using namespace std::placeholders;

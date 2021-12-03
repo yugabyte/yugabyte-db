@@ -36,7 +36,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/util/background_task.h"
-
+#include "yb/util/result.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"

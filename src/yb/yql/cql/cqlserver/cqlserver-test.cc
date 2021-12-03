@@ -26,6 +26,7 @@
 #include "yb/gutil/strings/join.h"
 #include "yb/util/cast.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
 
 DECLARE_bool(cql_server_always_send_events);
@@ -118,7 +119,7 @@ Status TestCQLService::SendRequestAndGetResponse(
   LOG(INFO) << "Send CQL: {" << FormatBytesAsStr(cmd) << "}";
   // Send the request.
   int32_t bytes_written = 0;
-  EXPECT_OK(client_sock_.Write(util::to_uchar_ptr(cmd.c_str()), cmd.length(), &bytes_written));
+  EXPECT_OK(client_sock_.Write(to_uchar_ptr(cmd.c_str()), cmd.length(), &bytes_written));
 
   EXPECT_EQ(cmd.length(), bytes_written);
 

@@ -32,6 +32,7 @@
 #ifndef YB_TSERVER_REMOTE_BOOTSTRAP_SESSION_H_
 #define YB_TSERVER_REMOTE_BOOTSTRAP_SESSION_H_
 
+#include <array>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -48,7 +49,7 @@
 #include "yb/util/env_util.h"
 #include "yb/util/net/rate_limiter.h"
 #include "yb/util/locks.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 

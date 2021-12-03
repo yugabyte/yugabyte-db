@@ -16,7 +16,8 @@
 
 #include "yb/common/pgsql_protocol.pb.h"
 
-#include "yb/util/status.h"
+#include "yb/util/status_ec.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/yb_pg_errcodes.h"
 
 namespace yb {

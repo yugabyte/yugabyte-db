@@ -32,66 +32,44 @@
 #ifndef YB_TABLET_TABLET_H_
 #define YB_TABLET_TABLET_H_
 
-#include <iosfwd>
-#include <map>
-#include <memory>
-#include <mutex>
-#include <string>
-#include <vector>
+#include <boost/intrusive/list.hpp>
+#include <boost/function.hpp>
 
-#include "yb/client/client.h"
-#include "yb/client/meta_data_cache.h"
+#include "yb/gutil/ref_counted.h"
+
 #include "yb/client/transaction_manager.h"
 
-#include "yb/common/schema.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/common/snapshot.h"
 #include "yb/common/transaction.h"
-#include "yb/common/ql_storage_interface.h"
 
-#include "yb/consensus/log_fwd.h"
+#include "yb/consensus/consensus.pb.h"
 
-#include "yb/docdb/docdb.pb.h"
-#include "yb/docdb/docdb.h"
-#include "yb/docdb/docdb_compaction_filter.h"
-#include "yb/docdb/doc_operation.h"
-#include "yb/docdb/ql_rocksdb_storage.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/key_bounds.h"
+#include "yb/docdb/docdb_types.h"
 #include "yb/docdb/shared_lock_manager.h"
 
-#include "yb/gutil/atomicops.h"
-#include "yb/gutil/macros.h"
-#include "yb/gutil/thread_annotations.h"
-
-#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/rocksdb_fwd.h"
 #include "yb/rocksdb/options.h"
-#include "yb/rocksdb/statistics.h"
-#include "yb/rocksdb/write_batch.h"
+#include "yb/rocksdb/table.h"
+#include "yb/rocksdb/types.h"
 
-#include "yb/rpc/rpc_fwd.h"
-
+#include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/abstract_tablet.h"
 #include "yb/tablet/mvcc.h"
 #include "yb/tablet/operation_filter.h"
-#include "yb/tablet/operations/snapshot_operation.h"
-#include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_options.h"
-#include "yb/tablet/transaction_participant.h"
+#include "yb/tablet/transaction_intent_applier.h"
 
-#include "yb/util/countdown_latch.h"
 #include "yb/util/enums.h"
-#include "yb/util/locks.h"
-#include "yb/util/metrics.h"
+#include "yb/util/net/net_fwd.h"
 #include "yb/util/operation_counter.h"
-#include "yb/util/semaphore.h"
-#include "yb/util/slice.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/threadpool.h"
-
-
-
-namespace rocksdb {
-class DB;
-}
 
 namespace yb {
 
@@ -106,20 +84,7 @@ class Clock;
 namespace tablet {
 
 YB_STRONGLY_TYPED_BOOL(IncludeIntents);
-YB_STRONGLY_TYPED_BOOL(Destroy);
-YB_STRONGLY_TYPED_BOOL(DisableFlushOnShutdown);
-
-YB_DEFINE_ENUM(FlushMode, (kSync)(kAsync));
 YB_STRONGLY_TYPED_BOOL(Abortable);
-
-enum class FlushFlags {
-  kNone = 0,
-
-  kRegular = 1,
-  kIntents = 2,
-
-  kAll = kRegular | kIntents
-};
 
 inline FlushFlags operator|(FlushFlags lhs, FlushFlags rhs) {
   return static_cast<FlushFlags>(to_underlying(lhs) | to_underlying(rhs));
@@ -149,6 +114,15 @@ class TabletScopedIf : public RefCountedThreadSafe<TabletScopedIf> {
 
 YB_STRONGLY_TYPED_BOOL(AllowBootstrappingState);
 YB_STRONGLY_TYPED_BOOL(ResetSplit);
+
+struct TabletScopedRWOperationPauses {
+  ScopedRWOperationPause abortable;
+  ScopedRWOperationPause non_abortable;
+
+  std::array<ScopedRWOperationPause*, 2> AsArray() {
+    return {&abortable, &non_abortable};
+  }
+};
 
 class Tablet : public AbstractTablet, public TransactionIntentApplier {
  public:
@@ -401,13 +375,13 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Create a new row iterator which yields the rows as of the current MVCC
   // state of this tablet.
   // The returned iterator is not initialized.
-  Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> NewRowIterator(
+  Result<std::unique_ptr<YQLRowwiseIteratorIf>> NewRowIterator(
       const Schema& projection,
       const ReadHybridTime read_hybrid_time = {},
       const TableId& table_id = "",
       CoarseTimePoint deadline = CoarseTimePoint::max(),
       AllowBootstrappingState allow_bootstrapping_state = AllowBootstrappingState::kFalse) const;
-  Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> NewRowIterator(
+  Result<std::unique_ptr<YQLRowwiseIteratorIf>> NewRowIterator(
       const TableId& table_id) const;
 
   //------------------------------------------------------------------------------------------------
@@ -455,7 +429,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // Returns a reference to the key projection of the tablet schema.
   // The schema keys are immutable.
-  const Schema& key_schema() const { return key_schema_; }
+  const Schema& key_schema() const { return *key_schema_; }
 
   // Return the MVCC manager for this tablet.
   MvccManager* mvcc_manager() { return &mvcc_; }
@@ -528,23 +502,11 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return clock_;
   }
 
-  yb::SchemaPtr GetSchema(const std::string& table_id = "") const override {
-    if (table_id.empty()) {
-      return metadata_->schema();
-    }
-    auto table_info = CHECK_RESULT(metadata_->GetTableInfo(table_id));
-    return yb::SchemaPtr(table_info, &table_info->schema);
-  }
+  SchemaPtr GetSchema(const std::string& table_id = "") const override;
 
-  Schema GetKeySchema(const std::string& table_id = "") const {
-    if (table_id.empty()) {
-      return key_schema_;
-    }
-    auto table_info = CHECK_RESULT(metadata_->GetTableInfo(table_id));
-    return table_info->schema.CreateKeyProjection();
-  }
+  Schema GetKeySchema(const std::string& table_id = "") const;
 
-  const common::YQLStorageIf& QLStorage() const override {
+  const YQLStorageIf& QLStorage() const override {
     return *ql_storage_;
   }
 
@@ -726,15 +688,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   CHECKED_STATUS CheckRestorations(const RestorationCompleteTimeMap& restoration_complete_time);
 
  private:
-  struct ScopedRWOperationPauses {
-    ScopedRWOperationPause abortable;
-    ScopedRWOperationPause non_abortable;
-
-    std::array<ScopedRWOperationPause*, 2> AsArray() {
-      return {&abortable, &non_abortable};
-    }
-  };
-
   friend class Iterator;
   friend class TabletPeerTest;
   friend class ScopedReadOperation;
@@ -762,12 +715,12 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       HybridTime hybrid_time,
       rocksdb::WriteBatch* rocksdb_write_batch);
 
-  Result<TransactionOperationContextOpt> CreateTransactionOperationContext(
+  Result<TransactionOperationContext> CreateTransactionOperationContext(
       const TransactionMetadataPB& transaction_metadata,
       bool is_ysql_catalog_table,
       const boost::optional<SubTransactionMetadataPB>& subtransaction_metadata = boost::none) const;
 
-  Result<TransactionOperationContextOpt> CreateTransactionOperationContext(
+  Result<TransactionOperationContext> CreateTransactionOperationContext(
       const boost::optional<TransactionId>& transaction_id,
       bool is_ysql_catalog_table,
       const boost::optional<SubTransactionMetadataPB>& subtransaction_metadata = boost::none) const;
@@ -786,13 +739,13 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Starts RocksDB shutdown (that will abort abortable read/write operations).
   // Pauses new abortable read/write operations and wait for all of those that are pending to
   // complete.
-  // Returns ScopedRWOperationPauses that are preventing new read/write operations from being
+  // Returns TabletScopedRWOperationPauses that are preventing new read/write operations from being
   // started.
-  Result<ScopedRWOperationPauses> StartShutdownRocksDBs(
+  Result<TabletScopedRWOperationPauses> StartShutdownRocksDBs(
       DisableFlushOnShutdown disable_flush_on_shutdown, Stop stop = Stop::kFalse);
 
   CHECKED_STATUS CompleteShutdownRocksDBs(
-      Destroy destroy, ScopedRWOperationPauses* ops_pauses);
+      Destroy destroy, TabletScopedRWOperationPauses* ops_pauses);
 
   ScopedRWOperation CreateAbortableScopedRWOperation(
       const CoarseTimePoint deadline = CoarseTimePoint()) const;
@@ -834,7 +787,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   void UnregisterOperationFilterUnlocked(OperationFilter* filter)
     REQUIRES(operation_filters_mutex_);
 
-  const Schema key_schema_;
+  std::unique_ptr<const Schema> key_schema_;
 
   RaftGroupMetadataPtr metadata_;
   TableType table_type_;
@@ -864,7 +817,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   MetricEntityPtr tablet_metrics_entity_;
   MetricEntityPtr table_metrics_entity_;
   std::unique_ptr<TabletMetrics> metrics_;
-  FunctionGaugeDetacher metric_detacher_;
+  std::shared_ptr<void> metric_detacher_;
 
   // A pointer to the server's clock.
   scoped_refptr<server::Clock> clock_;
@@ -899,7 +852,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Optional key bounds (see docdb::KeyBounds) served by this tablet.
   docdb::KeyBounds key_bounds_;
 
-  std::unique_ptr<common::YQLStorageIf> ql_storage_;
+  std::unique_ptr<YQLStorageIf> ql_storage_;
 
   // This is for docdb fine-grained locking.
   docdb::SharedLockManager shared_lock_manager_;
@@ -953,7 +906,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   std::shared_ptr<client::YBMetaDataCache> metadata_cache_;
 
   // Created only if it is a unique index tablet.
-  boost::optional<Schema> unique_index_key_schema_;
+  std::unique_ptr<Schema> unique_index_key_schema_;
 
   std::atomic<int64_t> last_committed_write_index_{0};
 

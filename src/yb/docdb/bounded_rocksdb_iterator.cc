@@ -13,6 +13,10 @@
 
 #include "yb/docdb/bounded_rocksdb_iterator.h"
 
+#include "yb/docdb/key_bounds.h"
+
+#include "yb/rocksdb/db.h"
+
 namespace yb {
 namespace docdb {
 
@@ -21,7 +25,7 @@ BoundedRocksDbIterator::BoundedRocksDbIterator(
     const KeyBounds* key_bounds)
     : iterator_(rocksdb->NewIterator(read_opts)), key_bounds_(key_bounds) {
   CHECK_NOTNULL(key_bounds_);
-  VLOG(3) << "key_bounds_ = " << yb::ToString(key_bounds_);
+  VLOG(3) << "key_bounds_ = " << AsString(key_bounds_);
 }
 
 bool BoundedRocksDbIterator::Valid() const {

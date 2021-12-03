@@ -29,37 +29,37 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/master/sys_catalog.h"
 
 #include <cmath>
 #include <memory>
-#include <rapidjson/document.h>
 
+#include <boost/optional.hpp>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
-#include <boost/optional.hpp>
+#include <rapidjson/document.h>
 
+#include "yb/client/client.h"
+#include "yb/common/index.h"
 #include "yb/common/partial_row.h"
 #include "yb/common/partition.h"
+#include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/common/ql_value.h"
-
-#include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_peers.h"
+#include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
-#include "yb/consensus/raft_consensus.h"
-
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb_pgapi.h"
-
 #include "yb/fs/fs_manager.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/split.h"
-#include "yb/master/catalog_manager.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/sys_catalog_writer.h"
 #include "yb/tablet/operations/write_operation.h"
@@ -67,16 +67,19 @@
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/tablet_options.h"
-
+#include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/tablet_memory_manager.h"
 #include "yb/tserver/ts_tablet_manager.h"
-
+#include "yb/util/debug/trace_event.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
+#include "yb/util/metrics.h"
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
-#include "yb/util/string_util.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/threadpool.h"
 
 using namespace std::literals; // NOLINT
@@ -116,6 +119,7 @@ METRIC_DEFINE_counter(
   yb::MetricUnit::kRequests,
   "Number of writes to disk handled by the system catalog.");
 
+DECLARE_bool(create_initial_sys_catalog_snapshot);
 DECLARE_int32(master_discovery_timeout_ms);
 
 DEFINE_int32(sys_catalog_write_timeout_ms, 60000, "Timeout for writes into system catalog");
@@ -137,7 +141,7 @@ std::string SysCatalogTable::schema_column_metadata() { return kSysCatalogTableC
 
 SysCatalogTable::SysCatalogTable(Master* master, MetricRegistry* metrics,
                                  ElectedLeaderCallback leader_cb)
-    : schema_(BuildTableSchema()),
+    : schema_(std::make_unique<Schema>(BuildTableSchema())),
       metric_registry_(metrics),
       metric_entity_(METRIC_ENTITY_server.Instantiate(metric_registry_, "yb.master")),
       master_(master),
@@ -229,7 +233,7 @@ Status SysCatalogTable::Load(FsManager* fs_manager) {
   auto metadata = VERIFY_RESULT(tablet::RaftGroupMetadata::Load(fs_manager, kSysCatalogTabletId));
 
   // Verify that the schema is the current one
-  if (!metadata->schema()->Equals(schema_)) {
+  if (!metadata->schema()->Equals(*schema_)) {
     // TODO: In this case we probably should execute the migration step.
     return(STATUS(Corruption, "Unexpected schema", metadata->schema()->ToString()));
   }
@@ -595,7 +599,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
 
   tablet_peer()->RegisterMaintenanceOps(master_->maintenance_manager());
 
-  if (!tablet->schema()->Equals(schema_)) {
+  if (!tablet->schema()->Equals(*schema_)) {
     return STATUS(Corruption, "Unexpected schema", tablet->schema()->ToString());
   }
   RETURN_NOT_OK(mem_manager_->Init());
@@ -732,7 +736,7 @@ Status SysCatalogTable::Visit(VisitorBase* visitor) {
   auto start = CoarseMonoClock::Now();
 
   uint64_t count = 0;
-  RETURN_NOT_OK(EnumerateSysCatalog(tablet.get(), schema_, visitor->entry_type(),
+  RETURN_NOT_OK(EnumerateSysCatalog(tablet.get(), *schema_, visitor->entry_type(),
                                     [visitor, &count](const Slice& id, const Slice& data) {
     ++count;
     return visitor->Visit(id, data);
@@ -774,7 +778,7 @@ Status SysCatalogTable::ReadYsqlCatalogVersion(TableId ysql_catalog_table_id,
   const auto* meta = tablet->metadata();
   const std::shared_ptr<tablet::TableInfo> ysql_catalog_table_info =
       VERIFY_RESULT(meta->GetTableInfo(ysql_catalog_table_id));
-  const Schema& schema = ysql_catalog_table_info->schema;
+  const Schema& schema = *ysql_catalog_table_info->schema;
   auto iter = VERIFY_RESULT(tablet->NewRowIterator(schema.CopyWithoutColumnIds(),
                                                    {} /* read_hybrid_time */,
                                                    ysql_catalog_table_id));
@@ -822,7 +826,7 @@ Result<shared_ptr<TablespaceIdToReplicationInfoMap>> SysCatalogTable::ReadPgTabl
 
   const auto& pg_tablespace_info =
       VERIFY_RESULT(tablet->metadata()->GetTableInfo(kPgTablespaceTableId));
-  const Schema& schema = pg_tablespace_info->schema;
+  const Schema& schema = *pg_tablespace_info->schema;
   auto iter = VERIFY_RESULT(tablet->NewRowIterator(schema.CopyWithoutColumnIds(),
                                                    {} /* read_hybrid_time */,
                                                    kPgTablespaceTableId));
@@ -902,7 +906,7 @@ Status SysCatalogTable::ReadPgClassInfo(
   const auto& pg_table_id = GetPgsqlTableId(database_oid, kPgClassTableOid);
   const auto& table_info = VERIFY_RESULT(
       tablet->metadata()->GetTableInfo(pg_table_id));
-  const Schema& schema = table_info->schema;
+  const Schema& schema = *table_info->schema;
 
   Schema projection;
   RETURN_NOT_OK(schema.CreateProjectionByNames({"oid", "reltablespace", "relkind"}, &projection,
@@ -993,7 +997,7 @@ Result<uint32_t> SysCatalogTable::ReadPgClassRelnamespace(const uint32_t databas
 
   const auto& pg_table_id = GetPgsqlTableId(database_oid, kPgClassTableOid);
   const auto& table_info = VERIFY_RESULT(tablet->metadata()->GetTableInfo(pg_table_id));
-  const Schema& schema = table_info->schema;
+  const Schema& schema = *table_info->schema;
 
   Schema projection;
   RETURN_NOT_OK(schema.CreateProjectionByNames({"oid", "relnamespace"}, &projection,
@@ -1050,7 +1054,7 @@ Result<string> SysCatalogTable::ReadPgNamespaceNspname(const uint32_t database_o
 
   const auto& pg_table_id = GetPgsqlTableId(database_oid, kPgNamespaceTableOid);
   const auto& table_info = VERIFY_RESULT(tablet->metadata()->GetTableInfo(pg_table_id));
-  const Schema& schema = table_info->schema;
+  const Schema& schema = *table_info->schema;
 
   Schema projection;
   RETURN_NOT_OK(schema.CreateProjectionByNames({"oid", "nspname"}, &projection,
@@ -1208,8 +1212,8 @@ Status SysCatalogTable::CopyPgsqlTables(
         VERIFY_RESULT(meta->GetTableInfo(source_table_id));
     const std::shared_ptr<tablet::TableInfo> target_table_info =
         VERIFY_RESULT(meta->GetTableInfo(target_table_id));
-    const Schema source_projection = source_table_info->schema.CopyWithoutColumnIds();
-    std::unique_ptr<common::YQLRowwiseIteratorIf> iter = VERIFY_RESULT(
+    const Schema source_projection = source_table_info->schema->CopyWithoutColumnIds();
+    std::unique_ptr<YQLRowwiseIteratorIf> iter = VERIFY_RESULT(
         tablet->NewRowIterator(source_projection, {}, source_table_id));
     QLTableRow source_row;
 
@@ -1217,7 +1221,7 @@ Status SysCatalogTable::CopyPgsqlTables(
       RETURN_NOT_OK(iter->NextRow(&source_row));
 
       RETURN_NOT_OK(writer->InsertPgsqlTableRow(
-          source_table_info->schema, source_row, target_table_id, target_table_info->schema,
+          *source_table_info->schema, source_row, target_table_id, *target_table_info->schema,
           target_table_info->schema_version, true /* is_upsert */));
 
       ++total_count;
@@ -1264,7 +1268,7 @@ Status SysCatalogTable::DeleteYsqlSystemTable(const string& table_id) {
 }
 
 const Schema& SysCatalogTable::schema() {
-  return schema_;
+  return *schema_;
 }
 
 Status SysCatalogTable::FetchDdlLog(google::protobuf::RepeatedPtrField<DdlLogEntryPB>* entries) {
@@ -1273,11 +1277,15 @@ Status SysCatalogTable::FetchDdlLog(google::protobuf::RepeatedPtrField<DdlLogEnt
     return STATUS(ShutdownInProgress, "SysConfig is shutting down.");
   }
 
-  return EnumerateSysCatalog(tablet.get(), schema_, SysRowEntry::DDL_LOG_ENTRY,
+  return EnumerateSysCatalog(tablet.get(), *schema_, SysRowEntryType::DDL_LOG_ENTRY,
                              [entries](const Slice& id, const Slice& data) -> Status {
     *entries->Add() = VERIFY_RESULT(pb_util::ParseFromSlice<DdlLogEntryPB>(data));
     return Status::OK();
   });
+}
+
+std::string SysCatalogTable::tablet_id() const {
+  return tablet_peer()->tablet_id();
 }
 
 } // namespace master

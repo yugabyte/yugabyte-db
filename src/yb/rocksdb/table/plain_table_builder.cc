@@ -19,30 +19,26 @@
 //
 
 #ifndef ROCKSDB_LITE
+
 #include "yb/rocksdb/table/plain_table_builder.h"
 
 #include <assert.h>
 
-#include <string>
 #include <limits>
 #include <map>
 
 #include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/env.h"
-#include "yb/rocksdb/filter_policy.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/table.h"
-#include "yb/rocksdb/table/plain_table_factory.h"
-#include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/table/block_builder.h"
 #include "yb/rocksdb/table/bloom_block.h"
-#include "yb/rocksdb/table/plain_table_index.h"
 #include "yb/rocksdb/table/format.h"
 #include "yb/rocksdb/table/meta_blocks.h"
 #include "yb/rocksdb/util/coding.h"
-#include "yb/rocksdb/util/crc32c.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
-#include "yb/rocksdb/util/stop_watch.h"
+
+#include "yb/util/status_log.h"
 
 namespace rocksdb {
 

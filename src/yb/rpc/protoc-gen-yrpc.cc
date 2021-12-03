@@ -35,7 +35,6 @@
 // protoc --plugin=protoc-gen-yrpc --yrpc_out . --proto_path . <file>.proto
 ////////////////////////////////////////////////////////////////////////////////
 
-
 #include <map>
 #include <memory>
 #include <string>
@@ -47,14 +46,15 @@
 #include <google/protobuf/io/printer.h>
 #include <google/protobuf/io/zero_copy_stream.h>
 
-#include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/numbers.h"
-#include "yb/gutil/strings/strip.h"
+#include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/stringpiece.h"
-#include "yb/gutil/strings/substitute.h"
+#include "yb/gutil/strings/strip.h"
 #include "yb/gutil/strings/util.h"
+
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 #include "yb/util/string_case.h"
 
 using google::protobuf::FileDescriptor;
@@ -87,8 +87,8 @@ class FileSubstitutions : public Substituter {
     // Initialize path_
     // If path = /foo/bar/baz_stuff.proto, path_ = /foo/bar/baz_stuff
     if (!TryStripSuffixString(path, PROTO_EXTENSION, &path_no_extension_)) {
-      return STATUS(InvalidArgument, "file name " + path +
-                                     " did not end in " + PROTO_EXTENSION);
+      return STATUS_FORMAT(
+          InvalidArgument, "file name $0 did not end in $1", path, PROTO_EXTENSION);
     }
     map_["path_no_extension"] = path_no_extension_;
 
@@ -191,7 +191,7 @@ class MethodSubstitutions : public Substituter {
         ReplaceNamespaceDelimiters(
             StripNamespaceIfPossible(method_->service()->full_name(),
                                      method_->output_type()->full_name()));
-    (*map)["metric_enum_key"] = strings::Substitute("kMethodIndex$0", method_->name());
+    (*map)["metric_enum_key"] = strings::Substitute("k$0", method_->name());
   }
 
   // Strips the package from method arguments if they are in the same package as
@@ -235,6 +235,7 @@ class ServiceSubstitutions : public Substituter {
 
   void InitSubstitutionMap(map<string, string> *map) const override {
     (*map)["service_name"] = service_->name();
+    (*map)["service_method_enum"] = service_->name() + "RpcMethodIndexes";
     (*map)["full_service_name"] = service_->full_name();
     (*map)["service_method_count"] = SimpleItoa(service_->method_count());
 
@@ -429,18 +430,18 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
   void GenerateMethodIndexesEnum(
       Printer *printer, SubstitutionContext *subs, const ServiceDescriptor &service) const {
     Print(printer, *subs,
-          "\n  enum RpcMethodIndexes {\n"
+          "\nenum class $service_method_enum$ {\n"
     );
     for (int method_idx = 0; method_idx < service.method_count(); ++method_idx) {
       ScopedSubstituter method_subs(subs, service.method(method_idx));
 
       Print(printer, *subs,
-            "    $metric_enum_key$,\n"
+            "  $metric_enum_key$,\n"
       );
     }
 
     Print(printer, *subs,
-          "  };\n\n" // enum
+          "};\n\n" // enum
     );
   }
 
@@ -473,6 +474,8 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
       const ServiceDescriptor *service = file->service(service_idx);
       ScopedSubstituter service_subs(subs, service);
 
+      GenerateMethodIndexesEnum(printer, subs, *service);
+
       Print(printer, *subs,
         "\n"
         "class $service_name$If : public ::yb::rpc::ServiceIf {\n"
@@ -499,11 +502,10 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
         );
       }
 
-      GenerateMethodIndexesEnum(printer, subs, *service);
-
       Print(printer, *subs,
-                "  ::yb::rpc::RpcMethodMetrics GetMetric(RpcMethodIndexes index) {\n"
-                "    return methods_[index].metrics;\n"
+                "  \n"
+                "  ::yb::rpc::RpcMethodMetrics GetMetric($service_method_enum$ index) {\n"
+                "    return methods_[static_cast<size_t>(index)].metrics;\n"
                 "  }\n"
       );
 
@@ -559,7 +561,8 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
     Print(printer, *subs,
           "    .handler = [this](::yb::rpc::InboundCallPtr call) {\n"
           "      auto yb_call = std::static_pointer_cast<::yb::rpc::YBInboundCall>(call);\n"
-          "      call->SetRpcMethodMetrics(methods_[$metric_enum_key$].metrics);\n"
+          "      call->SetRpcMethodMetrics(methods_["
+              "static_cast<size_t>($service_method_enum$::$metric_enum_key$)].metrics);\n"
           "      auto rpc_context = yb_call->IsLocalCall() ?\n"
           "          ::yb::rpc::RpcContext(\n"
           "              std::static_pointer_cast<::yb::rpc::LocalYBInboundCall>(yb_call)) :\n"
@@ -589,21 +592,30 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
               "    .method = ::yb::rpc::RemoteMethod(\"$full_service_name$\", \"$rpc_name$\"),\n");
         GenerateHandlerAssignment(printer, subs);
         Print(printer, *subs,
-              "    .metrics = {\n");
+              "    .metrics = ::yb::rpc::RpcMethodMetrics(\n");
       }
+      bool first = true;
       for (const auto& desc : metric_descriptors) {
+        if (first) {
+          first = false;
+        } else {
+          Print(printer, *subs, ",\n");
+        }
         subs->Push(MakeSubstituter(&desc));
         if (method) {
           Print(printer, *subs, "  ");
         }
         Print(printer, *subs,
-              "    .$metric_name$ = "
+              "    "
                   "METRIC_$metric_prefix$$metric_name$_$rpc_full_name_plainchars$."
-                  "Instantiate(entity),\n");
+                  "Instantiate(entity)");
       }
       if (method) {
         Print(printer, *subs,
-              "    }\n");
+              ")\n");
+      } else {
+        Print(printer, *subs,
+              "\n");
       }
       Print(printer, *subs, "  };\n\n");
     }
@@ -653,9 +665,10 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
       for (int method_idx = 0; method_idx < service->method_count(); ++method_idx) {
         ScopedSubstituter method_subs(subs, service->method(method_idx));
 
+        std::string idx_fmt = "static_cast<size_t>($service_method_enum$::$metric_enum_key$)";
         Print(printer, *subs,
-        "  map->emplace(methods_[$metric_enum_key$].method.serialized_body(), "
-              "std::make_pair(service, static_cast<size_t>($metric_enum_key$)));\n");
+            ("  map->emplace(methods_[" + idx_fmt +
+             "].method.serialized_body(), std::make_pair(service, " + idx_fmt + "));\n").c_str());
       }
 
       Print(printer, *subs,
@@ -680,7 +693,9 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
       );
 
       GenerateMethodAssignments(
-          printer, subs, *service, "methods_[$metric_enum_key$]", true, inbound_metrics);
+          printer, subs, *service,
+          "methods_[static_cast<size_t>($service_method_enum$::$metric_enum_key$)]",
+          true, inbound_metrics);
 
       Print(printer, *subs,
         "}\n"
@@ -704,8 +719,8 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
       "\n"
       "#include \"$path_no_extension$.pb.h\"\n"
       "\n"
-      "#include \"yb/rpc/proxy.h\"\n"
-      "#include \"yb/util/status.h\"\n"
+      "#include \"yb/rpc/proxy_base.h\"\n"
+      "#include \"yb/util/status_fwd.h\"\n"
       "#include \"yb/util/net/net_fwd.h\"\n"
       "\n"
       "namespace yb {\n"
@@ -746,10 +761,9 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
         );
       }
 
-      GenerateMethodIndexesEnum(printer, subs, *service);
-
       Print(printer, *subs,
-        "};\n\n");
+        "};\n\n"
+      );
     }
     Print(printer, *subs,
       "$close_namespace$"
@@ -766,8 +780,10 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
       "\n"
       "#include \"$path_no_extension$.proxy.h\"\n"
       "\n"
+      "#include \"$path_no_extension$.service.h\"\n\n"
       "#include \"yb/rpc/proxy.h\"\n"
       "#include \"yb/rpc/outbound_call.h\"\n"
+      "#include \"yb/util/metrics.h\"\n"
       "#include \"yb/util/net/sockaddr.h\"\n"
       "\n");
 
@@ -791,7 +807,8 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
       );
 
       GenerateMethodAssignments(
-          printer, subs, *service, "result->value[$service_name$Proxy::$metric_enum_key$]",
+          printer, subs, *service,
+          "result->value[static_cast<size_t>($service_method_enum$::$metric_enum_key$)]",
           false, outbound_metrics);
 
       Print(printer, *subs,
@@ -824,8 +841,8 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
         "    const $request$ &req, $response$ *resp, ::yb::rpc::RpcController *controller) {\n"
         "  static ::yb::rpc::RemoteMethod method(\"$full_service_name$\", \"$rpc_name$\");\n"
         "  return proxy().SyncRequest(\n"
-        "      &method, metrics<$service_method_count$>($metric_enum_key$), req, resp, "
-              "controller);\n"
+        "      &method, metrics<$service_method_count$>(static_cast<size_t>("
+              "$service_method_enum$::$metric_enum_key$)), req, resp, controller);\n"
         "}\n"
         "\n"
         "void $service_name$Proxy::$rpc_name$Async(\n"
@@ -833,7 +850,8 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
         "    ::yb::rpc::ResponseCallback callback) {\n"
         "  static ::yb::rpc::RemoteMethod method(\"$full_service_name$\", \"$rpc_name$\");\n"
         "  proxy().AsyncRequest(\n"
-        "      &method, metrics<$service_method_count$>($metric_enum_key$), req, resp, controller, "
+        "      &method, metrics<$service_method_count$>(static_cast<size_t>("
+              "$service_method_enum$::$metric_enum_key$)), req, resp, controller, "
               "std::move(callback));\n"
         "}\n"
         "\n");

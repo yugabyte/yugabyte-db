@@ -11,7 +11,10 @@
 // under the License.
 //
 
+#include "yb/docdb/docdb.h"
+
 #include <algorithm>
+#include <limits>
 #include <memory>
 #include <stack>
 #include <string>
@@ -24,9 +27,7 @@
 
 #include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/cql_operation.h"
-#include "yb/docdb/deadline_info.h"
 #include "yb/docdb/docdb-internal.h"
-#include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
@@ -39,18 +40,24 @@
 #include "yb/docdb/value.h"
 #include "yb/docdb/value_type.h"
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/rocksutil/write_batch_formatter.h"
+
 #include "yb/server/hybrid_clock.h"
 
 #include "yb/util/bitmap.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/enums.h"
+#include "yb/util/fast_varint.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 #include "yb/yql/cql/ql/util/errcodes.h"
 
@@ -70,13 +77,14 @@ using strings::Substitute;
 
 using namespace std::placeholders;
 
-DEFINE_test_flag(bool, docdb_sort_weak_intents_in_tests, false,
+DEFINE_test_flag(bool, docdb_sort_weak_intents, false,
                 "Sort weak intents to make their order deterministic.");
 DEFINE_bool(enable_transaction_sealing, false,
             "Whether transaction sealing is enabled.");
 DEFINE_test_flag(bool, fail_on_replicated_batch_idx_set_in_txn_record, false,
                  "Fail when a set of replicated batch indexes is found in txn record.");
-DEFINE_int32(txn_max_apply_batch_records, 100000,
+// TODO(#10163) -- Revert this flag to it's previous value once #10163 is resolved.
+DEFINE_int32(txn_max_apply_batch_records, std::numeric_limits<int32>::max(),
              "Max number of apply records allowed in single RocksDB batch. "
              "When a transaction's data in one tablet does not fit into specified number of "
              "records, it will be applied using multiple RocksDB write batches.");
@@ -371,7 +379,7 @@ Status SetDocOpQLErrorResponse(DocOperation* doc_op, string err_msg) {
   return Status::OK();
 }
 
-Status ExecuteDocWriteOperation(const vector<unique_ptr<DocOperation>>& doc_write_ops,
+Status AssembleDocWriteBatch(const vector<unique_ptr<DocOperation>>& doc_write_ops,
                                 CoarseTimePoint deadline,
                                 const ReadHybridTime& read_time,
                                 const DocDB& doc_db,
@@ -733,7 +741,7 @@ Status EnumerateWeakIntents(
       return Status::OK();
     }
 
-    // Generate a week intent that only includes the hash component.
+    // Generate a weak intent that only includes the hash component.
     RETURN_NOT_OK(functor(
         IntentStrength::kWeak, FullDocKey(key[0] == ValueTypeAsChar::kGroupEnd), kEmptyIntentValue,
         encoded_key_buffer, LastKey::kFalse));
@@ -925,11 +933,7 @@ class PrepareTransactionWriteBatchHelper {
         transaction_id_.AsSlice(),
     }};
 
-    if (PREDICT_TRUE(!FLAGS_TEST_docdb_sort_weak_intents_in_tests)) {
-      for (const auto& intent_and_types : weak_intents_) {
-        AddWeakIntent(intent_and_types, value, &doc_ht_buffer);
-      }
-    } else {
+    if (PREDICT_FALSE(FLAGS_TEST_docdb_sort_weak_intents)) {
       // This is done in tests when deterministic DocDB state is required.
       std::vector<std::pair<KeyBuffer, IntentTypeSet>> intents_and_types(
           weak_intents_.begin(), weak_intents_.end());
@@ -937,6 +941,11 @@ class PrepareTransactionWriteBatchHelper {
       for (const auto& intent_and_types : intents_and_types) {
         AddWeakIntent(intent_and_types, value, &doc_ht_buffer);
       }
+      return;
+    }
+
+    for (const auto& intent_and_types : weak_intents_) {
+      AddWeakIntent(intent_and_types, value, &doc_ht_buffer);
     }
   }
 

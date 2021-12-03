@@ -35,29 +35,33 @@
 #include "yb/client/client.h"
 #include "yb/client/client-internal.h"
 #include "yb/client/meta_cache.h"
+#include "yb/client/schema.h"
 #include "yb/client/table.h"
 
-#include "yb/common/row.h"
-#include "yb/common/row_mark.h"
-#include "yb/common/wire_protocol.pb.h"
-#include "yb/common/wire_protocol.h"
-#include "yb/common/redis_protocol.pb.h"
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_rowblock.h"
 #include "yb/common/ql_scanspec.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/redis_protocol.pb.h"
+#include "yb/common/row_mark.h"
+#include "yb/common/schema.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/common/wire_protocol.pb.h"
 
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_scanspec_util.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/primitive_value_util.h"
+#include "yb/rpc/rpc_controller.h"
 
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
-
+#include "yb/util/async_util.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 using namespace std::literals;
 
@@ -72,7 +76,6 @@ namespace client {
 
 using std::shared_ptr;
 using std::unique_ptr;
-using common::QLScanRange;
 
 //--------------------------------------------------------------------------------------------------
 // YBOperation
@@ -210,6 +213,10 @@ YBqlOp::YBqlOp(const shared_ptr<YBTable>& table)
 YBqlOp::~YBqlOp() {
 }
 
+bool YBqlOp::succeeded() const {
+  return response().status() == QLResponsePB::YQL_STATUS_OK;
+}
+
 // YBqlWriteOp -----------------------------------------------------------------
 
 YBqlWriteOp::YBqlWriteOp(const shared_ptr<YBTable>& table)
@@ -288,8 +295,12 @@ bool YBqlWriteOp::WritesPrimaryRow() const {
   return writes_primary_row_;
 }
 
+bool YBqlWriteOp::returns_sidecar() {
+  return ql_write_request_->has_if_expr() || ql_write_request_->returns_status();
+}
+
 // YBqlWriteOp::HashHash/Equal ---------------------------------------------------------------
-size_t YBqlWriteOp::HashKeyComparator::operator() (const YBqlWriteOpPtr& op) const {
+size_t YBqlWriteHashKeyComparator::operator()(const YBqlWriteOpPtr& op) const {
   size_t hash = 0;
 
   // Hash the table id.
@@ -305,8 +316,8 @@ size_t YBqlWriteOp::HashKeyComparator::operator() (const YBqlWriteOpPtr& op) con
   return hash;
 }
 
-bool YBqlWriteOp::HashKeyComparator::operator() (const YBqlWriteOpPtr& op1,
-                                                 const YBqlWriteOpPtr& op2) const {
+bool YBqlWriteHashKeyComparator::operator()(const YBqlWriteOpPtr& op1,
+                                              const YBqlWriteOpPtr& op2) const {
   // Check if two write ops overlap that they apply to the same hash key in the same table.
   if (op1->table() != op2->table() && op1->table()->id() != op2->table()->id()) {
     return false;
@@ -326,8 +337,8 @@ bool YBqlWriteOp::HashKeyComparator::operator() (const YBqlWriteOpPtr& op1,
 }
 
 // YBqlWriteOp::PrimaryHash/Equal ---------------------------------------------------------------
-size_t YBqlWriteOp::PrimaryKeyComparator::operator() (const YBqlWriteOpPtr& op) const {
-  size_t hash = YBqlWriteOp::HashKeyComparator::operator()(op);
+size_t YBqlWritePrimaryKeyComparator::operator()(const YBqlWriteOpPtr& op) const {
+  size_t hash = YBqlWriteHashKeyComparator()(op);
 
   // Hash the range key also.
   string key;
@@ -339,9 +350,9 @@ size_t YBqlWriteOp::PrimaryKeyComparator::operator() (const YBqlWriteOpPtr& op) 
   return hash;
 }
 
-bool YBqlWriteOp::PrimaryKeyComparator::operator() (const YBqlWriteOpPtr& op1,
-                                                    const YBqlWriteOpPtr& op2) const {
-  if (!YBqlWriteOp::HashKeyComparator::operator()(op1, op2)) {
+bool YBqlWritePrimaryKeyComparator::operator()(const YBqlWriteOpPtr& op1,
+                                                 const YBqlWriteOpPtr& op2) const {
+  if (!YBqlWriteHashKeyComparator()(op1, op2)) {
     return false;
   }
 
@@ -502,6 +513,14 @@ YBPgsqlOp::YBPgsqlOp(const shared_ptr<YBTable>& table)
 }
 
 YBPgsqlOp::~YBPgsqlOp() {
+}
+
+bool YBPgsqlOp::succeeded() const {
+  return response().status() == PgsqlResponsePB::PGSQL_STATUS_OK;
+}
+
+bool YBPgsqlOp::applied() {
+  return succeeded() && !response_->skipped();
 }
 
 namespace {
@@ -755,6 +774,7 @@ Status YBPgsqlReadOp::GetPartitionKey(string* partition_key) const {
 Status YBPgsqlReadOp::GetHashPartitionKey(string* partition_key) const {
   // Read partition key from read request.
   const Schema &schema = table_->InternalSchema();
+  const auto &ybctid = read_request_->ybctid_column_value().value();
 
   // Seek a specific partition_key from read_request.
   // 1. Not specified hash condition - Full scan.
@@ -796,6 +816,9 @@ Status YBPgsqlReadOp::GetHashPartitionKey(string* partition_key) const {
       read_request_->set_hash_code(paging_state_hash_code);
     }
 
+  } else if (!IsNull(ybctid)) {
+    const uint16 hash_code = VERIFY_RESULT(docdb::DocKey::DecodeHash(ybctid.binary_value()));
+    *partition_key = PartitionSchema::EncodeMultiColumnHashValue(hash_code);
   } else if (read_request_->has_lower_bound() || read_request_->has_upper_bound()) {
     // If the read request does not provide a specific partition key, but it does provide scan
     // boundary, use the given boundary to setup the scan lower and upper bound.
@@ -923,6 +946,10 @@ OpGroup YBPgsqlReadOp::group() {
 
 void YBPgsqlReadOp::SetUsedReadTime(const ReadHybridTime& used_time) {
   used_read_time_ = used_time;
+}
+
+void YBPgsqlReadOp::SetIsForBackfill(const bool value) {
+  read_request_->set_is_for_backfill(value);
 }
 
 ////////////////////////////////////////////////////////////

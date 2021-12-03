@@ -17,12 +17,13 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/util/string_util.h"
 
 #include <regex>
-#include <boost/algorithm/string/predicate.hpp>
 
+#include <boost/algorithm/string/predicate.hpp>
+#include <boost/preprocessor/cat.hpp>
+#include <glog/logging.h>
 
 using std::vector;
 using std::regex;

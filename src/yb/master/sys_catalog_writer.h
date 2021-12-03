@@ -19,9 +19,12 @@
 
 #include "yb/docdb/docdb_fwd.h"
 
-#include "yb/master/catalog_entity_info.h"
-
 #include "yb/tablet/tablet_fwd.h"
+
+#include "yb/tserver/tserver.pb.h"
+
+#include "yb/util/status.h"
+#include "yb/util/type_traits.h"
 
 namespace yb {
 namespace master {
