@@ -241,6 +241,8 @@ public enum TaskType {
 
   KubernetesCheckNumPod("subtasks.KubernetesCheckNumPod"),
 
+  SetActiveUniverseKeys("subtasks.SetActiveUniverseKeys"),
+
   @Deprecated
   CopyEncryptionKeyFile("subtasks.CopyEncryptionKeyFile"),
 
