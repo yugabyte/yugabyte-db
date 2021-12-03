@@ -159,9 +159,9 @@ DocDB uses a highly customized version of[ RocksDB](http://rocksdb.org/), a log-
 
 ### Command-Line Access to Metrics
 
-Yugabyte Platform allows you to access all metrics via the command-line interface. These metrics include those not available from the **Dashboard**.
+Yugabyte Platform allows you to access all metrics via the command-line interface (CLI). These metrics include those not available from the **Dashboard**.
 
-You can view T-Server and master server metrics in Prometheus and JSON formats in the browser or via the CLI using curl commands.
+You can view T-Server and master server metrics in [Prometheus](https://prometheus.io/) and JSON formats in the browser or via the CLI using curl commands.
 
 The following is the Prometheus command for the T-Server: 
 
@@ -239,6 +239,11 @@ The output would be similar to the following:
             },
 ...
 ```
+
+You can also federate metrics from Yugabyte Platform and configure alerting rules to trigger alerts in Prometheus. For details, see the following sections of [Alerts and Notifications in Yugabyte Platform](https://blog.yugabyte.com/yugabytedb-2-8-alerts-and-notifications/):
+
+- Scrape metrics from Yugabyte Platform
+- Configurable alerting rules
 
 ## Use Nodes Status
 
