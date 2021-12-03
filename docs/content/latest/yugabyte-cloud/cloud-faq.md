@@ -43,7 +43,20 @@ Yugabyte Cloud supports all the regions that have robust infrastructure and suff
 
 ### What version of YugabyteDB does Yugabyte Cloud run on
 
-Yugabyte Cloud runs on the YugabyteDB 2.6 [stable release](../../releases/whats-new/stable-release/).
+Yugabyte Cloud runs on the YugabyteDB 2.8 [stable release](../../releases/whats-new/stable-release/).
+
+To see the version you are running, connect in cloud shell using YSQL and run the following command:
+
+```sh
+yugabyte=> SELECT version();
+```
+
+```output
+                                                  version                                                   
+------------------------------------------------------------------------------------------------------------
+ PostgreSQL 11.2-YB-2.8.0.0-b0 on x86_64-pc-linux-gnu, compiled by gcc (Homebrew gcc 5.5.0_4) 5.5.0, 64-bit
+(1 row)
+```
 
 ### Can I test YugabyteDB locally?
 
@@ -132,7 +145,7 @@ Upgrades are automatically handled by Yugabyte. There are two types of upgrades:
 
 - Cloud console - During a maintenance window, Yugabyte Cloud console may be in read-only mode and not allow any edit changes. The upgrade has no impact on running clusters. Customers will be notified in advance of the maintenance schedule.
 
-- Cluster (yugabyteDB) version upgrade - To keep up with the latest bug fixes, improvements, and security fixes, Yugabyte will upgrade your cluster to the latest version. We will notify customers of any upcoming upgrade schedule via email and Slack. All database upgrades are done on a rolling basis to avoid any downtime.
+- Cluster (yugabyteDB) version upgrade - To keep up with the latest bug fixes, improvements, and security fixes, Yugabyte will upgrade your cluster to the latest version. We will notify you of any upcoming upgrade schedule via email and Slack. All database upgrades are done on a rolling basis to avoid any downtime.
 
 ### How do I connect to my cluster?
 

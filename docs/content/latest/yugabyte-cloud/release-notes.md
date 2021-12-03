@@ -21,7 +21,11 @@ showAsideToc: true
 
 - Additional performance metrics. The new cluster **Performance Metrics** tab features new metrics including YSQL and YCQL operations per second, YSQL and YCQL latency, network bytes per second, and more. Use these metrics to ensure the cluster configuration matches its performance requirements.
 - Ability to review running queries using the **Live Queries** on the cluster **Performance** tab. Use this information to visually identify relevant database operations and evaluate query execution times.
-- Ability to review slow YSQL queries using the **YSQL Slow Queries** on the cluster **Performance** tab. You can use this information to identify slower running database operations, look at query execution times over time, and discover potential queries for tuning.
+- Ability to review slow YSQL queries using the **YSQL Slow Queries** on the cluster **Performance** tab. You can use this information to identify slower-running database operations, look at query execution times over time, and discover potential queries for tuning.
+
+#### Database
+
+- YugabyteDB updated to version 2.8. New clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
 
 ### November 18, 2021
 
