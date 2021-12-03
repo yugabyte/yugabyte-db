@@ -39,7 +39,7 @@ Replicas may not be completely up to date with all updates, so this design may r
 Two session variables control the behavior of follower reads:
 
 - `yb_read_from_followers` controls whether reading from followers is enabled. Default is false.
-- `yb_follower_read_staleness_ms` sets the maximum allowable staleness. Default is 30 seconds.
+- `yb_follower_read_staleness_ms` sets the maximum allowable staleness. Default is 30000(30 seconds).
 
 ### Expected behavior
 
@@ -58,12 +58,12 @@ The table describes what the expected behavior is when a read happens from a fol
 
 ### Read-only transaction conditions
 
-Regarding marking the transaction as read only, a user can do one of the following:
+To mark a transaction as read only, a user can do one of the following:
 
 - `SET TRANSACTION READ ONLY` applies only to the current transaction block.
 - `SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY` applies the read-only setting to all statements and transaction blocks that follow.
 - `SET default_transaction_read_only = TRUE` applies the read-only setting to all statements and transaction blocks that follow.
-- `/*+ Set(transaction_read_only true) */ SELECT` applies only to the current transaction/select statement.
+- Use the **pg_hint_plan** mechanism to embed the hint along with the `SELECT` statement. For example, `/*+ Set(transaction_read_only true) */ SELECT ...` applies only to the current `SELECT` statement.
 
 ## Examples
 
@@ -97,20 +97,29 @@ SELECT * from t WHERE k='k1';
 (1 row)
 ```
 
-The following examples use follower reads since **pg_hint** can be used during PREPARE, CREATE FUNCTION, and SELECT to do follower reads.
+The following examples use follower reads since the **pg_hint_plan** mechanism is used during SELECT, PREPARE, and CREATE FUNCTION to perform follower reads.
 
 {{< note title="Note" >}}
-The pg_hint needs to be applied at the prepare/function-definition stage and not at the `execute` stage.
+The pg_hint_plan hint needs to be applied at the prepare/function-definition stage and not at the `execute` stage.
 {{< /note >}}
 
 ```sql
-set session characteristics as transaction read write;
 set yb_read_from_followers = true;
+/*+ Set(transaction_read_only on) */
+SELECT * from t WHERE k='k1';
+```
 
+```output
+----+----
+ k1 | v1
+(1 row)
+```
+
+```sql
+set yb_read_from_followers = true;
 PREPARE select_stmt(text) AS
 /*+ Set(transaction_read_only on) */
 SELECT * from t WHERE k=$1;
-
 EXECUTE select_stmt(‘k1’);
 ```
 
@@ -122,9 +131,7 @@ EXECUTE select_stmt(‘k1’);
 ```
 
 ```sql
-set session characteristics as transaction read write;
 set yb_read_from_followers = true;
-
 CREATE FUNCTION func() RETURNS text AS
 $$ /*+ Set(transaction_read_only on) */
 SELECT * from t WHERE k=1 $$ LANGUAGE SQL;
@@ -134,19 +141,6 @@ SELECT func();
 
 ```output
  k  | v
-----+----
- k1 | v1
-(1 row)
-```
-
-```sql
-set session characteristics as transaction read write;
-set yb_read_from_followers = true;
-/*+ Set(transaction_read_only on) */
-SELECT * from t WHERE k='k1';
-```
-
-```output
 ----+----
  k1 | v1
 (1 row)
@@ -175,6 +169,8 @@ The following examples demonstrate **staleness** after enabling the `yb_follower
 
 ```sql
 set session characteristics as transaction read write;
+insert into t values ('k1', 'v1')
+/* sleep 10s */
 select * from t where k = 'k1';
 ```
 
@@ -188,12 +184,12 @@ select * from t where k = 'k1';
 ```sql
 UPDATE t SET  v = 'v1+1' where k = 'k1';
 /* sleep 10s */
-
 UPDATE t SET  v = 'v1+2' where k = 'k1';
 /* sleep 10s */
-
 select * from t where k = 'k1';
 ```
+
+This selects the latest version of the row because the transaction setting for the session is `read write`.
 
 ```output
  k  |  v
@@ -205,7 +201,6 @@ select * from t where k = 'k1';
 ```sql
 set session characteristics as transaction read only;
 set yb_read_from_followers = true;
-
 select * from t where k = 'k1';
 ```
 
@@ -218,7 +213,6 @@ select * from t where k = 'k1';
 
 ```sql
 set yb_follower_read_staleness_ms = 5000;
-
 select * from t where k = 'k1';   /* up to 5s old value */
 ```
 
@@ -231,7 +225,6 @@ select * from t where k = 'k1';   /* up to 5s old value */
 
 ```sql
 set yb_follower_read_staleness_ms = 15000;
-
 select * from t where k = 'k1';   /* up to 15s old value */
 ```
 
@@ -243,8 +236,8 @@ select * from t where k = 'k1';   /* up to 15s old value */
 ```
 
 ```sql
-postgres=# set yb_follower_read_staleness_ms = 25000;
-postgres=# select * from t where k = 'k1';   /* up to 25s old value */
+set yb_follower_read_staleness_ms = 25000;
+select * from t where k = 'k1';   /* up to 25s old value */
 ```
 
 ```output
