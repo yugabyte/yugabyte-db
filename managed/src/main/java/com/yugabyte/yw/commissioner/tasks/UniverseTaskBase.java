@@ -28,6 +28,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DestroyEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DisableEncryptionAtRest;
 import com.yugabyte.yw.commissioner.tasks.subtasks.EnableEncryptionAtRest;
+import com.yugabyte.yw.commissioner.tasks.subtasks.SetActiveUniverseKeys;
 import com.yugabyte.yw.commissioner.tasks.subtasks.LoadBalancerStateChange;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManipulateDnsRecordTask;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ModifyBlackList;
@@ -308,6 +309,17 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     saveUniverseDetails(updater);
     log.trace("Wrote user intent for universe {}.", taskParams().universeUUID);
 
+    return subTaskGroup;
+  }
+
+  public SubTaskGroup createSetActiveUniverseKeysTask() {
+    SubTaskGroup subTaskGroup = new SubTaskGroup("SetActiveUniverseKeys", executor);
+    SetActiveUniverseKeys task = createTask(SetActiveUniverseKeys.class);
+    SetActiveUniverseKeys.Params params = new SetActiveUniverseKeys.Params();
+    params.universeUUID = taskParams().universeUUID;
+    task.initialize(params);
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
     return subTaskGroup;
   }
 

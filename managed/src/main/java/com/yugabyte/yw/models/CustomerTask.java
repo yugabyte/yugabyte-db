@@ -172,6 +172,9 @@ public class CustomerTask extends Model {
     @EnumValue("EnableEncryptionAtRest")
     EnableEncryptionAtRest,
 
+    @EnumValue("SetActiveUniverseKeys")
+    SetActiveUniverseKeys,
+
     @EnumValue("RotateEncryptionKey")
     RotateEncryptionKey,
 
@@ -245,6 +248,8 @@ public class CustomerTask extends Model {
           return completed ? "Set encryption key" : "Setting encryption key";
         case EnableEncryptionAtRest:
           return completed ? "Enabled encryption at rest" : "Enabling encryption at rest";
+        case SetActiveUniverseKeys:
+          return completed ? "Set active universe keys" : "Setting active universe keys";
         case RotateEncryptionKey:
           return completed
               ? "Rotated encryption at rest universe key"

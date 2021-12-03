@@ -14,6 +14,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
@@ -63,6 +64,10 @@ public class ResumeUniverse extends UniverseTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
       createWaitForServersTasks(masterNodes, ServerType.MASTER)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+      if (EncryptionAtRestUtil.getNumKeyRotations(universe.universeUUID) > 0) {
+        createSetActiveUniverseKeysTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      }
 
       for (NodeDetails node : tserverNodes) {
         createTServerTaskForNode(node, "start")
