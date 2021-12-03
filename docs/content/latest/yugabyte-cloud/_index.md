@@ -17,8 +17,6 @@ Yugabyte Cloud is a fully managed YugabyteDB-as-a-Service that allows you to run
 
 To begin using Yugabyte Cloud, go to [Quickstart](cloud-quickstart).
 
-## Get started with Yugabyte Cloud
-
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
@@ -32,6 +30,11 @@ To begin using Yugabyte Cloud, go to [Quickstart](cloud-quickstart).
           </div>
       </a>
   </div>
+</div>
+
+## Using Clusters
+
+<div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="cloud-basics/">
@@ -40,19 +43,43 @@ To begin using Yugabyte Cloud, go to [Quickstart](cloud-quickstart).
         <div class="title">Get Started</div>
       </div>
       <div class="body">
-        Learn the basics of managing clusters in Yugabyte Cloud.
+        Learn the basics of using clusters in Yugabyte Cloud.
       </div>
     </a>
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-      <a class="section-link icon-offset" href="cloud-develop/">
+      <a class="section-link icon-offset" href="cloud-monitor/">
           <div class="head">
-              <img class="icon" src="/images/section_icons/architecture/core_functions/universe.png" aria-hidden="true" />
-              <div class="title">Tutorials and examples</div>
+              <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
+              <div class="title">Monitor clusters</div>
           </div>
           <div class="body">
-              Learn how to deploy applications for your cloud.
+              Monitor key database performance metrics.
+          </div>
+      </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+      <a class="section-link icon-offset" href="cloud-clusters/">
+          <div class="head">
+              <img class="icon" src="/images/section_icons/architecture/core_functions/universe.png" aria-hidden="true" />
+              <div class="title">Manage clusters</div>
+          </div>
+          <div class="body">
+              Scale and back up the clusters in your cloud.
+          </div>
+      </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+      <a class="section-link icon-offset" href="cloud-develop/">
+          <div class="head">
+              <img class="icon" src="/images/section_icons/index/develop.png" aria-hidden="true" />
+              <div class="title">Develop</div>
+          </div>
+          <div class="body">
+              Learn how to develop applications for your cluster.
           </div>
       </a>
   </div>
@@ -63,17 +90,6 @@ To begin using Yugabyte Cloud, go to [Quickstart](cloud-quickstart).
 
 <div class="row">
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-      <a class="section-link icon-offset" href="cloud-clusters/">
-          <div class="head">
-              <img class="icon" src="/images/section_icons/architecture/core_functions/universe.png" aria-hidden="true" />
-              <div class="title">Manage clusters</div>
-          </div>
-          <div class="body">
-              Add, scale, and connect to the clusters in your cloud.
-          </div>
-      </a>
-  </div>
 <!--
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
       <a class="section-link icon-offset" href="cloud-analytics/">
@@ -86,19 +102,19 @@ To begin using Yugabyte Cloud, go to [Quickstart](cloud-quickstart).
           </div>
       </a>
   </div>
--->  
+-->
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
       <a class="section-link icon-offset" href="cloud-network/">
           <div class="head">
               <img class="icon" src="/images/section_icons/secure/tls-encryption/connect-to-cluster.png" aria-hidden="true" />
-              <div class="title">Networking</div>
+              <div class="title">Network access</div>
           </div>
           <div class="body">
               Set up network security for your cluster.
           </div>
       </a>
   </div>
-  
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
       <a class="section-link icon-offset" href="cloud-security/">
           <div class="head">
@@ -110,7 +126,7 @@ To begin using Yugabyte Cloud, go to [Quickstart](cloud-quickstart).
           </div>
       </a>
   </div>
-  
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
       <a class="section-link icon-offset" href="cloud-admin/">
           <div class="head">
