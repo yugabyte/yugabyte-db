@@ -161,11 +161,10 @@ class CDCReadRpc : public rpc::Rpc, public client::internal::TabletRpc {
                  this,
                  this,
                  tablet,
-                 // TODO(tsplit): decide whether we need to get info about stale table partitions
-                 // here.
                  /* table =*/ nullptr,
                  mutable_retrier(),
-                 trace_.get()),
+                 trace_.get(),
+                 master::IncludeInactive::kTrue),
         callback_(std::move(callback)) {
     req_.Swap(req);
   }

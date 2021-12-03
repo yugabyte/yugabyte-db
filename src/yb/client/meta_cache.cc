@@ -32,13 +32,13 @@
 
 #include "yb/client/meta_cache.h"
 
+#include <shared_mutex>
 #include <stdint.h>
 
 #include <atomic>
 #include <list>
 #include <memory>
 #include <mutex>
-#include <shared_mutex>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -1350,11 +1350,13 @@ class LookupByIdRpc : public LookupRpc {
   LookupByIdRpc(const scoped_refptr<MetaCache>& meta_cache,
                 const TabletId& tablet_id,
                 const std::shared_ptr<const YBTable>& table,
+                master::IncludeInactive include_inactive,
                 int64_t request_no,
                 CoarseTimePoint deadline,
                 int64_t lookups_without_new_replicas)
       : LookupRpc(meta_cache, table, request_no, deadline),
-        tablet_id_(tablet_id) {
+        tablet_id_(tablet_id),
+        include_inactive_(include_inactive) {
     if (lookups_without_new_replicas != 0) {
       send_delay_ = std::min(
           lookups_without_new_replicas * FLAGS_meta_cache_lookup_throttling_step_ms,
@@ -1387,6 +1389,7 @@ class LookupByIdRpc : public LookupRpc {
     if (table()) {
       req_.set_table_id(table()->id());
     }
+    req_.set_include_inactive(include_inactive_);
 
     master_proxy()->GetTabletLocationsAsync(
         req_, &resp_, mutable_retrier()->mutable_controller(),
@@ -1426,7 +1429,8 @@ class LookupByIdRpc : public LookupRpc {
 
   void NotifyFailure(const Status& status) override {
     meta_cache()->LookupByIdFailed(
-        tablet_id_, table(), GetPartitionListVersion(resp_), request_no(), status);
+        tablet_id_, table(), include_inactive_,
+        GetPartitionListVersion(resp_), request_no(), status);
   }
 
   Status ProcessTabletLocations(
@@ -1438,6 +1442,9 @@ class LookupByIdRpc : public LookupRpc {
 
   // Tablet to lookup.
   const TabletId tablet_id_;
+
+  // Whether or not to lookup inactive (hidden) tablets.
+  master::IncludeInactive include_inactive_;
 
   // Request body.
   master::GetTabletLocationsRequestPB req_;
@@ -1789,9 +1796,12 @@ void MetaCache::LookupFullTableFailed(const std::shared_ptr<const YBTable>& tabl
 }
 
 void MetaCache::LookupByIdFailed(
-    const TabletId& tablet_id, const std::shared_ptr<const YBTable>& table,
+    const TabletId& tablet_id,
+    const std::shared_ptr<const YBTable>& table,
+    master::IncludeInactive include_inactive,
     const boost::optional<PartitionListVersion>& response_partition_list_version,
-    int64_t request_no, const Status& status) {
+    int64_t request_no,
+    const Status& status) {
   VLOG_WITH_PREFIX(1) << "Lookup for tablet " << tablet_id << ", failed with: " << status;
 
   CallbackNotifier notifier(status);
@@ -1828,7 +1838,8 @@ void MetaCache::LookupByIdFailed(
   }
 
   if (max_deadline != CoarseTimePoint()) {
-    auto rpc = std::make_shared<LookupByIdRpc>(this, tablet_id, table, request_no, max_deadline, 0);
+    auto rpc = std::make_shared<LookupByIdRpc>(
+        this, tablet_id, table, include_inactive, request_no, max_deadline, 0);
     rpcs_.RegisterAndStart(rpc, rpc->RpcHandle());
   }
 }
@@ -2125,8 +2136,12 @@ RemoteTabletPtr MetaCache::LookupTabletByIdFastPathUnlocked(const TabletId& tabl
 
 template <class Lock>
 bool MetaCache::DoLookupTabletById(
-    const TabletId& tablet_id, const std::shared_ptr<const YBTable>& table,
-    CoarseTimePoint deadline, UseCache use_cache, LookupTabletCallback* callback) {
+    const TabletId& tablet_id,
+    const std::shared_ptr<const YBTable>& table,
+    master::IncludeInactive include_inactive,
+    CoarseTimePoint deadline,
+    UseCache use_cache,
+    LookupTabletCallback* callback) {
   RemoteTabletPtr tablet;
   auto scope_exit = ScopeExit([callback, &tablet] {
     if (tablet) {
@@ -2177,25 +2192,26 @@ bool MetaCache::DoLookupTabletById(
   VLOG_WITH_PREFIX_AND_FUNC(4) << "Start lookup for tablet " << tablet_id << ": " << request_no;
 
   auto rpc = std::make_shared<LookupByIdRpc>(
-      this, tablet_id, table, request_no, deadline, lookups_without_new_replicas);
+      this, tablet_id, table, include_inactive, request_no, deadline, lookups_without_new_replicas);
   rpcs_.RegisterAndStart(rpc, rpc->RpcHandle());
   return true;
 }
 
 void MetaCache::LookupTabletById(const TabletId& tablet_id,
                                  const std::shared_ptr<const YBTable>& table,
+                                 master::IncludeInactive include_inactive,
                                  CoarseTimePoint deadline,
                                  LookupTabletCallback callback,
                                  UseCache use_cache) {
   VLOG_WITH_PREFIX_AND_FUNC(5) << "(" << tablet_id << ", " << use_cache << ")";
 
   if (DoLookupTabletById<SharedLock<decltype(mutex_)>>(
-          tablet_id, table, deadline, use_cache, &callback)) {
+          tablet_id, table, include_inactive, deadline, use_cache, &callback)) {
     return;
   }
 
   auto result = DoLookupTabletById<std::lock_guard<decltype(mutex_)>>(
-      tablet_id, table, deadline, use_cache, &callback);
+      tablet_id, table, include_inactive, deadline, use_cache, &callback);
   LOG_IF(DFATAL, !result) << "Lookup was not started for tablet " << tablet_id;
 }
 
