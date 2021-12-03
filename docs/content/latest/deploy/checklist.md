@@ -20,7 +20,7 @@ A YugabyteDB cluster consists of two distributed services - the [YB-TServer](../
 
 ## Basics
 
-- YugabyteDB works on a variety of operating systems. For production workloads, the recommended operating systems are CentOS 7.x and RHEL 7.x.
+- YugabyteDB works on a variety of operating systems. For production workloads, the recommended operating systems are **CentOS 7.x** and **RHEL 7.x**.
 - Set the appropriate [system limits using `ulimit`](../manual-deployment/system-config/#ulimits) on each node running a YugabyteDB server.
 - Use [ntp or chrony](../manual-deployment/system-config/#ntp) to synchronize time among the machines.
 
