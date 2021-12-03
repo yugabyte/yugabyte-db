@@ -12,7 +12,7 @@ menu:
     weight: 100
 ---
 
-To ensure the cluster configuration matches its performance requirements, you can monitor key database performance metrics and [scale the cluster vertically or horizontally](../cloud-clusters/configure-clusters/) as your requirements change. 
+To ensure the cluster configuration matches its performance requirements, you can monitor key database performance metrics and [scale the cluster vertically or horizontally](../cloud-clusters/configure-clusters/) as your requirements change.
 
 Yugabyte Cloud provides the following tools to monitor your clusters:
 

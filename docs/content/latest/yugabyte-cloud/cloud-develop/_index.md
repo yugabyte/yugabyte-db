@@ -2,7 +2,7 @@
 title: Develop
 linkTitle: Develop
 description: Get started developing applications for Yugabyte Cloud.
-headcontent: Get started developing applications for Yugabyte Cloud
+headcontent: Get started developing applications for Yugabyte Cloud.
 image: /images/section_icons/index/develop.png
 menu:
   latest:

@@ -15,13 +15,21 @@ showAsideToc: true
 
 ## Releases
 
-### November 18, 2021
+### December 2, 2021
 
 #### New features
 
-<!-- - Additional performance metrics. The new cluster **Performance Metrics** tab features new metrics including YSQL and YCQL operations per second, YSQL and YCQL latency, network bytes per second, and more. Use these metrics to ensure the cluster configuration matches its performance requirements. 
+- Additional performance metrics. The new cluster **Performance Metrics** tab features new metrics including YSQL and YCQL operations per second, YSQL and YCQL latency, network bytes per second, and more. Use these metrics to ensure the cluster configuration matches its performance requirements.
 - Ability to review running queries using the **Live Queries** on the cluster **Performance** tab. Use this information to visually identify relevant database operations and evaluate query execution times.
-- Ability to review slow YSQL queries using the **YSQL Slow Queries** on the cluster **Performance** tab. You can use this information to identify slower running database operations, look at query execution times over time, and discover potential queries for tuning. -->
+- Ability to review slow YSQL queries using the **YSQL Slow Queries** on the cluster **Performance** tab. You can use this information to identify slower-running database operations, look at query execution times over time, and discover potential queries for tuning.
+
+#### Database
+
+- YugabyteDB updated to version 2.8. New clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
+
+### November 18, 2021
+
+#### New features
 
 - Support for auditing cloud activity using the new **Activity** tab on the **Admin** page. The tab provides a running audit of activity on your cloud, including backups, cluster creation and modification, changes to cloud users and their roles, billing changes, and allow list changes.
 - Support for multiple Admin users on your cloud account, and Admin users can now change the role of existing users. You can also invite multiple users to your cloud at once, and assign them a role (Developer or Admin) when you invite them. You manage cloud users using the **Users** tab on the **Admin** page.
@@ -51,7 +59,7 @@ This release includes the following features:
 
 - Free clusters (one per account)
 - AWS and GCP cloud support
-- IP allow lists for network security 
+- IP allow lists for network security
 - Cloud shell for running SQL queries from your browser
 - YSQL and YCQL API support
 - Multiple cloud users - invite additional users to your cloud
@@ -101,7 +109,7 @@ The following **AWS regions** are available:
 
 - **Tables** - In some instances in free clusters, the **Tables** tab will show all tables with a size of 0B.
 - **Clusters** - No support for scaling vCPUs on single node clusters.
-- **PostgreSQL Extensions** - For security reasons, the admin account used for the YugabyteDB database is not the super user. As a result, the admin account cannot install extensions, or enable extensions using the `CREATE EXTENSION` command. Support for installing and enabling extensions is planned. In the meantime, if you need database extensions added to a cluster, contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) with the names of the cluster and extension, or reach out on Slack. 
+- **PostgreSQL Extensions** - For security reasons, the admin account used for the YugabyteDB database is not the super user. As a result, the admin account cannot install extensions, or enable extensions using the `CREATE EXTENSION` command. Support for installing and enabling extensions is planned. In the meantime, if you need database extensions added to a cluster, contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) with the names of the cluster and extension, or reach out on Slack.
 
 ### Known issues in cloud shell
 

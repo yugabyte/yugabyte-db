@@ -41,7 +41,7 @@ To create a free cluster:
 
 Once you complete the wizard, Yugabyte Cloud bootstraps and provisions the cluster, and configures YugabyteDB. The process takes up to 15 minutes.
 
-Once the cluster is ready, the cluster [Overview](../../cloud-clusters/overview) is displayed. You now have a fully configured YugabyteDB cluster provisioned in Yugabyte Cloud.
+Once the cluster is ready, the cluster [Overview](../../cloud-monitor/overview) is displayed. You now have a fully configured YugabyteDB cluster provisioned in Yugabyte Cloud.
 
 ### Learn more
 
