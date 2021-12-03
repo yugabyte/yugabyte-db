@@ -204,6 +204,7 @@ class SysCatalogTable {
 
  private:
   friend class CatalogManager;
+  friend class enterprise::CatalogManager;
 
   inline std::unique_ptr<SysCatalogWriter> NewWriter(int64_t leader_term);
 

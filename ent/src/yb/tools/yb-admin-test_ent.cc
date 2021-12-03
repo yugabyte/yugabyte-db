@@ -828,6 +828,61 @@ TEST_F(XClusterAdminCliTest, TestListCdcStreamsWithBootstrappedStreams) {
   ASSERT_OK(RunAdminToolCommand("delete_universe_replication", kProducerClusterId));
 }
 
+TEST_F(XClusterAdminCliTest, TestRenameUniverseReplication) {
+  client::TableHandle producer_cluster_table;
+
+  // Create an identical table on the producer.
+  client::kv_table_test::CreateTable(
+      Transactional::kTrue, NumTablets(), producer_cluster_client_.get(), &producer_cluster_table);
+
+  // Setup universe replication, this should only return once complete.
+  ASSERT_OK(RunAdminToolCommand("setup_universe_replication",
+                                kProducerClusterId,
+                                producer_cluster_->GetMasterAddresses(),
+                                producer_cluster_table->id()));
+
+  // Check that the stream was properly created for this table.
+  ASSERT_OK(CheckTableIsBeingReplicated({producer_cluster_table->id()}));
+
+  // Now rename the replication group and then try to perform operations on it.
+  std::string new_replication_id = "new_replication_id";
+  ASSERT_OK(RunAdminToolCommand("alter_universe_replication",
+                                kProducerClusterId,
+                                "rename_id",
+                                new_replication_id));
+
+  // Assert that using old universe id fails.
+  ASSERT_NOK(RunAdminToolCommand("set_universe_replication_enabled",
+                                 kProducerClusterId,
+                                 0));
+  // But using correct name should succeed.
+  ASSERT_OK(RunAdminToolCommand("set_universe_replication_enabled",
+                                new_replication_id,
+                                0));
+
+  // Also create a second stream so we can verify name collisions.
+  std::string collision_id = "collision_id";
+  ASSERT_OK(RunAdminToolCommand("setup_universe_replication",
+                                collision_id,
+                                producer_cluster_->GetMasterAddresses(),
+                                producer_cluster_table->id()));
+  ASSERT_NOK(RunAdminToolCommand("alter_universe_replication",
+                                 new_replication_id,
+                                 "rename_id",
+                                 collision_id));
+
+  // Using correct name should still succeed.
+  ASSERT_OK(RunAdminToolCommand("set_universe_replication_enabled",
+                                new_replication_id,
+                                1));
+
+  // Delete this universe so shutdown can proceed.
+  ASSERT_OK(RunAdminToolCommand("delete_universe_replication", new_replication_id));
+  // Also delete second one too.
+  ASSERT_OK(RunAdminToolCommand("delete_universe_replication", collision_id));
+}
+
+
 class XClusterAlterUniverseAdminCliTest : public XClusterAdminCliTest {
  public:
   void SetUp() override {
