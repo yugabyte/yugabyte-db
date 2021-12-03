@@ -287,10 +287,12 @@ main(int argc, char **argv)
 ### Run the C SSL application
 
 You can compile the file using `gcc` or `clang`.
-To compile the application with `gcc`, run the following command:
+To compile the application with `clang`, run the following command:
+
+> **FIXME** adjust the path once we get this working
 
 ```sh
-$ gcc ybsql_hello_world.c -lpq -I <yugabyte-install-dir>/postgres/include -o ybsql_hello_world
+$ clang yb_hello_world_ssl.c -lpq -I ~/devel/yb-versions/2.9.1.0-b136/postgres/include -o yb_hello_world_ssl
 ```
 
 Run with:
