@@ -120,6 +120,7 @@ class FsManager {
   static const char *kWalFileNamePrefix;
   static const char *kWalsRecoveryDirSuffix;
   static const char *kRocksDBDirName;
+  static const char *kDataDirName;
 
   // Only for unit tests.
   FsManager(Env* env, const std::string& root_path, const std::string& server_type);
@@ -230,6 +231,15 @@ class FsManager {
   // Initializes, sanitizes, and canonicalizes the filesystem roots.
   CHECKED_STATUS Init();
 
+  // Creates filesystem roots from 'roots', writing new on-disk
+  // instances using 'metadata'.
+  CHECKED_STATUS CreateFileSystemRoots(const std::set<std::string>& roots,
+                                       const std::set<std::string>& ancillary_dirs,
+                                       const InstanceMetadataPB& metadata,
+                                       bool create_lock = false);
+
+  std::set<std::string> GetAncillaryDirs(bool add_metadata_dirs) const;
+
   // Create a new InstanceMetadataPB.
   void CreateInstanceMetadata(InstanceMetadataPB* metadata);
 
@@ -252,16 +262,6 @@ class FsManager {
                           const std::string& prefix,
                           const std::string& path,
                           const std::vector<std::string>& objects);
-
-  static const char *kDataDirName;
-  static const char *kRaftGroupMetadataDirName;
-  static const char *kCorruptedSuffix;
-  static const char *kInstanceMetadataFileName;
-  static const char *kFsLockFileName;
-  static const char *kInstanceMetadataMagicNumber;
-  static const char *kTabletSuperBlockMagicNumber;
-  static const char *kConsensusMetadataDirName;
-  static const char *kLogsDirName;
 
   Env *env_;
 

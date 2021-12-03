@@ -52,19 +52,12 @@ class YBTsCliITest : public YBTableTestBase {
   }
 
   int num_drives() override {
-    return 3;
+    return 2;
   }
 
   bool enable_ysql() override {
     // Do not create the transaction status table.
     return false;
-  }
-
-  void BeforeCreateTable() override {
-    ExternalTabletServer* ts = external_mini_cluster()->tablet_server(kServerIndex);
-    ts->Shutdown();
-    ASSERT_OK(ts->SetNumDrives(2));
-    ASSERT_OK(ts->Restart());
   }
 
   void WaitForTablet(const string& tablet_id) {
