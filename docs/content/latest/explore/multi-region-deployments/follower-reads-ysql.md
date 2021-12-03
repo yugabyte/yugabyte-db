@@ -39,7 +39,7 @@ Replicas may not be completely up to date with all updates, so this design may r
 Two session variables control the behavior of follower reads:
 
 - `yb_read_from_followers` controls whether reading from followers is enabled. Default is false.
-- `yb_follower_read_staleness_ms` sets the maximum allowable staleness. Default is 30000(30 seconds).
+- `yb_follower_read_staleness_ms` sets the maximum allowable staleness. Default is 30000 (30 seconds).
 
 ### Expected behavior
 
