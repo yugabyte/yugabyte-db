@@ -1686,7 +1686,8 @@ Status YBClient::GetTablets(const YBTableName& table_name,
                             const int32_t max_tablets,
                             RepeatedPtrField<TabletLocationsPB>* tablets,
                             PartitionListVersion* partition_list_version,
-                            const RequireTabletsRunning require_tablets_running) {
+                            const RequireTabletsRunning require_tablets_running,
+                            const master::IncludeInactive include_inactive) {
   GetTableLocationsRequestPB req;
   GetTableLocationsResponsePB resp;
   if (table_name.has_table()) {
@@ -1701,6 +1702,7 @@ Status YBClient::GetTablets(const YBTableName& table_name,
     req.set_max_returned_locations(max_tablets);
   }
   req.set_require_tablets_running(require_tablets_running);
+  req.set_include_inactive(include_inactive);
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, GetTableLocations);
   *tablets = resp.tablet_locations();
   if (partition_list_version) {
@@ -1755,11 +1757,12 @@ Status YBClient::GetTablets(const YBTableName& table_name,
                             vector<TabletId>* tablet_uuids,
                             vector<string>* ranges,
                             std::vector<master::TabletLocationsPB>* locations,
-                            const RequireTabletsRunning require_tablets_running) {
+                            const RequireTabletsRunning require_tablets_running,
+                            master::IncludeInactive include_inactive) {
   RepeatedPtrField<TabletLocationsPB> tablets;
   RETURN_NOT_OK(GetTablets(
       table_name, max_tablets, &tablets, /* partition_list_version =*/ nullptr,
-      require_tablets_running));
+      require_tablets_running, include_inactive));
   FillFromRepeatedTabletLocations(tablets, tablet_uuids, ranges, locations);
   return Status::OK();
 }
@@ -1856,11 +1859,12 @@ void YBClient::LookupTabletByKey(const std::shared_ptr<YBTable>& table,
 
 void YBClient::LookupTabletById(const std::string& tablet_id,
                                 const std::shared_ptr<const YBTable>& table,
+                                master::IncludeInactive include_inactive,
                                 CoarseTimePoint deadline,
                                 LookupTabletCallback callback,
                                 UseCache use_cache) {
   data_->meta_cache_->LookupTabletById(
-      tablet_id, table, deadline, std::move(callback), use_cache);
+      tablet_id, table, include_inactive, deadline, std::move(callback), use_cache);
 }
 
 void YBClient::LookupAllTablets(const std::shared_ptr<const YBTable>& table,
