@@ -7,7 +7,7 @@ menu:
   latest:
     parent: build-apps
     name: Go
-    identifier: go-5
+    identifier: go-4
     weight: 552
 type: page
 isTocNested: true
@@ -16,9 +16,9 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
-    <a href="../ysql-pgx-ssl/" class="nav-link">
+    <a href="../ysql-pgx/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - PGX - SSL
+      YSQL - PGX
     </a>
   </li>
   <li >
@@ -28,15 +28,9 @@ showAsideToc: true
     </a>
   </li>
   <li >
-    <a href="../ysql-pq-ssl/" class="nav-link">
+    <a href="../ysql-pg/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - PQ - SSL
-    </a>
-  </li>
-  <li >
-    <a href="../ysql-pg-ssl/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - PG - SSL
+      YSQL - PG
     </a>
   </li>
   <li >

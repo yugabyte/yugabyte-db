@@ -16,9 +16,9 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
-    <a href="../ysql-pgx-ssl/" class="nav-link">
+    <a href="../ysql-pgx/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - PGX - SSL
+      YSQL - PGX
     </a>
   </li>
   <li >
@@ -28,15 +28,9 @@ showAsideToc: true
     </a>
   </li>
   <li >
-    <a href="../ysql-pq-ssl/" class="nav-link">
+    <a href="../ysql-pg/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - PQ - SSL
-    </a>
-  </li>
-  <li >
-    <a href="../ysql-pg-ssl/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - PG - SSL
+      YSQL - PG
     </a>
   </li>
   <li >
@@ -53,27 +47,59 @@ showAsideToc: true
   </li>
 </ul>
 
-The following tutorial creates a simple Go application that connects to a YugabyteDB cluster using the [Go PostgreSQL driver](https://godoc.org/github.com/lib/pq), performs a few basic database operations — creating a table, inserting data, and running a SQL query — and then prints the results to the screen.
+The following tutorial creates a simple Go application that connects to a YugabyteDB cluster using the [pq driver](https://godoc.org/github.com/lib/pq), performs a few basic database operations — creating a table, inserting data, and running a SQL query — and then prints the results to the screen.
 
-## Before you begin
+## Prerequisites
 
-This tutorial assumes that you have satisfied the following prerequisites.
+This tutorial assumes that:
 
-### YugabyteDB
+- YugabyteDB is up and running. If you are new to YugabyteDB, you can download, install, and have YugabyteDB up and running within minutes by following the steps in [Quick start](../../../../quick-start/). Alternatively, you can use [Yugabyte Cloud](http://cloud.yugabyte.com/register), to get a fully managed database-as-a-service (DBaaS) for YugabyteDB.
 
-YugabyteDB is up and running. If not, please follow these steps in the [Quick Start guide](../../../../quick-start/explore/ysql/).
+- [Go version 1.8](https://golang.org/dl/), or later, is installed.
 
-### Go
+### SSL/TLS configuration (Optional)
 
-[Go version 1.8](https://golang.org/dl/), or later, is installed.
+You can choose to enable or disable SSL for your local YugabyteDB cluster. Refer [here](../../../../secure/tls-encryption/client-to-server/) to learn about the SSL/TSL configuration needed for setting up your YugabyteDB cluster. In case of Yugabyte Cloud, you will have SSL enabled when you create a cluster since it's pre-configured with SSL/TLS enabling client-side authentication.
+
+#### CA certificate
+
+Create a [CA certficate](../../../../secure/tls-encryption/server-certificates/#generate-the-root-certificate-file) to launch your YugabyteDB cluster with SSL/TLS enabled.
+
+In case of a Yugabyte Cloud cluster, to download the CA certificate for your cluster in Yugabyte Cloud, do the following:
+
+1. On the **Clusters** tab, select a cluster.
+
+1. Click **Connect**.
+
+1. Click **Connect to your application** and download the CA cert.
+
+#### OpenSSL
+
+Install [OpenSSL](https://www.openssl.org/) 1.1.1 or later only if you have a YugabyteDB setup with SSL/TLS enabled. Yugabyte Cloud clusters are always SSL/TLS enabled.
+
+Here is the table summarizing the SSL modes and its support in the driver:
+
+| SSL Mode | Client driver behavior |
+| :--------- | :---------------- |
+| disable | Supported |
+| allow | Not supported |
+| prefer | Not supported |
+| require (default) | Supported |
+| verify-ca | Supported |
+| verify-full | Supported |
 
 ### Go PostgreSQL driver
 
 The [Go PostgreSQL driver package (`pq`)](https://godoc.org/github.com/lib/pq) is a Go PostgreSQL driver for the `database/sql` package.
 
-To install the package locally, run the following command:
+To install the package locally, run the following commands:
+
+{{< note title="Note">}}
+Set the  environment variable `GO111MODULE` before installing the `lib/pq` package if your Go version is 1.11 or higher.
+{{< /note >}}
 
 ```sh
+$ export GO111MODULE=auto
 $ go get github.com/lib/pq
 ```
 
@@ -101,11 +127,17 @@ const (
 )
 
 func main() {
-    psqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
-                            "password=%s dbname=%s sslmode=disable",
+    psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s",
                             host, port, user, password, dbname)
+    // Other connection configs are read from the standard environment variables:
+    // PGSSLMODE, PGSSLROOTCERT, and so on.
     db, err := sql.Open("postgres", psqlInfo)
     if err != nil {
+        log.Fatal(err)
+    }
+
+    var dropStmt = `DROP TABLE IF EXISTS employee`;
+    if _, err := db.Exec(dropStmt); err != nil {
         log.Fatal(err)
     }
 
@@ -152,9 +184,25 @@ func main() {
 }
 ```
 
-## Run the application
+The **const** values are set to the defaults for a local installation of YugabyteDB. If you are using Yugabyte Cloud, replace the **const** values in the file as follows:
 
-To use the application, run the following command:
+- **host** - The host address of your cluster. The host address is displayed on the cluster Settings tab.
+- **user** - Your Yugabyte database username. In Yugabyte Cloud, the default user is **admin**.
+- **password** - Your Yugabyte database password.
+- **dbname** - The name of the Yugabyte database. The default Yugabyte database name is **yugabyte**.
+
+**port** is set to 5433, which is the default port for the YSQL API.
+
+## Set SSL/TLS related variables (Optional)
+
+For a Yugabyte Cloud cluster or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as below.
+
+   ```sh
+    $ export PGSSLMODE=verify-ca
+    $ export PGSSLROOTCERT=~/root.crt  # Here, the CA certificate file is downloaded as `root.crt` under home directory. Modify your path accordingly.
+   ```
+
+## Run the application
 
 ```sh
 $ go run ybsql_hello_world.go

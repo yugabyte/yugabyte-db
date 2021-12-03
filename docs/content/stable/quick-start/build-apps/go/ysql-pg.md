@@ -1,13 +1,13 @@
 ---
-title: Build a Go application that uses YSQL over SSL
+title: Build a Go application that uses YSQL
 headerTitle: Build a Go application
 linkTitle: Go
-description: Build a sample Go application with the Go PostgreSQL driver and perform basic database operations with YugabyteDB with SSL/TLS.
+description: Build a sample Go application with the Go PostgreSQL driver and perform basic database operations.
 menu:
-  latest:
+  stable:
     parent: build-apps
     name: Go
-    identifier: go-4
+    identifier: go-3
     weight: 552
 type: page
 isTocNested: true
@@ -16,9 +16,9 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
-    <a href="../ysql-pgx-ssl/" class="nav-link">
+    <a href="../ysql-pgx/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - PGX - SSL
+      YSQL - PGX
     </a>
   </li>
   <li >
@@ -28,15 +28,9 @@ showAsideToc: true
     </a>
   </li>
   <li >
-    <a href="../ysql-pq-ssl/" class="nav-link">
+    <a href="../ysql-pg/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - PQ - SSL
-    </a>
-  </li>
-  <li >
-    <a href="../ysql-pg-ssl/" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - PG - SSL
+      YSQL - PG
     </a>
   </li>
   <li >
@@ -63,15 +57,13 @@ This tutorial assumes that:
 
 - [Go version 1.8](https://golang.org/dl/), or later, is installed.
 
-### SSL/TLS configuration
+### SSL/TLS configuration (Optional)
 
-Refer to the [SSL/TLS configuration](../../../../secure/tls-encryption/client-to-server/) page to launch your YugabyteDB cluster with SSL/TLS enabled. This is already taken care of for you in Yugabyte Cloud, as the cluster is pre-configured with SSL/TLS enabling client-side authentication.
+You can choose to enable or disable SSL for your local YugabyteDB cluster. Refer [here](../../../../secure/tls-encryption/client-to-server/) to learn about the SSL/TSL configuration needed for setting up your YugabyteDB cluster. In case of Yugabyte Cloud, you will have SSL enabled when you create a cluster since it's pre-configured with SSL/TLS enabling client-side authentication.
 
-### OpenSSL
+#### CA certificate
 
-Install [OpenSSL](https://www.openssl.org/) 1.1.1 or later only if you have a YugabyteDB setup with SSL/TLS enabled. Yugabyte Cloud clusters are always SSL/TLS enabled.
-
-### CA certificate
+Create a [CA certficate](../../../../secure/tls-encryption/server-certificates/#generate-the-root-certificate-file) to launch your YugabyteDB cluster with SSL/TLS enabled.
 
 In case of a Yugabyte Cloud cluster, to download the CA certificate for your cluster in Yugabyte Cloud, do the following:
 
@@ -80,6 +72,21 @@ In case of a Yugabyte Cloud cluster, to download the CA certificate for your clu
 1. Click **Connect**.
 
 1. Click **Connect to your application** and download the CA cert.
+
+#### OpenSSL
+
+Install [OpenSSL](https://www.openssl.org/) 1.1.1 or later only if you have a YugabyteDB setup with SSL/TLS enabled. Yugabyte Cloud clusters are always SSL/TLS enabled.
+
+Here is the table summarizing the SSL modes and its support in the driver:
+
+| SSL Mode | Client driver behavior |
+| :--------- | :---------------- |
+| disable | Supported |
+| allow | Supported |
+| prefer | Supported |
+| require | Supported |
+| verify-ca | Supported |
+| verify-full | Supported |
 
 ### Go PostgreSQL driver
 
@@ -320,7 +327,7 @@ func main() {
 }
 ```
 
-## Enable SSL/TLS
+## Set SSL/TLS related variables (Optional)
 
 For a Yugabyte Cloud cluster or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as below.
 
