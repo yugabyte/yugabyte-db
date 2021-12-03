@@ -620,7 +620,18 @@ Status Log::CloseCurrentSegment() {
   VLOG_WITH_PREFIX(2) << "Segment footer for " << active_segment_->path()
                       << ": " << footer_builder_.ShortDebugString();
 
-  footer_builder_.set_close_timestamp_micros(GetCurrentTimeMicros());
+  auto close_timestamp_micros = GetCurrentTimeMicros();
+
+  if (FLAGS_time_based_wal_gc_clock_delta_usec != 0) {
+    auto unadjusted_close_timestamp_micros = close_timestamp_micros;
+    close_timestamp_micros += FLAGS_time_based_wal_gc_clock_delta_usec;
+    LOG_WITH_PREFIX(INFO)
+        << "Adjusting log segment closing timestamp by "
+        << FLAGS_time_based_wal_gc_clock_delta_usec << " usec from "
+        << unadjusted_close_timestamp_micros << " usec to " << close_timestamp_micros << " usec";
+  }
+
+  footer_builder_.set_close_timestamp_micros(close_timestamp_micros);
 
   auto status = active_segment_->WriteFooterAndClose(footer_builder_);
 
