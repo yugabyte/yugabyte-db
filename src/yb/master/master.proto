@@ -971,6 +971,9 @@ message GetTabletLocationsRequestPB {
 
   // If table ID is specified, table's partition_list_version will be included into response.
   optional bytes table_id = 2;
+
+  // If true, then return any hidden tablets as well. Does not work with partition key ranges.
+  optional bool include_inactive = 3;
 }
 
 message GetTabletLocationsResponsePB {
@@ -1190,6 +1193,9 @@ message GetTableLocationsRequestPB {
   optional uint32 max_returned_locations = 5 [ default = 10 ];
 
   optional bool require_tablets_running = 6;
+
+  // If true, then return any hidden tablets as well. Does not work with partition key ranges.
+  optional bool include_inactive = 7;
 }
 
 message GetTableLocationsResponsePB {
