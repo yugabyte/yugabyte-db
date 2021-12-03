@@ -25,7 +25,6 @@
 #include "yb/common/transaction.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/tserver/tserver_util_fwd.h"
-#include "yb/util/result.h"
 #include "yb/util/enums.h"
 #include "yb/yql/pggate/pg_callbacks.h"
 
@@ -91,6 +90,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   bool IsDdlMode() const { return ddl_session_.get() != nullptr; }
   bool IsTxnInProgress() const { return txn_in_progress_; }
+  bool ShouldUseFollowerReads() const { return updated_read_time_for_follower_reads_; }
 
  private:
   YB_STRONGLY_TYPED_BOOL(NeedsPessimisticLocking);

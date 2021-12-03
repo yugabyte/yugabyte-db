@@ -15,15 +15,21 @@
 
 #include <sstream>
 
-#include "yb/rocksdb/db.h"
-
 #include "yb/common/hybrid_time.h"
+
+#include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_reader.h"
 #include "yb/docdb/docdb.h"
-#include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_test_util.h"
+
 #include "yb/gutil/strings/substitute.h"
+
+#include "yb/rocksdb/db.h"
+
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/test_macros.h"
 
 using std::endl;
 using std::string;
@@ -261,6 +267,10 @@ HybridTime InMemDocDbState::captured_at() const {
 
 void InMemDocDbState::SanityCheck() const {
   CHECK_EQ(root_.value_type(), ValueType::kObject);
+}
+
+const SubDocument* InMemDocDbState::GetDocument(const DocKey& doc_key) const {
+  return GetSubDocument(SubDocKey(doc_key));
 }
 
 }  // namespace docdb

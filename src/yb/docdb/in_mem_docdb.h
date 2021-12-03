@@ -18,11 +18,10 @@
 
 #include "yb/rocksdb/db.h"
 
-#include "yb/docdb/doc_key.h"
 #include "yb/docdb/subdocument.h"
 #include "yb/docdb/doc_path.h"
 #include "yb/docdb/value.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 namespace docdb {
@@ -35,9 +34,7 @@ class InMemDocDbState {
 
   void SetDocument(const KeyBytes& encoded_doc_key, SubDocument&& doc);
   const SubDocument* GetSubDocument(const SubDocKey &subdoc_key) const;
-  const SubDocument* GetDocument(const DocKey& doc_key) const {
-    return GetSubDocument(SubDocKey(doc_key));
-  }
+  const SubDocument* GetDocument(const DocKey& doc_key) const;
 
   // Capture all documents present in the given RocksDB database at the given hybrid_time and save
   // them into this in-memory DocDB. All current contents of this object are overwritten.

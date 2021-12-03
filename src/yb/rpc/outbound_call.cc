@@ -30,13 +30,14 @@
 // under the License.
 //
 
+#include "yb/rpc/outbound_call.h"
+
 #include <algorithm>
-#include <string>
 #include <mutex>
+#include <string>
 #include <vector>
 
 #include <boost/functional/hash.hpp>
-
 #include <gflags/gflags.h>
 
 #include "yb/gutil/strings/substitute.h"
@@ -44,16 +45,20 @@
 
 #include "yb/rpc/connection.h"
 #include "yb/rpc/constants.h"
-#include "yb/rpc/outbound_call.h"
+#include "yb/rpc/proxy_base.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/rpc_metrics.h"
 #include "yb/rpc/serialization.h"
 
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/memory/memory.h"
+#include "yb/util/metrics.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"

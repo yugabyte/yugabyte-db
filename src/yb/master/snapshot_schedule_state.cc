@@ -10,16 +10,16 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/master/snapshot_schedule_state.h"
 
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/key_bytes.h"
-
+#include "yb/docdb/value_type.h"
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/master_error.h"
 #include "yb/master/snapshot_coordinator_context.h"
-
 #include "yb/util/pb_util.h"
+#include "yb/util/status_format.h"
 
 DECLARE_uint64(snapshot_coordinator_cleanup_delay_ms);
 
@@ -39,7 +39,7 @@ SnapshotScheduleState::SnapshotScheduleState(
 
 Result<docdb::KeyBytes> SnapshotScheduleState::EncodedKey(
     const SnapshotScheduleId& schedule_id, SnapshotCoordinatorContext* context) {
-  return master::EncodedKey(SysRowEntry::SNAPSHOT_SCHEDULE, schedule_id.AsSlice(), context);
+  return master::EncodedKey(SysRowEntryType::SNAPSHOT_SCHEDULE, schedule_id.AsSlice(), context);
 }
 
 Result<docdb::KeyBytes> SnapshotScheduleState::EncodedKey() const {

@@ -13,13 +13,17 @@
 
 #include "yb/master/cdc_consumer_registry_service.h"
 
+#include "yb/master/catalog_entity_info.h"
 #include "yb/master/cdc_rpc_tasks.h"
 #include "yb/master/master_util.h"
 
 #include "yb/client/client.h"
+#include "yb/client/yb_table_name.h"
 #include "yb/cdc/cdc_consumer.pb.h"
 
 #include "yb/util/random_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 namespace master {

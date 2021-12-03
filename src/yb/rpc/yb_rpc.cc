@@ -17,6 +17,7 @@
 
 #include <google/protobuf/io/coded_stream.h>
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/endian.h"
 
 #include "yb/rpc/connection.h"
@@ -25,10 +26,13 @@
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/serialization.h"
 
-#include "yb/util/flag_tags.h"
 #include "yb/util/debug/trace_event.h"
+#include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
 #include "yb/util/memory/memory.h"
+#include "yb/util/result.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
 
 using google::protobuf::io::CodedInputStream;
 using namespace yb::size_literals;

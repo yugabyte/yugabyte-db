@@ -157,6 +157,10 @@ public class AlertService {
     return createQueryByFilter(filter).orderBy().desc("createTime").findList();
   }
 
+  public int count(AlertFilter filter) {
+    return createQueryByFilter(filter).findCount();
+  }
+
   public AlertPagedResponse pagedList(AlertPagedQuery pagedQuery) {
     if (pagedQuery.getSortBy() == null) {
       pagedQuery.setSortBy(SortBy.createTime);

@@ -14,6 +14,11 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/client/table.h"
+#include "yb/common/index.h"
+#include "yb/yql/cql/ql/ptree/column_desc.h"
+#include "yb/yql/cql/ql/ptree/pt_column_definition.h"
+#include "yb/yql/cql/ql/ptree/pt_dml.h"
+#include "yb/yql/cql/ql/ptree/pt_select.h"
 #include "yb/yql/cql/ql/ptree/sem_state.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 
@@ -116,7 +121,7 @@ void SemState::CopyPreviousIfState() {
   }
 }
 
-void SemState::set_bindvar_name(string name) {
+void SemState::set_bindvar_name(std::string name) {
   bindvar_name_ = MCMakeShared<MCString>(sem_context_->PSemMem(), name.data(), name.size());
 }
 
@@ -146,6 +151,15 @@ bool SemState::is_partial_index_select() const {
   std::shared_ptr<client::YBTable> table = select_stmt->table();
   const IndexInfo& idx_info = table->index_info();
   return idx_info.where_predicate_spec() != nullptr;
+}
+
+const ColumnDesc *SemState::hash_col() const {
+  return lhs_col_ != nullptr && lhs_col_->is_hash() ? lhs_col_ : nullptr;
+}
+
+const QLTypePtr& SemState::DefaultQLType() {
+  static const auto result = QLType::Create(UNKNOWN_DATA);
+  return result;
 }
 
 }  // namespace ql}  // namespace ql

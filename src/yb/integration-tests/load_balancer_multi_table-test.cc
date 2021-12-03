@@ -10,24 +10,21 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include <gtest/gtest.h>
 
-#include "yb/integration-tests/yb_table_test_base.h"
-
+#include "yb/client/client.h"
 #include "yb/client/schema.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus.proxy.h"
-#include "yb/gutil/strings/join.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/load_balancer_test_util.h"
 #include "yb/integration-tests/mini_cluster.h"
-#include "yb/master/master.proxy.h"
-#include "yb/rpc/rpc_controller.h"
+#include "yb/integration-tests/yb_table_test_base.h"
 #include "yb/tools/yb-admin_client.h"
 #include "yb/util/monotime.h"
+#include "yb/util/result.h"
 
 using namespace std::literals;
 
@@ -142,7 +139,7 @@ TEST_F(LoadBalancerMultiTableTest, MultipleLeaderTabletMovesPerTable) {
   WaitForLoadBalanceCompletion();
 
   // Get current leader counts.
-  unordered_map<string, unordered_map<string, int>> initial_leader_counts;
+  std::unordered_map<string, std::unordered_map<string, int>> initial_leader_counts;
   for (const auto& tn : table_names_) {
     initial_leader_counts[tn.table_name()] = ASSERT_RESULT(yb_admin_client_->GetLeaderCounts(tn));
   }
@@ -364,7 +361,7 @@ TEST_F(LoadBalancerMultiTableTest, TestDeadNodesLeaderBalancing) {
   ASSERT_EQ(tserver_loads[1], 15);
   ASSERT_EQ(tserver_loads[2], 15);
 
-  unordered_set<TabletServerId> zero_load_ts;
+  std::unordered_set<TabletServerId> zero_load_ts;
   zero_load_ts.insert(ts2_id);
   for (const auto& tn : table_names_) {
     const auto new_leader_counts = ASSERT_RESULT(yb_admin_client_->GetLeaderCounts(tn));

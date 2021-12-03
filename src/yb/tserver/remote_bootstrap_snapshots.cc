@@ -21,6 +21,8 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_snapshots.h"
 
+#include "yb/util/result.h"
+
 namespace yb {
 namespace tserver {
 

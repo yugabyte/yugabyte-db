@@ -27,6 +27,8 @@
 
 #include "yb/integration-tests/redis_table_test_base.h"
 
+#include "yb/master/master.h"
+
 #include "yb/yql/redis/redisserver/redis_client.h"
 #include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/yql/redis/redisserver/redis_encoding.h"
@@ -36,7 +38,11 @@
 
 #include "yb/util/cast.h"
 #include "yb/util/enums.h"
+#include "yb/util/metrics.h"
 #include "yb/util/protobuf.h"
+#include "yb/util/ref_cnt_buffer.h"
+#include "yb/util/result.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
 #include "yb/util/value_changer.h"
 
@@ -305,7 +311,7 @@ class TestRedisService : public RedisTableTestBase {
     req.set_is_compaction(false);
     table_name().SetIntoTableIdentifierPB(req.add_tables());
     master::FlushTablesResponsePB resp;
-    RETURN_NOT_OK(VERIFY_RESULT(mini_cluster()->GetLeaderMiniMaster())->master()->flush_manager()->
+    RETURN_NOT_OK(VERIFY_RESULT(mini_cluster()->GetLeaderMiniMaster())->flush_manager().
                   FlushTables(&req, &resp));
 
     master::IsFlushTablesDoneRequestPB wait_req;
@@ -315,9 +321,7 @@ class TestRedisService : public RedisTableTestBase {
     for (int k = 0; k < 20; ++k) {
       master::IsFlushTablesDoneResponsePB wait_resp;
       RETURN_NOT_OK(VERIFY_RESULT(mini_cluster()->GetLeaderMiniMaster())
-                        ->master()
-                        ->flush_manager()
-                        ->IsFlushTablesDone(&wait_req, &wait_resp));
+                        ->flush_manager().IsFlushTablesDone(&wait_req, &wait_resp));
       if (wait_resp.done()) {
         return Status::OK();
       }

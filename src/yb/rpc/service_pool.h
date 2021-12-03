@@ -42,8 +42,7 @@
 #include "yb/rpc/rpc_service.h"
 #include "yb/util/blocking_queue.h"
 #include "yb/util/mutex.h"
-#include "yb/util/thread.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 

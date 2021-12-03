@@ -40,15 +40,14 @@
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
-#include "yb/common/schema.h"
 #include "yb/master/master.pb.h"
-#include "yb/master/master_error.h"
 #include "yb/master/tasks_tracker.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/server/monitored_task.h"
 #include "yb/util/cow_object.h"
+#include "yb/util/format.h"
 #include "yb/util/monotime.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 namespace master {
@@ -100,7 +99,7 @@ struct TabletReplica {
 // sys_catalog. Subclasses of this will provide convenience getter/setter methods around the
 // protos and instances of these will be wrapped around CowObjects and locks for access and
 // modifications.
-template <class DataEntryPB, SysRowEntry::Type entry_type>
+template <class DataEntryPB, SysRowEntryType entry_type>
 struct Persistent {
   // Type declaration to be used in templated read/write methods. We are using typename
   // Class::data_type in templated methods for figuring out the type we need.
@@ -108,7 +107,7 @@ struct Persistent {
 
   // Subclasses of this need to provide a valid value of the entry type through
   // the template class argument.
-  static SysRowEntry::Type type() { return entry_type; }
+  static SysRowEntryType type() { return entry_type; }
 
   // The proto that is persisted in the sys_catalog.
   DataEntryPB pb;
@@ -129,7 +128,7 @@ class MetadataCowWrapper {
 
   // Pretty printing.
   virtual std::string ToString() const {
-    return strings::Substitute(
+    return Format(
         "Object type = $0 (id = $1)", PersistentDataEntryPB::type(), id());
   }
 
@@ -166,7 +165,7 @@ class MetadataCowWrapper {
 // The data related to a tablet which is persisted on disk.
 // This portion of TabletInfo is managed via CowObject.
 // It wraps the underlying protobuf to add useful accessors.
-struct PersistentTabletInfo : public Persistent<SysTabletsEntryPB, SysRowEntry::TABLET> {
+struct PersistentTabletInfo : public Persistent<SysTabletsEntryPB, SysRowEntryType::TABLET> {
   bool is_running() const {
     return pb.state() == SysTabletsEntryPB::RUNNING;
   }
@@ -195,8 +194,6 @@ struct PersistentTabletInfo : public Persistent<SysTabletsEntryPB, SysRowEntry::
   void set_state(SysTabletsEntryPB::State state, const std::string& msg);
 };
 
-typedef std::unordered_map<TabletServerId, MonoTime> LeaderStepDownFailureTimes;
-
 // The information about a single tablet which exists in the cluster,
 // including its state and locations.
 //
@@ -217,8 +214,6 @@ typedef std::unordered_map<TabletServerId, MonoTime> LeaderStepDownFailureTimes;
 class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
                    public MetadataCowWrapper<PersistentTabletInfo> {
  public:
-  typedef std::unordered_map<std::string, TabletReplica> ReplicaMap;
-
   TabletInfo(const scoped_refptr<TableInfo>& table, TabletId tablet_id);
   virtual const TabletId& id() const override { return tablet_id_; }
 
@@ -229,8 +224,8 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   // Accessors for the latest known tablet replica locations.
   // These locations include only the members of the latest-reported Raft
   // configuration whose tablet servers have ever heartbeated to this Master.
-  void SetReplicaLocations(std::shared_ptr<ReplicaMap> replica_locations);
-  std::shared_ptr<const ReplicaMap> GetReplicaLocations() const;
+  void SetReplicaLocations(std::shared_ptr<TabletReplicaMap> replica_locations);
+  std::shared_ptr<const TabletReplicaMap> GetReplicaLocations() const;
   Result<TSDescriptor*> GetLeader() const;
   Result<TabletReplicaDriveInfo> GetLeaderReplicaDriveInfo() const;
 
@@ -296,7 +291,7 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
 
   // The locations in the latest Raft config where this tablet has been
   // reported. The map is keyed by tablet server UUID.
-  std::shared_ptr<ReplicaMap> replica_locations_ GUARDED_BY(lock_);
+  std::shared_ptr<TabletReplicaMap> replica_locations_ GUARDED_BY(lock_);
 
   // Reported schema version (in-memory only).
   std::unordered_map<TableId, uint32_t> reported_schema_version_ GUARDED_BY(lock_) = {};
@@ -311,7 +306,7 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
 // The data related to a table which is persisted on disk.
 // This portion of TableInfo is managed via CowObject.
 // It wraps the underlying protobuf to add useful accessors.
-struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntry::TABLE> {
+struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntryType::TABLE> {
   bool started_deleting() const {
     return pb.state() == SysTablesEntryPB::DELETING ||
            pb.state() == SysTablesEntryPB::DELETED;
@@ -511,18 +506,18 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   std::size_t NumLBTasks() const;
   std::size_t NumTasks() const;
   bool HasTasks() const;
-  bool HasTasks(MonitoredTask::Type type) const;
-  void AddTask(std::shared_ptr<MonitoredTask> task);
+  bool HasTasks(server::MonitoredTask::Type type) const;
+  void AddTask(std::shared_ptr<server::MonitoredTask> task);
 
   // Returns true if no running tasks left.
-  bool RemoveTask(const std::shared_ptr<MonitoredTask>& task);
+  bool RemoveTask(const std::shared_ptr<server::MonitoredTask>& task);
 
   void AbortTasks();
   void AbortTasksAndClose();
   void WaitTasksCompletion();
 
   // Allow for showing outstanding tasks in the master UI.
-  std::unordered_set<std::shared_ptr<MonitoredTask>> GetTasks();
+  std::unordered_set<std::shared_ptr<server::MonitoredTask>> GetTasks();
 
   // Returns whether this is a type of table that will use tablespaces
   // for placement.
@@ -579,7 +574,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   std::atomic<bool> is_system_{false};
 
   // List of pending tasks (e.g. create/alter tablet requests).
-  std::unordered_set<std::shared_ptr<MonitoredTask>> pending_tasks_ GUARDED_BY(lock_);
+  std::unordered_set<std::shared_ptr<server::MonitoredTask>> pending_tasks_ GUARDED_BY(lock_);
 
   // The last error Status of the currently running CreateTable. Will be OK, if freshly constructed
   // object, or if the CreateTable was successful.
@@ -626,7 +621,8 @@ class DeletedTableInfo : public RefCountedThreadSafe<DeletedTableInfo> {
 // The data related to a namespace which is persisted on disk.
 // This portion of NamespaceInfo is managed via CowObject.
 // It wraps the underlying protobuf to add useful accessors.
-struct PersistentNamespaceInfo : public Persistent<SysNamespaceEntryPB, SysRowEntry::NAMESPACE> {
+struct PersistentNamespaceInfo : public Persistent<
+    SysNamespaceEntryPB, SysRowEntryType::NAMESPACE> {
   // Get the namespace name.
   const NamespaceName& name() const {
     return pb.name();
@@ -706,7 +702,7 @@ class TablegroupInfo : public RefCountedThreadSafe<TablegroupInfo>{
 // The data related to a User-Defined Type which is persisted on disk.
 // This portion of UDTypeInfo is managed via CowObject.
 // It wraps the underlying protobuf to add useful accessors.
-struct PersistentUDTypeInfo : public Persistent<SysUDTypeEntryPB, SysRowEntry::UDTYPE> {
+struct PersistentUDTypeInfo : public Persistent<SysUDTypeEntryPB, SysRowEntryType::UDTYPE> {
   // Return the type's name.
   const UDTypeName& name() const {
     return pb.name();
@@ -769,7 +765,7 @@ class UDTypeInfo : public RefCountedThreadSafe<UDTypeInfo>,
 // This wraps around the proto containing cluster level config information. It will be used for
 // CowObject managed access.
 struct PersistentClusterConfigInfo : public Persistent<SysClusterConfigEntryPB,
-                                                       SysRowEntry::CLUSTER_CONFIG> {
+                                                       SysRowEntryType::CLUSTER_CONFIG> {
 };
 
 // This is the in memory representation of the cluster config information serialized proto data,
@@ -792,7 +788,7 @@ class ClusterConfigInfo : public RefCountedThreadSafe<ClusterConfigInfo>,
 };
 
 struct PersistentRedisConfigInfo
-    : public Persistent<SysRedisConfigEntryPB, SysRowEntry::REDIS_CONFIG> {};
+    : public Persistent<SysRedisConfigEntryPB, SysRowEntryType::REDIS_CONFIG> {};
 
 class RedisConfigInfo : public RefCountedThreadSafe<RedisConfigInfo>,
                         public MetadataCowWrapper<PersistentRedisConfigInfo> {
@@ -810,7 +806,7 @@ class RedisConfigInfo : public RefCountedThreadSafe<RedisConfigInfo>,
   DISALLOW_COPY_AND_ASSIGN(RedisConfigInfo);
 };
 
-struct PersistentRoleInfo : public Persistent<SysRoleEntryPB, SysRowEntry::ROLE> {};
+struct PersistentRoleInfo : public Persistent<SysRoleEntryPB, SysRowEntryType::ROLE> {};
 
 class RoleInfo : public RefCountedThreadSafe<RoleInfo>,
                  public MetadataCowWrapper<PersistentRoleInfo> {
@@ -828,7 +824,7 @@ class RoleInfo : public RefCountedThreadSafe<RoleInfo>,
 };
 
 struct PersistentSysConfigInfo
-    : public Persistent<SysConfigEntryPB, SysRowEntry::SYS_CONFIG> {};
+    : public Persistent<SysConfigEntryPB, SysRowEntryType::SYS_CONFIG> {};
 
 class SysConfigInfo : public RefCountedThreadSafe<SysConfigInfo>,
                       public MetadataCowWrapper<PersistentSysConfigInfo> {
@@ -855,8 +851,8 @@ class DdlLogEntry {
       HybridTime time, const TableId& table_id, const SysTablesEntryPB& table,
       const std::string& action);
 
-  static SysRowEntry::Type type() {
-    return SysRowEntry::DDL_LOG_ENTRY;
+  static SysRowEntryType type() {
+    return SysRowEntryType::DDL_LOG_ENTRY;
   }
 
   std::string id() const;
@@ -906,7 +902,6 @@ class ScopedInfoCommitter {
 
 // Convenience typedefs.
 // Table(t)InfoMap ordered for deterministic locking.
-typedef std::map<TabletId, scoped_refptr<TabletInfo>> TabletInfoMap;
 typedef std::pair<NamespaceId, TableName> TableNameKey;
 typedef std::unordered_map<
     TableNameKey, scoped_refptr<TableInfo>, boost::hash<TableNameKey>> TableInfoByNameMap;

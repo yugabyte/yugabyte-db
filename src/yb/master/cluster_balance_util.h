@@ -23,8 +23,14 @@
 
 #include <boost/optional/optional.hpp>
 
-#include "yb/master/catalog_manager.h"
-#include "yb/util/status.h"
+#include <gflags/gflags.h>
+
+#include "yb/common/common.pb.h"
+
+#include "yb/master/master.pb.h"
+#include "yb/master/ts_descriptor.h"
+
+#include "yb/util/status_fwd.h"
 
 DECLARE_int32(leader_balance_threshold);
 
@@ -64,8 +70,6 @@ struct cloud_hash {
     return std::hash<std::string>{} (TSDescriptor::generate_placement_id(ci));
   }
 };
-
-using AffinitizedZonesSet = std::unordered_set<CloudInfoPB, cloud_hash, cloud_equal_to>;
 
 struct CBTabletMetadata {
   bool is_missing_replicas() { return is_under_replicated || !under_replicated_placements.empty(); }
@@ -124,18 +128,10 @@ struct CBTabletMetadata {
   // Leader stepdown failures. We use this to prevent retrying the same leader stepdown too soon.
   LeaderStepDownFailureTimes leader_stepdown_failures;
 
-  std::string ToString() const {
-    return Format("{ running: $0 starting: $1 is_under_replicated: $2 "
-                      "under_replicated_placements: $3 is_over_replicated: $4 "
-                      "over_replicated_tablet_servers: $5 wrong_placement_tablet_servers: $6 "
-                      "blacklisted_tablet_servers: $7 leader_uuid: $8 "
-                      "leader_stepdown_failures: $9 leader_blacklisted_tablet_servers: $10}",
-                  running, starting, is_under_replicated, under_replicated_placements,
-                  is_over_replicated, over_replicated_tablet_servers,
-                  wrong_placement_tablet_servers, blacklisted_tablet_servers,
-                  leader_uuid, leader_stepdown_failures, leader_blacklisted_tablet_servers);
-  }
+  std::string ToString() const;
 };
+
+using AffinitizedZonesSet = std::unordered_set<CloudInfoPB, cloud_hash, cloud_equal_to>;
 
 struct CBTabletServerMetadata {
   // The TSDescriptor for this tablet server.
@@ -245,7 +241,7 @@ class GlobalLoadState {
 
  private:
   // Map from tablet server ids to the global metadata we store for each.
-  unordered_map<TabletServerId, CBTabletServerLoadCounts> per_ts_global_meta_;
+  std::unordered_map<TabletServerId, CBTabletServerLoadCounts> per_ts_global_meta_;
 
   friend class PerTableLoadState;
 };
@@ -253,18 +249,14 @@ class GlobalLoadState {
 class PerTableLoadState {
  public:
   TableId table_id_;
-  explicit PerTableLoadState(GlobalLoadState* global_state)
-      : leader_balance_threshold_(FLAGS_leader_balance_threshold),
-        current_time_(MonoTime::Now()),
-        global_state_(global_state) {}
-  virtual ~PerTableLoadState() {}
+  explicit PerTableLoadState(GlobalLoadState* global_state);
+
+  virtual ~PerTableLoadState();
 
   // Comparators used for sorting by load.
   bool CompareByUuid(const TabletServerId& a, const TabletServerId& b);
 
-  bool CompareByReplica(const TabletReplica& a, const TabletReplica& b) {
-    return CompareByUuid(a.ts_desc->permanent_uuid(), b.ts_desc->permanent_uuid());
-  }
+  bool CompareByReplica(const TabletReplica& a, const TabletReplica& b);
 
   // Comparator functor to be able to wrap around the public but non-static compare methods that
   // end up using internal state of the class.
@@ -348,7 +340,7 @@ class PerTableLoadState {
 
   void AdjustLeaderBalanceThreshold();
 
-  std::shared_ptr<const TabletInfo::ReplicaMap> GetReplicaLocations(TabletInfo* tablet);
+  std::shared_ptr<const TabletReplicaMap> GetReplicaLocations(TabletInfo* tablet);
 
   CHECKED_STATUS AddRunningTablet(const TabletId& tablet_id, const TabletServerId& ts_uuid);
 
@@ -370,15 +362,15 @@ class PerTableLoadState {
   // PerTableLoadState member fields
 
   // Map from tablet ids to the metadata we store for each.
-  unordered_map<TabletId, CBTabletMetadata> per_tablet_meta_;
+  std::unordered_map<TabletId, CBTabletMetadata> per_tablet_meta_;
 
   // Map from tablet server ids to the metadata we store for each.
-  unordered_map<TabletServerId, CBTabletServerMetadata> per_ts_meta_;
+  std::unordered_map<TabletServerId, CBTabletServerMetadata> per_ts_meta_;
 
   // Map from table id to placement information for this table. This will be used for both
   // determining over-replication, by checking num_replicas, but also for az awareness, by keeping
   // track of the placement block policies between cluster and table level.
-  unordered_map<TableId, PlacementInfoPB> placement_by_table_;
+  std::unordered_map<TableId, PlacementInfoPB> placement_by_table_;
 
   // Total number of running tablets in the clusters (including replicas).
   int total_running_ = 0;
@@ -387,7 +379,7 @@ class PerTableLoadState {
   int total_starting_ = 0;
 
   // Set of ts_uuid sorted ascending by load. This is the actual raw data of TS load.
-  vector<TabletServerId> sorted_load_;
+  std::vector<TabletServerId> sorted_load_;
 
   // Set of tablet ids that have been determined to have missing replicas. This can mean they are
   // generically under-replicated (2 replicas active, but 3 configured), or missing replicas in
@@ -425,9 +417,9 @@ class PerTableLoadState {
   // If affinitized leaders is enabled, stores leader load for affinitized nodes.
   vector<TabletServerId> sorted_leader_load_;
 
-  unordered_map<TableId, TabletToTabletServerMap> pending_add_replica_tasks_;
-  unordered_map<TableId, TabletToTabletServerMap> pending_remove_replica_tasks_;
-  unordered_map<TableId, TabletToTabletServerMap> pending_stepdown_leader_tasks_;
+  std::unordered_map<TableId, TabletToTabletServerMap> pending_add_replica_tasks_;
+  std::unordered_map<TableId, TabletToTabletServerMap> pending_remove_replica_tasks_;
+  std::unordered_map<TableId, TabletToTabletServerMap> pending_stepdown_leader_tasks_;
 
   // Time at which we started the current round of load balancing.
   MonoTime current_time_;

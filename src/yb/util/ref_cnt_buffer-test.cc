@@ -18,11 +18,9 @@
 #include <thread>
 
 #include <boost/ptr_container/ptr_vector.hpp>
-
 #include <gtest/gtest.h>
 
 #include "yb/util/ref_cnt_buffer.h"
-
 #include "yb/util/test_util.h"
 
 using namespace std::literals;

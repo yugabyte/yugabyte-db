@@ -60,6 +60,7 @@
 #include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/thread_local.h"
 
+#include "yb/util/logging.h"
 #include "yb/util/slice.h"
 #include "yb/util/stats/iostats_context_imp.h"
 #include "yb/util/string_util.h"

@@ -39,6 +39,8 @@
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/xfunc.h"
 
+#include "yb/util/test_util.h"
+
 namespace rocksdb {
 class DBTest : public testing::Test {
  protected:

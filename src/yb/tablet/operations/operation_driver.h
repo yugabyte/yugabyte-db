@@ -45,7 +45,7 @@
 #include "yb/tablet/operations/operation.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/opid.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/trace.h"
 
 namespace yb {

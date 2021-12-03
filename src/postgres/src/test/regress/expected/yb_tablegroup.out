@@ -21,30 +21,31 @@ Syntax:
 DROP TABLEGROUP name
 
 --
--- pg_catalog alterations. Validate columns of pg_tablegroup and oids.
+-- pg_catalog alterations. Validate columns of pg_yb_tablegroup and oids.
 --
-\d pg_tablegroup
-            Table "pg_catalog.pg_tablegroup"
-   Column   |   Type    | Collation | Nullable | Default
-------------+-----------+-----------+----------+---------
- grpname    | name      |           | not null |
- grpowner   | oid       |           | not null |
- grpacl     | aclitem[] |           |          |
- grpoptions | text[]    |           |          |
+\d pg_yb_tablegroup
+            Table "pg_catalog.pg_yb_tablegroup"
+    Column     |   Type    | Collation | Nullable | Default
+---------------+-----------+-----------+----------+---------
+ grpname       | name      |           | not null |
+ grpowner      | oid       |           | not null |
+ grptablespace | oid       |           | not null |
+ grpacl        | aclitem[] |           |          |
+ grpoptions    | text[]    |           |          |
 Indexes:
-    "pg_tablegroup_oid_index" PRIMARY KEY, lsm (oid ASC)
+    "pg_yb_tablegroup_oid_index" PRIMARY KEY, lsm (oid ASC)
 
-SELECT oid, relname, reltype, relnatts FROM pg_class WHERE relname IN ('pg_tablegroup', 'pg_tablegroup_oid_index');
- oid  |         relname         | reltype | relnatts
-------+-------------------------+---------+----------
- 8000 | pg_tablegroup           |    8002 |        4
- 8001 | pg_tablegroup_oid_index |       0 |        1
+SELECT oid, relname, reltype, relnatts FROM pg_class WHERE relname IN ('pg_yb_tablegroup', 'pg_yb_tablegroup_oid_index');
+ oid  |          relname           | reltype | relnatts
+------+----------------------------+---------+----------
+ 8036 | pg_yb_tablegroup           |    8038 |        5
+ 8037 | pg_yb_tablegroup_oid_index |       0 |        1
 (2 rows)
 
-SELECT oid, typname, typrelid FROM pg_type WHERE typname LIKE 'pg_tablegroup';
- oid  |    typname    | typrelid
-------+---------------+----------
- 8002 | pg_tablegroup |     8000
+SELECT oid, typname, typrelid FROM pg_type WHERE typname LIKE 'pg_yb_tablegroup';
+ oid  |     typname      | typrelid
+------+------------------+----------
+ 8038 | pg_yb_tablegroup |     8036
 (1 row)
 
 --
@@ -57,7 +58,7 @@ CREATE TABLE tgroup_test1 (col1 int, col2 int) TABLEGROUP tgroup1;
 CREATE TABLE tgroup_test2 (col1 int, col2 int) TABLEGROUP tgroup1;
 CREATE TABLE nogroup (col1 int) NO TABLEGROUP; -- fail
 ERROR:  Cannot use NO TABLEGROUP in CREATE TABLE statement.
-SELECT grpname FROM pg_tablegroup;
+SELECT grpname FROM pg_yb_tablegroup;
  grpname
 ---------
  tgroup1
@@ -80,9 +81,9 @@ CREATE TABLE tgroup_test3 (col1 int, col2 int) TABLEGROUP tgroup2;
 CREATE INDEX ON tgroup_test3(col1) NO TABLEGROUP;
 -- Index explicitly specify tablegroup other than that of indexed table
 CREATE INDEX ON tgroup_test3(col1) TABLEGROUP tgroup1;
-SELECT s.relname, pg_tablegroup.grpname
-    FROM (SELECT relname, unnest(reloptions) AS opts FROM pg_class) s, pg_tablegroup
-    WHERE opts LIKE CONCAT('%tablegroup=', CAST(pg_tablegroup.oid AS text), '%');
+SELECT s.relname, pg_yb_tablegroup.grpname
+    FROM (SELECT relname, unnest(reloptions) AS opts FROM pg_class) s, pg_yb_tablegroup
+    WHERE opts LIKE CONCAT('%tablegroup=', CAST(pg_yb_tablegroup.oid AS text), '%');
         relname         | grpname
 ------------------------+---------
  tgroup_test1           | tgroup1
@@ -159,12 +160,12 @@ List of tablegroups
 (3 rows)
 
 \dgr+
-                             List of tablegroups
-  Name   |  Owner   | Access privileges |       Description        | Options
----------+----------+-------------------+--------------------------+---------
- tgroup1 | yugabyte |                   | Comment for Tablegroup 1 |
- tgroup2 | yugabyte |                   | Comment for Tablegroup 2 |
- tgroup3 | yugabyte |                   |                          |
+                                   List of tablegroups
+  Name   |  Owner   | Access privileges |       Description        | Tablespace | Options
+---------+----------+-------------------+--------------------------+------------+---------
+ tgroup1 | yugabyte |                   | Comment for Tablegroup 1 |            |
+ tgroup2 | yugabyte |                   | Comment for Tablegroup 2 |            |
+ tgroup3 | yugabyte |                   |                          |            |
 (3 rows)
 
 \dgrt
@@ -183,26 +184,26 @@ List of tablegroups
 (9 rows)
 
 \dgrt+
-                                                                    List of tablegroup tables
- Group Name | Group Owner | Access privileges |    Group Description     | Group Options |          Name          | Type  |  Owner   | Rel Description |  Size
-------------+-------------+-------------------+--------------------------+---------------+------------------------+-------+----------+-----------------+---------
- tgroup1    | yugabyte    |                   | Comment for Tablegroup 1 |               | tgroup_test1           | table | yugabyte |                 | 0 bytes
- tgroup1    | yugabyte    |                   | Comment for Tablegroup 1 |               | tgroup_test2           | table | yugabyte |                 | 0 bytes
- tgroup1    | yugabyte    |                   | Comment for Tablegroup 1 |               | tgroup_test1_col2_idx  | index | yugabyte |                 | 0 bytes
- tgroup1    | yugabyte    |                   | Comment for Tablegroup 1 |               | tgroup_test3_col1_idx1 | index | yugabyte |                 | 0 bytes
- tgroup1    | yugabyte    |                   | Comment for Tablegroup 1 |               | tgroup_with1           | table | yugabyte |                 | 0 bytes
- tgroup2    | yugabyte    |                   | Comment for Tablegroup 2 |               | tgroup_test4_col2_idx  | index | yugabyte |                 | 0 bytes
- tgroup2    | yugabyte    |                   | Comment for Tablegroup 2 |               | tgroup_test4           | table | yugabyte |                 | 0 bytes
- tgroup2    | yugabyte    |                   | Comment for Tablegroup 2 |               | tgroup_test3           | table | yugabyte |                 | 0 bytes
- tgroup2    | yugabyte    |                   | Comment for Tablegroup 2 |               | tgroup_test4_col1_idx  | index | yugabyte |                 | 0 bytes
+                                                                             List of tablegroup tables
+ Group Name | Group Owner | Access privileges |    Group Description     | Group Tablespace | Group Options |          Name          | Type  |  Owner   | Rel Description |  Size
+------------+-------------+-------------------+--------------------------+------------------+---------------+------------------------+-------+----------+-----------------+---------
+ tgroup1    | yugabyte    |                   | Comment for Tablegroup 1 |                  |               | tgroup_test1           | table | yugabyte |                 | 0 bytes
+ tgroup1    | yugabyte    |                   | Comment for Tablegroup 1 |                  |               | tgroup_test2           | table | yugabyte |                 | 0 bytes
+ tgroup1    | yugabyte    |                   | Comment for Tablegroup 1 |                  |               | tgroup_test1_col2_idx  | index | yugabyte |                 | 0 bytes
+ tgroup1    | yugabyte    |                   | Comment for Tablegroup 1 |                  |               | tgroup_test3_col1_idx1 | index | yugabyte |                 | 0 bytes
+ tgroup1    | yugabyte    |                   | Comment for Tablegroup 1 |                  |               | tgroup_with1           | table | yugabyte |                 | 0 bytes
+ tgroup2    | yugabyte    |                   | Comment for Tablegroup 2 |                  |               | tgroup_test4_col2_idx  | index | yugabyte |                 | 0 bytes
+ tgroup2    | yugabyte    |                   | Comment for Tablegroup 2 |                  |               | tgroup_test4           | table | yugabyte |                 | 0 bytes
+ tgroup2    | yugabyte    |                   | Comment for Tablegroup 2 |                  |               | tgroup_test3           | table | yugabyte |                 | 0 bytes
+ tgroup2    | yugabyte    |                   | Comment for Tablegroup 2 |                  |               | tgroup_test4_col1_idx  | index | yugabyte |                 | 0 bytes
 (9 rows)
 
 COMMENT ON TABLEGROUP tgroup2 IS NULL;
 \dgr+ tgroup2
-                      List of tablegroups
-  Name   |  Owner   | Access privileges | Description | Options
----------+----------+-------------------+-------------+---------
- tgroup2 | yugabyte |                   |             |
+                             List of tablegroups
+  Name   |  Owner   | Access privileges | Description | Tablespace | Options
+---------+----------+-------------------+-------------+------------+---------
+ tgroup2 | yugabyte |                   |             |            |
 (1 row)
 
 \dgrt tgroup2
@@ -264,7 +265,7 @@ Tablegroup: "tgroup_describe1"
 -- DROP TABLEGROUP
 --
 DROP TABLEGROUP tgroup3;
--- These should fail. CREATE TABLE is to check that the row entry was deleted from pg_tablegroup.
+-- These should fail. CREATE TABLE is to check that the row entry was deleted from pg_yb_tablegroup.
 CREATE TABLE tgroup_test5 (col1 int, col2 int) TABLEGROUP tgroup3;
 ERROR:  tablegroup "tgroup3" does not exist
 DROP TABLEGROUP tgroup1;
@@ -279,6 +280,47 @@ DROP TABLE tgroup_with1;
 DROP TABLEGROUP tgroup1;
 -- Create a tablegroup with the name of a dropped tablegroup.
 CREATE TABLEGROUP tgroup1;
+--
+-- Assigning a tablespace to a tablegroup
+--
+CREATE TABLESPACE tblspc WITH (replica_placement='{"num_replicas": 1, "placement_blocks": [{"cloud":"cloud1","region":"datacenter1","zone":"rack1","min_num_replicas":1}]}');
+-- These should fail
+CREATE TABLEGROUP grp1 TABLESPACE nonexistentspc;
+ERROR:  tablespace "nonexistentspc" does not exist
+CREATE TABLEGROUP grp2 TABLESPACE pg_global;
+ERROR:  tablegroups cannot be placed in pg_global tablespace
+-- These should succeeed
+CREATE TABLEGROUP grp3 TABLESPACE tblspc;
+SET default_tablespace = "tblspc";
+CREATE TABLEGROUP grp4;
+SET default_tablespace = '';
+CREATE TABLE tgroup_test6 (col1 int, col2 int) TABLEGROUP grp3;
+\dgr+
+                                 List of tablegroups
+       Name       |  Owner   | Access privileges | Description | Tablespace | Options
+------------------+----------+-------------------+-------------+------------+---------
+ grp3             | yugabyte |                   |             | tblspc     |
+ grp4             | yugabyte |                   |             | tblspc     |
+ tgroup1          | yugabyte |                   |             |            |
+ tgroup2          | yugabyte |                   |             |            |
+ tgroup_describe1 | yugabyte |                   |             |            |
+ tgroup_describe2 | yugabyte |                   |             |            |
+(6 rows)
+
+\dgrt+
+                                                                              List of tablegroup tables
+    Group Name    | Group Owner | Access privileges | Group Description | Group Tablespace | Group Options |           Name            | Type  |  Owner   | Rel Description |  Size
+------------------+-------------+-------------------+-------------------+------------------+---------------+---------------------------+-------+----------+-----------------+---------
+ grp3             | yugabyte    |                   |                   | tblspc           |               | tgroup_test6              | table | yugabyte |                 | 0 bytes
+ tgroup2          | yugabyte    |                   |                   |                  |               | tgroup_test4              | table | yugabyte |                 | 0 bytes
+ tgroup2          | yugabyte    |                   |                   |                  |               | tgroup_test4_col1_idx     | index | yugabyte |                 | 0 bytes
+ tgroup2          | yugabyte    |                   |                   |                  |               | tgroup_test4_col2_idx     | index | yugabyte |                 | 0 bytes
+ tgroup2          | yugabyte    |                   |                   |                  |               | tgroup_test3              | table | yugabyte |                 | 0 bytes
+ tgroup_describe1 | yugabyte    |                   |                   |                  |               | tgroup_describe_col1_idx  | index | yugabyte |                 | 0 bytes
+ tgroup_describe1 | yugabyte    |                   |                   |                  |               | tgroup_describe           | table | yugabyte |                 | 0 bytes
+ tgroup_describe2 | yugabyte    |                   |                   |                  |               | tgroup_describe_col1_idx2 | index | yugabyte |                 | 0 bytes
+(8 rows)
+
 --
 -- Interactions with colocated database.
 --

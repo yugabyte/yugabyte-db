@@ -12,9 +12,8 @@
 
 #include "yb/rocksdb/db/db_iterator_wrapper.h"
 
-#include "yb/gutil/stringprintf.h"
-#include "yb/util/logging.h"
 #include "yb/util/bytes_formatter.h"
+#include "yb/util/logging.h"
 
 using yb::FormatSliceAsStr;
 using yb::Format;

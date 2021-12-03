@@ -22,6 +22,10 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -85,7 +89,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       // check if the nodes already exist in the cloud provider, if so,
       // fail the universe creation.
       universe = Universe.getOrBadRequest(universe.universeUUID);
-      checkIfNodesExist(universe);
+      validateNodeExistence(universe);
       Cluster primaryCluster = taskParams().getPrimaryCluster();
 
       performUniversePreflightChecks(universe.getUniverseDetails().clusters);
@@ -203,26 +207,32 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
     log.info("Finished {} task.", getName());
   }
 
-  private void checkIfNodesExist(Universe universe) {
-    String errMsg;
+  private void validateNodeExistence(Universe universe) {
     for (NodeDetails node : universe.getNodes()) {
       if (node.placementUuid == null) {
-        errMsg = String.format("Node %s does not have placement.", node.nodeName);
+        String errMsg = String.format("Node %s does not have placement.", node.nodeName);
         throw new RuntimeException(errMsg);
       }
       Cluster cluster = universe.getCluster(node.placementUuid);
-      if (!cluster.userIntent.providerType.equals(CloudType.onprem)) {
-        NodeTaskParams nodeParams = new NodeTaskParams();
-        nodeParams.universeUUID = universe.universeUUID;
-        nodeParams.expectedUniverseVersion = universe.version;
-        nodeParams.nodeName = node.nodeName;
-        nodeParams.azUuid = node.azUuid;
-        nodeParams.placementUuid = node.placementUuid;
-        if (instanceExists(nodeParams)) {
-          errMsg =
-              String.format("Node %s already exist. Pick different universe name.", node.nodeName);
-          throw new RuntimeException(errMsg);
-        }
+      if (cluster.userIntent.providerType.equals(CloudType.onprem)) {
+        continue;
+      }
+      Map<String, String> expectedTags = new HashMap<>();
+      expectedTags.put("universe_uuid", universe.universeUUID.toString());
+      if (node.nodeUuid != null) {
+        expectedTags.put("node_uuid", node.nodeUuid.toString());
+      }
+      NodeTaskParams nodeParams = new NodeTaskParams();
+      nodeParams.universeUUID = universe.universeUUID;
+      nodeParams.expectedUniverseVersion = universe.version;
+      nodeParams.nodeName = node.nodeName;
+      nodeParams.azUuid = node.azUuid;
+      nodeParams.placementUuid = node.placementUuid;
+      Optional<Boolean> optional = instanceExists(nodeParams, expectedTags);
+      if (optional.isPresent() && !optional.get()) {
+        String errMsg =
+            String.format("Node %s already exist. Pick different universe name.", node.nodeName);
+        throw new RuntimeException(errMsg);
       }
     }
   }

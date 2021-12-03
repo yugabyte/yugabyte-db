@@ -30,19 +30,21 @@
 // under the License.
 //
 
-#include "yb/consensus/leader_election.h"
-
 #include <functional>
 #include <memory>
 #include <string>
 #include <vector>
 
-#include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/consensus-test-util.h"
+#include "yb/consensus/consensus_peers.h"
+#include "yb/consensus/leader_election.h"
 #include "yb/consensus/metadata.pb.h"
+
+#include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
+
+#include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 

@@ -29,15 +29,19 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/consensus/quorum_util.h"
 
 #include <set>
 #include <string>
 
+#include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus_meta.h"
 
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/strings/substitute.h"
+
+#include "yb/util/net/net_util.h"
 #include "yb/util/status.h"
 
 namespace yb {

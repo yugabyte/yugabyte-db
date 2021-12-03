@@ -17,8 +17,12 @@
 
 #include "yb/docdb/consensus_frontier.h"
 
+#include "yb/rocksdb/db.h"
+
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_retention_policy.h"
+
+#include "yb/util/logging.h"
 
 namespace yb {
 namespace tablet {

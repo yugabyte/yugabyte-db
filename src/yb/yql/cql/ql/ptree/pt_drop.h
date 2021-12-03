@@ -40,7 +40,7 @@ class PTDropStmt : public TreeNode {
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
   PTDropStmt(MemoryContext *memctx,
-             YBLocation::SharedPtr loc,
+             YBLocationPtr loc,
              ObjectType drop_type,
              PTQualifiedNameListNode::SharedPtr names,
              bool drop_if_exists);

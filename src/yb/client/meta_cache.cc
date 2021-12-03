@@ -32,36 +32,58 @@
 
 #include "yb/client/meta_cache.h"
 
-#include <shared_mutex>
+#include <stdint.h>
+
+#include <atomic>
+#include <list>
+#include <memory>
 #include <mutex>
+#include <shared_mutex>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 #include <boost/optional/optional_io.hpp>
 #include <glog/logging.h>
+#include <gtest/gtest_prod.h>
 
+#include "yb/client/client-internal.h"
 #include "yb/client/client.h"
 #include "yb/client/client_error.h"
-#include "yb/client/client-internal.h"
+#include "yb/client/schema.h"
 #include "yb/client/table.h"
+#include "yb/client/yb_table_name.h"
 
-#include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/stl_util.h"
+#include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
-#include "yb/rpc/messenger.h"
-#include "yb/rpc/rpc.h"
+
+#include "yb/rpc/rpc_fwd.h"
 
 #include "yb/tserver/local_tablet_server.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/async_util.h"
+#include "yb/util/atomic.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/locks.h"
+#include "yb/util/logging.h"
+#include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/net/sockaddr.h"
+#include "yb/util/random_util.h"
+#include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
-#include "yb/util/random_util.h"
+#include "yb/util/status_format.h"
 #include "yb/util/unique_lock.h"
 
 using std::map;
@@ -161,6 +183,8 @@ RemoteTabletServer::RemoteTabletServer(const string& uuid,
       local_tserver_(local_tserver) {
   LOG_IF(DFATAL, proxy && !IsLocal()) << "Local tserver has non-local proxy";
 }
+
+RemoteTabletServer::~RemoteTabletServer() = default;
 
 Status RemoteTabletServer::InitProxy(YBClient* client) {
   {
@@ -276,7 +300,28 @@ bool RemoteTabletServer::HasCapability(CapabilityId capability) const {
   return std::binary_search(capabilities_.begin(), capabilities_.end(), capability);
 }
 
+std::string ReplicasCount::ToString() {
+  return Format(
+      " live replicas $0, read replicas $1, expected live replicas $2, expected read replicas $3",
+      num_alive_live_replicas, num_alive_read_replicas,
+      expected_live_replicas, expected_read_replicas);
+}
+
 ////////////////////////////////////////////////////////////
+
+RemoteTablet::RemoteTablet(std::string tablet_id,
+                           Partition partition,
+                           boost::optional<PartitionListVersion> partition_list_version,
+                           uint64 split_depth,
+                           const TabletId& split_parent_tablet_id)
+    : tablet_id_(std::move(tablet_id)),
+      log_prefix_(Format("T $0: ", tablet_id_)),
+      partition_(std::move(partition)),
+      partition_list_version_(partition_list_version),
+      split_depth_(split_depth),
+      split_parent_tablet_id_(split_parent_tablet_id),
+      stale_(false) {
+}
 
 RemoteTablet::~RemoteTablet() {
   if (PREDICT_FALSE(FLAGS_TEST_verify_all_replicas_alive)) {
@@ -2042,13 +2087,13 @@ void MetaCache::LookupTabletByKey(const std::shared_ptr<YBTable>& table,
                     << ", partition_start: " << Slice(*partition_start).ToDebugHexString();
 
   PartitionGroupStartKeyPtr partition_group_start;
-  if (DoLookupTabletByKey<SharedLock<boost::shared_mutex>>(
+  if (DoLookupTabletByKey<SharedLock<std::shared_timed_mutex>>(
           table, table_partition_list, partition_start, deadline, &callback,
           &partition_group_start)) {
     return;
   }
 
-  bool result = DoLookupTabletByKey<std::lock_guard<boost::shared_mutex>>(
+  bool result = DoLookupTabletByKey<std::lock_guard<std::shared_timed_mutex>>(
       table, table_partition_list, partition_start, deadline, &callback, &partition_group_start);
   LOG_IF(DFATAL, !result)
       << "Lookup was not started for table " << table->ToString()
@@ -2060,11 +2105,11 @@ void MetaCache::LookupAllTablets(const std::shared_ptr<const YBTable>& table,
                                  LookupTabletRangeCallback callback) {
   // We first want to check the cache in read-only mode, and only if we can't find anything
   // do a lookup in write mode.
-  if (DoLookupAllTablets<SharedLock<boost::shared_mutex>>(table, deadline, &callback)) {
+  if (DoLookupAllTablets<SharedLock<std::shared_timed_mutex>>(table, deadline, &callback)) {
     return;
   }
 
-  bool result = DoLookupAllTablets<std::lock_guard<boost::shared_mutex>>(
+  bool result = DoLookupAllTablets<std::lock_guard<std::shared_timed_mutex>>(
       table, deadline, &callback);
   LOG_IF(DFATAL, !result)
       << "Full table lookup was not started for table " << table->ToString();
@@ -2177,6 +2222,14 @@ void MetaCache::ReleaseMasterLookupPermit() {
   master_lookup_sem_.Release();
 }
 
+std::future<Result<internal::RemoteTabletPtr>> MetaCache::LookupTabletByKeyFuture(
+    const std::shared_ptr<YBTable>& table,
+    const PartitionKey& partition_key,
+    CoarseTimePoint deadline) {
+  return MakeFuture<Result<internal::RemoteTabletPtr>>([&](auto callback) {
+    this->LookupTabletByKey(table, partition_key, deadline, std::move(callback));
+  });
+}
 
 LookupDataGroup::~LookupDataGroup() {
   std::vector<LookupData*> leftovers;
@@ -2207,6 +2260,22 @@ void LookupDataGroup::Finished(
   LOG(INFO)
       << "Finished lookup for " << id.ToString() << ": " << request_no << ", while "
       << expected << " was running, could happen during tablet split";
+}
+
+TableData::TableData(const VersionedTablePartitionListPtr& partition_list_)
+    : partition_list(partition_list_) {
+  DCHECK_ONLY_NOTNULL(partition_list);
+}
+
+std::string VersionedPartitionStartKey::ToString() const {
+  return YB_STRUCT_TO_STRING(key, partition_list_version);
+}
+
+std::string RemoteReplica::ToString() const {
+  return Format("$0 ($1, $2)",
+                ts->permanent_uuid(),
+                consensus::RaftPeerPB::Role_Name(role),
+                Failed() ? "FAILED" : "OK");
 }
 
 } // namespace internal

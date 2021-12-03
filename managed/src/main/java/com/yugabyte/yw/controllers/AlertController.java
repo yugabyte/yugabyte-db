@@ -106,6 +106,25 @@ public class AlertController extends AuthenticatedController {
     return PlatformResults.withData(alerts);
   }
 
+  @ApiOperation(value = "Count alerts", response = Integer.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "CountAlertsRequest",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.filters.AlertApiFilter",
+          required = true))
+  public Result countAlerts(UUID customerUUID) {
+    Customer.getOrBadRequest(customerUUID);
+
+    AlertApiFilter apiFilter = parseJsonAndValidate(AlertApiFilter.class);
+
+    AlertFilter filter = apiFilter.toFilter().toBuilder().customerUuid(customerUUID).build();
+
+    int alertCount = alertService.count(filter);
+
+    return PlatformResults.withData(alertCount);
+  }
+
   @ApiOperation(value = "List alerts (paginated)", response = AlertPagedResponse.class)
   @ApiImplicitParams(
       @ApiImplicitParam(

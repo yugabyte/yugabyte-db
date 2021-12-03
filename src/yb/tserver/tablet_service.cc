@@ -37,18 +37,22 @@
 #include <string>
 #include <vector>
 
+#include <glog/logging.h>
+
 #include "yb/client/forward_rpc.h"
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_pool.h"
 
+#include "yb/common/ql_rowblock.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
+
+#include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/raft_consensus.h"
 
 #include "yb/docdb/cql_operation.h"
-#include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/pgsql_operation.h"
 
 #include "yb/gutil/bind.h"
@@ -56,42 +60,49 @@
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/escaping.h"
+
+#include "yb/rpc/thread_pool.h"
+
 #include "yb/server/hybrid_clock.h"
 
-#include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/abstract_tablet.h"
 #include "yb/tablet/metadata.pb.h"
-#include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_metrics.h"
-
 #include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/operations/split_operation.h"
 #include "yb/tablet/operations/truncate_operation.h"
 #include "yb/tablet/operations/update_txn_operation.h"
 #include "yb/tablet/operations/write_operation.h"
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_bootstrap_if.h"
+#include "yb/tablet/tablet_metrics.h"
+#include "yb/tablet/transaction_participant.h"
 
+#include "yb/tserver/service_util.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
-#include "yb/tserver/tserver_error.h"
 #include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_error.h"
 
 #include "yb/util/crc.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/faststring.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
 #include "yb/util/math_util.h"
 #include "yb/util/mem_tracker.h"
+#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
 #include "yb/util/status_callback.h"
-#include "yb/util/trace.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
-#include "yb/consensus/consensus.pb.h"
-#include "yb/tserver/service_util.h"
+#include "yb/util/trace.h"
 
 #include "yb/yql/pgwrapper/ysql_upgrade.h"
 
@@ -891,7 +902,7 @@ void TabletServiceAdminImpl::AlterSchema(const ChangeMetadataRequestPB* req,
   } else {
     table_info = tablet.peer->tablet_metadata()->primary_table_info();
   }
-  const Schema& tablet_schema = table_info->schema;
+  const Schema& tablet_schema = *table_info->schema;
   uint32_t schema_version = table_info->schema_version;
   // Sanity check, to verify that the tablet should have the same schema
   // specified in the request.
@@ -1030,7 +1041,7 @@ void TabletServiceImpl::VerifyTableRowRange(
     (*resp->mutable_consistency_stats())[table_id] = consistency_stats[table_id];
   } else {
     const IndexMap index_map =
-        peer_tablet->tablet_peer->tablet_metadata()->primary_table_info()->index_map;
+        *peer_tablet->tablet_peer->tablet_metadata()->primary_table_info()->index_map;
     vector<IndexInfo> indexes;
     vector<TableId> index_ids;
     if (req->index_ids().empty()) {
@@ -1670,8 +1681,8 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
         }
         if (pg_req.ysql_catalog_version() < last_breaking_catalog_version) {
           SetupErrorAndRespond(resp->mutable_error(),
-              STATUS_SUBSTITUTE(QLError, "Catalog Version Mismatch: A DDL occurred while "
-                                        "processing this query. Try again."),
+              STATUS_SUBSTITUTE(QLError, "The catalog snapshot used for this "
+                                         "transaction has been invalidated."),
               TabletServerErrorPB::MISMATCHED_SCHEMA, &context);
           return;
         }
@@ -2055,8 +2066,8 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
         }
         if (pg_req.ysql_catalog_version() < last_breaking_catalog_version) {
           SetupErrorAndRespond(resp->mutable_error(),
-              STATUS_SUBSTITUTE(QLError, "Catalog Version Mismatch: A DDL occurred while "
-                                        "processing this query. Try again."),
+              STATUS_SUBSTITUTE(QLError, "The catalog snapshot used for this "
+                                         "transaction has been invalidated."),
               TabletServerErrorPB::MISMATCHED_SCHEMA, &context);
           return;
         }
@@ -2983,7 +2994,7 @@ void TabletServiceImpl::Shutdown() {
 }
 
 scoped_refptr<Histogram> TabletServer::GetMetricsHistogram(
-    TabletServerServiceIf::RpcMethodIndexes metric) {
+    TabletServerServiceRpcMethodIndexes metric) {
   // Returns the metric Histogram by holding a lock to make sure tablet_server_service_ remains
   // unchanged during the operation.
   std::lock_guard<simple_spinlock> l(lock_);

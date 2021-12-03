@@ -6,11 +6,18 @@
 #include <cmath>
 #include <limits>
 
-#include "yb/yql/cql/ql/test/ql-test-base.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/util/decimal.h"
+
 #include "yb/common/jsonb.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/schema.h"
+
+#include "yb/util/decimal.h"
+#include "yb/util/result.h"
+#include "yb/util/status_log.h"
+
+#include "yb/yql/cql/ql/test/ql-test-base.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
 
 DECLARE_bool(TEST_tserver_timeout);
 

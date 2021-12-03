@@ -16,8 +16,19 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/cql/ql/ptree/pt_create_table.h"
-#include "yb/yql/cql/ql/ptree/sem_context.h"
+
+#include "yb/client/schema.h"
+#include "yb/common/schema.h"
+
 #include "yb/util/flag_tags.h"
+
+#include "yb/yql/cql/ql/ptree/pt_column_definition.h"
+#include "yb/yql/cql/ql/ptree/pt_option.h"
+#include "yb/yql/cql/ql/ptree/pt_table_property.h"
+#include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/yql/cql/ql/ptree/sem_state.h"
+#include "yb/yql/cql/ql/ptree/yb_location.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
 
 DECLARE_bool(use_cassandra_authentication);
 
@@ -39,7 +50,7 @@ using client::YBColumnSchema;
 PTCreateTable::PTCreateTable(MemoryContext *memctx,
                              YBLocation::SharedPtr loc,
                              const PTQualifiedName::SharedPtr& name,
-                             const PTListNode::SharedPtr& elements,
+                             const PTListNodePtr& elements,
                              bool create_if_not_exists,
                              const PTTablePropertyListNode::SharedPtr& table_properties)
     : TreeNode(memctx, loc),
@@ -56,11 +67,15 @@ PTCreateTable::PTCreateTable(MemoryContext *memctx,
 PTCreateTable::~PTCreateTable() {
 }
 
+client::YBTableName PTCreateTable::yb_table_name() const {
+  return relation_->ToTableName();
+}
+
 CHECKED_STATUS PTCreateTable::Analyze(SemContext *sem_context) {
   SemState sem_state(sem_context);
 
   // Processing table name.
-  RETURN_NOT_OK(relation_->AnalyzeName(sem_context, OBJECT_TABLE));
+  RETURN_NOT_OK(relation_->AnalyzeName(sem_context, ObjectType::TABLE));
 
   // For creating an index operation, SemContext::LookupTable should have already checked that the
   // current role has the ALTER permission on the table. We don't need to check for any additional
@@ -233,7 +248,6 @@ void PTCreateTable::PrintSemanticAnalysisResult(SemContext *sem_context) {
       sem_output += " <Hash key, Type = ";
     } else if (column->is_primary_key()) {
       sem_output += " <Primary key, ";
-      using SortingType = ColumnSchema::SortingType;
       switch (column->sorting_type()) {
         case SortingType::kNotSpecified: sem_output += "None"; break;
         case SortingType::kAscending: sem_output += "Asc"; break;
@@ -275,7 +289,7 @@ CHECKED_STATUS PTCreateTable::ToTableProperties(TableProperties *table_propertie
 
 PTPrimaryKey::PTPrimaryKey(MemoryContext *memctx,
                            YBLocation::SharedPtr loc,
-                           const PTListNode::SharedPtr& columns)
+                           const PTListNodePtr& columns)
     : PTConstraint(memctx, loc),
       columns_(columns) {
 }

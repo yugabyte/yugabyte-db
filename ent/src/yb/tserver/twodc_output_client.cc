@@ -20,6 +20,7 @@
 #include "yb/client/client_error.h"
 #include "yb/client/client_utils.h"
 #include "yb/client/meta_cache.h"
+#include "yb/client/table.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_fwd.h"
@@ -29,6 +30,7 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
 #include "yb/util/stol_utils.h"
 
 DECLARE_int32(cdc_write_rpc_timeout_ms);

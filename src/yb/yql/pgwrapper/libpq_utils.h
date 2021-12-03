@@ -20,6 +20,7 @@
 
 #include "yb/common/common.pb.h"
 
+#include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"

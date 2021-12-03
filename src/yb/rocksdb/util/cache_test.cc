@@ -21,14 +21,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#include "yb/rocksdb/cache.h"
-
 #include <forward_list>
-#include <vector>
 #include <string>
-#include "yb/rocksdb/util/coding.h"
-#include "yb/util/string_util.h"
+#include <vector>
+
 #include <gtest/gtest.h>
+
+#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/util/coding.h"
+
+#include "yb/util/string_util.h"
 #include "yb/util/test_macros.h"
 
 DECLARE_double(cache_single_touch_ratio);

@@ -19,10 +19,7 @@
 
 #include <boost/preprocessor/seq/for_each.hpp>
 
-#include <glog/logging.h>
-
 #include "yb/util/enums.h"
-#include "yb/util/math_util.h"
 #include "yb/util/slice.h"
 
 namespace yb {

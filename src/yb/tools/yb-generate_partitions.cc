@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include "yb/tools/yb-generate_partitions.h"
+
 #include <map>
 
 #include "yb/client/client.h"
@@ -19,12 +21,14 @@
 
 #include "yb/common/common.pb.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/schema.h"
 
-#include "yb/tools/yb-generate_partitions.h"
-#include "yb/util/date_time.h"
+#include "yb/master/master.pb.h"
+
 #include "yb/util/enums.h"
-#include "yb/util/stol_utils.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/stol_utils.h"
 #include "yb/util/timestamp.h"
 
 namespace yb {
@@ -42,6 +46,9 @@ YBPartitionGenerator::YBPartitionGenerator(const YBTableName& table_name,
                                            const vector<string>& master_addresses) :
     table_name_(table_name),
     master_addresses_(master_addresses) {
+}
+
+YBPartitionGenerator::~YBPartitionGenerator() {
 }
 
 Status YBPartitionGenerator::Init() {

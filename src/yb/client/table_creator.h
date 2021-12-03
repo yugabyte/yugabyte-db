@@ -14,9 +14,18 @@
 #ifndef YB_CLIENT_TABLE_CREATOR_H
 #define YB_CLIENT_TABLE_CREATOR_H
 
-#include "yb/client/table.h"
+#include <boost/optional/optional.hpp>
+
+#include "yb/client/client_fwd.h"
+#include "yb/client/yb_table_name.h"
+
+#include "yb/common/partition.h"
+
+#include "yb/gutil/macros.h"
 
 #include "yb/master/master.pb.h"
+
+#include "yb/util/monotime.h"
 
 namespace yb {
 struct TransactionMetadata;

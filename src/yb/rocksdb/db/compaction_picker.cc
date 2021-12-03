@@ -36,11 +36,18 @@
 
 
 #include "yb/rocksdb/compaction_filter.h"
+#include "yb/rocksdb/db/column_family.h"
+#include "yb/rocksdb/db/filename.h"
+#include "yb/rocksdb/db/version_set.h"
+#include "yb/rocksdb/util/log_buffer.h"
+#include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/random.h"
+#include "yb/rocksdb/util/statistics.h"
 #include "yb/util/string_util.h"
 #include "yb/rocksdb/util/sync_point.h"
 
 #include "yb/util/logging.h"
+#include <glog/logging.h>
 
 DEFINE_bool(aggressive_compaction_for_read_amp, false,
             "Determines if we should compact aggressively to reduce read amplification based on "

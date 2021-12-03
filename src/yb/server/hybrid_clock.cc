@@ -36,12 +36,12 @@
 #include <mutex>
 
 #include <glog/logging.h>
+
 #include "yb/gutil/bind.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
+
 #include "yb/util/errno.h"
 #include "yb/util/flag_tags.h"
-#include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"

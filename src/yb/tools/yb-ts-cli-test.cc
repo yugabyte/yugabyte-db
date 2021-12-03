@@ -34,13 +34,13 @@
 #include <boost/assign/list_of.hpp>
 #include <gtest/gtest.h>
 
-#include "yb/gutil/map-util.h"
-#include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
 #include "yb/integration-tests/test_workload.h"
+
 #include "yb/util/path_util.h"
 #include "yb/util/subprocess.h"
 

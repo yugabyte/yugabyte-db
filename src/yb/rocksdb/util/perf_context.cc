@@ -17,9 +17,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include <sstream>
 
 #include "yb/rocksdb/perf_context.h"
-#include "yb/rocksdb/util/stop_watch.h"
 
 namespace rocksdb {
 

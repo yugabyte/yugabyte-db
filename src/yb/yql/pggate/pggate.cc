@@ -11,41 +11,41 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //--------------------------------------------------------------------------------------------------
+#include "yb/yql/pggate/pggate.h"
 
 #include <boost/optional.hpp>
-
-#include "yb/client/tablet_server.h"
-#include "yb/client/yb_table_name.h"
-
-#include "yb/common/pg_system_attr.h"
-
-#include "yb/docdb/doc_key.h"
-#include "yb/docdb/primitive_value.h"
-
-#include "yb/yql/pggate/pg_sample.h"
-#include "yb/yql/pggate/pggate.h"
-#include "yb/yql/pggate/pggate_flags.h"
-#include "yb/yql/pggate/pg_memctx.h"
-#include "yb/yql/pggate/pg_ddl.h"
-#include "yb/yql/pggate/pg_insert.h"
-#include "yb/yql/pggate/pg_update.h"
-#include "yb/yql/pggate/pg_delete.h"
-#include "yb/yql/pggate/pg_truncate_colocated.h"
-#include "yb/yql/pggate/pg_select.h"
-#include "yb/yql/pggate/pg_txn_manager.h"
-#include "yb/yql/pggate/ybc_pggate.h"
-
-#include "yb/util/range.h"
 
 #include "yb/client/client.h"
 #include "yb/client/client_fwd.h"
 #include "yb/client/client_utils.h"
+#include "yb/client/tablet_server.h"
+#include "yb/common/pg_system_attr.h"
+#include "yb/common/schema.h"
+#include "yb/docdb/doc_key.h"
+#include "yb/docdb/primitive_value.h"
+#include "yb/gutil/casts.h"
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
 #include "yb/rpc/secure_stream.h"
 #include "yb/server/secure.h"
-
-#include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/tserver_forward_service.proxy.h"
+#include "yb/tserver/tserver_shared_mem.h"
+#include "yb/util/format.h"
+#include "yb/util/range.h"
+#include "yb/util/shared_mem.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/yql/pggate/pg_ddl.h"
+#include "yb/yql/pggate/pg_delete.h"
+#include "yb/yql/pggate/pg_insert.h"
+#include "yb/yql/pggate/pg_memctx.h"
+#include "yb/yql/pggate/pg_sample.h"
+#include "yb/yql/pggate/pg_select.h"
+#include "yb/yql/pggate/pg_truncate_colocated.h"
+#include "yb/yql/pggate/pg_txn_manager.h"
+#include "yb/yql/pggate/pg_update.h"
+#include "yb/yql/pggate/pggate_flags.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 DECLARE_string(rpc_bind_addresses);
 DECLARE_bool(use_node_to_node_encryption);
@@ -65,7 +65,7 @@ namespace {
 CHECKED_STATUS AddColumn(PgCreateTable* pg_stmt, const char *attr_name, int attr_num,
                          const YBCPgTypeEntity *attr_type, bool is_hash, bool is_range,
                          bool is_desc, bool is_nulls_first) {
-  using SortingType = ColumnSchema::SortingType;
+  using SortingType = SortingType;
   SortingType sorting_type = SortingType::kNotSpecified;
 
   if (!is_hash && is_range) {
@@ -1434,11 +1434,13 @@ void PgApiImpl::ClearSeparateDdlTxnMode() {
 }
 
 Status PgApiImpl::SetActiveSubTransaction(SubTransactionId id) {
-  return pg_session_->SetActiveSubTransaction(id);
+  RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
+  return pg_txn_manager_->SetActiveSubTransaction(id);
 }
 
 Status PgApiImpl::RollbackSubTransaction(SubTransactionId id) {
-  return pg_session_->RollbackSubTransaction(id);
+  pg_session_->DropBufferedOperations();
+  return pg_txn_manager_->RollbackSubTransaction(id);
 }
 
 void PgApiImpl::ResetCatalogReadTime() {

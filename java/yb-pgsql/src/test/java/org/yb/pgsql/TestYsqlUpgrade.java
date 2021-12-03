@@ -89,6 +89,20 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
   /** Since shared relations aren't cleared between tests, we can't reuse names. */
   private String sharedRelName;
 
+  private final String createPgTablegroupTable =
+      "CREATE TABLE IF NOT EXISTS pg_catalog.pg_tablegroup (\n" +
+      "  grpname    name        NOT NULL,\n" +
+      "  grpowner   oid         NOT NULL,\n" +
+      "  grpacl     aclitem[],\n" +
+      "  grpoptions text[],\n" +
+      "  CONSTRAINT pg_tablegroup_oid_index PRIMARY KEY (oid ASC)\n" +
+      "    WITH (table_oid = 8001)\n" +
+      ") WITH (\n" +
+      "  oids = true,\n" +
+      "  table_oid = 8000,\n" +
+      "  row_type_oid = 8002\n" +
+      ")";
+
   @Rule
   public TestName name = new TestName();
 
@@ -639,13 +653,6 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
         assertQuery(stmt, selectSql,
             new Row(123, 111, "t1"));
 
-        // Insert with an oid out of bounds.
-        runInvalidSystemQuery(stmt, "INSERT INTO " + tableName + " (oid, v1, v2)"
-            + " VALUES (17000, -1, 'x')",
-            "rows inserted during YSQL upgrade must have OIDs below user range");
-        assertQuery(stmt, selectSql,
-            new Row(123, 111, "t1"));
-
         // Insert non-conflicting row with ON CONFLICT DO NOTHING.
         executeSystemTableDml(stmt, "INSERT INTO " + tableName + " (oid, v1, v2)"
             + " VALUES (234, 222, 't2') ON CONFLICT DO NOTHING");
@@ -673,22 +680,32 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
   public void upgradeIsIdempotent() throws Exception {
     final int lastHardcodedMigrationVersion = 8;
 
+    // Start with an early version of the db, apply migrations.
+    recreateWithYsqlVersion(YsqlSnapshotVersion.EARLIEST);
+    try (Connection conn = getConnectionBuilder().withDatabase("template1").connect();
+         Statement stmt = conn.createStatement()) {
+      stmt.execute("CREATE DATABASE " + customDbName);
+    }
+    runMigrations();
+
     // Ignore pg_yb_catalog_version because we bump current_version disregarding
     // IF NOT EXISTS clause (whether the entity is actually created doesn't matter).
     // For pg_yb_migration, verify that all migrations were applied.
     try (Connection conn = getConnectionBuilder().withDatabase(customDbName).connect();
          Statement stmt = conn.createStatement()) {
       SysCatalogSnapshot preSnapshot = takeSysCatalogSnapshot(stmt);
-      final int latestMajorVersion = preSnapshot.catalog.get(MIGRATIONS_TABLE).get(0).getInt(0);
-      final int latestMinorVersion = preSnapshot.catalog.get(MIGRATIONS_TABLE).get(0).getInt(1);
+      final int latestMajorVersion = preSnapshot.catalog.get(MIGRATIONS_TABLE)
+        .get(preSnapshot.catalog.get(MIGRATIONS_TABLE).size() - 1).getInt(0);
+      final int latestMinorVersion = preSnapshot.catalog.get(MIGRATIONS_TABLE)
+        .get(preSnapshot.catalog.get(MIGRATIONS_TABLE).size() - 1).getInt(1);
       final int totalMigrations = latestMajorVersion + latestMinorVersion;
+
       // Make sure the latest version is at least as big as the last hardcoded one (it will be
       // greater if more migrations were introduced after YSQL upgrade is released).
       assertTrue(latestMajorVersion >= lastHardcodedMigrationVersion);
       preSnapshot.catalog.remove(MIGRATIONS_TABLE);
       preSnapshot.catalog.remove(CATALOG_VERSION_TABLE);
 
-      setSystemRelsModificationGuc(stmt, true);
       executeSystemTableDml(stmt, "DELETE FROM " + MIGRATIONS_TABLE);
       runMigrations();
 
@@ -731,10 +748,22 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     final SysCatalogSnapshot preSnapshotCustom, preSnapshotTemplate1;
     try (Connection conn = getConnectionBuilder().withDatabase(customDbName).connect();
          Statement stmt = conn.createStatement()) {
+      setSystemRelsModificationGuc(stmt, true);
+      // We need this until we can drop tables in migrations.
+      // When we create the DB by reinitdb, the pg_tablegroup table does not exist.
+      // When we upgrade the DB from an old snapshot, the pg_tablegroup table does exist.
+      // To reconcile this, we can either create it in the reinitdb DB before taking the snapshot,
+      // or delete the table from the upgraded snapshot
+      // However, other system tables like pg_attribute are modified by the creation of this table,
+      // and so we can't simply remove it from the snapshot. So it is much simpler to create this
+      // table again than to try to remove all traces of it ever existing.
+      executeSystemTableDml(stmt, createPgTablegroupTable);
       preSnapshotCustom = takeSysCatalogSnapshot(stmt);
     }
     try (Connection conn = getConnectionBuilder().withDatabase("template1").connect();
          Statement stmt = conn.createStatement()) {
+      setSystemRelsModificationGuc(stmt, true);
+      executeSystemTableDml(stmt, createPgTablegroupTable);
       preSnapshotTemplate1 = takeSysCatalogSnapshot(stmt);
     }
 
@@ -1311,6 +1340,9 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     final long pgProcOid = 1255;
     final long pgClassOid = 1259;
     final long pgNamespaceOid = 2615;
+    final long pgTsDictOid = 3600;
+    final long pgTsConfigOid = 3602;
+    final long pgTsTemplateOid = 3764;
 
     Map<Long, String> flatEntityNamesMap = new HashMap<>();
     entityNamesMap.values().forEach(flatEntityNamesMap::putAll);
@@ -1418,6 +1450,13 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
         break;
       case "pg_proc":
         replace.accept(2 /* pronamespace */, entityNamesMap.get(pgNamespaceOid));
+        break;
+      case "pg_ts_dict":
+        replace.accept(4 /* dicttemplate */, entityNamesMap.get(pgTsTemplateOid));
+        break;
+      case "pg_ts_config_map":
+        replace.accept(0 /* mapcfg */, entityNamesMap.get(pgTsConfigOid));
+        replace.accept(3 /* mapdict */, entityNamesMap.get(pgTsDictOid));
         break;
       default:
         return copy;

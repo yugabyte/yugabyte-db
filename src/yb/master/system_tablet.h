@@ -16,8 +16,9 @@
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
-#include "yb/common/schema.h"
-#include "yb/master/yql_virtual_table.h"
+
+#include "yb/master/master_fwd.h"
+
 #include "yb/tablet/abstract_tablet.h"
 
 namespace yb {
@@ -31,7 +32,7 @@ class SystemTablet : public tablet::AbstractTablet {
 
   yb::SchemaPtr GetSchema(const std::string& table_id = "") const override;
 
-  const common::YQLStorageIf& QLStorage() const override;
+  const YQLStorageIf& QLStorage() const override;
 
   TableType table_type() const override;
 

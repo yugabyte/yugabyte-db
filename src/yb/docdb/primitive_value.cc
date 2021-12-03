@@ -17,21 +17,25 @@
 
 #include <glog/logging.h>
 
-#include "yb/common/schema.h"
+#include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 
+#include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/intent.h"
+
 #include "yb/gutil/macros.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/compare_util.h"
 #include "yb/util/decimal.h"
 #include "yb/util/fast_varint.h"
 #include "yb/util/net/inetaddress.h"
-
-#include "yb/docdb/doc_key.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 using std::string;
 using strings::Substitute;
@@ -41,7 +45,6 @@ using yb::util::Decimal;
 using yb::util::VarInt;
 using yb::FormatBytesAsStr;
 using yb::util::CompareUsingLessThan;
-using yb::util::FastAppendSignedVarIntToBuffer;
 using yb::util::FastDecodeSignedVarIntUnsafe;
 using yb::util::kInt32SignBitFlipMask;
 using yb::util::AppendBigEndianUInt64;
@@ -221,9 +224,9 @@ string PrimitiveValue::ToString(AutoDecodeKeys auto_decode_keys) const {
     case ValueType::kUInt16Hash:
       return Substitute("UInt16Hash($0)", uint16_val_);
     case ValueType::kColumnId:
-      return Substitute("ColumnId($0)", column_id_val_);
+      return Format("ColumnId($0)", column_id_val_);
     case ValueType::kSystemColumnId:
-      return Substitute("SystemColumnId($0)", column_id_val_);
+      return Format("SystemColumnId($0)", column_id_val_);
     case ValueType::kObject:
       return "{}";
     case ValueType::kRedisSet:
@@ -1622,8 +1625,8 @@ PrimitiveValue::PrimitiveValue(ValueType value_type)
   }
 }
 
-PrimitiveValue PrimitiveValue::NullValue(ColumnSchema::SortingType sorting) {
-  using SortingType = ColumnSchema::SortingType;
+PrimitiveValue PrimitiveValue::NullValue(SortingType sorting) {
+  using SortingType = SortingType;
 
   return PrimitiveValue(
       sorting == SortingType::kAscendingNullsLast || sorting == SortingType::kDescendingNullsLast
@@ -1632,16 +1635,16 @@ PrimitiveValue PrimitiveValue::NullValue(ColumnSchema::SortingType sorting) {
 }
 
 SortOrder PrimitiveValue::SortOrderFromColumnSchemaSortingType(
-    ColumnSchema::SortingType sorting_type) {
-  if (sorting_type == ColumnSchema::SortingType::kDescending ||
-      sorting_type == ColumnSchema::SortingType::kDescendingNullsLast) {
+    SortingType sorting_type) {
+  if (sorting_type == SortingType::kDescending ||
+      sorting_type == SortingType::kDescendingNullsLast) {
     return SortOrder::kDescending;
   }
   return SortOrder::kAscending;
 }
 
 PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value,
-                                             ColumnSchema::SortingType sorting_type) {
+                                             SortingType sorting_type) {
   const auto sort_order = SortOrderFromColumnSchemaSortingType(sorting_type);
 
   switch (value.value_case()) {

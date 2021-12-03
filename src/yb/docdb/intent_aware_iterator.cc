@@ -14,23 +14,27 @@
 #include "yb/docdb/intent_aware_iterator.h"
 
 #include <future>
-#include <thread>
-#include <boost/optional/optional_io.hpp>
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/transaction.h"
 
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/shared_lock_manager_fwd.h"
 #include "yb/docdb/conflict_resolution.h"
-#include "yb/docdb/docdb.h"
-#include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/doc_key.h"
+#include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/docdb-internal.h"
+#include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent.h"
+#include "yb/docdb/key_bounds.h"
 #include "yb/docdb/transaction_dump.h"
 #include "yb/docdb/value.h"
 
-#include "yb/server/hybrid_clock.h"
 #include "yb/util/bytes_formatter.h"
+#include "yb/util/debug-util.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 using namespace std::literals;
 
@@ -225,7 +229,7 @@ IntentAwareIterator::IntentAwareIterator(
     const rocksdb::ReadOptions& read_opts,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
-    const TransactionOperationContextOpt& txn_op_context)
+    const TransactionOperationContext& txn_op_context)
     : read_time_(read_time),
       encoded_read_time_read_(EncodeHybridTime(read_time_.read)),
       encoded_read_time_local_limit_(EncodeHybridTime(read_time_.local_limit)),
@@ -239,7 +243,7 @@ IntentAwareIterator::IntentAwareIterator(
           << ", txn_op_context: " << txn_op_context_;
 
   if (txn_op_context) {
-    if (txn_op_context->txn_status_manager.MinRunningHybridTime() != HybridTime::kMax) {
+    if (txn_op_context.txn_status_manager->MinRunningHybridTime() != HybridTime::kMax) {
       intent_iter_ = docdb::CreateRocksDBIterator(doc_db.intents,
                                                   doc_db.key_bounds,
                                                   docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
@@ -604,8 +608,8 @@ Result<FetchKeyResult> IntentAwareIterator::FetchKey() {
           << ", while read bounds are: " << read_time_;
 
   YB_TRANSACTION_DUMP(
-      Read, txn_op_context_ ? txn_op_context_->txn_status_manager.tablet_id() : TabletId(),
-      txn_op_context_ ? txn_op_context_->transaction_id : TransactionId::Nil(),
+      Read, txn_op_context_ ? txn_op_context_.txn_status_manager->tablet_id() : TabletId(),
+      txn_op_context_ ? txn_op_context_.transaction_id : TransactionId::Nil(),
       read_time_, result.write_time, result.same_transaction,
       result.key.size(), result.key, value().size(), value());
 
@@ -637,7 +641,7 @@ bool IntentAwareIterator::SatisfyBounds(const Slice& slice) {
 
 void IntentAwareIterator::ProcessIntent() {
   auto decode_result = DecodeStrongWriteIntent(
-      txn_op_context_.get(), &intent_iter_, &transaction_status_cache_);
+      txn_op_context_, &intent_iter_, &transaction_status_cache_);
   if (!decode_result.ok()) {
     status_ = decode_result.status();
     return;
@@ -925,7 +929,7 @@ Status IntentAwareIterator::FindLatestRecord(
       SubDocKey::DebugSliceToString(key_without_ht) + ", " + yb::ToString(latest_record_ht) + ", "
       + yb::ToString(result_value),
       std::bind(&IntentAwareIterator::DebugDump, this));
-  DCHECK(!DebugHasHybridTime(key_without_ht));
+  DCHECK(!DebugHasHybridTime(key_without_ht)) << SubDocKey::DebugSliceToString(key_without_ht);
 
   RETURN_NOT_OK(status_);
   if (!valid()) {

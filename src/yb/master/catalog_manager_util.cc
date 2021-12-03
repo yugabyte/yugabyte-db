@@ -10,14 +10,12 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/master/catalog_manager_util.h"
 
-#include <gflags/gflags.h>
-
+#include "yb/master/catalog_entity_info.h"
 #include "yb/util/flag_tags.h"
-#include "yb/util/logging.h"
 #include "yb/util/math_util.h"
+#include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 
 DEFINE_double(balancer_load_max_standard_deviation, 2.0,
@@ -299,7 +297,7 @@ bool CatalogManagerUtil::IsCloudInfoPrefix(const CloudInfoPB& ci1, const CloudIn
 
 CHECKED_STATUS CatalogManagerUtil::IsPlacementInfoValid(const PlacementInfoPB& placement_info) {
   // Check for duplicates.
-  unordered_set<string> cloud_info_string;
+  std::unordered_set<string> cloud_info_string;
 
   for (int i = 0; i < placement_info.placement_blocks_size(); i++) {
     if (!placement_info.placement_blocks(i).has_cloud_info()) {

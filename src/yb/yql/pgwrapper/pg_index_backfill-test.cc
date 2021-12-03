@@ -9,17 +9,19 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
-
 #include <cmath>
 #include <map>
 #include <string>
 #include <vector>
 
-#include "yb/client/table.h"
-#include "yb/gutil/strings/join.h"
+#include "yb/client/table_info.h"
+#include "yb/common/schema.h"
 #include "yb/integration-tests/backfill-test-util.h"
+#include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/format.h"
 #include "yb/util/monotime.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"

@@ -11,15 +11,29 @@
 // under the License.
 //
 
-#include <yb/rpc/rpc_introspection.pb.h>
-#include "yb/yql/cql/cqlserver/cql_server.h"
+#include <boost/bind.hpp>
+
+#include "yb/client/client.h"
+
+#include "yb/gutil/strings/substitute.h"
+
+#include "yb/master/master.pb.h"
+
+#include "yb/rpc/connection_context.h"
+#include "yb/rpc/messenger.h"
+#include "yb/rpc/rpc_introspection.pb.h"
+
+#include "yb/tserver/tablet_server_interface.h"
 
 #include "yb/util/flag_tags.h"
 #include "yb/util/net/dns_resolver.h"
+#include "yb/util/result.h"
 #include "yb/util/size_literals.h"
-#include "yb/gutil/strings/substitute.h"
+#include "yb/util/source_location.h"
+
+#include "yb/yql/cql/cqlserver/cql_rpc.h"
+#include "yb/yql/cql/cqlserver/cql_server.h"
 #include "yb/yql/cql/cqlserver/cql_service.h"
-#include "yb/rpc/messenger.h"
 
 DEFINE_int32(cql_service_queue_length, 10000,
              "RPC queue length for CQL service");
@@ -51,7 +65,7 @@ boost::posix_time::time_duration refresh_interval() {
 
 CQLServer::CQLServer(const CQLServerOptions& opts,
                      boost::asio::io_service* io,
-                     tserver::TabletServer* tserver)
+                     tserver::TabletServerIf* tserver)
     : RpcAndWebServerBase(
           "CQLServer", opts, "yb.cqlserver",
           MemTracker::CreateTracker(
@@ -122,7 +136,7 @@ void CQLServer::CQLNodeListRefresh(const boost::system::error_code &ec) {
     std::vector<master::TSInformationPB> live_tservers;
     Status s = tserver_->GetLiveTServers(&live_tservers);
     if (!s.ok()) {
-      LOG (WARNING) << s.ToString();
+      LOG(WARNING) << s.ToString();
       RescheduleTimer();
       return;
     }

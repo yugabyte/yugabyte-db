@@ -39,9 +39,9 @@ class PTAssign : public TreeNode {
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
   PTAssign(MemoryContext *memctx,
-           YBLocation::SharedPtr loc,
+           YBLocationPtr loc,
            const PTQualifiedName::SharedPtr& lhs_,
-           const PTExpr::SharedPtr& rhs_,
+           const PTExprPtr& rhs_,
            const PTExprListNode::SharedPtr& subscript_args = nullptr,
            const PTExprListNode::SharedPtr& json_ops = nullptr);
   virtual ~PTAssign();
@@ -81,7 +81,7 @@ class PTAssign : public TreeNode {
     return json_ops_ != nullptr && json_ops_->size() > 0;
   }
 
-  PTExpr::SharedPtr rhs() {
+  PTExprPtr rhs() {
     return rhs_;
   }
 
@@ -92,7 +92,7 @@ class PTAssign : public TreeNode {
  private:
   PTQualifiedName::SharedPtr lhs_;
 
-  PTExpr::SharedPtr rhs_;
+  PTExprPtr rhs_;
 
   // for assigning specific indexes for collection columns: e.g.: lhs[key1][key2] = value
   PTExprListNode::SharedPtr subscript_args_;
@@ -121,13 +121,13 @@ class PTUpdateStmt : public PTDmlStmt {
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
   PTUpdateStmt(MemoryContext *memctx,
-               YBLocation::SharedPtr loc,
+               YBLocationPtr loc,
                PTTableRef::SharedPtr relation,
                PTAssignListNode::SharedPtr set_clause,
-               PTExpr::SharedPtr where_clause,
-               PTExpr::SharedPtr if_clause = nullptr,
+               PTExprPtr where_clause,
+               PTExprPtr if_clause = nullptr,
                bool else_error = false,
-               PTDmlUsingClause::SharedPtr using_clause = nullptr,
+               PTDmlUsingClausePtr using_clause = nullptr,
                const bool return_status = false,
                PTDmlWritePropertyListNode::SharedPtr update_properties = nullptr);
   virtual ~PTUpdateStmt();
@@ -169,6 +169,10 @@ class PTUpdateStmt : public PTDmlStmt {
 
   const PTDmlWritePropertyListNode::SharedPtr& update_properties() const {
     return update_properties_;
+  }
+
+  bool IsWriteOp() const override {
+    return true;
   }
 
  private:

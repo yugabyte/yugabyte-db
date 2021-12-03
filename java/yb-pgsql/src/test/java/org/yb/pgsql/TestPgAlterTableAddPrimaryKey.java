@@ -393,10 +393,10 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
           new Row(6, 6)));
 
       assertRowList(stmt,
-        "SELECT s.relname, pg_tablegroup.grpname " +
+        "SELECT s.relname, pg_yb_tablegroup.grpname " +
         "FROM (SELECT relname, unnest(reloptions) AS opts FROM pg_class) " +
-        "s, pg_tablegroup WHERE opts LIKE " +
-        "CONCAT('%tablegroup=', CAST(pg_tablegroup.oid AS text), '%') " +
+        "s, pg_yb_tablegroup WHERE opts LIKE " +
+        "CONCAT('%tablegroup=', CAST(pg_yb_tablegroup.oid AS text), '%') " +
         "ORDER BY s", Arrays.asList(
           new Row("nopk", "tgroup1"),
           new Row("nopk2", "tgroup1"),

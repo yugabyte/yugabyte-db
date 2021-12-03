@@ -29,18 +29,17 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
+#include <memory>
 #include <string>
 #include <unordered_map>
-#include <memory>
+
 #include <boost/optional.hpp>
-#include <gflags/gflags.h>
 #include <gtest/gtest.h>
 
 #include "yb/client/client-test-util.h"
 #include "yb/client/client.h"
+#include "yb/client/schema.h"
 #include "yb/client/table_creator.h"
-
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/fs/fs_manager.h"
 #include "yb/gutil/stl_util.h"
@@ -57,6 +56,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/pstack_watcher.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
 
 using namespace std::literals;
@@ -475,10 +475,11 @@ void RemoteBootstrapITest::RejectRogueLeader(YBTableType table_type) {
   // It's not necessarily part of the API but this could return faliure due to
   // rejecting the remote. We intend to make that part async though, so ignoring
   // this return value in this test.
-  ignore_result(itest::StartRemoteBootstrap(ts, tablet_id, zombie_leader_uuid,
-                                            HostPort(zombie_ets->bound_rpc_addr()),
-                                            2, // Say I'm from term 2.
-                                            timeout));
+  WARN_NOT_OK(itest::StartRemoteBootstrap(ts, tablet_id, zombie_leader_uuid,
+                                          HostPort(zombie_ets->bound_rpc_addr()),
+                                          2, // Say I'm from term 2.
+                                          timeout),
+              "Start remote bootstrap failed");
 
   // Wait another few seconds to be sure the remote bootstrap is rejected.
   deadline = MonoTime::Now();

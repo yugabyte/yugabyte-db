@@ -14,6 +14,8 @@
 
 #include "yb/common/snapshot.h"
 
+#include "yb/util/result.h"
+
 namespace yb {
 namespace tools {
 
@@ -26,7 +28,7 @@ string SnapshotIdToString(const SnapshotId& snapshot_id) {
 
 SnapshotId StringToSnapshotId(const string& str) {
   if (str.length() == TxnSnapshotId::StaticStringSize()) {
-    auto txn_snapshot_id = TxnSnapshotId::FromString(str);
+    auto txn_snapshot_id = TxnSnapshotIdFromString(str);
     if (txn_snapshot_id.ok()) {
       return SnapshotId(to_char_ptr(txn_snapshot_id->data()), txn_snapshot_id->size());
     }

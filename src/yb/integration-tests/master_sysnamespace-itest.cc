@@ -16,6 +16,9 @@
 #include "yb/master/master.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/util/result.h"
 #include "yb/util/test_util.h"
 
 namespace yb {

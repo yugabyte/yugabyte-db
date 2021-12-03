@@ -145,7 +145,9 @@ set(YB_TEST_LINK_LIBS
   rpc_test_util
   tserver
   tablet_error
+  yb_common_test_util
   yb_util
+  yb_common_test_util
   ${YB_MIN_TEST_LIBS}
 )
 

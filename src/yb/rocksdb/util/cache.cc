@@ -23,18 +23,18 @@
 
 #include <assert.h>
 #include <stdio.h>
-#include <stdlib.h>
 
-#include "yb/util/metrics.h"
 #include "yb/rocksdb/cache.h"
-#include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/port/port.h"
+#include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/util/autovector.h"
 #include "yb/rocksdb/util/hash.h"
 #include "yb/rocksdb/util/mutexlock.h"
 #include "yb/rocksdb/util/statistics.h"
 
+#include "yb/util/cache_metrics.h"
 #include "yb/util/enums.h"
+#include "yb/util/metrics.h"
 #include "yb/util/random_util.h"
 
 // 0 value means that there exist no single_touch cache and

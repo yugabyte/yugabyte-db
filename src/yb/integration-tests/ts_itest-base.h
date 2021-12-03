@@ -37,7 +37,8 @@
 #include "yb/tserver/tablet_server-test-base.h"
 
 #include "yb/client/table_handle.h"
-#include "yb/client/table.h"
+
+#include "yb/util/random.h"
 
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_int32(consensus_rpc_timeout_ms);
@@ -104,7 +105,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
 
   // Removes a set of servers from the replicas_ list.
   // Handy for controlling who to validate against after killing servers.
-  void PruneFromReplicas(const unordered_set<std::string>& uuids);
+  void PruneFromReplicas(const std::unordered_set<std::string>& uuids);
 
   void GetOnlyLiveFollowerReplicas(const std::string& tablet_id,
                                    std::vector<itest::TServerDetails*>* followers);
@@ -137,9 +138,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
 
   void AssertAllReplicasAgree(int expected_result_count);
 
-  client::YBTableType table_type() {
-    return client::YBTableType::YQL_TABLE_TYPE;
-  }
+  client::YBTableType table_type();
 
  protected:
   std::unique_ptr<ExternalMiniCluster> cluster_;

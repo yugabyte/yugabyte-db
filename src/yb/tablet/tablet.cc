@@ -32,109 +32,78 @@
 
 #include "yb/tablet/tablet.h"
 
-#include <libpq-fe.h>
-
-#include <algorithm>
-#include <iterator>
-#include <limits>
-#include <memory>
-#include <mutex>
-#include <ostream>
-#include <unordered_set>
-#include <utility>
-#include <vector>
-
 #include <boost/container/static_vector.hpp>
-#include <boost/optional.hpp>
 
-#include "yb/common/transaction.h"
-#include "yb/rocksdb/db.h"
-#include "yb/rocksdb/db/memtable.h"
-#include "yb/rocksdb/metadata.h"
-#include "yb/rocksdb/options.h"
-#include "yb/rocksdb/statistics.h"
-#include "yb/rocksdb/utilities/checkpoint.h"
-#include "yb/rocksdb/write_batch.h"
-#include "yb/rocksutil/write_batch_formatter.h"
-
+#include "yb/client/client.h"
 #include "yb/client/error.h"
+#include "yb/client/meta_data_cache.h"
+#include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/transaction.h"
-#include "yb/client/session.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/common/common.pb.h"
-#include "yb/common/hybrid_time.h"
-#include "yb/common/ql_protocol.pb.h"
-#include "yb/common/ql_rowblock.h"
 #include "yb/common/pgsql_error.h"
+#include "yb/common/ql_rowblock.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction_error.h"
 
-#include "yb/consensus/consensus_round.h"
-#include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/opid_util.h"
 
-#include "yb/docdb/bounded_rocksdb_iterator.h"
+#include "yb/docdb/compaction_file_filter.h"
 #include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/cql_operation.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
+#include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/docdb.h"
-#include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/docdb_compaction_filter.h"
 #include "yb/docdb/docdb_compaction_filter_intents.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
-#include "yb/docdb/doc_ttl_util.h"
-#include "yb/docdb/compaction_file_filter.h"
-#include "yb/docdb/intent.h"
-#include "yb/docdb/key_bytes.h"
-#include "yb/docdb/lock_batch.h"
 #include "yb/docdb/pgsql_operation.h"
-#include "yb/docdb/primitive_value.h"
+#include "yb/docdb/ql_rocksdb_storage.h"
 #include "yb/docdb/redis_operation.h"
-#include "yb/docdb/value.h"
 
-#include "yb/gutil/atomicops.h"
-#include "yb/gutil/map-util.h"
-#include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/numbers.h"
-#include "yb/gutil/strings/substitute.h"
+#include "yb/gutil/casts.h"
+
+#include "yb/rocksdb/db/memtable.h"
+#include "yb/rocksdb/utilities/checkpoint.h"
+
 #include "yb/rocksutil/yb_rocksdb.h"
+
 #include "yb/server/hybrid_clock.h"
 
-#include "yb/tablet/tablet_fwd.h"
-#include "yb/tablet/snapshot_coordinator.h"
-#include "yb/tablet/tablet_snapshots.h"
-#include "yb/tablet/tablet_metrics.h"
-#include "yb/tablet/tablet_retention_policy.h"
-#include "yb/tablet/transaction_coordinator.h"
-#include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/operations/change_metadata_operation.h"
-#include "yb/tablet/operations/truncate_operation.h"
-#include "yb/tablet/operations/write_operation.h"
+#include "yb/tablet/operations/operation.h"
 #include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tablet/operations/split_operation.h"
-#include "yb/tablet/tablet_options.h"
+#include "yb/tablet/operations/truncate_operation.h"
+#include "yb/tablet/operations/write_operation.h"
+#include "yb/tablet/snapshot_coordinator.h"
+#include "yb/tablet/tablet_bootstrap_if.h"
+#include "yb/tablet/tablet_metrics.h"
+#include "yb/tablet/tablet_retention_policy.h"
+#include "yb/tablet/tablet_snapshots.h"
+#include "yb/tablet/transaction_coordinator.h"
+#include "yb/tablet/transaction_participant.h"
 
+#include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
-#include "yb/util/enums.h"
-#include "yb/util/env.h"
 #include "yb/util/flag_tags.h"
-#include "yb/util/jsonwriter.h"
-#include "yb/util/locks.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/operation_counter.h"
 #include "yb/util/pg_util.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/slice.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/trace.h"
+#include "yb/util/yb_pg_errcodes.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
@@ -390,7 +359,7 @@ class Tablet::RegularRocksDbListener : public rocksdb::EventListener {
 };
 
 Tablet::Tablet(const TabletInitData& data)
-    : key_schema_(data.metadata->schema()->CreateKeyProjection()),
+    : key_schema_(std::make_unique<Schema>(data.metadata->schema()->CreateKeyProjection())),
       metadata_(data.metadata),
       table_type_(data.metadata->table_type()),
       log_anchor_registry_(data.log_anchor_registry),
@@ -440,7 +409,7 @@ Tablet::Tablet(const TabletInitData& data)
   }
 
   auto table_info = metadata_->primary_table_info();
-  bool has_index = !table_info->index_map.empty();
+  bool has_index = !table_info->index_map->empty();
   bool transactional = data.metadata->schema()->table_properties().is_transactional();
   if (transactional) {
     server::HybridClock::EnableClockSkewControl();
@@ -465,10 +434,10 @@ Tablet::Tablet(const TabletInitData& data)
 
   // If this is a unique index tablet, set up the index primary key schema.
   if (table_info->index_info && table_info->index_info->is_unique()) {
-    unique_index_key_schema_.emplace();
+    unique_index_key_schema_ = std::make_unique<Schema>();
     const auto ids = table_info->index_info->index_key_column_ids();
-    CHECK_OK(table_info->schema.CreateProjectionByIdsIgnoreMissing(ids,
-                                                                   &*unique_index_key_schema_));
+    CHECK_OK(table_info->schema->CreateProjectionByIdsIgnoreMissing(
+        ids, unique_index_key_schema_.get()));
   }
 
   if (data.transaction_coordinator_context &&
@@ -1032,9 +1001,9 @@ CHECKED_STATUS ResetRocksDB(
   return rocksdb::DestroyDB(dir, options);
 }
 
-Result<Tablet::ScopedRWOperationPauses> Tablet::StartShutdownRocksDBs(
+Result<TabletScopedRWOperationPauses> Tablet::StartShutdownRocksDBs(
     DisableFlushOnShutdown disable_flush_on_shutdown, Stop stop) {
-  ScopedRWOperationPauses op_pauses;
+  TabletScopedRWOperationPauses op_pauses;
 
   auto pause = [this, stop](const Abortable abortable) -> Result<ScopedRWOperationPause> {
     auto op_pause = PauseReadWriteOperations(abortable, stop);
@@ -1063,7 +1032,8 @@ Result<Tablet::ScopedRWOperationPauses> Tablet::StartShutdownRocksDBs(
   return op_pauses;
 }
 
-Status Tablet::CompleteShutdownRocksDBs(Destroy destroy, ScopedRWOperationPauses* ops_pauses) {
+Status Tablet::CompleteShutdownRocksDBs(
+    Destroy destroy, TabletScopedRWOperationPauses* ops_pauses) {
   // We need non-null ops_pauses just to guarantee that PauseReadWriteOperations has been called.
   RSTATUS_DCHECK(
       ops_pauses != nullptr, InvalidArgument,
@@ -1091,7 +1061,7 @@ Status Tablet::CompleteShutdownRocksDBs(Destroy destroy, ScopedRWOperationPauses
   return regular_status.ok() ? intents_status : regular_status;
 }
 
-Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
+Result<std::unique_ptr<YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
     const Schema &projection,
     const ReadHybridTime read_hybrid_time,
     const TableId& table_id,
@@ -1112,7 +1082,7 @@ Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
 
   const std::shared_ptr<tablet::TableInfo> table_info =
       VERIFY_RESULT(metadata_->GetTableInfo(table_id));
-  const Schema& schema = table_info->schema;
+  const Schema& schema = *table_info->schema;
   auto mapped_projection = std::make_unique<Schema>();
   RETURN_NOT_OK(schema.GetMappedReadProjection(projection, mapped_projection.get()));
 
@@ -1129,11 +1099,11 @@ Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
   return std::move(result);
 }
 
-Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
+Result<std::unique_ptr<YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
     const TableId& table_id) const {
   const std::shared_ptr<tablet::TableInfo> table_info =
       VERIFY_RESULT(metadata_->GetTableInfo(table_id));
-  return NewRowIterator(table_info->schema, {}, table_id);
+  return NewRowIterator(*table_info->schema, {}, table_id);
 }
 
 Status Tablet::ApplyRowOperations(
@@ -1435,7 +1405,7 @@ Status Tablet::HandleQLReadRequest(
     return Status::OK();
   }
 
-  Result<TransactionOperationContextOpt> txn_op_ctx =
+  Result<TransactionOperationContext> txn_op_ctx =
       CreateTransactionOperationContext(transaction_metadata, /* is_ysql_catalog_table */ false);
   RETURN_NOT_OK(txn_op_ctx);
   return AbstractTablet::HandleQLReadRequest(
@@ -1501,7 +1471,7 @@ void Tablet::KeyValueBatchFromQLWriteBatch(std::unique_ptr<WriteOperation> opera
 
   doc_ops.reserve(ql_write_batch->size());
 
-  Result<TransactionOperationContextOpt> txn_op_ctx =
+  Result<TransactionOperationContext> txn_op_ctx =
       CreateTransactionOperationContext(
           operation->request()->write_batch().transaction(),
           /* is_ysql_catalog_table */ false,
@@ -1530,8 +1500,8 @@ void Tablet::KeyValueBatchFromQLWriteBatch(std::unique_ptr<WriteOperation> opera
       DVLOG(3) << "Version matches : " << table_info->schema_version << " for "
                << AsString(req);
       auto write_op = std::make_unique<QLWriteOperation>(
-          std::shared_ptr<Schema>(table_info, &table_info->schema),
-          table_info->index_map, unique_index_key_schema_.get_ptr(),
+          std::shared_ptr<Schema>(table_info, table_info->schema.get()),
+          *table_info->index_map, unique_index_key_schema_.get(),
           *txn_op_ctx);
       auto status = write_op->Init(req, resp);
       if (!status.ok()) {
@@ -1753,10 +1723,10 @@ Status Tablet::HandlePgsqlReadRequest(
     return Status::OK();
   }
 
-  Result<TransactionOperationContextOpt> txn_op_ctx =
+  Result<TransactionOperationContext> txn_op_ctx =
       CreateTransactionOperationContext(
           transaction_metadata,
-          table_info->schema.table_properties().is_ysql_catalog_table(),
+          table_info->schema->table_properties().is_ysql_catalog_table(),
           subtransaction_metadata);
   RETURN_NOT_OK(txn_op_ctx);
   return AbstractTablet::HandlePgsqlReadRequest(
@@ -1930,7 +1900,7 @@ CHECKED_STATUS Tablet::PreparePgsqlWriteOperations(WriteOperation* operation) {
 
   doc_ops.reserve(pgsql_write_batch->size());
 
-  Result<TransactionOperationContextOpt> txn_op_ctx(boost::none);
+  Result<TransactionOperationContext> txn_op_ctx(TransactionOperationContext{});
 
   for (size_t i = 0; i < pgsql_write_batch->size(); i++) {
     PgsqlWriteRequestPB* req = pgsql_write_batch->Mutable(i);
@@ -1956,11 +1926,11 @@ CHECKED_STATUS Tablet::PreparePgsqlWriteOperations(WriteOperation* operation) {
         // Use the value of is_ysql_catalog_table from the first operation in the batch.
         txn_op_ctx = CreateTransactionOperationContext(
             operation->request()->write_batch().transaction(),
-            table_info->schema.table_properties().is_ysql_catalog_table(),
+            table_info->schema->table_properties().is_ysql_catalog_table(),
             operation->request()->write_batch().subtransaction());
         RETURN_NOT_OK(txn_op_ctx);
       }
-      auto write_op = std::make_unique<PgsqlWriteOperation>(table_info->schema, *txn_op_ctx);
+      auto write_op = std::make_unique<PgsqlWriteOperation>(*table_info->schema, *txn_op_ctx);
       RETURN_NOT_OK(write_op->Init(req, resp));
       doc_ops.emplace_back(std::move(write_op));
     }
@@ -2238,12 +2208,12 @@ Status Tablet::MarkBackfillDone(const TableId& table_id) {
   auto table_info = table_id.empty() ?
     metadata_->primary_table_info() : VERIFY_RESULT(metadata_->GetTableInfo(table_id));
   LOG_WITH_PREFIX(INFO) << "Setting backfill as done. Current schema  "
-                        << table_info->schema.ToString();
+                        << table_info->schema->ToString();
   const vector<DeletedColumn> empty_deleted_cols;
-  Schema new_schema = Schema(table_info->schema);
+  Schema new_schema = *table_info->schema;
   new_schema.SetRetainDeleteMarkers(false);
   metadata_->SetSchema(
-      new_schema, table_info->index_map, empty_deleted_cols, table_info->schema_version, table_id);
+      new_schema, *table_info->index_map, empty_deleted_cols, table_info->schema_version, table_id);
   return metadata_->Flush();
 }
 
@@ -2251,7 +2221,7 @@ Status Tablet::AlterSchema(ChangeMetadataOperation *operation) {
   auto current_table_info = VERIFY_RESULT(metadata_->GetTableInfo(
         operation->request()->has_alter_table_id() ?
         operation->request()->alter_table_id() : ""));
-  auto key_schema = current_table_info->schema.CreateKeyProjection();
+  auto key_schema = current_table_info->schema->CreateKeyProjection();
 
   RSTATUS_DCHECK_NE(operation->schema(), static_cast<void*>(nullptr), InvalidArgument,
                     "Schema could not be null");
@@ -2272,14 +2242,14 @@ Status Tablet::AlterSchema(ChangeMetadataOperation *operation) {
       return Status::OK();
     }
 
-    LOG_WITH_PREFIX(INFO) << "Alter schema from " << current_table_info->schema.ToString()
+    LOG_WITH_PREFIX(INFO) << "Alter schema from " << current_table_info->schema->ToString()
                           << " version " << current_table_info->schema_version
                           << " to " << operation->schema()->ToString()
                           << " version " << operation->schema_version();
 
     // Find out which columns have been deleted in this schema change, and add them to metadata.
     vector<DeletedColumn> deleted_cols;
-    for (const auto& col : current_table_info->schema.column_ids()) {
+    for (const auto& col : current_table_info->schema->column_ids()) {
       if (operation->schema()->find_column_by_id(col) == Schema::kColumnNotFound) {
         deleted_cols.emplace_back(col, clock_->Now());
         LOG_WITH_PREFIX(INFO) << "Column " << col << " recorded as deleted.";
@@ -2305,7 +2275,7 @@ Status Tablet::AlterSchema(ChangeMetadataOperation *operation) {
 
     // Create transaction manager and index table metadata cache for secondary index update.
     if (!operation->index_map().empty()) {
-      if (current_table_info->schema.table_properties().is_transactional() &&
+      if (current_table_info->schema->table_properties().is_transactional() &&
           !transaction_manager_) {
         transaction_manager_.emplace(client_future_.get(),
                                      scoped_refptr<server::Clock>(clock_),
@@ -2332,7 +2302,7 @@ Status Tablet::AlterSchema(ChangeMetadataOperation *operation) {
     CoarseTimePoint deadline = CoarseMonoClock::Now() +
         MonoDelta::FromMilliseconds(FLAGS_ysql_transaction_abort_timeout_ms);
     auto txn_id = VERIFY_RESULT(
-       TransactionId::FromString(operation->request()->transaction_id()));
+       TransactionIdFromString(operation->request()->transaction_id()));
     LOG_WITH_PREFIX(INFO) << "Aborting transactions that started prior to " << max_cutoff
                           << " for tablet id " << tablet_id()
                           << " excluding transaction with id " << txn_id;
@@ -2844,8 +2814,8 @@ Status Tablet::FlushWriteIndexBatch(
   std::shared_ptr<YBSession> session = VERIFY_RESULT(GetSessionForVerifyOrBackfill(deadline));
 
   std::unordered_set<
-      client::YBqlWriteOpPtr, client::YBqlWriteOp::PrimaryKeyComparator,
-      client::YBqlWriteOp::PrimaryKeyComparator>
+      client::YBqlWriteOpPtr, client::YBqlWritePrimaryKeyComparator,
+      client::YBqlWritePrimaryKeyComparator>
       ops_by_primary_key;
   std::vector<shared_ptr<client::YBqlWriteOp>> write_ops;
 
@@ -3931,12 +3901,12 @@ std::pair<int, int> Tablet::GetNumMemtables() const {
 
 // ------------------------------------------------------------------------------------------------
 
-Result<TransactionOperationContextOpt> Tablet::CreateTransactionOperationContext(
+Result<TransactionOperationContext> Tablet::CreateTransactionOperationContext(
     const TransactionMetadataPB& transaction_metadata,
     bool is_ysql_catalog_table,
     const boost::optional<SubTransactionMetadataPB>& subtransaction_metadata) const {
   if (!txns_enabled_)
-    return boost::none;
+    return TransactionOperationContext();
 
   if (transaction_metadata.has_transaction_id()) {
     Result<TransactionId> txn_id = FullyDecodeTransactionId(
@@ -3950,12 +3920,12 @@ Result<TransactionOperationContextOpt> Tablet::CreateTransactionOperationContext
   }
 }
 
-Result<TransactionOperationContextOpt> Tablet::CreateTransactionOperationContext(
+Result<TransactionOperationContext> Tablet::CreateTransactionOperationContext(
     const boost::optional<TransactionId>& transaction_id,
     bool is_ysql_catalog_table,
     const boost::optional<SubTransactionMetadataPB>& subtransaction_metadata) const {
   if (!txns_enabled_) {
-    return boost::none;
+    return TransactionOperationContext();
   }
 
   const TransactionId* txn_id = nullptr;
@@ -3970,7 +3940,7 @@ Result<TransactionOperationContextOpt> Tablet::CreateTransactionOperationContext
     // possible reads.
     txn_id = &kArbitraryTxnIdForNonTxnReads;
   } else {
-    return boost::none;
+    return TransactionOperationContext();
   }
 
   if (!subtransaction_metadata) {
@@ -4327,6 +4297,22 @@ void Tablet::UnregisterOperationFilter(OperationFilter* filter) {
 
 void Tablet::UnregisterOperationFilterUnlocked(OperationFilter* filter) {
   operation_filters_.erase(operation_filters_.iterator_to(*filter));
+}
+
+SchemaPtr Tablet::GetSchema(const std::string& table_id) const {
+  if (table_id.empty()) {
+    return metadata_->schema();
+  }
+  auto table_info = CHECK_RESULT(metadata_->GetTableInfo(table_id));
+  return SchemaPtr(table_info, table_info->schema.get());
+}
+
+Schema Tablet::GetKeySchema(const std::string& table_id) const {
+  if (table_id.empty()) {
+    return *key_schema_;
+  }
+  auto table_info = CHECK_RESULT(metadata_->GetTableInfo(table_id));
+  return table_info->schema->CreateKeyProjection();
 }
 
 // ------------------------------------------------------------------------------------------------

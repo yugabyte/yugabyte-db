@@ -10,27 +10,28 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/docdb/doc_write_batch.h"
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/docdb/doc_key.h"
-#include "yb/docdb/docdb_fwd.h"
-#include "yb/rocksdb/db.h"
-#include "yb/rocksdb/write_batch.h"
-#include "yb/rocksutil/write_batch_formatter.h"
-
-#include "yb/server/hybrid_clock.h"
-
+#include "yb/docdb/doc_path.h"
 #include "yb/docdb/doc_ttl_util.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb.pb.h"
+#include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
-#include "yb/docdb/value_type.h"
 #include "yb/docdb/kv_debug.h"
+#include "yb/docdb/subdocument.h"
+#include "yb/docdb/value_type.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/write_batch.h"
+#include "yb/rocksutil/write_batch_formatter.h"
+#include "yb/server/hybrid_clock.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/enums.h"
 #include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 using yb::BinaryOutputFormat;
 
@@ -374,7 +375,7 @@ Status DocWriteBatch::SetPrimitive(const DocPath& doc_path,
           BloomFilterMode::USE_BLOOM_FILTER,
           doc_path.encoded_doc_key().AsSlice(),
           query_id,
-          /*txn_op_context*/ boost::none,
+          TransactionOperationContext(),
           deadline,
           read_ht);
     };
@@ -502,7 +503,7 @@ Status DocWriteBatch::ReplaceRedisInList(
       BloomFilterMode::USE_BLOOM_FILTER,
       key_prefix_.AsSlice(),
       query_id,
-      /*txn_op_context*/ boost::none,
+      TransactionOperationContext(),
       deadline,
       read_ht);
 
@@ -616,7 +617,7 @@ Status DocWriteBatch::ReplaceCqlInList(
       BloomFilterMode::USE_BLOOM_FILTER,
       key_prefix_.AsSlice(),
       query_id,
-      /*txn_op_context*/ boost::none,
+      TransactionOperationContext(),
       deadline,
       read_ht);
 

@@ -16,6 +16,7 @@
 #include <thread>
 
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 using namespace std::literals;
 

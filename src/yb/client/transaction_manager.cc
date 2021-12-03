@@ -15,23 +15,20 @@
 
 #include "yb/client/transaction_manager.h"
 
-#include "yb/rpc/rpc.h"
-#include "yb/rpc/thread_pool.h"
-#include "yb/rpc/tasks_pool.h"
-
-#include "yb/util/random_util.h"
-#include "yb/util/rw_mutex.h"
-#include "yb/util/string_util.h"
-#include "yb/util/thread_restrictions.h"
-
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/table.h"
-
-#include "yb/common/transaction.h"
+#include "yb/client/yb_table_name.h"
 
 #include "yb/master/catalog_manager.h"
-#include "yb/master/master_defaults.h"
+
+#include "yb/rpc/tasks_pool.h"
+
+#include "yb/util/format.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/string_util.h"
+#include "yb/util/thread_restrictions.h"
 
 DEFINE_uint64(transaction_manager_workers_limit, 50,
               "Max number of workers used by transaction manager");
@@ -248,7 +245,7 @@ class LoadStatusTabletsTask {
 
   CHECKED_STATUS FetchLocalTransactionTableTablets(std::vector<TabletId>* tablets) {
     const auto& table_names = CHECK_RESULT(client_->ListTables(
-        yb::master::kTransactionTablePrefix, true /* exclude_ysql */));
+        kTransactionTablePrefix, true /* exclude_ysql */));
     const auto local_ts = client_->GetLocalTabletServer();
     if (!local_ts) {
       return Status::OK();
@@ -256,7 +253,7 @@ class LoadStatusTabletsTask {
     const auto& this_pb = local_ts->cloud_info();
     std::shared_ptr<client::YBTable> table;
     for (const auto& table_name : table_names) {
-      if (!StringStartsWithOrEquals(table_name.table_name(), yb::master::kTransactionTablePrefix)) {
+      if (!StringStartsWithOrEquals(table_name.table_name(), kTransactionTablePrefix)) {
         continue;
       }
       RETURN_NOT_OK(client_->OpenTable(table_name, &table));

@@ -17,6 +17,7 @@
 
 #include "yb/server/secure.h"
 
+#include "yb/util/result.h"
 #include "yb/util/test_util.h"
 
 using namespace std::literals;

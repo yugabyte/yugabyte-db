@@ -15,9 +15,12 @@
 
 #include "yb/common/pgsql_protocol.pb.h"
 
+#include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/primitive_value_util.h"
+
+#include "yb/util/result.h"
 
 namespace yb {
 namespace docdb {
@@ -31,11 +34,11 @@ QLRocksDBStorage::QLRocksDBStorage(const DocDB& doc_db)
 Status QLRocksDBStorage::GetIterator(const QLReadRequestPB& request,
                                      const Schema& projection,
                                      const Schema& schema,
-                                     const TransactionOperationContextOpt& txn_op_context,
+                                     const TransactionOperationContext& txn_op_context,
                                      CoarseTimePoint deadline,
                                      const ReadHybridTime& read_time,
-                                     const common::QLScanSpec& spec,
-                                     std::unique_ptr<common::YQLRowwiseIteratorIf> *iter) const {
+                                     const QLScanSpec& spec,
+                                     std::unique_ptr<YQLRowwiseIteratorIf> *iter) const {
 
   auto doc_iter = std::make_unique<DocRowwiseIterator>(
       projection, schema, txn_op_context, doc_db_, deadline, read_time);
@@ -49,8 +52,8 @@ Status QLRocksDBStorage::BuildYQLScanSpec(const QLReadRequestPB& request,
                                           const Schema& schema,
                                           const bool include_static_columns,
                                           const Schema& static_projection,
-                                          std::unique_ptr<common::QLScanSpec>* spec,
-                                          std::unique_ptr<common::QLScanSpec>*
+                                          std::unique_ptr<QLScanSpec>* spec,
+                                          std::unique_ptr<QLScanSpec>*
                                           static_row_spec) const {
   // Populate dockey from QL key columns.
   auto hash_code = request.has_hash_code() ?
@@ -100,17 +103,17 @@ Status QLRocksDBStorage::BuildYQLScanSpec(const QLReadRequestPB& request,
 
 Status QLRocksDBStorage::CreateIterator(const Schema& projection,
                                         const Schema& schema,
-                                        const TransactionOperationContextOpt& txn_op_context,
+                                        const TransactionOperationContext& txn_op_context,
                                         CoarseTimePoint deadline,
                                         const ReadHybridTime& read_time,
-                                        common::YQLRowwiseIteratorIf::UniPtr* iter) const {
+                                        YQLRowwiseIteratorIf::UniPtr* iter) const {
   auto doc_iter = std::make_unique<DocRowwiseIterator>(
       projection, schema, txn_op_context, doc_db_, deadline, read_time);
   *iter = std::move(doc_iter);
   return Status::OK();
 }
 
-Status QLRocksDBStorage::InitIterator(common::YQLRowwiseIteratorIf* iter,
+Status QLRocksDBStorage::InitIterator(YQLRowwiseIteratorIf* iter,
                                       const PgsqlReadRequestPB& request,
                                       const Schema& schema,
                                       const QLValuePB& ybctid) const {
@@ -125,11 +128,11 @@ Status QLRocksDBStorage::InitIterator(common::YQLRowwiseIteratorIf* iter,
 Status QLRocksDBStorage::GetIterator(uint64 stmt_id,
                                      const Schema& projection,
                                      const Schema& schema,
-                                     const TransactionOperationContextOpt& txn_op_context,
+                                     const TransactionOperationContext& txn_op_context,
                                      CoarseTimePoint deadline,
                                      const ReadHybridTime& read_time,
                                      const QLValuePB& ybctid,
-                                     common::YQLRowwiseIteratorIf::UniPtr* iter) const {
+                                     YQLRowwiseIteratorIf::UniPtr* iter) const {
   DocKey range_doc_key(schema);
   RETURN_NOT_OK(range_doc_key.DecodeFrom(ybctid.binary_value()));
   auto doc_iter = std::make_unique<DocRowwiseIterator>(
@@ -142,11 +145,11 @@ Status QLRocksDBStorage::GetIterator(uint64 stmt_id,
 Status QLRocksDBStorage::GetIterator(const PgsqlReadRequestPB& request,
                                      const Schema& projection,
                                      const Schema& schema,
-                                     const TransactionOperationContextOpt& txn_op_context,
+                                     const TransactionOperationContext& txn_op_context,
                                      CoarseTimePoint deadline,
                                      const ReadHybridTime& read_time,
                                      const DocKey& start_doc_key,
-                                     common::YQLRowwiseIteratorIf::UniPtr* iter) const {
+                                     YQLRowwiseIteratorIf::UniPtr* iter) const {
   // Populate dockey from QL key columns.
   auto hashed_components = VERIFY_RESULT(InitKeyColumnPrimitiveValues(
       request.partition_column_values(), schema, 0 /* start_idx */));

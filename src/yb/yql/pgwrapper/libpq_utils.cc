@@ -23,9 +23,11 @@
 #include "yb/gutil/endian.h"
 
 #include "yb/util/enums.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
-
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 using namespace std::literals;
 

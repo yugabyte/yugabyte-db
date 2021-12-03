@@ -24,17 +24,16 @@
 #include "yb/rocksdb/util/file_reader_writer.h"
 
 #include <algorithm>
-#include <mutex>
 
 #include "yb/rocksdb/port/port.h"
+#include "yb/rocksdb/rate_limiter.h"
 #include "yb/rocksdb/util/histogram.h"
-#include "yb/rocksdb/util/random.h"
-#include "yb/rocksdb/util/rate_limiter.h"
-#include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/stop_watch.h"
-#include "yb/util/stats/iostats_context_imp.h"
+#include "yb/rocksdb/util/sync_point.h"
 
 #include "yb/util/priority_thread_pool.h"
+#include "yb/util/stats/iostats_context_imp.h"
+#include "yb/util/status_log.h"
 
 DEFINE_bool(allow_preempting_compactions, true,
             "Whether a compaction may be preempted in favor of another compaction with higher "
@@ -85,6 +84,10 @@ Status RandomAccessFileReader::ReadAndValidate(
     file_read_hist_->Add(elapsed);
   }
   return s;
+}
+
+WritableFileWriter::~WritableFileWriter() {
+  WARN_NOT_OK(Close(), "Failed to close file");
 }
 
 Status WritableFileWriter::Append(const Slice& data) {
@@ -275,6 +278,10 @@ Status WritableFileWriter::SyncWithoutFlush(bool use_fsync) {
   Status s = SyncInternal(use_fsync);
   TEST_SYNC_POINT("WritableFileWriter::SyncWithoutFlush:2");
   return s;
+}
+
+Status WritableFileWriter::InvalidateCache(size_t offset, size_t length) {
+  return writable_file_->InvalidateCache(offset, length);
 }
 
 Status WritableFileWriter::SyncInternal(bool use_fsync) {

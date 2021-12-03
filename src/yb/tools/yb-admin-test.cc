@@ -34,16 +34,15 @@
 #include <regex>
 
 #include <boost/algorithm/string.hpp>
-
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
+#include "yb/client/schema.h"
 #include "yb/client/table_creator.h"
 
 #include "yb/common/json_util.h"
 
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/cluster_verifier.h"
@@ -55,11 +54,12 @@
 
 #include "yb/tools/admin-test-base.h"
 
+#include "yb/util/format.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/port_picker.h"
 #include "yb/util/random_util.h"
-#include "yb/util/string_trim.h"
+#include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
@@ -694,7 +694,7 @@ TEST_F(AdminCliTest, TestCreateTransactionStatusTablesWithPlacements) {
                                         "system",
                                         Substitute("transactions_z$0", i));
     ASSERT_OK(client->OpenTable(table_name, &table));
-    ASSERT_EQ(table->table_type(), TRANSACTION_STATUS_TABLE_TYPE);
+    ASSERT_EQ(table->table_type(), YBTableType::TRANSACTION_STATUS_TABLE_TYPE);
     ASSERT_EQ(table->replication_info().get().live_replicas().placement_blocks_size(), 1);
     auto pb = table->replication_info().get().live_replicas().placement_blocks(0).cloud_info();
     ASSERT_EQ(pb.placement_zone(), Substitute("z$0", i));

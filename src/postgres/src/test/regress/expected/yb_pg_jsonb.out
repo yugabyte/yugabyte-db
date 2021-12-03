@@ -2896,7 +2896,6 @@ SELECT count(*) FROM testjsonb WHERE j @? '$.bar';
 (1 row)
 
 CREATE INDEX jidx ON testjsonb USING gin (j);
-NOTICE:  replacing access method "gin" with "ybgin"
 SET enable_seqscan = off;
 SELECT count(*) FROM testjsonb WHERE j @> '{"wait":null}';
  count
@@ -3129,7 +3128,6 @@ ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 -- array exists - array elements should behave as keys (for GIN index scans too)
 CREATE INDEX jidx_array ON testjsonb USING gin((j->'array'));
-NOTICE:  replacing access method "gin" with "ybgin"
 SELECT count(*) from testjsonb  WHERE j->'array' ? 'bar';
  count
 -------
@@ -3243,7 +3241,6 @@ SELECT count(*) FROM testjsonb WHERE j = '{"pos":98, "line":371, "node":"CBA", "
 DROP INDEX jidx;
 ERROR:  index "jidx" does not exist
 CREATE INDEX jidx ON testjsonb USING gin (j jsonb_path_ops);
-NOTICE:  replacing access method "gin" with "ybgin"
 SET enable_seqscan = off;
 SELECT count(*) FROM testjsonb WHERE j @> '{"wait":null}';
  count
@@ -4645,62 +4642,218 @@ HINT:  Try using the function jsonb_set to replace key value.
 select jsonb_insert('{"a": {"b": "value"}}', '{a, b}', '"new_value"', true);
 ERROR:  cannot replace existing key
 HINT:  Try using the function jsonb_set to replace key value.
--- TODO(jason): uncomment when issue #1979 is closed or closing.
--- -- jsonb to tsvector
--- select to_tsvector('{"a": "aaa bbb ddd ccc", "b": ["eee fff ggg"], "c": {"d": "hhh iii"}}'::jsonb);
---
--- -- jsonb to tsvector with config
--- select to_tsvector('simple', '{"a": "aaa bbb ddd ccc", "b": ["eee fff ggg"], "c": {"d": "hhh iii"}}'::jsonb);
---
--- -- jsonb to tsvector with stop words
--- select to_tsvector('english', '{"a": "aaa in bbb ddd ccc", "b": ["the eee fff ggg"], "c": {"d": "hhh. iii"}}'::jsonb);
---
--- -- jsonb to tsvector with numeric values
--- select to_tsvector('english', '{"a": "aaa in bbb ddd ccc", "b": 123, "c": 456}'::jsonb);
---
--- -- jsonb_to_tsvector
--- select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '"all"');
--- select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '"key"');
--- select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '"string"');
--- select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '"numeric"');
--- select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '"boolean"');
--- select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '["string", "numeric"]');
---
--- select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '"all"');
--- select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '"key"');
--- select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '"string"');
--- select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '"numeric"');
--- select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '"boolean"');
--- select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '["string", "numeric"]');
---
--- -- ts_vector corner cases
--- select to_tsvector('""'::jsonb);
--- select to_tsvector('{}'::jsonb);
--- select to_tsvector('[]'::jsonb);
--- select to_tsvector('null'::jsonb);
---
--- -- jsonb_to_tsvector corner cases
--- select jsonb_to_tsvector('""'::jsonb, '"all"');
--- select jsonb_to_tsvector('{}'::jsonb, '"all"');
--- select jsonb_to_tsvector('[]'::jsonb, '"all"');
--- select jsonb_to_tsvector('null'::jsonb, '"all"');
---
--- select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '""');
--- select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '{}');
--- select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '[]');
--- select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, 'null');
--- select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '["all", null]');
---
--- -- ts_headline for jsonb
--- select ts_headline('{"a": "aaa bbb", "b": {"c": "ccc ddd fff", "c1": "ccc1 ddd1"}, "d": ["ggg hhh", "iii jjj"]}'::jsonb, tsquery('bbb & ddd & hhh'));
--- select ts_headline('english', '{"a": "aaa bbb", "b": {"c": "ccc ddd fff"}, "d": ["ggg hhh", "iii jjj"]}'::jsonb, tsquery('bbb & ddd & hhh'));
--- select ts_headline('{"a": "aaa bbb", "b": {"c": "ccc ddd fff", "c1": "ccc1 ddd1"}, "d": ["ggg hhh", "iii jjj"]}'::jsonb, tsquery('bbb & ddd & hhh'), 'StartSel = <, StopSel = >');
--- select ts_headline('english', '{"a": "aaa bbb", "b": {"c": "ccc ddd fff", "c1": "ccc1 ddd1"}, "d": ["ggg hhh", "iii jjj"]}'::jsonb, tsquery('bbb & ddd & hhh'), 'StartSel = <, StopSel = >');
---
--- -- corner cases for ts_headline with jsonb
--- select ts_headline('null'::jsonb, tsquery('aaa & bbb'));
--- select ts_headline('{}'::jsonb, tsquery('aaa & bbb'));
--- select ts_headline('[]'::jsonb, tsquery('aaa & bbb'));
+-- jsonb to tsvector
+select to_tsvector('{"a": "aaa bbb ddd ccc", "b": ["eee fff ggg"], "c": {"d": "hhh iii"}}'::jsonb);
+                                to_tsvector                                
+---------------------------------------------------------------------------
+ 'aaa':1 'bbb':2 'ccc':4 'ddd':3 'eee':6 'fff':7 'ggg':8 'hhh':10 'iii':11
+(1 row)
+
+-- jsonb to tsvector with config
+select to_tsvector('simple', '{"a": "aaa bbb ddd ccc", "b": ["eee fff ggg"], "c": {"d": "hhh iii"}}'::jsonb);
+                                to_tsvector                                
+---------------------------------------------------------------------------
+ 'aaa':1 'bbb':2 'ccc':4 'ddd':3 'eee':6 'fff':7 'ggg':8 'hhh':10 'iii':11
+(1 row)
+
+-- jsonb to tsvector with stop words
+select to_tsvector('english', '{"a": "aaa in bbb ddd ccc", "b": ["the eee fff ggg"], "c": {"d": "hhh. iii"}}'::jsonb);
+                                to_tsvector                                 
+----------------------------------------------------------------------------
+ 'aaa':1 'bbb':3 'ccc':5 'ddd':4 'eee':8 'fff':9 'ggg':10 'hhh':12 'iii':13
+(1 row)
+
+-- jsonb to tsvector with numeric values
+select to_tsvector('english', '{"a": "aaa in bbb ddd ccc", "b": 123, "c": 456}'::jsonb);
+           to_tsvector           
+---------------------------------
+ 'aaa':1 'bbb':3 'ccc':5 'ddd':4
+(1 row)
+
+-- jsonb_to_tsvector
+select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '"all"');
+                                   jsonb_to_tsvector                                    
+----------------------------------------------------------------------------------------
+ '123':8 '456':12 'aaa':2 'b':6 'bbb':4 'c':10 'd':14 'f':18 'fals':20 'g':22 'true':16
+(1 row)
+
+select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '"key"');
+       jsonb_to_tsvector        
+--------------------------------
+ 'b':2 'c':4 'd':6 'f':8 'g':10
+(1 row)
+
+select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '"string"');
+ jsonb_to_tsvector 
+-------------------
+ 'aaa':1 'bbb':3
+(1 row)
+
+select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '"numeric"');
+ jsonb_to_tsvector 
+-------------------
+ '123':1 '456':3
+(1 row)
+
+select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '"boolean"');
+ jsonb_to_tsvector 
+-------------------
+ 'fals':3 'true':1
+(1 row)
+
+select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '["string", "numeric"]');
+        jsonb_to_tsvector        
+---------------------------------
+ '123':5 '456':7 'aaa':1 'bbb':3
+(1 row)
+
+select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '"all"');
+                                   jsonb_to_tsvector                                    
+----------------------------------------------------------------------------------------
+ '123':8 '456':12 'aaa':2 'b':6 'bbb':4 'c':10 'd':14 'f':18 'fals':20 'g':22 'true':16
+(1 row)
+
+select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '"key"');
+       jsonb_to_tsvector        
+--------------------------------
+ 'b':2 'c':4 'd':6 'f':8 'g':10
+(1 row)
+
+select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '"string"');
+ jsonb_to_tsvector 
+-------------------
+ 'aaa':1 'bbb':3
+(1 row)
+
+select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '"numeric"');
+ jsonb_to_tsvector 
+-------------------
+ '123':1 '456':3
+(1 row)
+
+select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '"boolean"');
+ jsonb_to_tsvector 
+-------------------
+ 'fals':3 'true':1
+(1 row)
+
+select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '["string", "numeric"]');
+        jsonb_to_tsvector        
+---------------------------------
+ '123':5 '456':7 'aaa':1 'bbb':3
+(1 row)
+
+-- ts_vector corner cases
+select to_tsvector('""'::jsonb);
+ to_tsvector 
+-------------
+ 
+(1 row)
+
+select to_tsvector('{}'::jsonb);
+ to_tsvector 
+-------------
+ 
+(1 row)
+
+select to_tsvector('[]'::jsonb);
+ to_tsvector 
+-------------
+ 
+(1 row)
+
+select to_tsvector('null'::jsonb);
+ to_tsvector 
+-------------
+ 
+(1 row)
+
+-- jsonb_to_tsvector corner cases
+select jsonb_to_tsvector('""'::jsonb, '"all"');
+ jsonb_to_tsvector 
+-------------------
+ 
+(1 row)
+
+select jsonb_to_tsvector('{}'::jsonb, '"all"');
+ jsonb_to_tsvector 
+-------------------
+ 
+(1 row)
+
+select jsonb_to_tsvector('[]'::jsonb, '"all"');
+ jsonb_to_tsvector 
+-------------------
+ 
+(1 row)
+
+select jsonb_to_tsvector('null'::jsonb, '"all"');
+ jsonb_to_tsvector 
+-------------------
+ 
+(1 row)
+
+select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '""');
+ERROR:  wrong flag in flag array: ""
+HINT:  Possible values are: "string", "numeric", "boolean", "key", and "all".
+select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '{}');
+ERROR:  wrong flag type, only arrays and scalars are allowed
+select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '[]');
+ jsonb_to_tsvector 
+-------------------
+ 
+(1 row)
+
+select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, 'null');
+ERROR:  flag array element is not a string
+HINT:  Possible values are: "string", "numeric", "boolean", "key", and "all".
+select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '["all", null]');
+ERROR:  flag array element is not a string
+HINT:  Possible values are: "string", "numeric", "boolean", "key", and "all".
+-- ts_headline for jsonb
+select ts_headline('{"a": "aaa bbb", "b": {"c": "ccc ddd fff", "c1": "ccc1 ddd1"}, "d": ["ggg hhh", "iii jjj"]}'::jsonb, tsquery('bbb & ddd & hhh'));
+                                                   ts_headline                                                    
+------------------------------------------------------------------------------------------------------------------
+ {"a": "aaa <b>bbb</b>", "b": {"c": "ccc <b>ddd</b> fff", "c1": "ccc1 ddd1"}, "d": ["ggg <b>hhh</b>", "iii jjj"]}
+(1 row)
+
+select ts_headline('english', '{"a": "aaa bbb", "b": {"c": "ccc ddd fff"}, "d": ["ggg hhh", "iii jjj"]}'::jsonb, tsquery('bbb & ddd & hhh'));
+                                          ts_headline                                          
+-----------------------------------------------------------------------------------------------
+ {"a": "aaa <b>bbb</b>", "b": {"c": "ccc <b>ddd</b> fff"}, "d": ["ggg <b>hhh</b>", "iii jjj"]}
+(1 row)
+
+select ts_headline('{"a": "aaa bbb", "b": {"c": "ccc ddd fff", "c1": "ccc1 ddd1"}, "d": ["ggg hhh", "iii jjj"]}'::jsonb, tsquery('bbb & ddd & hhh'), 'StartSel = <, StopSel = >');
+                                            ts_headline                                            
+---------------------------------------------------------------------------------------------------
+ {"a": "aaa <bbb>", "b": {"c": "ccc <ddd> fff", "c1": "ccc1 ddd1"}, "d": ["ggg <hhh>", "iii jjj"]}
+(1 row)
+
+select ts_headline('english', '{"a": "aaa bbb", "b": {"c": "ccc ddd fff", "c1": "ccc1 ddd1"}, "d": ["ggg hhh", "iii jjj"]}'::jsonb, tsquery('bbb & ddd & hhh'), 'StartSel = <, StopSel = >');
+                                            ts_headline                                            
+---------------------------------------------------------------------------------------------------
+ {"a": "aaa <bbb>", "b": {"c": "ccc <ddd> fff", "c1": "ccc1 ddd1"}, "d": ["ggg <hhh>", "iii jjj"]}
+(1 row)
+
+-- corner cases for ts_headline with jsonb
+select ts_headline('null'::jsonb, tsquery('aaa & bbb'));
+ ts_headline 
+-------------
+ null
+(1 row)
+
+select ts_headline('{}'::jsonb, tsquery('aaa & bbb'));
+ ts_headline 
+-------------
+ {}
+(1 row)
+
+select ts_headline('[]'::jsonb, tsquery('aaa & bbb'));
+ ts_headline 
+-------------
+ []
+(1 row)
+
 -- casts
 select 'true'::jsonb::bool;
  bool

@@ -297,11 +297,9 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
 
-    if (!tserversToBeRemoved.isEmpty()) {
-      // Swap the blacklisted tservers
-      createModifyBlackListTask(tserversToBeRemoved, newTservers, false /* isLeaderBlacklist */)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-    }
+    // Swap the blacklisted tservers
+    createModifyBlackListTask(tserversToBeRemoved, newTservers, false /* isLeaderBlacklist */)
+        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
     // Update placement info on master leader.
     createPlacementInfoTask(null /* additional blacklist */)

@@ -41,7 +41,9 @@
 #include "yb/rpc/service_if.h"
 #include "yb/server/server_base_options.h"
 #include "yb/server/webserver.h"
-#include "yb/util/status.h"
+#include "yb/util/metrics_fwd.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
@@ -189,8 +191,8 @@ class RpcAndWebServerBase : public RpcServerBase {
 
   virtual CHECKED_STATUS DisplayRpcIcons(std::stringstream* output);
 
-  static void DisplayIconTile(std::stringstream* output, const string icon, const string caption,
-                              const string url);
+  static void DisplayIconTile(std::stringstream* output, const std::string icon,
+                              const std::string caption, const std::string url);
 
   CHECKED_STATUS Init();
   CHECKED_STATUS Start();

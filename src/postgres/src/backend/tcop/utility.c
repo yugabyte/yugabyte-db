@@ -2117,7 +2117,7 @@ AlterObjectTypeCommandTag(ObjectType objtype)
 		case OBJECT_TABCONSTRAINT:
 			tag = "ALTER TABLE";
 			break;
-		case OBJECT_TABLEGROUP:
+		case OBJECT_YBTABLEGROUP:
 			tag = "ALTER TABLEGROUP";
 			break;
 		case OBJECT_TABLESPACE:

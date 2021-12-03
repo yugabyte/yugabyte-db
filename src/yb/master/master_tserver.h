@@ -14,10 +14,10 @@
 #ifndef YB_MASTER_MASTER_TSERVER_H
 #define YB_MASTER_MASTER_TSERVER_H
 
+#include <future>
+
 #include "yb/tserver/tablet_peer_lookup.h"
 #include "yb/tserver/tablet_server_interface.h"
-
-#include "yb/util/metrics.h"
 
 namespace yb {
 namespace master {
@@ -62,6 +62,13 @@ class MasterTabletServer : public tserver::TabletServerIf,
   tserver::TServerSharedData& SharedObject() override;
 
   const std::shared_future<client::YBClient*>& client_future() const override;
+
+  CHECKED_STATUS GetLiveTServers(
+      std::vector<master::TSInformationPB> *live_tservers) const override;
+
+  const std::shared_ptr<MemTracker>& mem_tracker() const override;
+
+  void SetPublisher(rpc::Publisher service) override;
 
  private:
   Master* master_ = nullptr;

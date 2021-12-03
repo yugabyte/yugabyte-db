@@ -15,8 +15,11 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/common/index.h"
+
 #include "yb/common/common.pb.h"
-#include "yb/util/status.h"
+#include "yb/common/schema.h"
+
+#include "yb/util/result.h"
 
 using std::vector;
 using std::unordered_map;
@@ -123,7 +126,7 @@ void IndexInfo::ToPB(IndexInfoPB* pb) const {
 }
 
 vector<ColumnId> IndexInfo::index_key_column_ids() const {
-  unordered_map<ColumnId, ColumnId> map;
+  std::unordered_map<ColumnId, ColumnId, boost::hash<ColumnId>> map;
   for (const auto& column : columns_) {
     map[column.indexed_column_id] = column.column_id;
   }

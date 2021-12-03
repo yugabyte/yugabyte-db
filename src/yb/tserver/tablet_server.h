@@ -32,15 +32,17 @@
 #ifndef YB_TSERVER_TABLET_SERVER_H_
 #define YB_TSERVER_TABLET_SERVER_H_
 
+#include <future>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "yb/consensus/metadata.pb.h"
+#include "yb/cdc/cdc_fwd.h"
 #include "yb/client/client_fwd.h"
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/macros.h"
-#include "yb/master/master.h"
+#include "yb/master/master_fwd.h"
 #include "yb/server/webserver_options.h"
 #include "yb/tserver/db_server_base.h"
 #include "yb/tserver/tserver_shared_mem.h"
@@ -48,19 +50,22 @@
 #include "yb/tserver/tablet_server_options.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
+
+#include "yb/util/locks.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
-#include "yb/util/status.h"
-#include "yb/tserver/tablet_service.h"
-#include "yb/master/master.pb.h"
+#include "yb/util/status_fwd.h"
 
 namespace rocksdb {
 class Env;
 }
 
 namespace yb {
+
 class Env;
 class MaintenanceManager;
+class UniverseKeyRegistryPB;
+class UniverseKeysPB;
 
 namespace tserver {
 
@@ -137,11 +142,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   CHECKED_STATUS PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp);
 
   CHECKED_STATUS GetLiveTServers(
-      std::vector<master::TSInformationPB> *live_tservers) const {
-    std::lock_guard<simple_spinlock> l(lock_);
-    *live_tservers = live_tservers_;
-    return Status::OK();
-  }
+      std::vector<master::TSInformationPB> *live_tservers) const override;
 
   CHECKED_STATUS GetTabletStatus(const GetTabletStatusRequestPB* req,
                                  GetTabletStatusResponsePB* resp) const override;
@@ -161,11 +162,11 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   TabletServiceImpl* tablet_server_service();
 
-  scoped_refptr<Histogram> GetMetricsHistogram(TabletServerServiceIf::RpcMethodIndexes metric);
+  scoped_refptr<Histogram> GetMetricsHistogram(TabletServerServiceRpcMethodIndexes metric);
 
-  void SetPublisher(rpc::Publisher service) {
-    publish_service_ptr_.reset(new rpc::Publisher(std::move(service)));
-  }
+  const std::shared_ptr<MemTracker>& mem_tracker() const override;
+
+  void SetPublisher(rpc::Publisher service) override;
 
   rpc::Publisher* GetPublisher() override {
     return publish_service_ptr_.get();
@@ -193,7 +194,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void SetUniverseKeys(const UniverseKeysPB& universe_keys);
 
   virtual CHECKED_STATUS SetUniverseKeyRegistry(
-      const yb::UniverseKeyRegistryPB& universe_key_registry);
+      const UniverseKeyRegistryPB& universe_key_registry);
 
   void GetUniverseKeyRegistrySync();
 

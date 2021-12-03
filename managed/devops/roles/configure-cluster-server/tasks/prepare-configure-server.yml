@@ -41,6 +41,7 @@
     owner: "{{ user_name }}"
     group: "{{ user_name }}"
     state: link
+  when: mount_cores_dir != yb_cores_dir
 
 - name: Configure | Add clean cores script
   template:

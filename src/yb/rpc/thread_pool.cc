@@ -22,6 +22,7 @@
 #include <cds/gc/dhp.h>
 
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
 #include "yb/util/thread.h"
 
 namespace yb {

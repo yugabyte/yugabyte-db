@@ -19,9 +19,7 @@
 #define YB_YQL_CQL_QL_PTREE_PT_GRANT_REVOKE_H_
 
 #include "yb/common/roles_permissions.h"
-#include "yb/common/schema.h"
 #include "yb/common/common.pb.h"
-#include "yb/master/master.pb.h"
 #include "yb/util/enums.h"
 #include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
@@ -45,10 +43,10 @@ class PTGrantRevokeRole : public TreeNode {
 
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
-  PTGrantRevokeRole(MemoryContext* memctx, YBLocation::SharedPtr loc,
-              GrantRevokeStatementType statement_type,
-              const MCSharedPtr<MCString>& granted_role_name,
-              const MCSharedPtr<MCString>& recipient_role_name);
+  PTGrantRevokeRole(MemoryContext* memctx, YBLocationPtr loc,
+                    client::GrantRevokeStatementType statement_type,
+                    const MCSharedPtr<MCString>& granted_role_name,
+                    const MCSharedPtr<MCString>& recipient_role_name);
   virtual ~PTGrantRevokeRole();
 
   // Node type.
@@ -78,12 +76,12 @@ class PTGrantRevokeRole : public TreeNode {
   }
 
   // Type of statement: GRANT or REVOKE.
-  GrantRevokeStatementType statement_type() const {
+  client::GrantRevokeStatementType statement_type() const {
     return statement_type_;
   }
 
  private:
-  const GrantRevokeStatementType statement_type_;
+  const client::GrantRevokeStatementType statement_type_;
   const MCSharedPtr<MCString> granted_role_name_;
   const MCSharedPtr<MCString> recipient_role_name_;
 };
@@ -100,8 +98,8 @@ class PTGrantRevokePermission : public TreeNode {
 
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
-  PTGrantRevokePermission(MemoryContext* memctx, YBLocation::SharedPtr loc,
-                          GrantRevokeStatementType statement_type,
+  PTGrantRevokePermission(MemoryContext* memctx, YBLocationPtr loc,
+                          client::GrantRevokeStatementType statement_type,
                           const MCSharedPtr<MCString>& permission_name,
                           const ResourceType& resource_type,
                           const PTQualifiedName::SharedPtr& resource_name,
@@ -127,7 +125,7 @@ class PTGrantRevokePermission : public TreeNode {
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
   // Type of statement: GRANT or REVOKE.
-  GrantRevokeStatementType statement_type() const {
+  client::GrantRevokeStatementType statement_type() const {
     return statement_type_;
   }
 
@@ -181,7 +179,7 @@ class PTGrantRevokePermission : public TreeNode {
   }
 
  protected:
-  const GrantRevokeStatementType statement_type_;
+  const client::GrantRevokeStatementType statement_type_;
   // Just need an arbitrary default value here.
   PermissionType permission_ = PermissionType::ALL_PERMISSION;
   const MCSharedPtr<MCString> permission_name_;

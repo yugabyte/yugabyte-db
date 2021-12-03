@@ -145,6 +145,10 @@ public class Alert extends Model implements AlertLabelsProvider {
   private String sourceName;
 
   @NotNull
+  @ApiModelProperty(value = "The sourceUUID of the alert", accessMode = READ_ONLY)
+  private UUID sourceUUID;
+
+  @NotNull
   @Enumerated(EnumType.STRING)
   @ApiModelProperty(value = "The alert's state", accessMode = READ_ONLY)
   private State state = State.ACTIVE;
@@ -272,6 +276,7 @@ public class Alert extends Model implements AlertLabelsProvider {
     if (!StringUtils.isEmpty(filter.getSourceName())) {
       query.like("sourceName", filter.getSourceName() + "%");
     }
+    appendInClause(query, "sourceUUID", filter.getSourceUUIDs());
     appendInClause(query, "severity", filter.getSeverities());
     appendInClause(query, "configurationType", filter.getConfigurationTypes());
 

@@ -30,20 +30,26 @@
 // under the License.
 //
 
+#include "yb/server/rpc_server.h"
+
 #include <list>
 #include <string>
 #include <vector>
 
-#include <gflags/gflags.h>
+#include <boost/preprocessor/cat.hpp>
+#include <boost/preprocessor/stringize.hpp>
 
 #include "yb/gutil/casts.h"
-#include "yb/gutil/strings/substitute.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/service_if.h"
 #include "yb/rpc/service_pool.h"
-#include "yb/rpc/thread_pool.h"
-#include "yb/server/rpc_server.h"
+
+#include "yb/util/atomic.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
 #include "yb/util/status.h"
 
 using yb::rpc::Messenger;

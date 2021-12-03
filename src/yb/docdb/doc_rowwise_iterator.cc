@@ -12,45 +12,46 @@
 //
 
 #include "yb/docdb/doc_rowwise_iterator.h"
+#include <iterator>
 
 #include <cstdint>
 #include <ostream>
 #include <string>
 #include <vector>
 
-#include <boost/function.hpp>
-
 #include "yb/common/common.pb.h"
-#include "yb/common/transaction.h"
+#include "yb/common/doc_hybrid_time.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_scanspec.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/common/transaction.h"
 
+#include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/doc_key.h"
+#include "yb/docdb/doc_path.h"
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/doc_reader.h"
 #include "yb/docdb/doc_scanspec_util.h"
-#include "yb/docdb/docdb_types.h"
-#include "yb/docdb/docdb_fwd.h"
-#include "yb/rocksdb/db.h"
-#include "yb/common/doc_hybrid_time.h"
-#include "yb/common/hybrid_time.h"
-#include "yb/common/read_hybrid_time.h"
-#include "yb/docdb/doc_kv_util.h"
-#include "yb/docdb/doc_path.h"
-#include "yb/docdb/expiration.h"
-#include "yb/docdb/intent.h"
-#include "yb/docdb/primitive_value.h"
-#include "yb/docdb/value.h"
-#include "yb/docdb/subdocument.h"
-#include "yb/util/status.h"
-#include "yb/util/strongly_typed_bool.h"
-#include "yb/docdb/value_type.h"
-#include "yb/gutil/strings/substitute.h"
-#include "yb/util/slice.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/docdb_types.h"
+#include "yb/docdb/expiration.h"
 #include "yb/docdb/intent_aware_iterator.h"
+#include "yb/docdb/primitive_value.h"
+#include "yb/docdb/subdocument.h"
+#include "yb/docdb/value.h"
+#include "yb/docdb/value_type.h"
 
+#include "yb/gutil/strings/substitute.h"
+
+#include "yb/rocksdb/db.h"
+
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/strongly_typed_bool.h"
 
 using std::string;
 
@@ -323,7 +324,7 @@ class RangeBasedScanChoices : public ScanChoices {
     for (idx = schema.num_hash_key_columns(); idx < schema.num_key_columns(); idx++) {
       const ColumnId col_idx = schema.column_id(idx);
       const auto col_sort_type = schema.column(idx).sorting_type();
-      const common::QLScanRange::QLRange range = doc_spec.range_bounds()->RangeFor(col_idx);
+      const QLScanRange::QLRange range = doc_spec.range_bounds()->RangeFor(col_idx);
       const auto lower = GetQLRangeBoundAsPVal(range, col_sort_type, true /* lower_bound */);
       const auto upper = GetQLRangeBoundAsPVal(range, col_sort_type, false /* upper_bound */);
       lower_.emplace_back(lower);
@@ -340,7 +341,7 @@ class RangeBasedScanChoices : public ScanChoices {
     for (idx = schema.num_hash_key_columns(); idx < schema.num_key_columns(); idx++) {
       const ColumnId col_idx = schema.column_id(idx);
       const auto col_sort_type = schema.column(idx).sorting_type();
-      const common::QLScanRange::QLRange range = doc_spec.range_bounds()->RangeFor(col_idx);
+      const QLScanRange::QLRange range = doc_spec.range_bounds()->RangeFor(col_idx);
       const auto lower = GetQLRangeBoundAsPVal(range, col_sort_type, true /* lower_bound */);
       const auto upper = GetQLRangeBoundAsPVal(range, col_sort_type, false /* upper_bound */);
       lower_.emplace_back(lower);
@@ -470,7 +471,7 @@ Status RangeBasedScanChoices::SeekToCurrentTarget(IntentAwareIterator* db_iter) 
 DocRowwiseIterator::DocRowwiseIterator(
     const Schema &projection,
     const Schema &schema,
-    const TransactionOperationContextOpt& txn_op_context,
+    const TransactionOperationContext& txn_op_context,
     const DocDB& doc_db,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
@@ -605,11 +606,11 @@ Status DocRowwiseIterator::DoInit(const T& doc_spec) {
   return Status::OK();
 }
 
-Status DocRowwiseIterator::Init(const common::QLScanSpec& spec) {
+Status DocRowwiseIterator::Init(const QLScanSpec& spec) {
   return DoInit(dynamic_cast<const DocQLScanSpec&>(spec));
 }
 
-Status DocRowwiseIterator::Init(const common::PgsqlScanSpec& spec) {
+Status DocRowwiseIterator::Init(const PgsqlScanSpec& spec) {
   ignore_ttl_ = true;
   return DoInit(dynamic_cast<const DocPgsqlScanSpec&>(spec));
 }

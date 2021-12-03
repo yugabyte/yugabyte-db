@@ -10,31 +10,32 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include <atomic>
 #include <thread>
 
 #include <gtest/gtest.h>
 
+#include "yb/client/yb_table_name.h"
+#include "yb/common/pgsql_error.h"
 #include "yb/integration-tests/mini_cluster.h"
-#include "yb/util/test_macros.h"
-#include "yb/util/test_util.h"
-#include "yb/yql/pgwrapper/pg_mini_test_base.h"
-
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/catalog_manager.h"
+#include "yb/master/catalog_manager_if.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog_constants.h"
-
+#include "yb/rocksdb/db.h"
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/transaction_participant.h"
 #include "yb/tools/tools_test_utils.h"
-
-#include "yb/util/logging.h"
-#include "yb/yql/pggate/pggate_flags.h"
-
-#include "yb/common/pgsql_error.h"
+#include "yb/util/atomic.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_log.h"
+#include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
+#include "yb/util/test_util.h"
+#include "yb/yql/pggate/pggate_flags.h"
+#include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 using namespace std::literals;
 
@@ -355,6 +356,65 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(FollowerReads)) {
       conn.FetchValue<std::string>("/*+ Set(transaction_read_only on) */ "
                                    "SELECT phrase FROM t, t2 WHERE t.value = t2.word"));
   ASSERT_EQ(value, "NEW is fine");
+}
+
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(MultiColFollowerReads)) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k int PRIMARY KEY, c1 TEXT, c2 TEXT)"));
+  ASSERT_OK(conn.Execute("SET yb_debug_log_docdb_requests = true"));
+  ASSERT_OK(conn.Execute("SET yb_read_from_followers = true"));
+
+  constexpr int32_t kSleepTimeMs = 1200 * kTimeMultiplier;
+
+  ASSERT_OK(conn.Execute("INSERT INTO t (k, c1, c2) VALUES (1, 'old', 'old')"));
+  auto kUpdateTime0 = MonoTime::Now();
+
+  SleepFor(MonoDelta::FromMilliseconds(kSleepTimeMs));
+
+  ASSERT_OK(conn.Execute("UPDATE t SET c1 = 'NEW' WHERE k = 1"));
+  auto kUpdateTime1 = MonoTime::Now();
+
+  SleepFor(MonoDelta::FromMilliseconds(kSleepTimeMs));
+
+  ASSERT_OK(conn.Execute("UPDATE t SET c2 = 'NEW' WHERE k = 1"));
+  auto kUpdateTime2 = MonoTime::Now();
+
+  auto result =
+      ASSERT_RESULT(conn.Fetch("/*+ Set(transaction_read_only off) */ "
+                               "SELECT * FROM t WHERE k = 1"));
+  ASSERT_EQ(1, ASSERT_RESULT(GetInt32(result.get(), 0, 0)));
+  ASSERT_EQ("NEW", ASSERT_RESULT(GetString(result.get(), 0, 1)));
+  ASSERT_EQ("NEW", ASSERT_RESULT(GetString(result.get(), 0, 2)));
+
+  const int32_t kOpDurationMs = 10;
+  auto staleness_ms = (MonoTime::Now() - kUpdateTime0).ToMilliseconds() - kOpDurationMs;
+  ASSERT_OK(conn.Execute(Format("SET yb_follower_read_staleness_ms = $0", staleness_ms)));
+  result =
+      ASSERT_RESULT(conn.Fetch("/*+ Set(transaction_read_only on) */ "
+                               "SELECT * FROM t WHERE k = 1"));
+  ASSERT_EQ(1, ASSERT_RESULT(GetInt32(result.get(), 0, 0)));
+  ASSERT_EQ("old", ASSERT_RESULT(GetString(result.get(), 0, 1)));
+  ASSERT_EQ("old", ASSERT_RESULT(GetString(result.get(), 0, 2)));
+
+  staleness_ms = (MonoTime::Now() - kUpdateTime1).ToMilliseconds() - kOpDurationMs;
+  ASSERT_OK(conn.Execute(Format("SET yb_follower_read_staleness_ms = $0", staleness_ms)));
+  result =
+      ASSERT_RESULT(conn.Fetch("/*+ Set(transaction_read_only on) */ "
+                               "SELECT * FROM t WHERE k = 1"));
+  ASSERT_EQ(1, ASSERT_RESULT(GetInt32(result.get(), 0, 0)));
+  ASSERT_EQ("NEW", ASSERT_RESULT(GetString(result.get(), 0, 1)));
+  ASSERT_EQ("old", ASSERT_RESULT(GetString(result.get(), 0, 2)));
+
+  SleepFor(MonoDelta::FromMilliseconds(kSleepTimeMs));
+
+  staleness_ms = (MonoTime::Now() - kUpdateTime2).ToMilliseconds();
+  ASSERT_OK(conn.Execute(Format("SET yb_follower_read_staleness_ms = $0", staleness_ms)));
+  result =
+      ASSERT_RESULT(conn.Fetch("/*+ Set(transaction_read_only on) */ "
+                               "SELECT * FROM t WHERE k = 1"));
+  ASSERT_EQ(1, ASSERT_RESULT(GetInt32(result.get(), 0, 0)));
+  ASSERT_EQ("NEW", ASSERT_RESULT(GetString(result.get(), 0, 1)));
+  ASSERT_EQ("NEW", ASSERT_RESULT(GetString(result.get(), 0, 2)));
 }
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(Simple)) {
@@ -1282,16 +1342,11 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(SystemTableTxnTest), PgMiniTestNoT
 
 TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBUpdateSysTablet)) {
   const std::string kDatabaseName = "testdb";
-  master::CatalogManager *catalog_manager =
-      ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager();
   PGConn conn = ASSERT_RESULT(Connect());
-  scoped_refptr<master::TabletInfo> sys_tablet;
   std::array<int, 4> num_tables;
 
-  {
-    master::CatalogManager::SharedLock catalog_lock(catalog_manager->mutex_);
-    sys_tablet = catalog_manager->tablet_map_->find(master::kSysCatalogTabletId)->second;
-  }
+  auto* catalog_manager = &ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+  auto sys_tablet = ASSERT_RESULT(catalog_manager->GetTabletInfo(master::kSysCatalogTabletId));
   {
     auto tablet_lock = sys_tablet->LockForWrite();
     num_tables[0] = tablet_lock->pb.table_ids_size();
@@ -1308,12 +1363,8 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBUpdateSysTablet)) {
   }
   // Make sure that the system catalog tablet table_ids is persisted.
   ASSERT_OK(cluster_->RestartSync());
-  {
-    // Refresh stale local variables after RestartSync.
-    catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager();
-    master::CatalogManager::SharedLock catalog_lock(catalog_manager->mutex_);
-    sys_tablet = catalog_manager->tablet_map_->find(master::kSysCatalogTabletId)->second;
-  }
+  catalog_manager = &ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+  sys_tablet = ASSERT_RESULT(catalog_manager->GetTabletInfo(master::kSysCatalogTabletId));
   {
     auto tablet_lock = sys_tablet->LockForWrite();
     num_tables[3] = tablet_lock->pb.table_ids_size();
@@ -1327,8 +1378,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBMarkDeleted)) {
   const std::string kDatabaseName = "testdb";
   constexpr auto kSleepTime = 500ms;
   constexpr int kMaxNumSleeps = 20;
-  master::CatalogManager *catalog_manager =
-      ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager();
+  auto *catalog_manager = &ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
   PGConn conn = ASSERT_RESULT(Connect());
 
   ASSERT_FALSE(catalog_manager->AreTablesDeleting());
@@ -1344,7 +1394,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBMarkDeleted)) {
   // Make sure that the table deletions are persisted.
   ASSERT_OK(cluster_->RestartSync());
   // Refresh stale local variable after RestartSync.
-  catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager();
+  catalog_manager = &ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
   ASSERT_FALSE(catalog_manager->AreTablesDeleting());
 }
 
@@ -1354,15 +1404,10 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBWithTables)) {
   constexpr auto kSleepTime = 500ms;
   constexpr int kMaxNumSleeps = 20;
   int num_tables_before, num_tables_after;
-  master::CatalogManager *catalog_manager =
-      ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager();
+  auto *catalog_manager = &ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
   PGConn conn = ASSERT_RESULT(Connect());
-  scoped_refptr<master::TabletInfo> sys_tablet;
+  auto sys_tablet = ASSERT_RESULT(catalog_manager->GetTabletInfo(master::kSysCatalogTabletId));
 
-  {
-    master::CatalogManager::SharedLock catalog_lock(catalog_manager->mutex_);
-    sys_tablet = catalog_manager->tablet_map_->find(master::kSysCatalogTabletId)->second;
-  }
   {
     auto tablet_lock = sys_tablet->LockForWrite();
     num_tables_before = tablet_lock->pb.table_ids_size();
@@ -1385,12 +1430,8 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBWithTables)) {
   ASSERT_FALSE(catalog_manager->AreTablesDeleting()) << "Tables should have finished deleting";
   // Make sure that the table deletions are persisted.
   ASSERT_OK(cluster_->RestartSync());
-  {
-    // Refresh stale local variables after RestartSync.
-    catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager();
-    master::CatalogManager::SharedLock catalog_lock(catalog_manager->mutex_);
-    sys_tablet = catalog_manager->tablet_map_->find(master::kSysCatalogTabletId)->second;
-  }
+  catalog_manager = &ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+  sys_tablet = ASSERT_RESULT(catalog_manager->GetTabletInfo(master::kSysCatalogTabletId));
   ASSERT_FALSE(catalog_manager->AreTablesDeleting());
   {
     auto tablet_lock = sys_tablet->LockForWrite();

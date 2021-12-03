@@ -30,6 +30,7 @@
 #include <sstream>
 #include <vector>
 
+#include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/memtable.h"
 #include "yb/rocksdb/db/write_batch_internal.h"
 #include "yb/rocksdb/db.h"
@@ -52,6 +53,8 @@
 #include "yb/rocksdb/port/port.h"
 
 #include "yb/docdb/docdb_debug.h"
+
+#include "yb/util/status_log.h"
 
 using yb::docdb::EntryToString;
 using yb::docdb::StorageDbType;

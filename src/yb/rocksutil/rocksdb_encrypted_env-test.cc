@@ -11,23 +11,18 @@
 // under the License.
 //
 
-#include <sys/types.h>
-
 #include <string>
-
-#include <glog/logging.h>
-#include <gtest/gtest.h>
 
 #include "yb/gutil/casts.h"
 
 #include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
 
-#include "yb/util/status.h"
-#include "yb/util/test_util.h"
+#include "yb/util/encryption_test_util.h"
 #include "yb/util/header_manager.h"
 #include "yb/util/header_manager_mock_impl.h"
-#include "yb/util/encryption_test_util.h"
 #include "yb/util/random_util.h"
+#include "yb/util/status.h"
+#include "yb/util/test_util.h"
 
 namespace yb {
 

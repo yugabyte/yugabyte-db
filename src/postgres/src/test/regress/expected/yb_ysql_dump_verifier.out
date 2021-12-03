@@ -53,12 +53,12 @@
  public | postgres
 (1 row)
 
-                   List of tablegroups
- Name | Owner | Access privileges | Description | Options
-------+-------+-------------------+-------------+---------
+                          List of tablegroups
+ Name | Owner | Access privileges | Description | Tablespace | Options
+------+-------+-------------------+-------------+------------+---------
 (0 rows)
 
-                                                    List of tablegroup tables
- Group Name | Group Owner | Access privileges | Group Description | Group Options | Name | Type | Owner | Rel Description | Size
-------------+-------------+-------------------+-------------------+---------------+------+------+-------+-----------------+------
+                                                             List of tablegroup tables
+ Group Name | Group Owner | Access privileges | Group Description | Group Tablespace | Group Options | Name | Type | Owner | Rel Description | Size
+------------+-------------+-------------------+-------------------+------------------+---------------+------+------+-------+-----------------+------
 (0 rows)

@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include "yb/tablet/preparer.h"
+
 #include <atomic>
 #include <condition_variable>
 #include <memory>
@@ -18,17 +20,19 @@
 #include <thread>
 #include <vector>
 
+#include <boost/range/iterator_range_core.hpp>
 #include <gflags/gflags.h>
 
 #include "yb/consensus/consensus.h"
+
 #include "yb/gutil/macros.h"
-#include "yb/tablet/preparer.h"
+
 #include "yb/tablet/operations/operation_driver.h"
 
 #include "yb/util/flag_tags.h"
+#include "yb/util/lockfree.h"
 #include "yb/util/logging.h"
 #include "yb/util/threadpool.h"
-#include "yb/util/lockfree.h"
 
 DEFINE_int32(max_group_replicate_batch_size, 16,
              "Maximum number of operations to submit to consensus for replication in a batch.");

@@ -10,20 +10,19 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include "yb/master/permissions_manager.h"
 
 #include <mutex>
 
-#include "yb/util/crypt.h"
-
 #include "yb/gutil/strings/substitute.h"
-
-#include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager-internal.h"
-#include "yb/master/permissions_manager.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"
-
+#include "yb/util/crypt.h"
 #include "yb/util/shared_lock.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/trace.h"
 
 using std::shared_ptr;
 
@@ -949,7 +948,7 @@ void PermissionsManager::BuildRecursiveRoles() {
 }
 
 void PermissionsManager::TraverseRole(
-    const string& role_name, unordered_set<RoleName>* granted_roles) {
+    const string& role_name, std::unordered_set<RoleName>* granted_roles) {
   auto iter = recursive_granted_roles_.find(role_name);
   // This node has already been visited. So just add all the granted (directly or through
   // inheritance) roles to granted_roles.

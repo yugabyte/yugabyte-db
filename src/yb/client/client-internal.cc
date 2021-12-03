@@ -33,42 +33,59 @@
 #include "yb/client/client-internal.h"
 
 #include <algorithm>
+#include <fstream>
 #include <functional>
 #include <limits>
+#include <map>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
-#include <fstream>
 
 #include <boost/algorithm/string/predicate.hpp>
+#include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
+#include <boost/preprocessor/stringize.hpp>
 
 #include "yb/client/meta_cache.h"
-#include "yb/client/table.h"
+#include "yb/client/table_info.h"
 
 #include "yb/common/index.h"
+#include "yb/common/redis_constants_common.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
+
+#include "yb/gutil/bind.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/sysinfo.h"
+
+#include "yb/master/master.pb.h"
+#include "yb/master/master.proxy.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_rpc.h"
 #include "yb/master/master_util.h"
-#include "yb/master/master.pb.h"
-#include "yb/master/master.proxy.h"
-#include "yb/common/redis_constants_common.h"
-#include "yb/util/monotime.h"
+
+#include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_controller.h"
-#include "yb/rpc/messenger.h"
+
+#include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 using namespace std::literals;
 
@@ -1455,7 +1472,7 @@ Status CreateTableInfoFromTableSchemaResp(const GetTableSchemaResponsePB& resp, 
 
   info->table_name.GetFromTableIdentifierPB(resp.identifier());
   info->table_id = resp.identifier().table_id();
-  RETURN_NOT_OK(YBTable::PBToClientTableType(resp.table_type(), &info->table_type));
+  info->table_type = VERIFY_RESULT(PBToClientTableType(resp.table_type()));
   info->index_map.FromPB(resp.indexes());
   if (resp.has_index_info()) {
     info->index_info.emplace(resp.index_info());

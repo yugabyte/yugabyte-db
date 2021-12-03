@@ -36,24 +36,28 @@
 #include <vector>
 #include <unordered_map>
 
-#include "yb/master/catalog_manager.h"
-#include "yb/master/master.pb.h"
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/metadata.pb.h"
+
+#include "yb/gutil/callback.h"
+
+#include "yb/master/master_fwd.h"
 #include "yb/master/sys_catalog_constants.h"
-#include "yb/server/metadata.h"
 
 #include "yb/tablet/snapshot_coordinator.h"
-#include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/tablet_memory_manager.h"
 
 #include "yb/util/mem_tracker.h"
+#include "yb/util/metrics_fwd.h"
 #include "yb/util/pb_util.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
 class Schema;
 class FsManager;
+class ThreadPool;
 
 namespace tserver {
 class WriteRequestPB;
@@ -213,9 +217,7 @@ class SysCatalogTable {
   CHECKED_STATUS SetupConfig(const MasterOptions& options,
                              consensus::RaftConfigPB* committed_config);
 
-  std::string tablet_id() const {
-    return tablet_peer()->tablet_id();
-  }
+  std::string tablet_id() const;
 
   // Conventional "T xxx P xxxx..." prefix for logging.
   std::string LogPrefix() const;
@@ -237,7 +239,7 @@ class SysCatalogTable {
   void InitLocalRaftPeerPB();
 
   // Table schema, with IDs, used for the YQL write path.
-  Schema schema_;
+  std::unique_ptr<Schema> schema_;
 
   MetricRegistry* metric_registry_;
 

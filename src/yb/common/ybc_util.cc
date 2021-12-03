@@ -13,12 +13,14 @@
 #include "yb/common/ybc_util.h"
 
 #include <stdarg.h>
+
 #include <fstream>
 
 #include "yb/common/pgsql_error.h"
-#include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/transaction_error.h"
 #include "yb/common/ybc-internal.h"
+
+#include "yb/gutil/stringprintf.h"
 
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/debug-util.h"
@@ -26,13 +28,10 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/init.h"
 #include "yb/util/logging.h"
-#include "yb/util/scope_exit.h"
-#include "yb/util/status.h"
-#include "yb/util/thread.h"
-
 #include "yb/util/net/net_util.h"
-
-#include "yb/gutil/stringprintf.h"
+#include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
+#include "yb/util/thread.h"
 
 using std::string;
 DEFINE_test_flag(string, process_info_dir, string(),

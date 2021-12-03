@@ -15,7 +15,7 @@
 #define YB_ROCKSDB_UTIL_TIMEOUT_ERROR_H
 
 #include "yb/util/enums.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/status_ec.h"
 
 namespace rocksdb {

@@ -14,10 +14,8 @@
 #include "yb/rpc/compressed_stream.h"
 
 #include <lz4.h>
-
-#include <snappy.h>
 #include <snappy-sinksource.h>
-
+#include <snappy.h>
 #include <zlib.h>
 
 #include <boost/preprocessor/cat.hpp>
@@ -28,7 +26,9 @@
 #include "yb/rpc/refined_stream.h"
 
 #include "yb/util/logging.h"
+#include "yb/util/result.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
 
 using namespace std::literals;
 

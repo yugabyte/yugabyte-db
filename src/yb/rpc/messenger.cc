@@ -49,7 +49,7 @@
 
 #include "yb/rpc/acceptor.h"
 #include "yb/rpc/constants.h"
-#include "yb/rpc/proxy.h"
+#include "yb/rpc/reactor.h"
 #include "yb/rpc/rpc_header.pb.h"
 #include "yb/rpc/rpc_metrics.h"
 #include "yb/rpc/rpc_service.h"
@@ -57,15 +57,19 @@
 #include "yb/rpc/tcp_stream.h"
 #include "yb/rpc/yb_rpc.h"
 
+#include "yb/util/debug-util.h"
 #include "yb/util/errno.h"
 #include "yb/util/flag_tags.h"
-#include "yb/util/logging.h"
+#include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/net/socket.h"
+#include "yb/util/result.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/trace.h"
 
@@ -111,6 +115,9 @@ MessengerBuilder::MessengerBuilder(std::string name)
       num_connections_to_server_(GetAtomicFlag(&FLAGS_num_connections_to_server)) {
   AddStreamFactory(TcpStream::StaticProtocol(), TcpStream::Factory());
 }
+
+MessengerBuilder::~MessengerBuilder() = default;
+MessengerBuilder::MessengerBuilder(const MessengerBuilder&) = default;
 
 MessengerBuilder& MessengerBuilder::set_connection_keepalive_time(
     CoarseMonoClock::Duration keepalive) {
@@ -680,6 +687,10 @@ ScheduledTaskId Messenger::ScheduleOnReactor(
   }
 
   return kInvalidTaskId;
+}
+
+scoped_refptr<MetricEntity> Messenger::metric_entity() const {
+  return metric_entity_;
 }
 
 } // namespace rpc

@@ -23,13 +23,15 @@
 
 #include "yb/rocksdb/db/db_test_util.h"
 
-#include "yb/util/encryption_util.h"
-#include "yb/util/random_util.h"
-#include "yb/util/header_manager_impl.h"
-#include "yb/util/universe_key_manager.h"
+#include "yb/rocksdb/util/logging.h"
 
 #include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
 #include "yb/rocksutil/yb_rocksdb_logger.h"
+
+#include "yb/util/header_manager_impl.h"
+#include "yb/util/random_util.h"
+#include "yb/util/status_log.h"
+#include "yb/util/universe_key_manager.h"
 
 namespace rocksdb {
 

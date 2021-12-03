@@ -10,8 +10,11 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/master/system_tablet.h"
+
+#include "yb/common/schema.h"
+#include "yb/common/transaction.h"
+#include "yb/master/yql_virtual_table.h"
 
 namespace yb {
 namespace master {
@@ -28,7 +31,7 @@ yb::SchemaPtr SystemTablet::GetSchema(const std::string& table_id) const {
   return schema_;
 }
 
-const common::YQLStorageIf& SystemTablet::QLStorage() const {
+const YQLStorageIf& SystemTablet::QLStorage() const {
   return *yql_virtual_table_;
 }
 
@@ -53,7 +56,7 @@ Status SystemTablet::HandleQLReadRequest(CoarseTimePoint deadline,
                                          tablet::QLReadRequestResult* result) {
   DCHECK(!transaction_metadata.has_transaction_id());
   return tablet::AbstractTablet::HandleQLReadRequest(
-      deadline, read_time, ql_read_request, boost::none, result);
+      deadline, read_time, ql_read_request, TransactionOperationContext(), result);
 }
 
 Status SystemTablet::CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,

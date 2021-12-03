@@ -40,6 +40,7 @@ set(INTEGRATION_TESTS_SRCS
   load_balancer_test_util.cc
   load_generator.cc
   mini_cluster.cc
+  mini_cluster_base.cc
   mini_cluster_utils.cc
   redis_table_test_base.cc
   test_workload.cc
@@ -79,7 +80,9 @@ target_link_libraries(cql_test_util cassandra integration-tests yb-cql yb_test_u
 
 # Tests
 set(YB_TEST_LINK_LIBS
-    integration-tests yb_client yb_tools_util ql-dml-test-base rpc_test_util ${YB_MIN_TEST_LIBS})
+    integration-tests yb_client yb_tools_util ql-dml-test-base rpc_test_util master_test_common
+    yb_common_test_util
+    ${YB_MIN_TEST_LIBS})
 
 ADD_YB_TEST(alter_table-test)
 ADD_YB_TEST(alter_table-randomized-test)

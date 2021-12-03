@@ -31,8 +31,15 @@
 //
 
 #include "yb/client/value.h"
+
+#include <glog/logging.h>
+
 #include "yb/client/value-internal.h"
+#include "yb/common/ql_type.h"
+#include "yb/common/types.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/gutil/mathlimits.h"
+#include "yb/util/status.h"
 
 using std::shared_ptr;
 using std::string;

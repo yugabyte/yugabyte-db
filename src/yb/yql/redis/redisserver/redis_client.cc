@@ -15,6 +15,8 @@
 
 #include <hiredis/hiredis.h>
 
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
 #include "yb/util/scope_exit.h"
 
 namespace yb {

@@ -21,7 +21,7 @@
 #include "yb/docdb/docdb_fwd.h"
 
 #include "yb/master/master_fwd.h"
-#include "yb/master/master.pb.h"
+#include "yb/master/master_types.pb.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -31,8 +31,6 @@
 
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/backup.pb.h"
-
-#include "yb/util/result.h"
 
 namespace yb {
 namespace master {
@@ -84,7 +82,7 @@ class SnapshotCoordinatorContext {
 };
 
 Result<docdb::KeyBytes> EncodedKey(
-    SysRowEntry::Type type, const Slice& id, SnapshotCoordinatorContext* context);
+    SysRowEntryType type, const Slice& id, SnapshotCoordinatorContext* context);
 
 } // namespace master
 } // namespace yb

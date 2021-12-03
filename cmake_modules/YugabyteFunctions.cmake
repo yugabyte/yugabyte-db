@@ -555,11 +555,11 @@ function(parse_build_root_basename)
   string(REPLACE "-" ";" YB_BUILD_ROOT_BASENAME_COMPONENTS ${YB_BUILD_ROOT_BASENAME})
   list(LENGTH YB_BUILD_ROOT_BASENAME_COMPONENTS YB_BUILD_ROOT_BASENAME_COMPONENTS_LENGTH)
   if(YB_BUILD_ROOT_BASENAME_COMPONENTS_LENGTH LESS 3 OR
-     YB_BUILD_ROOT_BASENAME_COMPONENTS_LENGTH GREATER 4)
+     YB_BUILD_ROOT_BASENAME_COMPONENTS_LENGTH GREATER 5)
     message(
         FATAL_ERROR
         "Wrong number of components of the build root basename: "
-        "${YB_BUILD_ROOT_BASENAME_COMPONENTS_LENGTH}. Expected 3 or 4 components. "
+        "${YB_BUILD_ROOT_BASENAME_COMPONENTS_LENGTH}. Expected 3, 4, or 5 components. "
         "Basename: ${YB_BUILD_ROOT_BASENAME}")
   endif()
   list(GET YB_BUILD_ROOT_BASENAME_COMPONENTS 0 YB_BUILD_TYPE)
@@ -593,4 +593,16 @@ function(parse_build_root_basename)
         "'${YB_LINKING_TYPE}'. Expected 'static' or 'dynamic'.")
   endif()
   set(YB_LINKING_TYPE "${YB_LINKING_TYPE}" PARENT_SCOPE)
+
+  if (YB_BUILD_ROOT_BASENAME_COMPONENTS_LENGTH GREATER 3)
+    list(GET YB_BUILD_ROOT_BASENAME_COMPONENTS 3 YB_TARGET_ARCH_FROM_BUILD_ROOT)
+    if(NOT "${YB_TARGET_ARCH_FROM_BUILD_ROOT}" STREQUAL "ninja")
+      if(NOT "${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "${YB_TARGET_ARCH_FROM_BUILD_ROOT}")
+        message(
+            FATAL_ERROR
+            "Target architecture inferred from build root is '${YB_TARGET_ARCH_FROM_BUILD_ROOT}', "
+            "but CMAKE_SYSTEM_PROCESSOR is ${CMAKE_SYSTEM_PROCESSOR}")
+      endif()
+    endif()
+  endif()
 endfunction()

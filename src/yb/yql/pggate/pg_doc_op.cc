@@ -11,7 +11,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //--------------------------------------------------------------------------------------------------
-
 #include "yb/yql/pggate/pg_doc_op.h"
 
 #include <algorithm>
@@ -20,9 +19,10 @@
 #include <utility>
 #include <vector>
 
-
 #include "yb/common/row_mark.h"
-#include "yb/docdb/doc_key.h"
+#include "yb/gutil/strings/escaping.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pggate_flags.h"
@@ -370,7 +370,10 @@ Status PgDocReadOp::ExecuteInit(const PgExecParameters *exec_params) {
   RETURN_NOT_OK(PgDocOp::ExecuteInit(exec_params));
 
   template_op_->mutable_request()->set_return_paging_state(true);
-  if (exec_params_.read_from_followers) {
+  // TODO(10696): This is probably the only place in pg_doc_op where pg_session is being
+  // used as a source of truth. All other uses treat it as stateless. Refactor to move this
+  // state elsewhere.
+  if (pg_session_->ShouldUseFollowerReads()) {
     template_op_->set_yb_consistency_level(YBConsistencyLevel::CONSISTENT_PREFIX);
   }
   SetRequestPrefetchLimit();

@@ -14,11 +14,17 @@
 #include "yb/tserver/pg_client_session.h"
 
 #include "yb/client/client.h"
+#include "yb/client/namespace_alterer.h"
 #include "yb/client/table_alterer.h"
+
+#include "yb/common/ql_type.h"
+
+#include "yb/rpc/rpc_context.h"
 
 #include "yb/tserver/pg_create_table.h"
 
-#include "yb/rpc/rpc_context.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 namespace tserver {
