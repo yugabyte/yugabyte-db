@@ -196,15 +196,14 @@ conninfo = "host=331be4e2-fe24-3d2f-84f0-6d0d49ed422b.cloudportal.yugabyte.com p
 
 ### Create a sample C application with SSL
 
-Create a file `ybsql_hello_world_ssl.c` and copy the contents below:
+Create a file `ybsql_hello_world_ssl.c` and copy the contents below, replacing the hostname, username, and password with the appropriate values:
 
 ```c
 #include <stdio.h>
 #include <stdlib.h>
 #include "libpq-fe.h"
 
-int
-main(int argc, char **argv)
+int main(int argc, char **argv)
 {
   const char *conninfo;
   PGconn     *conn;
@@ -213,7 +212,8 @@ main(int argc, char **argv)
   int         i, j;
 
   /* connection string */
-  conninfo = "host=331bd8e2-fe24-4d2f-84f0-6d0d49edc22b.cloudportal.yugabyte.com port=5433 dbname=yugabyte user=<username> password=<password> sslmode=verify-full";
+  /* replace hostname, username, and password */
+  conninfo = "host=hostname port=5433 dbname=yugabyte user=username password=password sslmode=verify-full";
 
   /* Make a connection to the database */
   conn = PQconnectdb(conninfo);
@@ -286,20 +286,27 @@ main(int argc, char **argv)
 
 ### Run the C SSL application
 
-You can compile the file using `gcc` or `clang`.
-To compile the application with `clang`, run the following command:
+1. Set up your environment, replacing `<yb-install-path>` with the full path to your YugabyteDB installation:
 
-> **FIXME** adjust the path once we get this working
+    ```sh
+    $ export LD_LIBRARY_PATH=<yb-install-path>/postgres/include/
+    $ export DYLD_LIBRARY_PATH=<yb-install-path>/postgres/lib/
+    ```
 
-```sh
-$ clang yb_hello_world_ssl.c -lpq -I ~/devel/yb-versions/2.9.1.0-b136/postgres/include -o yb_hello_world_ssl
-```
+1. You can compile the file using `gcc` or `clang`. To compile the application with `clang`, run the following command:
 
-Run with:
+    ```sh
+    $ clang yb_hello_world_ssl.c \
+        -lpq \
+        -I path/to/yugabytedb/postgres/include -L path/to/yugabytedb/postgres/postgres/lib \
+        -o ybsql_hello_world_ssl
+    ```
 
-```sh
-$ ./ybsql_hello_world
-```
+1. Run with:
+
+    ```sh
+    $ ./ybsql_hello_world
+    ```
 
 You should see the following output:
 
