@@ -40,7 +40,8 @@ You can use extensions to support more types.
 However, extension support is still in progress:
 
 - `btree_gin`: unsupported
-- `hstore`: unsupported
+- `hstore`: supported
+- `intarray`: unsupported
 - `pg_trgm`: supported
 
 ## Grammar
