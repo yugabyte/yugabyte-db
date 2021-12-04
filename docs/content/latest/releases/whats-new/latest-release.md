@@ -15,6 +15,50 @@ isTocNested: true
 showAsideToc: true
 ---
 
+## v2.11.0.1 - December 3, 2021
+
+This is a bug-fix-only release.
+
+**Build:** `2.11.0.1-b1`
+
+### Downloads
+
+<a class="download-binary-link" href="https://downloads.yugabyte.com/releases/2.11.0.1/yugabyte-2.11.0.1-b1-darwin-x86_64.tar.gz">
+  <button>
+    <i class="fab fa-apple"></i><span class="download-text">macOS</span>
+  </button>
+</a>
+&nbsp; &nbsp; &nbsp;
+<a class="download-binary-link" href="https://downloads.yugabyte.com/releases/2.11.0.1/yugabyte-2.11.0.1-b1-linux-x86_64.tar.gz">
+  <button>
+    <i class="fab fa-linux"></i><span class="download-text">Linux x86</span>
+  </button>
+</a>
+&nbsp; &nbsp; &nbsp;
+<a class="download-binary-link" href="https://downloads.yugabyte.com/releases/2.11.0.1/yugabyte-2.11.0.1-b1-el8-aarch64.tar.gz">
+  <button>
+    <i class="fab fa-linux"></i><span class="download-text">Linux ARM</span>
+  </button>
+</a>
+<br />
+
+### Docker
+
+```sh
+docker pull yugabytedb/yugabyte:2.11.0.1-b1
+```
+
+### Bug fixes
+
+#### Yugabyte Platform
+
+* [PLAT-2266] application.log is not available for logs on UI
+* [PLAT-2400] Universe scaling out by adding nodes keeps new nodes in blacklisted state.
+
+#### Database
+
+N/A
+
 ## v2.11.0.0 - November 22, 2021
 
 **Build:** `2.11.0.0-b7`
