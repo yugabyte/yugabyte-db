@@ -10,9 +10,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#include "yb/master/flush_manager.h"
 
-#include <map>
+#include "yb/master/flush_manager.h"
 
 #include <glog/logging.h>
 
@@ -23,7 +22,6 @@
 #include "yb/master/master_error.h"
 #include "yb/master/master_util.h"
 
-#include "yb/util/result.h"
 #include "yb/util/status_log.h"
 #include "yb/util/trace.h"
 

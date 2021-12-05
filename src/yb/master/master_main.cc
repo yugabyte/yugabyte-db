@@ -29,23 +29,28 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <iostream>
 
 #include <glog/logging.h>
 
 #include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/log_util.h"
+
 #include "yb/gutil/sysinfo.h"
+
 #include "yb/master/call_home.h"
 #include "yb/master/master.h"
 #include "yb/master/sys_catalog_initialization.h"
+
 #include "yb/server/total_mem_watcher.h"
+
 #include "yb/util/flags.h"
 #include "yb/util/init.h"
 #include "yb/util/logging.h"
 #include "yb/util/main_util.h"
 #include "yb/util/mem_tracker.h"
-#include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
 #include "yb/util/ulimit_util.h"
 

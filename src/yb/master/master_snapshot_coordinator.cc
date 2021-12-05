@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/master/master_snapshot_coordinator.h"
 
 #include <unordered_map>
@@ -18,8 +19,10 @@
 #include <boost/multi_index/mem_fun.hpp>
 
 #include "yb/common/snapshot.h"
+
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/value.h"
+
 #include "yb/master/async_snapshot_tasks.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_error.h"
@@ -29,11 +32,14 @@
 #include "yb/master/snapshot_schedule_state.h"
 #include "yb/master/snapshot_state.h"
 #include "yb/master/sys_catalog_writer.h"
+
 #include "yb/rpc/poller.h"
+
 #include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_snapshots.h"
+
 #include "yb/util/async_util.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/pb_util.h"

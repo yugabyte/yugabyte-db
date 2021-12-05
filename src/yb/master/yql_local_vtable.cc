@@ -15,12 +15,15 @@
 
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
+
 #include "yb/master/master.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/ts_descriptor.h"
 
 #include "yb/rpc/messenger.h"
+
 #include "yb/util/net/dns_resolver.h"
+#include "yb/util/net/inetaddress.h"
 #include "yb/util/status_log.h"
 
 namespace yb {

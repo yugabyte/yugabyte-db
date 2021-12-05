@@ -10,17 +10,19 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <atomic>
 #include <memory>
 #include <vector>
 
-#include "yb/client/client-test-util.h"
 #include "yb/client/client.h"
 #include "yb/client/table.h"
+
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/load_generator.h"
 #include "yb/integration-tests/yb_table_test_base.h"
+
 #include "yb/util/test_util.h"
 
 DEFINE_int32(test_num_iter,

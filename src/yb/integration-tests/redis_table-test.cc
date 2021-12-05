@@ -10,16 +10,18 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <chrono>
 #include <thread>
 
 #include <glog/logging.h>
 
 #include "yb/client/schema.h"
+
 #include "yb/common/redis_protocol.pb.h"
+
 #include "yb/integration-tests/redis_table_test_base.h"
 #include "yb/integration-tests/yb_table_test_base.h"
-#include "yb/yql/redis/redisserver/redis_parser.h"
 
 using std::string;
 using std::vector;

@@ -10,11 +10,14 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/yql/redis/redisserver/redis_server.h"
 
 #include "yb/tserver/tablet_server_interface.h"
+
 #include "yb/util/flag_tags.h"
 #include "yb/util/size_literals.h"
+
 #include "yb/yql/redis/redisserver/redis_rpc.h"
 #include "yb/yql/redis/redisserver/redis_service.h"
 

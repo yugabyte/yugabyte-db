@@ -19,7 +19,6 @@
 
 #include "yb/common/ql_value.h"
 
-#include "yb/util/decimal.h"
 #include "yb/util/format.h"
 #include "yb/util/status_format.h"
 

@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/integration-tests/external_mini_cluster_fs_inspector.h"
 
 #include <sys/types.h>
@@ -37,12 +38,17 @@
 #include <unordered_map>
 
 #include "yb/consensus/metadata.pb.h"
+
 #include "yb/fs/fs_manager.h"
+
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/integration-tests/external_mini_cluster.h"
+
 #include "yb/util/env.h"
 #include "yb/util/monotime.h"
+#include "yb/util/net/sockaddr.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/status.h"

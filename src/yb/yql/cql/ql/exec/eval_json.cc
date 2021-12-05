@@ -12,24 +12,22 @@
 // under the License.
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/yql/cql/ql/exec/executor.h"
-
 #include <numeric> // NOLINT - needed because header name mismatch source name
 
+#include <boost/algorithm/string.hpp>
 #include <rapidjson/document.h>
 #include <rapidjson/error/en.h>
-#include <rapidjson/stringbuffer.h>
-#include <rapidjson/writer.h>
-
-#include <boost/algorithm/string.hpp>
 
 #include "yb/client/schema.h"
+
 #include "yb/common/ql_value.h"
 
 #include "yb/util/result.h"
 #include "yb/util/string_util.h"
 
 #include "yb/yql/cql/ql/exec/exec_context.h"
+#include "yb/yql/cql/ql/exec/executor.h"
+#include "yb/yql/cql/ql/ptree/column_desc.h"
 #include "yb/yql/cql/ql/ptree/pt_expr.h"
 #include "yb/yql/cql/ql/ptree/pt_insert.h"
 #include "yb/yql/cql/ql/ptree/pt_insert_json_clause.h"

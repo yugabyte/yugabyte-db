@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include "yb/yql/cql/cqlserver/cql_server.h"
+
 #include <boost/bind.hpp>
 
 #include "yb/client/client.h"
@@ -32,7 +34,6 @@
 #include "yb/util/source_location.h"
 
 #include "yb/yql/cql/cqlserver/cql_rpc.h"
-#include "yb/yql/cql/cqlserver/cql_server.h"
 #include "yb/yql/cql/cqlserver/cql_service.h"
 
 DEFINE_int32(cql_service_queue_length, 10000,

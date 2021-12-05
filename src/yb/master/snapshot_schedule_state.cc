@@ -10,14 +10,17 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/master/snapshot_schedule_state.h"
 
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/key_bytes.h"
 #include "yb/docdb/value_type.h"
+
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_error.h"
 #include "yb/master/snapshot_coordinator_context.h"
+
 #include "yb/util/pb_util.h"
 #include "yb/util/status_format.h"
 

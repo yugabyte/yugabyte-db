@@ -15,13 +15,13 @@
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/yb_op.h"
 
 #include "yb/common/ql_value.h"
 
 #include "yb/rpc/compressed_stream.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/tcp_stream.h"
-
 
 #include "yb/util/size_literals.h"
 

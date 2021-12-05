@@ -11,9 +11,9 @@
 // under the License.
 //
 
-#include "yb/integration-tests/cql_test_base.h"
-
 #include "yb/consensus/raft_consensus.h"
+
+#include "yb/integration-tests/cql_test_base.h"
 
 #include "yb/master/mini_master.h"
 
@@ -23,6 +23,7 @@
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 

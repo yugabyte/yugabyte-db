@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/master/backfill_index.h"
 
 #include <pthread.h>
@@ -33,7 +34,9 @@
 #include "yb/common/partial_row.h"
 #include "yb/common/partition.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/docdb/doc_rowwise_iterator.h"
+
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/callback.h"
 #include "yb/gutil/casts.h"
@@ -45,18 +48,21 @@
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/sysinfo.h"
+
+#include "yb/master/master_fwd.h"
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
-#include "yb/master/master_fwd.h"
 #include "yb/master/sys_catalog.h"
+
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
+
 #include "yb/tserver/tserver_admin.proxy.h"
-#include "yb/util/countdown_latch.h"
+
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
 #include "yb/util/math_util.h"

@@ -29,20 +29,20 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/master/ts_descriptor.h"
 
-#include <mutex>
 #include <vector>
 
 #include "yb/common/common.pb.h"
 #include "yb/common/wire_protocol.h"
+
+#include "yb/master/master_fwd.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/master.pb.h"
-#include "yb/master/master_fwd.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/flag_tags.h"
-#include "yb/util/net/net_util.h"
-#include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
 
 DEFINE_int32(tserver_unresponsive_timeout_ms, 60 * 1000,

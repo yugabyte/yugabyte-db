@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/integration-tests/cql_test_util.h"
 
 #include <cassandra.h>
@@ -17,6 +18,7 @@
 #include <thread>
 
 #include "yb/gutil/strings/join.h"
+
 #include "yb/util/enums.h"
 #include "yb/util/status_log.h"
 #include "yb/util/tsan_util.h"

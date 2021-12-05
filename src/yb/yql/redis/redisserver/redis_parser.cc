@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/yql/redis/redisserver/redis_parser.h"
 
 #include <memory>
@@ -17,13 +18,17 @@
 
 #include <boost/algorithm/string.hpp>
 
+#include "yb/client/callbacks.h"
 #include "yb/client/yb_op.h"
+
 #include "yb/common/redis_protocol.pb.h"
+
 #include "yb/util/split.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_case.h"
+
 #include "yb/yql/redis/redisserver/redis_constants.h"
 
 namespace yb {

@@ -14,6 +14,9 @@
 
 #include "yb/yql/pggate/pg_value.h"
 
+#include "yb/common/ql_value.h"
+
+#include "yb/util/decimal.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 

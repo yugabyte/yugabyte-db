@@ -10,9 +10,11 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/master/cluster_balance_util.h"
 
 #include "yb/master/catalog_entity_info.h"
+
 #include "yb/util/atomic.h"
 
 DECLARE_int32(min_leader_stepdown_retry_interval_ms);

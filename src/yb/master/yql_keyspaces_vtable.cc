@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/master/yql_keyspaces_vtable.h"
 
 #include <stdint.h>
@@ -18,9 +19,10 @@
 
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
+
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
-#include "yb/util/net/inetaddress.h"
+
 #include "yb/util/status_log.h"
 #include "yb/util/uuid.h"
 

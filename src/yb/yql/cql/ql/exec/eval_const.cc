@@ -12,23 +12,25 @@
 // under the License.
 //
 //--------------------------------------------------------------------------------------------------
+
 #include <string>
 
 #include "yb/common/jsonb.h"
 #include "yb/common/ql_datatype.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
+
 #include "yb/gutil/endian.h"
 #include "yb/gutil/strings/escaping.h"
+
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/date_time.h"
-#include "yb/util/decimal.h"
 #include "yb/util/enums.h"
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/uuid.h"
+
 #include "yb/yql/cql/ql/exec/exec_context.h"
 #include "yb/yql/cql/ql/exec/executor.h"
 #include "yb/yql/cql/ql/ptree/pt_expr.h"

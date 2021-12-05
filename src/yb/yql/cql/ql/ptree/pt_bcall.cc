@@ -14,11 +14,16 @@
 //
 // Treenode definitions for expressions.
 //--------------------------------------------------------------------------------------------------
+
 #include "yb/yql/cql/ql/ptree/pt_bcall.h"
 
 #include "yb/bfql/bfql.h"
+
 #include "yb/client/schema.h"
 #include "yb/client/table.h"
+
+#include "yb/common/types.h"
+
 #include "yb/yql/cql/ql/ptree/column_desc.h"
 #include "yb/yql/cql/ql/ptree/pt_dml.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"

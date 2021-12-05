@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <functional>
 #include <memory>
 #include <string>
@@ -44,16 +45,20 @@
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
 #include "yb/client/table_creator.h"
+
 #include "yb/common/column_id.h"
 #include "yb/common/common.pb.h"
-#include "yb/common/common_fwd.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/hybrid_time.h"
-#include "yb/gutil/stl_util.h"
+
+#include "yb/gutil/algorithm.h"
+
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
+
 #include "yb/master/master.h"
 #include "yb/master/mini_master.h"
+
 #include "yb/util/memory/arena_fwd.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"

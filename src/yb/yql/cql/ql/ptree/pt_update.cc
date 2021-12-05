@@ -17,11 +17,12 @@
 
 #include "yb/yql/cql/ql/ptree/pt_update.h"
 
+#include "yb/common/ql_type.h"
+
 #include "yb/yql/cql/ql/ptree/column_arg.h"
 #include "yb/yql/cql/ql/ptree/column_desc.h"
 #include "yb/yql/cql/ql/ptree/pt_dml_using_clause.h"
 #include "yb/yql/cql/ql/ptree/pt_expr.h"
-#include "yb/yql/cql/ql/ptree/sem_state.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/yql/cql/ql/ptree/yb_location.h"
 

@@ -10,11 +10,14 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/master/yql_auth_resource_role_permissions_index.h"
 
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
+
 #include "yb/master/permissions_manager.h"
+
 #include "yb/util/status_log.h"
 
 namespace yb {

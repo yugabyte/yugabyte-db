@@ -14,6 +14,7 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/pggate/pg_statement.h"
+
 #include "yb/client/yb_op.h"
 
 namespace yb {

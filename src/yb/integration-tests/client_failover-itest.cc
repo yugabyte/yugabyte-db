@@ -33,12 +33,16 @@
 #include <memory>
 #include <set>
 #include <unordered_map>
+
 #include <boost/optional.hpp>
 
 #include "yb/client/client-test-util.h"
 #include "yb/client/table_handle.h"
+
 #include "yb/common/wire_protocol.h"
+
 #include "yb/gutil/map-util.h"
+
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
 #include "yb/integration-tests/test_workload.h"
 

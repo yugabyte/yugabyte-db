@@ -17,8 +17,8 @@
 #include "yb/client/session.h"
 
 #include "yb/integration-tests/cluster_verifier.h"
-#include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/mini_cluster.h"
 
 #include "yb/util/result.h"
 

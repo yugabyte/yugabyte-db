@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/master/cluster_balance.h"
 
 #include <algorithm>
@@ -20,13 +21,16 @@
 #include <boost/optional/optional.hpp>
 
 #include "yb/common/common.pb.h"
+
 #include "yb/consensus/quorum_util.h"
+
 #include "yb/gutil/casts.h"
+
+#include "yb/master/master_fwd.h"
 #include "yb/master/master.h"
 #include "yb/master/master_error.h"
-#include "yb/master/master_fwd.h"
+
 #include "yb/util/flag_tags.h"
-#include "yb/util/shared_lock.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"

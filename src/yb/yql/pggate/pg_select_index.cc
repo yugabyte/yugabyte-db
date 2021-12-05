@@ -12,10 +12,13 @@
 // under the License.
 //
 //--------------------------------------------------------------------------------------------------
+
 #include "yb/yql/pggate/pg_select_index.h"
 
 #include "yb/client/yb_op.h"
+
 #include "yb/util/status_format.h"
+
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
 namespace yb {

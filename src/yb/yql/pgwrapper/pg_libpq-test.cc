@@ -9,6 +9,7 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
+
 #include <signal.h>
 
 #include <fstream>
@@ -17,11 +18,15 @@
 #include "yb/client/client_fwd.h"
 #include "yb/client/table_info.h"
 #include "yb/client/yb_table_name.h"
+
 #include "yb/common/common.pb.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/schema.h"
+
 #include "yb/master/master_defaults.h"
+
 #include "yb/tserver/tserver.pb.h"
+
 #include "yb/util/async_util.h"
 #include "yb/util/barrier.h"
 #include "yb/util/metrics.h"
@@ -31,6 +36,8 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_thread_holder.h"
+#include "yb/util/tsan_util.h"
+
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 

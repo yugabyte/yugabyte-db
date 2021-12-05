@@ -13,16 +13,18 @@
 
 #include "yb/master/yql_partitions_vtable.h"
 
+#include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
+
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
 #include "yb/master/master_util.h"
+
 #include "yb/rpc/messenger.h"
-#include "yb/util/logging.h"
+
 #include "yb/util/net/dns_resolver.h"
-#include "yb/util/shared_lock.h"
 #include "yb/util/status_log.h"
 
 DECLARE_int32(partitions_vtable_cache_refresh_secs);

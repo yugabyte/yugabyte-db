@@ -29,14 +29,20 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <algorithm>
 #include <memory>
 #include <vector>
 
 #include "yb/common/schema.h"
+#include "yb/common/wire_protocol.h"
+
 #include "yb/gutil/stl_util.h"
+
 #include "yb/master/catalog_manager.h"
 #include "yb/master/sys_catalog-test_base.h"
+#include "yb/master/sys_catalog.h"
+
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
 

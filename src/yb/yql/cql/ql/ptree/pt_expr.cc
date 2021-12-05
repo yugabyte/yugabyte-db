@@ -17,10 +17,9 @@
 
 #include "yb/yql/cql/ql/ptree/pt_expr.h"
 
-#include "yb/client/schema.h"
-#include "yb/client/table.h"
-
 #include "yb/bfql/tserver_opcodes.h"
+
+#include "yb/client/table.h"
 
 #include "yb/common/common.pb.h"
 #include "yb/common/index.h"
@@ -28,15 +27,16 @@
 
 #include "yb/gutil/casts.h"
 
+#include "yb/util/date_time.h"
 #include "yb/util/decimal.h"
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/stol_utils.h"
-#include "yb/util/date_time.h"
 
 #include "yb/yql/cql/ql/ptree/column_desc.h"
 #include "yb/yql/cql/ql/ptree/pt_bcall.h"
 #include "yb/yql/cql/ql/ptree/pt_select.h"
+#include "yb/yql/cql/ql/ptree/pt_type.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/yql/cql/ql/ptree/yb_location.h"
 

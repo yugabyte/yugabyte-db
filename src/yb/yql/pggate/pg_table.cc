@@ -10,9 +10,12 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/yql/pggate/pg_table.h"
 
 #include "yb/util/result.h"
+
+#include "yb/yql/pggate/pg_tabledesc.h"
 
 namespace yb {
 namespace pggate {

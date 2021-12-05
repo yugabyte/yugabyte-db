@@ -43,6 +43,7 @@
 // During insertion, a configurable number of parallel chains may be inserted.
 // To verify, the table is scanned, and we ensure that every key is linked to
 // either zero or one times, and no link_to refers to a missing key.
+
 #include <functional>
 #include <set>
 
@@ -57,15 +58,20 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/tablet_server.h"
 #include "yb/client/yb_op.h"
+
 #include "yb/common/ql_value.h"
+
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
+
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/ts_itest-base.h"
+
 #include "yb/server/hybrid_clock.h"
+
 #include "yb/util/blocking_queue.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/hdr_histogram.h"

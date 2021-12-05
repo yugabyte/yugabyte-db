@@ -9,13 +9,19 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
+
 #include <string>
 
 #include "yb/client/client.h"
 #include "yb/client/table_info.h"
 #include "yb/client/yb_table_name.h"
+
+#include "yb/gutil/bind_internal.h"
+
 #include "yb/integration-tests/mini_cluster_base.h"
+
 #include "yb/util/async_util.h"
+
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 

@@ -12,6 +12,8 @@
 // under the License.
 //
 //--------------------------------------------------------------------------------------------------
+
+#include "yb/yql/cql/ql/ptree/parse_tree.h"
 #include "yb/yql/cql/ql/ptree/pt_create_index.h"
 #include "yb/yql/cql/ql/test/ql-test-base.h"
 

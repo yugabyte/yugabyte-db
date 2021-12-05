@@ -28,14 +28,17 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
+
 #include "yb/master/catalog_manager_bg_tasks.h"
 
 #include <memory>
 
 #include "yb/gutil/casts.h"
+
 #include "yb/master/cluster_balance.h"
 #include "yb/master/master.h"
 #include "yb/master/ts_descriptor.h"
+
 #include "yb/util/flag_tags.h"
 #include "yb/util/mutex.h"
 #include "yb/util/status_log.h"

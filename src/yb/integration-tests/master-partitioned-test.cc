@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <memory>
 #include <thread>
 
@@ -18,22 +19,31 @@
 #include "yb/client/client.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
+
 #include "yb/common/wire_protocol.h"
+
+#include "yb/consensus/consensus.h"
+
 #include "yb/fs/fs_manager.h"
+
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
+
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/mini_master.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
+
 #include "yb/tablet/tablet_peer.h"
+
 #include "yb/util/atomic.h"
-#include "yb/util/shared_lock.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
 
 using yb::client::YBClient;
 using yb::client::YBClientBuilder;

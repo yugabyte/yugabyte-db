@@ -24,6 +24,7 @@
 #include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 

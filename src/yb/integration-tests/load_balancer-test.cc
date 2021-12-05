@@ -10,14 +10,19 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
+
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus.proxy.h"
+
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/yb_table_test_base.h"
+
 #include "yb/tools/yb-admin_client.h"
+
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 

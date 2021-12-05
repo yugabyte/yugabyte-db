@@ -17,11 +17,12 @@
 #include "yb/util/status_log.h"
 #include "yb/util/varint.h"
 
-#include "yb/yql/cql/ql/test/ql-test-base.h"
+#include "yb/yql/cql/ql/ptree/parse_tree.h"
 #include "yb/yql/cql/ql/ptree/pt_create_table.h"
 #include "yb/yql/cql/ql/ptree/pt_expr.h"
 #include "yb/yql/cql/ql/ptree/pt_select.h"
 #include "yb/yql/cql/ql/ptree/pt_table_property.h"
+#include "yb/yql/cql/ql/test/ql-test-base.h"
 
 namespace yb {
 namespace ql {

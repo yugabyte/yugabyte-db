@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <algorithm>
 #include <functional>
 #include <memory>
@@ -24,15 +25,21 @@
 
 #include "yb/common/common.pb.h"
 #include "yb/common/entity_ids_types.h"
+
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus.proxy.h"
-#include "yb/gutil/stl_util.h"
+
+#include "yb/gutil/algorithm.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/integration-tests/external_mini_cluster.h"
+
 #include "yb/master/master.pb.h"
+
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 #include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
 
 using std::shared_ptr;
 using std::string;

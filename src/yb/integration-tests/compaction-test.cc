@@ -10,7 +10,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#include <sys/types.h>
 
 #include <boost/function.hpp>
 
@@ -18,37 +17,46 @@
 #include "yb/client/table_alterer.h"
 #include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_pool.h"
+
 #include "yb/common/common_fwd.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/schema.h"
 #include "yb/common/snapshot.h"
+
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
+
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_ttl_util.h"
-#include "yb/docdb/docdb_fwd.h"
+
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/ref_counted.h"
+
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/test_workload.h"
+
 #include "yb/master/catalog_entity_info.h"
+
+#include "yb/rocksdb/db.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/types.h"
 #include "yb/rocksdb/util/sync_point.h"
+
 #include "yb/server/hybrid_clock.h"
-#include "yb/tablet/mvcc.h"
+
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_peer.h"
+
 #include "yb/tserver/ts_tablet_manager.h"
+
 #include "yb/util/compare_util.h"
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/operation_counter.h"
 #include "yb/util/size_literals.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"

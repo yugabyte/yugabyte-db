@@ -12,7 +12,8 @@
 //
 
 #include "yb/integration-tests/load_balancer_test_util.h"
-#include "yb/master/ts_manager.h"
+
+#include <glog/logging.h>
 
 namespace yb {
 namespace integration_tests {

@@ -10,12 +10,15 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/master/yql_size_estimates_vtable.h"
 
 #include "yb/common/partition.h"
 #include "yb/common/schema.h"
+
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
+
 #include "yb/util/status_log.h"
 #include "yb/util/yb_partition.h"
 

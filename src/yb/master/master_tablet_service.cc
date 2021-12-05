@@ -10,13 +10,18 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/master/master_tablet_service.h"
 
 #include "yb/common/wire_protocol.h"
+
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/scoped_leader_shared_lock-internal.h"
+
+#include "yb/rpc/rpc_context.h"
+
 #include "yb/util/flag_tags.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"

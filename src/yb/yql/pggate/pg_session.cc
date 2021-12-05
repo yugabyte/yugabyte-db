@@ -12,6 +12,7 @@
 // under the License.
 //
 //--------------------------------------------------------------------------------------------------
+
 #include "yb/yql/pggate/pg_session.h"
 
 #include <memory>
@@ -27,6 +28,7 @@
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
+
 #include "yb/common/pg_types.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/ql_expr.h"
@@ -34,16 +36,21 @@
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction_error.h"
+
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/primitive_value.h"
+
 #include "yb/gutil/casts.h"
+
 #include "yb/tserver/tserver_shared_mem.h"
+
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
 #include "yb/util/result.h"
 #include "yb/util/shared_mem.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
+
 #include "yb/yql/pggate/pg_client.h"
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_txn_manager.h"

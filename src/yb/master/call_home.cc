@@ -9,6 +9,7 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
+
 #include "yb/master/call_home.h"
 
 #include <sstream>
@@ -23,7 +24,11 @@
 #include "yb/master/master.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/ts_manager.h"
+
+#include "yb/rpc/scheduler.h"
+
 #include "yb/tserver/ts_tablet_manager.h"
+
 #include "yb/util/flag_tags.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/logging.h"

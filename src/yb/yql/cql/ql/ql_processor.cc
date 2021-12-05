@@ -12,18 +12,23 @@
 // under the License.
 //
 //--------------------------------------------------------------------------------------------------
+
 #include "yb/yql/cql/ql/ql_processor.h"
 
 #include <memory>
 
 #include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
+
 #include "yb/common/index.h"
+
 #include "yb/gutil/bind.h"
+
 #include "yb/util/metrics.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/thread_restrictions.h"
+
 #include "yb/yql/cql/ql/parser/parser.h"
 
 DECLARE_bool(use_cassandra_authentication);

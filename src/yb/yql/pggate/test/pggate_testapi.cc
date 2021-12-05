@@ -12,7 +12,9 @@
 // under the License.
 //
 //--------------------------------------------------------------------------------------------------
+
 #include "yb/yql/pggate/test/pggate_test.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 namespace yb {
 namespace pggate {

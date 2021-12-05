@@ -15,6 +15,7 @@
 
 #include "yb/client/client.h"
 
+#include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
 
 namespace yb {
