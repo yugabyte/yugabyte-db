@@ -9,13 +9,18 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
+
 #include "yb/yql/pggate/ybc_pggate_tool.h"
 
 #include "yb/common/ybc-internal.h"
+
 #include "yb/rpc/rpc_controller.h"
+
 #include "yb/server/server_base_options.h"
+
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
+
 #include "yb/util/countdown_latch.h"
 #include "yb/util/shared_mem.h"
 

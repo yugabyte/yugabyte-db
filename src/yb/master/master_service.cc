@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/master/master_service.h"
 
 #include <memory>
@@ -38,12 +39,13 @@
 #include <boost/preprocessor/cat.hpp>
 
 #include "yb/common/wire_protocol.h"
-#include "yb/master/catalog_manager-internal.h"
+
 #include "yb/master/encryption_manager.h"
 #include "yb/master/flush_manager.h"
 #include "yb/master/master_service_base-internal.h"
 #include "yb/master/master_service_base.h"
 #include "yb/master/permissions_manager.h"
+
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/shared_lock.h"

@@ -27,13 +27,18 @@
 #include <boost/optional.hpp>
 
 #include "yb/common/ql_rowblock.h"
+
+#include "yb/gutil/bind.h"
+
 #include "yb/rpc/io_thread_pool.h"
 #include "yb/rpc/scheduler.h"
+
 #include "yb/util/async_util.h"
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/string_util.h"
+
 #include "yb/yql/cql/cqlserver/cql_processor.h"
 #include "yb/yql/cql/cqlserver/cql_service.h"
 #include "yb/yql/cql/ql/util/statement_params.h"

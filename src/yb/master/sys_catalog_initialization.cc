@@ -13,22 +13,20 @@
 
 #include "yb/master/sys_catalog_initialization.h"
 
-#include "yb/util/countdown_latch.h"
-#include "yb/util/pb_util.h"
-#include "yb/util/env_util.h"
-#include "yb/util/path_util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/common/wire_protocol.h"
 
-#include "yb/master/sys_catalog_constants.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/sys_catalog.h"
 
+#include "yb/tablet/operations/change_metadata_operation.h"
+#include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_snapshots.h"
-#include "yb/tablet/operations/operation.h"
-#include "yb/tablet/operations/snapshot_operation.h"
-#include "yb/tablet/operations/change_metadata_operation.h"
+
+#include "yb/util/countdown_latch.h"
+#include "yb/util/env_util.h"
+#include "yb/util/flag_tags.h"
 
 DEFINE_string(initial_sys_catalog_snapshot_path, "",
     "If this is specified, system catalog RocksDB is checkpointed at this location after initdb "

@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/master/master_tserver.h"
 
 #include <map>
@@ -19,17 +20,18 @@
 #include <boost/preprocessor/stringize.hpp>
 
 #include "yb/client/async_initializer.h"
+
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/sys_catalog_constants.h"
+
 #include "yb/tablet/tablet_peer.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/metric_entity.h"
-#include "yb/util/metrics_fwd.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status_format.h"
-#include "yb/util/status_fwd.h"
 
 namespace yb {
 namespace master {
