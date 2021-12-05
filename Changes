@@ -1,7 +1,7 @@
 Revision history for pgTAP
 ==========================
 
-1.2.0
+1.2.0 2021-12-05T18:08:13Z
 --------------------------
 * Made the description field optional in `has_view()` and `hasnt_view()` when
   specifying schema (#230). Thanks to Godwottery for the patch!

@@ -1,4 +1,4 @@
-pgTAP 1.1.0
+pgTAP 1.2.0
 ============
 
 pgTAP is a unit testing framework for PostgreSQL written in PL/pgSQL and
@@ -8683,10 +8683,15 @@ PostgreSQL. This helps you to understand any side-effects. To see the specifics
 for each version of PostgreSQL, consult the files in the `compat/` directory in
 the pgTAP distribution.
 
-10 and Up
+11 and Up
 ---------
 
 No changes. Everything should just work.
+
+10 and Down
+-----------
+*   The stored procedure-testing funtions are not available, because stored
+    procedures were not introduced until 11.
 
 9.6 and Down
 ------------

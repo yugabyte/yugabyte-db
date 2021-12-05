@@ -9,10 +9,11 @@ Here are the steps to take to make a release of pgTAP:
 *   Review and merge any appropriate
     [pull requests](https://github.com/theory/pgtap/pulls).
 
-*   Test on all supported PostgreSQL versions, starting with the latest version
-    (12) and moving backward in order (9.6, 9.5, 9.4, etc.).
-    [pgenv](https://github.com/theory/pgenv/) is a handy tool for installing and
-    switching between versions. For each version, ensure that:
+*   Make sure that [all tests](https://github.com/theory/pgtap/actions) pass on
+    all supported versions of Postgres. If you want to run the tests manually,
+    you can use the [pgxn-utils Docker image](https://github.com/pgxn/docker-pgxn-tools)
+    or [pgenv](https://github.com/theory/pgenv/) to install and
+    switch between versions. For each version, ensure that:
 
     +   Patches apply cleanly (try to eliminate Hunk warnings for patches to
         `pgtap.sql` itself, usually by fixing line numbers)
@@ -69,7 +70,7 @@ Here are the steps to take to make a release of pgTAP:
         `DOC SANS pgTAP x.xx` section, and then remove the first `<li>` element that
         says "pgTAP x.xx".
 
-    +   Sanity-check that everything looks right; use `git diff` to make sure
+    +   Review to ensure that everything looks right; use `git diff` to make sure
         nothing important was lost. It should mainly be additions.
 
     +   Commit the changes, but don't push them yet.
@@ -85,21 +86,26 @@ Here are the steps to take to make a release of pgTAP:
     Paste that into the line with the new version, maybe increment by a minute
     to account for the time you'll need to actually do the release.
 
-*   Commit the timestamp and tag it:
+*   Commit the timestamp and push it:
 
-         git ci -m 'Timestamp v0.98.0.'
-         git tag -sm 'Tag v0.98.0.' v0.98.0
+        git ci -m 'Timestamp v0.98.0.'
+        git push
 
-*   Package the source and submit to [PGXN](https://manager.pgxn.org/).
+*   Once again make sure [all tests](https://github.com/theory/pgtap/actions)
+    pass. Fix any that fail.
 
-        gem install pgxn_utils
-        git archive --format zip --prefix=pgtap-1.0.0/ \
-        --output pgtap-1.0.0.zip master
+*   Once all tests pass, tag the release with its semantic version (including
+    the leading `v`) and push the tag.
 
-*   Push all the changes to GitHub.
+        git tag -sm 'Tag v0.98.0.' v0.98.0
+        git push --tags
+
+*   Monitor the [release workflow](https://github.com/theory/pgtap/actions/workflows/release.yml)
+    to make sure the new version is released on both PGXN and GitHub.
+
+*   Push the `gh-pages` branch:
 
         git push
-        git push --tags
         git push origin up/gh-pages:gh-pages
 
 *   Increment the minor version to kick off development for the next release.

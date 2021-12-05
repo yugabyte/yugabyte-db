@@ -271,7 +271,7 @@ sql/uninstall_pgtap.sql: sql/pgtap.sql test/setup.sql
 # TODO: the sed command needs the equivalent of bash's PIPEFAIL; should just replace this with some perl magic
 sql/pgtap-static.sql: sql/pgtap.sql.in
 	cp $< $@.tmp
-	for p in `ls compat/install-*.patch | sort -rn`; do \
+	@for p in `ls compat/install-*.patch | sort -rn`; do \
 		echo; echo '***' "Patching pgtap-static.sql with $$p"; \
 		sed -e 's#sql/pgtap.sql#sql/pgtap-static.sql.tmp#g' "$$p" | patch -p0; \
 	done
