@@ -579,10 +579,6 @@ SELECT col1,col2 FROM t3 ORDER BY NLSSORT(col2,'da_DK.UTF8');
 
 Searches a string for a regular expression, and returns a count of the matches.
 
-**Syntax**
-
-![REGEXP_COUNT]( gif/REGEXP_COUNT.gif) 
-
 **General rules**
 
  - REGEXP_COUNT returns the number of times *pattern* occurs in a source *string*. It returns an integer indicating the number of occurrences of *pattern*. If no match is found, then the function returns 0.
@@ -636,10 +632,6 @@ SELECT REGEXP_COUNT('a'||CHR(10)||'d', '^d$', 1, 'm') FROM DUAL;
 
 Returns the beginning or ending position within the string where the match for a pattern was located.
 
-**Syntax**
-
-![REGEXP_INSTR]( gif/REGEXP_INSTR.gif) 
-
 **General rules**
 
  - REGEXP_INSTR returns an integer indicating the beginning or ending position of the matched substring, depending on the value of the *return_opt* argument. If no match is found, then the function returns 0. 
@@ -689,10 +681,6 @@ SELECT REGEXP_INSTR('199 Oretax Prayers, Riffles Stream, CA', '[S|R|P][[:alpha:]
 
 Condition in the WHERE clause of a query, causing the query to return rows that match the given pattern.
 
-**Syntax**
-
-![REGEXP_LIKE]( gif/REGEXP_LIKE.gif) 
-
 **General rules**
 
  - REGEXP_LIKE is similar to the LIKE condition, except it performs regular expression matching instead of the simple pattern matching performed by LIKE.
@@ -722,10 +710,6 @@ SELECT REGEXP_LIKE('a'||CHR(10)||'d', 'a.d', 'n') FROM DUAL;
 **Description**
 
 Returns the string that matches the pattern specified in the call to the function.
-
-**Syntax**
-
-![REGEXP_SUBSTR]( gif/REGEXP_SUBSTR.gif) 
 
 **General rules**
 
@@ -771,10 +755,6 @@ SELECT regexp_substr('1234567890 1234567890', '(123)(4(56)(78))', 1, 1, 'i', 0) 
 **Description**
 
 Returns the string that matches the pattern specified in the call to the function.
-
-**Syntax**
-
-![REGEXP_REPLACE]( gif/REGEXP_REPLACE.gif) 
 
 **General rules**
 
