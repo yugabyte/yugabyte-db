@@ -15,7 +15,6 @@
 #define YB_COMMON_COMMON_FWD_H
 
 #include <memory>
-#include <unordered_set>
 
 namespace yb {
 

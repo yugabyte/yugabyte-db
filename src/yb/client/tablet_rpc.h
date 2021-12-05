@@ -16,9 +16,14 @@
 #ifndef YB_CLIENT_TABLET_RPC_H
 #define YB_CLIENT_TABLET_RPC_H
 
+#include <memory>
+#include <string>
 #include <unordered_set>
 
+#include <gflags/gflags_declare.h>
+
 #include "yb/client/client_fwd.h"
+
 #include "yb/common/hybrid_time.h"
 
 #include "yb/master/master_fwd.h"
@@ -29,8 +34,7 @@
 #include "yb/tserver/tserver.pb.h"
 
 #include "yb/util/status_fwd.h"
-#include "yb/util/trace.h"
-#include "yb/util/net/net_util.h"
+#include "yb/util/net/net_fwd.h"
 
 namespace yb {
 

@@ -32,18 +32,15 @@
 #define YB_ROCKSDB_ENV_H
 
 #include <stdint.h>
-#include <cstdarg>
+
 #include <limits>
 #include <memory>
 #include <string>
 #include <vector>
 
-#include "yb/rocksdb/file.h"
-
+#include "yb/util/status_fwd.h"
 #include "yb/util/file_system.h"
 #include "yb/util/slice.h"
-
-#include "yb/util/status_fwd.h"
 
 #ifdef _WIN32
 // Windows API macro interference

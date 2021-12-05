@@ -15,7 +15,6 @@
 #define YB_UTIL_HEADER_MANAGER_H
 
 #include <memory>
-#include <string>
 
 #include "yb/util/status_fwd.h"
 

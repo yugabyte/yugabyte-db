@@ -44,15 +44,14 @@
 #define YB_SERVER_WEBSERVER_H
 
 #include <map>
-#include <mutex>
 #include <shared_mutex>
 #include <string>
 #include <vector>
 
 #include "yb/server/webserver_options.h"
-#include "yb/util/net/sockaddr.h"
-#include "yb/util/net/net_util.h"
+
 #include "yb/util/status_fwd.h"
+#include "yb/util/net/net_fwd.h"
 #include "yb/util/web_callback_registry.h"
 
 struct sq_connection;

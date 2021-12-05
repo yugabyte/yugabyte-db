@@ -21,7 +21,6 @@
 #include "yb/master/master_fwd.h"
 
 #include "yb/util/net/net_fwd.h"
-#include "yb/util/net/inetaddress.h"
 #include "yb/util/uuid.h"
 
 namespace yb {

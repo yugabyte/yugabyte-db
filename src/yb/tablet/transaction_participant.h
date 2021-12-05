@@ -16,8 +16,13 @@
 #ifndef YB_TABLET_TRANSACTION_PARTICIPANT_H
 #define YB_TABLET_TRANSACTION_PARTICIPANT_H
 
+#include <stdint.h>
+
+#include <cstdint>
+#include <functional>
 #include <future>
 #include <memory>
+#include <type_traits>
 
 #include <boost/optional/optional.hpp>
 
@@ -28,10 +33,12 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
-#include "yb/tablet/tablet_fwd.h"
-
 #include "yb/server/server_fwd.h"
 
+#include "yb/tablet/tablet_fwd.h"
+
+#include "yb/util/enums.h"
+#include "yb/util/math_util.h"
 #include "yb/util/opid.h"
 
 namespace rocksdb {

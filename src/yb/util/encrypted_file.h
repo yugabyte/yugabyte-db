@@ -14,11 +14,15 @@
 #ifndef YB_UTIL_ENCRYPTED_FILE_H
 #define YB_UTIL_ENCRYPTED_FILE_H
 
+#include <string.h>
+
 #include <atomic>
+#include <cstdarg>
 #include <memory>
 
-#include "yb/util/env.h"
 #include "yb/util/cipher_stream_fwd.h"
+#include "yb/util/env.h"
+#include "yb/util/faststring.h"
 
 namespace yb {
 

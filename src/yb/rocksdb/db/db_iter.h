@@ -25,13 +25,14 @@
 #define YB_ROCKSDB_DB_DB_ITER_H
 
 #pragma once
+
 #include <stdint.h>
+
 #include <string>
-#include "yb/rocksdb/db.h"
+
+#include "yb/rocksdb/immutable_options.h"
 #include "yb/rocksdb/iterator.h"
-#include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/util/arena.h"
-#include "yb/rocksdb/util/autovector.h"
 
 namespace rocksdb {
 

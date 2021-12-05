@@ -39,10 +39,11 @@
 #include "yb/common/common_fwd.h"
 #include "yb/common/schema.h"
 #include "yb/common/types.h"
+
 #include "yb/gutil/macros.h"
-#include "yb/gutil/map-util.h"
-#include "yb/util/memory/arena.h"
+
 #include "yb/util/bitmap.h"
+#include "yb/util/memory/arena.h"
 #include "yb/util/status.h"
 
 namespace yb {

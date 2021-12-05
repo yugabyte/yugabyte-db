@@ -33,18 +33,18 @@
 #ifndef YB_UTIL_TEST_UTIL_H
 #define YB_UTIL_TEST_UTIL_H
 
+#include <dirent.h>
+
 #include <atomic>
 #include <string>
-#include <thread>
 
+#include <glog/logging.h>
 #include <gtest/gtest.h>
 
 #include "yb/util/env.h"
 #include "yb/util/monotime.h"
 #include "yb/util/port_picker.h"
-#include "yb/util/subprocess.h"
-#include "yb/util/test_macros.h"
-#include "yb/util/tsan_util.h"
+#include "yb/util/test_macros.h" // For convenience
 
 #define ASSERT_EVENTUALLY(expr) do { \
   AssertEventually(expr); \

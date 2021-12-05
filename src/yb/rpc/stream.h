@@ -16,9 +16,8 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
-#include "yb/util/net/net_fwd.h"
-#include "yb/util/net/socket.h"
 #include "yb/util/status_fwd.h"
+#include "yb/util/net/socket.h"
 
 namespace ev {
 

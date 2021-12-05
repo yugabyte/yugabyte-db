@@ -14,10 +14,23 @@
 #ifndef YB_COMMON_RETRYABLE_REQUEST_H
 #define YB_COMMON_RETRYABLE_REQUEST_H
 
-#include "yb/util/strongly_typed_uuid.h"
+#include <float.h>
+#include <stdint.h>
+
+#include <chrono>
+#include <sstream>
+#include <string>
+#include <type_traits>
+
+#include <boost/functional/hash/hash.hpp>
+#include <boost/mpl/and.hpp>
+#include <boost/optional/optional.hpp>
 
 #include "yb/util/format.h"
 #include "yb/util/status_ec.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/tostring.h"
+#include "yb/util/type_traits.h"
 
 namespace yb {
 

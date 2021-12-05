@@ -34,18 +34,18 @@
 #define YB_COMMON_TYPES_H
 
 #include <stdint.h>
+
 #include <string>
 
 #include <glog/logging.h>
 
 #include "yb/common/common.pb.h"
+
 #include "yb/gutil/mathlimits.h"
 #include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/numbers.h"
-#include "yb/util/net/inetaddress.h"
-#include "yb/util/uuid.h"
+
 #include "yb/util/slice.h"
-#include "yb/util/status.h"
 
 namespace yb {
 

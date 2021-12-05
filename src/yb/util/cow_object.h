@@ -32,13 +32,17 @@
 #ifndef YB_UTIL_COW_OBJECT_H
 #define YB_UTIL_COW_OBJECT_H
 
+#include <fcntl.h>
+
 #include <algorithm>
 
 #include <glog/logging.h>
 
 #include "yb/gutil/macros.h"
-#include "yb/util/rwc_lock.h"
+
+#include "yb/util/fault_injection.h"
 #include "yb/util/logging.h"
+#include "yb/util/rwc_lock.h"
 
 namespace yb {
 

@@ -15,18 +15,23 @@
 #define YB_YQL_PGGATE_PG_CLIENT_H
 
 #include <memory>
+#include <string>
 
 #include <boost/preprocessor/seq/for_each.hpp>
+#include <boost/version.hpp>
 
 #include "yb/client/client_fwd.h"
 
-#include "yb/rpc/proxy.h"
+#include "yb/common/pg_types.h"
+
+#include "yb/rpc/rpc_fwd.h"
 
 #include "yb/tserver/tserver_util_fwd.h"
 #include "yb/tserver/pg_client.pb.h"
 
+#include "yb/util/monotime.h"
+
 #include "yb/yql/pggate/pg_gate_fwd.h"
-#include "yb/yql/pggate/pg_env.h"
 
 namespace yb {
 namespace pggate {

@@ -36,13 +36,16 @@
 
 #include <stdint.h>
 
-#include <thread>
 #include <functional>
+
+#if defined(__APPLE__)
+#include <thread>
+#else
+#include <sched.h>
+#endif
 
 #include <boost/container/stable_vector.hpp>
 #include <boost/lockfree/stack.hpp>
-
-#include <glog/logging.h>
 
 #include "yb/gutil/manual_constructor.h"
 #include "yb/gutil/sysinfo.h"

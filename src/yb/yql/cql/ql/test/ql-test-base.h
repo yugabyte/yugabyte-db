@@ -20,15 +20,15 @@
 
 #include "yb/gutil/bind.h"
 
-#include "yb/yql/cql/ql/ql_processor.h"
-#include "yb/yql/cql/ql/statement.h"
-#include "yb/yql/cql/ql/util/ql_env.h"
-
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/master/mini_master.h"
 
+#include "yb/server/server_fwd.h"
+
 #include "yb/util/async_util.h"
 #include "yb/util/test_util.h"
+
+#include "yb/yql/cql/ql/ql_processor.h"
 
 namespace yb {
 namespace ql {
@@ -111,14 +111,8 @@ class TestQLProcessor : public ClockHolder, public QLProcessor {
   // Constructors.
   TestQLProcessor(client::YBClient* client,
                   std::shared_ptr<client::YBMetaDataCache> cache,
-                  const RoleName& role_name)
-      : QLProcessor(client, cache, nullptr /* ql_metrics */, nullptr /* parser_pool */, clock_,
-                    TransactionPoolProvider()) {
-    if (!role_name.empty()) {
-      ql_env_.ql_session()->set_current_role_name(role_name);
-    }
-  }
-  virtual ~TestQLProcessor() { }
+                  const RoleName& role_name);
+  virtual ~TestQLProcessor();
 
   void RunAsyncDone(
       Callback<void(const Status&)> cb, const Status& s,
@@ -128,13 +122,7 @@ class TestQLProcessor : public ClockHolder, public QLProcessor {
   }
 
   void RunAsync(
-      const string& stmt, const StatementParameters& params, Callback<void(const Status&)> cb) {
-    result_ = nullptr;
-    parse_tree.reset(); // Delete previous parse tree.
-    // RunAsyncInternal() works through Reschedule() loop via RunAsyncTask in QLProcessor class.
-    // It calls Prepare(string& stmt) on every loop iteration.
-    RunAsyncInternal(stmt, params, Bind(&TestQLProcessor::RunAsyncDone, Unretained(this), cb));
-  }
+      const string& stmt, const StatementParameters& params, Callback<void(const Status&)> cb);
 
   // Execute a QL statement.
   CHECKED_STATUS Run(
@@ -171,7 +159,7 @@ class TestQLProcessor : public ClockHolder, public QLProcessor {
     ql_env_.RemoveCachedTableDesc(table_name);
   }
 
-  const ParseTree::UniPtr& GetLastParseTree() const {
+  const ParseTreePtr& GetLastParseTree() const {
     return parse_tree;
   }
 
@@ -194,7 +182,7 @@ class TestQLProcessor : public ClockHolder, public QLProcessor {
   // Execute result.
   ExecutedResult::SharedPtr result_;
 
-  ParseTree::UniPtr parse_tree;
+  ParseTreePtr parse_tree;
 };
 
 // Base class for all QL test cases.
@@ -215,19 +203,10 @@ class QLTestBase : public YBTest {
 
   //------------------------------------------------------------------------------------------------
   // Test only the parser.
-  CHECKED_STATUS TestParser(const std::string& stmt) {
-    QLProcessor* processor = GetQLProcessor();
-    ParseTree::UniPtr parse_tree;
-    return processor->Parse(stmt, &parse_tree);
-  }
+  CHECKED_STATUS TestParser(const std::string& stmt);
 
   // Tests parser and analyzer
-  CHECKED_STATUS TestAnalyzer(const string& stmt, ParseTree::UniPtr* parse_tree) {
-    QLProcessor* processor = GetQLProcessor();
-    RETURN_NOT_OK(processor->Parse(stmt, parse_tree));
-    RETURN_NOT_OK(processor->Analyze(parse_tree));
-    return Status::OK();
-  }
+  CHECKED_STATUS TestAnalyzer(const string& stmt, ParseTreePtr* parse_tree);
 
   //------------------------------------------------------------------------------------------------
   // Create simulated cluster.

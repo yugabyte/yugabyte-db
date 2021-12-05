@@ -34,12 +34,15 @@
 
 #include <string>
 
+#include <boost/functional/hash.hpp>
+
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
+
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/remote_method.h"
+
 #include "yb/util/metrics_fwd.h"
-#include "yb/util/net/sockaddr.h"
 
 namespace google {
 namespace protobuf {

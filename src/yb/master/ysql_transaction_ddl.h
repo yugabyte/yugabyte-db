@@ -17,14 +17,13 @@
 #include <functional>
 #include <memory>
 
+#include "yb/client/client_fwd.h"
+
 #include "yb/common/entity_ids.h"
-#include "yb/common/transaction.h"
 
 #include "yb/master/master_fwd.h"
 
 #include "yb/rpc/rpc.h"
-
-#include "yb/tablet/tablet_peer.h"
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/threadpool.h"

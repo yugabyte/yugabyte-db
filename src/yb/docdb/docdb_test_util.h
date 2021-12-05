@@ -18,19 +18,13 @@
 #include <string>
 #include <utility>
 #include <vector>
-#include <boost/uuid/nil_generator.hpp>
-
-#include "yb/rocksdb/db.h"
 
 #include "yb/docdb/docdb.h"
-#include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_util.h"
 #include "yb/docdb/in_mem_docdb.h"
 #include "yb/docdb/subdocument.h"
-#include "yb/tablet/tablet_metadata.h"
+
 #include "yb/util/strongly_typed_bool.h"
-#include "yb/util/test_util.h"
-#include "yb/util/test_macros.h"
 
 namespace yb {
 namespace docdb {

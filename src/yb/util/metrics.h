@@ -238,19 +238,27 @@
 //
 /////////////////////////////////////////////////////
 
+#include <stdint.h>
+
+#include <cstdint>
+#include <cstdlib>
 #include <set>
+#include <string>
 
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
+#include <gflags/gflags_declare.h>
 
 #include "yb/gutil/casts.h"
+#include "yb/gutil/integral_types.h"
 
+#include "yb/util/metrics_fwd.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/atomic.h"
 #include "yb/util/jsonwriter.h"
-#include "yb/util/metrics_fwd.h"
 #include "yb/util/metrics_writer.h"
 #include "yb/util/monotime.h"
-#include "yb/util/status_fwd.h"
+#include "yb/util/shared_lock.h"
 #include "yb/util/striped64.h"
 
 // Define a new entity type.

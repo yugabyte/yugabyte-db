@@ -44,33 +44,32 @@
 
 #include <stddef.h>
 #include <string.h>  // for memcpy
+
 #include <algorithm>
+#include <cassert>
+#include <deque>
+#include <functional>
+#include <set>
+#include <vector>
+
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/port.h"
+
 using std::copy;
 using std::max;
 using std::min;
 using std::reverse;
 using std::sort;
 using std::swap;
-#include <cassert>
-#include <deque>
 using std::deque;
-#include <functional>
 using std::binary_function;
 using std::less;
-#include <iterator>
 using std::back_insert_iterator;
 using std::iterator_traits;
-#include <memory>
-#include <string>
 using std::string;
-#include <vector>
 using std::vector;
-#include <set>
 
-#include "yb/gutil/integral_types.h"
-#include "yb/gutil/macros.h"
-#include "yb/gutil/port.h"
-#include "yb/gutil/algorithm.h"
 
 namespace yb {
 

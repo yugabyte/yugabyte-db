@@ -13,13 +13,12 @@
 #ifndef YB_UTIL_UINT_SET_H
 #define YB_UTIL_UINT_SET_H
 
-#include <unordered_set>
-
 #include <boost/icl/discrete_interval.hpp>
 #include <boost/icl/interval_set.hpp>
 #include <google/protobuf/repeated_field.h>
 
 #include "yb/gutil/strings/join.h"
+
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 
