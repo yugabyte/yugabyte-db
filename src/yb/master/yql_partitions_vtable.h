@@ -15,7 +15,6 @@
 #define YB_MASTER_YQL_PARTITIONS_VTABLE_H
 
 #include "yb/master/yql_virtual_table.h"
-#include "yb/gutil/thread_annotations.h"
 
 namespace yb {
 namespace master {

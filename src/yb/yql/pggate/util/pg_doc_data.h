@@ -15,7 +15,7 @@
 #define YB_YQL_PGGATE_UTIL_PG_DOC_DATA_H_
 
 #include "yb/common/common_fwd.h"
-#include "yb/util/bytes_formatter.h"
+
 #include "yb/yql/pggate/util/pg_wire.h"
 
 namespace yb {

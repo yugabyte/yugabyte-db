@@ -18,9 +18,11 @@
 #define YB_COMMON_INDEX_H_
 
 #include <memory>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include <boost/functional/hash.hpp>
@@ -28,7 +30,7 @@
 #include "yb/common/common_fwd.h"
 #include "yb/common/column_id.h"
 #include "yb/common/common.pb.h"
-#include "yb/common/entity_ids.h"
+#include "yb/common/entity_ids_types.h"
 
 namespace yb {
 

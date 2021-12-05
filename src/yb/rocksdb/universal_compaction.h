@@ -21,9 +21,7 @@
 #ifndef YB_ROCKSDB_UNIVERSAL_COMPACTION_H
 #define YB_ROCKSDB_UNIVERSAL_COMPACTION_H
 
-#include <stdint.h>
 #include <climits>
-#include <vector>
 
 #include "yb/util/size_literals.h"
 

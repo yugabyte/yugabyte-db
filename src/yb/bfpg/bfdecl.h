@@ -19,12 +19,11 @@
 #ifndef YB_BFPG_BFDECL_H
 #define YB_BFPG_BFDECL_H
 
+#include "yb/bfpg/tserver_opcodes.h"
+
 #include "yb/common/common.pb.h"
 
 #include "yb/gutil/macros.h"
-
-#include "yb/util/logging.h"
-#include "yb/bfpg/tserver_opcodes.h"
 
 namespace yb {
 namespace bfpg {

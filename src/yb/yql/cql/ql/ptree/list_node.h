@@ -23,6 +23,8 @@
 #ifndef YB_YQL_CQL_QL_PTREE_LIST_NODE_H_
 #define YB_YQL_CQL_QL_PTREE_LIST_NODE_H_
 
+#include "yb/util/math_util.h"
+#include "yb/util/memory/arena.h"
 #include "yb/util/status.h"
 
 #include "yb/yql/cql/ql/ptree/tree_node.h"

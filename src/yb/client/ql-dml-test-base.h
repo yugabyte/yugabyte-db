@@ -20,12 +20,13 @@
 
 #include <gtest/gtest.h>
 
-#include "yb/client/yb_op.h"
 #include "yb/client/callbacks.h"
 #include "yb/client/table_handle.h"
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_rowblock.h"
+
 #include "yb/server/server_fwd.h"
+
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"

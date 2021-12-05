@@ -19,12 +19,11 @@
 #define YB_YQL_CQL_QL_PTREE_PT_ALTER_TABLE_H_
 
 #include "yb/yql/cql/ql/ptree/list_node.h"
-#include "yb/yql/cql/ql/ptree/tree_node.h"
+#include "yb/yql/cql/ql/ptree/pt_name.h"
 #include "yb/yql/cql/ql/ptree/pt_table_property.h"
 #include "yb/yql/cql/ql/ptree/pt_type.h"
-#include "yb/yql/cql/ql/ptree/pt_name.h"
-#include "yb/yql/cql/ql/ptree/pt_update.h"
-#include "yb/yql/cql/ql/ptree/pt_option.h"
+#include "yb/yql/cql/ql/ptree/tree_node.h"
+
 namespace yb {
 namespace ql {
 

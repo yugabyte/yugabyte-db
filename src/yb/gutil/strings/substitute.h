@@ -16,11 +16,14 @@
 //
 
 #include <string.h>
+
 #include <string>
-using std::string;
 
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/stringpiece.h"
+
+using std::string;
+
 
 
 #ifndef YB_GUTIL_STRINGS_SUBSTITUTE_H

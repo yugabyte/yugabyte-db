@@ -49,6 +49,8 @@
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_queue.h"
 
+#include "yb/gutil/callback.h"
+
 #include "yb/rpc/scheduler.h"
 
 #include "yb/util/opid.h"

@@ -32,13 +32,22 @@
 #ifndef YB_CLIENT_CLIENT_BUILDER_INTERNAL_H_
 #define YB_CLIENT_CLIENT_BUILDER_INTERNAL_H_
 
+#include <stdint.h>
+
 #include <functional>
+#include <set>
 #include <string>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
+#include <boost/version.hpp>
+
 #include "yb/client/client.h"
+
 #include "yb/common/entity_ids.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/gutil/ref_counted.h"
 
 namespace yb {

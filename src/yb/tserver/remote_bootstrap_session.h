@@ -41,15 +41,15 @@
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/metadata.pb.h"
-#include "yb/consensus/opid_util.h"
+
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/stl_util.h"
+
 #include "yb/tserver/remote_bootstrap.pb.h"
-#include "yb/util/env_util.h"
-#include "yb/util/net/rate_limiter.h"
-#include "yb/util/locks.h"
+
 #include "yb/util/status_fwd.h"
+#include "yb/util/locks.h"
+#include "yb/util/net/rate_limiter.h"
 
 namespace yb {
 

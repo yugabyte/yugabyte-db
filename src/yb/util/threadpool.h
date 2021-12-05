@@ -44,9 +44,11 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
 #include "yb/gutil/ref_counted.h"
+
+#include "yb/util/metrics_fwd.h"
 #include "yb/util/condition_variable.h"
 #include "yb/util/enums.h"
-#include "yb/util/metrics_fwd.h"
+#include "yb/util/math_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/mutex.h"
 #include "yb/util/status.h"

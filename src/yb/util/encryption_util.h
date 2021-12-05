@@ -14,13 +14,17 @@
 #ifndef YB_UTIL_ENCRYPTION_UTIL_H
 #define YB_UTIL_ENCRYPTION_UTIL_H
 
+#include <stdint.h>
+
+#include <cstdarg>
+#include <string>
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/cipher_stream.h"
-#include "yb/util/env.h"
+#include "yb/util/file_system.h"
 #include "yb/util/header_manager.h"
 #include "yb/util/result.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/status_format.h"
-#include "yb/util/strongly_typed_uuid.h"
 
 namespace yb {
 

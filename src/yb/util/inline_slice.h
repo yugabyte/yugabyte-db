@@ -32,11 +32,16 @@
 #ifndef YB_UTIL_INLINE_SLICE_H
 #define YB_UTIL_INLINE_SLICE_H
 
+#include <atomic>
+#include <new>
+
 #include <boost/static_assert.hpp>
+#include <glog/logging.h>
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/casts.h"
-#include "yb/util/memory/arena.h"
+
+#include "yb/util/slice.h"
 
 namespace yb {
 

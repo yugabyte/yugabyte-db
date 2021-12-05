@@ -15,20 +15,19 @@
 #define YB_DOCDB_DOC_WRITE_BATCH_H
 
 #include "yb/common/hybrid_time.h"
-#include "yb/util/enums.h"
-
 #include "yb/common/read_hybrid_time.h"
 
-#include "yb/rocksdb/cache.h"
-#include "yb/rocksutil/write_batch_formatter.h"
-
-#include "yb/docdb/docdb_types.h"
-#include "yb/docdb/doc_path.h"
 #include "yb/docdb/doc_write_batch_cache.h"
+#include "yb/docdb/docdb_types.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/key_bounds.h"
-#include "yb/docdb/subdocument.h"
 #include "yb/docdb/value.h"
+
+#include "yb/rocksdb/cache.h"
+
+#include "yb/rocksutil/write_batch_formatter.h"
+
+#include "yb/util/enums.h"
 #include "yb/util/monotime.h"
 
 namespace rocksdb {

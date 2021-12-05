@@ -14,9 +14,8 @@
 #ifndef YB_UTIL_PHYSICAL_TIME_H
 #define YB_UTIL_PHYSICAL_TIME_H
 
-#include <functional>
+#include <functional> // For std::function
 #include <memory>
-#include <string>
 
 #include <boost/atomic.hpp>
 

@@ -36,7 +36,6 @@
 #include <glog/logging.h>
 
 #include "yb/gutil/atomicops.h"
-#include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
 
 namespace yb {

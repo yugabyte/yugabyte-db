@@ -38,24 +38,22 @@
 // <algorithm> C++ header. Many of these algorithms were in the
 // original STL before it was proposed for standardization.
 
-#ifndef UTIL_GTL_ALGORITHM_H_
-#define UTIL_GTL_ALGORITHM_H_
+#ifndef YB_GUTIL_ALGORITHM_H
+#define YB_GUTIL_ALGORITHM_H
 
-#include <stddef.h>
 #include <algorithm>
+#include <functional>
+
 using std::copy;
 using std::max;
 using std::min;
 using std::reverse;
 using std::sort;
 using std::swap;
-#include <functional>
 using std::binary_function;
 using std::less;
-#include <iterator>
 using std::back_insert_iterator;
 using std::iterator_traits;
-#include <utility>
 using std::make_pair;
 using std::pair;
 
@@ -356,7 +354,7 @@ inline ForwardIterator unique_partition(ForwardIterator first,
 
 template <typename InputIterator, typename OutputIterator, typename RngFunctor>
 inline void sample_k_of_n(InputIterator in, size_t k, size_t n,
-                          RngFunctor& rng, OutputIterator out) {
+                          RngFunctor& rng, OutputIterator out) { // NOLINT
   if (k > n) {
     k = n;
   }
@@ -452,4 +450,4 @@ bool is_heap(RandomAccessIterator begin,
 }  // namespace gtl
 }  // namespace util
 
-#endif  // UTIL_GTL_ALGORITHM_H_
+#endif  // YB_GUTIL_ALGORITHM_H

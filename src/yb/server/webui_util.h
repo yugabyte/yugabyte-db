@@ -33,8 +33,6 @@
 #define YB_SERVER_WEBUI_UTIL_H
 
 #include <string>
-#include <sstream>
-#include <vector>
 #include <unordered_set>
 
 #include "yb/common/common_fwd.h"

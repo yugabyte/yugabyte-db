@@ -33,7 +33,6 @@
 #define YB_CONSENSUS_CONSENSUS_H_
 
 #include <iosfwd>
-#include <ostream>
 #include <memory>
 #include <string>
 #include <vector>
@@ -41,22 +40,19 @@
 #include <boost/optional/optional_fwd.hpp>
 
 #include "yb/common/entity_ids_types.h"
-#include "yb/common/hybrid_time.h"
 
 #include "yb/consensus/consensus_fwd.h"
-#include "yb/consensus/consensus_types.h"
 #include "yb/consensus/consensus.pb.h"
-#include "yb/consensus/opid_util.h"
 
-#include "yb/gutil/callback.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/util/status_fwd.h"
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
 #include "yb/util/opid.h"
-#include "yb/util/status_fwd.h"
+#include "yb/util/physical_time.h"
 #include "yb/util/status_callback.h"
 #include "yb/util/strongly_typed_bool.h"
 

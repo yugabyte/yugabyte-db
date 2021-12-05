@@ -20,14 +20,20 @@
 #ifndef YB_YQL_CQL_QL_EXEC_EXEC_CONTEXT_H_
 #define YB_YQL_CQL_QL_EXEC_EXEC_CONTEXT_H_
 
+#include <string>
+
+#include <rapidjson/document.h>
+
+#include "yb/client/session.h"
+
+#include "yb/common/common.pb.h"
+#include "yb/common/ql_protocol.pb.h"
+
+#include "yb/util/status_fwd.h"
+
 #include "yb/yql/cql/ql/exec/exec_fwd.h"
 #include "yb/yql/cql/ql/ptree/process_context.h"
-#include "yb/yql/cql/ql/util/ql_env.h"
-#include "yb/yql/cql/ql/util/statement_params.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
-#include "yb/common/common.pb.h"
-#include "yb/common/ql_protocol_util.h"
-#include "yb/client/session.h"
 
 namespace yb {
 namespace ql {

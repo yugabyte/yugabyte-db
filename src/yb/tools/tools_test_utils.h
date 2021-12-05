@@ -14,8 +14,12 @@
 #ifndef YB_TOOLS_TOOLS_TEST_UTILS_H
 #define YB_TOOLS_TOOLS_TEST_UTILS_H
 
-#include "yb/util/net/net_util.h"
-#include "yb/util/status.h"
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "yb/util/status_fwd.h"
+#include "yb/util/net/net_fwd.h"
 
 namespace yb {
 namespace tools {

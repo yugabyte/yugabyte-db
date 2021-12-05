@@ -59,6 +59,9 @@ DECLARE_bool(catalog_manager_check_ts_count_for_create_table);
 namespace yb {
 namespace master {
 
+MasterTestBase::MasterTestBase() = default;
+MasterTestBase::~MasterTestBase() = default;
+
 void MasterTestBase::SetUp() {
   YBTest::SetUp();
 

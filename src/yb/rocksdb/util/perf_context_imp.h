@@ -22,8 +22,6 @@
 #define YB_ROCKSDB_UTIL_PERF_CONTEXT_IMP_H
 
 #include "yb/rocksdb/perf_context.h"
-#include "yb/rocksdb/util/stop_watch.h"
-#include "yb/util/stats/perf_step_timer.h"
 
 namespace rocksdb {
 

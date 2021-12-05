@@ -25,9 +25,9 @@
 
 #include "yb/common/hybrid_time.h"
 
-#include "yb/util/opid.h"
-
 #include "yb/util/enums.h"
+#include "yb/util/math_util.h"
+#include "yb/util/opid.h"
 
 namespace rocksdb {
 

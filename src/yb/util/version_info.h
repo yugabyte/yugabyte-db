@@ -32,11 +32,11 @@
 #ifndef YB_UTIL_VERSION_INFO_H
 #define YB_UTIL_VERSION_INFO_H
 
-#include <atomic>
 #include <mutex>
 #include <string>
 
 #include "yb/gutil/macros.h"
+
 #include "yb/util/status_fwd.h"
 #include "yb/util/version_info.pb.h"
 
