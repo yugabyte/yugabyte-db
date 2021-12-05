@@ -28,6 +28,8 @@
 
 #include "yb/common/common.pb.h"
 #include "yb/common/transaction.h"
+#include "yb/common/transaction_error.h"
+#include "yb/common/ybc_util.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc.h"
@@ -428,7 +430,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
             // State will be changed to aborted in SetError
           }
         }
-        SetErrorUnlocked(status);
+        const TransactionError txn_err(status);
+        if (txn_err.value() != TransactionErrorCode::kSkipLocking) {
+          SetErrorUnlocked(status);
+        }
       }
 
       if (running_requests_ == 0 && commit_replicated_) {
@@ -947,6 +952,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     manager_->client()->LookupTabletById(
         tablet_id,
         /* table =*/ nullptr,
+        master::IncludeInactive::kFalse,
         deadline,
         std::bind(&Impl::LookupTabletDone, this, _1, transaction),
         client::UseCache::kTrue);

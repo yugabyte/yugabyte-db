@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/master/master.h"
 
 #include <algorithm>
@@ -40,8 +41,14 @@
 
 #include "yb/client/async_initializer.h"
 #include "yb/client/client.h"
+
 #include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus_meta.h"
+
+#include "yb/gutil/bind.h"
+
+#include "yb/master/master_fwd.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/flush_manager.h"
 #include "yb/master/master-path-handlers.h"
@@ -50,18 +57,22 @@
 #include "yb/master/master_service.h"
 #include "yb/master/master_tablet_service.h"
 #include "yb/master/master_util.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/service_if.h"
 #include "yb/rpc/service_pool.h"
 #include "yb/rpc/yb_rpc.h"
+
 #include "yb/server/rpc_server.h"
+
 #include "yb/tablet/maintenance_manager.h"
+
 #include "yb/tserver/pg_client_service.h"
 #include "yb/tserver/remote_bootstrap_service.h"
 #include "yb/tserver/tablet_service.h"
 #include "yb/tserver/tserver_shared_mem.h"
+
 #include "yb/util/flag_tags.h"
-#include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"

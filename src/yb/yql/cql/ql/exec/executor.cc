@@ -12,6 +12,7 @@
 // under the License.
 //
 //--------------------------------------------------------------------------------------------------
+
 #include "yb/yql/cql/ql/exec/executor.h"
 
 #include "yb/client/callbacks.h"
@@ -22,6 +23,7 @@
 #include "yb/client/table_alterer.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
+
 #include "yb/common/common.pb.h"
 #include "yb/common/consistent_read_point.h"
 #include "yb/common/index.h"
@@ -29,15 +31,20 @@
 #include "yb/common/ql_rowblock.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/gutil/casts.h"
+
 #include "yb/rpc/thread_pool.h"
+
 #include "yb/util/decimal.h"
 #include "yb/util/metrics.h"
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"
+
 #include "yb/yql/cql/ql/exec/exec_context.h"
+#include "yb/yql/cql/ql/ptree/column_desc.h"
 #include "yb/yql/cql/ql/ptree/parse_tree.h"
 #include "yb/yql/cql/ql/ptree/pt_alter_keyspace.h"
 #include "yb/yql/cql/ql/ptree/pt_alter_role.h"
@@ -54,8 +61,10 @@
 #include "yb/yql/cql/ql/ptree/pt_expr.h"
 #include "yb/yql/cql/ql/ptree/pt_grant_revoke.h"
 #include "yb/yql/cql/ql/ptree/pt_insert.h"
+#include "yb/yql/cql/ql/ptree/pt_insert_json_clause.h"
 #include "yb/yql/cql/ql/ptree/pt_transaction.h"
 #include "yb/yql/cql/ql/ptree/pt_truncate.h"
+#include "yb/yql/cql/ql/ptree/pt_update.h"
 #include "yb/yql/cql/ql/ptree/pt_use_keyspace.h"
 #include "yb/yql/cql/ql/ql_processor.h"
 #include "yb/yql/cql/ql/util/errcodes.h"

@@ -30,6 +30,11 @@ To begin using Yugabyte Cloud, go to [Quickstart](cloud-quickstart).
           </div>
       </a>
   </div>
+</div>
+
+## Using Clusters
+
+<div class="row">
 
 </div>
 
@@ -73,12 +78,6 @@ To begin using Yugabyte Cloud, go to [Quickstart](cloud-quickstart).
       </a>
   </div>
 
-</div>
-
-## Reference
-
-<div class="row">
-
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
       <a class="section-link icon-offset" href="cloud-develop/">
           <div class="head">
@@ -90,6 +89,24 @@ To begin using Yugabyte Cloud, go to [Quickstart](cloud-quickstart).
           </div>
       </a>
   </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+      <a class="section-link icon-offset" href="cloud-develop/">
+          <div class="head">
+              <img class="icon" src="/images/section_icons/index/develop.png" aria-hidden="true" />
+              <div class="title">Develop</div>
+          </div>
+          <div class="body">
+              Learn how to develop applications for your cluster.
+          </div>
+      </a>
+  </div>
+
+</div>
+
+## Reference
+
+<div class="row">
 
 <!--
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
@@ -108,7 +125,7 @@ To begin using Yugabyte Cloud, go to [Quickstart](cloud-quickstart).
       <a class="section-link icon-offset" href="cloud-network/">
           <div class="head">
               <img class="icon" src="/images/section_icons/secure/tls-encryption/connect-to-cluster.png" aria-hidden="true" />
-              <div class="title">Networking</div>
+              <div class="title">Network access</div>
           </div>
           <div class="body">
               Set up network security for your cluster.

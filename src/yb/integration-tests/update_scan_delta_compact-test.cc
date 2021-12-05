@@ -29,21 +29,29 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <memory>
 #include <string>
 #include <vector>
 
+#include <boost/range/iterator_range.hpp>
+
 #include "yb/client/callbacks.h"
 #include "yb/client/client.h"
+#include "yb/client/error.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
+
 #include "yb/gutil/strings/strcat.h"
+
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
+
 #include "yb/tserver/mini_tablet_server.h"
+
 #include "yb/util/countdown_latch.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/monotime.h"

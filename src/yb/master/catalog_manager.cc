@@ -51,6 +51,7 @@
 //   acquire the lock on the table first. This strict ordering prevents deadlocks.
 //
 // ================================================================================================
+
 #include "yb/master/catalog_manager.h"
 
 #include <stdlib.h>
@@ -73,23 +74,28 @@
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
 #include "yb/client/universe_key_client.h"
+
 #include "yb/common/common.pb.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/key_encoder.h"
 #include "yb/common/partial_row.h"
 #include "yb/common/partition.h"
+#include "yb/common/ql_type.h"
 #include "yb/common/roles_permissions.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
-#include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/metadata.pb.h"
+#include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
+
 #include "yb/docdb/doc_key.h"
-#include "yb/gutil/algorithm.h"
+
 #include "yb/gutil/atomicops.h"
+#include "yb/gutil/bind.h"
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/mathlimits.h"
@@ -99,6 +105,8 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/sysinfo.h"
 #include "yb/gutil/walltime.h"
+
+#include "yb/master/master_fwd.h"
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/backfill_index.h"
 #include "yb/master/catalog_entity_info.h"
@@ -112,13 +120,12 @@
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/master_error.h"
-#include "yb/master/master_fwd.h"
 #include "yb/master/master_util.h"
 #include "yb/master/permissions_manager.h"
+#include "yb/master/scoped_leader_shared_lock-internal.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/master/ts_descriptor.h"
-#include "yb/master/ts_manager.h"
 #include "yb/master/yql_aggregates_vtable.h"
 #include "yb/master/yql_auth_resource_role_permissions_index.h"
 #include "yb/master/yql_auth_role_permissions_vtable.h"
@@ -137,15 +144,19 @@
 #include "yb/master/yql_types_vtable.h"
 #include "yb/master/yql_views_vtable.h"
 #include "yb/master/ysql_transaction_ddl.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
+
 #include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_retention_policy.h"
+
 #include "yb/tserver/remote_bootstrap_client.h"
 #include "yb/tserver/ts_tablet_manager.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/debug-util.h"
@@ -154,7 +165,6 @@
 #include "yb/util/format.h"
 #include "yb/util/hash_util.h"
 #include "yb/util/locks.h"
-#include "yb/util/logging.h"
 #include "yb/util/math_util.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
@@ -174,7 +184,9 @@
 #include "yb/util/thread.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
+#include "yb/util/tsan_util.h"
 #include "yb/util/uuid.h"
+
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/redis/redisserver/redis_constants.h"
 
@@ -8192,39 +8204,52 @@ Status CatalogManager::DeleteTabletsAndSendRequests(
 Status CatalogManager::DeleteTabletListAndSendRequests(
     const std::vector<scoped_refptr<TabletInfo>>& tablets, const std::string& deletion_msg,
     const google::protobuf::RepeatedPtrField<std::string>& retained_by_snapshot_schedules) {
-  struct TabletAndLock {
+  struct TabletData {
     TabletInfoPtr tablet;
     TabletInfo::WriteLock lock;
+    HideOnly hide_only;
   };
-  std::vector<TabletAndLock> tablets_and_locks;
-  tablets_and_locks.reserve(tablets.size());
+  std::vector<TabletData> tablets_data;
+  tablets_data.reserve(tablets.size());
   std::vector<TabletInfo*> tablet_infos;
-  tablet_infos.reserve(tablets_and_locks.size());
+  tablet_infos.reserve(tablets_data.size());
   std::vector<TabletInfoPtr> marked_as_hidden;
 
   // Grab tablets and tablet write locks. The list should already be in tablet_id sorted order.
-  for (const auto& tablet : tablets) {
-    tablets_and_locks.push_back(TabletAndLock {
-      .tablet = tablet,
-      .lock = tablet->LockForWrite(),
-    });
-    tablet_infos.emplace_back(tablet.get());
+  {
+    SharedLock read_lock(mutex_);
+    for (const auto& tablet : tablets) {
+      tablets_data.push_back(TabletData {
+        .tablet = tablet,
+        .lock = tablet->LockForWrite(),
+        // Hide tablet if it is retained by snapshot schedule, or is part of a cdc stream.
+        .hide_only = HideOnly(!retained_by_snapshot_schedules.empty()),
+      });
+      if (!tablets_data.back().hide_only) {
+        // Also check if this tablet is part of a cdc stream and is not already hidden. If this is
+        // a cdc stream producer and is already hidden, then we should delete this tablet.
+        tablets_data.back().hide_only = HideOnly(
+            IsTableCdcProducer(*tablet->table()) && !tablets_data.back().lock->ListedAsHidden());
+      }
+
+      tablet_infos.emplace_back(tablet.get());
+    }
   }
 
-  HideOnly hide_only(!retained_by_snapshot_schedules.empty());
-  HybridTime hide_hybrid_time = hide_only ? master_->clock()->Now() : HybridTime();
+  // Use the same hybrid time for all hidden tablets.
+  HybridTime hide_hybrid_time = master_->clock()->Now();
 
   // Mark the tablets as deleted.
-  for (auto& tablet_and_lock : tablets_and_locks) {
-    auto& tablet = tablet_and_lock.tablet;
-    auto& tablet_lock = tablet_and_lock.lock;
+  for (auto& tablet_data : tablets_data) {
+    auto& tablet = tablet_data.tablet;
+    auto& tablet_lock = tablet_data.lock;
 
     bool was_hidden = tablet_lock->ListedAsHidden();
     // Inactive tablet now, so remove it from partitions_.
     // After all the tablets have been deleted from the tservers, we remove it from tablets_.
     tablet->table()->RemoveTablet(tablet->id(), DeactivateOnly::kTrue);
 
-    if (hide_only) {
+    if (tablet_data.hide_only) {
       LOG(INFO) << "Hiding tablet " << tablet->tablet_id();
       tablet_lock.mutable_data()->pb.set_hide_hybrid_time(hide_hybrid_time.ToUint64());
       *tablet_lock.mutable_data()->pb.mutable_retained_by_snapshot_schedules() =
@@ -8242,14 +8267,14 @@ Status CatalogManager::DeleteTabletListAndSendRequests(
   RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), tablet_infos));
 
   // Commit the change.
-  for (auto& tablet_and_lock : tablets_and_locks) {
-    auto& tablet = tablet_and_lock.tablet;
-    auto& tablet_lock = tablet_and_lock.lock;
+  for (auto& tablet_data : tablets_data) {
+    auto& tablet = tablet_data.tablet;
+    auto& tablet_lock = tablet_data.lock;
 
     tablet_lock.Commit();
-    LOG(INFO) << (hide_only ? "Hid tablet " : "Deleted tablet ") << tablet->tablet_id();
+    LOG(INFO) << (tablet_data.hide_only ? "Hid tablet " : "Deleted tablet ") << tablet->tablet_id();
 
-    DeleteTabletReplicas(tablet.get(), deletion_msg, hide_only);
+    DeleteTabletReplicas(tablet.get(), deletion_msg, tablet_data.hide_only);
   }
 
   if (!marked_as_hidden.empty()) {
@@ -9065,10 +9090,11 @@ Status CatalogManager::ConsensusStateToTabletLocations(const consensus::Consensu
 }
 
 Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& tablet,
-                                               TabletLocationsPB* locs_pb) {
+                                               TabletLocationsPB* locs_pb,
+                                               IncludeInactive include_inactive) {
   {
     auto l_tablet = tablet->LockForRead();
-    if (l_tablet->is_hidden()) {
+    if (l_tablet->is_hidden() && !include_inactive) {
       return STATUS_FORMAT(NotFound, "Tablet hidden", tablet->id());
     }
     locs_pb->set_table_id(l_tablet->pb.table_id());
@@ -9169,7 +9195,8 @@ Result<shared_ptr<tablet::AbstractTablet>> CatalogManager::GetSystemTablet(const
   return iter->second;
 }
 
-Status CatalogManager::GetTabletLocations(const TabletId& tablet_id, TabletLocationsPB* locs_pb) {
+Status CatalogManager::GetTabletLocations(
+    const TabletId& tablet_id, TabletLocationsPB* locs_pb, IncludeInactive include_inactive) {
   scoped_refptr<TabletInfo> tablet_info;
   {
     SharedLock lock(mutex_);
@@ -9177,7 +9204,7 @@ Status CatalogManager::GetTabletLocations(const TabletId& tablet_id, TabletLocat
       return STATUS_SUBSTITUTE(NotFound, "Unknown tablet $0", tablet_id);
     }
   }
-  Status s = GetTabletLocations(tablet_info, locs_pb);
+  Status s = GetTabletLocations(tablet_info, locs_pb, include_inactive);
 
   int num_replicas = 0;
   if (GetReplicationFactorForTablet(tablet_info, &num_replicas).ok() && num_replicas > 0 &&
@@ -9191,10 +9218,12 @@ Status CatalogManager::GetTabletLocations(const TabletId& tablet_id, TabletLocat
 }
 
 Status CatalogManager::GetTabletLocations(
-    scoped_refptr<TabletInfo> tablet_info, TabletLocationsPB* locs_pb) {
+    scoped_refptr<TabletInfo> tablet_info,
+    TabletLocationsPB* locs_pb,
+    IncludeInactive include_inactive) {
   DCHECK_EQ(locs_pb->replicas().size(), 0);
   locs_pb->mutable_replicas()->Clear();
-  return BuildLocationsForTablet(tablet_info, locs_pb);
+  return BuildLocationsForTablet(tablet_info, locs_pb, include_inactive);
 }
 
 Status CatalogManager::GetTableLocations(
@@ -9222,19 +9251,20 @@ Status CatalogManager::GetTableLocations(
   auto l = table->LockForRead();
   RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(l, resp));
 
-  vector<scoped_refptr<TabletInfo>> tablets_in_range;
-  table->GetTabletsInRange(req, &tablets_in_range);
+  vector<scoped_refptr<TabletInfo>> tablets;
+  table->GetTabletsInRange(req, &tablets);
 
+  IncludeInactive include_inactive(req->has_include_inactive() && req->include_inactive());
   bool require_tablets_runnings = req->require_tablets_running();
 
   int expected_live_replicas = 0;
   int expected_read_replicas = 0;
   GetExpectedNumberOfReplicas(&expected_live_replicas, &expected_read_replicas);
-  for (const scoped_refptr<TabletInfo>& tablet : tablets_in_range) {
+  for (const scoped_refptr<TabletInfo>& tablet : tablets) {
     TabletLocationsPB* locs_pb = resp->add_tablet_locations();
     locs_pb->set_expected_live_replicas(expected_live_replicas);
     locs_pb->set_expected_read_replicas(expected_read_replicas);
-    auto status = BuildLocationsForTablet(tablet, locs_pb);
+    auto status = BuildLocationsForTablet(tablet, locs_pb, include_inactive);
     if (!status.ok()) {
       // Not running.
       if (require_tablets_runnings) {

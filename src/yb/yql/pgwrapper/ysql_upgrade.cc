@@ -17,11 +17,13 @@
 #include <server/catalog/pg_yb_migration_d.h>
 
 #include <regex>
+
 #include <boost/algorithm/string.hpp>
 
 #include "yb/util/env_util.h"
 #include "yb/util/format.h"
 #include "yb/util/path_util.h"
+#include "yb/util/pg_util.h"
 
 namespace yb {
 namespace pgwrapper {

@@ -32,6 +32,7 @@
 #include "access/nbtree.h"
 #include "access/relscan.h"
 #include "access/sysattr.h"
+#include "access/xact.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_opfamily.h"
 #include "catalog/pg_proc.h"
@@ -137,16 +138,30 @@ IndexNext(IndexScanState *node)
 	 */
 	if (IsYugaByteEnabled()) {
 		scandesc->yb_exec_params = &estate->yb_exec_params;
-		// Add row marks.
 		scandesc->yb_exec_params->rowmark = -1;
-		ListCell   *l;
-		foreach(l, estate->es_rowMarks) {
-			ExecRowMark *erm = (ExecRowMark *) lfirst(l);
-			// Do not propogate non-row-locking row marks.
-			if (erm->markType != ROW_MARK_REFERENCE &&
-				erm->markType != ROW_MARK_COPY)
-				scandesc->yb_exec_params->rowmark = erm->markType;
-			break;
+
+		// Add row marks.
+		if (XactIsoLevel == XACT_SERIALIZABLE)
+		{
+			/*
+			 * In case of SERIALIZABLE isolation level we have to take predicate locks to disallow
+			 * INSERTion of new rows that satisfy the query predicate. So, we set the rowmark on all
+			 * read requests sent to tserver instead of locking each tuple one by one in LockRows node.
+			 */
+			ListCell   *l;
+			foreach(l, estate->es_rowMarks) {
+				ExecRowMark *erm = (ExecRowMark *) lfirst(l);
+				// Do not propogate non-row-locking row marks.
+				if (erm->markType != ROW_MARK_REFERENCE &&
+						erm->markType != ROW_MARK_COPY) {
+					scandesc->yb_exec_params->rowmark = erm->markType;
+					/*
+					 * TODO(Piyush): We don't honour SKIP LOCKED yet in serializable isolation level.
+					 */
+					scandesc->yb_exec_params->wait_policy = LockWaitError;
+				}
+				break;
+			}
 		}
 	}
 

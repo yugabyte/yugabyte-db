@@ -17,11 +17,15 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/optional/optional_io.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
-#include <boost/uuid/uuid.hpp>
 #include <boost/uuid/random_generator.hpp>
 
 #include "yb/rpc/connection.h"
+
 #include "yb/util/date_time.h"
+#include "yb/util/flag_tags.h"
+#include "yb/util/result.h"
+#include "yb/util/string_util.h"
+
 #include "yb/yql/cql/ql/ptree/pt_alter_keyspace.h"
 #include "yb/yql/cql/ql/ptree/pt_alter_table.h"
 #include "yb/yql/cql/ql/ptree/pt_create_index.h"
@@ -35,14 +39,8 @@
 #include "yb/yql/cql/ql/ptree/pt_select.h"
 #include "yb/yql/cql/ql/ptree/pt_truncate.h"
 #include "yb/yql/cql/ql/ptree/pt_use_keyspace.h"
+#include "yb/yql/cql/ql/util/ql_env.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
-#include "yb/util/net/sockaddr.h"
-#include "yb/util/flag_tags.h"
-#include "yb/util/format.h"
-#include "yb/util/result.h"
-#include "yb/util/status_format.h"
-#include "yb/util/string_util.h"
-#include "yb/util/type_traits.h"
 
 DEFINE_bool(ycql_enable_audit_log,
             false,

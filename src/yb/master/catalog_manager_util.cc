@@ -10,12 +10,13 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/master/catalog_manager_util.h"
 
 #include "yb/master/catalog_entity_info.h"
+
 #include "yb/util/flag_tags.h"
 #include "yb/util/math_util.h"
-#include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 
 DEFINE_double(balancer_load_max_standard_deviation, 2.0,

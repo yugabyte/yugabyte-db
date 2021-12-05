@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/master/master_service.h"
 
 #include <memory>
@@ -38,12 +39,13 @@
 #include <boost/preprocessor/cat.hpp>
 
 #include "yb/common/wire_protocol.h"
-#include "yb/master/catalog_manager-internal.h"
+
 #include "yb/master/encryption_manager.h"
 #include "yb/master/flush_manager.h"
 #include "yb/master/master_service_base-internal.h"
 #include "yb/master/master_service_base.h"
 #include "yb/master/permissions_manager.h"
+
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/shared_lock.h"
@@ -289,12 +291,15 @@ void MasterServiceImpl::GetTabletLocations(const GetTabletLocationsRequestPB* re
     }
   }
 
+  IncludeInactive include_inactive(req->has_include_inactive() && req->include_inactive());
+
   for (const TabletId& tablet_id : req->tablet_ids()) {
     // TODO: once we have catalog data. ACL checks would also go here, probably.
     TabletLocationsPB* locs_pb = resp->add_tablet_locations();
     locs_pb->set_expected_live_replicas(expected_live_replicas);
     locs_pb->set_expected_read_replicas(expected_read_replicas);
-    Status s = server_->catalog_manager_impl()->GetTabletLocations(tablet_id, locs_pb);
+    Status s = server_->catalog_manager_impl()->GetTabletLocations(
+        tablet_id, locs_pb, include_inactive);
     if (!s.ok()) {
       resp->mutable_tablet_locations()->RemoveLast();
 

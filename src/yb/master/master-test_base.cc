@@ -29,28 +29,26 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/master/master-test_base.h"
 
 #include <memory>
 
 #include <gtest/gtest.h>
 
-#include "yb/common/partial_row.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/gutil/strings/join.h"
+
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/master/master-test-util.h"
 #include "yb/master/master.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/sys_catalog.h"
 #include "yb/master/ts_descriptor.h"
-#include "yb/master/ts_manager.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
-#include "yb/server/rpc_server.h"
-#include "yb/server/server_base.proxy.h"
-#include "yb/util/jsonreader.h"
+
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"

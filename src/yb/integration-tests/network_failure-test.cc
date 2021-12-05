@@ -11,6 +11,7 @@
 // under the License.
 //
 
+#include "yb/client/error.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
@@ -28,6 +29,7 @@
 #include "yb/util/random_util.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 

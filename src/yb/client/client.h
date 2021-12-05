@@ -596,7 +596,8 @@ class YBClient {
       std::vector<TabletId>* tablet_uuids,
       std::vector<std::string>* ranges,
       std::vector<master::TabletLocationsPB>* locations = nullptr,
-      RequireTabletsRunning require_tablets_running = RequireTabletsRunning::kFalse);
+      RequireTabletsRunning require_tablets_running = RequireTabletsRunning::kFalse,
+      master::IncludeInactive include_inactive = master::IncludeInactive::kFalse);
 
   CHECKED_STATUS GetTabletsAndUpdateCache(
       const YBTableName& table_name,
@@ -615,7 +616,8 @@ class YBClient {
       const int32_t max_tablets,
       google::protobuf::RepeatedPtrField<master::TabletLocationsPB>* tablets,
       PartitionListVersion* partition_list_version,
-      RequireTabletsRunning require_tablets_running = RequireTabletsRunning::kFalse);
+      RequireTabletsRunning require_tablets_running = RequireTabletsRunning::kFalse,
+      master::IncludeInactive include_inactive = master::IncludeInactive::kFalse);
 
   CHECKED_STATUS GetTabletLocation(const TabletId& tablet_id,
                                    master::TabletLocationsPB* tablet_location);
@@ -728,6 +730,7 @@ class YBClient {
 
   void LookupTabletById(const std::string& tablet_id,
                         const std::shared_ptr<const YBTable>& table,
+                        master::IncludeInactive include_inactive,
                         CoarseTimePoint deadline,
                         LookupTabletCallback callback,
                         UseCache use_cache);

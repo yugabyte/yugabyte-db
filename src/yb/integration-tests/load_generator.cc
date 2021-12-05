@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/integration-tests/load_generator.h"
 
 #include <memory>
@@ -17,7 +18,6 @@
 #include <thread>
 
 #include <boost/range/iterator_range.hpp>
-#include <gflags/gflags_declare.h>
 
 #include "yb/client/client.h"
 #include "yb/client/error.h"
@@ -25,18 +25,20 @@
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
+
 #include "yb/common/common.pb.h"
 #include "yb/common/partial_row.h"
 #include "yb/common/ql_value.h"
+
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/debug/leakcheck_disabler.h"
-#include "yb/util/env.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
-#include "yb/util/subprocess.h"
+
 #include "yb/yql/redis/redisserver/redis_client.h"
 
 using namespace std::literals;

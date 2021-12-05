@@ -13,8 +13,9 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/yql/cql/ql/test/ql-test-base.h"
 #include "yb/gutil/strings/substitute.h"
+
+#include "yb/yql/cql/ql/test/ql-test-base.h"
 
 using std::string;
 using strings::Substitute;

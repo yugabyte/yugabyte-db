@@ -1915,6 +1915,14 @@ void CatalogManager::CleanupHiddenTablets(
       }
     }
     if (cleanup) {
+      SharedLock read_lock(mutex_);
+      if (IsTableCdcProducer(*tablet->table())) {
+        // We also need to check if this tablet is being kept for xcluster replication.
+        auto l = tablet->table()->LockForRead();
+        cleanup = hide_hybrid_time.AddSeconds(l->pb.wal_retention_secs()) < master_->clock()->Now();
+      }
+    }
+    if (cleanup) {
       tablets_to_delete.push_back(tablet);
     }
   }
