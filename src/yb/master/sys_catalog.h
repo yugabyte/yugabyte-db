@@ -36,6 +36,8 @@
 #include <vector>
 #include <unordered_map>
 
+#include "yb/common/ql_protocol.pb.h"
+
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/metadata.pb.h"
 

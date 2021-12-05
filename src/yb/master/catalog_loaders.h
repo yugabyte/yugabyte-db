@@ -33,6 +33,8 @@
 #ifndef YB_MASTER_CATALOG_LOADERS_H
 #define YB_MASTER_CATALOG_LOADERS_H
 
+#include <type_traits>
+
 #include <boost/preprocessor/cat.hpp>
 
 #include "yb/master/master_fwd.h"

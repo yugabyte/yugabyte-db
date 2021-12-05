@@ -24,9 +24,8 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
-#include "yb/util/monotime.h"
-#include "yb/util/net/net_util.h"
 #include "yb/util/status_fwd.h"
+#include "yb/util/monotime.h"
 
 // This file contains utility functions that can be shared between client and master code.
 

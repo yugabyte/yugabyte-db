@@ -18,26 +18,25 @@
 #include <ostream>
 #include <string>
 #include <vector>
-#include <boost/function.hpp>
 
-#include "yb/docdb/docdb_fwd.h"
-#include "yb/rocksdb/db.h"
+#include <boost/function.hpp>
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
 
-#include "yb/docdb/docdb_types.h"
-#include "yb/docdb/doc_kv_util.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/shared_lock_manager_fwd.h"
 #include "yb/docdb/doc_path.h"
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/docdb.pb.h"
-#include "yb/docdb/expiration.h"
+#include "yb/docdb/docdb_types.h"
 #include "yb/docdb/lock_batch.h"
-#include "yb/docdb/shared_lock_manager_fwd.h"
-#include "yb/docdb/value.h"
 #include "yb/docdb/subdocument.h"
+#include "yb/docdb/value.h"
+
+#include "yb/rocksdb/db.h"
 
 #include "yb/util/result.h"
 #include "yb/util/strongly_typed_bool.h"

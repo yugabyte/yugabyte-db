@@ -16,11 +16,7 @@
 
 #include <boost/optional.hpp>
 
-#include "yb/common/read_hybrid_time.h"
-#include "yb/common/transaction.h"
-
 #include "yb/docdb/bounded_rocksdb_iterator.h"
-#include "yb/docdb/value.h"
 
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/db.h"
@@ -29,7 +25,6 @@
 
 #include "yb/tablet/tablet_options.h"
 
-#include "yb/util/mem_tracker.h"
 #include "yb/util/slice.h"
 
 namespace yb {

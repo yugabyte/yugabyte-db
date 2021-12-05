@@ -41,13 +41,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef IMPALA_RLE_ENCODING_H
-#define IMPALA_RLE_ENCODING_H
+#ifndef YB_UTIL_RLE_ENCODING_H
+#define YB_UTIL_RLE_ENCODING_H
 
 #include <glog/logging.h>
 
 #include "yb/gutil/port.h"
-#include "yb/util/bit-stream-utils.inline.h"
+
+#include "yb/util/bit-stream-utils.inline.h" // BitWriter impl
 #include "yb/util/bit-util.h"
 
 namespace yb {
@@ -288,7 +289,7 @@ inline bool RleDecoder<T>::Get(T* val) {
     --repeat_count_;
     rewind_state_ = REWIND_RUN;
   } else {
-    DCHECK(literal_count_ > 0);
+    DCHECK_GT(literal_count_, 0);
     bool result = bit_reader_.GetValue(bit_width_, val);
     DCHECK(result);
     --literal_count_;
@@ -343,7 +344,7 @@ inline size_t RleDecoder<T>::GetNextRun(T* val, size_t max_run) {
       rem -= repeat_count_;
       repeat_count_ = 0;
     } else {
-      DCHECK(literal_count_ > 0);
+      DCHECK_GT(literal_count_, 0);
       if (ret == 0) {
         bool has_more = bit_reader_.GetValue(bit_width_, val);
         DCHECK(has_more);
@@ -366,7 +367,7 @@ inline size_t RleDecoder<T>::GetNextRun(T* val, size_t max_run) {
     }
   }
   return ret;
- }
+}
 
 template<typename T>
 inline size_t RleDecoder<T>::Skip(size_t to_skip) {
@@ -385,7 +386,7 @@ inline size_t RleDecoder<T>::Skip(size_t to_skip) {
         set_count += nskip;
       }
     } else {
-      DCHECK(literal_count_ > 0);
+      DCHECK_GT(literal_count_, 0);
       size_t nskip = (literal_count_ < to_skip) ? literal_count_ : to_skip;
       literal_count_ -= nskip;
       to_skip -= nskip;
@@ -547,4 +548,5 @@ inline void RleEncoder<T>::Clear() {
 }
 
 } // namespace yb
-#endif
+
+#endif // YB_UTIL_RLE_ENCODING_H

@@ -23,7 +23,6 @@
 #include <memory>
 #include <sstream>
 #include <string>
-#include <chrono>
 
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/util/log_buffer.h"

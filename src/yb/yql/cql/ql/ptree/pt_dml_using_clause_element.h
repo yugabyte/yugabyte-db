@@ -54,18 +54,11 @@ class PTDmlUsingClauseElement : public TreeNode {
     return value_;
   }
 
-  bool IsTTL() const {
-    return strcmp(name_->c_str(), kTtl) == 0;
-  }
+  bool IsTTL() const;
 
-  bool IsTimestamp() const {
-    return strcmp(name_->c_str(), kTimestamp) == 0;
-  }
+  bool IsTimestamp() const;
 
  private:
-  constexpr static const char* const kTtl = "ttl";
-  constexpr static const char* const kTimestamp = "timestamp";
-
   const MCSharedPtr<MCString> name_;
   const PTExprPtr value_;
 };

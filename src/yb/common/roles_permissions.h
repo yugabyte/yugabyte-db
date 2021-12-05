@@ -17,8 +17,6 @@
 #include <bitset>
 #include <string>
 
-#include <glog/logging.h>
-
 #include "yb/common/common.pb.h"
 
 namespace yb {

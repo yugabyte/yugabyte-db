@@ -33,6 +33,7 @@
 #ifndef YB_TABLET_OPERATIONS_OPERATION_DRIVER_H
 #define YB_TABLET_OPERATIONS_OPERATION_DRIVER_H
 
+#include <condition_variable>
 #include <string>
 
 #include <boost/atomic.hpp>
@@ -42,10 +43,12 @@
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/walltime.h"
+
 #include "yb/tablet/operations/operation.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/opid.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/trace.h"
 
 namespace yb {

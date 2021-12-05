@@ -14,12 +14,10 @@
 #ifndef YB_INTEGRATION_TESTS_CDC_TEST_UTIL_H
 #define YB_INTEGRATION_TESTS_CDC_TEST_UTIL_H
 
-#include "yb/common/wire_protocol.h"
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_service.proxy.h"
+
 #include "yb/integration-tests/mini_cluster.h"
-#include "yb/rpc/rpc_controller.h"
-#include "yb/tserver/mini_tablet_server.h"
 
 namespace yb {
 namespace cdc {

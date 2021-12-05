@@ -32,6 +32,8 @@
 #ifndef YB_SERVER_GLOG_METRICS_H
 #define YB_SERVER_GLOG_METRICS_H
 
+#include <memory>
+
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 

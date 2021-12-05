@@ -36,14 +36,16 @@
 #include <string>
 
 #include "yb/common/wire_protocol.pb.h"
+
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
-#include "yb/rpc/service_if.h"
+
 #include "yb/server/server_base_options.h"
 #include "yb/server/webserver.h"
+
 #include "yb/util/metrics_fwd.h"
-#include "yb/util/countdown_latch.h"
 #include "yb/util/status_fwd.h"
+#include "yb/util/countdown_latch.h"
 
 namespace yb {
 

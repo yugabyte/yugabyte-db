@@ -17,19 +17,18 @@
 #include <bitset>
 #include <string>
 
+#include <boost/core/demangle.hpp>
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/expr_if.hpp>
-#include <boost/preprocessor/if.hpp>
-#include <boost/preprocessor/stringize.hpp>
 #include <boost/preprocessor/facilities/apply.hpp>
+#include <boost/preprocessor/if.hpp>
 #include <boost/preprocessor/punctuation/is_begin_parens.hpp>
 #include <boost/preprocessor/seq/enum.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
 #include <boost/preprocessor/seq/transform.hpp>
+#include <boost/preprocessor/stringize.hpp>
 
-#include <boost/core/demangle.hpp>
-
-#include "yb/util/math_util.h"
+#include "yb/util/math_util.h" // For constexpr_max
 
 namespace yb {
 

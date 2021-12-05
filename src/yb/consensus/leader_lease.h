@@ -6,6 +6,7 @@
 #include <gflags/gflags_declare.h>
 
 #include "yb/util/enums.h"
+#include "yb/util/math_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/physical_time.h"
 

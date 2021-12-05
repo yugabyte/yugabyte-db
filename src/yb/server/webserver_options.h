@@ -33,7 +33,6 @@
 #define YB_SERVER_WEBSERVER_OPTIONS_H
 
 #include <string>
-#include <stdint.h>
 
 namespace yb {
 

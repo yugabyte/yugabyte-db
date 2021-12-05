@@ -17,8 +17,8 @@
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
 
+#include "yb/common/common_fwd.h"
 #include "yb/common/ql_protocol.pb.h"
-#include "yb/common/jsonb.h"
 
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"

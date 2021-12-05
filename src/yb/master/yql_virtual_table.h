@@ -14,9 +14,9 @@
 #ifndef YB_MASTER_YQL_VIRTUAL_TABLE_H
 #define YB_MASTER_YQL_VIRTUAL_TABLE_H
 
-#include "yb/common/entity_ids.h"
 #include "yb/common/ql_rowblock.h"
 #include "yb/common/ql_storage_interface.h"
+
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/util/yql_vtable_helpers.h"
 

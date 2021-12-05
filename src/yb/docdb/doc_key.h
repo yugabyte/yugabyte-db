@@ -20,12 +20,12 @@
 #include <boost/container/small_vector.hpp>
 #include <boost/optional/optional.hpp>
 
-#include "yb/rocksdb/rocksdb_fwd.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/key_bytes.h"
+#include "yb/docdb/primitive_value.h"
+
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/filter_policy.h"
-
-#include "yb/docdb/docdb_fwd.h"
-#include "yb/docdb/primitive_value.h"
 
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/slice.h"

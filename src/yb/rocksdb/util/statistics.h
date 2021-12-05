@@ -20,16 +20,14 @@
 #ifndef YB_ROCKSDB_UTIL_STATISTICS_H
 #define YB_ROCKSDB_UTIL_STATISTICS_H
 
-#include "yb/rocksdb/statistics.h"
-
-#include <vector>
 #include <atomic>
+#include <mutex>
 #include <string>
+#include <vector>
 
 #include "yb/gutil/ref_counted.h"
-#include "yb/rocksdb/util/histogram.h"
-#include "yb/rocksdb/util/mutexlock.h"
-#include "yb/rocksdb/port/likely.h"
+
+#include "yb/rocksdb/statistics.h"
 
 namespace yb {
 class MetricEntity;

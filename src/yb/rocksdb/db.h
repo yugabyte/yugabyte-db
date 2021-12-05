@@ -26,16 +26,16 @@
 
 #include <stdint.h>
 #include <stdio.h>
+
 #include <memory>
-#include <vector>
 #include <string>
 #include <unordered_map>
-#include "yb/rocksdb/immutable_options.h"
+#include <vector>
+
 #include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/listener.h"
 #include "yb/rocksdb/metadata.h"
 #include "yb/rocksdb/options.h"
-#include "yb/rocksdb/snapshot.h"
 #include "yb/rocksdb/transaction_log.h"
 #include "yb/rocksdb/types.h"
 

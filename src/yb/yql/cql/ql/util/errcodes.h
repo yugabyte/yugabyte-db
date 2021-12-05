@@ -21,9 +21,6 @@
 #ifndef YB_YQL_CQL_QL_UTIL_ERRCODES_H_
 #define YB_YQL_CQL_QL_UTIL_ERRCODES_H_
 
-#include <cstdint>
-
-#include "yb/util/enums.h"
 #include "yb/util/status_ec.h"
 
 // Return an unauthorized error if authentication is not enabled through the flag

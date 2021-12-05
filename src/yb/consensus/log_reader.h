@@ -41,10 +41,10 @@
 
 #include "yb/consensus/log_metrics.h"
 #include "yb/consensus/log_util.h"
-#include "yb/consensus/opid_util.h"
-#include "yb/fs/fs_manager.h"
+
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/spinlock.h"
+
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 

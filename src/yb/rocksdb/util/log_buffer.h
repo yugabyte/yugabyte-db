@@ -23,12 +23,9 @@
 
 #pragma once
 
-#include <ctime>
-
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/util/arena.h"
 #include "yb/rocksdb/util/autovector.h"
-#include "yb/rocksdb/port/sys_time.h"
 
 #define LOG_TO_BUFFER(...) LogToBufferWithContext(__FILE__, __LINE__, ##__VA_ARGS__)
 

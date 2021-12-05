@@ -207,9 +207,10 @@
 #include <string>
 
 #include "yb/gutil/atomicops.h"
-#include "yb/util/debug/trace_event_impl.h"
-#include "yb/util/debug/trace_event_memory.h"
 #include "yb/gutil/walltime.h"
+
+#include "yb/util/debug/trace_event_impl.h"
+#include "yb/util/debug/trace_event_memory.h" // For INTERNAL_TRACE_MEMORY
 
 // By default, const char* argument values are assumed to have long-lived scope
 // and will not be copied. Use this macro to force a const char* to be copied.

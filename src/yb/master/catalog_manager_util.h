@@ -17,12 +17,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include "yb/common/common.pb.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/ts_descriptor.h"
-#include "yb/master/ts_manager.h"
-#include "yb/util/net/net_util.h"
-#include "yb/util/status_fwd.h"
 
 DECLARE_bool(transaction_tables_use_preferred_zones);
 

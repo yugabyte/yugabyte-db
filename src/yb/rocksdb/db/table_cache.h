@@ -26,18 +26,16 @@
 #define YB_ROCKSDB_DB_TABLE_CACHE_H
 
 #pragma once
+
 #include <stdint.h>
 
 #include <string>
 #include <vector>
 
-#include "yb/rocksdb/db/dbformat.h"
-#include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/env.h"
-#include "yb/rocksdb/table.h"
+#include "yb/rocksdb/immutable_options.h"
 #include "yb/rocksdb/options.h"
-#include "yb/rocksdb/table/table_reader.h"
 
 namespace rocksdb {
 

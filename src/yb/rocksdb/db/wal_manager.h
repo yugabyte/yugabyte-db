@@ -20,29 +20,33 @@
 // Copyright (c) 2011 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
-#ifndef ROCKSDB_DB_WAL_MANAGER_H
-#define ROCKSDB_DB_WAL_MANAGER_H
+#ifndef YB_ROCKSDB_DB_WAL_MANAGER_H
+#define YB_ROCKSDB_DB_WAL_MANAGER_H
 
 #pragma once
 
+#include <algorithm>
 #include <atomic>
-#include <deque>
+#include <cassert>
+#include <iterator>
 #include <limits>
+#include <memory>
 #include <set>
+#include <stdexcept>
+#include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
-#include <string>
-#include <memory>
 
-#include "yb/rocksdb/port/port.h"
-
+#include "yb/rocksdb/db/version_edit.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/options.h"
-#include "yb/rocksdb/types.h"
-#include "yb/rocksdb/transaction_log.h"
+#include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/status.h"
-
-#include "yb/rocksdb/db/version_set.h"
+#include "yb/rocksdb/transaction_log.h"
+#include "yb/rocksdb/types.h"
+#include "yb/rocksdb/util/arena.h"
+#include "yb/rocksdb/util/mutable_cf_options.h"
 
 namespace rocksdb {
 
@@ -109,4 +113,4 @@ class WalManager {
 #endif  // ROCKSDB_LITE
 }  // namespace rocksdb
 
-#endif // ROCKSDB_DB_WAL_MANAGER_H
+#endif // YB_ROCKSDB_DB_WAL_MANAGER_H

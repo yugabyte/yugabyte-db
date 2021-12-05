@@ -20,17 +20,13 @@
 
 #include <glog/logging.h>
 
-#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/common_fwd.h"
 #include "yb/common/ql_datatype.h"
-#include "yb/common/ql_protocol.pb.h"
-#include "yb/common/ql_type.h"
 
 #include "yb/util/bytes_formatter.h"
-#include "yb/util/decimal.h"
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/timestamp.h"
 #include "yb/util/uuid.h"
-#include "yb/util/yb_partition.h"
 #include "yb/util/varint.h"
 
 // The list of unsupported datatypes to use in switch statements

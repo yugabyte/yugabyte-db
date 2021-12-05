@@ -30,11 +30,14 @@
 #define YB_COMMON_QL_BFUNC_H_
 
 #include <vector>
+#include <unordered_set>
+
+#include "yb/bfpg/gen_opcodes.h"
+
+#include "yb/bfql/gen_opcodes.h"
 
 #include "yb/common/common_fwd.h"
 
-#include "yb/bfql/gen_opcodes.h"
-#include "yb/bfpg/gen_opcodes.h"
 #include "yb/util/status_fwd.h"
 
 namespace yb {

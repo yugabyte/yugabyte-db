@@ -27,7 +27,7 @@
 #include <string>
 #include <unordered_map>
 
-#include "yb/rocksdb/status.h"
+#include "yb/util/status.h"
 
 namespace rocksdb {
 

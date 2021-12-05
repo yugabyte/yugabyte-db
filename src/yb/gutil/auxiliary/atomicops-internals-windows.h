@@ -25,7 +25,6 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include "yb/gutil/basictypes.h"  // For COMPILE_ASSERT
 
 typedef int32 Atomic32;
 

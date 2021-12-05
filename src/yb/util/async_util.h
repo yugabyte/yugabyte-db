@@ -33,15 +33,15 @@
 #ifndef YB_UTIL_ASYNC_UTIL_H
 #define YB_UTIL_ASYNC_UTIL_H
 
-#include <condition_variable>
+#include <pthread.h>
+
 #include <future>
-#include <mutex>
 
 #include <boost/function.hpp>
 
-#include "yb/gutil/bind.h"
 #include "yb/gutil/macros.h"
-#include "yb/util/countdown_latch.h"
+
+#include "yb/util/monotime.h"
 #include "yb/util/status.h"
 #include "yb/util/status_callback.h"
 

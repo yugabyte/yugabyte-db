@@ -17,11 +17,10 @@
 
 #include <boost/optional/optional.hpp>
 
-#include "yb/common/entity_ids.h"
-
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/master/master_fwd.h"
+
 #include "yb/util/status_fwd.h"
 
 namespace yb {

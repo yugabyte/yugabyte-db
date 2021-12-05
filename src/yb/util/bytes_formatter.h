@@ -17,8 +17,9 @@
 #include <limits>
 #include <string>
 
-#include "yb/util/slice.h"
 #include "yb/util/enums.h"
+#include "yb/util/math_util.h"
+#include "yb/util/slice.h"
 
 namespace yb {
 

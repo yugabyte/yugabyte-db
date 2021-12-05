@@ -16,7 +16,6 @@
 
 #include <boost/optional.hpp>
 
-#include "yb/rocksdb/db.h"
 #include "yb/common/ql_rowwise_iterator_interface.h"
 #include "yb/common/ql_storage_interface.h"
 

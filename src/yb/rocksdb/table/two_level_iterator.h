@@ -22,9 +22,9 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #pragma once
+
 #include "yb/rocksdb/iterator.h"
-#include "yb/rocksdb/env.h"
-#include "yb/rocksdb/table/iterator_wrapper.h"
+#include "yb/rocksdb/table/internal_iterator.h"
 
 namespace rocksdb {
 

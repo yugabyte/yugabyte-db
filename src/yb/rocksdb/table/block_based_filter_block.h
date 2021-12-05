@@ -29,14 +29,18 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include <string>
+
 #include <memory>
+#include <string>
 #include <vector>
+
 #include "yb/rocksdb/options.h"
-#include "yb/util/slice.h"
 #include "yb/rocksdb/slice_transform.h"
 #include "yb/rocksdb/table/filter_block.h"
+#include "yb/rocksdb/table/format.h"
 #include "yb/rocksdb/util/hash.h"
+
+#include "yb/util/slice.h"
 
 namespace rocksdb {
 

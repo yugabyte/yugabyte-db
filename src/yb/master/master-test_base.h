@@ -34,28 +34,33 @@
 #define YB_MASTER_MASTER_TEST_BASE_H
 
 #include <algorithm>
+#include <map>
 #include <memory>
+#include <mutex>
 #include <sstream>
+#include <string>
 #include <tuple>
 #include <vector>
 
+#include <boost/container/small_vector.hpp>
+#include <boost/optional/optional_fwd.hpp>
+#include <boost/version.hpp>
+#include <gflags/gflags_declare.h>
 #include <gtest/gtest.h>
 
-#include "yb/common/partial_row.h"
-#include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
+
+#include "yb/master/master_fwd.h"
 #include "yb/master/master-test-util.h"
-#include "yb/master/call_home.h"
-#include "yb/master/mini_master.h"
-#include "yb/master/sys_catalog.h"
-#include "yb/master/ts_descriptor.h"
-#include "yb/master/ts_manager.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
-#include "yb/server/rpc_server.h"
-#include "yb/server/server_base.proxy.h"
-#include "yb/util/jsonreader.h"
+
+#include "yb/tserver/tablet_server.h"
+
 #include "yb/util/status_fwd.h"
+#include "yb/util/net/sockaddr.h"
+#include "yb/util/status.h"
 #include "yb/util/test_util.h"
 
 using yb::rpc::Messenger;
@@ -120,6 +125,9 @@ class MasterTestBase : public YBTest {
 
   string default_namespace_name = "default_namespace";
   string default_namespace_id;
+
+  MasterTestBase();
+  ~MasterTestBase();
 
   void SetUp() override;
   void TearDown() override;

@@ -36,10 +36,13 @@
 #include <vector>
 
 #include "yb/common/wire_protocol.pb.h"
+
 #include "yb/gutil/endian.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/cast.h"
 #include "yb/util/enums.h"
-#include "yb/util/status_fwd.h"
+#include "yb/util/math_util.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/status_ec.h"
 #include "yb/util/type_traits.h"

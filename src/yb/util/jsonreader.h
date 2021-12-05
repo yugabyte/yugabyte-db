@@ -39,6 +39,7 @@
 #include <rapidjson/document.h>
 
 #include "yb/gutil/macros.h"
+
 #include "yb/util/status_fwd.h"
 
 namespace yb {

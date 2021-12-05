@@ -14,14 +14,24 @@
 #ifndef YB_DOCDB_DOC_PATH_H_
 #define YB_DOCDB_DOC_PATH_H_
 
+#include <stdint.h>
+
+#include <cstring>
+#include <functional>
 #include <ostream>
 #include <string>
+#include <type_traits>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/key_bytes.h"
+
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/macros.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/string_util.h"
 
 namespace yb {

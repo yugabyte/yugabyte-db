@@ -13,17 +13,22 @@
 #ifndef YB_MASTER_FLUSH_MANAGER_H
 #define YB_MASTER_FLUSH_MANAGER_H
 
+#include <set>
+#include <shared_mutex>
+#include <type_traits>
 #include <unordered_set>
+#include <utility>
 
-#include "yb/common/entity_ids.h"
+#include <gflags/gflags_declare.h>
 
+#include "yb/gutil/integral_types.h"
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/master/master_fwd.h"
 
-#include "yb/util/locks.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/enums.h"
+#include "yb/util/locks.h"
 
 namespace yb {
 namespace master {

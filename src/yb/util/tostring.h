@@ -19,12 +19,12 @@
 #include <float.h>
 
 #include <chrono>
-#include <string>
+#include <functional>
 #include <sstream>
+#include <string>
 #include <type_traits>
 
 #include <boost/mpl/and.hpp>
-
 #include <boost/preprocessor/facilities/apply.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
 #include <boost/preprocessor/variadic/to_seq.hpp>

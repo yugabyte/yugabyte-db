@@ -21,8 +21,6 @@
 
 #include <algorithm>
 #include <cassert>
-#include <stdexcept>
-#include <iterator>
 #include <vector>
 
 namespace rocksdb {
@@ -76,7 +74,7 @@ class autovector {
     typedef std::random_access_iterator_tag iterator_category;
 
     iterator_impl(TAutoVector* vect, size_t index)
-        : vect_(vect), index_(index) {};
+        : vect_(vect), index_(index) {}
     iterator_impl(const iterator_impl&) = default;
     ~iterator_impl() {}
     iterator_impl& operator=(const iterator_impl&) = default;

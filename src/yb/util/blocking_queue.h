@@ -196,7 +196,7 @@ class BlockingQueue {
   bool BlockingPut(std::unique_ptr<T_VAL>* val) {
     bool ret = Put(val->get());
     if (ret) {
-      ignore_result(val->release());
+      val->release();
     }
     return ret;
   }

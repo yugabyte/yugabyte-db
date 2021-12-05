@@ -14,9 +14,15 @@
 #ifndef YB_DOCDB_BOUNDED_ROCKSDB_ITERATOR_H_
 #define YB_DOCDB_BOUNDED_ROCKSDB_ITERATOR_H_
 
+#include <stdint.h>
+
+#include <string>
+#include <vector>
+
 #include "yb/docdb/docdb_fwd.h"
 
-#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/iterator.h"
+#include "yb/rocksdb/options.h"
 
 namespace yb {
 namespace docdb {

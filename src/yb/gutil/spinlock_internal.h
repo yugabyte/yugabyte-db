@@ -51,8 +51,8 @@
 #ifndef YB_GUTIL_SPINLOCK_INTERNAL_H
 #define YB_GUTIL_SPINLOCK_INTERNAL_H
 
-#include "yb/gutil/integral_types.h"
 #include "yb/gutil/atomicops.h"
+#include "yb/gutil/integral_types.h"
 
 namespace base {
 namespace internal {

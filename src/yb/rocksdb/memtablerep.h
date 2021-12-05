@@ -55,7 +55,6 @@
 #include <stdlib.h>
 
 #include <memory>
-#include <stdexcept>
 
 #include "yb/util/slice.h"
 #include "yb/util/strongly_typed_bool.h"

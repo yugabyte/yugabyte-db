@@ -23,9 +23,8 @@
 #include <string>
 
 #include "yb/rocksdb/comparator.h"
+
 #include "yb/util/slice.h"
-#include "yb/rocksdb/util/coding.h"
-#include "yb/rocksdb/util/murmurhash.h"
 
 namespace rocksdb {
 namespace stl_wrappers {
@@ -42,5 +41,6 @@ struct LessOfComparator {
 };
 
 typedef std::map<std::string, std::string, LessOfComparator> KVMap;
-}
-}
+
+} // namespace stl_wrappers
+} // namespace rocksdb

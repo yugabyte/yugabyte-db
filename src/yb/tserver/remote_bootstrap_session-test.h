@@ -37,24 +37,24 @@
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
-#include "yb/tablet/tablet-test-util.h"
-
 #include "yb/common/partial_row.h"
 #include "yb/common/wire_protocol-test-util.h"
-#include "yb/consensus/consensus.h"
+
 #include "yb/consensus/consensus_meta.h"
-#include "yb/consensus/log.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
+
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/fastmem.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
+
+#include "yb/tablet/tablet-test-util.h"
+
 #include "yb/tserver/remote_bootstrap_session.h"
-#include "yb/tablet/tablet_peer.h"
-#include "yb/tablet/operations/write_operation.h"
-#include "yb/util/crc.h"
+
 #include "yb/util/metrics.h"
 #include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"

@@ -19,6 +19,7 @@
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/status.h"
 
+#include "yb/util/logging.h"
 #include "yb/util/slice.h"
 #include "yb/util/tostring.h"
 #include "yb/util/result.h"

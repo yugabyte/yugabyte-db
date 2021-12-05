@@ -20,11 +20,11 @@
 #include <boost/optional.hpp>
 
 #include "yb/client/client_fwd.h"
+
 #include "yb/common/column_id.h"
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_rowblock.h"
-#include "yb/common/ql_value.h"
 #include "yb/common/read_hybrid_time.h"
 
 #include "yb/util/async_util.h"

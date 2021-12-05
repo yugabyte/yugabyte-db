@@ -16,12 +16,17 @@
 #ifndef YB_RPC_RPC_WITH_QUEUE_H
 #define YB_RPC_RPC_WITH_QUEUE_H
 
+#include <stdint.h>
+
 #include <functional>
 #include <mutex>
+#include <type_traits>
 #include <unordered_set>
 
 #include "yb/rpc/connection_context.h"
 #include "yb/rpc/inbound_call.h"
+
+#include "yb/util/size_literals.h"
 
 namespace yb {
 namespace rpc {

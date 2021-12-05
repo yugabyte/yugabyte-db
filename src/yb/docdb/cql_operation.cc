@@ -260,6 +260,8 @@ QLWriteOperation::QLWriteOperation(std::shared_ptr<const Schema> schema,
       txn_op_context_(txn_op_context)
 {}
 
+QLWriteOperation::~QLWriteOperation() = default;
+
 Status QLWriteOperation::Init(QLWriteRequestPB* request, QLResponsePB* response) {
   request_.Swap(request);
   response_ = response;
@@ -1139,6 +1141,10 @@ Result<bool> QLWriteOperation::IsRowDeleted(const QLTableRow& existing_row,
   }
 
   return false;
+}
+
+MonoDelta QLWriteOperation::request_ttl() const {
+  return request_.has_ttl() ? MonoDelta::FromMilliseconds(request_.ttl()) : Value::kMaxTtl;
 }
 
 namespace {

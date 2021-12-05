@@ -19,12 +19,11 @@
 #include <map>
 
 #include <boost/functional/hash.hpp>
-
 #include <boost/optional/optional.hpp>
 
+#include "yb/common/common_fwd.h"
 #include "yb/common/column_id.h"
-#include "yb/common/ql_protocol.pb.h"
-#include "yb/common/ql_rowblock.h"
+#include "yb/common/common.pb.h"
 
 namespace yb {
 

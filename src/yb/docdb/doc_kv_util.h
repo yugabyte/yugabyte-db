@@ -18,16 +18,15 @@
 
 #include <string>
 
-#include "yb/util/slice.h"
-
-#include "yb/common/hybrid_time.h"
 #include "yb/common/doc_hybrid_time.h"
+#include "yb/common/hybrid_time.h"
+
 #include "yb/gutil/endian.h"
-#include "yb/util/decimal.h"
-#include "yb/util/kv_util.h"
-#include "yb/util/memcmpable_varint.h"
-#include "yb/util/monotime.h"
+
 #include "yb/util/status_fwd.h"
+#include "yb/util/kv_util.h"
+#include "yb/util/monotime.h"
+#include "yb/util/slice.h"
 
 namespace yb {
 namespace docdb {

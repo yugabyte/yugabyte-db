@@ -16,6 +16,15 @@
 #ifndef YB_RPC_YB_RPC_H
 #define YB_RPC_YB_RPC_H
 
+#include <stdint.h>
+
+#include <cstdint>
+#include <cstdlib>
+#include <string>
+#include <type_traits>
+
+#include <boost/version.hpp>
+
 #include "yb/rpc/binary_call_parser.h"
 #include "yb/rpc/circular_read_buffer.h"
 #include "yb/rpc/connection_context.h"
@@ -23,6 +32,8 @@
 #include "yb/rpc/serialization.h"
 
 #include "yb/util/ev_util.h"
+#include "yb/util/net/net_fwd.h"
+#include "yb/util/size_literals.h"
 
 namespace yb {
 namespace rpc {

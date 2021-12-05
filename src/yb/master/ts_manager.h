@@ -40,20 +40,19 @@
 
 #include <boost/function.hpp>
 
-#include "yb/gutil/thread_annotations.h"
-#include "yb/gutil/macros.h"
-
-#include "yb/util/capabilities.h"
-#include "yb/util/locks.h"
-#include "yb/util/monotime.h"
-#include "yb/util/net/net_util.h"
-#include "yb/util/status_fwd.h"
-
 #include "yb/common/common.pb.h"
+
+#include "yb/gutil/macros.h"
+#include "yb/gutil/thread_annotations.h"
+
+#include "yb/master/master_fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
-#include "yb/master/master_fwd.h"
+#include "yb/util/status_fwd.h"
+#include "yb/util/locks.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
 
 namespace yb {
 

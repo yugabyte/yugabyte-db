@@ -16,11 +16,8 @@
 
 #include "yb/client/tablet_rpc.h"
 
-#include "yb/common/read_hybrid_time.h"
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/rpc_context.h"
-
-#include "yb/tserver/tserver_service.proxy.h"
 
 namespace yb {
 namespace client {
@@ -122,4 +119,4 @@ class ForwardReadRpc : public ForwardRpc<tserver::ReadRequestPB, tserver::ReadRe
 }  // namespace client
 }  // namespace yb
 
-#endif  // YB_CLIENT_ASYNC_RPC_H_
+#endif  // YB_CLIENT_FORWARD_RPC_H_

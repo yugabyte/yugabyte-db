@@ -23,19 +23,20 @@
 //
 // File names used by DB code
 
-#ifndef ROCKSDB_DB_FILENAME_H
-#define ROCKSDB_DB_FILENAME_H
+#ifndef YB_ROCKSDB_DB_FILENAME_H
+#define YB_ROCKSDB_DB_FILENAME_H
 
 #include <stdint.h>
-#include <unordered_map>
+
 #include <string>
+#include <unordered_map>
 #include <vector>
 
-#include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/options.h"
-#include "yb/util/slice.h"
 #include "yb/rocksdb/status.h"
 #include "yb/rocksdb/transaction_log.h"
+
+#include "yb/util/slice.h"
 
 namespace rocksdb {
 
@@ -185,4 +186,4 @@ extern Status SyncManifest(Env* env, const DBOptions* db_options,
 
 }  // namespace rocksdb
 
-#endif  // ROCKSDB_DB_FILENAME_H
+#endif  // YB_ROCKSDB_DB_FILENAME_H

@@ -15,19 +15,15 @@
 #define YB_UTIL_TASKSTREAM_H
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <memory>
-#include <mutex>
-#include <thread>
 #include <vector>
-#include <chrono>
 
 #include <gflags/gflags.h>
 
-#include "yb/util/blocking_queue.h"
-#include "yb/util/logging.h"
-#include "yb/util/scope_exit.h"
 #include "yb/util/status_fwd.h"
+#include "yb/util/blocking_queue.h"
 #include "yb/util/status_format.h"
 #include "yb/util/thread.h"
 #include "yb/util/threadpool.h"

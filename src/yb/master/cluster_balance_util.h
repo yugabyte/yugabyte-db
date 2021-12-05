@@ -21,16 +21,10 @@
 #include <unordered_set>
 #include <vector>
 
-#include <boost/optional/optional.hpp>
-
-#include <gflags/gflags.h>
-
 #include "yb/common/common.pb.h"
 
 #include "yb/master/master.pb.h"
 #include "yb/master/ts_descriptor.h"
-
-#include "yb/util/status_fwd.h"
 
 DECLARE_int32(leader_balance_threshold);
 

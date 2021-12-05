@@ -16,6 +16,7 @@
 #ifndef YB_ROCKSDB_TABLE_BLOCK_INTERNAL_H
 #define YB_ROCKSDB_TABLE_BLOCK_INTERNAL_H
 
+#include "yb/util/logging.h"
 #include "yb/util/std_util.h"
 
 namespace rocksdb {

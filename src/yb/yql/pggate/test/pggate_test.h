@@ -17,21 +17,24 @@
 #define YB_YQL_PGGATE_TEST_PGGATE_TEST_H_
 
 #include <dirent.h>
+#include <stdint.h>
+
+#include "pg_type_d.h" // NOLINT
+
+#include "yb/common/ybc_util.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"
-#include "yb/master/mini_master.h"
+
 #include "yb/tserver/tserver_util_fwd.h"
 
-#include "yb/util/memory/mc_types.h"
 #include "yb/util/shared_mem.h"
 #include "yb/util/test_util.h"
 
-#include "yb/yql/pggate/ybc_pggate.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 // This file comes from this directory:
 // postgres_build/src/include/catalog
 // We add a special include path to CMakeLists.txt.
-#include "pg_type_d.h" // NOLINT
 
 namespace yb {
 namespace pggate {

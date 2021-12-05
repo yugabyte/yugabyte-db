@@ -14,8 +14,11 @@
 #ifndef YB_COMMON_READ_HYBRID_TIME_H
 #define YB_COMMON_READ_HYBRID_TIME_H
 
+#include <functional>
+
 #include "yb/common/clock.h"
 #include "yb/common/hybrid_time.h"
+
 #include "yb/util/compare_util.h"
 #include "yb/util/tostring.h"
 

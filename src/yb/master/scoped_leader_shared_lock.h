@@ -33,17 +33,18 @@
 #define YB_MASTER_SCOPED_LEADER_SHARED_LOCK_H
 
 #include <chrono>
+#include <string>
 #include <unordered_map>
 
 #include <glog/logging.h>
 
 #include "yb/master/master_fwd.h"
 
-#include "yb/rpc/rpc_context.h"
+#include "yb/rpc/service_if.h"
 
+#include "yb/util/status_fwd.h"
 #include "yb/util/rw_mutex.h"
 #include "yb/util/shared_lock.h"
-#include "yb/util/status_fwd.h"
 
 namespace yb {
 namespace master {

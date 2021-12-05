@@ -40,11 +40,11 @@
 
 #include "yb/common/column_id.h"
 #include "yb/common/partial_row.h"
-#include "yb/common/ql_protocol.pb.h"
 #include "yb/common/pgsql_protocol.pb.h"
-#include "yb/gutil/ref_counted.h"
-#include "yb/util/memory/arena_fwd.h"
+#include "yb/common/ql_protocol.pb.h"
+
 #include "yb/util/status_fwd.h"
+#include "yb/util/memory/arena_fwd.h"
 
 namespace yb {
 

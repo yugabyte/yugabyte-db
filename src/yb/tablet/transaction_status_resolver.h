@@ -14,9 +14,13 @@
 #ifndef YB_TABLET_TRANSACTION_STATUS_RESOLVER_H
 #define YB_TABLET_TRANSACTION_STATUS_RESOLVER_H
 
+#include <stdint.h>
+
 #include <memory>
+#include <type_traits>
 
 #include "yb/common/common.pb.h"
+
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/tablet/transaction_participant.h"

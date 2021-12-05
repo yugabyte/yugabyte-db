@@ -64,8 +64,9 @@
 
 #include <assert.h>
 #include <stdlib.h>
+
 #include <atomic>
-#include "yb/rocksdb/port/port.h"
+
 #include "yb/rocksdb/util/allocator.h"
 #include "yb/rocksdb/util/random.h"
 

@@ -37,12 +37,13 @@
 #include <vector>
 
 #include "yb/gutil/ref_counted.h"
+
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/service_pool.h"
-#include "yb/util/net/net_util.h"
-#include "yb/util/net/sockaddr.h"
+
 #include "yb/util/status_fwd.h"
 #include "yb/util/enums.h"
+#include "yb/util/net/net_fwd.h"
 
 namespace yb {
 namespace server {

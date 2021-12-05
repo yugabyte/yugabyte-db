@@ -18,15 +18,27 @@
 #ifndef YB_YQL_CQL_QL_PTREE_PT_GRANT_REVOKE_H_
 #define YB_YQL_CQL_QL_PTREE_PT_GRANT_REVOKE_H_
 
-#include "yb/common/roles_permissions.h"
+#include <inttypes.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <string.h>
+
+#include <limits>
+#include <string>
+
+#include "yb/client/client_fwd.h"
+
 #include "yb/common/common.pb.h"
+#include "yb/common/roles_permissions.h"
+
+#include "yb/gutil/integral_types.h"
+
 #include "yb/util/enums.h"
+
+#include "yb/yql/cql/ql/ptree/ptree_fwd.h"
 #include "yb/yql/cql/ql/ptree/list_node.h"
-#include "yb/yql/cql/ql/ptree/tree_node.h"
-#include "yb/yql/cql/ql/ptree/pt_table_property.h"
-#include "yb/yql/cql/ql/ptree/pt_type.h"
 #include "yb/yql/cql/ql/ptree/pt_name.h"
-#include "yb/yql/cql/ql/ptree/pt_update.h"
+#include "yb/yql/cql/ql/ptree/tree_node.h"
 
 namespace yb {
 namespace ql {

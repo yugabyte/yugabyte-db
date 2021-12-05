@@ -17,17 +17,15 @@
 #include <string>
 #include <vector>
 
-#include "yb/docdb/docdb_fwd.h"
-#include "yb/rocksdb/cache.h"
-
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/read_hybrid_time.h"
-#include "yb/common/transaction.h"
 
+#include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_types.h"
 #include "yb/docdb/expiration.h"
 #include "yb/docdb/value.h"
-#include "yb/docdb/subdocument.h"
+
+#include "yb/rocksdb/cache.h"
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/strongly_typed_bool.h"

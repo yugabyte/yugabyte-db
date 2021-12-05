@@ -29,6 +29,7 @@
 #include <vector>
 
 #include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/immutable_options.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/util/murmurhash.h"
 #include "yb/rocksdb/util/hash.h"

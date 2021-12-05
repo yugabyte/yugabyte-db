@@ -37,17 +37,13 @@
 #include <string>
 #include <vector>
 
-#include "yb/rocksdb/db.h"
-#include "yb/rocksdb/write_batch.h"
-
 #include "yb/docdb/doc_operation.h"
 #include "yb/docdb/lock_batch.h"
-#include "yb/docdb/shared_lock_manager_fwd.h"
 
 #include "yb/gutil/macros.h"
 
-#include "yb/tablet/tablet.pb.h"
 #include "yb/tablet/operations/operation.h"
+#include "yb/tablet/tablet.pb.h"
 
 #include "yb/util/locks.h"
 #include "yb/util/operation_counter.h"

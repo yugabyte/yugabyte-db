@@ -33,9 +33,6 @@
 #define YB_TABLET_TABLET_H_
 
 #include <boost/intrusive/list.hpp>
-#include <boost/function.hpp>
-
-#include "yb/gutil/ref_counted.h"
 
 #include "yb/client/transaction_manager.h"
 
@@ -47,9 +44,11 @@
 #include "yb/consensus/consensus.pb.h"
 
 #include "yb/docdb/docdb_fwd.h"
-#include "yb/docdb/key_bounds.h"
 #include "yb/docdb/docdb_types.h"
+#include "yb/docdb/key_bounds.h"
 #include "yb/docdb/shared_lock_manager.h"
+
+#include "yb/gutil/ref_counted.h"
 
 #include "yb/rocksdb/rocksdb_fwd.h"
 #include "yb/rocksdb/options.h"
@@ -64,10 +63,10 @@
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/transaction_intent_applier.h"
 
+#include "yb/util/status_fwd.h"
 #include "yb/util/enums.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/operation_counter.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/threadpool.h"
 

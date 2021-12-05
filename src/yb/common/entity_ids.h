@@ -15,8 +15,6 @@
 #define YB_COMMON_ENTITY_IDS_H
 
 #include <string>
-#include <set>
-#include <utility>
 
 #include "yb/common/entity_ids_types.h"
 

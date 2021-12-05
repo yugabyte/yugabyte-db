@@ -32,29 +32,34 @@
 #ifndef YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_H_
 #define YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_H_
 
+#include <string.h>
 #include <sys/types.h>
 
+#include <functional>
 #include <memory>
 #include <string>
-#include <vector>
 #include <thread>
+#include <vector>
 
 #include "yb/common/entity_ids_types.h"
 
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus.proxy.h"
-#include "yb/consensus/opid_util.h"
+
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/strings/substitute.h"
+#include "yb/gutil/stringprintf.h"
+
 #include "yb/integration-tests/mini_cluster_base.h"
+
 #include "yb/server/server_base.proxy.h"
-#include "yb/tserver/tserver_service.proxy.h"
+
 #include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_service.pb.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/status_fwd.h"
-#include "yb/util/env.h"
 
 namespace yb {
 

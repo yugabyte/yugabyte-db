@@ -18,30 +18,33 @@
 // This file contains conversion functions from various data types to
 // strings and back.
 
-#ifndef STRINGS_SERIALIZE_H_
-#define STRINGS_SERIALIZE_H_
+#ifndef YB_GUTIL_STRINGS_SERIALIZE_H
+#define YB_GUTIL_STRINGS_SERIALIZE_H
 
 #include <string.h>
+
 #include <ext/hash_map>
-using __gnu_cxx::hash;
-using __gnu_cxx::hash_map;
 #include <string>
-using std::string;
 #include <utility>
-using std::make_pair;
-using std::pair;
 #include <vector>
-using std::vector;
 
 #include <glog/logging.h>
 
+#include "yb/gutil/endian.h"
 #include "yb/gutil/int128.h"
 #include "yb/gutil/integral_types.h"
-#include "yb/gutil/logging-inl.h"
-#include "yb/gutil/type_traits.h"
-#include "yb/gutil/strings/stringpiece.h"
-#include "yb/gutil/endian.h"
 #include "yb/gutil/stl_util.h"
+#include "yb/gutil/strings/stringpiece.h"
+#include "yb/gutil/type_traits.h"
+
+using __gnu_cxx::hash;
+using __gnu_cxx::hash_map;
+using std::string;
+using std::make_pair;
+using std::pair;
+using std::vector;
+
+
 
 // Converts a 4-byte uint32 to a string such that the string keys sort in
 // the same order as the original uint32 value.
@@ -354,4 +357,4 @@ bool DictionaryDoubleDecode(hash_map<string, double>* dictionary,
                             const string& encoded_str);
 
 
-#endif  // STRINGS_SERIALIZE_H_
+#endif  // YB_GUTIL_STRINGS_SERIALIZE_H

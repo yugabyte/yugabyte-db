@@ -16,8 +16,6 @@
 
 #include <openssl/ossl_typ.h>
 
-#include <vector>
-
 #include "yb/util/slice.h"
 
 namespace yb {

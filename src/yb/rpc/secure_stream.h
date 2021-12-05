@@ -14,11 +14,12 @@
 #ifndef YB_RPC_SECURE_STREAM_H
 #define YB_RPC_SECURE_STREAM_H
 
-#include "yb/rpc/stream.h"
+#include <boost/version.hpp>
 
-#include "yb/rpc/circular_read_buffer.h"
+#include "yb/rpc/rpc_fwd.h"
 
 #include "yb/util/enums.h"
+#include "yb/util/mem_tracker.h"
 
 typedef struct evp_pkey_st EVP_PKEY;
 typedef struct ssl_st SSL;

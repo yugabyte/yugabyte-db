@@ -10,10 +10,13 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/yql/cql/ql/ptree/pt_dml_using_clause_element.h"
 
 #include "yb/common/ql_type.h"
+
 #include "yb/util/status.h"
+
 #include "yb/yql/cql/ql/ptree/pt_expr.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/yql/cql/ql/ptree/sem_state.h"
@@ -21,6 +24,13 @@
 
 namespace yb {
 namespace ql {
+
+namespace {
+
+constexpr const char* const kTtl = "ttl";
+constexpr const char* const kTimestamp = "timestamp";
+
+}
 
 PTDmlUsingClauseElement::PTDmlUsingClauseElement(MemoryContext *memctx,
                                                  YBLocationPtr loc,
@@ -73,6 +83,14 @@ Status PTDmlUsingClauseElement::Analyze(SemContext *sem_context) {
   RETURN_NOT_OK(value_->Analyze(sem_context));
 
   return Status::OK();
+}
+
+bool PTDmlUsingClauseElement::IsTTL() const {
+  return strcmp(name_->c_str(), kTtl) == 0;
+}
+
+bool PTDmlUsingClauseElement::IsTimestamp() const {
+  return strcmp(name_->c_str(), kTimestamp) == 0;
 }
 
 } // namespace ql

@@ -24,14 +24,16 @@
 #ifndef YB_ROCKSDB_UTIL_FILE_READER_WRITER_H
 #define YB_ROCKSDB_UTIL_FILE_READER_WRITER_H
 
+#include <string.h>
+
 #include <string>
 
 #include <gflags/gflags_declare.h>
 
 #include "yb/rocksdb/env.h"
-#include "yb/rocksdb/util/aligned_buffer.h"
-#include "yb/rocksdb/util/statistics.h"
 #include "yb/rocksdb/port/port.h"
+#include "yb/rocksdb/statistics.h"
+#include "yb/rocksdb/util/aligned_buffer.h"
 
 DECLARE_int32(rocksdb_file_starting_buffer_size);
 

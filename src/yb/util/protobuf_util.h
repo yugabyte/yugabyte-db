@@ -35,10 +35,21 @@
 #ifndef YB_UTIL_PROTOBUF_UTIL_H
 #define YB_UTIL_PROTOBUF_UTIL_H
 
+#include <float.h>
+
+#include <chrono>
+#include <sstream>
+#include <string>
+#include <type_traits>
+
+#include <boost/mpl/and.hpp>
 #include <google/protobuf/message_lite.h>
 
 #include "yb/util/enums.h"
 #include "yb/util/format.h"
+#include "yb/util/math_util.h"
+#include "yb/util/tostring.h"
+#include "yb/util/type_traits.h"
 
 namespace yb {
 

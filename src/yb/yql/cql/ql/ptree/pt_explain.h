@@ -20,9 +20,6 @@
 
 #include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
-#include "yb/yql/cql/ql/ptree/pt_select.h"
-#include "yb/yql/cql/ql/ptree/column_desc.h"
-#include "yb/yql/cql/ql/ptree/pt_dml.h"
 
 namespace yb {
 namespace ql {

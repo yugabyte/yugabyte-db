@@ -26,7 +26,7 @@
 #include <mutex>
 #include <vector>
 
-#include "yb/gutil/map-util.h"
+#include "yb/gutil/map-util.h" // For ContainsKey
 #include "yb/util/locks.h"
 
 namespace yb {

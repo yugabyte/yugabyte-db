@@ -16,12 +16,13 @@
 #include <memory>
 
 #include "yb/master/master_fwd.h"
+
 #include "yb/rpc/io_thread_pool.h"
-#include "yb/rpc/scheduler.h"
-#include "yb/server/webserver.h"
+
 #include "yb/tserver/tablet_server.h"
-#include "yb/util/curl_util.h"
+
 #include "yb/util/status_fwd.h"
+#include "yb/util/curl_util.h"
 
 namespace yb {
 

@@ -15,7 +15,11 @@
 #ifndef YB_YQL_PGGATE_PG_VALUE_H_
 #define YB_YQL_PGGATE_PG_VALUE_H_
 
-#include "yb/common/ql_value.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/common.pb.h"
+
+#include "yb/util/status_fwd.h"
+
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb {

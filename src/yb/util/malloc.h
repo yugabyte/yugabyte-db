@@ -32,7 +32,6 @@
 #ifndef YB_UTIL_MALLOC_H
 #define YB_UTIL_MALLOC_H
 
-#include <cstddef>
 #include <cstdlib>
 
 namespace yb {

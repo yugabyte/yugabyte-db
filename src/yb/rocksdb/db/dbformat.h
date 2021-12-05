@@ -26,21 +26,23 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 
+#include <memory>
 #include <string>
-
-#include "yb/util/logging.h"
+#include <unordered_map>
+#include <vector>
 
 #include "yb/rocksdb/comparator.h"
-#include "yb/rocksdb/db.h"
-#include "yb/rocksdb/filter_policy.h"
-#include "yb/util/slice.h"
+#include "yb/rocksdb/metadata.h"
 #include "yb/rocksdb/slice_transform.h"
-#include "yb/rocksdb/table.h"
+#include "yb/rocksdb/status.h"
 #include "yb/rocksdb/types.h"
 #include "yb/rocksdb/util/coding.h"
-#include "yb/rocksdb/util/logging.h"
+
+#include "yb/util/slice.h"
 
 namespace rocksdb {
 

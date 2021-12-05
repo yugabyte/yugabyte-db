@@ -25,6 +25,7 @@
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/util/enums.h"
+#include "yb/util/math_util.h"
 #include "yb/util/slice.h"
 #include "yb/util/strongly_typed_bool.h"
 

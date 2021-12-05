@@ -23,12 +23,7 @@
 
 #include "yb/common/hybrid_time.h"
 
-#include "yb/consensus/consensus_fwd.h"
-#include "yb/consensus/opid_util.h"
-
 #include "yb/gutil/ref_counted.h"
-
-#include "yb/rpc/rpc_fwd.h"
 
 #include "yb/server/server_fwd.h"
 
@@ -37,9 +32,8 @@
 #include "yb/tserver/tserver_fwd.h"
 
 #include "yb/util/metrics_fwd.h"
-#include "yb/util/enums.h"
-#include "yb/util/opid.h"
 #include "yb/util/status_fwd.h"
+#include "yb/util/enums.h"
 
 namespace google {
 namespace protobuf {

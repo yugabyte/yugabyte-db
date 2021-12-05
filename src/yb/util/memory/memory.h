@@ -55,17 +55,15 @@
 
 #include <boost/mpl/if.hpp>
 #include <boost/type_traits/is_const.hpp>
-
 #include <glog/logging.h>
 
 #include "yb/gutil/logging-inl.h"
 #include "yb/gutil/macros.h"
-#include "yb/gutil/strings/stringpiece.h"
 #include "yb/gutil/singleton.h"
+#include "yb/gutil/strings/stringpiece.h"
 
 #include "yb/util/boost_mutex_utils.h"
 #include "yb/util/mutex.h"
-#include "yb/util/size_literals.h"
 
 using std::copy;
 using std::max;

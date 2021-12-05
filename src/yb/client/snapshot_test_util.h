@@ -22,6 +22,7 @@
 #include "yb/rpc/proxy.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 

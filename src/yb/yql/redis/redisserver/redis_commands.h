@@ -18,8 +18,6 @@
 #include <string>
 #include <vector>
 
-#include <boost/function.hpp>
-
 #include "yb/client/client_fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"

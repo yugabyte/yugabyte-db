@@ -22,16 +22,15 @@
 
 #pragma once
 
-#include <string>
-#include <list>
-#include <vector>
-#include <set>
 #include <deque>
+#include <list>
+#include <set>
+#include <string>
+#include <vector>
 
-#include "yb/rocksdb/db/dbformat.h"
-#include "yb/rocksdb/db/filename.h"
-#include "yb/rocksdb/db/memtable.h"
 #include "yb/rocksdb/db.h"
+#include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/db/memtable.h"
 #include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/types.h"

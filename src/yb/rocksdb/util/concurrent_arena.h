@@ -25,14 +25,13 @@
 #define YB_ROCKSDB_UTIL_CONCURRENT_ARENA_H
 
 #pragma once
+
 #include <atomic>
-#include <memory>
-#include <utility>
-#include "yb/rocksdb/port/likely.h"
+#include <mutex>
+
 #include "yb/rocksdb/util/allocator.h"
 #include "yb/rocksdb/util/arena.h"
 #include "yb/rocksdb/util/mutexlock.h"
-#include "yb/rocksdb/util/thread_local.h"
 
 // Only generate field unused warning for padding array, or build under
 // GCC 4.8.1 will fail.

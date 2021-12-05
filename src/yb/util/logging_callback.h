@@ -33,7 +33,6 @@
 #define YB_UTIL_LOGGING_CALLBACK_H
 
 #include <ctime>
-#include <string>
 
 #include "yb/gutil/callback_forward.h"
 
@@ -58,4 +57,4 @@ typedef Callback<void(LogSeverity severity,
 
 } // namespace yb
 
-#endif
+#endif // YB_UTIL_LOGGING_CALLBACK_H

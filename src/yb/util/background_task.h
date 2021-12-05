@@ -13,13 +13,12 @@
 #ifndef YB_UTIL_BACKGROUND_TASK_H
 #define YB_UTIL_BACKGROUND_TASK_H
 
-#include <chrono>
 #include <condition_variable>
 #include <functional>
 #include <memory>
-#include <mutex>
 
 #include "yb/gutil/ref_counted.h"
+
 #include "yb/util/status_fwd.h"
 
 namespace yb {

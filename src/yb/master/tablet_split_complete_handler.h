@@ -14,7 +14,11 @@
 #ifndef YB_MASTER_TABLET_SPLIT_COMPLETE_HANDLER_H
 #define YB_MASTER_TABLET_SPLIT_COMPLETE_HANDLER_H
 
+#include <set>
+#include <utility>
+
 #include "yb/common/entity_ids.h"
+
 #include "yb/master/catalog_entity_info.h"
 
 namespace yb {

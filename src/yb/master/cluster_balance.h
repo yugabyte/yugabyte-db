@@ -14,6 +14,7 @@
 #ifndef YB_MASTER_CLUSTER_BALANCE_H
 #define YB_MASTER_CLUSTER_BALANCE_H
 
+#include <atomic>
 #include <map>
 #include <memory>
 #include <set>
@@ -21,15 +22,15 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-#include <atomic>
-#include <list>
+
 #include <boost/circular_buffer.hpp>
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_fwd.h"
-#include "yb/master/ts_descriptor.h"
-#include "yb/util/random.h"
 #include "yb/master/cluster_balance_util.h"
+#include "yb/master/ts_descriptor.h"
+
+#include "yb/util/random.h"
 
 DECLARE_int32(load_balancer_max_concurrent_tablet_remote_bootstraps);
 DECLARE_int32(load_balancer_max_over_replicated_tablets);

@@ -32,17 +32,15 @@
 #ifndef YB_UTIL_TEST_MACROS_H
 #define YB_UTIL_TEST_MACROS_H
 
-#include <string>
-#include <sstream>
 #include <set>
+#include <sstream>
+#include <string>
 
 #include <boost/preprocessor/cat.hpp>
 
-#include <gtest/gtest.h>
+#include <gtest/gtest.h> // For SUCCEED/FAIL
 
-#include "yb/util/string_trim.h"
 #include "yb/util/tostring.h"
-#include "yb/util/tsan_util.h"
 
 namespace yb {
 namespace util {

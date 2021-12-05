@@ -14,14 +14,16 @@
 #ifndef YB_COMMON_QL_STORAGE_INTERFACE_H
 #define YB_COMMON_QL_STORAGE_INTERFACE_H
 
-#include <boost/optional.hpp>
+#include <limits>
+#include <string>
+#include <type_traits>
 
 #include "yb/common/common_fwd.h"
-#include "yb/common/hybrid_time.h"
-#include "yb/common/read_hybrid_time.h"
 #include "yb/common/ql_rowwise_iterator_interface.h"
 
 #include "yb/docdb/docdb_fwd.h"
+
+#include "yb/util/monotime.h"
 
 namespace yb {
 

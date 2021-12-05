@@ -17,9 +17,8 @@
 
 #include <libpq-fe.h>
 
-#include "yb/util/pg_util.h"
+#include "yb/util/net/net_util.h"
 
-#include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 namespace yb {

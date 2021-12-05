@@ -20,7 +20,12 @@
 namespace yb {
 namespace ql {
 
+class QLSession;
+class Statement;
+
 YB_STRONGLY_TYPED_BOOL(IsRescheduled)
+
+using QLSessionPtr = std::shared_ptr<QLSession>;
 
 } // namespace ql
 } // namespace yb

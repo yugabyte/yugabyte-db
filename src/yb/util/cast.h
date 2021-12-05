@@ -14,8 +14,6 @@
 #ifndef YB_UTIL_CAST_H_
 #define YB_UTIL_CAST_H_
 
-#include <stdint.h>
-
 #include <memory>
 
 namespace yb {

@@ -18,8 +18,11 @@
 // under the License.
 //
 #pragma once
+
+#include <string.h>
+
 #include "yb/rocksdb/env.h"
-#include "yb/rocksdb/util/statistics.h"
+#include "yb/rocksdb/statistics.h"
 
 namespace rocksdb {
 // Auto-scoped.

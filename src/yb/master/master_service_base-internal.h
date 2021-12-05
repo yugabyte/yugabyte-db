@@ -14,11 +14,13 @@
 #ifndef YB_MASTER_MASTER_SERVICE_BASE_INTERNAL_H
 #define YB_MASTER_MASTER_SERVICE_BASE_INTERNAL_H
 
-#include "yb/master/catalog_manager-internal.h"
 #include "yb/master/master.h"
+#include "yb/master/master_error.h"
 #include "yb/master/master_service_base.h"
+#include "yb/master/scoped_leader_shared_lock-internal.h"
 
 #include "yb/rpc/rpc_context.h"
+
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/strongly_typed_bool.h"
 

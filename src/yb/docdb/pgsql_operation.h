@@ -15,6 +15,7 @@
 #define YB_DOCDB_PGSQL_OPERATION_H
 
 #include "yb/common/ql_rowwise_iterator_interface.h"
+#include "yb/common/pgsql_protocol.pb.h"
 
 #include "yb/docdb/doc_expr.h"
 #include "yb/docdb/doc_key.h"

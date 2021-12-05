@@ -16,9 +16,8 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
-#include "yb/util/net/net_util.h"
-#include "yb/util/net/sockaddr.h"
 #include "yb/util/status_fwd.h"
+#include "yb/util/net/net_fwd.h"
 
 namespace yb {
 

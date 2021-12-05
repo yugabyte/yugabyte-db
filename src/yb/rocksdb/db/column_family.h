@@ -26,18 +26,17 @@
 
 #pragma once
 
-#include <unordered_map>
-#include <string>
-#include <vector>
 #include <atomic>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
-#include "yb/rocksdb/db/memtable_list.h"
-#include "yb/rocksdb/db/write_batch_internal.h"
-#include "yb/rocksdb/db/write_controller.h"
-#include "yb/rocksdb/db/table_cache.h"
-#include "yb/rocksdb/db/table_properties_collector.h"
 #include "yb/rocksdb/compaction_job_stats.h"
 #include "yb/rocksdb/db.h"
+#include "yb/rocksdb/db/memtable_list.h"
+#include "yb/rocksdb/db/table_properties_collector.h"
+#include "yb/rocksdb/db/write_batch_internal.h"
+#include "yb/rocksdb/db/write_controller.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/util/mutable_cf_options.h"

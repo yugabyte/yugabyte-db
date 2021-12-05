@@ -38,15 +38,12 @@
 #include <string>
 
 #include <boost/container/stable_vector.hpp>
-
 #include <boost/optional/optional.hpp>
 
-#include "yb/gutil/callback.h"
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
-#include "yb/util/status_callback.h"
 
 namespace yb {
 

@@ -46,22 +46,20 @@
 #include "yb/common/partition.h"
 #include "yb/common/snapshot.h"
 
-#include "yb/consensus/opid_util.h"
 #include "yb/fs/fs_manager.h"
-#include "yb/gutil/callback.h"
+
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 
-#include "yb/tablet/metadata.pb.h"
 #include "yb/tablet/tablet_fwd.h"
+#include "yb/tablet/metadata.pb.h"
 
+#include "yb/util/status_fwd.h"
 #include "yb/util/locks.h"
 #include "yb/util/mutex.h"
 #include "yb/util/opid.h"
 #include "yb/util/opid.pb.h"
-#include "yb/util/status_fwd.h"
-#include "yb/util/status_callback.h"
 
 namespace yb {
 namespace tablet {

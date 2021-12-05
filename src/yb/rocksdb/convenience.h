@@ -20,11 +20,21 @@
 
 #pragma once
 
-#include <unordered_map>
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+
+#include <memory>
+#include <stack>
 #include <string>
-#include "yb/rocksdb/db.h"
+#include <unordered_map>
+#include <vector>
+
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/table.h"
+#include "yb/rocksdb/types.h"
+#include "yb/rocksdb/write_batch_base.h"
 
 namespace rocksdb {
 

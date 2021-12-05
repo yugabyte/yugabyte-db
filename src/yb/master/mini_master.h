@@ -37,13 +37,16 @@
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
+
 #include "yb/master/master_fwd.h"
+
 #include "yb/rpc/rpc_fwd.h"
+
 #include "yb/tablet/tablet_fwd.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/env.h"
 #include "yb/util/net/net_fwd.h"
-#include "yb/util/net/sockaddr.h"
-#include "yb/util/status_fwd.h"
 
 namespace yb {
 

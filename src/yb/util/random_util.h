@@ -34,12 +34,9 @@
 #define YB_UTIL_RANDOM_UTIL_H
 
 #include <algorithm>
-#include <cstdint>
-#include <cstdlib>
 #include <random>
-#include <string>
 
-#include <glog/logging.h>
+#include <glog/logging.h> // For CHECK
 
 namespace yb {
 

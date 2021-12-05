@@ -14,8 +14,14 @@
 #ifndef YB_INTEGRATION_TESTS_LOAD_BALANCER_TEST_UTIL_H_
 #define YB_INTEGRATION_TESTS_LOAD_BALANCER_TEST_UTIL_H_
 
-#include <gtest/gtest.h>
-#include "yb/master/ts_manager.h"
+#include <memory>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+
+#include "yb/common/entity_ids_types.h"
+
+#include "yb/util/monotime.h"
 
 namespace yb {
 namespace integration_tests {

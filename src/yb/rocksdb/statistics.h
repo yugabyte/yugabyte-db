@@ -23,9 +23,8 @@
 
 #include <atomic>
 #include <cstddef>
-#include <cstdint>
-#include <string>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "yb/gutil/ref_counted.h"

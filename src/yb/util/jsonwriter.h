@@ -35,7 +35,6 @@
 #include <inttypes.h>
 
 #include <memory>
-#include <string>
 
 #include "yb/gutil/macros.h"
 

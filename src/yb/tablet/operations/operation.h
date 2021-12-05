@@ -39,20 +39,17 @@
 #include <boost/optional/optional.hpp>
 
 #include "yb/common/hybrid_time.h"
-#include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_round.h"
-#include "yb/consensus/opid_util.h"
 
 #include "yb/tablet/tablet_fwd.h"
 
-#include "yb/util/async_util.h"
-#include "yb/util/auto_release_pool.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/locks.h"
 #include "yb/util/operation_counter.h"
-#include "yb/util/status_fwd.h"
-#include "yb/util/memory/arena.h"
+#include "yb/util/opid.h"
 
 namespace yb {
 

@@ -20,7 +20,6 @@
 #include "yb/docdb/doc_expr.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_operation.h"
-#include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/intent_aware_iterator.h"
 
 namespace yb {
@@ -40,6 +39,7 @@ class QLWriteOperation :
                    std::reference_wrapper<const IndexMap> index_map,
                    const Schema* unique_index_key_schema,
                    const TransactionOperationContext& txn_op_context);
+  ~QLWriteOperation();
 
   // Construct a QLWriteOperation. Content of request will be swapped out by the constructor.
   CHECKED_STATUS Init(QLWriteRequestPB* request, QLResponsePB* response);
@@ -86,9 +86,7 @@ class QLWriteOperation :
   // Rowblock to return the "[applied]" status for conditional DML.
   const QLRowBlock* rowblock() const { return rowblock_.get(); }
 
-  MonoDelta request_ttl() const {
-    return request_.has_ttl() ? MonoDelta::FromMilliseconds(request_.ttl()) : Value::kMaxTtl;
-  }
+  MonoDelta request_ttl() const;
 
  private:
   void ClearResponse() override {

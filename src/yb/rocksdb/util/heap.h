@@ -24,12 +24,8 @@
 #pragma once
 
 #include <algorithm>
-#include <cstdint>
-#include <functional>
 
 #include <boost/container/small_vector.hpp>
-
-#include "yb/util/status_log.h"
 
 namespace rocksdb {
 

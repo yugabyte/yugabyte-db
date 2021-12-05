@@ -13,7 +13,10 @@
 #ifndef YB_TOOLS_YB_ADMIN_UTIL_H
 #define YB_TOOLS_YB_ADMIN_UTIL_H
 
-#include "yb/common/entity_ids.h"
+#include <set>
+#include <utility>
+
+#include "yb/common/entity_ids_types.h"
 
 namespace yb {
 namespace tools {

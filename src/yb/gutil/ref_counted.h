@@ -21,10 +21,14 @@
 #define YB_GUTIL_REF_COUNTED_H
 
 #include <atomic>
+#include <ostream>
+#include <utility>
 
 #ifndef NDEBUG
 #include <string>
 #endif
+
+#include <typeinfo>
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/port.h"

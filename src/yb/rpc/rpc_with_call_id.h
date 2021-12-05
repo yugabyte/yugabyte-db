@@ -16,11 +16,16 @@
 #ifndef YB_RPC_RPC_WITH_CALL_ID_H
 #define YB_RPC_RPC_WITH_CALL_ID_H
 
+#include <stdint.h>
+
 #include <functional>
+#include <type_traits>
 #include <unordered_map>
 
 #include "yb/rpc/connection_context.h"
 #include "yb/rpc/inbound_call.h"
+
+#include "yb/util/size_literals.h"
 
 namespace yb {
 namespace rpc {

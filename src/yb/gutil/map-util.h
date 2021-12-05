@@ -77,10 +77,7 @@
 #ifndef YB_GUTIL_MAP_UTIL_H
 #define YB_GUTIL_MAP_UTIL_H
 
-#include <stddef.h>
 #include <string>
-#include <utility>
-#include <tuple>
 #include <vector>
 
 using std::make_pair;
@@ -88,9 +85,7 @@ using std::pair;
 using std::string;
 using std::vector;
 
-#include <glog/logging.h>
 
-#include "yb/gutil/logging-inl.h"
 
 //
 // Find*()

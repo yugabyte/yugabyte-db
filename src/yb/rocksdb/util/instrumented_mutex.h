@@ -23,11 +23,9 @@
 
 #pragma once
 
-#include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/env.h"
+#include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/statistics.h"
-#include "yb/rocksdb/util/statistics.h"
-#include "yb/rocksdb/util/stop_watch.h"
 
 namespace rocksdb {
 class InstrumentedCondVar;

@@ -23,8 +23,9 @@
 #ifndef YB_YQL_CQL_QL_PTREE_PROCESS_CONTEXT_H_
 #define YB_YQL_CQL_QL_PTREE_PROCESS_CONTEXT_H_
 
-#include "yb/util/memory/mc_types.h"
 #include "yb/util/status_fwd.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/mc_types.h"
 
 #include "yb/yql/cql/ql/ptree/ptree_fwd.h"
 #include "yb/yql/cql/ql/util/util_fwd.h"

@@ -38,9 +38,6 @@
 #include "yb/client/client_fwd.h"
 
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/thread_annotations.h"
-
-#include "yb/util/locks.h"
 
 namespace yb {
 namespace client {

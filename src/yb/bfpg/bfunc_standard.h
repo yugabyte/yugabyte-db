@@ -25,16 +25,11 @@
 #ifndef YB_BFPG_BFUNC_STANDARD_H_
 #define YB_BFPG_BFUNC_STANDARD_H_
 
-#include <iostream>
 #include <string>
 
-#include "yb/common/ql_protocol.pb.h"
-
 #include "yb/util/status.h"
-#include "yb/util/logging.h"
 #include "yb/util/status_log.h"
 #include "yb/util/uuid.h"
-#include "yb/util/yb_partition.h"
 
 namespace yb {
 namespace bfpg {

@@ -14,6 +14,10 @@
 #ifndef YB_YQL_CQL_QL_UTIL_UTIL_FWD_H
 #define YB_YQL_CQL_QL_UTIL_UTIL_FWD_H
 
+#include <functional>
+
+#include "yb/client/client_fwd.h"
+
 namespace yb {
 namespace ql {
 
@@ -21,6 +25,8 @@ class QLEnv;
 class StatementParameters;
 
 enum class ErrorCode : int64_t;
+
+using TransactionPoolProvider = std::function<client::TransactionPool*()>;
 
 }  // namespace ql
 }  // namespace yb

@@ -38,7 +38,6 @@
 #include "yb/common/schema.h"
 
 #include "yb/rpc/rpc_fwd.h"
-#include "yb/rpc/messenger.h"
 
 #include "yb/util/metrics.h"
 #include "yb/util/test_util.h"

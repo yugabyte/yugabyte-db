@@ -16,15 +16,27 @@
 #ifndef YB_COMMON_TRANSACTION_H
 #define YB_COMMON_TRANSACTION_H
 
+#include <stdint.h>
+
+#include <functional>
+#include <iterator>
+#include <string>
+#include <type_traits>
 #include <unordered_set>
+#include <utility>
 
 #include <boost/container/small_vector.hpp>
+#include <boost/functional/hash/hash.hpp>
+#include <boost/optional/optional.hpp>
 
 #include "yb/common/common.pb.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/hybrid_time.h"
 
+#include "yb/gutil/template_util.h"
+
 #include "yb/util/enums.h"
+#include "yb/util/math_util.h"
 #include "yb/util/strongly_typed_uuid.h"
 #include "yb/util/uint_set.h"
 

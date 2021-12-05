@@ -20,6 +20,8 @@
 #ifndef YB_YQL_CQL_QL_PTREE_YB_LOCATION_H_
 #define YB_YQL_CQL_QL_PTREE_YB_LOCATION_H_
 
+#include <stdio.h>
+
 #include "yb/util/memory/mc_types.h"
 
 namespace yb {

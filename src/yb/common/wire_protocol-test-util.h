@@ -35,13 +35,12 @@
 
 #include <string>
 
-#include "yb/common/schema.h"
-#include "yb/common/wire_protocol.h"
-
-#include "yb/common/partial_row.h"
 #include "yb/common/ql_protocol.pb.h"
+#include "yb/common/schema.h"
+
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb.pb.h"
+
 #include "yb/util/yb_partition.h"
 
 namespace yb {

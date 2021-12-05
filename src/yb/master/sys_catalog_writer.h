@@ -14,8 +14,11 @@
 #ifndef YB_MASTER_SYS_CATALOG_WRITER_H
 #define YB_MASTER_SYS_CATALOG_WRITER_H
 
+#include <set>
+#include <utility>
+
 #include "yb/common/common_fwd.h"
-#include "yb/common/entity_ids.h"
+#include "yb/common/entity_ids_types.h"
 
 #include "yb/docdb/docdb_fwd.h"
 

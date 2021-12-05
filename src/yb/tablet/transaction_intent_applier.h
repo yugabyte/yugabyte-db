@@ -14,9 +14,14 @@
 #ifndef YB_TABLET_TRANSACTION_INTENT_APPLIER_H
 #define YB_TABLET_TRANSACTION_INTENT_APPLIER_H
 
+#include <type_traits>
+
 #include "yb/common/transaction.h"
+
 #include "yb/docdb/docdb_fwd.h"
+
 #include "yb/tablet/tablet_fwd.h"
+
 #include "yb/util/status_fwd.h"
 
 namespace yb {

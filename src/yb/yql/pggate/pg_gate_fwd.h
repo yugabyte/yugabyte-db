@@ -14,6 +14,8 @@
 #ifndef YB_YQL_PGGATE_PG_GATE_FWD_H
 #define YB_YQL_PGGATE_PG_GATE_FWD_H
 
+#include <memory>
+
 #include "yb/gutil/ref_counted.h"
 
 namespace google {

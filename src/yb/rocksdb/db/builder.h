@@ -27,14 +27,14 @@
 #include <string>
 #include <utility>
 #include <vector>
+
 #include "yb/rocksdb/db/table_properties_collector.h"
-#include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/env.h"
-#include "yb/rocksdb/status.h"
-#include "yb/rocksdb/types.h"
-#include "yb/rocksdb/options.h"
 #include "yb/rocksdb/immutable_options.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/status.h"
 #include "yb/rocksdb/table_properties.h"
+#include "yb/rocksdb/types.h"
 
 namespace rocksdb {
 

@@ -23,35 +23,35 @@
 
 #include <stdio.h>
 #include <string.h>
+
 #include <ext/hash_map>
-using __gnu_cxx::hash;
-using __gnu_cxx::hash_map;  // Not used in this file.
 #include <ext/hash_set>
-using __gnu_cxx::hash;
-using __gnu_cxx::hash_set;  // Not used in this file.
-#include <iterator>
-using std::back_insert_iterator;
-using std::iterator_traits;
 #include <map>
-using std::map;
-using std::multimap;
 #include <set>
-using std::multiset;
-using std::set;
 #include <string>
-using std::string;
-#include <utility>
-using std::make_pair;
-using std::pair;
 #include <vector>
-using std::vector;
 
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/macros.h"
-#include "yb/gutil/template_util.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/strcat.h"    // For backward compatibility.
 #include "yb/gutil/strings/stringpiece.h"
+
+using __gnu_cxx::hash;
+using __gnu_cxx::hash_map;  // Not used in this file.
+using __gnu_cxx::hash;
+using __gnu_cxx::hash_set;  // Not used in this file.
+using std::back_insert_iterator;
+using std::iterator_traits;
+using std::map;
+using std::multimap;
+using std::multiset;
+using std::set;
+using std::string;
+using std::make_pair;
+using std::pair;
+using std::vector;
+
 
 // ----------------------------------------------------------------------
 // JoinUsing()

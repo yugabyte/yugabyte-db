@@ -18,13 +18,11 @@
 
 #include <string>
 
-#include "yb/util/slice.h"
-
 #include "yb/common/common_fwd.h"
 #include "yb/common/hybrid_time.h"
-#include "yb/common/doc_hybrid_time.h"
-#include "yb/util/monotime.h"
+
 #include "yb/util/status_fwd.h"
+#include "yb/util/monotime.h"
 
 namespace yb {
 namespace docdb {

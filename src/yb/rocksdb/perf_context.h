@@ -18,13 +18,10 @@
 // under the License.
 //
 
-#ifndef STORAGE_ROCKSDB_INCLUDE_PERF_CONTEXT_H
-#define STORAGE_ROCKSDB_INCLUDE_PERF_CONTEXT_H
+#ifndef YB_ROCKSDB_PERF_CONTEXT_H
+#define YB_ROCKSDB_PERF_CONTEXT_H
 
-#include <stdint.h>
 #include <string>
-
-#include "yb/rocksdb/perf_level.h"
 
 namespace rocksdb {
 
@@ -116,6 +113,6 @@ extern __declspec(thread) PerfContext perf_context;
 extern __thread PerfContext perf_context;
 #endif
 
-}
+} // namespace rocksdb
 
-#endif
+#endif // YB_ROCKSDB_PERF_CONTEXT_H

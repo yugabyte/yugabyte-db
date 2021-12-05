@@ -16,7 +16,8 @@
 
 #include <unordered_map>
 
-#include "yb/common/entity_ids.h"
+#include <boost/functional/hash/hash.hpp>
+#include <boost/optional/optional.hpp>
 
 #include "yb/util/strongly_typed_uuid.h"
 

@@ -21,14 +21,16 @@
 #define YB_YQL_CQL_CQLSERVER_SYSTEM_QUERY_CACHE_H_
 
 #include <condition_variable>
-#include <mutex>
 #include <unordered_map>
+
 #include <boost/optional.hpp>
 
 #include "yb/gutil/thread_annotations.h"
+
 #include "yb/rpc/io_thread_pool.h"
-#include "yb/rpc/scheduler.h"
+
 #include "yb/util/monotime.h"
+
 #include "yb/yql/cql/ql/util/statement_params.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 

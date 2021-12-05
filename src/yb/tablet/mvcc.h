@@ -33,18 +33,16 @@
 #define YB_TABLET_MVCC_H_
 
 #include <condition_variable>
-#include <mutex>
 #include <deque>
-#include <queue>
 #include <vector>
-#include <iostream>
 
 #include "yb/gutil/thread_annotations.h"
 
 #include "yb/server/clock.h"
 
-#include "yb/util/opid.h"
 #include "yb/util/enums.h"
+#include "yb/util/math_util.h"
+#include "yb/util/opid.h"
 
 namespace yb {
 namespace tablet {

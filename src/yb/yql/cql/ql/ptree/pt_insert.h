@@ -18,11 +18,10 @@
 #ifndef YB_YQL_CQL_QL_PTREE_PT_INSERT_H_
 #define YB_YQL_CQL_QL_PTREE_PT_INSERT_H_
 
-#include "yb/yql/cql/ql/ptree/column_desc.h"
 #include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/pt_dml.h"
-#include "yb/yql/cql/ql/ptree/pt_insert_json_clause.h"
 #include "yb/yql/cql/ql/ptree/pt_insert_values_clause.h"
+#include "yb/yql/cql/ql/ptree/pt_name.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
 
 namespace yb {

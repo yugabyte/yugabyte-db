@@ -14,6 +14,8 @@
 #ifndef YB_CONSENSUS_TEST_CONSENSUS_CONTEXT_H
 #define YB_CONSENSUS_TEST_CONSENSUS_CONTEXT_H
 
+#include <unordered_set>
+
 #include "yb/consensus/consensus_context.h"
 
 namespace yb {

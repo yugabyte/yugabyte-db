@@ -14,7 +14,6 @@
 #ifndef YB_YQL_REDIS_REDISSERVER_REDIS_CONSTANTS_H
 #define YB_YQL_REDIS_REDISSERVER_REDIS_CONSTANTS_H
 
-#include "yb/common/redis_constants_common.h"
 #include "yb/util/monotime.h"
 
 static constexpr const char* const kRedisKeyColumnName = "key";

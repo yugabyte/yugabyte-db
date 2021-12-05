@@ -22,27 +22,21 @@
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
-#include "yb/client/callbacks.h"
-#include "yb/client/client-test-util.h"
 #include "yb/client/schema.h"
 #include "yb/client/table_handle.h"
+
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/strings/split.h"
-#include "yb/gutil/strings/strcat.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/integration-tests/load_generator.h"
-#include "yb/integration-tests/mini_cluster.h"
+
 #include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/mini_cluster.h"
+
 #include "yb/master/mini_master.h"
-#include "yb/tablet/maintenance_manager.h"
-#include "yb/tablet/tablet_metrics.h"
+
 #include "yb/tools/yb-admin_client.h"
-#include "yb/tserver/mini_tablet_server.h"
-#include "yb/tserver/tablet_server.h"
-#include "yb/tserver/ts_tablet_manager.h"
+
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
-#include "yb/util/stopwatch.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"

@@ -16,8 +16,6 @@
 
 #include <memory>
 
-#include "yb/util/header_manager.h"
-
 namespace yb {
 
 class HeaderManager;

@@ -19,9 +19,24 @@
 //
 
 #pragma once
+
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+
+#include <limits>
+#include <memory>
+#include <stack>
 #include <string>
-#include "yb/rocksdb/db/merge_context.h"
+#include <unordered_map>
+#include <vector>
+
+#include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/env.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/status.h"
 #include "yb/rocksdb/types.h"
 
 namespace rocksdb {

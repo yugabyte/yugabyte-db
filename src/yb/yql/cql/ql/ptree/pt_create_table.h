@@ -19,10 +19,12 @@
 #define YB_YQL_CQL_QL_PTREE_PT_CREATE_TABLE_H_
 
 #include "yb/client/client_fwd.h"
+
 #include "yb/common/common_fwd.h"
 
+#include "yb/util/memory/arena.h"
+
 #include "yb/yql/cql/ql/ptree/ptree_fwd.h"
-#include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
 
 namespace yb {

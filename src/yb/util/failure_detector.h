@@ -33,17 +33,28 @@
 #ifndef YB_UTIL_FAILURE_DETECTOR_H_
 #define YB_UTIL_FAILURE_DETECTOR_H_
 
+#include <stddef.h>
+
+#include <functional>
 #include <string>
+#include <tuple>
 #include <unordered_map>
+#include <utility>
+
+#include <gflags/gflags_declare.h>
+#include <glog/logging.h>
 
 #include "yb/gutil/callback.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/logging-inl.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/countdown_latch.h"
-#include "yb/util/monotime.h"
 #include "yb/util/locks.h"
+#include "yb/util/monotime.h"
 #include "yb/util/random.h"
-#include "yb/util/status_callback.h"
 
 namespace yb {
 class MonoDelta;

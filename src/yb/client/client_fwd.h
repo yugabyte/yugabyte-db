@@ -18,15 +18,18 @@
 
 #include <functional>
 #include <memory>
+#include <set>
+#include <utility>
 #include <vector>
 
 #include <boost/function/function_fwd.hpp>
-#include <boost/range/iterator_range.hpp>
 
 #include "yb/common/common_fwd.h"
-#include "yb/common/entity_ids.h"
+#include "yb/common/entity_ids_types.h"
 
+#include "yb/util/status_fwd.h"
 #include "yb/util/enums.h"
+#include "yb/util/math_util.h"
 #include "yb/util/strongly_typed_bool.h"
 
 template <class T>

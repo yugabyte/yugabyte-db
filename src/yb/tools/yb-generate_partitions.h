@@ -14,11 +14,26 @@
 #ifndef YB_TOOLS_YB_GENERATE_PARTITIONS_H
 #define YB_TOOLS_YB_GENERATE_PARTITIONS_H
 
+#include <functional>
+#include <locale>
+#include <set>
+#include <string>
+#include <type_traits>
+#include <unordered_set>
+#include <utility>
+
+#include <boost/range/iterator_range.hpp>
+
 #include "yb/client/client_fwd.h"
 #include "yb/client/yb_table_name.h"
-#include "yb/common/partition.h"
+
+#include "yb/gutil/ref_counted.h"
+
 #include "yb/master/master_fwd.h"
+
 #include "yb/tools/bulk_load_utils.h"
+
+#include "yb/util/status.h"
 
 namespace yb {
 namespace tools {

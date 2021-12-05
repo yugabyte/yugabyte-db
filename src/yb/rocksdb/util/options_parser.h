@@ -26,9 +26,8 @@
 
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/options.h"
-#include "yb/rocksdb/util/options_helper.h"
-#include "yb/rocksdb/util/options_sanity_check.h"
 #include "yb/rocksdb/table/block_based_table_factory.h"
+#include "yb/rocksdb/util/options_sanity_check.h"
 
 namespace rocksdb {
 
@@ -55,7 +54,7 @@ Status PersistRocksDBOptions(const DBOptions& db_opt,
 
 class RocksDBOptionsParser {
  public:
-  explicit RocksDBOptionsParser();
+  RocksDBOptionsParser();
   ~RocksDBOptionsParser() {}
   void Reset();
 

@@ -25,6 +25,8 @@
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
 
+#include "yb/yql/cql/ql/statement.h"
+
 DECLARE_bool(use_cassandra_authentication);
 
 namespace yb {
@@ -97,6 +99,27 @@ TestQLProcessor* QLTestBase::GetQLProcessor(const RoleName& role_name) {
   return ql_processors_.back().get();
 }
 
+TestQLProcessor::TestQLProcessor(client::YBClient* client,
+                                 std::shared_ptr<client::YBMetaDataCache> cache,
+                                 const RoleName& role_name)
+    : QLProcessor(client, cache, nullptr /* ql_metrics */, nullptr /* parser_pool */, clock_,
+                  TransactionPoolProvider()) {
+  if (!role_name.empty()) {
+    ql_env_.ql_session()->set_current_role_name(role_name);
+  }
+}
+
+TestQLProcessor::~TestQLProcessor() = default;
+
+void TestQLProcessor::RunAsync(
+    const string& stmt, const StatementParameters& params, Callback<void(const Status&)> cb) {
+  result_ = nullptr;
+  parse_tree.reset(); // Delete previous parse tree.
+  // RunAsyncInternal() works through Reschedule() loop via RunAsyncTask in QLProcessor class.
+  // It calls Prepare(string& stmt) on every loop iteration.
+  RunAsyncInternal(stmt, params, Bind(&TestQLProcessor::RunAsyncDone, Unretained(this), cb));
+}
+
 Status TestQLProcessor::Run(const std::string& stmt, const StatementParameters& params) {
   Synchronizer s;
   RunAsync(stmt, params, s.AsStatusCallback());
@@ -136,6 +159,20 @@ void QLTestBase::VerifyPaginationSelect(TestQLProcessor* processor,
     CHECK_OK(params.SetPagingState(processor->rows_result()->paging_state()));
   } while (true);
   EXPECT_EQ(expected_rows, rows);
+}
+
+CHECKED_STATUS QLTestBase::TestParser(const std::string& stmt) {
+  QLProcessor* processor = GetQLProcessor();
+  ParseTree::UniPtr parse_tree;
+  return processor->Parse(stmt, &parse_tree);
+}
+
+// Tests parser and analyzer
+CHECKED_STATUS QLTestBase::TestAnalyzer(const string& stmt, ParseTree::UniPtr* parse_tree) {
+  QLProcessor* processor = GetQLProcessor();
+  RETURN_NOT_OK(processor->Parse(stmt, parse_tree));
+  RETURN_NOT_OK(processor->Analyze(parse_tree));
+  return Status::OK();
 }
 
 }  // namespace ql
