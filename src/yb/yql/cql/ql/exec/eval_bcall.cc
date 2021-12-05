@@ -12,8 +12,11 @@
 // under the License.
 //
 //--------------------------------------------------------------------------------------------------
+
 #include "yb/bfql/bfql.h"
+
 #include "yb/util/status_format.h"
+
 #include "yb/yql/cql/ql/exec/executor.h"
 #include "yb/yql/cql/ql/ptree/pt_bcall.h"
 

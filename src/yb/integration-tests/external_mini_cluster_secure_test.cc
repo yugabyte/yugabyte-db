@@ -10,12 +10,17 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/yb_op.h"
+
 #include "yb/integration-tests/cql_test_util.h"
 #include "yb/integration-tests/external_mini_cluster_ent.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/secure_stream.h"
+
 #include "yb/util/env_util.h"
 #include "yb/util/string_util.h"
 #include "yb/util/subprocess.h"

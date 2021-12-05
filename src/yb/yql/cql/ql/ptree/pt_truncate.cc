@@ -19,6 +19,7 @@
 
 #include "yb/client/table.h"
 
+#include "yb/yql/cql/ql/ptree/pt_option.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/yql/cql/ql/ptree/yb_location.h"
 

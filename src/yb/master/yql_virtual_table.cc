@@ -10,13 +10,17 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/master/yql_virtual_table.h"
 
+#include "yb/common/ql_scanspec.h"
 #include "yb/common/schema.h"
+
 #include "yb/master/master.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/yql_vtable_iterator.h"
+
 #include "yb/util/metrics.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"

@@ -17,36 +17,38 @@
 #include <string>
 #include <thread>
 #include <vector>
-#include <algorithm>
 
 #include <boost/algorithm/string.hpp>
 
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 
-
 #include "yb/integration-tests/redis_table_test_base.h"
 
-#include "yb/master/master.h"
+#include "yb/master/flush_manager.h"
+
+#include "yb/rpc/io_thread_pool.h"
+
+#include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/tablet_server.h"
+
+#include "yb/util/cast.h"
+#include "yb/util/enums.h"
+#include "yb/util/metrics.h"
+#include "yb/util/net/socket.h"
+#include "yb/util/protobuf.h"
+#include "yb/util/ref_cnt_buffer.h"
+#include "yb/util/result.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/status_log.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
+#include "yb/util/value_changer.h"
 
 #include "yb/yql/redis/redisserver/redis_client.h"
 #include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/yql/redis/redisserver/redis_encoding.h"
 #include "yb/yql/redis/redisserver/redis_server.h"
-
-#include "yb/rpc/io_thread_pool.h"
-
-#include "yb/util/cast.h"
-#include "yb/util/enums.h"
-#include "yb/util/metrics.h"
-#include "yb/util/protobuf.h"
-#include "yb/util/ref_cnt_buffer.h"
-#include "yb/util/result.h"
-#include "yb/util/status_log.h"
-#include "yb/util/test_util.h"
-#include "yb/util/value_changer.h"
-
-#include "yb/master/flush_manager.h"
 
 DECLARE_uint64(redis_max_concurrent_commands);
 DECLARE_uint64(redis_max_batch);

@@ -22,7 +22,10 @@
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/external_mini_cluster_fs_inspector.h"
+
 #include "yb/rpc/rpc_controller.h"
+
+#include "yb/util/opid.h"
 #include "yb/util/status_log.h"
 
 DEFINE_string(ts_flags, "", "Flags to pass through to tablet servers");

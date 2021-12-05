@@ -14,9 +14,11 @@
 //
 // Treenode definitions for ALTER TYPE statements.
 //--------------------------------------------------------------------------------------------------
+
 #include "yb/yql/cql/ql/ptree/pt_alter_role.h"
 
 #include "yb/util/crypt.h"
+
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/yql/cql/ql/ptree/sem_state.h"
 #include "yb/yql/cql/ql/ptree/yb_location.h"

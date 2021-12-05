@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/integration-tests/external_mini_cluster.h"
 
 #include <atomic>
@@ -46,25 +47,33 @@
 #include <rapidjson/document.h>
 
 #include "yb/client/client.h"
+
 #include "yb/common/wire_protocol.h"
+
 #include "yb/fs/fs_manager.h"
+
+#include "yb/gutil/algorithm.h"
+#include "yb/gutil/bind.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/singleton.h"
-#include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
+
 #include "yb/integration-tests/cluster_itest_util.h"
+
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/master_rpc.h"
 #include "yb/master/sys_catalog.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
-#include "yb/rpc/rpc_fwd.h"
+
 #include "yb/server/server_base.pb.h"
+
 #include "yb/util/async_util.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/env.h"
@@ -81,7 +90,6 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/slice.h"
 #include "yb/util/status_format.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/subprocess.h"

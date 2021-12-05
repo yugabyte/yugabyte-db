@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/yql/cql/ql/ptree/pt_table_property.h"
 
 #include <set>
@@ -18,6 +19,7 @@
 
 #include "yb/client/schema.h"
 #include "yb/client/table.h"
+
 #include "yb/common/schema.h"
 #include "yb/common/table_properties_constants.h"
 

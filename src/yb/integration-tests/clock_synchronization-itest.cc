@@ -20,8 +20,11 @@
 
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
+
 #include "yb/rpc/messenger.h"
+
 #include "yb/server/hybrid_clock.h"
+
 #include "yb/util/random.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"

@@ -29,17 +29,18 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/master/catalog_entity_info.h"
 
 #include <string>
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/master/master_error.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/format.h"
-#include "yb/util/locks.h"
 #include "yb/util/status_format.h"
 
 using std::string;

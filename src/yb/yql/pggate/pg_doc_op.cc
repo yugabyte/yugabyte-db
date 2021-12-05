@@ -11,6 +11,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //--------------------------------------------------------------------------------------------------
+
 #include "yb/yql/pggate/pg_doc_op.h"
 
 #include <algorithm>
@@ -20,12 +21,17 @@
 #include <vector>
 
 #include "yb/common/row_mark.h"
+
 #include "yb/gutil/strings/escaping.h"
+
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+
+#include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pggate_flags.h"
+#include "yb/yql/pggate/util/pg_doc_data.h"
 
 using std::lower_bound;
 using std::list;

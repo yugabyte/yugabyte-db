@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/master/mini_master.h"
 
 #include <string>
@@ -37,7 +38,9 @@
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
+
 #include "yb/rpc/messenger.h"
+
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/tunnel.h"

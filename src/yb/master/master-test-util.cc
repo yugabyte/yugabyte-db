@@ -12,16 +12,21 @@
 // under the License.
 //
 //
+
 #include "yb/master/master-test-util.h"
 
+#include <gtest/gtest.h>
+
 #include "yb/client/yb_table_name.h"
+
 #include "yb/common/wire_protocol.h"
+
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/mini_master.h"
+
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/status.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_macros.h"
 

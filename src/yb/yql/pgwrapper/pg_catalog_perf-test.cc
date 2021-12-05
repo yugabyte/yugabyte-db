@@ -10,9 +10,13 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <glog/logging.h>
+
 #include "yb/gutil/map-util.h"
+
 #include "yb/master/master.h"
 #include "yb/master/mini_master.h"
+
 #include "yb/util/metrics.h"
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
