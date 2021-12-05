@@ -52,7 +52,7 @@ Once you have connected to the database, you can add database users for other te
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="connect-application/">
+    <a class="section-link icon-offset" href="connect-applications/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/create_cluster.png" aria-hidden="true" />
         <div class="title">Applications</div>
