@@ -20,22 +20,30 @@
 #ifndef YB_UTIL_DEBUG_TRACE_EVENT_IMPL_H_
 #define YB_UTIL_DEBUG_TRACE_EVENT_IMPL_H_
 
+#include <stdint.h>
+
+#include <cstdint>
+#include <cstdlib>
+#include <mutex>
 #include <stack>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
+#include <gflags/gflags_declare.h>
 #include <gtest/gtest_prod.h>
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/callback.h"
-#include "yb/gutil/walltime.h"
+#include "yb/gutil/integral_types.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/ref_counted_memory.h"
-#include "yb/util/atomic.h"
-#include "yb/util/condition_variable.h"
-#include "yb/util/locks.h"
+#include "yb/gutil/spinlock.h"
+#include "yb/gutil/walltime.h"
+
+#include "yb/util/mutex.h"
+#include "yb/util/shared_lock.h"
 #include "yb/util/threadlocal.h"
 
 // Older style trace macros with explicit id and extra data

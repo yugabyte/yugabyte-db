@@ -38,9 +38,11 @@
 #include <vector>
 
 #include "yb/gutil/macros.h"
+
 #include "yb/tablet/metadata.pb.h"
-#include "yb/util/monotime.h"
+
 #include "yb/util/status_fwd.h"
+#include "yb/util/monotime.h"
 
 namespace yb {
 class Env;

@@ -83,6 +83,9 @@ SstFileReader::SstFileReader(
   init_result_ = GetTableReader(file_name_);
 }
 
+SstFileReader::~SstFileReader() {
+}
+
 extern const uint64_t kBlockBasedTableMagicNumber;
 extern const uint64_t kLegacyBlockBasedTableMagicNumber;
 extern const uint64_t kPlainTableMagicNumber;

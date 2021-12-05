@@ -34,9 +34,6 @@
 
 #include <string>
 
-#include <boost/functional/hash.hpp>
-
-#include "yb/util/memory/memory_usage.h"
 #include "yb/util/slice.h"
 
 namespace yb {

@@ -18,7 +18,6 @@
 
 #include <array>
 #include <random>
-#include <string>
 
 #include <boost/uuid/uuid.hpp>
 

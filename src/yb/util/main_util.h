@@ -15,13 +15,20 @@
 #ifndef YB_UTIL_MAIN_UTIL_H
 #define YB_UTIL_MAIN_UTIL_H
 
+#include <fcntl.h>
+#include <string.h>
+
+#include <cstdarg>
 #include <cstdlib>
 #include <iostream>
 
-#include "yb/util/env.h"
-#include "yb/util/logging.h"
-#include "yb/util/status_fwd.h"
 #include "yb/gutil/strings/split.h"
+
+#include "yb/util/status_fwd.h"
+#include "yb/util/env.h"
+#include "yb/util/faststring.h"
+#include "yb/util/fault_injection.h"
+#include "yb/util/logging.h"
 #include "yb/util/path_util.h"
 
 namespace yb {

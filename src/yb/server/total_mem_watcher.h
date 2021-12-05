@@ -18,6 +18,7 @@
 #include <memory>
 
 #include "yb/gutil/macros.h"
+
 #include "yb/util/status_fwd.h"
 
 namespace yb {

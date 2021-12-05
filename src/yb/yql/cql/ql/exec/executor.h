@@ -18,23 +18,28 @@
 #ifndef YB_YQL_CQL_QL_EXEC_EXECUTOR_H_
 #define YB_YQL_CQL_QL_EXEC_EXECUTOR_H_
 
+#include <mutex>
 #include <vector>
 
 #include <rapidjson/document.h>
 
 #include "yb/client/yb_op.h"
+
+#include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/ql_expr.h"
+#include "yb/common/ql_type.h"
+
+#include "yb/gutil/callback.h"
 
 #include "yb/rpc/thread_pool.h"
+
+#include "yb/util/memory/mc_types.h"
 
 #include "yb/yql/cql/ql/exec/exec_fwd.h"
 #include "yb/yql/cql/ql/ptree/ptree_fwd.h"
 #include "yb/yql/cql/ql/ptree/pt_expr_types.h"
-
 #include "yb/yql/cql/ql/util/util_fwd.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
-
-#include "yb/util/memory/mc_types.h"
 
 namespace yb {
 

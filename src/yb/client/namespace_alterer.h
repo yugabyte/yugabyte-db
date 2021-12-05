@@ -16,8 +16,6 @@
 
 #include <string>
 
-#include <boost/optional.hpp>
-
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/common_fwd.h"

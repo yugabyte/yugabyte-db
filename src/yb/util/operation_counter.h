@@ -16,7 +16,6 @@
 
 #include <atomic>
 #include <mutex>
-#include <unordered_map>
 
 #include "yb/util/cross_thread_mutex.h"
 #include "yb/util/debug/long_operation_tracker.h"

@@ -24,14 +24,24 @@
 #define YB_ROCKSDB_DB_AUTO_ROLL_LOGGER_H
 
 #pragma once
+
+#include <assert.h>
+
+#include <cstdint>
+#include <functional>
 #include <list>
+#include <mutex>
+#include <stack>
 #include <string>
+#include <type_traits>
 
 #include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/port/util_logger.h"
-#include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/mutexlock.h"
+#include "yb/rocksdb/util/sync_point.h"
+
+#include "yb/util/cache_metrics.h"
 
 namespace rocksdb {
 

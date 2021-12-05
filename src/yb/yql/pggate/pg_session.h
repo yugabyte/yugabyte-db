@@ -22,6 +22,7 @@
 #include "yb/client/client_fwd.h"
 #include "yb/client/session.h"
 
+#include "yb/common/pg_types.h"
 #include "yb/common/transaction.h"
 
 #include "yb/gutil/ref_counted.h"

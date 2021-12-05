@@ -23,7 +23,7 @@
 
 #include "yb/common/common_fwd.h"
 
-#include "yb/gutil/callback.h"
+#include "yb/gutil/callback_forward.h"
 
 namespace yb {
 namespace ql {

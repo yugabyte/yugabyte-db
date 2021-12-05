@@ -28,7 +28,9 @@
 
 #include <memory>
 #include <string>
+#include "yb/rocksdb/rocksdb_fwd.h"
 #include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/immutable_options.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 
 namespace rocksdb {
@@ -38,6 +40,7 @@ class SstFileReader {
   SstFileReader(
       const std::string& file_name, bool verify_checksum, OutputFormat format,
       const DocDBKVFormatter& docdb_formatter = DocDBKVFormatter());
+  ~SstFileReader();
 
   Status ReadSequential(bool print_kv, uint64_t read_num, bool has_from,
                         const std::string& from_key, bool has_to,

@@ -19,12 +19,17 @@
 #ifndef YB_BFPG_BFPG_TEMPLATE_H
 #define YB_BFPG_BFPG_TEMPLATE_H
 
+#include <fcntl.h>
+
+#include <functional>
 #include <vector>
 
-#include "yb/util/logging.h"
 #include "yb/bfpg/gen_opcodes.h"
 #include "yb/bfpg/gen_operator.h"
+
 #include "yb/gutil/strings/substitute.h"
+
+#include "yb/util/logging.h"
 
 namespace yb {
 namespace bfpg {

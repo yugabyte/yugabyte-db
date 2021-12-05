@@ -33,6 +33,7 @@
 #include "yb/yql/cql/ql/exec/executor.h"
 #include "yb/yql/cql/ql/exec/rescheduler.h"
 #include "yb/yql/cql/ql/parser/parser_fwd.h"
+#include "yb/yql/cql/ql/util/ql_env.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
 namespace yb {
@@ -97,7 +98,7 @@ class QLProcessor : public Rescheduler {
                 StatementExecutedCallback cb, bool reparsed = false);
 
  protected:
-  void SetCurrentSession(const QLSession::SharedPtr& ql_session) {
+  void SetCurrentSession(const QLSessionPtr& ql_session) {
     ql_env_.set_ql_session(ql_session);
   }
 

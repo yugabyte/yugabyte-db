@@ -36,10 +36,7 @@
 #include <string>
 #include <unordered_map>
 
-#include "yb/rocksdb/env.h"
-#include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/options.h"
-#include "yb/rocksdb/immutable_options.h"
 #include "yb/rocksdb/status.h"
 #include "yb/rocksdb/types.h"
 

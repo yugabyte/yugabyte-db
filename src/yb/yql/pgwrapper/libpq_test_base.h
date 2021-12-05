@@ -15,8 +15,10 @@
 #define YB_YQL_PGWRAPPER_LIBPQ_TEST_BASE_H
 
 #include "yb/util/monotime.h"
-#include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
+#include "yb/util/tostring.h"
+
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
 
 namespace yb {
 namespace pgwrapper {

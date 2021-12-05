@@ -10,12 +10,11 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef ROCKSDB_INCLUDE_ROCKSDB_MEMORY_MONITOR_H
-#define ROCKSDB_INCLUDE_ROCKSDB_MEMORY_MONITOR_H
+#ifndef YB_ROCKSDB_MEMORY_MONITOR_H
+#define YB_ROCKSDB_MEMORY_MONITOR_H
 
 #include <atomic>
 #include <functional>
-#include <utility>
 
 #include "yb/rocksdb/port/likely.h"
 
@@ -69,4 +68,4 @@ class MemoryMonitor {
 
 }  // namespace rocksdb
 
-#endif // ROCKSDB_INCLUDE_ROCKSDB_MEMORY_MONITOR_H
+#endif // YB_ROCKSDB_MEMORY_MONITOR_H

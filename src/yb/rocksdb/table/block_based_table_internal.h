@@ -16,6 +16,8 @@
 
 #include "yb/rocksdb/table/block.h"
 #include "yb/rocksdb/table/format.h"
+
+#include "yb/util/file_system.h"
 #include "yb/util/logging.h"
 
 namespace rocksdb {

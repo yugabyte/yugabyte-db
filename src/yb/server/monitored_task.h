@@ -33,12 +33,16 @@
 #ifndef YB_SERVER_MONITORED_TASK_H
 #define YB_SERVER_MONITORED_TASK_H
 
+#include <memory>
 #include <string>
+#include <type_traits>
 
 #include "yb/gutil/ref_counted.h"
-#include "yb/util/enums.h"
-#include "yb/util/monotime.h"
+
 #include "yb/util/status_fwd.h"
+#include "yb/util/enums.h"
+#include "yb/util/math_util.h"
+#include "yb/util/monotime.h"
 
 namespace yb {
 namespace server {

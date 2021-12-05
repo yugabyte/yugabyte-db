@@ -14,9 +14,7 @@
 #ifndef YB_MASTER_MASTER_DEFAULTS_H
 #define YB_MASTER_MASTER_DEFAULTS_H
 
-#include <set>
 #include <string>
-#include <utility>
 
 namespace yb {
 namespace master {

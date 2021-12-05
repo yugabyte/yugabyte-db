@@ -29,7 +29,6 @@
 
 #include "yb/tablet/tablet_fwd.h"
 
-#include "yb/util/result.h"
 #include "yb/util/status.h"
 
 namespace google {

@@ -33,25 +33,36 @@
 #ifndef YB_CONSENSUS_CONSENSUS_PEERS_H_
 #define YB_CONSENSUS_CONSENSUS_PEERS_H_
 
+#include <stdint.h>
+
+#include <atomic>
+#include <cstdint>
+#include <cstdlib>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <vector>
-#include <atomic>
+
+#include <boost/version.hpp>
+#include <gflags/gflags_declare.h>
 
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus.pb.h"
-#include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/consensus_util.h"
+#include "yb/consensus/metadata.pb.h"
+
+#include "yb/gutil/integral_types.h"
 
 #include "yb/rpc/rpc_controller.h"
 
+#include "yb/util/status_fwd.h"
 #include "yb/util/atomic.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/locks.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
 #include "yb/util/semaphore.h"
-#include "yb/util/status_fwd.h"
+#include "yb/util/shared_lock.h"
 
 namespace yb {
 class HostPort;

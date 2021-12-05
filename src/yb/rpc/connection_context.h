@@ -19,9 +19,8 @@
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 
-#include "yb/util/strongly_typed_bool.h"
 #include "yb/util/net/socket.h"
-#include "yb/util/size_literals.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 

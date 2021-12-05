@@ -35,8 +35,8 @@
 #include <stdint.h>
 
 #include <atomic>
-#include <memory>
 #include <list>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -51,16 +51,15 @@
 #include "yb/rpc/proxy_context.h"
 #include "yb/rpc/scheduler.h"
 
+#include "yb/util/metrics_fwd.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/async_util.h"
 #include "yb/util/atomic.h"
-#include "yb/util/concurrent_value.h"
 #include "yb/util/locks.h"
-#include "yb/util/metrics_fwd.h"
 #include "yb/util/monotime.h"
-#include "yb/util/operation_counter.h"
 #include "yb/util/net/sockaddr.h"
+#include "yb/util/operation_counter.h"
 #include "yb/util/stack_trace.h"
-#include "yb/util/status_fwd.h"
 
 namespace yb {
 

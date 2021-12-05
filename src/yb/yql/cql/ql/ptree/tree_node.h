@@ -27,6 +27,8 @@
 
 #include "yb/yql/cql/ql/ptree/ptree_fwd.h"
 
+#include "yb/util/status_fwd.h"
+
 namespace yb {
 namespace ql {
 

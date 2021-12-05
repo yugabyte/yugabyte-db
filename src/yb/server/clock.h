@@ -33,6 +33,7 @@
 #ifndef YB_SERVER_CLOCK_H_
 #define YB_SERVER_CLOCK_H_
 
+#include <functional>
 #include <string>
 
 #include "yb/common/clock.h"
@@ -40,8 +41,8 @@
 
 #include "yb/gutil/ref_counted.h"
 
-#include "yb/util/monotime.h"
 #include "yb/util/status_fwd.h"
+#include "yb/util/monotime.h"
 
 namespace yb {
 class faststring;

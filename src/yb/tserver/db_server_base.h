@@ -21,7 +21,6 @@
 #include "yb/server/server_base.h"
 
 #include "yb/tserver/tserver_util_fwd.h"
-#include "yb/tserver/tablet_server_interface.h"
 
 namespace yb {
 namespace tserver {

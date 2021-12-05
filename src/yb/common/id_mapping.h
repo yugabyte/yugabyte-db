@@ -32,12 +32,9 @@
 #ifndef YB_COMMON_ID_MAPPING_H
 #define YB_COMMON_ID_MAPPING_H
 
-#include <utility>
 #include <vector>
 
 #include <glog/logging.h>
-
-#include "yb/gutil/macros.h"
 
 namespace yb {
 

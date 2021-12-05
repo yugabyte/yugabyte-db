@@ -27,6 +27,8 @@ class WriteBatch;
 
 struct BlockBasedTableOptions;
 struct Options;
+struct TableBuilderOptions;
+struct TableProperties;
 
 } // namespace rocksdb
 

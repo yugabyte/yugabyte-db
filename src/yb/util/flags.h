@@ -34,8 +34,6 @@
 
 #include <gflags/gflags.h>
 
-#include "yb/gutil/macros.h"
-
 namespace yb {
 
 // Looks for flags in argv and parses them.  Rearranges argv to put

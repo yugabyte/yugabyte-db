@@ -14,12 +14,11 @@
 #ifndef YB_ROCKSDB_TABLE_INDEX_BUILDER_H
 #define YB_ROCKSDB_TABLE_INDEX_BUILDER_H
 
-#include <list>
-
 #include "yb/rocksdb/flush_block_policy.h"
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/table/block_builder.h"
 #include "yb/rocksdb/table/format.h"
+
 #include "yb/util/strongly_typed_bool.h"
 
 namespace rocksdb {
