@@ -51,6 +51,7 @@
 //   acquire the lock on the table first. This strict ordering prevents deadlocks.
 //
 // ================================================================================================
+
 #include "yb/master/catalog_manager.h"
 
 #include <stdlib.h>
@@ -73,23 +74,28 @@
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
 #include "yb/client/universe_key_client.h"
+
 #include "yb/common/common.pb.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/key_encoder.h"
 #include "yb/common/partial_row.h"
 #include "yb/common/partition.h"
+#include "yb/common/ql_type.h"
 #include "yb/common/roles_permissions.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
-#include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/metadata.pb.h"
+#include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
+
 #include "yb/docdb/doc_key.h"
-#include "yb/gutil/algorithm.h"
+
 #include "yb/gutil/atomicops.h"
+#include "yb/gutil/bind.h"
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/mathlimits.h"
@@ -99,6 +105,8 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/sysinfo.h"
 #include "yb/gutil/walltime.h"
+
+#include "yb/master/master_fwd.h"
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/backfill_index.h"
 #include "yb/master/catalog_entity_info.h"
@@ -112,13 +120,12 @@
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/master_error.h"
-#include "yb/master/master_fwd.h"
 #include "yb/master/master_util.h"
 #include "yb/master/permissions_manager.h"
+#include "yb/master/scoped_leader_shared_lock-internal.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/master/ts_descriptor.h"
-#include "yb/master/ts_manager.h"
 #include "yb/master/yql_aggregates_vtable.h"
 #include "yb/master/yql_auth_resource_role_permissions_index.h"
 #include "yb/master/yql_auth_role_permissions_vtable.h"
@@ -137,15 +144,19 @@
 #include "yb/master/yql_types_vtable.h"
 #include "yb/master/yql_views_vtable.h"
 #include "yb/master/ysql_transaction_ddl.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
+
 #include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_retention_policy.h"
+
 #include "yb/tserver/remote_bootstrap_client.h"
 #include "yb/tserver/ts_tablet_manager.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/debug-util.h"
@@ -154,7 +165,6 @@
 #include "yb/util/format.h"
 #include "yb/util/hash_util.h"
 #include "yb/util/locks.h"
-#include "yb/util/logging.h"
 #include "yb/util/math_util.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
@@ -174,7 +184,9 @@
 #include "yb/util/thread.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
+#include "yb/util/tsan_util.h"
 #include "yb/util/uuid.h"
+
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/redis/redisserver/redis_constants.h"
 

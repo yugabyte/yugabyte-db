@@ -12,17 +12,22 @@
 // under the License.
 //
 //--------------------------------------------------------------------------------------------------
+
 #include "yb/yql/pggate/pg_ddl.h"
 
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
+
 #include "yb/common/common.pb.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/pg_system_attr.h"
+
 #include "yb/master/master.pb.h"
+
 #include "yb/util/flag_tags.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+
 #include "yb/yql/pggate/pg_client.h"
 
 DEFINE_test_flag(int32, user_ddl_operation_timeout_sec, 0,

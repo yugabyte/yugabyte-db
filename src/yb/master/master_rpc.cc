@@ -30,14 +30,16 @@
 // under the License.
 //
 // This module is internal to the client and not a public API.
+
 #include "yb/master/master_rpc.h"
 
 #include <mutex>
 
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol.pb.h"
-#include "yb/gutil/bind.h"
+
 #include "yb/master/master.proxy.h"
+
 #include "yb/util/async_util.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/net/net_util.h"

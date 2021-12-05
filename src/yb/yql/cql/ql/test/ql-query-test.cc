@@ -12,20 +12,27 @@
 // under the License.
 //
 //--------------------------------------------------------------------------------------------------
+
 #include <cmath>
 #include <thread>
 
 #include "yb/client/client.h"
 #include "yb/client/table.h"
+
 #include "yb/common/jsonb.h"
 #include "yb/common/ql_value.h"
+
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/master/master.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/ts_manager.h"
+
+#include "yb/util/decimal.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
 #include "yb/util/yb_partition.h"
+
 #include "yb/yql/cql/ql/test/ql-test-base.h"
 
 using std::string;

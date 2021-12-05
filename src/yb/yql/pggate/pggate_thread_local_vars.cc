@@ -12,10 +12,9 @@
 // under the License.
 //--------------------------------------------------------------------------------------------------
 
-
 #include "yb/yql/pggate/pggate_thread_local_vars.h"
 
-
+#include <stddef.h>
 
 namespace yb {
 namespace pggate {

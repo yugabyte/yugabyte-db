@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <chrono>
 #include <thread>
 
@@ -17,59 +18,72 @@
 #include <gtest/gtest.h>
 
 #include "yb/client/client-test-util.h"
-#include "yb/client/error.h"
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/session.h"
 #include "yb/client/snapshot_test_util.h"
 #include "yb/client/table_info.h"
 #include "yb/client/transaction.h"
 #include "yb/client/txn-test-base.h"
+#include "yb/client/yb_op.h"
+
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_rowwise_iterator_interface.h"
 #include "yb/common/ql_value.h"
+
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_util.h"
+
 #include "yb/docdb/doc_key.h"
+
 #include "yb/fs/fs_manager.h"
+
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/strings/join.h"
+
 #include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/redis_table_test_base.h"
 #include "yb/integration-tests/test_workload.h"
+
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
+
+#include "yb/rocksdb/db.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
+
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
+
 #include "yb/tools/admin-test-base.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_admin.pb.h"
 #include "yb/tserver/tserver_admin.proxy.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/format.h"
-#include "yb/util/logging.h"
 #include "yb/util/protobuf_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
-#include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
+
 #include "yb/yql/cql/ql/util/statement_result.h"
 
 using namespace std::literals;  // NOLINT
