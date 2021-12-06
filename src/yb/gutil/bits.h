@@ -16,14 +16,14 @@
 //
 // A collection of useful (static) bit-twiddling functions.
 
+#ifndef YB_GUTIL_BITS_H
+#define YB_GUTIL_BITS_H
+
 #include <glog/logging.h>
 
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/logging-inl.h"
 #include "yb/gutil/macros.h"
-
-#ifndef YB_GUTIL_BITS_H
-#define YB_GUTIL_BITS_H
 
 class Bits {
  public:

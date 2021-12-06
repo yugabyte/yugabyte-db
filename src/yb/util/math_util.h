@@ -16,7 +16,6 @@
 #define YB_UTIL_MATH_UTIL_H_
 
 #include <limits>
-#include <type_traits>
 #include <vector>
 
 namespace yb {

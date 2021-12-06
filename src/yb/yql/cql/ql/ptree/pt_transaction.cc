@@ -17,6 +17,8 @@
 
 #include "yb/yql/cql/ql/ptree/pt_transaction.h"
 
+#include "yb/util/status.h"
+
 namespace yb {
 namespace ql {
 

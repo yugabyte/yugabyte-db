@@ -10,10 +10,12 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <glog/logging.h>
 
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/ts_itest-base.h"
+
 #include "yb/util/status_log.h"
 
 namespace yb {

@@ -25,7 +25,9 @@
 #include "yb/common/entity_ids_types.h"
 
 #include "yb/gutil/ref_counted.h"
+
 #include "yb/util/enums.h"
+#include "yb/util/math_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/strongly_typed_bool.h"
 
@@ -169,6 +171,8 @@ struct SnapshotScheduleRestoration;
 using SnapshotScheduleRestorationPtr = std::shared_ptr<SnapshotScheduleRestoration>;
 
 YB_STRONGLY_TYPED_BOOL(RegisteredThroughHeartbeat);
+
+YB_STRONGLY_TYPED_BOOL(IncludeInactive);
 
 YB_DEFINE_ENUM(
     CollectFlag, (kAddIndexes)(kIncludeParentColocatedTable)(kSucceedIfCreateInProgress));

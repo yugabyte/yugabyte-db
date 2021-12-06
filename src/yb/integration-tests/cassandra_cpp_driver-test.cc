@@ -10,19 +10,22 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#include <cassandra.h>
 
 #include <tuple>
 
 #include "yb/client/client.h"
 #include "yb/client/table_info.h"
+
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/strip.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/integration-tests/backfill-test-util.h"
 #include "yb/integration-tests/cql_test_util.h"
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
+
 #include "yb/tools/yb-admin_client.h"
+
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/metrics.h"
@@ -30,6 +33,7 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_thread_holder.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 

@@ -44,7 +44,6 @@
 #ifndef YB_SERVER_DEFAULT_PATH_HANDLERS_H
 #define YB_SERVER_DEFAULT_PATH_HANDLERS_H
 
-#include <string>
 
 namespace yb {
 

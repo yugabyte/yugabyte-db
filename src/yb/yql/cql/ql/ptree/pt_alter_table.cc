@@ -14,13 +14,18 @@
 //
 // Treenode definitions for ALTER TABLE statements.
 //--------------------------------------------------------------------------------------------------
+
 #include "yb/yql/cql/ql/ptree/pt_alter_table.h"
 
 #include "yb/client/table.h"
+
 #include "yb/common/index.h"
 #include "yb/common/schema.h"
+
 #include "yb/util/logging.h"
+
 #include "yb/yql/cql/ql/ptree/column_desc.h"
+#include "yb/yql/cql/ql/ptree/pt_option.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/yql/cql/ql/ptree/yb_location.h"
 

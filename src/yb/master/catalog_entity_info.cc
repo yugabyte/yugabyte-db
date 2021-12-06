@@ -29,17 +29,18 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/master/catalog_entity_info.h"
 
 #include <string>
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/master/master_error.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/format.h"
-#include "yb/util/locks.h"
 #include "yb/util/status_format.h"
 
 using std::string;
@@ -452,8 +453,15 @@ bool TableInfo::RemoveTabletUnlocked(const TabletId& tablet_id, DeactivateOnly d
 }
 
 void TableInfo::GetTabletsInRange(const GetTableLocationsRequestPB* req, TabletInfos* ret) const {
-  GetTabletsInRange(
-      req->partition_key_start(), req->partition_key_end(), ret, req->max_returned_locations());
+  if (req->has_include_inactive() && req->include_inactive()) {
+    GetInactiveTabletsInRange(
+        req->partition_key_start(), req->partition_key_end(),
+        ret, req->max_returned_locations());
+  } else {
+    GetTabletsInRange(
+        req->partition_key_start(), req->partition_key_end(),
+        ret, req->max_returned_locations());
+  }
 }
 
 void TableInfo::GetTabletsInRange(
@@ -478,6 +486,28 @@ void TableInfo::GetTabletsInRange(
   int32_t count = 0;
   for (; it != it_end && count < max_returned_locations; ++it) {
     ret->push_back(it->second);
+    count++;
+  }
+}
+
+void TableInfo::GetInactiveTabletsInRange(
+    const std::string& partition_key_start, const std::string& partition_key_end,
+    TabletInfos* ret, const int32_t max_returned_locations) const {
+  SharedLock<decltype(lock_)> l(lock_);
+  int32_t count = 0;
+  for (const auto& p : tablets_) {
+    if (count >= max_returned_locations) {
+      break;
+    }
+    if (!partition_key_start.empty() &&
+        p.second->metadata().dirty().pb.partition().partition_key_start() < partition_key_start) {
+      continue;
+    }
+    if (!partition_key_end.empty() &&
+        p.second->metadata().dirty().pb.partition().partition_key_start() > partition_key_end) {
+      continue;
+    }
+    ret->push_back(p.second);
     count++;
   }
 }

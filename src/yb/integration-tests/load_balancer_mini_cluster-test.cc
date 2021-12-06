@@ -10,20 +10,29 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
+
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus.proxy.h"
+
 #include "yb/gutil/dynamic_annotations.h"
+
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_table_test_base.h"
+
 #include "yb/master/cluster_balance.h"
 #include "yb/master/master.proxy.h"
-#include "yb/master/master_fwd.h"
+
 #include "yb/tools/yb-admin_client.h"
+
+#include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tablet_server_options.h"
+
 #include "yb/util/monotime.h"
 
 DECLARE_bool(enable_load_balancing);

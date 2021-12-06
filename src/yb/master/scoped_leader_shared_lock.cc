@@ -28,17 +28,22 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
+
 #include "yb/master/scoped_leader_shared_lock.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/metadata.pb.h"
+
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/sys_catalog.h"
+
 #include "yb/tablet/tablet_peer.h"
+
 #include "yb/util/debug-util.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 

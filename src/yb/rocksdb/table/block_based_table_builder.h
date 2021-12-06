@@ -25,14 +25,15 @@
 #define YB_ROCKSDB_TABLE_BLOCK_BASED_TABLE_BUILDER_H
 
 #include <stdint.h>
+
 #include <limits>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "yb/rocksdb/flush_block_policy.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/status.h"
+#include "yb/rocksdb/table.h"
 #include "yb/rocksdb/table/table_builder.h"
 
 namespace rocksdb {

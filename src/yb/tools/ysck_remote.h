@@ -37,14 +37,13 @@
 #include <string>
 #include <vector>
 
-#include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_fwd.h"
-#include "yb/server/server_base.h"
+
 #include "yb/server/server_base.proxy.h"
+
 #include "yb/tools/ysck.h"
+
 #include "yb/tserver/tablet_server.h"
-#include "yb/tserver/tserver_service.proxy.h"
-#include "yb/util/net/sockaddr.h"
 
 namespace yb {
 

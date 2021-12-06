@@ -18,14 +18,11 @@
 #define YB_YQL_CQL_QL_QL_SESSION_H_
 
 #include <memory>
-#include <mutex>
 #include <string>
 
 #include <boost/thread/locks.hpp>
-
 #include <gflags/gflags.h>
 
-#include "yb/master/master_defaults.h"
 #include "yb/util/shared_lock.h"
 
 DECLARE_bool(use_cassandra_authentication);

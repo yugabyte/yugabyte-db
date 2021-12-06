@@ -16,14 +16,10 @@
 
 #include <random>
 
-#include <boost/functional/hash/hash.hpp>
-
-#include <boost/optional/optional.hpp>
-
 #include "yb/gutil/endian.h"
 
-#include "yb/util/slice.h"
 #include "yb/util/status_fwd.h"
+#include "yb/util/slice.h"
 #include "yb/util/uuid.h"
 
 // A "strongly-typed UUID" tool. This is needed to prevent passing the wrong UUID as a

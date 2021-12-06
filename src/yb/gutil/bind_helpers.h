@@ -161,6 +161,8 @@
 #include <assert.h>
 
 #include "yb/gutil/callback.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/macros.h"
 #include "yb/gutil/template_util.h"
 
 // Unneeded define from Chromium

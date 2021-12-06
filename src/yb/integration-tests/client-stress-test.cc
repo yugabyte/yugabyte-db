@@ -29,25 +29,34 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <memory>
 #include <regex>
 #include <vector>
 
 #include "yb/client/client.h"
+#include "yb/client/error.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
+
 #include "yb/common/schema.h"
+
+#include "yb/gutil/bind.h"
 #include "yb/gutil/mathlimits.h"
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/test_workload.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
+
 #include "yb/master/master.pb.h"
 #include "yb/master/master_rpc.h"
+
 #include "yb/rpc/rpc.h"
+
 #include "yb/util/curl_util.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -57,6 +66,7 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
 #include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
 
 DECLARE_int32(memory_limit_soft_percentage);
 
@@ -200,13 +210,14 @@ void RepeatGetLeaderMaster(ExternalMiniCluster* cluster) {
         rpc::Rpcs rpcs;
         Synchronizer sync;
         auto deadline = CoarseMonoClock::Now() + 20s;
-        auto rpc = rpc::StartRpc<master::GetLeaderMasterRpc>(
+        auto rpc = std::make_shared<master::GetLeaderMasterRpc>(
             Bind(&LeaderMasterCallback, &sync),
             master_addrs,
             deadline,
             cluster->messenger(),
             &cluster->proxy_cache(),
             &rpcs);
+        rpc->SendRpc();
         auto status = sync.Wait();
         LOG_IF(INFO, !status.ok()) << "Get leader master failed: " << status;
       }

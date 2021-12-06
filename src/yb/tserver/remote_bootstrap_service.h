@@ -35,14 +35,17 @@
 #include <string>
 #include <unordered_map>
 
+#include <gtest/gtest.h>
+
 #include "yb/gutil/ref_counted.h"
-#include "yb/tserver/remote_bootstrap_session.h"
+
 #include "yb/tserver/remote_bootstrap.service.h"
+#include "yb/tserver/remote_bootstrap_session.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/locks.h"
-#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
-#include "yb/util/status_fwd.h"
 
 namespace yb {
 

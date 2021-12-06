@@ -20,7 +20,6 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/rpc/poller.h"
-#include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/tserver/pg_client.proxy.h"

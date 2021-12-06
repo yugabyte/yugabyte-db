@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <atomic>
 #include <thread>
 
@@ -17,20 +18,27 @@
 #include <gtest/gtest.h>
 
 #include "yb/client/table_info.h"
+
 #include "yb/consensus/consensus.h"
+
 #include "yb/gutil/strings/join.h"
+
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/cql_test_base.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/load_generator.h"
 #include "yb/integration-tests/mini_cluster.h"
+
 #include "yb/master/mini_master.h"
+
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
+
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"

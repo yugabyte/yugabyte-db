@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/master/sys_catalog.h"
 
 #include <cmath>
@@ -40,36 +41,46 @@
 #include <rapidjson/document.h>
 
 #include "yb/client/client.h"
+
 #include "yb/common/index.h"
 #include "yb/common/partial_row.h"
 #include "yb/common/partition.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_peers.h"
+#include "yb/consensus/log.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
+
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb_pgapi.h"
+
 #include "yb/fs/fs_manager.h"
+
+#include "yb/gutil/bind.h"
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/split.h"
+
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/sys_catalog_writer.h"
+
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
-#include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_peer.h"
+
 #include "yb/tserver/tablet_memory_manager.h"
 #include "yb/tserver/ts_tablet_manager.h"
+
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"

@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <regex>
 #include <unordered_map>
 #include <unordered_set>
@@ -43,29 +44,39 @@
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
+
+#include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/metadata.pb.h"
+#include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
+
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/value_type.h"
+
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/strcat.h"
 #include "yb/gutil/strings/util.h"
+
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/external_mini_cluster_fs_inspector.h"
 #include "yb/integration-tests/test_workload.h"
 #include "yb/integration-tests/ts_itest-base.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_test_util.h"
+
 #include "yb/server/hybrid_clock.h"
 #include "yb/server/server_base.pb.h"
+
 #include "yb/util/oid_generator.h"
 #include "yb/util/opid.pb.h"
 #include "yb/util/scope_exit.h"
@@ -73,6 +84,7 @@
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/thread.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 

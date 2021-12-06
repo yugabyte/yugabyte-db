@@ -39,21 +39,17 @@
 
 #include <boost/optional.hpp>
 
-#include "yb/rocksdb/cache.h"
-#include "yb/rocksdb/memory_monitor.h"
 #include "yb/client/client_fwd.h"
 
 #include "yb/consensus/log_fwd.h"
 #include "yb/consensus/consensus_fwd.h"
-#include "yb/consensus/log.pb.h"
 
 #include "yb/gutil/ref_counted.h"
-#include "yb/server/clock.h"
-#include "yb/util/status_fwd.h"
-#include "yb/tablet/tablet_options.h"
-#include "yb/tablet/tablet_fwd.h"
 
-#include "yb/util/locks.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/tablet/tablet_options.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/opid.h"
 #include "yb/util/shared_lock.h"
 

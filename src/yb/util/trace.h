@@ -33,6 +33,7 @@
 #define YB_UTIL_TRACE_H
 
 #include <atomic>
+#include <functional>
 #include <iosfwd>
 #include <string>
 #include <vector>
@@ -40,12 +41,12 @@
 #include <gflags/gflags.h>
 
 #include "yb/gutil/macros.h"
+#include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/stringpiece.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/gutil/ref_counted.h"
 #include "yb/gutil/threading/thread_collision_warner.h"
 
-#include "yb/util/atomic.h"
+#include "yb/util/atomic.h" // For GetAtomicFlag
 #include "yb/util/locks.h"
 #include "yb/util/memory/arena_fwd.h"
 #include "yb/util/monotime.h"

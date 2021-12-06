@@ -17,19 +17,39 @@
 #ifndef YB_YQL_CQL_CQLSERVER_CQL_SERVER_H
 #define YB_YQL_CQL_CQLSERVER_CQL_SERVER_H
 
+#include <stdint.h>
+#include <string.h>
+
 #include <atomic>
+#include <cstdarg>
+#include <mutex>
 #include <string>
+#include <type_traits>
+
+#include <boost/asio.hpp>
+#include <boost/container/small_vector.hpp>
+#include <boost/date_time/posix_time/posix_time.hpp>
+#include <boost/optional/optional_fwd.hpp>
+#include <boost/version.hpp>
+#include <gflags/gflags_declare.h>
+
+#include "yb/gutil/macros.h"
+
+#include "yb/rpc/service_if.h"
+
+#include "yb/server/server_base.h"
+
+#include "yb/tserver/tserver_fwd.h"
+
+#include "yb/util/status_fwd.h"
+#include "yb/util/faststring.h"
+#include "yb/util/math_util.h"
+#include "yb/util/memory/memory_usage.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/net/sockaddr.h"
 
 #include "yb/yql/cql/cqlserver/cql_server_options.h"
 #include "yb/yql/cql/ql/util/cql_message.h"
-#include "yb/gutil/macros.h"
-#include "yb/server/server_base.h"
-#include "yb/tserver/tserver_fwd.h"
-#include "yb/util/net/sockaddr.h"
-#include "yb/util/status_fwd.h"
-
-#include <boost/asio.hpp>
-#include <boost/date_time/posix_time/posix_time.hpp>
 
 namespace yb {
 

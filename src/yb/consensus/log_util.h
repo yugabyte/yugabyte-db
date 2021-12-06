@@ -40,14 +40,13 @@
 #include <utility>
 #include <vector>
 
-#include <gtest/gtest.h>
-
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/log_fwd.h"
 #include "yb/consensus/log.pb.h"
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/compare_util.h"
 #include "yb/util/env.h"

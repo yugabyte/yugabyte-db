@@ -478,6 +478,9 @@ void OutboundCall::SetFailed(const Status &status, std::unique_ptr<ErrorStatusPB
     if (status_.IsRemoteError()) {
       CHECK(err_pb);
       error_pb_ = std::move(err_pb);
+      if (error_pb_->has_code()) {
+        status_ = status_.CloneAndAddErrorCode(RpcError(error_pb_->code()));
+      }
     } else {
       CHECK(!err_pb);
     }
@@ -647,6 +650,11 @@ Status CallResponse::ParseFrom(CallData* call_data) {
   parsed_ = true;
   return Status::OK();
 }
+
+const std::string kRpcErrorCategoryName = "rpc error";
+
+StatusCategoryRegisterer rpc_error_category_registerer(
+    StatusCategoryDescription::Make<RpcErrorTag>(&kRpcErrorCategoryName));
 
 }  // namespace rpc
 }  // namespace yb

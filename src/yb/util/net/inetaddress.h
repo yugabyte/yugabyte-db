@@ -14,14 +14,20 @@
 #ifndef YB_UTIL_NET_INETADDRESS_H
 #define YB_UTIL_NET_INETADDRESS_H
 
+#include <string.h>
+
+#include <functional>
+#include <string>
+
 #include <boost/asio/ip/address.hpp>
 #include <boost/asio/ip/address_v4.hpp>
 #include <boost/asio/ip/address_v6.hpp>
 #include <boost/system/error_code.hpp>
 
-#include "yb/gutil/strings/substitute.h"
-#include "yb/util/slice.h"
+#include "yb/gutil/stringprintf.h"
+
 #include "yb/util/status_fwd.h"
+#include "yb/util/slice.h"
 
 namespace yb {
 

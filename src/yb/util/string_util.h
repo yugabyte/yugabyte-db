@@ -22,7 +22,6 @@
 
 #pragma once
 
-#include <cstring>
 #include <sstream>
 #include <string>
 #include <vector>

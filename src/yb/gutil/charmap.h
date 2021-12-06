@@ -34,6 +34,7 @@
 #include <string.h>
 
 #include "yb/gutil/integral_types.h"
+#include "yb/gutil/macros.h"
 #include "yb/gutil/type_traits.h"
 
 class Charmap {

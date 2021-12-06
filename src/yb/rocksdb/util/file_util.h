@@ -22,15 +22,10 @@
 #define YB_ROCKSDB_UTIL_FILE_UTIL_H
 
 #pragma once
+
 #include <string>
 
-#include "yb/rocksdb/status.h"
-#include "yb/rocksdb/types.h"
 #include "yb/rocksdb/env.h"
-#include "yb/rocksdb/options.h"
-
-#include "yb/util/strongly_typed_bool.h"
-#include "yb/util/file_util.h"
 
 namespace rocksdb {
 

@@ -10,22 +10,28 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/master/async_rpc_tasks.h"
 
 #include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/consensus_meta.h"
+
 #include "yb/gutil/map-util.h"
+
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
 #include "yb/master/tablet_split_complete_handler.h"
 #include "yb/master/ts_manager.h"
+
 #include "yb/rpc/messenger.h"
+
 #include "yb/tserver/tserver_admin.proxy.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/flag_tags.h"
-#include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/source_location.h"
 #include "yb/util/status_format.h"
@@ -309,7 +315,7 @@ bool RetryingTSRpcTask::RescheduleWithBackoffDelay() {
       // Allow kWaiting for task(s) that have never successfully ResetTSProxy().
       task_state != MonitoredTaskState::kWaiting) {
     if (task_state != MonitoredTaskState::kComplete) {
-      LOG_WITH_PREFIX(INFO) << "No reschedule for this task";
+      LOG_WITH_PREFIX(INFO) << "No reschedule for this task: " << AsString(task_state);
     }
     return false;
   }

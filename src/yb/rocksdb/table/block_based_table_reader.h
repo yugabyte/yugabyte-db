@@ -25,18 +25,17 @@
 #define YB_ROCKSDB_TABLE_BLOCK_BASED_TABLE_READER_H
 
 #include <stdint.h>
-#include <memory>
-#include <utility>
-#include <string>
 
+#include <memory>
+#include <string>
+#include <utility>
+
+#include "yb/rocksdb/immutable_options.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/status.h"
-#include "yb/rocksdb/table.h"
 #include "yb/rocksdb/table/table_reader.h"
-#include "yb/rocksdb/table/table_properties_internal.h"
-#include "yb/rocksdb/util/coding.h"
-#include "yb/rocksdb/util/file_reader_writer.h"
+
 #include "yb/util/strongly_typed_bool.h"
 
 namespace rocksdb {

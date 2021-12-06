@@ -33,10 +33,10 @@
 #ifndef YB_CLIENT_META_CACHE_H
 #define YB_CLIENT_META_CACHE_H
 
+#include <shared_mutex>
 #include <map>
 #include <string>
 #include <memory>
-#include <shared_mutex>
 #include <unordered_map>
 #include <vector>
 
@@ -51,6 +51,8 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/thread_annotations.h"
+
+#include "yb/master/master_fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/rpc.h"
@@ -490,8 +492,6 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
 
   ~MetaCache();
 
-  void Shutdown();
-
   // Add a tablet server's proxy, and optionally the tserver itself it is local.
   void SetLocalTabletServer(const std::string& permanent_uuid,
                             const std::shared_ptr<tserver::TabletServerServiceProxy>& proxy,
@@ -525,6 +525,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   // partitions are stale and returns ClientErrorCode::kTablePartitionListIsStale in that case.
   void LookupTabletById(const TabletId& tablet_id,
                         const std::shared_ptr<const YBTable>& table,
+                        master::IncludeInactive include_inactive,
                         CoarseTimePoint deadline,
                         LookupTabletCallback callback,
                         UseCache use_cache);
@@ -597,6 +598,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   void LookupByIdFailed(
       const TabletId& tablet_id,
       const std::shared_ptr<const YBTable>& table,
+      master::IncludeInactive include_inactive,
       const boost::optional<PartitionListVersion>& response_partition_list_version,
       int64_t request_no,
       const Status& status);
@@ -647,8 +649,12 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
 
   template <class Lock>
   bool DoLookupTabletById(
-      const TabletId& tablet_id, const std::shared_ptr<const YBTable>& table,
-      CoarseTimePoint deadline, UseCache use_cache, LookupTabletCallback* callback);
+      const TabletId& tablet_id,
+      const std::shared_ptr<const YBTable>& table,
+      master::IncludeInactive include_inactive,
+      CoarseTimePoint deadline,
+      UseCache use_cache,
+      LookupTabletCallback* callback);
 
   template <class Lock>
   bool DoLookupAllTablets(const std::shared_ptr<const YBTable>& table,
@@ -683,8 +689,6 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   // Prevents master lookup "storms" by delaying master lookups when all
   // permits have been acquired.
   Semaphore master_lookup_sem_;
-
-  rpc::Rpcs rpcs_;
 
   const std::string log_prefix_;
 

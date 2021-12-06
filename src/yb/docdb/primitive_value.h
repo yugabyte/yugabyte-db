@@ -14,28 +14,25 @@
 #ifndef YB_DOCDB_PRIMITIVE_VALUE_H_
 #define YB_DOCDB_PRIMITIVE_VALUE_H_
 
-#include <memory.h>
-
+#include <ostream>
 #include <string>
 #include <vector>
-#include <ostream>
 
 #include <glog/logging.h>
 
-#include "yb/util/slice.h"
-
+#include "yb/common/common_fwd.h"
 #include "yb/common/column_id.h"
-#include "yb/common/hybrid_time.h"
 #include "yb/common/doc_hybrid_time.h"
-#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/hybrid_time.h"
+
 #include "yb/docdb/docdb_fwd.h"
-#include "yb/docdb/key_bytes.h"
 #include "yb/docdb/value_type.h"
-#include "yb/util/decimal.h"
-#include "yb/util/net/inetaddress.h"
-#include "yb/util/timestamp.h"
+
 #include "yb/util/algorithm_util.h"
+#include "yb/util/net/inetaddress.h"
+#include "yb/util/slice.h"
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/util/timestamp.h"
 #include "yb/util/uuid.h"
 
 namespace yb {

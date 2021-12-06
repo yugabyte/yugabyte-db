@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <memory>
 #include <thread>
 
@@ -39,30 +40,41 @@
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
 #include "yb/client/table_creator.h"
+
 #include "yb/common/wire_protocol.h"
+
+#include "yb/consensus/consensus.proxy.h"
+
 #include "yb/fs/fs_manager.h"
+
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
+
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master-test-util.h"
 #include "yb/master/master.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/mini_master.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_test_util.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+
 #include "yb/util/hdr_histogram.h"
 #include "yb/util/metrics.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/spinlock_profiling.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
 
 using yb::client::YBClient;
 using yb::client::YBClientBuilder;
@@ -610,8 +622,13 @@ TEST_F(CreateTableStressTest, TestConcurrentCreateTableAndReloadMetadata) {
     while (!stop.Load()) {
       CHECK_OK(cluster_->mini_master()->catalog_manager().VisitSysCatalog(0));
       // Give table creation a chance to run.
-      SleepFor(MonoDelta::FromMilliseconds(yb::NonTsanVsTsan(1, 5)));
+      SleepFor(MonoDelta::FromMilliseconds(10 * kTimeMultiplier));
     }
+  });
+
+  auto se = ScopeExit([&stop, &reload_metadata_thread] {
+    stop.Store(true);
+    reload_metadata_thread.join();
   });
 
   for (int num_tables_created = 0; num_tables_created < 20;) {
@@ -644,8 +661,6 @@ TEST_F(CreateTableStressTest, TestConcurrentCreateTableAndReloadMetadata) {
     num_tables_created++;
     LOG(INFO) << "Total created: " << num_tables_created;
   }
-  stop.Store(true);
-  reload_metadata_thread.join();
 }
 
 }  // namespace yb

@@ -32,31 +32,45 @@
 #ifndef YB_RPC_OUTBOUND_CALL_H_
 #define YB_RPC_OUTBOUND_CALL_H_
 
+#include <stdint.h>
+
+#include <cstdint>
+#include <cstdlib>
 #include <deque>
+#include <memory>
 #include <string>
+#include <thread>
+#include <type_traits>
 #include <vector>
 
+#include <boost/functional/hash.hpp>
+#include <gflags/gflags_declare.h>
 #include <glog/logging.h>
 
+#include "yb/gutil/integral_types.h"
 #include "yb/gutil/macros.h"
+
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/call_data.h"
 #include "yb/rpc/constants.h"
-#include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/remote_method.h"
 #include "yb/rpc/rpc_call.h"
 #include "yb/rpc/rpc_header.pb.h"
+#include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/service_if.h"
 #include "yb/rpc/thread_pool.h"
 
+#include "yb/util/status_fwd.h"
+#include "yb/util/atomic.h"
 #include "yb/util/locks.h"
 #include "yb/util/mem_tracker.h"
+#include "yb/util/memory/memory_usage.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/object_pool.h"
 #include "yb/util/ref_cnt_buffer.h"
+#include "yb/util/shared_lock.h"
 #include "yb/util/slice.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/trace.h"
 
 namespace google {
@@ -408,6 +422,17 @@ class OutboundCall : public RpcCall {
 
   DISALLOW_COPY_AND_ASSIGN(OutboundCall);
 };
+
+class RpcErrorTag : public IntegralErrorTag<ErrorStatusPB::RpcErrorCodePB> {
+ public:
+  static constexpr uint8_t kCategory = 15;
+
+  static std::string ToMessage(Value value) {
+    return ErrorStatusPB::RpcErrorCodePB_Name(value);
+  }
+};
+
+typedef StatusErrorCodeImpl<RpcErrorTag> RpcError;
 
 }  // namespace rpc
 }  // namespace yb

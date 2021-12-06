@@ -26,6 +26,8 @@
 namespace yb {
 namespace pggate {
 
+class PgTuple;
+
 YB_STRONGLY_TYPED_BOOL(RequestSent);
 
 //--------------------------------------------------------------------------------------------------

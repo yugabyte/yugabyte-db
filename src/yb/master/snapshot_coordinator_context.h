@@ -29,7 +29,6 @@
 
 #include "yb/tablet/tablet_fwd.h"
 
-#include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/backup.pb.h"
 
 namespace yb {

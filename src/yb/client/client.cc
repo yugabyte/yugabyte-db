@@ -227,18 +227,9 @@ using std::shared_ptr;
 
 #define CALL_SYNC_LEADER_MASTER_RPC_WITH_DEADLINE(req, resp, deadline, method) \
   do { \
-    Status s = data_->SyncLeaderMasterRpc<BOOST_PP_CAT(method, RequestPB), \
-                                          BOOST_PP_CAT(method, ResponsePB)>( \
-        deadline, \
-        req, \
-        &resp, \
-        nullptr, \
-        BOOST_PP_STRINGIZE(method), \
-        &MasterServiceProxy::method); \
-    RETURN_NOT_OK(s); \
-    if (resp.has_error()) { \
-      return StatusFromPB(resp.error().status()); \
-    } \
+    RETURN_NOT_OK(data_->SyncLeaderMasterRpc( \
+        deadline, req, &resp, BOOST_PP_STRINGIZE(method), \
+        &MasterServiceProxy::BOOST_PP_CAT(method, Async))); \
   } while(0);
 
 // Adapts between the internal LogSeverity and the client's YBLogSeverity.
@@ -492,9 +483,6 @@ void YBClient::Shutdown() {
   data_->StartShutdown();
   if (data_->messenger_holder_) {
     data_->messenger_holder_->Shutdown();
-  }
-  if (data_->meta_cache_) {
-    data_->meta_cache_->Shutdown();
   }
   if (data_->threadpool_) {
     data_->threadpool_->Shutdown();
@@ -785,12 +773,8 @@ Status YBClient::CreateNamespace(const std::string& namespace_name,
   }
   req.set_colocated(colocated);
   deadline = PatchAdminDeadline(deadline);
-  Status s = data_->SyncLeaderMasterRpc<CreateNamespaceRequestPB, CreateNamespaceResponsePB>(
-        deadline, req, &resp, nullptr, "CreateNamespace", &MasterServiceProxy::CreateNamespace);
-  if (resp.has_error()) {
-    s = StatusFromPB(resp.error().status());
-  }
-  RETURN_NOT_OK(s);
+  RETURN_NOT_OK(data_->SyncLeaderMasterRpc(
+      deadline, req, &resp, "CreateNamespace", &MasterServiceProxy::CreateNamespaceAsync));
   std::string cur_id = resp.has_id() ? resp.id() : namespace_id;
 
   // Verify that the namespace we found is running so that, once this request returns,
@@ -850,12 +834,8 @@ Status YBClient::DeleteNamespace(const std::string& namespace_name,
     req.mutable_namespace_()->set_database_type(*database_type);
   }
   deadline = PatchAdminDeadline(deadline);
-  Status s = data_->SyncLeaderMasterRpc<DeleteNamespaceRequestPB, DeleteNamespaceResponsePB>(
-      deadline, req, &resp, nullptr, "DeleteNamespace", &MasterServiceProxy::DeleteNamespace);
-  if (resp.has_error()) {
-    s = StatusFromPB(resp.error().status());
-  }
-  RETURN_NOT_OK(s);
+  RETURN_NOT_OK(data_->SyncLeaderMasterRpc(
+      deadline, req, &resp, "DeleteNamespace", &MasterServiceProxy::DeleteNamespaceAsync));
 
   // Verify that, once this request returns, the namespace has been successfully marked as deleted.
   RETURN_NOT_OK(data_->WaitForDeleteNamespaceToFinish(this, namespace_name, database_type,
@@ -998,8 +978,9 @@ Status YBClient::CreateTablegroup(const std::string& namespace_name,
   int attempts = 0;
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
 
-  Status s = data_->SyncLeaderMasterRpc<CreateTablegroupRequestPB, CreateTablegroupResponsePB>(
-      deadline, req, &resp, &attempts, "CreateTablegroup", &MasterServiceProxy::CreateTablegroup);
+  Status s = data_->SyncLeaderMasterRpc(
+      deadline, req, &resp, "CreateTablegroup", &MasterServiceProxy::CreateTablegroupAsync,
+      &attempts);
 
   // This case should not happen but need to validate contents since fields are optional in PB.
   if (!resp.has_parent_table_id() || !resp.has_parent_table_name()) {
@@ -1075,8 +1056,9 @@ Status YBClient::DeleteTablegroup(const std::string& namespace_id,
   int attempts = 0;
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
 
-  Status s = data_->SyncLeaderMasterRpc<DeleteTablegroupRequestPB, DeleteTablegroupResponsePB>(
-      deadline, req, &resp, &attempts, "DeleteTablegroup", &MasterServiceProxy::DeleteTablegroup);
+  Status s = data_->SyncLeaderMasterRpc(
+      deadline, req, &resp, "DeleteTablegroup", &MasterServiceProxy::DeleteTablegroupAsync,
+      &attempts);
 
   // This case should not happen but need to validate contents since fields are optional in PB.
   if (!resp.has_parent_table_id()) {
@@ -1686,7 +1668,8 @@ Status YBClient::GetTablets(const YBTableName& table_name,
                             const int32_t max_tablets,
                             RepeatedPtrField<TabletLocationsPB>* tablets,
                             PartitionListVersion* partition_list_version,
-                            const RequireTabletsRunning require_tablets_running) {
+                            const RequireTabletsRunning require_tablets_running,
+                            const master::IncludeInactive include_inactive) {
   GetTableLocationsRequestPB req;
   GetTableLocationsResponsePB resp;
   if (table_name.has_table()) {
@@ -1701,6 +1684,7 @@ Status YBClient::GetTablets(const YBTableName& table_name,
     req.set_max_returned_locations(max_tablets);
   }
   req.set_require_tablets_running(require_tablets_running);
+  req.set_include_inactive(include_inactive);
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, GetTableLocations);
   *tablets = resp.tablet_locations();
   if (partition_list_version) {
@@ -1755,11 +1739,12 @@ Status YBClient::GetTablets(const YBTableName& table_name,
                             vector<TabletId>* tablet_uuids,
                             vector<string>* ranges,
                             std::vector<master::TabletLocationsPB>* locations,
-                            const RequireTabletsRunning require_tablets_running) {
+                            const RequireTabletsRunning require_tablets_running,
+                            master::IncludeInactive include_inactive) {
   RepeatedPtrField<TabletLocationsPB> tablets;
   RETURN_NOT_OK(GetTablets(
       table_name, max_tablets, &tablets, /* partition_list_version =*/ nullptr,
-      require_tablets_running));
+      require_tablets_running, include_inactive));
   FillFromRepeatedTabletLocations(tablets, tablet_uuids, ranges, locations);
   return Status::OK();
 }
@@ -1856,11 +1841,12 @@ void YBClient::LookupTabletByKey(const std::shared_ptr<YBTable>& table,
 
 void YBClient::LookupTabletById(const std::string& tablet_id,
                                 const std::shared_ptr<const YBTable>& table,
+                                master::IncludeInactive include_inactive,
                                 CoarseTimePoint deadline,
                                 LookupTabletCallback callback,
                                 UseCache use_cache) {
   data_->meta_cache_->LookupTabletById(
-      tablet_id, table, deadline, std::move(callback), use_cache);
+      tablet_id, table, include_inactive, deadline, std::move(callback), use_cache);
 }
 
 void YBClient::LookupAllTablets(const std::shared_ptr<const YBTable>& table,
