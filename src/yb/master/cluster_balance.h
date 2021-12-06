@@ -313,11 +313,6 @@ class ClusterLoadBalancer {
   Result<TabletInfos> GetTabletsForTable(const TableId& table_uuid) const
       REQUIRES_SHARED(catalog_manager_->mutex_);
 
-  // Returns true when not choosing a leader as victim during normal load balance move operation.
-  // Currently skips leader for RF=1 case only.
-  Result<bool> ShouldSkipLeaderAsVictim(const TabletId& tablet_id) const
-      REQUIRES_SHARED(catalog_manager_->mutex_);
-
   // Populates pb with the placement info in tablet's config at cluster placement_uuid_.
   Status PopulatePlacementInfo(TabletInfo* tablet, PlacementInfoPB* pb);
 
