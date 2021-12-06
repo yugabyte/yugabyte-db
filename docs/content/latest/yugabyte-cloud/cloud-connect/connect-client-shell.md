@@ -71,9 +71,28 @@ If you don't provide an `sslmode`, the connection defaults to `prefer`.
 
 For information on SSL modes, refer to [Protection Provided in Different Modes](https://www.postgresql.org/docs/11/libpq-ssl.html#LIBPQ-SSL-PROTECTION) in the PostgreSQL documentation.
 
+## Connect using psql
+
+Because YugabyteDB is PostgreSQL-compatible, you can use [psql](https://www.postgresql.org/docs/current/app-psql.html) to connect to your YugabyteDB clusters. Download the CA certificate for your cluster by clicking **Connect**, selecting **YugabyteDB Client Shell**, and clicking **Download CA Cert**. Then use the following connection string:
+
+```sh
+psql --host=<HOST_ADDRESS> --port=5433 \
+--username=<DB USER> \
+--dbname=yugabyte \
+--set=sslmode=verify-full \
+--set=sslrootcert=<ROOT_CERT_PATH>
+```
+
+Replace the following:
+
+- `<HOST_ADDRESS>` with the value for host as shown on the **Settings** tab for your cluster.
+- `<DB USER>` with your database username.
+- `yugabyte` with the database name, if you're connecting to a database other than the default (yugabyte).
+- `<ROOT_CERT_PATH>` with the path to the root certificate on your computer.
+
 ## Connect using third party clients
 
-Because YugabyteDB is PostgreSQL-compatible, you can use third party PostgreSQL clients to connect to your YugabyteDB clusters in Yugabyte Cloud. To create connections to your cluster in Yugabyte Cloud, follow the client's configuration steps for PostgreSQL, but use the values for host and port available on the **Settings** tab for your cluster, and the username and password of a user with permissions for the cluster.
+Because YugabyteDB is PostgreSQL-compatible, you can use third party PostgreSQL clients to connect to your YugabyteDB clusters in Yugabyte Cloud. To create connections to your cluster in Yugabyte Cloud, follow the client's configuration steps for PostgreSQL, but use the value for host as shown on the **Settings** tab for your cluster, port 5433, and the username and password of a user with permissions for the cluster.
 
 For detailed steps for configuring popular third party tools, see [Third party tools](../../../tools/). In that section, configuration steps are included for the following tools:
 

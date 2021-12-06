@@ -173,6 +173,18 @@ Client Shell
 
 : Please check [cloud.yugabyte.com](https://cloud.yugabyte.com/) to see the latest version.
 
+psql
+: Because YugabyteDB is PostgreSQL-compatible, you can use [psql](https://www.postgresql.org/docs/current/app-psql.html) to connect to your YugabyteDB clusters in Yugabyte Cloud. The connection string to use is similar to what you would use for `ysqlsh`, as follows:
+
+    ```sh
+    psql --host=<HOST_ADDRESS> --port=5433 --username=<DB USER> \
+    --dbname=yugabyte \
+    --set=sslmode=verify-full \
+    --set=sslrootcert=<ROOT_CERT_PATH>
+    ```
+
+: For detailed steps for configuring other popular third party tools, see [Third party tools](../../tools/).
+
 Applications
 : Applications connect to and interact with YugabyteDB using API client libraries, also called client drivers. Before you can connect an application, you need to install the correct driver. Clusters have SSL (encryption in-transit) enabled so make sure your driver details include SSL parameters. For information on available drivers, refer to [Build an application](../../quick-start/build-apps).
 
