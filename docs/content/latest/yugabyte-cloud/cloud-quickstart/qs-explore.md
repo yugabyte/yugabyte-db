@@ -6,16 +6,17 @@ headcontent:
 image: /images/section_icons/index/quick_start.png
 menu:
   latest:
-    identifier: qs-explore
+    identifier: qs-explore-1-ysql
     parent: cloud-quickstart
     weight: 400
+type: page
 isTocNested: true
 showAsideToc: true
 ---
 
 After [creating a free cluster](../qs-add/), [connecting to the cluster](../qs-connect/) using the cloud shell, and [creating a database (yb_demo) and loading some data](../qs-data/), you can start exploring YugabyteDB's PostgreSQL-compatible, fully-relational Yugabyte SQL API.
 
-This exercise assumes you are already connected to your cluster in cloud shell using the `ysqlsh` shell, have created the `yb_demo` database, and loaded the sample data.
+This exercise assumes you are already connected to your cluster using the `ysqlsh` shell, have created the `yb_demo` database, and loaded the sample data.
 
 ## Explore YugabyteDB
 
@@ -221,11 +222,8 @@ yb_demo=# SELECT source,
 
 ## Next steps
 
-[Develop an application](../../cloud-develop/)
-
-Learn [cluster basics](../../cloud-basics), including how to
-
+- [Develop an application](../../cloud-develop/)
+- [Deploy production clusters](../../cloud-basics/create-clusters/)
 - [Authorize access to your cluster](../../cloud-basics/add-connections/)
-- [Connect to clusters](../../cloud-basics/connect-to-clusters/)
-- [Add database users](../../cloud-basics/add-users/)
-- [Add production clusters](../../cloud-basics/create-clusters/)
+- [Connect to clusters](../../cloud-connect/)
+- [Add database users](../../cloud-connect/add-users/)

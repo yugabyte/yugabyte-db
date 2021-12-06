@@ -1,6 +1,5 @@
 ---
 title: Create and explore a database
-headerTitle: Create and explore a database using YSQL
 linkTitle: Create a database
 description: Create and explore a database using YSQL.
 headcontent:
@@ -10,10 +9,10 @@ aliases:
   - /latest/yugabyte-cloud/create-databases/
 menu:
   latest:
-    parent: cloud-basics
+    parent: cloud-connect
     name: Create a database
     identifier: create-databases-1-ysql
-    weight: 60
+    weight: 70
 type: page
 isTocNested: true
 showAsideToc: true
@@ -34,7 +33,7 @@ showAsideToc: true
       YCQL
     </a>
   </li>
-  
+
 </ul>
 
 Using the `ysqlsh` shell, you can interact with your YugabyteDB database using the YSQL API. In the following exercise, you'll use ysqlsh to create a database, load a sample dataset, and run a simple query.
@@ -53,7 +52,7 @@ The following files are used:
 
 To create a database and load the Retail Analytics dataset, do the following:
 
-1. Connect to your cluster using `ysqlsh` using the [Client Shell](../connect-to-clusters#connect-via-client-shell) from your computer.
+1. Connect to your cluster using `ysqlsh` using the [Client Shell](../connect-client-shell/) from your computer.
 
 1. Create a database (`yb_demo`) using the `CREATE DATABASE` command.
 
@@ -130,7 +129,7 @@ SELECT id, title, category, price, rating
 
 ## More to explore
 
-To explore more of the Retail Analytics database, refer to the exercises in [Retail Analytics](../../../sample-data/retail-analytics/). 
+To explore more of the Retail Analytics database, refer to the exercises in [Retail Analytics](../../../sample-data/retail-analytics/).
 
 Here are links to documentation on the tested datasets and the steps to create the other sample databases included with YugabyteDB:
 
@@ -141,10 +140,10 @@ Here are links to documentation on the tested datasets and the steps to create t
 
 For information on YSQL and the ysqlsh shell:
 
-- [ysqlsh](../../../admin/ysqlsh) — Overview of the command line interface (CLI), syntax, and commands.
-- [YSQL API](../../../api/ysql) — Reference for supported YCQL statements, data types, functions, and operators.
+- [ysqlsh](../../../admin/ysqlsh/) — Overview of the command line interface (CLI), syntax, and commands.
+- [YSQL API](../../../api/ysql/) — Reference for supported YCQL statements, data types, functions, and operators.
 
 ## Next steps
 
 - [Add database users](../add-users/)
-- [Connect an application](../connect-application)
+- [Connect an application](../connect-applications/)

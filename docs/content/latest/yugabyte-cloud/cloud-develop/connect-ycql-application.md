@@ -49,7 +49,7 @@ You also need to download and install your Yugabyte Cloud cluster CA certificate
 
 1. Click **YCQL** to display the connection parameters. These include:
 
-    - LocalDatacenter - The name of the local datacenter for the cluster. 
+    - LocalDatacenter - The name of the local datacenter for the cluster.
     - Host - The cluster host name.
     - Port - The port number of the YCQL client API on the YugabyteDB database (9042).
 

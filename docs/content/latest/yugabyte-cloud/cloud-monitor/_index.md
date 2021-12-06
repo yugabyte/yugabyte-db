@@ -3,7 +3,7 @@ title: Monitor clusters
 headerTitle: Monitor clusters
 linkTitle: Monitor clusters
 description: Monitor your Yugabyte Cloud clusters.
-image: /images/section_icons/architecture/core_functions/universe.png
+image: /images/section_icons/explore/monitoring.png
 headcontent: Monitor cluster performance and activity.
 menu:
   latest:
