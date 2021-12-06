@@ -64,7 +64,7 @@ const mapDispatchToProps = (dispatch) => {
     submitConfigureUniverse: (values, universeUUID = null) => {
       dispatch(configureUniverseTemplateLoading());
       return dispatch(configureUniverseTemplate(values)).then((response) => {
-        if(response.error && universeUUID) {
+        if (response.error && universeUUID) {
           dispatch(fetchUniverseInfo(universeUUID)).then((response) => {
             dispatch(fetchUniverseInfoResponse(response.payload));
           });
@@ -263,6 +263,19 @@ const formFieldNames = [
   'tserverGFlags',
   'instanceTags',
   'asyncClusters'
+];
+
+const portFields = [
+  'masterHttpPort',
+  'masterRpcPort',
+  'tserverHttpPort',
+  'tserverRpcPort',
+  'redisHttpPort',
+  'redisRpcPort',
+  'yqlHttpPort',
+  'yqlRpcPort',
+  'ysqlHttpPort',
+  'ysqlRpcPort'
 ];
 
 function getFormData(currentUniverse, formType, clusterType) {
@@ -491,7 +504,11 @@ const asyncValidate = (values, dispatch) => {
       values.formType !== 'Async'
     ) {
       dispatch(checkIfUniverseExists(values.primary.universeName)).then((response) => {
-        if (response.payload.status === 200 && values.formType !== 'Edit' && response.payload.data.length > 0) {
+        if (
+          response.payload.status === 200 &&
+          values.formType !== 'Edit' &&
+          response.payload.data.length > 0
+        ) {
           reject({ primary: { universeName: 'Universe name already exists' } });
         } else {
           resolve();
@@ -533,6 +550,19 @@ const validateProviderFields = (values, props, clusterType) => {
     ) {
       errors.selectEncryptionAtRestConfig = 'KMS Config is Required for Encryption at Rest';
     }
+
+    const notUniquePortError = 'Port number should be unique';
+    const portMap = new Map();
+    portFields.forEach((portField) => {
+      if (portMap.has(values[clusterType][portField])) {
+        if (!errors.hasOwnProperty(portMap.get(values[clusterType][portField]))) {
+          errors[portMap.get(values[clusterType][portField])] = notUniquePortError;
+        }
+        errors[portField] = notUniquePortError;
+      } else {
+        portMap.set(values[clusterType][portField], portField);
+      }
+    });
   }
 
   if (isEmptyObject(currentProvider)) {
