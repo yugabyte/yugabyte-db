@@ -134,7 +134,7 @@ showAsideToc: true
 1. Extract the package and then change directories to the YugabyteDB home.
 
     ```sh
-    $ tar xvfz yugabyte-2.11.0.1-b1-darwin-x86_64.tar.gz && cd yugabyte-2.11.0.0/
+    $ tar xvfz yugabyte-2.11.0.1-b1-darwin-x86_64.tar.gz && cd yugabyte-2.11.0.1/
     ```
 
 ## Configure
