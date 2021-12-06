@@ -21,7 +21,6 @@ Usage: $0 [OPTIONS]
         --rpm_release       RPM version( default = 1)
         --deb_release       DEB version( default = 1)
         --pg_release        PPG version build on( default = 11)
-        --pg_version        product version community or percona ( default = percona )
         --version           product version
         --help) usage ;;
 Example $0 --builddir=/tmp/test --get_sources=1 --build_src_rpm=1 --build_rpm=1
@@ -58,7 +57,6 @@ append_arg_to_args () {
             --rpm_release=*) RPM_RELEASE="$val" ;;
             --deb_release=*) DEB_RELEASE="$val" ;;
             --pg_release=*) PG_RELEASE="$val" ;;
-            --pg_version=*) PG_VERSION="$val" ;;
             --version=*) VERSION="$val" ;;
             --help) usage ;;
             *)
@@ -112,7 +110,6 @@ get_sources(){
     echo "BUILD_ID=${BUILD_ID}" >> pg-stat-monitor.properties
     echo "BRANCH_NAME=$(echo ${BRANCH} | awk -F '/' '{print $(NF)}')" >> pg-stat-monitor.properties
     echo "PG_RELEASE=${PG_RELEASE}" >> pg-stat-monitor.properties
-    echo "PG_VERSION=${PG_VERSION}" >> pg-stat-monitor.properties
     echo "RPM_RELEASE=${RPM_RELEASE}" >> pg-stat-monitor.properties
     echo "DEB_RELEASE=${DEB_RELEASE}" >> pg-stat-monitor.properties
     git clone "$REPO" ${PRODUCT_FULL}
@@ -230,12 +227,10 @@ install_deps() {
 
         PKGLIST="percona-postgresql-${PG_RELEASE} percona-postgresql-common percona-postgresql-server-dev-all"
 
-        if [[ "${PG_VERSION}" == "community" ]]; then
-            # ---- using a community version of postgresql
-            wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
-            echo "deb http://apt.postgresql.org/pub/repos/apt/ ${PG_RELEASE}"-pgdg main | sudo tee  /etc/apt/sources.list.d/pgdg.list
-            PKGLIST="postgresql-${PG_RELEASE} postgresql-common postgresql-server-dev-all"
-        fi
+        # ---- using a community version of postgresql
+        #wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+        #echo "deb http://apt.postgresql.org/pub/repos/apt/ ${PG_RELEASE}"-pgdg main | sudo tee  /etc/apt/sources.list.d/pgdg.list
+        #PKGLIST="postgresql-${PG_RELEASE} postgresql-common postgresql-server-dev-all"
 
         apt-get update
 
