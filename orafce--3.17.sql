@@ -1841,13 +1841,13 @@ CREATE FUNCTION dbms_assert.simple_sql_name(str varchar)
 RETURNS varchar
 AS 'MODULE_PATHNAME','dbms_assert_simple_sql_name'
 LANGUAGE C IMMUTABLE;
-COMMENT ON FUNCTION dbms_assert.object_name(varchar) IS 'Verify input string is an sql name.';
+COMMENT ON FUNCTION dbms_assert.object_name(varchar) IS 'Verify input string is a sql name.';
 
 CREATE FUNCTION dbms_assert.qualified_sql_name(str varchar)
 RETURNS varchar
 AS 'MODULE_PATHNAME','dbms_assert_qualified_sql_name'
 LANGUAGE C IMMUTABLE;
-COMMENT ON FUNCTION dbms_assert.object_name(varchar) IS 'Verify input string is an qualified sql name.';
+COMMENT ON FUNCTION dbms_assert.object_name(varchar) IS 'Verify input string is a qualified sql name.';
 
 CREATE SCHEMA plunit;
 
