@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: explore-ysql-language-features-cursor
     parent: explore-ysql-language-features
-    weight: 300
+    weight: 220
 isTocNested: true
 showAsideToc: true
 ---
@@ -50,7 +50,7 @@ You need to declare a cursor  before you can open and use it. There are two ways
   ```
   DECLARE new_cursor refcursor;
   ```
-  
+
 - As an element bound to a query, based on the following syntax:
 
   ```
@@ -58,21 +58,21 @@ You need to declare a cursor  before you can open and use it. There are two ways
   ```
 
   *new_cursor* represents a variable name for the cursor. *arguments* represents a comma-separated list of query parameters that are substituted by values when the cursor is opened. *a_query* represents any `SELECT` statement.
-  
+
   <!--
-  
+
   ```sql
   new_cursor [ [ NO ] SCROLL ] CURSOR [( arguments )] FOR a_query;
   ```
-  
+
   *new_cursor* represents a variable name for the cursor. By using an optional setting of `SCROLL` or `NO SCROLL`, you can define whether or not the cursor can be scrolled backward. *arguments* represents a  comma-separated list of query parameters that are substituted by values when the cursor is opened. *a_query* can be any `SELECT` statement.
-  
+
   -->
 
 The following example shows how to declare cursors for the `employees` table:
 
 ```sql
-DECLARE 
+DECLARE
   employees_cursor_1 refcursor;
   employees_cursor_2 CURSOR FOR SELECT * FROM employees;
 ```
@@ -169,7 +169,7 @@ A table with a cursor positioned on it can be updated or deleted using the curso
 The following example shows how to update a row:
 
 ```sql
-UPDATE employees SET department = section 
+UPDATE employees SET department = section
   WHERE CURRENT OF employees_cursor_1;
 ```
 
@@ -191,16 +191,16 @@ DELETE FROM employees_cursor_2;
 
 You can return a cursor using a function that opens the cursor and returns its name to the caller which, in turn, can fetch rows from the cursor and close it before the end of the transaction, if needed.
 
-For more information and examples, refer to the "Returning Cursors" section in [Using Cursors](https://www.postgresql.org/docs/11/plpgsql-cursors.html#PLPGSQL-CURSOR-USING). 
+For more information and examples, refer to the "Returning Cursors" section in [Using Cursors](https://www.postgresql.org/docs/11/plpgsql-cursors.html#PLPGSQL-CURSOR-USING).
 
 ### How to Use Loops
 
 You can iterate through the result set of a bound cursor using a certain form of the `FOR` statement, as per the following syntax:
 
 ```
-FOR rec_var 
-IN bound_cursor_var [ ( [ argument_name := ] argument_value [, ...] ) ] 
-LOOP 
+FOR rec_var
+IN bound_cursor_var [ ( [ argument_name := ] argument_value [, ...] ) ]
+LOOP
   statements
 END LOOP;
 ```
@@ -232,10 +232,10 @@ CREATE TABLE employees (
 ```
 
 ```sql
-INSERT INTO employees VALUES 
+INSERT INTO employees VALUES
 (1221, 'John Smith', 'Marketing'),
 (1222, 'Bette Davis', 'Sales'),
-(1223, 'Lucille Ball', 'Operations'); 
+(1223, 'Lucille Ball', 'Operations');
 ```
 
 The following example shows how to declare a cursor and use it to retrieve all rows from the `employees` table:
@@ -250,7 +250,7 @@ END;
 The following is the output produced by the preceding example:
 
 ```output
- employee_no | name         | department 
+ employee_no | name         | department
 -------------+--------------+---------------
  1221        | John Smith   | Marketing
  1222        | Bette Davis  | Sales
