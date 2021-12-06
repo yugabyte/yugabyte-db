@@ -21,13 +21,13 @@ To create a free cluster:
 
     - **Getting Started** - Create your free cluster and access documentation.
 
-    - [Clusters](../../cloud-clusters/) - Add, monitor, and manage clusters. 
+    - [Clusters](../../cloud-clusters/) - Add, monitor, and manage clusters.
 
     - [Network Access](../../cloud-network) - Authorize access to your clusters using IP allow lists.
 
     - [Admin](../../cloud-admin/) - Manage billing and payment methods and cloud users.
 
-1. On the **Getting Started** page, click **Create a free cluster** to open the **Create Cluster** wizard. 
+1. On the **Getting Started** page, click **Create a free cluster** to open the **Create Cluster** wizard.
 
 1. Select **Yugabyte Cloud Free** and click **Next**.
 
@@ -45,7 +45,7 @@ Once the cluster is ready, the cluster [Overview](../../cloud-monitor/overview) 
 
 ### Learn more
 
-[Differences between free and standard clusters](../../cloud-faq/#what-are-the-differences-between-free-and-standard-clusters/)
+[Differences between free and standard clusters](../../cloud-faq/#what-are-the-differences-between-free-and-standard-clusters)
 
 ## Next step
 
