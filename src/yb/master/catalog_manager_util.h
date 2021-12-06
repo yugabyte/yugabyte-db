@@ -68,6 +68,21 @@ class CatalogManagerUtil {
   // Returns error if tablet partition is not covered by running inner tablets partitions.
   static CHECKED_STATUS CheckIfCanDeleteSingleTablet(const scoped_refptr<TabletInfo>& tablet);
 
+  enum CloudInfoSimilarity {
+    NO_MATCH = 0,
+    CLOUD_MATCH = 1,
+    REGION_MATCH = 2,
+    ZONE_MATCH = 3
+  };
+
+  // Computes a similarity score between two cloudinfos (which may be prefixes).
+  // 0: different clouds
+  // 1: same cloud, different region
+  // 2: same cloud and region, different zone
+  // 3: same cloud and region and zone, or prefix matches
+  static CloudInfoSimilarity ComputeCloudInfoSimilarity(const CloudInfoPB& ci1,
+                                                        const CloudInfoPB& ci2);
+
   // Checks if one cloudinfo is a prefix of another. This assumes that ci1 and ci2 are
   // prefixes.
   static bool IsCloudInfoPrefix(const CloudInfoPB& ci1, const CloudInfoPB& ci2);
