@@ -113,7 +113,7 @@ orafce_lpad(PG_FUNCTION_ARGS)
 					half_space = ON;
 				}
 			}
-			else /* exactly fits, so include this chracter */
+			else /* exactly fits, so include this character */
 			{
 				s1_add_blen += mlen;
 			}
@@ -343,7 +343,7 @@ orafce_rpad(PG_FUNCTION_ARGS)
 					half_space = ON;
 				}
 			}
-			else /* exactly fits, so include this chracter */
+			else /* exactly fits, so include this character */
 			{
 				s1_add_blen += mlen;
 			}
