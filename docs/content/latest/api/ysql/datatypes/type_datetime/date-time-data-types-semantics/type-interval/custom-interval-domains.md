@@ -13,20 +13,25 @@ showAsideToc: true
 ---
 
 {{< tip title="Download the kit to create the custom interval domains." >}}
-The code that this page presents is included in a larger set of useful reusable _date-time_ code. In particular, it also installs [User-defined _interval_ utility functions](../interval-utilities/). The custom _interval_ domains code depends on some of these utilities. See [Download the _.zip_ file to create the reusable code that this overall major section describes](../../../download-date-time-utilities/).
+The code that this page presents is included in a larger set of useful reusable _date-time_ code. In particular, it also installs the [User-defined _interval_ utility functions](../interval-utilities/). The custom _interval_ domains code depends on some of these utilities. See the section [Download the _.zip_ file to create the reusable code that this overall major section describes](../../../download-date-time-utilities/).
 {{< /tip >}}
 
 Each of the sections [The moment-moment overloads of the "-" operator](../interval-arithmetic/moment-moment-overloads-of-minus/) and [The moment-_interval overloads_ of the "+" and "-" operators](../interval-arithmetic/moment-interval-overloads-of-plus-and-minus/) makes the point that hybrid _interval_ arithmetic is dangerous and recommends that you should ensure that you create and use only _"pure months"_,  _"pure seconds"_, or _"pure days"_ _interval_ values. And they recommend the adoption of the approach that this section describes so that your good practice will be ensured by using its APIs rather than the native _interval_ functionality.
 
-The basic idea is to create a user-defined domain for each of the three kinds of _"pure"_ _interval_, defining each with a constraint function that reinforces the purity—and then to implement appropriate functionality for each domain kind.
+The basic idea is to create a user-defined domain for each of the three kinds of _"pure"_ _interval_, defining each with a constraint function that reinforces the purity and checks that the _mm_, _dd_, or _ss_ component of the _[\[mm, dd, ss\]](../interval-representation/)_ internal representation lies within a meaningful range—and then to implement appropriate functionality for each domain.
 
 ## Create the three domains
 
-The design of the code is the same for each of the three domains. The code for the second and third is trivially derived, using copy and massage, from the code for the first.
+The design of the code is the same for each of the three domains. The code for the second and third domains is trivially derived, using copy and massage, from the code for the first domain. Each of the functions _interval_X_ok()_ (where X is one of _months_, _days_, or _seconds_) can raise these pre-defined errors, with function-specific error text and hint:
+
+```output
+-- Error "22023" (mapped to "invalid_parameter_value")
+-- Error "22015" (mapped to "interval_field_overflow")
+```
 
 ### The "interval_months_t" domain
 
-Create it thus:
+The constraint function _interval_months_ok()_ checks that only the _mm_ component of the _[mm, dd, ss]_ tuple is non-zero and that it lies within a sensible range. It uses the value _3,587,867_ for the constant _max_months_ for the range check. See the section [Interval value limits](../interval-limits/). Create the _interval_months_t_ domain thus:
 
 ```plpgsql
 drop domain if exists interval_months_t cascade;
@@ -36,14 +41,48 @@ create function interval_months_ok(i in interval)
   returns boolean
   language plpgsql
 as $body$
+declare
+  -- Determined by empirical testing.
+  max_months constant bigint not null := 3587867;
+
+  bad_value_code     constant text   not null := '22023';
+  bad_value_hint     constant text   not null := 'both mm_dd_ss.dd and mm_dd_ss.ss must be zero';
+
+  overflow_code      constant text   not null := '22015';
+  overflow_hint      constant text   not null := 'mm_dd_ss.mm must be in [-'||max_months||', '||max_months||']';
 begin
   if i is null then
     return true;
   else
     declare
-      mm_dd_ss  constant interval_mm_dd_ss_t not null := interval_mm_dd_ss(i);
+      mm_dd_ss constant interval_mm_dd_ss_t not null := interval_mm_dd_ss(i);
+      mm       constant int                 not null := mm_dd_ss.mm;
+      dd       constant int                 not null := mm_dd_ss.dd;
+      ss       constant double precision    not null := mm_dd_ss.ss;
     begin
-      return mm_dd_ss.dd = 0 and mm_dd_ss.ss = 0;
+      if dd <> 0 or ss <> 0.0 then
+        declare
+          msg constant text := 'mm_dd_ss.dd: '||dd::text||', '||'mm_dd_ss.ss: '||ss::text;
+        begin
+          raise exception using
+            errcode = bad_value_code,
+            message = msg,
+            hint    = bad_value_hint;
+        end;
+      end if;
+
+      if abs(mm) > max_months then
+        declare
+          msg constant text := 'abs(mm), '||abs(mm)::text||', exceeded limit of '||max_months::text;
+        begin
+          raise exception using
+            errcode = overflow_code,
+            message = msg,
+            hint    = overflow_hint;
+        end;
+      end if;
+
+      return true;
     end;
   end if;
 end;
@@ -52,9 +91,48 @@ $body$;
 create domain interval_months_t as interval check(interval_months_ok(value));
 ```
 
+Do these basic sanity tests. First this:
+
+```plpgsql
+select ('1 month 1 day'::interval)::interval_months_t;
+```
+
+This is the result:
+
+```output
+ERROR:  22023: mm_dd_ss.dd: 1, mm_dd_ss.ss: 0
+HINT:  both mm_dd_ss.dd and mm_dd_ss.ss must be zero
+```
+
+Now this:
+
+```plpgsql
+select ('1 month 0.000001 sec'::interval)::interval_months_t;
+```
+
+This is the result:
+
+```output
+ERROR:  22023: mm_dd_ss.dd: 0, mm_dd_ss.ss: 1e-06
+HINT:  both mm_dd_ss.dd and mm_dd_ss.ss must be zero
+```
+
+And lastly this:
+
+```plpgsql
+select ('3587868 month'::interval)::interval_months_t;
+```
+
+This is the result:
+
+```output
+ERROR:  22015: abs(mm), 3587868, exceeded limit of 3587867
+HINT:  mm_dd_ss.mm must be in [-3587867, 3587867]
+```
+
 ### The "interval_days_t" domain
 
-Create it thus:
+The constraint function _interval_days_ok()_ checks that only the _dd_ component of the _[mm, dd, ss]_ tuple is non-zero and that it lies within a sensible range. It uses the value _109,203,489_ for the constant _max_days_ for the range check. See the section [Interval value limits](../interval-limits/). Create the _interval_days_t_ domain thus:
 
 ```plpgsql
 drop domain if exists interval_days_t cascade;
@@ -64,14 +142,47 @@ create function interval_days_ok(i in interval)
   returns boolean
   language plpgsql
 as $body$
+declare
+  max_days constant bigint not null := 109203489;
+
+  bad_value_code     constant text   not null := '22023';
+  bad_value_hint     constant text   not null := 'both mm_dd_ss.mm and mm_dd_ss.ss must be zero';
+
+  overflow_code      constant text   not null := '22015';
+  overflow_hint      constant text   not null := 'mm_dd_ss.dd must be in [-'||max_days||', '||max_days||']';
 begin
   if i is null then
     return true;
   else
     declare
       mm_dd_ss constant interval_mm_dd_ss_t not null := interval_mm_dd_ss(i);
+      mm       constant int                 not null := mm_dd_ss.mm;
+      dd       constant int                 not null := mm_dd_ss.dd;
+      ss       constant double precision    not null := mm_dd_ss.ss;
     begin
-      return mm_dd_ss.mm = 0 and mm_dd_ss.ss = 0;
+      if mm <> 0 or ss <> 0.0 then
+        declare
+          msg constant text := 'mm_dd_ss.mm: '||mm::text||', '||'mm_dd_ss.ss: '||ss::text;
+        begin
+          raise exception using
+            errcode = bad_value_code,
+            message = msg,
+            hint    = bad_value_hint;
+        end;
+      end if;
+
+      if abs(dd) > max_days then
+        declare
+          msg constant text := 'abs(dd), '||abs(dd)::text||', exceeded limit of '||max_days::text;
+        begin
+          raise exception using
+            errcode = overflow_code,
+            message = msg,
+            hint    = overflow_hint;
+        end;
+      end if;
+
+      return true;
     end;
   end if;
 end;
@@ -80,9 +191,48 @@ $body$;
 create domain interval_days_t as interval check(interval_days_ok(value));
 ```
 
+Do these basic sanity tests. First this:
+
+```plpgsql
+select ('1 month 1 day'::interval)::interval_days_t;
+```
+
+This is the result:
+
+```output
+ERROR:  22023: mm_dd_ss.mm: 1, mm_dd_ss.ss: 0
+HINT:  both mm_dd_ss.mm and mm_dd_ss.ss must be zero
+```
+
+Now this:
+
+```plpgsql
+select ('1 day 0.000001 sec'::interval)::interval_days_t;
+```
+
+This is the result:
+
+```output
+ERROR:  22023: mm_dd_ss.mm: 0, mm_dd_ss.ss: 1e-06
+HINT:  both mm_dd_ss.mm and mm_dd_ss.ss must be zero
+```
+
+And lastly this:
+
+```plpgsql
+select ('109203490 day'::interval)::interval_days_t;
+```
+
+This is the result:
+
+```output
+ERROR:  22015: abs(dd), 109203490, exceeded limit of 109203489
+HINT:  mm_dd_ss.dd must be in [-109203489, 109203489]
+```
+
 ### The "interval_seconds_t" domain
 
-Create it thus:
+The constraint function _interval_seconds_ok()_ checks that only the _ss_ component of the _[mm, dd, ss]_ tuple is non-zero and that it lies within a sensible range. It uses the value _7,730,941,132,799_ for the constant _max_seconds_ for the range check. See the section [Interval value limits](../interval-limits/). Create the _interval_seconds_t_ domain thus:
 
 ```plpgsql
 drop domain if exists interval_seconds_t cascade;
@@ -92,14 +242,48 @@ create function interval_seconds_ok(i in interval)
   returns boolean
   language plpgsql
 as $body$
+declare
+  -- Determined by empirical testing.
+  max_secs constant double precision not null := 7730941132799.0;
+
+  bad_value_code     constant text   not null := '22023';
+  bad_value_hint     constant text   not null := 'both mm_dd_ss.mm and mm_dd_ss.dd must be zero';
+
+  overflow_code      constant text   not null := '22015';
+  overflow_hint      constant text   not null := 'mm_dd_ss.ss must be in [-'||max_secs||', '||max_secs||']';
 begin
   if i is null then
     return true;
   else
     declare
       mm_dd_ss constant interval_mm_dd_ss_t not null := interval_mm_dd_ss(i);
+      mm       constant int                 not null := mm_dd_ss.mm;
+      dd       constant int                 not null := mm_dd_ss.dd;
+      ss       constant double precision    not null := mm_dd_ss.ss;
     begin
-      return mm_dd_ss.mm = 0 and mm_dd_ss.dd = 0;
+      if mm <> 0 or dd <> 0 then
+        declare
+          msg constant text := 'mm_dd_ss.mm: '||mm::text||', '||'mm_dd_ss.dd: '||dd::text;
+        begin
+          raise exception using
+            errcode = bad_value_code,
+            message = msg,
+            hint    = bad_value_hint;
+        end;
+      end if;
+
+      if abs(ss) > max_secs then
+        declare
+          msg constant text := 'abs(ss), '||abs(ss)::text||', exceeded limit of '||max_secs::text;
+        begin
+          raise exception using
+            errcode = overflow_code,
+            message = msg,
+            hint    = overflow_hint;
+        end;
+      end if;
+
+      return true;
     end;
   end if;
 end;
@@ -108,7 +292,46 @@ $body$;
 create domain interval_seconds_t as interval check(interval_seconds_ok(value));
 ```
 
-## Implement the domain-specific functionality
+Do these basic sanity tests. First this:
+
+```plpgsql
+select ('1 month 1 sec'::interval)::interval_seconds_t;
+```
+
+This is the result:
+
+```output
+ERROR:  22023: mm_dd_ss.mm: 1, mm_dd_ss.dd: 0
+HINT:  both mm_dd_ss.mm and mm_dd_ss.dd must be zero
+```
+
+Now this:
+
+```plpgsql
+select ('1 day 1 sec'::interval)::interval_seconds_t;
+```
+
+This is the result:
+
+```output
+ERROR:  22023: mm_dd_ss.mm: 0, mm_dd_ss.dd: 1
+HINT:  both mm_dd_ss.mm and mm_dd_ss.dd must be zero
+```
+
+And lastly this:
+
+```plpgsql
+select make_interval(secs=>7730941132799.01)::interval_seconds_t;
+```
+
+This is the result:
+
+```output
+ERROR:  22015: abs(ss), 7730941132799.01, exceeded limit of 7730941132799
+HINT:  mm_dd_ss.ss must be in [-7730941132799, 7730941132799]
+```
+
+### Implement the domain-specific functionality
 
 The design of the code is the same for each of the three domains.
 
@@ -118,66 +341,31 @@ If you need to do _interval_ arithmetic with values of the plain _timestamp_ dat
 If you need to do _interval_ arithmetic with values of the _time_ data type, then you'll need only to implement overloads to provide functionality for the _interval_seconds_t_ domain because subtracting one _time_ value from another cannot produce a result as long as _one day_ and because it's meaningless to add _days_, _months_, or _years_ to a pure time of day.
 
 Both of these exercises are left to the reader.
+
+Notice that if you follow Yugabyte's advice and persist only _timestamptz_ values, then it's very unlikely that you will need to do _interval_ arithmetic on values of the other moment data types.
 {{< /note >}}
 
-Each of the three domains, _interval_months_t_, _interval_days_t_, and _interval_seconds_t_, is provided with a matching set of four functions. The first checks that the value of the relevant field of the _[\[mm, dd, ss\]](../interval-representation/)_ tuple is within the meaningful range for that field. And the remaining three construct a value of the domain: _either_ using an explicit parameterization; _or_ by subtracting one _timestamptz_ value from another; _or_ by multiplying an existing domain value by a number.
+Each of the three domains, _interval_months_t_, _interval_days_t_, and _interval_seconds_t_, is provided with a matching set of three functions. Each of these constructs a value of the domain: _either_ using an explicit parameterization; _or_ by subtracting one _timestamptz_ value from another; _or_ by multiplying an existing domain value by a number.
 
-The _interval_months_t_ domain has these procedures and functions:
+The _interval_months_t_ domain has these functions:
 
-- [procedure assert_interval_months_in_range (months in bigint)](#procedure-assert-interval-months-in-range-months-in-bigint)
 - [function interval_months (years in int default 0, months in int default 0) returns interval_months_t](#function-interval-months-years-in-int-default-0-months-in-int-default-0-returns-interval-months-t)
 - [function interval_months (t_finish in timestamptz, t_start in timestamptz) returns interval_months_t](#function-interval-months-t-finish-in-timestamptz-t-start-in-timestamptz-returns-interval-months-t)
 - [function interval_months (i in interval_months_t, f in double precision) returns interval_months_t](#function-interval-months-i-in-interval-months-t-f-in-double-precision-returns-interval-months-t)
 
-The _interval_days_t_ domain has these procedures and functions:
+The _interval_days_t_ domain has these functions:
 
-- [procedure assert_interval_days_in_range (days in bigint)](#procedure-assert-interval-days-in-range-days-in-bigint)
 - [function interval_days (days in int default 0) returns interval_days_t](#function-interval-days-days-in-int-default-0-returns-interval-days-t)
 - [function interval_days (t_finish in timestamptz, t_start in timestamptz) returns interval_days_t](#function-interval-days-t-finish-in-timestamptz-t-start-in-timestamptz-returns-interval-days-t)
 - [function interval_days (i in interval_days_t, f in double precision) returns interval_days_t](#function-interval-days-i-in-interval-days-t-f-in-double-precision-returns-interval-days-t)
 
-The _interval_seconds_t_ domain has these procedures and functions:
+The _interval_seconds_t_ domain has these functions:
 
-- [procedure assert_interval_seconds_in_range (secs in bigint)](#procedure-assert-interval-seconds-in-range-secs-in-bigint)
 - [function interval_seconds (hours in int default 0, mins in int default 0, secs in double precision default 0.0) returns interval_seconds_t](#function-interval-seconds-hours-in-int-default-0-mins-in-int-default-0-secs-in-double-precision-default-0-0-returns-interval-seconds-t)
 - [function interval_seconds (t_finish in timestamptz, t_start in timestamptz) returns interval_seconds_t](#function-interval-seconds-t-finish-in-timestamptz-t-start-in-timestamptz-returns-interval-seconds-t)
 - [function interval_seconds (i in interval_seconds_t, f in double precision) returns interval_seconds_t](#function-interval-seconds-i-in-interval-seconds-t-f-in-double-precision-returns-interval-seconds-t)
 
 ### The "interval_months_t" domain's functionality
-
-##### procedure assert_interval_months_in_range (months in bigint)
-
-Because the internal _interval_ representation records the _mm_ component of the _[\[mm, dd, ss\]](../interval-representation/)_ tuple using a four-byte integer, this allows a value that is hugely greater than the number of months between the earliest and the latest legal _timestamptz_ values. This procedure ensures sanity by constraining the _mm_ value to the biggest meaningful value (the number of months between the earliest and the latest legal _timestamptz_ values) and by implementing a helpful error behavior.
-
-```plpgsql
-drop procedure if exists assert_interval_months_in_range(bigint);
-
-create procedure assert_interval_months_in_range(months in bigint)
-  language plpgsql
-as $body$
-declare
-  -- Determined by empirical testing.
-  -- causes error "22008: timestamp out of range".
-  -- select '4713-01-01 00:00:00 UTC BC'::timestamptz + make_interval(months=>3587868);
-  max_months constant bigint not null :=  3587867;
-
-  -- "22015" is pre-defined and mapped to "interval_field_overflow".
-  code     constant text   not null := '22015';
-  hint     constant text   not null := 'Max interval_months_t exceeded';
-begin
-  if abs(months) > max_months then
-    declare
-      msg constant text := months::text||' abs(months) exceeded limit of '||max_months::text;
-    begin
-      raise exception using
-        errcode = code,
-        message = msg,
-        hint    = hint;
-    end;
-  end if;
-end;
-$body$;
-```
 
 ##### function interval_months (years in int default 0, months in int default 0)  returns interval_months_t
 
@@ -192,8 +380,7 @@ create function interval_months(years in int default 0, months in int default 0)
 as $body$
 declare
 begin
-  call assert_interval_months_in_range(years*12::bigint + months::bigint);
-  return make_interval(years => years, months => months);
+  return make_interval(years=>years, months=>months);
 end;
 $body$;
 ```
@@ -202,9 +389,9 @@ $body$;
 
 This function provides critically useful functionality that is simply missing in the native implementation. There is no way, by subtracting one _timestamptz_ value from another, to produce a _"pure months"_ _interval_ value (or even a hybrid _interval_ value whose internal _mm_ component is non-zero) unless you write your own implementation.
 
-When a _months_ _interval_ is added to a starting moment, the finish moment always has the same day-number (in whatever is the finish month) as the start moment has. (If this is not possible, because the target day-number doesn't exist in the target month, then the target day-number is set to that month's biggest day-number.) And it has the same time of day. But when one moment is subtracted from another, the day-number and the time of day of each moment are likely to differ.
+When a _months_ _interval_ is added to a starting moment, the finish moment always has the same day-number (in whatever is the finish month) as the start moment has. (If this is not possible, because the target day-number doesn't exist in the target month, then the target day-number is set to that month's biggest day-number.) And it has the same time of day.
 
-This implies that the _interval_ result from subtracting one moment from another cannot necessarily produce the finish moment when added back to the start moment.
+When one moment is subtracted from another, the day-number and the time of day of each moment are likely to differ. This implies that the _interval_ result from subtracting one moment from another cannot necessarily produce the finish moment when added back to the start moment.
 
 The specification for this function therefore must depend on asserting a plausible rule. This implementation simply ignores the day number and the time of day of each of the two input moments.
 
@@ -247,8 +434,7 @@ declare
         else           12
       end;
 begin
-  call assert_interval_months_in_range(diff_as_months);
-  return make_interval(months => diff_as_months);
+  return make_interval(months=>diff_as_months);
 end;
 $body$;
 ```
@@ -288,7 +474,8 @@ select (interval_months(years=>3, months=>99)*0.5378)::interval_months_t;
 The attempt causes this error:
 
 ```output
-23514: value for domain interval_months_t violates check constraint "interval_months_t_check"
+ERROR:  22023: mm_dd_ss.dd: 18, mm_dd_ss.ss: 7776
+HINT:  both mm_dd_ss.dd and mm_dd_ss.ss must be zero
 ```
 
 The function _interval\_months(interval\_months\_t, double precision)_ fixes this. Create it thus:
@@ -332,40 +519,6 @@ The "impure" part, _18 days 02:09:36_, is more than half way through the month, 
 
 ### The "interval_days_t" domain's functionality
 
-##### procedure assert_interval_days_in_range (days in bigint)
-
-Because the [internal _interval_ representation](../interval-representation/) records the _dd_ component of the _\[mm, dd, ss\]_ tuple using a four-byte integer, this allows a value that is hugely greater than the number of days between the earliest and the latest legal _timestamptz_ values. This procedure ensures sanity by constraining the _dd_ value to the biggest meaningful value and by implementing a helpful error behavior.
-
-```plpgsql
-drop procedure if exists assert_interval_days_in_range(bigint);
-
-create procedure assert_interval_days_in_range(days in bigint)
-  language plpgsql
-as $body$
-declare
-  -- Determined by empirical testing.
-  -- Result is ts_max = '294276-01-01 00:00:00 UTC AD'.
-  -- select '4713-01-01 00:00:00 UTC BC'::timestamptz + make_interval(days=>109203124);
-  max_days constant bigint not null :=  109203124;
-
-  -- "22015" is pre-defined and mapped to "interval_field_overflow".
-  code     constant text   not null := '22015';
-  hint     constant text   not null := 'Max interval_days_t exceeded';
-begin
-  if abs(days) > max_days then
-    declare
-      msg constant text := days::text||' abs(days) exceeded limit of '||max_days::text;
-    begin
-      raise exception using
-        errcode = code,
-        message = msg,
-        hint    = hint;
-    end;
-  end if;
-end;
-$body$;
-```
-
 ##### function interval_days (days in int default 0)  returns interval_days_t
 
 This function is parameterized so that you can produce only a _"pure days_ _interval_ value.
@@ -379,8 +532,7 @@ create function interval_days(days in int default 0)
 as $body$
 declare
 begin
-  call assert_interval_days_in_range(days);
-  return make_interval(days => days);
+  return make_interval(days=>days);
 end;
 $body$;
 ```
@@ -407,8 +559,7 @@ declare
   d_start  constant date not null := t_start::date;
   delta    constant int  not null := d_finish - d_start;
 begin
-  call assert_interval_days_in_range(delta);
-  return make_interval(days => delta);
+  return make_interval(days=>delta);
 end;
 $body$;
 ```
@@ -450,7 +601,8 @@ select (interval_days(days=>99)*7.5378)::interval_days_t;
 The attempt causes this error:
 
 ```output
-23514: value for domain interval_days_t violates check constraint "interval_days_t_check"
+ERROR:  22023: mm_dd_ss.mm: 0, mm_dd_ss.ss: 20926.08
+HINT:  both mm_dd_ss.mm and mm_dd_ss.ss must be zero
 ```
 
 The function _interval\_days(interval\_days\_t, double precision)_ fixes this. Create it thus:
@@ -494,52 +646,49 @@ The "impure" part, _05:48:46.08_, isn't half way through the day, so the approxi
 
 ### The "interval_seconds_t" domain's functionality
 
-##### procedure assert_interval_seconds_in_range (secs in bigint)
+##### function interval_seconds (hours in int default 0, mins in int default 0, secs in double precision default 0.0)  returns interval_seconds_t
 
-Because the [internal _interval_ representation](../interval-representation/) records the _ss_ component of the _\[mm, dd, ss\]_ tuple using an eight-byte integer for microseconds, this allows only a value that is somewhat smaller than the number of seconds between the earliest and the latest legal _timestamptz_ values. This procedure ensures sanity by constraining the _ss_ value to the biggest legal value and by implementing a helpful error behavior.
+{{< note title="it's important to work around the delayed manifestation of the 22008 error" >}}
+
+Try this:
 
 ```plpgsql
-drop procedure if exists assert_interval_seconds_in_range(bigint);
-
-create procedure assert_interval_seconds_in_range(secs in bigint)
-  language plpgsql
-as $body$
+do $body$
 declare
-  -- Determined by empirical testing and backed up by reasoning.
-  max_secs constant bigint not null :=   (2^31 - 1)*60*60 + 59*60 + 59;
-  min_secs constant bigint not null := -((2^31    )*60*60 + 59*60 + 59);
-
-  -- "22015" is pre-defined and mapped to "interval_field_overflow".
-  code     constant text   not null := '22015';
-  hint     constant text   not null := 'Use interval_days() or interval_months() instead.';
+  i constant interval not null := make_interval(secs=>7730941132800);
 begin
-  if secs > max_secs then
-    declare
-      msg constant text := secs::text||' seconds above upper limit of '||max_secs::text;
-    begin
-      raise exception using
-        errcode = code,
-        message = msg,
-        hint    = hint;
-    end;
-  end if;
-  if secs < min_secs then
-    declare
-      msg constant text := secs::text||' seconds below lower limit of '||min_secs::text;
-    begin
-      raise exception using
-        errcode = code,
-        message = msg,
-        hint    = hint;
-    end;
-  end if;
+  raise info 'Hello';
 end;
 $body$;
 ```
 
-##### function interval_seconds (hours in int default 0, mins in int default 0, secs in double precision default 0.0)  returns interval_seconds_t
+Notice _7730941132800_ is greater than the limit of _7730941132799_ that the subsection [Limit for the _ss_ field of the internal implementation](../interval-limits/#limit-for-the-ss-field-of-the-internal-implementation) gives. Yet it runs without error and reports "Hello". The error manifests only when you try to use the _interval_ value _i_. Try this:
 
-This function is parameterized so that you can produce only a _"pure seconds_ _interval_ value.
+```plpgsql
+do $body$
+declare
+  i constant interval not null := make_interval(secs=>7730941132800);
+  t          text     not null := '';
+begin
+  t := i::text;
+  raise info 'i: %', t;
+end;
+$body$;
+```
+
+This causes the error "22008: interval out of range". It's reported for the assignment _t := i::text_. This is a different example of the effect that the "Limit for the _ss_ field of the internal implementation" subsection describes thus:
+
+> Anomalously, the evaluation of _"i := make_interval(secs=>secs)"_ (where secs is 9,435,181,535,999) silently succeeds. But the attempts to use it with, for example, _extract(seconds from i)_ or _i::text_ both cause the "interval out of range" error.
+
+Without working around this effect, The invocation _interval_seconds(secs=>7730941132800)_ would report this confusing error:
+
+```output
+ERROR:  22008: interval out of range
+CONTEXT: ...while casting return value to function's return type
+```
+{{< /note >}}
+
+The function _interval_seconds(int, int, double precision)_ is parameterized so that you can produce only a _"pure seconds_ _interval_ value. Create it thus:
 
 ```plpgsql
 drop function if exists interval_seconds(int, int, double precision) cascade;
@@ -549,12 +698,44 @@ create function interval_seconds(hours in int default 0, mins in int default 0, 
   language plpgsql
 as $body$
 declare
-  total_seconds bigint not null := hours*60*60 + mins*60 + trunc(secs)::bigint;
+  total_seconds double precision not null := (hours::double precision)*60*60 + (mins::double precision)*60 + secs;
+
+  -- Determined by empirical testing.
+  max_secs constant double precision not null := 7730941132799.0;
+
+  overflow_code      constant text   not null := '22015';
+  overflow_hint      constant text   not null := 'seconds must be in [-'||max_secs||', '||max_secs||']';
 begin
-  call assert_interval_seconds_in_range(total_seconds); 
-  return make_interval(hours => hours, mins => mins, secs => secs)::interval_seconds_t;
+  -- Preempt the confusing error "22008: interval out of range ...while casting return value to function's return type"
+  -- by checking "total_seconds" before invoking make_interval() and by raising 22015 interval_field_overflow by hand.
+  if abs(total_seconds) > max_secs then
+    declare
+      msg constant text := 'abs(total_seconds), '||abs(total_seconds)::text||', exceeded limit of '||max_secs::text;
+    begin
+      raise exception using
+        errcode = overflow_code,
+        message = msg,
+        hint    = overflow_hint;
+    end;
+  end if;
+
+  return make_interval(hours=>hours, mins=>mins, secs=>secs);
 end;
 $body$;
+```
+
+Do this basic sanity test:
+
+```plpgsql
+select interval_seconds(secs=>7730941132800);
+```
+
+This is the result:
+
+```output
+ERROR:  22015: abs(total_seconds), 7730941132800, exceeded limit of 7730941132799
+HINT:  seconds must be in [-7730941132799, 7730941132799]
+CONTEXT:  PL/pgSQL function interval_seconds(integer,integer,double precision) line 17 at RAISE
 ```
 
 ##### function interval_seconds (t_finish in timestamptz, t_start in timestamptz) returns interval_seconds_t
@@ -573,55 +754,37 @@ declare
   s_start  constant double precision not null := extract(epoch from t_start);
   delta    constant double precision not null := s_finish - s_start;
 begin
-  call assert_interval_seconds_in_range(trunc(delta)::bigint);
-  return make_interval(secs => delta);
+  return make_interval(secs=>delta);
 end;
 $body$;
 ```
 
-So how big is the _max_secs_ constant, _(2^31 - 1)\*60*60 + 59\*60 + 59_? Try this:
-
-```plpgsql
-select (2^31 - 1)*60*60 + 59*60 + 59;
-```
-
-This is the result:
-
-```output
- 7730941132799
-```
-
-Try this:
-
-```plpgsql
-select
-  date_trunc('year',
-    justify_interval(
-      interval_seconds(secs=>7730941132799)
-    )
-  );
-```
-
-This is the result:
-
-```output
- 248551 years
-```
-
-This is still big enough to take you from the earliest legal _timestamptz_ value to over _two hundred thousand years_ into the future. Try this:
+Try this positive sanity test:
 
 ```plpgsql
 set timezone = 'UTC';
-select
-  extract(year from
-    '4713-01-01 00:00:00 UTC BC'::timestamptz + interval_seconds(secs=>7730941132799)
-  );
+select '2020-01-01:12:00:00 UTC'::timestamptz + interval_seconds(secs=>7730941132799);
 ```
 
 This is the result:
 
 ```output
-240271
+247003-10-10 19:59:58.999552+00
+```
+
+Notice that the result suffers from a proportionally tiny rounding error. It seems to be inconceivable that an application would need to add about two hundred and fifty millennia to a _timestamptz_ value, using clock time semantics, and require that the result is accurate to the nearest second.
+
+Try this negative test:
+
+```plpgsql
+select '2020-01-01:12:00:00 UTC'::timestamptz + interval_seconds(secs=>7730941132800);
+```
+
+As intended, it causes this error:
+
+```output
+ERROR:  22015: abs(total_seconds), 7730941132800, exceeded limit of 7730941132799
+HINT:  seconds must be in [-7730941132799, 7730941132799]
 ```
 
 ##### function interval_seconds (i in interval_seconds_t, f in double precision) returns interval_seconds_t
@@ -673,8 +836,74 @@ select interval_seconds(interval_seconds(hours=>99), 3.6297);
 
 Once again, It brings the same result as when you use the native _interval_.
 
+## Basic demonstration using one month expressed as a months interval, a days, interval, and a seconds interval.
 
-## Test the whole apparatus
+This test uses the rules of thumb that one month is always thirty days and one day is always twenty-four hours. Create the table function _test_results()_ thus:
+
+```plpgsql
+drop function if exists test_results() cascade;
+create function test_results()
+  returns table(z text)
+  language plpgsql
+as $body$
+declare
+  t0                    constant timestamptz         not null := '2021-03-13 20:00 America/Los_Angeles';
+
+  i_months              constant interval_months_t   not null := interval_months (months => 1);
+  i_days                constant interval_days_t     not null := interval_days   (days   => 30);
+  i_seconds             constant interval_seconds_t  not null := interval_seconds(hours  => 30*24);
+
+  t0_plus_i_months      constant timestamptz         not null := t0 + i_months;
+  t0_plus_i_days        constant timestamptz         not null := t0 + i_days;
+  t0_plus_i_seconds     constant timestamptz         not null := t0 + i_seconds;
+
+  calculated_i_months   constant interval_months_t   not null := interval_months (t0_plus_i_months,  t0);
+  calculated_i_days     constant interval_days_t     not null := interval_days   (t0_plus_i_days,    t0);
+  calculated_i_seconds  constant interval_seconds_t  not null := interval_seconds(t0_plus_i_seconds, t0);
+begin
+  assert calculated_i_months  = i_months,  'calculated_i_months  <> i_months';
+  assert calculated_i_days    = i_days,    'calculated_i_days    <> i_days';
+  assert calculated_i_seconds = i_seconds, 'calculated_i_seconds <> i_seconds';
+
+  z := 't0'||rpad(' ', 40)||t0::text;                                         return next;
+
+  z := 'i_months:  '||rpad(interval_mm_dd_ss(i_months)::text,  15)||
+       't0 + i_months:  '||t0_plus_i_months::text;                            return next;
+
+  z := 'i_days:    '||rpad(interval_mm_dd_ss(i_days)::text,    15)||
+       't0 + i_days:    '||t0_plus_i_days::text;                              return next;
+
+  z := 'i_seconds: '||rpad(interval_mm_dd_ss(i_seconds)::text, 15)||
+       't0 + i_seconds: '||t0_plus_i_seconds::text;                           return next;
+end;
+$body$;
+```
+
+Execute using a timezone where the interval values cross the spring-forward moment:
+
+```plpgsql
+set timezone = 'America/Los_Angeles';
+select z from test_results();
+```
+
+This is the result:
+
+```output
+ t0                                        2021-03-13 20:00:00-08
+ i_months:  (1,0,0)        t0 + i_months:  2021-04-13 20:00:00-07
+ i_days:    (0,30,0)       t0 + i_days:    2021-04-12 20:00:00-07
+ i_seconds: (0,0,2592000)  t0 + i_seconds: 2021-04-12 21:00:00-07
+```
+
+Each test result is different from the other two and is consistent, respectively, with the semantic definitions of months calendar time durations, days calendar time durations, and seconds clock time durations:
+
+- The test that uses the _interval_months_t_ domain advances the month by one while keeping the day number the same, even though it starts from a date in March which has thirty-one days. And it keeps the local time the same even though the timezone offset has sprung forward from _minus eight hours_ to _minus seven hours_.
+
+- The test that uses the _interval_days_t_ domain advances the day by thirty days. Because it starts from the thirteenth of March, which has thirty-one days, it finishes on the twelfth of April. It keeps the local time the same even though the timezone offset has sprung forward from _minus eight hours_ to _minus seven hours_.
+
+- The test that uses the _interval_seconds_t_ domain advances the day by thirty days to finish on the twelfth of April. It started at _20:00_ local time. But because it has crossed the spring forward moment, it finishes at _21:00_ local time.
+
+## Thoroughly test the whole apparatus
 
 Create and execute the following procedure to assert that all the expected outcomes hold:
 
@@ -685,7 +914,7 @@ create procedure do_tests()
   language plpgsql
 as $body$
 declare
-  -- Define all timestamptzusing a zero tz offset.
+  -- Define all timestamptz values using a zero tz offset.
   -- Fair interpretation of "max legal value is 294276 AD"
   -- and "min legal value is 4713 BC".
   ts_max  constant timestamptz not null := '294276-01-01 00:00:00 UTC AD';
@@ -841,6 +1070,7 @@ create function seconds_days_months_comparison(secs in double precision)
   language plpgsql
 as $body$
 declare
+  err                            text             not null := '';
   msg                            text             not null := '';
   hint                           text             not null := '';
   seconds_per_day       constant double precision not null := 24*60*60;
@@ -848,6 +1078,8 @@ declare
   avg_seconds_per_year  constant double precision not null := seconds_per_day*avg_days_per_year;
   months_per_year       constant double precision not null := 12;
 begin
+  x := 'secs input:  '||secs;                                                   return next;
+
   set timezone = 'UTC';
   declare
     i_secs  constant interval_seconds_t not null := interval_seconds(secs=>secs);
@@ -880,10 +1112,14 @@ begin
   end;
 exception when interval_field_overflow then
   get stacked diagnostics
+    err = returned_sqlstate,
     msg = message_text,
     hint = pg_exception_hint;
-  raise info '%', msg;
-  raise info '%', hint;
+
+  x := '';                                                                      return next;
+  x := 'ERROR: '||err;                                                          return next;
+  x := msg;                                                                     return next;
+  x := hint;                                                                    return next;
 end;
 $body$;
 ```
@@ -891,12 +1127,14 @@ $body$;
 Invoke the function like this, using the biggest legal _interval_seconds_t_ value:
 
 ```plpgsql
+set timezone = 'UTC';
 select x from seconds_days_months_comparison(7730941132799);
 ```
 
 This is the result:
 
 ```output
+ secs input:  7730941132799
  t0:             4713-01-01 00:00:00 BC
  t1:           240271-10-10 07:59:58 AD
  
@@ -919,12 +1157,14 @@ Notice that the real numbers of years calculated from each of the _"pure seconds
 Now invoke the function using much smaller durations. First, like this:
 
 ```plpgsql
+set timezone = 'UTC';
 select x from seconds_days_months_comparison(200000000000);
 ```
 
 This is the result:
 
 ```output
+ secs input:  200000000000
  t0:             4713-01-01 00:00:00 BC
  t1:             1625-09-30 19:33:20 AD
  
@@ -940,12 +1180,14 @@ This is the result:
 And secondly like this:
 
 ```plpgsql
+set timezone = 'UTC';
 select x from seconds_days_months_comparison(8854000);
 ```
 
 This is the result:
 
 ```output
+ secs input:  8854000
  t0:             4713-01-01 00:00:00 BC
  t1:             4713-04-12 11:26:40 BC
  
@@ -966,9 +1208,12 @@ Finally, test the error behavior with an input number of seconds that exceeds th
 select x from seconds_days_months_comparison(7730941132800);
 ```
 
-It causes this error. (The leading _INFO_ text from _raise info_ has been manually removed.)
+This is the result, as expected:
 
 ```output
-7730941132800 seconds above upper limit of 7730941132799
-Use interval_days() or interval_months() instead.
+ secs input:  7730941132800
+ 
+ ERROR: 22015
+ abs(total_seconds), 7730941132800, exceeded limit of 7730941132799
+ seconds must be in [-7730941132799, 7730941132799]
 ```
