@@ -384,19 +384,25 @@ class AbstractCloud(AbstractCommandParser):
                     # Don't copy root certs if the new root cert is
                     # same or subset of the existing root cert
                     copy_root = False
+                logging.info("[app] {} copying root cert because of compare_result={}".format(
+                    "" if copy_root else "not", compare_result))
             else:
                 raise YBOpsRuntimeError(
                     "Unable to fetch the certificate {}".format(root_cert_path))
 
-        logging.info("Moving certs located at {}, {}, {}.".format(root_cert_path, node_cert_path,
-                                                                  node_key_path))
+        logging.info("[app] Moving certs located at {}, {}, {}.".format(
+            root_cert_path, node_cert_path, node_key_path))
 
         remote_shell.run_command('mkdir -p ' + certs_dir)
         # Give write permission in case file exists. If the command fails, ignore.
         remote_shell.run_command('chmod -f 666 {}/* || true'.format(certs_dir))
         if copy_root:
-            remote_shell.run_command("cp '{}' '{}'".format(root_cert_path,
-                                                           yb_root_cert_path))
+            logging.info("[app] Copying root cert '{}' to remote '{}'".format(
+                root_cert_path, yb_root_cert_path))
+            remote_shell.run_command("cp '{}' '{}'".format(
+                root_cert_path, yb_root_cert_path))
+        logging.info("[app] Copying node certs to '{}' '{}'".format(
+            yb_server_cert_path, yb_server_key_path))
         remote_shell.run_command("cp '{}' '{}'".format(node_cert_path,
                                                        yb_server_cert_path))
         remote_shell.run_command("cp '{}' '{}'".format(node_key_path,
@@ -435,13 +441,15 @@ class AbstractCloud(AbstractCommandParser):
         if rotate_certs:
             root_cert = remote_shell.run_command(
                 "cat '{}'".format(yb_root_cert_path)).stdout
-            root_cert_new = str(certlines)
+            root_cert_new = str(certlines.decode("utf-8"))
             if root_cert is not None and root_cert_new is not None:
                 compare_result = self.compare_certs(root_cert_new, root_cert)
                 if compare_result == 0 or compare_result == 1:
                     # Don't copy root certs if the new root cert is
                     # same or subset of the existing root cert
                     copy_root = False
+                logging.info("[app] {} copying root cert because of compare_result={}".format(
+                    "" if copy_root else "not", compare_result))
             else:
                 raise YBOpsRuntimeError(
                     "Unable to fetch the certificate {}".format(root_cert_path))
