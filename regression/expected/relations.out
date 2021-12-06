@@ -37,14 +37,14 @@ SELECT * FROM foo1, foo2, foo3, foo4;
 (0 rows)
 
 SELECT query, relations from pg_stat_monitor ORDER BY query collate "C";
-                                  query                                   |                     relations                     
---------------------------------------------------------------------------+---------------------------------------------------
- SELECT * FROM foo1, foo2, foo3, foo4;                                    | {public.foo1,public.foo2,public.foo3,public.foo4}
- SELECT * FROM foo1, foo2, foo3;                                          | {public.foo1,public.foo2,public.foo3}
- SELECT * FROM foo1, foo2;                                                | {public.foo1,public.foo2}
- SELECT * FROM foo1;                                                      | {public.foo1}
- SELECT pg_stat_monitor_reset();                                          | 
- SELECT query, relations from pg_stat_monitor ORDER BY query collate "C"; | {public.pg_stat_monitor*,pg_catalog.pg_database}
+                                  query                                  |                     relations                     
+-------------------------------------------------------------------------+---------------------------------------------------
+ SELECT * FROM foo1                                                      | {public.foo1}
+ SELECT * FROM foo1, foo2                                                | {public.foo1,public.foo2}
+ SELECT * FROM foo1, foo2, foo3                                          | {public.foo1,public.foo2,public.foo3}
+ SELECT * FROM foo1, foo2, foo3, foo4                                    | {public.foo1,public.foo2,public.foo3,public.foo4}
+ SELECT pg_stat_monitor_reset()                                          | 
+ SELECT query, relations from pg_stat_monitor ORDER BY query collate "C" | {public.pg_stat_monitor*,pg_catalog.pg_database}
 (6 rows)
 
 SELECT pg_stat_monitor_reset();
@@ -89,14 +89,14 @@ SELECT * FROM sch1.foo1, sch2.foo2, sch3.foo3, sch4.foo4;
 (0 rows)
 
 SELECT query, relations from pg_stat_monitor ORDER BY query collate "C";
-                                  query                                   |                    relations                     
---------------------------------------------------------------------------+--------------------------------------------------
- SELECT * FROM sch1.foo1, sch2.foo2, sch3.foo3, sch4.foo4;                | {sch1.foo1,sch2.foo2,sch3.foo3,sch4.foo4}
- SELECT * FROM sch1.foo1, sch2.foo2, sch3.foo3;                           | {sch1.foo1,sch2.foo2,sch3.foo3}
- SELECT * FROM sch1.foo1, sch2.foo2;                                      | {sch1.foo1,sch2.foo2}
- SELECT * FROM sch1.foo1;                                                 | {sch1.foo1}
- SELECT pg_stat_monitor_reset();                                          | 
- SELECT query, relations from pg_stat_monitor ORDER BY query collate "C"; | {public.pg_stat_monitor*,pg_catalog.pg_database}
+                                  query                                  |                    relations                     
+-------------------------------------------------------------------------+--------------------------------------------------
+ SELECT * FROM sch1.foo1                                                 | {sch1.foo1}
+ SELECT * FROM sch1.foo1, sch2.foo2                                      | {sch1.foo1,sch2.foo2}
+ SELECT * FROM sch1.foo1, sch2.foo2, sch3.foo3                           | {sch1.foo1,sch2.foo2,sch3.foo3}
+ SELECT * FROM sch1.foo1, sch2.foo2, sch3.foo3, sch4.foo4                | {sch1.foo1,sch2.foo2,sch3.foo3,sch4.foo4}
+ SELECT pg_stat_monitor_reset()                                          | 
+ SELECT query, relations from pg_stat_monitor ORDER BY query collate "C" | {public.pg_stat_monitor*,pg_catalog.pg_database}
 (6 rows)
 
 SELECT pg_stat_monitor_reset();
@@ -122,12 +122,12 @@ SELECT * FROM sch1.foo1, sch2.foo2, foo1, foo2;
 (0 rows)
 
 SELECT query, relations from pg_stat_monitor ORDER BY query;
-                            query                             |                    relations                     
---------------------------------------------------------------+--------------------------------------------------
- SELECT * FROM sch1.foo1, foo1;                               | {sch1.foo1,public.foo1}
- SELECT * FROM sch1.foo1, sch2.foo2, foo1, foo2;              | {sch1.foo1,sch2.foo2,public.foo1,public.foo2}
- SELECT pg_stat_monitor_reset();                              | 
- SELECT query, relations from pg_stat_monitor ORDER BY query; | {public.pg_stat_monitor*,pg_catalog.pg_database}
+                            query                            |                    relations                     
+-------------------------------------------------------------+--------------------------------------------------
+ SELECT * FROM sch1.foo1, foo1                               | {sch1.foo1,public.foo1}
+ SELECT * FROM sch1.foo1, sch2.foo2, foo1, foo2              | {sch1.foo1,sch2.foo2,public.foo1,public.foo2}
+ SELECT pg_stat_monitor_reset()                              | 
+ SELECT query, relations from pg_stat_monitor ORDER BY query | {public.pg_stat_monitor*,pg_catalog.pg_database}
 (4 rows)
 
 SELECT pg_stat_monitor_reset();
@@ -168,14 +168,14 @@ SELECT * FROM v1,v2,v3,v4;
 (0 rows)
 
 SELECT query, relations from pg_stat_monitor ORDER BY query collate "C";
-                                  query                                   |                                           relations                                           
---------------------------------------------------------------------------+-----------------------------------------------------------------------------------------------
- SELECT * FROM v1,v2,v3,v4;                                               | {public.v1*,public.foo1,public.v2*,public.foo2,public.v3*,public.foo3,public.v4*,public.foo4}
- SELECT * FROM v1,v2,v3;                                                  | {public.v1*,public.foo1,public.v2*,public.foo2,public.v3*,public.foo3}
- SELECT * FROM v1,v2;                                                     | {public.v1*,public.foo1,public.v2*,public.foo2}
- SELECT * FROM v1;                                                        | {public.v1*,public.foo1}
- SELECT pg_stat_monitor_reset();                                          | 
- SELECT query, relations from pg_stat_monitor ORDER BY query collate "C"; | {public.pg_stat_monitor*,pg_catalog.pg_database}
+                                  query                                  |                                           relations                                           
+-------------------------------------------------------------------------+-----------------------------------------------------------------------------------------------
+ SELECT * FROM v1                                                        | {public.v1*,public.foo1}
+ SELECT * FROM v1,v2                                                     | {public.v1*,public.foo1,public.v2*,public.foo2}
+ SELECT * FROM v1,v2,v3                                                  | {public.v1*,public.foo1,public.v2*,public.foo2,public.v3*,public.foo3}
+ SELECT * FROM v1,v2,v3,v4                                               | {public.v1*,public.foo1,public.v2*,public.foo2,public.v3*,public.foo3,public.v4*,public.foo4}
+ SELECT pg_stat_monitor_reset()                                          | 
+ SELECT query, relations from pg_stat_monitor ORDER BY query collate "C" | {public.pg_stat_monitor*,pg_catalog.pg_database}
 (6 rows)
 
 SELECT pg_stat_monitor_reset();
