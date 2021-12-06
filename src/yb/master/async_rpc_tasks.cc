@@ -315,7 +315,7 @@ bool RetryingTSRpcTask::RescheduleWithBackoffDelay() {
       // Allow kWaiting for task(s) that have never successfully ResetTSProxy().
       task_state != MonitoredTaskState::kWaiting) {
     if (task_state != MonitoredTaskState::kComplete) {
-      LOG_WITH_PREFIX(INFO) << "No reschedule for this task";
+      LOG_WITH_PREFIX(INFO) << "No reschedule for this task: " << AsString(task_state);
     }
     return false;
   }
