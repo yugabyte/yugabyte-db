@@ -81,12 +81,10 @@ public class SlowQueryExecutor implements Callable<JsonNode> {
     ObjectNode response = Json.newObject();
     String connectString = String.format("jdbc:postgresql://%s:%d/%s", hostName, port, "postgres");
     Properties connInfo = new Properties();
-    connInfo.put("user", this.username);
-    connInfo.put("password", this.password);
+    connInfo.put("user", this.username == null ? DEFAULT_DB_USER : this.username);
+    connInfo.put("password", this.password == null ? DEFAULT_DB_PASSWORD : this.password);
     UniverseDefinitionTaskParams.Cluster primaryCluster =
         universe.getUniverseDetails().getPrimaryCluster();
-    connInfo.put("user", DEFAULT_DB_USER);
-    connInfo.put("password", DEFAULT_DB_PASSWORD);
     if (primaryCluster.userIntent.enableClientToNodeEncrypt) {
       connInfo.put("ssl", "true");
       connInfo.put("sslmode", "require");
