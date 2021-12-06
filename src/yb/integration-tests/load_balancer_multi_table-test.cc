@@ -71,7 +71,6 @@ class LoadBalancerMultiTableTest : public YBTableTestBase {
     opts->extra_tserver_flags.push_back("--placement_cloud=c");
     opts->extra_tserver_flags.push_back("--placement_region=r");
     opts->extra_tserver_flags.push_back("--placement_zone=z${index}");
-    opts->extra_master_flags.push_back("--load_balancer_skip_leader_as_remove_victim=false");
     opts->extra_master_flags.push_back("--load_balancer_max_concurrent_moves=10");
     opts->extra_master_flags.push_back("--load_balancer_max_concurrent_moves_per_table="
                                        + std::to_string(kMovesPerTable));
@@ -120,28 +119,18 @@ class LoadBalancerMultiTableTest : public YBTableTestBase {
 };
 
 TEST_F(LoadBalancerMultiTableTest, MultipleLeaderTabletMovesPerTable) {
-  const int test_bg_task_wait_ms = 5000;
+  const int default_bg_task_wait_ms = std::stoi(ASSERT_RESULT(
+      external_mini_cluster_->master(0)->GetFlag("catalog_manager_bg_task_wait_ms")));
+  const int test_bg_task_wait_ms = 5 * default_bg_task_wait_ms;
 
   // Start with 3 tables each with 5 tablets on 3 servers.
   ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", 3, ""));
 
-  // Disable leader balancing.
-  for (int i = 0; i < num_masters(); ++i) {
-    ASSERT_OK(external_mini_cluster_->SetFlag(
-      external_mini_cluster_->master(i), "load_balancer_max_concurrent_moves", "0"));
-    // Don't remove leaders to ensure that we still have a leader move for each table later on.
-    ASSERT_OK(external_mini_cluster_->SetFlag(
-      external_mini_cluster_->master(i), "load_balancer_skip_leader_as_remove_victim", "true"));
-  }
-
-  // Add new tserver.
-  std::vector<std::string> extra_opts;
-  extra_opts.push_back("--placement_cloud=c");
-  extra_opts.push_back("--placement_region=r");
-  extra_opts.push_back("--placement_zone=z1");
-  ASSERT_OK(external_mini_cluster()->AddTabletServer(true, extra_opts));
-  ASSERT_OK(external_mini_cluster()->WaitForTabletServerCount(num_tablet_servers() + 1,
-      kDefaultTimeout));
+  auto ts0 = external_mini_cluster_->tablet_server(0);
+  string ts0_uuid = ts0->instance_id().permanent_uuid();
+  LOG(INFO) << "Shutting down ts-0. UUID: " << ts0_uuid;
+  ts0->Shutdown();
+  SleepFor(MonoDelta::FromMilliseconds(1000));
 
   // Wait for load balancing to complete.
   WaitForLoadBalanceCompletion();
@@ -150,17 +139,24 @@ TEST_F(LoadBalancerMultiTableTest, MultipleLeaderTabletMovesPerTable) {
   std::unordered_map<string, std::unordered_map<string, int>> initial_leader_counts;
   for (const auto& tn : table_names_) {
     initial_leader_counts[tn.table_name()] = ASSERT_RESULT(yb_admin_client_->GetLeaderCounts(tn));
+    // Verify that ts-0 has no leaders.
+    ASSERT_EQ(initial_leader_counts[tn.table_name()][ts0_uuid], 0);
   }
 
-  // Enable leader balancing and also increase LB run delay.
-  LOG(INFO) << "Re-enabling leader balancing.";
   for (int i = 0; i < num_masters(); ++i) {
-    ASSERT_OK(external_mini_cluster_->SetFlag(external_mini_cluster_->master(i),
-                                              "load_balancer_max_concurrent_moves", "10"));
     ASSERT_OK(external_mini_cluster_->SetFlag(external_mini_cluster_->master(i),
                                               "catalog_manager_bg_task_wait_ms",
                                               std::to_string(test_bg_task_wait_ms)));
   }
+
+  // Sleep for default_bg_task_wait_ms * 2 after setting the wait time to test_bg_task_wait_ms, to
+  // ensure that the restart of ts-0 occurs while the load balancer is sleeping. Without this, we
+  // might accidentally sleep through two load balancer runs and overcount leader moves.
+  SleepFor(MonoDelta::FromMilliseconds(default_bg_task_wait_ms * 2));
+
+  LOG(INFO) << "Restarting ts-0";
+  ASSERT_OK(ts0->Restart());
+  LOG(INFO) << "Done restarting ts-0";
 
   // Wait for one run of the load balancer to complete
   SleepFor(MonoDelta::FromMilliseconds(test_bg_task_wait_ms));
