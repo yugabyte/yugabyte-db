@@ -53,13 +53,13 @@ The following tutorial creates a simple Go application that connects to a Yugaby
 
 This tutorial assumes that:
 
-- YugabyteDB is up and running. If you are new to YugabyteDB, you can download, install, and have YugabyteDB up and running within minutes by following the steps in [Quick start](../../../../quick-start/). Alternatively, you can use [Yugabyte Cloud](http://cloud.yugabyte.com/register), to get a fully managed database-as-a-service (DBaaS) for YugabyteDB.
+- YugabyteDB is up and running. If you are new to YugabyteDB, you can download, install, and have YugabyteDB up and running within minutes by following the steps in [Quick start](../../../../quick-start/). Alternatively, you can use [Yugabyte Cloud](http://cloud.yugabyte.com/register) to get a fully managed database-as-a-service (DBaaS) for YugabyteDB.
 
 - [Go version 1.8](https://golang.org/dl/), or later, is installed.
 
-### SSL/TLS configuration (Optional)
+### SSL/TLS configuration
 
-You can choose to enable or disable SSL for your local YugabyteDB cluster. Refer [here](../../../../secure/tls-encryption/client-to-server/) to learn about the SSL/TSL configuration needed for setting up your YugabyteDB cluster. In case of Yugabyte Cloud, you will have SSL enabled when you create a cluster since it's pre-configured with SSL/TLS enabling client-side authentication.
+You can choose to enable or disable SSL for your local YugabyteDB cluster. Refer [here](../../../../secure/tls-encryption/client-to-server/) to learn about configuring SSL/TLS for your YugabyteDB cluster. Yugabyte Cloud requires SSL connections, and SSL/TLS is enabled by default for client-side authentication.
 
 #### CA certificate
 
@@ -77,7 +77,7 @@ In case of a Yugabyte Cloud cluster, to download the CA certificate for your clu
 
 Install [OpenSSL](https://www.openssl.org/) 1.1.1 or later only if you have a YugabyteDB setup with SSL/TLS enabled. Yugabyte Cloud clusters are always SSL/TLS enabled.
 
-Here is the table summarizing the SSL modes and its support in the driver:
+The following table summarizes the SSL modes and their support in the driver:
 
 | SSL Mode | Client driver behavior |
 | :--------- | :---------------- |
@@ -88,9 +88,11 @@ Here is the table summarizing the SSL modes and its support in the driver:
 | verify-ca | Supported |
 | verify-full | Supported |
 
+Yugabyte Cloud requires SSL/TLS, and connections using SSL mode `disable` will fail.
+
 ### Go PostgreSQL driver
 
-[Go-pg/pg](https://github.com/go-pg/pg) is an ORM for Golang applications working with Postgresql. The current release of `pg v10` requires Go modules.
+[Go-pg/pg](https://github.com/go-pg/pg) is an ORM for Golang applications working with PostgreSQL. The current release of `pg v10` requires Go modules.
 
 To install the package locally, run the following commands:
 
@@ -235,7 +237,7 @@ The **const** values are set to the defaults for a local installation of Yugabyt
 
 ### Using pg.Options()
 
-If the password contains these special characters (#, %, ^), the driver may fail to parse the url. In such a case, use pg.Options() instead of pg.ParseURL() to initialize the Options in `ybsql_hello_world.go`. The standard PG environment variables except PGPASSWORD and PGSSLROOTCERT are implicitly read by the driver. Set the PG variables as below:
+If the password contains these special characters (#, %, ^), the driver may fail to parse the URL. In such a case, use pg.Options() instead of pg.ParseURL() to initialize the Options in `ybsql_hello_world.go`. The standard PG environment variables except PGPASSWORD and PGSSLROOTCERT are implicitly read by the driver. Set the PG variables as follows (replace the values as appropriate for Yugabyte Cloud):
 
 ```sh
 $ export PGHOST=127.0.0.1
@@ -247,7 +249,7 @@ $ export PGDATABASE=yugabyte
 
 To use pg.Options(), replace the main function in your file with the following:
 
-```sh
+```go
 /* Modify the main() from the ybsql_hello_world.go script by replacing the first few lines and enabling pg.Options() */
 
 func main() {
@@ -327,7 +329,7 @@ func main() {
 }
 ```
 
-## Set SSL/TLS related variables (Optional)
+## Enable SSL/TLS
 
 For a Yugabyte Cloud cluster or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as below.
 

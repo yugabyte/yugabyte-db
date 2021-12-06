@@ -28,7 +28,7 @@ showAsideToc: true
     </a>
   </li>
   <li >
-    <a href="../ysql-pg-ssl/" class="nav-link">
+    <a href="../ysql-pg/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - PG
     </a>
