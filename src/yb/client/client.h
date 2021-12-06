@@ -96,8 +96,7 @@ class TabletServerForwardServiceProxy;
 
 namespace client {
 namespace internal {
-template <class Req, class Resp>
-class ClientMasterRpc;
+class ClientMasterRpcBase;
 }
 
 using GetTableLocationsCallback =
@@ -788,8 +787,7 @@ class YBClient {
   friend class internal::RemoteTabletServer;
   friend class internal::AsyncRpc;
   friend class internal::TabletInvoker;
-  template <class Req, class Resp>
-  friend class internal::ClientMasterRpc;
+  friend class internal::ClientMasterRpcBase;
   friend class PlacementInfoTest;
 
   FRIEND_TEST(ClientTest, TestGetTabletServerBlacklist);

@@ -267,13 +267,6 @@ class Rpcs {
   bool shutdown_ = false;
 };
 
-template <class T, class... Args>
-RpcCommandPtr StartRpc(Args&&... args) {
-  auto rpc = std::make_shared<T>(std::forward<Args>(args)...);
-  rpc->SendRpc();
-  return rpc;
-}
-
 template <class Value>
 class RpcFutureCallback {
  public:

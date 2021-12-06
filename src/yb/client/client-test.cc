@@ -1104,7 +1104,7 @@ TEST_F(ClientTest, TestWriteTimeout) {
     ASSERT_TRUE(error->status().IsTimedOut()) << error->status().ToString();
     ASSERT_TRUE(std::regex_match(
         error->status().ToString(),
-        std::regex(".*GetTableLocations \\{.*\\} failed: timed out after deadline expired.*")))
+        std::regex(".*GetTableLocations \\{.*\\} failed: RPC timed out after deadline expired.*")))
         << error->status().ToString();
   }
 

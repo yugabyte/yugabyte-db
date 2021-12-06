@@ -1600,13 +1600,14 @@ Status ExternalMiniCluster::GetPeerMasterIndex(int* idx, bool is_leader) {
     return STATUS(IllegalState, "No running masters");
   }
   rpc::Rpcs rpcs;
-  auto rpc = rpc::StartRpc<GetLeaderMasterRpc>(
+  auto rpc = std::make_shared<GetLeaderMasterRpc>(
       Bind(&LeaderMasterCallback, &leader_master_hp, &sync),
       addrs,
       deadline,
       messenger_,
       proxy_cache_.get(),
       &rpcs);
+  rpc->SendRpc();
   RETURN_NOT_OK(sync.Wait());
   rpcs.Shutdown();
   bool found = false;

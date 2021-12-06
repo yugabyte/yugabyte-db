@@ -37,6 +37,7 @@ set(CLIENT_SRCS
   client.cc
   client_builder-internal.cc
   client_error.cc
+  client_master_rpc.cc
   client-internal.cc
   client_utils.cc
   error.cc

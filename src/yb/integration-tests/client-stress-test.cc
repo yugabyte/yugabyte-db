@@ -210,13 +210,14 @@ void RepeatGetLeaderMaster(ExternalMiniCluster* cluster) {
         rpc::Rpcs rpcs;
         Synchronizer sync;
         auto deadline = CoarseMonoClock::Now() + 20s;
-        auto rpc = rpc::StartRpc<master::GetLeaderMasterRpc>(
+        auto rpc = std::make_shared<master::GetLeaderMasterRpc>(
             Bind(&LeaderMasterCallback, &sync),
             master_addrs,
             deadline,
             cluster->messenger(),
             &cluster->proxy_cache(),
             &rpcs);
+        rpc->SendRpc();
         auto status = sync.Wait();
         LOG_IF(INFO, !status.ok()) << "Get leader master failed: " << status;
       }

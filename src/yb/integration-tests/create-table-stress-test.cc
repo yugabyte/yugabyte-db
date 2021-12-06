@@ -69,6 +69,7 @@
 
 #include "yb/util/hdr_histogram.h"
 #include "yb/util/metrics.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/spinlock_profiling.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
@@ -621,8 +622,13 @@ TEST_F(CreateTableStressTest, TestConcurrentCreateTableAndReloadMetadata) {
     while (!stop.Load()) {
       CHECK_OK(cluster_->mini_master()->catalog_manager().VisitSysCatalog(0));
       // Give table creation a chance to run.
-      SleepFor(MonoDelta::FromMilliseconds(yb::NonTsanVsTsan(1, 5)));
+      SleepFor(MonoDelta::FromMilliseconds(10 * kTimeMultiplier));
     }
+  });
+
+  auto se = ScopeExit([&stop, &reload_metadata_thread] {
+    stop.Store(true);
+    reload_metadata_thread.join();
   });
 
   for (int num_tables_created = 0; num_tables_created < 20;) {
@@ -655,8 +661,6 @@ TEST_F(CreateTableStressTest, TestConcurrentCreateTableAndReloadMetadata) {
     num_tables_created++;
     LOG(INFO) << "Total created: " << num_tables_created;
   }
-  stop.Store(true);
-  reload_metadata_thread.join();
 }
 
 }  // namespace yb

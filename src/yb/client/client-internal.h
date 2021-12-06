@@ -65,6 +65,9 @@ namespace client {
 
 YB_STRONGLY_TYPED_BOOL(Retry);
 
+using SyncLeaderMasterFunc = std::function<void(
+    master::MasterServiceProxy*, rpc::RpcController*, const rpc::ResponseCallback& callback)>;
+
 class YBClient::Data {
  public:
   Data();
@@ -365,6 +368,11 @@ class YBClient::Data {
       YBClient* client, const master::ReplicationInfoPB& replication_info, CoarseTimePoint deadline,
       bool* retry = nullptr);
 
+  template <class ReqClass, class RespClass>
+  using SyncLeaderMasterFunc = void (master::MasterServiceProxy::*)(
+      const ReqClass &req, RespClass *response, rpc::RpcController *controller,
+      rpc::ResponseCallback callback);
+
   // Retry 'func' until either:
   //
   // 1) Methods succeeds on a leader master.
@@ -381,10 +389,11 @@ class YBClient::Data {
   // the resulting Status.
   template <class ReqClass, class RespClass>
   CHECKED_STATUS SyncLeaderMasterRpc(
-      CoarseTimePoint deadline, const ReqClass& req, RespClass* resp,
-      int* num_attempts, const char* func_name,
-      const std::function<Status(
-          master::MasterServiceProxy*, const ReqClass&, RespClass*, rpc::RpcController*)>& func);
+      CoarseTimePoint deadline, const ReqClass& req, RespClass* resp, const char* func_name,
+      const SyncLeaderMasterFunc<ReqClass, RespClass>& func, int* attempts = nullptr);
+
+  template <class T, class... Args>
+  rpc::RpcCommandPtr StartRpc(Args&&... args);
 
   bool IsMultiMaster();
 

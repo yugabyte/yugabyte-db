@@ -1306,7 +1306,7 @@ Status TabletServiceAdminImpl::DoCreateTablet(const CreateTabletRequestPB* req,
   Partition partition;
   Partition::FromPB(req->partition(), &partition);
 
-  LOG(INFO) << "Processing CreateTablet for tablet " << req->tablet_id()
+  LOG(INFO) << "Processing CreateTablet for T " << req->tablet_id() << " P " << req->dest_uuid()
             << " (table=" << req->table_name()
             << " [id=" << req->table_id() << "]), partition="
             << partition_schema.PartitionDebugString(partition, schema);

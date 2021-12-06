@@ -409,6 +409,17 @@ class OutboundCall : public RpcCall {
   DISALLOW_COPY_AND_ASSIGN(OutboundCall);
 };
 
+class RpcErrorTag : public IntegralErrorTag<ErrorStatusPB::RpcErrorCodePB> {
+ public:
+  static constexpr uint8_t kCategory = 15;
+
+  static std::string ToMessage(Value value) {
+    return ErrorStatusPB::RpcErrorCodePB_Name(value);
+  }
+};
+
+typedef StatusErrorCodeImpl<RpcErrorTag> RpcError;
+
 }  // namespace rpc
 }  // namespace yb
 
