@@ -21,11 +21,11 @@ To create a free cluster:
 
     - **Getting Started** - Create your free cluster and access documentation.
 
-    - [Clusters](../../cloud-clusters/) - Add, monitor, and manage clusters.
+    - **Clusters** - Add, monitor, and manage clusters.
 
-    - [Network Access](../../cloud-network) - Authorize access to your clusters using IP allow lists.
+    - **Network Access** - Set up VPC networks and authorize access to your clusters using IP allow lists.
 
-    - [Admin](../../cloud-admin/) - Manage billing and payment methods and cloud users.
+    - **Admin** - Manage billing and payment methods, add cloud users, and review cloud activity.
 
 1. On the **Getting Started** page, click **Create a free cluster** to open the **Create Cluster** wizard.
 
@@ -41,7 +41,7 @@ To create a free cluster:
 
 Once you complete the wizard, Yugabyte Cloud bootstraps and provisions the cluster, and configures YugabyteDB. The process takes up to 15 minutes.
 
-Once the cluster is ready, the cluster [Overview](../../cloud-monitor/overview) is displayed. You now have a fully configured YugabyteDB cluster provisioned in Yugabyte Cloud.
+Once the cluster is ready, the cluster [Overview](../../cloud-monitor/overview/) is displayed. You now have a fully configured YugabyteDB cluster provisioned in Yugabyte Cloud.
 
 ### Learn more
 
@@ -49,4 +49,4 @@ Once the cluster is ready, the cluster [Overview](../../cloud-monitor/overview) 
 
 ## Next step
 
-[Connect to your cluster](../qs-connect) using the Cloud Shell.
+[Connect to your cluster](../qs-connect/) using the Cloud Shell.

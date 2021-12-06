@@ -15,7 +15,7 @@ showAsideToc: true
 
 Create database users to provide clients access to the cluster's YugabyteDB database. A database user's access is determined by the roles assigned to the user. YugabyteDB uses role-based access control (RBAC) to manage authorization.
 
-Once you have added them as a user to the database, send them the credentials.
+Once you have added a user to the database, send them the credentials.
 
 You will also have to authorize their network so that they can access the cluster. Refer to [Assign IP allow lists](../../cloud-basics/add-connections/).
 
