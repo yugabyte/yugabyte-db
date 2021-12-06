@@ -136,6 +136,8 @@ const initialState = {
   defaultRegion: ''
 };
 
+const portValidation = (value) => (value && value < 65536 ? undefined : 'Invalid Port');
+
 export default class ClusterFields extends Component {
   constructor(props) {
     super(props);
@@ -2337,8 +2339,6 @@ export default class ClusterFields extends Component {
         />
       );
     }
-
-    const portValidation = (value) => (value && value < 65536 ? undefined : 'Invalid Port');
 
     return (
       <div>
