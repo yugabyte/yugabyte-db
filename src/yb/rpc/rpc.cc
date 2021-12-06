@@ -337,7 +337,7 @@ void Rpcs::Shutdown() {
         break;
       }
     }
-    CHECK(calls_.empty()) << "Calls: " << yb::ToString(calls_);
+    CHECK(calls_.empty()) << "Calls: " << AsString(calls_);
   }
 }
 
