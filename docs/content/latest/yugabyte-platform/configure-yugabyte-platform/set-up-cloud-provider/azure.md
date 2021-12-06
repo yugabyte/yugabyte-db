@@ -10,7 +10,7 @@ menu:
     identifier: set-up-cloud-provider-3-azure
     parent: configure-yugabyte-platform
     weight: 20
-isTocNested: false
+isTocNested: true
 showAsideToc: true
 ---
 
@@ -148,26 +148,27 @@ The preceding setting specifies the resource group as `different-rg` and the DNS
 
 You can specify a region as follows:
 
-* Click **Add Region**.
+1. Click **Add Region**.
 
-* Use the **Specify Region Info** dialog to select a region and provide a virtual network name from your Azure portal.
+2. Use the **Specify Region Info** dialog to select a region and provide a virtual network name from your Azure portal.
 
-* Optionally, specify the security group, if the database VM is in a different network than the platform.
+3. Optionally, specify the security group, if the database VM is in a different network than the platform.
 
-* Provide a URN to a marketplace image or a shared gallery image by following instructions provided in [How to use a shared image gallery](#how-to-use-a-shared-image-gallery). If you are using custom images, you need to specify the SSH port and user, as described in [Configure Azure](#configure-azure).  
+4. Provide a URN to a marketplace image or a shared gallery image by following instructions provided in [How to use a shared image gallery](#how-to-use-a-shared-image-gallery). If you are using custom images, you need to specify the SSH port and user, as described in [Configure Azure](#configure-azure).  
 
-* Provide a mapping of subnet IDs to use for each availability zone you wish to deploy. This is required for ensuring that Yugabyte Platform can deploy nodes in the correct network isolation that you need in your environment.
+5. Provide a mapping of subnet IDs to use for each availability zone you wish to deploy. This is required for ensuring that Yugabyte Platform can deploy nodes in the correct network isolation that you need in your environment.
 
-  ![Prepare Azure cloud to install Yugabyte Platform](/images/yb-platform/install/azure/platform-azure-prepare-cloud-env-5.png)
+   ![Prepare Azure cloud to install Yugabyte Platform](/images/yb-platform/install/azure/platform-azure-prepare-cloud-env-5.png)
 
-- Click **Add Region** on the **Specify Region Info** dialog.
-- Click **Save** on the **Cloud Provider Configuration** page. 
+6. Click **Add Region** on the **Specify Region Info** dialog.
+
+7. Click **Save** on the **Cloud Provider Configuration** page. 
 
 Typically, it takes a few minutes for the cloud provider to be configured. When the configuration completes, you will be ready to create a YugabyteDB universe on Azure.
 
 ### How to use a shared image gallery
 
-You can use shared image galleries as an alternative to using marketplace image URNs. A gallery allows you can provide your own custom image to use for creating universe instances. For more information on shared image galleries, refer to [Store and share images in an Azure Compute Gallery](https://docs.microsoft.com/en-us/azure/virtual-machines/shared-image-galleries).
+You can use shared image galleries as an alternative to using marketplace image URNs. A gallery allows you to provide your own custom image to use for creating universe instances. For more information on shared image galleries, refer to [Store and share images in an Azure Compute Gallery](https://docs.microsoft.com/en-us/azure/virtual-machines/shared-image-galleries).
 
 You set up a shared gallery image on Azure as follows:
 
