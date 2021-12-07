@@ -24,21 +24,23 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include <functional>
-using std::binary_function;
-using std::less;
+
 #include <limits>
-using std::numeric_limits;
 #include <string>
-using std::string;
 #include <vector>
-using std::vector;
 
 #include "yb/gutil/int128.h"
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
 #include "yb/gutil/stringprintf.h"
+
+using std::binary_function;
+using std::less;
+using std::numeric_limits;
+using std::string;
+using std::vector;
+
 
 
 // START DOXYGEN NumbersFunctions grouping

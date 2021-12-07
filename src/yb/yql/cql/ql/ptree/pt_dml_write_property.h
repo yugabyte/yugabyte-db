@@ -15,8 +15,8 @@
 #define YB_YQL_CQL_QL_PTREE_PT_DML_WRITE_PROPERTY_H_
 
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/yql/cql/ql/ptree/list_node.h"
-#include "yb/yql/cql/ql/ptree/pt_name.h"
 #include "yb/yql/cql/ql/ptree/pt_property.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
 

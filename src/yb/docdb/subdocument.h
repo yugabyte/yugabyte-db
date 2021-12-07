@@ -14,13 +14,24 @@
 #ifndef YB_DOCDB_SUBDOCUMENT_H_
 #define YB_DOCDB_SUBDOCUMENT_H_
 
+#include <assert.h>
+#include <inttypes.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <string.h>
+
+#include <limits>
 #include <map>
-#include <vector>
 #include <ostream>
-#include <initializer_list>
+#include <string>
+#include <vector>
+
+#include "yb/bfql/tserver_opcodes.h"
 
 #include "yb/docdb/primitive_value.h"
-#include "yb/bfql/tserver_opcodes.h"
+
+#include "yb/gutil/int128.h"
+#include "yb/gutil/integral_types.h"
 
 namespace yb {
 namespace docdb {

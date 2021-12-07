@@ -20,14 +20,18 @@
 #ifndef YB_BFQL_BFUNC_H_
 #define YB_BFQL_BFUNC_H_
 
+#include <fcntl.h>
+
 #include <iostream>
 #include <string>
 
+#include "yb/bfql/bfunc_convert.h"
+#include "yb/bfql/bfunc_standard.h"
+
 #include "yb/util/status_fwd.h"
+#include "yb/util/fault_injection.h"
 #include "yb/util/logging.h"
 
 // Include all builtin function templates.
-#include "yb/bfql/bfunc_convert.h"
-#include "yb/bfql/bfunc_standard.h"
 
 #endif  // YB_BFQL_BFUNC_H_

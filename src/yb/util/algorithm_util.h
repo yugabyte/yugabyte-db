@@ -15,8 +15,8 @@
 #define YB_UTIL_ALGORITHM_UTIL_H
 
 #include <algorithm>
-
-#include "yb/util/enums.h"
+#include <bitset>
+#include <type_traits>
 
 namespace yb {
 

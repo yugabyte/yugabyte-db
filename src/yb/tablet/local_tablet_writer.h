@@ -37,11 +37,7 @@
 
 #include <google/protobuf/repeated_field.h>
 
-#include "yb/consensus/log_anchor_registry.h"
-#include "yb/consensus/opid_util.h"
-
 #include "yb/gutil/macros.h"
-#include "yb/gutil/singleton.h"
 
 #include "yb/tablet/operations/write_operation_context.h"
 

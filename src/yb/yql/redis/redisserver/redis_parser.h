@@ -19,14 +19,12 @@
 #include <boost/container/small_vector.hpp>
 
 #include "yb/client/client_fwd.h"
-#include "yb/client/callbacks.h"
+
+#include "yb/util/status_fwd.h"
+#include "yb/util/net/socket.h"
+#include "yb/util/size_literals.h"
 
 #include "yb/yql/redis/redisserver/redis_fwd.h"
-
-#include "yb/util/net/socket.h"
-#include "yb/util/slice.h"
-#include "yb/util/status_fwd.h"
-#include "yb/util/size_literals.h"
 
 namespace yb {
 namespace redisserver {

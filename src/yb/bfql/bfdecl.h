@@ -19,12 +19,11 @@
 #ifndef YB_BFQL_BFDECL_H_
 #define YB_BFQL_BFDECL_H_
 
+#include "yb/bfql/tserver_opcodes.h"
+
 #include "yb/common/common.pb.h"
 
 #include "yb/gutil/macros.h"
-
-#include "yb/util/logging.h"
-#include "yb/bfql/tserver_opcodes.h"
 
 namespace yb {
 namespace bfql {

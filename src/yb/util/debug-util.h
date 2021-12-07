@@ -39,6 +39,7 @@
 #include <vector>
 
 #include "yb/gutil/strings/fastmem.h"
+
 #include "yb/util/enums.h"
 #include "yb/util/slice.h"
 #include "yb/util/stack_trace.h"

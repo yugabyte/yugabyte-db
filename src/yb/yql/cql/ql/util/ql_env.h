@@ -22,20 +22,19 @@
 #define YB_YQL_CQL_QL_UTIL_QL_ENV_H_
 
 #include "yb/client/client_fwd.h"
-#include "yb/client/callbacks.h"
-#include "yb/client/transaction_manager.h"
+
 #include "yb/common/common.pb.h"
-#include "yb/gutil/callback.h"
-#include "yb/rpc/rpc_fwd.h"
+
 #include "yb/server/hybrid_clock.h"
+
 #include "yb/util/enums.h"
+
 #include "yb/yql/cql/ql/ptree/pt_option.h"
 #include "yb/yql/cql/ql/ql_session.h"
+#include "yb/yql/cql/ql/util/util_fwd.h"
 
 namespace yb {
 namespace ql {
-
-typedef std::function<client::TransactionPool*()> TransactionPoolProvider;
 
 class QLEnv {
  public:

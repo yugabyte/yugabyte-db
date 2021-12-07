@@ -33,21 +33,24 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef STRINGS_ESCAPING_H_
-#define STRINGS_ESCAPING_H_
+#ifndef YB_GUTIL_STRINGS_ESCAPING_H
+#define YB_GUTIL_STRINGS_ESCAPING_H
 
 #include <stddef.h>
+
 #include <string>
-using std::string;
 #include <vector>
-using std::vector;
 
 #include <glog/logging.h>
 
-#include "yb/gutil/logging-inl.h"
 #include "yb/gutil/strings/ascii_ctype.h"
 #include "yb/gutil/strings/charset.h"
 #include "yb/gutil/strings/stringpiece.h"
+
+using std::string;
+using std::vector;
+
+
 
 namespace strings {
 
@@ -689,4 +692,4 @@ using strings::ByteStringFromAscii;
 using strings::ByteStringToAscii;
 using strings::CleanStringLineEndings;
 
-#endif  // STRINGS_ESCAPING_H_
+#endif  // YB_GUTIL_STRINGS_ESCAPING_H

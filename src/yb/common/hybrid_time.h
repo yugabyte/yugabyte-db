@@ -37,15 +37,13 @@
 
 #include <inttypes.h>
 
-#include <string>
 #include <limits>
+#include <string>
 
+#include "yb/util/status_fwd.h"
 #include "yb/util/faststring.h"
-
-#include "yb/util/enums.h"
 #include "yb/util/monotime.h"
 #include "yb/util/physical_time.h"
-#include "yb/util/status_fwd.h"
 
 namespace yb {
 

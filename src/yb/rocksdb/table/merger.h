@@ -23,7 +23,7 @@
 
 #pragma once
 
-#include "yb/rocksdb/types.h"
+
 
 namespace rocksdb {
 

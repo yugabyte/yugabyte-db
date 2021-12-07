@@ -75,7 +75,8 @@ struct PgApiContext {
   std::unique_ptr<rpc::ProxyCache> proxy_cache;
 
   PgApiContext();
-  PgApiContext(PgApiContext&&) = default;
+  PgApiContext(PgApiContext&&);
+  ~PgApiContext();
 };
 
 //--------------------------------------------------------------------------------------------------

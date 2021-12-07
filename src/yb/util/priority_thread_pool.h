@@ -16,11 +16,12 @@
 
 #include <memory>
 
+#include <gflags/gflags_declare.h>
+
 #include "yb/gutil/casts.h"
 
-#include "yb/util/locks.h"
 #include "yb/util/status_fwd.h"
-#include "yb/util/enums.h"
+#include "yb/util/status.h"
 
 namespace yb {
 

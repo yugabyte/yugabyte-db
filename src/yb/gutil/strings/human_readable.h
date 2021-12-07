@@ -21,13 +21,14 @@
 #define YB_GUTIL_STRINGS_HUMAN_READABLE_H
 
 #include <functional>
-using std::binary_function;
-using std::less;
-#include <string>
-using std::string;
 
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/macros.h"
+
+using std::binary_function;
+using std::less;
+using std::string;
+
 
 //                                 WARNING
 // HumanReadable{NumBytes, Int} don't give you the standard set of SI prefixes.

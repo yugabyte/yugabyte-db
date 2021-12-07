@@ -33,30 +33,40 @@
 #ifndef YB_CONSENSUS_LOG_H_
 #define YB_CONSENSUS_LOG_H_
 
+#include <pthread.h>
+#include <sys/types.h>
+
 #include <atomic>
+#include <condition_variable>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
 #include <boost/atomic.hpp>
+#include <glog/logging.h>
 
 #include "yb/common/common_fwd.h"
+
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/log_util.h"
-#include "yb/consensus/opid_util.h"
+
 #include "yb/fs/fs_manager.h"
+
+#include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/spinlock.h"
-#include "yb/util/async_util.h"
-#include "yb/util/blocking_queue.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
+#include "yb/util/mutex.h"
 #include "yb/util/opid.h"
 #include "yb/util/promise.h"
-#include "yb/util/status_fwd.h"
-#include "yb/util/threadpool.h"
 #include "yb/util/shared_lock.h"
+#include "yb/util/status_callback.h"
+#include "yb/util/threadpool.h"
 
 namespace yb {
 

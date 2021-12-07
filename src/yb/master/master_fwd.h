@@ -25,7 +25,9 @@
 #include "yb/common/entity_ids_types.h"
 
 #include "yb/gutil/ref_counted.h"
+
 #include "yb/util/enums.h"
+#include "yb/util/math_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/strongly_typed_bool.h"
 

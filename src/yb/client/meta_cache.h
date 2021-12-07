@@ -492,8 +492,6 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
 
   ~MetaCache();
 
-  void Shutdown();
-
   // Add a tablet server's proxy, and optionally the tserver itself it is local.
   void SetLocalTabletServer(const std::string& permanent_uuid,
                             const std::shared_ptr<tserver::TabletServerServiceProxy>& proxy,
@@ -691,8 +689,6 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   // Prevents master lookup "storms" by delaying master lookups when all
   // permits have been acquired.
   Semaphore master_lookup_sem_;
-
-  rpc::Rpcs rpcs_;
 
   const std::string log_prefix_;
 

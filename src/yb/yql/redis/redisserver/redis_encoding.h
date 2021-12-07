@@ -17,8 +17,6 @@
 
 #include <boost/preprocessor/seq/for_each.hpp>
 
-#include "yb/gutil/strings/join.h"
-
 namespace google {
 namespace protobuf {
 template <typename Element> class RepeatedPtrField;

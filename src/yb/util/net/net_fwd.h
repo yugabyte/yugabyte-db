@@ -16,17 +16,11 @@
 #ifndef YB_UTIL_NET_NET_FWD_H
 #define YB_UTIL_NET_NET_FWD_H
 
-#include <boost/version.hpp>
-
 namespace boost {
 namespace asio {
 
-#if BOOST_VERSION >= 106600
 class io_context;
 typedef io_context io_service;
-#else
-class io_service;
-#endif
 
 namespace ip {
 

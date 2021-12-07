@@ -20,14 +20,12 @@
 #ifndef YB_BFPG_BFUNC_H_
 #define YB_BFPG_BFUNC_H_
 
-#include <iostream>
-#include <string>
+#include <iosfwd>
+#include <type_traits>
+#include <vector>
 
-#include "yb/util/status_fwd.h"
-#include "yb/util/logging.h"
+#include "yb/gutil/integral_types.h"
 
 // Include all builtin function templates.
-#include "yb/bfpg/bfunc_standard.h"
-#include "yb/bfpg/bfunc_convert.h"
 
 #endif  // YB_BFPG_BFUNC_H_

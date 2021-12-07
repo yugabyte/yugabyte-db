@@ -14,20 +14,38 @@
 #ifndef YB_MASTER_BACKFILL_INDEX_H
 #define YB_MASTER_BACKFILL_INDEX_H
 
+#include <float.h>
+
+#include <chrono>
+#include <set>
+#include <sstream>
 #include <string>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
+#include <boost/mpl/and.hpp>
+#include <gflags/gflags_declare.h>
+
+#include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
 #include "yb/common/partition.h"
+
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/ref_counted.h"
 
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_entity_info.h"
 
 #include "yb/server/monitored_task.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
-#include "yb/util/status_fwd.h"
+#include "yb/util/shared_lock.h"
+#include "yb/util/tostring.h"
+#include "yb/util/type_traits.h"
 
 namespace yb {
 namespace master {

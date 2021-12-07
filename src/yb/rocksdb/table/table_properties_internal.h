@@ -21,7 +21,6 @@
 #pragma once
 
 #include "yb/rocksdb/status.h"
-#include "yb/rocksdb/iterator.h"
 
 namespace rocksdb {
 

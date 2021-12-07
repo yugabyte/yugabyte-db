@@ -40,15 +40,14 @@
 #include <utility>
 #include <vector>
 
+#include "yb/client/yb_table_name.h"
+
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/schema.h"
 
-#include "yb/gutil/callback.h"
+#include "yb/gutil/callback_forward.h"
 
-#include "yb/util/countdown_latch.h"
-#include "yb/util/locks.h"
 #include "yb/util/status_fwd.h"
-#include "yb/client/yb_table_name.h"
 
 namespace yb {
 class MonoDelta;

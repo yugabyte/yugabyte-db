@@ -14,8 +14,6 @@
 #ifndef YB_DOCDB_EXPIRATION_H
 #define YB_DOCDB_EXPIRATION_H
 
-#include "yb/server/hybrid_clock.h"
-
 #include "yb/docdb/value.h"
 
 namespace yb {

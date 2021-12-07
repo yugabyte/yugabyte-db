@@ -91,17 +91,8 @@ class InternalStats {
     INTERNAL_CF_STATS_ENUM_MAX,
   };
 
-  InternalStats(int num_levels, Env* env, ColumnFamilyData* cfd)
-      : db_stats_{},
-        cf_stats_value_{},
-        cf_stats_count_{},
-        comp_stats_(num_levels),
-        file_read_latency_(num_levels),
-        bg_error_count_(0),
-        number_levels_(num_levels),
-        env_(env),
-        cfd_(cfd),
-        started_at_(env->NowMicros()) {}
+  InternalStats(int num_levels, Env* env, ColumnFamilyData* cfd);
+  ~InternalStats();
 
   // Per level compaction stats.  comp_stats_[level] stores the stats for
   // compactions that produced data for the specified "level".
@@ -212,9 +203,7 @@ class InternalStats {
     return db_stats_[static_cast<size_t>(type)].load(std::memory_order_relaxed);
   }
 
-  HistogramImpl* GetFileReadHist(int level) {
-    return &file_read_latency_[level];
-  }
+  HistogramImpl* GetFileReadHist(int level);
 
   uint64_t GetBackgroundErrorCount() const { return bg_error_count_; }
 
