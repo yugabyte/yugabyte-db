@@ -10,6 +10,8 @@ import { IReplicationStatus } from './IClusterReplication';
 
 import './ReplicationUtils.scss';
 
+export const YSQL_TABLE_TYPE = 'PGSQL_TABLE_TYPE';
+
 export const getReplicationStatus = (status = IReplicationStatus.INIT) => {
   switch (status) {
     case IReplicationStatus.SUCCESS:
