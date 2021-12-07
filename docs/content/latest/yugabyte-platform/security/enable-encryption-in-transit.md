@@ -119,7 +119,7 @@ The following procedure describes how to install certificates on the database no
 
 **Step 1:** Obtain the keys and the custom CA-signed certificates for each of the on-premise nodes for which you are configuring node-to-node TLS. In addition, obtain the keys and the custom signed certificates for client access for configuring client-to-node TLS.
 
-**Step 2**: For _each on-premise node_, copy the custom CA root certificate, node certificate, and node key to that node's file system. 
+**Step 2**: For each on-premise node, copy the custom CA root certificate, node certificate, and node key to that node's file system. 
 
 If you are enabling client-to-node TLS, make sure to copy the client certificate and client key to each of the nodes.
 
