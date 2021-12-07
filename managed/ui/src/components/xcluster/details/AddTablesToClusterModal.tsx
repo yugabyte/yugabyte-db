@@ -8,6 +8,7 @@ import { YBModalForm } from '../../common/forms';
 import { YBButton, YBInputField } from '../../common/forms/fields';
 import { YBLoading } from '../../common/indicators';
 import { IReplication, IReplicationTable } from '../IClusterReplication';
+import { YSQL_TABLE_TYPE } from '../ReplicationUtils';
 
 import './AddTableToClusterModal.scss';
 
@@ -152,16 +153,31 @@ export function AddTablesToClusterModal({ visible, onHide, replication }: Props)
                 }}
               >
                 <TableHeaderColumn dataField="tableUUID" isKey={true} hidden />
-                <TableHeaderColumn dataField="tableName">Name</TableHeaderColumn>
-                <TableHeaderColumn dataField="tableType">Type</TableHeaderColumn>
-                <TableHeaderColumn dataField="keySpace">Keyspace</TableHeaderColumn>
-                <TableHeaderColumn dataField="sizeBytes">Size</TableHeaderColumn>
+                <TableHeaderColumn dataField="tableName" width="50%">
+                  Name
+                </TableHeaderColumn>
+                <TableHeaderColumn
+                  dataField="tableType"
+                  width="20%"
+                  dataFormat={(cell) => {
+                    if (cell === YSQL_TABLE_TYPE) return 'YSQL';
+                    return 'YCQL';
+                  }}
+                >
+                  Type
+                </TableHeaderColumn>
+                <TableHeaderColumn dataField="keySpace" width="20%">
+                  Keyspace
+                </TableHeaderColumn>
+                <TableHeaderColumn dataField="sizeBytes" width="10%">
+                  Size
+                </TableHeaderColumn>
               </BootstrapTable>
             </Col>
           </Row>
           <Row>
             <Col lg={12}>
-              <div className="replication-info">Tables Replicated</div>
+              <div className="replication-info">Tables replicated</div>
               <BootstrapTable
                 data={values['tablesInReplication'].filter((table: IReplicationTable) => {
                   if (!searchText) {
@@ -210,10 +226,25 @@ export function AddTablesToClusterModal({ visible, onHide, replication }: Props)
                 }}
               >
                 <TableHeaderColumn dataField="tableUUID" isKey={true} hidden />
-                <TableHeaderColumn dataField="tableName">Name</TableHeaderColumn>
-                <TableHeaderColumn dataField="tableType">Type</TableHeaderColumn>
-                <TableHeaderColumn dataField="keySpace">Keyspace</TableHeaderColumn>
-                <TableHeaderColumn dataField="sizeBytes">Size</TableHeaderColumn>
+                <TableHeaderColumn dataField="tableName" width="50%">
+                  Name
+                </TableHeaderColumn>
+                <TableHeaderColumn
+                  dataField="tableType"
+                  width="20%"
+                  dataFormat={(cell) => {
+                    if (cell === YSQL_TABLE_TYPE) return 'YSQL';
+                    return 'YCQL';
+                  }}
+                >
+                  Type
+                </TableHeaderColumn>
+                <TableHeaderColumn dataField="keySpace" width="20%">
+                  Keyspace
+                </TableHeaderColumn>
+                <TableHeaderColumn dataField="sizeBytes" width="10%">
+                  Size
+                </TableHeaderColumn>
               </BootstrapTable>
             </Col>
           </Row>

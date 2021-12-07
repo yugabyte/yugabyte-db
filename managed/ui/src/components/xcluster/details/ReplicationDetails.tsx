@@ -138,9 +138,9 @@ export function ReplicationDetails({ params }: Props) {
           </Row>
           <Row className="replication-status">
             <Col lg={4}>Replication Status {getReplicationStatus(replication.status)}</Col>
-            <Col lg={4}>
+            <Col lg={8}>
               <Row>
-                <Col lg={4}>Current Lag</Col>
+                <Col lg={2}>Current Lag</Col>
                 <Col lg={6}>
                   <span className="lag-text">
                     <GetCurrentLag
@@ -151,8 +151,9 @@ export function ReplicationDetails({ params }: Props) {
                   <span> ms</span>
                 </Col>
               </Row>
+              <div className="replication-divider" />
               <Row>
-                <Col lg={4}>Max acceptable lag</Col>
+                <Col lg={2}>Max acceptable lag</Col>
                 <Col lg={6}>
                   <span className="lag-value">
                     <GetConfiguredThreshold currentUniverseUUID={replication.sourceUniverseUUID} />
@@ -162,8 +163,8 @@ export function ReplicationDetails({ params }: Props) {
               </Row>
             </Col>
           </Row>
-          <Row className="replication-details-panel">
-            <Col lg={12}>
+          <Row className="replication-details-panel noPadding">
+            <Col lg={12} className="noPadding">
               <YBTabsPanel defaultTab={'overview'} id="replication-tab-panel">
                 <Tab eventKey={'overview'} title={'Overview'}>
                   <ReplicationOverview

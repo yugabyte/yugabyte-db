@@ -17,6 +17,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import * as Yup from 'yup';
 import { toast } from 'react-toastify';
+import { YSQL_TABLE_TYPE } from './ReplicationUtils';
 
 const validationSchema = Yup.object().shape({
   name: Yup.string().required('Replication name is required'),
@@ -96,6 +97,10 @@ export function ConfigureReplicationModal({ onHide, visible, currentUniverseUUID
         if (currentStep !== STEPS.length - 1) {
           setCurrentStep(currentStep + 1);
         } else {
+          if (values['tables'].length === 0) {
+            toast.error('Configuration must have atleast one table');
+            return;
+          }
           addReplication.mutateAsync(values).then(() => {
             setCurrentStep(0);
           });
@@ -134,12 +139,24 @@ export function TargetUniverseForm({
   return (
     <>
       <Row>
-        <Col lg={12}>
-          <Field name="name" placeholder="Replication name" component={YBFormInput} />
+        {!isEdit && (
+          <Col lg={12} className="replication-help-text">
+            1. Select the target universe you want to use for this replication
+          </Col>
+        )}
+      </Row>
+      <Row>
+        <Col lg={8}>
+          <Field
+            name="name"
+            placeholder="Replication name"
+            label="Replication Name"
+            component={YBFormInput}
+          />
         </Col>
       </Row>
       <Row>
-        <Col lg={12}>
+        <Col lg={8}>
           <Field
             name="targetUniverseUUID"
             component={YBFormSelect}
@@ -194,6 +211,11 @@ function SelectTablesForm({
 
   return (
     <div className="select-tables-form">
+      <Row>
+        <Col lg={12} className="replication-help-text noMarginButton">
+          2. Select the tables you want to replicate
+        </Col>
+      </Row>
       <Row className="info-search">
         <Col lg={8}>List of common tables across source and target universe</Col>
         <Col lg={4}>
@@ -227,10 +249,25 @@ function SelectTablesForm({
             }}
           >
             <TableHeaderColumn dataField="tableUUID" hidden isKey={true} />
-            <TableHeaderColumn dataField="tableName">Table Name</TableHeaderColumn>
-            <TableHeaderColumn dataField="tableType">Type</TableHeaderColumn>
-            <TableHeaderColumn dataField="keySpace">Keyspace</TableHeaderColumn>
-            <TableHeaderColumn dataField="sizeBytes">Size</TableHeaderColumn>
+            <TableHeaderColumn dataField="tableName" width="50%">
+              Table Name
+            </TableHeaderColumn>
+            <TableHeaderColumn
+              dataField="tableType"
+              width="20%"
+              dataFormat={(cell) => {
+                if (cell === YSQL_TABLE_TYPE) return 'YSQL';
+                return 'YCQL';
+              }}
+            >
+              Type
+            </TableHeaderColumn>
+            <TableHeaderColumn dataField="keySpace" width="20%">
+              Keyspace
+            </TableHeaderColumn>
+            <TableHeaderColumn dataField="sizeBytes" width="10%">
+              Size
+            </TableHeaderColumn>
           </BootstrapTable>
         </Col>
       </Row>

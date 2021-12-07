@@ -14,7 +14,6 @@ export function ReplicationOverview({
   const {
     universeDetails: { nodeDetailsSet }
   } = destinationUniverse;
-
   return (
     <>
       <Row className="replication-overview">
@@ -42,41 +41,45 @@ export function ReplicationOverview({
       </Row>
       <div className="replication-divider" />
       <Row className="replication-target-universe">
-        <Col lg={12}>
+        <Col lg={12} className="noLeftPadding">
           <Row>
-            <Col lg={3} className="replication-label">
+            <Col lg={2} className="replication-label">
               Name
             </Col>
             <Col lg={3}>
-              <Link to={`/universes/${destinationUniverse.universeUUID}`}>
+              <Link
+                to={`/universes/${destinationUniverse.universeUUID}`}
+                className="target-universe-link"
+              >
                 {destinationUniverse.name}
               </Link>
+              <span className="target-universe-subText">Target</span>
             </Col>
           </Row>
           <div className="replication-divider" />
           <Row>
-            <Col lg={3} className="replication-label">
+            <Col lg={2} className="replication-label">
               UUID
             </Col>
             <Col lg={3}>{replication.targetUniverseUUID}</Col>
           </Row>
           <div className="replication-divider" />
           <Row>
-            <Col lg={3} className="replication-label">
+            <Col lg={2} className="replication-label">
               Master node address
             </Col>
             <Col lg={3}>{getMasterNodeAddress(nodeDetailsSet)}</Col>
           </Row>
           <div className="replication-divider" />
           <Row>
-            <Col lg={3} className="replication-label">
+            <Col lg={2} className="replication-label">
               Provider
             </Col>
             <Col lg={3}>{nodeDetailsSet[0].cloudInfo.cloud}</Col>
           </Row>
           <div className="replication-divider" />
           <Row>
-            <Col lg={3} className="replication-label">
+            <Col lg={2} className="replication-label">
               Region
             </Col>
             <Col lg={3}>{nodeDetailsSet[0].cloudInfo.region}</Col>
