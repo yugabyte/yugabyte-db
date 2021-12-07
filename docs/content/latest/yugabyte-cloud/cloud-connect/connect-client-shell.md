@@ -13,17 +13,17 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Connect to your YugabyteDB cluster from your desktop using the YugabyteDB [ysqlsh](../../../admin/ysqlsh) and [ycqlsh](../../../admin/ycqlsh) client shells installed on your computer.
+Connect to your YugabyteDB cluster from your desktop using the YugabyteDB [ysqlsh](../../../admin/ysqlsh) and [ycqlsh](../../../admin/ycqlsh) client shells installed on your computer. Because YugabyteDB is PostgreSQL-compatible, you can also use [psql](https://www.postgresql.org/docs/current/app-psql.html) to connect.
 
 You can download and install the YugabyteDB Client Shell and connect to your database by following the steps below for either YSQL or YCQL.
 
-Before you can connect using a client shell, you need to have an IP allow list or VPC peer set up. Refer to [Assign IP Allow Lists](../../cloud-basics/add-connections/).
+Before you can connect using a shell, you need to add your computer to an IP allow list for the cluster. Refer to [Assign IP Allow Lists](../../cloud-basics/add-connections/).
 
 {{< note title="Note" >}}
 
-You must configure [Network Access](../../cloud-network/) before you can connect from a remote YugabyteDB client shell.
+You must add your computer to the cluster [IP allow list](../../cloud-basics/add-connections/) before you can connect from a remote shell.
 
-When connecting via Client Shell, make sure you are running the latest versions of the shells, provided in the Yugabyte Client 2.6 download. See [How do I connect to my cluster?](../../cloud-faq/#how-do-i-connect-to-my-cluster) in the FAQ for details.
+When connecting via Yugabyte Client Shell, ensure you are running the latest versions of the shells (Yugabyte Client 2.6 or later). See [How do I connect to my cluster?](../../cloud-faq/#how-do-i-connect-to-my-cluster) in the FAQ for details.
 
 {{< /note >}}
 
@@ -73,7 +73,7 @@ For information on SSL modes, refer to [Protection Provided in Different Modes](
 
 ## Connect using psql
 
-Because YugabyteDB is PostgreSQL-compatible, you can use [psql](https://www.postgresql.org/docs/current/app-psql.html) to connect to your YugabyteDB clusters. Download the CA certificate for your cluster by clicking **Connect**, selecting **YugabyteDB Client Shell**, and clicking **Download CA Cert**. Then use the following connection string:
+To connect using [psql](https://www.postgresql.org/docs/current/app-psql.html), first download the CA certificate for your cluster by clicking **Connect**, selecting **YugabyteDB Client Shell**, and clicking **Download CA Cert**. Then use the following connection string:
 
 ```sh
 psql --host=<HOST_ADDRESS> --port=5433 \

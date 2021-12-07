@@ -157,9 +157,9 @@ Cloud Shell
 Client Shell
 : Connect to your YugabyteDB cluster using the YugabyteDB [ysqlsh](../../admin/ysqlsh) and [ycqlsh](../../admin/ycqlsh) client shells installed on your computer.
 
-: Before you can connect using a client shell, you need to have an IP allow list or VPC peer set up. Refer to [Assign IP Allow Lists](../cloud-basics/add-connections/).
+: Before you can connect using a client shell, you need to add your computer to the cluster IP allow list. Refer to [Assign IP Allow Lists](../cloud-basics/add-connections/).
 
-: You must be running the latest versions of the client shells. These are available in Yugabyte Client 2.6 or later, which you can download using the following command on Linux or macOS:
+: You must be running the latest versions of the client shells (Yugabyte Client 2.6 or later), which you can download using the following command on Linux or macOS:
 
     ```sh
     $ curl -sSL https://downloads.yugabyte.com/get_clients.sh | bash
@@ -172,7 +172,7 @@ Client Shell
     ```
 
 psql
-: Because YugabyteDB is PostgreSQL-compatible, you can use [psql](https://www.postgresql.org/docs/current/app-psql.html) to connect to your YugabyteDB clusters in Yugabyte Cloud. The connection string to use is similar to what you would use for `ysqlsh`, as follows:
+: Because YugabyteDB is PostgreSQL-compatible, you can use [psql](https://www.postgresql.org/docs/current/app-psql.html) to connect to your clusters. The connection string to use is similar to what you would use for `ysqlsh`, as follows:
 
     ```sh
     psql --host=<HOST_ADDRESS> --port=5433 --username=<DB USER> \
