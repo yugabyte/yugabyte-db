@@ -304,9 +304,13 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         tserverPartition = serverType == ServerType.TSERVER ? partition : tserverPartition;
 
         NodeDetails node = getPodName(partition, azCode, serverType, isMultiAz);
+        boolean isLeaderBlacklistValidRF = isLeaderBlacklistValidRF(node.nodeName);
         List<NodeDetails> nodeList = new ArrayList<>();
         nodeList.add(node);
-        if (serverType == ServerType.TSERVER && isBlacklistLeaders && !edit) {
+        if (serverType == ServerType.TSERVER
+            && isBlacklistLeaders
+            && isLeaderBlacklistValidRF
+            && !edit) {
           createModifyBlackListTask(
                   Arrays.asList(node), true /* isAdd */, true /* isLeaderBlacklist */)
               .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
@@ -335,7 +339,10 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         createWaitForServerReady(node, serverType, waitTime)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
-        if (serverType == ServerType.TSERVER && isBlacklistLeaders && !edit) {
+        if (serverType == ServerType.TSERVER
+            && isBlacklistLeaders
+            && isLeaderBlacklistValidRF
+            && !edit) {
           createModifyBlackListTask(
                   Arrays.asList(node), false /* isAdd */, true /* isLeaderBlacklist */)
               .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
